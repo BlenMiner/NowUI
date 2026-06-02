@@ -113,6 +113,8 @@ jobs:
             "-DCMAKE_BUILD_TYPE=Release",
             "-DCMAKE_INSTALL_PREFIX=$env:NOWUI_MSDF_INSTALL_DIR",
             "-DCMAKE_PREFIX_PATH=$env:INSTALL_DIR;$env:VCPKG_INSTALLED_DIR/${{ matrix.vcpkg_triplet }}",
+            "-Dmsdf-atlas-gen_DIR=$env:INSTALL_DIR/lib/cmake/msdf-atlas-gen",
+            "-Dmsdfgen_DIR=$env:INSTALL_DIR/lib/cmake/msdfgen",
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake",
             "-DVCPKG_INSTALLED_DIR=$env:VCPKG_INSTALLED_DIR",
             "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}"
@@ -237,6 +239,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$NOWUI_MSDF_INSTALL_DIR" \
             -DCMAKE_PREFIX_PATH="$INSTALL_DIR;$VCPKG_INSTALLED_DIR/wasm32-emscripten" \
+            -Dmsdf-atlas-gen_DIR="$INSTALL_DIR/lib/cmake/msdf-atlas-gen" \
+            -Dmsdfgen_DIR="$INSTALL_DIR/lib/cmake/msdfgen" \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
             -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
