@@ -8,9 +8,9 @@ name: Build MSDF Atlas Gen Libraries
         required: true
         default: "v1.4"
       emscripten_ref:
-        description: "Emscripten SDK version for Unity 2020 WebGL plugin artifacts"
+        description: "Emscripten SDK version for Unity 2023.2+/Unity 6 WebGL plugin artifacts"
         required: true
-        default: "1.38.11"
+        default: "3.1.38"
 
 jobs:
   build:
@@ -110,7 +110,7 @@ jobs:
             "-B", "$env:NOWUI_MSDF_BUILD_DIR",
             "-DCMAKE_BUILD_TYPE=Release",
             "-DCMAKE_INSTALL_PREFIX=$env:NOWUI_MSDF_INSTALL_DIR",
-            "-DCMAKE_PREFIX_PATH=$env:INSTALL_DIR",
+            "-DCMAKE_PREFIX_PATH=$env:INSTALL_DIR;$env:VCPKG_ROOT/installed/${{ matrix.vcpkg_triplet }}",
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake",
             "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}"
           )
@@ -203,7 +203,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSCRIPTEN/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK_ROOT/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
             -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
             -DBUILD_SHARED_LIBS=OFF \
             -DMSDF_ATLAS_BUILD_STANDALONE=OFF \
@@ -231,9 +231,9 @@ jobs:
             -B "$NOWUI_MSDF_BUILD_DIR" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$NOWUI_MSDF_INSTALL_DIR" \
-            -DCMAKE_PREFIX_PATH="$INSTALL_DIR" \
+            -DCMAKE_PREFIX_PATH="$INSTALL_DIR;$VCPKG_ROOT/installed/wasm32-emscripten" \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSCRIPTEN/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK_ROOT/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
             -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
             -DNOWUI_MSDF_DISABLE_FILE_API=ON
 
