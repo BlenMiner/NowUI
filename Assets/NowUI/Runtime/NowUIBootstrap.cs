@@ -5,17 +5,17 @@ namespace NowUIInternal
 {
     public class NowUIBootstrap : MonoBehaviour
     {
-        public event Action OnPreUpdate;
+        public event Action onPreUpdate;
 
-        public event Action OnUpdate;
+        public event Action onUpdate;
 
-        public event Action OnPostUpdate;
+        public event Action onPostUpdate;
 
         private void Update()
         {
-            OnPreUpdate?.Invoke();
-            OnUpdate?.Invoke();
-            OnPostUpdate?.Invoke();
+            onPreUpdate?.Invoke();
+            onUpdate?.Invoke();
+            onPostUpdate?.Invoke();
         }
     }
 }

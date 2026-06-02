@@ -5,61 +5,61 @@ using UnityEngine.Rendering;
 
 public static class NowUI
 {
-    static Material m_defaultMaterial;
+    static Material _defaultMaterial;
 
-    public static Vector4 ScreenMask;
+    public static Vector4 screenMask;
 
-    static int m_defaultMesh = -1;
+    static int _defaultMesh = -1;
 
-    static StaticList<NowMesh> m_meshes = new StaticList<NowMesh>(100);
+    static StaticList<NowMesh> _meshes = new StaticList<NowMesh>(100);
 
-    static int m_lastUsedMeshId = -1;
+    static int _lastUsedMeshId = -1;
 
-    static bool m_captureMesh;
+    static bool _captureMesh;
 
-    static Matrix4x4 m_projectionMatrix;
+    static Matrix4x4 _projectionMatrix;
 
-    static float m_projectionWidth = -1;
+    static float _projectionWidth = -1;
 
-    static float m_projectionHeight = -1;
+    static float _projectionHeight = -1;
 
-    static readonly List<Vector3> s_vertices = new List<Vector3>(NowMesh.InitialVertexCapacity);
+    static readonly List<Vector3> _vertices = new List<Vector3>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> s_uvs = new List<Vector4>(NowMesh.InitialVertexCapacity);
+    static readonly List<Vector4> _uvs = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> s_rects = new List<Vector4>(NowMesh.InitialVertexCapacity);
+    static readonly List<Vector4> _rects = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> s_radii = new List<Vector4>(NowMesh.InitialVertexCapacity);
+    static readonly List<Vector4> _radii = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> s_colors = new List<Vector4>(NowMesh.InitialVertexCapacity);
+    static readonly List<Vector4> _colors = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> s_outlineColors = new List<Vector4>(NowMesh.InitialVertexCapacity);
+    static readonly List<Vector4> _outlineColors = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> s_extras = new List<Vector4>(NowMesh.InitialVertexCapacity);
+    static readonly List<Vector4> _extras = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> s_masks = new List<Vector4>(NowMesh.InitialVertexCapacity);
+    static readonly List<Vector4> _masks = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> s_rawUvs = new List<Vector4>(NowMesh.InitialVertexCapacity);
+    static readonly List<Vector4> _rawUvs = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Color> s_uguiColors = new List<Color>(NowMesh.InitialVertexCapacity);
+    static readonly List<Color> _uguiColors = new List<Color>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector3> s_uguiNormals = new List<Vector3>(NowMesh.InitialVertexCapacity);
+    static readonly List<Vector3> _uguiNormals = new List<Vector3>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> s_uguiTangents = new List<Vector4>(NowMesh.InitialVertexCapacity);
+    static readonly List<Vector4> _uguiTangents = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<int> s_triangles = new List<int>(NowMesh.InitialIndexCapacity);
+    static readonly List<int> _triangles = new List<int>(NowMesh.INITIAL_INDEX_CAPACITY);
 
     static int CreateMesh(Material mat, NowMeshKind kind)
     {
-        m_meshes.EnsureCapacity(1);
-        int id = m_meshes.Count;
+        _meshes.EnsureCapacity(1);
+        int id = _meshes.count;
 
-        if (m_meshes.Array[id] == null)
-            m_meshes.Array[id] = new NowMesh(mat, kind);
+        if (_meshes.array[id] == null)
+            _meshes.array[id] = new NowMesh(mat, kind);
         else
-            m_meshes.Array[id].SetMaterial(mat, kind);
+            _meshes.array[id].SetMaterial(mat, kind);
 
-        m_meshes.Count = id + 1;
+        _meshes.count = id + 1;
         return id;
     }
 
@@ -68,32 +68,32 @@ public static class NowUI
         if (material == null)
             return null;
 
-        if (m_captureMesh)
+        if (_captureMesh)
         {
-            if (m_lastUsedMeshId >= 0 &&
-                m_lastUsedMeshId < m_meshes.Count &&
-                ReferenceEquals(m_meshes.Array[m_lastUsedMeshId].Material, material) &&
-                m_meshes.Array[m_lastUsedMeshId].Kind == kind)
+            if (_lastUsedMeshId >= 0 &&
+                _lastUsedMeshId < _meshes.count &&
+                ReferenceEquals(_meshes.array[_lastUsedMeshId].material, material) &&
+                _meshes.array[_lastUsedMeshId].kind == kind)
             {
-                return m_meshes.Array[m_lastUsedMeshId];
+                return _meshes.array[_lastUsedMeshId];
             }
 
             int captureId = CreateMesh(material, kind);
-            m_lastUsedMeshId = captureId;
-            return m_meshes.Array[captureId];
+            _lastUsedMeshId = captureId;
+            return _meshes.array[captureId];
         }
 
         int id = cachedMeshId;
 
         if (id >= 0 &&
-            id < m_meshes.Count &&
-            ReferenceEquals(m_meshes.Array[id].Material, material) &&
-            m_meshes.Array[id].Kind == kind)
+            id < _meshes.count &&
+            ReferenceEquals(_meshes.array[id].material, material) &&
+            _meshes.array[id].kind == kind)
         {
             if (!UseMesh(id))
                 return null;
 
-            return m_meshes.Array[id];
+            return _meshes.array[id];
         }
 
         id = CreateMesh(material, kind);
@@ -102,19 +102,19 @@ public static class NowUI
         if (!UseMesh(id))
             return null;
 
-        return m_meshes.Array[id];
+        return _meshes.array[id];
     }
 
     static Matrix4x4 GetProjectionMatrix()
     {
-        if (m_projectionWidth != ScreenMask.z || m_projectionHeight != ScreenMask.w)
+        if (_projectionWidth != screenMask.z || _projectionHeight != screenMask.w)
         {
-            m_projectionWidth = ScreenMask.z;
-            m_projectionHeight = ScreenMask.w;
-            m_projectionMatrix = Matrix4x4.Ortho(0, ScreenMask.z, -ScreenMask.w, 0, -1, 100);
+            _projectionWidth = screenMask.z;
+            _projectionHeight = screenMask.w;
+            _projectionMatrix = Matrix4x4.Ortho(0, screenMask.z, -screenMask.w, 0, -1, 100);
         }
 
-        return m_projectionMatrix;
+        return _projectionMatrix;
     }
 
     static Matrix4x4 GetDrawMatrix()
@@ -134,10 +134,10 @@ public static class NowUI
 
     static void DrawMesh(NowMesh mesh, Matrix4x4 drawMatrix)
     {
-        if (!mesh.HasVertices)
+        if (!mesh.hasVertices)
             return;
 
-        if (mesh.Material == null)
+        if (mesh.material == null)
         {
             mesh.ClearVertices();
             return;
@@ -145,25 +145,25 @@ public static class NowUI
 
         mesh.UploadMesh();
 
-        if (mesh.UnityMesh == null)
+        if (mesh.unityMesh == null)
         {
             mesh.ClearVertices();
             return;
         }
 
-        mesh.Material.SetPass(0);
-        Graphics.DrawMeshNow(mesh.UnityMesh, drawMatrix);
+        mesh.material.SetPass(0);
+        Graphics.DrawMeshNow(mesh.unityMesh, drawMatrix);
         mesh.ClearVertices();
     }
 
     static void FlushMesh(int meshId)
     {
-        if (meshId < 0 || meshId >= m_meshes.Count)
+        if (meshId < 0 || meshId >= _meshes.count)
             return;
 
-        var mesh = m_meshes.Array[meshId];
+        var mesh = _meshes.array[meshId];
 
-        if (!mesh.HasVertices)
+        if (!mesh.hasVertices)
             return;
 
         BeginDraw(out var drawMatrix);
@@ -173,33 +173,33 @@ public static class NowUI
 
     static bool UseMesh(int meshId)
     {
-        if (m_captureMesh)
+        if (_captureMesh)
             return true;
 
-        if (meshId < 0 || meshId >= m_meshes.Count)
+        if (meshId < 0 || meshId >= _meshes.count)
             return false;
 
-        if (m_lastUsedMeshId == meshId)
+        if (_lastUsedMeshId == meshId)
             return true;
 
-        FlushMesh(m_lastUsedMeshId);
-        m_lastUsedMeshId = meshId;
+        FlushMesh(_lastUsedMeshId);
+        _lastUsedMeshId = meshId;
         return true;
     }
 
     private static void Initialize()
     {
-        if (m_defaultMaterial == null)
+        if (_defaultMaterial == null)
         {
-            m_defaultMaterial = Resources.Load<Material>("NowUI/UIMaterial");
-            m_meshes.Count = 0;
-            m_defaultMesh = -1;
+            _defaultMaterial = Resources.Load<Material>("NowUI/UIMaterial");
+            _meshes.count = 0;
+            _defaultMesh = -1;
         }
 
-        if (m_defaultMaterial != null && m_defaultMesh < 0)
-            m_defaultMesh = CreateMesh(m_defaultMaterial, NowMeshKind.Rectangle);
+        if (_defaultMaterial != null && _defaultMesh < 0)
+            _defaultMesh = CreateMesh(_defaultMaterial, NowMeshKind.Rectangle);
 
-        m_lastUsedMeshId = m_defaultMesh;
+        _lastUsedMeshId = _defaultMesh;
     }
 
     public static void StartUI()
@@ -209,30 +209,30 @@ public static class NowUI
 
     public static void StartUI(Vector4 screenMask)
     {
-        m_captureMesh = false;
-        ScreenMask = screenMask;
+        _captureMesh = false;
+        NowUI.screenMask = screenMask;
         Initialize();
     }
 
     internal static void BeginMeshCapture(Vector4 screenMask)
     {
-        ScreenMask = screenMask;
+        NowUI.screenMask = screenMask;
         Initialize();
-        m_captureMesh = true;
-        m_meshes.Count = 0;
-        m_lastUsedMeshId = -1;
+        _captureMesh = true;
+        _meshes.count = 0;
+        _lastUsedMeshId = -1;
     }
 
     internal static void CancelMeshCapture()
     {
-        if (!m_captureMesh)
+        if (!_captureMesh)
             return;
 
-        for (int i = 0; i < m_meshes.Count; ++i)
-            m_meshes.Array[i].ClearVertices();
+        for (int i = 0; i < _meshes.count; ++i)
+            _meshes.array[i].ClearVertices();
 
-        m_captureMesh = false;
-        m_lastUsedMeshId = -1;
+        _captureMesh = false;
+        _lastUsedMeshId = -1;
     }
 
     internal static void EndMeshCapture(Mesh target, List<NowUIMeshBatch> batches, Vector2 positionOffset)
@@ -243,73 +243,73 @@ public static class NowUI
             return;
         }
 
-        s_vertices.Clear();
-        s_uvs.Clear();
-        s_rects.Clear();
-        s_radii.Clear();
-        s_colors.Clear();
-        s_outlineColors.Clear();
-        s_extras.Clear();
-        s_masks.Clear();
-        s_rawUvs.Clear();
-        s_uguiColors.Clear();
-        s_uguiNormals.Clear();
-        s_uguiTangents.Clear();
+        _vertices.Clear();
+        _uvs.Clear();
+        _rects.Clear();
+        _radii.Clear();
+        _colors.Clear();
+        _outlineColors.Clear();
+        _extras.Clear();
+        _masks.Clear();
+        _rawUvs.Clear();
+        _uguiColors.Clear();
+        _uguiNormals.Clear();
+        _uguiTangents.Clear();
         batches.Clear();
 
-        for (int i = 0; i < m_meshes.Count; ++i)
+        for (int i = 0; i < _meshes.count; ++i)
         {
-            NowMesh mesh = m_meshes.Array[i];
+            NowMesh mesh = _meshes.array[i];
 
-            if (!mesh.HasVertices)
+            if (!mesh.hasVertices)
                 continue;
 
-            batches.Add(new NowUIMeshBatch(mesh.Material, mesh.Kind));
+            batches.Add(new NowUIMeshBatch(mesh.material, mesh.kind));
             mesh.AppendUGUIVertices(
-                s_vertices,
-                s_uvs,
-                s_rects,
-                s_masks,
-                s_extras,
-                s_uguiColors,
-                s_uguiNormals,
-                s_uguiTangents,
+                _vertices,
+                _uvs,
+                _rects,
+                _masks,
+                _extras,
+                _uguiColors,
+                _uguiNormals,
+                _uguiTangents,
                 positionOffset);
         }
 
         target.Clear();
 
-        if (s_vertices.Count == 0)
+        if (_vertices.Count == 0)
         {
             CancelMeshCapture();
             return;
         }
 
-        target.indexFormat = s_vertices.Count > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
-        target.SetVertices(s_vertices);
-        target.SetUVs(0, s_uvs);
-        target.SetUVs(1, s_rects);
-        target.SetUVs(2, s_masks);
-        target.SetUVs(3, s_extras);
-        target.SetColors(s_uguiColors);
-        target.SetNormals(s_uguiNormals);
-        target.SetTangents(s_uguiTangents);
+        target.indexFormat = _vertices.Count > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+        target.SetVertices(_vertices);
+        target.SetUVs(0, _uvs);
+        target.SetUVs(1, _rects);
+        target.SetUVs(2, _masks);
+        target.SetUVs(3, _extras);
+        target.SetColors(_uguiColors);
+        target.SetNormals(_uguiNormals);
+        target.SetTangents(_uguiTangents);
         target.subMeshCount = batches.Count;
 
         int subMesh = 0;
         int vertexOffset = 0;
 
-        for (int i = 0; i < m_meshes.Count; ++i)
+        for (int i = 0; i < _meshes.count; ++i)
         {
-            NowMesh mesh = m_meshes.Array[i];
+            NowMesh mesh = _meshes.array[i];
 
-            if (!mesh.HasVertices)
+            if (!mesh.hasVertices)
                 continue;
 
-            s_triangles.Clear();
-            mesh.AppendTriangles(s_triangles, vertexOffset);
-            target.SetTriangles(s_triangles, subMesh, false);
-            vertexOffset += mesh.VertexCount;
+            _triangles.Clear();
+            mesh.AppendTriangles(_triangles, vertexOffset);
+            target.SetTriangles(_triangles, subMesh, false);
+            vertexOffset += mesh.vertexCount;
             ++subMesh;
         }
 
@@ -319,17 +319,17 @@ public static class NowUI
 
     public static void FlushUI()
     {
-        if (m_captureMesh)
+        if (_captureMesh)
             return;
 
-        var meshArray = m_meshes.Array;
-        int count = m_meshes.Count;
+        var meshArray = _meshes.array;
+        int count = _meshes.count;
 
         bool hasVertices = false;
 
         for (int i = 0; i < count; ++i)
         {
-            if (!meshArray[i].HasVertices)
+            if (!meshArray[i].hasVertices)
                 continue;
 
             hasVertices = true;
@@ -347,17 +347,17 @@ public static class NowUI
         GL.PopMatrix();
     }
 
-    static readonly Vector4 defaultUV = new Vector4(0, 0, 1, 1);
+    static readonly Vector4 _defaultUV = new Vector4(0, 0, 1, 1);
 
-    static NowRectVertex tmpVertex;
+    static NowRectVertex _tmpVertex;
 
     public static void DrawRect(NowUIRectangle rectangle)
     {
-        if (m_defaultMaterial == null)
+        if (_defaultMaterial == null)
             return;
 
-        var position = rectangle.Rect;
-        var pad = rectangle.Padding;
+        var position = rectangle.rect;
+        var pad = rectangle.padding;
 
         position.x += pad.x;
         position.y += pad.y;
@@ -365,49 +365,49 @@ public static class NowUI
         position.w = position.w - pad.y - pad.w;
         int rectHeight = (int)position.w;
 
-        tmpVertex.position.x = (int)position.x;
-        tmpVertex.position.y = (-(int)position.y) - rectHeight;
-        tmpVertex.position.z = (int)position.z;
-        tmpVertex.position.w = (int)rectHeight;
+        _tmpVertex.position.x = (int)position.x;
+        _tmpVertex.position.y = (-(int)position.y) - rectHeight;
+        _tmpVertex.position.z = (int)position.z;
+        _tmpVertex.position.w = (int)rectHeight;
 
-        tmpVertex.mask = rectangle.Mask;
-        tmpVertex.radius = rectangle.Radius;
-        tmpVertex.color = rectangle.Color;
-        tmpVertex.outlineColor = rectangle.OutlineColor;
-        tmpVertex.uvwh = defaultUV;
+        _tmpVertex.mask = rectangle.mask;
+        _tmpVertex.radius = rectangle.radius;
+        _tmpVertex.color = rectangle.color;
+        _tmpVertex.outlineColor = rectangle.outlineColor;
+        _tmpVertex.uvwh = _defaultUV;
 
-        NowMesh mesh = UseMaterial(m_defaultMaterial, ref m_defaultMesh, NowMeshKind.Rectangle);
+        NowMesh mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
 
         if (mesh == null)
             return;
 
-        mesh.AddRect(tmpVertex, rectangle.Blur, rectangle.Outline);
+        mesh.AddRect(_tmpVertex, rectangle.blur, rectangle.outline);
     }
 
     public static void DrawString(NowUIText style, string value)
     {
-        if (string.IsNullOrEmpty(value) || style.Font == null)
+        if (string.IsNullOrEmpty(value) || style.font == null)
             return;
 
-        var fontSize = style.FontSize;
-        var font = style.Font;
+        var fontSize = style.fontSize;
+        var font = style.font;
         NowMesh mesh = null;
 
-        float leftPos = style.Rect.x;
+        float leftPos = style.rect.x;
 
-        const int tabSpaces = 4;
+        const int TAB_SPACES = 4;
 
         for (int i = 0; i < value.Length; ++i)
         {
             if (value[i] == '\n')
             {
-                style.Rect.x = leftPos;
-                style.Rect.y += font.AtlasInfo.metrics.lineHeight * fontSize;
+                style.rect.x = leftPos;
+                style.rect.y += font.atlasInfo.metrics.lineHeight * fontSize;
             }
             else if (value[i] == '\t')
             {
                 if (font.GetGlyph(' ', out var space))
-                    style.Rect.x += space.advance * fontSize * tabSpaces;
+                    style.rect.x += space.advance * fontSize * TAB_SPACES;
             }
             else
             {
@@ -418,7 +418,7 @@ public static class NowUI
                 {
                     if (mesh == null)
                     {
-                        mesh = UseMaterial(font.Material, ref font.MaterialID, NowMeshKind.Text);
+                        mesh = UseMaterial(font.material, ref font.materialId, NowMeshKind.Text);
 
                         if (mesh == null)
                             return;
@@ -427,18 +427,18 @@ public static class NowUI
                     DrawCharacter(style, glyph, mesh);
                 }
 
-                style.Rect.x += glyph.advance * fontSize;
+                style.rect.x += glyph.advance * fontSize;
             }
         }
     }
 
     public static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph)
     {
-        if (style.Font == null)
+        if (style.font == null)
             return;
 
-        var font = style.Font;
-        var mesh = UseMaterial(font.Material, ref font.MaterialID, NowMeshKind.Text);
+        var font = style.font;
+        var mesh = UseMaterial(font.material, ref font.materialId, NowMeshKind.Text);
 
         if (mesh == null)
             return;
@@ -448,12 +448,12 @@ public static class NowUI
 
     static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowMesh mesh)
     {
-        var fontSize = style.FontSize;
-        var font = style.Font;
-        var rect = style.Rect;
+        var fontSize = style.fontSize;
+        var font = style.font;
+        var rect = style.rect;
         var planeBounds = glyph.planeBounds;
 
-        float lineHeight = font.AtlasInfo.metrics.lineHeight * fontSize;
+        float lineHeight = font.atlasInfo.metrics.lineHeight * fontSize;
 
         planeBounds.left *= fontSize;
         planeBounds.right *= fontSize;
@@ -470,22 +470,22 @@ public static class NowUI
         var atlasBounds = glyph.atlasBounds;
         float rectHeight = pw;
 
-        tmpVertex.position.x = px;
-        tmpVertex.position.y = -(py + rectHeight);
-        tmpVertex.position.z = pz;
-        tmpVertex.position.w = rectHeight;
+        _tmpVertex.position.x = px;
+        _tmpVertex.position.y = -(py + rectHeight);
+        _tmpVertex.position.z = pz;
+        _tmpVertex.position.w = rectHeight;
 
-        tmpVertex.uvwh.x = atlasBounds.left;
-        tmpVertex.uvwh.y = atlasBounds.bottom;
-        tmpVertex.uvwh.z = atlasBounds.right - atlasBounds.left;
-        tmpVertex.uvwh.w = atlasBounds.top - atlasBounds.bottom;
+        _tmpVertex.uvwh.x = atlasBounds.left;
+        _tmpVertex.uvwh.y = atlasBounds.bottom;
+        _tmpVertex.uvwh.z = atlasBounds.right - atlasBounds.left;
+        _tmpVertex.uvwh.w = atlasBounds.top - atlasBounds.bottom;
 
-        tmpVertex.mask = style.Mask;
-        tmpVertex.radius = default;
-        tmpVertex.color = style.Color;
-        tmpVertex.outlineColor = style.OutlineColor;
+        _tmpVertex.mask = style.mask;
+        _tmpVertex.radius = default;
+        _tmpVertex.color = style.color;
+        _tmpVertex.outlineColor = style.outlineColor;
 
-        mesh.AddRect(tmpVertex, style.Outline, fontSize);
+        mesh.AddRect(_tmpVertex, style.outline, fontSize);
     }
 
     public static NowUIRectangle Rectangle(NowUIRectangle rect)

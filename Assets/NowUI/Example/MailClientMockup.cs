@@ -2,9 +2,9 @@ using UnityEngine;
 
 public class MailClientMockup : MonoBehaviour
 {
-    [SerializeField] NowFont m_font;
+    [SerializeField] NowFont _font;
 
-    [SerializeField, Range(0.75f, 1.35f)] float m_scale = 1f;
+    [SerializeField, Range(0.75f, 1.35f)] float _scale = 1f;
 
     enum TextAlign
     {
@@ -15,23 +15,23 @@ public class MailClientMockup : MonoBehaviour
 
     struct MailItem
     {
-        public string Sender;
-        public string Subject;
-        public string Preview;
-        public string Time;
-        public bool Unread;
+        public readonly string sender;
+        public readonly string subject;
+        public readonly string preview;
+        public readonly string time;
+        public readonly bool unread;
 
         public MailItem(string sender, string subject, string preview, string time, bool unread)
         {
-            Sender = sender;
-            Subject = subject;
-            Preview = preview;
-            Time = time;
-            Unread = unread;
+            this.sender = sender;
+            this.subject = subject;
+            this.preview = preview;
+            this.time = time;
+            this.unread = unread;
         }
     }
 
-    static readonly MailItem[] Mail = {
+    static readonly MailItem[] _mail = {
         new MailItem("GitHub", "NowUI WebGL artifact is ready", "The nowui-msdf-webgl artifact finished and is available to import.", "10:42 AM", true),
         new MailItem("Unity Cloud", "Build report for WebGL", "Build time was 2m 14s. No player errors were reported.", "9:18 AM", true),
         new MailItem("Maya Chen", "Design pass notes", "The compact sidebar feels better, but the reader pane needs a quieter header.", "Yesterday", false),
@@ -42,7 +42,7 @@ public class MailClientMockup : MonoBehaviour
         new MailItem("Figma", "Comments on the toolbar", "Three comments were added to the mail client mockup frame.", "Fri", false)
     };
 
-    static readonly string[] Labels = {
+    static readonly string[] _labels = {
         "Inbox",
         "Starred",
         "Snoozed",
@@ -101,17 +101,17 @@ public class MailClientMockup : MonoBehaviour
 
     void DrawText(string text, Vector4 rect, float size, Color color, TextAlign align, bool fit)
     {
-        if (m_font == null || string.IsNullOrEmpty(text))
+        if (_font == null || string.IsNullOrEmpty(text))
             return;
 
-        float fontSize = size * m_scale;
+        float fontSize = size * _scale;
         string fitted = fit ? FitText(text, fontSize, rect.z) : text;
 
         if (string.IsNullOrEmpty(fitted))
             return;
 
-        Vector2 measured = m_font.MeasureText(fitted, fontSize);
-        Vector4 bounds = m_font.MeasureTextBounds(fitted, fontSize);
+        Vector2 measured = _font.MeasureText(fitted, fontSize);
+        Vector4 bounds = _font.MeasureTextBounds(fitted, fontSize);
         bool hasBounds = bounds.z > 0 && bounds.w > 0;
         float visualWidth = hasBounds ? bounds.z : measured.x;
         float visualHeight = hasBounds ? bounds.w : measured.y;
@@ -128,7 +128,7 @@ public class MailClientMockup : MonoBehaviour
             ? Inflate(Rect(textRect.x + bounds.x, textRect.y + bounds.y, bounds.z, bounds.w), 3f, 3f)
             : Inflate(rect, 8f, 10f);
 
-        NowUI.Text(textRect, m_font)
+        NowUI.Text(textRect, _font)
             .SetFontSize(fontSize)
             .SetColor(color)
             .SetMask(mask)
@@ -137,15 +137,15 @@ public class MailClientMockup : MonoBehaviour
 
     string FitText(string text, float fontSize, float maxWidth)
     {
-        if (maxWidth <= 0 || m_font == null)
+        if (maxWidth <= 0 || _font == null)
             return string.Empty;
 
-        if (m_font.MeasureText(text, fontSize).x <= maxWidth)
+        if (_font.MeasureText(text, fontSize).x <= maxWidth)
             return text;
 
-        const string ellipsis = "...";
+        const string ELLIPSIS = "...";
 
-        if (m_font.MeasureText(ellipsis, fontSize).x > maxWidth)
+        if (_font.MeasureText(ELLIPSIS, fontSize).x > maxWidth)
             return string.Empty;
 
         int low = 0;
@@ -155,9 +155,9 @@ public class MailClientMockup : MonoBehaviour
         while (low <= high)
         {
             int mid = (low + high) / 2;
-            string candidate = text.Substring(0, mid).TrimEnd() + ellipsis;
+            string candidate = text.Substring(0, mid).TrimEnd() + ELLIPSIS;
 
-            if (m_font.MeasureText(candidate, fontSize).x <= maxWidth)
+            if (_font.MeasureText(candidate, fontSize).x <= maxWidth)
             {
                 best = mid;
                 low = mid + 1;
@@ -168,7 +168,7 @@ public class MailClientMockup : MonoBehaviour
             }
         }
 
-        return best > 0 ? text.Substring(0, best).TrimEnd() + ellipsis : string.Empty;
+        return best > 0 ? text.Substring(0, best).TrimEnd() + ELLIPSIS : string.Empty;
     }
 
     void DrawTopBar(float width)
@@ -224,7 +224,7 @@ public class MailClientMockup : MonoBehaviour
         }
 
         float navY = y + 86;
-        for (int i = 0; i < Labels.Length; ++i)
+        for (int i = 0; i < _labels.Length; ++i)
         {
             bool active = i == 0;
             Vector4 row = Rect(x + 12, navY + i * 40, width - 24, 34);
@@ -233,11 +233,11 @@ public class MailClientMockup : MonoBehaviour
                 DrawRect(row, Rgb(252, 232, 230), 17);
 
             Color labelColor = active ? Rgb(179, 38, 30) : Rgb(75, 85, 99);
-            string icon = Labels[i].Substring(0, 1);
+            string icon = _labels[i].Substring(0, 1);
             DrawTextCentered(icon, Rect(row.x + 8, row.y, 30, row.w), 16, labelColor);
 
             if (!compact)
-                DrawText(Labels[i], Rect(row.x + 48, row.y + 7, row.z - 76, 22), 15, labelColor);
+                DrawText(_labels[i], Rect(row.x + 48, row.y + 7, row.z - 76, 22), 15, labelColor);
         }
 
         if (!compact)
@@ -267,37 +267,37 @@ public class MailClientMockup : MonoBehaviour
         DrawRect(Rect(x, y + 92, width, 1), Rgb(226, 232, 240));
 
         float rowY = y + 93;
-        float rowHeight = Mathf.Clamp((height - 93) / Mathf.Min(Mail.Length, 7), 66, 88);
+        float rowHeight = Mathf.Clamp((height - 93) / Mathf.Min(_mail.Length, 7), 66, 88);
 
-        for (int i = 0; i < Mail.Length; ++i)
+        for (int i = 0; i < _mail.Length; ++i)
         {
             if (rowY + rowHeight > y + height)
                 break;
 
             bool selected = showReader && i == 0;
-            DrawMailRow(Mail[i], Rect(x, rowY, width, rowHeight), selected);
+            DrawMailRow(_mail[i], Rect(x, rowY, width, rowHeight), selected);
             rowY += rowHeight;
         }
     }
 
     void DrawMailRow(MailItem item, Vector4 rect, bool selected)
     {
-        Color background = selected ? Rgb(232, 240, 254) : item.Unread ? Rgb(255, 255, 255) : Rgb(248, 250, 252);
+        Color background = selected ? Rgb(232, 240, 254) : item.unread ? Rgb(255, 255, 255) : Rgb(248, 250, 252);
         DrawRect(rect, background);
         DrawRect(Rect(rect.x, rect.y + rect.w - 1, rect.z, 1), Rgb(226, 232, 240));
 
         float avatarSize = 34;
         Vector4 avatarRect = Rect(rect.x + 18, rect.y + 16, avatarSize, avatarSize);
-        DrawRect(avatarRect, item.Unread ? Rgb(66, 133, 244) : Rgb(156, 163, 175), avatarSize * 0.5f);
-        DrawTextCentered(item.Sender.Substring(0, 1), avatarRect, 16, Color.white);
+        DrawRect(avatarRect, item.unread ? Rgb(66, 133, 244) : Rgb(156, 163, 175), avatarSize * 0.5f);
+        DrawTextCentered(item.sender.Substring(0, 1), avatarRect, 16, Color.white);
 
-        Color titleColor = item.Unread ? Rgb(17, 24, 39) : Rgb(75, 85, 99);
-        DrawText(item.Sender, Rect(rect.x + 66, rect.y + 12, rect.z - 150, 22), 15, titleColor);
-        DrawTextRight(item.Time, Rect(rect.x + rect.z - 104, rect.y + 12, 84, 22), 12, item.Unread ? Rgb(17, 24, 39) : Rgb(107, 114, 128));
-        DrawText(item.Subject, Rect(rect.x + 66, rect.y + 34, rect.z - 90, 22), 14, titleColor);
-        DrawText(item.Preview, Rect(rect.x + 66, rect.y + 55, rect.z - 90, 22), 13, Rgb(107, 114, 128));
+        Color titleColor = item.unread ? Rgb(17, 24, 39) : Rgb(75, 85, 99);
+        DrawText(item.sender, Rect(rect.x + 66, rect.y + 12, rect.z - 150, 22), 15, titleColor);
+        DrawTextRight(item.time, Rect(rect.x + rect.z - 104, rect.y + 12, 84, 22), 12, item.unread ? Rgb(17, 24, 39) : Rgb(107, 114, 128));
+        DrawText(item.subject, Rect(rect.x + 66, rect.y + 34, rect.z - 90, 22), 14, titleColor);
+        DrawText(item.preview, Rect(rect.x + 66, rect.y + 55, rect.z - 90, 22), 13, Rgb(107, 114, 128));
 
-        if (item.Unread)
+        if (item.unread)
             DrawRect(Rect(rect.x + rect.z - 18, rect.y + 39, 8, 8), Rgb(66, 133, 244), 4);
     }
 

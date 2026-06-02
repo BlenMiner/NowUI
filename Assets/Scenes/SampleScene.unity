@@ -224,8 +224,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5abef7d3be7149bd8ac9d0c73ab367f4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: NowUI.Examples::MailClientMockup
-  m_font: {fileID: 11400000, guid: 393d7f54dbb0f7f4dbe51307964e4c5a, type: 2}
-  m_scale: 1
+  _font: {fileID: 0}
+  _scale: 1
 --- !u!1 &1132170316
 GameObject:
   m_ObjectHideFlags: 0
@@ -363,8 +363,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 250, y: -40}
+  m_AnchoredPosition: {x: 0, y: -0.000030517578}
+  m_SizeDelta: {x: 250, y: -40.000046}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &1774143540
 CanvasRenderer:
@@ -390,8 +390,8 @@ MonoBehaviour:
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
-  m_rebuildEveryFrame: 0
-  m_font: {fileID: 11400000, guid: 393d7f54dbb0f7f4dbe51307964e4c5a, type: 2}
+  _rebuildEveryFrame: 1
+  _font: {fileID: 11400000, guid: 393d7f54dbb0f7f4dbe51307964e4c5a, type: 2}
 --- !u!1 &2070718855
 GameObject:
   m_ObjectHideFlags: 0

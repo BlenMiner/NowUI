@@ -5,16 +5,16 @@ using UnityEngine;
 
 public static class NowFontCompiler
 {
-    const int AtlasSize = 64;
-    const int PixelRange = 16;
-    const int ErrorCapacity = 4096;
-    const int NativeOk = 0;
-    const int NativeBufferTooSmall = 2;
+    const int ATLAS_SIZE = 64;
+    const int PIXEL_RANGE = 16;
+    const int ERROR_CAPACITY = 4096;
+    const int NATIVE_OK = 0;
+    const int NATIVE_BUFFER_TOO_SMALL = 2;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-    const string LibraryName = "__Internal";
+    const string LIBRARY_NAME = "__Internal";
 #else
-    const string LibraryName = "nowui-msdf";
+    const string LIBRARY_NAME = "nowui-msdf";
 #endif
 
     [StructLayout(LayoutKind.Sequential)]
@@ -55,7 +55,7 @@ public static class NowFontCompiler
         public NativeMetrics metrics;
     }
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
     static extern int nowui_compile_font_from_memory(
         byte[] fontData,
         int fontDataLength,
@@ -71,7 +71,7 @@ public static class NowFontCompiler
 
     public static bool TryCompile(byte[] fontData, out NowFont font, out string error)
     {
-        return TryCompile(fontData, AtlasSize, PixelRange, null, out font, out error);
+        return TryCompile(fontData, ATLAS_SIZE, PIXEL_RANGE, null, out font, out error);
     }
 
     public static bool TryCompile(byte[] fontData, int size, int pixelRange, out NowFont font, out string error)
@@ -107,7 +107,7 @@ public static class NowFontCompiler
             return false;
         }
 
-        byte[] errorBuffer = new byte[ErrorCapacity];
+        byte[] errorBuffer = new byte[ERROR_CAPACITY];
         NativeAtlasInfo info = default;
 
         try
@@ -125,7 +125,7 @@ public static class NowFontCompiler
                 errorBuffer,
                 errorBuffer.Length);
 
-            if (queryResult != NativeBufferTooSmall)
+            if (queryResult != NATIVE_BUFFER_TOO_SMALL)
             {
                 error = NativeError(errorBuffer, "The native font compiler did not return atlas buffer sizing information.");
                 return false;
@@ -154,7 +154,7 @@ public static class NowFontCompiler
                 errorBuffer,
                 errorBuffer.Length);
 
-            if (compileResult != NativeOk)
+            if (compileResult != NATIVE_OK)
             {
                 error = NativeError(errorBuffer, "The native font compiler failed without an error message.");
                 return false;
@@ -212,9 +212,9 @@ public static class NowFontCompiler
 
         NowFont font = ScriptableObject.CreateInstance<NowFont>();
         font.name = "NowUI Runtime Font";
-        font.Atlas = texture;
-        font.Material = material;
-        font.AtlasInfo = ToAtlasInfo(nativeGlyphs, info);
+        font.atlas = texture;
+        font.material = material;
+        font.atlasInfo = ToAtlasInfo(nativeGlyphs, info);
 
         error = null;
         return font;

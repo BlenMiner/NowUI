@@ -1,21 +1,20 @@
 using UnityEngine;
-using UnityEngine.Serialization;
 
 public class TextTests : MonoBehaviour
 {
-    [SerializeField] NowFont m_font;
+    [SerializeField] NowFont _font;
 
-    [SerializeField] Color m_color;
+    [SerializeField] Color _color;
 
-    [SerializeField, FormerlySerializedAs("m_outOolor")] Color m_outlineColor;
+    [SerializeField] Color _outlineColor;
 
-    [SerializeField, Range(-100, 100)] float m_outline = 0f;
+    [SerializeField, Range(-100, 100)] float _outline = 0f;
 
-    [SerializeField, Range(1, 200)] float m_fontSize = 100;
+    [SerializeField, Range(1, 200)] float _fontSize = 100;
 
-    [SerializeField, Range(-200, 200)] float m_padding;
+    [SerializeField, Range(-200, 200)] float _padding;
 
-    [SerializeField, TextArea] string m_text = "Hello World";
+    [SerializeField, TextArea] string _text = "Hello World";
 
     private void DrawTextBox(Vector4 rect, string txt)
     {
@@ -39,12 +38,12 @@ public class TextTests : MonoBehaviour
         textContainerBorder.Draw();
         textContainer.Draw();
 
-        NowUI.Text(rect, m_font)
-            .SetColor(m_color)
-            .SetFontSize(m_fontSize + radius)
-            .SetPadding(m_padding)
-            .SetOutline(m_outline)
-            .SetOutlineColor(m_outlineColor)
+        NowUI.Text(rect, _font)
+            .SetColor(_color)
+            .SetFontSize(_fontSize + radius)
+            .SetPadding(_padding)
+            .SetOutline(_outline)
+            .SetOutlineColor(_outlineColor)
             .Draw(rect.ToString() + "\n" + txt);
     }
 
@@ -59,7 +58,7 @@ public class TextTests : MonoBehaviour
             {
                 pos.x = 10 + (pos.z + 10) * x;
                 pos.y = 10 + (pos.w + 10) * y;
-                DrawTextBox(pos, m_text);
+                DrawTextBox(pos, _text);
             }
 
         NowUI.FlushUI();

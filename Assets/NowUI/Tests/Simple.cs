@@ -9,12 +9,12 @@ public class Simple
     {
         var list = new StaticList<int>(1);
 
-        list.Array[0] = 42;
-        list.Count = 1;
+        list.array[0] = 42;
+        list.count = 1;
         list.EnsureCapacity(2);
 
-        Assert.GreaterOrEqual(list.Array.Length, 3);
-        Assert.AreEqual(42, list.Array[0]);
+        Assert.GreaterOrEqual(list.array.Length, 3);
+        Assert.AreEqual(42, list.array[0]);
     }
 
     [Test]
@@ -36,8 +36,8 @@ public class Simple
     public void FontNormalizesAtlasBounds()
     {
         var font = ScriptableObject.CreateInstance<NowFont>();
-        font.Atlas = new Texture2D(100, 200);
-        font.AtlasInfo = new NowFontAtlasInfo
+        font.atlas = new Texture2D(100, 200);
+        font.atlasInfo = new NowFontAtlasInfo
         {
             glyphs = new[]
             {
@@ -66,7 +66,7 @@ public class Simple
         }
         finally
         {
-            Object.DestroyImmediate(font.Atlas);
+            Object.DestroyImmediate(font.atlas);
             Object.DestroyImmediate(font);
         }
     }
@@ -74,10 +74,10 @@ public class Simple
     [Test]
     public void FontSupportsSparseGlyphRanges()
     {
-        const char sparseCharacter = (char)0x2603;
+        const char SPARSE_CHARACTER = (char)0x2603;
         var font = ScriptableObject.CreateInstance<NowFont>();
-        font.Atlas = new Texture2D(100, 100);
-        font.AtlasInfo = new NowFontAtlasInfo
+        font.atlas = new Texture2D(100, 100);
+        font.atlasInfo = new NowFontAtlasInfo
         {
             glyphs = new[]
             {
@@ -93,7 +93,7 @@ public class Simple
                 },
                 new NowFontAtlasInfo.Glyph
                 {
-                    unicode = sparseCharacter,
+                    unicode = SPARSE_CHARACTER,
                     advance = 2,
                     atlasBounds = new NowFontAtlasInfo.Bounds
                     {
@@ -106,13 +106,13 @@ public class Simple
 
         try
         {
-            Assert.IsTrue(font.GetGlyph(sparseCharacter, out var glyph));
+            Assert.IsTrue(font.GetGlyph(SPARSE_CHARACTER, out var glyph));
             Assert.AreEqual(2, glyph.advance);
             Assert.IsFalse(font.GetGlyph('B', out _));
         }
         finally
         {
-            Object.DestroyImmediate(font.Atlas);
+            Object.DestroyImmediate(font.atlas);
             Object.DestroyImmediate(font);
         }
     }
@@ -121,8 +121,8 @@ public class Simple
     public void FontMeasuresTextUsingGlyphAdvances()
     {
         var font = ScriptableObject.CreateInstance<NowFont>();
-        font.Atlas = new Texture2D(100, 100);
-        font.AtlasInfo = new NowFontAtlasInfo
+        font.atlas = new Texture2D(100, 100);
+        font.atlasInfo = new NowFontAtlasInfo
         {
             metrics = new NowFontAtlasInfo.Metrics
             {
@@ -157,7 +157,7 @@ public class Simple
         }
         finally
         {
-            Object.DestroyImmediate(font.Atlas);
+            Object.DestroyImmediate(font.atlas);
             Object.DestroyImmediate(font);
         }
     }
@@ -166,8 +166,8 @@ public class Simple
     public void FontMeasuresTextBoundsUsingGlyphPlanes()
     {
         var font = ScriptableObject.CreateInstance<NowFont>();
-        font.Atlas = new Texture2D(100, 100);
-        font.AtlasInfo = new NowFontAtlasInfo
+        font.atlas = new Texture2D(100, 100);
+        font.atlasInfo = new NowFontAtlasInfo
         {
             metrics = new NowFontAtlasInfo.Metrics
             {
@@ -223,7 +223,7 @@ public class Simple
         }
         finally
         {
-            Object.DestroyImmediate(font.Atlas);
+            Object.DestroyImmediate(font.atlas);
             Object.DestroyImmediate(font);
         }
     }

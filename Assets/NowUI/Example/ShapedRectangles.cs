@@ -4,13 +4,13 @@ public class ShapedRectangles : MonoBehaviour
 {
     [SerializeField] Color outline = Color.red;
 
-    [SerializeField, Range(-200, 200)] float m_radius;
+    [SerializeField, Range(-200, 200)] float _radius;
 
-    [SerializeField, Range(0, 200)] float m_outline;
+    [SerializeField, Range(0, 200)] float _outline;
 
-    [SerializeField, Range(-200, 200)] float m_blur;
+    [SerializeField, Range(-200, 200)] float _blur;
 
-    [SerializeField, Range(-200, 200)] float m_padding;
+    [SerializeField, Range(-200, 200)] float _padding;
 
     private void OnPostRender()
     {
@@ -22,10 +22,10 @@ public class ShapedRectangles : MonoBehaviour
 
         var style = NowUI.Rectangle((Vector4)default)
             .SetOutlineColor(outline)
-            .SetBlur(m_blur)
-            .SetRadius(m_radius)
-            .SetPadding(m_padding)
-            .SetOutline(m_outline);
+            .SetBlur(_blur)
+            .SetRadius(_radius)
+            .SetPadding(_padding)
+            .SetOutline(_outline);
 
         for (int x = 0; x < count; ++x)
         {

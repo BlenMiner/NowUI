@@ -53,25 +53,25 @@ public struct NowFontAtlasInfo
 
 public class NowFont : ScriptableObject
 {
-    public Texture2D Atlas;
+    public Texture2D atlas;
 
-    public NowFontAtlasInfo AtlasInfo;
+    public NowFontAtlasInfo atlasInfo;
 
-    public Material Material;
-
-    [System.NonSerialized]
-    NowFontAtlasInfo.Glyph[] m_denseGlyphTable;
+    public Material material;
 
     [System.NonSerialized]
-    Dictionary<int, NowFontAtlasInfo.Glyph> m_sparseGlyphTable;
+    NowFontAtlasInfo.Glyph[] _denseGlyphTable;
 
     [System.NonSerialized]
-    int m_glyphTableOffset;
+    Dictionary<int, NowFontAtlasInfo.Glyph> _sparseGlyphTable;
 
     [System.NonSerialized]
-    public int MaterialID = -1;
+    int _glyphTableOffset;
 
-    const int MaxDenseGlyphRange = 4096;
+    [System.NonSerialized]
+    public int materialId = -1;
+
+    const int MAX_DENSE_GLYPH_RANGE = 4096;
 
     static void NormalizeGlyphAtlasBounds(ref NowFontAtlasInfo.Glyph glyph, Texture2D atlas)
     {
@@ -83,7 +83,7 @@ public class NowFont : ScriptableObject
 
     void BuildGlyphCache()
     {
-        var glyphs = AtlasInfo.glyphs;
+        var glyphs = atlasInfo.glyphs;
         int first = glyphs[0].unicode;
         int last = glyphs[0].unicode;
 
@@ -98,30 +98,30 @@ public class NowFont : ScriptableObject
         }
 
         int range = last - first + 1;
-        bool useDenseTable = first > 0 && range <= MaxDenseGlyphRange && range <= glyphs.Length * 4;
+        bool useDenseTable = first > 0 && range <= MAX_DENSE_GLYPH_RANGE && range <= glyphs.Length * 4;
 
         if (useDenseTable)
         {
-            m_glyphTableOffset = first;
-            m_denseGlyphTable = new NowFontAtlasInfo.Glyph[range];
+            _glyphTableOffset = first;
+            _denseGlyphTable = new NowFontAtlasInfo.Glyph[range];
 
             for (int i = 0; i < glyphs.Length; ++i)
             {
                 var glyphValue = glyphs[i];
-                NormalizeGlyphAtlasBounds(ref glyphValue, Atlas);
-                m_denseGlyphTable[glyphValue.unicode - m_glyphTableOffset] = glyphValue;
+                NormalizeGlyphAtlasBounds(ref glyphValue, atlas);
+                _denseGlyphTable[glyphValue.unicode - _glyphTableOffset] = glyphValue;
             }
 
             return;
         }
 
-        m_sparseGlyphTable = new Dictionary<int, NowFontAtlasInfo.Glyph>(glyphs.Length);
+        _sparseGlyphTable = new Dictionary<int, NowFontAtlasInfo.Glyph>(glyphs.Length);
 
         for (int i = 0; i < glyphs.Length; ++i)
         {
             var glyphValue = glyphs[i];
-            NormalizeGlyphAtlasBounds(ref glyphValue, Atlas);
-            m_sparseGlyphTable[glyphValue.unicode] = glyphValue;
+            NormalizeGlyphAtlasBounds(ref glyphValue, atlas);
+            _sparseGlyphTable[glyphValue.unicode] = glyphValue;
         }
     }
 
@@ -129,31 +129,31 @@ public class NowFont : ScriptableObject
     {
         glyph = default;
 
-        if (Atlas == null || AtlasInfo.glyphs == null || AtlasInfo.glyphs.Length == 0)
+        if (atlas == null || atlasInfo.glyphs == null || atlasInfo.glyphs.Length == 0)
             return false;
 
-        if (m_denseGlyphTable == null && m_sparseGlyphTable == null)
+        if (_denseGlyphTable == null && _sparseGlyphTable == null)
             BuildGlyphCache();
 
         int unicode = c;
 
-        if (m_denseGlyphTable != null)
+        if (_denseGlyphTable != null)
         {
-            int idx = unicode - m_glyphTableOffset;
+            int idx = unicode - _glyphTableOffset;
 
-            if (idx < 0 || idx >= m_denseGlyphTable.Length)
+            if (idx < 0 || idx >= _denseGlyphTable.Length)
                 return false;
 
-            glyph = m_denseGlyphTable[idx];
+            glyph = _denseGlyphTable[idx];
             return glyph.unicode == unicode;
         }
 
-        return m_sparseGlyphTable.TryGetValue(unicode, out glyph);
+        return _sparseGlyphTable.TryGetValue(unicode, out glyph);
     }
 
     public Vector2 MeasureText(string value, float fontSize, int tabSpaces = 4)
     {
-        if (string.IsNullOrEmpty(value) || fontSize <= 0 || Atlas == null || AtlasInfo.glyphs == null || AtlasInfo.glyphs.Length == 0)
+        if (string.IsNullOrEmpty(value) || fontSize <= 0 || atlas == null || atlasInfo.glyphs == null || atlasInfo.glyphs.Length == 0)
             return default;
 
         float lineWidth = 0;
@@ -189,17 +189,17 @@ public class NowFont : ScriptableObject
         if (lineWidth > maxWidth)
             maxWidth = lineWidth;
 
-        return new Vector2(maxWidth, AtlasInfo.metrics.lineHeight * fontSize * lineCount);
+        return new Vector2(maxWidth, atlasInfo.metrics.lineHeight * fontSize * lineCount);
     }
 
     public Vector4 MeasureTextBounds(string value, float fontSize, int tabSpaces = 4)
     {
-        if (string.IsNullOrEmpty(value) || fontSize <= 0 || Atlas == null || AtlasInfo.glyphs == null || AtlasInfo.glyphs.Length == 0)
+        if (string.IsNullOrEmpty(value) || fontSize <= 0 || atlas == null || atlasInfo.glyphs == null || atlasInfo.glyphs.Length == 0)
             return default;
 
         float cursorX = 0;
         float lineY = 0;
-        float lineHeight = AtlasInfo.metrics.lineHeight * fontSize;
+        float lineHeight = atlasInfo.metrics.lineHeight * fontSize;
         float minX = 0;
         float minY = 0;
         float maxX = 0;

@@ -2,85 +2,85 @@ using UnityEngine;
 
 public struct NowUIText
 {
-    public Vector4 Rect;
+    public Vector4 rect;
 
-    public Vector4 Mask;
+    public Vector4 mask;
 
-    public Vector4 Color;
+    public Vector4 color;
 
-    public Vector4 OutlineColor;
+    public Vector4 outlineColor;
 
-    public Vector4 Padding;
+    public Vector4 padding;
 
-    public float Outline;
+    public float outline;
 
-    public float FontSize;
+    public float fontSize;
 
-    public NowFont Font;
+    public NowFont font;
 
     public NowUIText(Vector4 rect, NowFont font)
     {
-        Rect = rect;
-        Padding = default;
-        Outline = default;
-        Mask = rect;
-        FontSize = 50;
-        Color = new Vector4(1, 1, 1, 1);
-        OutlineColor = new Vector4(0, 0, 0, 1);
-        Font = font;
+        this.rect = rect;
+        padding = default;
+        outline = default;
+        mask = rect;
+        fontSize = 50;
+        color = new Vector4(1, 1, 1, 1);
+        outlineColor = new Vector4(0, 0, 0, 1);
+        this.font = font;
     }
 
     public NowUIText SetFont(NowFont font)
     {
-        Font = font;
+        this.font = font;
         return this;
     }
 
     public NowUIText SetFontSize(float fontSize)
     {
-        FontSize = fontSize;
+        this.fontSize = fontSize;
         return this;
     }
 
     public NowUIText SetPadding(float all)
     {
-        Padding = new Vector4(all, all, all, all);
+        padding = new Vector4(all, all, all, all);
         return this;
     }
 
     public NowUIText SetOutline(float outline)
     {
-        Outline = outline;
+        this.outline = outline;
         return this;
     }
 
     public NowUIText SetOutlineColor(Vector4 outline)
     {
-        OutlineColor = outline;
+        outlineColor = outline;
         return this;
     }
 
     public NowUIText SetPosition(Vector4 rect)
     {
-        Rect = rect;
+        this.rect = rect;
         return this;
     }
 
     public NowUIText SetMask(Vector4 mask)
     {
-        Mask = mask;
+        this.mask = mask;
         return this;
     }
 
     public NowUIText SetColor(Color color)
     {
-        Color = color;
+        this.color = color;
         return this;
     }
 
     public NowUIText SetColor(Vector4 color)
     {
-        Color = color;
+        this.color = color;
         return this;
     }
 
@@ -92,17 +92,17 @@ public struct NowUIText
 
     public Vector2 Measure(string value)
     {
-        return Font != null ? Font.MeasureText(value, FontSize) : default;
+        return font != null ? font.MeasureText(value, fontSize) : default;
     }
 
     public Vector4 MeasureBounds(string value)
     {
-        return Font != null ? Font.MeasureTextBounds(value, FontSize) : default;
+        return font != null ? font.MeasureTextBounds(value, fontSize) : default;
     }
 
     public NowUIText Draw(char character)
     {
-        if (Font.GetGlyph(character, out var g))
+        if (font.GetGlyph(character, out var g))
             NowUI.DrawCharacter(this, g);
         return this;
     }

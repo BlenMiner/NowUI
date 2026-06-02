@@ -9,37 +9,38 @@ using UnityEngine.UI;
 [RequireComponent(typeof(CanvasRenderer))]
 public class NowUIGraphic : Graphic
 {
-    private static readonly int MAIN_TEX_PROP = Shader.PropertyToID("_MainTex");
-    [SerializeField] bool m_rebuildEveryFrame;
+    static readonly int _mainTexProp = Shader.PropertyToID("_MainTex");
 
-    [NonSerialized] readonly List<NowUIMeshBatch> m_batches = new List<NowUIMeshBatch>(4);
+    [SerializeField] bool _rebuildEveryFrame;
 
-    [NonSerialized] readonly Dictionary<Material, Material> m_textMaterials = new Dictionary<Material, Material>();
+    [NonSerialized] readonly List<NowUIMeshBatch> _batches = new List<NowUIMeshBatch>(4);
 
-    [NonSerialized] Mesh m_mesh;
+    [NonSerialized] readonly Dictionary<Material, Material> _textMaterials = new Dictionary<Material, Material>();
 
-    [NonSerialized] Material m_rectangleMaterial;
+    [NonSerialized] Mesh _mesh;
 
-    [NonSerialized] Material m_textMaterialTemplate;
+    [NonSerialized] Material _rectangleMaterial;
 
-    public event Action<NowUIGraphic, Rect> RebuildNowUI;
+    [NonSerialized] Material _textMaterialTemplate;
 
-    public bool RebuildEveryFrame
+    public event Action<NowUIGraphic, Rect> rebuildNowUI;
+
+    public bool rebuildEveryFrame
     {
-        get => m_rebuildEveryFrame;
+        get => _rebuildEveryFrame;
         set
         {
-            if (m_rebuildEveryFrame == value)
+            if (_rebuildEveryFrame == value)
                 return;
 
-            m_rebuildEveryFrame = value;
+            _rebuildEveryFrame = value;
             SetVerticesDirty();
         }
     }
 
     protected virtual void DrawNowUI(Rect rect)
     {
-        RebuildNowUI?.Invoke(this, rect);
+        rebuildNowUI?.Invoke(this, rect);
     }
 
     public void MarkDirty()
@@ -58,9 +59,9 @@ public class NowUIGraphic : Graphic
 
         if (rect.width <= 0 || rect.height <= 0)
         {
-            m_mesh.Clear();
-            m_batches.Clear();
-            canvasRenderer.SetMesh(m_mesh);
+            _mesh.Clear();
+            _batches.Clear();
+            canvasRenderer.SetMesh(_mesh);
             ApplyMaterials();
             return;
         }
@@ -73,17 +74,17 @@ public class NowUIGraphic : Graphic
         try
         {
             DrawNowUI(new Rect(0, 0, rect.width, rect.height));
-            NowUI.EndMeshCapture(m_mesh, m_batches, positionOffset);
+            NowUI.EndMeshCapture(_mesh, _batches, positionOffset);
         }
         catch (Exception ex)
         {
             NowUI.CancelMeshCapture();
-            m_mesh.Clear();
-            m_batches.Clear();
+            _mesh.Clear();
+            _batches.Clear();
             Debug.LogException(ex, this);
         }
 
-        canvasRenderer.SetMesh(m_mesh);
+        canvasRenderer.SetMesh(_mesh);
         ApplyMaterials();
     }
 
@@ -94,7 +95,7 @@ public class NowUIGraphic : Graphic
 
     protected virtual void LateUpdate()
     {
-        if (m_rebuildEveryFrame)
+        if (_rebuildEveryFrame)
             SetVerticesDirty();
     }
 
@@ -112,17 +113,17 @@ public class NowUIGraphic : Graphic
 
     protected override void OnDestroy()
     {
-        if (m_mesh != null)
+        if (_mesh != null)
         {
             if (Application.isPlaying)
-                Destroy(m_mesh);
+                Destroy(_mesh);
             else
-                DestroyImmediate(m_mesh);
+                DestroyImmediate(_mesh);
 
-            m_mesh = null;
+            _mesh = null;
         }
 
-        foreach (var mat in m_textMaterials.Values)
+        foreach (var mat in _textMaterials.Values)
         {
             if (mat == null)
                 continue;
@@ -133,7 +134,7 @@ public class NowUIGraphic : Graphic
                 DestroyImmediate(mat);
         }
 
-        m_textMaterials.Clear();
+        _textMaterials.Clear();
         base.OnDestroy();
     }
 
@@ -148,59 +149,59 @@ public class NowUIGraphic : Graphic
 
     void EnsureMesh()
     {
-        if (m_mesh != null)
+        if (_mesh != null)
             return;
 
-        m_mesh = new Mesh
+        _mesh = new Mesh
         {
             name = "NowUI Graphic Mesh",
             hideFlags = HideFlags.HideAndDontSave
         };
 
-        m_mesh.MarkDynamic();
+        _mesh.MarkDynamic();
     }
 
     void ApplyMaterials()
     {
         var crenderer = canvasRenderer;
-        crenderer.materialCount = m_batches.Count;
+        crenderer.materialCount = _batches.Count;
 
-        for (int i = 0; i < m_batches.Count; ++i)
-            crenderer.SetMaterial(GetCanvasMaterial(m_batches[i]), i);
+        for (int i = 0; i < _batches.Count; ++i)
+            crenderer.SetMaterial(GetCanvasMaterial(_batches[i]), i);
     }
 
     Material GetCanvasMaterial(NowUIMeshBatch batch)
     {
-        if (batch.Kind == NowMeshKind.Rectangle)
+        if (batch.kind == NowMeshKind.Rectangle)
         {
-            if (m_rectangleMaterial == null)
-                m_rectangleMaterial = Resources.Load<Material>("NowUI/UIMaterialUGUI");
+            if (_rectangleMaterial == null)
+                _rectangleMaterial = Resources.Load<Material>("NowUI/UIMaterialUGUI");
 
-            return m_rectangleMaterial != null ? m_rectangleMaterial : batch.Material;
+            return _rectangleMaterial != null ? _rectangleMaterial : batch.material;
         }
 
-        if (batch.Material == null)
+        if (batch.material == null)
             return null;
 
-        if (m_textMaterials.TryGetValue(batch.Material, out Material textMaterial) && textMaterial != null)
+        if (_textMaterials.TryGetValue(batch.material, out Material textMaterial) && textMaterial != null)
             return textMaterial;
 
-        if (m_textMaterialTemplate == null)
-            m_textMaterialTemplate = Resources.Load<Material>("NowUI/TxtMaterialUGUI");
+        if (_textMaterialTemplate == null)
+            _textMaterialTemplate = Resources.Load<Material>("NowUI/TxtMaterialUGUI");
 
-        if (m_textMaterialTemplate == null)
-            return batch.Material;
+        if (_textMaterialTemplate == null)
+            return batch.material;
 
-        textMaterial = new Material(m_textMaterialTemplate)
+        textMaterial = new Material(_textMaterialTemplate)
         {
-            name = batch.Material.name + " UGUI",
+            name = batch.material.name + " UGUI",
             hideFlags = HideFlags.HideAndDontSave
         };
 
-        if (batch.Material.HasProperty(MAIN_TEX_PROP))
-            textMaterial.mainTexture = batch.Material.mainTexture;
+        if (batch.material.HasProperty(_mainTexProp))
+            textMaterial.mainTexture = batch.material.mainTexture;
 
-        m_textMaterials[batch.Material] = textMaterial;
+        _textMaterials[batch.material] = textMaterial;
         return textMaterial;
     }
 

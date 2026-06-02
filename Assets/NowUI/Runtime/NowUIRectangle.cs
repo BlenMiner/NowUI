@@ -2,96 +2,96 @@ using UnityEngine;
 
 public struct NowUIRectangle
 {
-    public Vector4 Mask;
+    public Vector4 mask;
 
-    public Vector4 Rect;
+    public Vector4 rect;
 
-    public Vector4 Radius;
+    public Vector4 radius;
 
-    public Vector4 Color;
+    public Vector4 color;
 
-    public Vector4 Padding;
+    public Vector4 padding;
 
-    public float Blur;
+    public float blur;
 
-    public float Outline;
+    public float outline;
 
-    public Vector4 OutlineColor;
+    public Vector4 outlineColor;
 
     public NowUIRectangle(Vector4 rect)
     {
-        Mask = rect;
-        Rect = rect;
-        Radius = default;
-        Padding = default;
-        Blur = default;
-        Outline = default;
-        Color = new Vector4(1, 1, 1, 1);
-        OutlineColor = default;
+        mask = rect;
+        this.rect = rect;
+        radius = default;
+        padding = default;
+        blur = default;
+        outline = default;
+        color = new Vector4(1, 1, 1, 1);
+        outlineColor = default;
     }
 
     public NowUIRectangle SetBlur(float blur)
     {
-        Blur = blur;
+        this.blur = blur;
         return this;
     }
 
     public NowUIRectangle SetRadius(float allRadius)
     {
-        Radius = new Vector4(allRadius, allRadius, allRadius, allRadius);
+        radius = new Vector4(allRadius, allRadius, allRadius, allRadius);
         return this;
     }
-    
+
     public NowUIRectangle SetPadding(float all)
     {
         all = -all;
-        Padding = new Vector4(all, all, all, all);
-        Mask.x += Padding.x;
-        Mask.y += Padding.y;
-        Mask.z = Mask.z - Padding.x - Padding.z;
-        Mask.w = Mask.w - Padding.y - Padding.w;
+        padding = new Vector4(all, all, all, all);
+        mask.x += padding.x;
+        mask.y += padding.y;
+        mask.z = mask.z - padding.x - padding.z;
+        mask.w = mask.w - padding.y - padding.w;
         return this;
     }
 
     public NowUIRectangle SetOutline(float outline)
     {
-        Outline = outline;
+        this.outline = outline;
         return this;
     }
 
     public NowUIRectangle SetPosition(Vector4 rect)
     {
-        Rect = rect;
+        this.rect = rect;
         return this;
     }
-    
+
     public NowUIRectangle SetMask(Vector4 mask)
     {
-        Mask = mask;
+        this.mask = mask;
         return this;
     }
 
     public NowUIRectangle SetColor(Color color)
     {
-        Color = color;
+        this.color = color;
         return this;
     }
 
     public NowUIRectangle SetColor(Vector4 color)
     {
-        Color = color;
+        this.color = color;
         return this;
     }
 
     public NowUIRectangle SetOutlineColor(Color color)
     {
-        OutlineColor = color;
+        outlineColor = color;
         return this;
     }
 
     public NowUIRectangle SetOutlineColor(Vector4 color)
     {
-        OutlineColor = color;
+        outlineColor = color;
         return this;
     }
 

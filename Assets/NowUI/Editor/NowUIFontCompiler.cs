@@ -5,8 +5,8 @@ using System.IO;
 
 public class NowUIFontCompiler : Editor
 {
-    const int AtlasSize = 64;
-    const int PixelRange = 16;
+    const int ATLAS_SIZE = 64;
+    const int PIXEL_RANGE = 16;
 
     static string ToProjectFullPath(string assetPath)
     {
@@ -35,8 +35,8 @@ public class NowUIFontCompiler : Editor
 
                 if (!NowFontCompiler.TryCompile(
                     File.ReadAllBytes(ToProjectFullPath(fontPath)),
-                    AtlasSize,
-                    PixelRange,
+                    ATLAS_SIZE,
+                    PIXEL_RANGE,
                     out NowFont font,
                     out string error))
                 {
@@ -50,15 +50,17 @@ public class NowUIFontCompiler : Editor
                         AssetDatabase.DeleteAsset(newFontPath);
 
                     font.name = target.name;
-                    font.Atlas.name = "Font Atlas Texture";
-                    font.Material.name = "Font Material";
+                    font.atlas.name = "Font Atlas Texture";
+                    font.material.name = "Font Material";
 
                     AssetDatabase.CreateAsset(font, newFontPath);
-                    AssetDatabase.AddObjectToAsset(font.Atlas, newFontPath);
-                    AssetDatabase.AddObjectToAsset(font.Material, newFontPath);
+                    AssetDatabase.AddObjectToAsset(font.atlas, newFontPath);
+                    AssetDatabase.AddObjectToAsset(font.material, newFontPath);
                     EditorUtility.SetDirty(font);
-                    AssetDatabase.ImportAsset(newFontPath);
+                    EditorUtility.SetDirty(font.atlas);
+                    EditorUtility.SetDirty(font.material);
                     AssetDatabase.SaveAssets();
+                    AssetDatabase.ImportAsset(newFontPath, ImportAssetOptions.ForceUpdate);
                 }
                 catch (System.Exception ex)
                 {

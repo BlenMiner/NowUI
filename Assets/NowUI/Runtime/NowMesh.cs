@@ -10,44 +10,44 @@ namespace NowUIInternal
 
     internal struct NowUIMeshBatch
     {
-        public Material Material;
+        public Material material;
 
-        public NowMeshKind Kind;
+        public NowMeshKind kind;
 
         public NowUIMeshBatch(Material material, NowMeshKind kind)
         {
-            Material = material;
-            Kind = kind;
+            this.material = material;
+            this.kind = kind;
         }
     }
 
     public struct StaticList<T>
     {
-        public int Count;
+        public int count;
 
-        public T[] Array;
+        public T[] array;
 
         public StaticList(int count)
         {
-            Count = 0;
-            Array = new T[count];
+            this.count = 0;
+            array = new T[count];
         }
 
         public void Clear()
         {
-            Count = 0;
+            count = 0;
         }
 
         public void EnsureCapacity(int additionalCount)
         {
-            int requiredCapacity = Count + additionalCount;
-            int currentCapacity = Array == null ? 0 : Array.Length;
+            int requiredCapacity = count + additionalCount;
+            int currentCapacity = array == null ? 0 : array.Length;
 
             if (requiredCapacity <= currentCapacity)
                 return;
 
             int newCapacity = Mathf.Max(requiredCapacity, currentCapacity > 0 ? currentCapacity * 2 : 4);
-            System.Array.Resize(ref Array, newCapacity);
+            System.Array.Resize(ref array, newCapacity);
         }
     }
 
@@ -76,105 +76,105 @@ namespace NowUIInternal
 
     public class SubMesh
     {
-        public Material Material;
+        public Material material;
 
-        public StaticList<int> Tris;
+        public StaticList<int> tris;
 
         public SubMesh(Material mat)
         {
-            Material = mat;
-            Tris = new StaticList<int>(NowMesh.InitialIndexCapacity);
+            material = mat;
+            tris = new StaticList<int>(NowMesh.INITIAL_INDEX_CAPACITY);
         }
     }
 
     public class NowMesh
     {
-        const int InitialRectCapacity = 64;
+        const int INITIAL_RECT_CAPACITY = 64;
 
-        const int VerticesPerRect = 4;
+        const int VERTICES_PER_RECT = 4;
 
-        const int IndicesPerRect = 6;
+        const int INDICES_PER_RECT = 6;
 
-        public const int InitialVertexCapacity = InitialRectCapacity * VerticesPerRect;
+        public const int INITIAL_VERTEX_CAPACITY = INITIAL_RECT_CAPACITY * VERTICES_PER_RECT;
 
-        public const int InitialIndexCapacity = InitialRectCapacity * IndicesPerRect;
+        public const int INITIAL_INDEX_CAPACITY = INITIAL_RECT_CAPACITY * INDICES_PER_RECT;
 
-        public Mesh UnityMesh {get; private set;}
+        public Mesh unityMesh {get; private set;}
 
-        public bool HasVertices => m_verts.Count > 0;
+        public bool hasVertices => _verts.count > 0;
 
-        public int VertexCount => m_verts.Count;
+        public int vertexCount => _verts.count;
 
-        StaticList<Vector4> m_rawuv;
+        StaticList<Vector4> _rawuv;
 
-        StaticList<Vector4> m_mask;
+        StaticList<Vector4> _mask;
 
-        StaticList<Vector4> m_extra;
+        StaticList<Vector4> _extra;
 
-        StaticList<Vector4> m_outlineColor;
+        StaticList<Vector4> _outlineColor;
 
-        StaticList<Vector4> m_color;
+        StaticList<Vector4> _color;
 
-        StaticList<Vector4> m_rect;
+        StaticList<Vector4> _rect;
 
-        StaticList<Vector4> m_radius;
+        StaticList<Vector4> _radius;
 
-        StaticList<Vector3> m_verts;
+        StaticList<Vector3> _verts;
 
-        StaticList<Vector2> m_uvs;
+        StaticList<Vector2> _uvs;
 
-        StaticList<int> m_tris;
+        StaticList<int> _tris;
 
-        public Material Material;
+        public Material material;
 
-        public NowMeshKind Kind;
+        public NowMeshKind kind;
 
         public NowMesh(Material mat, NowMeshKind kind)
         {
-            Material = mat;
-            Kind = kind;
+            material = mat;
+            this.kind = kind;
 
-            m_radius = new StaticList<Vector4>(InitialVertexCapacity);
-            m_rect = new StaticList<Vector4>(InitialVertexCapacity);
-            m_verts = new StaticList<Vector3>(InitialVertexCapacity);
-            m_uvs = new StaticList<Vector2>(InitialVertexCapacity);
-            m_color = new StaticList<Vector4>(InitialVertexCapacity);
-            m_outlineColor = new StaticList<Vector4>(InitialVertexCapacity);
-            m_extra = new StaticList<Vector4>(InitialVertexCapacity);
-            m_tris = new StaticList<int>(InitialIndexCapacity);
-            m_mask = new StaticList<Vector4>(InitialVertexCapacity);
-            m_rawuv = new StaticList<Vector4>(InitialVertexCapacity);
+            _radius = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
+            _rect = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
+            _verts = new StaticList<Vector3>(INITIAL_VERTEX_CAPACITY);
+            _uvs = new StaticList<Vector2>(INITIAL_VERTEX_CAPACITY);
+            _color = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
+            _outlineColor = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
+            _extra = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
+            _tris = new StaticList<int>(INITIAL_INDEX_CAPACITY);
+            _mask = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
+            _rawuv = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
         }
 
         public void SetMaterial(Material material, NowMeshKind kind)
         {
-            Material = material;
-            Kind = kind;
+            this.material = material;
+            this.kind = kind;
             ClearVertices();
         }
 
-        static readonly Vector2 s_uv0 = new Vector2(0, 0);
+        static readonly Vector2 _uv0 = new Vector2(0, 0);
 
-        static readonly Vector2 s_uv1 = new Vector2(0, 1);
+        static readonly Vector2 _uv1 = new Vector2(0, 1);
 
-        static readonly Vector2 s_uv2 = new Vector2(1, 1);
+        static readonly Vector2 _uv2 = new Vector2(1, 1);
 
-        static readonly Vector2 s_uv3 = new Vector2(1, 0);
+        static readonly Vector2 _uv3 = new Vector2(1, 0);
 
-        Vector3 a, b, c, d;
+        Vector3 _a, _b, _c, _d;
 
         void EnsureRectCapacity()
         {
-            m_mask.EnsureCapacity(VerticesPerRect);
-            m_rect.EnsureCapacity(VerticesPerRect);
-            m_radius.EnsureCapacity(VerticesPerRect);
-            m_color.EnsureCapacity(VerticesPerRect);
-            m_outlineColor.EnsureCapacity(VerticesPerRect);
-            m_extra.EnsureCapacity(VerticesPerRect);
-            m_verts.EnsureCapacity(VerticesPerRect);
-            m_uvs.EnsureCapacity(VerticesPerRect);
-            m_rawuv.EnsureCapacity(VerticesPerRect);
-            m_tris.EnsureCapacity(IndicesPerRect);
+            _mask.EnsureCapacity(VERTICES_PER_RECT);
+            _rect.EnsureCapacity(VERTICES_PER_RECT);
+            _radius.EnsureCapacity(VERTICES_PER_RECT);
+            _color.EnsureCapacity(VERTICES_PER_RECT);
+            _outlineColor.EnsureCapacity(VERTICES_PER_RECT);
+            _extra.EnsureCapacity(VERTICES_PER_RECT);
+            _verts.EnsureCapacity(VERTICES_PER_RECT);
+            _uvs.EnsureCapacity(VERTICES_PER_RECT);
+            _rawuv.EnsureCapacity(VERTICES_PER_RECT);
+            _tris.EnsureCapacity(INDICES_PER_RECT);
         }
 
         public void AddRect(NowRectVertex vertexData, float extraX, float extraY)
@@ -183,14 +183,14 @@ namespace NowUIInternal
 
             EnsureRectCapacity();
 
-            int indexOffset = m_verts.Count;
+            int indexOffset = _verts.count;
 
             Vector4 extra = default;
             extra.x = extraX;
             extra.y = extraY;
 
-            var maskarr = m_mask.Array;
-            var maskcount = m_mask.Count;
+            var maskarr = _mask.array;
+            var maskcount = _mask.count;
 
             var mask = vertexData.mask;
 
@@ -199,10 +199,10 @@ namespace NowUIInternal
             maskarr[maskcount + 2] = mask;
             maskarr[maskcount + 3] = mask;
 
-            m_mask.Count += 4;
+            _mask.count += 4;
 
-            var rarray = m_rect.Array;
-            var rcount = m_rect.Count;
+            var rarray = _rect.array;
+            var rcount = _rect.count;
 
             var position = vertexData.position;
 
@@ -211,81 +211,81 @@ namespace NowUIInternal
             rarray[rcount + 2] = position;
             rarray[rcount + 3] = position;
 
-            m_rect.Count += 4;
+            _rect.count += 4;
 
-            var rrad= m_radius.Array;
-            var rrcount = m_radius.Count;
+            var rrad= _radius.array;
+            var rrcount = _radius.count;
 
             rrad[rrcount] = vertexData.radius;
             rrad[rrcount + 1] = vertexData.radius;
             rrad[rrcount + 2] = vertexData.radius;
             rrad[rrcount + 3] = vertexData.radius;
 
-            m_radius.Count += 4;
+            _radius.count += 4;
 
-            var rcol = m_color.Array;
-            var ccount = m_color.Count;
+            var rcol = _color.array;
+            var ccount = _color.count;
 
             rcol[ccount] = vertexData.color;
             rcol[ccount + 1] = vertexData.color;
             rcol[ccount + 2] = vertexData.color;
             rcol[ccount + 3] = vertexData.color;
 
-            m_color.Count += 4;
+            _color.count += 4;
 
-            var rout = m_outlineColor.Array;
-            var ocount = m_outlineColor.Count;
+            var rout = _outlineColor.array;
+            var ocount = _outlineColor.count;
 
             rout[ocount] = vertexData.outlineColor;
             rout[ocount + 1] = vertexData.outlineColor;
             rout[ocount + 2] = vertexData.outlineColor;
             rout[ocount + 3] = vertexData.outlineColor;
 
-            m_outlineColor.Count += 4;
+            _outlineColor.count += 4;
 
-            var rextra = m_extra.Array;
-            var extraC = m_extra.Count;
+            var rextra = _extra.array;
+            var extraC = _extra.count;
 
             rextra[extraC] = extra;
             rextra[extraC + 1] = extra;
             rextra[extraC + 2] = extra;
             rextra[extraC + 3] = extra;
 
-            m_extra.Count += 4;
+            _extra.count += 4;
 
-            a.x = position.x;
-            a.y = position.y;
-            a.z = 0;
+            _a.x = position.x;
+            _a.y = position.y;
+            _a.z = 0;
 
-            b.x = a.x;
-            b.y = a.y + position.w;
-            b.z = 0;
+            _b.x = _a.x;
+            _b.y = _a.y + position.w;
+            _b.z = 0;
 
-            c.x = a.x + position.z;
-            c.y = b.y;
-            c.z = 0;
+            _c.x = _a.x + position.z;
+            _c.y = _b.y;
+            _c.z = 0;
 
-            d.x = c.x;
-            d.y = a.y;
-            d.z = 0;
+            _d.x = _c.x;
+            _d.y = _a.y;
+            _d.z = 0;
 
-            var varr = m_verts.Array;
-            var vcount = m_verts.Count;
+            var varr = _verts.array;
+            var vcount = _verts.count;
 
-            varr[vcount++] = a;
-            varr[vcount++] = b;
-            varr[vcount++] = c;
-            varr[vcount++] = d;
+            varr[vcount++] = _a;
+            varr[vcount++] = _b;
+            varr[vcount++] = _c;
+            varr[vcount++] = _d;
 
-            m_verts.Count = vcount;
+            _verts.count = vcount;
 
-            var ruvs = m_uvs.Array;
-            var ruvsCount = m_uvs.Count;
+            var ruvs = _uvs.array;
+            var ruvsCount = _uvs.count;
 
-            var uv0 = s_uv0;
-            var uv1 = s_uv1;
-            var uv2 = s_uv2;
-            var uv3 = s_uv3;
+            var uv0 = _uv0;
+            var uv1 = _uv1;
+            var uv2 = _uv2;
+            var uv3 = _uv3;
 
             var uvwh = vertexData.uvwh;
 
@@ -306,19 +306,19 @@ namespace NowUIInternal
             ruvs[ruvsCount + 2] = uv2;
             ruvs[ruvsCount + 3] = uv3;
 
-            var rawuvs = m_rawuv.Array;
-            var rawuvsCount = m_rawuv.Count;
+            var rawuvs = _rawuv.array;
+            var rawuvsCount = _rawuv.count;
 
-            rawuvs[rawuvsCount] = s_uv0;
-            rawuvs[rawuvsCount + 1] = s_uv1;
-            rawuvs[rawuvsCount + 2] = s_uv2;
-            rawuvs[rawuvsCount + 3] = s_uv3;
+            rawuvs[rawuvsCount] = _uv0;
+            rawuvs[rawuvsCount + 1] = _uv1;
+            rawuvs[rawuvsCount + 2] = _uv2;
+            rawuvs[rawuvsCount + 3] = _uv3;
 
-            m_rawuv.Count += 4;
-            m_uvs.Count += 4;
+            _rawuv.count += 4;
+            _uvs.count += 4;
 
-            int triCount = m_tris.Count;
-            var triArr = m_tris.Array;
+            int triCount = _tris.count;
+            var triArr = _tris.array;
 
             triArr[triCount + 0] = indexOffset + 0;
             triArr[triCount + 1] = indexOffset + 1;
@@ -327,21 +327,21 @@ namespace NowUIInternal
             triArr[triCount + 4] = indexOffset + 2;
             triArr[triCount + 5] = indexOffset + 3;
 
-            m_tris.Count += 6;
+            _tris.count += 6;
         }
 
         public void ClearVertices()
         {
-            m_radius.Clear();
-            m_rect.Clear();
-            m_verts.Clear();
-            m_uvs.Clear();
-            m_tris.Clear();
-            m_color.Clear();
-            m_outlineColor.Clear();
-            m_extra.Clear();
-            m_mask.Clear();
-            m_rawuv.Clear();
+            _radius.Clear();
+            _rect.Clear();
+            _verts.Clear();
+            _uvs.Clear();
+            _tris.Clear();
+            _color.Clear();
+            _outlineColor.Clear();
+            _extra.Clear();
+            _mask.Clear();
+            _rawuv.Clear();
         }
 
         public void ClearVerticies()
@@ -361,37 +361,37 @@ namespace NowUIInternal
             System.Collections.Generic.List<Vector4> rawUvs,
             Vector2 positionOffset)
         {
-            for (int i = 0; i < m_verts.Count; ++i)
+            for (int i = 0; i < _verts.count; ++i)
             {
-                Vector3 vertex = m_verts.Array[i];
+                Vector3 vertex = _verts.array[i];
                 vertex.x += positionOffset.x;
                 vertex.y += positionOffset.y;
                 vertices.Add(vertex);
             }
 
-            for (int i = 0; i < m_uvs.Count; ++i)
-                uvs.Add(m_uvs.Array[i]);
+            for (int i = 0; i < _uvs.count; ++i)
+                uvs.Add(_uvs.array[i]);
 
-            for (int i = 0; i < m_rect.Count; ++i)
-                rects.Add(m_rect.Array[i]);
+            for (int i = 0; i < _rect.count; ++i)
+                rects.Add(_rect.array[i]);
 
-            for (int i = 0; i < m_radius.Count; ++i)
-                radii.Add(m_radius.Array[i]);
+            for (int i = 0; i < _radius.count; ++i)
+                radii.Add(_radius.array[i]);
 
-            for (int i = 0; i < m_color.Count; ++i)
-                colors.Add(m_color.Array[i]);
+            for (int i = 0; i < _color.count; ++i)
+                colors.Add(_color.array[i]);
 
-            for (int i = 0; i < m_outlineColor.Count; ++i)
-                outlineColors.Add(m_outlineColor.Array[i]);
+            for (int i = 0; i < _outlineColor.count; ++i)
+                outlineColors.Add(_outlineColor.array[i]);
 
-            for (int i = 0; i < m_extra.Count; ++i)
-                extras.Add(m_extra.Array[i]);
+            for (int i = 0; i < _extra.count; ++i)
+                extras.Add(_extra.array[i]);
 
-            for (int i = 0; i < m_mask.Count; ++i)
-                masks.Add(m_mask.Array[i]);
+            for (int i = 0; i < _mask.count; ++i)
+                masks.Add(_mask.array[i]);
 
-            for (int i = 0; i < m_rawuv.Count; ++i)
-                rawUvs.Add(m_rawuv.Array[i]);
+            for (int i = 0; i < _rawuv.count; ++i)
+                rawUvs.Add(_rawuv.array[i]);
         }
 
         public void AppendUGUIVertices(
@@ -405,14 +405,14 @@ namespace NowUIInternal
             System.Collections.Generic.List<Vector4> tangents,
             Vector2 positionOffset)
         {
-            bool isText = Kind == NowMeshKind.Text;
+            bool isText = kind == NowMeshKind.Text;
 
-            for (int i = 0; i < m_verts.Count; ++i)
+            for (int i = 0; i < _verts.count; ++i)
             {
-                Vector3 vertex = m_verts.Array[i];
-                Vector4 radius = m_radius.Array[i];
-                Vector4 rawUv = m_rawuv.Array[i];
-                Vector2 uv = m_uvs.Array[i];
+                Vector3 vertex = _verts.array[i];
+                Vector4 radius = _radius.array[i];
+                Vector4 rawUv = _rawuv.array[i];
+                Vector2 uv = _uvs.array[i];
 
                 vertex.x += positionOffset.x;
                 vertex.y += positionOffset.y;
@@ -421,43 +421,43 @@ namespace NowUIInternal
                 uv0.Add(isText
                     ? new Vector4(uv.x, uv.y, rawUv.x, rawUv.y)
                     : new Vector4(uv.x, uv.y, radius.w, 0));
-                rects.Add(m_rect.Array[i]);
-                masks.Add(m_mask.Array[i]);
-                extras.Add(m_extra.Array[i]);
-                Vector4 color = m_color.Array[i];
+                rects.Add(_rect.array[i]);
+                masks.Add(_mask.array[i]);
+                extras.Add(_extra.array[i]);
+                Vector4 color = _color.array[i];
                 colors.Add(new Color(color.x, color.y, color.z, color.w));
                 normals.Add(new Vector3(radius.x, radius.y, radius.z));
-                tangents.Add(m_outlineColor.Array[i]);
+                tangents.Add(_outlineColor.array[i]);
             }
         }
 
         public void AppendTriangles(System.Collections.Generic.List<int> triangles, int vertexOffset)
         {
-            for (int i = 0; i < m_tris.Count; ++i)
-                triangles.Add(m_tris.Array[i] + vertexOffset);
+            for (int i = 0; i < _tris.count; ++i)
+                triangles.Add(_tris.array[i] + vertexOffset);
         }
 
         public void UploadMesh()
         {
-            if (UnityMesh == null)
+            if (unityMesh == null)
             {
-                UnityMesh = new Mesh();
-                UnityMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-                UnityMesh.MarkDynamic();
+                unityMesh = new Mesh();
+                unityMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                unityMesh.MarkDynamic();
             }
 
-            UnityMesh.Clear(true);
+            unityMesh.Clear(true);
 
-            UnityMesh.SetVertices(m_verts.Array, 0, m_verts.Count);
-            UnityMesh.SetUVs(0, m_uvs.Array, 0, m_uvs.Count);
-            UnityMesh.SetUVs(1, m_rect.Array, 0, m_rect.Count);
-            UnityMesh.SetUVs(2, m_radius.Array, 0, m_radius.Count);
-            UnityMesh.SetUVs(3, m_color.Array, 0, m_color.Count);
-            UnityMesh.SetUVs(4, m_outlineColor.Array, 0, m_outlineColor.Count);
-            UnityMesh.SetUVs(5, m_extra.Array, 0, m_extra.Count);
-            UnityMesh.SetUVs(6, m_mask.Array, 0, m_mask.Count);
-            UnityMesh.SetUVs(7, m_rawuv.Array, 0, m_rawuv.Count);
-            UnityMesh.SetTriangles(m_tris.Array, 0, m_tris.Count, 0);
+            unityMesh.SetVertices(_verts.array, 0, _verts.count);
+            unityMesh.SetUVs(0, _uvs.array, 0, _uvs.count);
+            unityMesh.SetUVs(1, _rect.array, 0, _rect.count);
+            unityMesh.SetUVs(2, _radius.array, 0, _radius.count);
+            unityMesh.SetUVs(3, _color.array, 0, _color.count);
+            unityMesh.SetUVs(4, _outlineColor.array, 0, _outlineColor.count);
+            unityMesh.SetUVs(5, _extra.array, 0, _extra.count);
+            unityMesh.SetUVs(6, _mask.array, 0, _mask.count);
+            unityMesh.SetUVs(7, _rawuv.array, 0, _rawuv.count);
+            unityMesh.SetTriangles(_tris.array, 0, _tris.count, 0);
         }
     }
 }
