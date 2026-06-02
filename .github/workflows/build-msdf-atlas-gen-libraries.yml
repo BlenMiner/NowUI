@@ -7,6 +7,10 @@ name: Build MSDF Atlas Gen Libraries
         description: "msdf-atlas-gen git ref to build"
         required: true
         default: "v1.4"
+      emscripten_ref:
+        description: "Emscripten SDK version for Unity 2020 WebGL plugin artifacts"
+        required: true
+        default: "1.38.11"
 
 jobs:
   build:
@@ -149,3 +153,116 @@ jobs:
         with:
           name: nowui-msdf-${{ matrix.artifact_name }}
           path: ${{ github.workspace }}/artifacts/nowui-msdf-${{ matrix.artifact_name }}
+
+  build-webgl:
+    name: webgl-emscripten
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set WebGL build paths
+        shell: bash
+        run: |
+          echo "EMSDK_ROOT=$RUNNER_TEMP/emsdk" >> "$GITHUB_ENV"
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "MSDF_ATLAS_GEN_SOURCE=$RUNNER_TEMP/msdf-atlas-gen" >> "$GITHUB_ENV"
+          echo "BUILD_DIR=$RUNNER_TEMP/msdf-atlas-gen-webgl-build" >> "$GITHUB_ENV"
+          echo "INSTALL_DIR=$GITHUB_WORKSPACE/artifacts/msdf-atlas-gen-webgl" >> "$GITHUB_ENV"
+          echo "NOWUI_MSDF_BUILD_DIR=$RUNNER_TEMP/nowui-msdf-webgl-build" >> "$GITHUB_ENV"
+          echo "NOWUI_MSDF_INSTALL_DIR=$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl-install" >> "$GITHUB_ENV"
+          echo "NOWUI_MSDF_PLUGIN_DIR=$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Runtime/Plugins/WebGL" >> "$GITHUB_ENV"
+
+      - name: Checkout msdf-atlas-gen
+        shell: bash
+        run: |
+          git clone --recursive --branch "${{ inputs.msdf_atlas_gen_ref }}" https://github.com/Chlumsky/msdf-atlas-gen.git "$MSDF_ATLAS_GEN_SOURCE"
+
+      - name: Setup Emscripten
+        shell: bash
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git "$EMSDK_ROOT"
+          "$EMSDK_ROOT/emsdk" install "${{ inputs.emscripten_ref }}"
+          "$EMSDK_ROOT/emsdk" activate "${{ inputs.emscripten_ref }}"
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Configure msdf-atlas-gen for WebGL
+        shell: bash
+        run: |
+          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+
+          cmake \
+            -S "$MSDF_ATLAS_GEN_SOURCE" \
+            -B "$BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSCRIPTEN/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DMSDF_ATLAS_BUILD_STANDALONE=OFF \
+            -DMSDF_ATLAS_INSTALL=ON \
+            -DMSDF_ATLAS_USE_SKIA=OFF \
+            -DMSDF_ATLAS_NO_ARTERY_FONT=ON \
+            -DMSDF_ATLAS_DYNAMIC_RUNTIME=OFF \
+            -DMSDF_ATLAS_NO_PNG=ON \
+            -DMSDFGEN_DISABLE_PNG=ON
+
+      - name: Build msdf-atlas-gen for WebGL
+        shell: bash
+        run: |
+          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+          cmake --build "$BUILD_DIR" --config Release --parallel
+          cmake --install "$BUILD_DIR" --config Release
+
+      - name: Configure NowUI WebGL wrapper
+        shell: bash
+        run: |
+          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+
+          cmake \
+            -S "$GITHUB_WORKSPACE/Assets/NowUI/Editor/Native/nowui-msdf" \
+            -B "$NOWUI_MSDF_BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$NOWUI_MSDF_INSTALL_DIR" \
+            -DCMAKE_PREFIX_PATH="$INSTALL_DIR" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSCRIPTEN/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
+            -DNOWUI_MSDF_DISABLE_FILE_API=ON
+
+      - name: Build NowUI WebGL wrapper
+        shell: bash
+        run: |
+          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+          cmake --build "$NOWUI_MSDF_BUILD_DIR" --config Release --parallel
+          cmake --install "$NOWUI_MSDF_BUILD_DIR" --config Release
+
+      - name: Package WebGL plugin libraries
+        shell: bash
+        run: |
+          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+          mkdir -p "$NOWUI_MSDF_PLUGIN_DIR"
+          cp "$GITHUB_WORKSPACE/Assets/NowUI/Runtime/Plugins.meta" "$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Runtime/Plugins.meta"
+          cp "$GITHUB_WORKSPACE/Assets/NowUI/Runtime/Plugins/WebGL.meta" "$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Runtime/Plugins/WebGL.meta"
+
+          find "$NOWUI_MSDF_INSTALL_DIR/lib" "$INSTALL_DIR/lib" "$VCPKG_ROOT/installed/wasm32-emscripten/lib" \
+            -maxdepth 1 -type f \( -name '*.a' -o -name '*.bc' \) \
+            -exec cp {} "$NOWUI_MSDF_PLUGIN_DIR" \;
+
+          mapfile -t archives < <(find "$NOWUI_MSDF_PLUGIN_DIR" -maxdepth 1 -type f -name '*.a' | sort)
+          if [ "${#archives[@]}" -gt 0 ]; then
+            emcc -r "${archives[@]}" -o "$NOWUI_MSDF_PLUGIN_DIR/nowui-msdf.bc"
+          fi
+
+      - name: Upload NowUI WebGL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowui-msdf-webgl
+          path: ${{ github.workspace }}/artifacts/nowui-msdf-webgl

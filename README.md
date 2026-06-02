@@ -105,14 +105,18 @@ Unity-facing `nowui-msdf` native font compiler plugin, plus its
 ```
 
 Run `Build MSDF Atlas Gen Libraries` from the Actions tab to produce Windows
-x64, Linux x64, macOS x64, and macOS arm64 artifacts. Each `nowui-msdf-*`
-artifact contains an `Assets/NowUI/Editor/Plugins/...` folder that can be merged
-directly into the project so Unity can load the compiler in the editor without
-launching an external process.
+x64, Linux x64, macOS x64, macOS arm64, and WebGL artifacts. Desktop artifacts
+contain an `Assets/NowUI/Editor/Plugins/...` folder for editor loading. The
+`nowui-msdf-webgl` artifact contains an
+`Assets/NowUI/Runtime/Plugins/WebGL/...` folder with Emscripten static/bitcode
+libraries for Unity WebGL builds. The workflow defaults to Emscripten `1.38.11`
+for Unity `2020.3`; rebuild the WebGL artifact with the Emscripten version that
+matches your Unity editor if you upgrade Unity.
 
 ## Project Layout
 
 - `Assets/NowUI/Runtime`: runtime drawing API, mesh buffers, font assets
+- `Assets/NowUI/Runtime/Plugins`: runtime native plugin locations such as WebGL
 - `Assets/NowUI/Editor`: font compiler menu item, native compiler interop,
   editor plugin libraries, and native wrapper source
 - `Assets/NowUI/Shaders`: rectangle and text shaders
