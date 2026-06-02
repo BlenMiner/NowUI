@@ -91,27 +91,28 @@ down by the font line height.
 3. A `.asset` file is generated next to each selected font.
 4. Assign the generated `NowFont` asset to scripts that draw text.
 
-The compiler uses the bundled `msdf-atlas-gen` resource and creates an atlas
-texture plus material inside the generated `NowFont` asset.
+The compiler uses the editor-only NowUI native font compiler plugin and creates
+an atlas texture plus material inside the generated `NowFont` asset.
 
 ## Native Compiler Artifacts
 
-The repository includes a manual GitHub Actions workflow for building
-`msdf-atlas-gen` as shared library artifacts:
+The repository includes a manual GitHub Actions workflow for building the
+Unity-facing `nowui-msdf` native font compiler plugin, plus its
+`msdf-atlas-gen` sidecar libraries:
 
 ```text
 .github/workflows/build-msdf-atlas-gen-libraries.yml
 ```
 
 Run `Build MSDF Atlas Gen Libraries` from the Actions tab to produce Windows
-x64, Linux x64, macOS x64, and macOS arm64 artifacts. These artifacts are meant
-to replace the bundled editor-only executable once a thin Unity-facing native
-API is added.
+x64, Linux x64, macOS x64, and macOS arm64 artifacts. Import the
+`nowui-msdf-*` artifacts into `Assets/NowUI/Editor/Plugins` so Unity can load
+the compiler in the editor without launching an external process.
 
 ## Project Layout
 
 - `Assets/NowUI/Runtime`: runtime drawing API, mesh buffers, font assets
-- `Assets/NowUI/Editor`: font compiler menu item
+- `Assets/NowUI/Editor`: font compiler menu item and native compiler interop
 - `Assets/NowUI/Shaders`: rectangle and text shaders
 - `Assets/NowUI/Resources`: default materials and compiler resources
 - `Assets/NowUI/Example`: sample scenes/scripts and compiled example fonts

@@ -1,56 +1,22 @@
 using UnityEngine;
 using UnityEditor;
-using System.Diagnostics;
 using Debug = UnityEngine.Debug;
 using System.IO;
 
 public class NowUIFontCompiler : Editor
 {
-    static string QuoteArgument(string value)
+    const int AtlasSize = 64;
+    const int PixelRange = 16;
+
+    static string ToProjectFullPath(string assetPath)
     {
-        return "\"" + value.Replace("\"", "\\\"") + "\"";
-    }
-
-    static string BuildArguments(string fontPath, string imagePath, string jsonPath)
-    {
-        return "-size 64 -pxrange 16 -type mtsdf " +
-            $"-font {QuoteArgument(fontPath)} " +
-            $"-format png -imageout {QuoteArgument(imagePath)} " +
-            $"-json {QuoteArgument(jsonPath)} -square4";
-    }
-
-    static string FormatProcessOutput(string output, string error)
-    {
-        string details = string.Empty;
-
-        if (!string.IsNullOrWhiteSpace(error))
-            details += "\n" + error.Trim();
-
-        if (!string.IsNullOrWhiteSpace(output))
-            details += "\n" + output.Trim();
-
-        return details;
+        var projectPath = Directory.GetParent(Application.dataPath).FullName;
+        return Path.GetFullPath(Path.Combine(projectPath, assetPath));
     }
 
     [MenuItem("Assets/NowUI/Compile Font")]
     public static void CompileFonts()
     {
-        var msdf = Resources.Load<TextAsset>("msdf-atlas-gen");
-
-        if (msdf == null)
-        {
-            Debug.LogError("Failed to load NowUI font compiler resource: msdf-atlas-gen");
-            return;
-        }
-
-        string compilerPath = AssetDatabase.GetAssetPath(msdf);
-
-        if (string.IsNullOrEmpty(compilerPath))
-        {
-            Debug.LogError("Failed to resolve NowUI font compiler path.");
-            return;
-        }
-
         var selection = Selection.objects;
 
         try
@@ -68,40 +34,15 @@ public class NowUIFontCompiler : Editor
 
                 EditorUtility.DisplayProgressBar("Compile Font", target.name, i / (float)selection.Length);
 
-                string output;
-                string error;
-
-                try
+                if (!NowUIFontCompilerNative.TryCompileFont(
+                    ToProjectFullPath(fontPath),
+                    ToProjectFullPath(imagePath),
+                    ToProjectFullPath(jsonPath),
+                    AtlasSize,
+                    PixelRange,
+                    out string error))
                 {
-                    using (var process = new Process())
-                    {
-                        process.StartInfo.UseShellExecute = false;
-                        process.StartInfo.RedirectStandardOutput = true;
-                        process.StartInfo.RedirectStandardError = true;
-                        process.StartInfo.CreateNoWindow = true;
-                        process.StartInfo.FileName = compilerPath;
-                        process.StartInfo.Arguments = BuildArguments(fontPath, imagePath, jsonPath);
-
-                        process.Start();
-
-                        var outputTask = process.StandardOutput.ReadToEndAsync();
-                        var errorTask = process.StandardError.ReadToEndAsync();
-
-                        process.WaitForExit();
-
-                        output = outputTask.Result;
-                        error = errorTask.Result;
-
-                        if (process.ExitCode != 0)
-                        {
-                            Debug.LogError("Failed to compile " + target.name + FormatProcessOutput(output, error));
-                            continue;
-                        }
-                    }
-                }
-                catch (System.Exception ex)
-                {
-                    Debug.LogError("Failed to run NowUI font compiler for " + target.name + "\n" + ex.Message);
+                    Debug.LogError("Failed to compile " + target.name + "\n" + error);
                     continue;
                 }
 

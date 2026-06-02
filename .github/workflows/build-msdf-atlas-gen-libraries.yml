@@ -40,6 +40,8 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "MSDF_ATLAS_GEN_SOURCE=$(Join-Path $env:RUNNER_TEMP "msdf-atlas-gen")"
           Add-Content -Path $env:GITHUB_ENV -Value "BUILD_DIR=$(Join-Path $env:RUNNER_TEMP "msdf-atlas-gen-build")"
           Add-Content -Path $env:GITHUB_ENV -Value "INSTALL_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/msdf-atlas-gen-${{ matrix.artifact_name }}")"
+          Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_MSDF_BUILD_DIR=$(Join-Path $env:RUNNER_TEMP "nowui-msdf-build")"
+          Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_MSDF_INSTALL_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/nowui-msdf-${{ matrix.artifact_name }}")"
 
       - name: Checkout msdf-atlas-gen
         shell: pwsh
@@ -91,8 +93,50 @@ jobs:
         run: |
           cmake --install "$env:BUILD_DIR" --config Release
 
+      - name: Configure NowUI native wrapper
+        shell: pwsh
+        run: |
+          $cmakeArgs = @(
+            "-S", "${{ github.workspace }}/native/nowui-msdf",
+            "-B", "$env:NOWUI_MSDF_BUILD_DIR",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DCMAKE_INSTALL_PREFIX=$env:NOWUI_MSDF_INSTALL_DIR",
+            "-DCMAKE_PREFIX_PATH=$env:INSTALL_DIR",
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake",
+            "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}"
+          )
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            $cmakeArgs += @("-G", "Visual Studio 17 2022", "-A", "x64")
+          }
+
+          cmake @cmakeArgs
+
+      - name: Build NowUI native wrapper
+        shell: pwsh
+        run: |
+          cmake --build "$env:NOWUI_MSDF_BUILD_DIR" --config Release --parallel
+
+      - name: Install NowUI native wrapper
+        shell: pwsh
+        run: |
+          cmake --install "$env:NOWUI_MSDF_BUILD_DIR" --config Release
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            Copy-Item -Path "$env:INSTALL_DIR/bin/*.dll" -Destination "$env:NOWUI_MSDF_INSTALL_DIR/bin" -Force
+          } else {
+            Copy-Item -Path "$env:INSTALL_DIR/lib/*.so*" -Destination "$env:NOWUI_MSDF_INSTALL_DIR/lib" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:INSTALL_DIR/lib/*.dylib" -Destination "$env:NOWUI_MSDF_INSTALL_DIR/lib" -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: msdf-atlas-gen-${{ matrix.artifact_name }}
           path: ${{ github.workspace }}/artifacts/msdf-atlas-gen-${{ matrix.artifact_name }}
+
+      - name: Upload NowUI native wrapper artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowui-msdf-${{ matrix.artifact_name }}
+          path: ${{ github.workspace }}/artifacts/nowui-msdf-${{ matrix.artifact_name }}
