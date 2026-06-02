@@ -9,7 +9,7 @@ and no retained UI tree. You call the drawing API each frame, then flush.
 
 ## Requirements
 
-- Unity `2020.3.17f1`
+- Unity `6000.4.0f1`
 - Built-in render pipeline APIs used by `GL` and `Graphics.DrawMeshNow`
 - The bundled `Assets/NowUI/Resources/NowUI` materials
 
@@ -70,7 +70,7 @@ Useful rectangle options:
 
 ## Text
 
-Text rendering uses `NowFont` assets generated from TrueType fonts.
+Text rendering uses `NowFont` instances generated from TrueType font data.
 
 ```csharp
 NowUI.Text(new Vector4(24, 24, 300, 60), font)
@@ -86,6 +86,8 @@ down by the font line height.
 
 ## Compiling Fonts
 
+### Editor Assets
+
 1. Select one or more `.ttf` font assets in Unity.
 2. Run `Assets > NowUI > Compile Font`.
 3. A `.asset` file is generated next to each selected font.
@@ -93,6 +95,21 @@ down by the font line height.
 
 The compiler uses the editor-only NowUI native font compiler plugin and creates
 an atlas texture plus material inside the generated `NowFont` asset.
+
+### Runtime Fonts
+
+Fonts can also be compiled from runtime byte arrays without writing atlas files:
+
+```csharp
+byte[] fontBytes = GetFontBytes();
+
+if (!NowFontCompiler.TryCompile(fontBytes, out NowFont font, out string error))
+    Debug.LogError(error);
+```
+
+This path calls the native `nowui_compile_font_from_memory` entry point. In
+WebGL builds, Unity links `Assets/NowUI/Plugins/WebGL/nowui-msdf.bc` into the
+generated WebAssembly module and the C# binding uses `__Internal`.
 
 ## Native Compiler Artifacts
 
@@ -106,11 +123,16 @@ Unity-facing `nowui-msdf` native font compiler plugin, plus its
 
 Run `Build MSDF Atlas Gen Libraries` from the Actions tab to produce Windows
 x64, Linux x64, macOS x64, macOS arm64, and WebGL artifacts. Each artifact
-contains an `Assets/NowUI/Plugins/...` folder that can be merged directly into
-the project. The WebGL artifact contains Emscripten static/bitcode libraries for
-Unity WebGL builds. The workflow defaults to Emscripten `1.38.11` for Unity
-`2020.3`; rebuild the WebGL artifact with the Emscripten version that matches
-your Unity editor if you upgrade Unity.
+contains an `Assets/NowUI/Plugins/...` folder intended to be merged into the
+project. The WebGL artifact contains a single merged Emscripten bitcode library:
+
+```text
+Assets/NowUI/Plugins/WebGL/nowui-msdf.bc
+```
+
+The workflow defaults to Emscripten `3.1.38`, matching Unity 2023.2+/Unity 6
+WebGL toolchains. Rebuild the WebGL artifact with the Emscripten version that
+matches your Unity editor if Unity changes its bundled toolchain.
 
 ## Project Layout
 
