@@ -120,6 +120,20 @@ NOWUI_MSDF_EXPORT int nowui_compile_color_font_from_memory(
     char *error_buffer,
     int error_buffer_length);
 
+NOWUI_MSDF_EXPORT int nowui_compile_color_font_from_memory_with_codepoints(
+    const unsigned char *font_data,
+    int font_data_length,
+    int size,
+    const unsigned int *codepoints,
+    int codepoint_count,
+    unsigned char *atlas_rgba,
+    int atlas_rgba_length,
+    NowUIColorGlyph *glyphs,
+    int glyph_capacity,
+    NowUIColorAtlasInfo *info,
+    char *error_buffer,
+    int error_buffer_length);
+
 NOWUI_MSDF_EXPORT const char *nowui_msdf_version();
 
 }

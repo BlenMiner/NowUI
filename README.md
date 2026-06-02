@@ -88,7 +88,9 @@ Strings are read as Unicode code points, so supplementary-plane glyphs such as
 simple emoji are not split into UTF-16 surrogate halves. The compiler detects
 color font tables such as `sbix`, `CBDT`/`CBLC`, `COLR`/`CPAL`, and `SVG `.
 Outline fonts are imported as MTSDF atlases; color fonts are imported through the
-native FreeType color-glyph path into an RGBA atlas.
+native FreeType color-glyph path into an RGBA atlas. Color font imports are
+filtered to the requested characters by default because importing every emoji in
+a large color font can produce a very large RGBA atlas.
 
 The color path imports individual glyphs exposed by the font cmap. Emoji
 sequence shaping, such as ZWJ families, skin tone composition, and flags, will
@@ -163,7 +165,8 @@ NowFontCompiler.TryCompile(fontBytes, "Hello \U0001F600", out NowFont font, out 
 
 This path calls the native `nowui_compile_font_from_memory` entry point,
 `nowui_compile_font_from_memory_with_codepoints` when extra characters are
-provided, or `nowui_compile_color_font_from_memory` for color font tables. In
+provided, or `nowui_compile_color_font_from_memory_with_codepoints` for filtered
+color font tables. In
 WebGL builds, Unity links `Assets/NowUI/Plugins/WebGL/nowui-msdf.bc` into the
 generated WebAssembly module and the C# binding uses `__Internal`.
 

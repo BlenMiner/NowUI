@@ -130,6 +130,21 @@ public static class NowFontCompiler
         [Out] byte[] errorBuffer,
         int errorBufferLength);
 
+    [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
+    static extern int nowui_compile_color_font_from_memory_with_codepoints(
+        byte[] fontData,
+        int fontDataLength,
+        int size,
+        int[] codepoints,
+        int codepointCount,
+        [Out] byte[] atlasRgba,
+        int atlasRgbaLength,
+        [Out] NativeColorGlyph[] glyphs,
+        int glyphCapacity,
+        ref NativeColorAtlasInfo info,
+        [Out] byte[] errorBuffer,
+        int errorBufferLength);
+
     public static bool TryCompile(byte[] fontData, out NowFont font, out string error)
     {
         return TryCompile(fontData, ATLAS_SIZE, PIXEL_RANGE, (Material)null, out font, out error);
@@ -202,7 +217,7 @@ public static class NowFontCompiler
         usedCodepointFallback = false;
 
         if (ContainsColorGlyphTables(fontData))
-            return TryCompileColorFont(fontData, size, materialTemplate, out font, out error);
+            return TryCompileColorFont(fontData, size, codepoints, materialTemplate, out font, out error);
 
         try
         {
@@ -288,20 +303,30 @@ public static class NowFontCompiler
     static bool TryCompileColorFont(
         byte[] fontData,
         int size,
+        int[] codepoints,
         Material materialTemplate,
         out NowFont font,
         out string error)
     {
         font = null;
+
+        if (codepoints == null || codepoints.Length == 0)
+        {
+            error = "Color fonts require requested characters. Pass the emoji/text you want to include so NowUI does not import the entire color glyph set into a huge RGBA atlas.";
+            return false;
+        }
+
         byte[] errorBuffer = new byte[ERROR_CAPACITY];
         NativeColorAtlasInfo info = default;
 
         try
         {
-            int queryResult = nowui_compile_color_font_from_memory(
+            int queryResult = nowui_compile_color_font_from_memory_with_codepoints(
                 fontData,
                 fontData.Length,
                 size,
+                codepoints,
+                codepoints.Length,
                 null,
                 0,
                 null,
@@ -326,10 +351,12 @@ public static class NowFontCompiler
             var nativeGlyphs = new NativeColorGlyph[info.glyphCount];
             Array.Clear(errorBuffer, 0, errorBuffer.Length);
 
-            int compileResult = nowui_compile_color_font_from_memory(
+            int compileResult = nowui_compile_color_font_from_memory_with_codepoints(
                 fontData,
                 fontData.Length,
                 size,
+                codepoints,
+                codepoints.Length,
                 atlasRgba,
                 atlasRgba.Length,
                 nativeGlyphs,
@@ -349,7 +376,7 @@ public static class NowFontCompiler
         }
         catch (EntryPointNotFoundException ex)
         {
-            error = "NowUI native font compiler plugin is missing color font support. Rebuild/import the latest NowUI native plugins.\n" + ex.Message;
+            error = "NowUI native font compiler plugin is missing filtered color font support. Rebuild/import the latest NowUI native plugins.\n" + ex.Message;
             return false;
         }
     }

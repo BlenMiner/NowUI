@@ -269,10 +269,8 @@ void copy_bitmap_to_rgba(const FT_Bitmap &bitmap, std::vector<unsigned char> &rg
 
 void collect_color_glyphs(FT_Face face, int size, std::vector<ColorGlyphBitmap> &glyphs) {
     const double scale = size > 0 ? static_cast<double>(size) : 1.0;
-    FT_UInt glyph_index = 0;
-    FT_ULong charcode = FT_Get_First_Char(face, &glyph_index);
 
-    while (glyph_index != 0) {
+    const auto collect_glyph = [&](FT_ULong charcode, FT_UInt glyph_index) {
         if (FT_Load_Glyph(face, glyph_index, FT_LOAD_COLOR | FT_LOAD_RENDER) == 0) {
             FT_GlyphSlot slot = face->glyph;
             const FT_Bitmap &bitmap = slot->bitmap;
@@ -295,8 +293,63 @@ void collect_color_glyphs(FT_Face face, int size, std::vector<ColorGlyphBitmap> 
                 glyphs.push_back(glyph);
             }
         }
+    };
+
+    FT_UInt glyph_index = 0;
+    FT_ULong charcode = FT_Get_First_Char(face, &glyph_index);
+
+    while (glyph_index != 0) {
+        collect_glyph(charcode, glyph_index);
 
         charcode = FT_Get_Next_Char(face, charcode, &glyph_index);
+    }
+}
+
+void collect_color_glyphs(
+    FT_Face face,
+    int size,
+    const unsigned int *codepoints,
+    int codepoint_count,
+    std::vector<ColorGlyphBitmap> &glyphs) {
+
+    if (!codepoints || codepoint_count <= 0) {
+        collect_color_glyphs(face, size, glyphs);
+        return;
+    }
+
+    const double scale = size > 0 ? static_cast<double>(size) : 1.0;
+
+    for (int i = 0; i < codepoint_count; ++i) {
+        const unsigned int unicode = codepoints[i];
+        const FT_UInt glyph_index = FT_Get_Char_Index(face, unicode);
+
+        if (glyph_index == 0)
+            continue;
+
+        if (FT_Load_Glyph(face, glyph_index, FT_LOAD_COLOR | FT_LOAD_RENDER) != 0)
+            continue;
+
+        FT_GlyphSlot slot = face->glyph;
+        const FT_Bitmap &bitmap = slot->bitmap;
+
+        if (bitmap.width <= 0 || bitmap.rows <= 0 ||
+            (bitmap.pixel_mode != FT_PIXEL_MODE_BGRA && bitmap.pixel_mode != FT_PIXEL_MODE_GRAY))
+            continue;
+
+        ColorGlyphBitmap glyph;
+        glyph.unicode = unicode;
+        glyph.glyph_index = static_cast<unsigned int>(glyph_index);
+        glyph.width = static_cast<int>(bitmap.width);
+        glyph.height = static_cast<int>(bitmap.rows);
+        glyph.atlas_x = 0;
+        glyph.atlas_y = 0;
+        glyph.advance = static_cast<float>((slot->advance.x / 64.0) / scale);
+        glyph.plane_left = static_cast<float>(slot->bitmap_left / scale);
+        glyph.plane_right = static_cast<float>((slot->bitmap_left + glyph.width) / scale);
+        glyph.plane_top = static_cast<float>(slot->bitmap_top / scale);
+        glyph.plane_bottom = static_cast<float>((slot->bitmap_top - glyph.height) / scale);
+        copy_bitmap_to_rgba(bitmap, glyph.rgba);
+        glyphs.push_back(glyph);
     }
 }
 
@@ -357,7 +410,9 @@ int compile_color_font_to_memory(
     int atlas_rgba_length,
     NowUIColorGlyph *glyphs_output,
     int glyph_capacity,
-    NowUIColorAtlasInfo *info) {
+    NowUIColorAtlasInfo *info,
+    const unsigned int *codepoints = nullptr,
+    int codepoint_count = 0) {
 
     if (!font_data || font_data_length <= 0)
         throw std::runtime_error("Font data is empty.");
@@ -377,12 +432,12 @@ int compile_color_font_to_memory(
     set_color_font_size(face, size);
 
     std::vector<ColorGlyphBitmap> glyphs;
-    collect_color_glyphs(face, size, glyphs);
+    collect_color_glyphs(face, size, codepoints, codepoint_count, glyphs);
 
     if (glyphs.empty()) {
         FT_Done_Face(face);
         FT_Done_FreeType(library);
-        throw std::runtime_error("Font did not contain color bitmap glyphs that NowUI can import.");
+        throw std::runtime_error("Font did not contain requested color bitmap glyphs that NowUI can import.");
     }
 
     int width = 0;
@@ -683,6 +738,44 @@ int nowui_compile_color_font_from_memory(
             glyphs,
             glyph_capacity,
             info);
+
+        set_error(error_buffer, error_buffer_length, std::string());
+        return result;
+    } catch (const std::exception &ex) {
+        set_error(error_buffer, error_buffer_length, ex.what());
+    } catch (...) {
+        set_error(error_buffer, error_buffer_length, "Unknown native color font compiler error.");
+    }
+
+    return NOWUI_MSDF_ERROR;
+}
+
+int nowui_compile_color_font_from_memory_with_codepoints(
+    const unsigned char *font_data,
+    int font_data_length,
+    int size,
+    const unsigned int *codepoints,
+    int codepoint_count,
+    unsigned char *atlas_rgba,
+    int atlas_rgba_length,
+    NowUIColorGlyph *glyphs,
+    int glyph_capacity,
+    NowUIColorAtlasInfo *info,
+    char *error_buffer,
+    int error_buffer_length) {
+
+    try {
+        const int result = compile_color_font_to_memory(
+            font_data,
+            font_data_length,
+            size,
+            atlas_rgba,
+            atlas_rgba_length,
+            glyphs,
+            glyph_capacity,
+            info,
+            codepoints,
+            codepoint_count);
 
         set_error(error_buffer, error_buffer_length, std::string());
         return result;
