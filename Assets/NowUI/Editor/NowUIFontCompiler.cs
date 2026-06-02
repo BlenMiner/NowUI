@@ -10,8 +10,9 @@ public class NowUIFontCompiler : Editor
 
     static string ToProjectFullPath(string assetPath)
     {
-        var projectPath = Directory.GetParent(Application.dataPath).FullName;
-        return Path.GetFullPath(Path.Combine(projectPath, assetPath));
+        var projectPath = Directory.GetParent(Application.dataPath)?.FullName;
+        if (projectPath != null) return Path.GetFullPath(Path.Combine(projectPath, assetPath));
+        return string.Empty;
     }
 
     [MenuItem("Assets/NowUI/Compile Font")]
