@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 project(nowui_msdf LANGUAGES CXX)
 
+find_package(Threads REQUIRED)
 find_package(msdf-atlas-gen CONFIG REQUIRED)
 
 option(NOWUI_MSDF_DISABLE_FILE_API "Disable path/PNG/JSON based compiler entry point." OFF)
