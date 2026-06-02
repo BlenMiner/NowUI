@@ -84,11 +84,6 @@ public class MailClientMockup : MonoBehaviour
             .Draw();
     }
 
-    void DrawText(string text, Vector4 rect, float size, Color color)
-    {
-        DrawText(text, rect, size, color, TextAlign.Left, true);
-    }
-
     void DrawTextCentered(string text, Vector4 rect, float size, Color color)
     {
         DrawText(text, rect, size, color, TextAlign.Center, true);
@@ -99,7 +94,7 @@ public class MailClientMockup : MonoBehaviour
         DrawText(text, rect, size, color, TextAlign.Right, true);
     }
 
-    void DrawText(string text, Vector4 rect, float size, Color color, TextAlign align, bool fit)
+    void DrawText(string text, Vector4 rect, float size, Color color, TextAlign align = TextAlign.Left, bool fit = true)
     {
         if (_font == null || string.IsNullOrEmpty(text))
             return;
