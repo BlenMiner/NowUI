@@ -50,7 +50,7 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "INSTALL_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/msdf-atlas-gen-${{ matrix.artifact_name }}")"
           Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_MSDF_BUILD_DIR=$(Join-Path $env:RUNNER_TEMP "nowui-msdf-build")"
           Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_MSDF_INSTALL_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/nowui-msdf-${{ matrix.artifact_name }}")"
-          Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_MSDF_PLUGIN_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/nowui-msdf-${{ matrix.artifact_name }}/Assets/NowUI/Editor/Plugins/${{ matrix.plugin_path }}")"
+          Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_MSDF_PLUGIN_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/nowui-msdf-${{ matrix.artifact_name }}/Assets/NowUI/Plugins/${{ matrix.plugin_path }}")"
 
       - name: Checkout msdf-atlas-gen
         shell: pwsh
@@ -106,7 +106,7 @@ jobs:
         shell: pwsh
         run: |
           $cmakeArgs = @(
-            "-S", "${{ github.workspace }}/Assets/NowUI/Editor/Native/nowui-msdf",
+            "-S", "${{ github.workspace }}/Assets/NowUI/Native/nowui-msdf",
             "-B", "$env:NOWUI_MSDF_BUILD_DIR",
             "-DCMAKE_BUILD_TYPE=Release",
             "-DCMAKE_INSTALL_PREFIX=$env:NOWUI_MSDF_INSTALL_DIR",
@@ -172,7 +172,7 @@ jobs:
           echo "INSTALL_DIR=$GITHUB_WORKSPACE/artifacts/msdf-atlas-gen-webgl" >> "$GITHUB_ENV"
           echo "NOWUI_MSDF_BUILD_DIR=$RUNNER_TEMP/nowui-msdf-webgl-build" >> "$GITHUB_ENV"
           echo "NOWUI_MSDF_INSTALL_DIR=$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl-install" >> "$GITHUB_ENV"
-          echo "NOWUI_MSDF_PLUGIN_DIR=$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Runtime/Plugins/WebGL" >> "$GITHUB_ENV"
+          echo "NOWUI_MSDF_PLUGIN_DIR=$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Plugins/WebGL" >> "$GITHUB_ENV"
 
       - name: Checkout msdf-atlas-gen
         shell: bash
@@ -227,7 +227,7 @@ jobs:
           source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
 
           cmake \
-            -S "$GITHUB_WORKSPACE/Assets/NowUI/Editor/Native/nowui-msdf" \
+            -S "$GITHUB_WORKSPACE/Assets/NowUI/Native/nowui-msdf" \
             -B "$NOWUI_MSDF_BUILD_DIR" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$NOWUI_MSDF_INSTALL_DIR" \
@@ -249,8 +249,8 @@ jobs:
         run: |
           source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
           mkdir -p "$NOWUI_MSDF_PLUGIN_DIR"
-          cp "$GITHUB_WORKSPACE/Assets/NowUI/Runtime/Plugins.meta" "$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Runtime/Plugins.meta"
-          cp "$GITHUB_WORKSPACE/Assets/NowUI/Runtime/Plugins/WebGL.meta" "$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Runtime/Plugins/WebGL.meta"
+          cp "$GITHUB_WORKSPACE/Assets/NowUI/Plugins.meta" "$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Plugins.meta"
+          cp "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/WebGL.meta" "$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Plugins/WebGL.meta"
 
           find "$NOWUI_MSDF_INSTALL_DIR/lib" "$INSTALL_DIR/lib" "$VCPKG_ROOT/installed/wasm32-emscripten/lib" \
             -maxdepth 1 -type f \( -name '*.a' -o -name '*.bc' \) \
