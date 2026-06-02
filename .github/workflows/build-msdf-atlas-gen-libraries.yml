@@ -19,15 +19,19 @@ jobs:
           - os: windows-2022
             artifact_name: windows-x64
             vcpkg_triplet: x64-windows-static-md
+            plugin_path: Windows/x86_64
           - os: ubuntu-latest
             artifact_name: linux-x64
             vcpkg_triplet: x64-linux
+            plugin_path: Linux/x86_64
           - os: macos-15-intel
             artifact_name: macos-x64
             vcpkg_triplet: x64-osx
+            plugin_path: macOS/x86_64
           - os: macos-15
             artifact_name: macos-arm64
             vcpkg_triplet: arm64-osx
+            plugin_path: macOS/arm64
 
     steps:
       - name: Checkout repository
@@ -42,6 +46,7 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "INSTALL_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/msdf-atlas-gen-${{ matrix.artifact_name }}")"
           Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_MSDF_BUILD_DIR=$(Join-Path $env:RUNNER_TEMP "nowui-msdf-build")"
           Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_MSDF_INSTALL_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/nowui-msdf-${{ matrix.artifact_name }}")"
+          Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_MSDF_PLUGIN_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/nowui-msdf-${{ matrix.artifact_name }}/Assets/NowUI/Editor/Plugins/${{ matrix.plugin_path }}")"
 
       - name: Checkout msdf-atlas-gen
         shell: pwsh
@@ -97,7 +102,7 @@ jobs:
         shell: pwsh
         run: |
           $cmakeArgs = @(
-            "-S", "${{ github.workspace }}/native/nowui-msdf",
+            "-S", "${{ github.workspace }}/Assets/NowUI/Editor/Native/nowui-msdf",
             "-B", "$env:NOWUI_MSDF_BUILD_DIR",
             "-DCMAKE_BUILD_TYPE=Release",
             "-DCMAKE_INSTALL_PREFIX=$env:NOWUI_MSDF_INSTALL_DIR",
@@ -121,12 +126,16 @@ jobs:
         shell: pwsh
         run: |
           cmake --install "$env:NOWUI_MSDF_BUILD_DIR" --config Release
+          New-Item -ItemType Directory -Force -Path "$env:NOWUI_MSDF_PLUGIN_DIR" | Out-Null
 
           if ($env:RUNNER_OS -eq "Windows") {
-            Copy-Item -Path "$env:INSTALL_DIR/bin/*.dll" -Destination "$env:NOWUI_MSDF_INSTALL_DIR/bin" -Force
+            Copy-Item -Path "$env:NOWUI_MSDF_INSTALL_DIR/bin/*.dll" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force
+            Copy-Item -Path "$env:INSTALL_DIR/bin/*.dll" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force
           } else {
-            Copy-Item -Path "$env:INSTALL_DIR/lib/*.so*" -Destination "$env:NOWUI_MSDF_INSTALL_DIR/lib" -Force -ErrorAction SilentlyContinue
-            Copy-Item -Path "$env:INSTALL_DIR/lib/*.dylib" -Destination "$env:NOWUI_MSDF_INSTALL_DIR/lib" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:NOWUI_MSDF_INSTALL_DIR/lib/*.so*" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:NOWUI_MSDF_INSTALL_DIR/lib/*.dylib" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:INSTALL_DIR/lib/*.so*" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:INSTALL_DIR/lib/*.dylib" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
           }
 
       - name: Upload artifact

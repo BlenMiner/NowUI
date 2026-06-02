@@ -105,14 +105,16 @@ Unity-facing `nowui-msdf` native font compiler plugin, plus its
 ```
 
 Run `Build MSDF Atlas Gen Libraries` from the Actions tab to produce Windows
-x64, Linux x64, macOS x64, and macOS arm64 artifacts. Import the
-`nowui-msdf-*` artifacts into `Assets/NowUI/Editor/Plugins` so Unity can load
-the compiler in the editor without launching an external process.
+x64, Linux x64, macOS x64, and macOS arm64 artifacts. Each `nowui-msdf-*`
+artifact contains an `Assets/NowUI/Editor/Plugins/...` folder that can be merged
+directly into the project so Unity can load the compiler in the editor without
+launching an external process.
 
 ## Project Layout
 
 - `Assets/NowUI/Runtime`: runtime drawing API, mesh buffers, font assets
-- `Assets/NowUI/Editor`: font compiler menu item and native compiler interop
+- `Assets/NowUI/Editor`: font compiler menu item, native compiler interop,
+  editor plugin libraries, and native wrapper source
 - `Assets/NowUI/Shaders`: rectangle and text shaders
 - `Assets/NowUI/Resources`: default materials and compiler resources
 - `Assets/NowUI/Example`: sample scenes/scripts and compiled example fonts
