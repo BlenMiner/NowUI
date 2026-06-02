@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2022
             artifact_name: windows-x64
             vcpkg_triplet: x64-windows-static-md
           - os: ubuntu-latest
