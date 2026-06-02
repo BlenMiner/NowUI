@@ -45,6 +45,7 @@ jobs:
         shell: pwsh
         run: |
           Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$(Join-Path $env:RUNNER_TEMP "vcpkg")"
+          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_INSTALLED_DIR=$(Join-Path $env:RUNNER_TEMP "vcpkg-installed-${{ matrix.artifact_name }}")"
           Add-Content -Path $env:GITHUB_ENV -Value "MSDF_ATLAS_GEN_SOURCE=$(Join-Path $env:RUNNER_TEMP "msdf-atlas-gen")"
           Add-Content -Path $env:GITHUB_ENV -Value "BUILD_DIR=$(Join-Path $env:RUNNER_TEMP "msdf-atlas-gen-build")"
           Add-Content -Path $env:GITHUB_ENV -Value "INSTALL_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/msdf-atlas-gen-${{ matrix.artifact_name }}")"
@@ -77,6 +78,7 @@ jobs:
             "-DCMAKE_BUILD_TYPE=Release",
             "-DCMAKE_INSTALL_PREFIX=$env:INSTALL_DIR",
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake",
+            "-DVCPKG_INSTALLED_DIR=$env:VCPKG_INSTALLED_DIR",
             "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}",
             "-DBUILD_SHARED_LIBS=ON",
             "-DMSDF_ATLAS_BUILD_STANDALONE=OFF",
@@ -110,8 +112,9 @@ jobs:
             "-B", "$env:NOWUI_MSDF_BUILD_DIR",
             "-DCMAKE_BUILD_TYPE=Release",
             "-DCMAKE_INSTALL_PREFIX=$env:NOWUI_MSDF_INSTALL_DIR",
-            "-DCMAKE_PREFIX_PATH=$env:INSTALL_DIR;$env:VCPKG_ROOT/installed/${{ matrix.vcpkg_triplet }}",
+            "-DCMAKE_PREFIX_PATH=$env:INSTALL_DIR;$env:VCPKG_INSTALLED_DIR/${{ matrix.vcpkg_triplet }}",
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake",
+            "-DVCPKG_INSTALLED_DIR=$env:VCPKG_INSTALLED_DIR",
             "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}"
           )
 
@@ -167,6 +170,7 @@ jobs:
         run: |
           echo "EMSDK_ROOT=$RUNNER_TEMP/emsdk" >> "$GITHUB_ENV"
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg-installed-webgl" >> "$GITHUB_ENV"
           echo "MSDF_ATLAS_GEN_SOURCE=$RUNNER_TEMP/msdf-atlas-gen" >> "$GITHUB_ENV"
           echo "BUILD_DIR=$RUNNER_TEMP/msdf-atlas-gen-webgl-build" >> "$GITHUB_ENV"
           echo "INSTALL_DIR=$GITHUB_WORKSPACE/artifacts/msdf-atlas-gen-webgl" >> "$GITHUB_ENV"
@@ -203,7 +207,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK_ROOT/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
             -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
             -DBUILD_SHARED_LIBS=OFF \
             -DMSDF_ATLAS_BUILD_STANDALONE=OFF \
@@ -231,9 +236,10 @@ jobs:
             -B "$NOWUI_MSDF_BUILD_DIR" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$NOWUI_MSDF_INSTALL_DIR" \
-            -DCMAKE_PREFIX_PATH="$INSTALL_DIR;$VCPKG_ROOT/installed/wasm32-emscripten" \
+            -DCMAKE_PREFIX_PATH="$INSTALL_DIR;$VCPKG_INSTALLED_DIR/wasm32-emscripten" \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK_ROOT/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
             -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
             -DNOWUI_MSDF_DISABLE_FILE_API=ON
 
@@ -252,7 +258,7 @@ jobs:
           cp "$GITHUB_WORKSPACE/Assets/NowUI/Plugins.meta" "$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Plugins.meta"
           cp "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/WebGL.meta" "$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Plugins/WebGL.meta"
 
-          find "$NOWUI_MSDF_INSTALL_DIR/lib" "$INSTALL_DIR/lib" "$VCPKG_ROOT/installed/wasm32-emscripten/lib" \
+          find "$NOWUI_MSDF_INSTALL_DIR/lib" "$INSTALL_DIR/lib" "$VCPKG_INSTALLED_DIR/wasm32-emscripten/lib" \
             -maxdepth 1 -type f \( -name '*.a' -o -name '*.bc' \) \
             -exec cp {} "$NOWUI_MSDF_PLUGIN_DIR" \;
 
