@@ -60,47 +60,94 @@ public class NowFont : ScriptableObject
     public Material Material;
 
     [System.NonSerialized]
-    NowFontAtlasInfo.Glyph[] m_glyphTable;
+    NowFontAtlasInfo.Glyph[] m_denseGlyphTable;
+
+    [System.NonSerialized]
+    Dictionary<int, NowFontAtlasInfo.Glyph> m_sparseGlyphTable;
 
     [System.NonSerialized]
     int m_glyphTableOffset;
 
     [System.NonSerialized]
-    public int MaterialID;
+    public int MaterialID = -1;
+
+    const int MaxDenseGlyphRange = 4096;
+
+    static void NormalizeGlyphAtlasBounds(ref NowFontAtlasInfo.Glyph glyph, Texture2D atlas)
+    {
+        glyph.atlasBounds.left /= atlas.width;
+        glyph.atlasBounds.right /= atlas.width;
+        glyph.atlasBounds.top /= atlas.height;
+        glyph.atlasBounds.bottom /= atlas.height;
+    }
+
+    void BuildGlyphCache()
+    {
+        var glyphs = AtlasInfo.glyphs;
+        int first = glyphs[0].unicode;
+        int last = glyphs[0].unicode;
+
+        for (int i = 1; i < glyphs.Length; ++i)
+        {
+            int unicode = glyphs[i].unicode;
+
+            if (unicode < first)
+                first = unicode;
+            else if (unicode > last)
+                last = unicode;
+        }
+
+        int range = last - first + 1;
+        bool useDenseTable = first > 0 && range <= MaxDenseGlyphRange && range <= glyphs.Length * 4;
+
+        if (useDenseTable)
+        {
+            m_glyphTableOffset = first;
+            m_denseGlyphTable = new NowFontAtlasInfo.Glyph[range];
+
+            for (int i = 0; i < glyphs.Length; ++i)
+            {
+                var glyphValue = glyphs[i];
+                NormalizeGlyphAtlasBounds(ref glyphValue, Atlas);
+                m_denseGlyphTable[glyphValue.unicode - m_glyphTableOffset] = glyphValue;
+            }
+
+            return;
+        }
+
+        m_sparseGlyphTable = new Dictionary<int, NowFontAtlasInfo.Glyph>(glyphs.Length);
+
+        for (int i = 0; i < glyphs.Length; ++i)
+        {
+            var glyphValue = glyphs[i];
+            NormalizeGlyphAtlasBounds(ref glyphValue, Atlas);
+            m_sparseGlyphTable[glyphValue.unicode] = glyphValue;
+        }
+    }
 
     public bool GetGlyph(char c, out NowFontAtlasInfo.Glyph glyph)
     {
-        if (m_glyphTable == null)
-        {
-            int first = AtlasInfo.glyphs[0].unicode;
-            int last = AtlasInfo.glyphs[AtlasInfo.glyphs.Length - 1].unicode;
+        glyph = default;
 
-            m_glyphTableOffset = first;
-            m_glyphTable = new NowFontAtlasInfo.Glyph[last - first + 1];
+        if (Atlas == null || AtlasInfo.glyphs == null || AtlasInfo.glyphs.Length == 0)
+            return false;
 
-            foreach(var g in AtlasInfo.glyphs)
-            {
-                var glyphValue = g;
-
-                glyphValue.atlasBounds.left /= Atlas.width;
-                glyphValue.atlasBounds.right /= Atlas.width;
-                glyphValue.atlasBounds.top /= Atlas.height;
-                glyphValue.atlasBounds.bottom /= Atlas.height;
-
-                m_glyphTable[g.unicode - m_glyphTableOffset] = glyphValue;
-            }
-        }
+        if (m_denseGlyphTable == null && m_sparseGlyphTable == null)
+            BuildGlyphCache();
 
         int unicode = c;
-        int idx = unicode - m_glyphTableOffset;
 
-        if (idx < 0 || idx >= m_glyphTable.Length) 
+        if (m_denseGlyphTable != null)
         {
-            glyph = default;
-            return false;
+            int idx = unicode - m_glyphTableOffset;
+
+            if (idx < 0 || idx >= m_denseGlyphTable.Length)
+                return false;
+
+            glyph = m_denseGlyphTable[idx];
+            return glyph.unicode == unicode;
         }
 
-        glyph = m_glyphTable[idx];
-        return glyph.unicode == unicode;
+        return m_sparseGlyphTable.TryGetValue(unicode, out glyph);
     }
 }

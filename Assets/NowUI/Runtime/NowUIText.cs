@@ -54,7 +54,7 @@ public struct NowUIText
         return this;
     }
 
-        public NowUIText SetOutlineColor(Vector4 outline)
+    public NowUIText SetOutlineColor(Vector4 outline)
     {
         OutlineColor = outline;
         return this;

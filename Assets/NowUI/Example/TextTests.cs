@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public class TextTests : MonoBehaviour
 {
@@ -6,7 +7,7 @@ public class TextTests : MonoBehaviour
 
     [SerializeField] Color m_color;
 
-    [SerializeField] Color m_outOolor;
+    [SerializeField, FormerlySerializedAs("m_outOolor")] Color m_outlineColor;
 
     [SerializeField, Range(-100, 100)] float m_outline = 0f;
 
@@ -43,7 +44,7 @@ public class TextTests : MonoBehaviour
             .SetFontSize(m_fontSize + radius)
             .SetPadding(m_padding)
             .SetOutline(m_outline)
-            .SetOutlineColor(m_outOolor)
+            .SetOutlineColor(m_outlineColor)
             .Draw(rect.ToString() + "\n" + txt);
     }
 

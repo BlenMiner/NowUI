@@ -14,11 +14,11 @@ public class ShapedRectangles : MonoBehaviour
 
     private void OnPostRender()
     {
-        int COUNT = Mathf.RoundToInt((Mathf.Sin(Time.time * 0.5f) + 1) * 100);
+        int count = Mathf.Max(1, Mathf.RoundToInt((Mathf.Sin(Time.time * 0.5f) + 1) * 100));
         NowUI.StartUI();
 
-        float SIZEX = (float)Screen.width / COUNT;
-        float SIZEY = (float)Screen.height / COUNT;
+        float sizeX = (float)Screen.width / count;
+        float sizeY = (float)Screen.height / count;
 
         var style = NowUI.Rectangle((Vector4)default)
             .SetOutlineColor(outline)
@@ -27,11 +27,11 @@ public class ShapedRectangles : MonoBehaviour
             .SetPadding(m_padding)
             .SetOutline(m_outline);
 
-        for (int x = 0; x < COUNT; ++x)
+        for (int x = 0; x < count; ++x)
         {
-            for (int y = 0; y < COUNT; ++y)
+            for (int y = 0; y < count; ++y)
             {
-                var rect = new Vector4(SIZEX * x, SIZEY * y, SIZEX, SIZEY);
+                var rect = new Vector4(sizeX * x, sizeY * y, sizeX, sizeY);
                 if ((x + y) % 2 == 0)
                 {
                     style.SetPosition(rect)

@@ -1,0 +1,96 @@
+name: Build MSDF Atlas Gen Libraries
+
+"on":
+  workflow_dispatch:
+    inputs:
+      msdf_atlas_gen_ref:
+        description: "msdf-atlas-gen git ref to build"
+        required: true
+        default: "v1.4"
+
+jobs:
+  build:
+    name: ${{ matrix.artifact_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: windows-x64
+            vcpkg_triplet: x64-windows-static-md
+          - os: ubuntu-latest
+            artifact_name: linux-x64
+            vcpkg_triplet: x64-linux
+          - os: macos-15-intel
+            artifact_name: macos-x64
+            vcpkg_triplet: x64-osx
+          - os: macos-15
+            artifact_name: macos-arm64
+            vcpkg_triplet: arm64-osx
+
+    env:
+      VCPKG_ROOT: ${{ runner.temp }}/vcpkg
+      MSDF_ATLAS_GEN_SOURCE: ${{ runner.temp }}/msdf-atlas-gen
+      BUILD_DIR: ${{ runner.temp }}/msdf-atlas-gen-build
+      INSTALL_DIR: ${{ github.workspace }}/artifacts/msdf-atlas-gen-${{ matrix.artifact_name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout msdf-atlas-gen
+        shell: pwsh
+        run: |
+          git clone --recursive --branch "${{ inputs.msdf_atlas_gen_ref }}" https://github.com/Chlumsky/msdf-atlas-gen.git "$env:MSDF_ATLAS_GEN_SOURCE"
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$env:VCPKG_ROOT"
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          } else {
+            & "$env:VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          }
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $cmakeArgs = @(
+            "-S", "$env:MSDF_ATLAS_GEN_SOURCE",
+            "-B", "$env:BUILD_DIR",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DCMAKE_INSTALL_PREFIX=$env:INSTALL_DIR",
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake",
+            "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}",
+            "-DBUILD_SHARED_LIBS=ON",
+            "-DMSDF_ATLAS_BUILD_STANDALONE=OFF",
+            "-DMSDF_ATLAS_INSTALL=ON",
+            "-DMSDF_ATLAS_USE_SKIA=OFF",
+            "-DMSDF_ATLAS_NO_ARTERY_FONT=ON",
+            "-DMSDF_ATLAS_DYNAMIC_RUNTIME=ON"
+          )
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            $cmakeArgs += @("-G", "Visual Studio 17 2022", "-A", "x64")
+          }
+
+          cmake @cmakeArgs
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build "$env:BUILD_DIR" --config Release --parallel
+
+      - name: Install
+        shell: pwsh
+        run: |
+          cmake --install "$env:BUILD_DIR" --config Release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: msdf-atlas-gen-${{ matrix.artifact_name }}
+          path: ${{ env.INSTALL_DIR }}
