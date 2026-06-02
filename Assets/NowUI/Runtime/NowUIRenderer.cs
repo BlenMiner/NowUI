@@ -126,8 +126,21 @@ public sealed class NowUIRenderer : IDisposable
         Graphics.ExecuteCommandBuffer(_commandBuffer);
     }
 
+    public void Render(RenderTexture target, Action<Rect> drawNowUI, bool clear, Color clearColor)
+    {
+        ThrowIfDisposed();
+
+        if (target == null)
+            throw new ArgumentNullException(nameof(target));
+
+        Render(target, new Vector2(target.width, target.height), drawNowUI, clear, clearColor);
+    }
+
     public void Render(RenderTexture target, Vector2 size, Action<Rect> drawNowUI, bool clear, Color clearColor)
     {
+        if (target == null)
+            throw new ArgumentNullException(nameof(target));
+
         Build(size, drawNowUI);
         Render(target, clear, clearColor);
     }

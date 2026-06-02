@@ -149,22 +149,19 @@ public sealed class NowUITextureExample : MonoBehaviour
 
     void Update()
     {
-        renderer.Render(
-            target,
-            new Vector2(target.width, target.height),
-            rect =>
-            {
-                NowUI.Rectangle(new Vector4(0, 0, rect.width, rect.height))
-                    .SetColor(new Color(0.08f, 0.1f, 0.14f, 1f))
-                    .Draw();
+        renderer.Render(target, rect =>
+        {
+            NowUI.Rectangle(new Vector4(0, 0, rect.width, rect.height))
+                .SetColor(new Color(0.08f, 0.1f, 0.14f, 1f))
+                .Draw();
 
-                NowUI.Text(new Vector4(24, 22, rect.width - 48, 40), font)
-                    .SetFontSize(24)
-                    .SetColor(Color.white)
-                    .Draw("Rendered to a texture");
-            },
-            clear: true,
-            clearColor: Color.clear);
+            NowUI.Text(new Vector4(24, 22, rect.width - 48, 40), font)
+                .SetFontSize(24)
+                .SetColor(Color.white)
+                .Draw("Rendered to a texture");
+        },
+        clear: true,
+        clearColor: Color.clear);
     }
 
     void OnDestroy()
@@ -268,5 +265,7 @@ Current example scripts live under `Assets/NowUI/Example`.
   padding.
 - `TextTests.cs`: exercises text rendering behavior.
 - `NowUIGraphicExample.cs`: demonstrates UGUI mesh capture.
+- `NowUIRenderTextureExample.cs`: renders NowUI into a `RenderTexture` and
+  applies it to a scene `Renderer`.
 - `MailClientMockup.cs`: demonstrates a larger immediate-mode layout with
   responsive panels, rows, labels, masks, and truncation.
