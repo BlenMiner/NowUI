@@ -259,7 +259,7 @@ public static class NowUI
 
         for (int i = 0; i < _meshes.count; ++i)
         {
-            NowMesh mesh = _meshes.array[i];
+            var mesh = _meshes.array[i];
 
             if (!mesh.hasVertices)
                 continue;
@@ -301,7 +301,7 @@ public static class NowUI
 
         for (int i = 0; i < _meshes.count; ++i)
         {
-            NowMesh mesh = _meshes.array[i];
+            var mesh = _meshes.array[i];
 
             if (!mesh.hasVertices)
                 continue;
@@ -376,7 +376,7 @@ public static class NowUI
         _tmpVertex.outlineColor = rectangle.outlineColor;
         _tmpVertex.uvwh = _defaultUV;
 
-        NowMesh mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
+        var mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
 
         if (mesh == null)
             return;

@@ -138,7 +138,7 @@ public static class NowFontCompiler
             }
 
             byte[] atlasRgba = new byte[info.atlasByteCount];
-            NativeGlyph[] nativeGlyphs = new NativeGlyph[info.glyphCount];
+            var nativeGlyphs = new NativeGlyph[info.glyphCount];
             Array.Clear(errorBuffer, 0, errorBuffer.Length);
 
             int compileResult = nowui_compile_font_from_memory(
@@ -196,7 +196,7 @@ public static class NowFontCompiler
             return null;
         }
 
-        Texture2D texture = new Texture2D(info.width, info.height, TextureFormat.RGBA32, false, true)
+        var texture = new Texture2D(info.width, info.height, TextureFormat.RGBA32, false, true)
         {
             name = "Font Atlas Texture",
             filterMode = FilterMode.Bilinear,
@@ -206,11 +206,11 @@ public static class NowFontCompiler
         texture.LoadRawTextureData(atlasRgba);
         texture.Apply(false, true);
 
-        Material material = UnityEngine.Object.Instantiate(materialTemplate);
+        var material = UnityEngine.Object.Instantiate(materialTemplate);
         material.name = "NowUI Font Material";
         material.mainTexture = texture;
 
-        NowFont font = ScriptableObject.CreateInstance<NowFont>();
+        var font = ScriptableObject.CreateInstance<NowFont>();
         font.name = "NowUI Runtime Font";
         font.atlas = texture;
         font.material = material;
@@ -222,7 +222,7 @@ public static class NowFontCompiler
 
     static NowFontAtlasInfo ToAtlasInfo(NativeGlyph[] nativeGlyphs, NativeAtlasInfo info)
     {
-        NowFontAtlasInfo atlasInfo = new NowFontAtlasInfo
+        var atlasInfo = new NowFontAtlasInfo
         {
             atlas = new NowFontAtlasInfo.Atlas
             {
@@ -247,7 +247,7 @@ public static class NowFontCompiler
 
         for (int i = 0; i < nativeGlyphs.Length; ++i)
         {
-            NativeGlyph nativeGlyph = nativeGlyphs[i];
+            var nativeGlyph = nativeGlyphs[i];
             atlasInfo.glyphs[i] = new NowFontAtlasInfo.Glyph
             {
                 unicode = unchecked((int)nativeGlyph.unicode),

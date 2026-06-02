@@ -363,7 +363,7 @@ namespace NowUIInternal
         {
             for (int i = 0; i < _verts.count; ++i)
             {
-                Vector3 vertex = _verts.array[i];
+                var vertex = _verts.array[i];
                 vertex.x += positionOffset.x;
                 vertex.y += positionOffset.y;
                 vertices.Add(vertex);
@@ -409,10 +409,10 @@ namespace NowUIInternal
 
             for (int i = 0; i < _verts.count; ++i)
             {
-                Vector3 vertex = _verts.array[i];
-                Vector4 radius = _radius.array[i];
-                Vector4 rawUv = _rawuv.array[i];
-                Vector2 uv = _uvs.array[i];
+                var vertex = _verts.array[i];
+                var radius = _radius.array[i];
+                var rawUv = _rawuv.array[i];
+                var uv = _uvs.array[i];
 
                 vertex.x += positionOffset.x;
                 vertex.y += positionOffset.y;
@@ -424,7 +424,7 @@ namespace NowUIInternal
                 rects.Add(_rect.array[i]);
                 masks.Add(_mask.array[i]);
                 extras.Add(_extra.array[i]);
-                Vector4 color = _color.array[i];
+                var color = _color.array[i];
                 colors.Add(new Color(color.x, color.y, color.z, color.w));
                 normals.Add(new Vector3(radius.x, radius.y, radius.z));
                 tangents.Add(_outlineColor.array[i]);

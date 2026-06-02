@@ -66,8 +66,8 @@ public class NowUIGraphic : Graphic
             return;
         }
 
-        Vector4 mask = new Vector4(0, 0, rect.width, rect.height);
-        Vector2 positionOffset = new Vector2(rect.xMin, rect.yMax);
+        var mask = new Vector4(0, 0, rect.width, rect.height);
+        var positionOffset = new Vector2(rect.xMin, rect.yMax);
 
         NowUI.BeginMeshCapture(mask);
 
@@ -183,7 +183,7 @@ public class NowUIGraphic : Graphic
         if (batch.material == null)
             return null;
 
-        if (_textMaterials.TryGetValue(batch.material, out Material textMaterial) && textMaterial != null)
+        if (_textMaterials.TryGetValue(batch.material, out var textMaterial) && textMaterial != null)
             return textMaterial;
 
         if (_textMaterialTemplate == null)
