@@ -262,13 +262,21 @@ jobs:
           cp "$GITHUB_WORKSPACE/Assets/NowUI/Plugins.meta" "$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Plugins.meta"
           cp "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/WebGL.meta" "$GITHUB_WORKSPACE/artifacts/nowui-msdf-webgl/Assets/NowUI/Plugins/WebGL.meta"
 
-          find "$NOWUI_MSDF_INSTALL_DIR/lib" "$INSTALL_DIR/lib" "$VCPKG_INSTALLED_DIR/wasm32-emscripten/lib" \
+          mapfile -t archives < <(find "$NOWUI_MSDF_INSTALL_DIR/lib" "$INSTALL_DIR/lib" "$VCPKG_INSTALLED_DIR/wasm32-emscripten/lib" \
             -maxdepth 1 -type f \( -name '*.a' -o -name '*.bc' \) \
-            -exec cp {} "$NOWUI_MSDF_PLUGIN_DIR" \;
+            | sort)
 
-          mapfile -t archives < <(find "$NOWUI_MSDF_PLUGIN_DIR" -maxdepth 1 -type f -name '*.a' | sort)
-          if [ "${#archives[@]}" -gt 0 ]; then
-            emcc -r "${archives[@]}" -o "$NOWUI_MSDF_PLUGIN_DIR/nowui-msdf.bc"
+          if [ "${#archives[@]}" -eq 0 ]; then
+            echo "No WebGL archives were found to package."
+            exit 1
+          fi
+
+          emcc -r -Wl,--whole-archive "${archives[@]}" -Wl,--no-whole-archive -o "$NOWUI_MSDF_PLUGIN_DIR/nowui-msdf.bc"
+
+          byte_count=$(wc -c < "$NOWUI_MSDF_PLUGIN_DIR/nowui-msdf.bc")
+          if [ "$byte_count" -lt 1024 ]; then
+            echo "Merged WebGL library is unexpectedly small: $byte_count bytes"
+            exit 1
           fi
 
       - name: Upload NowUI WebGL artifact
