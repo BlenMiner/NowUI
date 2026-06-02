@@ -117,7 +117,8 @@ jobs:
             "-Dmsdfgen_DIR=$env:INSTALL_DIR/lib/cmake/msdfgen",
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake",
             "-DVCPKG_INSTALLED_DIR=$env:VCPKG_INSTALLED_DIR",
-            "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}"
+            "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}",
+            "-DNOWUI_MSDF_DISABLE_FILE_API=ON"
           )
 
           if ($env:RUNNER_OS -eq "Windows") {

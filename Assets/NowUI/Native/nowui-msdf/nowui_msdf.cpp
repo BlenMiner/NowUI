@@ -326,6 +326,12 @@ int nowui_compile_font(
 
     try {
 #ifdef NOWUI_MSDF_DISABLE_FILE_API
+        (void)font_path;
+        (void)image_path;
+        (void)json_path;
+        (void)size;
+        (void)pixel_range;
+
         set_error(error_buffer, error_buffer_length, "File-based font compilation is disabled in this build.");
         return NOWUI_MSDF_ERROR;
 #else

@@ -90,6 +90,16 @@ public struct NowUIText
         return this;
     }
 
+    public Vector2 Measure(string value)
+    {
+        return Font != null ? Font.MeasureText(value, FontSize) : default;
+    }
+
+    public Vector4 MeasureBounds(string value)
+    {
+        return Font != null ? Font.MeasureTextBounds(value, FontSize) : default;
+    }
+
     public NowUIText Draw(char character)
     {
         if (Font.GetGlyph(character, out var g))

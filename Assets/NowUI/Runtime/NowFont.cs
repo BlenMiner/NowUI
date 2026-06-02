@@ -150,4 +150,118 @@ public class NowFont : ScriptableObject
 
         return m_sparseGlyphTable.TryGetValue(unicode, out glyph);
     }
+
+    public Vector2 MeasureText(string value, float fontSize, int tabSpaces = 4)
+    {
+        if (string.IsNullOrEmpty(value) || fontSize <= 0 || Atlas == null || AtlasInfo.glyphs == null || AtlasInfo.glyphs.Length == 0)
+            return default;
+
+        float lineWidth = 0;
+        float maxWidth = 0;
+        int lineCount = 1;
+
+        for (int i = 0; i < value.Length; ++i)
+        {
+            char c = value[i];
+
+            if (c == '\n')
+            {
+                if (lineWidth > maxWidth)
+                    maxWidth = lineWidth;
+
+                lineWidth = 0;
+                ++lineCount;
+                continue;
+            }
+
+            if (c == '\t')
+            {
+                if (GetGlyph(' ', out var space))
+                    lineWidth += space.advance * fontSize * tabSpaces;
+
+                continue;
+            }
+
+            if (GetGlyph(c, out var glyph))
+                lineWidth += glyph.advance * fontSize;
+        }
+
+        if (lineWidth > maxWidth)
+            maxWidth = lineWidth;
+
+        return new Vector2(maxWidth, AtlasInfo.metrics.lineHeight * fontSize * lineCount);
+    }
+
+    public Vector4 MeasureTextBounds(string value, float fontSize, int tabSpaces = 4)
+    {
+        if (string.IsNullOrEmpty(value) || fontSize <= 0 || Atlas == null || AtlasInfo.glyphs == null || AtlasInfo.glyphs.Length == 0)
+            return default;
+
+        float cursorX = 0;
+        float lineY = 0;
+        float lineHeight = AtlasInfo.metrics.lineHeight * fontSize;
+        float minX = 0;
+        float minY = 0;
+        float maxX = 0;
+        float maxY = 0;
+        bool hasBounds = false;
+
+        for (int i = 0; i < value.Length; ++i)
+        {
+            char c = value[i];
+
+            if (c == '\n')
+            {
+                cursorX = 0;
+                lineY += lineHeight;
+                continue;
+            }
+
+            if (c == '\t')
+            {
+                if (GetGlyph(' ', out var space))
+                    cursorX += space.advance * fontSize * tabSpaces;
+
+                continue;
+            }
+
+            if (!GetGlyph(c, out var glyph))
+                continue;
+
+            if (glyph.atlasBounds.left != glyph.atlasBounds.right)
+            {
+                float glyphLeft = cursorX + glyph.planeBounds.left * fontSize;
+                float glyphRight = cursorX + glyph.planeBounds.right * fontSize;
+                float glyphTop = lineY + lineHeight - glyph.planeBounds.top * fontSize;
+                float glyphBottom = lineY + lineHeight - glyph.planeBounds.bottom * fontSize;
+
+                if (!hasBounds)
+                {
+                    minX = glyphLeft;
+                    minY = glyphTop;
+                    maxX = glyphRight;
+                    maxY = glyphBottom;
+                    hasBounds = true;
+                }
+                else
+                {
+                    if (glyphLeft < minX)
+                        minX = glyphLeft;
+
+                    if (glyphTop < minY)
+                        minY = glyphTop;
+
+                    if (glyphRight > maxX)
+                        maxX = glyphRight;
+
+                    if (glyphBottom > maxY)
+                        maxY = glyphBottom;
+                }
+            }
+
+            cursorX += glyph.advance * fontSize;
+        }
+
+        return hasBounds ? new Vector4(minX, minY, maxX - minX, maxY - minY) : default;
+    }
 }

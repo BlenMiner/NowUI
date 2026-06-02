@@ -1,5 +1,7 @@
 using NowUIInternal;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public static class NowUI
 {
@@ -13,35 +15,92 @@ public static class NowUI
 
     static int m_lastUsedMeshId = -1;
 
+    static bool m_captureMesh;
+
     static Matrix4x4 m_projectionMatrix;
 
     static float m_projectionWidth = -1;
 
     static float m_projectionHeight = -1;
 
-    static int CreateMesh(Material mat)
+    static readonly List<Vector3> s_vertices = new List<Vector3>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<Vector4> s_uvs = new List<Vector4>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<Vector4> s_rects = new List<Vector4>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<Vector4> s_radii = new List<Vector4>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<Vector4> s_colors = new List<Vector4>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<Vector4> s_outlineColors = new List<Vector4>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<Vector4> s_extras = new List<Vector4>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<Vector4> s_masks = new List<Vector4>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<Vector4> s_rawUvs = new List<Vector4>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<Color> s_uguiColors = new List<Color>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<Vector3> s_uguiNormals = new List<Vector3>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<Vector4> s_uguiTangents = new List<Vector4>(NowMesh.InitialVertexCapacity);
+
+    static readonly List<int> s_triangles = new List<int>(NowMesh.InitialIndexCapacity);
+
+    static int CreateMesh(Material mat, NowMeshKind kind)
     {
         m_meshes.EnsureCapacity(1);
         int id = m_meshes.Count;
-        m_meshes.Array[id] = new NowMesh(mat);
+
+        if (m_meshes.Array[id] == null)
+            m_meshes.Array[id] = new NowMesh(mat, kind);
+        else
+            m_meshes.Array[id].SetMaterial(mat, kind);
+
         m_meshes.Count = id + 1;
         return id;
     }
 
-    static NowMesh GetMesh(NowFont font)
+    static NowMesh UseMaterial(Material material, ref int cachedMeshId, NowMeshKind kind)
     {
-        if (font == null || font.Material == null)
+        if (material == null)
             return null;
 
-        int id = font.MaterialID;
-
-        if (id >= 0 && id < m_meshes.Count && ReferenceEquals(m_meshes.Array[id].Material, font.Material)) 
+        if (m_captureMesh)
         {
+            if (m_lastUsedMeshId >= 0 &&
+                m_lastUsedMeshId < m_meshes.Count &&
+                ReferenceEquals(m_meshes.Array[m_lastUsedMeshId].Material, material) &&
+                m_meshes.Array[m_lastUsedMeshId].Kind == kind)
+            {
+                return m_meshes.Array[m_lastUsedMeshId];
+            }
+
+            int captureId = CreateMesh(material, kind);
+            m_lastUsedMeshId = captureId;
+            return m_meshes.Array[captureId];
+        }
+
+        int id = cachedMeshId;
+
+        if (id >= 0 &&
+            id < m_meshes.Count &&
+            ReferenceEquals(m_meshes.Array[id].Material, material) &&
+            m_meshes.Array[id].Kind == kind)
+        {
+            if (!UseMesh(id))
+                return null;
+
             return m_meshes.Array[id];
         }
-        
-        id = CreateMesh(font.Material);
-        font.MaterialID = id;
+
+        id = CreateMesh(material, kind);
+        cachedMeshId = id;
+
+        if (!UseMesh(id))
+            return null;
 
         return m_meshes.Array[id];
     }
@@ -114,6 +173,9 @@ public static class NowUI
 
     static bool UseMesh(int meshId)
     {
+        if (m_captureMesh)
+            return true;
+
         if (meshId < 0 || meshId >= m_meshes.Count)
             return false;
 
@@ -133,21 +195,133 @@ public static class NowUI
             m_meshes.Count = 0;
             m_defaultMesh = -1;
         }
-        
+
         if (m_defaultMaterial != null && m_defaultMesh < 0)
-            m_defaultMesh = CreateMesh(m_defaultMaterial);
+            m_defaultMesh = CreateMesh(m_defaultMaterial, NowMeshKind.Rectangle);
 
         m_lastUsedMeshId = m_defaultMesh;
     }
 
     public static void StartUI()
     {
-        ScreenMask = new Vector4(0, 0, Screen.width, Screen.height);
+        StartUI(new Vector4(0, 0, Screen.width, Screen.height));
+    }
+
+    public static void StartUI(Vector4 screenMask)
+    {
+        m_captureMesh = false;
+        ScreenMask = screenMask;
         Initialize();
+    }
+
+    internal static void BeginMeshCapture(Vector4 screenMask)
+    {
+        ScreenMask = screenMask;
+        Initialize();
+        m_captureMesh = true;
+        m_meshes.Count = 0;
+        m_lastUsedMeshId = -1;
+    }
+
+    internal static void CancelMeshCapture()
+    {
+        if (!m_captureMesh)
+            return;
+
+        for (int i = 0; i < m_meshes.Count; ++i)
+            m_meshes.Array[i].ClearVertices();
+
+        m_captureMesh = false;
+        m_lastUsedMeshId = -1;
+    }
+
+    internal static void EndMeshCapture(Mesh target, List<NowUIMeshBatch> batches, Vector2 positionOffset)
+    {
+        if (target == null)
+        {
+            CancelMeshCapture();
+            return;
+        }
+
+        s_vertices.Clear();
+        s_uvs.Clear();
+        s_rects.Clear();
+        s_radii.Clear();
+        s_colors.Clear();
+        s_outlineColors.Clear();
+        s_extras.Clear();
+        s_masks.Clear();
+        s_rawUvs.Clear();
+        s_uguiColors.Clear();
+        s_uguiNormals.Clear();
+        s_uguiTangents.Clear();
+        batches.Clear();
+
+        for (int i = 0; i < m_meshes.Count; ++i)
+        {
+            NowMesh mesh = m_meshes.Array[i];
+
+            if (!mesh.HasVertices)
+                continue;
+
+            batches.Add(new NowUIMeshBatch(mesh.Material, mesh.Kind));
+            mesh.AppendUGUIVertices(
+                s_vertices,
+                s_uvs,
+                s_rects,
+                s_masks,
+                s_extras,
+                s_uguiColors,
+                s_uguiNormals,
+                s_uguiTangents,
+                positionOffset);
+        }
+
+        target.Clear();
+
+        if (s_vertices.Count == 0)
+        {
+            CancelMeshCapture();
+            return;
+        }
+
+        target.indexFormat = s_vertices.Count > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+        target.SetVertices(s_vertices);
+        target.SetUVs(0, s_uvs);
+        target.SetUVs(1, s_rects);
+        target.SetUVs(2, s_masks);
+        target.SetUVs(3, s_extras);
+        target.SetColors(s_uguiColors);
+        target.SetNormals(s_uguiNormals);
+        target.SetTangents(s_uguiTangents);
+        target.subMeshCount = batches.Count;
+
+        int subMesh = 0;
+        int vertexOffset = 0;
+
+        for (int i = 0; i < m_meshes.Count; ++i)
+        {
+            NowMesh mesh = m_meshes.Array[i];
+
+            if (!mesh.HasVertices)
+                continue;
+
+            s_triangles.Clear();
+            mesh.AppendTriangles(s_triangles, vertexOffset);
+            target.SetTriangles(s_triangles, subMesh, false);
+            vertexOffset += mesh.VertexCount;
+            ++subMesh;
+        }
+
+        target.RecalculateBounds();
+        CancelMeshCapture();
     }
 
     public static void FlushUI()
     {
+        if (m_captureMesh)
+            return;
+
         var meshArray = m_meshes.Array;
         int count = m_meshes.Count;
 
@@ -179,7 +353,7 @@ public static class NowUI
 
     public static void DrawRect(NowUIRectangle rectangle)
     {
-        if (m_defaultMesh < 0)
+        if (m_defaultMaterial == null)
             return;
 
         var position = rectangle.Rect;
@@ -202,10 +376,12 @@ public static class NowUI
         tmpVertex.outlineColor = rectangle.OutlineColor;
         tmpVertex.uvwh = defaultUV;
 
-        if (!UseMesh(m_defaultMesh))
+        NowMesh mesh = UseMaterial(m_defaultMaterial, ref m_defaultMesh, NowMeshKind.Rectangle);
+
+        if (mesh == null)
             return;
 
-        m_meshes.Array[m_defaultMesh].AddRect(tmpVertex, rectangle.Blur, rectangle.Outline);
+        mesh.AddRect(tmpVertex, rectangle.Blur, rectangle.Outline);
     }
 
     public static void DrawString(NowUIText style, string value)
@@ -242,18 +418,15 @@ public static class NowUI
                 {
                     if (mesh == null)
                     {
-                        mesh = GetMesh(font);
+                        mesh = UseMaterial(font.Material, ref font.MaterialID, NowMeshKind.Text);
 
                         if (mesh == null)
                             return;
                     }
 
-                    if (!UseMesh(font.MaterialID))
-                        return;
-
                     DrawCharacter(style, glyph, mesh);
                 }
-            
+
                 style.Rect.x += glyph.advance * fontSize;
             }
         }
@@ -265,12 +438,9 @@ public static class NowUI
             return;
 
         var font = style.Font;
-        var mesh = GetMesh(font);
+        var mesh = UseMaterial(font.Material, ref font.MaterialID, NowMeshKind.Text);
 
         if (mesh == null)
-            return;
-
-        if (!UseMesh(font.MaterialID))
             return;
 
         DrawCharacter(style, glyph, mesh);

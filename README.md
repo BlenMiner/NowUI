@@ -84,6 +84,44 @@ NowUI.Text(new Vector4(24, 24, 300, 60), font)
 Tabs advance by four spaces. Newlines reset x to the starting position and move
 down by the font line height.
 
+Use `NowFont.MeasureText(text, fontSize)` or `NowUIText.Measure(text)` when a
+layout needs advance-based size for reserving space or truncating labels. Use
+`NowFont.MeasureTextBounds(text, fontSize)` or `NowUIText.MeasureBounds(text)`
+when a mask or alignment needs the actual drawn glyph bounds.
+
+## UGUI
+
+`NowUIGraphic` renders NowUI draw calls into a UGUI `CanvasRenderer`. Add a
+component derived from `NowUIGraphic` to a `RectTransform` and override
+`DrawNowUI(Rect rect)`:
+
+```csharp
+public class MyPanel : NowUIGraphic
+{
+    [SerializeField] NowFont font;
+
+    protected override void DrawNowUI(Rect rect)
+    {
+        Vector4 bounds = new Vector4(0, 0, rect.width, rect.height);
+
+        NowUI.Rectangle(bounds)
+            .SetColor(Color.black)
+            .SetRadius(8)
+            .Draw();
+
+        NowUI.Text(new Vector4(16, 12, rect.width - 32, 32), font)
+            .SetFontSize(18)
+            .SetColor(Color.white)
+            .SetMask(bounds)
+            .Draw("UGUI NowUI");
+    }
+}
+```
+
+The graphic handles mesh capture internally; do not call `NowUI.StartUI()` or
+`NowUI.FlushUI()` inside `DrawNowUI`. Call `MarkDirty()` when retained state
+changes, or enable `Rebuild Every Frame` for animated graphics.
+
 ## Compiling Fonts
 
 ### Editor Assets
@@ -144,6 +182,10 @@ matches your Unity editor if Unity changes its bundled toolchain.
 - `Assets/NowUI/Resources`: default materials and compiler resources
 - `Assets/NowUI/Example`: sample scenes/scripts and compiled example fonts
 - `Assets/NowUI/Tests`: edit-mode tests for low-level runtime behavior
+
+The examples include `MailClientMockup`, a Gmail-like inbox layout that draws a
+toolbar, sidebar, message list, and reader pane using immediate NowUI calls.
+`NowUIGraphicExample` shows the same drawing API rendered through UGUI.
 
 ## Notes
 

@@ -29,69 +29,36 @@ public class NowUIFontCompiler : Editor
                     continue;
 
                 var fontPath = AssetDatabase.GetAssetPath(target);
-                var imagePath = $"{fontPath}.png";
-                var jsonPath = $"{fontPath}.json";
+                var newFontPath = $"{fontPath}.asset";
 
                 EditorUtility.DisplayProgressBar("Compile Font", target.name, i / (float)selection.Length);
 
-                if (!NowUIFontCompilerNative.TryCompileFont(
-                    ToProjectFullPath(fontPath),
-                    ToProjectFullPath(imagePath),
-                    ToProjectFullPath(jsonPath),
+                if (!NowFontCompiler.TryCompile(
+                    File.ReadAllBytes(ToProjectFullPath(fontPath)),
                     AtlasSize,
                     PixelRange,
+                    out NowFont font,
                     out string error))
                 {
                     Debug.LogError("Failed to compile " + target.name + "\n" + error);
                     continue;
                 }
 
-                AssetDatabase.Refresh();
-
                 try
                 {
-                    var newFontPath = $"{fontPath}.asset";
+                    if (AssetDatabase.LoadAssetAtPath<NowFont>(newFontPath) != null)
+                        AssetDatabase.DeleteAsset(newFontPath);
 
-                    if (File.Exists(newFontPath)) AssetDatabase.DeleteAsset(newFontPath);
-                    AssetDatabase.Refresh();
+                    font.name = target.name;
+                    font.Atlas.name = "Font Atlas Texture";
+                    font.Material.name = "Font Material";
 
-                    NowFont font = CreateInstance(typeof(NowFont)) as NowFont;
                     AssetDatabase.CreateAsset(font, newFontPath);
-
-                    var json = AssetDatabase.LoadAssetAtPath<TextAsset>(jsonPath);
-
-                    if (json == null)
-                        throw new IOException("Failed to load generated atlas JSON: " + jsonPath);
-
-                    Texture2D texture = new Texture2D(1, 1);
-                    texture.name = "Font Atlas Texture";
-
-                    if (!texture.LoadImage(File.ReadAllBytes(imagePath), true))
-                        throw new IOException("Failed to load generated atlas texture: " + imagePath);
-
-                    var materialTemplate = Resources.Load<Material>("NowUI/TxtMaterial");
-
-                    if (materialTemplate == null)
-                        throw new IOException("Failed to load NowUI text material template.");
-
-                    Material fontMat = Instantiate(materialTemplate);
-
-                    fontMat.mainTexture = texture;
-
-                    AssetDatabase.AddObjectToAsset(texture, newFontPath);
-                    AssetDatabase.AddObjectToAsset(fontMat, newFontPath);
-                    AssetDatabase.Refresh();
-
-                    font.Atlas = texture;
-                    font.Material = fontMat;
-                    font.AtlasInfo = JsonUtility.FromJson<NowFontAtlasInfo>(json.text);
-
+                    AssetDatabase.AddObjectToAsset(font.Atlas, newFontPath);
+                    AssetDatabase.AddObjectToAsset(font.Material, newFontPath);
                     EditorUtility.SetDirty(font);
-
-                    AssetDatabase.ImportAsset(AssetDatabase.GetAssetPath(texture));
-
-                    AssetDatabase.DeleteAsset(imagePath);
-                    AssetDatabase.DeleteAsset(jsonPath);
+                    AssetDatabase.ImportAsset(newFontPath);
+                    AssetDatabase.SaveAssets();
                 }
                 catch (System.Exception ex)
                 {

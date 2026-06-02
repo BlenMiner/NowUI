@@ -2,6 +2,25 @@ using UnityEngine;
 
 namespace NowUIInternal
 {
+    public enum NowMeshKind
+    {
+        Rectangle,
+        Text
+    }
+
+    internal struct NowUIMeshBatch
+    {
+        public Material Material;
+
+        public NowMeshKind Kind;
+
+        public NowUIMeshBatch(Material material, NowMeshKind kind)
+        {
+            Material = material;
+            Kind = kind;
+        }
+    }
+
     public struct StaticList<T>
     {
         public int Count;
@@ -84,6 +103,8 @@ namespace NowUIInternal
 
         public bool HasVertices => m_verts.Count > 0;
 
+        public int VertexCount => m_verts.Count;
+
         StaticList<Vector4> m_rawuv;
 
         StaticList<Vector4> m_mask;
@@ -106,9 +127,12 @@ namespace NowUIInternal
 
         public Material Material;
 
-        public NowMesh(Material mat)
+        public NowMeshKind Kind;
+
+        public NowMesh(Material mat, NowMeshKind kind)
         {
             Material = mat;
+            Kind = kind;
 
             m_radius = new StaticList<Vector4>(InitialVertexCapacity);
             m_rect = new StaticList<Vector4>(InitialVertexCapacity);
@@ -120,6 +144,13 @@ namespace NowUIInternal
             m_tris = new StaticList<int>(InitialIndexCapacity);
             m_mask = new StaticList<Vector4>(InitialVertexCapacity);
             m_rawuv = new StaticList<Vector4>(InitialVertexCapacity);
+        }
+
+        public void SetMaterial(Material material, NowMeshKind kind)
+        {
+            Material = material;
+            Kind = kind;
+            ClearVertices();
         }
 
         static readonly Vector2 s_uv0 = new Vector2(0, 0);
@@ -225,7 +256,7 @@ namespace NowUIInternal
             a.x = position.x;
             a.y = position.y;
             a.z = 0;
-            
+
             b.x = a.x;
             b.y = a.y + position.w;
             b.z = 0;
@@ -318,15 +349,103 @@ namespace NowUIInternal
             ClearVertices();
         }
 
+        public void AppendVertices(
+            System.Collections.Generic.List<Vector3> vertices,
+            System.Collections.Generic.List<Vector2> uvs,
+            System.Collections.Generic.List<Vector4> rects,
+            System.Collections.Generic.List<Vector4> radii,
+            System.Collections.Generic.List<Vector4> colors,
+            System.Collections.Generic.List<Vector4> outlineColors,
+            System.Collections.Generic.List<Vector4> extras,
+            System.Collections.Generic.List<Vector4> masks,
+            System.Collections.Generic.List<Vector4> rawUvs,
+            Vector2 positionOffset)
+        {
+            for (int i = 0; i < m_verts.Count; ++i)
+            {
+                Vector3 vertex = m_verts.Array[i];
+                vertex.x += positionOffset.x;
+                vertex.y += positionOffset.y;
+                vertices.Add(vertex);
+            }
+
+            for (int i = 0; i < m_uvs.Count; ++i)
+                uvs.Add(m_uvs.Array[i]);
+
+            for (int i = 0; i < m_rect.Count; ++i)
+                rects.Add(m_rect.Array[i]);
+
+            for (int i = 0; i < m_radius.Count; ++i)
+                radii.Add(m_radius.Array[i]);
+
+            for (int i = 0; i < m_color.Count; ++i)
+                colors.Add(m_color.Array[i]);
+
+            for (int i = 0; i < m_outlineColor.Count; ++i)
+                outlineColors.Add(m_outlineColor.Array[i]);
+
+            for (int i = 0; i < m_extra.Count; ++i)
+                extras.Add(m_extra.Array[i]);
+
+            for (int i = 0; i < m_mask.Count; ++i)
+                masks.Add(m_mask.Array[i]);
+
+            for (int i = 0; i < m_rawuv.Count; ++i)
+                rawUvs.Add(m_rawuv.Array[i]);
+        }
+
+        public void AppendUGUIVertices(
+            System.Collections.Generic.List<Vector3> vertices,
+            System.Collections.Generic.List<Vector4> uv0,
+            System.Collections.Generic.List<Vector4> rects,
+            System.Collections.Generic.List<Vector4> masks,
+            System.Collections.Generic.List<Vector4> extras,
+            System.Collections.Generic.List<Color> colors,
+            System.Collections.Generic.List<Vector3> normals,
+            System.Collections.Generic.List<Vector4> tangents,
+            Vector2 positionOffset)
+        {
+            bool isText = Kind == NowMeshKind.Text;
+
+            for (int i = 0; i < m_verts.Count; ++i)
+            {
+                Vector3 vertex = m_verts.Array[i];
+                Vector4 radius = m_radius.Array[i];
+                Vector4 rawUv = m_rawuv.Array[i];
+                Vector2 uv = m_uvs.Array[i];
+
+                vertex.x += positionOffset.x;
+                vertex.y += positionOffset.y;
+
+                vertices.Add(vertex);
+                uv0.Add(isText
+                    ? new Vector4(uv.x, uv.y, rawUv.x, rawUv.y)
+                    : new Vector4(uv.x, uv.y, radius.w, 0));
+                rects.Add(m_rect.Array[i]);
+                masks.Add(m_mask.Array[i]);
+                extras.Add(m_extra.Array[i]);
+                Vector4 color = m_color.Array[i];
+                colors.Add(new Color(color.x, color.y, color.z, color.w));
+                normals.Add(new Vector3(radius.x, radius.y, radius.z));
+                tangents.Add(m_outlineColor.Array[i]);
+            }
+        }
+
+        public void AppendTriangles(System.Collections.Generic.List<int> triangles, int vertexOffset)
+        {
+            for (int i = 0; i < m_tris.Count; ++i)
+                triangles.Add(m_tris.Array[i] + vertexOffset);
+        }
+
         public void UploadMesh()
         {
-            if (UnityMesh == null) 
+            if (UnityMesh == null)
             {
                 UnityMesh = new Mesh();
                 UnityMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
                 UnityMesh.MarkDynamic();
             }
-            
+
             UnityMesh.Clear(true);
 
             UnityMesh.SetVertices(m_verts.Array, 0, m_verts.Count);
