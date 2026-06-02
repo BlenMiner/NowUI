@@ -84,6 +84,16 @@ NowUI.Text(new Vector4(24, 24, 300, 60), font)
 Tabs advance by four spaces. Newlines reset x to the starting position and move
 down by the font line height.
 
+Strings are read as Unicode code points, so supplementary-plane glyphs such as
+simple emoji are not split into UTF-16 surrogate halves. The compiler detects
+color font tables such as `sbix`, `CBDT`/`CBLC`, `COLR`/`CPAL`, and `SVG `.
+Outline fonts are imported as MTSDF atlases; color fonts are imported through the
+native FreeType color-glyph path into an RGBA atlas.
+
+The color path imports individual glyphs exposed by the font cmap. Emoji
+sequence shaping, such as ZWJ families, skin tone composition, and flags, will
+need the next HarfBuzz shaping layer.
+
 Use `NowFont.MeasureText(text, fontSize)` or `NowUIText.Measure(text)` when a
 layout needs advance-based size for reserving space or truncating labels. Use
 `NowFont.MeasureTextBounds(text, fontSize)` or `NowUIText.MeasureBounds(text)`
@@ -145,7 +155,15 @@ if (!NowFontCompiler.TryCompile(fontBytes, out NowFont font, out string error))
     Debug.LogError(error);
 ```
 
-This path calls the native `nowui_compile_font_from_memory` entry point. In
+Pass an extra character string to request non-ASCII glyphs:
+
+```csharp
+NowFontCompiler.TryCompile(fontBytes, "Hello \U0001F600", out NowFont font, out string error);
+```
+
+This path calls the native `nowui_compile_font_from_memory` entry point,
+`nowui_compile_font_from_memory_with_codepoints` when extra characters are
+provided, or `nowui_compile_color_font_from_memory` for color font tables. In
 WebGL builds, Unity links `Assets/NowUI/Plugins/WebGL/nowui-msdf.bc` into the
 generated WebAssembly module and the C# binding uses `__Internal`.
 

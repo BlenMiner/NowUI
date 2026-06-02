@@ -25,6 +25,8 @@ public static class NowUI
 
     static readonly List<Vector3> _vertices = new List<Vector3>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
+    static readonly List<Vector2> _meshUvs = new List<Vector2>(NowMesh.INITIAL_VERTEX_CAPACITY);
+
     static readonly List<Vector4> _uvs = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
     static readonly List<Vector4> _rects = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
@@ -317,6 +319,87 @@ public static class NowUI
         CancelMeshCapture();
     }
 
+    internal static void EndMeshCaptureForRenderMesh(Mesh target, List<NowUIMeshBatch> batches, Vector2 positionOffset)
+    {
+        if (target == null)
+        {
+            CancelMeshCapture();
+            return;
+        }
+
+        _vertices.Clear();
+        _meshUvs.Clear();
+        _rects.Clear();
+        _radii.Clear();
+        _colors.Clear();
+        _outlineColors.Clear();
+        _extras.Clear();
+        _masks.Clear();
+        _rawUvs.Clear();
+        batches.Clear();
+
+        for (int i = 0; i < _meshes.count; ++i)
+        {
+            var mesh = _meshes.array[i];
+
+            if (!mesh.hasVertices)
+                continue;
+
+            batches.Add(new NowUIMeshBatch(mesh.material, mesh.kind));
+            mesh.AppendVertices(
+                _vertices,
+                _meshUvs,
+                _rects,
+                _radii,
+                _colors,
+                _outlineColors,
+                _extras,
+                _masks,
+                _rawUvs,
+                positionOffset);
+        }
+
+        target.Clear();
+
+        if (_vertices.Count == 0)
+        {
+            CancelMeshCapture();
+            return;
+        }
+
+        target.indexFormat = _vertices.Count > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+        target.SetVertices(_vertices);
+        target.SetUVs(0, _meshUvs);
+        target.SetUVs(1, _rects);
+        target.SetUVs(2, _radii);
+        target.SetUVs(3, _colors);
+        target.SetUVs(4, _outlineColors);
+        target.SetUVs(5, _extras);
+        target.SetUVs(6, _masks);
+        target.SetUVs(7, _rawUvs);
+        target.subMeshCount = batches.Count;
+
+        int subMesh = 0;
+        int vertexOffset = 0;
+
+        for (int i = 0; i < _meshes.count; ++i)
+        {
+            var mesh = _meshes.array[i];
+
+            if (!mesh.hasVertices)
+                continue;
+
+            _triangles.Clear();
+            mesh.AppendTriangles(_triangles, vertexOffset);
+            target.SetTriangles(_triangles, subMesh, false);
+            vertexOffset += mesh.vertexCount;
+            ++subMesh;
+        }
+
+        target.RecalculateBounds();
+        CancelMeshCapture();
+    }
+
     public static void FlushUI()
     {
         if (_captureMesh)
@@ -399,19 +482,21 @@ public static class NowUI
 
         for (int i = 0; i < value.Length; ++i)
         {
-            if (value[i] == '\n')
+            int codepoint = NowFont.ReadCodepoint(value, ref i);
+
+            if (codepoint == '\n')
             {
                 style.rect.x = leftPos;
                 style.rect.y += font.atlasInfo.metrics.lineHeight * fontSize;
             }
-            else if (value[i] == '\t')
+            else if (codepoint == '\t')
             {
                 if (font.GetGlyph(' ', out var space))
                     style.rect.x += space.advance * fontSize * TAB_SPACES;
             }
             else
             {
-                if (!font.GetGlyph(value[i], out var glyph))
+                if (!font.GetGlyph(codepoint, out var glyph))
                     continue;
 
                 if (glyph.atlasBounds.left != glyph.atlasBounds.right)

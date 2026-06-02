@@ -53,11 +53,16 @@ public struct NowFontAtlasInfo
 
 public class NowFont : ScriptableObject
 {
+    public const string ATLAS_TYPE_MTSDF = "mtsdf";
+    public const string ATLAS_TYPE_RGBA = "rgba";
+
     public Texture2D atlas;
 
     public NowFontAtlasInfo atlasInfo;
 
     public Material material;
+
+    public bool isColor => atlasInfo.atlas.type == ATLAS_TYPE_RGBA;
 
     [System.NonSerialized]
     NowFontAtlasInfo.Glyph[] _denseGlyphTable;
@@ -72,6 +77,24 @@ public class NowFont : ScriptableObject
     public int materialId = -1;
 
     const int MAX_DENSE_GLYPH_RANGE = 4096;
+
+    public static int ReadCodepoint(string value, ref int index)
+    {
+        if (string.IsNullOrEmpty(value) || index < 0 || index >= value.Length)
+            return -1;
+
+        char character = value[index];
+
+        if (char.IsHighSurrogate(character) &&
+            index + 1 < value.Length &&
+            char.IsLowSurrogate(value[index + 1]))
+        {
+            ++index;
+            return char.ConvertToUtf32(character, value[index]);
+        }
+
+        return character;
+    }
 
     static void NormalizeGlyphAtlasBounds(ref NowFontAtlasInfo.Glyph glyph, Texture2D atlas)
     {
@@ -127,6 +150,11 @@ public class NowFont : ScriptableObject
 
     public bool GetGlyph(char c, out NowFontAtlasInfo.Glyph glyph)
     {
+        return GetGlyph((int)c, out glyph);
+    }
+
+    public bool GetGlyph(int unicode, out NowFontAtlasInfo.Glyph glyph)
+    {
         glyph = default;
 
         if (atlas == null || atlasInfo.glyphs == null || atlasInfo.glyphs.Length == 0)
@@ -134,8 +162,6 @@ public class NowFont : ScriptableObject
 
         if (_denseGlyphTable == null && _sparseGlyphTable == null)
             BuildGlyphCache();
-
-        int unicode = c;
 
         if (_denseGlyphTable != null)
         {
@@ -162,9 +188,9 @@ public class NowFont : ScriptableObject
 
         for (int i = 0; i < value.Length; ++i)
         {
-            char c = value[i];
+            int codepoint = ReadCodepoint(value, ref i);
 
-            if (c == '\n')
+            if (codepoint == '\n')
             {
                 if (lineWidth > maxWidth)
                     maxWidth = lineWidth;
@@ -174,7 +200,7 @@ public class NowFont : ScriptableObject
                 continue;
             }
 
-            if (c == '\t')
+            if (codepoint == '\t')
             {
                 if (GetGlyph(' ', out var space))
                     lineWidth += space.advance * fontSize * tabSpaces;
@@ -182,7 +208,7 @@ public class NowFont : ScriptableObject
                 continue;
             }
 
-            if (GetGlyph(c, out var glyph))
+            if (GetGlyph(codepoint, out var glyph))
                 lineWidth += glyph.advance * fontSize;
         }
 
@@ -208,16 +234,16 @@ public class NowFont : ScriptableObject
 
         for (int i = 0; i < value.Length; ++i)
         {
-            char c = value[i];
+            int codepoint = ReadCodepoint(value, ref i);
 
-            if (c == '\n')
+            if (codepoint == '\n')
             {
                 cursorX = 0;
                 lineY += lineHeight;
                 continue;
             }
 
-            if (c == '\t')
+            if (codepoint == '\t')
             {
                 if (GetGlyph(' ', out var space))
                     cursorX += space.advance * fontSize * tabSpaces;
@@ -225,7 +251,7 @@ public class NowFont : ScriptableObject
                 continue;
             }
 
-            if (!GetGlyph(c, out var glyph))
+            if (!GetGlyph(codepoint, out var glyph))
                 continue;
 
             if (glyph.atlasBounds.left != glyph.atlasBounds.right)

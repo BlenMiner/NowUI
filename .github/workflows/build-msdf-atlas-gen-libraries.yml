@@ -141,11 +141,14 @@ jobs:
           if ($env:RUNNER_OS -eq "Windows") {
             Copy-Item -Path "$env:NOWUI_MSDF_INSTALL_DIR/bin/*.dll" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force
             Copy-Item -Path "$env:INSTALL_DIR/bin/*.dll" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force
+            Copy-Item -Path "$env:VCPKG_INSTALLED_DIR/${{ matrix.vcpkg_triplet }}/bin/*.dll" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
           } else {
             Copy-Item -Path "$env:NOWUI_MSDF_INSTALL_DIR/lib/*.so*" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
             Copy-Item -Path "$env:NOWUI_MSDF_INSTALL_DIR/lib/*.dylib" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
             Copy-Item -Path "$env:INSTALL_DIR/lib/*.so*" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
             Copy-Item -Path "$env:INSTALL_DIR/lib/*.dylib" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:VCPKG_INSTALLED_DIR/${{ matrix.vcpkg_triplet }}/lib/*.so*" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:VCPKG_INSTALLED_DIR/${{ matrix.vcpkg_triplet }}/lib/*.dylib" -Destination "$env:NOWUI_MSDF_PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
           }
 
       - name: Upload artifact

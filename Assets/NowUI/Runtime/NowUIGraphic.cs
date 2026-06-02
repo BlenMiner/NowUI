@@ -23,6 +23,8 @@ public class NowUIGraphic : Graphic
 
     [NonSerialized] Material _textMaterialTemplate;
 
+    [NonSerialized] Material _rgbaTextMaterialTemplate;
+
     public event Action<NowUIGraphic, Rect> rebuildNowUI;
 
     public bool rebuildEveryFrame
@@ -186,13 +188,12 @@ public class NowUIGraphic : Graphic
         if (_textMaterials.TryGetValue(batch.material, out var textMaterial) && textMaterial != null)
             return textMaterial;
 
-        if (_textMaterialTemplate == null)
-            _textMaterialTemplate = Resources.Load<Material>("NowUI/TxtMaterialUGUI");
+        Material textMaterialTemplate = GetTextMaterialTemplate(batch.material);
 
-        if (_textMaterialTemplate == null)
+        if (textMaterialTemplate == null)
             return batch.material;
 
-        textMaterial = new Material(_textMaterialTemplate)
+        textMaterial = new Material(textMaterialTemplate)
         {
             name = batch.material.name + " UGUI",
             hideFlags = HideFlags.HideAndDontSave
@@ -203,6 +204,22 @@ public class NowUIGraphic : Graphic
 
         _textMaterials[batch.material] = textMaterial;
         return textMaterial;
+    }
+
+    Material GetTextMaterialTemplate(Material material)
+    {
+        if (material != null && material.shader != null && material.shader.name == "NowUI/Text Renderer RGBA")
+        {
+            if (_rgbaTextMaterialTemplate == null)
+                _rgbaTextMaterialTemplate = Resources.Load<Material>("NowUI/TxtMaterialRGBAUGUI");
+
+            return _rgbaTextMaterialTemplate;
+        }
+
+        if (_textMaterialTemplate == null)
+            _textMaterialTemplate = Resources.Load<Material>("NowUI/TxtMaterialUGUI");
+
+        return _textMaterialTemplate;
     }
 
     void EnsureCanvasChannels()

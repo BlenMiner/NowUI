@@ -42,10 +42,21 @@ public struct NowUIRectangle
         return this;
     }
 
+    public NowUIRectangle SetRadius(Vector4 radius)
+    {
+        this.radius = radius;
+        return this;
+    }
+
     public NowUIRectangle SetPadding(float all)
     {
-        all = -all;
-        padding = new Vector4(all, all, all, all);
+        return SetPadding(new Vector4(all, all, all, all));
+    }
+
+    public NowUIRectangle SetPadding(Vector4 padding)
+    {
+        padding = new Vector4(-padding.x, -padding.y, -padding.z, -padding.w);
+        this.padding = padding;
         mask.x += padding.x;
         mask.y += padding.y;
         mask.z = mask.z - padding.x - padding.z;

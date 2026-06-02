@@ -163,6 +163,52 @@ public class Simple
     }
 
     [Test]
+    public void FontReadsSurrogatePairAsSingleCodepoint()
+    {
+        const int GRINNING_FACE = 0x1F600;
+        string value = "\U0001F600";
+        int index = 0;
+
+        Assert.AreEqual(GRINNING_FACE, NowFont.ReadCodepoint(value, ref index));
+        Assert.AreEqual(1, index);
+    }
+
+    [Test]
+    public void FontCanResolveSupplementaryPlaneGlyphs()
+    {
+        const int GRINNING_FACE = 0x1F600;
+        var font = ScriptableObject.CreateInstance<NowFont>();
+        font.atlas = new Texture2D(100, 100);
+        font.atlasInfo = new NowFontAtlasInfo
+        {
+            glyphs = new[]
+            {
+                new NowFontAtlasInfo.Glyph
+                {
+                    unicode = GRINNING_FACE,
+                    advance = 2,
+                    atlasBounds = new NowFontAtlasInfo.Bounds
+                    {
+                        right = 10,
+                        top = 10
+                    }
+                }
+            }
+        };
+
+        try
+        {
+            Assert.IsTrue(font.GetGlyph(GRINNING_FACE, out var glyph));
+            Assert.AreEqual(2, glyph.advance);
+        }
+        finally
+        {
+            Object.DestroyImmediate(font.atlas);
+            Object.DestroyImmediate(font);
+        }
+    }
+
+    [Test]
     public void FontMeasuresTextBoundsUsingGlyphPlanes()
     {
         var font = ScriptableObject.CreateInstance<NowFont>();
