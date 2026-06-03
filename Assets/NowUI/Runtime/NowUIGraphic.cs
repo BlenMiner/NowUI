@@ -2,18 +2,25 @@ using System;
 using System.Collections.Generic;
 using NowUIInternal;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 
 [AddComponentMenu("NowUI/NowUI Graphic")]
 [ExecuteAlways]
 [RequireComponent(typeof(CanvasRenderer))]
-public class NowUIGraphic : Graphic
+public class NowUIGraphic : MaskableGraphic
 {
     static readonly int _mainTexProp = Shader.PropertyToID("_MainTex");
 
     [SerializeField] bool _rebuildEveryFrame;
 
     [NonSerialized] readonly List<CanvasRenderer> _extraCanvasRenderers = new List<CanvasRenderer>(2);
+
+    [NonSerialized] readonly List<IMaterialModifier> _materialModifiers = new List<IMaterialModifier>(4);
+
+    [NonSerialized] readonly List<Material> _stencilBaseMaterials = new List<Material>(4);
+
+    [NonSerialized] readonly List<Material> _stencilMaterials = new List<Material>(4);
 
     [NonSerialized] readonly Dictionary<Material, Material> _textMaterials = new Dictionary<Material, Material>();
 
@@ -26,6 +33,12 @@ public class NowUIGraphic : Graphic
     [NonSerialized] Material _rgbaTextMaterialTemplate;
 
     [NonSerialized] NowUIRectTransformInputProvider _inputProvider;
+
+    Rect _clipRect;
+
+    Vector2 _clipSoftness;
+
+    bool _validClipRect;
 
     public event Action<NowUIGraphic, Rect> rebuildNowUI;
 
@@ -72,16 +85,26 @@ public class NowUIGraphic : Graphic
         var drawRect = new Rect(0, 0, rect.width, rect.height);
 
         var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset);
+        bool colorMultiplierActive = false;
 
         try
         {
+            NowUI.BeginColorMultiplier(color);
+            colorMultiplierActive = true;
+
             using (NowUIInput.Begin(GetInputProvider(), new NowUIInputSurface(new Vector2(rect.width, rect.height))))
                 DrawNowUI(drawRect);
+
+            NowUI.EndColorMultiplier();
+            colorMultiplierActive = false;
 
             scope.Dispose();
         }
         catch (Exception ex)
         {
+            if (colorMultiplierActive)
+                NowUI.EndColorMultiplier();
+
             scope.Cancel();
             _drawList.Clear();
             Debug.LogException(ex, this);
@@ -93,6 +116,60 @@ public class NowUIGraphic : Graphic
     protected override void UpdateMaterial()
     {
         ApplyCanvasPages();
+    }
+
+    public override Material GetModifiedMaterial(Material baseMaterial)
+    {
+        if (m_ShouldRecalculateStencil)
+        {
+            ReleaseStencilMaterials();
+
+            if (maskable)
+            {
+                var rootCanvas = MaskUtilities.FindRootSortOverrideCanvas(transform);
+                m_StencilValue = MaskUtilities.GetStencilDepth(transform, rootCanvas);
+            }
+            else
+            {
+                m_StencilValue = 0;
+            }
+
+            m_ShouldRecalculateStencil = false;
+        }
+
+        if (m_StencilValue <= 0 || isMaskingGraphic)
+            return baseMaterial;
+
+        return GetStencilMaterial(baseMaterial);
+    }
+
+    public override void RecalculateMasking()
+    {
+        ReleaseStencilMaterials();
+        base.RecalculateMasking();
+    }
+
+    public override void Cull(Rect clipRect, bool validRect)
+    {
+        base.Cull(clipRect, validRect);
+        ApplyCullToExtraCanvasRenderers();
+    }
+
+    public override void SetClipRect(Rect clipRect, bool validRect)
+    {
+        _clipRect = clipRect;
+        _validClipRect = validRect;
+
+        base.SetClipRect(clipRect, validRect);
+        ApplyClippingToExtraCanvasRenderers();
+    }
+
+    public override void SetClipSoftness(Vector2 clipSoftness)
+    {
+        _clipSoftness = clipSoftness;
+
+        base.SetClipSoftness(clipSoftness);
+        ApplyClippingToExtraCanvasRenderers();
     }
 
     protected virtual void LateUpdate()
@@ -109,6 +186,7 @@ public class NowUIGraphic : Graphic
 
     protected override void OnDisable()
     {
+        ReleaseStencilMaterials();
         ClearCanvasRenderer(canvasRenderer);
         ClearExtraCanvasRenderers();
         base.OnDisable();
@@ -122,6 +200,8 @@ public class NowUIGraphic : Graphic
 
     protected override void OnDestroy()
     {
+        ReleaseStencilMaterials();
+
         if (_drawList != null)
         {
             _drawList.Dispose();
@@ -237,7 +317,10 @@ public class NowUIGraphic : Graphic
         crenderer.materialCount = batches.Count;
 
         for (int i = 0; i < batches.Count; ++i)
-            crenderer.SetMaterial(GetCanvasMaterial(batches[i]), i);
+            crenderer.SetMaterial(GetCanvasMaterialForRendering(batches[i]), i);
+
+        if (crenderer != canvasRenderer)
+            ApplyRendererMaskState(crenderer);
     }
 
     static void ClearCanvasRenderer(CanvasRenderer crenderer)
@@ -289,6 +372,7 @@ public class NowUIGraphic : Graphic
 
             var crenderer = go.GetComponent<CanvasRenderer>();
             crenderer.cullTransparentMesh = canvasRenderer.cullTransparentMesh;
+            ApplyRendererMaskState(crenderer);
             _extraCanvasRenderers.Add(crenderer);
         }
 
@@ -313,7 +397,39 @@ public class NowUIGraphic : Graphic
             childTransform.localScale = Vector3.one;
             childTransform.localRotation = Quaternion.identity;
             crenderer.cullTransparentMesh = canvasRenderer.cullTransparentMesh;
+            ApplyRendererMaskState(crenderer);
         }
+    }
+
+    void ApplyCullToExtraCanvasRenderers()
+    {
+        for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
+        {
+            var crenderer = _extraCanvasRenderers[i];
+
+            if (crenderer != null)
+                crenderer.cull = canvasRenderer.cull;
+        }
+    }
+
+    void ApplyClippingToExtraCanvasRenderers()
+    {
+        for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
+            ApplyRendererMaskState(_extraCanvasRenderers[i]);
+    }
+
+    void ApplyRendererMaskState(CanvasRenderer crenderer)
+    {
+        if (crenderer == null)
+            return;
+
+        crenderer.cull = canvasRenderer.cull;
+        crenderer.clippingSoftness = _clipSoftness;
+
+        if (_validClipRect)
+            crenderer.EnableRectClipping(_clipRect);
+        else
+            crenderer.DisableRectClipping();
     }
 
     void DestroyExtraCanvasRenderers()
@@ -384,6 +500,58 @@ public class NowUIGraphic : Graphic
             _textMaterialTemplate = Resources.Load<Material>("NowUI/TxtMaterialUGUI");
 
         return _textMaterialTemplate;
+    }
+
+    Material GetCanvasMaterialForRendering(NowUIMeshBatch batch)
+    {
+        var currentMaterial = GetCanvasMaterial(batch);
+
+        if (currentMaterial == null)
+            return null;
+
+        _materialModifiers.Clear();
+        GetComponents(_materialModifiers);
+
+        for (int i = 0; i < _materialModifiers.Count; ++i)
+            currentMaterial = _materialModifiers[i].GetModifiedMaterial(currentMaterial);
+
+        _materialModifiers.Clear();
+        return currentMaterial;
+    }
+
+    Material GetStencilMaterial(Material baseMaterial)
+    {
+        int index = _stencilBaseMaterials.IndexOf(baseMaterial);
+
+        if (index >= 0)
+            return _stencilMaterials[index];
+
+        var stencilMaterial = StencilMaterial.Add(
+            baseMaterial,
+            (1 << m_StencilValue) - 1,
+            StencilOp.Keep,
+            CompareFunction.Equal,
+            ColorWriteMask.All,
+            (1 << m_StencilValue) - 1,
+            0);
+
+        if (stencilMaterial != baseMaterial)
+        {
+            _stencilBaseMaterials.Add(baseMaterial);
+            _stencilMaterials.Add(stencilMaterial);
+        }
+
+        return stencilMaterial;
+    }
+
+    void ReleaseStencilMaterials()
+    {
+        for (int i = 0; i < _stencilMaterials.Count; ++i)
+            StencilMaterial.Remove(_stencilMaterials[i]);
+
+        _stencilBaseMaterials.Clear();
+        _stencilMaterials.Clear();
+        m_MaskMaterial = null;
     }
 
     void EnsureCanvasChannels()

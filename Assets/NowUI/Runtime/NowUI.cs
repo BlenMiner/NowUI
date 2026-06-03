@@ -19,6 +19,10 @@ public static class NowUI
 
     static int _suppressDrawDepth;
 
+    static Vector4 _colorMultiplier = Vector4.one;
+
+    static readonly List<Vector4> _colorMultiplierStack = new List<Vector4>(4);
+
     static Matrix4x4 _projectionMatrix;
 
     static float _projectionWidth = -1;
@@ -239,6 +243,30 @@ public static class NowUI
     {
         if (_suppressDrawDepth > 0)
             --_suppressDrawDepth;
+    }
+
+    internal static void BeginColorMultiplier(Color color)
+    {
+        _colorMultiplierStack.Add(_colorMultiplier);
+        _colorMultiplier = new Vector4(
+            _colorMultiplier.x * color.r,
+            _colorMultiplier.y * color.g,
+            _colorMultiplier.z * color.b,
+            _colorMultiplier.w * color.a);
+    }
+
+    internal static void EndColorMultiplier()
+    {
+        int index = _colorMultiplierStack.Count - 1;
+
+        if (index < 0)
+        {
+            _colorMultiplier = Vector4.one;
+            return;
+        }
+
+        _colorMultiplier = _colorMultiplierStack[index];
+        _colorMultiplierStack.RemoveAt(index);
     }
 
     internal static void CancelMeshCapture()
@@ -474,6 +502,15 @@ public static class NowUI
 
     static NowRectVertex _tmpVertex;
 
+    static Vector4 ApplyColorMultiplier(Vector4 color)
+    {
+        color.x *= _colorMultiplier.x;
+        color.y *= _colorMultiplier.y;
+        color.z *= _colorMultiplier.z;
+        color.w *= _colorMultiplier.w;
+        return color;
+    }
+
     public static void DrawRect(NowUIRectangle rectangle)
     {
         if (_suppressDrawDepth > 0 || _defaultMaterial == null)
@@ -495,8 +532,8 @@ public static class NowUI
 
         _tmpVertex.mask = rectangle.mask;
         _tmpVertex.radius = rectangle.radius;
-        _tmpVertex.color = rectangle.color;
-        _tmpVertex.outlineColor = rectangle.outlineColor;
+        _tmpVertex.color = ApplyColorMultiplier(rectangle.color);
+        _tmpVertex.outlineColor = ApplyColorMultiplier(rectangle.outlineColor);
         _tmpVertex.uvwh = _defaultUV;
 
         var mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
@@ -654,8 +691,8 @@ public static class NowUI
 
         _tmpVertex.mask = style.mask;
         _tmpVertex.radius = default;
-        _tmpVertex.color = style.color;
-        _tmpVertex.outlineColor = style.outlineColor;
+        _tmpVertex.color = ApplyColorMultiplier(style.color);
+        _tmpVertex.outlineColor = ApplyColorMultiplier(style.outlineColor);
 
         mesh.AddRect(_tmpVertex, style.outline, font.GetScreenPixelRange(glyph.unicode, fontSize));
     }
