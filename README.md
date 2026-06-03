@@ -163,15 +163,20 @@ Pass an extra character string to request non-ASCII glyphs:
 NowFontCompiler.TryCompile(fontBytes, "Hello \U0001F600", out NowFont font, out string error);
 ```
 
-For user-provided text with an open-ended emoji set, enable dynamic compilation
-after creating the font:
+For user-provided text with an open-ended emoji set, compile the selected font
+with `Assets/NowUI/Compile Dynamic Font`. The generated `NowFont` stores the
+source font bytes, keeps the initial atlas small, and resolves missing glyphs on
+demand into dynamic atlas pages. Pages are filled until they exceed the
+configured atlas cap, then a new page/material is created.
+
+Runtime-created fonts can opt into the same behavior:
 
 ```csharp
-font.ConfigureDynamicCompilation(fontBytes, "Hello \U0001F600");
+font.ConfigureDynamicCompilation(fontBytes, "Hello \U0001F600", maxAtlasSize: 2048);
 ```
 
-When text later references a missing glyph, NowUI recompiles a compact atlas for
-the accumulated requested code points and reuses that atlas for subsequent draws.
+When text later references a missing glyph, NowUI compiles it into an existing
+dynamic page when it fits or creates another page when the current page is full.
 This keeps color emoji fonts from importing the full glyph set up front.
 
 This path calls the native `nowui_compile_font_from_memory` entry point,

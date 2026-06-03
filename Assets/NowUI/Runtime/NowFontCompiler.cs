@@ -660,9 +660,9 @@ public static class NowFontCompiler
                 atlasBounds = new NowFontAtlasInfo.Bounds
                 {
                     left = nativeGlyph.atlasLeft,
-                    bottom = info.height - nativeGlyph.atlasTop,
+                    bottom = nativeGlyph.atlasBottom,
                     right = nativeGlyph.atlasRight,
-                    top = info.height - nativeGlyph.atlasBottom
+                    top = nativeGlyph.atlasTop
                 }
             };
         }
@@ -712,9 +712,9 @@ public static class NowFontCompiler
                 atlasBounds = new NowFontAtlasInfo.Bounds
                 {
                     left = nativeGlyph.atlasLeft,
-                    bottom = nativeGlyph.atlasBottom,
+                    bottom = info.height - nativeGlyph.atlasTop,
                     right = nativeGlyph.atlasRight,
-                    top = nativeGlyph.atlasTop
+                    top = info.height - nativeGlyph.atlasBottom
                 }
             };
         }

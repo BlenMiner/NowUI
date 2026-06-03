@@ -496,14 +496,16 @@ public static class NowUI
             }
             else
             {
-                if (!font.GetGlyph(codepoint, out var glyph))
+                if (!font.GetGlyph(codepoint, out var glyph, out var glyphMaterial))
                     continue;
 
                 if (glyph.atlasBounds.left != glyph.atlasBounds.right)
                 {
-                    if (mesh == null || !ReferenceEquals(mesh.material, font.material))
+                    if (mesh == null || !ReferenceEquals(mesh.material, glyphMaterial))
                     {
-                        mesh = UseMaterial(font.material, ref font.materialId, NowMeshKind.Text);
+                        int materialId = font.GetMaterialId(codepoint);
+                        mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
+                        font.SetMaterialId(codepoint, materialId);
 
                         if (mesh == null)
                             return;
@@ -523,7 +525,10 @@ public static class NowUI
             return;
 
         var font = style.font;
-        var mesh = UseMaterial(font.material, ref font.materialId, NowMeshKind.Text);
+        var material = font.GetMaterial(glyph.unicode);
+        int materialId = font.GetMaterialId(glyph.unicode);
+        var mesh = UseMaterial(material, ref materialId, NowMeshKind.Text);
+        font.SetMaterialId(glyph.unicode, materialId);
 
         if (mesh == null)
             return;

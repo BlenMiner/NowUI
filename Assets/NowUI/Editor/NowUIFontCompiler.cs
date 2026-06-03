@@ -22,6 +22,17 @@ public class NowUIFontCompiler : Editor
     [MenuItem("Assets/NowUI/Compile Font")]
     public static void CompileFonts()
     {
+        CompileSelectedFonts(false);
+    }
+
+    [MenuItem("Assets/NowUI/Compile Dynamic Font")]
+    public static void CompileDynamicFonts()
+    {
+        CompileSelectedFonts(true);
+    }
+
+    static void CompileSelectedFonts(bool dynamicFont)
+    {
         var selection = Selection.objects;
 
         try
@@ -35,11 +46,12 @@ public class NowUIFontCompiler : Editor
 
                 var fontPath = AssetDatabase.GetAssetPath(target);
                 var newFontPath = $"{fontPath}.asset";
+                var fontData = File.ReadAllBytes(ToProjectFullPath(fontPath));
 
-                EditorUtility.DisplayProgressBar("Compile Font", target.name, i / (float)selection.Length);
+                EditorUtility.DisplayProgressBar(dynamicFont ? "Compile Dynamic Font" : "Compile Font", target.name, i / (float)selection.Length);
 
                 if (!NowFontCompiler.TryCompile(
-                    File.ReadAllBytes(ToProjectFullPath(fontPath)),
+                    fontData,
                     ATLAS_SIZE,
                     PIXEL_RANGE,
                     EXTRA_CHARACTERS,
@@ -60,6 +72,10 @@ public class NowUIFontCompiler : Editor
                     font.name = target.name;
                     font.atlas.name = "Font Atlas Texture";
                     font.material.name = "Font Material";
+                    font.dynamicFont = dynamicFont;
+                    font.dynamicFontBytes = dynamicFont ? fontData : null;
+                    font.dynamicAtlasSize = ATLAS_SIZE;
+                    font.dynamicPixelRange = PIXEL_RANGE;
 
                     AssetDatabase.CreateAsset(font, newFontPath);
                     AssetDatabase.AddObjectToAsset(font.atlas, newFontPath);
