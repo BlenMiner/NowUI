@@ -267,8 +267,20 @@ void copy_bitmap_to_rgba(const FT_Bitmap &bitmap, std::vector<unsigned char> &rg
     }
 }
 
+double get_color_metric_scale(FT_Face face, int fallback_size) {
+    if (face && face->size) {
+        if (face->size->metrics.y_ppem > 0)
+            return static_cast<double>(face->size->metrics.y_ppem);
+
+        if (face->size->metrics.height > 0)
+            return face->size->metrics.height / 64.0;
+    }
+
+    return fallback_size > 0 ? static_cast<double>(fallback_size) : 1.0;
+}
+
 void collect_color_glyphs(FT_Face face, int size, std::vector<ColorGlyphBitmap> &glyphs) {
-    const double scale = size > 0 ? static_cast<double>(size) : 1.0;
+    const double scale = get_color_metric_scale(face, size);
 
     const auto collect_glyph = [&](FT_ULong charcode, FT_UInt glyph_index) {
         if (FT_Load_Glyph(face, glyph_index, FT_LOAD_COLOR | FT_LOAD_RENDER) == 0) {
@@ -317,7 +329,7 @@ void collect_color_glyphs(
         return;
     }
 
-    const double scale = size > 0 ? static_cast<double>(size) : 1.0;
+    const double scale = get_color_metric_scale(face, size);
 
     for (int i = 0; i < codepoint_count; ++i) {
         const unsigned int unicode = codepoints[i];
@@ -447,14 +459,15 @@ int compile_color_font_to_memory(
     const int atlas_byte_count = width * height * 4;
 
     if (info) {
+        const double metric_scale = get_color_metric_scale(face, size);
         info->width = width;
         info->height = height;
         info->glyph_count = static_cast<int>(glyphs.size());
         info->atlas_byte_count = atlas_byte_count;
         info->size = static_cast<float>(size);
-        info->line_height = face->size ? static_cast<float>((face->size->metrics.height / 64.0) / size) : 1.0f;
-        info->ascender = face->size ? static_cast<float>((face->size->metrics.ascender / 64.0) / size) : 1.0f;
-        info->descender = face->size ? static_cast<float>((face->size->metrics.descender / 64.0) / size) : 0.0f;
+        info->line_height = face->size ? static_cast<float>((face->size->metrics.height / 64.0) / metric_scale) : 1.0f;
+        info->ascender = face->size ? static_cast<float>((face->size->metrics.ascender / 64.0) / metric_scale) : 1.0f;
+        info->descender = face->size ? static_cast<float>((face->size->metrics.descender / 64.0) / metric_scale) : 0.0f;
     }
 
     if (!atlas_rgba || atlas_rgba_length < atlas_byte_count || !glyphs_output || glyph_capacity < static_cast<int>(glyphs.size())) {

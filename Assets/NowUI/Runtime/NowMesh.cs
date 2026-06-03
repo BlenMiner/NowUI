@@ -21,6 +21,12 @@ namespace NowUIInternal
         }
     }
 
+    internal enum NowUIMeshLayout
+    {
+        Render,
+        Canvas
+    }
+
     public struct StaticList<T>
     {
         public int count;

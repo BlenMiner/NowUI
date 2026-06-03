@@ -13,11 +13,9 @@ public class NowUIGraphic : Graphic
 
     [SerializeField] bool _rebuildEveryFrame;
 
-    [NonSerialized] readonly List<NowUIMeshBatch> _batches = new List<NowUIMeshBatch>(4);
-
     [NonSerialized] readonly Dictionary<Material, Material> _textMaterials = new Dictionary<Material, Material>();
 
-    [NonSerialized] Mesh _mesh;
+    [NonSerialized] NowUIDrawList _drawList;
 
     [NonSerialized] Material _rectangleMaterial;
 
@@ -55,38 +53,36 @@ public class NowUIGraphic : Graphic
         if (!IsActive())
             return;
 
-        EnsureMesh();
+        EnsureDrawList();
 
         var rect = rectTransform.rect;
 
         if (rect.width <= 0 || rect.height <= 0)
         {
-            _mesh.Clear();
-            _batches.Clear();
-            canvasRenderer.SetMesh(_mesh);
+            _drawList.Clear();
+            canvasRenderer.SetMesh(_drawList.mesh);
             ApplyMaterials();
             return;
         }
 
-        var mask = new Vector4(0, 0, rect.width, rect.height);
         var positionOffset = new Vector2(rect.xMin, rect.yMax);
+        var drawRect = new Rect(0, 0, rect.width, rect.height);
 
-        NowUI.BeginMeshCapture(mask);
+        var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset);
 
         try
         {
-            DrawNowUI(new Rect(0, 0, rect.width, rect.height));
-            NowUI.EndMeshCapture(_mesh, _batches, positionOffset);
+            DrawNowUI(drawRect);
+            scope.Dispose();
         }
         catch (Exception ex)
         {
-            NowUI.CancelMeshCapture();
-            _mesh.Clear();
-            _batches.Clear();
+            scope.Cancel();
+            _drawList.Clear();
             Debug.LogException(ex, this);
         }
 
-        canvasRenderer.SetMesh(_mesh);
+        canvasRenderer.SetMesh(_drawList.mesh);
         ApplyMaterials();
     }
 
@@ -115,14 +111,10 @@ public class NowUIGraphic : Graphic
 
     protected override void OnDestroy()
     {
-        if (_mesh != null)
+        if (_drawList != null)
         {
-            if (Application.isPlaying)
-                Destroy(_mesh);
-            else
-                DestroyImmediate(_mesh);
-
-            _mesh = null;
+            _drawList.Dispose();
+            _drawList = null;
         }
 
         foreach (var mat in _textMaterials.Values)
@@ -149,27 +141,28 @@ public class NowUIGraphic : Graphic
     }
 #endif
 
-    void EnsureMesh()
+    void EnsureDrawList()
     {
-        if (_mesh != null)
+        if (_drawList != null)
             return;
 
-        _mesh = new Mesh
-        {
-            name = "NowUI Graphic Mesh",
-            hideFlags = HideFlags.HideAndDontSave
-        };
-
-        _mesh.MarkDynamic();
+        _drawList = new NowUIDrawList(NowUIMeshLayout.Canvas, "NowUI Graphic Mesh");
     }
 
     void ApplyMaterials()
     {
         var crenderer = canvasRenderer;
-        crenderer.materialCount = _batches.Count;
+        if (_drawList == null)
+        {
+            crenderer.materialCount = 0;
+            return;
+        }
 
-        for (int i = 0; i < _batches.Count; ++i)
-            crenderer.SetMaterial(GetCanvasMaterial(_batches[i]), i);
+        var batches = _drawList.batches;
+        crenderer.materialCount = batches.Count;
+
+        for (int i = 0; i < batches.Count; ++i)
+            crenderer.SetMaterial(GetCanvasMaterial(batches[i]), i);
     }
 
     Material GetCanvasMaterial(NowUIMeshBatch batch)

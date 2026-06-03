@@ -1,91 +1,73 @@
 using System;
-using System.Collections.Generic;
-using NowUIInternal;
 using UnityEngine;
 using UnityEngine.Rendering;
 
 public sealed class NowUIRenderer : IDisposable
 {
-    readonly List<NowUIMeshBatch> _batches = new List<NowUIMeshBatch>(4);
-
-    Mesh _mesh;
+    readonly NowUIDrawList _drawList = new NowUIDrawList();
 
     CommandBuffer _commandBuffer;
 
-    Vector2 _size;
+    public Mesh mesh => _drawList.mesh;
 
-    public Mesh mesh => _mesh;
+    public Vector2 size => _drawList.size;
 
-    public Vector2 size => _size;
+    public int batchCount => _drawList.batchCount;
 
-    public int batchCount => _batches.Count;
-
-    public bool hasGeometry => _mesh != null && _mesh.vertexCount > 0 && _batches.Count > 0;
+    public bool hasGeometry => _drawList.hasGeometry;
 
     public NowUIRenderer()
     {
-        _mesh = new Mesh
-        {
-            name = "NowUI Renderer Mesh",
-            hideFlags = HideFlags.HideAndDontSave
-        };
-
-        _mesh.MarkDynamic();
-
         _commandBuffer = new CommandBuffer
         {
             name = "NowUI Renderer"
         };
     }
 
-    public void Build(Vector2 size, Action<Rect> drawNowUI)
+    public NowUIDrawScope Begin(Vector2 size)
+    {
+        ThrowIfDisposed();
+        return _drawList.Begin(size);
+    }
+
+    public NowUIDrawScope Begin(RenderTexture target)
     {
         ThrowIfDisposed();
 
-        _size = size;
-        _mesh.Clear();
-        _batches.Clear();
+        if (target == null)
+            throw new ArgumentNullException(nameof(target));
 
-        if (size.x <= 0f || size.y <= 0f || drawNowUI == null)
-            return;
-
-        var mask = new Vector4(0, 0, size.x, size.y);
-        NowUI.BeginMeshCapture(mask);
-
-        try
-        {
-            drawNowUI(new Rect(0, 0, size.x, size.y));
-            NowUI.EndMeshCaptureForRenderMesh(_mesh, _batches, Vector2.zero);
-        }
-        catch
-        {
-            NowUI.CancelMeshCapture();
-            _mesh.Clear();
-            _batches.Clear();
-            throw;
-        }
+        return Begin(new Vector2(target.width, target.height));
     }
 
     public void Draw(CommandBuffer commandBuffer)
     {
         ThrowIfDisposed();
+        Draw(commandBuffer, _drawList);
+    }
 
+    public static void Draw(CommandBuffer commandBuffer, NowUIDrawList drawList)
+    {
         if (commandBuffer == null)
             throw new ArgumentNullException(nameof(commandBuffer));
 
-        if (!hasGeometry)
+        if (drawList == null)
+            throw new ArgumentNullException(nameof(drawList));
+
+        if (!drawList.hasGeometry)
             return;
 
-        commandBuffer.SetViewProjectionMatrices(Matrix4x4.identity, GetProjectionMatrix(_size));
+        commandBuffer.SetViewProjectionMatrices(Matrix4x4.identity, GetProjectionMatrix(drawList.size));
 
-        for (int i = 0; i < _batches.Count; ++i)
+        var batches = drawList.batches;
+        for (int i = 0; i < batches.Count; ++i)
         {
-            var batch = _batches[i];
+            var batch = batches[i];
 
             if (batch.material == null)
                 continue;
 
-            commandBuffer.DrawMesh(_mesh, Matrix4x4.identity, batch.material, i, 0);
+            commandBuffer.DrawMesh(drawList.mesh, Matrix4x4.identity, batch.material, i, 0);
         }
     }
 
@@ -97,16 +79,28 @@ public sealed class NowUIRenderer : IDisposable
     public void PopulateCommandBuffer(CommandBuffer commandBuffer, RenderTargetIdentifier target, bool clear, Color clearColor)
     {
         ThrowIfDisposed();
+        PopulateCommandBuffer(commandBuffer, _drawList, target, clear, clearColor);
+    }
 
+    public static void PopulateCommandBuffer(
+        CommandBuffer commandBuffer,
+        NowUIDrawList drawList,
+        RenderTargetIdentifier target,
+        bool clear,
+        Color clearColor)
+    {
         if (commandBuffer == null)
             throw new ArgumentNullException(nameof(commandBuffer));
+
+        if (drawList == null)
+            throw new ArgumentNullException(nameof(drawList));
 
         commandBuffer.SetRenderTarget(target);
 
         if (clear)
             commandBuffer.ClearRenderTarget(true, true, clearColor);
 
-        Draw(commandBuffer);
+        Draw(commandBuffer, drawList);
     }
 
     public void Render(RenderTexture target)
@@ -126,45 +120,15 @@ public sealed class NowUIRenderer : IDisposable
         Graphics.ExecuteCommandBuffer(_commandBuffer);
     }
 
-    public void Render(RenderTexture target, Action<Rect> drawNowUI, bool clear, Color clearColor)
-    {
-        ThrowIfDisposed();
-
-        if (target == null)
-            throw new ArgumentNullException(nameof(target));
-
-        Render(target, new Vector2(target.width, target.height), drawNowUI, clear, clearColor);
-    }
-
-    public void Render(RenderTexture target, Vector2 size, Action<Rect> drawNowUI, bool clear, Color clearColor)
-    {
-        if (target == null)
-            throw new ArgumentNullException(nameof(target));
-
-        Build(size, drawNowUI);
-        Render(target, clear, clearColor);
-    }
-
     public void Clear()
     {
         ThrowIfDisposed();
-
-        _mesh.Clear();
-        _batches.Clear();
-        _size = default;
+        _drawList.Clear();
     }
 
     public void Dispose()
     {
-        if (_mesh != null)
-        {
-            if (Application.isPlaying)
-                UnityEngine.Object.Destroy(_mesh);
-            else
-                UnityEngine.Object.DestroyImmediate(_mesh);
-
-            _mesh = null;
-        }
+        _drawList.Dispose();
 
         if (_commandBuffer != null)
         {
@@ -175,7 +139,7 @@ public sealed class NowUIRenderer : IDisposable
 
     void ThrowIfDisposed()
     {
-        if (_mesh == null || _commandBuffer == null)
+        if (_drawList.mesh == null || _commandBuffer == null)
             throw new ObjectDisposedException(nameof(NowUIRenderer));
     }
 

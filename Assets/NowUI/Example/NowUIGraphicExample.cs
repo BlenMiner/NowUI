@@ -4,6 +4,8 @@ using UnityEngine;
 public class NowUIGraphicExample : NowUIGraphic
 {
     [SerializeField] NowFont _font;
+    [SerializeField] float _size = 14f;
+    [SerializeField] string _content;
 
     protected override void DrawNowUI(Rect rect)
     {
@@ -33,9 +35,9 @@ public class NowUIGraphicExample : NowUIGraphic
             .Draw("NowUI Graphic");
 
         NowUI.Text(new Vector4(72, 42, width - 96, 24), _font)
-            .SetFontSize(14)
+            .SetFontSize(_size)
             .SetColor(new Color(0.75f, 0.8f, 0.88f, 1f))
             .SetMask(bounds)
-            .Draw("Rendered by a UGUI RectTransform component");
+            .Draw(_content);
     }
 }

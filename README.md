@@ -143,8 +143,11 @@ changes, or enable `Rebuild Every Frame` for animated graphics.
 3. A `.asset` file is generated next to each selected font.
 4. Assign the generated `NowFont` asset to scripts that draw text.
 
-The compiler uses the editor-only NowUI native font compiler plugin and creates
-an atlas texture plus material inside the generated `NowFont` asset.
+The compiler creates a source-only `NowFont` asset. It embeds the source font
+bytes directly in the asset, hides those bytes from the inspector, and does not
+create a `Font Atlas Texture` or material subasset. The original `.ttf` is not
+referenced by the generated font, so it can be excluded from builds after
+compilation.
 
 ### Runtime Fonts
 
@@ -157,36 +160,20 @@ if (!NowFontCompiler.TryCompile(fontBytes, out NowFont font, out string error))
     Debug.LogError(error);
 ```
 
-Pass an extra character string to request non-ASCII glyphs:
-
-```csharp
-NowFontCompiler.TryCompile(fontBytes, "Hello \U0001F600", out NowFont font, out string error);
-```
-
-For user-provided text with an open-ended emoji set, compile the selected font
-with `Assets/NowUI/Compile Dynamic Font`. The generated `NowFont` stores the
-source font bytes directly in the `NowFont` asset, keeps the initial atlas small,
-and resolves missing glyphs on demand into dynamic atlas pages. The source font
-asset is not referenced by the generated dynamic font, so it can be excluded from
-builds after compilation. Pages are filled until they exceed the configured atlas
-cap, then a new page/material is created.
-
-Runtime-created fonts can opt into the same behavior:
-
-```csharp
-font.ConfigureDynamicCompilation(fontBytes, "Hello \U0001F600", maxAtlasSize: 2048);
-```
+Generated and runtime-created `NowFont` instances store source font bytes
+directly in the `NowFont` asset/object and resolve every glyph on demand into
+dynamic atlas pages. Pages are filled until they exceed the configured atlas cap,
+then a new page/material is created.
 
 When text later references a missing glyph, NowUI compiles it into an existing
 dynamic page when it fits or creates another page when the current page is full.
 This keeps color emoji fonts from importing the full glyph set up front.
 
-This path calls the native `nowui_compile_font_from_memory` entry point,
-`nowui_compile_font_from_memory_with_codepoints` when extra characters are
-provided, or `nowui_compile_color_font_from_memory_with_codepoints` for filtered
-color font tables. In
-WebGL builds, Unity links `Assets/NowUI/Plugins/WebGL/nowui-msdf.bc` into the
-generated WebAssembly module and the C# binding uses `__Internal`.
+This path calls `nowui_compile_font_from_memory_with_codepoints` or
+`nowui_compile_color_font_from_memory_with_codepoints` only when glyphs are
+requested. In WebGL builds, Unity links
+`Assets/NowUI/Plugins/WebGL/nowui-msdf.bc` into the generated WebAssembly module
+and the C# binding uses `__Internal`.
 
 ## Native Compiler Artifacts
 

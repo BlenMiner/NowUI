@@ -12,8 +12,6 @@ public static class NowFontCompiler
     const int NATIVE_OK = 0;
     const int NATIVE_BUFFER_TOO_SMALL = 2;
 
-    public static bool usedCodepointFallback {get; private set;}
-
 #if UNITY_WEBGL && !UNITY_EDITOR
     const string LIBRARY_NAME = "__Internal";
 #else
@@ -191,6 +189,65 @@ public static class NowFontCompiler
         out NowFont font,
         out string error)
     {
+        return CreateDynamicFont(fontData, size, pixelRange, materialTemplate, out font, out error);
+    }
+
+    internal static bool TryCompilePage(
+        byte[] fontData,
+        int size,
+        int pixelRange,
+        string extraCharacters,
+        Material materialTemplate,
+        out NowFont font,
+        out string error)
+    {
+        return TryCompileInternal(fontData, size, pixelRange, extraCharacters, materialTemplate, out font, out error);
+    }
+
+    static bool CreateDynamicFont(
+        byte[] fontData,
+        int size,
+        int pixelRange,
+        Material materialTemplate,
+        out NowFont font,
+        out string error)
+    {
+        font = null;
+
+        if (fontData == null || fontData.Length == 0)
+        {
+            error = "Font data is empty.";
+            return false;
+        }
+
+        if (size <= 0)
+        {
+            error = "Dynamic atlas size must be greater than zero.";
+            return false;
+        }
+
+        if (pixelRange <= 0)
+        {
+            error = "Dynamic atlas pixel range must be greater than zero.";
+            return false;
+        }
+
+        font = ScriptableObject.CreateInstance<NowFont>();
+        font.name = "NowUI Runtime Font";
+        font.InitializeDynamicSource(fontData, size, pixelRange, materialTemplate: materialTemplate);
+        error = null;
+        return true;
+    }
+
+    static bool TryCompileInternal(
+        byte[] fontData,
+        int size,
+        int pixelRange,
+        string extraCharacters,
+        Material materialTemplate,
+        out NowFont font,
+        out string error)
+    {
         font = null;
 
         if (fontData == null || fontData.Length == 0)
@@ -214,7 +271,6 @@ public static class NowFontCompiler
         byte[] errorBuffer = new byte[ERROR_CAPACITY];
         NativeAtlasInfo info = default;
         int[] codepoints = CollectCodepoints(extraCharacters);
-        usedCodepointFallback = false;
 
         if (ContainsColorGlyphTables(fontData))
             return TryCompileColorFont(fontData, size, codepoints, materialTemplate, out font, out error);
@@ -238,18 +294,12 @@ public static class NowFontCompiler
             if (queryResult != NATIVE_BUFFER_TOO_SMALL)
             {
                 error = NativeError(errorBuffer, "The native font compiler did not return atlas buffer sizing information.");
-                if (usedCodepointFallback && codepoints != null && codepoints.Length > 0)
-                    error = "The loaded NowUI native plugin does not support extra Unicode codepoint compilation. Rebuild/import the latest NowUI native plugins. ASCII fallback also failed: " + error;
-
                 return false;
             }
 
             if (info.width <= 0 || info.height <= 0 || info.glyphCount <= 0 || info.atlasByteCount <= 0)
             {
                 error = "The native font compiler returned invalid atlas sizing information.";
-                if (usedCodepointFallback && codepoints != null && codepoints.Length > 0)
-                    error = "The loaded NowUI native plugin does not support extra Unicode codepoint compilation. Rebuild/import the latest NowUI native plugins. ASCII fallback also failed: " + error;
-
                 return false;
             }
 
@@ -274,9 +324,6 @@ public static class NowFontCompiler
             if (compileResult != NATIVE_OK)
             {
                 error = NativeError(errorBuffer, "The native font compiler failed without an error message.");
-                if (usedCodepointFallback && codepoints != null && codepoints.Length > 0)
-                    error = "The loaded NowUI native plugin does not support extra Unicode codepoint compilation. Rebuild/import the latest NowUI native plugins. ASCII fallback also failed: " + error;
-
                 return false;
             }
 
@@ -411,39 +458,20 @@ public static class NowFontCompiler
                 errorBufferLength);
         }
 
-        try
-        {
-            return nowui_compile_font_from_memory_with_codepoints(
-                fontData,
-                fontDataLength,
-                size,
-                pixelRange,
-                codepoints,
-                codepoints.Length,
-                atlasRgba,
-                atlasRgbaLength,
-                glyphs,
-                glyphCapacity,
-                ref info,
-                errorBuffer,
-                errorBufferLength);
-        }
-        catch (EntryPointNotFoundException)
-        {
-            usedCodepointFallback = true;
-            return nowui_compile_font_from_memory(
-                fontData,
-                fontDataLength,
-                size,
-                pixelRange,
-                atlasRgba,
-                atlasRgbaLength,
-                glyphs,
-                glyphCapacity,
-                ref info,
-                errorBuffer,
-                errorBufferLength);
-        }
+        return nowui_compile_font_from_memory_with_codepoints(
+            fontData,
+            fontDataLength,
+            size,
+            pixelRange,
+            codepoints,
+            codepoints.Length,
+            atlasRgba,
+            atlasRgbaLength,
+            glyphs,
+            glyphCapacity,
+            ref info,
+            errorBuffer,
+            errorBufferLength);
     }
 
     static int[] CollectCodepoints(string value)
@@ -539,7 +567,7 @@ public static class NowFontCompiler
 
         var texture = new Texture2D(info.width, info.height, TextureFormat.RGBA32, false, true)
         {
-            name = "Font Atlas Texture",
+            name = "NowUI Dynamic Font Atlas",
             filterMode = FilterMode.Bilinear,
             wrapMode = TextureWrapMode.Clamp
         };
@@ -548,7 +576,7 @@ public static class NowFontCompiler
         texture.Apply(false, true);
 
         var material = UnityEngine.Object.Instantiate(materialTemplate);
-        material.name = "NowUI Font Material";
+        material.name = "NowUI Dynamic Font Material";
         material.mainTexture = texture;
 
         var font = ScriptableObject.CreateInstance<NowFont>();
@@ -579,7 +607,7 @@ public static class NowFontCompiler
 
         var texture = new Texture2D(info.width, info.height, TextureFormat.RGBA32, false, false)
         {
-            name = "Color Font Atlas Texture",
+            name = "NowUI Dynamic Color Font Atlas",
             filterMode = FilterMode.Bilinear,
             wrapMode = TextureWrapMode.Clamp
         };
@@ -589,7 +617,7 @@ public static class NowFontCompiler
         texture.Apply(false, true);
 
         var material = UnityEngine.Object.Instantiate(materialTemplate);
-        material.name = "NowUI Color Font Material";
+        material.name = "NowUI Dynamic Color Font Material";
         material.mainTexture = texture;
 
         var font = ScriptableObject.CreateInstance<NowFont>();
@@ -672,6 +700,8 @@ public static class NowFontCompiler
 
     static NowFontAtlasInfo ToColorAtlasInfo(NativeColorGlyph[] nativeGlyphs, NativeColorAtlasInfo info)
     {
+        float metricScale = info.lineHeight > 1.5f ? info.lineHeight : 1;
+
         var atlasInfo = new NowFontAtlasInfo
         {
             atlas = new NowFontAtlasInfo.Atlas
@@ -686,9 +716,9 @@ public static class NowFontCompiler
             metrics = new NowFontAtlasInfo.Metrics
             {
                 emSize = 1,
-                lineHeight = info.lineHeight,
-                ascender = info.ascender,
-                descender = info.descender,
+                lineHeight = info.lineHeight / metricScale,
+                ascender = info.ascender / metricScale,
+                descender = info.descender / metricScale,
                 underlineY = 0,
                 underlineThickness = 0
             },
@@ -701,13 +731,13 @@ public static class NowFontCompiler
             atlasInfo.glyphs[i] = new NowFontAtlasInfo.Glyph
             {
                 unicode = unchecked((int)nativeGlyph.unicode),
-                advance = nativeGlyph.advance,
+                advance = nativeGlyph.advance / metricScale,
                 planeBounds = new NowFontAtlasInfo.Bounds
                 {
-                    left = nativeGlyph.planeLeft,
-                    bottom = nativeGlyph.planeBottom,
-                    right = nativeGlyph.planeRight,
-                    top = nativeGlyph.planeTop
+                    left = nativeGlyph.planeLeft / metricScale,
+                    bottom = nativeGlyph.planeBottom / metricScale,
+                    right = nativeGlyph.planeRight / metricScale,
+                    top = nativeGlyph.planeTop / metricScale
                 },
                 atlasBounds = new NowFontAtlasInfo.Bounds
                 {

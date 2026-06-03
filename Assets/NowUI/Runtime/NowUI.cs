@@ -17,6 +17,8 @@ public static class NowUI
 
     static bool _captureMesh;
 
+    static int _suppressDrawDepth;
+
     static Matrix4x4 _projectionMatrix;
 
     static float _projectionWidth = -1;
@@ -225,6 +227,17 @@ public static class NowUI
         _lastUsedMeshId = -1;
     }
 
+    internal static void BeginSuppressDraw()
+    {
+        ++_suppressDrawDepth;
+    }
+
+    internal static void EndSuppressDraw()
+    {
+        if (_suppressDrawDepth > 0)
+            --_suppressDrawDepth;
+    }
+
     internal static void CancelMeshCapture()
     {
         if (!_captureMesh)
@@ -239,6 +252,16 @@ public static class NowUI
 
     internal static void EndMeshCapture(Mesh target, List<NowUIMeshBatch> batches, Vector2 positionOffset)
     {
+        EndMeshCapture(target, batches, positionOffset, NowUIMeshLayout.Canvas);
+    }
+
+    internal static void EndMeshCaptureForRenderMesh(Mesh target, List<NowUIMeshBatch> batches, Vector2 positionOffset)
+    {
+        EndMeshCapture(target, batches, positionOffset, NowUIMeshLayout.Render);
+    }
+
+    internal static void EndMeshCapture(Mesh target, List<NowUIMeshBatch> batches, Vector2 positionOffset, NowUIMeshLayout layout)
+    {
         if (target == null)
         {
             CancelMeshCapture();
@@ -246,6 +269,7 @@ public static class NowUI
         }
 
         _vertices.Clear();
+        _meshUvs.Clear();
         _uvs.Clear();
         _rects.Clear();
         _radii.Clear();
@@ -267,85 +291,22 @@ public static class NowUI
                 continue;
 
             batches.Add(new NowUIMeshBatch(mesh.material, mesh.kind));
-            mesh.AppendUGUIVertices(
-                _vertices,
-                _uvs,
-                _rects,
-                _masks,
-                _extras,
-                _uguiColors,
-                _uguiNormals,
-                _uguiTangents,
-                positionOffset);
-        }
 
-        target.Clear();
-
-        if (_vertices.Count == 0)
-        {
-            CancelMeshCapture();
-            return;
-        }
-
-        target.indexFormat = _vertices.Count > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
-        target.SetVertices(_vertices);
-        target.SetUVs(0, _uvs);
-        target.SetUVs(1, _rects);
-        target.SetUVs(2, _masks);
-        target.SetUVs(3, _extras);
-        target.SetColors(_uguiColors);
-        target.SetNormals(_uguiNormals);
-        target.SetTangents(_uguiTangents);
-        target.subMeshCount = batches.Count;
-
-        int subMesh = 0;
-        int vertexOffset = 0;
-
-        for (int i = 0; i < _meshes.count; ++i)
-        {
-            var mesh = _meshes.array[i];
-
-            if (!mesh.hasVertices)
+            if (layout == NowUIMeshLayout.Canvas)
+            {
+                mesh.AppendUGUIVertices(
+                    _vertices,
+                    _uvs,
+                    _rects,
+                    _masks,
+                    _extras,
+                    _uguiColors,
+                    _uguiNormals,
+                    _uguiTangents,
+                    positionOffset);
                 continue;
+            }
 
-            _triangles.Clear();
-            mesh.AppendTriangles(_triangles, vertexOffset);
-            target.SetTriangles(_triangles, subMesh, false);
-            vertexOffset += mesh.vertexCount;
-            ++subMesh;
-        }
-
-        target.RecalculateBounds();
-        CancelMeshCapture();
-    }
-
-    internal static void EndMeshCaptureForRenderMesh(Mesh target, List<NowUIMeshBatch> batches, Vector2 positionOffset)
-    {
-        if (target == null)
-        {
-            CancelMeshCapture();
-            return;
-        }
-
-        _vertices.Clear();
-        _meshUvs.Clear();
-        _rects.Clear();
-        _radii.Clear();
-        _colors.Clear();
-        _outlineColors.Clear();
-        _extras.Clear();
-        _masks.Clear();
-        _rawUvs.Clear();
-        batches.Clear();
-
-        for (int i = 0; i < _meshes.count; ++i)
-        {
-            var mesh = _meshes.array[i];
-
-            if (!mesh.hasVertices)
-                continue;
-
-            batches.Add(new NowUIMeshBatch(mesh.material, mesh.kind));
             mesh.AppendVertices(
                 _vertices,
                 _meshUvs,
@@ -369,14 +330,29 @@ public static class NowUI
 
         target.indexFormat = _vertices.Count > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
         target.SetVertices(_vertices);
-        target.SetUVs(0, _meshUvs);
-        target.SetUVs(1, _rects);
-        target.SetUVs(2, _radii);
-        target.SetUVs(3, _colors);
-        target.SetUVs(4, _outlineColors);
-        target.SetUVs(5, _extras);
-        target.SetUVs(6, _masks);
-        target.SetUVs(7, _rawUvs);
+
+        if (layout == NowUIMeshLayout.Canvas)
+        {
+            target.SetUVs(0, _uvs);
+            target.SetUVs(1, _rects);
+            target.SetUVs(2, _masks);
+            target.SetUVs(3, _extras);
+            target.SetColors(_uguiColors);
+            target.SetNormals(_uguiNormals);
+            target.SetTangents(_uguiTangents);
+        }
+        else
+        {
+            target.SetUVs(0, _meshUvs);
+            target.SetUVs(1, _rects);
+            target.SetUVs(2, _radii);
+            target.SetUVs(3, _colors);
+            target.SetUVs(4, _outlineColors);
+            target.SetUVs(5, _extras);
+            target.SetUVs(6, _masks);
+            target.SetUVs(7, _rawUvs);
+        }
+
         target.subMeshCount = batches.Count;
 
         int subMesh = 0;
@@ -436,7 +412,7 @@ public static class NowUI
 
     public static void DrawRect(NowUIRectangle rectangle)
     {
-        if (_defaultMaterial == null)
+        if (_suppressDrawDepth > 0 || _defaultMaterial == null)
             return;
 
         var position = rectangle.rect;
@@ -469,7 +445,7 @@ public static class NowUI
 
     public static void DrawString(NowUIText style, string value)
     {
-        if (string.IsNullOrEmpty(value) || style.font == null)
+        if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || style.font == null)
             return;
 
         var fontSize = style.fontSize;
@@ -487,7 +463,7 @@ public static class NowUI
             if (codepoint == '\n')
             {
                 style.rect.x = leftPos;
-                style.rect.y += font.atlasInfo.metrics.lineHeight * fontSize;
+                style.rect.y += font.GetLineHeight() * fontSize;
             }
             else if (codepoint == '\t')
             {
@@ -521,7 +497,7 @@ public static class NowUI
 
     public static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph)
     {
-        if (style.font == null)
+        if (_suppressDrawDepth > 0 || style.font == null)
             return;
 
         var font = style.font;
@@ -543,7 +519,7 @@ public static class NowUI
         var rect = style.rect;
         var planeBounds = glyph.planeBounds;
 
-        float lineHeight = font.atlasInfo.metrics.lineHeight * fontSize;
+        float lineHeight = font.GetLineHeight() * fontSize;
 
         planeBounds.left *= fontSize;
         planeBounds.right *= fontSize;

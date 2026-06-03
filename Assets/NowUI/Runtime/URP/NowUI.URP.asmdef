@@ -1,0 +1,26 @@
+{
+    "name": "NowUI.URP",
+    "rootNamespace": "",
+    "references": [
+        "GUID:f8d53a32dbb72f34987c15dba8a48aea",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "NOWUI_URP"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.render-pipelines.universal",
+            "expression": "0.0.0",
+            "define": "NOWUI_URP"
+        }
+    ],
+    "noEngineReferences": false
+}

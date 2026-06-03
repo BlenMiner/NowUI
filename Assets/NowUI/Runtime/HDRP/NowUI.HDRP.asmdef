@@ -1,0 +1,26 @@
+{
+    "name": "NowUI.HDRP",
+    "rootNamespace": "",
+    "references": [
+        "GUID:f8d53a32dbb72f34987c15dba8a48aea",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.HighDefinition.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "NOWUI_HDRP"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.render-pipelines.high-definition",
+            "expression": "0.0.0",
+            "define": "NOWUI_HDRP"
+        }
+    ],
+    "noEngineReferences": false
+}

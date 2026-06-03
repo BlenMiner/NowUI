@@ -129,11 +129,31 @@ public sealed class MyPanel : NowUIGraphic
 Call `MarkDirty()` when retained component state changes. Enable `Rebuild Every
 Frame` only for animated graphics or continuously changing data.
 
+## IMGUI
+
+Use `NowUIGUI.Auto(rect)` or `NowUIGUILayout.Auto(...)` from runtime
+`OnGUI` code. In editor code, `NowUIEditorGUI` and `NowUIEditorGUILayout` are
+aliases that add editor pixel-density handling. These helpers render NowUI into
+a cached `RenderTexture` and draw it with IMGUI.
+
+```csharp
+using (var ui = NowUIGUILayout.Auto(96))
+{
+    NowUI.Rectangle(new Vector4(0, 0, ui.width, ui.height))
+        .SetColor(Color.black)
+        .SetRadius(8)
+        .Draw();
+}
+```
+
 ## RenderTexture And Command Buffers
 
 Use `NowUIRenderer` when NowUI should render outside Canvas and outside the
-legacy `OnPostRender` path. It captures immediate NowUI calls into a mesh, then
-draws that mesh through a `CommandBuffer`.
+legacy `OnPostRender` path. Internally this uses `NowUIDrawList`, the shared
+capture container that turns immediate NowUI calls into a mesh plus material
+batches. Pipeline integrations should stay thin: build a draw list, then call
+`NowUIRenderer.Draw(commandBuffer, drawList)` or set the target with
+`NowUIRenderer.PopulateCommandBuffer(...)`.
 
 Render directly into a pure `RenderTexture`.
 
@@ -149,8 +169,10 @@ public sealed class NowUITextureExample : MonoBehaviour
 
     void Update()
     {
-        renderer.Render(target, rect =>
+        using (renderer.Begin(target))
         {
+            var rect = new Rect(0, 0, target.width, target.height);
+
             NowUI.Rectangle(new Vector4(0, 0, rect.width, rect.height))
                 .SetColor(new Color(0.08f, 0.1f, 0.14f, 1f))
                 .Draw();
@@ -159,9 +181,9 @@ public sealed class NowUITextureExample : MonoBehaviour
                 .SetFontSize(24)
                 .SetColor(Color.white)
                 .Draw("Rendered to a texture");
-        },
-        clear: true,
-        clearColor: Color.clear);
+        }
+
+        renderer.Render(target, clear: true, clearColor: Color.clear);
     }
 
     void OnDestroy()
@@ -196,13 +218,15 @@ public sealed class NowUISrpExample : MonoBehaviour
 
     void DrawNowUI(ScriptableRenderContext context, Camera camera)
     {
-        renderer.Build(new Vector2(camera.pixelWidth, camera.pixelHeight), rect =>
+        var size = new Vector2(camera.pixelWidth, camera.pixelHeight);
+
+        using (renderer.Begin(size))
         {
             NowUI.Rectangle(new Vector4(20, 20, 220, 72))
                 .SetColor(new Color(0f, 0f, 0f, 0.75f))
                 .SetRadius(8)
                 .Draw();
-        });
+        }
 
         commandBuffer.Clear();
         renderer.Draw(commandBuffer);
@@ -217,19 +241,23 @@ public sealed class NowUISrpExample : MonoBehaviour
 }
 ```
 
-`NowUIRenderer.Draw(commandBuffer)` draws into the command buffer's current
-render target. `PopulateCommandBuffer(commandBuffer, target, clear, clearColor)`
-sets an explicit target first.
+`NowUIRenderer.Begin(...)` builds the renderer's current draw list.
+`NowUIRenderer.Draw(commandBuffer)` draws that current draw list into the
+command buffer's current render target.
+`NowUIRenderer.Draw(commandBuffer, drawList)` does the same for an external
+draw list. `PopulateCommandBuffer(...)` sets an explicit target first.
 
 ## Font Compilation
 
-Editor font assets are created from `.ttf` files.
+Editor font assets are created from `.ttf` files as source-only `NowFont`
+assets.
 
 1. Select one or more `.ttf` assets in Unity.
 2. Run `Assets > NowUI > Compile Font`.
 3. Assign the generated `NowFont` asset to scripts that draw text.
 
-Runtime font compilation accepts byte arrays.
+Runtime font compilation accepts byte arrays and creates the same source-only
+dynamic font object.
 
 ```csharp
 byte[] fontBytes = LoadFontBytes();
@@ -246,16 +274,11 @@ NowUI.Text(new Vector4(20, 20, 320, 48), runtimeFont)
     .Draw("Runtime font");
 ```
 
-Pass extra characters when the atlas must include glyphs beyond the default
-starter set.
+Glyphs are compiled into dynamic atlas pages the first time text asks for them,
+including emoji and other non-ASCII codepoints.
 
-```csharp
-NowFontCompiler.TryCompile(
-    fontBytes,
-    "Player \U0001F600",
-    out NowFont runtimeFont,
-    out string error);
-```
+The generated `NowFont` stores the source font bytes directly and does not keep
+a reference to the original `.ttf` asset or create a baked atlas texture subasset.
 
 ## Example Scenes And Scripts
 
@@ -267,5 +290,7 @@ Current example scripts live under `Assets/NowUI/Example`.
 - `NowUIGraphicExample.cs`: demonstrates UGUI mesh capture.
 - `NowUIRenderTextureExample.cs`: renders NowUI into a `RenderTexture` and
   applies it to a scene `Renderer`.
+- `NowUIPipelineOverlayExample.cs`: demonstrates an SRP overlay source for URP
+  and HDRP wrappers.
 - `MailClientMockup.cs`: demonstrates a larger immediate-mode layout with
   responsive panels, rows, labels, masks, and truncation.

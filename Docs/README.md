@@ -9,6 +9,10 @@ it.
 
 - [Feature Usage](Features.md): core drawing lifecycle, rectangles, text, UGUI,
   and font compilation examples.
+- [IMGUI](EditorGUI.md): static APIs for drawing NowUI inside runtime or editor
+  `OnGUI` without inheriting a NowUI-specific base class.
+- [Render Pipeline Integrations](RenderPipelines.md): Built-in, UGUI, URP, and
+  HDRP integration patterns.
 - [Styles And Themes](StylesAndThemes.md): ScriptableObject themes, palette
   tokens, spacing/radius tokens, rectangle presets, text presets, and preview
   workflow.

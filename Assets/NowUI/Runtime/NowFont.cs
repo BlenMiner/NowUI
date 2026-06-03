@@ -52,6 +52,7 @@ public struct NowFontAtlasInfo
     public Glyph[] glyphs;
 }
 
+[PreferBinarySerialization]
 public class NowFont : ScriptableObject
 {
     public const string ATLAS_TYPE_MTSDF = "mtsdf";
@@ -61,15 +62,17 @@ public class NowFont : ScriptableObject
     public const int DEFAULT_DYNAMIC_MAX_ATLAS_SIZE = 2048;
     public const int DEFAULT_DYNAMIC_MAX_ATLAS_BYTES = 16 * 1024 * 1024;
 
+    [HideInInspector]
     public Texture2D atlas;
 
+    [HideInInspector]
     public NowFontAtlasInfo atlasInfo;
 
+    [HideInInspector]
     public Material material;
 
-    public bool dynamicFont;
-
-    public byte[] dynamicFontBytes;
+    [SerializeField, HideInInspector]
+    byte[] _fontBytes;
 
     public int dynamicAtlasSize = DEFAULT_DYNAMIC_ATLAS_SIZE;
 
@@ -95,12 +98,6 @@ public class NowFont : ScriptableObject
     Dictionary<int, NowFontAtlasInfo.Glyph> _sparseGlyphTable;
 
     [System.NonSerialized]
-    byte[] _dynamicFontData;
-
-    [System.NonSerialized]
-    string _dynamicCharacters;
-
-    [System.NonSerialized]
     Material _dynamicMaterialTemplate;
 
     [System.NonSerialized]
@@ -120,24 +117,37 @@ public class NowFont : ScriptableObject
 
     const int MAX_DENSE_GLYPH_RANGE = 4096;
 
-    public bool isDynamic
+    byte[] DynamicFontBytes => _fontBytes != null && _fontBytes.Length > 0 ? _fontBytes : null;
+
+    public bool HasEmbeddedSource => DynamicFontBytes != null;
+
+    public int GetSourceByteCount()
     {
-        get
-        {
-            var fontData = DynamicFontBytes;
-            return dynamicFont && fontData != null && fontData.Length > 0;
-        }
+        return DynamicFontBytes?.Length ?? 0;
     }
 
-    byte[] DynamicFontBytes
+    public int GetCachedDynamicPageCount()
     {
-        get
-        {
-            if (_dynamicFontData != null && _dynamicFontData.Length > 0)
-                return _dynamicFontData;
+        return _dynamicPages?.Count ?? 0;
+    }
 
-            return dynamicFontBytes != null && dynamicFontBytes.Length > 0 ? dynamicFontBytes : null;
+    public int GetCachedDynamicGlyphCount()
+    {
+        return _dynamicGlyphPages?.Count ?? 0;
+    }
+
+    public void ClearDynamicCache()
+    {
+        if (_dynamicPages != null)
+        {
+            for (int i = 0; i < _dynamicPages.Count; ++i)
+                DestroyDynamicPage(_dynamicPages[i]);
         }
+
+        _dynamicMisses = null;
+        _dynamicPages = null;
+        _dynamicGlyphPages = null;
+        materialId = -1;
     }
 
     public static int ReadCodepoint(string value, ref int index)
@@ -215,6 +225,47 @@ public class NowFont : ScriptableObject
 
         int byteCount = font.atlas.width * font.atlas.height * 4;
         return maxAtlasBytes <= 0 || byteCount <= maxAtlasBytes;
+    }
+
+    static void DestroyDynamicPage(DynamicAtlasPage page)
+    {
+        if (page == null || page.font == null)
+            return;
+
+        DestroyDynamicObject(page.font.material);
+        DestroyDynamicObject(page.font.atlas);
+        DestroyDynamicObject(page.font);
+        page.font = null;
+    }
+
+    static void DestroyDynamicObject(Object target)
+    {
+        if (target == null)
+            return;
+
+        if (Application.isPlaying)
+            Destroy(target);
+        else
+            DestroyImmediate(target);
+    }
+
+    public float GetLineHeight()
+    {
+        if (atlasInfo.metrics.lineHeight > 0)
+            return atlasInfo.metrics.lineHeight;
+
+        if (_dynamicPages == null)
+            return 1;
+
+        for (int i = 0; i < _dynamicPages.Count; ++i)
+        {
+            var font = _dynamicPages[i].font;
+
+            if (font != null && font.atlasInfo.metrics.lineHeight > 0)
+                return font.atlasInfo.metrics.lineHeight;
+        }
+
+        return 1;
     }
 
     void ClearGlyphCache()
@@ -324,7 +375,7 @@ public class NowFont : ScriptableObject
         if (fontData == null || fontData.Length == 0 || string.IsNullOrEmpty(characters))
             return false;
 
-        if (!NowFontCompiler.TryCompile(
+        if (!NowFontCompiler.TryCompilePage(
             fontData,
             dynamicAtlasSize > 0 ? dynamicAtlasSize : DEFAULT_DYNAMIC_ATLAS_SIZE,
             dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE,
@@ -344,7 +395,7 @@ public class NowFont : ScriptableObject
 
     bool TryCompileMissingGlyph(int unicode)
     {
-        if (!isDynamic || unicode <= 0)
+        if (DynamicFontBytes == null || unicode <= 0)
             return false;
 
         if (_dynamicMisses == null)
@@ -385,14 +436,7 @@ public class NowFont : ScriptableObject
             return true;
         }
 
-        string newPageCharacters = string.IsNullOrEmpty(_dynamicCharacters)
-            ? character
-            : _dynamicCharacters;
-
-        if (!ContainsCodepoint(newPageCharacters, unicode))
-            newPageCharacters += character;
-
-        if (!TryCompileDynamicPage(newPageCharacters, out var newFont))
+        if (!TryCompileDynamicPage(character, out var newFont))
         {
             _dynamicMisses.Add(unicode);
             return false;
@@ -401,7 +445,7 @@ public class NowFont : ScriptableObject
         var newPage = new DynamicAtlasPage
         {
             font = newFont,
-            characters = newPageCharacters
+            characters = character
         };
 
         _dynamicPages.Add(newPage);
@@ -409,27 +453,25 @@ public class NowFont : ScriptableObject
         return true;
     }
 
-    public void ConfigureDynamicCompilation(
+    internal void InitializeDynamicSource(
         byte[] fontData,
-        string initialCharacters = null,
         int atlasSize = 64,
         int pixelRange = 16,
         int maxAtlasSize = DEFAULT_DYNAMIC_MAX_ATLAS_SIZE,
         int maxAtlasBytes = DEFAULT_DYNAMIC_MAX_ATLAS_BYTES,
         Material materialTemplate = null)
     {
-        dynamicFont = fontData != null && fontData.Length > 0;
-        _dynamicFontData = fontData;
-        dynamicFontBytes = fontData;
-        _dynamicCharacters = initialCharacters;
+        atlas = null;
+        atlasInfo = default;
+        material = null;
+        _fontBytes = fontData;
         dynamicAtlasSize = atlasSize;
         dynamicPixelRange = pixelRange;
         dynamicMaxAtlasSize = maxAtlasSize;
         dynamicMaxAtlasBytes = maxAtlasBytes;
         _dynamicMaterialTemplate = materialTemplate;
-        _dynamicMisses = null;
-        _dynamicPages = null;
-        _dynamicGlyphPages = null;
+        ClearDynamicCache();
+        ClearGlyphCache();
     }
 
     public bool GetGlyph(char c, out NowFontAtlasInfo.Glyph glyph)
@@ -509,7 +551,7 @@ public class NowFont : ScriptableObject
 
     public Vector2 MeasureText(string value, float fontSize, int tabSpaces = 4)
     {
-        if (string.IsNullOrEmpty(value) || fontSize <= 0 || atlas == null || atlasInfo.glyphs == null || atlasInfo.glyphs.Length == 0)
+        if (string.IsNullOrEmpty(value) || fontSize <= 0)
             return default;
 
         float lineWidth = 0;
@@ -545,17 +587,17 @@ public class NowFont : ScriptableObject
         if (lineWidth > maxWidth)
             maxWidth = lineWidth;
 
-        return new Vector2(maxWidth, atlasInfo.metrics.lineHeight * fontSize * lineCount);
+        return new Vector2(maxWidth, GetLineHeight() * fontSize * lineCount);
     }
 
     public Vector4 MeasureTextBounds(string value, float fontSize, int tabSpaces = 4)
     {
-        if (string.IsNullOrEmpty(value) || fontSize <= 0 || atlas == null || atlasInfo.glyphs == null || atlasInfo.glyphs.Length == 0)
+        if (string.IsNullOrEmpty(value) || fontSize <= 0)
             return default;
 
         float cursorX = 0;
         float lineY = 0;
-        float lineHeight = atlasInfo.metrics.lineHeight * fontSize;
+        float lineHeight = 0;
         float minX = 0;
         float minY = 0;
         float maxX = 0;
@@ -568,6 +610,9 @@ public class NowFont : ScriptableObject
 
             if (codepoint == '\n')
             {
+                if (lineHeight <= 0)
+                    lineHeight = GetLineHeight() * fontSize;
+
                 cursorX = 0;
                 lineY += lineHeight;
                 continue;
@@ -583,6 +628,9 @@ public class NowFont : ScriptableObject
 
             if (!GetGlyph(codepoint, out var glyph))
                 continue;
+
+            if (lineHeight <= 0)
+                lineHeight = GetLineHeight() * fontSize;
 
             if (glyph.atlasBounds.left != glyph.atlasBounds.right)
             {

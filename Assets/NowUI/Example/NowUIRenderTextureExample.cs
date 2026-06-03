@@ -49,7 +49,10 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
             return;
 
         ApplyTargetTexture(target);
-        _renderer.Render(target, DrawNowUI, clear: true, clearColor: Color.clear);
+        using (_renderer.Begin(target))
+            DrawNowUI(new Rect(0, 0, target.width, target.height));
+
+        _renderer.Render(target, clear: true, clearColor: Color.clear);
     }
 
     void OnDisable()
