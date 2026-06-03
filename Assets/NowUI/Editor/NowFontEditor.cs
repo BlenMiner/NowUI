@@ -79,24 +79,18 @@ public sealed class NowFontEditor : Editor
         EditorGUILayout.LabelField("Font", EditorStyles.boldLabel);
 
         int fontCount = 0;
-        int sourceCount = 0;
         int totalSourceBytes = 0;
         int totalCachedPages = 0;
-        int totalCachedGlyphs = 0;
 
         for (int i = 0; i < targets.Length; ++i)
         {
-            if (!(targets[i] is NowFont font))
+            if (targets[i] is not NowFont font)
                 continue;
 
             ++fontCount;
 
-            if (font.HasEmbeddedSource)
-                ++sourceCount;
-
             totalSourceBytes += font.GetSourceByteCount();
             totalCachedPages += font.GetCachedDynamicPageCount();
-            totalCachedGlyphs += font.GetCachedDynamicGlyphCount();
         }
 
         if (fontCount == 0)
@@ -318,27 +312,29 @@ public sealed class NowFontEditor : Editor
         {
             int codepoint = NowFont.ReadCodepoint(TEXT_PREVIEW_SAMPLE, ref i);
 
-            if (codepoint == '\n')
+            switch (codepoint)
             {
-                TrimTrailingSpace(builder);
-
-                if (builder.Length > 0 && builder[builder.Length - 1] != '\n')
-                    builder.Append('\n');
-
-                continue;
-            }
-
-            if (codepoint == ' ')
-            {
-                if (codepoints.Contains(' ') &&
-                    builder.Length > 0 &&
-                    builder[builder.Length - 1] != ' ' &&
-                    builder[builder.Length - 1] != '\n')
+                case '\n':
                 {
-                    builder.Append(' ');
-                }
+                    TrimTrailingSpace(builder);
 
-                continue;
+                    if (builder.Length > 0 && builder[^1] != '\n')
+                        builder.Append('\n');
+
+                    continue;
+                }
+                case ' ':
+                {
+                    if (codepoints.Contains(' ') &&
+                        builder.Length > 0 &&
+                        builder[^1] != ' ' &&
+                        builder[^1] != '\n')
+                    {
+                        builder.Append(' ');
+                    }
+
+                    continue;
+                }
             }
 
             if (!codepoints.Contains(codepoint) || !IsPreviewableCodepoint(codepoint))
@@ -414,7 +410,7 @@ public sealed class NowFontEditor : Editor
 
     static void TrimTrailingSpace(StringBuilder builder)
     {
-        while (builder.Length > 0 && builder[builder.Length - 1] == ' ')
+        while (builder.Length > 0 && builder[^1] == ' ')
             --builder.Length;
     }
 
