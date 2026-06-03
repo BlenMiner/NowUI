@@ -574,7 +574,7 @@ public class NowFont : ScriptableObject
         var nextGlyphs = new NowFontAtlasInfo.Glyph[length + 1];
 
         if (length > 0)
-            System.Array.Copy(glyphs, nextGlyphs, length);
+            System.Array.Copy(glyphs!, nextGlyphs, length);
 
         nextGlyphs[length] = glyph;
         glyphs = nextGlyphs;
