@@ -12,6 +12,7 @@ public sealed class NowFontEditor : Editor
 
     SerializedProperty _dynamicAtlasSize;
     SerializedProperty _dynamicPixelRange;
+    SerializedProperty _dynamicPageSize;
     SerializedProperty _dynamicMaxAtlasSize;
     SerializedProperty _dynamicMaxAtlasBytes;
 
@@ -21,6 +22,7 @@ public sealed class NowFontEditor : Editor
     {
         _dynamicAtlasSize = serializedObject.FindProperty("dynamicAtlasSize");
         _dynamicPixelRange = serializedObject.FindProperty("dynamicPixelRange");
+        _dynamicPageSize = serializedObject.FindProperty("dynamicPageSize");
         _dynamicMaxAtlasSize = serializedObject.FindProperty("dynamicMaxAtlasSize");
         _dynamicMaxAtlasBytes = serializedObject.FindProperty("dynamicMaxAtlasBytes");
     }
@@ -97,8 +99,9 @@ public sealed class NowFontEditor : Editor
     void DrawSettings()
     {
         EditorGUILayout.LabelField("Dynamic Atlas", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(_dynamicAtlasSize, new GUIContent("Page Size"));
+        EditorGUILayout.PropertyField(_dynamicAtlasSize, new GUIContent("Glyph Size"));
         EditorGUILayout.PropertyField(_dynamicPixelRange, new GUIContent("Pixel Range"));
+        EditorGUILayout.PropertyField(_dynamicPageSize, new GUIContent("Page Size"));
         EditorGUILayout.PropertyField(_dynamicMaxAtlasSize, new GUIContent("Max Page Size"));
         EditorGUILayout.PropertyField(_dynamicMaxAtlasBytes, new GUIContent("Max Page Bytes"));
 

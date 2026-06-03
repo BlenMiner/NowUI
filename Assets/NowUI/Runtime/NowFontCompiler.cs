@@ -560,7 +560,7 @@ public static class NowFontCompiler
         };
 
         texture.LoadRawTextureData(atlasRgba);
-        texture.Apply(false, true);
+        texture.Apply(false, false);
 
         var material = UnityEngine.Object.Instantiate(materialTemplate);
         material.name = "NowUI Dynamic Font Material";
@@ -601,7 +601,7 @@ public static class NowFontCompiler
 
         FlipRgbaRows(atlasRgba, info.width, info.height);
         texture.LoadRawTextureData(atlasRgba);
-        texture.Apply(false, true);
+        texture.Apply(false, false);
 
         var material = UnityEngine.Object.Instantiate(materialTemplate);
         material.name = "NowUI Dynamic Color Font Material";

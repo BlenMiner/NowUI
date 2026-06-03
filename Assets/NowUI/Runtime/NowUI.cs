@@ -435,7 +435,7 @@ public static class NowUI
 
     public static void DrawString(NowUIText style, string value)
     {
-        if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || style.font == null)
+        if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
             return;
 
         var fontSize = style.fontSize;

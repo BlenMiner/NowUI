@@ -59,8 +59,10 @@ public class NowFont : ScriptableObject
     public const string ATLAS_TYPE_RGBA = "rgba";
     public const int DEFAULT_DYNAMIC_ATLAS_SIZE = 64;
     public const int DEFAULT_DYNAMIC_PIXEL_RANGE = 16;
+    public const int DEFAULT_DYNAMIC_PAGE_SIZE = 1024;
     public const int DEFAULT_DYNAMIC_MAX_ATLAS_SIZE = 2048;
     public const int DEFAULT_DYNAMIC_MAX_ATLAS_BYTES = 16 * 1024 * 1024;
+    const int DYNAMIC_GLYPH_PADDING = 1;
 
     [HideInInspector]
     public Texture2D atlas;
@@ -78,6 +80,8 @@ public class NowFont : ScriptableObject
 
     public int dynamicPixelRange = DEFAULT_DYNAMIC_PIXEL_RANGE;
 
+    public int dynamicPageSize = DEFAULT_DYNAMIC_PAGE_SIZE;
+
     public int dynamicMaxAtlasSize = DEFAULT_DYNAMIC_MAX_ATLAS_SIZE;
 
     public int dynamicMaxAtlasBytes = DEFAULT_DYNAMIC_MAX_ATLAS_BYTES;
@@ -88,6 +92,9 @@ public class NowFont : ScriptableObject
     {
         public NowFont font;
         public string characters;
+        public int cursorX;
+        public int cursorY;
+        public int rowHeight;
         public int materialId = -1;
     }
 
@@ -232,10 +239,18 @@ public class NowFont : ScriptableObject
         if (page == null || page.font == null)
             return;
 
-        DestroyDynamicObject(page.font.material);
-        DestroyDynamicObject(page.font.atlas);
-        DestroyDynamicObject(page.font);
+        DestroyDynamicFont(page.font);
         page.font = null;
+    }
+
+    static void DestroyDynamicFont(NowFont font)
+    {
+        if (font == null)
+            return;
+
+        DestroyDynamicObject(font.material);
+        DestroyDynamicObject(font.atlas);
+        DestroyDynamicObject(font);
     }
 
     static void DestroyDynamicObject(Object target)
@@ -247,6 +262,39 @@ public class NowFont : ScriptableObject
             Destroy(target);
         else
             DestroyImmediate(target);
+    }
+
+    static bool IsDynamicPageValid(DynamicAtlasPage page)
+    {
+        return page != null &&
+            page.font &&
+            page.font.atlas &&
+            page.font.material;
+    }
+
+    void RemoveDynamicGlyphMappings(DynamicAtlasPage page)
+    {
+        if (page == null || _dynamicGlyphPages == null || string.IsNullOrEmpty(page.characters))
+            return;
+
+        for (int i = 0; i < page.characters.Length; ++i)
+        {
+            int unicode = ReadCodepoint(page.characters, ref i);
+
+            if (_dynamicGlyphPages.TryGetValue(unicode, out var mappedPage) && ReferenceEquals(mappedPage, page))
+                _dynamicGlyphPages.Remove(unicode);
+        }
+    }
+
+    void RemoveDynamicPageAt(int index)
+    {
+        if (_dynamicPages == null || index < 0 || index >= _dynamicPages.Count)
+            return;
+
+        var page = _dynamicPages[index];
+        RemoveDynamicGlyphMappings(page);
+        _dynamicPages.RemoveAt(index);
+        DestroyDynamicPage(page);
     }
 
     public float GetLineHeight()
@@ -323,7 +371,7 @@ public class NowFont : ScriptableObject
     {
         glyph = default;
 
-        if (atlas == null || atlasInfo.glyphs == null || atlasInfo.glyphs.Length == 0)
+        if (!atlas || !material || atlasInfo.glyphs == null || atlasInfo.glyphs.Length == 0)
             return false;
 
         if (_denseGlyphTable == null && _sparseGlyphTable == null)
@@ -340,31 +388,33 @@ public class NowFont : ScriptableObject
             return glyph.unicode == unicode;
         }
 
-        return _sparseGlyphTable.TryGetValue(unicode, out glyph);
+        return _sparseGlyphTable != null && _sparseGlyphTable.TryGetValue(unicode, out glyph);
     }
 
     bool TryGetDynamicCachedGlyph(int unicode, out NowFontAtlasInfo.Glyph glyph)
     {
         glyph = default;
 
-        if (_dynamicGlyphPages == null || !_dynamicGlyphPages.TryGetValue(unicode, out var page) || page.font == null)
+        if (_dynamicGlyphPages == null || !_dynamicGlyphPages.TryGetValue(unicode, out var page))
             return false;
 
-        return page.font.GetGlyph(unicode, out glyph);
-    }
+        if (!IsDynamicPageValid(page))
+        {
+            int pageIndex = _dynamicPages != null ? _dynamicPages.IndexOf(page) : -1;
 
-    void MapDynamicPageGlyphs(DynamicAtlasPage page)
-    {
-        if (page == null || page.font == null || page.font.atlasInfo.glyphs == null)
-            return;
+            if (pageIndex >= 0)
+                RemoveDynamicPageAt(pageIndex);
+            else
+                _dynamicGlyphPages.Remove(unicode);
 
-        if (_dynamicGlyphPages == null)
-            _dynamicGlyphPages = new Dictionary<int, DynamicAtlasPage>();
+            return false;
+        }
 
-        var glyphs = page.font.atlasInfo.glyphs;
+        if (page.font.GetGlyph(unicode, out glyph))
+            return true;
 
-        for (int i = 0; i < glyphs.Length; ++i)
-            _dynamicGlyphPages[glyphs[i].unicode] = page;
+        _dynamicGlyphPages.Remove(unicode);
+        return false;
     }
 
     bool TryCompileDynamicPage(string characters, out NowFont font)
@@ -393,64 +443,275 @@ public class NowFont : ScriptableObject
             dynamicMaxAtlasBytes > 0 ? dynamicMaxAtlasBytes : DEFAULT_DYNAMIC_MAX_ATLAS_BYTES);
     }
 
+    int GetDynamicPageSize(int requiredSize)
+    {
+        int pageSize = dynamicPageSize > 0 ? dynamicPageSize : DEFAULT_DYNAMIC_PAGE_SIZE;
+        int maxAtlasSize = dynamicMaxAtlasSize > 0 ? dynamicMaxAtlasSize : DEFAULT_DYNAMIC_MAX_ATLAS_SIZE;
+        int maxAtlasBytes = dynamicMaxAtlasBytes > 0 ? dynamicMaxAtlasBytes : DEFAULT_DYNAMIC_MAX_ATLAS_BYTES;
+
+        if (maxAtlasBytes > 0)
+        {
+            int maxSizeByBytes = Mathf.FloorToInt(Mathf.Sqrt(maxAtlasBytes / 4f));
+            if (maxSizeByBytes > 0)
+                maxAtlasSize = Mathf.Min(maxAtlasSize, maxSizeByBytes);
+        }
+
+        pageSize = Mathf.Max(pageSize, requiredSize);
+        return Mathf.Min(pageSize, maxAtlasSize);
+    }
+
+    static bool TryGetGlyphSourceRect(NowFont font, NowFontAtlasInfo.Glyph glyph, out RectInt rect)
+    {
+        rect = default;
+
+        if (!font || !font.atlas)
+            return false;
+
+        int left = Mathf.FloorToInt(Mathf.Min(glyph.atlasBounds.left, glyph.atlasBounds.right));
+        int right = Mathf.CeilToInt(Mathf.Max(glyph.atlasBounds.left, glyph.atlasBounds.right));
+        int bottom = Mathf.FloorToInt(Mathf.Min(glyph.atlasBounds.bottom, glyph.atlasBounds.top));
+        int top = Mathf.CeilToInt(Mathf.Max(glyph.atlasBounds.bottom, glyph.atlasBounds.top));
+
+        left = Mathf.Clamp(left, 0, font.atlas.width);
+        right = Mathf.Clamp(right, 0, font.atlas.width);
+        bottom = Mathf.Clamp(bottom, 0, font.atlas.height);
+        top = Mathf.Clamp(top, 0, font.atlas.height);
+
+        rect = new RectInt(left, bottom, right - left, top - bottom);
+        return rect.width >= 0 && rect.height >= 0;
+    }
+
+    DynamicAtlasPage CreateDynamicPage(NowFont glyphFont, int requiredSize)
+    {
+        if (!glyphFont || !glyphFont.atlas || !glyphFont.material)
+            return null;
+
+        int pageSize = GetDynamicPageSize(requiredSize);
+        if (pageSize < requiredSize)
+            return null;
+
+        bool isColorPage = glyphFont.isColor;
+        var pageTexture = new Texture2D(pageSize, pageSize, TextureFormat.RGBA32, false, !isColorPage)
+        {
+            name = isColorPage ? "NowUI Dynamic Color Font Page" : "NowUI Dynamic Font Page",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+            hideFlags = HideFlags.HideAndDontSave
+        };
+
+        pageTexture.SetPixels32(new Color32[pageSize * pageSize]);
+        pageTexture.Apply(false, false);
+
+        var pageMaterial = new Material(glyphFont.material)
+        {
+            name = glyphFont.material.name + " Page",
+            hideFlags = HideFlags.HideAndDontSave,
+            mainTexture = pageTexture
+        };
+
+        var pageFont = ScriptableObject.CreateInstance<NowFont>();
+        pageFont.name = isColorPage ? "NowUI Runtime Color Font Page" : "NowUI Runtime Font Page";
+        pageFont.hideFlags = HideFlags.HideAndDontSave;
+        pageFont.atlas = pageTexture;
+        pageFont.material = pageMaterial;
+        pageFont.atlasInfo = glyphFont.atlasInfo;
+        pageFont.atlasInfo.atlas.width = pageSize;
+        pageFont.atlasInfo.atlas.height = pageSize;
+        pageFont.atlasInfo.glyphs = new NowFontAtlasInfo.Glyph[0];
+
+        return new DynamicAtlasPage
+        {
+            font = pageFont,
+            characters = string.Empty
+        };
+    }
+
+    static bool IsSameDynamicPageType(DynamicAtlasPage page, NowFont glyphFont)
+    {
+        return page != null &&
+            page.font != null &&
+            glyphFont != null &&
+            page.font.atlasInfo.atlas.type == glyphFont.atlasInfo.atlas.type;
+    }
+
+    bool TryAllocateGlyphRect(DynamicAtlasPage page, RectInt sourceRect, out RectInt targetRect)
+    {
+        targetRect = default;
+
+        if (page == null || page.font == null || page.font.atlas == null)
+            return false;
+
+        if (sourceRect.width <= 0 || sourceRect.height <= 0)
+            return true;
+
+        int paddedWidth = sourceRect.width + DYNAMIC_GLYPH_PADDING;
+        int paddedHeight = sourceRect.height + DYNAMIC_GLYPH_PADDING;
+        int pageWidth = page.font.atlas.width;
+        int pageHeight = page.font.atlas.height;
+
+        if (sourceRect.width > pageWidth || sourceRect.height > pageHeight)
+            return false;
+
+        if (page.cursorX + sourceRect.width > pageWidth)
+        {
+            page.cursorX = 0;
+            page.cursorY += page.rowHeight;
+            page.rowHeight = 0;
+        }
+
+        if (page.cursorY + sourceRect.height > pageHeight)
+            return false;
+
+        targetRect = new RectInt(page.cursorX, page.cursorY, sourceRect.width, sourceRect.height);
+        page.cursorX += paddedWidth;
+        page.rowHeight = Mathf.Max(page.rowHeight, paddedHeight);
+        return true;
+    }
+
+    static void AppendGlyph(ref NowFontAtlasInfo.Glyph[] glyphs, NowFontAtlasInfo.Glyph glyph)
+    {
+        int length = glyphs?.Length ?? 0;
+        var nextGlyphs = new NowFontAtlasInfo.Glyph[length + 1];
+
+        if (length > 0)
+            System.Array.Copy(glyphs, nextGlyphs, length);
+
+        nextGlyphs[length] = glyph;
+        glyphs = nextGlyphs;
+    }
+
+    bool TryAppendDynamicGlyph(DynamicAtlasPage page, NowFont glyphFont, int unicode)
+    {
+        if (!IsSameDynamicPageType(page, glyphFont) ||
+            glyphFont.atlasInfo.glyphs == null ||
+            glyphFont.atlasInfo.glyphs.Length == 0)
+        {
+            return false;
+        }
+
+        var glyph = glyphFont.atlasInfo.glyphs[0];
+
+        if (glyph.unicode != unicode)
+            return false;
+
+        if (!TryGetGlyphSourceRect(glyphFont, glyph, out var sourceRect))
+            return false;
+
+        if (!TryAllocateGlyphRect(page, sourceRect, out var targetRect))
+            return false;
+
+        if (sourceRect.width > 0 && sourceRect.height > 0)
+        {
+            var pixels = glyphFont.atlas.GetPixels(sourceRect.x, sourceRect.y, sourceRect.width, sourceRect.height);
+            page.font.atlas.SetPixels(targetRect.x, targetRect.y, targetRect.width, targetRect.height, pixels);
+            page.font.atlas.Apply(false, false);
+
+            glyph.atlasBounds.left = targetRect.x + (glyph.atlasBounds.left - sourceRect.x);
+            glyph.atlasBounds.right = targetRect.x + (glyph.atlasBounds.right - sourceRect.x);
+            glyph.atlasBounds.bottom = targetRect.y + (glyph.atlasBounds.bottom - sourceRect.y);
+            glyph.atlasBounds.top = targetRect.y + (glyph.atlasBounds.top - sourceRect.y);
+        }
+        else
+        {
+            glyph.atlasBounds = default;
+        }
+
+        var fontAtlasInfo = page.font.atlasInfo;
+        AppendGlyph(ref fontAtlasInfo.glyphs, glyph);
+        page.font.atlasInfo = fontAtlasInfo;
+        page.font.ClearGlyphCache();
+
+        page.characters += CodepointToString(unicode);
+        _dynamicGlyphPages ??= new Dictionary<int, DynamicAtlasPage>();
+        _dynamicGlyphPages[unicode] = page;
+        return true;
+    }
+
     bool TryCompileMissingGlyph(int unicode)
     {
         if (DynamicFontBytes == null || unicode <= 0)
             return false;
 
-        if (_dynamicMisses == null)
-            _dynamicMisses = new HashSet<int>();
+        _dynamicMisses ??= new HashSet<int>();
 
         if (_dynamicMisses.Contains(unicode))
             return false;
 
-        if (_dynamicGlyphPages != null && _dynamicGlyphPages.ContainsKey(unicode))
+        if (TryGetDynamicCachedGlyph(unicode, out _))
             return true;
 
-        if (ContainsCodepoint(BuildCharactersFromGlyphs(), unicode))
+        if (atlas && material && ContainsCodepoint(BuildCharactersFromGlyphs(), unicode))
         {
             _dynamicMisses.Add(unicode);
             return false;
         }
 
-        if (_dynamicPages == null)
-            _dynamicPages = new List<DynamicAtlasPage>();
+        _dynamicPages ??= new List<DynamicAtlasPage>();
 
         string character = CodepointToString(unicode);
-
-        for (int i = _dynamicPages.Count - 1; i >= 0; --i)
-        {
-            var page = _dynamicPages[i];
-
-            if (ContainsCodepoint(page.characters, unicode))
-                return true;
-
-            string nextCharacters = page.characters + character;
-
-            if (!TryCompileDynamicPage(nextCharacters, out var updatedFont))
-                continue;
-
-            page.font = updatedFont;
-            page.characters = nextCharacters;
-            MapDynamicPageGlyphs(page);
-            return true;
-        }
-
-        if (!TryCompileDynamicPage(character, out var newFont))
+        if (!TryCompileDynamicPage(character, out var glyphFont))
         {
             _dynamicMisses.Add(unicode);
             return false;
         }
 
-        var newPage = new DynamicAtlasPage
+        try
         {
-            font = newFont,
-            characters = character
-        };
+            if (glyphFont.atlasInfo.glyphs == null || glyphFont.atlasInfo.glyphs.Length == 0)
+            {
+                _dynamicMisses.Add(unicode);
+                return false;
+            }
 
-        _dynamicPages.Add(newPage);
-        MapDynamicPageGlyphs(newPage);
-        return true;
+            if (!TryGetGlyphSourceRect(glyphFont, glyphFont.atlasInfo.glyphs[0], out var sourceRect))
+            {
+                _dynamicMisses.Add(unicode);
+                return false;
+            }
+
+            int requiredPageSize = Mathf.Max(sourceRect.width, sourceRect.height);
+
+            for (int i = _dynamicPages.Count - 1; i >= 0; --i)
+            {
+                var page = _dynamicPages[i];
+
+                if (!IsDynamicPageValid(page))
+                {
+                    RemoveDynamicPageAt(i);
+                    continue;
+                }
+
+                if (ContainsCodepoint(page.characters, unicode))
+                {
+                    if (page.font.GetGlyph(unicode, out _))
+                    {
+                        _dynamicGlyphPages ??= new Dictionary<int, DynamicAtlasPage>();
+                        _dynamicGlyphPages[unicode] = page;
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                if (TryAppendDynamicGlyph(page, glyphFont, unicode))
+                    return true;
+            }
+
+            var newPage = CreateDynamicPage(glyphFont, requiredPageSize);
+
+            if (newPage != null && TryAppendDynamicGlyph(newPage, glyphFont, unicode))
+            {
+                _dynamicPages.Add(newPage);
+                return true;
+            }
+
+            _dynamicMisses.Add(unicode);
+            return false;
+        }
+        finally
+        {
+            DestroyDynamicFont(glyphFont);
+        }
     }
 
     internal void InitializeDynamicSource(
@@ -467,6 +728,7 @@ public class NowFont : ScriptableObject
         _fontBytes = fontData;
         dynamicAtlasSize = atlasSize;
         dynamicPixelRange = pixelRange;
+        dynamicPageSize = DEFAULT_DYNAMIC_PAGE_SIZE;
         dynamicMaxAtlasSize = maxAtlasSize;
         dynamicMaxAtlasBytes = maxAtlasBytes;
         _dynamicMaterialTemplate = materialTemplate;
