@@ -1,0 +1,171 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 04c5a0a2a8e8407792a9d8e3844255a0, type: 3}
+  m_Name: NowUITheme
+  m_EditorClassIdentifier: NowUI.Runtime::NowUITheme
+  _defaultRectanglePreset: surface
+  _defaultTextPreset: body
+  _palette:
+  - _id: background
+    _color: {r: 0.945, g: 0.961, b: 0.976, a: 1}
+  - _id: surface
+    _color: {r: 1, g: 1, b: 1, a: 1}
+  - _id: surface-muted
+    _color: {r: 0.973, g: 0.98, b: 0.988, a: 1}
+  - _id: text
+    _color: {r: 0.067, g: 0.094, b: 0.153, a: 1}
+  - _id: text-muted
+    _color: {r: 0.42, g: 0.447, b: 0.502, a: 1}
+  - _id: border
+    _color: {r: 0.886, g: 0.91, b: 0.941, a: 1}
+  - _id: accent
+    _color: {r: 0.102, g: 0.451, b: 0.91, a: 1}
+  - _id: accent-text
+    _color: {r: 1, g: 1, b: 1, a: 1}
+  _spacings:
+  - _id: none
+    _insets: {x: 0, y: 0, z: 0, w: 0}
+  - _id: xs
+    _insets: {x: 4, y: 4, z: 4, w: 4}
+  - _id: sm
+    _insets: {x: 8, y: 8, z: 8, w: 8}
+  - _id: md
+    _insets: {x: 12, y: 12, z: 12, w: 12}
+  - _id: lg
+    _insets: {x: 20, y: 20, z: 20, w: 20}
+  - _id: panel
+    _insets: {x: 24, y: 20, z: 24, w: 20}
+  _radii:
+  - _id: none
+    _radius: {x: 0, y: 0, z: 0, w: 0}
+  - _id: sm
+    _radius: {x: 4, y: 4, z: 4, w: 4}
+  - _id: md
+    _radius: {x: 8, y: 8, z: 8, w: 8}
+  - _id: lg
+    _radius: {x: 14, y: 14, z: 14, w: 14}
+  - _id: pill
+    _radius: {x: 999, y: 999, z: 999, w: 999}
+  _rectanglePresets:
+  - _id: surface
+    _fill:
+      _token: surface
+      _fallback: {r: 1, g: 1, b: 1, a: 1}
+    _radius:
+      _token: md
+      _fallback: {x: 8, y: 8, z: 8, w: 8}
+    _padding:
+      _token: 
+      _fallback: {x: 0, y: 0, z: 0, w: 0}
+    _blur: 0
+    _outline: 0
+    _outlineColor:
+      _token: border
+      _fallback: {r: 0, g: 0, b: 0, a: 0}
+  - _id: muted
+    _fill:
+      _token: surface-muted
+      _fallback: {r: 0.973, g: 0.98, b: 0.988, a: 1}
+    _radius:
+      _token: md
+      _fallback: {x: 8, y: 8, z: 8, w: 8}
+    _padding:
+      _token: 
+      _fallback: {x: 0, y: 0, z: 0, w: 0}
+    _blur: 0
+    _outline: 0
+    _outlineColor:
+      _token: border
+      _fallback: {r: 0, g: 0, b: 0, a: 0}
+  - _id: outline
+    _fill:
+      _token: 
+      _fallback: {r: 0, g: 0, b: 0, a: 0}
+    _radius:
+      _token: md
+      _fallback: {x: 8, y: 8, z: 8, w: 8}
+    _padding:
+      _token: 
+      _fallback: {x: 0, y: 0, z: 0, w: 0}
+    _blur: 0
+    _outline: 1
+    _outlineColor:
+      _token: border
+      _fallback: {r: 0.886, g: 0.91, b: 0.941, a: 1}
+  - _id: accent
+    _fill:
+      _token: accent
+      _fallback: {r: 0.102, g: 0.451, b: 0.91, a: 1}
+    _radius:
+      _token: md
+      _fallback: {x: 8, y: 8, z: 8, w: 8}
+    _padding:
+      _token: 
+      _fallback: {x: 0, y: 0, z: 0, w: 0}
+    _blur: 0
+    _outline: 0
+    _outlineColor:
+      _token: accent
+      _fallback: {r: 0, g: 0, b: 0, a: 0}
+  _textPresets:
+  - _id: title
+    _font: {fileID: 0}
+    _fontSize: 28
+    _color:
+      _token: text
+      _fallback: {r: 0.067, g: 0.094, b: 0.153, a: 1}
+    _outline: 0
+    _outlineColor:
+      _token: 
+      _fallback: {r: 0, g: 0, b: 0, a: 0}
+    _padding:
+      _token: 
+      _fallback: {x: 0, y: 0, z: 0, w: 0}
+  - _id: body
+    _font: {fileID: 0}
+    _fontSize: 16
+    _color:
+      _token: text
+      _fallback: {r: 0.067, g: 0.094, b: 0.153, a: 1}
+    _outline: 0
+    _outlineColor:
+      _token: 
+      _fallback: {r: 0, g: 0, b: 0, a: 0}
+    _padding:
+      _token: 
+      _fallback: {x: 0, y: 0, z: 0, w: 0}
+  - _id: muted
+    _font: {fileID: 0}
+    _fontSize: 14
+    _color:
+      _token: text-muted
+      _fallback: {r: 0.42, g: 0.447, b: 0.502, a: 1}
+    _outline: 0
+    _outlineColor:
+      _token: 
+      _fallback: {r: 0, g: 0, b: 0, a: 0}
+    _padding:
+      _token: 
+      _fallback: {x: 0, y: 0, z: 0, w: 0}
+  - _id: button
+    _font: {fileID: 0}
+    _fontSize: 14
+    _color:
+      _token: accent-text
+      _fallback: {r: 1, g: 1, b: 1, a: 1}
+    _outline: 0
+    _outlineColor:
+      _token: 
+      _fallback: {r: 0, g: 0, b: 0, a: 0}
+    _padding:
+      _token: 
+      _fallback: {x: 0, y: 0, z: 0, w: 0}

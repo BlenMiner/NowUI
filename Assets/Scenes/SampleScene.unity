@@ -457,9 +457,9 @@ MonoBehaviour:
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   _rebuildEveryFrame: 1
-  _font: {fileID: 11400000, guid: 393d7f54dbb0f7f4dbe51307964e4c5a, type: 2}
-  _size: 16
-  _content: Oh no...
+  _font: {fileID: 11400000, guid: 0d7342069edd6a741a5958becb000004, type: 2}
+  _size: 83.7
+  _content: "\U000F066F\U000F044D"
 --- !u!1 &2070718855
 GameObject:
   m_ObjectHideFlags: 0

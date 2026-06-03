@@ -91,20 +91,16 @@ internal readonly struct NowFontGlyphInfo
 internal sealed class NowFontGlyphCatalog
 {
     public readonly NowFontGlyphInfo[] glyphs;
-    public readonly string message;
-    public readonly bool hasGlyphNames;
 
-    NowFontGlyphCatalog(NowFontGlyphInfo[] glyphs, string message, bool hasGlyphNames)
+    NowFontGlyphCatalog(NowFontGlyphInfo[] glyphs)
     {
         this.glyphs = glyphs ?? Array.Empty<NowFontGlyphInfo>();
-        this.message = message;
-        this.hasGlyphNames = hasGlyphNames;
     }
 
     public static NowFontGlyphCatalog Load(NowFont font)
     {
         if (font == null)
-            return new NowFontGlyphCatalog(Array.Empty<NowFontGlyphInfo>(), "Select a NowFont to explore glyphs.", false);
+            return new NowFontGlyphCatalog(Array.Empty<NowFontGlyphInfo>());
 
         if (!font.TryGetSourceBytes(out var sourceBytes))
             return LoadFromAtlas(font, "Embedded source bytes are required for glyph names; showing compiled atlas codepoints only.");
@@ -139,18 +135,13 @@ internal sealed class NowFontGlyphCatalog
         }
 
         glyphs.Sort((a, b) => a.codepoint.CompareTo(b.codepoint));
-
-        string catalogMessage = hasNames
-            ? null
-            : "This font does not expose glyph names in a supported table; showing generated glyph IDs.";
-
-        return new NowFontGlyphCatalog(glyphs.ToArray(), catalogMessage, hasNames);
+        return new NowFontGlyphCatalog(glyphs.ToArray());
     }
 
     static NowFontGlyphCatalog LoadFromAtlas(NowFont font, string message)
     {
         if (font == null || font.atlasInfo.glyphs == null || font.atlasInfo.glyphs.Length == 0)
-            return new NowFontGlyphCatalog(Array.Empty<NowFontGlyphInfo>(), message, false);
+            return new NowFontGlyphCatalog(Array.Empty<NowFontGlyphInfo>());
 
         var source = font.atlasInfo.glyphs;
         var glyphs = new List<NowFontGlyphInfo>(source.Length);
@@ -167,7 +158,7 @@ internal sealed class NowFontGlyphCatalog
         }
 
         glyphs.Sort((a, b) => a.codepoint.CompareTo(b.codepoint));
-        return new NowFontGlyphCatalog(glyphs.ToArray(), message, false);
+        return new NowFontGlyphCatalog(glyphs.ToArray());
     }
 
     readonly struct CmapMapping

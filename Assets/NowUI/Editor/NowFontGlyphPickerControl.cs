@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
@@ -7,14 +8,20 @@ internal sealed class NowFontGlyphPickerControl
 {
     const float ROW_HEIGHT = 44f;
     const float PREVIEW_SIZE = 34f;
+    const float ROW_PREVIEW_FONT_SIZE = 28f;
     const float SELECTED_PREVIEW_SIZE = 56f;
     const float SELECTED_PREVIEW_FONT_SIZE = 44f;
+    const float EXPANDED_LIST_BOTTOM_PADDING = 10f;
+    const float LIST_HEIGHT_EPSILON = 0.5f;
 
     static readonly Color RowEven = new Color(0.19f, 0.19f, 0.19f, 1f);
     static readonly Color RowOdd = new Color(0.16f, 0.16f, 0.16f, 1f);
     static readonly Color RowSelected = new Color(0.22f, 0.36f, 0.54f, 1f);
     static readonly Color PreviewBackground = new Color(0.08f, 0.08f, 0.08f, 1f);
     static readonly Color PreviewColor = Color.white;
+    static readonly PropertyInfo GUIClipVisibleRectProperty = typeof(GUI).Assembly
+        .GetType("UnityEngine.GUIClip")
+        ?.GetProperty("visibleRect", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
     const float ScrollbarWidth = 16f;
 
     NowFont _font;
@@ -26,6 +33,7 @@ internal sealed class NowFontGlyphPickerControl
     bool _filterDirty = true;
     bool _hasSelectedGlyph;
     NowFontGlyphInfo _selectedGlyph;
+    float _expandedListHeight;
 
     public NowFont font => _font;
 
@@ -36,6 +44,7 @@ internal sealed class NowFontGlyphPickerControl
 
         _font = font;
         _scroll = default;
+        _expandedListHeight = 0f;
         _hasSelectedGlyph = false;
         Reload();
     }
@@ -72,7 +81,6 @@ internal sealed class NowFontGlyphPickerControl
         if (_catalog == null)
             return;
 
-        DrawCatalogMessage();
         DrawToolbar();
         DrawSelectedGlyph(showNotification);
         DrawGlyphList(listHeight, expandList, showNotification, repaint);
@@ -97,12 +105,6 @@ internal sealed class NowFontGlyphPickerControl
                 repaint?.Invoke();
             }
         }
-    }
-
-    void DrawCatalogMessage()
-    {
-        if (!string.IsNullOrEmpty(_catalog.message))
-            EditorGUILayout.HelpBox(_catalog.message, MessageType.Info);
     }
 
     void DrawToolbar()
@@ -157,7 +159,7 @@ internal sealed class NowFontGlyphPickerControl
                     GUILayout.Width(SELECTED_PREVIEW_SIZE),
                     GUILayout.Height(SELECTED_PREVIEW_SIZE));
 
-                DrawGlyphPreview(previewRect, _selectedGlyph);
+                DrawGlyphPreview(previewRect, _selectedGlyph, SELECTED_PREVIEW_FONT_SIZE);
 
                 using (new EditorGUILayout.VerticalScope())
                 {
@@ -200,20 +202,13 @@ internal sealed class NowFontGlyphPickerControl
             return;
         }
 
-        Rect listRect = expandList
-            ? GUILayoutUtility.GetRect(
-                0f,
-                100000f,
-                0f,
-                100000f,
-                GUILayout.ExpandWidth(true),
-                GUILayout.ExpandHeight(true))
-            : GUILayoutUtility.GetRect(
-                0f,
-                100000f,
-                listHeight,
-                listHeight,
-                GUILayout.ExpandWidth(true));
+        float resolvedListHeight = ResolveListHeight(listHeight, expandList, repaint);
+        Rect listRect = GUILayoutUtility.GetRect(
+            0f,
+            100000f,
+            resolvedListHeight,
+            resolvedListHeight,
+            GUILayout.ExpandWidth(true));
 
         float contentHeight = glyphCount * ROW_HEIGHT;
         float maxScrollY = Mathf.Max(0f, contentHeight - listRect.height);
@@ -280,7 +275,7 @@ internal sealed class NowFontGlyphPickerControl
         }
 
         var previewRect = new Rect(row.x + 6f, row.y + 5f, PREVIEW_SIZE, PREVIEW_SIZE);
-        DrawGlyphPlaceholder(previewRect, glyph);
+        DrawGlyphPreview(previewRect, glyph, ROW_PREVIEW_FONT_SIZE);
 
         var codeRect = new Rect(row.x + 50f, row.y + 5f, 86f, 16f);
         GUI.Label(codeRect, glyph.codepointLabel, EditorStyles.miniLabel);
@@ -306,55 +301,89 @@ internal sealed class NowFontGlyphPickerControl
         }
     }
 
-    void DrawGlyphPreview(Rect rect, NowFontGlyphInfo glyph)
+    float ResolveListHeight(float minHeight, bool expandList, Action repaint)
     {
-        if (_font == null || !glyph.TryGetCharacter(out var character))
+        if (!expandList)
+            return minHeight;
+
+        if (_expandedListHeight <= 0f)
+            _expandedListHeight = minHeight;
+
+        float height = Mathf.Max(minHeight, _expandedListHeight);
+
+        if (Event.current.type == EventType.Repaint)
+        {
+            float nextHeight = GetExpandedListHeight(minHeight);
+
+            if (Mathf.Abs(nextHeight - _expandedListHeight) > LIST_HEIGHT_EPSILON)
+            {
+                _expandedListHeight = nextHeight;
+                repaint?.Invoke();
+            }
+        }
+
+        return height;
+    }
+
+    static float GetExpandedListHeight(float minHeight)
+    {
+        Rect lastRect = GUILayoutUtility.GetLastRect();
+        float viewportBottom = GetCurrentViewportBottom();
+        float remainingHeight = viewportBottom - lastRect.yMax - EXPANDED_LIST_BOTTOM_PADDING;
+        return remainingHeight > minHeight ? remainingHeight : minHeight;
+    }
+
+    static float GetCurrentViewportBottom()
+    {
+        if (GUIClipVisibleRectProperty != null)
+        {
+            object value = GUIClipVisibleRectProperty.GetValue(null);
+
+            if (value is Rect visibleRect && visibleRect.height > 0f)
+                return visibleRect.yMax;
+        }
+
+        return EditorWindow.focusedWindow != null
+            ? EditorWindow.focusedWindow.position.height
+            : 0f;
+    }
+
+    void DrawGlyphPreview(Rect rect, NowFontGlyphInfo glyph, float fontSize)
+    {
+        if (_font == null)
             return;
 
-        using (var preview = NowUIEditorGUI.Auto(rect, PreviewBackground))
-        {
-            var panel = new Vector4(0f, 0f, preview.rect.width, preview.rect.height);
-            NowUI.Rectangle(panel)
-                .SetColor(PreviewBackground)
-                .Draw();
+        if (Event.current.type != EventType.Repaint)
+            return;
 
-            Vector4 bounds = _font.MeasureTextBounds(character, SELECTED_PREVIEW_FONT_SIZE);
-            float x = (preview.rect.width - bounds.z) * 0.5f - bounds.x;
-            float y = (preview.rect.height - bounds.w) * 0.5f - bounds.y;
+        using var preview = NowUIEditorGUI.Auto(rect, PreviewBackground);
+        var panel = new Vector4(0f, 0f, preview.rect.width, preview.rect.height);
+        NowUI.Rectangle(panel)
+            .SetColor(PreviewBackground)
+            .Draw();
 
-            NowUI.Text(new Vector4(x, y, preview.rect.width, preview.rect.height), _font)
-                .SetFontSize(SELECTED_PREVIEW_FONT_SIZE)
-                .SetColor(PreviewColor)
-                .Draw(character);
-        }
+        if (!_font.GetGlyph(glyph.codepoint, fontSize, out var drawGlyph))
+            return;
+
+        var bounds = GetSingleGlyphBounds(_font, drawGlyph, fontSize);
+        float x = (preview.rect.width - bounds.z) * 0.5f - bounds.x;
+        float y = (preview.rect.height - bounds.w) * 0.5f - bounds.y;
+
+        NowUI.Text(new Vector4(x, y, preview.rect.width, preview.rect.height), _font)
+            .SetFontSize(fontSize)
+            .SetColor(PreviewColor)
+            .Draw(drawGlyph);
     }
 
-    static void DrawGlyphPlaceholder(Rect rect, NowFontGlyphInfo glyph)
+    static Vector4 GetSingleGlyphBounds(NowFont font, NowFontAtlasInfo.Glyph glyph, float fontSize)
     {
-        if (Event.current.type == EventType.Repaint)
-            EditorGUI.DrawRect(rect, PreviewBackground);
+        float lineHeight = font.GetLineHeight() * fontSize;
+        float left = glyph.planeBounds.left * fontSize;
+        float right = glyph.planeBounds.right * fontSize;
+        float top = lineHeight - glyph.planeBounds.top * fontSize;
+        float bottom = lineHeight - glyph.planeBounds.bottom * fontSize;
 
-        string label = glyph.glyphIndex >= 0
-            ? glyph.glyphIndex.ToString()
-            : glyph.codepoint.ToString("X");
-
-        GUI.Label(rect, label, CenteredMiniLabel);
-    }
-
-    static GUIStyle _centeredMiniLabel;
-
-    static GUIStyle CenteredMiniLabel
-    {
-        get
-        {
-            _centeredMiniLabel ??= new GUIStyle(EditorStyles.miniLabel)
-            {
-                alignment = TextAnchor.MiddleCenter,
-                clipping = TextClipping.Clip
-            };
-
-            return _centeredMiniLabel;
-        }
+        return new Vector4(left, top, right - left, bottom - top);
     }
 
     void CopyGlyph(NowFontGlyphInfo glyph, Action<GUIContent> showNotification)
