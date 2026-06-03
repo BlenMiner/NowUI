@@ -165,9 +165,11 @@ NowFontCompiler.TryCompile(fontBytes, "Hello \U0001F600", out NowFont font, out 
 
 For user-provided text with an open-ended emoji set, compile the selected font
 with `Assets/NowUI/Compile Dynamic Font`. The generated `NowFont` stores the
-source font bytes, keeps the initial atlas small, and resolves missing glyphs on
-demand into dynamic atlas pages. Pages are filled until they exceed the
-configured atlas cap, then a new page/material is created.
+source font bytes directly in the `NowFont` asset, keeps the initial atlas small,
+and resolves missing glyphs on demand into dynamic atlas pages. The source font
+asset is not referenced by the generated dynamic font, so it can be excluded from
+builds after compilation. Pages are filled until they exceed the configured atlas
+cap, then a new page/material is created.
 
 Runtime-created fonts can opt into the same behavior:
 

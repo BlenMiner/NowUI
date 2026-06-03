@@ -69,8 +69,6 @@ public class NowFont : ScriptableObject
 
     public bool dynamicFont;
 
-    public TextAsset dynamicFontData;
-
     public byte[] dynamicFontBytes;
 
     public int dynamicAtlasSize = DEFAULT_DYNAMIC_ATLAS_SIZE;
@@ -138,10 +136,7 @@ public class NowFont : ScriptableObject
             if (_dynamicFontData != null && _dynamicFontData.Length > 0)
                 return _dynamicFontData;
 
-            if (dynamicFontBytes != null && dynamicFontBytes.Length > 0)
-                return dynamicFontBytes;
-
-            return dynamicFontData != null ? dynamicFontData.bytes : null;
+            return dynamicFontBytes != null && dynamicFontBytes.Length > 0 ? dynamicFontBytes : null;
         }
     }
 
@@ -425,6 +420,7 @@ public class NowFont : ScriptableObject
     {
         dynamicFont = fontData != null && fontData.Length > 0;
         _dynamicFontData = fontData;
+        dynamicFontBytes = fontData;
         _dynamicCharacters = initialCharacters;
         dynamicAtlasSize = atlasSize;
         dynamicPixelRange = pixelRange;
