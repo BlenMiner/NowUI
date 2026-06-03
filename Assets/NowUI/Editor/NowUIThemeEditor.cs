@@ -132,10 +132,13 @@ public sealed class NowUIThemeEditor : Editor
         {
             alignment = alignment,
             clipping = TextClipping.Clip,
-            fontSize = Mathf.Clamp(fontSize, 9, 24)
+            fontSize = Mathf.Clamp(fontSize, 9, 24),
+            normal =
+            {
+                textColor = color
+            }
         };
 
-        style.normal.textColor = color;
         GUI.Label(rect, text, style);
     }
 

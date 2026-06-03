@@ -250,16 +250,6 @@ public static class NowUI
         _lastUsedMeshId = -1;
     }
 
-    internal static void EndMeshCapture(Mesh target, List<NowUIMeshBatch> batches, Vector2 positionOffset)
-    {
-        EndMeshCapture(target, batches, positionOffset, NowUIMeshLayout.Canvas);
-    }
-
-    internal static void EndMeshCaptureForRenderMesh(Mesh target, List<NowUIMeshBatch> batches, Vector2 positionOffset)
-    {
-        EndMeshCapture(target, batches, positionOffset, NowUIMeshLayout.Render);
-    }
-
     internal static void EndMeshCapture(Mesh target, List<NowUIMeshBatch> batches, Vector2 positionOffset, NowUIMeshLayout layout)
     {
         if (target == null)
@@ -425,9 +415,9 @@ public static class NowUI
         int rectHeight = (int)position.w;
 
         _tmpVertex.position.x = (int)position.x;
-        _tmpVertex.position.y = (-(int)position.y) - rectHeight;
+        _tmpVertex.position.y = -(int)position.y - rectHeight;
         _tmpVertex.position.z = (int)position.z;
-        _tmpVertex.position.w = (int)rectHeight;
+        _tmpVertex.position.w = rectHeight;
 
         _tmpVertex.mask = rectangle.mask;
         _tmpVertex.radius = rectangle.radius;
@@ -460,37 +450,41 @@ public static class NowUI
         {
             int codepoint = NowFont.ReadCodepoint(value, ref i);
 
-            if (codepoint == '\n')
+            switch (codepoint)
             {
-                style.rect.x = leftPos;
-                style.rect.y += font.GetLineHeight() * fontSize;
-            }
-            else if (codepoint == '\t')
-            {
-                if (font.GetGlyph(' ', out var space))
-                    style.rect.x += space.advance * fontSize * TAB_SPACES;
-            }
-            else
-            {
-                if (!font.GetGlyph(codepoint, out var glyph, out var glyphMaterial))
-                    continue;
-
-                if (glyph.atlasBounds.left != glyph.atlasBounds.right)
+                case '\n':
+                    style.rect.x = leftPos;
+                    style.rect.y += font.GetLineHeight() * fontSize;
+                    break;
+                case '\t':
                 {
-                    if (mesh == null || !ReferenceEquals(mesh.material, glyphMaterial))
-                    {
-                        int materialId = font.GetMaterialId(codepoint);
-                        mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
-                        font.SetMaterialId(codepoint, materialId);
+                    if (font.GetGlyph(' ', out var space))
+                        style.rect.x += space.advance * fontSize * TAB_SPACES;
+                    break;
+                }
+                default:
+                {
+                    if (!font.GetGlyph(codepoint, out var glyph, out var glyphMaterial))
+                        continue;
 
-                        if (mesh == null)
-                            return;
+                    if (!Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right))
+                    {
+                        if (mesh == null || !ReferenceEquals(mesh.material, glyphMaterial))
+                        {
+                            int materialId = font.GetMaterialId(codepoint);
+                            mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
+                            font.SetMaterialId(codepoint, materialId);
+
+                            if (mesh == null)
+                                return;
+                        }
+
+                        DrawCharacter(style, glyph, mesh);
                     }
 
-                    DrawCharacter(style, glyph, mesh);
+                    style.rect.x += glyph.advance * fontSize;
+                    break;
                 }
-
-                style.rect.x += glyph.advance * fontSize;
             }
         }
     }
@@ -534,12 +528,11 @@ public static class NowUI
         py += lineHeight - pw;
 
         var atlasBounds = glyph.atlasBounds;
-        float rectHeight = pw;
 
         _tmpVertex.position.x = px;
-        _tmpVertex.position.y = -(py + rectHeight);
+        _tmpVertex.position.y = -(py + pw);
         _tmpVertex.position.z = pz;
-        _tmpVertex.position.w = rectHeight;
+        _tmpVertex.position.w = pw;
 
         _tmpVertex.uvwh.x = atlasBounds.left;
         _tmpVertex.uvwh.y = atlasBounds.bottom;

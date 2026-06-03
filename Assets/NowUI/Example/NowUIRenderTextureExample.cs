@@ -40,12 +40,11 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
 
     void Update()
     {
-        if (_renderer == null)
-            _renderer = new NowUIRenderer();
+        _renderer ??= new NowUIRenderer();
 
-        RenderTexture target = GetTarget();
+        var target = GetTarget();
 
-        if (target == null)
+        if (!target)
             return;
 
         ApplyTargetTexture(target);
@@ -76,10 +75,10 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
 
     RenderTexture GetTarget()
     {
-        if (_target != null)
+        if (_target)
             return _target;
 
-        if (_ownedTarget != null &&
+        if (_ownedTarget &&
             _ownedTarget.width == _fallbackSize.x &&
             _ownedTarget.height == _fallbackSize.y)
         {
@@ -100,7 +99,7 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
 
     void ReleaseOwnedTarget()
     {
-        if (_ownedTarget == null)
+        if (!_ownedTarget)
             return;
 
         _ownedTarget.Release();
@@ -115,11 +114,10 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
 
     void ApplyTargetTexture(RenderTexture target)
     {
-        if (_targetRenderer == null)
+        if (!_targetRenderer)
             return;
 
-        if (_propertyBlock == null)
-            _propertyBlock = new MaterialPropertyBlock();
+        _propertyBlock ??= new MaterialPropertyBlock();
 
         _targetRenderer.GetPropertyBlock(_propertyBlock);
         _propertyBlock.SetTexture(_mainTexId, target);
@@ -131,7 +129,7 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
     {
         float width = rect.width;
         float height = rect.height;
-        Vector4 bounds = Rect(0, 0, width, height);
+        var bounds = Rect(0, 0, width, height);
 
         NowUI.Rectangle(bounds)
             .SetColor(Rgb(15, 23, 42))

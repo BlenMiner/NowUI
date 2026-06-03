@@ -10,9 +10,9 @@ namespace NowUIInternal
 
     internal struct NowUIMeshBatch
     {
-        public Material material;
+        public readonly Material material;
 
-        public NowMeshKind kind;
+        public readonly NowMeshKind kind;
 
         public NowUIMeshBatch(Material material, NowMeshKind kind)
         {
@@ -47,7 +47,7 @@ namespace NowUIInternal
         public void EnsureCapacity(int additionalCount)
         {
             int requiredCapacity = count + additionalCount;
-            int currentCapacity = array == null ? 0 : array.Length;
+            int currentCapacity = array?.Length ?? 0;
 
             if (requiredCapacity <= currentCapacity)
                 return;
@@ -445,10 +445,12 @@ namespace NowUIInternal
 
         public void UploadMesh()
         {
-            if (unityMesh == null)
+            if (!unityMesh)
             {
-                unityMesh = new Mesh();
-                unityMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                unityMesh = new Mesh
+                {
+                    indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
+                };
                 unityMesh.MarkDynamic();
             }
 

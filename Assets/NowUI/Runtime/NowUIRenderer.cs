@@ -6,7 +6,10 @@ public sealed class NowUIRenderer : IDisposable
 {
     readonly NowUIDrawList _drawList = new NowUIDrawList();
 
-    CommandBuffer _commandBuffer;
+    CommandBuffer _commandBuffer = new()
+    {
+        name = "NowUI Renderer"
+    };
 
     public Mesh mesh => _drawList.mesh;
 
@@ -15,14 +18,6 @@ public sealed class NowUIRenderer : IDisposable
     public int batchCount => _drawList.batchCount;
 
     public bool hasGeometry => _drawList.hasGeometry;
-
-    public NowUIRenderer()
-    {
-        _commandBuffer = new CommandBuffer
-        {
-            name = "NowUI Renderer"
-        };
-    }
 
     public NowUIDrawScope Begin(Vector2 size)
     {

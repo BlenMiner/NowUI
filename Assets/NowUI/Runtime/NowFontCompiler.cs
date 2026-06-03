@@ -116,19 +116,6 @@ public static class NowFontCompiler
         int errorBufferLength);
 
     [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
-    static extern int nowui_compile_color_font_from_memory(
-        byte[] fontData,
-        int fontDataLength,
-        int size,
-        [Out] byte[] atlasRgba,
-        int atlasRgbaLength,
-        [Out] NativeColorGlyph[] glyphs,
-        int glyphCapacity,
-        ref NativeColorAtlasInfo info,
-        [Out] byte[] errorBuffer,
-        int errorBufferLength);
-
-    [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
     static extern int nowui_compile_color_font_from_memory_with_codepoints(
         byte[] fontData,
         int fontDataLength,
