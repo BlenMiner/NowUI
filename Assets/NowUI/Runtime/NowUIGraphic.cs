@@ -184,6 +184,8 @@ public class NowUIGraphic : Graphic
 
     void ApplyCanvasPages()
     {
+        PruneDestroyedExtraCanvasRenderers();
+
         if (_drawList == null)
         {
             ClearCanvasRenderer(canvasRenderer);
@@ -199,6 +201,9 @@ public class NowUIGraphic : Graphic
         for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
         {
             var crenderer = _extraCanvasRenderers[i];
+
+            if (crenderer == null)
+                continue;
 
             if (i >= extraPageCount)
             {
@@ -250,8 +255,19 @@ public class NowUIGraphic : Graphic
             ClearCanvasRenderer(_extraCanvasRenderers[i]);
     }
 
+    void PruneDestroyedExtraCanvasRenderers()
+    {
+        for (int i = _extraCanvasRenderers.Count - 1; i >= 0; --i)
+        {
+            if (_extraCanvasRenderers[i] == null)
+                _extraCanvasRenderers.RemoveAt(i);
+        }
+    }
+
     void EnsureExtraCanvasRendererCount(int count)
     {
+        PruneDestroyedExtraCanvasRenderers();
+
         while (_extraCanvasRenderers.Count < count)
         {
             int pageIndex = _extraCanvasRenderers.Count + 1;

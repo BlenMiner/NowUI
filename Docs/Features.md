@@ -58,13 +58,34 @@ if (state.clicked)
 ```
 
 `NowUIInteraction` reports `hovered`, `pressed`, `held`, `released`, `clicked`,
-`dragging`, `dragStarted`, and `dragEnded`. Control id strings are hashed with a
-stable internal hash; pass an integer id when you already have stable ids.
+`dragging`, `dragStarted`, and `dragEnded`. Primary mouse/button interaction is
+the default, and the same API can target right click, middle click, and common
+mouse navigation buttons.
+
+```csharp
+var context = NowUIInput.Interact("row-menu", rowRect, NowUIPointerButton.Secondary);
+
+if (context.clicked)
+    OpenContextMenu();
+```
+
+Control id strings are hashed with a stable internal hash; pass an integer id
+when you already have stable ids. `NowUIInput.current.navigation` carries
+keyboard/gamepad navigation as a `Vector2`, while `submit*` and `cancel*` fields
+track action buttons.
 
 The built-in render paths set up input where they already own a surface:
 
 - `NowUI.StartUI(...)` uses `NowUIInput.defaultProvider`, which defaults to
-  screen-space mouse input.
+  screen-space mouse input. It prefers the new Unity Input System when the
+  package is installed, then falls back to legacy `UnityEngine.Input` only when
+  the legacy input manager is enabled. If neither source is available, it
+  returns no pointer instead of touching a disabled input API. The default
+  provider reads primary, secondary, middle, back, and forward mouse buttons
+  where the active input backend exposes them. With the new Input System it also
+  reads keyboard arrows/WASD, gamepad left stick/D-pad, submit, and cancel.
+  Legacy fallback covers mouse buttons 0-4, arrows/WASD, enter/space, escape,
+  and the first two joystick buttons.
 - `NowUIGUI.Auto(...)` and `NowUIGUILayout.Auto(...)` use IMGUI events.
 - `NowUIGraphic` uses a `RectTransform` mouse provider.
 - `NowUIPipelineGraphic.BuildDrawList(...)` maps screen mouse input into the

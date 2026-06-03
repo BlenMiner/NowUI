@@ -1203,7 +1203,7 @@ public class NowFont : NowFontAsset
 
     bool HasStaticGlyphMetadata(int unicode)
     {
-        if (!atlas || !material || atlasInfo.glyphs == null)
+        if (!atlas || atlasInfo.glyphs == null)
             return false;
 
         var glyphs = atlasInfo.glyphs;
@@ -1374,7 +1374,7 @@ public class NowFont : NowFontAsset
     {
         glyph = default;
 
-        if (!atlas || !material || atlasInfo.glyphs == null || atlasInfo.glyphs.Length == 0)
+        if (!atlas || atlasInfo.glyphs == null || atlasInfo.glyphs.Length == 0)
             return false;
 
         if (_denseGlyphTable == null && _sparseGlyphTable == null)

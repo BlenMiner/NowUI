@@ -95,6 +95,75 @@ public class NowUIInputTests
     }
 
     [Test]
+    public void InteractionCanUseSecondaryPointerButton()
+    {
+        _provider.snapshot = new NowUIInputSnapshot(
+            new Vector2(18, 20),
+            NowUIPointerButtons.Secondary,
+            NowUIPointerButtons.Secondary,
+            NowUIPointerButtons.None);
+
+        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            var primary = NowUIInput.Interact(1, _rect);
+            var secondary = NowUIInput.Interact(2, _rect, NowUIPointerButton.Secondary);
+
+            Assert.IsFalse(primary.pressed);
+            Assert.IsTrue(secondary.pressed);
+            Assert.IsTrue(secondary.held);
+            Assert.AreEqual(NowUIPointerButton.Secondary, secondary.button);
+        }
+
+        _provider.snapshot = new NowUIInputSnapshot(
+            new Vector2(18, 20),
+            NowUIPointerButtons.None,
+            NowUIPointerButtons.None,
+            NowUIPointerButtons.Secondary);
+
+        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            var secondary = NowUIInput.Interact(2, _rect, NowUIPointerButton.Secondary);
+
+            Assert.IsTrue(secondary.released);
+            Assert.IsTrue(secondary.clicked);
+        }
+    }
+
+    [Test]
+    public void SnapshotCanCarryNavigationWithoutPointer()
+    {
+        _provider.snapshot = new NowUIInputSnapshot(
+            false,
+            default,
+            default,
+            default,
+            NowUIPointerButtons.None,
+            NowUIPointerButtons.None,
+            NowUIPointerButtons.None,
+            default,
+            Vector2.right,
+            true,
+            true,
+            false,
+            false,
+            false,
+            false,
+            1,
+            0.5f);
+
+        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            var interaction = NowUIInput.Interact(1, _rect);
+
+            Assert.IsFalse(interaction.hovered);
+            Assert.IsFalse(interaction.pressed);
+            Assert.AreEqual(Vector2.right, NowUIInput.current.navigation);
+            Assert.IsTrue(NowUIInput.current.submitDown);
+            Assert.IsTrue(NowUIInput.current.submitPressed);
+        }
+    }
+
+    [Test]
     public void InputScopeRestoresPreviousContext()
     {
         var first = new MockInputProvider

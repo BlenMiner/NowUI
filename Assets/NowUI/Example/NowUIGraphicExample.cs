@@ -36,8 +36,27 @@ public class NowUIGraphicExample : NowUIGraphic
 
         NowUI.Text(new Vector4(72, 42, width - 96, 24), _font)
             .SetFontSize(_size)
-            .SetColor(new Color(0.75f, 0.8f, 0.88f, 1f))
             .SetMask(bounds)
+            .Draw(_content);
+
+
+        NowUI.Text(new Vector4(72, 42 + 32, width - 96, 24), _font)
+            .SetFontSize(_size)
+            .SetMask(bounds)
+            .SetBold()
+            .Draw(_content);
+
+        NowUI.Text(new Vector4(72, 42 + 32 + 32, width - 96, 24), _font)
+            .SetFontSize(_size)
+            .SetMask(bounds)
+            .SetBold()
+            .SetItalic()
+            .Draw(_content);
+
+        NowUI.Text(new Vector4(72, 42 + 32 + 32 + 32, width - 96, 24), _font)
+            .SetFontSize(_size)
+            .SetMask(bounds)
+            .SetItalic()
             .Draw(_content);
     }
 }
