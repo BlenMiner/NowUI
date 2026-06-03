@@ -584,6 +584,7 @@ public static class NowFontCompiler
             wrapMode = TextureWrapMode.Clamp
         };
 
+        FlipRgbaRows(atlasRgba, info.width, info.height);
         texture.LoadRawTextureData(atlasRgba);
         texture.Apply(false, true);
 
@@ -599,6 +600,22 @@ public static class NowFontCompiler
 
         error = null;
         return font;
+    }
+
+    static void FlipRgbaRows(byte[] rgba, int width, int height)
+    {
+        int stride = width * 4;
+        var row = new byte[stride];
+
+        for (int y = 0; y < height / 2; ++y)
+        {
+            int top = y * stride;
+            int bottom = (height - y - 1) * stride;
+
+            Buffer.BlockCopy(rgba, top, row, 0, stride);
+            Buffer.BlockCopy(rgba, bottom, rgba, top, stride);
+            Buffer.BlockCopy(row, 0, rgba, bottom, stride);
+        }
     }
 
     static NowFontAtlasInfo ToAtlasInfo(NativeGlyph[] nativeGlyphs, NativeAtlasInfo info)
@@ -643,9 +660,9 @@ public static class NowFontCompiler
                 atlasBounds = new NowFontAtlasInfo.Bounds
                 {
                     left = nativeGlyph.atlasLeft,
-                    bottom = nativeGlyph.atlasBottom,
+                    bottom = info.height - nativeGlyph.atlasTop,
                     right = nativeGlyph.atlasRight,
-                    top = nativeGlyph.atlasTop
+                    top = info.height - nativeGlyph.atlasBottom
                 }
             };
         }
@@ -664,7 +681,7 @@ public static class NowFontCompiler
                 size = Mathf.RoundToInt(info.size),
                 width = info.width,
                 height = info.height,
-                yOrigin = "top"
+                yOrigin = "bottom"
             },
             metrics = new NowFontAtlasInfo.Metrics
             {

@@ -501,7 +501,7 @@ public static class NowUI
 
                 if (glyph.atlasBounds.left != glyph.atlasBounds.right)
                 {
-                    if (mesh == null)
+                    if (mesh == null || !ReferenceEquals(mesh.material, font.material))
                     {
                         mesh = UseMaterial(font.material, ref font.materialId, NowMeshKind.Text);
 
