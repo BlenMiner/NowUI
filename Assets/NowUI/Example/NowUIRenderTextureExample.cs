@@ -7,7 +7,7 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
 
     static readonly int _baseMapId = Shader.PropertyToID("_BaseMap");
 
-    [SerializeField] NowFont _font;
+    [SerializeField] NowFontAsset _font;
 
     [SerializeField] RenderTexture _target;
 

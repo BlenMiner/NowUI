@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class MailClientMockup : MonoBehaviour
 {
-    [SerializeField] NowFont _font;
+    [SerializeField] NowFontAsset _font;
 
     [SerializeField, Range(0.75f, 1.35f)] float _scale = 1f;
 

@@ -3,7 +3,7 @@ using UnityEngine;
 [AddComponentMenu("NowUI/Examples/NowUI Pipeline Overlay Example")]
 public sealed class NowUIPipelineOverlayExample : NowUIPipelineGraphic
 {
-    [SerializeField] NowFont _font;
+    [SerializeField] NowFontAsset _font;
 
     [SerializeField, Range(0.75f, 1.5f)] float _scale = 1f;
 

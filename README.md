@@ -202,8 +202,8 @@ matches your Unity editor if Unity changes its bundled toolchain.
 
 - `Assets/NowUI/Runtime`: runtime drawing API, mesh buffers, font assets
 - `Assets/NowUI/Editor`: font compiler menu item and native compiler interop
-- `Assets/NowUI/Native`: native wrapper source used by the CI workflow
-- `Assets/NowUI/Plugins`: native compiler libraries for editor/player platforms
+- `Assets/NowUI/Plugins/Native`: native wrapper source used by the CI workflow
+- `Assets/NowUI/Plugins`: native compiler source and libraries for editor/player platforms
 - `Assets/NowUI/Shaders`: rectangle and text shaders
 - `Assets/NowUI/Resources`: default materials and compiler resources
 - `Assets/NowUI/Example`: sample scenes/scripts and compiled example fonts

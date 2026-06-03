@@ -3,7 +3,7 @@ using UnityEngine;
 [AddComponentMenu("NowUI/Examples/NowUI Graphic Example")]
 public class NowUIGraphicExample : NowUIGraphic
 {
-    [SerializeField] NowFont _font;
+    [SerializeField] NowFontAsset _font;
     [SerializeField] float _size = 14f;
     [SerializeField] string _content;
 

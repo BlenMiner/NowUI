@@ -16,23 +16,44 @@ public struct NowUIText
 
     public float fontSize;
 
-    public NowFont font;
+    public NowFontAsset font;
 
-    public NowUIText(Vector4 rect, NowFont font)
+    public NowFontStyle fontStyle;
+
+    public NowUIText(Vector4 rect, NowFontAsset font)
     {
         this.rect = rect;
         padding = default;
         outline = default;
         mask = rect;
         fontSize = 50;
+        fontStyle = NowFontStyle.Regular;
         color = new Vector4(1, 1, 1, 1);
         outlineColor = new Vector4(0, 0, 0, 1);
         this.font = font;
     }
 
-    public NowUIText SetFont(NowFont font)
+    public NowUIText SetFont(NowFontAsset font)
     {
         this.font = font;
+        return this;
+    }
+
+    public NowUIText SetFontStyle(NowFontStyle fontStyle)
+    {
+        this.fontStyle = fontStyle;
+        return this;
+    }
+
+    public NowUIText SetBold(bool value = true)
+    {
+        fontStyle = value ? fontStyle | NowFontStyle.Bold : fontStyle & ~NowFontStyle.Bold;
+        return this;
+    }
+
+    public NowUIText SetItalic(bool value = true)
+    {
+        fontStyle = value ? fontStyle | NowFontStyle.Italic : fontStyle & ~NowFontStyle.Italic;
         return this;
     }
 
@@ -92,18 +113,22 @@ public struct NowUIText
 
     public Vector2 Measure(string value)
     {
-        return font != null ? font.MeasureText(value, fontSize) : default;
+        return font != null ? font.MeasureText(value, fontSize, fontStyle) : default;
     }
 
     public Vector4 MeasureBounds(string value)
     {
-        return font != null ? font.MeasureTextBounds(value, fontSize) : default;
+        return font != null ? font.MeasureTextBounds(value, fontSize, fontStyle) : default;
     }
 
     public NowUIText Draw(char character)
     {
-        if (font.GetGlyph(character, out var g))
-            NowUI.DrawCharacter(this, g);
+        if (font != null &&
+            font.TryResolveGlyph(character, fontSize, fontStyle, out var resolvedFont, out var glyph, out _))
+        {
+            NowUI.DrawCharacter(this, glyph, resolvedFont);
+        }
+
         return this;
     }
 

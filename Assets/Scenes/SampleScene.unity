@@ -282,7 +282,7 @@ MonoBehaviour:
   _rebuildEveryFrame: 1
   _font: {fileID: 11400000, guid: 661113d4fc66f9b4e916211c9bbe29db, type: 2}
   _size: 16
-  _content: "Hello \U0001F600 \u2764\uFE0F\U0001F91D\U0001F4AA\U0001F9E0"
+  _content: "\U0001F600\u2764\uFE0F\U0001F91D\U0001F4AA\U0001F9E0\U0001F600\u2764\uFE0F\U0001F91D\U0001F4AA\U0001F9E0"
 --- !u!222 &92857808
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -457,9 +457,9 @@ MonoBehaviour:
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   _rebuildEveryFrame: 1
-  _font: {fileID: 11400000, guid: 661113d4fc66f9b4e916211c9bbe29db, type: 2}
+  _font: {fileID: 11400000, guid: 393d7f54dbb0f7f4dbe51307964e4c5a, type: 2}
   _size: 16
-  _content: "Hello \U0001F600 \U0001F680 \u2764\uFE0F"
+  _content: Oh no...
 --- !u!1 &2070718855
 GameObject:
   m_ObjectHideFlags: 0

@@ -108,7 +108,7 @@ jobs:
         shell: pwsh
         run: |
           $cmakeArgs = @(
-            "-S", "${{ github.workspace }}/Assets/NowUI/Native/nowui-msdf",
+            "-S", "${{ github.workspace }}/Assets/NowUI/Plugins/Native/nowui-msdf",
             "-B", "$env:NOWUI_MSDF_BUILD_DIR",
             "-DCMAKE_BUILD_TYPE=Release",
             "-DCMAKE_INSTALL_PREFIX=$env:NOWUI_MSDF_INSTALL_DIR",
@@ -238,7 +238,7 @@ jobs:
           source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
 
           cmake \
-            -S "$GITHUB_WORKSPACE/Assets/NowUI/Native/nowui-msdf" \
+            -S "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/Native/nowui-msdf" \
             -B "$NOWUI_MSDF_BUILD_DIR" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$NOWUI_MSDF_INSTALL_DIR" \

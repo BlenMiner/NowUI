@@ -439,10 +439,13 @@ public static class NowUI
             return;
 
         var fontSize = style.fontSize;
-        var font = style.font;
+        var fontAsset = style.font;
         NowMesh mesh = null;
 
+        fontAsset.EnsureGlyphs(value, fontSize, style.fontStyle);
+
         float leftPos = style.rect.x;
+        var visited = new HashSet<NowFontAsset>();
 
         const int TAB_SPACES = 4;
 
@@ -454,32 +457,45 @@ public static class NowUI
             {
                 case '\n':
                     style.rect.x = leftPos;
-                    style.rect.y += font.GetLineHeight() * fontSize;
+                    style.rect.y += fontAsset.GetLineHeight(style.fontStyle) * fontSize;
                     break;
                 case '\t':
                 {
-                    if (font.GetGlyph(' ', out var space))
+                    visited.Clear();
+
+                    if (fontAsset.TryResolveGlyph(' ', fontSize, style.fontStyle, visited, out _, out var space, out _))
                         style.rect.x += space.advance * fontSize * TAB_SPACES;
                     break;
                 }
                 default:
                 {
-                    if (!font.GetGlyph(codepoint, out var glyph, out var glyphMaterial))
+                    visited.Clear();
+
+                    if (!fontAsset.TryResolveGlyph(
+                        codepoint,
+                        fontSize,
+                        style.fontStyle,
+                        visited,
+                        out var resolvedFont,
+                        out var glyph,
+                        out var glyphMaterial))
+                    {
                         continue;
+                    }
 
                     if (!Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right))
                     {
                         if (mesh == null || !ReferenceEquals(mesh.material, glyphMaterial))
                         {
-                            int materialId = font.GetMaterialId(codepoint);
+                            int materialId = resolvedFont.GetMaterialId(codepoint, fontSize);
                             mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
-                            font.SetMaterialId(codepoint, materialId);
+                            resolvedFont.SetMaterialId(codepoint, fontSize, materialId);
 
                             if (mesh == null)
                                 return;
                         }
 
-                        DrawCharacter(style, glyph, mesh);
+                        DrawCharacter(style, glyph, resolvedFont, mesh);
                     }
 
                     style.rect.x += glyph.advance * fontSize;
@@ -494,26 +510,35 @@ public static class NowUI
         if (_suppressDrawDepth > 0 || style.font == null)
             return;
 
-        var font = style.font;
-        var material = font.GetMaterial(glyph.unicode);
-        int materialId = font.GetMaterialId(glyph.unicode);
+        if (!style.font.TryResolveFont(style.fontStyle, out var font))
+            return;
+
+        DrawCharacter(style, glyph, font);
+    }
+
+    public static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowFont font)
+    {
+        if (_suppressDrawDepth > 0 || font == null)
+            return;
+
+        var material = font.GetMaterial(glyph.unicode, style.fontSize);
+        int materialId = font.GetMaterialId(glyph.unicode, style.fontSize);
         var mesh = UseMaterial(material, ref materialId, NowMeshKind.Text);
-        font.SetMaterialId(glyph.unicode, materialId);
+        font.SetMaterialId(glyph.unicode, style.fontSize, materialId);
 
         if (mesh == null)
             return;
 
-        DrawCharacter(style, glyph, mesh);
+        DrawCharacter(style, glyph, font, mesh);
     }
 
-    static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowMesh mesh)
+    static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowFont font, NowMesh mesh)
     {
         var fontSize = style.fontSize;
-        var font = style.font;
         var rect = style.rect;
         var planeBounds = glyph.planeBounds;
 
-        float lineHeight = font.GetLineHeight() * fontSize;
+        float lineHeight = (style.font != null ? style.font.GetLineHeight(style.fontStyle) : font.GetLineHeight()) * fontSize;
 
         planeBounds.left *= fontSize;
         planeBounds.right *= fontSize;
@@ -544,7 +569,7 @@ public static class NowUI
         _tmpVertex.color = style.color;
         _tmpVertex.outlineColor = style.outlineColor;
 
-        mesh.AddRect(_tmpVertex, style.outline, fontSize);
+        mesh.AddRect(_tmpVertex, style.outline, font.GetScreenPixelRange(glyph.unicode, fontSize));
     }
 
     public static NowUIRectangle Rectangle(NowUIRectangle rect)
@@ -557,7 +582,7 @@ public static class NowUI
         return new NowUIRectangle(position);
     }
 
-    public static NowUIText Text(Vector4 position, NowFont font)
+    public static NowUIText Text(Vector4 position, NowFontAsset font)
     {
         return new NowUIText(position, font);
     }

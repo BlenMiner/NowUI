@@ -76,8 +76,6 @@ Shader "NowUI/Text Renderer"
                 return max(min(r, g), min(max(r, g), b));
             }
 
-            #define PIXELRANGE 16
-
             fixed4 frag (v2f i) : SV_Target
             {
                 float4 rect = i.rect;
@@ -99,11 +97,7 @@ Shader "NowUI/Text Renderer"
 
                 float outline = i.extras.x;
                 fixed4 msd = tex2D(_MainTex, i.uv);
-
-                float xrange = (i.extras.y / 64.0) * PIXELRANGE;
-                float yrange = (i.extras.y / 64.0) * PIXELRANGE;
-
-                float screenPxRange = max(xrange, yrange);
+                float screenPxRange = max(i.extras.y, 1.0);
 
                 float sd = median(msd.r, msd.g, msd.b);
 

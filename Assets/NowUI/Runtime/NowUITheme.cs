@@ -264,7 +264,7 @@ public sealed class NowUITheme : ScriptableObject
         return ApplyRectanglePreset(NowUI.Rectangle(rect), ResolveRectanglePresetId(presetId));
     }
 
-    public NowUIText Text(Vector4 rect, NowFont font, string presetId = null)
+    public NowUIText Text(Vector4 rect, NowFontAsset font, string presetId = null)
     {
         return ApplyTextPreset(NowUI.Text(rect, font), ResolveTextPresetId(presetId));
     }
@@ -496,7 +496,7 @@ public struct NowUITextPreset
 {
     [SerializeField] string _id;
 
-    [SerializeField] NowFont _font;
+    [SerializeField] NowFontAsset _font;
 
     [SerializeField] float _fontSize;
 
@@ -510,7 +510,7 @@ public struct NowUITextPreset
 
     public NowUITextPreset(
         string id,
-        NowFont font,
+        NowFontAsset font,
         float fontSize,
         NowUIColorReference color,
         float outline,

@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class TextTests : MonoBehaviour
 {
-    [SerializeField] NowFont _font;
+    [SerializeField] NowFontAsset _font;
 
     [SerializeField] Color _color;
 
