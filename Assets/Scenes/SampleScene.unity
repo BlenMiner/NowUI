@@ -226,71 +226,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: NowUI.Examples::MailClientMockup
   _font: {fileID: 0}
   _scale: 1
---- !u!1 &92857805
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 92857806}
-  - component: {fileID: 92857808}
-  - component: {fileID: 92857807}
-  m_Layer: 5
-  m_Name: Image (1)
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!224 &92857806
-RectTransform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 92857805}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1132170320}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0}
-  m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: -275.4, y: -14.299982}
-  m_SizeDelta: {x: 250, y: -68.60003}
-  m_Pivot: {x: 0.5, y: 0.5}
---- !u!114 &92857807
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 92857805}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4f8af239ca9c4985a824cb094e77af5b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: NowUI.Examples::NowUIGraphicExample
-  m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_RaycastTarget: 1
-  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
-  _rebuildEveryFrame: 1
-  _font: {fileID: 11400000, guid: 661113d4fc66f9b4e916211c9bbe29db, type: 2}
-  _size: 16
-  _content: "\U0001F600\u2764\uFE0F\U0001F91D\U0001F4AA\U0001F9E0\U0001F600\u2764\uFE0F\U0001F91D\U0001F4AA\U0001F9E0"
---- !u!222 &92857808
-CanvasRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 92857805}
-  m_CullTransparentMesh: 1
 --- !u!1 &1132170316
 GameObject:
   m_ObjectHideFlags: 0
@@ -387,7 +322,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1774143538}
-  - {fileID: 92857806}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -427,10 +361,10 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 1132170320}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0}
-  m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 0, y: -0.000030517578}
-  m_SizeDelta: {x: 250, y: -40.000046}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: -40, y: -40}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &1774143540
 CanvasRenderer:
@@ -456,10 +390,10 @@ MonoBehaviour:
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
-  _rebuildEveryFrame: 1
-  _font: {fileID: 11400000, guid: 0d7342069edd6a741a5958becb000004, type: 2}
-  _size: 83.7
-  _content: "\U000F066F\U000F044D"
+  _rebuildEveryFrame: 0
+  _font: {fileID: 11400000, guid: d9b4fc19191445a4f851b19fd4cf730f, type: 2}
+  _size: 24
+  _content: "\U000F001A Hey there \U0001F600\u2764\uFE0F\U0001F91D\U0001F4AA\U0001F9E0\U0001F600\u2764\uFE0F\U0001F91D\U0001F4AA\U0001F9E0\U000F066F\U000F066F"
 --- !u!1 &2070718855
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7fc6d0b96f8f49d4a8da53c8d2c48f91, type: 3}
+  m_Name: NotoSans
+  m_EditorClassIdentifier: NowUI.Runtime::NowFontFamily
+  _fallbacks:
+  - {fileID: 11400000, guid: 661113d4fc66f9b4e916211c9bbe29db, type: 2}
+  - {fileID: 11400000, guid: 0d7342069edd6a741a5958becb000004, type: 2}
+  _regular: {fileID: 11400000, guid: 59e3b303b4e945d499ef2415cde95a76, type: 2}
+  _bold: {fileID: 11400000, guid: b77f7781c2af010468cb48cab5649432, type: 2}
+  _italic: {fileID: 11400000, guid: 66769ccb0562c7444935be1be10ca81c, type: 2}
+  _boldItalic: {fileID: 11400000, guid: 5ea0b553e09c8ec4abf0fa6af3b91a59, type: 2}

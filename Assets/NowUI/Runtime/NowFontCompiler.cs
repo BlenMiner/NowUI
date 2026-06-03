@@ -188,7 +188,20 @@ public static class NowFontCompiler
         out NowFont font,
         out string error)
     {
-        return TryCompileInternal(fontData, size, pixelRange, extraCharacters, materialTemplate, out font, out error);
+        return TryCompileInternal(fontData, size, pixelRange, extraCharacters, null, 0, materialTemplate, out font, out error);
+    }
+
+    internal static bool TryCompilePage(
+        byte[] fontData,
+        int size,
+        int pixelRange,
+        int[] codepoints,
+        int codepointCount,
+        Material materialTemplate,
+        out NowFont font,
+        out string error)
+    {
+        return TryCompileInternal(fontData, size, pixelRange, null, codepoints, codepointCount, materialTemplate, out font, out error);
     }
 
     static bool CreateDynamicFont(
@@ -231,6 +244,8 @@ public static class NowFontCompiler
         int size,
         int pixelRange,
         string extraCharacters,
+        int[] requestedCodepoints,
+        int requestedCodepointCount,
         Material materialTemplate,
         out NowFont font,
         out string error)
@@ -257,10 +272,17 @@ public static class NowFontCompiler
 
         byte[] errorBuffer = new byte[ERROR_CAPACITY];
         NativeAtlasInfo info = default;
-        int[] codepoints = CollectCodepoints(extraCharacters);
+        int[] codepoints = requestedCodepoints;
+        int codepointCount = requestedCodepoints != null ? Mathf.Clamp(requestedCodepointCount, 0, requestedCodepoints.Length) : 0;
+
+        if (codepoints == null)
+        {
+            codepoints = CollectCodepoints(extraCharacters);
+            codepointCount = codepoints?.Length ?? 0;
+        }
 
         if (ContainsColorGlyphTables(fontData))
-            return TryCompileColorFont(fontData, size, codepoints, materialTemplate, out font, out error);
+            return TryCompileColorFont(fontData, size, codepoints, codepointCount, materialTemplate, out font, out error);
 
         try
         {
@@ -270,6 +292,7 @@ public static class NowFontCompiler
                 size,
                 pixelRange,
                 codepoints,
+                codepointCount,
                 null,
                 0,
                 null,
@@ -300,6 +323,7 @@ public static class NowFontCompiler
                 size,
                 pixelRange,
                 codepoints,
+                codepointCount,
                 atlasRgba,
                 atlasRgba.Length,
                 nativeGlyphs,
@@ -338,13 +362,14 @@ public static class NowFontCompiler
         byte[] fontData,
         int size,
         int[] codepoints,
+        int codepointCount,
         Material materialTemplate,
         out NowFont font,
         out string error)
     {
         font = null;
 
-        if (codepoints == null || codepoints.Length == 0)
+        if (codepoints == null || codepointCount <= 0)
         {
             error = "Color fonts require requested characters. Pass the emoji/text you want to include so NowUI does not import the entire color glyph set into a huge RGBA atlas.";
             return false;
@@ -360,7 +385,7 @@ public static class NowFontCompiler
                 fontData.Length,
                 size,
                 codepoints,
-                codepoints.Length,
+                codepointCount,
                 null,
                 0,
                 null,
@@ -390,7 +415,7 @@ public static class NowFontCompiler
                 fontData.Length,
                 size,
                 codepoints,
-                codepoints.Length,
+                codepointCount,
                 atlasRgba,
                 atlasRgba.Length,
                 nativeGlyphs,
@@ -421,6 +446,7 @@ public static class NowFontCompiler
         int size,
         int pixelRange,
         int[] codepoints,
+        int codepointCount,
         byte[] atlasRgba,
         int atlasRgbaLength,
         NativeGlyph[] glyphs,
@@ -429,7 +455,7 @@ public static class NowFontCompiler
         byte[] errorBuffer,
         int errorBufferLength)
     {
-        if (codepoints == null || codepoints.Length == 0)
+        if (codepoints == null || codepointCount <= 0)
         {
             return nowui_compile_font_from_memory(
                 fontData,
@@ -451,7 +477,7 @@ public static class NowFontCompiler
             size,
             pixelRange,
             codepoints,
-            codepoints.Length,
+            codepointCount,
             atlasRgba,
             atlasRgbaLength,
             glyphs,

@@ -66,14 +66,32 @@ public abstract class NowFontAsset : ScriptableObject
     [SerializeField]
     NowFontAsset[] _fallbacks;
 
+    [System.NonSerialized]
+    HashSet<NowFontAsset> _visitCache;
+
     public IReadOnlyList<NowFontAsset> fallbacks => _fallbacks;
 
     protected abstract bool TryGetOwnFont(NowFontStyle style, out NowFont font);
 
+    HashSet<NowFontAsset> GetVisitCache()
+    {
+        _visitCache ??= new HashSet<NowFontAsset>();
+        _visitCache.Clear();
+        return _visitCache;
+    }
+
     public bool TryResolveFont(NowFontStyle style, out NowFont font)
     {
-        var visited = new HashSet<NowFontAsset>();
-        return TryResolveFont(style, visited, out font);
+        var visited = GetVisitCache();
+
+        try
+        {
+            return TryResolveFont(style, visited, out font);
+        }
+        finally
+        {
+            visited.Clear();
+        }
     }
 
     internal bool TryResolveFont(NowFontStyle style, HashSet<NowFontAsset> visited, out NowFont font)
@@ -108,8 +126,16 @@ public abstract class NowFontAsset : ScriptableObject
         out NowFontAtlasInfo.Glyph glyph,
         out Material material)
     {
-        var visited = new HashSet<NowFontAsset>();
-        return TryResolveGlyph(unicode, fontSize, style, visited, out font, out glyph, out material);
+        var visited = GetVisitCache();
+
+        try
+        {
+            return TryResolveGlyph(unicode, fontSize, style, visited, out font, out glyph, out material);
+        }
+        finally
+        {
+            visited.Clear();
+        }
     }
 
     internal bool TryResolveGlyph(
@@ -155,85 +181,57 @@ public abstract class NowFontAsset : ScriptableObject
 
     public virtual void EnsureGlyphs(string value, float fontSize, NowFontStyle style = NowFontStyle.Regular)
     {
-        EnsureGlyphsAndGetMissing(value, fontSize, style, new HashSet<NowFontAsset>());
+        var visited = GetVisitCache();
+
+        try
+        {
+            EnsureGlyphs(value, fontSize, style, visited);
+        }
+        finally
+        {
+            visited.Clear();
+        }
     }
 
-    internal string EnsureGlyphsAndGetMissing(
+    internal void EnsureGlyphs(
         string value,
         float fontSize,
         NowFontStyle style,
         HashSet<NowFontAsset> visited)
     {
         if (string.IsNullOrEmpty(value) || fontSize <= 0)
-            return null;
+            return;
 
         if (this == null || !visited.Add(this))
-            return value;
-
-        string missing = value;
+            return;
 
         if (TryGetOwnFont(style, out var font) && font != null)
-        {
             font.EnsureGlyphs(value, fontSize);
-            missing = GetCharactersMissingFromFont(value, font, fontSize);
-        }
 
-        if (string.IsNullOrEmpty(missing) || _fallbacks == null)
-            return missing;
+        if (_fallbacks == null)
+            return;
 
         for (int i = 0; i < _fallbacks.Length; ++i)
         {
             var fallback = _fallbacks[i];
 
-            if (fallback == null)
-                continue;
-
-            missing = fallback.EnsureGlyphsAndGetMissing(missing, fontSize, style, visited);
-
-            if (string.IsNullOrEmpty(missing))
-                break;
+            if (fallback != null)
+                fallback.EnsureGlyphs(value, fontSize, style, visited);
         }
-
-        return missing;
-    }
-
-    static string GetCharactersMissingFromFont(string value, NowFont font, float fontSize)
-    {
-        if (string.IsNullOrEmpty(value) || font == null)
-            return value;
-
-        HashSet<int> uniqueCodepoints = null;
-        StringBuilder builder = null;
-
-        for (int i = 0; i < value.Length; ++i)
-        {
-            int codepoint = NowFont.ReadCodepoint(value, ref i);
-
-            if (codepoint == '\n')
-                continue;
-
-            if (codepoint == '\t')
-                codepoint = ' ';
-
-            if (font.GetGlyph(codepoint, fontSize, out _))
-                continue;
-
-            uniqueCodepoints ??= new HashSet<int>();
-
-            if (!uniqueCodepoints.Add(codepoint))
-                continue;
-
-            builder ??= new StringBuilder();
-            builder.Append(NowFont.CodepointToString(codepoint));
-        }
-
-        return builder?.ToString();
     }
 
     public float GetLineHeight(NowFontStyle style = NowFontStyle.Regular)
     {
-        var visited = new HashSet<NowFontAsset>();
-        return GetLineHeight(style, visited);
+        var visited = GetVisitCache();
+
+        try
+        {
+            return GetLineHeight(style, visited);
+        }
+        finally
+        {
+            visited.Clear();
+        }
     }
 
     internal float GetLineHeight(NowFontStyle style, HashSet<NowFontAsset> visited)
@@ -268,12 +266,13 @@ public abstract class NowFontAsset : ScriptableObject
         if (string.IsNullOrEmpty(value) || fontSize <= 0)
             return default;
 
-        EnsureGlyphs(value, fontSize, style);
-
         float lineWidth = 0;
         float maxWidth = 0;
         int lineCount = 1;
-        var visited = new HashSet<NowFontAsset>();
+        var visited = GetVisitCache();
+
+        EnsureGlyphs(value, fontSize, style, visited);
+        visited.Clear();
 
         for (int i = 0; i < value.Length; ++i)
         {
@@ -308,7 +307,10 @@ public abstract class NowFontAsset : ScriptableObject
         if (lineWidth > maxWidth)
             maxWidth = lineWidth;
 
-        return new Vector2(maxWidth, GetLineHeight(style) * fontSize * lineCount);
+        visited.Clear();
+        float lineHeight = GetLineHeight(style, visited);
+        visited.Clear();
+        return new Vector2(maxWidth, lineHeight * fontSize * lineCount);
     }
 
     public virtual Vector4 MeasureTextBounds(string value, float fontSize, int tabSpaces = 4)
@@ -321,8 +323,6 @@ public abstract class NowFontAsset : ScriptableObject
         if (string.IsNullOrEmpty(value) || fontSize <= 0)
             return default;
 
-        EnsureGlyphs(value, fontSize, style);
-
         float cursorX = 0;
         float lineY = 0;
         float lineHeight = 0;
@@ -331,7 +331,10 @@ public abstract class NowFontAsset : ScriptableObject
         float maxX = 0;
         float maxY = 0;
         bool hasBounds = false;
-        var visited = new HashSet<NowFontAsset>();
+        var visited = GetVisitCache();
+
+        EnsureGlyphs(value, fontSize, style, visited);
+        visited.Clear();
 
         for (int i = 0; i < value.Length; ++i)
         {
@@ -340,7 +343,10 @@ public abstract class NowFontAsset : ScriptableObject
             if (codepoint == '\n')
             {
                 if (lineHeight <= 0)
-                    lineHeight = GetLineHeight(style) * fontSize;
+                {
+                    visited.Clear();
+                    lineHeight = GetLineHeight(style, visited) * fontSize;
+                }
 
                 cursorX = 0;
                 lineY += lineHeight;
@@ -363,7 +369,10 @@ public abstract class NowFontAsset : ScriptableObject
                 continue;
 
             if (lineHeight <= 0)
-                lineHeight = GetLineHeight(style) * fontSize;
+            {
+                visited.Clear();
+                lineHeight = GetLineHeight(style, visited) * fontSize;
+            }
 
             if (glyph.atlasBounds.left != glyph.atlasBounds.right)
             {
@@ -399,6 +408,7 @@ public abstract class NowFontAsset : ScriptableObject
             cursorX += glyph.advance * fontSize;
         }
 
+        visited.Clear();
         return hasBounds ? new Vector4(minX, minY, maxX - minX, maxY - minY) : default;
     }
 }
@@ -413,7 +423,10 @@ public class NowFont : NowFontAsset
     public const int DEFAULT_DYNAMIC_PAGE_SIZE = 1024;
     public const int DEFAULT_DYNAMIC_MAX_ATLAS_SIZE = 2048;
     public const int DEFAULT_DYNAMIC_MAX_ATLAS_BYTES = 16 * 1024 * 1024;
+    const uint OPENTYPE_TTC_TAG = 0x74746366;
     const int DYNAMIC_GLYPH_PADDING = 1;
+    const int MAX_CMAP_ENCODING_RECORDS = 1024;
+    const int MAX_DYNAMIC_SOURCE_CMAP_CODEPOINTS = 200000;
 
     [HideInInspector]
     public Texture2D atlas;
@@ -442,7 +455,6 @@ public class NowFont : NowFontAsset
     class DynamicAtlasPage
     {
         public NowFont font;
-        public string characters;
         public HashSet<int> codepoints;
         public int atlasSize;
         public int cursorX;
@@ -563,6 +575,21 @@ public class NowFont : NowFontAsset
     bool _didReadDynamicColorBitmapSizes;
 
     [System.NonSerialized]
+    HashSet<int> _dynamicSourceCodepoints;
+
+    [System.NonSerialized]
+    bool _didReadDynamicSourceCodepoints;
+
+    [System.NonSerialized]
+    HashSet<int> _dynamicCodepointScratch;
+
+    [System.NonSerialized]
+    StringBuilder _dynamicStringBuilder;
+
+    [System.NonSerialized]
+    int[] _dynamicCompileCodepoints;
+
+    [System.NonSerialized]
     int _glyphTableOffset;
 
     [System.NonSerialized]
@@ -678,6 +705,22 @@ public class NowFont : NowFontAsset
             : char.ConvertFromUtf32(codepoint);
     }
 
+    static void AppendCodepoint(StringBuilder builder, int codepoint)
+    {
+        if (builder == null || !IsValidUnicodeScalar(codepoint))
+            return;
+
+        if (codepoint <= char.MaxValue)
+        {
+            builder.Append((char)codepoint);
+            return;
+        }
+
+        int scalar = codepoint - 0x10000;
+        builder.Append((char)((scalar >> 10) + 0xd800));
+        builder.Append((char)((scalar & 0x3ff) + 0xdc00));
+    }
+
     static ushort ReadUInt16BigEndian(byte[] data, int offset)
     {
         return (ushort)((data[offset] << 8) | data[offset + 1]);
@@ -691,6 +734,15 @@ public class NowFont : NowFontAsset
             data[offset + 3];
     }
 
+    static bool CanRead(byte[] data, int offset, int length)
+    {
+        return data != null &&
+            offset >= 0 &&
+            length >= 0 &&
+            offset <= data.Length &&
+            length <= data.Length - offset;
+    }
+
     static bool TryGetOpenTypeTable(byte[] fontData, string tag, out int tableOffset, out int tableLength)
     {
         tableOffset = 0;
@@ -699,10 +751,29 @@ public class NowFont : NowFontAsset
         if (fontData == null || fontData.Length < 12 || string.IsNullOrEmpty(tag) || tag.Length != 4)
             return false;
 
-        int tableCount = ReadUInt16BigEndian(fontData, 4);
-        int directoryEnd = 12 + tableCount * 16;
+        int sfntOffset = 0;
 
-        if (directoryEnd > fontData.Length)
+        if (ReadUInt32BigEndian(fontData, 0) == OPENTYPE_TTC_TAG)
+        {
+            if (!CanRead(fontData, 0, 16) || ReadUInt32BigEndian(fontData, 8) == 0)
+                return false;
+
+            uint firstFontOffset = ReadUInt32BigEndian(fontData, 12);
+
+            if (firstFontOffset > int.MaxValue)
+                return false;
+
+            sfntOffset = (int)firstFontOffset;
+        }
+
+        if (!CanRead(fontData, sfntOffset, 12))
+            return false;
+
+        int tableCount = ReadUInt16BigEndian(fontData, sfntOffset + 4);
+        int recordsOffset = sfntOffset + 12;
+        int directoryEnd = recordsOffset + tableCount * 16;
+
+        if (tableCount <= 0 || directoryEnd < recordsOffset || directoryEnd > fontData.Length)
             return false;
 
         byte tag0 = (byte)tag[0];
@@ -712,7 +783,7 @@ public class NowFont : NowFontAsset
 
         for (int i = 0; i < tableCount; ++i)
         {
-            int offset = 12 + i * 16;
+            int offset = recordsOffset + i * 16;
 
             if (fontData[offset] != tag0 ||
                 fontData[offset + 1] != tag1 ||
@@ -738,6 +809,341 @@ public class NowFont : NowFontAsset
         }
 
         return false;
+    }
+
+    static bool TryReadDynamicSourceCodepoints(byte[] fontData, out HashSet<int> codepoints)
+    {
+        codepoints = null;
+
+        if (!TryGetOpenTypeTable(fontData, "cmap", out var cmapOffset, out var cmapLength))
+            return false;
+
+        if (!CanRead(fontData, cmapOffset, 4))
+            return false;
+
+        int cmapEnd = cmapOffset + cmapLength;
+        int encodingCount = ReadUInt16BigEndian(fontData, cmapOffset + 2);
+        int recordsEnd = cmapOffset + 4 + encodingCount * 8;
+
+        if (encodingCount <= 0 ||
+            encodingCount > MAX_CMAP_ENCODING_RECORDS ||
+            recordsEnd < cmapOffset ||
+            recordsEnd > cmapEnd)
+        {
+            return false;
+        }
+
+        int bestScore = 0;
+        int bestSubtableOffset = 0;
+        int bestSubtableLength = 0;
+
+        for (int i = 0; i < encodingCount; ++i)
+        {
+            int recordOffset = cmapOffset + 4 + i * 8;
+            int platformId = ReadUInt16BigEndian(fontData, recordOffset);
+            int encodingId = ReadUInt16BigEndian(fontData, recordOffset + 2);
+            uint subtableRelativeOffset = ReadUInt32BigEndian(fontData, recordOffset + 4);
+
+            if (subtableRelativeOffset > int.MaxValue)
+                continue;
+
+            int subtableOffset = cmapOffset + (int)subtableRelativeOffset;
+
+            if (subtableOffset < cmapOffset || subtableOffset >= cmapEnd || !CanRead(fontData, subtableOffset, 2))
+                continue;
+
+            int format = ReadUInt16BigEndian(fontData, subtableOffset);
+            int score = GetCmapCoverageScore(format, platformId, encodingId);
+
+            if (score <= bestScore)
+                continue;
+
+            bestScore = score;
+            bestSubtableOffset = subtableOffset;
+            bestSubtableLength = cmapEnd - subtableOffset;
+        }
+
+        return bestScore > 0 &&
+            TryReadCmapCoverageSubtable(fontData, bestSubtableOffset, bestSubtableLength, out codepoints);
+    }
+
+    static int GetCmapCoverageScore(int format, int platformId, int encodingId)
+    {
+        int score;
+
+        switch (format)
+        {
+            case 12:
+                score = 500;
+                break;
+            case 13:
+                score = 490;
+                break;
+            case 4:
+                score = 400;
+                break;
+            case 6:
+                score = 200;
+                break;
+            case 0:
+                score = 100;
+                break;
+            default:
+                return 0;
+        }
+
+        if (platformId == 3 && encodingId == 10)
+            score += 90;
+        else if (platformId == 0)
+            score += 80;
+        else if (platformId == 3 && encodingId == 1)
+            score += 60;
+        else if (platformId == 3)
+            score += 20;
+
+        return score;
+    }
+
+    static bool TryReadCmapCoverageSubtable(
+        byte[] fontData,
+        int offset,
+        int maxLength,
+        out HashSet<int> codepoints)
+    {
+        codepoints = null;
+
+        if (maxLength < 2 || !CanRead(fontData, offset, 2))
+            return false;
+
+        int format = ReadUInt16BigEndian(fontData, offset);
+
+        switch (format)
+        {
+            case 0:
+                return TryReadCmapFormat0Coverage(fontData, offset, maxLength, out codepoints);
+            case 4:
+                return TryReadCmapFormat4Coverage(fontData, offset, maxLength, out codepoints);
+            case 6:
+                return TryReadCmapFormat6Coverage(fontData, offset, maxLength, out codepoints);
+            case 12:
+                return TryReadCmapFormat12Coverage(fontData, offset, maxLength, false, out codepoints);
+            case 13:
+                return TryReadCmapFormat12Coverage(fontData, offset, maxLength, true, out codepoints);
+            default:
+                return false;
+        }
+    }
+
+    static bool TryReadCmapFormat0Coverage(byte[] fontData, int offset, int maxLength, out HashSet<int> codepoints)
+    {
+        codepoints = null;
+
+        if (!TryGetUInt16CmapLength(fontData, offset, maxLength, out var length) || length < 262)
+            return false;
+
+        var coverage = new HashSet<int>();
+
+        for (int codepoint = 0; codepoint < 256; ++codepoint)
+        {
+            int glyphIndex = fontData[offset + 6 + codepoint];
+
+            if (glyphIndex > 0 && !TryAddCmapCodepoint(coverage, codepoint))
+                return false;
+        }
+
+        codepoints = coverage;
+        return true;
+    }
+
+    static bool TryReadCmapFormat4Coverage(byte[] fontData, int offset, int maxLength, out HashSet<int> codepoints)
+    {
+        codepoints = null;
+
+        if (!TryGetUInt16CmapLength(fontData, offset, maxLength, out var length) || length < 16)
+            return false;
+
+        int segCount = ReadUInt16BigEndian(fontData, offset + 6) / 2;
+
+        if (segCount <= 0)
+            return false;
+
+        int endCodeOffset = offset + 14;
+        int startCodeOffset = endCodeOffset + segCount * 2 + 2;
+        int idDeltaOffset = startCodeOffset + segCount * 2;
+        int idRangeOffsetOffset = idDeltaOffset + segCount * 2;
+        int tableEnd = offset + length;
+
+        if (idRangeOffsetOffset + segCount * 2 > tableEnd)
+            return false;
+
+        var coverage = new HashSet<int>();
+
+        for (int segment = 0; segment < segCount; ++segment)
+        {
+            int endCode = ReadUInt16BigEndian(fontData, endCodeOffset + segment * 2);
+            int startCode = ReadUInt16BigEndian(fontData, startCodeOffset + segment * 2);
+            int idDelta = unchecked((short)ReadUInt16BigEndian(fontData, idDeltaOffset + segment * 2));
+            int idRangeOffsetAddress = idRangeOffsetOffset + segment * 2;
+            int idRangeOffset = ReadUInt16BigEndian(fontData, idRangeOffsetAddress);
+
+            if (startCode > endCode)
+                continue;
+
+            for (int codepoint = startCode; codepoint <= endCode; ++codepoint)
+            {
+                if (codepoint == 0xffff)
+                    continue;
+
+                int glyphIndex;
+
+                if (idRangeOffset == 0)
+                {
+                    glyphIndex = (codepoint + idDelta) & 0xffff;
+                }
+                else
+                {
+                    int glyphIndexAddress = idRangeOffsetAddress + idRangeOffset + (codepoint - startCode) * 2;
+
+                    if (!CanRead(fontData, glyphIndexAddress, 2) || glyphIndexAddress + 2 > tableEnd)
+                        continue;
+
+                    glyphIndex = ReadUInt16BigEndian(fontData, glyphIndexAddress);
+
+                    if (glyphIndex != 0)
+                        glyphIndex = (glyphIndex + idDelta) & 0xffff;
+                }
+
+                if (glyphIndex > 0 && !TryAddCmapCodepoint(coverage, codepoint))
+                    return false;
+            }
+        }
+
+        codepoints = coverage;
+        return true;
+    }
+
+    static bool TryReadCmapFormat6Coverage(byte[] fontData, int offset, int maxLength, out HashSet<int> codepoints)
+    {
+        codepoints = null;
+
+        if (!TryGetUInt16CmapLength(fontData, offset, maxLength, out var length) || length < 10)
+            return false;
+
+        int firstCode = ReadUInt16BigEndian(fontData, offset + 6);
+        int entryCount = ReadUInt16BigEndian(fontData, offset + 8);
+        int glyphsOffset = offset + 10;
+        int glyphsLength = entryCount * 2;
+
+        if (glyphsLength < 0 || glyphsOffset + glyphsLength > offset + length)
+            return false;
+
+        var coverage = new HashSet<int>();
+
+        for (int i = 0; i < entryCount; ++i)
+        {
+            int glyphIndex = ReadUInt16BigEndian(fontData, glyphsOffset + i * 2);
+
+            if (glyphIndex > 0 && !TryAddCmapCodepoint(coverage, firstCode + i))
+                return false;
+        }
+
+        codepoints = coverage;
+        return true;
+    }
+
+    static bool TryReadCmapFormat12Coverage(
+        byte[] fontData,
+        int offset,
+        int maxLength,
+        bool constantGlyphIndex,
+        out HashSet<int> codepoints)
+    {
+        codepoints = null;
+
+        if (!CanRead(fontData, offset, 16))
+            return false;
+
+        uint rawLength = ReadUInt32BigEndian(fontData, offset + 4);
+
+        if (rawLength < 16 || rawLength > int.MaxValue || rawLength > maxLength)
+            return false;
+
+        int length = (int)rawLength;
+
+        if (!CanRead(fontData, offset, length))
+            return false;
+
+        uint groupCount = ReadUInt32BigEndian(fontData, offset + 12);
+
+        if (groupCount > 100000)
+            return false;
+
+        int groupsOffset = offset + 16;
+        int tableEnd = offset + length;
+
+        if (groupsOffset + groupCount * 12 > tableEnd)
+            return false;
+
+        var coverage = new HashSet<int>();
+
+        for (int i = 0; i < groupCount; ++i)
+        {
+            int groupOffset = groupsOffset + i * 12;
+            uint start = ReadUInt32BigEndian(fontData, groupOffset);
+            uint end = ReadUInt32BigEndian(fontData, groupOffset + 4);
+            uint startGlyph = ReadUInt32BigEndian(fontData, groupOffset + 8);
+
+            if (start > end || end > 0x10ffff)
+                continue;
+
+            for (uint codepoint = start; codepoint <= end; ++codepoint)
+            {
+                ulong glyphIndex = constantGlyphIndex
+                    ? startGlyph
+                    : (ulong)startGlyph + codepoint - start;
+
+                if (glyphIndex > 0 &&
+                    glyphIndex <= int.MaxValue &&
+                    !TryAddCmapCodepoint(coverage, unchecked((int)codepoint)))
+                {
+                    return false;
+                }
+            }
+        }
+
+        codepoints = coverage;
+        return true;
+    }
+
+    static bool TryGetUInt16CmapLength(byte[] fontData, int offset, int maxLength, out int length)
+    {
+        length = 0;
+
+        if (!CanRead(fontData, offset, 4))
+            return false;
+
+        length = ReadUInt16BigEndian(fontData, offset + 2);
+        return length <= maxLength && CanRead(fontData, offset, length);
+    }
+
+    static bool TryAddCmapCodepoint(HashSet<int> codepoints, int codepoint)
+    {
+        if (!IsValidUnicodeScalar(codepoint))
+            return true;
+
+        if (codepoints.Contains(codepoint))
+            return true;
+
+        if (codepoints.Count >= MAX_DYNAMIC_SOURCE_CMAP_CODEPOINTS)
+            return false;
+
+        codepoints.Add(codepoint);
+        return true;
+    }
+
+    static bool IsValidUnicodeScalar(int value)
+    {
+        return value > 0 && value <= 0x10ffff && (value < 0xd800 || value > 0xdfff);
     }
 
     static int[] ReadColorBitmapSizes(byte[] fontData)
@@ -878,18 +1284,6 @@ public class NowFont : NowFontAsset
 
             return;
         }
-
-        if (string.IsNullOrEmpty(page.characters))
-            return;
-
-        for (int i = 0; i < page.characters.Length; ++i)
-        {
-            int unicode = ReadCodepoint(page.characters, ref i);
-            var key = new DynamicGlyphKey(unicode, page.atlasSize);
-
-            if (_dynamicGlyphPages.TryGetValue(key, out var mappedPage) && ReferenceEquals(mappedPage, page))
-                _dynamicGlyphPages.Remove(key);
-        }
     }
 
     void RemoveDynamicPageAt(int index)
@@ -1027,6 +1421,66 @@ public class NowFont : NowFontAsset
         return _dynamicColorBitmapSizes;
     }
 
+    HashSet<int> GetDynamicCodepointScratch()
+    {
+        _dynamicCodepointScratch ??= new HashSet<int>();
+        _dynamicCodepointScratch.Clear();
+        return _dynamicCodepointScratch;
+    }
+
+    StringBuilder GetDynamicStringBuilder()
+    {
+        _dynamicStringBuilder ??= new StringBuilder();
+        _dynamicStringBuilder.Length = 0;
+        return _dynamicStringBuilder;
+    }
+
+    int[] GetDynamicCompileCodepoints(string value, out int count)
+    {
+        count = 0;
+
+        if (string.IsNullOrEmpty(value))
+            return null;
+
+        var uniqueCodepoints = GetDynamicCodepointScratch();
+
+        for (int i = 0; i < value.Length; ++i)
+        {
+            int codepoint = ReadCodepoint(value, ref i);
+
+            if (!IsValidUnicodeScalar(codepoint) || !uniqueCodepoints.Add(codepoint))
+                continue;
+
+            if (_dynamicCompileCodepoints == null || count >= _dynamicCompileCodepoints.Length)
+            {
+                int currentCapacity = _dynamicCompileCodepoints?.Length ?? 0;
+                int nextCapacity = Mathf.Max(count + 1, currentCapacity > 0 ? currentCapacity * 2 : 8);
+                System.Array.Resize(ref _dynamicCompileCodepoints, nextCapacity);
+            }
+
+            _dynamicCompileCodepoints[count++] = codepoint;
+        }
+
+        uniqueCodepoints.Clear();
+        return count > 0 ? _dynamicCompileCodepoints : null;
+    }
+
+    bool DynamicSourceContainsCodepoint(int unicode)
+    {
+        if (!IsValidUnicodeScalar(unicode))
+            return false;
+
+        if (!_didReadDynamicSourceCodepoints)
+        {
+            if (!TryReadDynamicSourceCodepoints(DynamicFontBytes, out _dynamicSourceCodepoints))
+                _dynamicSourceCodepoints = null;
+
+            _didReadDynamicSourceCodepoints = true;
+        }
+
+        return _dynamicSourceCodepoints == null || _dynamicSourceCodepoints.Contains(unicode);
+    }
+
     bool TryGetLargestColorBitmapSize(out int bitmapSize)
     {
         bitmapSize = 0;
@@ -1074,11 +1528,17 @@ public class NowFont : NowFontAsset
         if (fontData == null || fontData.Length == 0 || string.IsNullOrEmpty(characters))
             return false;
 
+        var codepoints = GetDynamicCompileCodepoints(characters, out var codepointCount);
+
+        if (codepointCount <= 0)
+            return false;
+
         if (!NowFontCompiler.TryCompilePage(
             fontData,
             atlasSize > 0 ? atlasSize : DEFAULT_DYNAMIC_ATLAS_SIZE,
             dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE,
-            characters,
+            codepoints,
+            codepointCount,
             _dynamicMaterialTemplate,
             out font,
             out _))
@@ -1176,7 +1636,6 @@ public class NowFont : NowFontAsset
         return new DynamicAtlasPage
         {
             font = pageFont,
-            characters = string.Empty,
             codepoints = new HashSet<int>(),
             atlasSize = glyphFont.atlasInfo.atlas.size > 0 ? glyphFont.atlasInfo.atlas.size : requiredSize
         };
@@ -1326,11 +1785,16 @@ public class NowFont : NowFontAsset
             if (_dynamicColorLayoutGlyphs != null && _dynamicColorLayoutGlyphs.ContainsKey(unicode))
                 continue;
 
-            builder ??= new StringBuilder();
-            builder.Append(CodepointToString(unicode));
+            builder ??= GetDynamicStringBuilder();
+            AppendCodepoint(builder, unicode);
         }
 
-        return builder?.ToString();
+        if (builder == null)
+            return null;
+
+        string result = builder.ToString();
+        builder.Length = 0;
+        return result;
     }
 
     void EnsureColorLayoutGlyphs(string characters, int atlasSize, NowFont glyphFont)
@@ -1435,7 +1899,6 @@ public class NowFont : NowFontAsset
             page.font.ClearGlyphCache();
         }
 
-        page.characters += CodepointToString(unicode);
         page.codepoints ??= new HashSet<int>();
         page.codepoints.Add(unicode);
         _dynamicGlyphPages ??= new Dictionary<DynamicGlyphKey, DynamicAtlasPage>();
@@ -1471,6 +1934,12 @@ public class NowFont : NowFontAsset
             return false;
         }
 
+        if (!DynamicSourceContainsCodepoint(unicode))
+        {
+            AddDynamicMiss(key);
+            return false;
+        }
+
         return true;
     }
 
@@ -1495,16 +1964,23 @@ public class NowFont : NowFontAsset
             if (!ShouldCompileDynamicGlyph(codepoint, atlasSize))
                 continue;
 
-            uniqueCodepoints ??= new HashSet<int>();
+            uniqueCodepoints ??= GetDynamicCodepointScratch();
 
             if (!uniqueCodepoints.Add(codepoint))
                 continue;
 
-            builder ??= new StringBuilder();
-            builder.Append(CodepointToString(codepoint));
+            builder ??= GetDynamicStringBuilder();
+            AppendCodepoint(builder, codepoint);
         }
 
-        return builder?.ToString();
+        uniqueCodepoints?.Clear();
+
+        if (builder == null)
+            return null;
+
+        string result = builder.ToString();
+        builder.Length = 0;
+        return result;
     }
 
     bool TryCacheCompiledGlyph(
@@ -1684,6 +2160,8 @@ public class NowFont : NowFontAsset
         _dynamicMaterialTemplate = materialTemplate;
         _dynamicColorBitmapSizes = null;
         _didReadDynamicColorBitmapSizes = false;
+        _dynamicSourceCodepoints = null;
+        _didReadDynamicSourceCodepoints = false;
         ClearDynamicCache();
         ClearGlyphCache();
     }
