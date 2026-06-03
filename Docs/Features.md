@@ -77,15 +77,14 @@ track action buttons.
 The built-in render paths set up input where they already own a surface:
 
 - `NowUI.StartUI(...)` uses `NowUIInput.defaultProvider`, which defaults to
-  screen-space mouse input. It prefers the new Unity Input System when the
-  package is installed, then falls back to legacy `UnityEngine.Input` only when
-  the legacy input manager is enabled. If neither source is available, it
-  returns no pointer instead of touching a disabled input API. The default
-  provider reads primary, secondary, middle, back, and forward mouse buttons
-  where the active input backend exposes them. With the new Input System it also
-  reads keyboard arrows/WASD, gamepad left stick/D-pad, submit, and cancel.
-  Legacy fallback covers mouse buttons 0-4, arrows/WASD, enter/space, escape,
-  and the first two joystick buttons.
+  screen-space mouse input from the Unity Input System. It falls back to legacy
+  `UnityEngine.Input` only when the legacy input manager is enabled. If neither
+  source is available, it returns no pointer instead of touching a disabled
+  input API. The default provider reads primary, secondary, middle, back, and
+  forward mouse buttons where the active input backend exposes them. With the
+  Input System it also reads keyboard arrows/WASD, gamepad left stick/D-pad,
+  submit, and cancel. Legacy fallback covers mouse buttons 0-4, arrows/WASD,
+  enter/space, escape, and the first two joystick buttons.
 - `NowUIGUI.Auto(...)` and `NowUIGUILayout.Auto(...)` use IMGUI events.
 - `NowUIGraphic` uses a `RectTransform` mouse provider.
 - `NowUIPipelineGraphic.BuildDrawList(...)` maps screen mouse input into the

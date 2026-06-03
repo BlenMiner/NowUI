@@ -1,6 +1,7 @@
 using System;
-using System.Reflection;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
 
 public interface INowUIInputProvider
 {
@@ -1164,7 +1165,7 @@ internal struct NowUIMouseInput
 
     public static bool TryGet(out NowUIMouseInput input)
     {
-        if (NowUINewInputSystemMouse.TryGet(out input))
+        if (NowUIInputSystemInput.TryGet(out input))
             return true;
 
 #if ENABLE_LEGACY_INPUT_MANAGER
@@ -1292,338 +1293,100 @@ internal struct NowUIMouseInput
 #endif
 }
 
-internal static class NowUINewInputSystemMouse
+internal static class NowUIInputSystemInput
 {
-    static bool _initialized;
-
-    static PropertyInfo _mouseCurrentProperty;
-
-    static PropertyInfo _mousePositionProperty;
-
-    static PropertyInfo _mouseScrollProperty;
-
-    static PropertyInfo[] _mouseButtonProperties;
-
-    static PropertyInfo _keyboardCurrentProperty;
-
-    static PropertyInfo[] _keyboardNavigationProperties;
-
-    static PropertyInfo[] _keyboardSubmitProperties;
-
-    static PropertyInfo[] _keyboardCancelProperties;
-
-    static PropertyInfo _gamepadCurrentProperty;
-
-    static PropertyInfo _gamepadLeftStickProperty;
-
-    static PropertyInfo _gamepadDpadProperty;
-
-    static PropertyInfo[] _gamepadSubmitProperties;
-
-    static PropertyInfo[] _gamepadCancelProperties;
-
-    static PropertyInfo _buttonPressedProperty;
-
-    static PropertyInfo _buttonWasPressedProperty;
-
-    static PropertyInfo _buttonWasReleasedProperty;
-
     public static bool TryGet(out NowUIMouseInput input)
     {
-        EnsureInitialized();
+        input = default;
+        bool hasAnyInput = false;
+        Mouse mouse = Mouse.current;
 
-        try
+        if (mouse != null)
         {
-            input = default;
-            bool hasAnyInput = false;
-            object mouse = _mouseCurrentProperty?.GetValue(null);
-
-            if (mouse != null)
-            {
-                object positionControl = _mousePositionProperty?.GetValue(mouse);
-                object scrollControl = _mouseScrollProperty?.GetValue(mouse);
-
-                input.hasPointer = TryReadVector2(positionControl, out input.screenPosition);
-
-                if (TryReadVector2(scrollControl, out var scrollDelta))
-                    input.scrollDelta = scrollDelta;
-
-                if (_mouseButtonProperties != null)
-                {
-                    for (int i = 0; i < _mouseButtonProperties.Length; ++i)
-                    {
-                        object button = _mouseButtonProperties[i]?.GetValue(mouse);
-
-                        if (!TryReadButton(button, out var down, out var pressed, out var released))
-                            continue;
-
-                        var mask = NowUIInputSnapshot.ToButtonMask((NowUIPointerButton)i);
-
-                        if (down)
-                            input.pointerButtonsDown |= mask;
-
-                        if (pressed)
-                            input.pointerButtonsPressed |= mask;
-
-                        if (released)
-                            input.pointerButtonsReleased |= mask;
-                    }
-                }
-
-                hasAnyInput = input.hasPointer || input.pointerButtonsDown != NowUIPointerButtons.None;
-            }
-
-            object keyboard = _keyboardCurrentProperty?.GetValue(null);
-
-            if (keyboard != null)
-            {
-                input.navigation += ReadKeyboardNavigation(keyboard);
-                ReadButtons(keyboard, _keyboardSubmitProperties, out input.submitDown, out input.submitPressed, out input.submitReleased);
-                ReadButtons(keyboard, _keyboardCancelProperties, out input.cancelDown, out input.cancelPressed, out input.cancelReleased);
-                hasAnyInput = true;
-            }
-
-            object gamepad = _gamepadCurrentProperty?.GetValue(null);
-
-            if (gamepad != null)
-            {
-                if (TryReadVector2(_gamepadLeftStickProperty?.GetValue(gamepad), out var leftStick))
-                    input.navigation += leftStick;
-
-                if (TryReadVector2(_gamepadDpadProperty?.GetValue(gamepad), out var dpad))
-                    input.navigation += dpad;
-
-                ReadButtons(gamepad, _gamepadSubmitProperties, out var submitDown, out var submitPressed, out var submitReleased);
-                ReadButtons(gamepad, _gamepadCancelProperties, out var cancelDown, out var cancelPressed, out var cancelReleased);
-                input.submitDown |= submitDown;
-                input.submitPressed |= submitPressed;
-                input.submitReleased |= submitReleased;
-                input.cancelDown |= cancelDown;
-                input.cancelPressed |= cancelPressed;
-                input.cancelReleased |= cancelReleased;
-                hasAnyInput = true;
-            }
-
-            input.navigation = Vector2.ClampMagnitude(input.navigation, 1f);
-            return hasAnyInput;
+            input.hasPointer = true;
+            input.screenPosition = mouse.position.ReadValue();
+            input.scrollDelta = mouse.scroll.ReadValue();
+            AppendPointerButton(mouse.leftButton, NowUIPointerButton.Primary, ref input);
+            AppendPointerButton(mouse.rightButton, NowUIPointerButton.Secondary, ref input);
+            AppendPointerButton(mouse.middleButton, NowUIPointerButton.Middle, ref input);
+            AppendPointerButton(mouse.backButton, NowUIPointerButton.Back, ref input);
+            AppendPointerButton(mouse.forwardButton, NowUIPointerButton.Forward, ref input);
+            hasAnyInput = true;
         }
-        catch
+
+        Keyboard keyboard = Keyboard.current;
+
+        if (keyboard != null)
         {
-            input = default;
-            return false;
+            input.navigation += ReadKeyboardNavigation(keyboard);
+            MergeButton(keyboard.enterKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
+            MergeButton(keyboard.numpadEnterKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
+            MergeButton(keyboard.spaceKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
+            MergeButton(keyboard.escapeKey, ref input.cancelDown, ref input.cancelPressed, ref input.cancelReleased);
+            hasAnyInput = true;
         }
+
+        Gamepad gamepad = Gamepad.current;
+
+        if (gamepad != null)
+        {
+            input.navigation += gamepad.leftStick.ReadValue();
+            input.navigation += gamepad.dpad.ReadValue();
+            MergeButton(gamepad.buttonSouth, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
+            MergeButton(gamepad.startButton, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
+            MergeButton(gamepad.buttonEast, ref input.cancelDown, ref input.cancelPressed, ref input.cancelReleased);
+            MergeButton(gamepad.selectButton, ref input.cancelDown, ref input.cancelPressed, ref input.cancelReleased);
+            hasAnyInput = true;
+        }
+
+        input.navigation = Vector2.ClampMagnitude(input.navigation, 1f);
+        return hasAnyInput;
     }
 
-    static void EnsureInitialized()
+    static void AppendPointerButton(ButtonControl control, NowUIPointerButton button, ref NowUIMouseInput input)
     {
-        if (_initialized)
+        if (control == null)
             return;
 
-        _initialized = true;
+        var mask = NowUIInputSnapshot.ToButtonMask(button);
 
-        Type mouseType = ResolveInputSystemType("UnityEngine.InputSystem.Mouse");
-        Type keyboardType = ResolveInputSystemType("UnityEngine.InputSystem.Keyboard");
-        Type gamepadType = ResolveInputSystemType("UnityEngine.InputSystem.Gamepad");
+        if (control.isPressed)
+            input.pointerButtonsDown |= mask;
 
-        if (mouseType != null)
-        {
-            _mouseCurrentProperty = GetProperty(mouseType, "current", true);
-            _mousePositionProperty = GetProperty(mouseType, "position", false);
-            _mouseScrollProperty = GetProperty(mouseType, "scroll", false);
-            _mouseButtonProperties = new[]
-            {
-                GetProperty(mouseType, "leftButton", false),
-                GetProperty(mouseType, "rightButton", false),
-                GetProperty(mouseType, "middleButton", false),
-                GetProperty(mouseType, "backButton", false),
-                GetProperty(mouseType, "forwardButton", false)
-            };
-        }
+        if (control.wasPressedThisFrame)
+            input.pointerButtonsPressed |= mask;
 
-        if (keyboardType != null)
-        {
-            _keyboardCurrentProperty = GetProperty(keyboardType, "current", true);
-            _keyboardNavigationProperties = new[]
-            {
-                GetProperty(keyboardType, "leftArrowKey", false),
-                GetProperty(keyboardType, "rightArrowKey", false),
-                GetProperty(keyboardType, "downArrowKey", false),
-                GetProperty(keyboardType, "upArrowKey", false),
-                GetProperty(keyboardType, "aKey", false),
-                GetProperty(keyboardType, "dKey", false),
-                GetProperty(keyboardType, "sKey", false),
-                GetProperty(keyboardType, "wKey", false)
-            };
-            _keyboardSubmitProperties = new[]
-            {
-                GetProperty(keyboardType, "enterKey", false),
-                GetProperty(keyboardType, "numpadEnterKey", false),
-                GetProperty(keyboardType, "spaceKey", false)
-            };
-            _keyboardCancelProperties = new[]
-            {
-                GetProperty(keyboardType, "escapeKey", false)
-            };
-        }
-
-        if (gamepadType != null)
-        {
-            _gamepadCurrentProperty = GetProperty(gamepadType, "current", true);
-            _gamepadLeftStickProperty = GetProperty(gamepadType, "leftStick", false);
-            _gamepadDpadProperty = GetProperty(gamepadType, "dpad", false);
-            _gamepadSubmitProperties = new[]
-            {
-                GetProperty(gamepadType, "buttonSouth", false),
-                GetProperty(gamepadType, "startButton", false)
-            };
-            _gamepadCancelProperties = new[]
-            {
-                GetProperty(gamepadType, "buttonEast", false),
-                GetProperty(gamepadType, "selectButton", false)
-            };
-        }
+        if (control.wasReleasedThisFrame)
+            input.pointerButtonsReleased |= mask;
     }
 
-    static Vector2 ReadKeyboardNavigation(object keyboard)
+    static Vector2 ReadKeyboardNavigation(Keyboard keyboard)
     {
-        if (_keyboardNavigationProperties == null)
-            return default;
-
         float x = 0f;
         float y = 0f;
 
-        if (IsButtonDown(keyboard, _keyboardNavigationProperties[0]) || IsButtonDown(keyboard, _keyboardNavigationProperties[4]))
+        if (keyboard.leftArrowKey.isPressed || keyboard.aKey.isPressed)
             x -= 1f;
 
-        if (IsButtonDown(keyboard, _keyboardNavigationProperties[1]) || IsButtonDown(keyboard, _keyboardNavigationProperties[5]))
+        if (keyboard.rightArrowKey.isPressed || keyboard.dKey.isPressed)
             x += 1f;
 
-        if (IsButtonDown(keyboard, _keyboardNavigationProperties[2]) || IsButtonDown(keyboard, _keyboardNavigationProperties[6]))
+        if (keyboard.downArrowKey.isPressed || keyboard.sKey.isPressed)
             y -= 1f;
 
-        if (IsButtonDown(keyboard, _keyboardNavigationProperties[3]) || IsButtonDown(keyboard, _keyboardNavigationProperties[7]))
+        if (keyboard.upArrowKey.isPressed || keyboard.wKey.isPressed)
             y += 1f;
 
         return new Vector2(x, y);
     }
 
-    static void ReadButtons(
-        object owner,
-        PropertyInfo[] properties,
-        out bool down,
-        out bool pressed,
-        out bool released)
-    {
-        down = false;
-        pressed = false;
-        released = false;
-
-        if (owner == null || properties == null)
-            return;
-
-        for (int i = 0; i < properties.Length; ++i)
-        {
-            object button = properties[i]?.GetValue(owner);
-
-            if (!TryReadButton(button, out var candidateDown, out var candidatePressed, out var candidateReleased))
-                continue;
-
-            down |= candidateDown;
-            pressed |= candidatePressed;
-            released |= candidateReleased;
-        }
-    }
-
-    static bool IsButtonDown(object owner, PropertyInfo property)
-    {
-        if (owner == null || property == null)
-            return false;
-
-        object button = property.GetValue(owner);
-        return TryReadButton(button, out var down, out _, out _) && down;
-    }
-
-    static bool TryReadButton(object button, out bool down, out bool pressed, out bool released)
-    {
-        EnsureButtonProperties(button);
-
-        if (button == null ||
-            _buttonPressedProperty == null ||
-            _buttonWasPressedProperty == null ||
-            _buttonWasReleasedProperty == null)
-        {
-            down = false;
-            pressed = false;
-            released = false;
-            return false;
-        }
-
-        down = (bool)_buttonPressedProperty.GetValue(button);
-        pressed = (bool)_buttonWasPressedProperty.GetValue(button);
-        released = (bool)_buttonWasReleasedProperty.GetValue(button);
-        return true;
-    }
-
-    static void EnsureButtonProperties(object button)
-    {
-        if (button == null || _buttonPressedProperty != null)
-            return;
-
-        Type buttonType = button.GetType();
-
-        _buttonPressedProperty = buttonType.GetProperty("isPressed", BindingFlags.Public | BindingFlags.Instance);
-        _buttonWasPressedProperty = buttonType.GetProperty("wasPressedThisFrame", BindingFlags.Public | BindingFlags.Instance);
-        _buttonWasReleasedProperty = buttonType.GetProperty("wasReleasedThisFrame", BindingFlags.Public | BindingFlags.Instance);
-    }
-
-    static bool TryReadVector2(object control, out Vector2 value)
+    static void MergeButton(ButtonControl control, ref bool down, ref bool pressed, ref bool released)
     {
         if (control == null)
-        {
-            value = default;
-            return false;
-        }
+            return;
 
-        MethodInfo readValueMethod = control.GetType().GetMethod("ReadValue", Type.EmptyTypes);
-
-        if (readValueMethod == null)
-        {
-            value = default;
-            return false;
-        }
-
-        value = (Vector2)readValueMethod.Invoke(control, null);
-        return true;
-    }
-
-    static PropertyInfo GetProperty(Type type, string name, bool isStatic)
-    {
-        var flags = BindingFlags.Public | (isStatic ? BindingFlags.Static : BindingFlags.Instance);
-        return type.GetProperty(name, flags);
-    }
-
-    static Type ResolveInputSystemType(string typeName)
-    {
-        Type inputType = Type.GetType(typeName + ", Unity.InputSystem");
-
-        if (inputType != null)
-            return inputType;
-
-        var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-
-        for (int i = 0; i < assemblies.Length; ++i)
-        {
-            var assembly = assemblies[i];
-
-            if (assembly == null || assembly.GetName().Name != "Unity.InputSystem")
-                continue;
-
-            inputType = assembly.GetType(typeName);
-
-            if (inputType != null)
-                return inputType;
-        }
-
-        return null;
+        down |= control.isPressed;
+        pressed |= control.wasPressedThisFrame;
+        released |= control.wasReleasedThisFrame;
     }
 }
