@@ -30,12 +30,14 @@ public static class NowUIGUI
             return NowUIGUIScope.Suppress(rect);
 
         int controlId = GUIUtility.GetControlID(ControlHint, FocusType.Passive, rect);
+        var inputSurface = new NowUIInputSurface(new Vector2(rect.width, rect.height), rect);
+        var inputScope = NowUIInput.Begin(NowUIIMGUIInputProvider.instance, inputSurface);
 
         if (Event.current.type != EventType.Repaint)
-            return NowUIGUIScope.Suppress(rect);
+            return NowUIGUIScope.Suppress(rect, inputScope);
 
         if (rect.width <= 0f || rect.height <= 0f)
-            return NowUIGUIScope.Suppress(rect);
+            return NowUIGUIScope.Suppress(rect, inputScope);
 
         var entry = GetEntry(controlId);
         entry.lastUsedTime = Now();
@@ -50,7 +52,8 @@ public static class NowUIGUI
             entry,
             target,
             entry.renderer.Begin(new Vector2(rect.width, rect.height)),
-            clearColor);
+            clearColor,
+            inputScope);
     }
 
     public static void DisposeAll()
@@ -180,9 +183,13 @@ public struct NowUIGUIScope : IDisposable
 
     Color _clearColor;
 
+    NowUIInputScope _inputScope;
+
     bool _renders;
 
     bool _suppresses;
+
+    bool _hasInputScope;
 
     bool _disposed;
 
@@ -191,15 +198,22 @@ public struct NowUIGUIScope : IDisposable
         NowUIGUI.CacheEntry entry,
         RenderTexture target,
         NowUIDrawScope drawScope,
-        Color clearColor)
+        Color clearColor,
+        NowUIInputScope inputScope)
     {
-        return new NowUIGUIScope(rect, entry, target, drawScope, clearColor, true);
+        return new NowUIGUIScope(rect, entry, target, drawScope, clearColor, true, false, inputScope, true);
     }
 
     internal static NowUIGUIScope Suppress(Rect rect)
     {
         NowUI.BeginSuppressDraw();
         return new NowUIGUIScope(rect, null, null, default, Color.clear, false, true);
+    }
+
+    internal static NowUIGUIScope Suppress(Rect rect, NowUIInputScope inputScope)
+    {
+        NowUI.BeginSuppressDraw();
+        return new NowUIGUIScope(rect, null, null, default, Color.clear, false, true, inputScope, true);
     }
 
     NowUIGUIScope(
@@ -209,15 +223,19 @@ public struct NowUIGUIScope : IDisposable
         NowUIDrawScope drawScope,
         Color clearColor,
         bool renders,
-        bool suppresses = false)
+        bool suppresses = false,
+        NowUIInputScope inputScope = default,
+        bool hasInputScope = false)
     {
         _rect = rect;
         _entry = entry;
         _target = target;
         _drawScope = drawScope;
         _clearColor = clearColor;
+        _inputScope = inputScope;
         _renders = renders;
         _suppresses = suppresses;
+        _hasInputScope = hasInputScope;
         _disposed = false;
     }
 
@@ -239,13 +257,27 @@ public struct NowUIGUIScope : IDisposable
         if (_suppresses)
         {
             NowUI.EndSuppressDraw();
+            DisposeInputScope();
             return;
         }
 
         if (!_renders)
+        {
+            DisposeInputScope();
             return;
+        }
 
         NowUIGUI.CompleteScope(_entry, _target, _rect, _drawScope, _clearColor);
+        DisposeInputScope();
+    }
+
+    void DisposeInputScope()
+    {
+        if (!_hasInputScope)
+            return;
+
+        _inputScope.Dispose();
+        _hasInputScope = false;
     }
 }
 

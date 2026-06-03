@@ -390,10 +390,11 @@ MonoBehaviour:
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
-  _rebuildEveryFrame: 0
+  _rebuildEveryFrame: 1
   _font: {fileID: 11400000, guid: d9b4fc19191445a4f851b19fd4cf730f, type: 2}
-  _size: 24
-  _content: "\U000F001A Hey there \U0001F600\u2764\uFE0F\U0001F91D\U0001F4AA\U0001F9E0\U0001F600\u2764\uFE0F\U0001F91D\U0001F4AA\U0001F9E0\U000F066F\U000F066F"
+  _size: 48.8
+  _content: "\U000F001A Hey there \U0001F600\u2764\uFE0F\U0001F91D\U0001F4AA\U0001F9E0\U0001F600\u2764\uFE0F\U0001F91D\U000F066F\U000F066F
+    r"
 --- !u!1 &2070718855
 GameObject:
   m_ObjectHideFlags: 0

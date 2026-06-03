@@ -37,6 +37,53 @@ public sealed class OverlayExample : MonoBehaviour
 Coordinates use `Vector4(x, y, width, height)` in screen pixels. The origin is
 the top-left of the active screen mask.
 
+## Interaction And Input
+
+NowUI keeps input separate from rendering through `INowUIInputProvider`.
+Providers normalize their source into the current NowUI surface coordinates, so
+controls can use the same `NowUIInput.Interact(...)` calls in screen rendering,
+IMGUI, UGUI, RenderTexture, SRP overlays, and tests.
+
+```csharp
+var rect = new Vector4(20, 20, 160, 44);
+var state = NowUIInput.Interact("save-button", rect);
+
+NowUI.Rectangle(rect)
+    .SetColor(state.hovered ? Color.white : Color.gray)
+    .SetRadius(6)
+    .Draw();
+
+if (state.clicked)
+    Save();
+```
+
+`NowUIInteraction` reports `hovered`, `pressed`, `held`, `released`, `clicked`,
+`dragging`, `dragStarted`, and `dragEnded`. Control id strings are hashed with a
+stable internal hash; pass an integer id when you already have stable ids.
+
+The built-in render paths set up input where they already own a surface:
+
+- `NowUI.StartUI(...)` uses `NowUIInput.defaultProvider`, which defaults to
+  screen-space mouse input.
+- `NowUIGUI.Auto(...)` and `NowUIGUILayout.Auto(...)` use IMGUI events.
+- `NowUIGraphic` uses a `RectTransform` mouse provider.
+- `NowUIPipelineGraphic.BuildDrawList(...)` maps screen mouse input into the
+  camera pixel rect.
+
+For RenderTexture previews, world-space quads, remote input, or tests, scope a
+custom provider around the draw code.
+
+```csharp
+using (NowUIInput.Begin(myInputProvider, new Vector2(target.width, target.height)))
+using (renderer.Begin(target))
+{
+    var state = NowUIInput.Interact(42, new Rect(8, 8, 120, 32));
+}
+```
+
+Mock providers only need to return a `NowUIInputSnapshot`, which makes immediate
+mode controls testable without Unity's live input devices.
+
 ## Rectangles
 
 `NowUIRectangle` is a value struct. Configure it fluently and call `Draw()`.

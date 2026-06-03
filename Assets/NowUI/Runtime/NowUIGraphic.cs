@@ -13,6 +13,8 @@ public class NowUIGraphic : Graphic
 
     [SerializeField] bool _rebuildEveryFrame;
 
+    [NonSerialized] readonly List<CanvasRenderer> _extraCanvasRenderers = new List<CanvasRenderer>(2);
+
     [NonSerialized] readonly Dictionary<Material, Material> _textMaterials = new Dictionary<Material, Material>();
 
     [NonSerialized] NowUIDrawList _drawList;
@@ -22,6 +24,8 @@ public class NowUIGraphic : Graphic
     [NonSerialized] Material _textMaterialTemplate;
 
     [NonSerialized] Material _rgbaTextMaterialTemplate;
+
+    [NonSerialized] NowUIRectTransformInputProvider _inputProvider;
 
     public event Action<NowUIGraphic, Rect> rebuildNowUI;
 
@@ -60,8 +64,7 @@ public class NowUIGraphic : Graphic
         if (rect.width <= 0 || rect.height <= 0)
         {
             _drawList.Clear();
-            canvasRenderer.SetMesh(_drawList.mesh);
-            ApplyMaterials();
+            ApplyCanvasPages();
             return;
         }
 
@@ -72,7 +75,9 @@ public class NowUIGraphic : Graphic
 
         try
         {
-            DrawNowUI(drawRect);
+            using (NowUIInput.Begin(GetInputProvider(), new NowUIInputSurface(new Vector2(rect.width, rect.height))))
+                DrawNowUI(drawRect);
+
             scope.Dispose();
         }
         catch (Exception ex)
@@ -82,13 +87,12 @@ public class NowUIGraphic : Graphic
             Debug.LogException(ex, this);
         }
 
-        canvasRenderer.SetMesh(_drawList.mesh);
-        ApplyMaterials();
+        ApplyCanvasPages();
     }
 
     protected override void UpdateMaterial()
     {
-        ApplyMaterials();
+        ApplyCanvasPages();
     }
 
     protected virtual void LateUpdate()
@@ -101,6 +105,13 @@ public class NowUIGraphic : Graphic
     {
         base.OnEnable();
         EnsureCanvasChannels();
+    }
+
+    protected override void OnDisable()
+    {
+        ClearCanvasRenderer(canvasRenderer);
+        ClearExtraCanvasRenderers();
+        base.OnDisable();
     }
 
     protected override void OnCanvasHierarchyChanged()
@@ -116,6 +127,8 @@ public class NowUIGraphic : Graphic
             _drawList.Dispose();
             _drawList = null;
         }
+
+        DestroyExtraCanvasRenderers();
 
         foreach (var mat in _textMaterials.Values)
         {
@@ -149,20 +162,162 @@ public class NowUIGraphic : Graphic
         _drawList = new NowUIDrawList(NowUIMeshLayout.Canvas, "NowUI Graphic Mesh");
     }
 
-    void ApplyMaterials()
+    protected virtual INowUIInputProvider GetInputProvider()
     {
-        var crenderer = canvasRenderer;
+        if (_inputProvider == null)
+            _inputProvider = new NowUIRectTransformInputProvider();
+
+        _inputProvider.rectTransform = rectTransform;
+        _inputProvider.eventCamera = GetEventCamera();
+        return _inputProvider;
+    }
+
+    Camera GetEventCamera()
+    {
+        var targetCanvas = canvas;
+
+        if (targetCanvas == null || targetCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
+            return null;
+
+        return targetCanvas.worldCamera;
+    }
+
+    void ApplyCanvasPages()
+    {
         if (_drawList == null)
         {
-            crenderer.materialCount = 0;
+            ClearCanvasRenderer(canvasRenderer);
+            ClearExtraCanvasRenderers();
             return;
         }
 
-        var batches = _drawList.batches;
+        ApplyCanvasPage(canvasRenderer, _drawList.GetCanvasMesh(0), _drawList.GetCanvasBatches(0));
+
+        int extraPageCount = Mathf.Max(0, _drawList.canvasPageCount - 1);
+        EnsureExtraCanvasRendererCount(extraPageCount);
+
+        for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
+        {
+            var crenderer = _extraCanvasRenderers[i];
+
+            if (i >= extraPageCount)
+            {
+                ClearCanvasRenderer(crenderer);
+
+                if (crenderer != null && crenderer.gameObject.activeSelf)
+                    crenderer.gameObject.SetActive(false);
+
+                continue;
+            }
+
+            if (!crenderer.gameObject.activeSelf)
+                crenderer.gameObject.SetActive(true);
+
+            ApplyCanvasPage(crenderer, _drawList.GetCanvasMesh(i + 1), _drawList.GetCanvasBatches(i + 1));
+        }
+    }
+
+    void ApplyCanvasPage(CanvasRenderer crenderer, Mesh mesh, List<NowUIMeshBatch> batches)
+    {
+        if (crenderer == null)
+            return;
+
+        if (mesh == null || batches == null || batches.Count == 0 || mesh.vertexCount == 0)
+        {
+            ClearCanvasRenderer(crenderer);
+            return;
+        }
+
+        crenderer.SetMesh(mesh);
         crenderer.materialCount = batches.Count;
 
         for (int i = 0; i < batches.Count; ++i)
             crenderer.SetMaterial(GetCanvasMaterial(batches[i]), i);
+    }
+
+    static void ClearCanvasRenderer(CanvasRenderer crenderer)
+    {
+        if (crenderer == null)
+            return;
+
+        crenderer.Clear();
+        crenderer.materialCount = 0;
+    }
+
+    void ClearExtraCanvasRenderers()
+    {
+        for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
+            ClearCanvasRenderer(_extraCanvasRenderers[i]);
+    }
+
+    void EnsureExtraCanvasRendererCount(int count)
+    {
+        while (_extraCanvasRenderers.Count < count)
+        {
+            int pageIndex = _extraCanvasRenderers.Count + 1;
+            var go = new GameObject($"NowUI Graphic Renderer {pageIndex + 1}", typeof(RectTransform), typeof(CanvasRenderer))
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            var childTransform = (RectTransform)go.transform;
+            childTransform.SetParent(transform, false);
+            childTransform.anchorMin = Vector2.zero;
+            childTransform.anchorMax = Vector2.one;
+            childTransform.pivot = rectTransform.pivot;
+            childTransform.offsetMin = Vector2.zero;
+            childTransform.offsetMax = Vector2.zero;
+            childTransform.localScale = Vector3.one;
+            childTransform.localRotation = Quaternion.identity;
+            childTransform.SetSiblingIndex(pageIndex - 1);
+
+            var crenderer = go.GetComponent<CanvasRenderer>();
+            crenderer.cullTransparentMesh = canvasRenderer.cullTransparentMesh;
+            _extraCanvasRenderers.Add(crenderer);
+        }
+
+        for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
+        {
+            var crenderer = _extraCanvasRenderers[i];
+
+            if (crenderer == null)
+                continue;
+
+            var childTransform = crenderer.transform as RectTransform;
+
+            if (childTransform == null)
+                continue;
+
+            childTransform.SetSiblingIndex(i);
+            childTransform.anchorMin = Vector2.zero;
+            childTransform.anchorMax = Vector2.one;
+            childTransform.pivot = rectTransform.pivot;
+            childTransform.offsetMin = Vector2.zero;
+            childTransform.offsetMax = Vector2.zero;
+            childTransform.localScale = Vector3.one;
+            childTransform.localRotation = Quaternion.identity;
+            crenderer.cullTransparentMesh = canvasRenderer.cullTransparentMesh;
+        }
+    }
+
+    void DestroyExtraCanvasRenderers()
+    {
+        for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
+        {
+            var crenderer = _extraCanvasRenderers[i];
+
+            if (crenderer == null)
+                continue;
+
+            var target = crenderer.gameObject;
+
+            if (Application.isPlaying)
+                Destroy(target);
+            else
+                DestroyImmediate(target);
+        }
+
+        _extraCanvasRenderers.Clear();
     }
 
     Material GetCanvasMaterial(NowUIMeshBatch batch)

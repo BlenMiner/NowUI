@@ -217,6 +217,7 @@ public static class NowUI
     {
         _captureMesh = false;
         NowUI.screenMask = screenMask;
+        NowUIInput.Update(NowUIInputSurface.FromScreenMask(screenMask));
         Initialize();
     }
 
@@ -260,6 +261,60 @@ public static class NowUI
             return;
         }
 
+        UploadCapturedMeshes(target, batches, positionOffset, layout, 0, int.MaxValue);
+        CancelMeshCapture();
+    }
+
+    internal static void EndCanvasMeshCapture(NowUIDrawList drawList, Vector2 positionOffset)
+    {
+        if (drawList == null)
+        {
+            CancelMeshCapture();
+            return;
+        }
+
+        int activeCount = CountCapturedMeshes();
+        int pageCount = Mathf.Max(1, (activeCount + 7) / 8);
+        drawList.PrepareCanvasPages(pageCount);
+
+        for (int pageIndex = 0; pageIndex < pageCount; ++pageIndex)
+        {
+            UploadCapturedMeshes(
+                drawList.GetCanvasMesh(pageIndex),
+                drawList.GetCanvasBatches(pageIndex),
+                positionOffset,
+                NowUIMeshLayout.Canvas,
+                pageIndex * 8,
+                8);
+        }
+
+        CancelMeshCapture();
+    }
+
+    static int CountCapturedMeshes()
+    {
+        int count = 0;
+
+        for (int i = 0; i < _meshes.count; ++i)
+        {
+            if (_meshes.array[i].hasVertices)
+                ++count;
+        }
+
+        return count;
+    }
+
+    static void UploadCapturedMeshes(
+        Mesh target,
+        List<NowUIMeshBatch> batches,
+        Vector2 positionOffset,
+        NowUIMeshLayout layout,
+        int activeStart,
+        int activeLimit)
+    {
+        if (target == null || batches == null)
+            return;
+
         _vertices.Clear();
         _meshUvs.Clear();
         _uvs.Clear();
@@ -275,6 +330,9 @@ public static class NowUI
         _uguiTangents.Clear();
         batches.Clear();
 
+        int activeIndex = 0;
+        int appendedCount = 0;
+
         for (int i = 0; i < _meshes.count; ++i)
         {
             var mesh = _meshes.array[i];
@@ -282,7 +340,14 @@ public static class NowUI
             if (!mesh.hasVertices)
                 continue;
 
+            if (activeIndex++ < activeStart)
+                continue;
+
+            if (appendedCount >= activeLimit)
+                break;
+
             batches.Add(new NowUIMeshBatch(mesh.material, mesh.kind));
+            ++appendedCount;
 
             if (layout == NowUIMeshLayout.Canvas)
             {
@@ -316,7 +381,6 @@ public static class NowUI
 
         if (_vertices.Count == 0)
         {
-            CancelMeshCapture();
             return;
         }
 
@@ -349,6 +413,8 @@ public static class NowUI
 
         int subMesh = 0;
         int vertexOffset = 0;
+        activeIndex = 0;
+        appendedCount = 0;
 
         for (int i = 0; i < _meshes.count; ++i)
         {
@@ -357,15 +423,21 @@ public static class NowUI
             if (!mesh.hasVertices)
                 continue;
 
+            if (activeIndex++ < activeStart)
+                continue;
+
+            if (appendedCount >= activeLimit)
+                break;
+
             _triangles.Clear();
             mesh.AppendTriangles(_triangles, vertexOffset);
             target.SetTriangles(_triangles, subMesh, false);
             vertexOffset += mesh.vertexCount;
             ++subMesh;
+            ++appendedCount;
         }
 
         target.RecalculateBounds();
-        CancelMeshCapture();
     }
 
     public static void FlushUI()

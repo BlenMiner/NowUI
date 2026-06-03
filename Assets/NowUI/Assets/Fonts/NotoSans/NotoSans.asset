@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: NotoSans
   m_EditorClassIdentifier: NowUI.Runtime::NowFontFamily
   _fallbacks:
-  - {fileID: 11400000, guid: 661113d4fc66f9b4e916211c9bbe29db, type: 2}
+  - {fileID: 11400000, guid: b08ecceb769b0cd42b7dd48a88b908fe, type: 2}
   - {fileID: 11400000, guid: 0d7342069edd6a741a5958becb000004, type: 2}
   _regular: {fileID: 11400000, guid: 59e3b303b4e945d499ef2415cde95a76, type: 2}
   _bold: {fileID: 11400000, guid: b77f7781c2af010468cb48cab5649432, type: 2}

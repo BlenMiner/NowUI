@@ -83,7 +83,9 @@ public class NowUIPipelineGraphic : MonoBehaviour
 
         try
         {
-            DrawAll(camera, new Rect(0, 0, size.x, size.y));
+            using (NowUIInput.Begin(NowUIInput.defaultProvider, NowUIInputSurface.FromCamera(camera)))
+                DrawAll(camera, new Rect(0, 0, size.x, size.y));
+
             scope.Dispose();
         }
         catch

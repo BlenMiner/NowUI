@@ -7,6 +7,12 @@ public sealed class NowUIDrawList : IDisposable
 {
     readonly NowUIMeshLayout _layout;
 
+    readonly string _meshName;
+
+    readonly List<NowUICanvasMeshPage> _extraCanvasPages = new List<NowUICanvasMeshPage>(2);
+
+    int _canvasPageCount = 1;
+
     internal List<NowUIMeshBatch> batches { get; } = new List<NowUIMeshBatch>(4);
 
     public Mesh mesh { get; private set; }
@@ -25,6 +31,7 @@ public sealed class NowUIDrawList : IDisposable
     internal NowUIDrawList(NowUIMeshLayout layout, string meshName)
     {
         _layout = layout;
+        _meshName = meshName;
         mesh = new Mesh
         {
             name = meshName,
@@ -75,8 +82,12 @@ public sealed class NowUIDrawList : IDisposable
         else
             UnityEngine.Object.DestroyImmediate(mesh);
 
+        for (int i = 0; i < _extraCanvasPages.Count; ++i)
+            _extraCanvasPages[i].Dispose();
+
         mesh = null;
         batches.Clear();
+        _extraCanvasPages.Clear();
         size = default;
     }
 
@@ -84,13 +95,21 @@ public sealed class NowUIDrawList : IDisposable
     {
         mesh.Clear();
         batches.Clear();
+        _canvasPageCount = 1;
+
+        for (int i = 0; i < _extraCanvasPages.Count; ++i)
+            _extraCanvasPages[i].Clear();
     }
 
     internal void EndScope(Vector2 positionOffset, bool capturesMesh)
     {
         if (capturesMesh)
         {
-            NowUI.EndMeshCapture(mesh, batches, positionOffset, _layout);
+            if (_layout == NowUIMeshLayout.Canvas)
+                NowUI.EndCanvasMeshCapture(this, positionOffset);
+            else
+                NowUI.EndMeshCapture(mesh, batches, positionOffset, _layout);
+
             return;
         }
 
@@ -111,6 +130,74 @@ public sealed class NowUIDrawList : IDisposable
     {
         if (mesh == null)
             throw new ObjectDisposedException(nameof(NowUIDrawList));
+    }
+
+    internal int canvasPageCount => _canvasPageCount;
+
+    internal void PrepareCanvasPages(int pageCount)
+    {
+        _canvasPageCount = Mathf.Max(1, pageCount);
+
+        while (_extraCanvasPages.Count < _canvasPageCount - 1)
+        {
+            int pageIndex = _extraCanvasPages.Count + 1;
+            _extraCanvasPages.Add(new NowUICanvasMeshPage($"{_meshName} Page {pageIndex + 1}"));
+        }
+
+        batches.Clear();
+
+        for (int i = 0; i < _extraCanvasPages.Count; ++i)
+            _extraCanvasPages[i].Clear();
+    }
+
+    internal Mesh GetCanvasMesh(int pageIndex)
+    {
+        return pageIndex == 0 ? mesh : _extraCanvasPages[pageIndex - 1].mesh;
+    }
+
+    internal List<NowUIMeshBatch> GetCanvasBatches(int pageIndex)
+    {
+        return pageIndex == 0 ? batches : _extraCanvasPages[pageIndex - 1].batches;
+    }
+}
+
+sealed class NowUICanvasMeshPage : IDisposable
+{
+    public Mesh mesh { get; private set; }
+
+    internal List<NowUIMeshBatch> batches { get; } = new List<NowUIMeshBatch>(8);
+
+    public NowUICanvasMeshPage(string meshName)
+    {
+        mesh = new Mesh
+        {
+            name = meshName,
+            hideFlags = HideFlags.HideAndDontSave
+        };
+
+        mesh.MarkDynamic();
+    }
+
+    public void Clear()
+    {
+        if (mesh)
+            mesh.Clear();
+
+        batches.Clear();
+    }
+
+    public void Dispose()
+    {
+        if (!mesh)
+            return;
+
+        if (Application.isPlaying)
+            UnityEngine.Object.Destroy(mesh);
+        else
+            UnityEngine.Object.DestroyImmediate(mesh);
+
+        mesh = null;
+        batches.Clear();
     }
 }
 
