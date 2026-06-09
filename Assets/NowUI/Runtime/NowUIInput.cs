@@ -76,7 +76,7 @@ public struct NowUIInputSurface
 
 public struct NowUIInputSnapshot
 {
-    public bool hasPointer;
+    public readonly bool hasPointer;
 
     public Vector2 pointerPosition;
 
@@ -90,19 +90,19 @@ public struct NowUIInputSnapshot
 
     public bool primaryReleased;
 
-    public NowUIPointerButtons pointerButtonsDown;
+    public readonly NowUIPointerButtons pointerButtonsDown;
 
-    public NowUIPointerButtons pointerButtonsPressed;
+    public readonly NowUIPointerButtons pointerButtonsPressed;
 
-    public NowUIPointerButtons pointerButtonsReleased;
+    public readonly NowUIPointerButtons pointerButtonsReleased;
 
     public Vector2 scrollDelta;
 
     public Vector2 navigation;
 
-    public bool submitDown;
+    public readonly bool submitDown;
 
-    public bool submitPressed;
+    public readonly bool submitPressed;
 
     public bool submitReleased;
 
