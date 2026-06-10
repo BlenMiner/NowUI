@@ -115,6 +115,51 @@ public static class NowFontCompiler
         [Out] byte[] errorBuffer,
         int errorBufferLength);
 
+    [StructLayout(LayoutKind.Sequential)]
+    struct NativeSessionInfo
+    {
+        public float size;
+        public float distanceRange;
+        public NativeMetrics metrics;
+    }
+
+    const int SESSION_RESIZED = 1;
+
+    [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
+    static extern int nowui_msdf_session_create(
+        byte[] fontData,
+        int fontDataLength,
+        int size,
+        int pixelRange,
+        ref NativeSessionInfo info,
+        out IntPtr session,
+        [Out] byte[] errorBuffer,
+        int errorBufferLength);
+
+    [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
+    static extern int nowui_msdf_session_add_glyphs(
+        IntPtr session,
+        int[] codepoints,
+        int codepointCount,
+        [Out] NativeGlyph[] glyphs,
+        int glyphCapacity,
+        out int glyphCount,
+        out int atlasSide,
+        out int changeFlags,
+        [Out] byte[] errorBuffer,
+        int errorBufferLength);
+
+    [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
+    static extern int nowui_msdf_session_copy_atlas(
+        IntPtr session,
+        [Out] byte[] atlasRgba,
+        int atlasRgbaLength,
+        [Out] byte[] errorBuffer,
+        int errorBufferLength);
+
+    [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
+    static extern void nowui_msdf_session_destroy(IntPtr session);
+
     [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
     static extern int nowui_compile_color_font_from_memory_with_codepoints(
         byte[] fontData,
@@ -129,6 +174,174 @@ public static class NowFontCompiler
         ref NativeColorAtlasInfo info,
         [Out] byte[] errorBuffer,
         int errorBufferLength);
+
+    internal static bool IsColorFont(byte[] fontData)
+    {
+        return ContainsColorGlyphTables(fontData);
+    }
+
+    /// <summary>
+    /// Stateful incremental baking session backed by the native plugin. Keeps the parsed
+    /// font and a growing atlas alive across calls, so adding glyphs on demand costs only
+    /// the SDF generation of the new glyphs instead of a full font re-parse per request.
+    /// Throws DllNotFoundException/EntryPointNotFoundException on creation when the native
+    /// plugin predates the session API; callers fall back to the per-page compiler.
+    /// </summary>
+    internal sealed class DynamicSession : IDisposable
+    {
+        IntPtr _handle;
+        NativeGlyph[] _glyphScratch;
+        readonly byte[] _errorBuffer = new byte[ERROR_CAPACITY];
+
+        public int AtlasSide { get; private set; }
+        public float Size { get; }
+        public float DistanceRange { get; }
+        public NowFontAtlasInfo.Metrics Metrics { get; }
+
+        DynamicSession(IntPtr handle, in NativeSessionInfo info)
+        {
+            _handle = handle;
+            Size = info.size;
+            DistanceRange = info.distanceRange;
+            Metrics = ToMetrics(info.metrics);
+        }
+
+        ~DynamicSession()
+        {
+            ReleaseHandle();
+        }
+
+        public static bool TryCreate(byte[] fontData, int size, int pixelRange, out DynamicSession session, out string error)
+        {
+            session = null;
+
+            if (fontData == null || fontData.Length == 0)
+            {
+                error = "Font data is empty.";
+                return false;
+            }
+
+            var errorBuffer = new byte[ERROR_CAPACITY];
+            NativeSessionInfo info = default;
+
+            int result = nowui_msdf_session_create(
+                fontData,
+                fontData.Length,
+                size,
+                pixelRange,
+                ref info,
+                out IntPtr handle,
+                errorBuffer,
+                errorBuffer.Length);
+
+            if (result != NATIVE_OK || handle == IntPtr.Zero)
+            {
+                error = NativeError(errorBuffer, "The native font compiler failed to create a baking session.");
+                return false;
+            }
+
+            session = new DynamicSession(handle, info);
+            error = null;
+            return true;
+        }
+
+        public bool TryAddGlyphs(int[] codepoints, int codepointCount, List<NowFontAtlasInfo.Glyph> results, out bool resized, out string error)
+        {
+            resized = false;
+
+            if (_handle == IntPtr.Zero)
+            {
+                error = "The baking session has been disposed.";
+                return false;
+            }
+
+            if (codepoints == null || codepointCount <= 0)
+            {
+                error = null;
+                return true;
+            }
+
+            if (_glyphScratch == null || _glyphScratch.Length < codepointCount)
+                _glyphScratch = new NativeGlyph[Mathf.NextPowerOfTwo(codepointCount)];
+
+            Array.Clear(_errorBuffer, 0, _errorBuffer.Length);
+
+            int result = nowui_msdf_session_add_glyphs(
+                _handle,
+                codepoints,
+                codepointCount,
+                _glyphScratch,
+                _glyphScratch.Length,
+                out int glyphCount,
+                out int atlasSide,
+                out int changeFlags,
+                _errorBuffer,
+                _errorBuffer.Length);
+
+            if (result != NATIVE_OK)
+            {
+                error = NativeError(_errorBuffer, "The native font compiler failed to add glyphs to the baking session.");
+                return false;
+            }
+
+            AtlasSide = atlasSide;
+            resized = (changeFlags & SESSION_RESIZED) != 0;
+
+            for (int i = 0; i < glyphCount; ++i)
+                results.Add(ToGlyph(_glyphScratch[i]));
+
+            error = null;
+            return true;
+        }
+
+        public bool TryCopyAtlas(ref byte[] buffer, out string error)
+        {
+            if (_handle == IntPtr.Zero)
+            {
+                error = "The baking session has been disposed.";
+                return false;
+            }
+
+            int required = AtlasSide * AtlasSide * 4;
+
+            if (required <= 0)
+            {
+                error = "The baking session atlas is empty.";
+                return false;
+            }
+
+            if (buffer == null || buffer.Length != required)
+                buffer = new byte[required];
+
+            Array.Clear(_errorBuffer, 0, _errorBuffer.Length);
+
+            int result = nowui_msdf_session_copy_atlas(_handle, buffer, buffer.Length, _errorBuffer, _errorBuffer.Length);
+
+            if (result != NATIVE_OK)
+            {
+                error = NativeError(_errorBuffer, "The native font compiler failed to copy the session atlas.");
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
+        public void Dispose()
+        {
+            ReleaseHandle();
+            GC.SuppressFinalize(this);
+        }
+
+        void ReleaseHandle()
+        {
+            if (_handle == IntPtr.Zero)
+                return;
+
+            nowui_msdf_session_destroy(_handle);
+            _handle = IntPtr.Zero;
+        }
+    }
 
     public static bool TryCompile(byte[] fontData, out NowFont font, out string error)
     {
@@ -579,6 +792,42 @@ public static class NowFontCompiler
         }
     }
 
+    static NowFontAtlasInfo.Metrics ToMetrics(NativeMetrics metrics)
+    {
+        return new NowFontAtlasInfo.Metrics
+        {
+            emSize = metrics.emSize,
+            lineHeight = metrics.lineHeight,
+            ascender = metrics.ascender,
+            descender = metrics.descender,
+            underlineY = metrics.underlineY,
+            underlineThickness = metrics.underlineThickness
+        };
+    }
+
+    static NowFontAtlasInfo.Glyph ToGlyph(NativeGlyph nativeGlyph)
+    {
+        return new NowFontAtlasInfo.Glyph
+        {
+            unicode = unchecked((int)nativeGlyph.unicode),
+            advance = nativeGlyph.advance,
+            planeBounds = new NowFontAtlasInfo.Bounds
+            {
+                left = nativeGlyph.planeLeft,
+                bottom = nativeGlyph.planeBottom,
+                right = nativeGlyph.planeRight,
+                top = nativeGlyph.planeTop
+            },
+            atlasBounds = new NowFontAtlasInfo.Bounds
+            {
+                left = nativeGlyph.atlasLeft,
+                bottom = nativeGlyph.atlasBottom,
+                right = nativeGlyph.atlasRight,
+                top = nativeGlyph.atlasTop
+            }
+        };
+    }
+
     static NowFontAtlasInfo ToAtlasInfo(NativeGlyph[] nativeGlyphs, NativeAtlasInfo info)
     {
         var atlasInfo = new NowFontAtlasInfo
@@ -592,41 +841,12 @@ public static class NowFontCompiler
                 height = info.height,
                 yOrigin = "bottom"
             },
-            metrics = new NowFontAtlasInfo.Metrics
-            {
-                emSize = info.metrics.emSize,
-                lineHeight = info.metrics.lineHeight,
-                ascender = info.metrics.ascender,
-                descender = info.metrics.descender,
-                underlineY = info.metrics.underlineY,
-                underlineThickness = info.metrics.underlineThickness
-            },
+            metrics = ToMetrics(info.metrics),
             glyphs = new NowFontAtlasInfo.Glyph[nativeGlyphs.Length]
         };
 
         for (int i = 0; i < nativeGlyphs.Length; ++i)
-        {
-            var nativeGlyph = nativeGlyphs[i];
-            atlasInfo.glyphs[i] = new NowFontAtlasInfo.Glyph
-            {
-                unicode = unchecked((int)nativeGlyph.unicode),
-                advance = nativeGlyph.advance,
-                planeBounds = new NowFontAtlasInfo.Bounds
-                {
-                    left = nativeGlyph.planeLeft,
-                    bottom = nativeGlyph.planeBottom,
-                    right = nativeGlyph.planeRight,
-                    top = nativeGlyph.planeTop
-                },
-                atlasBounds = new NowFontAtlasInfo.Bounds
-                {
-                    left = nativeGlyph.atlasLeft,
-                    bottom = nativeGlyph.atlasBottom,
-                    right = nativeGlyph.atlasRight,
-                    top = nativeGlyph.atlasTop
-                }
-            };
-        }
+            atlasInfo.glyphs[i] = ToGlyph(nativeGlyphs[i]);
 
         return atlasInfo;
     }

@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -22,6 +23,7 @@
 #include <msdf-atlas-gen/FontGeometry.h>
 #include <msdf-atlas-gen/glyph-generators.h>
 #include <msdf-atlas-gen/ImmediateAtlasGenerator.h>
+#include <msdf-atlas-gen/RectanglePacker.h>
 #include <msdf-atlas-gen/TightAtlasPacker.h>
 
 #ifndef NOWUI_MSDF_DISABLE_FILE_API
@@ -223,17 +225,28 @@ void fill_glyphs(NowUIMsdfGlyph *output, const msdf_atlas::FontGeometry &font_ge
     }
 }
 
-AtlasGenerator generate_atlas(const std::vector<msdf_atlas::GlyphGeometry> &glyphs, int width, int height) {
-    AtlasGenerator generator(width, height);
+msdf_atlas::GeneratorAttributes make_generator_attributes() {
     msdf_atlas::GeneratorAttributes attributes;
-    generator.setAttributes(attributes);
+    // Icon fonts (e.g. Material Design Icons) routinely contain overlapping contours and
+    // inconsistent windings; without the scanline sign-correction pass such glyphs bake
+    // with filled holes or inverted regions.
+    attributes.scanlinePass = true;
+    return attributes;
+}
 
+int default_thread_count() {
 #ifdef __EMSCRIPTEN__
-    generator.setThreadCount(1);
+    return 1;
 #else
     const unsigned hardware_threads = std::thread::hardware_concurrency();
-    generator.setThreadCount(static_cast<int>(hardware_threads == 0 ? 1 : hardware_threads));
+    return static_cast<int>(hardware_threads == 0 ? 1 : hardware_threads);
 #endif
+}
+
+AtlasGenerator generate_atlas(const std::vector<msdf_atlas::GlyphGeometry> &glyphs, int width, int height) {
+    AtlasGenerator generator(width, height);
+    generator.setAttributes(make_generator_attributes());
+    generator.setThreadCount(default_thread_count());
     generator.generate(glyphs.data(), static_cast<int>(glyphs.size()));
     return generator;
 }
@@ -561,6 +574,228 @@ int compile_font_to_files(
 }
 #endif
 
+const int SESSION_MIN_SIDE = 256;
+const int SESSION_MAX_SIDE = 1 << 14;
+
+// Note: msdf_atlas::DynamicAtlas is deliberately not used here. Its add() assumes that
+// RectanglePacker::pack leaves exactly the trailing rectangles unplaced when the atlas is
+// full, but pack() places rectangles in best-fit order, so after an atlas resize arbitrary
+// glyphs could remain unplaced at (0, 0) and overlap each other. The session drives the
+// packer and generator directly and retries the whole batch from a packer snapshot instead.
+struct NowUIMsdfSessionState {
+    std::vector<unsigned char> font_data;
+    FreetypeLibrary freetype;
+    msdfgen::FontHandle *font = nullptr;
+    msdf_atlas::FontGeometry font_geometry;
+    double scale = 0;
+    double range_em = 0;
+    msdf_atlas::RectanglePacker packer;
+    AtlasGenerator generator;
+    int side = 0;
+
+    ~NowUIMsdfSessionState() {
+        if (font)
+            msdfgen::destroyFont(font);
+    }
+};
+
+NowUIMsdfSessionState *create_session(
+    const unsigned char *font_data,
+    int font_data_length,
+    int size,
+    int pixel_range,
+    NowUIMsdfSessionInfo *info) {
+
+    if (!font_data || font_data_length <= 0)
+        throw std::runtime_error("Font data is empty.");
+    if (size <= 0)
+        throw std::runtime_error("Font atlas size must be greater than zero.");
+    if (pixel_range <= 0)
+        throw std::runtime_error("Font atlas pixel range must be greater than zero.");
+
+    std::unique_ptr<NowUIMsdfSessionState> session(new NowUIMsdfSessionState());
+
+    // FreeType keeps referencing the memory of FT_New_Memory_Face for the lifetime of
+    // the face, so the session owns a copy of the font bytes.
+    session->font_data.assign(font_data, font_data + font_data_length);
+
+    if (!session->freetype.get())
+        throw std::runtime_error("Failed to initialize FreeType.");
+
+    session->font = msdfgen::loadFontData(
+        session->freetype.get(),
+        session->font_data.data(),
+        static_cast<int>(session->font_data.size()));
+
+    if (!session->font)
+        throw std::runtime_error("Failed to load font from memory.");
+
+    if (!session->font_geometry.loadMetrics(session->font, 1.0))
+        throw std::runtime_error("Failed to load font metrics.");
+
+    session->scale = static_cast<double>(size);
+    session->range_em = static_cast<double>(pixel_range) / session->scale;
+    session->side = SESSION_MIN_SIDE;
+    session->packer = msdf_atlas::RectanglePacker(session->side, session->side);
+    session->generator = AtlasGenerator(session->side, session->side);
+    session->generator.setAttributes(make_generator_attributes());
+    session->generator.setThreadCount(default_thread_count());
+
+    if (info) {
+        const msdfgen::FontMetrics &metrics = session->font_geometry.getMetrics();
+        info->size = static_cast<float>(session->scale);
+        info->distance_range = static_cast<float>(pixel_range);
+        info->metrics.em_size = static_cast<float>(metrics.emSize);
+        info->metrics.line_height = static_cast<float>(metrics.lineHeight);
+        info->metrics.ascender = static_cast<float>(metrics.ascenderY);
+        info->metrics.descender = static_cast<float>(metrics.descenderY);
+        info->metrics.underline_y = static_cast<float>(metrics.underlineY);
+        info->metrics.underline_thickness = static_cast<float>(metrics.underlineThickness);
+    }
+
+    return session.release();
+}
+
+int session_add_glyphs(
+    NowUIMsdfSessionState *session,
+    const unsigned int *codepoints,
+    int codepoint_count,
+    NowUIMsdfGlyph *glyphs_output,
+    int glyph_capacity,
+    int *out_glyph_count,
+    int *out_atlas_side,
+    int *out_change_flags) {
+
+    if (!session)
+        throw std::runtime_error("Session is null.");
+    if (out_glyph_count)
+        *out_glyph_count = 0;
+    if (out_change_flags)
+        *out_change_flags = 0;
+    if (out_atlas_side)
+        *out_atlas_side = session->side;
+    if (!codepoints || codepoint_count <= 0)
+        return NOWUI_MSDF_OK;
+
+    std::vector<msdf_atlas::GlyphGeometry> loaded;
+    loaded.reserve(static_cast<size_t>(codepoint_count));
+
+    for (int i = 0; i < codepoint_count; ++i) {
+        msdf_atlas::GlyphGeometry glyph;
+
+        if (!glyph.load(session->font, session->font_geometry.getGeometryScale(), static_cast<msdf_atlas::unicode_t>(codepoints[i])))
+            continue;
+
+        if (!glyph.isWhitespace()) {
+            glyph.edgeColoring(msdfgen::edgeColoringInkTrap, DefaultAngleThreshold, 0);
+            glyph.wrapBox(session->scale, session->range_em, DefaultMiterLimit);
+        }
+
+        loaded.push_back(static_cast<msdf_atlas::GlyphGeometry &&>(glyph));
+    }
+
+    if (loaded.empty())
+        return NOWUI_MSDF_OK;
+
+    if (!glyphs_output || glyph_capacity < static_cast<int>(loaded.size()))
+        return NOWUI_MSDF_BUFFER_TOO_SMALL;
+
+    std::vector<msdf_atlas::Rectangle> batch_rects;
+    std::vector<size_t> rect_glyph_indices;
+
+    for (size_t i = 0; i < loaded.size(); ++i) {
+        if (loaded[i].isWhitespace())
+            continue;
+
+        int w = 0, h = 0;
+        loaded[i].getBoxSize(w, h);
+        const msdf_atlas::Rectangle rect = { 0, 0, w, h };
+        batch_rects.push_back(rect);
+        rect_glyph_indices.push_back(i);
+    }
+
+    bool resized = false;
+
+    if (!batch_rects.empty()) {
+        // Pack the whole batch against a snapshot of the packer; on failure grow the atlas
+        // and retry the entire batch so no rectangle is ever left unplaced. Already-placed
+        // glyphs keep their coordinates because expand() only adds free space.
+        for (;;) {
+            msdf_atlas::RectanglePacker attempt = session->packer;
+            std::vector<msdf_atlas::Rectangle> attempt_rects = batch_rects;
+
+            if (attempt.pack(attempt_rects.data(), static_cast<int>(attempt_rects.size())) == 0) {
+                session->packer = attempt;
+                batch_rects = attempt_rects;
+                break;
+            }
+
+            if (session->side >= SESSION_MAX_SIDE)
+                throw std::runtime_error("Glyph atlas exceeded the maximum supported size.");
+
+            session->side <<= 1;
+            session->packer.expand(session->side, session->side);
+            resized = true;
+        }
+
+        if (resized)
+            session->generator.resize(session->side, session->side);
+
+        for (size_t r = 0; r < batch_rects.size(); ++r)
+            loaded[rect_glyph_indices[r]].placeBox(batch_rects[r].x, batch_rects[r].y);
+    }
+
+    session->generator.generate(loaded.data(), static_cast<int>(loaded.size()));
+
+    const int change_flags = resized ? NOWUI_MSDF_SESSION_RESIZED : 0;
+
+    for (size_t i = 0; i < loaded.size(); ++i) {
+        const msdf_atlas::GlyphGeometry &glyph = loaded[i];
+        double plane_left = 0, plane_bottom = 0, plane_right = 0, plane_top = 0;
+        double atlas_left = 0, atlas_bottom = 0, atlas_right = 0, atlas_top = 0;
+
+        glyph.getQuadPlaneBounds(plane_left, plane_bottom, plane_right, plane_top);
+        glyph.getQuadAtlasBounds(atlas_left, atlas_bottom, atlas_right, atlas_top);
+
+        NowUIMsdfGlyph &output = glyphs_output[i];
+        output.unicode = glyph.getCodepoint();
+        output.advance = static_cast<float>(glyph.getAdvance());
+        output.plane_left = static_cast<float>(plane_left);
+        output.plane_bottom = static_cast<float>(plane_bottom);
+        output.plane_right = static_cast<float>(plane_right);
+        output.plane_top = static_cast<float>(plane_top);
+        output.atlas_left = static_cast<float>(atlas_left);
+        output.atlas_bottom = static_cast<float>(atlas_bottom);
+        output.atlas_right = static_cast<float>(atlas_right);
+        output.atlas_top = static_cast<float>(atlas_top);
+    }
+
+    if (out_glyph_count)
+        *out_glyph_count = static_cast<int>(loaded.size());
+    if (out_atlas_side)
+        *out_atlas_side = session->side;
+    if (out_change_flags)
+        *out_change_flags = change_flags;
+
+    return NOWUI_MSDF_OK;
+}
+
+int session_copy_atlas(NowUIMsdfSessionState *session, unsigned char *atlas_rgba, int atlas_rgba_length) {
+    if (!session)
+        throw std::runtime_error("Session is null.");
+
+    msdfgen::BitmapConstRef<msdf_atlas::byte, 4> storage = session->generator.atlasStorage();
+    const int byte_count = storage.width * storage.height * 4;
+
+    if (!atlas_rgba || atlas_rgba_length < byte_count)
+        return NOWUI_MSDF_BUFFER_TOO_SMALL;
+
+    for (int y = 0; y < storage.height; ++y)
+        std::memcpy(atlas_rgba + static_cast<size_t>(y) * storage.width * 4, storage(0, y), static_cast<size_t>(storage.width) * 4);
+
+    return NOWUI_MSDF_OK;
+}
+
 int compile_font_to_memory(
     const unsigned char *font_data,
     int font_data_length,
@@ -800,8 +1035,99 @@ int nowui_compile_color_font_from_memory_with_codepoints(
     return NOWUI_MSDF_ERROR;
 }
 
+int nowui_msdf_session_create(
+    const unsigned char *font_data,
+    int font_data_length,
+    int size,
+    int pixel_range,
+    NowUIMsdfSessionInfo *info,
+    void **out_session,
+    char *error_buffer,
+    int error_buffer_length) {
+
+    if (out_session)
+        *out_session = nullptr;
+
+    try {
+        if (!out_session)
+            throw std::runtime_error("Session output pointer is null.");
+
+        *out_session = create_session(font_data, font_data_length, size, pixel_range, info);
+        set_error(error_buffer, error_buffer_length, std::string());
+        return NOWUI_MSDF_OK;
+    } catch (const std::exception &ex) {
+        set_error(error_buffer, error_buffer_length, ex.what());
+    } catch (...) {
+        set_error(error_buffer, error_buffer_length, "Unknown native font compiler error.");
+    }
+
+    return NOWUI_MSDF_ERROR;
+}
+
+int nowui_msdf_session_add_glyphs(
+    void *session,
+    const unsigned int *codepoints,
+    int codepoint_count,
+    NowUIMsdfGlyph *glyphs,
+    int glyph_capacity,
+    int *out_glyph_count,
+    int *out_atlas_side,
+    int *out_change_flags,
+    char *error_buffer,
+    int error_buffer_length) {
+
+    try {
+        const int result = session_add_glyphs(
+            static_cast<NowUIMsdfSessionState *>(session),
+            codepoints,
+            codepoint_count,
+            glyphs,
+            glyph_capacity,
+            out_glyph_count,
+            out_atlas_side,
+            out_change_flags);
+
+        set_error(error_buffer, error_buffer_length, std::string());
+        return result;
+    } catch (const std::exception &ex) {
+        set_error(error_buffer, error_buffer_length, ex.what());
+    } catch (...) {
+        set_error(error_buffer, error_buffer_length, "Unknown native font compiler error.");
+    }
+
+    return NOWUI_MSDF_ERROR;
+}
+
+int nowui_msdf_session_copy_atlas(
+    void *session,
+    unsigned char *atlas_rgba,
+    int atlas_rgba_length,
+    char *error_buffer,
+    int error_buffer_length) {
+
+    try {
+        const int result = session_copy_atlas(
+            static_cast<NowUIMsdfSessionState *>(session),
+            atlas_rgba,
+            atlas_rgba_length);
+
+        set_error(error_buffer, error_buffer_length, std::string());
+        return result;
+    } catch (const std::exception &ex) {
+        set_error(error_buffer, error_buffer_length, ex.what());
+    } catch (...) {
+        set_error(error_buffer, error_buffer_length, "Unknown native font compiler error.");
+    }
+
+    return NOWUI_MSDF_ERROR;
+}
+
+void nowui_msdf_session_destroy(void *session) {
+    delete static_cast<NowUIMsdfSessionState *>(session);
+}
+
 const char *nowui_msdf_version() {
-    return "nowui-msdf/1";
+    return "nowui-msdf/2";
 }
 
 }

@@ -34,6 +34,7 @@ internal sealed class NowFontGlyphPickerControl
     bool _hasSelectedGlyph;
     NowFontGlyphInfo _selectedGlyph;
     float _expandedListHeight;
+    System.Text.StringBuilder _prebakeBuilder;
 
     public NowFont font => _font;
 
@@ -230,6 +231,8 @@ internal sealed class NowFontGlyphPickerControl
             glyphCount,
             Mathf.CeilToInt((_scroll.y + listRect.height) / ROW_HEIGHT) + 1);
 
+        PrebakeVisibleGlyphs(firstRow, lastRow);
+
         GUI.BeginGroup(contentRect);
 
         for (int i = firstRow; i < lastRow; ++i)
@@ -245,6 +248,29 @@ internal sealed class NowFontGlyphPickerControl
             var scrollbarRect = new Rect(contentRect.xMax, listRect.y, ScrollbarWidth, listRect.height);
             _scroll.y = GUI.VerticalScrollbar(scrollbarRect, _scroll.y, listRect.height, 0f, contentHeight);
         }
+    }
+
+    // Bakes every glyph visible in the list with a single EnsureGlyphs request instead of
+    // letting each row preview trigger its own native compile while scrolling.
+    void PrebakeVisibleGlyphs(int firstRow, int lastRow)
+    {
+        if (_font == null || Event.current.type != EventType.Repaint)
+            return;
+
+        _prebakeBuilder ??= new System.Text.StringBuilder();
+        _prebakeBuilder.Length = 0;
+
+        if (_hasSelectedGlyph && _selectedGlyph.TryGetCharacter(out var selectedCharacter))
+            _prebakeBuilder.Append(selectedCharacter);
+
+        for (int i = firstRow; i < lastRow; ++i)
+        {
+            if (GetVisibleGlyph(i).TryGetCharacter(out var character))
+                _prebakeBuilder.Append(character);
+        }
+
+        if (_prebakeBuilder.Length > 0)
+            _font.EnsureGlyphs(_prebakeBuilder.ToString(), ROW_PREVIEW_FONT_SIZE);
     }
 
     void DrawGlyphRow(

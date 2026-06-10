@@ -134,6 +134,55 @@ NOWUI_MSDF_EXPORT int nowui_compile_color_font_from_memory_with_codepoints(
     char *error_buffer,
     int error_buffer_length);
 
+/* Stateful incremental baking session.
+ * Keeps the FreeType face, font geometry and a dynamic atlas alive across calls so
+ * adding glyphs on demand does not re-parse the font or re-bake existing glyphs. */
+
+typedef struct NowUIMsdfSessionInfo {
+    float size;
+    float distance_range;
+    NowUIMsdfMetrics metrics;
+} NowUIMsdfSessionInfo;
+
+#define NOWUI_MSDF_SESSION_RESIZED 1
+
+NOWUI_MSDF_EXPORT int nowui_msdf_session_create(
+    const unsigned char *font_data,
+    int font_data_length,
+    int size,
+    int pixel_range,
+    NowUIMsdfSessionInfo *info,
+    void **out_session,
+    char *error_buffer,
+    int error_buffer_length);
+
+/* Bakes the requested codepoints that are not yet in the atlas into it and writes one
+ * NowUIMsdfGlyph per successfully loaded glyph (codepoints missing from the font are
+ * skipped; the caller diffs against its request to detect misses).
+ * out_change_flags has NOWUI_MSDF_SESSION_RESIZED set when the atlas grew; previously
+ * returned glyph atlas coordinates remain valid in the enlarged atlas. */
+NOWUI_MSDF_EXPORT int nowui_msdf_session_add_glyphs(
+    void *session,
+    const unsigned int *codepoints,
+    int codepoint_count,
+    NowUIMsdfGlyph *glyphs,
+    int glyph_capacity,
+    int *out_glyph_count,
+    int *out_atlas_side,
+    int *out_change_flags,
+    char *error_buffer,
+    int error_buffer_length);
+
+/* Copies the full atlas RGBA into the caller buffer (side * side * 4 bytes, bottom-up rows). */
+NOWUI_MSDF_EXPORT int nowui_msdf_session_copy_atlas(
+    void *session,
+    unsigned char *atlas_rgba,
+    int atlas_rgba_length,
+    char *error_buffer,
+    int error_buffer_length);
+
+NOWUI_MSDF_EXPORT void nowui_msdf_session_destroy(void *session);
+
 NOWUI_MSDF_EXPORT const char *nowui_msdf_version();
 
 }
