@@ -175,7 +175,7 @@ namespace NowUI
 
         static Matrix4x4 GetProjectionMatrix()
         {
-            if (_projectionWidth != screenMask.width || _projectionHeight != screenMask.height)
+            if (!Mathf.Approximately(_projectionWidth, screenMask.width) || !Mathf.Approximately(_projectionHeight, screenMask.height))
             {
                 _projectionWidth = screenMask.width;
                 _projectionHeight = screenMask.height;
