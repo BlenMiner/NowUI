@@ -1,0 +1,140 @@
+name: Build NowUI VG Libraries
+
+# Builds the dependency-free nowui-vg vector tessellator for every supported
+# platform. Artifacts are laid out as Assets/NowUI/Plugins/... so they can be
+# extracted straight into the repository.
+
+"on":
+  workflow_dispatch:
+    inputs:
+      emscripten_ref:
+        description: "Emscripten SDK version for Unity 2023.2+/Unity 6 WebGL plugin artifacts"
+        required: true
+        default: "3.1.38"
+
+jobs:
+  build:
+    name: ${{ matrix.artifact_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            artifact_name: windows-x64
+            plugin_path: Windows/x86_64
+          - os: ubuntu-latest
+            artifact_name: linux-x64
+            plugin_path: Linux/x86_64
+          - os: macos-15-intel
+            artifact_name: macos-x64
+            plugin_path: macOS/x86_64
+          - os: macos-15
+            artifact_name: macos-arm64
+            plugin_path: macOS/arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set build paths
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_ENV -Value "BUILD_DIR=$(Join-Path $env:RUNNER_TEMP "nowui-vg-build")"
+          Add-Content -Path $env:GITHUB_ENV -Value "INSTALL_DIR=$(Join-Path $env:RUNNER_TEMP "nowui-vg-install")"
+          Add-Content -Path $env:GITHUB_ENV -Value "PLUGIN_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/nowui-vg-${{ matrix.artifact_name }}/Assets/NowUI/Plugins/${{ matrix.plugin_path }}")"
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake `
+            -S "$env:GITHUB_WORKSPACE/Assets/NowUI/Plugins/Native/nowui-vg" `
+            -B "$env:BUILD_DIR" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX="$env:INSTALL_DIR"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build "$env:BUILD_DIR" --config Release --parallel
+          cmake --install "$env:BUILD_DIR" --config Release
+
+      - name: Package plugin library
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:PLUGIN_DIR" | Out-Null
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            Copy-Item -Path "$env:INSTALL_DIR/bin/nowui-vg.dll" -Destination "$env:PLUGIN_DIR" -Force
+          } else {
+            Copy-Item -Path "$env:INSTALL_DIR/lib/libnowui-vg*" -Destination "$env:PLUGIN_DIR" -Force
+          }
+
+          Get-ChildItem "$env:PLUGIN_DIR"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowui-vg-${{ matrix.artifact_name }}
+          path: ${{ github.workspace }}/artifacts/nowui-vg-${{ matrix.artifact_name }}
+
+  build-webgl:
+    name: webgl-emscripten
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set WebGL build paths
+        shell: bash
+        run: |
+          echo "EMSDK_ROOT=$RUNNER_TEMP/emsdk" >> "$GITHUB_ENV"
+          echo "BUILD_DIR=$RUNNER_TEMP/nowui-vg-webgl-build" >> "$GITHUB_ENV"
+          echo "PLUGIN_DIR=$GITHUB_WORKSPACE/artifacts/nowui-vg-webgl/Assets/NowUI/Plugins/WebGL" >> "$GITHUB_ENV"
+
+      - name: Setup Emscripten
+        shell: bash
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git "$EMSDK_ROOT"
+          "$EMSDK_ROOT/emsdk" install "${{ inputs.emscripten_ref }}"
+          "$EMSDK_ROOT/emsdk" activate "${{ inputs.emscripten_ref }}"
+
+      - name: Build for WebGL
+        shell: bash
+        run: |
+          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+
+          emcmake cmake \
+            -S "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/Native/nowui-vg" \
+            -B "$BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release
+
+          cmake --build "$BUILD_DIR" --config Release --parallel
+
+      - name: Package WebGL plugin library
+        shell: bash
+        run: |
+          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+          mkdir -p "$PLUGIN_DIR"
+
+          archive=$(find "$BUILD_DIR" -maxdepth 2 -type f -name 'libnowui-vg.a' | head -n 1)
+
+          if [ -z "$archive" ]; then
+            echo "libnowui-vg.a not found in build output."
+            exit 1
+          fi
+
+          emcc -r -Wl,--whole-archive "$archive" -Wl,--no-whole-archive -o "$PLUGIN_DIR/nowui-vg.bc"
+
+          byte_count=$(wc -c < "$PLUGIN_DIR/nowui-vg.bc")
+          if [ "$byte_count" -lt 1024 ]; then
+            echo "Merged WebGL library is unexpectedly small: $byte_count bytes"
+            exit 1
+          fi
+
+      - name: Upload WebGL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowui-vg-webgl
+          path: ${{ github.workspace }}/artifacts/nowui-vg-webgl
