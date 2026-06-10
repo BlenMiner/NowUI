@@ -1049,6 +1049,44 @@ void connectStrokeRings(int ringA, int ringB)
     g_context.addQuad(ringA + 2, ringB + 2, ringB + 3, ringA + 3);
 }
 
+/* Strokes thinner than the AA width have a zero-width core, making the inner
+ * vertex pair degenerate; a 3-vertex profile (edge+, center, edge-) covers the
+ * same pixels with 25% fewer vertices and 33% fewer triangles. */
+void connectThinStrokeRings(int ringA, int ringB)
+{
+    g_context.addQuad(ringA + 0, ringB + 0, ringB + 1, ringA + 1);
+    g_context.addQuad(ringA + 1, ringB + 1, ringB + 2, ringA + 2);
+}
+
+void emitThinRoundCap(
+    Vec2 center, Vec2 direction,
+    float outerWidth, float coreAlpha,
+    const Paint &paint)
+{
+    Vec2 normal{direction.y, -direction.x};
+
+    Vec4 coreColor = paint.colorAt(center);
+    coreColor.w *= coreAlpha;
+    Vec4 edgeColor = coreColor;
+    edgeColor.w = 0.f;
+
+    int segments = std::max(4, std::min(24, static_cast<int>(std::ceil(outerWidth * 0.6f)) + 3));
+    int centerIndex = g_context.addVertex(center, coreColor);
+    int previousOuter = -1;
+
+    for (int i = 0; i <= segments; ++i) {
+        float angle = 3.14159265358979f * i / segments;
+        Vec2 radial = normal * std::cos(angle) + direction * std::sin(angle);
+
+        int outer = g_context.addVertex(center + radial * outerWidth, edgeColor);
+
+        if (i > 0)
+            g_context.addTriangle(centerIndex, previousOuter, outer);
+
+        previousOuter = outer;
+    }
+}
+
 void emitRoundCap(
     Vec2 center, Vec2 direction,
     float innerWidth, float outerWidth, float coreAlpha,
@@ -1153,6 +1191,7 @@ void emitStrokePolyline(
     int previousRing = -1;
 
     bool solid = !paint.isGradient();
+    bool thin = innerWidth <= 0.f;
     Vec4 solidCore = paint.color;
     solidCore.w *= coreAlpha;
     Vec4 solidEdge = solidCore;
@@ -1173,27 +1212,47 @@ void emitStrokePolyline(
         }
 
         int ring = g_context.addVertex(position + normal * outerWidth, edgeColor);
-        g_context.addVertex(position + normal * innerWidth, coreColor);
-        g_context.addVertex(position - normal * innerWidth, coreColor);
-        g_context.addVertex(position - normal * outerWidth, edgeColor);
+
+        if (thin) {
+            g_context.addVertex(position, coreColor);
+            g_context.addVertex(position - normal * outerWidth, edgeColor);
+        } else {
+            g_context.addVertex(position + normal * innerWidth, coreColor);
+            g_context.addVertex(position - normal * innerWidth, coreColor);
+            g_context.addVertex(position - normal * outerWidth, edgeColor);
+        }
 
         if (i == 0)
             firstRing = ring;
 
-        if (i > 0)
-            connectStrokeRings(previousRing, ring);
+        if (i > 0) {
+            if (thin)
+                connectThinStrokeRings(previousRing, ring);
+            else
+                connectStrokeRings(previousRing, ring);
+        }
 
         previousRing = ring;
     }
 
-    if (closed)
-        connectStrokeRings(previousRing, firstRing);
+    if (closed) {
+        if (thin)
+            connectThinStrokeRings(previousRing, firstRing);
+        else
+            connectStrokeRings(previousRing, firstRing);
+    }
 
     if (!closed && cap == 2) {
         Vec2 startDirection = normalize(g_strokePoints[0] - g_strokePoints[1]);
         Vec2 endDirection = normalize(g_strokePoints[count - 1] - g_strokePoints[count - 2]);
-        emitRoundCap(g_strokePoints[0], startDirection, innerWidth, outerWidth, coreAlpha, paint);
-        emitRoundCap(g_strokePoints[count - 1], endDirection, innerWidth, outerWidth, coreAlpha, paint);
+
+        if (thin) {
+            emitThinRoundCap(g_strokePoints[0], startDirection, outerWidth, coreAlpha, paint);
+            emitThinRoundCap(g_strokePoints[count - 1], endDirection, outerWidth, coreAlpha, paint);
+        } else {
+            emitRoundCap(g_strokePoints[0], startDirection, innerWidth, outerWidth, coreAlpha, paint);
+            emitRoundCap(g_strokePoints[count - 1], endDirection, innerWidth, outerWidth, coreAlpha, paint);
+        }
     }
 }
 
