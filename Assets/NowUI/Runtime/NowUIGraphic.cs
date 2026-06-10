@@ -43,7 +43,7 @@ namespace NowUI
 
         bool _validClipRect;
 
-        public event Action<NowUIGraphic, Rect> rebuildNowUI;
+        public event Action<NowUIGraphic, NowRect> rebuildNowUI;
 
         public bool rebuildEveryFrame
         {
@@ -58,7 +58,7 @@ namespace NowUI
             }
         }
 
-        protected virtual void DrawNowUI(Rect rect)
+        protected virtual void DrawNowUI(NowRect rect)
         {
             rebuildNowUI?.Invoke(this, rect);
         }

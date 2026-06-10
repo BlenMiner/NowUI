@@ -9,9 +9,9 @@ namespace NowUI
     /// </summary>
     public struct NowUILottie
     {
-        public Vector4 mask;
+        public NowRect mask;
 
-        public Vector4 rect;
+        public NowRect rect;
 
         public Vector4 color;
 
@@ -31,7 +31,7 @@ namespace NowUI
         /// </summary>
         public float playbackFrameRate;
 
-        public NowUILottie(Vector4 rect, NowLottieAsset asset)
+        public NowUILottie(NowRect rect, NowLottieAsset asset)
         {
             mask = rect;
             this.rect = rect;
@@ -43,13 +43,13 @@ namespace NowUI
             playbackFrameRate = 0f;
         }
 
-        public NowUILottie SetPosition(Vector4 rect)
+        public NowUILottie SetPosition(NowRect rect)
         {
             this.rect = rect;
             return this;
         }
 
-        public NowUILottie SetMask(Vector4 mask)
+        public NowUILottie SetMask(NowRect mask)
         {
             this.mask = mask;
             return this;

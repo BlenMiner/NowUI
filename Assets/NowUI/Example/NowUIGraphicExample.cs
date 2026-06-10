@@ -9,11 +9,11 @@ public class NowUIGraphicExample : NowUIGraphic
     [SerializeField] float _size = 14f;
     [SerializeField] string _content;
 
-    protected override void DrawNowUI(Rect rect)
+    protected override void DrawNowUI(NowRect rect)
     {
         float width = rect.width;
         float height = rect.height;
-        var bounds = new Vector4(0, 0, width, height);
+        var bounds = new NowRect(0, 0, width, height);
 
         Now.Rectangle(bounds)
             .SetColor(new Color(0.08f, 0.1f, 0.14f, 0.92f))
@@ -32,7 +32,7 @@ public class NowUIGraphicExample : NowUIGraphic
 
         Now.defaultFont = _font;
 
-        using (NowLayout.Area(bounds))
+        using (NowLayout.Area(bounds.Inset(10)))
         {
             NowLayout.Label("NowUI Graphic").Draw();
             NowLayout.Label("Hello World\nNowUI Graphic").Draw();

@@ -14,13 +14,26 @@ namespace NowUI
     {
         static Material _defaultMaterial;
 
-        public static Vector4 screenMask;
+        public static NowRect screenMask;
+
+        static NowFontAsset _defaultFont;
 
         /// <summary>
         /// Font used by text helpers when no explicit font is provided, such as
         /// <see cref="Text(Vector4)"/> and <see cref="NowLayout.Label(string)"/>.
+        /// Defaults to the bundled OpenSans-Regular font unless overridden.
         /// </summary>
-        public static NowFontAsset defaultFont;
+        public static NowFontAsset defaultFont
+        {
+            get
+            {
+                if (_defaultFont == null)
+                    _defaultFont = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+
+                return _defaultFont;
+            }
+            set => _defaultFont = value;
+        }
 
         static int _defaultMesh = -1;
 
@@ -162,11 +175,11 @@ namespace NowUI
 
         static Matrix4x4 GetProjectionMatrix()
         {
-            if (_projectionWidth != screenMask.z || _projectionHeight != screenMask.w)
+            if (_projectionWidth != screenMask.width || _projectionHeight != screenMask.height)
             {
-                _projectionWidth = screenMask.z;
-                _projectionHeight = screenMask.w;
-                _projectionMatrix = Matrix4x4.Ortho(0, screenMask.z, -screenMask.w, 0, -1, 100);
+                _projectionWidth = screenMask.width;
+                _projectionHeight = screenMask.height;
+                _projectionMatrix = Matrix4x4.Ortho(0, screenMask.width, -screenMask.height, 0, -1, 100);
             }
 
             return _projectionMatrix;
@@ -262,7 +275,7 @@ namespace NowUI
             StartUI(new Vector4(0, 0, Screen.width, Screen.height));
         }
 
-        public static void StartUI(Vector4 screenMask)
+        public static void StartUI(NowRect screenMask)
         {
             _captureMesh = false;
             Now.screenMask = screenMask;
@@ -578,13 +591,13 @@ namespace NowUI
 
             position.x += pad.x;
             position.y += pad.y;
-            position.z = position.z - pad.x - pad.z;
-            position.w = position.w - pad.y - pad.w;
-            int rectHeight = (int)position.w;
+            position.width = position.width - pad.x - pad.z;
+            position.height = position.height - pad.y - pad.w;
+            int rectHeight = (int)position.height;
 
             _tmpVertex.position.x = (int)position.x;
             _tmpVertex.position.y = -(int)position.y - rectHeight;
-            _tmpVertex.position.z = (int)position.z;
+            _tmpVertex.position.z = (int)position.width;
             _tmpVertex.position.w = rectHeight;
 
             _tmpVertex.mask = rectangle.mask;
@@ -754,7 +767,7 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || _defaultMaterial == null)
                 return;
 
-            if (lottie.rect.z <= 0f || lottie.rect.w <= 0f)
+            if (lottie.rect.width <= 0f || lottie.rect.height <= 0f)
                 return;
 
             var tint = ApplyColorMultiplier(lottie.color);
@@ -790,7 +803,7 @@ namespace NowUI
             // (or accidental fullscreen) rect costs sharpness instead of CPU time.
             float renderScale = 1f;
             float maxSize = NowLottieRenderer.maxRenderSize;
-            float maxDimension = Mathf.Max(lottie.rect.z, lottie.rect.w);
+            float maxDimension = Mathf.Max(lottie.rect.width, lottie.rect.height);
 
             if (maxSize > 0f && maxDimension > maxSize)
                 renderScale = maxSize / maxDimension;
@@ -798,8 +811,8 @@ namespace NowUI
             var buffer = NowLottieRenderer.RenderCached(
                 composition,
                 frame,
-                lottie.rect.z * renderScale,
-                lottie.rect.w * renderScale,
+                lottie.rect.width * renderScale,
+                lottie.rect.height * renderScale,
                 lottie.preserveAspect);
 
             mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, buffer.positions.count);
@@ -811,22 +824,22 @@ namespace NowUI
             return rect;
         }
 
-        public static NowUIRectangle Rectangle(Vector4 position)
+        public static NowUIRectangle Rectangle(NowRect position)
         {
             return new NowUIRectangle(position);
         }
 
-        public static NowUIText Text(Vector4 position, NowFontAsset font)
+        public static NowUIText Text(NowRect position, NowFontAsset font)
         {
             return new NowUIText(position, font);
         }
 
-        public static NowUIText Text(Vector4 position)
+        public static NowUIText Text(NowRect position)
         {
             return new NowUIText(position, defaultFont);
         }
 
-        public static NowUILottie Lottie(Vector4 position, NowLottieAsset asset)
+        public static NowUILottie Lottie(NowRect position, NowLottieAsset asset)
         {
             return new NowUILottie(position, asset);
         }

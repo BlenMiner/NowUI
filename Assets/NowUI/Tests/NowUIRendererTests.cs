@@ -264,7 +264,7 @@ public class NowUIRendererTests
 
     sealed class TestGraphic : NowUIGraphic
     {
-        protected override void DrawNowUI(Rect rect)
+        protected override void DrawNowUI(NowRect rect)
         {
             Now.Rectangle(new Vector4(2, 2, 12, 8))
                 .SetColor(Color.white)

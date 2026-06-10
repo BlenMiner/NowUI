@@ -4,9 +4,9 @@ namespace NowUI
 {
     public struct NowUIText
     {
-        public Vector4 rect;
+        public NowRect rect;
 
-        public Vector4 mask;
+        public NowRect mask;
 
         public Vector4 color;
 
@@ -22,7 +22,7 @@ namespace NowUI
 
         public NowFontStyle fontStyle;
 
-        public NowUIText(Vector4 rect, NowFontAsset font)
+        public NowUIText(NowRect rect, NowFontAsset font)
         {
             this.rect = rect;
             padding = default;
@@ -89,13 +89,13 @@ namespace NowUI
             return this;
         }
 
-        public NowUIText SetPosition(Vector4 rect)
+        public NowUIText SetPosition(NowRect rect)
         {
             this.rect = rect;
             return this;
         }
 
-        public NowUIText SetMask(Vector4 mask)
+        public NowUIText SetMask(NowRect mask)
         {
             this.mask = mask;
             return this;

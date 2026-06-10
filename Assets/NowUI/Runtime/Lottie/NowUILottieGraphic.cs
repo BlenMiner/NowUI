@@ -164,7 +164,7 @@ namespace NowUI
             MarkDirty();
         }
 
-        protected override void DrawNowUI(Rect rect)
+        protected override void DrawNowUI(NowRect rect)
         {
             base.DrawNowUI(rect);
 

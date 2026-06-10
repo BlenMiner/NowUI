@@ -192,22 +192,18 @@ public class LayoutExample : MonoBehaviour
         return interaction.clicked;
     }
 
-    void DrawCenteredText(string text, Vector4 rect, float size, Color color)
+    void DrawCenteredText(string text, NowRect rect, float size, Color color)
     {
         if (Now.defaultFont == null || string.IsNullOrEmpty(text))
             return;
 
         Vector2 measured = Now.defaultFont.MeasureText(text, size);
-        var textRect = new Vector4(
-            rect.x + (rect.z - measured.x) * 0.5f,
-            rect.y + (rect.w - measured.y) * 0.5f,
-            measured.x,
-            measured.y);
+        var textRect = new NowRect(rect.center - measured * 0.5f, measured);
 
         Now.Text(textRect)
             .SetFontSize(size)
             .SetColor(color)
-            .SetMask(new Vector4(rect.x - 4f, rect.y - 4f, rect.z + 8f, rect.w + 8f))
+            .SetMask(rect.Outset(4f))
             .Draw(text);
     }
 }

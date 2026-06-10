@@ -4,9 +4,9 @@ namespace NowUI
 {
     public struct NowUIRectangle
     {
-        public Vector4 mask;
+        public NowRect mask;
 
-        public Vector4 rect;
+        public NowRect rect;
 
         public Vector4 radius;
 
@@ -20,7 +20,7 @@ namespace NowUI
 
         public Vector4 outlineColor;
 
-        public NowUIRectangle(Vector4 rect)
+        public NowUIRectangle(NowRect rect)
         {
             mask = rect;
             this.rect = rect;
@@ -59,10 +59,7 @@ namespace NowUI
         {
             padding = new Vector4(-padding.x, -padding.y, -padding.z, -padding.w);
             this.padding = padding;
-            mask.x += padding.x;
-            mask.y += padding.y;
-            mask.z = mask.z - padding.x - padding.z;
-            mask.w = mask.w - padding.y - padding.w;
+            mask = mask.Inset(padding.x, padding.y, padding.z, padding.w);
             return this;
         }
 
@@ -72,13 +69,13 @@ namespace NowUI
             return this;
         }
 
-        public NowUIRectangle SetPosition(Vector4 rect)
+        public NowUIRectangle SetPosition(NowRect rect)
         {
             this.rect = rect;
             return this;
         }
 
-        public NowUIRectangle SetMask(Vector4 mask)
+        public NowUIRectangle SetMask(NowRect mask)
         {
             this.mask = mask;
             return this;

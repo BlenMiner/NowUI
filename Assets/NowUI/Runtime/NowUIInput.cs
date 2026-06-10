@@ -53,10 +53,10 @@ namespace NowUI
             return new NowUIInputSurface(size);
         }
 
-        public static NowUIInputSurface FromScreenMask(Vector4 screenMask)
+        public static NowUIInputSurface FromScreenMask(NowRect screenMask)
         {
-            var size = new Vector2(screenMask.z, screenMask.w);
-            var screenRect = new Rect(screenMask.x, screenMask.y, screenMask.z, screenMask.w);
+            var size = new Vector2(screenMask.width, screenMask.height);
+            var screenRect = new Rect(screenMask.x, screenMask.y, screenMask.width, screenMask.height);
             return new NowUIInputSurface(size, screenRect);
         }
 
@@ -515,12 +515,12 @@ namespace NowUI
             return _hasContext && _snapshot.WasPointerReleased(button);
         }
 
-        public static NowUIInteraction Interact(string id, Vector4 rect)
+        public static NowUIInteraction Interact(string id, NowRect rect)
         {
             return Interact(id, rect, NowUIPointerButton.Primary);
         }
 
-        public static NowUIInteraction Interact(string id, Vector4 rect, NowUIPointerButton button)
+        public static NowUIInteraction Interact(string id, NowRect rect, NowUIPointerButton button)
         {
             return Interact(GetId(id), ToRect(rect), button);
         }
@@ -535,12 +535,12 @@ namespace NowUI
             return Interact(GetId(id), rect, button);
         }
 
-        public static NowUIInteraction Interact(int id, Vector4 rect)
+        public static NowUIInteraction Interact(int id, NowRect rect)
         {
             return Interact(id, rect, NowUIPointerButton.Primary);
         }
 
-        public static NowUIInteraction Interact(int id, Vector4 rect, NowUIPointerButton button)
+        public static NowUIInteraction Interact(int id, NowRect rect, NowUIPointerButton button)
         {
             return Interact(id, ToRect(rect), button);
         }
