@@ -608,6 +608,12 @@ public class NowFont : NowFontAsset
     [NonSerialized]
     List<NowFontAtlasInfo.Glyph> _dynamicSessionGlyphScratch;
 
+    [NonSerialized]
+    int[] _dynamicSessionChunkScratch;
+
+    [NonSerialized]
+    HashSet<int> _dynamicSessionReturnedScratch;
+
     static bool s_dynamicSessionUnsupported;
 
     [NonSerialized]
@@ -2066,15 +2072,42 @@ public class NowFont : NowFontAsset
         _dynamicSessionPage = null;
     }
 
-    void RolloverDynamicSessionIfFull()
+    bool TryEnsureDynamicSession(byte[] fontData)
     {
-        if (_dynamicSession == null || _dynamicSession.AtlasSide < GetDynamicMaxAtlasSide())
-            return;
+        if (_dynamicSession != null)
+            return true;
 
-        // The atlas reached its size budget: release the native session (parsed font, shape
-        // data) but keep the baked page and its glyph mappings alive; the next missing glyph
-        // starts a fresh session backed by a new page.
-        ResetDynamicSession();
+        try
+        {
+            if (!NowFontCompiler.DynamicSession.TryCreate(
+                fontData,
+                dynamicAtlasSize > 0 ? dynamicAtlasSize : DEFAULT_DYNAMIC_ATLAS_SIZE,
+                dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE,
+                GetDynamicPageSize(0),
+                out _dynamicSession,
+                out _))
+            {
+                _dynamicSessionFailed = true;
+                return false;
+            }
+        }
+        catch (DllNotFoundException)
+        {
+            s_dynamicSessionUnsupported = true;
+            return false;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            s_dynamicSessionUnsupported = true;
+            return false;
+        }
+        catch (BadImageFormatException)
+        {
+            s_dynamicSessionUnsupported = true;
+            return false;
+        }
+
+        return true;
     }
 
     DynamicAtlasPage CreateDynamicSessionPage(int side, int atlasSize)
@@ -2156,29 +2189,11 @@ public class NowFont : NowFontAsset
 
         var texture = page.font.atlas;
 
+        // Fixed-size sessions never resize their atlas — page textures and glyph UVs must
+        // stay valid for meshes built in earlier frames. A mismatch means the session and
+        // page are out of sync; refuse to touch the page rather than corrupt it.
         if (texture.width != side)
-        {
-            // The native atlas grew (power-of-two doubling). Existing glyph coordinates stay
-            // valid because the session packs without rearranging, so only the texture and
-            // its recorded dimensions need to be replaced.
-            var resizedTexture = new Texture2D(side, side, TextureFormat.RGBA32, false, true)
-            {
-                name = texture.name,
-                filterMode = FilterMode.Bilinear,
-                wrapMode = TextureWrapMode.Clamp,
-                hideFlags = HideFlags.HideAndDontSave
-            };
-
-            DestroyDynamicObject(texture);
-            texture = resizedTexture;
-            page.font.atlas = resizedTexture;
-            page.font.material.mainTexture = resizedTexture;
-
-            var resizedInfo = page.font.atlasInfo;
-            resizedInfo.atlas.width = side;
-            resizedInfo.atlas.height = side;
-            page.font.atlasInfo = resizedInfo;
-        }
+            return false;
 
         if (!session.TryCopyAtlas(ref _dynamicSessionAtlasScratch, out _))
             return false;
@@ -2204,32 +2219,40 @@ public class NowFont : NowFontAsset
         return true;
     }
 
-    void MarkSessionMisses(int[] codepoints, int codepointCount, List<NowFontAtlasInfo.Glyph> results, int atlasSize)
+    void MarkSessionMisses(int[] codepoints, int codepointCount, HashSet<int> returned, int atlasSize)
     {
-        if (results.Count >= codepointCount)
+        if (returned.Count >= codepointCount)
             return;
-
-        var returned = GetDynamicCodepointScratch();
-
-        for (int i = 0; i < results.Count; ++i)
-            returned.Add(results[i].unicode);
 
         for (int i = 0; i < codepointCount; ++i)
         {
             if (!returned.Contains(codepoints[i]))
                 AddDynamicMiss(new DynamicGlyphKey(codepoints[i], atlasSize));
         }
+    }
 
-        returned.Clear();
+    bool CommitAndFailDynamicSession(List<NowFontAtlasInfo.Glyph> results, int atlasSize)
+    {
+        if (results.Count > 0)
+            TryCommitSessionGlyphs(results, atlasSize);
+
+        ResetDynamicSession();
+        _dynamicSessionFailed = true;
+        return false;
     }
 
     /// <summary>
-    /// Bakes the missing characters through the persistent native session. Returns true when
-    /// the request was handled (glyphs baked and/or misses recorded); false means the caller
-    /// should use the legacy per-page compiler (color fonts, old native plugins, failures).
+    /// Bakes the missing characters through the persistent native session. Session atlases
+    /// have a fixed size, so baked glyph UVs and page textures stay valid forever; when a
+    /// page fills up it is sealed and a fresh session/page takes over, mirroring the legacy
+    /// multi-page behavior. Returns true when the request was handled (glyphs baked and/or
+    /// misses recorded); false means the caller should use the legacy per-page compiler
+    /// (color fonts, old native plugins, failures).
     /// </summary>
     bool TryAddGlyphsToSession(string characters, int atlasSize)
     {
+        const int SESSION_ADD_CHUNK = 64;
+
         if (s_dynamicSessionUnsupported || _dynamicSessionFailed)
             return false;
 
@@ -2246,51 +2269,87 @@ public class NowFont : NowFontAsset
         if (_dynamicSessionPage != null && !IsDynamicPageValid(_dynamicSessionPage))
             ResetDynamicSession();
 
-        if (_dynamicSession == null)
-        {
-            try
-            {
-                if (!NowFontCompiler.DynamicSession.TryCreate(
-                    fontData,
-                    dynamicAtlasSize > 0 ? dynamicAtlasSize : DEFAULT_DYNAMIC_ATLAS_SIZE,
-                    dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE,
-                    out _dynamicSession,
-                    out _))
-                {
-                    _dynamicSessionFailed = true;
-                    return false;
-                }
-            }
-            catch (DllNotFoundException)
-            {
-                s_dynamicSessionUnsupported = true;
-                return false;
-            }
-            catch (EntryPointNotFoundException)
-            {
-                s_dynamicSessionUnsupported = true;
-                return false;
-            }
-            catch (BadImageFormatException)
-            {
-                s_dynamicSessionUnsupported = true;
-                return false;
-            }
-        }
-
         var codepoints = GetDynamicCompileCodepoints(characters, out int codepointCount);
 
         if (codepointCount <= 0)
-            return true;
+            return TryEnsureDynamicSession(fontData);
 
         var results = _dynamicSessionGlyphScratch ??= new List<NowFontAtlasInfo.Glyph>();
+        var returned = _dynamicSessionReturnedScratch ??= new HashSet<int>();
+        var chunkCodepoints = _dynamicSessionChunkScratch ??= new int[SESSION_ADD_CHUNK];
         results.Clear();
+        returned.Clear();
 
-        if (!_dynamicSession.TryAddGlyphs(codepoints, codepointCount, results, out _, out _))
+        int offset = 0;
+        int chunkLimit = SESSION_ADD_CHUNK;
+
+        while (offset < codepointCount)
         {
-            ResetDynamicSession();
-            _dynamicSessionFailed = true;
-            return false;
+            if (!TryEnsureDynamicSession(fontData))
+            {
+                // Keep what was already baked usable, then let the legacy path take over.
+                if (results.Count > 0)
+                    TryCommitSessionGlyphs(results, atlasSize);
+
+                return false;
+            }
+
+            int chunk = Mathf.Min(chunkLimit, codepointCount - offset);
+            Array.Copy(codepoints, offset, chunkCodepoints, 0, chunk);
+
+            int resultsBefore = results.Count;
+            var status = _dynamicSession.TryAddGlyphs(chunkCodepoints, chunk, results, out _);
+
+            if (status == NowFontCompiler.DynamicSession.AddResult.Ok)
+            {
+                for (int i = resultsBefore; i < results.Count; ++i)
+                    returned.Add(results[i].unicode);
+
+                offset += chunk;
+                chunkLimit = SESSION_ADD_CHUNK;
+                continue;
+            }
+
+            if (status == NowFontCompiler.DynamicSession.AddResult.AtlasFull)
+            {
+                // Commit pending glyphs into the current page before deciding how to retry;
+                // the failed add did not modify the native session.
+                if (results.Count > 0)
+                {
+                    bool committed = TryCommitSessionGlyphs(results, atlasSize);
+                    results.Clear();
+
+                    if (!committed)
+                    {
+                        ResetDynamicSession();
+                        _dynamicSessionFailed = true;
+                        return false;
+                    }
+                }
+
+                if (_dynamicSessionPage == null)
+                {
+                    // Even an empty page cannot fit this chunk: shrink it, and record a
+                    // glyph that can never fit on its own as missing.
+                    if (chunk <= 1)
+                    {
+                        AddDynamicMiss(new DynamicGlyphKey(codepoints[offset], atlasSize));
+                        ++offset;
+                        chunkLimit = SESSION_ADD_CHUNK;
+                        continue;
+                    }
+
+                    chunkLimit = Mathf.Max(1, chunk / 2);
+                    continue;
+                }
+
+                // Seal the full page (it stays alive with its glyph mappings) and retry the
+                // chunk in a fresh session backed by a new page.
+                ResetDynamicSession();
+                continue;
+            }
+
+            return CommitAndFailDynamicSession(results, atlasSize);
         }
 
         if (results.Count > 0 && !TryCommitSessionGlyphs(results, atlasSize))
@@ -2300,9 +2359,9 @@ public class NowFont : NowFontAsset
             return false;
         }
 
-        MarkSessionMisses(codepoints, codepointCount, results, atlasSize);
+        MarkSessionMisses(codepoints, codepointCount, returned, atlasSize);
         results.Clear();
-        RolloverDynamicSessionIfFull();
+        returned.Clear();
         return true;
     }
 

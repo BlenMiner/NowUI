@@ -11,6 +11,7 @@ public static class NowFontCompiler
     const int ERROR_CAPACITY = 4096;
     const int NATIVE_OK = 0;
     const int NATIVE_BUFFER_TOO_SMALL = 2;
+    const int NATIVE_ATLAS_FULL = 3;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
     const string LIBRARY_NAME = "__Internal";
@@ -137,6 +138,18 @@ public static class NowFontCompiler
         int errorBufferLength);
 
     [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
+    static extern int nowui_msdf_session_create_fixed(
+        byte[] fontData,
+        int fontDataLength,
+        int size,
+        int pixelRange,
+        int atlasSide,
+        ref NativeSessionInfo info,
+        out IntPtr session,
+        [Out] byte[] errorBuffer,
+        int errorBufferLength);
+
+    [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
     static extern int nowui_msdf_session_add_glyphs(
         IntPtr session,
         int[] codepoints,
@@ -182,25 +195,36 @@ public static class NowFontCompiler
 
     /// <summary>
     /// Stateful incremental baking session backed by the native plugin. Keeps the parsed
-    /// font and a growing atlas alive across calls, so adding glyphs on demand costs only
-    /// the SDF generation of the new glyphs instead of a full font re-parse per request.
+    /// font and a fixed-size atlas alive across calls, so adding glyphs on demand costs
+    /// only the SDF generation of the new glyphs instead of a full font re-parse per
+    /// request. The atlas never resizes, so glyph atlas coordinates and the page texture
+    /// stay valid for retained meshes; when the atlas is full, AddResult.AtlasFull tells
+    /// the caller to seal the page and start a new session.
     /// Throws DllNotFoundException/EntryPointNotFoundException on creation when the native
     /// plugin predates the session API; callers fall back to the per-page compiler.
     /// </summary>
     internal sealed class DynamicSession : IDisposable
     {
+        public enum AddResult
+        {
+            Ok,
+            AtlasFull,
+            Failed
+        }
+
         IntPtr _handle;
         NativeGlyph[] _glyphScratch;
         readonly byte[] _errorBuffer = new byte[ERROR_CAPACITY];
 
-        public int AtlasSide { get; private set; }
+        public int AtlasSide { get; }
         public float Size { get; }
         public float DistanceRange { get; }
         public NowFontAtlasInfo.Metrics Metrics { get; }
 
-        DynamicSession(IntPtr handle, in NativeSessionInfo info)
+        DynamicSession(IntPtr handle, int atlasSide, in NativeSessionInfo info)
         {
             _handle = handle;
+            AtlasSide = atlasSide;
             Size = info.size;
             DistanceRange = info.distanceRange;
             Metrics = ToMetrics(info.metrics);
@@ -211,7 +235,7 @@ public static class NowFontCompiler
             ReleaseHandle();
         }
 
-        public static bool TryCreate(byte[] fontData, int size, int pixelRange, out DynamicSession session, out string error)
+        public static bool TryCreate(byte[] fontData, int size, int pixelRange, int atlasSide, out DynamicSession session, out string error)
         {
             session = null;
 
@@ -224,11 +248,12 @@ public static class NowFontCompiler
             var errorBuffer = new byte[ERROR_CAPACITY];
             NativeSessionInfo info = default;
 
-            int result = nowui_msdf_session_create(
+            int result = nowui_msdf_session_create_fixed(
                 fontData,
                 fontData.Length,
                 size,
                 pixelRange,
+                atlasSide,
                 ref info,
                 out IntPtr handle,
                 errorBuffer,
@@ -240,25 +265,23 @@ public static class NowFontCompiler
                 return false;
             }
 
-            session = new DynamicSession(handle, info);
+            session = new DynamicSession(handle, atlasSide, info);
             error = null;
             return true;
         }
 
-        public bool TryAddGlyphs(int[] codepoints, int codepointCount, List<NowFontAtlasInfo.Glyph> results, out bool resized, out string error)
+        public AddResult TryAddGlyphs(int[] codepoints, int codepointCount, List<NowFontAtlasInfo.Glyph> results, out string error)
         {
-            resized = false;
-
             if (_handle == IntPtr.Zero)
             {
                 error = "The baking session has been disposed.";
-                return false;
+                return AddResult.Failed;
             }
 
             if (codepoints == null || codepointCount <= 0)
             {
                 error = null;
-                return true;
+                return AddResult.Ok;
             }
 
             if (_glyphScratch == null || _glyphScratch.Length < codepointCount)
@@ -273,25 +296,28 @@ public static class NowFontCompiler
                 _glyphScratch,
                 _glyphScratch.Length,
                 out int glyphCount,
-                out int atlasSide,
-                out int changeFlags,
+                out _,
+                out _,
                 _errorBuffer,
                 _errorBuffer.Length);
+
+            if (result == NATIVE_ATLAS_FULL)
+            {
+                error = null;
+                return AddResult.AtlasFull;
+            }
 
             if (result != NATIVE_OK)
             {
                 error = NativeError(_errorBuffer, "The native font compiler failed to add glyphs to the baking session.");
-                return false;
+                return AddResult.Failed;
             }
-
-            AtlasSide = atlasSide;
-            resized = (changeFlags & SESSION_RESIZED) != 0;
 
             for (int i = 0; i < glyphCount; ++i)
                 results.Add(ToGlyph(_glyphScratch[i]));
 
             error = null;
-            return true;
+            return AddResult.Ok;
         }
 
         public bool TryCopyAtlas(ref byte[] buffer, out string error)

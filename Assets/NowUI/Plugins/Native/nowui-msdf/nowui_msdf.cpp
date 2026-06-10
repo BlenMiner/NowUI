@@ -592,6 +592,7 @@ struct NowUIMsdfSessionState {
     msdf_atlas::RectanglePacker packer;
     AtlasGenerator generator;
     int side = 0;
+    int max_side = 0;
 
     ~NowUIMsdfSessionState() {
         if (font)
@@ -604,6 +605,8 @@ NowUIMsdfSessionState *create_session(
     int font_data_length,
     int size,
     int pixel_range,
+    int min_side,
+    int max_side,
     NowUIMsdfSessionInfo *info) {
 
     if (!font_data || font_data_length <= 0)
@@ -612,6 +615,8 @@ NowUIMsdfSessionState *create_session(
         throw std::runtime_error("Font atlas size must be greater than zero.");
     if (pixel_range <= 0)
         throw std::runtime_error("Font atlas pixel range must be greater than zero.");
+    if (min_side <= 0 || max_side < min_side || max_side > SESSION_MAX_SIDE)
+        throw std::runtime_error("Session atlas side constraints are invalid.");
 
     std::unique_ptr<NowUIMsdfSessionState> session(new NowUIMsdfSessionState());
 
@@ -635,7 +640,8 @@ NowUIMsdfSessionState *create_session(
 
     session->scale = static_cast<double>(size);
     session->range_em = static_cast<double>(pixel_range) / session->scale;
-    session->side = SESSION_MIN_SIDE;
+    session->side = min_side;
+    session->max_side = max_side;
     session->packer = msdf_atlas::RectanglePacker(session->side, session->side);
     session->generator = AtlasGenerator(session->side, session->side);
     session->generator.setAttributes(make_generator_attributes());
@@ -717,11 +723,15 @@ int session_add_glyphs(
     bool resized = false;
 
     if (!batch_rects.empty()) {
-        // Pack the whole batch against a snapshot of the packer; on failure grow the atlas
-        // and retry the entire batch so no rectangle is ever left unplaced. Already-placed
-        // glyphs keep their coordinates because expand() only adds free space.
+        // Pack the whole batch against snapshots of the packer; on failure grow a local
+        // copy and retry the entire batch so no rectangle is ever left unplaced. Nothing
+        // in the session is mutated until packing succeeds, so an over-full atlas can be
+        // reported to the caller (NOWUI_MSDF_ATLAS_FULL) with the session intact.
+        int attempt_side = session->side;
+        msdf_atlas::RectanglePacker base_packer = session->packer;
+
         for (;;) {
-            msdf_atlas::RectanglePacker attempt = session->packer;
+            msdf_atlas::RectanglePacker attempt = base_packer;
             std::vector<msdf_atlas::Rectangle> attempt_rects = batch_rects;
 
             if (attempt.pack(attempt_rects.data(), static_cast<int>(attempt_rects.size())) == 0) {
@@ -730,16 +740,23 @@ int session_add_glyphs(
                 break;
             }
 
-            if (session->side >= SESSION_MAX_SIDE)
-                throw std::runtime_error("Glyph atlas exceeded the maximum supported size.");
+            if (attempt_side >= session->max_side)
+                return NOWUI_MSDF_ATLAS_FULL;
 
-            session->side <<= 1;
-            session->packer.expand(session->side, session->side);
+            attempt_side <<= 1;
+            if (attempt_side > session->max_side)
+                attempt_side = session->max_side;
+
+            // Already-placed glyphs keep their coordinates because expand() only adds
+            // free space around the existing layout.
+            base_packer.expand(attempt_side, attempt_side);
             resized = true;
         }
 
-        if (resized)
-            session->generator.resize(session->side, session->side);
+        if (resized) {
+            session->side = attempt_side;
+            session->generator.resize(attempt_side, attempt_side);
+        }
 
         for (size_t r = 0; r < batch_rects.size(); ++r)
             loaded[rect_glyph_indices[r]].placeBox(batch_rects[r].x, batch_rects[r].y);
@@ -1052,7 +1069,37 @@ int nowui_msdf_session_create(
         if (!out_session)
             throw std::runtime_error("Session output pointer is null.");
 
-        *out_session = create_session(font_data, font_data_length, size, pixel_range, info);
+        *out_session = create_session(font_data, font_data_length, size, pixel_range, SESSION_MIN_SIDE, SESSION_MAX_SIDE, info);
+        set_error(error_buffer, error_buffer_length, std::string());
+        return NOWUI_MSDF_OK;
+    } catch (const std::exception &ex) {
+        set_error(error_buffer, error_buffer_length, ex.what());
+    } catch (...) {
+        set_error(error_buffer, error_buffer_length, "Unknown native font compiler error.");
+    }
+
+    return NOWUI_MSDF_ERROR;
+}
+
+int nowui_msdf_session_create_fixed(
+    const unsigned char *font_data,
+    int font_data_length,
+    int size,
+    int pixel_range,
+    int atlas_side,
+    NowUIMsdfSessionInfo *info,
+    void **out_session,
+    char *error_buffer,
+    int error_buffer_length) {
+
+    if (out_session)
+        *out_session = nullptr;
+
+    try {
+        if (!out_session)
+            throw std::runtime_error("Session output pointer is null.");
+
+        *out_session = create_session(font_data, font_data_length, size, pixel_range, atlas_side, atlas_side, info);
         set_error(error_buffer, error_buffer_length, std::string());
         return NOWUI_MSDF_OK;
     } catch (const std::exception &ex) {
@@ -1127,7 +1174,7 @@ void nowui_msdf_session_destroy(void *session) {
 }
 
 const char *nowui_msdf_version() {
-    return "nowui-msdf/2";
+    return "nowui-msdf/3";
 }
 
 }

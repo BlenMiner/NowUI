@@ -11,6 +11,7 @@
 #define NOWUI_MSDF_OK 0
 #define NOWUI_MSDF_ERROR 1
 #define NOWUI_MSDF_BUFFER_TOO_SMALL 2
+#define NOWUI_MSDF_ATLAS_FULL 3
 
 extern "C" {
 
@@ -156,11 +157,29 @@ NOWUI_MSDF_EXPORT int nowui_msdf_session_create(
     char *error_buffer,
     int error_buffer_length);
 
+/* Like nowui_msdf_session_create, but the atlas is allocated at atlas_side and never
+ * grows; previously returned glyph coordinates and the atlas dimensions stay stable for
+ * the whole session lifetime (retained meshes keep valid UVs). When a batch no longer
+ * fits, nowui_msdf_session_add_glyphs returns NOWUI_MSDF_ATLAS_FULL without modifying
+ * the session, and the caller is expected to start a new session for further glyphs. */
+NOWUI_MSDF_EXPORT int nowui_msdf_session_create_fixed(
+    const unsigned char *font_data,
+    int font_data_length,
+    int size,
+    int pixel_range,
+    int atlas_side,
+    NowUIMsdfSessionInfo *info,
+    void **out_session,
+    char *error_buffer,
+    int error_buffer_length);
+
 /* Bakes the requested codepoints that are not yet in the atlas into it and writes one
  * NowUIMsdfGlyph per successfully loaded glyph (codepoints missing from the font are
  * skipped; the caller diffs against its request to detect misses).
- * out_change_flags has NOWUI_MSDF_SESSION_RESIZED set when the atlas grew; previously
- * returned glyph atlas coordinates remain valid in the enlarged atlas. */
+ * out_change_flags has NOWUI_MSDF_SESSION_RESIZED set when the atlas grew (growable
+ * sessions only); previously returned glyph atlas coordinates remain valid in the
+ * enlarged atlas. Returns NOWUI_MSDF_ATLAS_FULL (leaving the session untouched) when
+ * the batch cannot fit within the session's maximum atlas size. */
 NOWUI_MSDF_EXPORT int nowui_msdf_session_add_glyphs(
     void *session,
     const unsigned int *codepoints,
