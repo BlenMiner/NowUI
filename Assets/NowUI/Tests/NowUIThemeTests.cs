@@ -51,7 +51,7 @@ public class NowUIThemeTests
         {
             NowUIRectangle rectangle = theme.Rectangle(new Vector4(4, 8, 100, 40), "accent");
 
-            Assert.AreEqual(new Vector4(4, 8, 100, 40), rectangle.rect);
+            Assert.AreEqual(new NowRect(4, 8, 100, 40), rectangle.rect);
             Assert.AreEqual(0.102f, rectangle.color.x, 0.0001f);
             Assert.AreEqual(0.451f, rectangle.color.y, 0.0001f);
             Assert.AreEqual(0.910f, rectangle.color.z, 0.0001f);

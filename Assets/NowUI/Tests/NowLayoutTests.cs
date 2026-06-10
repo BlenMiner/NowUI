@@ -9,6 +9,10 @@ public class NowLayoutTests
     public void SetUp()
     {
         NowLayout.Reset();
+
+        // The engine falls back to a bundled default font, so pin a font-less
+        // label style: these tests rely on labels measuring zero.
+        NowLayout.labelStyle = new NowUIText(default, null).SetFontSize(16);
     }
 
     [TearDown]

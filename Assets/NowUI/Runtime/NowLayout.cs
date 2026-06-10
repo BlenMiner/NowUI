@@ -814,7 +814,7 @@ namespace NowUI
         {
             get => _hasLabelStyle
                 ? _labelStyle
-                : new NowUIText(default, Now.defaultFont).SetFontSize(DefaultLabelFontSize);
+                : new NowUIText(default, Now.font).SetFontSize(DefaultLabelFontSize);
             set
             {
                 _labelStyle = value;

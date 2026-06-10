@@ -194,10 +194,10 @@ public class LayoutExample : MonoBehaviour
 
     void DrawCenteredText(string text, NowRect rect, float size, Color color)
     {
-        if (Now.defaultFont == null || string.IsNullOrEmpty(text))
+        if (Now.font == null || string.IsNullOrEmpty(text))
             return;
 
-        Vector2 measured = Now.defaultFont.MeasureText(text, size);
+        Vector2 measured = Now.font.MeasureText(text, size);
         var textRect = new NowRect(rect.center - measured * 0.5f, measured);
 
         Now.Text(textRect)

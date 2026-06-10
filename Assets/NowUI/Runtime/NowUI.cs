@@ -1,4 +1,5 @@
 using NowUI.Internal;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -33,6 +34,39 @@ namespace NowUI
                 return _defaultFont;
             }
             set => _defaultFont = value;
+        }
+
+        static readonly List<NowFontAsset> _fontStack = new List<NowFontAsset>(8);
+
+        /// <summary>
+        /// The active font: the innermost font pushed with <see cref="Font(NowFontAsset)"/>,
+        /// or <see cref="defaultFont"/> when none is pushed. Font-implicit helpers
+        /// (<see cref="Text(NowRect)"/>, <see cref="NowLayout.Label(string)"/>) use this.
+        /// </summary>
+        public static NowFontAsset font
+            => _fontStack.Count > 0 ? _fontStack[^1] : defaultFont;
+
+        /// <summary>
+        /// Pushes a contextual font; dispose the returned scope (ideally with a
+        /// using statement) to restore the previous one:
+        /// <code>
+        /// using (Now.Font(headerFont))
+        ///     NowLayout.Label("Title").Draw();
+        /// </code>
+        /// </summary>
+        public static NowFontScope Font(NowFontAsset font)
+        {
+            if (font == null)
+                throw new ArgumentNullException(nameof(font));
+
+            _fontStack.Add(font);
+            return new NowFontScope(true);
+        }
+
+        internal static void PopFont()
+        {
+            if (_fontStack.Count > 0)
+                _fontStack.RemoveAt(_fontStack.Count - 1);
         }
 
         static int _defaultMesh = -1;
@@ -278,6 +312,11 @@ namespace NowUI
         public static void StartUI(NowRect screenMask)
         {
             _captureMesh = false;
+
+            // Self-heal: a font scope leaked in a previous frame must not poison
+            // every frame after it.
+            _fontStack.Clear();
+
             Now.screenMask = screenMask;
             NowUIInput.Update(NowUIInputSurface.FromScreenMask(screenMask));
             Initialize();
@@ -688,10 +727,10 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || style.font == null)
                 return;
 
-            if (!style.font.TryResolveFont(style.fontStyle, out var font))
+            if (!style.font.TryResolveFont(style.fontStyle, out var resolvedFont))
                 return;
 
-            DrawCharacter(style, glyph, font);
+            DrawCharacter(style, glyph, resolvedFont);
         }
 
         internal static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowFont font)
@@ -842,6 +881,29 @@ namespace NowUI
         public static NowUILottie Lottie(NowRect position, NowLottieAsset asset)
         {
             return new NowUILottie(position, asset);
+        }
+    }
+
+    /// <summary>
+    /// Disposable handle returned by <see cref="Now.Font(NowFontAsset)"/>;
+    /// disposing restores the previously active font.
+    /// </summary>
+    public struct NowFontScope : IDisposable
+    {
+        bool _active;
+
+        internal NowFontScope(bool active)
+        {
+            _active = active;
+        }
+
+        public void Dispose()
+        {
+            if (!_active)
+                return;
+
+            _active = false;
+            Now.PopFont();
         }
     }
 }
