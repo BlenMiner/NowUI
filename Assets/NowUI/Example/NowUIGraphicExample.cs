@@ -1,9 +1,11 @@
+using System;
 using UnityEngine;
 
 [AddComponentMenu("NowUI/Examples/NowUI Graphic Example")]
 public class NowUIGraphicExample : NowUIGraphic
 {
     [SerializeField] NowFontAsset _font;
+    [SerializeField] NowLottieAsset _lottie;
     [SerializeField] float _size = 14f;
     [SerializeField] string _content;
 
@@ -58,5 +60,9 @@ public class NowUIGraphicExample : NowUIGraphic
             .SetMask(bounds)
             .SetItalic()
             .Draw(_content);
+
+        NowUI.Lottie(bounds, _lottie)
+            .SetNormalizedTime(Time.time % 1f)
+            .Draw();
     }
 }

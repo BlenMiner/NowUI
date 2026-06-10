@@ -29,33 +29,33 @@ public static class NowUI
 
     static float _projectionHeight = -1;
 
-    static readonly List<Vector3> _vertices = new List<Vector3>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector3> _vertices = new StaticList<Vector3>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector2> _meshUvs = new List<Vector2>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector2> _meshUvs = new StaticList<Vector2>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> _uvs = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector4> _uvs = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> _rects = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector4> _rects = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> _radii = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector4> _radii = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> _colors = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector4> _colors = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> _outlineColors = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector4> _outlineColors = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> _extras = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector4> _extras = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> _masks = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector4> _masks = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> _rawUvs = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector4> _rawUvs = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Color> _uguiColors = new List<Color>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Color> _uguiColors = new StaticList<Color>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector3> _uguiNormals = new List<Vector3>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector3> _uguiNormals = new StaticList<Vector3>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<Vector4> _uguiTangents = new List<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<Vector4> _uguiTangents = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static readonly List<int> _triangles = new List<int>(NowMesh.INITIAL_INDEX_CAPACITY);
+    static StaticList<int> _triangles = new StaticList<int>(NowMesh.INITIAL_INDEX_CAPACITY);
 
     static readonly List<int> _capturedMeshIndices = new List<int>(8);
 
@@ -380,61 +380,62 @@ public static class NowUI
             if (layout == NowUIMeshLayout.Canvas)
             {
                 mesh.AppendUGUIVertices(
-                    _vertices,
-                    _uvs,
-                    _rects,
-                    _masks,
-                    _extras,
-                    _uguiColors,
-                    _uguiNormals,
-                    _uguiTangents,
+                    ref _vertices,
+                    ref _uvs,
+                    ref _rects,
+                    ref _masks,
+                    ref _extras,
+                    ref _uguiColors,
+                    ref _uguiNormals,
+                    ref _uguiTangents,
                     positionOffset);
                 continue;
             }
 
             mesh.AppendVertices(
-                _vertices,
-                _meshUvs,
-                _rects,
-                _radii,
-                _colors,
-                _outlineColors,
-                _extras,
-                _masks,
-                _rawUvs,
+                ref _vertices,
+                ref _meshUvs,
+                ref _rects,
+                ref _radii,
+                ref _colors,
+                ref _outlineColors,
+                ref _extras,
+                ref _masks,
+                ref _rawUvs,
                 positionOffset);
         }
 
         target.Clear();
 
-        if (_vertices.Count == 0)
+        if (_vertices.count == 0)
         {
             return;
         }
 
-        target.indexFormat = _vertices.Count > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
-        target.SetVertices(_vertices);
+        int vertexCount = _vertices.count;
+        target.indexFormat = vertexCount > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+        target.SetVertices(_vertices.array, 0, vertexCount);
 
         if (layout == NowUIMeshLayout.Canvas)
         {
-            target.SetUVs(0, _uvs);
-            target.SetUVs(1, _rects);
-            target.SetUVs(2, _masks);
-            target.SetUVs(3, _extras);
-            target.SetColors(_uguiColors);
-            target.SetNormals(_uguiNormals);
-            target.SetTangents(_uguiTangents);
+            target.SetUVs(0, _uvs.array, 0, vertexCount);
+            target.SetUVs(1, _rects.array, 0, vertexCount);
+            target.SetUVs(2, _masks.array, 0, vertexCount);
+            target.SetUVs(3, _extras.array, 0, vertexCount);
+            target.SetColors(_uguiColors.array, 0, vertexCount);
+            target.SetNormals(_uguiNormals.array, 0, vertexCount);
+            target.SetTangents(_uguiTangents.array, 0, vertexCount);
         }
         else
         {
-            target.SetUVs(0, _meshUvs);
-            target.SetUVs(1, _rects);
-            target.SetUVs(2, _radii);
-            target.SetUVs(3, _colors);
-            target.SetUVs(4, _outlineColors);
-            target.SetUVs(5, _extras);
-            target.SetUVs(6, _masks);
-            target.SetUVs(7, _rawUvs);
+            target.SetUVs(0, _meshUvs.array, 0, vertexCount);
+            target.SetUVs(1, _rects.array, 0, vertexCount);
+            target.SetUVs(2, _radii.array, 0, vertexCount);
+            target.SetUVs(3, _colors.array, 0, vertexCount);
+            target.SetUVs(4, _outlineColors.array, 0, vertexCount);
+            target.SetUVs(5, _extras.array, 0, vertexCount);
+            target.SetUVs(6, _masks.array, 0, vertexCount);
+            target.SetUVs(7, _rawUvs.array, 0, vertexCount);
         }
 
         target.subMeshCount = batches.Count;
@@ -446,8 +447,8 @@ public static class NowUI
             var mesh = _meshes.array[_capturedMeshIndices[subMesh]];
 
             _triangles.Clear();
-            mesh.AppendTriangles(_triangles, vertexOffset);
-            target.SetTriangles(_triangles, subMesh, false);
+            mesh.AppendTriangles(ref _triangles, vertexOffset);
+            target.SetTriangles(_triangles.array, 0, _triangles.count, subMesh, false);
             vertexOffset += mesh.vertexCount;
         }
 
@@ -667,6 +668,37 @@ public static class NowUI
         mesh.AddRect(_tmpVertex, style.outline, font.GetScreenPixelRange(glyph.unicode, fontSize));
     }
 
+    public static void DrawLottie(NowUILottie lottie)
+    {
+        if (_suppressDrawDepth > 0 || _defaultMaterial == null)
+            return;
+
+        var composition = lottie.asset != null ? lottie.asset.composition : null;
+
+        if (composition == null)
+            return;
+
+        var mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
+
+        if (mesh == null)
+            return;
+
+        float frame = NowLottieRenderer.TimeToFrame(composition, lottie.time, lottie.loop);
+
+        // Quantize to 1/8th of a frame so equal-looking draws hit the cache.
+        frame = Mathf.Round(frame * 8f) * 0.125f;
+
+        var buffer = NowLottieRenderer.RenderCached(
+            composition,
+            frame,
+            lottie.rect.z,
+            lottie.rect.w,
+            lottie.preserveAspect,
+            ApplyColorMultiplier(lottie.color));
+
+        mesh.AddGeometry(buffer, new Vector2(lottie.rect.x, lottie.rect.y), lottie.mask);
+    }
+
     public static NowUIRectangle Rectangle(NowUIRectangle rect)
     {
         return rect;
@@ -680,5 +712,10 @@ public static class NowUI
     public static NowUIText Text(Vector4 position, NowFontAsset font)
     {
         return new NowUIText(position, font);
+    }
+
+    public static NowUILottie Lottie(Vector4 position, NowLottieAsset asset)
+    {
+        return new NowUILottie(position, asset);
     }
 }

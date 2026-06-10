@@ -323,6 +323,75 @@ namespace NowUIInternal
             _tris.count += 6;
         }
 
+        /// <summary>
+        /// Appends arbitrary tessellated triangles (positions in UI space, y down).
+        /// The shared rect is the padded bounds of the geometry; UVs are derived from
+        /// it so the rectangle shader evaluates to full coverage while per-pixel
+        /// masking keeps working exactly like it does for rectangles.
+        /// </summary>
+        public void AddGeometry(NowLottieDrawBuffer buffer, Vector2 positionOffset, Vector4 mask)
+        {
+            int vertexCount = buffer.positions.count;
+            int indexCount = buffer.indices.count;
+
+            if (vertexCount == 0 || indexCount == 0)
+                return;
+
+            const float PADDING = 2f;
+
+            float minX = buffer.boundsMin.x + positionOffset.x - PADDING;
+            float minY = buffer.boundsMin.y + positionOffset.y - PADDING;
+            float width = buffer.boundsMax.x - buffer.boundsMin.x + PADDING * 2f;
+            float height = buffer.boundsMax.y - buffer.boundsMin.y + PADDING * 2f;
+
+            // Same packing as AddRect: mesh space rect with y flipped.
+            var rect = new Vector4(minX, -minY - height, width, height);
+
+            var cullProbe = new NowRectVertex { mask = mask, position = rect };
+
+            if (cullProbe.IsOutsideMask(rect))
+                return;
+
+            _mask.EnsureCapacity(vertexCount);
+            _rect.EnsureCapacity(vertexCount);
+            _radius.EnsureCapacity(vertexCount);
+            _color.EnsureCapacity(vertexCount);
+            _outlineColor.EnsureCapacity(vertexCount);
+            _extra.EnsureCapacity(vertexCount);
+            _verts.EnsureCapacity(vertexCount);
+            _uvs.EnsureCapacity(vertexCount);
+            _rawuv.EnsureCapacity(vertexCount);
+            _tris.EnsureCapacity(indexCount);
+
+            int indexOffset = _verts.count;
+            float inverseWidth = 1f / width;
+            float inverseHeight = 1f / height;
+
+            for (int i = 0; i < vertexCount; ++i)
+            {
+                var position = buffer.positions.array[i];
+                position.x += positionOffset.x;
+                position.y += positionOffset.y;
+                float meshY = -position.y;
+
+                float u = (position.x - rect.x) * inverseWidth;
+                float v = (meshY - rect.y) * inverseHeight;
+
+                _verts.array[_verts.count++] = new Vector3(position.x, meshY, 0f);
+                _uvs.array[_uvs.count++] = new Vector2(u, v);
+                _rawuv.array[_rawuv.count++] = new Vector4(u, v, 0f, 0f);
+                _rect.array[_rect.count++] = rect;
+                _radius.array[_radius.count++] = default;
+                _color.array[_color.count++] = buffer.colors.array[i];
+                _outlineColor.array[_outlineColor.count++] = default;
+                _extra.array[_extra.count++] = default;
+                _mask.array[_mask.count++] = mask;
+            }
+
+            for (int i = 0; i < indexCount; ++i)
+                _tris.array[_tris.count++] = buffer.indices.array[i] + indexOffset;
+        }
+
         public void ClearVertices()
         {
             _radius.Clear();
@@ -338,91 +407,151 @@ namespace NowUIInternal
         }
 
         public void AppendVertices(
-            System.Collections.Generic.List<Vector3> vertices,
-            System.Collections.Generic.List<Vector2> uvs,
-            System.Collections.Generic.List<Vector4> rects,
-            System.Collections.Generic.List<Vector4> radii,
-            System.Collections.Generic.List<Vector4> colors,
-            System.Collections.Generic.List<Vector4> outlineColors,
-            System.Collections.Generic.List<Vector4> extras,
-            System.Collections.Generic.List<Vector4> masks,
-            System.Collections.Generic.List<Vector4> rawUvs,
+            ref StaticList<Vector3> vertices,
+            ref StaticList<Vector2> uvs,
+            ref StaticList<Vector4> rects,
+            ref StaticList<Vector4> radii,
+            ref StaticList<Vector4> colors,
+            ref StaticList<Vector4> outlineColors,
+            ref StaticList<Vector4> extras,
+            ref StaticList<Vector4> masks,
+            ref StaticList<Vector4> rawUvs,
             Vector2 positionOffset)
         {
-            for (int i = 0; i < _verts.count; ++i)
+            int count = _verts.count;
+
+            vertices.EnsureCapacity(count);
+            uvs.EnsureCapacity(count);
+            rects.EnsureCapacity(count);
+            radii.EnsureCapacity(count);
+            colors.EnsureCapacity(count);
+            outlineColors.EnsureCapacity(count);
+            extras.EnsureCapacity(count);
+            masks.EnsureCapacity(count);
+            rawUvs.EnsureCapacity(count);
+
+            var sourceVertices = _verts.array;
+            var destinationVertices = vertices.array;
+            int destinationBase = vertices.count;
+
+            for (int i = 0; i < count; ++i)
             {
-                var vertex = _verts.array[i];
+                var vertex = sourceVertices[i];
                 vertex.x += positionOffset.x;
                 vertex.y += positionOffset.y;
-                vertices.Add(vertex);
+                destinationVertices[destinationBase + i] = vertex;
             }
 
-            for (int i = 0; i < _uvs.count; ++i)
-                uvs.Add(_uvs.array[i]);
+            vertices.count += count;
 
-            for (int i = 0; i < _rect.count; ++i)
-                rects.Add(_rect.array[i]);
-
-            for (int i = 0; i < _radius.count; ++i)
-                radii.Add(_radius.array[i]);
-
-            for (int i = 0; i < _color.count; ++i)
-                colors.Add(_color.array[i]);
-
-            for (int i = 0; i < _outlineColor.count; ++i)
-                outlineColors.Add(_outlineColor.array[i]);
-
-            for (int i = 0; i < _extra.count; ++i)
-                extras.Add(_extra.array[i]);
-
-            for (int i = 0; i < _mask.count; ++i)
-                masks.Add(_mask.array[i]);
-
-            for (int i = 0; i < _rawuv.count; ++i)
-                rawUvs.Add(_rawuv.array[i]);
+            System.Array.Copy(_uvs.array, 0, uvs.array, uvs.count, count);
+            uvs.count += count;
+            System.Array.Copy(_rect.array, 0, rects.array, rects.count, count);
+            rects.count += count;
+            System.Array.Copy(_radius.array, 0, radii.array, radii.count, count);
+            radii.count += count;
+            System.Array.Copy(_color.array, 0, colors.array, colors.count, count);
+            colors.count += count;
+            System.Array.Copy(_outlineColor.array, 0, outlineColors.array, outlineColors.count, count);
+            outlineColors.count += count;
+            System.Array.Copy(_extra.array, 0, extras.array, extras.count, count);
+            extras.count += count;
+            System.Array.Copy(_mask.array, 0, masks.array, masks.count, count);
+            masks.count += count;
+            System.Array.Copy(_rawuv.array, 0, rawUvs.array, rawUvs.count, count);
+            rawUvs.count += count;
         }
 
         public void AppendUGUIVertices(
-            System.Collections.Generic.List<Vector3> vertices,
-            System.Collections.Generic.List<Vector4> uv0,
-            System.Collections.Generic.List<Vector4> rects,
-            System.Collections.Generic.List<Vector4> masks,
-            System.Collections.Generic.List<Vector4> extras,
-            System.Collections.Generic.List<Color> colors,
-            System.Collections.Generic.List<Vector3> normals,
-            System.Collections.Generic.List<Vector4> tangents,
+            ref StaticList<Vector3> vertices,
+            ref StaticList<Vector4> uv0,
+            ref StaticList<Vector4> rects,
+            ref StaticList<Vector4> masks,
+            ref StaticList<Vector4> extras,
+            ref StaticList<Color> colors,
+            ref StaticList<Vector3> normals,
+            ref StaticList<Vector4> tangents,
             Vector2 positionOffset)
         {
             bool isText = kind == NowMeshKind.Text;
+            int count = _verts.count;
 
-            for (int i = 0; i < _verts.count; ++i)
+            vertices.EnsureCapacity(count);
+            uv0.EnsureCapacity(count);
+            rects.EnsureCapacity(count);
+            masks.EnsureCapacity(count);
+            extras.EnsureCapacity(count);
+            colors.EnsureCapacity(count);
+            normals.EnsureCapacity(count);
+            tangents.EnsureCapacity(count);
+
+            var sourceVertices = _verts.array;
+            var sourceRadii = _radius.array;
+            var sourceRawUvs = _rawuv.array;
+            var sourceUvs = _uvs.array;
+            var sourceColors = _color.array;
+
+            var destinationVertices = vertices.array;
+            var destinationUv0 = uv0.array;
+            var destinationColors = colors.array;
+            var destinationNormals = normals.array;
+            int destinationBase = vertices.count;
+
+            for (int i = 0; i < count; ++i)
             {
-                var vertex = _verts.array[i];
-                var radius = _radius.array[i];
-                var rawUv = _rawuv.array[i];
-                var uv = _uvs.array[i];
+                var vertex = sourceVertices[i];
+                var radius = sourceRadii[i];
+                var uv = sourceUvs[i];
 
                 vertex.x += positionOffset.x;
                 vertex.y += positionOffset.y;
 
-                vertices.Add(vertex);
-                uv0.Add(isText
-                    ? new Vector4(uv.x, uv.y, rawUv.x, rawUv.y)
-                    : new Vector4(uv.x, uv.y, radius.w, 0));
-                rects.Add(_rect.array[i]);
-                masks.Add(_mask.array[i]);
-                extras.Add(_extra.array[i]);
-                var color = _color.array[i];
-                colors.Add(new Color(color.x, color.y, color.z, color.w));
-                normals.Add(new Vector3(radius.x, radius.y, radius.z));
-                tangents.Add(_outlineColor.array[i]);
+                int destination = destinationBase + i;
+                destinationVertices[destination] = vertex;
+
+                if (isText)
+                {
+                    var rawUv = sourceRawUvs[i];
+                    destinationUv0[destination] = new Vector4(uv.x, uv.y, rawUv.x, rawUv.y);
+                }
+                else
+                {
+                    destinationUv0[destination] = new Vector4(uv.x, uv.y, radius.w, 0f);
+                }
+
+                var color = sourceColors[i];
+                destinationColors[destination] = new Color(color.x, color.y, color.z, color.w);
+                destinationNormals[destination] = new Vector3(radius.x, radius.y, radius.z);
             }
+
+            vertices.count += count;
+            uv0.count += count;
+            colors.count += count;
+            normals.count += count;
+
+            System.Array.Copy(_rect.array, 0, rects.array, rects.count, count);
+            rects.count += count;
+            System.Array.Copy(_mask.array, 0, masks.array, masks.count, count);
+            masks.count += count;
+            System.Array.Copy(_extra.array, 0, extras.array, extras.count, count);
+            extras.count += count;
+            System.Array.Copy(_outlineColor.array, 0, tangents.array, tangents.count, count);
+            tangents.count += count;
         }
 
-        public void AppendTriangles(System.Collections.Generic.List<int> triangles, int vertexOffset)
+        public void AppendTriangles(ref StaticList<int> triangles, int vertexOffset)
         {
-            for (int i = 0; i < _tris.count; ++i)
-                triangles.Add(_tris.array[i] + vertexOffset);
+            int count = _tris.count;
+            triangles.EnsureCapacity(count);
+
+            var source = _tris.array;
+            var destination = triangles.array;
+            int destinationBase = triangles.count;
+
+            for (int i = 0; i < count; ++i)
+                destination[destinationBase + i] = source[i] + vertexOffset;
+
+            triangles.count += count;
         }
 
         public void UploadMesh()
