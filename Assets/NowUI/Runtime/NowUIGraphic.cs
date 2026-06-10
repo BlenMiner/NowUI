@@ -12,6 +12,7 @@ public class NowUIGraphic : MaskableGraphic
 {
     static readonly int _mainTexProp = Shader.PropertyToID("_MainTex");
 
+    [Header("NowUI")]
     [SerializeField] bool _rebuildEveryFrame;
 
     [NonSerialized] readonly List<CanvasRenderer> _extraCanvasRenderers = new List<CanvasRenderer>(2);
