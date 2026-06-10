@@ -561,7 +561,7 @@ public static class NowUI
         return color;
     }
 
-    public static void DrawRect(NowUIRectangle rectangle)
+    internal static void DrawRect(NowUIRectangle rectangle)
     {
         if (_suppressDrawDepth > 0 || _defaultMaterial == null)
             return;
@@ -595,7 +595,7 @@ public static class NowUI
         mesh.AddRect(_tmpVertex, rectangle.blur, rectangle.outline);
     }
 
-    public static void DrawString(NowUIText style, string value)
+    internal static void DrawString(NowUIText style, string value)
     {
         if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
             return;
@@ -663,7 +663,7 @@ public static class NowUI
         }
     }
 
-    public static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph)
+    internal static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph)
     {
         if (_suppressDrawDepth > 0 || style.font == null)
             return;
@@ -674,7 +674,7 @@ public static class NowUI
         DrawCharacter(style, glyph, font);
     }
 
-    public static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowFont font)
+    internal static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowFont font)
     {
         if (_suppressDrawDepth > 0 || font == null)
             return;
@@ -742,7 +742,7 @@ public static class NowUI
         mesh.AddRect(_tmpVertex, style.outline * fontSize, font.GetScreenPixelRange(glyph.unicode, fontSize));
     }
 
-    public static void DrawLottie(NowUILottie lottie)
+    internal static void DrawLottie(NowUILottie lottie)
     {
         if (_suppressDrawDepth > 0 || _defaultMaterial == null)
             return;
