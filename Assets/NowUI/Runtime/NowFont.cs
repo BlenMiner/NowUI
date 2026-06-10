@@ -258,6 +258,47 @@ public abstract class NowFontAsset : ScriptableObject
         return 1;
     }
 
+    /// <summary>
+    /// Distance from the top of a line box to its baseline, in em units. Used to
+    /// position the first baseline so ascent and descent both fit inside the
+    /// measured line height.
+    /// </summary>
+    public float GetAscender(NowFontStyle style = NowFontStyle.Regular)
+    {
+        var visited = GetVisitCache();
+
+        try
+        {
+            return GetAscender(style, visited);
+        }
+        finally
+        {
+            visited.Clear();
+        }
+    }
+
+    internal float GetAscender(NowFontStyle style, HashSet<NowFontAsset> visited)
+    {
+        if (this == null || !visited.Add(this))
+            return 1;
+
+        if (TryGetOwnFont(style, out var font) && font != null)
+            return font.GetAscender();
+
+        if (_fallbacks != null)
+        {
+            for (int i = 0; i < _fallbacks.Length; ++i)
+            {
+                var fallback = _fallbacks[i];
+
+                if (fallback != null)
+                    return fallback.GetAscender(style, visited);
+            }
+        }
+
+        return 1;
+    }
+
     public virtual Vector2 MeasureText(string value, float fontSize, int tabSpaces = 4)
     {
         return MeasureText(value, fontSize, NowFontStyle.Regular, tabSpaces);
@@ -328,6 +369,7 @@ public abstract class NowFontAsset : ScriptableObject
         float cursorX = 0;
         float lineY = 0;
         float lineHeight = 0;
+        float baseline = 0;
         float minX = 0;
         float minY = 0;
         float maxX = 0;
@@ -348,6 +390,8 @@ public abstract class NowFontAsset : ScriptableObject
                 {
                     visited.Clear();
                     lineHeight = GetLineHeight(style, visited) * fontSize;
+                    visited.Clear();
+                    baseline = GetAscender(style, visited) * fontSize;
                 }
 
                 cursorX = 0;
@@ -374,14 +418,16 @@ public abstract class NowFontAsset : ScriptableObject
             {
                 visited.Clear();
                 lineHeight = GetLineHeight(style, visited) * fontSize;
+                visited.Clear();
+                baseline = GetAscender(style, visited) * fontSize;
             }
 
             if (glyph.atlasBounds.left != glyph.atlasBounds.right)
             {
                 float glyphLeft = cursorX + glyph.planeBounds.left * fontSize;
                 float glyphRight = cursorX + glyph.planeBounds.right * fontSize;
-                float glyphTop = lineY + lineHeight - glyph.planeBounds.top * fontSize;
-                float glyphBottom = lineY + lineHeight - glyph.planeBounds.bottom * fontSize;
+                float glyphTop = lineY + baseline - glyph.planeBounds.top * fontSize;
+                float glyphBottom = lineY + baseline - glyph.planeBounds.bottom * fontSize;
 
                 if (!hasBounds)
                 {
@@ -1323,6 +1369,30 @@ public class NowFont : NowFontAsset
         }
 
         return 1;
+    }
+
+    public float GetAscender()
+    {
+        if (atlasInfo.metrics.ascender > 0)
+            return atlasInfo.metrics.ascender;
+
+        if (_hasDynamicColorLayoutMetrics && _dynamicColorLayoutMetrics.ascender > 0)
+            return _dynamicColorLayoutMetrics.ascender;
+
+        if (_dynamicPages != null)
+        {
+            for (int i = 0; i < _dynamicPages.Count; ++i)
+            {
+                var font = _dynamicPages[i].font;
+
+                if (font != null && font.atlasInfo.metrics.ascender > 0)
+                    return font.atlasInfo.metrics.ascender;
+            }
+        }
+
+        // Without an ascender metric, fall back to the line height, which
+        // reproduces the legacy baseline-at-line-bottom placement.
+        return GetLineHeight();
     }
 
     void ClearGlyphCache()
@@ -2610,7 +2680,10 @@ public class NowFont : NowFontAsset
             ? fontAtlas.distanceRange
             : dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE;
 
-        return Mathf.Max(1f, fontSize / atlasSize * pixelRange);
+        // Distance-field range in local units; the text shaders convert this to
+        // screen pixels per-fragment (and floor it there) so canvas/transform
+        // scale does not soften or alias the glyph edges.
+        return fontSize / atlasSize * pixelRange;
     }
 
     public override Vector2 MeasureText(string value, float fontSize, int tabSpaces = 4)

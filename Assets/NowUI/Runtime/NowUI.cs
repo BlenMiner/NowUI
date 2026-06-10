@@ -9,6 +9,12 @@ public static class NowUI
 
     public static Vector4 screenMask;
 
+    /// <summary>
+    /// Font used by text helpers when no explicit font is provided, such as
+    /// <see cref="Text(Vector4)"/> and <see cref="NowUILayout.Label(string)"/>.
+    /// </summary>
+    public static NowFontAsset defaultFont;
+
     static int _defaultMesh = -1;
 
     static StaticList<NowMesh> _meshes = new StaticList<NowMesh>(100);
@@ -600,6 +606,7 @@ public static class NowUI
 
         fontAsset.EnsureGlyphs(value, fontSize, style.fontStyle);
         float lineHeight = fontAsset.GetLineHeight(style.fontStyle) * fontSize;
+        float baseline = fontAsset.GetAscender(style.fontStyle) * fontSize;
         float leftPos = style.rect.x;
 
         const int TAB_SPACES = 4;
@@ -646,7 +653,7 @@ public static class NowUI
                         }
 
                         mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
-                        DrawCharacter(style, glyph, resolvedFont, mesh, lineHeight);
+                        DrawCharacter(style, glyph, resolvedFont, mesh, baseline);
                     }
 
                     style.rect.x += glyph.advance * fontSize;
@@ -686,11 +693,16 @@ public static class NowUI
 
     static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowFont font, NowMesh mesh)
     {
-        float lineHeight = (style.font != null ? style.font.GetLineHeight(style.fontStyle) : font.GetLineHeight()) * style.fontSize;
-        DrawCharacter(style, glyph, font, mesh, lineHeight);
+        float baseline = (style.font != null ? style.font.GetAscender(style.fontStyle) : font.GetAscender()) * style.fontSize;
+        DrawCharacter(style, glyph, font, mesh, baseline);
     }
 
-    static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowFont font, NowMesh mesh, float lineHeight)
+    /// <summary>
+    /// <paramref name="baseline"/> is the distance from the top of the line box
+    /// to the text baseline (ascender), so descenders stay inside the measured
+    /// line height instead of hanging below the rect.
+    /// </summary>
+    static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowFont font, NowMesh mesh, float baseline)
     {
         var fontSize = style.fontSize;
         var rect = style.rect;
@@ -706,7 +718,7 @@ public static class NowUI
         float pz = planeBounds.right - planeBounds.left;
         float pw = planeBounds.top - planeBounds.bottom;
 
-        py += lineHeight - pw;
+        py += baseline - pw;
 
         var atlasBounds = glyph.atlasBounds;
 
@@ -725,7 +737,9 @@ public static class NowUI
         _tmpVertex.color = ApplyColorMultiplier(style.color);
         _tmpVertex.outlineColor = ApplyColorMultiplier(style.outlineColor);
 
-        mesh.AddRect(_tmpVertex, style.outline, font.GetScreenPixelRange(glyph.unicode, fontSize));
+        // Text outline is authored relative to the font size (em units); the
+        // shader expects screen pixels.
+        mesh.AddRect(_tmpVertex, style.outline * fontSize, font.GetScreenPixelRange(glyph.unicode, fontSize));
     }
 
     public static void DrawLottie(NowUILottie lottie)
@@ -798,6 +812,11 @@ public static class NowUI
     public static NowUIText Text(Vector4 position, NowFontAsset font)
     {
         return new NowUIText(position, font);
+    }
+
+    public static NowUIText Text(Vector4 position)
+    {
+        return new NowUIText(position, defaultFont);
     }
 
     public static NowUILottie Lottie(Vector4 position, NowLottieAsset asset)

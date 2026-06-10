@@ -7,7 +7,6 @@ public class NowUIGraphicExample : NowUIGraphic
     [SerializeField] NowLottieAsset _lottie;
     [SerializeField] float _size = 14f;
     [SerializeField] string _content;
-    [SerializeField] int _count = 1;
 
     protected override void DrawNowUI(Rect rect)
     {
@@ -30,48 +29,49 @@ public class NowUIGraphicExample : NowUIGraphic
         if (_font == null)
             return;
 
-        NowUI.Text(new Vector4(72, 14, width - 96, 30), _font)
-            .SetFontSize(20)
-            .SetColor(Color.white)
-            .SetMask(bounds)
-            .Draw("NowUI Graphic");
+        NowUI.defaultFont = _font;
 
-        NowUI.Text(new Vector4(72, 42, width - 96, 24), _font)
-            .SetFontSize(_size)
-            .SetMask(bounds)
-            .Draw(_content);
-
-
-        NowUI.Text(new Vector4(72, 42 + 32, width - 96, 24), _font)
-            .SetFontSize(_size)
-            .SetMask(bounds)
-            .SetBold()
-            .Draw(_content);
-
-        NowUI.Text(new Vector4(72, 42 + 32 + 32, width - 96, 24), _font)
-            .SetFontSize(_size)
-            .SetMask(bounds)
-            .SetBold()
-            .SetItalic()
-            .Draw(_content);
-
-        NowUI.Text(new Vector4(72, 42 + 32 + 32 + 32, width - 96, 24), _font)
-            .SetFontSize(_size)
-            .SetMask(bounds)
-            .SetItalic()
-            .Draw(_content);
-
-        float cellSize = height / _count;
-
-        for (int x = 0; x < _count; ++x)
+        using (NowUILayout.Area(bounds))
         {
-            for (int y = 0; y < _count; ++y)
+            NowUILayout.Label("NowUI Graphic").Draw();
+            NowUILayout.Label("Hello World\nNowUI Graphic").Draw();
+            var content = NowUILayout.Label(_content)
+                .SetFontSize(_size)
+                .SetOutlineColor(Color.green)
+                .Reserve();
+
+            NowUI.Rectangle(content.rect).SetColor(Color.black).Draw();
+            content.Draw();
+
+            using (NowUILayout.Horizontal())
             {
-                var gridSegment = new Vector4(x * cellSize, y * cellSize, cellSize, cellSize);
-                NowUI.Lottie(gridSegment, _lottie)
-                    .SetNormalizedTime((Time.time + x * 0.1f + y * 0.1f) % 1f)
-                    .Draw();
+                NowUILayout.Label("N").Draw();
+                NowUILayout.Label("o").Draw();
+                NowUILayout.Label("w").Draw();
+                NowUILayout.FlexibleSpace();
+                NowUILayout.Label("U").Draw();
+                NowUILayout.FlexibleSpace();
+                NowUILayout.Label("I").Draw();
             }
+
+            DrawLottie();
+            using (NowUILayout.Horizontal())
+            {
+                DrawLottie();
+                DrawLottie();
+                DrawLottie();
+                DrawLottie();
+            }
+            DrawLottie();
         }
+    }
+
+    private void DrawLottie()
+    {
+        var reservedRect = NowUILayout.Rect(128, 128);
+
+        NowUI.Lottie(reservedRect, _lottie)
+            .SetTime(Time.time)
+            .Draw();
     }
 }

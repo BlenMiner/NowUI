@@ -8,7 +8,7 @@ public class TextTests : MonoBehaviour
 
     [SerializeField] Color _outlineColor;
 
-    [SerializeField, Range(-100, 100)] float _outline = 0f;
+    [SerializeField, Range(-0.5f, 0.5f)] float _outline = 0f;
 
     [SerializeField, Range(1, 200)] float _fontSize = 100;
 

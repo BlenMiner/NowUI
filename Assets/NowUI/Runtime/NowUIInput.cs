@@ -421,6 +421,8 @@ public static class NowUIInput
 
     static float _dragThreshold = DefaultDragThreshold;
 
+    static int _passiveDepth;
+
     public static INowUIInputProvider defaultProvider
     {
         get => _defaultProvider;
@@ -554,6 +556,31 @@ public static class NowUIInput
         var snapshot = _snapshot;
         bool hasPointer = _hasContext && snapshot.hasPointer;
         bool hovered = hasPointer && rect.Contains(snapshot.pointerPosition);
+
+        // Passive mode (e.g. a layout measure pass): report pure reads like hover
+        // so styling stays consistent, but never transition press/drag state — the
+        // same control will interact for real later this frame.
+        if (_passiveDepth > 0)
+        {
+            return new NowUIInteraction(
+                id,
+                rect,
+                button,
+                hasPointer,
+                snapshot.pointerPosition,
+                snapshot.pointerDelta,
+                default,
+                hovered,
+                false,
+                false,
+                false,
+                false,
+                _activeId == id && _activeButton == button,
+                false,
+                false,
+                false);
+        }
+
         bool pressed =
             hovered &&
             snapshot.WasPointerPressed(button) &&
@@ -674,6 +701,18 @@ public static class NowUIInput
         _pressPosition = default;
         _dragThreshold = DefaultDragThreshold;
         _defaultProvider = NowUIScreenInputProvider.instance;
+        _passiveDepth = 0;
+    }
+
+    internal static void BeginPassive()
+    {
+        ++_passiveDepth;
+    }
+
+    internal static void EndPassive()
+    {
+        if (_passiveDepth > 0)
+            --_passiveDepth;
     }
 
     internal static bool TryScreenToSurface(Vector2 topLeftScreenPosition, NowUIInputSurface surface, out Vector2 position)

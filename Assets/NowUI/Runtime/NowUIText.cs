@@ -69,6 +69,12 @@ public struct NowUIText
         return this;
     }
 
+    /// <summary>
+    /// Outline thickness relative to the font size (em units), so the stroke
+    /// keeps the same visual weight at any size: 0.05 ≈ a 5%-of-em outline.
+    /// Negative values inset the outline. For an absolute pixel width, pass
+    /// <c>pixels / fontSize</c>.
+    /// </summary>
     public NowUIText SetOutline(float outline)
     {
         this.outline = outline;
@@ -116,7 +122,7 @@ public struct NowUIText
         return font != null ? font.MeasureText(value, fontSize, fontStyle) : default;
     }
 
-    public Vector4 MeasureBounds(string value)
+    public readonly Vector4 MeasureBounds(string value)
     {
         return font != null ? font.MeasureTextBounds(value, fontSize, fontStyle) : default;
     }

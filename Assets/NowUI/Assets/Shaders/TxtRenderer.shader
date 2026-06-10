@@ -97,12 +97,18 @@ Shader "NowUI/Text Renderer"
 
                 float outline = i.extras.x;
                 fixed4 msd = tex2D(_MainTex, i.uv);
-                float screenPxRange = max(i.extras.y, 1.0);
+
+                // extras.y is the distance-field range in local units; convert it to
+                // actual screen pixels so canvas scale / transform scale keeps text crisp.
+                float2 gradX = float2(ddx(pos.x), ddy(pos.x));
+                float2 gradY = float2(ddx(pos.y), ddy(pos.y));
+                float unitsPerPixel = max(0.5 * (length(gradX) + length(gradY)), 1e-5);
+                float screenPxRange = max(i.extras.y / unitsPerPixel, 1.0);
 
                 float sd = median(msd.r, msd.g, msd.b);
 
                 float screenPxDistance = screenPxRange * (sd - 0.5);
-                float screenPxDistanceOutline = screenPxRange * (sd - 0.5 + (outline / screenPxRange));
+                float screenPxDistanceOutline = screenPxDistance + outline / unitsPerPixel;
 
                 float opacity = clamp(screenPxDistance + 0.5, 0.0, 1.0);
                 float outlineOp = clamp(screenPxDistanceOutline + 0.5, 0.0, 1.0);

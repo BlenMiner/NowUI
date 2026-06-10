@@ -60,6 +60,16 @@ public class NowUIGraphic : MaskableGraphic
         rebuildNowUI?.Invoke(this, rect);
     }
 
+    /// <summary>
+    /// When true (the default), each rebuild runs <see cref="DrawNowUI"/> twice —
+    /// a NowUILayout measure pass (draws suppressed, input passive) followed by
+    /// the real pass — so flexible space, stretching and auto-sized groups are
+    /// exact within a single rebuild, like Unity IMGUI's Layout and Repaint
+    /// events. Override to false to skip the extra pass when the graphic does
+    /// not use NowUILayout.
+    /// </summary>
+    protected virtual bool useLayoutMeasurePass => true;
+
     public void MarkDirty()
     {
         SetVerticesDirty();
@@ -105,7 +115,23 @@ public class NowUIGraphic : MaskableGraphic
             colorMultiplierActive = true;
 
             using (NowUIInput.Begin(GetInputProvider(), new NowUIInputSurface(new Vector2(rect.width, rect.height))))
+            {
+                if (useLayoutMeasurePass)
+                {
+                    int layoutCounter = NowUILayout.BeginMeasurePass();
+
+                    try
+                    {
+                        DrawNowUI(drawRect);
+                    }
+                    finally
+                    {
+                        NowUILayout.EndMeasurePass(layoutCounter);
+                    }
+                }
+
                 DrawNowUI(drawRect);
+            }
 
             NowUI.EndColorMultiplier();
             colorMultiplierActive = false;
