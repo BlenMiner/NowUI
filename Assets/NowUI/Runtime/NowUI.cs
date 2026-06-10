@@ -8,8 +8,8 @@ namespace NowUI
 {
     /// <summary>
     /// NowUI's immediate-mode entry point: frame lifecycle (<see cref="StartUI()"/> /
-    /// <see cref="FlushUI"/>) and the drawing factories (<see cref="Rectangle(Vector4)"/>,
-    /// <see cref="Text(Vector4)"/>, <see cref="Lottie"/>).
+    /// <see cref="FlushUI"/>) and the drawing factories (<see cref="Rectangle(NowRect)"/>,
+    /// <see cref="Text(NowRect)"/>, <see cref="Lottie"/>).
     /// </summary>
     public static class Now
     {
@@ -21,7 +21,7 @@ namespace NowUI
 
         /// <summary>
         /// Font used by text helpers when no explicit font is provided, such as
-        /// <see cref="Text(Vector4)"/> and <see cref="NowLayout.Label(string)"/>.
+        /// <see cref="Text(NowRect)"/> and <see cref="NowLayout.Label(string)"/>.
         /// Defaults to the bundled OpenSans-Regular font unless overridden.
         /// </summary>
         public static NowFontAsset defaultFont

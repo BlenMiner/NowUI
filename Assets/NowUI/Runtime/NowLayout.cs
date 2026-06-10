@@ -165,7 +165,7 @@ namespace NowUI
     }
 
     /// <summary>
-    /// Disposable handle returned by <see cref="NowLayout.Area(Vector4)"/>,
+    /// Disposable handle returned by <see cref="NowLayout.Area(NowRect)"/>,
     /// <see cref="NowLayout.Horizontal()"/> and <see cref="NowLayout.Vertical()"/>,
     /// mirroring the <see cref="NowUIInput.Begin(Vector2)"/> flow: wrap it in a using
     /// statement and the group ends when the scope is disposed.
@@ -337,7 +337,7 @@ namespace NowUI
             return this;
         }
 
-        /// <summary>Replaces all layout options at once; the setters below tweak them individually.</summary>
+        /// <summary>Replaces all layout options at once.</summary>
         public NowLabel SetOptions(NowLayoutOptions options)
         {
             _options = options;
@@ -464,7 +464,7 @@ namespace NowUI
     ///
     /// Sizes that cannot be known up front in a single pass (auto-sized group
     /// extents, stretch shares and flexible space) need a measurement source.
-    /// The callback form <see cref="Area(Vector4, Action)"/> runs the UI twice per
+    /// The callback form <see cref="Area(NowRect, Action)"/> runs the UI twice per
     /// frame — a measure pass with draws suppressed and input passive, then the
     /// real pass — so layout is exact every frame, like Unity's IMGUI Layout and
     /// Repaint events. The scope form resolves from the previous frame's
@@ -574,7 +574,7 @@ namespace NowUI
             return new NowLayoutOptions().SetStretchHeight(weight);
         }
 
-        /// <summary>True while the callback form of <see cref="Area(Vector4, Action)"/> runs its measure pass.</summary>
+        /// <summary>True while the callback form of <see cref="Area(NowRect, Action)"/> runs its measure pass.</summary>
         public static bool isMeasurePass => _measurePass;
 
         /// <summary>
@@ -808,7 +808,7 @@ namespace NowUI
 
         /// <summary>
         /// Style template used by <see cref="Label(string)"/> overloads that take no
-        /// explicit style. Defaults to <see cref="Now.defaultFont"/> at a 16px font size.
+        /// explicit style. Defaults to the active <see cref="Now.font"/> at a 16px font size.
         /// </summary>
         public static NowUIText labelStyle
         {

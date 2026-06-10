@@ -490,9 +490,9 @@ namespace NowUI
             _snapshot = default;
         }
 
-        public static bool IsHovered(Vector4 rect)
+        public static bool IsHovered(NowRect rect)
         {
-            return IsHovered(ToRect(rect));
+            return IsHovered((Rect)rect);
         }
 
         public static bool IsHovered(Rect rect)
@@ -522,7 +522,7 @@ namespace NowUI
 
         public static NowUIInteraction Interact(string id, NowRect rect, NowUIPointerButton button)
         {
-            return Interact(GetId(id), ToRect(rect), button);
+            return Interact(GetId(id), (Rect)rect, button);
         }
 
         public static NowUIInteraction Interact(string id, Rect rect)
@@ -542,7 +542,7 @@ namespace NowUI
 
         public static NowUIInteraction Interact(int id, NowRect rect, NowUIPointerButton button)
         {
-            return Interact(id, ToRect(rect), button);
+            return Interact(id, (Rect)rect, button);
         }
 
         public static NowUIInteraction Interact(int id, Rect rect)

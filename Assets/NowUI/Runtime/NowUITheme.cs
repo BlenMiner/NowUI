@@ -193,47 +193,46 @@ namespace NowUI
             return false;
         }
 
-        public Vector4 Inset(Vector4 rect, string spacingId)
+        public NowRect Inset(NowRect rect, string spacingId)
         {
             return Inset(rect, GetSpacing(spacingId, default));
         }
 
-        public Vector4 Outset(Vector4 rect, string spacingId)
+        public NowRect Outset(NowRect rect, string spacingId)
         {
             return Outset(rect, GetSpacing(spacingId, default));
         }
 
-        public static Vector4 Inset(Vector4 rect, Vector4 spacing)
+        public static NowRect Inset(NowRect rect, Vector4 spacing)
         {
-            rect.x += spacing.x;
-            rect.y += spacing.y;
-            rect.z -= spacing.x + spacing.z;
-            rect.w -= spacing.y + spacing.w;
-            return rect;
+            return rect.Inset(spacing.x, spacing.y, spacing.z, spacing.w);
         }
 
-        public static Vector4 Outset(Vector4 rect, Vector4 spacing)
+        public static NowRect Outset(NowRect rect, Vector4 spacing)
         {
-            rect.x -= spacing.x;
-            rect.y -= spacing.y;
-            rect.z += spacing.x + spacing.z;
-            rect.w += spacing.y + spacing.w;
-            return rect;
+            return rect.Outset(spacing.x, spacing.y, spacing.z, spacing.w);
         }
 
-        public NowUIRectangle Rectangle(Vector4 rect, string presetId = null)
+        public NowUIRectangle Rectangle(NowRect rect, string presetId = null)
         {
             return ApplyRectanglePreset(Now.Rectangle(rect), ResolveRectanglePresetId(presetId));
         }
 
-        public NowUIText Text(Vector4 rect, NowFontAsset font, string presetId = null)
+        public NowUIText Text(NowRect rect, NowFontAsset font, string presetId = null)
         {
             return ApplyTextPreset(Now.Text(rect, font), ResolveTextPresetId(presetId));
         }
 
-        public NowUIText Text(Vector4 rect, string presetId = null)
+        public NowUIText Text(NowRect rect, string presetId = null)
         {
-            return ApplyTextPreset(Now.Text(rect, null), ResolveTextPresetId(presetId));
+            var text = ApplyTextPreset(Now.Text(rect, null), ResolveTextPresetId(presetId));
+
+            // Preset fonts win over the ambient font, but a preset without one
+            // still resolves to the active font stack.
+            if (text.font == null)
+                text = text.SetFont(Now.font);
+
+            return text;
         }
 
         public NowUIRectangle ApplyRectanglePreset(NowUIRectangle rectangle, string presetId = null)
