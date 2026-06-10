@@ -57,6 +57,31 @@ namespace NowUIInternal
         }
     }
 
+    /// <summary>
+    /// Interleaved canvas vertex matching the UGUI shader inputs. Field order must
+    /// match the VertexAttributeDescriptor layout in NowUI (Position, Normal,
+    /// Tangent, Color, TexCoord0..3, all float32).
+    /// </summary>
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct NowCanvasVertex
+    {
+        public Vector3 position;
+
+        public Vector3 normal;
+
+        public Vector4 tangent;
+
+        public Color color;
+
+        public Vector4 uv0;
+
+        public Vector4 uv1;
+
+        public Vector4 uv2;
+
+        public Vector4 uv3;
+    }
+
     public struct NowRectVertex
     {
         public Vector4 mask;
@@ -367,6 +392,43 @@ namespace NowUIInternal
             _tris.EnsureCapacity(indexCount);
 
             int indexOffset = _verts.count;
+
+            if (NowLottieNative.blitAvailable)
+            {
+                NowLottieNative.BlitMesh(
+                    buffer,
+                    positionScale,
+                    positionOffset,
+                    tint,
+                    mask,
+                    rect,
+                    _verts.array,
+                    _uvs.array,
+                    _rawuv.array,
+                    _rect.array,
+                    _radius.array,
+                    _color.array,
+                    _outlineColor.array,
+                    _extra.array,
+                    _mask.array,
+                    indexOffset,
+                    _tris.array,
+                    _tris.count,
+                    indexOffset);
+
+                _verts.count += vertexCount;
+                _uvs.count += vertexCount;
+                _rawuv.count += vertexCount;
+                _rect.count += vertexCount;
+                _radius.count += vertexCount;
+                _color.count += vertexCount;
+                _outlineColor.count += vertexCount;
+                _extra.count += vertexCount;
+                _mask.count += vertexCount;
+                _tris.count += indexCount;
+                return;
+            }
+
             float inverseWidth = 1f / width;
             float inverseHeight = 1f / height;
 
@@ -471,81 +533,74 @@ namespace NowUIInternal
             rawUvs.count += count;
         }
 
-        public void AppendUGUIVertices(
-            ref StaticList<Vector3> vertices,
-            ref StaticList<Vector4> uv0,
-            ref StaticList<Vector4> rects,
-            ref StaticList<Vector4> masks,
-            ref StaticList<Vector4> extras,
-            ref StaticList<Color> colors,
-            ref StaticList<Vector3> normals,
-            ref StaticList<Vector4> tangents,
-            Vector2 positionOffset)
+        /// <summary>
+        /// Appends this mesh's vertices in the interleaved canvas layout (one
+        /// SetVertexBufferData upload instead of eight channel setters).
+        /// </summary>
+        public void AppendCanvasVertices(ref StaticList<NowCanvasVertex> destination, Vector2 positionOffset)
         {
             bool isText = kind == NowMeshKind.Text;
             int count = _verts.count;
 
-            vertices.EnsureCapacity(count);
-            uv0.EnsureCapacity(count);
-            rects.EnsureCapacity(count);
-            masks.EnsureCapacity(count);
-            extras.EnsureCapacity(count);
-            colors.EnsureCapacity(count);
-            normals.EnsureCapacity(count);
-            tangents.EnsureCapacity(count);
+            destination.EnsureCapacity(count);
+            int destinationBase = destination.count;
 
-            var sourceVertices = _verts.array;
-            var sourceRadii = _radius.array;
-            var sourceRawUvs = _rawuv.array;
-            var sourceUvs = _uvs.array;
-            var sourceColors = _color.array;
+            if (NowLottieNative.packCanvasAvailable)
+            {
+                NowLottieNative.PackCanvas(
+                    _verts.array,
+                    _uvs.array,
+                    _radius.array,
+                    _rawuv.array,
+                    _color.array,
+                    _rect.array,
+                    _mask.array,
+                    _extra.array,
+                    _outlineColor.array,
+                    count,
+                    isText,
+                    positionOffset,
+                    destination.array,
+                    destinationBase);
 
-            var destinationVertices = vertices.array;
-            var destinationUv0 = uv0.array;
-            var destinationColors = colors.array;
-            var destinationNormals = normals.array;
-            int destinationBase = vertices.count;
+                destination.count += count;
+                return;
+            }
+
+            var output = destination.array;
 
             for (int i = 0; i < count; ++i)
             {
-                var vertex = sourceVertices[i];
-                var radius = sourceRadii[i];
-                var uv = sourceUvs[i];
+                var radius = _radius.array[i];
+                var uv = _uvs.array[i];
+                var color = _color.array[i];
 
-                vertex.x += positionOffset.x;
-                vertex.y += positionOffset.y;
-
-                int destination = destinationBase + i;
-                destinationVertices[destination] = vertex;
+                NowCanvasVertex vertex;
+                vertex.position = _verts.array[i];
+                vertex.position.x += positionOffset.x;
+                vertex.position.y += positionOffset.y;
+                vertex.normal = new Vector3(radius.x, radius.y, radius.z);
+                vertex.tangent = _outlineColor.array[i];
+                vertex.color = new Color(color.x, color.y, color.z, color.w);
 
                 if (isText)
                 {
-                    var rawUv = sourceRawUvs[i];
-                    destinationUv0[destination] = new Vector4(uv.x, uv.y, rawUv.x, rawUv.y);
+                    var rawUv = _rawuv.array[i];
+                    vertex.uv0 = new Vector4(uv.x, uv.y, rawUv.x, rawUv.y);
                 }
                 else
                 {
-                    destinationUv0[destination] = new Vector4(uv.x, uv.y, radius.w, 0f);
+                    vertex.uv0 = new Vector4(uv.x, uv.y, radius.w, 0f);
                 }
 
-                var color = sourceColors[i];
-                destinationColors[destination] = new Color(color.x, color.y, color.z, color.w);
-                destinationNormals[destination] = new Vector3(radius.x, radius.y, radius.z);
+                vertex.uv1 = _rect.array[i];
+                vertex.uv2 = _mask.array[i];
+                vertex.uv3 = _extra.array[i];
+
+                output[destinationBase + i] = vertex;
             }
 
-            vertices.count += count;
-            uv0.count += count;
-            colors.count += count;
-            normals.count += count;
-
-            System.Array.Copy(_rect.array, 0, rects.array, rects.count, count);
-            rects.count += count;
-            System.Array.Copy(_mask.array, 0, masks.array, masks.count, count);
-            masks.count += count;
-            System.Array.Copy(_extra.array, 0, extras.array, extras.count, count);
-            extras.count += count;
-            System.Array.Copy(_outlineColor.array, 0, tangents.array, tangents.count, count);
-            tangents.count += count;
+            destination.count += count;
         }
 
         public void AppendTriangles(ref StaticList<int> triangles, int vertexOffset)

@@ -63,9 +63,10 @@ static class NowLottieDebugRender
         return success;
     }
 
-    // Batch entry point: -executeMethod NowLottieDebugRender.ValidateCanvasPages
+    // Also a batch entry point: -executeMethod NowLottieDebugRender.ValidateCanvasPages
     // Verifies that large Lottie grids are split across canvas pages that respect
     // CanvasRenderer's 16-bit index requirement (<= 65535 verts per page mesh).
+    [MenuItem("NowUI/Lottie/Validate Canvas Pages")]
     static void ValidateCanvasPages()
     {
         var lottie = AssetDatabase.LoadAssetAtPath<NowLottieAsset>("Assets/NowUI/Assets/AnimatedEmoji/Heart-eyes-cat.lottie");
@@ -99,6 +100,8 @@ static class NowLottieDebugRender
 
         Debug.Log(success ? "ValidateCanvasPages: DONE all pages within CanvasRenderer limits" : "ValidateCanvasPages: FAILED");
 
+        Object.DestroyImmediate(canvasObject);
+
         if (Application.isBatchMode)
             EditorApplication.Exit(success ? 0 : 1);
     }
@@ -108,6 +111,10 @@ static class NowLottieDebugRender
         public NowLottieAsset lottie;
 
         public int count = 4;
+
+        public float time = 0.37f;
+
+        public float playbackFrameRate;
 
         protected override void DrawNowUI(Rect rect)
         {
@@ -126,27 +133,90 @@ static class NowLottieDebugRender
                 for (int y = 0; y < count; ++y)
                 {
                     NowUI.Lottie(new Vector4(x * cellSize, y * cellSize, cellSize, cellSize), lottie)
-                        .SetNormalizedTime((0.37f + x * 0.1f + y * 0.1f) % 1f)
+                        .SetNormalizedTime((time + x * 0.1f + y * 0.1f) % 1f)
+                        .SetPlaybackFrameRate(playbackFrameRate)
                         .Draw();
                 }
             }
         }
     }
 
+    // Also a batch entry point: -executeMethod NowLottieDebugRender.BenchGrid
+    // Measures main-thread cost of a full canvas rebuild for an 8x8 emoji grid.
+    [MenuItem("NowUI/Lottie/Bench 8x8 Grid")]
+    static void BenchGrid()
+    {
+        var lottie = AssetDatabase.LoadAssetAtPath<NowLottieAsset>("Assets/NowUI/Assets/AnimatedEmoji/Heart-eyes-cat.lottie");
+
+        if (lottie == null)
+        {
+            Debug.LogError("BenchGrid: asset missing");
+            EditorApplication.Exit(1);
+            return;
+        }
+
+        var canvasObject = new GameObject("Canvas", typeof(Canvas));
+        canvasObject.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+
+        var graphicObject = new GameObject("Graphic", typeof(GridGraphic));
+        graphicObject.transform.SetParent(canvasObject.transform, false);
+        graphicObject.GetComponent<RectTransform>().sizeDelta = new Vector2(560f, 560f);
+
+        var graphic = graphicObject.GetComponent<GridGraphic>();
+        graphic.lottie = lottie;
+        graphic.count = 8;
+
+        Debug.Log($"BenchGrid: native={NowLottieNative.available} blit={NowLottieNative.blitAvailable}");
+
+        MeasureGrid(graphic, "blit on, native fps", 0f);
+        MeasureGrid(graphic, "blit on, 15 fps cap", 15f);
+
+        NowLottieNative.forceManagedCopy = true;
+        MeasureGrid(graphic, "blit off, native fps", 0f);
+        NowLottieNative.forceManagedCopy = false;
+
+        Object.DestroyImmediate(canvasObject);
+
+        if (Application.isBatchMode)
+            EditorApplication.Exit(0);
+    }
+
+    static void MeasureGrid(GridGraphic graphic, string label, float playbackFrameRate)
+    {
+        graphic.playbackFrameRate = playbackFrameRate;
+
+        // Warmup.
+        for (int frame = 0; frame < 10; ++frame)
+        {
+            graphic.time = frame / 60f;
+            graphic.MarkDirty();
+            Canvas.ForceUpdateCanvases();
+        }
+
+        const int FRAMES = 60;
+        var stopwatch = Stopwatch.StartNew();
+
+        for (int frame = 0; frame < FRAMES; ++frame)
+        {
+            graphic.time = (10 + frame) / 60f;
+            graphic.MarkDirty();
+            Canvas.ForceUpdateCanvases();
+        }
+
+        stopwatch.Stop();
+        Debug.Log($"BenchGrid: [{label}] avg {stopwatch.Elapsed.TotalMilliseconds / FRAMES:0.00} ms/rebuild");
+    }
+
     static bool ValidatePages(NowUIGraphic graphic, int count)
     {
-        var drawListField = typeof(NowUIGraphic).GetField("_drawList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var drawList = drawListField.GetValue(graphic);
-        int pageCount = (int)drawList.GetType().GetProperty("canvasPageCount").GetValue(drawList);
-        var getMesh = drawList.GetType().GetMethod("GetCanvasMesh");
-
+        int pageCount = graphic.canvasPageCount;
         bool success = true;
         long totalVertices = 0;
         int usedPages = 0;
 
         for (int page = 0; page < pageCount; ++page)
         {
-            var mesh = (Mesh)getMesh.Invoke(drawList, new object[] { page });
+            var mesh = graphic.GetCanvasPageMesh(page);
 
             if (mesh == null || mesh.vertexCount == 0)
                 continue;
@@ -176,27 +246,14 @@ static class NowLottieDebugRender
         BenchmarkSize(name, composition, 256f);
         BenchmarkSize(name, composition, 1080f);
 
-        // A/B against the managed fallback by forcing the native probe off.
-        if (NowLottieNative.available && SetNativeAvailable(false))
+        // A/B against the managed fallback.
+        if (NowLottieNative.available)
         {
+            NowLottieNative.forceManagedTessellation = true;
             BenchmarkSize(name + " (managed)", composition, 256f);
             BenchmarkSize(name + " (managed)", composition, 1080f);
-            SetNativeAvailable(true);
+            NowLottieNative.forceManagedTessellation = false;
         }
-    }
-
-    static bool SetNativeAvailable(bool value)
-    {
-        var type = typeof(NowLottieNative);
-        var probed = type.GetField("_probed", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-        var available = type.GetField("_available", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-
-        if (probed == null || available == null)
-            return false;
-
-        probed.SetValue(null, true);
-        available.SetValue(null, value);
-        return true;
     }
 
     static void BenchmarkSize(string name, NowLottieComposition composition, float size)

@@ -1080,29 +1080,26 @@ namespace NowUIInternal
 
         int _cursor;
 
-        public void Evaluate(float frame, NowLottieBezierData destination)
+        /// <summary>
+        /// Returns the contour at <paramref name="frame"/>. Static shapes (and exact
+        /// keyframe boundaries) return their parsed data directly without copying —
+        /// callers must treat the result as read-only. Interpolated results are
+        /// written into <paramref name="scratch"/>.
+        /// </summary>
+        public NowLottieBezierData Evaluate(float frame, NowLottieBezierData scratch)
         {
             if (_keyframes == null || _keyframes.Length == 0)
-            {
-                destination.CopyFrom(_staticValue);
-                return;
-            }
+                return _staticValue;
 
             var keys = _keyframes;
 
             if (frame <= keys[0].time)
-            {
-                destination.CopyFrom(keys[0].startValue);
-                return;
-            }
+                return keys[0].startValue;
 
             var lastKey = keys[keys.Length - 1];
 
             if (frame >= lastKey.time)
-            {
-                destination.CopyFrom(lastKey.startValue ?? keys[keys.Length - 2].endValue ?? keys[0].startValue);
-                return;
-            }
+                return lastKey.startValue ?? keys[keys.Length - 2].endValue ?? keys[0].startValue;
 
             int segment = Mathf.Clamp(_cursor, 0, keys.Length - 2);
 
@@ -1120,10 +1117,9 @@ namespace NowUIInternal
             var to = key.endValue ?? next.startValue;
 
             if (key.hold || to == null || from == null)
-            {
-                destination.CopyFrom(from ?? to);
-                return;
-            }
+                return from ?? to;
+
+            var destination = scratch;
 
             float duration = next.time - key.time;
             float linearT = duration > 0f ? (frame - key.time) / duration : 0f;
@@ -1142,6 +1138,8 @@ namespace NowUIInternal
                 destination.tangentsIn[i] = Vector2.LerpUnclamped(from.tangentsIn[i], to.tangentsIn[i], easedT);
                 destination.tangentsOut[i] = Vector2.LerpUnclamped(from.tangentsOut[i], to.tangentsOut[i], easedT);
             }
+
+            return destination;
         }
 
         public static NowLottieShapeAnimatable Parse(NowJsonValue json)

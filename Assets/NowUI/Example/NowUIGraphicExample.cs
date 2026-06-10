@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 
 [AddComponentMenu("NowUI/Examples/NowUI Graphic Example")]

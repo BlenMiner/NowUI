@@ -8,7 +8,7 @@
 namespace {
 
 constexpr float EPSILON = 0.0001f;
-constexpr int VERSION = 1;
+constexpr int VERSION = 3;
 
 struct Vec2 {
     float x, y;
@@ -573,13 +573,28 @@ struct ScanEdge {
 struct SlabEdge {
     float xTop, xBottom, xMiddle;
     int winding;
+    int id; // index into g_edges, used to match spans across slabs
     bool isClip;
 };
+
+/* A span emitted in the previous slab; its bottom vertices are reused as the next
+ * slab's top vertices when the span continues (nearly halves fill vertices).
+ * Continuity is matched by x position: consecutive polyline edges meet at shared
+ * vertices, so the previous bottom and the new top coincide within float noise. */
+struct SpanJoin {
+    float xLeft, xRight;
+    int bottomLeft, bottomRight;
+};
+
+constexpr float WELD_EPSILON = 0.05f;
 
 std::vector<ScanEdge> g_edges;
 std::vector<float> g_slabYs;
 std::vector<int> g_active;
 std::vector<SlabEdge> g_slabEdges;
+std::vector<SpanJoin> g_previousSpans;
+std::vector<SpanJoin> g_currentSpans;
+float g_previousSlabBottom;
 
 void collectEdges(const Polyline &polyline, bool isClip)
 {
@@ -650,6 +665,10 @@ void emitTrapezoid(
         chunks = std::max(1, std::min(256, static_cast<int>(std::ceil(width / paint.gradientSpan))));
     }
 
+    // Adjacent chunks share their boundary vertices.
+    int previousRight = -1;
+    int previousBottomRight = -1;
+
     for (int chunk = 0; chunk < chunks; ++chunk) {
         float t0 = static_cast<float>(chunk) / chunks;
         float t1 = static_cast<float>(chunk + 1) / chunks;
@@ -659,11 +678,14 @@ void emitTrapezoid(
         Vec2 c{lerp(bottomLeft, bottomRight, t1), yb};
         Vec2 d{lerp(bottomLeft, bottomRight, t0), yb};
 
-        int ia = g_context.addVertex(a, paint.colorAt(a));
+        int ia = chunk == 0 ? g_context.addVertex(a, paint.colorAt(a)) : previousRight;
+        int id = chunk == 0 ? g_context.addVertex(d, paint.colorAt(d)) : previousBottomRight;
         int ib = g_context.addVertex(b, paint.colorAt(b));
         int ic = g_context.addVertex(c, paint.colorAt(c));
-        int id = g_context.addVertex(d, paint.colorAt(d));
         g_context.addQuad(ia, ib, ic, id);
+
+        previousRight = ib;
+        previousBottomRight = ic;
     }
 }
 
@@ -704,6 +726,78 @@ void emitSlabSpans(
     }
 }
 
+/* Solid-color span emission with vertex sharing: when a span is bounded by the same
+ * edge pair as in the previous slab, the previous bottom vertices are reused as this
+ * slab's top vertices (the coordinates are identical by construction). */
+void emitSlabSpansShared(
+    float ya, float yb,
+    bool hasClip, bool clipInvert, bool evenOdd,
+    Vec4 color)
+{
+    int shapeWinding = 0;
+    int clipWinding = 0;
+    bool spanOpen = false;
+    const SlabEdge *openEdge = nullptr;
+
+    bool joinable = ya == g_previousSlabBottom && !g_previousSpans.empty();
+    g_currentSpans.clear();
+
+    for (const auto &edge : g_slabEdges) {
+        bool insideBefore = isInside(shapeWinding, clipWinding, hasClip, clipInvert, evenOdd);
+
+        if (edge.isClip)
+            clipWinding += edge.winding;
+        else
+            shapeWinding += edge.winding;
+
+        bool insideAfter = isInside(shapeWinding, clipWinding, hasClip, clipInvert, evenOdd);
+
+        if (insideBefore == insideAfter)
+            continue;
+
+        if (insideAfter) {
+            openEdge = &edge;
+            spanOpen = true;
+            continue;
+        }
+
+        if (!spanOpen)
+            continue;
+
+        spanOpen = false;
+
+        float topWidth = edge.xTop - openEdge->xTop;
+        float bottomWidth = edge.xBottom - openEdge->xBottom;
+
+        if (topWidth < EPSILON && bottomWidth < EPSILON)
+            continue;
+
+        int topLeft = -1, topRight = -1;
+
+        if (joinable) {
+            for (const SpanJoin &join : g_previousSpans) {
+                if (std::fabs(join.xLeft - openEdge->xTop) <= WELD_EPSILON &&
+                    std::fabs(join.xRight - edge.xTop) <= WELD_EPSILON) {
+                    topLeft = join.bottomLeft;
+                    topRight = join.bottomRight;
+                    break;
+                }
+            }
+        }
+
+        if (topLeft < 0) {
+            topLeft = g_context.addVertex({openEdge->xTop, ya}, color);
+            topRight = g_context.addVertex({edge.xTop, ya}, color);
+        }
+
+        int bottomRight = g_context.addVertex({edge.xBottom, yb}, color);
+        int bottomLeft = g_context.addVertex({openEdge->xBottom, yb}, color);
+
+        g_context.addQuad(topLeft, topRight, bottomRight, bottomLeft);
+        g_currentSpans.push_back({openEdge->xBottom, edge.xBottom, bottomLeft, bottomRight});
+    }
+}
+
 void tessellateFill(
     const PolylineRefs &contours,
     const PolylineRefs &clipContours,
@@ -739,7 +833,11 @@ void tessellateFill(
 
     g_active.clear();
     size_t nextEdge = 0;
+    bool useSharing = !paint.isGradient();
     float maxSlabHeight = paint.isGradient() && paint.gradientSpan > 0.f ? paint.gradientSpan : 3.4e38f;
+
+    g_previousSpans.clear();
+    g_previousSlabBottom = -3.4e38f;
 
     for (size_t slab = 0; slab + 1 < g_slabYs.size(); ++slab) {
         float slabTop = g_slabYs[slab];
@@ -767,12 +865,14 @@ void tessellateFill(
         g_slabEdges.reserve(activeCount);
 
         for (size_t i = 0; i < activeCount; ++i) {
-            const ScanEdge &edge = g_edges[g_active[i]];
+            int edgeIndex = g_active[i];
+            const ScanEdge &edge = g_edges[edgeIndex];
             SlabEdge slabEdge;
             slabEdge.xTop = edge.xAt(slabTop);
             slabEdge.xBottom = edge.xAt(slabBottom);
             slabEdge.xMiddle = (slabEdge.xTop + slabEdge.xBottom) * 0.5f;
             slabEdge.winding = edge.winding;
+            slabEdge.id = edgeIndex;
             slabEdge.isClip = edge.isClip;
             g_slabEdges.push_back(slabEdge);
         }
@@ -786,6 +886,13 @@ void tessellateFill(
                 --j;
             }
             g_slabEdges[j] = current;
+        }
+
+        if (useSharing) {
+            emitSlabSpansShared(slabTop, slabBottom, hasClip, clipInvert, evenOdd, paint.color);
+            g_previousSpans.swap(g_currentSpans);
+            g_previousSlabBottom = slabBottom;
+            continue;
         }
 
         int verticalChunks = std::max(1, static_cast<int>(std::ceil((slabBottom - slabTop) / maxSlabHeight)));
@@ -807,6 +914,7 @@ void tessellateFill(
 
 std::vector<Vec2> g_fringeNormals;
 std::vector<char> g_fringeInside;
+std::vector<Bounds> g_contourBounds;
 
 int containmentDepth(const PolylineRefs &contours, size_t contourIndex)
 {
@@ -815,6 +923,8 @@ int containmentDepth(const PolylineRefs &contours, size_t contourIndex)
 
     for (size_t i = 0; i < contours.size(); ++i) {
         if (i == contourIndex)
+            continue;
+        if (!g_contourBounds[i].contains(probe))
             continue;
         if (windingNumber(contours[i]->points, probe) != 0)
             ++depth;
@@ -832,6 +942,21 @@ void emitFillFringe(
 {
     if (aaWidth <= 0.f)
         return;
+
+    g_contourBounds.clear();
+    g_contourBounds.reserve(contours.size());
+
+    for (const Polyline *contour : contours) {
+        Bounds bounds;
+        for (const Vec2 &point : contour->points)
+            bounds.add(point);
+        g_contourBounds.push_back(bounds);
+    }
+
+    bool solid = !paint.isGradient();
+    Vec4 solidInner = paint.color;
+    Vec4 solidOuter = solidInner;
+    solidOuter.w = 0.f;
 
     for (size_t contourIndex = 0; contourIndex < contours.size(); ++contourIndex) {
         const auto &points = contours[contourIndex]->points;
@@ -887,9 +1012,11 @@ void emitFillFringe(
 
         for (int i = 0; i < count; ++i) {
             Vec2 position = points[i];
-            Vec4 innerColor = paint.colorAt(position);
-            Vec4 outerColor = innerColor;
-            outerColor.w = 0.f;
+            Vec4 innerColor = solid ? solidInner : paint.colorAt(position);
+            Vec4 outerColor = solid ? solidOuter : innerColor;
+
+            if (!solid)
+                outerColor.w = 0.f;
 
             int inner = g_context.addVertex(position, innerColor);
             int outer = g_context.addVertex(position + g_fringeNormals[i], outerColor);
@@ -1025,14 +1152,25 @@ void emitStrokePolyline(
     int firstRing = -1;
     int previousRing = -1;
 
+    bool solid = !paint.isGradient();
+    Vec4 solidCore = paint.color;
+    solidCore.w *= coreAlpha;
+    Vec4 solidEdge = solidCore;
+    solidEdge.w = 0.f;
+
     for (int i = 0; i < count; ++i) {
         Vec2 position = g_strokePoints[i];
         Vec2 normal = g_strokeNormals[i];
 
-        Vec4 coreColor = paint.colorAt(position);
-        coreColor.w *= coreAlpha;
-        Vec4 edgeColor = coreColor;
-        edgeColor.w = 0.f;
+        Vec4 coreColor = solidCore;
+        Vec4 edgeColor = solidEdge;
+
+        if (!solid) {
+            coreColor = paint.colorAt(position);
+            coreColor.w *= coreAlpha;
+            edgeColor = coreColor;
+            edgeColor.w = 0.f;
+        }
 
         int ring = g_context.addVertex(position + normal * outerWidth, edgeColor);
         g_context.addVertex(position + normal * innerWidth, coreColor);
@@ -1367,6 +1505,222 @@ NOWUI_VG_EXPORT int nowui_vg_copy(
         std::memcpy(indices, g_context.indices.data(), g_context.indices.size() * sizeof(int));
 
     return NOWUI_VG_OK;
+}
+
+NOWUI_VG_EXPORT void nowui_vg_blit_mesh(
+    const float *src_positions,
+    const float *src_colors,
+    int vertex_count,
+    const int *src_indices,
+    int index_count,
+    float position_scale,
+    float offset_x,
+    float offset_y,
+    const float *tint4,
+    const float *mask4,
+    const float *rect4,
+    float *dst_verts,
+    float *dst_uvs,
+    float *dst_rawuv,
+    float *dst_rect,
+    float *dst_radius,
+    float *dst_color,
+    float *dst_outline,
+    float *dst_extra,
+    float *dst_mask,
+    int dst_vertex_base,
+    int *dst_indices,
+    int dst_index_base,
+    int index_offset)
+{
+    const float rectX = rect4[0], rectY = rect4[1];
+    const float inverseWidth = rect4[2] > 0.f ? 1.f / rect4[2] : 0.f;
+    const float inverseHeight = rect4[3] > 0.f ? 1.f / rect4[3] : 0.f;
+
+    for (int i = 0; i < vertex_count; ++i) {
+        float x = src_positions[i * 2 + 0] * position_scale + offset_x;
+        float y = src_positions[i * 2 + 1] * position_scale + offset_y;
+        float meshY = -y;
+
+        float u = (x - rectX) * inverseWidth;
+        float v = (meshY - rectY) * inverseHeight;
+
+        int base3 = (dst_vertex_base + i) * 3;
+        dst_verts[base3 + 0] = x;
+        dst_verts[base3 + 1] = meshY;
+        dst_verts[base3 + 2] = 0.f;
+
+        int base2 = (dst_vertex_base + i) * 2;
+        dst_uvs[base2 + 0] = u;
+        dst_uvs[base2 + 1] = v;
+
+        int base4 = (dst_vertex_base + i) * 4;
+        dst_rawuv[base4 + 0] = u;
+        dst_rawuv[base4 + 1] = v;
+        dst_rawuv[base4 + 2] = 0.f;
+        dst_rawuv[base4 + 3] = 0.f;
+
+        dst_rect[base4 + 0] = rect4[0];
+        dst_rect[base4 + 1] = rect4[1];
+        dst_rect[base4 + 2] = rect4[2];
+        dst_rect[base4 + 3] = rect4[3];
+
+        dst_radius[base4 + 0] = 0.f;
+        dst_radius[base4 + 1] = 0.f;
+        dst_radius[base4 + 2] = 0.f;
+        dst_radius[base4 + 3] = 0.f;
+
+        dst_color[base4 + 0] = src_colors[i * 4 + 0] * tint4[0];
+        dst_color[base4 + 1] = src_colors[i * 4 + 1] * tint4[1];
+        dst_color[base4 + 2] = src_colors[i * 4 + 2] * tint4[2];
+        dst_color[base4 + 3] = src_colors[i * 4 + 3] * tint4[3];
+
+        dst_outline[base4 + 0] = 0.f;
+        dst_outline[base4 + 1] = 0.f;
+        dst_outline[base4 + 2] = 0.f;
+        dst_outline[base4 + 3] = 0.f;
+
+        dst_extra[base4 + 0] = 0.f;
+        dst_extra[base4 + 1] = 0.f;
+        dst_extra[base4 + 2] = 0.f;
+        dst_extra[base4 + 3] = 0.f;
+
+        dst_mask[base4 + 0] = mask4[0];
+        dst_mask[base4 + 1] = mask4[1];
+        dst_mask[base4 + 2] = mask4[2];
+        dst_mask[base4 + 3] = mask4[3];
+    }
+
+    for (int i = 0; i < index_count; ++i)
+        dst_indices[dst_index_base + i] = src_indices[i] + index_offset;
+}
+
+NOWUI_VG_EXPORT void nowui_vg_pack_ugui(
+    const float *src_verts,
+    const float *src_uvs,
+    const float *src_radius,
+    const float *src_rawuv,
+    const float *src_colors,
+    int vertex_count,
+    int is_text,
+    float offset_x,
+    float offset_y,
+    float *dst_vertices,
+    float *dst_uv0,
+    float *dst_colors,
+    float *dst_normals,
+    int dst_vertex_base)
+{
+    for (int i = 0; i < vertex_count; ++i) {
+        int base3 = (dst_vertex_base + i) * 3;
+        dst_vertices[base3 + 0] = src_verts[i * 3 + 0] + offset_x;
+        dst_vertices[base3 + 1] = src_verts[i * 3 + 1] + offset_y;
+        dst_vertices[base3 + 2] = src_verts[i * 3 + 2];
+
+        int base4 = (dst_vertex_base + i) * 4;
+
+        if (is_text) {
+            dst_uv0[base4 + 0] = src_uvs[i * 2 + 0];
+            dst_uv0[base4 + 1] = src_uvs[i * 2 + 1];
+            dst_uv0[base4 + 2] = src_rawuv[i * 4 + 0];
+            dst_uv0[base4 + 3] = src_rawuv[i * 4 + 1];
+        } else {
+            dst_uv0[base4 + 0] = src_uvs[i * 2 + 0];
+            dst_uv0[base4 + 1] = src_uvs[i * 2 + 1];
+            dst_uv0[base4 + 2] = src_radius[i * 4 + 3];
+            dst_uv0[base4 + 3] = 0.f;
+        }
+
+        dst_colors[base4 + 0] = src_colors[i * 4 + 0];
+        dst_colors[base4 + 1] = src_colors[i * 4 + 1];
+        dst_colors[base4 + 2] = src_colors[i * 4 + 2];
+        dst_colors[base4 + 3] = src_colors[i * 4 + 3];
+
+        dst_normals[base3 + 0] = src_radius[i * 4 + 0];
+        dst_normals[base3 + 1] = src_radius[i * 4 + 1];
+        dst_normals[base3 + 2] = src_radius[i * 4 + 2];
+    }
+}
+
+NOWUI_VG_EXPORT void nowui_vg_pack_canvas(
+    const float *src_verts,
+    const float *src_uvs,
+    const float *src_radius,
+    const float *src_rawuv,
+    const float *src_colors,
+    const float *src_rect,
+    const float *src_mask,
+    const float *src_extra,
+    const float *src_outline,
+    int vertex_count,
+    int is_text,
+    float offset_x,
+    float offset_y,
+    float *dst,
+    int dst_vertex_base)
+{
+    float *out = dst + static_cast<size_t>(dst_vertex_base) * 30;
+
+    for (int i = 0; i < vertex_count; ++i) {
+        const float *radius = src_radius + i * 4;
+        const float *color = src_colors + i * 4;
+        const float *rect = src_rect + i * 4;
+        const float *mask = src_mask + i * 4;
+        const float *extra = src_extra + i * 4;
+        const float *outline = src_outline + i * 4;
+
+        // position
+        out[0] = src_verts[i * 3 + 0] + offset_x;
+        out[1] = src_verts[i * 3 + 1] + offset_y;
+        out[2] = src_verts[i * 3 + 2];
+
+        // normal = radius.xyz
+        out[3] = radius[0];
+        out[4] = radius[1];
+        out[5] = radius[2];
+
+        // tangent = outline color
+        out[6] = outline[0];
+        out[7] = outline[1];
+        out[8] = outline[2];
+        out[9] = outline[3];
+
+        // color
+        out[10] = color[0];
+        out[11] = color[1];
+        out[12] = color[2];
+        out[13] = color[3];
+
+        // uv0: text packs raw uv, rectangles pack the fourth radius component
+        out[14] = src_uvs[i * 2 + 0];
+        out[15] = src_uvs[i * 2 + 1];
+
+        if (is_text) {
+            out[16] = src_rawuv[i * 4 + 0];
+            out[17] = src_rawuv[i * 4 + 1];
+        } else {
+            out[16] = radius[3];
+            out[17] = 0.f;
+        }
+
+        // uv1 = rect, uv2 = mask, uv3 = extras
+        out[18] = rect[0];
+        out[19] = rect[1];
+        out[20] = rect[2];
+        out[21] = rect[3];
+
+        out[22] = mask[0];
+        out[23] = mask[1];
+        out[24] = mask[2];
+        out[25] = mask[3];
+
+        out[26] = extra[0];
+        out[27] = extra[1];
+        out[28] = extra[2];
+        out[29] = extra[3];
+
+        out += 30;
+    }
 }
 
 NOWUI_VG_EXPORT int nowui_vg_version()

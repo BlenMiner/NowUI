@@ -18,8 +18,61 @@ namespace NowUIInternal
     /// </summary>
     public static class NowLottieNative
     {
+        /// <summary>
+        /// Forces the managed tessellator even when the native library is present.
+        /// Intended for profiling comparisons and debugging.
+        /// </summary>
+        public static bool forceManagedTessellation;
+
+        /// <summary>
+        /// Forces the managed vertex copy loops even when the native library supports
+        /// them. Intended for profiling comparisons and debugging.
+        /// </summary>
+        public static bool forceManagedCopy;
+
 #if NOWUI_VG_DISABLE_NATIVE
         public static bool available => false;
+
+        public static bool blitAvailable => false;
+
+        public static bool packCanvasAvailable => false;
+
+        public static void PackCanvas(
+            Vector3[] srcVerts,
+            Vector2[] srcUvs,
+            Vector4[] srcRadius,
+            Vector4[] srcRawUv,
+            Vector4[] srcColors,
+            Vector4[] srcRect,
+            Vector4[] srcMask,
+            Vector4[] srcExtra,
+            Vector4[] srcOutline,
+            int vertexCount,
+            bool isText,
+            Vector2 positionOffset,
+            NowCanvasVertex[] destination,
+            int destinationBase) { }
+
+        public static void BlitMesh(
+            NowLottieDrawBuffer buffer,
+            float positionScale,
+            Vector2 positionOffset,
+            Vector4 tint,
+            Vector4 mask,
+            Vector4 rect,
+            Vector3[] dstVerts,
+            Vector2[] dstUvs,
+            Vector4[] dstRawUv,
+            Vector4[] dstRect,
+            Vector4[] dstRadius,
+            Vector4[] dstColor,
+            Vector4[] dstOutline,
+            Vector4[] dstExtra,
+            Vector4[] dstMask,
+            int dstVertexBase,
+            int[] dstIndices,
+            int dstIndexBase,
+            int indexOffset) { }
 
         public static void Begin(float flattenTolerance, float aaWidth) { }
 
@@ -54,21 +107,33 @@ namespace NowUIInternal
 
         static bool _available;
 
+        static int _version;
+
         static float[] _paintBuffer = new float[64];
 
         static readonly float[] _bounds = new float[4];
+
+        static readonly float[] _tintScratch = new float[4];
+
+        static readonly float[] _maskScratch = new float[4];
+
+        static readonly float[] _rectScratch = new float[4];
 
         public static bool available
         {
             get
             {
+                if (forceManagedTessellation)
+                    return false;
+
                 if (!_probed)
                 {
                     _probed = true;
 
                     try
                     {
-                        _available = nowui_vg_version() >= 1;
+                        _version = nowui_vg_version();
+                        _available = _version >= 1;
                     }
                     catch (DllNotFoundException)
                     {
@@ -81,6 +146,131 @@ namespace NowUIInternal
                 }
 
                 return _available;
+            }
+        }
+
+        /// <summary>The bulk vertex copy entry points were added in version 2.</summary>
+        public static bool blitAvailable => !forceManagedCopy && available && _version >= 2;
+
+        /// <summary>The interleaved canvas vertex pack was added in version 3.</summary>
+        public static bool packCanvasAvailable => !forceManagedCopy && available && _version >= 3;
+
+        public static unsafe void PackCanvas(
+            Vector3[] srcVerts,
+            Vector2[] srcUvs,
+            Vector4[] srcRadius,
+            Vector4[] srcRawUv,
+            Vector4[] srcColors,
+            Vector4[] srcRect,
+            Vector4[] srcMask,
+            Vector4[] srcExtra,
+            Vector4[] srcOutline,
+            int vertexCount,
+            bool isText,
+            Vector2 positionOffset,
+            NowCanvasVertex[] destination,
+            int destinationBase)
+        {
+            fixed (Vector3* verts = srcVerts)
+            fixed (Vector2* uvs = srcUvs)
+            fixed (Vector4* radius = srcRadius)
+            fixed (Vector4* rawUv = srcRawUv)
+            fixed (Vector4* colors = srcColors)
+            fixed (Vector4* rect = srcRect)
+            fixed (Vector4* mask = srcMask)
+            fixed (Vector4* extra = srcExtra)
+            fixed (Vector4* outline = srcOutline)
+            fixed (NowCanvasVertex* output = destination)
+            {
+                nowui_vg_pack_canvas(
+                    (float*)verts,
+                    (float*)uvs,
+                    (float*)radius,
+                    (float*)rawUv,
+                    (float*)colors,
+                    (float*)rect,
+                    (float*)mask,
+                    (float*)extra,
+                    (float*)outline,
+                    vertexCount,
+                    isText ? 1 : 0,
+                    positionOffset.x,
+                    positionOffset.y,
+                    (float*)output,
+                    destinationBase);
+            }
+        }
+
+        /// <summary>
+        /// Bulk copy through raw pointers: passing the (large, capacity-sized) managed
+        /// arrays through the marshaler made Mono copy them in and out on every call,
+        /// which was orders of magnitude slower than the copy being replaced. The
+        /// fixed blocks pin in place with zero copies.
+        /// </summary>
+        public static unsafe void BlitMesh(
+            NowLottieDrawBuffer buffer,
+            float positionScale,
+            Vector2 positionOffset,
+            Vector4 tint,
+            Vector4 mask,
+            Vector4 rect,
+            Vector3[] dstVerts,
+            Vector2[] dstUvs,
+            Vector4[] dstRawUv,
+            Vector4[] dstRect,
+            Vector4[] dstRadius,
+            Vector4[] dstColor,
+            Vector4[] dstOutline,
+            Vector4[] dstExtra,
+            Vector4[] dstMask,
+            int dstVertexBase,
+            int[] dstIndices,
+            int dstIndexBase,
+            int indexOffset)
+        {
+            float* tint4 = stackalloc float[4] { tint.x, tint.y, tint.z, tint.w };
+            float* mask4 = stackalloc float[4] { mask.x, mask.y, mask.z, mask.w };
+            float* rect4 = stackalloc float[4] { rect.x, rect.y, rect.z, rect.w };
+
+            fixed (Vector2* srcPositions = buffer.positions.array)
+            fixed (Vector4* srcColors = buffer.colors.array)
+            fixed (int* srcIndices = buffer.indices.array)
+            fixed (Vector3* verts = dstVerts)
+            fixed (Vector2* uvs = dstUvs)
+            fixed (Vector4* rawUv = dstRawUv)
+            fixed (Vector4* rects = dstRect)
+            fixed (Vector4* radius = dstRadius)
+            fixed (Vector4* color = dstColor)
+            fixed (Vector4* outline = dstOutline)
+            fixed (Vector4* extra = dstExtra)
+            fixed (Vector4* masks = dstMask)
+            fixed (int* indices = dstIndices)
+            {
+                nowui_vg_blit_mesh(
+                    (float*)srcPositions,
+                    (float*)srcColors,
+                    buffer.positions.count,
+                    srcIndices,
+                    buffer.indices.count,
+                    positionScale,
+                    positionOffset.x,
+                    positionOffset.y,
+                    tint4,
+                    mask4,
+                    rect4,
+                    (float*)verts,
+                    (float*)uvs,
+                    (float*)rawUv,
+                    (float*)rects,
+                    (float*)radius,
+                    (float*)color,
+                    (float*)outline,
+                    (float*)extra,
+                    (float*)masks,
+                    dstVertexBase,
+                    indices,
+                    dstIndexBase,
+                    indexOffset);
             }
         }
 
@@ -171,12 +361,22 @@ namespace NowUIInternal
             buffer.colors.EnsureCapacity(vertexCount);
             buffer.indices.EnsureCapacity(indexCount);
 
-            int result = nowui_vg_copy(
-                buffer.positions.array,
-                buffer.colors.array,
-                buffer.indices.array,
-                buffer.positions.array.Length,
-                buffer.indices.array.Length);
+            int result;
+
+            unsafe
+            {
+                fixed (Vector2* positions = buffer.positions.array)
+                fixed (Vector4* colors = buffer.colors.array)
+                fixed (int* indices = buffer.indices.array)
+                {
+                    result = nowui_vg_copy(
+                        (float*)positions,
+                        (float*)colors,
+                        indices,
+                        buffer.positions.array.Length,
+                        buffer.indices.array.Length);
+                }
+            }
 
             if (result != 0)
                 return false;
@@ -268,12 +468,57 @@ namespace NowUIInternal
         static extern int nowui_vg_end(out int vertexCount, out int indexCount, [Out] float[] bounds);
 
         [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
-        static extern int nowui_vg_copy(
-            [Out] Vector2[] positions,
-            [Out] Vector4[] colors,
-            [Out] int[] indices,
+        static extern unsafe int nowui_vg_copy(
+            float* positions,
+            float* colors,
+            int* indices,
             int vertexCapacity,
             int indexCapacity);
+
+        [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
+        static extern unsafe void nowui_vg_blit_mesh(
+            float* srcPositions,
+            float* srcColors,
+            int vertexCount,
+            int* srcIndices,
+            int indexCount,
+            float positionScale,
+            float offsetX,
+            float offsetY,
+            float* tint4,
+            float* mask4,
+            float* rect4,
+            float* dstVerts,
+            float* dstUvs,
+            float* dstRawUv,
+            float* dstRect,
+            float* dstRadius,
+            float* dstColor,
+            float* dstOutline,
+            float* dstExtra,
+            float* dstMask,
+            int dstVertexBase,
+            int* dstIndices,
+            int dstIndexBase,
+            int indexOffset);
+
+        [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
+        static extern unsafe void nowui_vg_pack_canvas(
+            float* srcVerts,
+            float* srcUvs,
+            float* srcRadius,
+            float* srcRawUv,
+            float* srcColors,
+            float* srcRect,
+            float* srcMask,
+            float* srcExtra,
+            float* srcOutline,
+            int vertexCount,
+            int isText,
+            float offsetX,
+            float offsetY,
+            float* dst,
+            int dstVertexBase);
 
         [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
         static extern int nowui_vg_version();

@@ -101,7 +101,9 @@ namespace NowUIInternal
             public int stamp = -1;
         }
 
-        const int CACHE_SIZE = 16;
+        // Sized for grids of independently-staggered animations (a 10x10 chat grid
+        // produces ~19 unique frames per tick); entries are ~50-200KB each.
+        const int CACHE_SIZE = 32;
 
         static readonly CacheEntry[] _cache = CreateCache();
 
@@ -265,6 +267,10 @@ namespace NowUIInternal
             if (depth > 8)
                 return;
 
+            // The memoized chain matrices are only valid for one (layer list, frame)
+            // pass; precomp recursion re-resolves its parents afterwards.
+            _matrixCache.Clear();
+
             // Lottie stores the top-most layer first; render bottom-up.
             for (int i = layers.Count - 1; i >= 0; --i)
             {
@@ -378,38 +384,44 @@ namespace NowUIInternal
             }
         }
 
+        // Layer chain matrices are memoized per layer list render: parent layers are
+        // shared by many children and would otherwise be re-evaluated per child.
+        static readonly Dictionary<NowLottieLayer, NowMatrix2D> _matrixCache = new Dictionary<NowLottieLayer, NowMatrix2D>(32);
+
         static NowMatrix2D ResolveLayerMatrix(
             List<NowLottieLayer> layers,
             NowLottieLayer layer,
             float compFrame,
             in NowMatrix2D rootMatrix)
         {
+            return NowMatrix2D.Mul(rootMatrix, ResolveChainMatrix(layers, layer, compFrame, 0));
+        }
+
+        static NowMatrix2D ResolveChainMatrix(
+            List<NowLottieLayer> layers,
+            NowLottieLayer layer,
+            float compFrame,
+            int depth)
+        {
+            if (_matrixCache.TryGetValue(layer, out var cached))
+                return cached;
+
             var matrix = layer.transform.EvaluateMatrix(layer.ToLocalFrame(compFrame));
 
-            int parentIndex = layer.parent;
-            int guard = 0;
-
-            while (parentIndex >= 0 && guard++ < 64)
+            if (layer.parent >= 0 && depth < 64)
             {
-                NowLottieLayer parent = null;
-
                 for (int i = 0; i < layers.Count; ++i)
                 {
-                    if (layers[i].index == parentIndex)
+                    if (layers[i].index == layer.parent)
                     {
-                        parent = layers[i];
+                        matrix = NowMatrix2D.Mul(ResolveChainMatrix(layers, layers[i], compFrame, depth + 1), matrix);
                         break;
                     }
                 }
-
-                if (parent == null)
-                    break;
-
-                matrix = NowMatrix2D.Mul(parent.transform.EvaluateMatrix(parent.ToLocalFrame(compFrame)), matrix);
-                parentIndex = parent.parent;
             }
 
-            return NowMatrix2D.Mul(rootMatrix, matrix);
+            _matrixCache[layer] = matrix;
+            return matrix;
         }
 
         static void RenderSolid(
@@ -569,9 +581,14 @@ namespace NowUIInternal
                 switch (item)
                 {
                     case NowLottiePathShape path:
-                        path.shape.Evaluate(frame, _bezierScratch);
-                        output.Pack(_bezierScratch, matrix);
+                    {
+                        var bezier = path.shape.Evaluate(frame, _bezierScratch);
+
+                        if (bezier != null)
+                            output.Pack(bezier, matrix);
+
                         break;
+                    }
 
                     case NowLottieEllipse ellipse:
                         BuildEllipse(ellipse.position.EvaluateVector2(frame), ellipse.size.EvaluateVector2(frame), _bezierScratch);
