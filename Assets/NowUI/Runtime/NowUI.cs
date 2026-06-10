@@ -49,13 +49,22 @@ public static class NowUI
 
     static StaticList<Vector4> _rawUvs = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
-    static StaticList<Color> _uguiColors = new StaticList<Color>(NowMesh.INITIAL_VERTEX_CAPACITY);
-
-    static StaticList<Vector3> _uguiNormals = new StaticList<Vector3>(NowMesh.INITIAL_VERTEX_CAPACITY);
-
-    static StaticList<Vector4> _uguiTangents = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
+    static StaticList<NowCanvasVertex> _canvasVertices = new StaticList<NowCanvasVertex>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
     static StaticList<int> _triangles = new StaticList<int>(NowMesh.INITIAL_INDEX_CAPACITY);
+
+    /// <summary>Must match the field order of <see cref="NowCanvasVertex"/>.</summary>
+    static readonly VertexAttributeDescriptor[] _canvasVertexLayout =
+    {
+        new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
+        new VertexAttributeDescriptor(VertexAttribute.Normal, VertexAttributeFormat.Float32, 3),
+        new VertexAttributeDescriptor(VertexAttribute.Tangent, VertexAttributeFormat.Float32, 4),
+        new VertexAttributeDescriptor(VertexAttribute.Color, VertexAttributeFormat.Float32, 4),
+        new VertexAttributeDescriptor(VertexAttribute.TexCoord0, VertexAttributeFormat.Float32, 4),
+        new VertexAttributeDescriptor(VertexAttribute.TexCoord1, VertexAttributeFormat.Float32, 4),
+        new VertexAttributeDescriptor(VertexAttribute.TexCoord2, VertexAttributeFormat.Float32, 4),
+        new VertexAttributeDescriptor(VertexAttribute.TexCoord3, VertexAttributeFormat.Float32, 4),
+    };
 
     static readonly List<int> _capturedMeshIndices = new List<int>(8);
 
@@ -71,6 +80,29 @@ public static class NowUI
 
         _meshes.count = id + 1;
         return id;
+    }
+
+    /// <summary>
+    /// UGUI's canvas batcher rejects submeshes above 65535 vertices ("Submesh has
+    /// too many verts to include"), so capture meshes are split before reaching it.
+    /// </summary>
+    const int MAX_VERTICES_PER_MESH = 64000;
+
+    /// <summary>
+    /// Returns a mesh with room for the incoming vertices, starting a fresh mesh for
+    /// the same material when the current one would exceed the canvas submesh limit.
+    /// </summary>
+    static NowMesh EnsureMeshCapacity(NowMesh mesh, Material material, NowMeshKind kind, int incomingVertices)
+    {
+        if (!_captureMesh || mesh == null || material == null)
+            return mesh;
+
+        if (mesh.vertexCount + incomingVertices <= MAX_VERTICES_PER_MESH)
+            return mesh;
+
+        int id = CreateMesh(material, kind);
+        _lastUsedMeshId = id;
+        return _meshes.array[id];
     }
 
     static NowMesh UseMaterial(Material material, ref int cachedMeshId, NowMeshKind kind)
@@ -293,6 +325,18 @@ public static class NowUI
         CancelMeshCapture();
     }
 
+    /// <summary>
+    /// CanvasRenderer only accepts meshes with 16 bit indices, so each canvas page
+    /// mesh must stay below 65535 vertices in total.
+    /// </summary>
+    const int MAX_VERTICES_PER_CANVAS_MESH = 65000;
+
+    const int MAX_MESHES_PER_CANVAS_PAGE = 8;
+
+    static readonly List<int> _pageStarts = new List<int>(4);
+
+    static readonly List<int> _pageCounts = new List<int>(4);
+
     internal static void EndCanvasMeshCapture(NowUIDrawList drawList, Vector2 positionOffset)
     {
         if (drawList == null)
@@ -301,8 +345,48 @@ public static class NowUI
             return;
         }
 
-        int activeCount = CountCapturedMeshes();
-        int pageCount = Mathf.Max(1, (activeCount + 7) / 8);
+        // Plan pages: at most 8 materials per CanvasRenderer, and each page mesh
+        // must keep 16 bit indices.
+        _pageStarts.Clear();
+        _pageCounts.Clear();
+
+        int activeIndex = 0;
+        int pageStart = 0;
+        int pageMeshes = 0;
+        int pageVertices = 0;
+
+        for (int i = 0; i < _meshes.count; ++i)
+        {
+            var mesh = _meshes.array[i];
+
+            if (!mesh.hasVertices)
+                continue;
+
+            bool pageFull = pageMeshes > 0 &&
+                (pageMeshes == MAX_MESHES_PER_CANVAS_PAGE ||
+                 pageVertices + mesh.vertexCount > MAX_VERTICES_PER_CANVAS_MESH);
+
+            if (pageFull)
+            {
+                _pageStarts.Add(pageStart);
+                _pageCounts.Add(pageMeshes);
+                pageStart = activeIndex;
+                pageMeshes = 0;
+                pageVertices = 0;
+            }
+
+            ++pageMeshes;
+            pageVertices += mesh.vertexCount;
+            ++activeIndex;
+        }
+
+        if (pageMeshes > 0)
+        {
+            _pageStarts.Add(pageStart);
+            _pageCounts.Add(pageMeshes);
+        }
+
+        int pageCount = Mathf.Max(1, _pageStarts.Count);
         drawList.PrepareCanvasPages(pageCount);
 
         for (int pageIndex = 0; pageIndex < pageCount; ++pageIndex)
@@ -312,24 +396,11 @@ public static class NowUI
                 drawList.GetCanvasBatches(pageIndex),
                 positionOffset,
                 NowUIMeshLayout.Canvas,
-                pageIndex * 8,
-                8);
+                pageIndex < _pageStarts.Count ? _pageStarts[pageIndex] : 0,
+                pageIndex < _pageCounts.Count ? _pageCounts[pageIndex] : 0);
         }
 
         CancelMeshCapture();
-    }
-
-    static int CountCapturedMeshes()
-    {
-        int count = 0;
-
-        for (int i = 0; i < _meshes.count; ++i)
-        {
-            if (_meshes.array[i].hasVertices)
-                ++count;
-        }
-
-        return count;
     }
 
     static void UploadCapturedMeshes(
@@ -353,9 +424,7 @@ public static class NowUI
         _extras.Clear();
         _masks.Clear();
         _rawUvs.Clear();
-        _uguiColors.Clear();
-        _uguiNormals.Clear();
-        _uguiTangents.Clear();
+        _canvasVertices.Clear();
         batches.Clear();
 
         int activeIndex = 0;
@@ -379,16 +448,7 @@ public static class NowUI
 
             if (layout == NowUIMeshLayout.Canvas)
             {
-                mesh.AppendUGUIVertices(
-                    ref _vertices,
-                    ref _uvs,
-                    ref _rects,
-                    ref _masks,
-                    ref _extras,
-                    ref _uguiColors,
-                    ref _uguiNormals,
-                    ref _uguiTangents,
-                    positionOffset);
+                mesh.AppendCanvasVertices(ref _canvasVertices, positionOffset);
                 continue;
             }
 
@@ -407,27 +467,24 @@ public static class NowUI
 
         target.Clear();
 
-        if (_vertices.count == 0)
+        int vertexCount = layout == NowUIMeshLayout.Canvas ? _canvasVertices.count : _vertices.count;
+
+        if (vertexCount == 0)
         {
             return;
         }
 
-        int vertexCount = _vertices.count;
         target.indexFormat = vertexCount > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
-        target.SetVertices(_vertices.array, 0, vertexCount);
 
         if (layout == NowUIMeshLayout.Canvas)
         {
-            target.SetUVs(0, _uvs.array, 0, vertexCount);
-            target.SetUVs(1, _rects.array, 0, vertexCount);
-            target.SetUVs(2, _masks.array, 0, vertexCount);
-            target.SetUVs(3, _extras.array, 0, vertexCount);
-            target.SetColors(_uguiColors.array, 0, vertexCount);
-            target.SetNormals(_uguiNormals.array, 0, vertexCount);
-            target.SetTangents(_uguiTangents.array, 0, vertexCount);
+            // One interleaved upload instead of eight per-channel copies.
+            target.SetVertexBufferParams(vertexCount, _canvasVertexLayout);
+            target.SetVertexBufferData(_canvasVertices.array, 0, 0, vertexCount, 0, MeshUpdateFlags.DontRecalculateBounds);
         }
         else
         {
+            target.SetVertices(_vertices.array, 0, vertexCount);
             target.SetUVs(0, _meshUvs.array, 0, vertexCount);
             target.SetUVs(1, _rects.array, 0, vertexCount);
             target.SetUVs(2, _radii.array, 0, vertexCount);
@@ -528,6 +585,7 @@ public static class NowUI
         if (mesh == null)
             return;
 
+        mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, 4);
         mesh.AddRect(_tmpVertex, rectangle.blur, rectangle.outline);
     }
 
@@ -587,6 +645,7 @@ public static class NowUI
                                 return;
                         }
 
+                        mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
                         DrawCharacter(style, glyph, resolvedFont, mesh, lineHeight);
                     }
 
@@ -621,6 +680,7 @@ public static class NowUI
         if (mesh == null)
             return;
 
+        mesh = EnsureMeshCapacity(mesh, material, NowMeshKind.Text, 4);
         DrawCharacter(style, glyph, font, mesh);
     }
 
@@ -673,6 +733,14 @@ public static class NowUI
         if (_suppressDrawDepth > 0 || _defaultMaterial == null)
             return;
 
+        if (lottie.rect.z <= 0f || lottie.rect.w <= 0f)
+            return;
+
+        var tint = ApplyColorMultiplier(lottie.color);
+
+        if (tint.w <= 0.0005f)
+            return;
+
         var composition = lottie.asset != null ? lottie.asset.composition : null;
 
         if (composition == null)
@@ -685,18 +753,36 @@ public static class NowUI
 
         float frame = NowLottieRenderer.TimeToFrame(composition, lottie.time, lottie.loop);
 
-        // Quantize to 1/8th of a frame so equal-looking draws hit the cache.
-        frame = Mathf.Round(frame * 8f) * 0.125f;
+        // Optional playback rate cap: hold each displayed frame for several source
+        // frames so re-tessellation (and cache pressure) drops proportionally.
+        if (lottie.playbackFrameRate > 0f && composition.frameRate > lottie.playbackFrameRate)
+        {
+            float step = composition.frameRate / lottie.playbackFrameRate;
+            frame = Mathf.Floor(frame / step) * step;
+        }
+
+        // Quantize to whole frames: animations are authored at frame granularity, so
+        // sub-frame sampling only multiplies cache misses.
+        frame = Mathf.Round(frame);
+
+        // Tessellate at a capped resolution and scale the vertices up, so a huge
+        // (or accidental fullscreen) rect costs sharpness instead of CPU time.
+        float renderScale = 1f;
+        float maxSize = NowLottieRenderer.maxRenderSize;
+        float maxDimension = Mathf.Max(lottie.rect.z, lottie.rect.w);
+
+        if (maxSize > 0f && maxDimension > maxSize)
+            renderScale = maxSize / maxDimension;
 
         var buffer = NowLottieRenderer.RenderCached(
             composition,
             frame,
-            lottie.rect.z,
-            lottie.rect.w,
-            lottie.preserveAspect,
-            ApplyColorMultiplier(lottie.color));
+            lottie.rect.z * renderScale,
+            lottie.rect.w * renderScale,
+            lottie.preserveAspect);
 
-        mesh.AddGeometry(buffer, new Vector2(lottie.rect.x, lottie.rect.y), lottie.mask);
+        mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, buffer.positions.count);
+        mesh.AddGeometry(buffer, new Vector2(lottie.rect.x, lottie.rect.y), 1f / renderScale, tint, lottie.mask);
     }
 
     public static NowUIRectangle Rectangle(NowUIRectangle rect)

@@ -12,6 +12,10 @@ name: Build MSDF Atlas Gen Libraries
         required: true
         default: "3.1.38"
 
+permissions:
+  actions: read
+  contents: write
+
 jobs:
   build:
     name: ${{ matrix.artifact_name }}
@@ -288,3 +292,54 @@ jobs:
         with:
           name: nowui-msdf-webgl
           path: ${{ github.workspace }}/artifacts/nowui-msdf-webgl
+
+  publish-plugin-artifacts:
+    name: Commit plugin artifacts
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - build-webgl
+    if: ${{ github.ref_type == 'branch' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Download workflow artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/_downloaded
+
+      - name: Merge plugin artifacts
+        shell: bash
+        run: |
+          shopt -s nullglob
+          found=0
+
+          for plugin_dir in artifacts/_downloaded/*/Assets/NowUI/Plugins; do
+            found=1
+            cp -R "$plugin_dir"/. Assets/NowUI/Plugins/
+          done
+
+          if [ "$found" -eq 0 ]; then
+            echo "No Assets/NowUI/Plugins directories were found in downloaded artifacts."
+            exit 1
+          fi
+
+      - name: Commit and push plugin artifacts
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Assets/NowUI/Plugins
+
+          if git diff --cached --quiet; then
+            echo "Plugin artifacts are already up to date."
+            exit 0
+          fi
+
+          git commit -m "Update NowUI MSDF plugin artifacts"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push

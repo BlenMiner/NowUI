@@ -18,6 +18,9 @@ public class NowUILottieGraphic : NowUIGraphic
 
     [SerializeField] bool _preserveAspect = true;
 
+    [Tooltip("Caps how often the animation advances; 0 plays at the animation's native rate. Lower rates (15-20) are ideal for small decorative emoji.")]
+    [SerializeField, Min(0f)] float _playbackFrameRate;
+
     float _time;
 
     bool _playing;
@@ -62,6 +65,13 @@ public class NowUILottieGraphic : NowUIGraphic
             _preserveAspect = value;
             MarkDirty();
         }
+    }
+
+    /// <summary>Playback frame rate cap; 0 plays at the animation's native rate.</summary>
+    public float playbackFrameRate
+    {
+        get => _playbackFrameRate;
+        set => _playbackFrameRate = Mathf.Max(0f, value);
     }
 
     public bool isPlaying => _playing;
@@ -137,8 +147,13 @@ public class NowUILottieGraphic : NowUIGraphic
         }
 
         // Only rebuild when the displayed frame changes; the draw call quantizes to
-        // 1/8th frame, so use the same granularity (matters on high refresh displays).
-        int frameIndex = Mathf.RoundToInt(_time * Mathf.Max(1f, _animation.frameRate) * 8f);
+        // whole frames (optionally capped by the playback rate), so match that here.
+        float effectiveRate = Mathf.Max(1f, _animation.frameRate);
+
+        if (_playbackFrameRate > 0f)
+            effectiveRate = Mathf.Min(effectiveRate, _playbackFrameRate);
+
+        int frameIndex = Mathf.FloorToInt(_time * effectiveRate);
 
         if (frameIndex == _lastFrameIndex)
             return;
@@ -158,6 +173,7 @@ public class NowUILottieGraphic : NowUIGraphic
             .SetTime(_time)
             .SetLoop(_loop)
             .SetPreserveAspect(_preserveAspect)
+            .SetPlaybackFrameRate(_playbackFrameRate)
             .Draw();
     }
 }

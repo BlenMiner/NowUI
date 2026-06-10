@@ -22,6 +22,13 @@ public struct NowUILottie
 
     public bool preserveAspect;
 
+    /// <summary>
+    /// Playback frame rate cap; 0 plays at the animation's native rate. Lower rates
+    /// (e.g. 15-20 for chat emoji) re-tessellate far less often with little visual
+    /// difference, and identical frames are shared through the cache.
+    /// </summary>
+    public float playbackFrameRate;
+
     public NowUILottie(Vector4 rect, NowLottieAsset asset)
     {
         mask = rect;
@@ -31,6 +38,7 @@ public struct NowUILottie
         time = 0f;
         loop = true;
         preserveAspect = true;
+        playbackFrameRate = 0f;
     }
 
     public NowUILottie SetPosition(Vector4 rect)
@@ -89,6 +97,13 @@ public struct NowUILottie
     public NowUILottie SetPreserveAspect(bool preserveAspect)
     {
         this.preserveAspect = preserveAspect;
+        return this;
+    }
+
+    /// <summary>Caps how often the animation advances; 0 = the animation's native rate.</summary>
+    public NowUILottie SetPlaybackFrameRate(float framesPerSecond)
+    {
+        playbackFrameRate = framesPerSecond;
         return this;
     }
 

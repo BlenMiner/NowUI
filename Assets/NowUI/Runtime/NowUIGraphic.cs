@@ -65,6 +65,18 @@ public class NowUIGraphic : MaskableGraphic
         SetVerticesDirty();
     }
 
+    /// <summary>Number of canvas renderer pages currently in use (diagnostics).</summary>
+    public int canvasPageCount => _drawList?.canvasPageCount ?? 0;
+
+    /// <summary>
+    /// The mesh uploaded to the given page's CanvasRenderer, or null (diagnostics;
+    /// do not modify the returned mesh).
+    /// </summary>
+    public Mesh GetCanvasPageMesh(int pageIndex)
+    {
+        return _drawList?.GetCanvasMesh(pageIndex);
+    }
+
     protected override void UpdateGeometry()
     {
         if (!IsActive())

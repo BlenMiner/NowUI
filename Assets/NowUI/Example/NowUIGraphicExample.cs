@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 
 [AddComponentMenu("NowUI/Examples/NowUI Graphic Example")]
@@ -8,6 +7,7 @@ public class NowUIGraphicExample : NowUIGraphic
     [SerializeField] NowLottieAsset _lottie;
     [SerializeField] float _size = 14f;
     [SerializeField] string _content;
+    [SerializeField] int _count = 1;
 
     protected override void DrawNowUI(Rect rect)
     {
@@ -61,8 +61,17 @@ public class NowUIGraphicExample : NowUIGraphic
             .SetItalic()
             .Draw(_content);
 
-        NowUI.Lottie(bounds, _lottie)
-            .SetNormalizedTime(Time.time % 1f)
-            .Draw();
+        float cellSize = height / _count;
+
+        for (int x = 0; x < _count; ++x)
+        {
+            for (int y = 0; y < _count; ++y)
+            {
+                var gridSegment = new Vector4(x * cellSize, y * cellSize, cellSize, cellSize);
+                NowUI.Lottie(gridSegment, _lottie)
+                    .SetNormalizedTime((Time.time + x * 0.1f + y * 0.1f) % 1f)
+                    .Draw();
+            }
+        }
     }
 }
