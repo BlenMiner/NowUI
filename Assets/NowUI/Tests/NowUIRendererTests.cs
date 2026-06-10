@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
+using NowUI;
 
 public class NowUIRendererTests
 {
@@ -16,7 +17,7 @@ public class NowUIRendererTests
         try
         {
             using (drawList.Begin(new Vector2(128, 64)))
-                NowUI.Rectangle(new Vector4(4, 6, 32, 20))
+                Now.Rectangle(new Vector4(4, 6, 32, 20))
                     .SetColor(Color.white)
                     .Draw();
 
@@ -39,7 +40,7 @@ public class NowUIRendererTests
         try
         {
             using (drawList.Begin(new Vector2(128, 64)))
-                NowUI.Rectangle(new Vector4(4, 6, 32, 20)).Draw();
+                Now.Rectangle(new Vector4(4, 6, 32, 20)).Draw();
 
             drawList.Clear();
 
@@ -64,7 +65,7 @@ public class NowUIRendererTests
         try
         {
             using (renderer.Begin(new Vector2(128, 64)))
-                NowUI.Rectangle(new Vector4(4, 6, 32, 20))
+                Now.Rectangle(new Vector4(4, 6, 32, 20))
                     .SetColor(Color.white)
                     .Draw();
 
@@ -87,7 +88,7 @@ public class NowUIRendererTests
         try
         {
             using (renderer.Begin(Vector2.zero))
-                NowUI.Rectangle(new Vector4(4, 6, 32, 20)).Draw();
+                Now.Rectangle(new Vector4(4, 6, 32, 20)).Draw();
 
             Assert.IsFalse(renderer.hasGeometry);
             Assert.AreEqual(0, renderer.batchCount);
@@ -255,7 +256,7 @@ public class NowUIRendererTests
         {
             ++drawCount;
 
-            NowUI.Rectangle(new Vector4(2, 2, 12, 8))
+            Now.Rectangle(new Vector4(2, 2, 12, 8))
                 .SetColor(Color.white)
                 .Draw();
         }
@@ -265,7 +266,7 @@ public class NowUIRendererTests
     {
         protected override void DrawNowUI(Rect rect)
         {
-            NowUI.Rectangle(new Vector4(2, 2, 12, 8))
+            Now.Rectangle(new Vector4(2, 2, 12, 8))
                 .SetColor(Color.white)
                 .Draw();
         }

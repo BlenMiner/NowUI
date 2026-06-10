@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace NowUIInternal
+namespace NowUI.Internal
 {
     /// <summary>
     /// Parsed Lottie (bodymovin) document. This is a pure data model evaluated every

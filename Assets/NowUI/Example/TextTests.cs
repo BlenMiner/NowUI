@@ -1,4 +1,5 @@
 using UnityEngine;
+using NowUI;
 
 public class TextTests : MonoBehaviour
 {
@@ -20,15 +21,15 @@ public class TextTests : MonoBehaviour
     {
         float radius = Mathf.PerlinNoise(rect.x * 1000, Time.time) * 35;
 
-        var textContainer = NowUI.Rectangle(rect)
+        var textContainer = Now.Rectangle(rect)
             .SetColor(Color.black);
 
-        NowUI.Rectangle(textContainer)
+        Now.Rectangle(textContainer)
             .SetColor(Color.HSVToRGB(Mathf.PerlinNoise(rect.x * 100, Time.time), 1, 1))
             .SetPadding(2)
             .Draw();
 
-        var textContainerBorder = NowUI.Rectangle(textContainer)
+        var textContainerBorder = Now.Rectangle(textContainer)
             .SetColor(Color.HSVToRGB(Mathf.PerlinNoise(Time.time, rect.y * 100), 1, 1))
             .SetBlur(40)
             .SetPadding(20)
@@ -38,7 +39,7 @@ public class TextTests : MonoBehaviour
         textContainerBorder.Draw();
         textContainer.Draw();
 
-        NowUI.Text(rect, _font)
+        Now.Text(rect, _font)
             .SetColor(_color)
             .SetFontSize(_fontSize + radius)
             .SetPadding(_padding)
@@ -49,7 +50,7 @@ public class TextTests : MonoBehaviour
 
     private void OnPostRender()
     {
-        NowUI.StartUI();
+        Now.StartUI();
 
         Vector4 pos = new Vector4(0, 0, 200, 200);
 
@@ -61,6 +62,6 @@ public class TextTests : MonoBehaviour
                 DrawTextBox(pos, _text);
             }
 
-        NowUI.FlushUI();
+        Now.FlushUI();
     }
 }

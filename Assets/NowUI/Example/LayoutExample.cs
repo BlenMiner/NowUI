@@ -1,8 +1,9 @@
 using System;
 using UnityEngine;
+using NowUI;
 
 /// <summary>
-/// Demonstrates NowUILayout: a settings panel built without any manual
+/// Demonstrates NowLayout: a settings panel built without any manual
 /// coordinate math. Attach to a camera, assign a font, and enter play mode.
 /// </summary>
 public class LayoutExample : MonoBehaviour
@@ -31,20 +32,20 @@ public class LayoutExample : MonoBehaviour
 
     void Awake()
     {
-        NowUI.defaultFont = _font;
+        Now.defaultFont = _font;
         _drawPanelContent = DrawPanelContent;
     }
 
     void OnPostRender()
     {
-        NowUI.StartUI();
+        Now.StartUI();
 
         using (NowUIInput.Begin(new Vector2(Screen.width, Screen.height)))
         {
             DrawPanel();
         }
 
-        NowUI.FlushUI();
+        Now.FlushUI();
     }
 
     void DrawPanel()
@@ -58,15 +59,15 @@ public class LayoutExample : MonoBehaviour
             width,
             height);
 
-        NowUI.Rectangle(panelRect)
+        Now.Rectangle(panelRect)
             .SetColor(Rgb(30, 33, 40))
             .SetRadius(16)
             .Draw();
 
         // The callback form lays out in two passes (measure, then draw), so
         // flexible space and auto-sized groups are exact every frame.
-        NowUILayout.Area("settings", panelRect,
-            new NowUILayoutOptions().SetPadding(20).SetSpacing(14),
+        NowLayout.Area("settings", panelRect,
+            new NowLayoutOptions().SetPadding(20).SetSpacing(14),
             _drawPanelContent);
     }
 
@@ -76,33 +77,33 @@ public class LayoutExample : MonoBehaviour
         DrawTabs();
         DrawOptions();
 
-        NowUILayout.FlexibleSpace();
+        NowLayout.FlexibleSpace();
 
         DrawFooter();
     }
 
     void DrawHeader()
     {
-        using (NowUILayout.Horizontal())
+        using (NowLayout.Horizontal())
         {
-            NowUILayout.Label("Settings", 24f, Rgb(235, 238, 245))
-                .SetAlign(NowUILayoutAlign.Center)
+            NowLayout.Label("Settings", 24f, Rgb(235, 238, 245))
+                .SetAlign(NowLayoutAlign.Center)
                 .Draw();
 
-            NowUILayout.FlexibleSpace();
+            NowLayout.FlexibleSpace();
 
-            Button("close", "X", NowUILayout.Size(34, 34), Rgb(55, 60, 72));
+            Button("close", "X", NowLayout.Size(34, 34), Rgb(55, 60, 72));
         }
     }
 
     void DrawTabs()
     {
-        using (NowUILayout.Horizontal(new NowUILayoutOptions().SetSpacing(8)))
+        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(8)))
         {
             for (int i = 0; i < _tabs.Length; ++i)
             {
                 var background = i == _selectedTab ? Rgb(72, 110, 235) : Rgb(45, 49, 59);
-                var size = NowUILayout.StretchWidth().SetHeight(36);
+                var size = NowLayout.StretchWidth().SetHeight(36);
 
                 if (Button(_tabs[i], _tabs[i], size, background))
                     _selectedTab = i;
@@ -112,23 +113,23 @@ public class LayoutExample : MonoBehaviour
 
     void DrawOptions()
     {
-        using (NowUILayout.Vertical("options", new NowUILayoutOptions().SetSpacing(8)))
+        using (NowLayout.Vertical("options", new NowLayoutOptions().SetSpacing(8)))
         {
             for (int i = 0; i < _options.Length; ++i)
             {
-                using var row = NowUILayout.Horizontal(_options[i],
-                    new NowUILayoutOptions().SetHeight(44).SetPadding(10));
+                using var row = NowLayout.Horizontal(_options[i],
+                    new NowLayoutOptions().SetHeight(44).SetPadding(10));
 
-                NowUI.Rectangle(row.rect)
+                Now.Rectangle(row.rect)
                     .SetColor(Rgb(40, 44, 53))
                     .SetRadius(10)
                     .Draw();
 
-                NowUILayout.Label(_options[i], 16f, Rgb(210, 215, 226))
-                    .SetAlign(NowUILayoutAlign.Center)
+                NowLayout.Label(_options[i], 16f, Rgb(210, 215, 226))
+                    .SetAlign(NowLayoutAlign.Center)
                     .Draw();
 
-                NowUILayout.FlexibleSpace();
+                NowLayout.FlexibleSpace();
 
                 if (Toggle(_options[i] + ".toggle", _toggles[i]))
                     _toggles[i] = !_toggles[i];
@@ -138,24 +139,24 @@ public class LayoutExample : MonoBehaviour
 
     void DrawFooter()
     {
-        using (NowUILayout.Horizontal(new NowUILayoutOptions().SetSpacing(10)))
+        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(10)))
         {
-            NowUILayout.FlexibleSpace();
+            NowLayout.FlexibleSpace();
 
-            Button("cancel", "Cancel", NowUILayout.Size(110, 38), Rgb(55, 60, 72));
-            Button("apply", "Apply", NowUILayout.Size(110, 38), Rgb(72, 110, 235));
+            Button("cancel", "Cancel", NowLayout.Size(110, 38), Rgb(55, 60, 72));
+            Button("apply", "Apply", NowLayout.Size(110, 38), Rgb(72, 110, 235));
         }
     }
 
-    bool Button(string id, string label, NowUILayoutOptions options, Color background)
+    bool Button(string id, string label, NowLayoutOptions options, Color background)
     {
-        Vector4 rect = NowUILayout.Rect(options);
+        Vector4 rect = NowLayout.Rect(options);
         var interaction = NowUIInput.Interact(id, rect);
 
         if (interaction.hovered)
             background = Color.Lerp(background, Color.white, interaction.held ? 0.25f : 0.12f);
 
-        NowUI.Rectangle(rect)
+        Now.Rectangle(rect)
             .SetColor(background)
             .SetRadius(9)
             .Draw();
@@ -166,8 +167,8 @@ public class LayoutExample : MonoBehaviour
 
     bool Toggle(string id, bool value)
     {
-        Vector4 rect = NowUILayout.Rect(
-            NowUILayout.Size(44, 24).SetAlign(NowUILayoutAlign.Center));
+        Vector4 rect = NowLayout.Rect(
+            NowLayout.Size(44, 24).SetAlign(NowLayoutAlign.Center));
 
         var interaction = NowUIInput.Interact(id, rect);
 
@@ -176,14 +177,14 @@ public class LayoutExample : MonoBehaviour
         if (interaction.hovered)
             track = Color.Lerp(track, Color.white, 0.1f);
 
-        NowUI.Rectangle(rect)
+        Now.Rectangle(rect)
             .SetColor(track)
             .SetRadius(12)
             .Draw();
 
         float knobX = value ? rect.x + rect.z - 22f : rect.x + 2f;
 
-        NowUI.Rectangle(new Vector4(knobX, rect.y + 2f, 20f, 20f))
+        Now.Rectangle(new Vector4(knobX, rect.y + 2f, 20f, 20f))
             .SetColor(Color.white)
             .SetRadius(10)
             .Draw();
@@ -193,17 +194,17 @@ public class LayoutExample : MonoBehaviour
 
     void DrawCenteredText(string text, Vector4 rect, float size, Color color)
     {
-        if (NowUI.defaultFont == null || string.IsNullOrEmpty(text))
+        if (Now.defaultFont == null || string.IsNullOrEmpty(text))
             return;
 
-        Vector2 measured = NowUI.defaultFont.MeasureText(text, size);
+        Vector2 measured = Now.defaultFont.MeasureText(text, size);
         var textRect = new Vector4(
             rect.x + (rect.z - measured.x) * 0.5f,
             rect.y + (rect.w - measured.y) * 0.5f,
             measured.x,
             measured.y);
 
-        NowUI.Text(textRect)
+        Now.Text(textRect)
             .SetFontSize(size)
             .SetColor(color)
             .SetMask(new Vector4(rect.x - 4f, rect.y - 4f, rect.z + 8f, rect.w + 8f))

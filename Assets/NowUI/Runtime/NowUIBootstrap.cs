@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace NowUIInternal
+namespace NowUI.Internal
 {
     public class NowUIBootstrap : MonoBehaviour
     {

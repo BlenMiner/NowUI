@@ -1,4 +1,5 @@
 using UnityEngine;
+using NowUI;
 
 public class MailClientMockup : MonoBehaviour
 {
@@ -68,7 +69,7 @@ public class MailClientMockup : MonoBehaviour
 
     void DrawRect(Vector4 rect, Color color, float radius = 0f)
     {
-        NowUI.Rectangle(rect)
+        Now.Rectangle(rect)
             .SetColor(color)
             .SetRadius(radius)
             .Draw();
@@ -76,7 +77,7 @@ public class MailClientMockup : MonoBehaviour
 
     void DrawOutline(Vector4 rect, Color color, float outline = 1f, float radius = 0f)
     {
-        NowUI.Rectangle(rect)
+        Now.Rectangle(rect)
             .SetColor(new Color(1f, 1f, 1f, 0f))
             .SetOutlineColor(color)
             .SetOutline(outline)
@@ -123,7 +124,7 @@ public class MailClientMockup : MonoBehaviour
             ? Inflate(Rect(textRect.x + bounds.x, textRect.y + bounds.y, bounds.z, bounds.w), 3f, 3f)
             : Inflate(rect, 8f, 10f);
 
-        NowUI.Text(textRect, _font)
+        Now.Text(textRect, _font)
             .SetFontSize(fontSize)
             .SetColor(color)
             .SetMask(mask)
@@ -354,7 +355,7 @@ public class MailClientMockup : MonoBehaviour
             listWidth = width;
         }
 
-        NowUI.StartUI();
+        Now.StartUI();
 
         DrawRect(Rect(0, 0, width, height), Rgb(241, 245, 249));
         DrawTopBar(width);
@@ -370,6 +371,6 @@ public class MailClientMockup : MonoBehaviour
             DrawMobileReaderHint(listX, height - 78f, listWidth);
         }
 
-        NowUI.FlushUI();
+        Now.FlushUI();
     }
 }

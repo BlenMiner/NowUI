@@ -2,32 +2,35 @@
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
 
-public sealed class NowUIHighDefinitionCustomPass : CustomPass
+namespace NowUI
 {
-    NowUIDrawList _drawList;
-
-    protected override void Setup(ScriptableRenderContext renderContext, CommandBuffer cmd)
+    public sealed class NowUIHighDefinitionCustomPass : CustomPass
     {
-        _drawList = new NowUIDrawList();
-    }
+        NowUIDrawList _drawList;
 
-    protected override void Execute(CustomPassContext ctx)
-    {
-        var camera = ctx.hdCamera.camera;
+        protected override void Setup(ScriptableRenderContext renderContext, CommandBuffer cmd)
+        {
+            _drawList = new NowUIDrawList();
+        }
 
-        if (!NowUIPipelineGraphic.BuildDrawList(camera, _drawList))
-            return;
+        protected override void Execute(CustomPassContext ctx)
+        {
+            var camera = ctx.hdCamera.camera;
 
-        NowUIRenderer.Draw(ctx.cmd, _drawList);
-    }
+            if (!NowUIPipelineGraphic.BuildDrawList(camera, _drawList))
+                return;
 
-    protected override void Cleanup()
-    {
-        if (_drawList == null)
-            return;
+            NowUIRenderer.Draw(ctx.cmd, _drawList);
+        }
 
-        _drawList.Dispose();
-        _drawList = null;
+        protected override void Cleanup()
+        {
+            if (_drawList == null)
+                return;
+
+            _drawList.Dispose();
+            _drawList = null;
+        }
     }
 }
 #endif

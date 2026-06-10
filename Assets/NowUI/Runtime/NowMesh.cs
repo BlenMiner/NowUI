@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace NowUIInternal
+namespace NowUI.Internal
 {
     public enum NowMeshKind
     {

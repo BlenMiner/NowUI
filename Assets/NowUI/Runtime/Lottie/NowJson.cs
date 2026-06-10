@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
-namespace NowUIInternal
+namespace NowUI.Internal
 {
     public enum NowJsonKind
     {

@@ -1,18 +1,18 @@
 {
-    "name": "NowUI.Editor",
-    "rootNamespace": "",
-    "references": [
-        "GUID:f8d53a32dbb72f34987c15dba8a48aea"
-    ],
-    "includePlatforms": [
-        "Editor"
-    ],
-    "excludePlatforms": [],
-    "allowUnsafeCode": false,
-    "overrideReferences": false,
-    "precompiledReferences": [],
-    "autoReferenced": true,
-    "defineConstraints": [],
-    "versionDefines": [],
-    "noEngineReferences": false
+  "name": "NowUI.Editor",
+  "rootNamespace": "NowUI.Editor",
+  "references": [
+    "GUID:f8d53a32dbb72f34987c15dba8a48aea"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
 }

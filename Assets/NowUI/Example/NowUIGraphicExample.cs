@@ -1,4 +1,5 @@
 using UnityEngine;
+using NowUI;
 
 [AddComponentMenu("NowUI/Examples/NowUI Graphic Example")]
 public class NowUIGraphicExample : NowUIGraphic
@@ -14,13 +15,13 @@ public class NowUIGraphicExample : NowUIGraphic
         float height = rect.height;
         var bounds = new Vector4(0, 0, width, height);
 
-        NowUI.Rectangle(bounds)
+        Now.Rectangle(bounds)
             .SetColor(new Color(0.08f, 0.1f, 0.14f, 0.92f))
             .SetRadius(12)
             .SetMask(bounds)
             .Draw();
 
-        NowUI.Rectangle(new Vector4(16, 16, 42, 42))
+        Now.Rectangle(new Vector4(16, 16, 42, 42))
             .SetColor(new Color(0.1f, 0.45f, 0.95f, 1f))
             .SetRadius(10)
             .SetMask(bounds)
@@ -29,33 +30,33 @@ public class NowUIGraphicExample : NowUIGraphic
         if (_font == null)
             return;
 
-        NowUI.defaultFont = _font;
+        Now.defaultFont = _font;
 
-        using (NowUILayout.Area(bounds))
+        using (NowLayout.Area(bounds))
         {
-            NowUILayout.Label("NowUI Graphic").Draw();
-            NowUILayout.Label("Hello World\nNowUI Graphic").Draw();
-            var content = NowUILayout.Label(_content)
+            NowLayout.Label("NowUI Graphic").Draw();
+            NowLayout.Label("Hello World\nNowUI Graphic").Draw();
+            var content = NowLayout.Label(_content)
                 .SetFontSize(_size)
                 .SetOutlineColor(Color.green)
                 .Reserve();
 
-            NowUI.Rectangle(content.rect).SetColor(Color.black).Draw();
+            Now.Rectangle(content.rect).SetColor(Color.black).Draw();
             content.Draw();
 
-            using (NowUILayout.Horizontal())
+            using (NowLayout.Horizontal())
             {
-                NowUILayout.Label("N").Draw();
-                NowUILayout.Label("o").Draw();
-                NowUILayout.Label("w").Draw();
-                NowUILayout.FlexibleSpace();
-                NowUILayout.Label("U").Draw();
-                NowUILayout.FlexibleSpace();
-                NowUILayout.Label("I").Draw();
+                NowLayout.Label("N").Draw();
+                NowLayout.Label("o").Draw();
+                NowLayout.Label("w").Draw();
+                NowLayout.FlexibleSpace();
+                NowLayout.Label("U").Draw();
+                NowLayout.FlexibleSpace();
+                NowLayout.Label("I").Draw();
             }
 
             DrawLottie();
-            using (NowUILayout.Horizontal())
+            using (NowLayout.Horizontal())
             {
                 DrawLottie();
                 DrawLottie();
@@ -68,9 +69,9 @@ public class NowUIGraphicExample : NowUIGraphic
 
     private void DrawLottie()
     {
-        var reservedRect = NowUILayout.Rect(128, 128);
+        var reservedRect = NowLayout.Rect(128, 128);
 
-        NowUI.Lottie(reservedRect, _lottie)
+        Now.Lottie(reservedRect, _lottie)
             .SetTime(Time.time)
             .Draw();
     }

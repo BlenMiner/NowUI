@@ -1,49 +1,52 @@
 using UnityEditor;
 using UnityEngine;
 
-public sealed class NowFontGlyphPickerWindow : EditorWindow
+namespace NowUI.Editor
 {
-    readonly NowFontGlyphPickerControl _picker = new NowFontGlyphPickerControl();
-    NowFont _font;
-
-    public static void Show(NowFont font)
+    public sealed class NowFontGlyphPickerWindow : EditorWindow
     {
-        var window = GetWindow<NowFontGlyphPickerWindow>("Glyph Explorer");
-        window.SetFont(font);
-        window.Show();
-        window.Focus();
-    }
+        readonly NowFontGlyphPickerControl _picker = new NowFontGlyphPickerControl();
+        NowFont _font;
 
-    [MenuItem("Window/NowUI/Glyph Explorer")]
-    public static void ShowWindow()
-    {
-        Show(null);
-    }
+        public static void Show(NowFont font)
+        {
+            var window = GetWindow<NowFontGlyphPickerWindow>("Glyph Explorer");
+            window.SetFont(font);
+            window.Show();
+            window.Focus();
+        }
 
-    void OnEnable()
-    {
-        minSize = new Vector2(420f, 300f);
+        [MenuItem("Window/NowUI/Glyph Explorer")]
+        public static void ShowWindow()
+        {
+            Show(null);
+        }
 
-        if (_font != null)
-            _picker.SetFont(_font);
-    }
+        void OnEnable()
+        {
+            minSize = new Vector2(420f, 300f);
 
-    void OnGUI()
-    {
-        _picker.Draw(
-            _font,
-            true,
-            0f,
-            true,
-            SetFont,
-            ShowNotification,
-            Repaint);
-    }
+            if (_font != null)
+                _picker.SetFont(_font);
+        }
 
-    void SetFont(NowFont font)
-    {
-        _font = font;
-        _picker.SetFont(font);
-        Repaint();
+        void OnGUI()
+        {
+            _picker.Draw(
+                _font,
+                true,
+                0f,
+                true,
+                SetFont,
+                ShowNotification,
+                Repaint);
+        }
+
+        void SetFont(NowFont font)
+        {
+            _font = font;
+            _picker.SetFont(font);
+            Repaint();
+        }
     }
 }

@@ -1,4 +1,5 @@
 using UnityEngine;
+using NowUI;
 
 [AddComponentMenu("NowUI/Examples/NowUI Render Texture Example")]
 public sealed class NowUIRenderTextureExample : MonoBehaviour
@@ -131,11 +132,11 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
         float height = rect.height;
         var bounds = Rect(0, 0, width, height);
 
-        NowUI.Rectangle(bounds)
+        Now.Rectangle(bounds)
             .SetColor(Rgb(15, 23, 42))
             .Draw();
 
-        NowUI.Rectangle(Rect(0, 0, width, 8))
+        Now.Rectangle(Rect(0, 0, width, 8))
             .SetColor(Rgb(56, 189, 248))
             .Draw();
 
@@ -145,12 +146,12 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
 
     void DrawPanel(Vector4 rect)
     {
-        NowUI.Rectangle(rect)
+        Now.Rectangle(rect)
             .SetColor(Rgb(30, 41, 59))
             .SetRadius(18)
             .Draw();
 
-        NowUI.Rectangle(Rect(rect.x + 22, rect.y + 70, rect.z - 44, 1))
+        Now.Rectangle(Rect(rect.x + 22, rect.y + 70, rect.z - 44, 1))
             .SetColor(Rgb(71, 85, 105))
             .Draw();
 
@@ -169,7 +170,7 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
 
     void DrawBadge(Vector4 rect, string label, Color color)
     {
-        NowUI.Rectangle(rect)
+        Now.Rectangle(rect)
             .SetColor(color)
             .SetRadius(rect.w * 0.5f)
             .Draw();
@@ -179,7 +180,7 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
 
     void DrawMetric(Vector4 rect, string label, string value)
     {
-        NowUI.Rectangle(rect)
+        Now.Rectangle(rect)
             .SetColor(Rgb(51, 65, 85))
             .SetRadius(10)
             .Draw();
@@ -193,7 +194,7 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
         if (_font == null || string.IsNullOrEmpty(text))
             return;
 
-        NowUI.Text(rect, _font)
+        Now.Text(rect, _font)
             .SetFontSize(size * _scale)
             .SetColor(color)
             .SetMask(rect)

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace NowUIInternal
+namespace NowUI.Internal
 {
     /// <summary>
     /// Evaluates a Lottie composition at a point in time and tessellates it into
@@ -77,7 +77,7 @@ namespace NowUIInternal
         // and offset/tinted on mesh append), so identical (animation, frame, size)
         // draws reuse the buffer: paused animations, duplicated icons, color fades
         // and displays running faster than the animation cost almost nothing.
-        // Main-thread only, like the rest of NowUI.
+        // Main-thread only, like the rest of Now.
         // ------------------------------------------------------------------
 
         /// <summary>

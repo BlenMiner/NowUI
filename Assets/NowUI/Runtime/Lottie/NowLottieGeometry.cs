@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace NowUIInternal
+namespace NowUI.Internal
 {
     /// <summary>Row-major 2D affine matrix: x' = a*x + c*y + tx, y' = b*x + d*y + ty.</summary>
     public struct NowMatrix2D
@@ -387,7 +387,7 @@ namespace NowUIInternal
     /// <summary>
     /// CPU vector rasterization helpers: bezier flattening, robust scanline fill
     /// tessellation (nonzero/even-odd, compound paths, matte clipping), analytic
-    /// anti-alias fringes and stroke expansion. Main-thread only, like the rest of NowUI.
+    /// anti-alias fringes and stroke expansion. Main-thread only, like the rest of Now.
     /// </summary>
     public static class NowLottieTessellator
     {

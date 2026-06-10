@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
-namespace NowUIInternal
+namespace NowUI.Internal
 {
     /// <summary>
     /// Bindings for the nowui-vg native tessellator. When the native library is

@@ -1,4 +1,5 @@
 using UnityEngine;
+using NowUI;
 
 [AddComponentMenu("NowUI/Examples/NowUI Pipeline Overlay Example")]
 public sealed class NowUIPipelineOverlayExample : NowUIPipelineGraphic
@@ -23,12 +24,12 @@ public sealed class NowUIPipelineOverlayExample : NowUIPipelineGraphic
 
         Vector4 panel = Rect(24, 24, Mathf.Min(360, width - 48), 116);
 
-        NowUI.Rectangle(panel)
+        Now.Rectangle(panel)
             .SetColor(new Color(0.02f, 0.03f, 0.05f, 0.82f))
             .SetRadius(14)
             .Draw();
 
-        NowUI.Rectangle(Rect(panel.x, panel.y, 6, panel.w))
+        Now.Rectangle(Rect(panel.x, panel.y, 6, panel.w))
             .SetColor(Rgb(14, 165, 233))
             .SetRadius(new Vector4(14, 0, 0, 14))
             .Draw();
@@ -40,7 +41,7 @@ public sealed class NowUIPipelineOverlayExample : NowUIPipelineGraphic
             14,
             Rgb(203, 213, 225));
 
-        NowUI.Rectangle(Rect(panel.x + 22, panel.y + 82, 92, 24))
+        Now.Rectangle(Rect(panel.x + 22, panel.y + 82, 92, 24))
             .SetColor(Rgb(14, 165, 233))
             .SetRadius(12)
             .Draw();
@@ -53,7 +54,7 @@ public sealed class NowUIPipelineOverlayExample : NowUIPipelineGraphic
         if (_font == null || string.IsNullOrEmpty(text))
             return;
 
-        NowUI.Text(rect, _font)
+        Now.Text(rect, _font)
             .SetFontSize(size * _scale)
             .SetColor(color)
             .SetMask(rect)

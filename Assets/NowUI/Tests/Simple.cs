@@ -1,6 +1,7 @@
 using NUnit.Framework;
-using NowUIInternal;
+using NowUI.Internal;
 using UnityEngine;
+using NowUI;
 
 public class Simple
 {

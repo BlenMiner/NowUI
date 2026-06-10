@@ -1,18 +1,18 @@
 {
-    "name": "NowUI.Runtime",
-    "rootNamespace": "",
-    "references": [
-        "GUID:e0cd26848372d4e5c891c569017e11f1",
-        "GUID:2bafac87e7f4b9b418d9448d219b01ab",
-        "GUID:75469ad4d38634e559750d17036d5f7c"
-    ],
-    "includePlatforms": [],
-    "excludePlatforms": [],
-    "allowUnsafeCode": true,
-    "overrideReferences": false,
-    "precompiledReferences": [],
-    "autoReferenced": true,
-    "defineConstraints": [],
-    "versionDefines": [],
-    "noEngineReferences": false
+  "name": "NowUI.Runtime",
+  "rootNamespace": "NowUI",
+  "references": [
+    "GUID:e0cd26848372d4e5c891c569017e11f1",
+    "GUID:2bafac87e7f4b9b418d9448d219b01ab",
+    "GUID:75469ad4d38634e559750d17036d5f7c"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": true,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
 }
