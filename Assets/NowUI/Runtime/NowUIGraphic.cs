@@ -273,6 +273,9 @@ public class NowUIGraphic : MaskableGraphic
             return;
         }
 
+        _materialModifiers.Clear();
+        GetComponents(_materialModifiers);
+
         ApplyCanvasPage(canvasRenderer, _drawList.GetCanvasMesh(0), _drawList.GetCanvasBatches(0));
 
         int extraPageCount = Mathf.Max(0, _drawList.canvasPageCount - 1);
@@ -289,7 +292,7 @@ public class NowUIGraphic : MaskableGraphic
             {
                 ClearCanvasRenderer(crenderer);
 
-                if (crenderer != null && crenderer.gameObject.activeSelf)
+                if (crenderer.gameObject.activeSelf)
                     crenderer.gameObject.SetActive(false);
 
                 continue;
@@ -300,6 +303,8 @@ public class NowUIGraphic : MaskableGraphic
 
             ApplyCanvasPage(crenderer, _drawList.GetCanvasMesh(i + 1), _drawList.GetCanvasBatches(i + 1));
         }
+
+        _materialModifiers.Clear();
     }
 
     void ApplyCanvasPage(CanvasRenderer crenderer, Mesh mesh, List<NowUIMeshBatch> batches)
@@ -359,23 +364,12 @@ public class NowUIGraphic : MaskableGraphic
                 hideFlags = HideFlags.HideAndDontSave
             };
 
-            var childTransform = (RectTransform)go.transform;
-            childTransform.SetParent(transform, false);
-            childTransform.anchorMin = Vector2.zero;
-            childTransform.anchorMax = Vector2.one;
-            childTransform.pivot = rectTransform.pivot;
-            childTransform.offsetMin = Vector2.zero;
-            childTransform.offsetMax = Vector2.zero;
-            childTransform.localScale = Vector3.one;
-            childTransform.localRotation = Quaternion.identity;
-            childTransform.SetSiblingIndex(pageIndex - 1);
-
-            var crenderer = go.GetComponent<CanvasRenderer>();
-            crenderer.cullTransparentMesh = canvasRenderer.cullTransparentMesh;
-            ApplyRendererMaskState(crenderer);
-            _extraCanvasRenderers.Add(crenderer);
+            go.transform.SetParent(transform, false);
+            _extraCanvasRenderers.Add(go.GetComponent<CanvasRenderer>());
         }
 
+        // The loop below (re)applies the full transform and renderer state to every entry,
+        // including the ones just created.
         for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
         {
             var crenderer = _extraCanvasRenderers[i];
@@ -509,13 +503,9 @@ public class NowUIGraphic : MaskableGraphic
         if (currentMaterial == null)
             return null;
 
-        _materialModifiers.Clear();
-        GetComponents(_materialModifiers);
-
         for (int i = 0; i < _materialModifiers.Count; ++i)
             currentMaterial = _materialModifiers[i].GetModifiedMaterial(currentMaterial);
 
-        _materialModifiers.Clear();
         return currentMaterial;
     }
 

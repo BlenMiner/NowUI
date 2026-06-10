@@ -140,55 +140,15 @@ public static class NowFontCompiler
         return TryCompile(fontData, size, pixelRange, (Material)null, out font, out error);
     }
 
-    public static bool TryCompile(byte[] fontData, string extraCharacters, out NowFont font, out string error)
-    {
-        return TryCompile(fontData, ATLAS_SIZE, PIXEL_RANGE, extraCharacters, null, out font, out error);
-    }
-
     public static bool TryCompile(
         byte[] fontData,
         int size,
         int pixelRange,
-        string extraCharacters,
-        out NowFont font,
-        out string error)
-    {
-        return TryCompile(fontData, size, pixelRange, extraCharacters, null, out font, out error);
-    }
-
-    public static bool TryCompile(
-        byte[] fontData,
-        int size,
-        int pixelRange,
-        Material materialTemplate,
-        out NowFont font,
-        out string error)
-    {
-        return TryCompile(fontData, size, pixelRange, null, materialTemplate, out font, out error);
-    }
-
-    public static bool TryCompile(
-        byte[] fontData,
-        int size,
-        int pixelRange,
-        string extraCharacters,
         Material materialTemplate,
         out NowFont font,
         out string error)
     {
         return CreateDynamicFont(fontData, size, pixelRange, materialTemplate, out font, out error);
-    }
-
-    internal static bool TryCompilePage(
-        byte[] fontData,
-        int size,
-        int pixelRange,
-        string extraCharacters,
-        Material materialTemplate,
-        out NowFont font,
-        out string error)
-    {
-        return TryCompileInternal(fontData, size, pixelRange, extraCharacters, null, 0, materialTemplate, out font, out error);
     }
 
     internal static bool TryCompilePage(
@@ -201,7 +161,7 @@ public static class NowFontCompiler
         out NowFont font,
         out string error)
     {
-        return TryCompileInternal(fontData, size, pixelRange, null, codepoints, codepointCount, materialTemplate, out font, out error);
+        return TryCompileInternal(fontData, size, pixelRange, codepoints, codepointCount, materialTemplate, out font, out error);
     }
 
     static bool CreateDynamicFont(
@@ -243,7 +203,6 @@ public static class NowFontCompiler
         byte[] fontData,
         int size,
         int pixelRange,
-        string extraCharacters,
         int[] requestedCodepoints,
         int requestedCodepointCount,
         Material materialTemplate,
@@ -274,12 +233,6 @@ public static class NowFontCompiler
         NativeAtlasInfo info = default;
         int[] codepoints = requestedCodepoints;
         int codepointCount = requestedCodepoints != null ? Mathf.Clamp(requestedCodepointCount, 0, requestedCodepoints.Length) : 0;
-
-        if (codepoints == null)
-        {
-            codepoints = CollectCodepoints(extraCharacters);
-            codepointCount = codepoints?.Length ?? 0;
-        }
 
         if (ContainsColorGlyphTables(fontData))
             return TryCompileColorFont(fontData, size, codepoints, codepointCount, materialTemplate, out font, out error);
@@ -485,39 +438,6 @@ public static class NowFontCompiler
             ref info,
             errorBuffer,
             errorBufferLength);
-    }
-
-    static int[] CollectCodepoints(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return null;
-
-        var codepoints = new HashSet<int>();
-
-        for (int i = 0; i < value.Length; ++i)
-        {
-            int codepoint;
-
-            if (char.IsHighSurrogate(value[i]) && i + 1 < value.Length && char.IsLowSurrogate(value[i + 1]))
-            {
-                codepoint = char.ConvertToUtf32(value[i], value[i + 1]);
-                ++i;
-            }
-            else
-            {
-                codepoint = value[i];
-            }
-
-            if (codepoint > 0)
-                codepoints.Add(codepoint);
-        }
-
-        if (codepoints.Count == 0)
-            return null;
-
-        int[] result = new int[codepoints.Count];
-        codepoints.CopyTo(result);
-        return result;
     }
 
     static bool ContainsColorGlyphTables(byte[] fontData)

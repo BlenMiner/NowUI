@@ -80,19 +80,6 @@ namespace NowUIInternal
         }
     }
 
-    public class SubMesh
-    {
-        public Material material;
-
-        public StaticList<int> tris;
-
-        public SubMesh(Material mat)
-        {
-            material = mat;
-            tris = new StaticList<int>(NowMesh.INITIAL_INDEX_CAPACITY);
-        }
-    }
-
     public class NowMesh
     {
         const int INITIAL_RECT_CAPACITY = 64;
@@ -348,11 +335,6 @@ namespace NowUIInternal
             _extra.Clear();
             _mask.Clear();
             _rawuv.Clear();
-        }
-
-        public void ClearVerticies()
-        {
-            ClearVertices();
         }
 
         public void AppendVertices(

@@ -128,20 +128,9 @@ public sealed class NowUITheme : ScriptableObject
 
     public bool TryGetColor(string id, out Color color)
     {
-        color = default;
-        if (string.IsNullOrEmpty(id) || _palette == null)
-            return false;
-
-        for (int i = 0; i < _palette.Length; ++i)
-        {
-            if (!IdEquals(_palette[i].id, id))
-                continue;
-
-            color = _palette[i].color;
-            return true;
-        }
-
-        return false;
+        bool found = TryFindToken(_palette, id, out var token);
+        color = found ? token.color : default;
+        return found;
     }
 
     public Color GetColor(string id, Color fallback)
@@ -151,20 +140,9 @@ public sealed class NowUITheme : ScriptableObject
 
     public bool TryGetSpacing(string id, out Vector4 spacing)
     {
-        spacing = default;
-        if (string.IsNullOrEmpty(id) || _spacings == null)
-            return false;
-
-        for (int i = 0; i < _spacings.Length; ++i)
-        {
-            if (!IdEquals(_spacings[i].id, id))
-                continue;
-
-            spacing = _spacings[i].insets;
-            return true;
-        }
-
-        return false;
+        bool found = TryFindToken(_spacings, id, out var token);
+        spacing = found ? token.insets : default;
+        return found;
     }
 
     public Vector4 GetSpacing(string id, Vector4 fallback)
@@ -174,20 +152,9 @@ public sealed class NowUITheme : ScriptableObject
 
     public bool TryGetRadius(string id, out Vector4 radius)
     {
-        radius = default;
-        if (string.IsNullOrEmpty(id) || _radii == null)
-            return false;
-
-        for (int i = 0; i < _radii.Length; ++i)
-        {
-            if (!IdEquals(_radii[i].id, id))
-                continue;
-
-            radius = _radii[i].radius;
-            return true;
-        }
-
-        return false;
+        bool found = TryFindToken(_radii, id, out var token);
+        radius = found ? token.radius : default;
+        return found;
     }
 
     public Vector4 GetRadius(string id, Vector4 fallback)
@@ -197,34 +164,27 @@ public sealed class NowUITheme : ScriptableObject
 
     public bool TryGetRectanglePreset(string id, out NowUIRectanglePreset preset)
     {
-        preset = default;
-        if (string.IsNullOrEmpty(id) || _rectanglePresets == null)
-            return false;
-
-        for (int i = 0; i < _rectanglePresets.Length; ++i)
-        {
-            if (!IdEquals(_rectanglePresets[i].id, id))
-                continue;
-
-            preset = _rectanglePresets[i];
-            return true;
-        }
-
-        return false;
+        return TryFindToken(_rectanglePresets, id, out preset);
     }
 
     public bool TryGetTextPreset(string id, out NowUITextPreset preset)
     {
-        preset = default;
-        if (string.IsNullOrEmpty(id) || _textPresets == null)
+        return TryFindToken(_textPresets, id, out preset);
+    }
+
+    static bool TryFindToken<T>(T[] tokens, string id, out T token) where T : INowUIThemeToken
+    {
+        token = default;
+
+        if (string.IsNullOrEmpty(id) || tokens == null)
             return false;
 
-        for (int i = 0; i < _textPresets.Length; ++i)
+        for (int i = 0; i < tokens.Length; ++i)
         {
-            if (!IdEquals(_textPresets[i].id, id))
+            if (!IdEquals(tokens[i].id, id))
                 continue;
 
-            preset = _textPresets[i];
+            token = tokens[i];
             return true;
         }
 
@@ -306,8 +266,13 @@ public sealed class NowUITheme : ScriptableObject
     }
 }
 
+interface INowUIThemeToken
+{
+    string id { get; }
+}
+
 [Serializable]
-public struct NowUIColorToken
+public struct NowUIColorToken : INowUIThemeToken
 {
     [SerializeField] string _id;
 
@@ -325,7 +290,7 @@ public struct NowUIColorToken
 }
 
 [Serializable]
-public struct NowUISpacingToken
+public struct NowUISpacingToken : INowUIThemeToken
 {
     [SerializeField] string _id;
 
@@ -343,7 +308,7 @@ public struct NowUISpacingToken
 }
 
 [Serializable]
-public struct NowUIRadiusToken
+public struct NowUIRadiusToken : INowUIThemeToken
 {
     [SerializeField] string _id;
 
@@ -439,7 +404,7 @@ public struct NowUIRadiusReference
 }
 
 [Serializable]
-public struct NowUIRectanglePreset
+public struct NowUIRectanglePreset : INowUIThemeToken
 {
     [SerializeField] string _id;
 
@@ -492,7 +457,7 @@ public struct NowUIRectanglePreset
 }
 
 [Serializable]
-public struct NowUITextPreset
+public struct NowUITextPreset : INowUIThemeToken
 {
     [SerializeField] string _id;
 

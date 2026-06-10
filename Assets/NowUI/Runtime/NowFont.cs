@@ -1185,22 +1185,6 @@ public class NowFont : NowFontAsset
         return sizes.ToArray();
     }
 
-    bool HasStaticGlyphMetadata(int unicode)
-    {
-        if (!atlas || atlasInfo.glyphs == null)
-            return false;
-
-        var glyphs = atlasInfo.glyphs;
-
-        for (int i = 0; i < glyphs.Length; ++i)
-        {
-            if (glyphs[i].unicode == unicode)
-                return true;
-        }
-
-        return false;
-    }
-
     static bool IsAtlasWithinLimit(NowFont font, int maxAtlasSize, int maxAtlasBytes)
     {
         if (font == null || font.atlas == null)
@@ -1378,12 +1362,7 @@ public class NowFont : NowFontAsset
 
     public int GetDynamicGlyphSize(float fontSize)
     {
-        int baseSize = dynamicAtlasSize > 0 ? dynamicAtlasSize : DEFAULT_DYNAMIC_ATLAS_SIZE;
-
-        if (TryGetLargestColorBitmapSize(out var colorBitmapSize))
-            return colorBitmapSize;
-
-        return baseSize;
+        return GetBaseDynamicGlyphSize();
     }
 
     int GetBaseDynamicGlyphSize()
@@ -1590,7 +1569,7 @@ public class NowFont : NowFontAsset
             hideFlags = HideFlags.HideAndDontSave
         };
 
-        pageTexture.SetPixels32(new Color32[pageSize * pageSize]);
+        pageTexture.GetRawTextureData<Color32>().AsSpan().Clear();
         pageTexture.Apply(isColorPage, false);
 
         var pageMaterial = new Material(glyphFont.material)
@@ -1823,19 +1802,11 @@ public class NowFont : NowFontAsset
         NowFont glyphFont,
         int unicode,
         int atlasSize,
+        NowFontAtlasInfo.Glyph glyph,
+        RectInt sourceRect,
         DynamicGlyphAppendBatch batch = null)
     {
-        if (!IsSameDynamicPageType(page, glyphFont, atlasSize) ||
-            glyphFont.atlasInfo.glyphs == null ||
-            glyphFont.atlasInfo.glyphs.Length == 0)
-        {
-            return false;
-        }
-
-        if (!TryGetRawGlyph(glyphFont, unicode, out var glyph))
-            return false;
-
-        if (!TryGetGlyphSourceRect(glyphFont, glyph, out var sourceRect))
+        if (!IsSameDynamicPageType(page, glyphFont, atlasSize))
             return false;
 
         if (!TryAllocateGlyphRect(page, sourceRect, out var targetRect))
@@ -1906,12 +1877,6 @@ public class NowFont : NowFontAsset
         if (TryGetCachedGlyph(unicode, out _) ||
             TryGetDynamicCachedGlyph(unicode, atlasSize, out _))
         {
-            return false;
-        }
-
-        if (HasStaticGlyphMetadata(unicode))
-        {
-            AddDynamicMiss(key);
             return false;
         }
 
@@ -2022,13 +1987,13 @@ public class NowFont : NowFontAsset
                 continue;
             }
 
-            if (TryAppendDynamicGlyph(page, glyphFont, unicode, atlasSize, batch))
+            if (TryAppendDynamicGlyph(page, glyphFont, unicode, atlasSize, compiledGlyph, sourceRect, batch))
                 return true;
         }
 
         var newPage = CreateDynamicPage(glyphFont, requiredPageSize, _dynamicPages.Count);
 
-        if (newPage != null && TryAppendDynamicGlyph(newPage, glyphFont, unicode, atlasSize, batch))
+        if (newPage != null && TryAppendDynamicGlyph(newPage, glyphFont, unicode, atlasSize, compiledGlyph, sourceRect, batch))
         {
             _dynamicPages.Add(newPage);
             return true;

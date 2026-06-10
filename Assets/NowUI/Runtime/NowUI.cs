@@ -57,7 +57,7 @@ public static class NowUI
 
     static readonly List<int> _triangles = new List<int>(NowMesh.INITIAL_INDEX_CAPACITY);
 
-    static readonly HashSet<NowFontAsset> _fontAssetVisitCache = new HashSet<NowFontAsset>();
+    static readonly List<int> _capturedMeshIndices = new List<int>(8);
 
     static int CreateMesh(Material mat, NowMeshKind kind)
     {
@@ -359,7 +359,7 @@ public static class NowUI
         batches.Clear();
 
         int activeIndex = 0;
-        int appendedCount = 0;
+        _capturedMeshIndices.Clear();
 
         for (int i = 0; i < _meshes.count; ++i)
         {
@@ -371,11 +371,11 @@ public static class NowUI
             if (activeIndex++ < activeStart)
                 continue;
 
-            if (appendedCount >= activeLimit)
+            if (_capturedMeshIndices.Count >= activeLimit)
                 break;
 
+            _capturedMeshIndices.Add(i);
             batches.Add(new NowUIMeshBatch(mesh.material, mesh.kind));
-            ++appendedCount;
 
             if (layout == NowUIMeshLayout.Canvas)
             {
@@ -439,30 +439,16 @@ public static class NowUI
 
         target.subMeshCount = batches.Count;
 
-        int subMesh = 0;
         int vertexOffset = 0;
-        activeIndex = 0;
-        appendedCount = 0;
 
-        for (int i = 0; i < _meshes.count; ++i)
+        for (int subMesh = 0; subMesh < _capturedMeshIndices.Count; ++subMesh)
         {
-            var mesh = _meshes.array[i];
-
-            if (!mesh.hasVertices)
-                continue;
-
-            if (activeIndex++ < activeStart)
-                continue;
-
-            if (appendedCount >= activeLimit)
-                break;
+            var mesh = _meshes.array[_capturedMeshIndices[subMesh]];
 
             _triangles.Clear();
             mesh.AppendTriangles(_triangles, vertexOffset);
             target.SetTriangles(_triangles, subMesh, false);
             vertexOffset += mesh.vertexCount;
-            ++subMesh;
-            ++appendedCount;
         }
 
         target.RecalculateBounds();
@@ -552,15 +538,9 @@ public static class NowUI
         var fontSize = style.fontSize;
         var fontAsset = style.font;
         NowMesh mesh = null;
-        var visited = _fontAssetVisitCache;
 
-        visited.Clear();
-        fontAsset.EnsureGlyphs(value, fontSize, style.fontStyle, visited);
-        visited.Clear();
-
-        float lineHeight = fontAsset.GetLineHeight(style.fontStyle, visited) * fontSize;
-        visited.Clear();
-
+        fontAsset.EnsureGlyphs(value, fontSize, style.fontStyle);
+        float lineHeight = fontAsset.GetLineHeight(style.fontStyle) * fontSize;
         float leftPos = style.rect.x;
 
         const int TAB_SPACES = 4;
@@ -577,21 +557,16 @@ public static class NowUI
                     break;
                 case '\t':
                 {
-                    visited.Clear();
-
-                    if (fontAsset.TryResolveGlyph(' ', fontSize, style.fontStyle, visited, out _, out var space, out _))
+                    if (fontAsset.TryResolveGlyph(' ', fontSize, style.fontStyle, out _, out var space, out _))
                         style.rect.x += space.advance * fontSize * TAB_SPACES;
                     break;
                 }
                 default:
                 {
-                    visited.Clear();
-
                     if (!fontAsset.TryResolveGlyph(
                         codepoint,
                         fontSize,
                         style.fontStyle,
-                        visited,
                         out var resolvedFont,
                         out var glyph,
                         out var glyphMaterial))
@@ -608,10 +583,7 @@ public static class NowUI
                             resolvedFont.SetMaterialId(codepoint, fontSize, materialId);
 
                             if (mesh == null)
-                            {
-                                visited.Clear();
                                 return;
-                            }
                         }
 
                         DrawCharacter(style, glyph, resolvedFont, mesh, lineHeight);
@@ -622,8 +594,6 @@ public static class NowUI
                 }
             }
         }
-
-        visited.Clear();
     }
 
     public static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph)
