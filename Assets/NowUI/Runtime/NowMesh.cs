@@ -328,8 +328,11 @@ namespace NowUIInternal
         /// The shared rect is the padded bounds of the geometry; UVs are derived from
         /// it so the rectangle shader evaluates to full coverage while per-pixel
         /// masking keeps working exactly like it does for rectangles.
+        /// Positions are scaled then offset (buffers may be tessellated at a capped
+        /// resolution); the tint multiplies the vertex colors during the copy so
+        /// cached tessellations stay tint independent.
         /// </summary>
-        public void AddGeometry(NowLottieDrawBuffer buffer, Vector2 positionOffset, Vector4 mask)
+        public void AddGeometry(NowLottieDrawBuffer buffer, Vector2 positionOffset, float positionScale, Vector4 tint, Vector4 mask)
         {
             int vertexCount = buffer.positions.count;
             int indexCount = buffer.indices.count;
@@ -339,10 +342,10 @@ namespace NowUIInternal
 
             const float PADDING = 2f;
 
-            float minX = buffer.boundsMin.x + positionOffset.x - PADDING;
-            float minY = buffer.boundsMin.y + positionOffset.y - PADDING;
-            float width = buffer.boundsMax.x - buffer.boundsMin.x + PADDING * 2f;
-            float height = buffer.boundsMax.y - buffer.boundsMin.y + PADDING * 2f;
+            float minX = buffer.boundsMin.x * positionScale + positionOffset.x - PADDING;
+            float minY = buffer.boundsMin.y * positionScale + positionOffset.y - PADDING;
+            float width = (buffer.boundsMax.x - buffer.boundsMin.x) * positionScale + PADDING * 2f;
+            float height = (buffer.boundsMax.y - buffer.boundsMin.y) * positionScale + PADDING * 2f;
 
             // Same packing as AddRect: mesh space rect with y flipped.
             var rect = new Vector4(minX, -minY - height, width, height);
@@ -370,19 +373,25 @@ namespace NowUIInternal
             for (int i = 0; i < vertexCount; ++i)
             {
                 var position = buffer.positions.array[i];
-                position.x += positionOffset.x;
-                position.y += positionOffset.y;
+                position.x = position.x * positionScale + positionOffset.x;
+                position.y = position.y * positionScale + positionOffset.y;
                 float meshY = -position.y;
 
                 float u = (position.x - rect.x) * inverseWidth;
                 float v = (meshY - rect.y) * inverseHeight;
+
+                var color = buffer.colors.array[i];
+                color.x *= tint.x;
+                color.y *= tint.y;
+                color.z *= tint.z;
+                color.w *= tint.w;
 
                 _verts.array[_verts.count++] = new Vector3(position.x, meshY, 0f);
                 _uvs.array[_uvs.count++] = new Vector2(u, v);
                 _rawuv.array[_rawuv.count++] = new Vector4(u, v, 0f, 0f);
                 _rect.array[_rect.count++] = rect;
                 _radius.array[_radius.count++] = default;
-                _color.array[_color.count++] = buffer.colors.array[i];
+                _color.array[_color.count++] = color;
                 _outlineColor.array[_outlineColor.count++] = default;
                 _extra.array[_extra.count++] = default;
                 _mask.array[_mask.count++] = mask;

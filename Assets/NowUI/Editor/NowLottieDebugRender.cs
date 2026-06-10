@@ -63,6 +63,114 @@ static class NowLottieDebugRender
         return success;
     }
 
+    // Batch entry point: -executeMethod NowLottieDebugRender.ValidateCanvasPages
+    // Verifies that large Lottie grids are split across canvas pages that respect
+    // CanvasRenderer's 16-bit index requirement (<= 65535 verts per page mesh).
+    static void ValidateCanvasPages()
+    {
+        var lottie = AssetDatabase.LoadAssetAtPath<NowLottieAsset>("Assets/NowUI/Assets/AnimatedEmoji/Heart-eyes-cat.lottie");
+
+        if (lottie == null)
+        {
+            Debug.LogError("ValidateCanvasPages: asset missing");
+            EditorApplication.Exit(1);
+            return;
+        }
+
+        var canvasObject = new GameObject("Canvas", typeof(Canvas));
+        canvasObject.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+
+        var graphicObject = new GameObject("Graphic", typeof(GridGraphic));
+        graphicObject.transform.SetParent(canvasObject.transform, false);
+        graphicObject.GetComponent<RectTransform>().sizeDelta = new Vector2(1060f, 560f);
+
+        var graphic = graphicObject.GetComponent<GridGraphic>();
+        graphic.lottie = lottie;
+
+        bool success = true;
+
+        foreach (int count in new[] { 3, 4, 6 })
+        {
+            graphic.count = count;
+            graphic.MarkDirty();
+            Canvas.ForceUpdateCanvases();
+            success &= ValidatePages(graphic, count);
+        }
+
+        Debug.Log(success ? "ValidateCanvasPages: DONE all pages within CanvasRenderer limits" : "ValidateCanvasPages: FAILED");
+
+        if (Application.isBatchMode)
+            EditorApplication.Exit(success ? 0 : 1);
+    }
+
+    sealed class GridGraphic : NowUIGraphic
+    {
+        public NowLottieAsset lottie;
+
+        public int count = 4;
+
+        protected override void DrawNowUI(Rect rect)
+        {
+            var bounds = new Vector4(0, 0, rect.width, rect.height);
+
+            NowUI.Rectangle(bounds)
+                .SetColor(new Color(0.08f, 0.1f, 0.14f, 0.92f))
+                .SetRadius(12)
+                .SetMask(bounds)
+                .Draw();
+
+            float cellSize = rect.height / count;
+
+            for (int x = 0; x < count; ++x)
+            {
+                for (int y = 0; y < count; ++y)
+                {
+                    NowUI.Lottie(new Vector4(x * cellSize, y * cellSize, cellSize, cellSize), lottie)
+                        .SetNormalizedTime((0.37f + x * 0.1f + y * 0.1f) % 1f)
+                        .Draw();
+                }
+            }
+        }
+    }
+
+    static bool ValidatePages(NowUIGraphic graphic, int count)
+    {
+        var drawListField = typeof(NowUIGraphic).GetField("_drawList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var drawList = drawListField.GetValue(graphic);
+        int pageCount = (int)drawList.GetType().GetProperty("canvasPageCount").GetValue(drawList);
+        var getMesh = drawList.GetType().GetMethod("GetCanvasMesh");
+
+        bool success = true;
+        long totalVertices = 0;
+        int usedPages = 0;
+
+        for (int page = 0; page < pageCount; ++page)
+        {
+            var mesh = (Mesh)getMesh.Invoke(drawList, new object[] { page });
+
+            if (mesh == null || mesh.vertexCount == 0)
+                continue;
+
+            ++usedPages;
+            totalVertices += mesh.vertexCount;
+
+            if (mesh.vertexCount > 65535)
+            {
+                Debug.LogError($"ValidateCanvasPages: count={count} page={page} has {mesh.vertexCount} verts (over CanvasRenderer limit)");
+                success = false;
+            }
+
+            if (mesh.indexFormat != UnityEngine.Rendering.IndexFormat.UInt16)
+            {
+                Debug.LogError($"ValidateCanvasPages: count={count} page={page} uses {mesh.indexFormat} indices (CanvasRenderer needs UInt16)");
+                success = false;
+            }
+        }
+
+        Debug.Log($"ValidateCanvasPages: count={count} pages={usedPages} totalVerts={totalVertices} ok={success}");
+        return success;
+    }
+
     static void Benchmark(string name, NowLottieComposition composition)
     {
         BenchmarkSize(name, composition, 256f);

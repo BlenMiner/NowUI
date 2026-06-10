@@ -73,11 +73,20 @@ namespace NowUIInternal
         // ------------------------------------------------------------------
         // Tessellation cache
         //
-        // Tessellation is position independent (geometry is built at origin and
-        // offset on mesh append), so identical (animation, frame, size, tint) draws
-        // reuse the buffer: paused animations, duplicated icons and displays running
-        // faster than the animation cost almost nothing.
+        // Tessellation is position and tint independent (geometry is built at origin
+        // and offset/tinted on mesh append), so identical (animation, frame, size)
+        // draws reuse the buffer: paused animations, duplicated icons, color fades
+        // and displays running faster than the animation cost almost nothing.
+        // Main-thread only, like the rest of NowUI.
         // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Upper bound (in pixels) on the resolution an animation is tessellated at.
+        /// Larger draws are tessellated at this size and scaled up on the mesh copy,
+        /// so an accidentally huge rect degrades sharpness instead of frame rate.
+        /// Set to 0 to disable the clamp.
+        /// </summary>
+        public static float maxRenderSize = 1024f;
 
         sealed class CacheEntry
         {
@@ -87,14 +96,12 @@ namespace NowUIInternal
 
             public bool preserveAspect;
 
-            public Vector4 tint;
-
             public readonly NowLottieDrawBuffer buffer = new NowLottieDrawBuffer();
 
             public int stamp = -1;
         }
 
-        const int CACHE_SIZE = 8;
+        const int CACHE_SIZE = 16;
 
         static readonly CacheEntry[] _cache = CreateCache();
 
@@ -111,18 +118,17 @@ namespace NowUIInternal
         }
 
         /// <summary>
-        /// Returns a tessellated buffer for the requested frame, reusing a cached one
-        /// when an identical draw happened recently. The buffer is built at origin —
-        /// offset it when appending to a mesh. The returned buffer is owned by the
-        /// cache and only valid until the next RenderCached call.
+        /// Returns a tessellated buffer for the requested frame (untinted, built at
+        /// origin — offset/scale/tint it when appending to a mesh), reusing a cached
+        /// one when an identical draw happened recently. The returned buffer is owned
+        /// by the cache and only valid until the next RenderCached call.
         /// </summary>
         public static NowLottieDrawBuffer RenderCached(
             NowLottieComposition composition,
             float frame,
             float width,
             float height,
-            bool preserveAspect,
-            Vector4 tint)
+            bool preserveAspect)
         {
             ++_cacheStamp;
 
@@ -137,8 +143,7 @@ namespace NowUIInternal
                     entry.frame == frame &&
                     entry.width == width &&
                     entry.height == height &&
-                    entry.preserveAspect == preserveAspect &&
-                    entry.tint == tint)
+                    entry.preserveAspect == preserveAspect)
                 {
                     entry.stamp = _cacheStamp;
                     return entry.buffer;
@@ -153,10 +158,9 @@ namespace NowUIInternal
             oldest.width = width;
             oldest.height = height;
             oldest.preserveAspect = preserveAspect;
-            oldest.tint = tint;
             oldest.stamp = _cacheStamp;
 
-            Render(composition, frame, new Vector4(0f, 0f, width, height), preserveAspect, tint, oldest.buffer);
+            Render(composition, frame, new Vector4(0f, 0f, width, height), preserveAspect, Vector4.one, oldest.buffer);
             return oldest.buffer;
         }
 
