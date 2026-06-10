@@ -467,6 +467,61 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void LottieWithoutAssetAllocatesNothing()
+    {
+        NowLayout.Area(new Vector4(0, 0, 400, 300));
+
+        NowLayout.Lottie(null).Draw();
+        Vector4 below = NowLayout.Rect(50, 30);
+
+        NowLayout.EndArea();
+
+        Assert.AreEqual(0f, below.y, 0.001f);
+    }
+
+    [Test]
+    public void LottieUsesNativeSizeAndDerivesAspect()
+    {
+        var asset = ScriptableObject.CreateInstance<NowLottieAsset>();
+
+        try
+        {
+            asset.SetSource("{\"v\":\"5.5.7\",\"fr\":30,\"ip\":0,\"op\":60,\"w\":200,\"h\":100,\"layers\":[]}");
+
+            NowLayout.Area(new Vector4(0, 0, 400, 300));
+
+            var native = NowLayout.Lottie(asset).Reserve();
+            var halfWidth = NowLayout.Lottie(asset).SetWidth(100).Reserve();
+            var fixedHeight = NowLayout.Lottie(asset).SetHeight(25).Reserve();
+
+            NowLayout.EndArea();
+
+            AssertRect(new Vector4(0, 0, 200, 100), native.rect);
+            Assert.AreEqual(50f, halfWidth.height, 0.001f, "height should follow the animation's aspect ratio");
+            Assert.AreEqual(50f, fixedHeight.width, 0.001f, "width should follow the animation's aspect ratio");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(asset);
+        }
+    }
+
+    [Test]
+    public void LottieReserveThenDrawConsumesNoExtraSpace()
+    {
+        NowLayout.Area(new Vector4(0, 0, 400, 300));
+
+        var lottie = NowLayout.Lottie(null).SetLayoutSize(60, 40).Reserve();
+        lottie.Draw();
+        Vector4 below = NowLayout.Rect(10, 10);
+
+        NowLayout.EndArea();
+
+        AssertRect(new Vector4(0, 0, 60, 40), lottie.rect);
+        Assert.AreEqual(40f, below.y, 0.001f);
+    }
+
+    [Test]
     public void RectOutsideAreaThrows()
     {
         Assert.Throws<InvalidOperationException>(() => NowLayout.Rect(10, 10));

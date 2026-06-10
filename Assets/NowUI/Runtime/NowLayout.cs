@@ -448,6 +448,197 @@ namespace NowUI
     }
 
     /// <summary>
+    /// Fluent Lottie builder returned by <see cref="NowLayout.Lottie(NowLottieAsset)"/>.
+    /// Nothing happens until <see cref="Draw()"/> is called. Sized to the animation's
+    /// native dimensions by default; fixing exactly one dimension derives the other
+    /// from the animation's aspect ratio.
+    /// </summary>
+    public struct NowLottie
+    {
+        NowUILottie _style;
+
+        NowLayoutOptions _options;
+
+        NowRect _rect;
+
+        bool _reserved;
+
+        internal NowLottie(NowUILottie style, NowLayoutOptions options)
+        {
+            _style = style;
+            _options = options;
+            _rect = default;
+            _reserved = false;
+        }
+
+        /// <summary>Layout rect allocated by <see cref="Reserve"/>. Throws if the animation has not been reserved.</summary>
+        public NowRect rect
+        {
+            get
+            {
+                if (!_reserved)
+                    throw new InvalidOperationException("Call Reserve() before reading the animation rect.");
+
+                return _rect;
+            }
+        }
+
+        public float x => rect.x;
+
+        public float y => rect.y;
+
+        public float width => rect.width;
+
+        public float height => rect.height;
+
+        public NowLottie SetTime(float seconds)
+        {
+            _style = _style.SetTime(seconds);
+            return this;
+        }
+
+        public NowLottie SetNormalizedTime(float normalizedTime)
+        {
+            _style = _style.SetNormalizedTime(normalizedTime);
+            return this;
+        }
+
+        public NowLottie SetFrame(float frame)
+        {
+            _style = _style.SetFrame(frame);
+            return this;
+        }
+
+        public NowLottie SetLoop(bool loop)
+        {
+            _style = _style.SetLoop(loop);
+            return this;
+        }
+
+        public NowLottie SetPreserveAspect(bool preserveAspect)
+        {
+            _style = _style.SetPreserveAspect(preserveAspect);
+            return this;
+        }
+
+        public NowLottie SetPlaybackFrameRate(float framesPerSecond)
+        {
+            _style = _style.SetPlaybackFrameRate(framesPerSecond);
+            return this;
+        }
+
+        public NowLottie SetColor(Color color)
+        {
+            _style = _style.SetColor(color);
+            return this;
+        }
+
+        public NowLottie SetColor(Vector4 color)
+        {
+            _style = _style.SetColor(color);
+            return this;
+        }
+
+        /// <summary>Replaces all layout options at once.</summary>
+        public NowLottie SetOptions(NowLayoutOptions options)
+        {
+            _options = options;
+            return this;
+        }
+
+        public NowLottie SetWidth(float width)
+        {
+            _options = _options.SetWidth(width);
+            return this;
+        }
+
+        public NowLottie SetHeight(float height)
+        {
+            _options = _options.SetHeight(height);
+            return this;
+        }
+
+        public NowLottie SetLayoutSize(float width, float height)
+        {
+            _options = _options.SetSize(width, height);
+            return this;
+        }
+
+        public NowLottie SetMinWidth(float minWidth)
+        {
+            _options = _options.SetMinWidth(minWidth);
+            return this;
+        }
+
+        public NowLottie SetMaxWidth(float maxWidth)
+        {
+            _options = _options.SetMaxWidth(maxWidth);
+            return this;
+        }
+
+        public NowLottie SetMinHeight(float minHeight)
+        {
+            _options = _options.SetMinHeight(minHeight);
+            return this;
+        }
+
+        public NowLottie SetMaxHeight(float maxHeight)
+        {
+            _options = _options.SetMaxHeight(maxHeight);
+            return this;
+        }
+
+        public NowLottie SetStretchWidth(float weight = 1f)
+        {
+            _options = _options.SetStretchWidth(weight);
+            return this;
+        }
+
+        public NowLottie SetStretchHeight(float weight = 1f)
+        {
+            _options = _options.SetStretchHeight(weight);
+            return this;
+        }
+
+        public NowLottie SetAlign(NowLayoutAlign align)
+        {
+            _options = _options.SetAlign(align);
+            return this;
+        }
+
+        /// <summary>Content size before allocation: the native animation size, aspect-adjusted by fixed options.</summary>
+        public Vector2 Measure()
+        {
+            return NowLayout.LottieAutoSize(_style, _options);
+        }
+
+        /// <summary>Allocates the layout rect without drawing and stores it in <see cref="rect"/>.</summary>
+        public NowLottie Reserve()
+        {
+            _rect = NowLayout.ReserveLottie(_style, _options);
+            _reserved = true;
+            return this;
+        }
+
+        /// <summary>Draws the animation into an explicit rect, consuming no layout space.</summary>
+        public NowUILottie Draw(NowRect rect)
+        {
+            return NowLayout.DrawLottieAt(_style, rect);
+        }
+
+        /// <summary>
+        /// Draws the animation. A reserved animation renders into its <see cref="rect"/>;
+        /// otherwise this allocates at the current layout position.
+        /// </summary>
+        public NowUILottie Draw()
+        {
+            return _reserved
+                ? NowLayout.DrawLottieAt(_style, _rect)
+                : NowLayout.DrawLottieAt(_style, NowLayout.ReserveLottie(_style, _options));
+        }
+    }
+
+    /// <summary>
     /// Immediate-mode automatic layout for NowUI, similar in spirit to GUILayout.
     /// Open an area over a screen rect, nest horizontal/vertical groups, and request
     /// rects that are stacked automatically with spacing, padding, stretching and
@@ -856,6 +1047,60 @@ namespace NowUI
         public static NowLabel Label(NowUIText style, string value, NowLayoutOptions options)
         {
             return new NowLabel(style, value, options);
+        }
+
+        /// <summary>
+        /// Starts a Lottie builder sized to the animation's native dimensions;
+        /// nothing is allocated or drawn until <see cref="NowLottie.Draw()"/>:
+        /// <c>NowLayout.Lottie(spinner).SetHeight(32).Draw();</c>
+        /// </summary>
+        public static NowLottie Lottie(NowLottieAsset asset)
+        {
+            return new NowLottie(Now.Lottie(default, asset), default);
+        }
+
+        public static NowLottie Lottie(NowLottieAsset asset, NowLayoutOptions options)
+        {
+            return new NowLottie(Now.Lottie(default, asset), options);
+        }
+
+        /// <summary>Allocates layout space for an animation without drawing it.</summary>
+        internal static NowRect ReserveLottie(in NowUILottie style, NowLayoutOptions options)
+        {
+            ref var group = ref RequireGroup();
+            return Allocate(ref group, options, LottieAutoSize(style, options), false, out _, out _);
+        }
+
+        /// <summary>Draws an animation into an already-reserved rect, consuming no layout space.</summary>
+        internal static NowUILottie DrawLottieAt(NowUILottie style, NowRect rect)
+        {
+            return style
+                .SetPosition(rect)
+                .SetMask(rect)
+                .Draw();
+        }
+
+        /// <summary>
+        /// Native animation size; with exactly one fixed dimension the other is
+        /// derived from the animation's aspect ratio.
+        /// </summary>
+        internal static Vector2 LottieAutoSize(in NowUILottie style, in NowLayoutOptions options)
+        {
+            var asset = style.asset;
+
+            if (asset == null || asset.width <= 0f || asset.height <= 0f)
+                return default;
+
+            bool hasWidth = options.Has(NowLayoutOptions.Field.Width);
+            bool hasHeight = options.Has(NowLayoutOptions.Field.Height);
+
+            if (hasWidth && !hasHeight)
+                return new Vector2(asset.width, options.width * asset.height / asset.width);
+
+            if (hasHeight && !hasWidth)
+                return new Vector2(options.height * asset.width / asset.height, asset.height);
+
+            return new Vector2(asset.width, asset.height);
         }
 
         /// <summary>Measures, allocates and draws a label at the current layout position.</summary>
