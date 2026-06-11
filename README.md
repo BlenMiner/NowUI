@@ -156,6 +156,7 @@ changes its bundled toolchain.
 
 ## License
 
-GPLv3 — see [LICENSE](LICENSE). Third-party notices for the native plugins are
-in
+Not yet licensed — all rights reserved while distribution (Asset Store or an
+open-source license) is being decided. Third-party notices for the native
+plugins are in
 [Assets/NowUI/THIRD_PARTY_LICENSES.md](Assets/NowUI/THIRD_PARTY_LICENSES.md).

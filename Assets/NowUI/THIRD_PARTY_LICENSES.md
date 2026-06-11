@@ -50,4 +50,5 @@ https://gitlab.freedesktop.org/freetype/freetype/-/blob/master/docs/FTL.TXT
 
 FreeType is built through vcpkg with its default features, which may link
 zlib (zlib license), libpng (libpng license), bzip2 (BSD-style), and Brotli
-(MIT). All are permissive licenses compatible with this project's license.
+(MIT). All are permissive licenses compatible with commercial and open-source
+distribution alike.
