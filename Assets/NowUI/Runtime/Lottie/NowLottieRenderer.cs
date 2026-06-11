@@ -720,6 +720,14 @@ namespace NowUI.Internal
                 return;
             }
 
+            // Burst port of the scalar tessellator below; trim paths splice polylines
+            // on the managed side, so they keep using the scalar route.
+            if (!trim.active &&
+                NowLottieBurstTessellator.TryFill(contours, clipPolylines, clipInvert, evenOdd, paint, buffer, AA_WIDTH, gradientSpan, FLATTEN_TOLERANCE))
+            {
+                return;
+            }
+
             var polylines = GetPolylineList();
             NowLottieTessellator.FlattenPackedContours(contours, FLATTEN_TOLERANCE, polylines);
 
@@ -786,6 +794,14 @@ namespace NowUI.Internal
             if (_useNative)
             {
                 NowLottieNative.Stroke(contours, clipSet, clipInvert, paint, width, cap, join, trim);
+                return;
+            }
+
+            // Burst port of the scalar stroke below; trim and matte-clipped strokes
+            // splice polylines on the managed side, so they keep the scalar route.
+            if (!trim.active && clipPolylines == null &&
+                NowLottieBurstTessellator.TryStroke(contours, width, cap, join, paint, buffer, AA_WIDTH, FLATTEN_TOLERANCE))
+            {
                 return;
             }
 

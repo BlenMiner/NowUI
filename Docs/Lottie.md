@@ -80,5 +80,10 @@ a `RectTransform` like any other graphic.
   tessellator for profiling comparisons. Platforms without the native plugin
   fall back automatically, except WebGL and iOS where the plugin links
   statically and must be present at build time.
+- The managed fallback runs fills and strokes through Burst-compiled jobs
+  (`NowLottieBurstTessellator`) with output identical to the scalar
+  tessellator; trim paths and matte-clipped strokes use the scalar route.
+  Editor timings show parity with the scalar path (editor collection safety
+  checks mask the SIMD gains); player builds compile those checks out.
 - Emoji sequence shaping and image layers are not supported; animations using
   unsupported features render their supported subset.

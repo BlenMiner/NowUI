@@ -34,3 +34,9 @@ point it became installable through UPM.
   the native plugin (and via `NowFontCompiler.forceManagedCompiler`), so text
   renders on every Unity platform. TrueType outlines only; CFF and color
   emoji fonts still require the native compiler.
+- Burst-compiled managed Lottie tessellation: fills and strokes on the
+  managed fallback path run as Burst jobs with output identical to the
+  scalar tessellator (verified element-by-element in tests). Trim paths and
+  matte-clipped strokes keep the scalar route.
+- Play-mode rendering test suite reading back real rendered pixels for
+  rectangles, text (both font compilers), Lottie, and the GL camera path.
