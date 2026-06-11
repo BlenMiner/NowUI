@@ -18,8 +18,11 @@
 #include <msdfgen-ext.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
-#include <hb.h>
 #include <cstdint>
+
+#ifndef NOWUI_MSDF_NO_SHAPING
+#include <hb.h>
+#endif
 #include <msdf-atlas-gen/BitmapAtlasStorage.h>
 #include <msdf-atlas-gen/Charset.h>
 #include <msdf-atlas-gen/FontGeometry.h>
@@ -54,6 +57,7 @@ std::string to_string(T value) {
     return stream.str();
 }
 
+#ifndef NOWUI_MSDF_NO_SHAPING
 /* Owns the HarfBuzz objects for one font; see nowui_shaper_create. */
 struct NowUIShaperState {
     std::vector<unsigned char> data;
@@ -74,6 +78,7 @@ struct NowUIShaperState {
             hb_blob_destroy(blob);
     }
 };
+#endif
 
 class FreetypeLibrary {
 public:
@@ -1196,6 +1201,55 @@ void nowui_msdf_session_destroy(void *session) {
     delete static_cast<NowUIMsdfSessionState *>(session);
 }
 
+#ifdef NOWUI_MSDF_NO_SHAPING
+
+/* Shaping was not compiled into this build; the exports stay present so the
+ * managed bindings get a clean error instead of EntryPointNotFoundException. */
+
+int nowui_shaper_create(
+    const unsigned char *font_data,
+    int font_data_length,
+    void **out_shaper,
+    char *error_buffer,
+    int error_buffer_length) {
+    (void)font_data;
+    (void)font_data_length;
+
+    if (out_shaper)
+        *out_shaper = nullptr;
+
+    set_error(error_buffer, error_buffer_length, "Shaping support was not compiled into this nowui-msdf build.");
+    return NOWUI_MSDF_ERROR;
+}
+
+int nowui_shaper_shape_utf16(
+    void *shaper_handle,
+    const unsigned short *text,
+    int text_length,
+    NowUIShapedGlyph *glyphs,
+    int glyph_capacity,
+    int *out_glyph_count,
+    char *error_buffer,
+    int error_buffer_length) {
+    (void)shaper_handle;
+    (void)text;
+    (void)text_length;
+    (void)glyphs;
+    (void)glyph_capacity;
+
+    if (out_glyph_count)
+        *out_glyph_count = 0;
+
+    set_error(error_buffer, error_buffer_length, "Shaping support was not compiled into this nowui-msdf build.");
+    return NOWUI_MSDF_ERROR;
+}
+
+void nowui_shaper_destroy(void *shaper) {
+    (void)shaper;
+}
+
+#else
+
 int nowui_shaper_create(
     const unsigned char *font_data,
     int font_data_length,
@@ -1318,6 +1372,8 @@ int nowui_shaper_shape_utf16(
 void nowui_shaper_destroy(void *shaper) {
     delete static_cast<NowUIShaperState *>(shaper);
 }
+
+#endif /* NOWUI_MSDF_NO_SHAPING */
 
 const char *nowui_msdf_version() {
     return "nowui-msdf/4";

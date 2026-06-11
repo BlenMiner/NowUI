@@ -5,9 +5,15 @@ project(nowui_msdf LANGUAGES CXX)
 find_package(Threads REQUIRED)
 find_package(msdf-atlas-gen CONFIG REQUIRED)
 find_package(Freetype REQUIRED)
-find_package(harfbuzz CONFIG REQUIRED)
 
 option(NOWUI_MSDF_DISABLE_FILE_API "Disable path/PNG/JSON based compiler entry point." ON)
+
+# HarfBuzz is embedded via its officially supported amalgamated build (a single
+# translation unit) instead of a package dependency: identical on every
+# platform, pinned by git tag in CI, and HB_NO_MT keeps it free of the atomics
+# requirements that break Emscripten linking. Leave the directory empty to
+# build without shaping support (the exports then return a clean error).
+set(NOWUI_HARFBUZZ_DIR "" CACHE PATH "Path to a HarfBuzz source checkout for the amalgamated build.")
 
 set(NOWUI_MSDF_LIBRARY_TYPE SHARED)
 if(EMSCRIPTEN)
@@ -19,13 +25,26 @@ if(IOS)
     set(NOWUI_MSDF_LIBRARY_TYPE STATIC)
 endif()
 
-add_library(nowui-msdf ${NOWUI_MSDF_LIBRARY_TYPE}
+set(NOWUI_MSDF_SOURCES
     nowui_msdf.cpp
     nowui_msdf.h
 )
 
+if(NOWUI_HARFBUZZ_DIR)
+    list(APPEND NOWUI_MSDF_SOURCES "${NOWUI_HARFBUZZ_DIR}/src/harfbuzz.cc")
+endif()
+
+add_library(nowui-msdf ${NOWUI_MSDF_LIBRARY_TYPE} ${NOWUI_MSDF_SOURCES})
+
 target_compile_features(nowui-msdf PRIVATE cxx_std_11)
-target_link_libraries(nowui-msdf PRIVATE msdf-atlas-gen::msdf-atlas-gen Freetype::Freetype harfbuzz::harfbuzz)
+target_link_libraries(nowui-msdf PRIVATE msdf-atlas-gen::msdf-atlas-gen Freetype::Freetype)
+
+if(NOWUI_HARFBUZZ_DIR)
+    target_include_directories(nowui-msdf PRIVATE "${NOWUI_HARFBUZZ_DIR}/src")
+    target_compile_definitions(nowui-msdf PRIVATE HB_NO_MT)
+else()
+    target_compile_definitions(nowui-msdf PRIVATE NOWUI_MSDF_NO_SHAPING)
+endif()
 
 if(NOWUI_MSDF_DISABLE_FILE_API)
     target_compile_definitions(nowui-msdf PRIVATE NOWUI_MSDF_DISABLE_FILE_API)
