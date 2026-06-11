@@ -16,7 +16,7 @@ Install as a UPM package via git URL (Window > Package Manager > `+` >
 *Install package from git URL*):
 
 ```text
-https://github.com/BlenMiner/Now-UI.git?path=Assets/NowUI
+https://github.com/BlenMiner/NowUI.git?path=Assets/NowUI
 ```
 
 Or clone the repository and open it as a Unity project to work on Now-UI
