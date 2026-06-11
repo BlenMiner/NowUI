@@ -612,8 +612,12 @@ jobs:
           mkdir -p "$PLUGIN_DIR"
 
           # Merge the wrapper with every static dependency into one archive so
-          # Unity's Xcode project only has to link a single library.
-          mapfile -t archives < <(find "$NOWUI_MSDF_INSTALL_DIR/lib" "$INSTALL_DIR/lib" "$VCPKG_INSTALLED_DIR/arm64-ios/lib" \
+          # Unity's Xcode project only has to link a single library. macOS ships
+          # bash 3.2, which has no mapfile, so collect with a read loop instead.
+          archives=()
+          while IFS= read -r archive; do
+            archives+=("$archive")
+          done < <(find "$NOWUI_MSDF_INSTALL_DIR/lib" "$INSTALL_DIR/lib" "$VCPKG_INSTALLED_DIR/arm64-ios/lib" \
             -maxdepth 1 -type f -name '*.a' \
             | sort)
 
