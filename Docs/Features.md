@@ -353,6 +353,15 @@ including emoji and other non-ASCII codepoints.
 The generated `NowFont` stores the source font bytes directly and does not keep
 a reference to the original `.ttf` asset or create a baked atlas texture subasset.
 
+Glyph baking prefers the native `nowui-msdf` plugin and falls back to a managed
+compiler (pure-C# TrueType parsing plus a Burst-compiled SDF rasterizer) on
+platforms without native binaries — set `NowFontCompiler.forceManagedCompiler`
+to exercise that path anywhere. The managed compiler handles TrueType (glyf)
+fonts; CFF-flavored OpenType and color emoji fonts still require the native
+plugin. Managed output is a single-channel SDF, which renders through the same
+shader and materials (the shader's `median(r, g, b)` resolves it unchanged) at
+the cost of slightly rounded corners at extreme magnification.
+
 ## Example Scenes And Scripts
 
 Current example scripts live under `Assets/NowUI/Example`.

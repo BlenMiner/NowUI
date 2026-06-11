@@ -64,11 +64,14 @@ additional touches from the input device directly if you need them.
 | Lottie native tessellation (`nowui-vg`) | Shipped, dynamic `.so` | Shipped, static `.a` |
 
 iOS links plugins statically (`__Internal`), so the `.a` files must be present
-when building; on Android a missing `nowui-vg` falls back to the managed
-tessellator, and font compilation requires the plugin. Binaries are produced
-by the `Build Native Libraries` workflow, which also commits Unity `.meta`
-files with the correct platform import settings. 32-bit Android (armeabi-v7a)
-is not currently built.
+when building. On every other platform a missing plugin degrades gracefully:
+Lottie falls back to a managed tessellator, and font compilation falls back to
+the managed Burst-compiled SDF compiler — so consoles and other platforms
+without prebuilt binaries still render text and animation. The managed font
+path covers TrueType (glyf) fonts; CFF outlines and color emoji need native.
+Binaries are produced by the `Build Native Libraries` workflow, which also
+commits Unity `.meta` files with the correct platform import settings. 32-bit
+Android (armeabi-v7a) is not currently built.
 
 ## Practical notes
 

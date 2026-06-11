@@ -1,3 +1,4 @@
+using NowUI.Internal;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -8,6 +9,14 @@ namespace NowUI
 {
     public static class NowFontCompiler
     {
+        /// <summary>
+        /// Forces the managed font compiler even when the native plugin is present.
+        /// Intended for profiling comparisons and for testing the fallback path that
+        /// platforms without native binaries use automatically. Color fonts and CFF
+        /// outlines still require the native compiler.
+        /// </summary>
+        public static bool forceManagedCompiler;
+
         const int ATLAS_SIZE = 64;
         const int PIXEL_RANGE = 16;
         const int ERROR_CAPACITY = 4096;
@@ -198,14 +207,15 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Stateful incremental baking session backed by the native plugin. Keeps the parsed
-        /// font and a fixed-size atlas alive across calls, so adding glyphs on demand costs
-        /// only the SDF generation of the new glyphs instead of a full font re-parse per
-        /// request. The atlas never resizes, so glyph atlas coordinates and the page texture
-        /// stay valid for retained meshes; when the atlas is full, AddResult.AtlasFull tells
-        /// the caller to seal the page and start a new session.
-        /// Throws DllNotFoundException/EntryPointNotFoundException on creation when the native
-        /// plugin predates the session API; callers fall back to the per-page compiler.
+        /// Stateful incremental baking session. Keeps the parsed font and a fixed-size
+        /// atlas alive across calls, so adding glyphs on demand costs only the SDF
+        /// generation of the new glyphs instead of a full font re-parse per request.
+        /// The atlas never resizes, so glyph atlas coordinates and the page texture
+        /// stay valid for retained meshes; when the atlas is full, AddResult.AtlasFull
+        /// tells the caller to seal the page and start a new session.
+        /// Prefers the native plugin and transparently falls back to the managed
+        /// compiler (<see cref="NowManagedFontSession"/>) when the plugin is missing
+        /// for the platform or <see cref="forceManagedCompiler"/> is set.
         /// </summary>
         internal sealed class DynamicSession : IDisposable
         {
@@ -217,6 +227,7 @@ namespace NowUI
             }
 
             IntPtr _handle;
+            readonly NowManagedFontSession _managed;
             NativeGlyph[] _glyphScratch;
             readonly byte[] _errorBuffer = new byte[ERROR_CAPACITY];
 
@@ -225,6 +236,9 @@ namespace NowUI
             public float DistanceRange { get; }
             public NowFontAtlasInfo.Metrics Metrics { get; }
 
+            /// <summary>True when this session bakes through the managed fallback compiler.</summary>
+            public bool isManaged => _managed != null;
+
             DynamicSession(IntPtr handle, int atlasSide, in NativeSessionInfo info)
             {
                 _handle = handle;
@@ -232,6 +246,15 @@ namespace NowUI
                 Size = info.size;
                 DistanceRange = info.distanceRange;
                 Metrics = ToMetrics(info.metrics);
+            }
+
+            DynamicSession(NowManagedFontSession managed)
+            {
+                _managed = managed;
+                AtlasSide = managed.AtlasSide;
+                Size = managed.Size;
+                DistanceRange = managed.DistanceRange;
+                Metrics = managed.Metrics;
             }
 
             ~DynamicSession()
@@ -248,6 +271,34 @@ namespace NowUI
                     error = "Font data is empty.";
                     return false;
                 }
+
+                if (!forceManagedCompiler)
+                {
+                    try
+                    {
+                        return TryCreateNative(fontData, size, pixelRange, atlasSide, out session, out error);
+                    }
+                    catch (DllNotFoundException)
+                    {
+                    }
+                    catch (EntryPointNotFoundException)
+                    {
+                    }
+                    catch (BadImageFormatException)
+                    {
+                    }
+                }
+
+                if (!NowManagedFontSession.TryCreate(fontData, size, pixelRange, atlasSide, out var managed, out error))
+                    return false;
+
+                session = new DynamicSession(managed);
+                return true;
+            }
+
+            static bool TryCreateNative(byte[] fontData, int size, int pixelRange, int atlasSide, out DynamicSession session, out string error)
+            {
+                session = null;
 
                 var errorBuffer = new byte[ERROR_CAPACITY];
                 NativeSessionInfo info = default;
@@ -276,6 +327,9 @@ namespace NowUI
 
             public AddResult TryAddGlyphs(int[] codepoints, int codepointCount, List<NowFontAtlasInfo.Glyph> results, out string error)
             {
+                if (_managed != null)
+                    return _managed.TryAddGlyphs(codepoints, codepointCount, results, out error);
+
                 if (_handle == IntPtr.Zero)
                 {
                     error = "The baking session has been disposed.";
@@ -326,6 +380,9 @@ namespace NowUI
 
             public bool TryCopyAtlas(ref byte[] buffer, out string error)
             {
+                if (_managed != null)
+                    return _managed.TryCopyAtlas(ref buffer, out error);
+
                 if (_handle == IntPtr.Zero)
                 {
                     error = "The baking session has been disposed.";
@@ -359,6 +416,7 @@ namespace NowUI
 
             public void Dispose()
             {
+                _managed?.Dispose();
                 ReleaseHandle();
                 GC.SuppressFinalize(this);
             }

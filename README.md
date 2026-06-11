@@ -115,12 +115,14 @@ tessellator) are prebuilt and committed under `Assets/NowUI/Plugins`:
 | Android arm64-v8a | native | native |
 | iOS arm64 | native (static) | native (static) |
 | WebGL | native (static) | native (static) |
-| Other platforms | pre-bake fonts in editor | managed fallback |
+| Everything else (consoles, tvOS, ...) | managed fallback (Burst) | managed fallback |
 
-WebGL and iOS link statically, so those plugin files must be present at build
-time. Everywhere else a missing plugin degrades gracefully: Lottie falls back
-to a managed tessellator, and editor-compiled fonts keep working without
-runtime compilation.
+Native plugins are a performance upgrade, never a requirement: on platforms
+without binaries, fonts bake through a Burst-compiled managed SDF compiler and
+Lottie falls back to a managed tessellator, so NowUI runs anywhere Unity does.
+The managed font fallback covers TrueType (glyf) outlines; CFF-flavored
+OpenType and color emoji fonts still need the native compiler. WebGL and iOS
+link the plugins statically, so those files must be present at build time.
 
 ## Native plugin CI
 

@@ -29,3 +29,8 @@ point it became installable through UPM.
 - Native plugins (font compiler + vector tessellator) for Windows x64,
   Linux x64, macOS x64/arm64, WebGL, Android arm64-v8a, and iOS arm64, built
   by a single auto-triggering CI workflow.
+- Managed font compiler fallback: a pure-C# TrueType parser plus a
+  Burst-compiled SDF baker that activates automatically on platforms without
+  the native plugin (and via `NowFontCompiler.forceManagedCompiler`), so text
+  renders on every Unity platform. TrueType outlines only; CFF and color
+  emoji fonts still require the native compiler.
