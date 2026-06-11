@@ -202,6 +202,41 @@ NOWUI_MSDF_EXPORT int nowui_msdf_session_copy_atlas(
 
 NOWUI_MSDF_EXPORT void nowui_msdf_session_destroy(void *session);
 
+/* HarfBuzz text shaping. Standalone handles, independent of baking sessions, so
+ * shaping composes with both the native and the managed glyph bakers. Shaped
+ * output is glyph indices with positions in em units and UTF-16 cluster mapping. */
+
+typedef struct NowUIShapedGlyph {
+    unsigned int glyph_index;
+    unsigned int cluster;  /* UTF-16 code unit index into the input text */
+    float x_advance;       /* em units (font units / unitsPerEm) */
+    float y_advance;
+    float x_offset;
+    float y_offset;
+} NowUIShapedGlyph;
+
+NOWUI_MSDF_EXPORT int nowui_shaper_create(
+    const unsigned char *font_data,
+    int font_data_length,
+    void **out_shaper,
+    char *error_buffer,
+    int error_buffer_length);
+
+/* Shapes a UTF-16 run. Direction/script/language are inferred from the text.
+ * Returns NOWUI_MSDF_BUFFER_TOO_SMALL with out_glyph_count set to the required
+ * capacity when the output array cannot hold the shaped result. */
+NOWUI_MSDF_EXPORT int nowui_shaper_shape_utf16(
+    void *shaper,
+    const unsigned short *text,
+    int text_length,
+    NowUIShapedGlyph *glyphs,
+    int glyph_capacity,
+    int *out_glyph_count,
+    char *error_buffer,
+    int error_buffer_length);
+
+NOWUI_MSDF_EXPORT void nowui_shaper_destroy(void *shaper);
+
 NOWUI_MSDF_EXPORT const char *nowui_msdf_version();
 
 }

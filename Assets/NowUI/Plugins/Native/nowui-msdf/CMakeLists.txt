@@ -5,6 +5,7 @@ project(nowui_msdf LANGUAGES CXX)
 find_package(Threads REQUIRED)
 find_package(msdf-atlas-gen CONFIG REQUIRED)
 find_package(Freetype REQUIRED)
+find_package(harfbuzz CONFIG REQUIRED)
 
 option(NOWUI_MSDF_DISABLE_FILE_API "Disable path/PNG/JSON based compiler entry point." ON)
 
@@ -24,7 +25,7 @@ add_library(nowui-msdf ${NOWUI_MSDF_LIBRARY_TYPE}
 )
 
 target_compile_features(nowui-msdf PRIVATE cxx_std_11)
-target_link_libraries(nowui-msdf PRIVATE msdf-atlas-gen::msdf-atlas-gen Freetype::Freetype)
+target_link_libraries(nowui-msdf PRIVATE msdf-atlas-gen::msdf-atlas-gen Freetype::Freetype harfbuzz::harfbuzz)
 
 if(NOWUI_MSDF_DISABLE_FILE_API)
     target_compile_definitions(nowui-msdf PRIVATE NOWUI_MSDF_DISABLE_FILE_API)

@@ -18,6 +18,8 @@
 #include <msdfgen-ext.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include <hb.h>
+#include <cstdint>
 #include <msdf-atlas-gen/BitmapAtlasStorage.h>
 #include <msdf-atlas-gen/Charset.h>
 #include <msdf-atlas-gen/FontGeometry.h>
@@ -51,6 +53,27 @@ std::string to_string(T value) {
     stream << value;
     return stream.str();
 }
+
+/* Owns the HarfBuzz objects for one font; see nowui_shaper_create. */
+struct NowUIShaperState {
+    std::vector<unsigned char> data;
+    hb_blob_t *blob = nullptr;
+    hb_face_t *face = nullptr;
+    hb_font_t *font = nullptr;
+    hb_buffer_t *buffer = nullptr;
+    unsigned int upem = 0;
+
+    ~NowUIShaperState() {
+        if (buffer)
+            hb_buffer_destroy(buffer);
+        if (font)
+            hb_font_destroy(font);
+        if (face)
+            hb_face_destroy(face);
+        if (blob)
+            hb_blob_destroy(blob);
+    }
+};
 
 class FreetypeLibrary {
 public:
@@ -1173,8 +1196,131 @@ void nowui_msdf_session_destroy(void *session) {
     delete static_cast<NowUIMsdfSessionState *>(session);
 }
 
+int nowui_shaper_create(
+    const unsigned char *font_data,
+    int font_data_length,
+    void **out_shaper,
+    char *error_buffer,
+    int error_buffer_length) {
+    if (out_shaper)
+        *out_shaper = nullptr;
+
+    try {
+        if (!font_data || font_data_length <= 0 || !out_shaper) {
+            set_error(error_buffer, error_buffer_length, "Shaper arguments are invalid.");
+            return NOWUI_MSDF_ERROR;
+        }
+
+        std::unique_ptr<NowUIShaperState> shaper(new NowUIShaperState());
+
+        // Own a copy: the managed caller's array is only pinned for this call.
+        shaper->data.assign(font_data, font_data + font_data_length);
+        shaper->blob = hb_blob_create(
+            reinterpret_cast<const char *>(shaper->data.data()),
+            static_cast<unsigned int>(font_data_length),
+            HB_MEMORY_MODE_READONLY,
+            nullptr,
+            nullptr);
+        shaper->face = hb_face_create(shaper->blob, 0);
+
+        if (!shaper->face || hb_face_get_glyph_count(shaper->face) == 0) {
+            set_error(error_buffer, error_buffer_length, "HarfBuzz could not parse the font.");
+            return NOWUI_MSDF_ERROR;
+        }
+
+        shaper->upem = hb_face_get_upem(shaper->face);
+
+        if (shaper->upem == 0)
+            shaper->upem = 1000;
+
+        shaper->font = hb_font_create(shaper->face);
+        hb_font_set_scale(
+            shaper->font,
+            static_cast<int>(shaper->upem),
+            static_cast<int>(shaper->upem));
+        shaper->buffer = hb_buffer_create();
+
+        *out_shaper = shaper.release();
+        set_error(error_buffer, error_buffer_length, std::string());
+        return NOWUI_MSDF_OK;
+    } catch (const std::exception &ex) {
+        set_error(error_buffer, error_buffer_length, ex.what());
+    } catch (...) {
+        set_error(error_buffer, error_buffer_length, "Unknown native shaper error.");
+    }
+
+    return NOWUI_MSDF_ERROR;
+}
+
+int nowui_shaper_shape_utf16(
+    void *shaper_handle,
+    const unsigned short *text,
+    int text_length,
+    NowUIShapedGlyph *glyphs,
+    int glyph_capacity,
+    int *out_glyph_count,
+    char *error_buffer,
+    int error_buffer_length) {
+    if (out_glyph_count)
+        *out_glyph_count = 0;
+
+    try {
+        auto *shaper = static_cast<NowUIShaperState *>(shaper_handle);
+
+        if (!shaper || !text || text_length <= 0 || !out_glyph_count) {
+            set_error(error_buffer, error_buffer_length, "Shape arguments are invalid.");
+            return NOWUI_MSDF_ERROR;
+        }
+
+        hb_buffer_t *buffer = shaper->buffer;
+        hb_buffer_reset(buffer);
+        hb_buffer_add_utf16(
+            buffer,
+            reinterpret_cast<const uint16_t *>(text),
+            text_length,
+            0,
+            text_length);
+        hb_buffer_guess_segment_properties(buffer);
+        hb_shape(shaper->font, buffer, nullptr, 0);
+
+        unsigned int count = hb_buffer_get_length(buffer);
+        *out_glyph_count = static_cast<int>(count);
+
+        if (!glyphs || static_cast<int>(count) > glyph_capacity) {
+            set_error(error_buffer, error_buffer_length, std::string());
+            return NOWUI_MSDF_BUFFER_TOO_SMALL;
+        }
+
+        const hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer, nullptr);
+        const hb_glyph_position_t *positions = hb_buffer_get_glyph_positions(buffer, nullptr);
+        const float inverse_upem = 1.0f / static_cast<float>(shaper->upem);
+
+        for (unsigned int i = 0; i < count; ++i) {
+            glyphs[i].glyph_index = infos[i].codepoint;
+            glyphs[i].cluster = infos[i].cluster;
+            glyphs[i].x_advance = positions[i].x_advance * inverse_upem;
+            glyphs[i].y_advance = positions[i].y_advance * inverse_upem;
+            glyphs[i].x_offset = positions[i].x_offset * inverse_upem;
+            glyphs[i].y_offset = positions[i].y_offset * inverse_upem;
+        }
+
+        set_error(error_buffer, error_buffer_length, std::string());
+        return NOWUI_MSDF_OK;
+    } catch (const std::exception &ex) {
+        set_error(error_buffer, error_buffer_length, ex.what());
+    } catch (...) {
+        set_error(error_buffer, error_buffer_length, "Unknown native shaper error.");
+    }
+
+    return NOWUI_MSDF_ERROR;
+}
+
+void nowui_shaper_destroy(void *shaper) {
+    delete static_cast<NowUIShaperState *>(shaper);
+}
+
 const char *nowui_msdf_version() {
-    return "nowui-msdf/3";
+    return "nowui-msdf/4";
 }
 
 }
