@@ -10,12 +10,18 @@ namespace NowUI
     public static class NowFontCompiler
     {
         /// <summary>
-        /// Forces the managed font compiler even when the native plugin is present.
-        /// Intended for profiling comparisons and for testing the fallback path that
-        /// platforms without native binaries use automatically. Color fonts and CFF
-        /// outlines still require the native compiler.
+        /// Restricts glyph baking to the managed compiler; fonts it cannot handle
+        /// (CFF outlines) fail instead of falling back to the native plugin.
+        /// The managed compiler is already the default for TrueType fonts.
         /// </summary>
         public static bool forceManagedCompiler;
+
+        /// <summary>
+        /// Forces the native compiler even for fonts the managed compiler handles.
+        /// Intended for profiling comparisons; takes effect when
+        /// <see cref="forceManagedCompiler"/> is not set.
+        /// </summary>
+        public static bool forceNativeCompiler;
 
         const int ATLAS_SIZE = 64;
         const int PIXEL_RANGE = 16;
@@ -272,28 +278,43 @@ namespace NowUI
                     return false;
                 }
 
-                if (!forceManagedCompiler)
+                // Managed first: the Burst SDF baker measures faster than the native
+                // compiler and carries no binary dependency. The native plugin remains
+                // the fallback for fonts the managed parser declines (CFF outlines).
+                if (forceManagedCompiler || !forceNativeCompiler)
                 {
-                    try
+                    if (NowManagedFontSession.TryCreate(fontData, size, pixelRange, atlasSide, out var managed, out string managedError))
                     {
-                        return TryCreateNative(fontData, size, pixelRange, atlasSide, out session, out error);
+                        session = new DynamicSession(managed);
+                        error = null;
+                        return true;
                     }
-                    catch (DllNotFoundException)
+
+                    if (forceManagedCompiler)
                     {
-                    }
-                    catch (EntryPointNotFoundException)
-                    {
-                    }
-                    catch (BadImageFormatException)
-                    {
+                        error = managedError;
+                        return false;
                     }
                 }
 
-                if (!NowManagedFontSession.TryCreate(fontData, size, pixelRange, atlasSide, out var managed, out error))
-                    return false;
+                try
+                {
+                    return TryCreateNative(fontData, size, pixelRange, atlasSide, out session, out error);
+                }
+                catch (DllNotFoundException)
+                {
+                    error = "The font is not supported by the managed compiler and the native font compiler plugin was not found for this platform.";
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    error = "The font is not supported by the managed compiler and the native font compiler plugin is outdated.";
+                }
+                catch (BadImageFormatException)
+                {
+                    error = "The font is not supported by the managed compiler and the native font compiler plugin has the wrong architecture.";
+                }
 
-                session = new DynamicSession(managed);
-                return true;
+                return false;
             }
 
             static bool TryCreateNative(byte[] fontData, int size, int pixelRange, int atlasSide, out DynamicSession session, out string error)

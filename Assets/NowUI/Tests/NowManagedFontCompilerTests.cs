@@ -28,6 +28,15 @@ public class NowManagedFontCompilerTests
     public void ResetFlags()
     {
         NowFontCompiler.forceManagedCompiler = false;
+        NowFontCompiler.forceNativeCompiler = false;
+    }
+
+    [Test]
+    public void DefaultSessionPrefersManagedCompiler()
+    {
+        Assert.IsTrue(NowFontCompiler.DynamicSession.TryCreate(_fontBytes, Size, PixelRange, AtlasSide, out var session, out string error), error);
+        Assert.IsTrue(session.isManaged, "TrueType fonts should bake through the managed compiler by default.");
+        session.Dispose();
     }
 
     static int[] Codepoints(string text)
@@ -164,11 +173,13 @@ public class NowManagedFontCompilerTests
     [Test]
     public void ManagedMatchesNativeAdvancesAndMetrics()
     {
-        Assert.IsTrue(NowFontCompiler.DynamicSession.TryCreate(_fontBytes, Size, PixelRange, AtlasSide, out var native, out string nativeError), nativeError);
+        NowFontCompiler.forceNativeCompiler = true;
+        bool nativeCreated = NowFontCompiler.DynamicSession.TryCreate(_fontBytes, Size, PixelRange, AtlasSide, out var native, out _);
+        NowFontCompiler.forceNativeCompiler = false;
 
-        if (native.isManaged)
+        if (!nativeCreated || native.isManaged)
         {
-            native.Dispose();
+            native?.Dispose();
             Assert.Ignore("Native font compiler not available on this platform; comparison skipped.");
         }
 
@@ -200,6 +211,69 @@ public class NowManagedFontCompilerTests
         managed.Dispose();
     }
 
+    [Test]
+    public void BakeByGlyphIndexMatchesCodepointBake()
+    {
+        Assert.IsTrue(NowTrueType.TryParse(_fontBytes, out var parsed, out string parseError), parseError);
+        Assert.IsTrue(parsed.TryGetGlyphIndex('A', out int glyphIndex));
+
+        Assert.IsTrue(NowManagedFontSession.TryCreate(_fontBytes, Size, PixelRange, AtlasSide, out var byCodepoint, out string error), error);
+        Assert.IsTrue(NowManagedFontSession.TryCreate(_fontBytes, Size, PixelRange, AtlasSide, out var byIndex, out error), error);
+
+        var codepointResults = new List<NowFontAtlasInfo.Glyph>();
+        var indexResults = new List<NowFontAtlasInfo.Glyph>();
+
+        Assert.AreEqual(
+            NowFontCompiler.DynamicSession.AddResult.Ok,
+            byCodepoint.TryAddGlyphs(new[] { (int)'A' }, 1, codepointResults, out _));
+        Assert.AreEqual(
+            NowFontCompiler.DynamicSession.AddResult.Ok,
+            byIndex.TryAddGlyphsByIndex(new[] { glyphIndex }, 1, indexResults, out _));
+
+        Assert.AreEqual(1, codepointResults.Count);
+        Assert.AreEqual(1, indexResults.Count);
+        Assert.AreEqual(glyphIndex, indexResults[0].unicode, "Index-baked records carry the glyph index as their key.");
+        Assert.AreEqual(codepointResults[0].advance, indexResults[0].advance, 0.0001f);
+        Assert.AreEqual(codepointResults[0].planeBounds.left, indexResults[0].planeBounds.left, 0.0001f);
+        Assert.AreEqual(codepointResults[0].planeBounds.top, indexResults[0].planeBounds.top, 0.0001f);
+    }
+
+    [Test]
+    public void ShaperShapesTextOrReportsUnavailable()
+    {
+        if (!NowTextShaper.TryCreate(_fontBytes, out var shaper, out string error))
+        {
+            Assert.IsFalse(string.IsNullOrEmpty(error), "Shaper creation failed without an error message.");
+            Assert.Ignore($"Native shaping API unavailable on this machine: {error}");
+        }
+
+        try
+        {
+            var glyphs = new List<NowTextShaper.ShapedGlyph>();
+            Assert.IsTrue(shaper.TryShape("AVA fi", glyphs, out error), error);
+            Assert.Greater(glyphs.Count, 0);
+
+            float totalAdvance = 0f;
+
+            foreach (var glyph in glyphs)
+            {
+                Assert.Greater((int)glyph.glyphIndex, 0, "Shaped output contains .notdef glyphs for ASCII input.");
+                totalAdvance += glyph.xAdvance;
+            }
+
+            Assert.Greater(totalAdvance, 0f);
+
+            // Kerned pairs (AV) shape to different total advance than raw advances
+            // would only with GPOS active; at minimum clusters must be monotonic.
+            for (int i = 1; i < glyphs.Count; ++i)
+                Assert.GreaterOrEqual(glyphs[i].cluster, glyphs[i - 1].cluster);
+        }
+        finally
+        {
+            shaper.Dispose();
+        }
+    }
+
     [Test, Performance]
     public void NativeSessionBakesAsciiBaseline()
     {
@@ -226,6 +300,7 @@ public class NowManagedFontCompilerTests
         var results = new List<NowFontAtlasInfo.Glyph>(codepoints.Length);
 
         NowFontCompiler.forceManagedCompiler = forceManaged;
+        NowFontCompiler.forceNativeCompiler = !forceManaged;
 
         try
         {
@@ -249,6 +324,7 @@ public class NowManagedFontCompilerTests
         finally
         {
             NowFontCompiler.forceManagedCompiler = false;
+            NowFontCompiler.forceNativeCompiler = false;
         }
     }
 

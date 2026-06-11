@@ -46,6 +46,7 @@ namespace NowUI.Internal
         readonly byte[] _atlas;
         readonly float _scale;
         readonly Dictionary<int, NowFontAtlasInfo.Glyph> _baked = new Dictionary<int, NowFontAtlasInfo.Glyph>(64);
+        readonly Dictionary<int, NowFontAtlasInfo.Glyph> _bakedByIndex = new Dictionary<int, NowFontAtlasInfo.Glyph>(64);
 
         readonly NowGlyphOutline _outlineScratch = new NowGlyphOutline();
         readonly List<Vector4> _segmentScratch = new List<Vector4>(512);
@@ -114,10 +115,39 @@ namespace NowUI.Internal
             List<NowFontAtlasInfo.Glyph> results,
             out string error)
         {
+            return AddGlyphsCore(codepoints, codepointCount, keysAreGlyphIndices: false, results, out error);
+        }
+
+        /// <summary>
+        /// Bakes glyphs addressed directly by glyph index — the currency of shaped
+        /// text, where ligatures and emoji sequences have no single codepoint. The
+        /// returned records carry the glyph index in their unicode field; callers
+        /// keep their own index-keyed bookkeeping.
+        /// </summary>
+        public NowFontCompiler.DynamicSession.AddResult TryAddGlyphsByIndex(
+            int[] glyphIndices,
+            int glyphIndexCount,
+            List<NowFontAtlasInfo.Glyph> results,
+            out string error)
+        {
+            return AddGlyphsCore(glyphIndices, glyphIndexCount, keysAreGlyphIndices: true, results, out error);
+        }
+
+        NowFontCompiler.DynamicSession.AddResult AddGlyphsCore(
+            int[] keys,
+            int keyCount,
+            bool keysAreGlyphIndices,
+            List<NowFontAtlasInfo.Glyph> results,
+            out string error)
+        {
             error = null;
 
-            if (codepoints == null || codepointCount <= 0)
+            if (keys == null || keyCount <= 0)
                 return NowFontCompiler.DynamicSession.AddResult.Ok;
+
+            var codepoints = keys;
+            int codepointCount = keyCount;
+            var baked = keysAreGlyphIndices ? _bakedByIndex : _baked;
 
             var pending = _pendingScratch;
             var segments = _segmentScratch;
@@ -137,14 +167,25 @@ namespace NowUI.Internal
             {
                 int unicode = codepoints[i];
 
-                if (_baked.TryGetValue(unicode, out var existing))
+                if (baked.TryGetValue(unicode, out var existing))
                 {
                     results.Add(existing);
                     continue;
                 }
 
-                if (!_font.TryGetGlyphIndex(unicode, out int glyphIndex))
+                int glyphIndex;
+
+                if (keysAreGlyphIndices)
+                {
+                    glyphIndex = unicode;
+
+                    if (glyphIndex < 0 || glyphIndex >= _font.glyphCount)
+                        continue;
+                }
+                else if (!_font.TryGetGlyphIndex(unicode, out glyphIndex))
+                {
                     continue; // not in the font: the caller records a miss
+                }
 
                 float advance = _font.GetAdvanceWidth(glyphIndex) * _scale * invSize;
 
@@ -227,7 +268,7 @@ namespace NowUI.Internal
                     };
                 }
 
-                _baked[glyph.unicode] = record;
+                baked[glyph.unicode] = record;
                 results.Add(record);
             }
 
