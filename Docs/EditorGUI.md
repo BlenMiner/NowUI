@@ -24,12 +24,12 @@ public sealed class RuntimeOnGUIExample : MonoBehaviour
 
         using (var ui = NowUIGUI.Auto(rect))
         {
-            NowUI.Rectangle(new Vector4(0, 0, ui.width, ui.height))
+            Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
                 .SetColor(new Color(0.08f, 0.1f, 0.14f, 1f))
                 .SetRadius(10)
                 .Draw();
 
-            NowUI.Text(new Vector4(18, 16, ui.width - 36, 28), font)
+            Now.Text(new Vector4(18, 16, ui.width - 36, 28), font)
                 .SetFontSize(18)
                 .SetColor(Color.white)
                 .Draw("NowUI in IMGUI");
@@ -58,7 +58,7 @@ public sealed class MyWindow : EditorWindow
 
         using (var ui = NowUIEditorGUI.Auto(rect))
         {
-            NowUI.Rectangle(new Vector4(0, 0, ui.width, ui.height))
+            Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
                 .SetColor(Color.black)
                 .SetRadius(10)
                 .Draw();
@@ -77,7 +77,7 @@ with the default preview height.
 ```csharp
 using (var ui = NowUIEditorGUI.Auto())
 {
-    NowUI.Rectangle(new Vector4(0, 0, ui.width, ui.height))
+    Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
         .SetColor(Color.black)
         .SetRadius(8)
         .Draw();
@@ -87,7 +87,7 @@ using (var ui = NowUIEditorGUI.Auto())
 ```csharp
 using (var ui = NowUIGUILayout.Auto(96))
 {
-    NowUI.Rectangle(new Vector4(0, 0, ui.width, ui.height))
+    Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
         .SetColor(Color.black)
         .SetRadius(8)
         .Draw();
@@ -101,7 +101,7 @@ Pass a clear color when the preview should be opaque.
 ```csharp
 using (var ui = NowUIGUI.Auto(rect, Color.white))
 {
-    NowUI.Rectangle(new Vector4(0, 0, ui.width, ui.height))
+    Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
         .SetColor(Color.white)
         .Draw();
 }

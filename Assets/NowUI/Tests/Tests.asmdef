@@ -5,7 +5,8 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "NowUI.Editor",
-        "NowUI.Runtime"
+        "NowUI.Runtime",
+        "Unity.PerformanceTesting"
     ],
     "includePlatforms": [
         "Editor"

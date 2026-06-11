@@ -6,6 +6,10 @@ set(NOWUI_VG_LIBRARY_TYPE SHARED)
 if(EMSCRIPTEN)
     set(NOWUI_VG_LIBRARY_TYPE STATIC)
 endif()
+if(IOS)
+    # Unity links iOS plugins statically into the player (DllImport "__Internal").
+    set(NOWUI_VG_LIBRARY_TYPE STATIC)
+endif()
 
 add_library(nowui-vg ${NOWUI_VG_LIBRARY_TYPE}
     nowui_vg.cpp

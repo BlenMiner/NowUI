@@ -17,25 +17,29 @@ public sealed class OverlayExample : MonoBehaviour
 
     void OnPostRender()
     {
-        NowUI.StartUI();
+        Now.StartUI();
 
-        NowUI.Rectangle(new Vector4(20, 20, 260, 80))
+        Now.Rectangle(new Vector4(20, 20, 260, 80))
             .SetColor(new Color(0f, 0f, 0f, 0.8f))
             .SetRadius(10)
             .Draw();
 
-        NowUI.Text(new Vector4(36, 26, 220, 64), font)
+        Now.Text(new Vector4(36, 26, 220, 64), font)
             .SetFontSize(32)
             .SetColor(Color.white)
             .Draw("Hello NowUI");
 
-        NowUI.FlushUI();
+        Now.FlushUI();
     }
 }
 ```
 
-Coordinates use `Vector4(x, y, width, height)` in screen pixels. The origin is
-the top-left of the active screen mask.
+Coordinates use `Vector4(x, y, width, height)` in UI units with a top-left
+origin. By default one unit is one pixel; pass a scale to
+`Now.StartUI(NowUIScreen.recommendedUIScale)` to draw in density-independent
+units on high-DPI screens (see [Mobile](Mobile.md)). For automatic sizing and
+nesting instead of hand-placed rects, see [Layout](Layout.md); for vector
+animation, see [Lottie](Lottie.md).
 
 ## Interaction And Input
 
@@ -48,7 +52,7 @@ IMGUI, UGUI, RenderTexture, SRP overlays, and tests.
 var rect = new Vector4(20, 20, 160, 44);
 var state = NowUIInput.Interact("save-button", rect);
 
-NowUI.Rectangle(rect)
+Now.Rectangle(rect)
     .SetColor(state.hovered ? Color.white : Color.gray)
     .SetRadius(6)
     .Draw();
@@ -76,15 +80,17 @@ track action buttons.
 
 The built-in render paths set up input where they already own a surface:
 
-- `NowUI.StartUI(...)` uses `NowUIInput.defaultProvider`, which defaults to
-  screen-space mouse input from the Unity Input System. It falls back to legacy
-  `UnityEngine.Input` only when the legacy input manager is enabled. If neither
-  source is available, it returns no pointer instead of touching a disabled
-  input API. The default provider reads primary, secondary, middle, back, and
-  forward mouse buttons where the active input backend exposes them. With the
-  Input System it also reads keyboard arrows/WASD, gamepad left stick/D-pad,
-  submit, and cancel. Legacy fallback covers mouse buttons 0-4, arrows/WASD,
-  enter/space, escape, and the first two joystick buttons.
+- `Now.StartUI(...)` uses `NowUIInput.defaultProvider`, which defaults to
+  screen-space mouse and touch input from the Unity Input System. It falls
+  back to legacy `UnityEngine.Input` only when the legacy input manager is
+  enabled. If neither source is available, it returns no pointer instead of
+  touching a disabled input API. The default provider reads primary,
+  secondary, middle, back, and forward mouse buttons where the active input
+  backend exposes them, and maps the primary touch to the primary pointer
+  while a finger is in contact. With the Input System it also reads keyboard
+  arrows/WASD, gamepad left stick/D-pad, submit, and cancel. Legacy fallback
+  covers touch, mouse buttons 0-4, arrows/WASD, enter/space, escape, and the
+  first two joystick buttons.
 - `NowUIGUI.Auto(...)` and `NowUIGUILayout.Auto(...)` use IMGUI events.
 - `NowUIGraphic` uses a `RectTransform` mouse provider.
 - `NowUIPipelineGraphic.BuildDrawList(...)` maps screen mouse input into the
@@ -109,7 +115,7 @@ mode controls testable without Unity's live input devices.
 `NowUIRectangle` is a value struct. Configure it fluently and call `Draw()`.
 
 ```csharp
-NowUI.Rectangle(new Vector4(10, 10, 220, 120))
+Now.Rectangle(new Vector4(10, 10, 220, 120))
     .SetColor(Color.white)
     .SetRadius(8)
     .SetOutline(2)
@@ -121,7 +127,7 @@ NowUI.Rectangle(new Vector4(10, 10, 220, 120))
 Per-corner radius and per-side padding are supported with `Vector4`.
 
 ```csharp
-NowUI.Rectangle(new Vector4(24, 24, 180, 48))
+Now.Rectangle(new Vector4(24, 24, 180, 48))
     .SetRadius(new Vector4(12, 12, 4, 4))
     .SetPadding(new Vector4(8, 4, 8, 4))
     .SetColor(new Color(0.1f, 0.45f, 0.95f, 1f))
@@ -136,7 +142,7 @@ outline color, blur, mask, and position.
 `NowUIText` draws MSDF glyphs from a compiled `NowFont` asset.
 
 ```csharp
-NowUI.Text(new Vector4(24, 24, 360, 60), font)
+Now.Text(new Vector4(24, 24, 360, 60), font)
     .SetFontSize(42)
     .SetColor(Color.white)
     .SetOutline(1)
@@ -153,7 +159,7 @@ float fontSize = 18f;
 Vector2 advance = font.MeasureText(label, fontSize);
 Vector4 bounds = font.MeasureTextBounds(label, fontSize);
 
-NowUI.Text(new Vector4(20, 20, advance.x, bounds.w), font)
+Now.Text(new Vector4(20, 20, advance.x, bounds.w), font)
     .SetFontSize(fontSize)
     .SetColor(Color.white)
     .Draw(label);
@@ -178,13 +184,13 @@ public sealed class MyPanel : NowUIGraphic
     {
         Vector4 bounds = new Vector4(0, 0, rect.width, rect.height);
 
-        NowUI.Rectangle(bounds)
+        Now.Rectangle(bounds)
             .SetColor(new Color(0.08f, 0.1f, 0.14f, 0.92f))
             .SetRadius(12)
             .SetMask(bounds)
             .Draw();
 
-        NowUI.Text(new Vector4(16, 14, rect.width - 32, 30), font)
+        Now.Text(new Vector4(16, 14, rect.width - 32, 30), font)
             .SetFontSize(20)
             .SetColor(Color.white)
             .SetMask(bounds)
@@ -206,7 +212,7 @@ a cached `RenderTexture` and draw it with IMGUI.
 ```csharp
 using (var ui = NowUIGUILayout.Auto(96))
 {
-    NowUI.Rectangle(new Vector4(0, 0, ui.width, ui.height))
+    Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
         .SetColor(Color.black)
         .SetRadius(8)
         .Draw();
@@ -240,11 +246,11 @@ public sealed class NowUITextureExample : MonoBehaviour
         {
             var rect = new Rect(0, 0, target.width, target.height);
 
-            NowUI.Rectangle(new Vector4(0, 0, rect.width, rect.height))
+            Now.Rectangle(new Vector4(0, 0, rect.width, rect.height))
                 .SetColor(new Color(0.08f, 0.1f, 0.14f, 1f))
                 .Draw();
 
-            NowUI.Text(new Vector4(24, 22, rect.width - 48, 40), font)
+            Now.Text(new Vector4(24, 22, rect.width - 48, 40), font)
                 .SetFontSize(24)
                 .SetColor(Color.white)
                 .Draw("Rendered to a texture");
@@ -289,7 +295,7 @@ public sealed class NowUISrpExample : MonoBehaviour
 
         using (renderer.Begin(size))
         {
-            NowUI.Rectangle(new Vector4(20, 20, 220, 72))
+            Now.Rectangle(new Vector4(20, 20, 220, 72))
                 .SetColor(new Color(0f, 0f, 0f, 0.75f))
                 .SetRadius(8)
                 .Draw();
@@ -335,7 +341,7 @@ if (!NowFontCompiler.TryCompile(fontBytes, out NowFont runtimeFont, out string e
     return;
 }
 
-NowUI.Text(new Vector4(20, 20, 320, 48), runtimeFont)
+Now.Text(new Vector4(20, 20, 320, 48), runtimeFont)
     .SetFontSize(24)
     .SetColor(Color.white)
     .Draw("Runtime font");

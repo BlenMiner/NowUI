@@ -1217,6 +1217,21 @@ namespace NowUI
                 NowUIPointerButtons pressed = NowUIPointerButtons.None;
                 NowUIPointerButtons released = NowUIPointerButtons.None;
 
+                if (Input.touchCount > 0)
+                {
+                    UnityEngine.Touch touch = Input.GetTouch(0);
+                    mousePosition = touch.position;
+                    var primaryMask = NowUIInputSnapshot.ToButtonMask(NowUIPointerButton.Primary);
+
+                    if (touch.phase == UnityEngine.TouchPhase.Began)
+                        pressed |= primaryMask;
+
+                    if (touch.phase == UnityEngine.TouchPhase.Ended || touch.phase == UnityEngine.TouchPhase.Canceled)
+                        released |= primaryMask;
+                    else
+                        down |= primaryMask;
+                }
+
                 AppendLegacyMouseButton(0, NowUIPointerButton.Primary, ref down, ref pressed, ref released);
                 AppendLegacyMouseButton(1, NowUIPointerButton.Secondary, ref down, ref pressed, ref released);
                 AppendLegacyMouseButton(2, NowUIPointerButton.Middle, ref down, ref pressed, ref released);
@@ -1353,6 +1368,26 @@ namespace NowUI
                 AppendPointerButton(mouse.backButton, NowUIPointerButton.Back, ref input);
                 AppendPointerButton(mouse.forwardButton, NowUIPointerButton.Forward, ref input);
                 hasAnyInput = true;
+            }
+
+            Touchscreen touchscreen = Touchscreen.current;
+
+            if (touchscreen != null)
+            {
+                var primaryTouch = touchscreen.primaryTouch;
+                var press = primaryTouch.press;
+
+                // Only treat the touchscreen as the pointer while a touch is in
+                // contact (or just lifted, so releases still register). Outside of
+                // that window the last touch position is stale and would pin hover
+                // states to wherever the finger left the screen.
+                if (press.isPressed || press.wasPressedThisFrame || press.wasReleasedThisFrame)
+                {
+                    input.hasPointer = true;
+                    input.screenPosition = primaryTouch.position.ReadValue();
+                    AppendPointerButton(press, NowUIPointerButton.Primary, ref input);
+                    hasAnyInput = true;
+                }
             }
 
             Keyboard keyboard = Keyboard.current;

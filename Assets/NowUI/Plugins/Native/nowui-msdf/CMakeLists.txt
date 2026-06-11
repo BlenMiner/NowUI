@@ -13,6 +13,10 @@ if(EMSCRIPTEN)
     set(NOWUI_MSDF_LIBRARY_TYPE STATIC)
     set(NOWUI_MSDF_DISABLE_FILE_API ON CACHE BOOL "Disable file API for WebGL" FORCE)
 endif()
+if(IOS)
+    # Unity links iOS plugins statically into the player (DllImport "__Internal").
+    set(NOWUI_MSDF_LIBRARY_TYPE STATIC)
+endif()
 
 add_library(nowui-msdf ${NOWUI_MSDF_LIBRARY_TYPE}
     nowui_msdf.cpp

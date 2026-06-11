@@ -9,6 +9,12 @@ it.
 
 - [Feature Usage](Features.md): core drawing lifecycle, rectangles, text, UGUI,
   and font compilation examples.
+- [Layout](Layout.md): flexbox-style groups, sizing options, flexible space,
+  and the two measurement modes.
+- [Lottie](Lottie.md): importing `.lottie` assets, the `Now.Lottie` builder,
+  layout/UGUI integration, and tessellation performance notes.
+- [Mobile](Mobile.md): density-scaled UI (`Now.StartUI(uiScale)`), safe areas,
+  touch input, and the Android/iOS native plugin story.
 - [IMGUI](EditorGUI.md): static APIs for drawing NowUI inside runtime or editor
   `OnGUI` without inheriting a NowUI-specific base class.
 - [Render Pipeline Integrations](RenderPipelines.md): Built-in, UGUI, URP, and

@@ -1,0 +1,28 @@
+{
+  "name": "com.blenminer.nowui",
+  "version": "0.1.0",
+  "displayName": "NowUI",
+  "description": "Immediate-mode UI renderer for Unity: batched rectangles, MSDF text, flexbox-style layout, pointer/touch/gamepad input, themes, and Lottie vector animation. Renders through the built-in pipeline, URP, HDRP, or a UGUI CanvasRenderer.",
+  "unity": "6000.4",
+  "documentationUrl": "https://github.com/BlenMiner/Now-UI/tree/main/Docs",
+  "changelogUrl": "https://github.com/BlenMiner/Now-UI/blob/main/Assets/NowUI/CHANGELOG.md",
+  "licensesUrl": "https://github.com/BlenMiner/Now-UI/blob/main/LICENSE",
+  "dependencies": {
+    "com.unity.collections": "6.4.0",
+    "com.unity.inputsystem": "1.19.0",
+    "com.unity.ugui": "2.0.0"
+  },
+  "keywords": [
+    "ui",
+    "immediate-mode",
+    "msdf",
+    "text",
+    "layout",
+    "lottie",
+    "vector-graphics"
+  ],
+  "author": {
+    "name": "BlenMiner",
+    "url": "https://github.com/BlenMiner"
+  }
+}

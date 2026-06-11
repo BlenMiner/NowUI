@@ -74,18 +74,35 @@ namespace NowUI
 
         public static bool BuildDrawList(Camera camera, NowUIDrawList drawList)
         {
+            return BuildDrawList(camera, drawList, 1f);
+        }
+
+        /// <summary>
+        /// Builds the draw list in UI units of <paramref name="uiScale"/> pixels each,
+        /// mirroring <see cref="Now.StartUI(float)"/> for pipeline rendering. Values
+        /// at or below zero fall back to 1.
+        /// </summary>
+        public static bool BuildDrawList(Camera camera, NowUIDrawList drawList, float uiScale)
+        {
             if (camera == null)
                 throw new ArgumentNullException(nameof(camera));
 
             if (drawList == null)
                 throw new ArgumentNullException(nameof(drawList));
 
-            var size = new Vector2(camera.pixelWidth, camera.pixelHeight);
+            if (uiScale <= 0f || float.IsNaN(uiScale) || float.IsInfinity(uiScale))
+                uiScale = 1f;
+
+            var size = new Vector2(camera.pixelWidth / uiScale, camera.pixelHeight / uiScale);
             var scope = drawList.Begin(size);
+            Now.SetUIScale(uiScale);
 
             try
             {
-                using (NowUIInput.Begin(NowUIInput.defaultProvider, NowUIInputSurface.FromCamera(camera)))
+                var surface = NowUIInputSurface.FromCamera(camera);
+                surface.size /= uiScale;
+
+                using (NowUIInput.Begin(NowUIInput.defaultProvider, surface))
                     DrawAll(camera, new Rect(0, 0, size.x, size.y));
 
                 scope.Dispose();
@@ -94,6 +111,10 @@ namespace NowUI
             {
                 scope.Cancel();
                 throw;
+            }
+            finally
+            {
+                Now.SetUIScale(1f);
             }
 
             return drawList.hasGeometry;

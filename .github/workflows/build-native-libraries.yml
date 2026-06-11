@@ -1,0 +1,748 @@
+name: Build Native Libraries
+
+# Builds every NowUI native plugin (nowui-msdf font compiler + msdf-atlas-gen
+# sidecars, and the dependency-free nowui-vg tessellator) for all supported
+# platforms, then commits the artifacts back into Assets/NowUI/Plugins.
+#
+# Runs automatically when native sources change. The publish job only touches
+# Assets/NowUI/Plugins/<platform> folders, which are not in the trigger paths,
+# so the artifact commit cannot retrigger the workflow.
+
+"on":
+  push:
+    branches:
+      - main
+    paths:
+      - "Assets/NowUI/Plugins/Native/**"
+      - ".github/workflows/build-native-libraries.yml"
+  workflow_dispatch:
+    inputs:
+      msdf_atlas_gen_ref:
+        description: "msdf-atlas-gen git ref to build"
+        required: false
+        default: "v1.4"
+      emscripten_ref:
+        description: "Emscripten SDK version for Unity 2023.2+/Unity 6 WebGL plugin artifacts"
+        required: false
+        default: "3.1.38"
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: build-native-libraries-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  MSDF_ATLAS_GEN_REF: ${{ inputs.msdf_atlas_gen_ref || 'v1.4' }}
+  EMSCRIPTEN_REF: ${{ inputs.emscripten_ref || '3.1.38' }}
+  ANDROID_PLATFORM: android-23
+  IOS_DEPLOYMENT_TARGET: "13.0"
+
+jobs:
+  build-desktop:
+    name: ${{ matrix.artifact_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            artifact_name: windows-x64
+            vcpkg_triplet: x64-windows-static-md
+            plugin_path: Windows/x86_64
+          - os: ubuntu-latest
+            artifact_name: linux-x64
+            vcpkg_triplet: x64-linux
+            plugin_path: Linux/x86_64
+          - os: macos-15-intel
+            artifact_name: macos-x64
+            vcpkg_triplet: x64-osx
+            plugin_path: macOS/x86_64
+          - os: macos-15
+            artifact_name: macos-arm64
+            vcpkg_triplet: arm64-osx
+            plugin_path: macOS/arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set build paths
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$(Join-Path $env:RUNNER_TEMP "vcpkg")"
+          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_INSTALLED_DIR=$(Join-Path $env:RUNNER_TEMP "vcpkg-installed-${{ matrix.artifact_name }}")"
+          Add-Content -Path $env:GITHUB_ENV -Value "MSDF_ATLAS_GEN_SOURCE=$(Join-Path $env:RUNNER_TEMP "msdf-atlas-gen")"
+          Add-Content -Path $env:GITHUB_ENV -Value "BUILD_DIR=$(Join-Path $env:RUNNER_TEMP "msdf-atlas-gen-build")"
+          Add-Content -Path $env:GITHUB_ENV -Value "INSTALL_DIR=$(Join-Path $env:RUNNER_TEMP "msdf-atlas-gen-install")"
+          Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_MSDF_BUILD_DIR=$(Join-Path $env:RUNNER_TEMP "nowui-msdf-build")"
+          Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_MSDF_INSTALL_DIR=$(Join-Path $env:RUNNER_TEMP "nowui-msdf-install")"
+          Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_VG_BUILD_DIR=$(Join-Path $env:RUNNER_TEMP "nowui-vg-build")"
+          Add-Content -Path $env:GITHUB_ENV -Value "NOWUI_VG_INSTALL_DIR=$(Join-Path $env:RUNNER_TEMP "nowui-vg-install")"
+          Add-Content -Path $env:GITHUB_ENV -Value "PLUGIN_DIR=$(Join-Path $env:GITHUB_WORKSPACE "artifacts/native-${{ matrix.artifact_name }}/Assets/NowUI/Plugins/${{ matrix.plugin_path }}")"
+
+      - name: Checkout msdf-atlas-gen
+        shell: pwsh
+        run: |
+          git clone --recursive --branch "$env:MSDF_ATLAS_GEN_REF" https://github.com/Chlumsky/msdf-atlas-gen.git "$env:MSDF_ATLAS_GEN_SOURCE"
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$env:VCPKG_ROOT"
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          } else {
+            & "$env:VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          }
+
+      - name: Configure msdf-atlas-gen
+        shell: pwsh
+        run: |
+          $cmakeArgs = @(
+            "-S", "$env:MSDF_ATLAS_GEN_SOURCE",
+            "-B", "$env:BUILD_DIR",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DCMAKE_INSTALL_PREFIX=$env:INSTALL_DIR",
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake",
+            "-DVCPKG_INSTALLED_DIR=$env:VCPKG_INSTALLED_DIR",
+            "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}",
+            "-DBUILD_SHARED_LIBS=ON",
+            "-DMSDF_ATLAS_BUILD_STANDALONE=OFF",
+            "-DMSDF_ATLAS_INSTALL=ON",
+            "-DMSDF_ATLAS_USE_SKIA=OFF",
+            "-DMSDF_ATLAS_NO_ARTERY_FONT=ON",
+            "-DMSDF_ATLAS_DYNAMIC_RUNTIME=ON"
+          )
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            $cmakeArgs += @("-G", "Visual Studio 17 2022", "-A", "x64")
+          }
+
+          cmake @cmakeArgs
+
+      - name: Build msdf-atlas-gen
+        shell: pwsh
+        run: |
+          cmake --build "$env:BUILD_DIR" --config Release --parallel
+          cmake --install "$env:BUILD_DIR" --config Release
+
+      - name: Configure nowui-msdf
+        shell: pwsh
+        run: |
+          $cmakeArgs = @(
+            "-S", "${{ github.workspace }}/Assets/NowUI/Plugins/Native/nowui-msdf",
+            "-B", "$env:NOWUI_MSDF_BUILD_DIR",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DCMAKE_INSTALL_PREFIX=$env:NOWUI_MSDF_INSTALL_DIR",
+            "-DCMAKE_PREFIX_PATH=$env:INSTALL_DIR;$env:VCPKG_INSTALLED_DIR/${{ matrix.vcpkg_triplet }}",
+            "-Dmsdf-atlas-gen_DIR=$env:INSTALL_DIR/lib/cmake/msdf-atlas-gen",
+            "-Dmsdfgen_DIR=$env:INSTALL_DIR/lib/cmake/msdfgen",
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake",
+            "-DVCPKG_INSTALLED_DIR=$env:VCPKG_INSTALLED_DIR",
+            "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}",
+            "-DNOWUI_MSDF_DISABLE_FILE_API=ON"
+          )
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            $cmakeArgs += @("-G", "Visual Studio 17 2022", "-A", "x64")
+          }
+
+          cmake @cmakeArgs
+
+      - name: Build nowui-msdf
+        shell: pwsh
+        run: |
+          cmake --build "$env:NOWUI_MSDF_BUILD_DIR" --config Release --parallel
+          cmake --install "$env:NOWUI_MSDF_BUILD_DIR" --config Release
+
+      - name: Configure and build nowui-vg
+        shell: pwsh
+        run: |
+          $cmakeArgs = @(
+            "-S", "${{ github.workspace }}/Assets/NowUI/Plugins/Native/nowui-vg",
+            "-B", "$env:NOWUI_VG_BUILD_DIR",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DCMAKE_INSTALL_PREFIX=$env:NOWUI_VG_INSTALL_DIR"
+          )
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            $cmakeArgs += @("-G", "Visual Studio 17 2022", "-A", "x64")
+          }
+
+          cmake @cmakeArgs
+          cmake --build "$env:NOWUI_VG_BUILD_DIR" --config Release --parallel
+          cmake --install "$env:NOWUI_VG_BUILD_DIR" --config Release
+
+      - name: Package plugin libraries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:PLUGIN_DIR" | Out-Null
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            Copy-Item -Path "$env:NOWUI_MSDF_INSTALL_DIR/bin/*.dll" -Destination "$env:PLUGIN_DIR" -Force
+            Copy-Item -Path "$env:INSTALL_DIR/bin/*.dll" -Destination "$env:PLUGIN_DIR" -Force
+            Copy-Item -Path "$env:VCPKG_INSTALLED_DIR/${{ matrix.vcpkg_triplet }}/bin/*.dll" -Destination "$env:PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:NOWUI_VG_INSTALL_DIR/bin/nowui-vg.dll" -Destination "$env:PLUGIN_DIR" -Force
+          } else {
+            Copy-Item -Path "$env:NOWUI_MSDF_INSTALL_DIR/lib/*.so*" -Destination "$env:PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:NOWUI_MSDF_INSTALL_DIR/lib/*.dylib" -Destination "$env:PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:INSTALL_DIR/lib/*.so*" -Destination "$env:PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:INSTALL_DIR/lib/*.dylib" -Destination "$env:PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:VCPKG_INSTALLED_DIR/${{ matrix.vcpkg_triplet }}/lib/*.so*" -Destination "$env:PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:VCPKG_INSTALLED_DIR/${{ matrix.vcpkg_triplet }}/lib/*.dylib" -Destination "$env:PLUGIN_DIR" -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "$env:NOWUI_VG_INSTALL_DIR/lib/libnowui-vg*" -Destination "$env:PLUGIN_DIR" -Force
+          }
+
+          Get-ChildItem "$env:PLUGIN_DIR"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.artifact_name }}
+          path: ${{ github.workspace }}/artifacts/native-${{ matrix.artifact_name }}
+
+  build-webgl:
+    name: webgl-emscripten
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set WebGL build paths
+        shell: bash
+        run: |
+          echo "EMSDK_ROOT=$RUNNER_TEMP/emsdk" >> "$GITHUB_ENV"
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg-installed-webgl" >> "$GITHUB_ENV"
+          echo "MSDF_ATLAS_GEN_SOURCE=$RUNNER_TEMP/msdf-atlas-gen" >> "$GITHUB_ENV"
+          echo "BUILD_DIR=$RUNNER_TEMP/msdf-atlas-gen-webgl-build" >> "$GITHUB_ENV"
+          echo "INSTALL_DIR=$RUNNER_TEMP/msdf-atlas-gen-webgl-install" >> "$GITHUB_ENV"
+          echo "NOWUI_MSDF_BUILD_DIR=$RUNNER_TEMP/nowui-msdf-webgl-build" >> "$GITHUB_ENV"
+          echo "NOWUI_MSDF_INSTALL_DIR=$RUNNER_TEMP/nowui-msdf-webgl-install" >> "$GITHUB_ENV"
+          echo "NOWUI_VG_BUILD_DIR=$RUNNER_TEMP/nowui-vg-webgl-build" >> "$GITHUB_ENV"
+          echo "PLUGIN_DIR=$GITHUB_WORKSPACE/artifacts/native-webgl/Assets/NowUI/Plugins/WebGL" >> "$GITHUB_ENV"
+
+      - name: Checkout msdf-atlas-gen
+        shell: bash
+        run: |
+          git clone --recursive --branch "$MSDF_ATLAS_GEN_REF" https://github.com/Chlumsky/msdf-atlas-gen.git "$MSDF_ATLAS_GEN_SOURCE"
+
+      - name: Setup Emscripten
+        shell: bash
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git "$EMSDK_ROOT"
+          "$EMSDK_ROOT/emsdk" install "$EMSCRIPTEN_REF"
+          "$EMSDK_ROOT/emsdk" activate "$EMSCRIPTEN_REF"
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Build msdf-atlas-gen for WebGL
+        shell: bash
+        run: |
+          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+
+          cmake \
+            -S "$MSDF_ATLAS_GEN_SOURCE" \
+            -B "$BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DMSDF_ATLAS_BUILD_STANDALONE=OFF \
+            -DMSDF_ATLAS_INSTALL=ON \
+            -DMSDF_ATLAS_USE_SKIA=OFF \
+            -DMSDF_ATLAS_NO_ARTERY_FONT=ON \
+            -DMSDF_ATLAS_DYNAMIC_RUNTIME=OFF \
+            -DMSDF_ATLAS_NO_PNG=ON \
+            -DMSDFGEN_DISABLE_PNG=ON
+
+          cmake --build "$BUILD_DIR" --config Release --parallel
+          cmake --install "$BUILD_DIR" --config Release
+
+      - name: Build nowui-msdf for WebGL
+        shell: bash
+        run: |
+          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+
+          cmake \
+            -S "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/Native/nowui-msdf" \
+            -B "$NOWUI_MSDF_BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$NOWUI_MSDF_INSTALL_DIR" \
+            -DCMAKE_PREFIX_PATH="$INSTALL_DIR;$VCPKG_INSTALLED_DIR/wasm32-emscripten" \
+            -Dmsdf-atlas-gen_DIR="$INSTALL_DIR/lib/cmake/msdf-atlas-gen" \
+            -Dmsdfgen_DIR="$INSTALL_DIR/lib/cmake/msdfgen" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
+            -DNOWUI_MSDF_DISABLE_FILE_API=ON
+
+          cmake --build "$NOWUI_MSDF_BUILD_DIR" --config Release --parallel
+          cmake --install "$NOWUI_MSDF_BUILD_DIR" --config Release
+
+      - name: Build nowui-vg for WebGL
+        shell: bash
+        run: |
+          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+
+          emcmake cmake \
+            -S "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/Native/nowui-vg" \
+            -B "$NOWUI_VG_BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release
+
+          cmake --build "$NOWUI_VG_BUILD_DIR" --config Release --parallel
+
+      - name: Package WebGL plugin libraries
+        shell: bash
+        run: |
+          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+          mkdir -p "$PLUGIN_DIR"
+
+          mapfile -t archives < <(find "$NOWUI_MSDF_INSTALL_DIR/lib" "$INSTALL_DIR/lib" "$VCPKG_INSTALLED_DIR/wasm32-emscripten/lib" \
+            -maxdepth 1 -type f \( -name '*.a' -o -name '*.bc' \) \
+            | sort)
+
+          if [ "${#archives[@]}" -eq 0 ]; then
+            echo "No WebGL archives were found to package."
+            exit 1
+          fi
+
+          emcc -r -Wl,--whole-archive "${archives[@]}" -Wl,--no-whole-archive -o "$PLUGIN_DIR/nowui-msdf.bc"
+
+          vg_archive=$(find "$NOWUI_VG_BUILD_DIR" -maxdepth 2 -type f -name 'libnowui-vg.a' | head -n 1)
+
+          if [ -z "$vg_archive" ]; then
+            echo "libnowui-vg.a not found in build output."
+            exit 1
+          fi
+
+          emcc -r -Wl,--whole-archive "$vg_archive" -Wl,--no-whole-archive -o "$PLUGIN_DIR/nowui-vg.bc"
+
+          for merged in "$PLUGIN_DIR/nowui-msdf.bc" "$PLUGIN_DIR/nowui-vg.bc"; do
+            byte_count=$(wc -c < "$merged")
+            if [ "$byte_count" -lt 1024 ]; then
+              echo "Merged WebGL library is unexpectedly small: $merged ($byte_count bytes)"
+              exit 1
+            fi
+          done
+
+      - name: Upload WebGL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-webgl
+          path: ${{ github.workspace }}/artifacts/native-webgl
+
+  build-android:
+    name: android-arm64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set Android build paths
+        shell: bash
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg-installed-android" >> "$GITHUB_ENV"
+          echo "MSDF_ATLAS_GEN_SOURCE=$RUNNER_TEMP/msdf-atlas-gen" >> "$GITHUB_ENV"
+          echo "BUILD_DIR=$RUNNER_TEMP/msdf-atlas-gen-android-build" >> "$GITHUB_ENV"
+          echo "INSTALL_DIR=$RUNNER_TEMP/msdf-atlas-gen-android-install" >> "$GITHUB_ENV"
+          echo "NOWUI_MSDF_BUILD_DIR=$RUNNER_TEMP/nowui-msdf-android-build" >> "$GITHUB_ENV"
+          echo "NOWUI_MSDF_INSTALL_DIR=$RUNNER_TEMP/nowui-msdf-android-install" >> "$GITHUB_ENV"
+          echo "NOWUI_VG_BUILD_DIR=$RUNNER_TEMP/nowui-vg-android-build" >> "$GITHUB_ENV"
+          echo "NOWUI_VG_INSTALL_DIR=$RUNNER_TEMP/nowui-vg-android-install" >> "$GITHUB_ENV"
+          echo "PLUGIN_DIR=$GITHUB_WORKSPACE/artifacts/native-android/Assets/NowUI/Plugins/Android/arm64-v8a" >> "$GITHUB_ENV"
+
+      - name: Checkout msdf-atlas-gen
+        shell: bash
+        run: |
+          git clone --recursive --branch "$MSDF_ATLAS_GEN_REF" https://github.com/Chlumsky/msdf-atlas-gen.git "$MSDF_ATLAS_GEN_SOURCE"
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Build msdf-atlas-gen for Android
+        shell: bash
+        run: |
+          cmake \
+            -S "$MSDF_ATLAS_GEN_SOURCE" \
+            -B "$BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM="$ANDROID_PLATFORM" \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DMSDF_ATLAS_BUILD_STANDALONE=OFF \
+            -DMSDF_ATLAS_INSTALL=ON \
+            -DMSDF_ATLAS_USE_SKIA=OFF \
+            -DMSDF_ATLAS_NO_ARTERY_FONT=ON \
+            -DMSDF_ATLAS_DYNAMIC_RUNTIME=OFF \
+            -DMSDF_ATLAS_NO_PNG=ON \
+            -DMSDFGEN_DISABLE_PNG=ON
+
+          cmake --build "$BUILD_DIR" --config Release --parallel
+          cmake --install "$BUILD_DIR" --config Release
+
+      - name: Build nowui-msdf for Android
+        shell: bash
+        run: |
+          cmake \
+            -S "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/Native/nowui-msdf" \
+            -B "$NOWUI_MSDF_BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$NOWUI_MSDF_INSTALL_DIR" \
+            -DCMAKE_PREFIX_PATH="$INSTALL_DIR;$VCPKG_INSTALLED_DIR/arm64-android" \
+            -Dmsdf-atlas-gen_DIR="$INSTALL_DIR/lib/cmake/msdf-atlas-gen" \
+            -Dmsdfgen_DIR="$INSTALL_DIR/lib/cmake/msdfgen" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM="$ANDROID_PLATFORM" \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DNOWUI_MSDF_DISABLE_FILE_API=ON
+
+          cmake --build "$NOWUI_MSDF_BUILD_DIR" --config Release --parallel
+          cmake --install "$NOWUI_MSDF_BUILD_DIR" --config Release
+
+      - name: Build nowui-vg for Android
+        shell: bash
+        run: |
+          cmake \
+            -S "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/Native/nowui-vg" \
+            -B "$NOWUI_VG_BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$NOWUI_VG_INSTALL_DIR" \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM="$ANDROID_PLATFORM"
+
+          cmake --build "$NOWUI_VG_BUILD_DIR" --config Release --parallel
+          cmake --install "$NOWUI_VG_BUILD_DIR" --config Release
+
+      - name: Package Android plugin libraries
+        shell: bash
+        run: |
+          mkdir -p "$PLUGIN_DIR"
+          cp "$NOWUI_MSDF_INSTALL_DIR/lib/libnowui-msdf.so" "$PLUGIN_DIR/"
+          cp "$NOWUI_VG_INSTALL_DIR/lib/libnowui-vg.so" "$PLUGIN_DIR/"
+
+          write_meta() {
+            cat > "$1" <<EOF
+          fileFormatVersion: 2
+          guid: $2
+          PluginImporter:
+            externalObjects: {}
+            serializedVersion: 2
+            iconMap: {}
+            executionOrder: {}
+            defineConstraints: []
+            isPreloaded: 1
+            isOverridable: 1
+            isExplicitlyReferenced: 0
+            validateReferences: 1
+            platformData:
+            - first:
+                Any:
+              second:
+                enabled: 0
+                settings: {}
+            - first:
+                Android: Android
+              second:
+                enabled: 1
+                settings:
+                  CPU: ARM64
+            userData:
+            assetBundleName:
+            assetBundleVariant:
+          EOF
+          }
+
+          write_folder_meta() {
+            cat > "$1" <<EOF
+          fileFormatVersion: 2
+          guid: $2
+          folderAsset: yes
+          DefaultImporter:
+            externalObjects: {}
+            userData:
+            assetBundleName:
+            assetBundleVariant:
+          EOF
+          }
+
+          plugins_root="$GITHUB_WORKSPACE/artifacts/native-android/Assets/NowUI/Plugins"
+          write_folder_meta "$plugins_root/Android.meta" "a1b2c3d4e5f60718293a4b5c6d7e8f01"
+          write_folder_meta "$plugins_root/Android/arm64-v8a.meta" "b2c3d4e5f60718293a4b5c6d7e8f0112"
+          write_meta "$PLUGIN_DIR/libnowui-msdf.so.meta" "c3d4e5f60718293a4b5c6d7e8f011223"
+          write_meta "$PLUGIN_DIR/libnowui-vg.so.meta" "d4e5f60718293a4b5c6d7e8f01122334"
+
+          ls -la "$PLUGIN_DIR"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-android
+          path: ${{ github.workspace }}/artifacts/native-android
+
+  build-ios:
+    name: ios-arm64
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set iOS build paths
+        shell: bash
+        run: |
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg-installed-ios" >> "$GITHUB_ENV"
+          echo "MSDF_ATLAS_GEN_SOURCE=$RUNNER_TEMP/msdf-atlas-gen" >> "$GITHUB_ENV"
+          echo "BUILD_DIR=$RUNNER_TEMP/msdf-atlas-gen-ios-build" >> "$GITHUB_ENV"
+          echo "INSTALL_DIR=$RUNNER_TEMP/msdf-atlas-gen-ios-install" >> "$GITHUB_ENV"
+          echo "NOWUI_MSDF_BUILD_DIR=$RUNNER_TEMP/nowui-msdf-ios-build" >> "$GITHUB_ENV"
+          echo "NOWUI_MSDF_INSTALL_DIR=$RUNNER_TEMP/nowui-msdf-ios-install" >> "$GITHUB_ENV"
+          echo "NOWUI_VG_BUILD_DIR=$RUNNER_TEMP/nowui-vg-ios-build" >> "$GITHUB_ENV"
+          echo "NOWUI_VG_INSTALL_DIR=$RUNNER_TEMP/nowui-vg-ios-install" >> "$GITHUB_ENV"
+          echo "PLUGIN_DIR=$GITHUB_WORKSPACE/artifacts/native-ios/Assets/NowUI/Plugins/iOS" >> "$GITHUB_ENV"
+
+      - name: Checkout msdf-atlas-gen
+        shell: bash
+        run: |
+          git clone --recursive --branch "$MSDF_ATLAS_GEN_REF" https://github.com/Chlumsky/msdf-atlas-gen.git "$MSDF_ATLAS_GEN_SOURCE"
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Build msdf-atlas-gen for iOS
+        shell: bash
+        run: |
+          cmake \
+            -S "$MSDF_ATLAS_GEN_SOURCE" \
+            -B "$BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DVCPKG_TARGET_TRIPLET=arm64-ios \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DMSDF_ATLAS_BUILD_STANDALONE=OFF \
+            -DMSDF_ATLAS_INSTALL=ON \
+            -DMSDF_ATLAS_USE_SKIA=OFF \
+            -DMSDF_ATLAS_NO_ARTERY_FONT=ON \
+            -DMSDF_ATLAS_DYNAMIC_RUNTIME=OFF \
+            -DMSDF_ATLAS_NO_PNG=ON \
+            -DMSDFGEN_DISABLE_PNG=ON
+
+          cmake --build "$BUILD_DIR" --config Release --parallel
+          cmake --install "$BUILD_DIR" --config Release
+
+      - name: Build nowui-msdf for iOS
+        shell: bash
+        run: |
+          cmake \
+            -S "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/Native/nowui-msdf" \
+            -B "$NOWUI_MSDF_BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$NOWUI_MSDF_INSTALL_DIR" \
+            -DCMAKE_PREFIX_PATH="$INSTALL_DIR;$VCPKG_INSTALLED_DIR/arm64-ios" \
+            -Dmsdf-atlas-gen_DIR="$INSTALL_DIR/lib/cmake/msdf-atlas-gen" \
+            -Dmsdfgen_DIR="$INSTALL_DIR/lib/cmake/msdfgen" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DVCPKG_TARGET_TRIPLET=arm64-ios \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+            -DNOWUI_MSDF_DISABLE_FILE_API=ON
+
+          cmake --build "$NOWUI_MSDF_BUILD_DIR" --config Release --parallel
+          cmake --install "$NOWUI_MSDF_BUILD_DIR" --config Release
+
+      - name: Build nowui-vg for iOS
+        shell: bash
+        run: |
+          cmake \
+            -S "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/Native/nowui-vg" \
+            -B "$NOWUI_VG_BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$NOWUI_VG_INSTALL_DIR" \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET"
+
+          cmake --build "$NOWUI_VG_BUILD_DIR" --config Release --parallel
+          cmake --install "$NOWUI_VG_BUILD_DIR" --config Release
+
+      - name: Package iOS plugin libraries
+        shell: bash
+        run: |
+          mkdir -p "$PLUGIN_DIR"
+
+          # Merge the wrapper with every static dependency into one archive so
+          # Unity's Xcode project only has to link a single library.
+          mapfile -t archives < <(find "$NOWUI_MSDF_INSTALL_DIR/lib" "$INSTALL_DIR/lib" "$VCPKG_INSTALLED_DIR/arm64-ios/lib" \
+            -maxdepth 1 -type f -name '*.a' \
+            | sort)
+
+          if [ "${#archives[@]}" -eq 0 ]; then
+            echo "No iOS static libraries were found to package."
+            exit 1
+          fi
+
+          libtool -static -o "$PLUGIN_DIR/libnowui-msdf.a" "${archives[@]}"
+          cp "$NOWUI_VG_INSTALL_DIR/lib/libnowui-vg.a" "$PLUGIN_DIR/"
+
+          for merged in "$PLUGIN_DIR/libnowui-msdf.a" "$PLUGIN_DIR/libnowui-vg.a"; do
+            byte_count=$(wc -c < "$merged")
+            if [ "$byte_count" -lt 1024 ]; then
+              echo "iOS static library is unexpectedly small: $merged ($byte_count bytes)"
+              exit 1
+            fi
+          done
+
+          write_meta() {
+            cat > "$1" <<EOF
+          fileFormatVersion: 2
+          guid: $2
+          PluginImporter:
+            externalObjects: {}
+            serializedVersion: 2
+            iconMap: {}
+            executionOrder: {}
+            defineConstraints: []
+            isPreloaded: 1
+            isOverridable: 0
+            isExplicitlyReferenced: 0
+            validateReferences: 1
+            platformData:
+            - first:
+                Any:
+              second:
+                enabled: 0
+                settings: {}
+            - first:
+                iPhone: iOS
+              second:
+                enabled: 1
+                settings:
+                  AddToEmbeddedBinaries: false
+                  CPU: AnyCPU
+                  CompileFlags:
+                  FrameworkDependencies:
+            userData:
+            assetBundleName:
+            assetBundleVariant:
+          EOF
+          }
+
+          write_folder_meta() {
+            cat > "$1" <<EOF
+          fileFormatVersion: 2
+          guid: $2
+          folderAsset: yes
+          DefaultImporter:
+            externalObjects: {}
+            userData:
+            assetBundleName:
+            assetBundleVariant:
+          EOF
+          }
+
+          plugins_root="$GITHUB_WORKSPACE/artifacts/native-ios/Assets/NowUI/Plugins"
+          write_folder_meta "$plugins_root/iOS.meta" "e5f60718293a4b5c6d7e8f0112233445"
+          write_meta "$PLUGIN_DIR/libnowui-msdf.a.meta" "f60718293a4b5c6d7e8f011223344556"
+          write_meta "$PLUGIN_DIR/libnowui-vg.a.meta" "0718293a4b5c6d7e8f01122334455667"
+
+          ls -la "$PLUGIN_DIR"
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ios
+          path: ${{ github.workspace }}/artifacts/native-ios
+
+  publish-plugin-artifacts:
+    name: Commit plugin artifacts
+    runs-on: ubuntu-latest
+    needs:
+      - build-desktop
+      - build-webgl
+      - build-android
+      - build-ios
+    if: ${{ github.ref_type == 'branch' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Download workflow artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/_downloaded
+
+      - name: Merge plugin artifacts
+        shell: bash
+        run: |
+          shopt -s nullglob
+          found=0
+
+          for plugin_dir in artifacts/_downloaded/*/Assets/NowUI/Plugins; do
+            found=1
+            cp -R "$plugin_dir"/. Assets/NowUI/Plugins/
+          done
+
+          if [ "$found" -eq 0 ]; then
+            echo "No Assets/NowUI/Plugins directories were found in downloaded artifacts."
+            exit 1
+          fi
+
+      - name: Commit and push plugin artifacts
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Assets/NowUI/Plugins
+
+          if git diff --cached --quiet; then
+            echo "Plugin artifacts are already up to date."
+            exit 0
+          fi
+
+          git commit -m "Update NowUI native plugin artifacts"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push

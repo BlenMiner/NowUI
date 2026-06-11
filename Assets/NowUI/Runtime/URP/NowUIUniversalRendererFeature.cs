@@ -9,7 +9,30 @@ namespace NowUI
     {
         [SerializeField] RenderPassEvent _renderPassEvent = RenderPassEvent.AfterRenderingPostProcessing;
 
+        [SerializeField, Tooltip("Pixels per UI unit. 1 draws in raw pixels; enable Scale By Display Density to follow NowUIScreen.recommendedUIScale instead.")]
+        float _uiScale = 1f;
+
+        [SerializeField, Tooltip("Use NowUIScreen.recommendedUIScale so UI keeps a consistent physical size on high-DPI displays. Overrides UI Scale.")]
+        bool _scaleByDisplayDensity;
+
         NowUIUniversalRenderPass _pass;
+
+        public float uiScale
+        {
+            get => _uiScale;
+            set => _uiScale = value;
+        }
+
+        public bool scaleByDisplayDensity
+        {
+            get => _scaleByDisplayDensity;
+            set => _scaleByDisplayDensity = value;
+        }
+
+        float ResolveUIScale()
+        {
+            return _scaleByDisplayDensity ? NowUIScreen.recommendedUIScale : _uiScale;
+        }
 
         public override void Create()
         {
@@ -30,6 +53,7 @@ namespace NowUI
                 Create();
 
             _pass.renderPassEvent = _renderPassEvent;
+            _pass.uiScale = ResolveUIScale();
             renderer.EnqueuePass(_pass);
         }
 
@@ -43,11 +67,13 @@ namespace NowUI
         {
             readonly NowUIDrawList _drawList = new NowUIDrawList();
 
+            public float uiScale = 1f;
+
             public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
             {
                 var camera = renderingData.cameraData.camera;
 
-                if (!NowUIPipelineGraphic.BuildDrawList(camera, _drawList))
+                if (!NowUIPipelineGraphic.BuildDrawList(camera, _drawList, uiScale))
                     return;
 
                 var commandBuffer = CommandBufferPool.Get("NowUI URP");

@@ -9,9 +9,9 @@ namespace NowUI.Internal
     /// missing (or not yet built for the platform) <see cref="available"/> turns
     /// false and the renderer transparently uses the managed tessellator instead.
     ///
-    /// WebGL links statically (__Internal), so the nowui-vg.bc plugin must be present
-    /// in the project when building for WebGL — a missing library fails the IL2CPP
-    /// link rather than falling back at runtime.
+    /// WebGL and iOS link statically (__Internal), so the nowui-vg.bc / libnowui-vg.a
+    /// plugin must be present in the project when building for those platforms — a
+    /// missing library fails the IL2CPP link rather than falling back at runtime.
     ///
     /// Define the NOWUI_VG_DISABLE_NATIVE scripting symbol to compile the bindings
     /// out entirely and always use the managed tessellator.
@@ -97,7 +97,9 @@ namespace NowUI.Internal
 
         public static bool Finish(NowLottieDrawBuffer buffer) => false;
 #else
-#if UNITY_WEBGL && !UNITY_EDITOR
+        // WebGL and iOS link the plugin statically into the player, so the
+        // binding resolves against the executable itself.
+#if (UNITY_WEBGL || UNITY_IOS) && !UNITY_EDITOR
         const string LIBRARY_NAME = "__Internal";
 #else
         const string LIBRARY_NAME = "nowui-vg";

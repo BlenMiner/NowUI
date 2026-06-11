@@ -17,6 +17,16 @@ namespace NowUI
 
         public static NowRect screenMask;
 
+        static float _uiScale = 1f;
+
+        /// <summary>
+        /// Pixels per UI unit for the current frame, set by <see cref="StartUI(float)"/>.
+        /// 1 means UI units are screen pixels. Pass
+        /// <see cref="NowUIScreen.recommendedUIScale"/> to size UI by display density,
+        /// which keeps controls a consistent physical size on high-DPI phones.
+        /// </summary>
+        public static float uiScale => _uiScale;
+
         static NowFontAsset _defaultFont;
 
         /// <summary>
@@ -306,7 +316,29 @@ namespace NowUI
 
         public static void StartUI()
         {
-            StartUI(new Vector4(0, 0, Screen.width, Screen.height));
+            StartUI(1f);
+        }
+
+        /// <summary>
+        /// Starts a frame whose UI units cover the whole screen at
+        /// <paramref name="uiScale"/> pixels per unit. The projection stretches the
+        /// scaled-down logical size across the full viewport and pointer input is
+        /// converted into the same units, so drawing code never deals with pixels.
+        /// </summary>
+        public static void StartUI(float uiScale)
+        {
+            if (uiScale <= 0f || float.IsNaN(uiScale) || float.IsInfinity(uiScale))
+                throw new ArgumentOutOfRangeException(nameof(uiScale), "uiScale must be a positive finite value.");
+
+            _captureMesh = false;
+            _fontStack.Clear();
+            _uiScale = uiScale;
+
+            screenMask = new NowRect(0f, 0f, Screen.width / uiScale, Screen.height / uiScale);
+            NowUIInput.Update(new NowUIInputSurface(
+                new Vector2(screenMask.width, screenMask.height),
+                new Rect(0f, 0f, Screen.width, Screen.height)));
+            Initialize();
         }
 
         public static void StartUI(NowRect screenMask)
@@ -317,9 +349,15 @@ namespace NowUI
             // every frame after it.
             _fontStack.Clear();
 
+            _uiScale = 1f;
             Now.screenMask = screenMask;
             NowUIInput.Update(NowUIInputSurface.FromScreenMask(screenMask));
             Initialize();
+        }
+
+        internal static void SetUIScale(float uiScale)
+        {
+            _uiScale = uiScale > 0f ? uiScale : 1f;
         }
 
         internal static void BeginMeshCapture(Vector4 screenMask)

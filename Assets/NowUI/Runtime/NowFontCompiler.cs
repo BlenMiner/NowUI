@@ -15,7 +15,9 @@ namespace NowUI
         const int NATIVE_BUFFER_TOO_SMALL = 2;
         const int NATIVE_ATLAS_FULL = 3;
 
-    #if UNITY_WEBGL && !UNITY_EDITOR
+        // WebGL and iOS link the plugin statically into the player, so the
+        // binding resolves against the executable itself.
+    #if (UNITY_WEBGL || UNITY_IOS) && !UNITY_EDITOR
         const string LIBRARY_NAME = "__Internal";
     #else
         const string LIBRARY_NAME = "nowui-msdf";

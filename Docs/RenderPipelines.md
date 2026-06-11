@@ -2,7 +2,7 @@
 
 NowUI supports three non-retained output paths.
 
-- Built-in Render Pipeline: call `NowUI.StartUI()` and `NowUI.FlushUI()` from
+- Built-in Render Pipeline: call `Now.StartUI()` and `Now.FlushUI()` from
   camera callbacks such as `OnPostRender`.
 - UGUI: derive from `NowUIGraphic` and render into `CanvasRenderer`.
 - SRP: derive from `NowUIPipelineGraphic` and use the URP or HDRP wrapper.
@@ -22,12 +22,12 @@ public sealed class MySrpOverlay : NowUIPipelineGraphic
 
     protected override void DrawNowUI(Camera camera, Rect rect)
     {
-        NowUI.Rectangle(new Vector4(24, 24, 260, 72))
+        Now.Rectangle(new Vector4(24, 24, 260, 72))
             .SetColor(new Color(0f, 0f, 0f, 0.75f))
             .SetRadius(10)
             .Draw();
 
-        NowUI.Text(new Vector4(42, 38, 220, 32), font)
+        Now.Text(new Vector4(42, 38, 220, 32), font)
             .SetFontSize(20)
             .SetColor(Color.white)
             .Draw("NowUI SRP");
@@ -59,6 +59,10 @@ the `com.unity.render-pipelines.universal` package is installed.
 The renderer feature builds a `NowUIDrawList` for each camera that has matching
 pipeline graphics, then appends the draw commands to URP's command buffer.
 
+The feature's `UI Scale` field sets pixels per UI unit, and
+`Scale By Display Density` follows `NowUIScreen.recommendedUIScale` instead so
+UI keeps a consistent physical size on phones. See [Mobile](Mobile.md).
+
 ## HDRP
 
 HDRP support lives in the optional `NowUI.HDRP` assembly. It is enabled only when
@@ -71,7 +75,8 @@ the `com.unity.render-pipelines.high-definition` package is installed.
 5. Add one or more `NowUIPipelineGraphic` components in the scene.
 
 The custom pass uses the `CommandBuffer` from `CustomPassContext` and draws the
-same `NowUIDrawList` format as URP and RenderTexture output.
+same `NowUIDrawList` format as URP and RenderTexture output. It exposes the
+same `UI Scale` / `Scale By Display Density` options as the URP feature.
 
 ## Wrapper Shape
 

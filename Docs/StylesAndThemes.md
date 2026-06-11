@@ -37,7 +37,7 @@ public sealed class ThemedOverlay : MonoBehaviour
 
     void OnPostRender()
     {
-        NowUI.StartUI();
+        Now.StartUI();
 
         Vector4 panel = new Vector4(24, 24, 360, 180);
 
@@ -47,7 +47,7 @@ public sealed class ThemedOverlay : MonoBehaviour
         theme.Text(theme.Inset(panel, "panel"), font, "title")
             .Draw("Theme Preview");
 
-        NowUI.FlushUI();
+        Now.FlushUI();
     }
 }
 ```
@@ -57,11 +57,11 @@ Use `SetStyle` when geometry is built first and style is chosen later.
 ```csharp
 Vector4 button = new Vector4(40, 120, 132, 40);
 
-NowUI.Rectangle(button)
+Now.Rectangle(button)
     .SetStyle(theme, "accent")
     .Draw();
 
-NowUI.Text(button, font)
+Now.Text(button, font)
     .SetStyle(theme, "button")
     .Draw("Save");
 ```
@@ -95,7 +95,7 @@ Color accent = theme.GetColor("accent", Color.blue);
 Vector4 compact = theme.GetSpacing("sm", new Vector4(8, 8, 8, 8));
 Vector4 radius = theme.GetRadius("md", new Vector4(8, 8, 8, 8));
 
-NowUI.Rectangle(new Vector4(10, 10, 180, 48))
+Now.Rectangle(new Vector4(10, 10, 180, 48))
     .SetColor(accent)
     .SetRadius(radius)
     .SetPadding(compact)
