@@ -62,6 +62,29 @@ point it became installable through UPM.
   screen input providers, drags preserved), completing the existing
   raycastTarget blocking in the other direction. EventSystem selection and
   NowUI focus are also mutually exclusive (`NowUIFocus.respectEventSystem`).
+- An empty mask now means "no mask": styles built from a default rect carried
+  a zero-size mask that clipped everything they drew (text fields' content
+  was invisible). Ambient `Now.Mask` scopes still clip such draws normally.
+- Missing bold/italic font variants now fall back to the regular face
+  instead of rendering nothing (`SetBold` on a single-face font previously
+  produced invisible text).
+- Thin rectangle outlines render solid: an outline narrower than one
+  anti-aliasing width used to sit entirely inside the edge fade and came out
+  as a washed-out, corner-glitchy sliver; the shader now draws at least one
+  AA width of it.
+- Default masks now leave breathing room: a rectangle/text/Lottie draw whose
+  mask was never set explicitly (it defaults to the element's own rect) is
+  outset by the SDF falloff — plus blur/outline for rectangles, glyph
+  overhang for text — so anti-aliasing is no longer clipped hard at the
+  bounds. Explicit `SetMask` rects stay exact.
+- Fixed control labels drawn through `NowControls.DrawLeftLabel` (checkbox,
+  radio, dropdown values, popup items) rendering nothing: the style carried
+  a zero-size mask from its default-rect construction, which clips
+  everything. They now clip to the label area.
+- Zoo example (`NowUIZooExample`): one component exercising every feature —
+  styled buttons, content scopes, toggles, radios, sliders, text fields,
+  dropdowns, a scroll-view event log, theme swatches, Lottie, masks, and
+  align-items.
 - Automatic control identity from the call site: the control factories
   capture `[CallerFilePath]`/`[CallerLineNumber]`, so every textual call
   site is its own control and labels are purely visual — duplicate labels

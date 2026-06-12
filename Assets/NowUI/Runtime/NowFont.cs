@@ -91,7 +91,16 @@ namespace NowUI
 
             try
             {
-                return TryResolveFont(style, visited, out font);
+                if (TryResolveFont(style, visited, out font))
+                    return true;
+
+                // A styled variant (bold/italic) nobody provides should render as
+                // regular text, not as nothing.
+                if (style == NowFontStyle.Regular)
+                    return false;
+
+                visited.Clear();
+                return TryResolveFont(NowFontStyle.Regular, visited, out font);
             }
             finally
             {
@@ -135,7 +144,14 @@ namespace NowUI
 
             try
             {
-                return TryResolveGlyph(unicode, fontSize, style, visited, out font, out glyph, out material);
+                if (TryResolveGlyph(unicode, fontSize, style, visited, out font, out glyph, out material))
+                    return true;
+
+                if (style == NowFontStyle.Regular)
+                    return false;
+
+                visited.Clear();
+                return TryResolveGlyph(unicode, fontSize, NowFontStyle.Regular, visited, out font, out glyph, out material);
             }
             finally
             {

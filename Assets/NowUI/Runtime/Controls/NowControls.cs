@@ -256,7 +256,11 @@ namespace NowUI
                 rect.y + (rect.height - size.y) * 0.5f,
                 size.x + 1f,
                 size.y + 1f);
-            text.Draw(label);
+
+            // The style was built from a default rect, which leaves the mask as a
+            // zero rect — and a zero mask clips everything. Clip to the area we
+            // were given instead (long values get cut, descenders survive).
+            text.SetMask(rect.Outset(0f, 4f)).Draw(label);
         }
     }
 

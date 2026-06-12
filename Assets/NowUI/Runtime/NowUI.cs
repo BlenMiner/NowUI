@@ -114,8 +114,16 @@ namespace NowUI
                 _maskStack.RemoveAt(_maskStack.Count - 1);
         }
 
+        static readonly NowRect UnboundedMask = new NowRect(-100000f, -100000f, 200000f, 200000f);
+
         internal static NowRect ApplyAmbientMask(NowRect mask)
         {
+            // An empty mask means "no mask". Styles built from a default rect end
+            // up with a zero-size mask, and clipping everything against it (which
+            // renders nothing) is never the intent.
+            if (mask.isEmpty)
+                mask = UnboundedMask;
+
             return _maskStack.Count > 0 ? mask.Intersect(_maskStack[_maskStack.Count - 1]) : mask;
         }
 
@@ -723,7 +731,15 @@ namespace NowUI
             _tmpVertex.position.z = (int)position.width;
             _tmpVertex.position.w = rectHeight;
 
-            _tmpVertex.mask = ApplyAmbientMask(rectangle.mask);
+            // The constructor defaults the mask to the rect itself; give the SDF
+            // edge, outline and blur room to fall off instead of clipping the
+            // anti-aliasing hard at the bounds. Explicit masks stay exact.
+            var rectMask = rectangle.mask;
+
+            if (!rectMask.isEmpty && rectMask == rectangle.rect)
+                rectMask = rectMask.Outset(2f + rectangle.blur + rectangle.outline);
+
+            _tmpVertex.mask = ApplyAmbientMask(rectMask);
             _tmpVertex.radius = rectangle.radius;
             _tmpVertex.color = ApplyColorMultiplier(rectangle.color);
             _tmpVertex.outlineColor = ApplyColorMultiplier(rectangle.outlineColor);
@@ -742,6 +758,12 @@ namespace NowUI
         {
             if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
                 return;
+
+            // Default mask (= the layout rect): glyphs legitimately overhang the
+            // advance box — descenders, italics — so give them breathing room.
+            // Explicit masks stay exact; empty masks mean "no mask".
+            if (!style.mask.isEmpty && style.mask == style.rect)
+                style.mask = style.mask.Outset(4f);
 
             style.mask = ApplyAmbientMask(style.mask);
 
@@ -946,6 +968,9 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || style.font == null)
                 return;
 
+            if (!style.mask.isEmpty && style.mask == style.rect)
+                style.mask = style.mask.Outset(4f);
+
             style.mask = ApplyAmbientMask(style.mask);
 
             if (!style.font.TryResolveFont(style.fontStyle, out var resolvedFont))
@@ -1076,7 +1101,8 @@ namespace NowUI
                 lottie.preserveAspect);
 
             mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, buffer.positions.count);
-            mesh.AddGeometry(buffer, new Vector2(lottie.rect.x, lottie.rect.y), 1f / renderScale, tint, ApplyAmbientMask(lottie.mask));
+            var lottieMask = !lottie.mask.isEmpty && lottie.mask == lottie.rect ? lottie.mask.Outset(2f) : lottie.mask;
+            mesh.AddGeometry(buffer, new Vector2(lottie.rect.x, lottie.rect.y), 1f / renderScale, tint, ApplyAmbientMask(lottieMask));
         }
 
         public static NowUIRectangle Rectangle(NowUIRectangle rect)

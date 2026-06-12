@@ -55,7 +55,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            result = Now.Button(ButtonRect, "Save").Draw();
+            result = Now.Button(ButtonRect, "Save").SetId("Save").Draw();
 
         return result;
     }

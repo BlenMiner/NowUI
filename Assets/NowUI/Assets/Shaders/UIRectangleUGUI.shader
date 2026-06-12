@@ -134,11 +134,26 @@ Shader "NowUI/UI Rectangle UGUI"
                 float dist = sdRoundedBox(position, halfSize, rad);
                 float delta = fwidth(dist);
                 float graphicAlpha = 1 - smoothstep(-delta - blur, 0, dist);
-                float outlineAlpha = outline == 0 ? 0 : smoothstep(-outline - delta, -outline, dist);
 
-                col = lerp(col, i.outlineColor, outlineAlpha);
+                // An outline thinner than one AA width would sit entirely inside
+                // the edge fade and render as a washed-out sliver; draw at least
+                // one AA width of it so thin outlines stay solid.
+                float outlineWidth = max(outline, delta);
+                float outlineAlpha = outline == 0 ? 0 : smoothstep(-outlineWidth - delta, -outlineWidth, dist);
 
-                col.a *= graphicAlpha;
+                // Composite the outline OVER the fill weighted by alpha. A plain
+                // rgb lerp bleeds the fill's color into partially-covered pixels
+                // even when the fill is fully transparent — Color.clear is
+                // transparent BLACK, which showed up as dark fringes on the
+                // anti-aliased corners of outline-only rectangles.
+                float outlineCoverage = i.outlineColor.a * outlineAlpha;
+                float fillCoverage = col.a;
+                float coverage = outlineCoverage + fillCoverage * (1 - outlineCoverage);
+
+                if (coverage > 0.0001)
+                    col.rgb = (i.outlineColor.rgb * outlineCoverage + col.rgb * fillCoverage * (1 - outlineCoverage)) / coverage;
+
+                col.a = coverage * graphicAlpha;
 
                 #ifdef UNITY_UI_CLIP_RECT
                 float2 uiMask = saturate((_ClipRect.zw - _ClipRect.xy - abs(i.uiMask.xy)) * i.uiMask.zw);
