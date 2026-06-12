@@ -68,6 +68,12 @@ point it became installable through UPM.
   scrolling and a slim scroll indicator, and the multiline on-screen keyboard
   on mobile. The line layout (`NowTextArea.LayoutLines`) is public for custom
   editors, and the input frame gained up/down arrow keys.
+- Custom-controls guide (Docs/CustomControls.md): restyle via themes, wrap
+  variants (forwarding caller info so identity stays per call site), reshape
+  with custom hit shapes on the standard interaction bundle, and build from
+  scratch — plus a docs browser scene (`Assets/Scenes/DocsScene.unity`) that
+  renders the Docs folder through the markdown extension with a side menu,
+  relative-link navigation, and a live demo page running the guide's code.
 - IME composition in TextField and TextArea: the pre-edit text renders
   inline at the caret (underlined) without touching the value, editing keys
   belong to the IME until commit, and committed characters insert normally.

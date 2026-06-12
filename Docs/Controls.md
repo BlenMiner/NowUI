@@ -275,7 +275,10 @@ code via `measuredContentSize`.
 
 ## Building your own controls
 
-Everything the built-in controls use is public. The anatomy of a control:
+Everything the built-in controls use is public. This section is the
+reference; the walkthrough guide — restyling, wrapping variants, custom
+shapes, full builds — is [CustomControls.md](CustomControls.md). The anatomy
+of a control:
 
 ```csharp
 public static bool MyToggleSwitch(string label, ref bool value)

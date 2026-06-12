@@ -11,6 +11,10 @@ it.
   and font compilation examples.
 - [Controls](Controls.md): buttons, checkboxes, radios, sliders, text fields,
   dropdowns, scroll views — and the toolkit for building custom controls.
+- [Custom Controls](CustomControls.md): the how-to guide — restyling through
+  themes, wrapping variants, custom shapes on standard interaction, and
+  building new controls from scratch (with a live demo in the docs browser
+  scene).
 - [Layout](Layout.md): flexbox-style groups, sizing options, flexible space,
   and the two measurement modes.
 - [Lottie](Lottie.md): importing `.lottie` assets, the `Now.Lottie` builder,
@@ -24,6 +28,9 @@ it.
 - [Styles And Themes](StylesAndThemes.md): ScriptableObject themes, palette
   tokens, spacing/radius tokens, rectangle presets, text presets, and preview
   workflow.
+
+All of these render in-engine: open `Assets/Scenes/DocsScene.unity` for a
+browsable version with a side menu, powered by the markdown extension.
 
 ## Documentation Guidelines
 
