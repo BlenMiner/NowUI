@@ -53,5 +53,20 @@ namespace NowUI
             var eventSystem = EventSystem.current;
             return eventSystem != null && eventSystem.IsPointerOverGameObject();
         }
+
+        /// <summary>
+        /// Press-latched visibility: the gate is evaluated while idle (including the
+        /// frame a press begins), and that verdict is latched for as long as buttons
+        /// stay down — so a press that starts on occluding UGUI stays blocked through
+        /// its release, while a drag that started on NowUI keeps tracking even when
+        /// the pointer crosses occluding UGUI.
+        /// </summary>
+        public static bool UpdatePressGate(ref bool pressAllowed, bool buttonsWereDown, bool allowedNow)
+        {
+            if (!buttonsWereDown)
+                pressAllowed = allowedNow;
+
+            return pressAllowed;
+        }
     }
 }

@@ -916,14 +916,13 @@ namespace NowUI
                 return _rawInputAvailable;
             }
 
-            bool buttonsInvolved =
-                mouseInput.pointerButtonsDown != NowUIPointerButtons.None ||
-                mouseInput.pointerButtonsPressed != NowUIPointerButtons.None ||
-                mouseInput.pointerButtonsReleased != NowUIPointerButtons.None ||
-                _previousButtonsDown != NowUIPointerButtons.None;
-
+            // The gate verdict latches at press time: presses that begin on
+            // occluding UGUI stay blocked through release; drags that began on
+            // NowUI keep tracking even when crossing occluding UGUI.
+            bool buttonsWereDown = _previousButtonsDown != NowUIPointerButtons.None;
+            bool allowedNow = !blockedWhenPointerOverUGUI || !NowUIRaycastGate.IsPointerOverUGUI();
             bool pointerVisible = mouseInput.hasPointer &&
-                (!blockedWhenPointerOverUGUI || buttonsInvolved || !NowUIRaycastGate.IsPointerOverUGUI());
+                NowUIRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow);
 
             if (pointerVisible)
             {
@@ -958,6 +957,8 @@ namespace NowUI
         Vector2 _rawDelta;
 
         NowUIPointerButtons _previousButtonsDown;
+
+        bool _pressAllowed = true;
     }
 
     public sealed class NowUIIMGUIInputProvider : INowUIInputProvider
@@ -1074,12 +1075,16 @@ namespace NowUI
 
         NowUIPointerButtons _previousButtonsDown;
 
+        bool _pressAllowed = true;
+
         /// <summary>
         /// When set (NowUIGraphic assigns its host graphic), the pointer is withheld
         /// unless the EventSystem's topmost raycast hit is this component or one of
         /// its children — UGUI drawn above the host occludes NowUI input, mirroring
-        /// how the host's raycastTarget occludes UGUI beneath it. In-flight presses
-        /// and releases always come through so drags never strand.
+        /// how the host's raycastTarget occludes UGUI beneath it. The verdict latches
+        /// at press time: drags that began on this host keep tracking and their
+        /// release always arrives, while presses that began on occluding UGUI stay
+        /// blocked through release.
         /// </summary>
         public Component raycastGate;
 
@@ -1153,16 +1158,15 @@ namespace NowUI
                 return;
             }
 
-            bool buttonsInvolved =
-                mouseInput.pointerButtonsDown != NowUIPointerButtons.None ||
-                mouseInput.pointerButtonsPressed != NowUIPointerButtons.None ||
-                mouseInput.pointerButtonsReleased != NowUIPointerButtons.None ||
-                _previousButtonsDown != NowUIPointerButtons.None;
-
+            // Press-latched gate: presses beginning on occluding UGUI stay blocked
+            // through release; drags that began on this host keep tracking.
+            bool buttonsWereDown = _previousButtonsDown != NowUIPointerButtons.None;
             _previousButtonsDown = mouseInput.pointerButtonsDown;
 
-            if (raycastGate != null && !buttonsInvolved &&
-                !NowUIRaycastGate.IsPointerAllowed(raycastGate, mouseInput.screenPosition))
+            bool allowedNow = raycastGate == null ||
+                NowUIRaycastGate.IsPointerAllowed(raycastGate, mouseInput.screenPosition);
+
+            if (!NowUIRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow))
             {
                 _hasPreviousPosition = false;
                 _snapshot = CreateNavigationOnlySnapshot(mouseInput);

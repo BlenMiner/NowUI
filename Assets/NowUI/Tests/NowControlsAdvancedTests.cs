@@ -172,6 +172,30 @@ public class NowControlsAdvancedTests
     }
 
     [Test]
+    public void RaycastPressGateLatchesAtPressTime()
+    {
+        bool latch = true;
+
+        // Idle over occluding UGUI: invisible.
+        Assert.IsFalse(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: false, allowedNow: false));
+
+        // Press begins while blocked: invisible, and stays invisible for the whole
+        // press even if the gate would now allow (no click-through).
+        Assert.IsFalse(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: false, allowedNow: false));
+        Assert.IsFalse(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: true, allowedNow: true));
+        Assert.IsFalse(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: true, allowedNow: true));
+
+        // After release the gate re-evaluates.
+        Assert.IsTrue(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: false, allowedNow: true));
+
+        // Press begins while allowed, drags under occluding UGUI: keeps tracking,
+        // and the release still arrives.
+        Assert.IsTrue(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: false, allowedNow: true));
+        Assert.IsTrue(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: true, allowedNow: false));
+        Assert.IsTrue(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: true, allowedNow: false));
+    }
+
+    [Test]
     public void OverlayDeferredDrawRunsAtFlush()
     {
         bool ran = false;
