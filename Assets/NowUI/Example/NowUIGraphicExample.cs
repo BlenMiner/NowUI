@@ -9,6 +9,8 @@ public class NowUIGraphicExample : NowUIGraphic
     [SerializeField] float _size = 14f;
     [SerializeField] string _content;
 
+    private float _animation = 0f;
+
     protected override void DrawNowUI(NowRect rect)
     {
         float width = rect.width;
@@ -62,16 +64,23 @@ public class NowUIGraphicExample : NowUIGraphic
                 NowLayout.Button("B").Draw();
                 NowLayout.Button("C").Draw();
 
-                using (var button = NowLayout.Button("lottie-button").Begin())
+                using (var button = NowLayout.Button("lottie-button").SetAlignItems(NowLayoutAlign.Center).Begin())
                 {
-                    DrawLottie();
-                    NowLayout.Label("Hello");
+                    if (button.interaction.hovered)
+                        _animation += Time.deltaTime;
+                    else _animation = 0f;
+
+                    NowLayout.Lottie(_lottie)
+                        .SetTime(_animation)
+                        .SetWidth(64)
+                        .Draw();
+
+                    NowLayout.Label("Hello").SetFontSize(64).Draw();
 
                     if (button.clicked)
                         Debug.Log("Clicked");
                 }
             }
-            DrawLottie();
         }
     }
 

@@ -14,6 +14,7 @@ namespace NowUI
         NowLayoutOptions _options;
         NowRectangleStyle _rectPreset;
         NowTextStyle _textPreset;
+        NowLayoutAlign _alignItems;
         readonly NowRect _rect;
         readonly bool _hasRect;
 
@@ -26,6 +27,7 @@ namespace NowUI
             _options = default;
             _rectPreset = NowRectangleStyle.Accent;
             _textPreset = NowTextStyle.Button;
+            _alignItems = NowLayoutAlign.Start;
             _rect = default;
             _hasRect = false;
         }
@@ -50,6 +52,9 @@ namespace NowUI
         public NowButton SetStyle(NowRectangleStyle style) { _rectPreset = style; return this; }
 
         public NowButton SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
+
+        /// <summary>Cross-axis alignment for children inside <see cref="Begin"/> (vertical centering of icons/labels).</summary>
+        public NowButton SetAlignItems(NowLayoutAlign align) { _alignItems = align; return this; }
 
         /// <summary>
         /// Opens the button as a container for custom content — icons, sub-labels,
@@ -97,7 +102,7 @@ namespace NowUI
             // never escape the control visually.
             var mask = Now.Mask(rect);
             var area = NowLayout.Area(identity, rect, new NowLayoutOptions().SetPadding(padding));
-            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f));
+            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f).SetAlignItems(_alignItems));
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
         }
@@ -194,6 +199,7 @@ namespace NowUI
         readonly NowRect _rect;
         readonly bool _hasRect;
         NowTextStyle _textPreset;
+        NowLayoutAlign _alignItems;
 
         string identity => _id ?? _label;
 
@@ -205,6 +211,7 @@ namespace NowUI
             _rect = default;
             _hasRect = false;
             _textPreset = NowTextStyle.Body;
+            _alignItems = NowLayoutAlign.Start;
         }
 
         internal NowCheckbox(NowRect rect, string label) : this(label)
@@ -219,6 +226,9 @@ namespace NowUI
         public NowCheckbox SetId(string id) { _id = id; return this; }
 
         public NowCheckbox SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
+
+        /// <summary>Cross-axis alignment for children inside <see cref="Begin"/> (vertical centering of icons/labels).</summary>
+        public NowCheckbox SetAlignItems(NowLayoutAlign align) { _alignItems = align; return this; }
 
         /// <summary>
         /// Opens the checkbox as a container: the box draws on the left and custom
@@ -257,7 +267,7 @@ namespace NowUI
 
             var mask = Now.Mask(rect);
             var area = NowLayout.Area(identity, new NowRect(rect.x + Box + Gap, rect.y, rect.width - Box - Gap, rect.height));
-            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f));
+            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f).SetAlignItems(_alignItems));
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, clicked);
         }
@@ -350,6 +360,7 @@ namespace NowUI
         readonly NowRect _rect;
         readonly bool _hasRect;
         NowTextStyle _textPreset;
+        NowLayoutAlign _alignItems;
 
         string identity => _id ?? _label;
 
@@ -362,6 +373,7 @@ namespace NowUI
             _rect = default;
             _hasRect = false;
             _textPreset = NowTextStyle.Body;
+            _alignItems = NowLayoutAlign.Start;
         }
 
         internal NowRadio(NowRect rect, string label, bool isOn) : this(label, isOn)
@@ -376,6 +388,9 @@ namespace NowUI
         public NowRadio SetId(string id) { _id = id; return this; }
 
         public NowRadio SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
+
+        /// <summary>Cross-axis alignment for children inside <see cref="Begin"/> (vertical centering of icons/labels).</summary>
+        public NowRadio SetAlignItems(NowLayoutAlign align) { _alignItems = align; return this; }
 
         /// <summary>
         /// Opens the radio as a container: the circle draws on the left and custom
@@ -409,7 +424,7 @@ namespace NowUI
 
             var mask = Now.Mask(rect);
             var area = NowLayout.Area(identity, new NowRect(rect.x + Circle + Gap, rect.y, rect.width - Circle - Gap, rect.height));
-            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f));
+            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f).SetAlignItems(_alignItems));
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
         }

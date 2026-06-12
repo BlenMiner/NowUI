@@ -54,8 +54,14 @@ NowLayout.StretchWidth()              // weighted share of remaining space
 NowLayout.StretchWidth(2f)            // twice the share of weight-1 siblings
 options.SetMinWidth(80).SetMaxWidth(240)
 options.SetSpacing(8).SetPadding(12)  // groups only
-options.SetAlign(NowLayoutAlign.Center)
+options.SetAlign(NowLayoutAlign.Center)       // this element, on the parent's cross axis
+options.SetAlignItems(NowLayoutAlign.Center)  // groups only: default for the children
 ```
+
+`SetAlign` positions one element on its parent's cross axis (vertical in a
+horizontal group); `SetAlignItems` on a group sets the default for all its
+children — flexbox's `align-items` — with a child's own `SetAlign` taking
+precedence.
 
 `Space(pixels)` inserts a fixed gap; `FlexibleSpace(weight)` absorbs remaining
 space like an invisible stretch element.

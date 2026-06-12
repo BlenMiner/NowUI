@@ -108,6 +108,19 @@ the control sizes to the previous frame's content, like all scope-form
 layout; the explicit-rect forms (`Now.Button(rect, "id").Begin()`) are exact
 immediately. ScrollView's `Begin()` is the same idea applied to a viewport.
 
+Children of different heights top-align by default. `SetAlignItems` on the
+control sets the row's cross-axis default (flexbox `align-items`), and a
+child's own `SetAlign` still overrides it:
+
+```csharp
+using (var save = NowLayout.Button("save-btn").SetAlignItems(NowLayoutAlign.Center).Begin())
+{
+    NowLayout.Lottie(bigIcon).SetHeight(64).Draw();   // tallest, defines the row
+    NowLayout.Lottie(spinner).SetHeight(18).Draw();   // vertically centered
+    NowLayout.Label("Save").Draw();                   // vertically centered
+}
+```
+
 ## Repeated labels and ids
 
 Control ids derive from labels. Repeated labels in the same frame are

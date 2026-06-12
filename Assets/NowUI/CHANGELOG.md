@@ -62,6 +62,14 @@ point it became installable through UPM.
   screen input providers, drags preserved), completing the existing
   raycastTarget blocking in the other direction. EventSystem selection and
   NowUI focus are also mutually exclusive (`NowUIFocus.respectEventSystem`).
+- Group-level cross-axis alignment: `NowLayoutOptions.SetAlignItems`
+  (flexbox `align-items`) sets the default alignment for a group's children,
+  with per-child `SetAlign` overriding; exposed on the `Begin()` controls
+  (`NowLayout.Button("id").SetAlignItems(NowLayoutAlign.Center).Begin()`)
+  to vertically center mixed-height content. Also fixed auto-sized
+  containers measuring a cross-stretched child group's allocation instead
+  of its actual content, which locked `Begin()` controls at their
+  first-frame width.
 - Bundled Roslyn analyzer (`Runtime/Analyzers/NowUI.Analyzers.dll`, applies
   to every assembly referencing NowUI): NOWUI001 warns when a builder is
   discarded as a bare statement (`NowLayout.Label("Hi");` without `.Draw()`),

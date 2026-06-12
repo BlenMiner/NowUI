@@ -396,6 +396,30 @@ public class NowControlsTests
     }
 
     [Test]
+    public void BeginButtonGrowsToEncompassContent()
+    {
+        NowLayout.Reset();
+        NowRect rect = default;
+
+        // Deferred sizing converges over a few frames; the button must end up
+        // encompassing a child larger than its first-frame fallback rect.
+        for (int frame = 0; frame < 4; ++frame)
+        {
+            using (NowUIInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+            using (NowLayout.Area(new Vector4(0, 0, 400, 300)))
+            using (var button = NowLayout.Button("grow-button").Begin())
+            {
+                rect = button.rect;
+                NowLayout.Rect(128, 128);
+            }
+        }
+
+        Assert.GreaterOrEqual(rect.width, 128f, "button width must grow to encompass its content");
+        Assert.GreaterOrEqual(rect.height, 128f, "button height must grow to encompass its content");
+    }
+
+    [Test]
     public void CheckboxContentScopeTogglesInside()
     {
         bool value = false;

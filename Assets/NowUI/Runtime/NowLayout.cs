@@ -33,7 +33,8 @@ namespace NowUI
             StretchHeight = 1 << 7,
             Spacing = 1 << 8,
             Padding = 1 << 9,
-            Align = 1 << 10
+            Align = 1 << 10,
+            AlignItems = 1 << 11
         }
 
         public float width;
@@ -57,6 +58,8 @@ namespace NowUI
         public Vector4 padding;
 
         public NowLayoutAlign align;
+
+        public NowLayoutAlign alignItems;
 
         internal Field fields;
 
@@ -160,6 +163,18 @@ namespace NowUI
         {
             this.align = align;
             fields |= Field.Align;
+            return this;
+        }
+
+        /// <summary>
+        /// Default cross-axis alignment for the group's children (flexbox
+        /// align-items). Only used by groups; a child's own <see cref="SetAlign"/>
+        /// overrides it.
+        /// </summary>
+        public NowLayoutOptions SetAlignItems(NowLayoutAlign align)
+        {
+            alignItems = align;
+            fields |= Field.AlignItems;
             return this;
         }
     }
@@ -691,6 +706,8 @@ namespace NowUI
 
             public float maxCross;
 
+            public NowLayoutAlign alignItems;
+
             public float fixedMain;
 
             public float flexTotal;
@@ -707,6 +724,15 @@ namespace NowUI
             public float parentMainMin;
 
             public float parentMainMax;
+
+            /// <summary>Set when this group's cross axis was the default parent-filling stretch.</summary>
+            public bool parentCrossAuto;
+
+            public float parentCrossBefore;
+
+            public float parentCrossMin;
+
+            public float parentCrossMax;
         }
 
         struct CachedGroup
@@ -813,6 +839,7 @@ namespace NowUI
                 rect = rect,
                 padding = options.Has(NowLayoutOptions.Field.Padding) ? options.padding : default,
                 spacing = options.Has(NowLayoutOptions.Field.Spacing) ? options.spacing : 0f,
+                alignItems = options.Has(NowLayoutOptions.Field.AlignItems) ? options.alignItems : NowLayoutAlign.Start,
                 parentMainMax = float.MaxValue
             });
 
@@ -1172,9 +1199,13 @@ namespace NowUI
             if (_cache.TryGetValue(groupId, out var cached))
                 autoSize = new Vector2(cached.contentWidth, cached.contentHeight);
 
-            var rect = Allocate(ref parent, options, autoSize, true, out bool mainAuto, out float mainAllocated);
-
             bool mainIsWidth = parent.horizontal;
+            bool crossAuto =
+                !options.Has(mainIsWidth ? NowLayoutOptions.Field.Height : NowLayoutOptions.Field.Width) &&
+                !options.Has(mainIsWidth ? NowLayoutOptions.Field.StretchHeight : NowLayoutOptions.Field.StretchWidth);
+            float crossBefore = parent.maxCross;
+
+            var rect = Allocate(ref parent, options, autoSize, true, out bool mainAuto, out float mainAllocated);
 
             Push(new Group
             {
@@ -1183,6 +1214,7 @@ namespace NowUI
                 rect = rect,
                 padding = options.Has(NowLayoutOptions.Field.Padding) ? options.padding : default,
                 spacing = options.Has(NowLayoutOptions.Field.Spacing) ? options.spacing : 0f,
+                alignItems = options.Has(NowLayoutOptions.Field.AlignItems) ? options.alignItems : NowLayoutAlign.Start,
                 parentMainAuto = mainAuto,
                 parentMainAllocated = mainAllocated,
                 parentMainMin = options.Has(mainIsWidth ? NowLayoutOptions.Field.MinWidth : NowLayoutOptions.Field.MinHeight)
@@ -1190,6 +1222,14 @@ namespace NowUI
                     : 0f,
                 parentMainMax = options.Has(mainIsWidth ? NowLayoutOptions.Field.MaxWidth : NowLayoutOptions.Field.MaxHeight)
                     ? (mainIsWidth ? options.maxWidth : options.maxHeight)
+                    : float.MaxValue,
+                parentCrossAuto = crossAuto,
+                parentCrossBefore = crossBefore,
+                parentCrossMin = options.Has(mainIsWidth ? NowLayoutOptions.Field.MinHeight : NowLayoutOptions.Field.MinWidth)
+                    ? (mainIsWidth ? options.minHeight : options.minWidth)
+                    : 0f,
+                parentCrossMax = options.Has(mainIsWidth ? NowLayoutOptions.Field.MaxHeight : NowLayoutOptions.Field.MaxWidth)
+                    ? (mainIsWidth ? options.maxHeight : options.maxWidth)
                     : float.MaxValue
             });
 
@@ -1219,22 +1259,38 @@ namespace NowUI
             var ended = group;
             _depth--;
 
-            // When the parent sized this group from stale cached content, retro-correct
-            // the parent's cursor so siblings placed after the group stack correctly on
-            // the very first frame.
-            if (!ended.parentMainAuto || _depth == 0)
+            if (_depth == 0)
                 return;
 
             ref var parent = ref Top();
-            float actualMain = parent.horizontal ? contentWidth : contentHeight;
-            actualMain = Mathf.Clamp(actualMain, ended.parentMainMin, ended.parentMainMax);
-            float delta = actualMain - ended.parentMainAllocated;
 
-            if (delta == 0f)
-                return;
+            // When the parent sized this group from stale cached content, retro-correct
+            // the parent's cursor so siblings placed after the group stack correctly on
+            // the very first frame.
+            if (ended.parentMainAuto)
+            {
+                float actualMain = parent.horizontal ? contentWidth : contentHeight;
+                actualMain = Mathf.Clamp(actualMain, ended.parentMainMin, ended.parentMainMax);
+                float delta = actualMain - ended.parentMainAllocated;
 
-            parent.cursor += delta;
-            parent.fixedMain += delta;
+                if (delta != 0f)
+                {
+                    parent.cursor += delta;
+                    parent.fixedMain += delta;
+                }
+            }
+
+            // A default-stretched cross axis fills whatever the parent allocated, so
+            // measuring that allocation back into the parent would make an auto-sized
+            // parent's cached size a fixed point of itself — it could never grow toward
+            // (or shrink back to) the real content. Measure the group's actual content
+            // extent instead.
+            if (ended.parentCrossAuto)
+            {
+                float actualCross = parent.horizontal ? contentHeight : contentWidth;
+                actualCross = Mathf.Clamp(actualCross, ended.parentCrossMin, ended.parentCrossMax);
+                parent.maxCross = Mathf.Max(ended.parentCrossBefore, actualCross);
+            }
         }
 
         static void StoreCache(ref Group group)
@@ -1350,17 +1406,13 @@ namespace NowUI
             float mainPos = group.cursor + gap;
 
             float crossAvail = mainIsWidth ? contentHeight : contentWidth;
-            float alignFactor = 0f;
-
-            if (options.Has(NowLayoutOptions.Field.Align))
+            NowLayoutAlign align = options.Has(NowLayoutOptions.Field.Align) ? options.align : group.alignItems;
+            float alignFactor = align switch
             {
-                alignFactor = options.align switch
-                {
-                    NowLayoutAlign.Center => 0.5f,
-                    NowLayoutAlign.End => 1f,
-                    _ => 0f
-                };
-            }
+                NowLayoutAlign.Center => 0.5f,
+                NowLayoutAlign.End => 1f,
+                _ => 0f
+            };
 
             float crossOffset = Mathf.Max(0f, crossAvail - cross) * alignFactor;
 

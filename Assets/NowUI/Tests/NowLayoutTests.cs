@@ -121,6 +121,65 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void CrossStretchedGroupMeasuresContentNotAllocation()
+    {
+        // The area starts deliberately narrower than its content, like a Begin()
+        // control's first-frame fallback rect. The row stretches its width to the
+        // narrow area; the area must still measure the row's actual content so an
+        // auto-sized host can grow instead of locking onto its own width.
+        NowLayout.Area("measure-area", new Vector4(0, 0, 60, 60));
+        NowLayout.Horizontal();
+        NowLayout.Rect(128, 128);
+        NowLayout.Rect(40, 16);
+        NowLayout.EndHorizontal();
+        NowLayout.EndArea();
+
+        Assert.IsTrue(NowLayout.TryGetCachedContentSize("measure-area", out var size));
+        Assert.AreEqual(168f, size.x, 0.01f, "area must measure the row's content width, not the stretched allocation");
+        Assert.AreEqual(128f, size.y, 0.01f);
+    }
+
+    [Test]
+    public void AlignItemsAlignsChildrenWithPerChildOverride()
+    {
+        NowLayout.Area(new Vector4(0, 0, 400, 300));
+        NowLayout.Horizontal(new NowLayoutOptions().SetHeight(100).SetAlignItems(NowLayoutAlign.Center));
+
+        Vector4 inherited = NowLayout.Rect(50, 20);
+        Vector4 overridden = NowLayout.Rect(new NowLayoutOptions()
+            .SetWidth(50).SetHeight(20)
+            .SetAlign(NowLayoutAlign.End));
+
+        NowLayout.EndHorizontal();
+        NowLayout.EndArea();
+
+        Assert.AreEqual(40f, inherited.y, 0.001f, "child without explicit align inherits the group's align-items");
+        Assert.AreEqual(80f, overridden.y, 0.001f, "per-child SetAlign overrides the group's align-items");
+    }
+
+    [Test]
+    public void CrossStretchedGroupShrinksWhenContentShrinks()
+    {
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            NowLayout.Area("shrink-area", new Vector4(0, 0, 300, 300));
+            NowLayout.Horizontal();
+            NowLayout.Rect(200, 20);
+            NowLayout.EndHorizontal();
+            NowLayout.EndArea();
+        }
+
+        NowLayout.Area("shrink-area", new Vector4(0, 0, 300, 300));
+        NowLayout.Horizontal();
+        NowLayout.Rect(50, 20);
+        NowLayout.EndHorizontal();
+        NowLayout.EndArea();
+
+        Assert.IsTrue(NowLayout.TryGetCachedContentSize("shrink-area", out var size));
+        Assert.AreEqual(50f, size.x, 0.01f, "measured width must follow content back down");
+    }
+
+    [Test]
     public void FlexibleSpacePushesTrailingContentToTheEnd()
     {
         Vector4 trailing = default;
