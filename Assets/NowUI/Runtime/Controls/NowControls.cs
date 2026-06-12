@@ -86,6 +86,8 @@ namespace NowUI
 
         static readonly Dictionary<int, int> _labelOccurrences = new Dictionary<int, int>(32);
 
+        static readonly Dictionary<int, int> _passiveOccurrences = new Dictionary<int, int>(32);
+
         /// <summary>
         /// Hashes a call site (file + line) into a control identity. The control
         /// factories capture their caller via [CallerFilePath]/[CallerLineNumber]
@@ -144,14 +146,14 @@ namespace NowUI
 
         static int Salt(int id)
         {
-            // Measure passes draw the same controls again with interactions inert;
-            // counting them would desync ids between the passes.
-            if (NowUIInput.isPassive)
-                return id;
+            // Measure passes draw the same controls again, so they count in their
+            // own table (cleared each time a pass begins): occurrence N during the
+            // pass resolves to the same id as occurrence N in the real pass.
+            var occurrences = NowUIInput.isPassive ? _passiveOccurrences : _labelOccurrences;
 
-            if (_labelOccurrences.TryGetValue(id, out int occurrence))
+            if (occurrences.TryGetValue(id, out int occurrence))
             {
-                _labelOccurrences[id] = occurrence + 1;
+                occurrences[id] = occurrence + 1;
 
                 unchecked
                 {
@@ -160,7 +162,7 @@ namespace NowUI
                 }
             }
 
-            _labelOccurrences[id] = 1;
+            occurrences[id] = 1;
             return id;
         }
 
@@ -170,11 +172,18 @@ namespace NowUI
             _labelOccurrences.Clear();
         }
 
+        /// <summary>Starts a fresh measure-pass occurrence count; called when a passive pass begins.</summary>
+        internal static void ResetPassiveControlIdOccurrences()
+        {
+            _passiveOccurrences.Clear();
+        }
+
         public static void Reset()
         {
             _themeStack.Clear();
             _idStack.Clear();
             _labelOccurrences.Clear();
+            _passiveOccurrences.Clear();
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

@@ -34,12 +34,16 @@ namespace NowUI.Markdown
         /// <summary>
         /// Draws the markdown in the active layout group, stretching to the
         /// available width. Height settles one frame late, like all scope-form
-        /// layout measurement.
+        /// layout measurement. Identity comes from the call site, so several
+        /// blocks can interleave with other layout content.
         /// </summary>
-        public static NowMarkdownResult Draw(string markdown)
+        public static NowMarkdownResult Draw(
+            string markdown,
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
         {
             var document = GetCached(markdown);
-            var content = NowLayout.ContentRect();
+            var content = NowLayout.ContentRect(default, file, line);
             var result = document.Draw(content.rect);
             content.End(result.height);
             return result;

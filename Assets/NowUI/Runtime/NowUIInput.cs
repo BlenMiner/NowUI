@@ -748,6 +748,9 @@ namespace NowUI
         /// the same control will interact for real later this frame.</summary>
         internal static void BeginPassive()
         {
+            if (_passiveDepth == 0)
+                NowControls.ResetPassiveControlIdOccurrences();
+
             ++_passiveDepth;
         }
 

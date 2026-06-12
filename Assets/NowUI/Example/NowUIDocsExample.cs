@@ -100,9 +100,11 @@ public class NowUIDocsExample : NowUIGraphic
 
             for (int i = 0; i < Pages.Length; ++i)
             {
-                var style = i == _selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted;
+                bool selected = i == _selected;
+                var style = selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted;
+                var textStyle = selected ? NowTextStyle.Button : NowTextStyle.Body;
 
-                if (NowLayout.Button(Pages[i].title).SetId($"doc-{i}").SetStyle(style).SetStretchWidth().Draw())
+                if (NowLayout.Button(Pages[i].title).SetId($"doc-{i}").SetStyle(style).SetTextStyle(textStyle).SetStretchWidth().Draw())
                     _selected = i;
             }
         }

@@ -68,6 +68,13 @@ point it became installable through UPM.
   scrolling and a slim scroll indicator, and the multiline on-screen keyboard
   on mobile. The line layout (`NowTextArea.LayoutLines`) is public for custom
   editors, and the input frame gained up/down arrow keys.
+- Measure passes resolve the same control ids as the real pass: occurrence
+  salting now counts in a per-pass table instead of being skipped while
+  passive, so loop-salted controls and `NowLayout.ContentRect` reservations
+  no longer collide during layout measurement. `NowMarkdown.Draw(string)`
+  also takes identity from its caller, so several markdown blocks can
+  interleave with other layout content (this is what the docs browser's
+  live demo page does).
 - Custom-controls guide (Docs/CustomControls.md): restyle via themes, wrap
   variants (forwarding caller info so identity stays per call site), reshape
   with custom hit shapes on the standard interaction bundle, and build from

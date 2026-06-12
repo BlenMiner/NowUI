@@ -78,6 +78,30 @@ public class NowControlsTests
     }
 
     [Test]
+    public void PassiveMeasurePassMirrorsActiveOccurrenceSalting()
+    {
+        using (NowUIInput.Begin(_provider, Surface))
+        {
+            int active1 = NowControls.GetControlId("row");
+            int active2 = NowControls.GetControlId("row");
+
+            NowUIInput.BeginPassive();
+            int passive1 = NowControls.GetControlId("row");
+            int passive2 = NowControls.GetControlId("row");
+            NowUIInput.EndPassive();
+
+            NowUIInput.BeginPassive();
+            int secondPass1 = NowControls.GetControlId("row");
+            NowUIInput.EndPassive();
+
+            Assert.AreNotEqual(active1, active2, "Repeated draws of one id must salt apart.");
+            Assert.AreEqual(active1, passive1, "Measure passes must resolve the same ids as the real pass.");
+            Assert.AreEqual(active2, passive2, "Measure passes must resolve the same ids as the real pass.");
+            Assert.AreEqual(active1, secondPass1, "Every measure pass restarts its occurrence count.");
+        }
+    }
+
+    [Test]
     public void ButtonPressTakesFocus()
     {
         int expectedId;
