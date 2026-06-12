@@ -12,6 +12,13 @@ namespace NowUI
         /// <summary>Printable characters typed this frame (control characters stripped).</summary>
         public string characters;
 
+        /// <summary>
+        /// Uncommitted IME pre-edit text, or null when not composing. Editors
+        /// render it inline at the caret and suppress editing keys while it is
+        /// non-empty; committed text still arrives through <see cref="characters"/>.
+        /// </summary>
+        public string composition;
+
         public bool backspaceHeld;
         public bool deleteHeld;
         public bool leftHeld;
@@ -81,11 +88,73 @@ namespace NowUI
             _frameStamp = -1;
         }
 
+        /// <summary>
+        /// Turns the platform IME on or off; text editors call this on focus
+        /// transitions. Replaceable for hosts with their own IME flow.
+        /// </summary>
+        public static System.Action<bool> setImeEnabled = DefaultSetImeEnabled;
+
+        /// <summary>
+        /// Reports the caret position (surface coordinates) so the IME candidate
+        /// window opens next to it. The default forwards to the platform IME;
+        /// hosts whose surface is not the screen (UGUI canvases, render
+        /// textures) replace this to transform the point first.
+        /// </summary>
+        public static System.Action<Vector2> setCompositionCursor = DefaultSetCompositionCursor;
+
+        static void DefaultSetImeEnabled(bool enabled)
+        {
+#if ENABLE_INPUT_SYSTEM
+            var keyboard = Keyboard.current;
+
+            if (keyboard != null)
+            {
+                keyboard.SetIMEEnabled(enabled);
+                return;
+            }
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+            try
+            {
+                Input.imeCompositionMode = enabled ? IMECompositionMode.On : IMECompositionMode.Auto;
+            }
+            catch (System.InvalidOperationException)
+            {
+            }
+#endif
+        }
+
+        static void DefaultSetCompositionCursor(Vector2 position)
+        {
+#if ENABLE_INPUT_SYSTEM
+            var keyboard = Keyboard.current;
+
+            if (keyboard != null)
+            {
+                keyboard.SetIMECursorPosition(position);
+                return;
+            }
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+            try
+            {
+                Input.compositionCursorPos = position;
+            }
+            catch (System.InvalidOperationException)
+            {
+            }
+#endif
+        }
+
         public static void Reset()
         {
             _source = null;
             _frame = default;
             _frameStamp = -1;
+            setImeEnabled = DefaultSetImeEnabled;
+            setCompositionCursor = DefaultSetCompositionCursor;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -105,24 +174,38 @@ namespace NowUI
 #if ENABLE_INPUT_SYSTEM
         Keyboard _subscribed;
 
+        string _composition;
+
         void EnsureSubscribed(Keyboard keyboard)
         {
             if (ReferenceEquals(_subscribed, keyboard))
                 return;
 
             if (_subscribed != null)
+            {
                 _subscribed.onTextInput -= OnTextInput;
+                _subscribed.onIMECompositionChange -= OnIMECompositionChange;
+            }
 
             _subscribed = keyboard;
+            _composition = null;
 
             if (keyboard != null)
+            {
                 keyboard.onTextInput += OnTextInput;
+                keyboard.onIMECompositionChange += OnIMECompositionChange;
+            }
         }
 
         void OnTextInput(char character)
         {
             if (!char.IsControl(character))
                 _pending.Append(character);
+        }
+
+        void OnIMECompositionChange(UnityEngine.InputSystem.LowLevel.IMECompositionString composition)
+        {
+            _composition = composition.Count > 0 ? composition.ToString() : null;
         }
 #endif
 
@@ -153,6 +236,7 @@ namespace NowUI
                 frame.enterPressed = keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame;
                 frame.escapePressed = keyboard.escapeKey.wasPressedThisFrame;
                 frame.shift = keyboard.shiftKey.isPressed;
+                frame.composition = _composition;
 
                 bool ctrl = keyboard.ctrlKey.isPressed;
                 bool command = keyboard.leftCommandKey.isPressed || keyboard.rightCommandKey.isPressed;
@@ -208,6 +292,9 @@ namespace NowUI
                 frame.enterPressed = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
                 frame.escapePressed = Input.GetKeyDown(KeyCode.Escape);
                 frame.shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+
+                string composing = Input.compositionString;
+                frame.composition = string.IsNullOrEmpty(composing) ? null : composing;
 
                 bool isMac = Application.platform == RuntimePlatform.OSXEditor || Application.platform == RuntimePlatform.OSXPlayer;
                 frame.command = isMac

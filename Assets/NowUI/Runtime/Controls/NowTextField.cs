@@ -8,7 +8,9 @@ namespace NowUI
     /// <code>NowLayout.TextField("name").SetPlaceholder("Name...").Draw(ref playerName);</code>
     /// Click to place the caret (shaped-text cluster aware), drag to select,
     /// standard keyboard editing with key repeat, copy/cut/paste/select-all,
-    /// double-click selects all. Mobile opens the on-screen keyboard while focused.
+    /// double-click selects all. IME composition renders inline at the caret
+    /// (underlined) and owns the editing keys until committed. Mobile opens
+    /// the on-screen keyboard while focused.
     /// </summary>
     [NowBuilder]
     public struct NowTextField
@@ -75,8 +77,17 @@ namespace NowUI
             // Focus gained without a click (tab/gamepad/programmatic): caret to end.
             ref byte hadFocus = ref NowUIControlState.Get<byte>(NowUIInput.GetId(id, "hadfocus"));
 
-            if (focused && hadFocus == 0 && !interaction.pressed)
-                NowTextEdit.MoveEnd(ref state, text, false);
+            if (focused && hadFocus == 0)
+            {
+                NowUITextInput.setImeEnabled?.Invoke(true);
+
+                if (!interaction.pressed)
+                    NowTextEdit.MoveEnd(ref state, text, false);
+            }
+            else if (!focused && hadFocus == 1)
+            {
+                NowUITextInput.setImeEnabled?.Invoke(false);
+            }
 
             hadFocus = focused ? (byte)1 : (byte)0;
 
@@ -102,54 +113,61 @@ namespace NowUI
                 state.caret = HitTest(fontAsset, resolvedFont, text, interaction.pointerPosition.x - inner.x + state.scrollX, fontSize);
             }
 
+            string composition = null;
+
             if (focused && !NowUIInput.isPassive)
             {
                 NowUIFocus.LockNavigation();
                 var frame = NowUITextInput.current;
-
-                if (frame.enterPressed || frame.escapePressed)
-                    NowUIFocus.Clear();
-
-                if (frame.selectAllPressed)
-                    NowTextEdit.SelectAll(ref state, text);
-
-                if (frame.copyPressed && state.hasSelection)
-                    NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
-
-                if (frame.cutPressed && state.hasSelection)
-                {
-                    NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
-                    NowTextEdit.DeleteSelection(ref text, ref state);
-                }
-
-                if (frame.pastePressed)
-                {
-                    string buffer = NowUIClipboard.Paste();
-
-                    if (!string.IsNullOrEmpty(buffer))
-                        NowTextEdit.Insert(ref text, ref state, buffer.Replace("\n", " ").Replace("\r", string.Empty));
-                }
+                composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
 
                 if (!string.IsNullOrEmpty(frame.characters))
                     NowTextEdit.Insert(ref text, ref state, frame.characters);
 
-                if (NowUIControlState.Repeat(NowUIInput.GetId(id, "bs"), frame.backspaceHeld))
-                    NowTextEdit.Backspace(ref text, ref state, frame.command);
+                // While composing the IME owns the editing keys.
+                if (composition == null)
+                {
+                    if (frame.enterPressed || frame.escapePressed)
+                        NowUIFocus.Clear();
 
-                if (NowUIControlState.Repeat(NowUIInput.GetId(id, "del"), frame.deleteHeld))
-                    NowTextEdit.Delete(ref text, ref state, frame.command);
+                    if (frame.selectAllPressed)
+                        NowTextEdit.SelectAll(ref state, text);
 
-                if (NowUIControlState.Repeat(NowUIInput.GetId(id, "left"), frame.leftHeld))
-                    NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.command);
+                    if (frame.copyPressed && state.hasSelection)
+                        NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
 
-                if (NowUIControlState.Repeat(NowUIInput.GetId(id, "right"), frame.rightHeld))
-                    NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.command);
+                    if (frame.cutPressed && state.hasSelection)
+                    {
+                        NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                        NowTextEdit.DeleteSelection(ref text, ref state);
+                    }
 
-                if (frame.homePressed)
-                    NowTextEdit.MoveHome(ref state, frame.shift);
+                    if (frame.pastePressed)
+                    {
+                        string buffer = NowUIClipboard.Paste();
 
-                if (frame.endPressed)
-                    NowTextEdit.MoveEnd(ref state, text, frame.shift);
+                        if (!string.IsNullOrEmpty(buffer))
+                            NowTextEdit.Insert(ref text, ref state, buffer.Replace("\n", " ").Replace("\r", string.Empty));
+                    }
+
+                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "bs"), frame.backspaceHeld))
+                        NowTextEdit.Backspace(ref text, ref state, frame.command);
+
+                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "del"), frame.deleteHeld))
+                        NowTextEdit.Delete(ref text, ref state, frame.command);
+
+                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "left"), frame.leftHeld))
+                        NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.command);
+
+                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "right"), frame.rightHeld))
+                        NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.command);
+
+                    if (frame.homePressed)
+                        NowTextEdit.MoveHome(ref state, frame.shift);
+
+                    if (frame.endPressed)
+                        NowTextEdit.MoveEnd(ref state, text, frame.shift);
+                }
 
                 SyncTouchKeyboard(id, ref text, ref state);
             }
@@ -167,8 +185,17 @@ namespace NowUI
                 blinkAnchor = Time.realtimeSinceStartup;
             }
 
-            float caretX = PrefixAdvance(fontAsset, resolvedFont, text, state.caret, fontSize);
-            float totalWidth = PrefixAdvance(fontAsset, resolvedFont, text, text.Length, fontSize);
+            string display = text;
+            int displayCaret = state.caret;
+
+            if (composition != null)
+            {
+                display = text.Insert(state.caret, composition);
+                displayCaret += composition.Length;
+            }
+
+            float caretX = PrefixAdvance(fontAsset, resolvedFont, display, displayCaret, fontSize);
+            float totalWidth = PrefixAdvance(fontAsset, resolvedFont, display, display.Length, fontSize);
 
             if (caretX - state.scrollX > inner.width)
                 state.scrollX = caretX - inner.width;
@@ -177,6 +204,9 @@ namespace NowUI
                 state.scrollX = caretX;
 
             state.scrollX = Mathf.Clamp(state.scrollX, 0f, Mathf.Max(0f, totalWidth - inner.width));
+
+            if (focused && !NowUIInput.isPassive)
+                NowUITextInput.setCompositionCursor?.Invoke(new Vector2(inner.x - state.scrollX + caretX, inner.yMax));
 
             var box = theme.Rectangle(rect, NowRectangleStyle.Outline);
 
@@ -192,7 +222,7 @@ namespace NowUI
             {
                 float textX = inner.x - state.scrollX;
 
-                if (focused && state.hasSelection)
+                if (focused && state.hasSelection && composition == null)
                 {
                     float selectionMin = PrefixAdvance(fontAsset, resolvedFont, text, state.selectionMin, fontSize);
                     float selectionMax = PrefixAdvance(fontAsset, resolvedFont, text, state.selectionMax, fontSize);
@@ -204,15 +234,24 @@ namespace NowUI
                         .Draw();
                 }
 
-                if (text.Length > 0)
+                if (display.Length > 0)
                 {
                     textStyle.rect = new NowRect(textX, inner.y, totalWidth + 4f, inner.height);
-                    textStyle.Draw(text);
+                    textStyle.Draw(display);
                 }
                 else if (!focused && !string.IsNullOrEmpty(_placeholder))
                 {
                     var placeholder = theme.Text(new NowRect(inner.x, inner.y, inner.width, inner.height), NowTextStyle.Muted);
                     placeholder.SetFontSize(fontSize).Draw(_placeholder);
+                }
+
+                if (composition != null)
+                {
+                    float compositionX = PrefixAdvance(fontAsset, resolvedFont, display, state.caret, fontSize);
+
+                    Now.Rectangle(new NowRect(textX + compositionX, inner.yMax - 1f, Mathf.Max(caretX - compositionX, 1f), 1f))
+                        .SetColor(theme.GetColor(NowColorToken.Text, Color.black))
+                        .Draw();
                 }
 
                 if (focused && NowUIControlState.Blink(1f, blinkAnchor))

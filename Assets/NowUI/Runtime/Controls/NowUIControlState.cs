@@ -130,6 +130,29 @@ namespace NowUI
             return isDouble;
         }
 
+        struct ClickStreakState
+        {
+            public float lastClickTime;
+            public int count;
+        }
+
+        /// <summary>
+        /// Consecutive-click count for this click: 1 single, 2 double, 3 triple
+        /// and so on; 0 on non-click frames. Each click must land within
+        /// <paramref name="window"/> of the previous one to extend the streak.
+        /// </summary>
+        public static int ClickStreak(int id, bool clicked, float window = 0.35f)
+        {
+            if (!clicked)
+                return 0;
+
+            ref var state = ref Get<ClickStreakState>(id);
+            float now = Time.realtimeSinceStartup;
+            state.count = state.lastClickTime > 0f && now - state.lastClickTime <= window ? state.count + 1 : 1;
+            state.lastClickTime = now;
+            return state.count;
+        }
+
         struct RepeatState
         {
             public float heldSince;

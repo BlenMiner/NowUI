@@ -32,8 +32,9 @@ namespace NowUI
     /// <summary>
     /// Browser-style text selection over caller-positioned line segments:
     /// press and drag selects (across everything the segment list covers, like
-    /// dragging over a webpage), double-click selects a word, Ctrl/Cmd+A selects
-    /// all, Ctrl/Cmd+C copies through <see cref="NowUIClipboard"/>. Selection
+    /// dragging over a webpage), double-click selects a word, triple-click a
+    /// line, Ctrl/Cmd+A selects all, Ctrl/Cmd+C copies through
+    /// <see cref="NowUIClipboard"/>. Selection
     /// state keys off the id in <see cref="NowUIControlState"/>; focus
     /// integration clears the selection when the user clicks elsewhere.
     /// <see cref="Interact"/> runs the input once for a whole document;
@@ -133,8 +134,13 @@ namespace NowUI
             {
                 NowUIFocus.Focus(id);
                 int hit = HitTest(text, lines, font, fontSize, fontStyle, interaction.pointerPosition);
+                int streak = NowUIControlState.ClickStreak(id, true);
 
-                if (NowUIControlState.DetectDoubleClick(id, true))
+                if (streak >= 3)
+                {
+                    NowTextEdit.SelectLine(ref state, text, hit);
+                }
+                else if (streak == 2)
                 {
                     NowTextEdit.SelectWord(ref state, text, hit);
                 }

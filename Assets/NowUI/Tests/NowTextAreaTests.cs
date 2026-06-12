@@ -372,6 +372,82 @@ public class NowTextAreaTests
     }
 
     [Test]
+    public void TripleClickSelectsTheHardLine()
+    {
+        string text = "first line\nsecond";
+
+        var textStyle = NowControls.theme.Text(default, NowTextStyle.Body);
+        float lineHeight = textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize;
+        var inner = AreaRect.Inset(8f, 6f, 8f, 6f);
+        var click = new Vector2(inner.x + 4f, inner.y + lineHeight * 0.5f);
+
+        for (int i = 0; i < 3; ++i)
+        {
+            _pointer.snapshot = new NowUIInputSnapshot(click, true, true, false);
+            Frame(ref text);
+            _pointer.snapshot = new NowUIInputSnapshot(click, false, false, true);
+            Frame(ref text);
+        }
+
+        Assert.AreEqual(0, State().selectionMin);
+        Assert.AreEqual(10, State().selectionMax, "Triple-click selects the full hard line without its newline.");
+    }
+
+    [Test]
+    public void SelectLineSelectsNewlineDelimitedRange()
+    {
+        var state = default(NowTextEditState);
+        NowTextEdit.SelectLine(ref state, "ab\ncd\nef", 4);
+
+        Assert.AreEqual(3, state.selectionMin);
+        Assert.AreEqual(5, state.selectionMax);
+    }
+
+    [Test]
+    public void ImeCompositionSuppressesEditingKeysAndCommitInserts()
+    {
+        string text = "ab";
+        Focus();
+
+        Frame(ref text);
+        Assert.AreEqual(2, State().caret);
+
+        bool changed = Frame(ref text, new NowUITextInputFrame
+        {
+            composition = "か",
+            backspaceHeld = true,
+            enterPressed = true,
+            escapePressed = true
+        });
+
+        Assert.IsFalse(changed, "Composition must not edit the text.");
+        Assert.AreEqual("ab", text);
+        Assert.AreEqual(2, State().caret);
+        Assert.AreEqual(Id, NowUIFocus.focusedId, "Escape belongs to the IME while composing.");
+
+        Frame(ref text, new NowUITextInputFrame { characters = "か" });
+        Assert.AreEqual("abか", text, "Committed characters insert normally.");
+    }
+
+    [Test]
+    public void ImeEnablesOnFocusGainAndDisablesOnLoss()
+    {
+        var calls = new List<bool>();
+        NowUITextInput.setImeEnabled = enabled => calls.Add(enabled);
+
+        string text = "ab";
+        Focus();
+        Frame(ref text);
+
+        NowUIFocus.Clear();
+        Frame(ref text);
+
+        Assert.AreEqual(2, calls.Count);
+        Assert.IsTrue(calls[0]);
+        Assert.IsFalse(calls[1]);
+    }
+
+    [Test]
     public void TypingUnfocusedChangesNothing()
     {
         string text = "keep";

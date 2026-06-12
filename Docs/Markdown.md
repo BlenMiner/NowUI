@@ -56,7 +56,8 @@ Links are not opened automatically: the result reports `clickedLink` /
   image-clipboard API, so there is no bitmap copy). Textures cache in
   `NowMarkdownImages` (inject art with `SetTexture`).
 - Text is selectable like a website: drag across paragraphs, headings and
-  code blocks in one sweep (double-click for a word, Ctrl/Cmd+A for all),
+  code blocks in one sweep (double-click for a word, triple-click for a
+  line, Ctrl/Cmd+A for all),
   Ctrl/Cmd+C copies, and right-click offers Copy / Select All. Code blocks
   also carry a hover Copy button for the whole block. Everything copies
   through the single `NowUIClipboard` hook — replace `setText`/`getText`

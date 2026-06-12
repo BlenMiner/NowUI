@@ -233,6 +233,25 @@ namespace NowUI
             state.caret = end;
         }
 
+        /// <summary>Selects the hard line (newline-delimited) containing <paramref name="index"/>, without the newline.</summary>
+        public static void SelectLine(ref NowTextEditState state, string text, int index)
+        {
+            text ??= string.Empty;
+            int at = Mathf.Clamp(index, 0, text.Length);
+            int start = at;
+
+            while (start > 0 && text[start - 1] != '\n')
+                --start;
+
+            int end = at;
+
+            while (end < text.Length && text[end] != '\n')
+                ++end;
+
+            state.anchor = start;
+            state.caret = end;
+        }
+
         public static string GetSelection(string text, in NowTextEditState state)
         {
             if (string.IsNullOrEmpty(text) || !state.hasSelection)

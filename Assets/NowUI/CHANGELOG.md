@@ -68,6 +68,17 @@ point it became installable through UPM.
   scrolling and a slim scroll indicator, and the multiline on-screen keyboard
   on mobile. The line layout (`NowTextArea.LayoutLines`) is public for custom
   editors, and the input frame gained up/down arrow keys.
+- IME composition in TextField and TextArea: the pre-edit text renders
+  inline at the caret (underlined) without touching the value, editing keys
+  belong to the IME until commit, and committed characters insert normally.
+  The IME is enabled on focus and the caret position is reported for the
+  candidate window each frame (`NowUITextInput.setImeEnabled` /
+  `setCompositionCursor` are replaceable for non-screen hosts). Both
+  keyboard backends feed `NowUITextInputFrame.composition`.
+- Triple-click selects a line: in TextArea (the hard, newline-delimited
+  line) and in `NowTextSelection` regions including markdown documents.
+  Built on `NowUIControlState.ClickStreak` (consecutive-click counter) and
+  `NowTextEdit.SelectLine`, both public for custom controls.
 - Mutual UGUI pointer occlusion: UGUI drawn above NowUI now blocks NowUI
   hovers and clicks (EventSystem raycast gating in both the UGUI-hosted and
   screen input providers, drags preserved), completing the existing

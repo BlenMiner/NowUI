@@ -179,6 +179,26 @@ public class NowControlsAdvancedTests
     }
 
     [Test]
+    public void TextFieldImeCompositionSuppressesKeysAndKeepsText()
+    {
+        string text = "ab";
+        FocusField();
+
+        Assert.IsFalse(DrawTextFieldFrame(ref text, new NowUITextInputFrame
+        {
+            composition = "か",
+            backspaceHeld = true,
+            enterPressed = true
+        }));
+
+        Assert.AreEqual("ab", text, "Composition must not edit the text.");
+        Assert.AreNotEqual(0, NowUIFocus.focusedId, "Enter belongs to the IME while composing.");
+
+        Assert.IsTrue(DrawTextFieldFrame(ref text, new NowUITextInputFrame { characters = "か" }));
+        Assert.AreEqual("abか", text);
+    }
+
+    [Test]
     public void RaycastPressGateLatchesAtPressTime()
     {
         bool latch = true;

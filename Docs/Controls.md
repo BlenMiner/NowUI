@@ -49,13 +49,15 @@ using (NowLayout.Vertical(new NowLayoutOptions().SetPadding(16).SetSpacing(8)))
   response.
 - `TextField` supports click/drag selection (shaped-text cluster aware),
   standard editing keys with repeat, copy/cut/paste/select-all, double-click
-  select-all, placeholder text, and the mobile on-screen keyboard.
+  select-all, placeholder text, IME composition (rendered inline at the
+  caret, underlined), and the mobile on-screen keyboard.
 - `TextArea` is the multi-line editor: word-wrapped with every character
   preserved, caret up/down with a pixel goal column, Home/End per line and
-  Ctrl+Home/End per document, shift-selection on every movement, click/drag
-  and double-click word selection, Enter inserts a newline (Escape blurs),
-  multi-line clipboard, and a height that grows with content between
-  `SetLines(min, max)` with scroll-to-caret and wheel scrolling beyond it.
+  Ctrl+Home/End per document, shift-selection on every movement, click/drag,
+  double-click word and triple-click line selection, Enter inserts a newline
+  (Escape blurs), IME composition, multi-line clipboard, and a height that
+  grows with content between `SetLines(min, max)` with scroll-to-caret and
+  wheel scrolling beyond it.
 - `Dropdown` opens an overlay popup that blocks input underneath, scrolls when
   long, and closes on selection, outside click, or cancel. Selection applies
   on the next frame's Draw.
@@ -327,13 +329,14 @@ The toolkit pieces:
 | `NowUIInput.Interact(rect)` | Id-less interaction: identity from the call site |
 | `NowUIInput.CombineId(a, b)` | Mint sub-element ids (rows, links, items) without strings |
 | `NowUIControlState.Get<T>(id)` | Persistent ephemeral slot (struct), evicted when stale |
-| `NowUIControlState.Transition / Repeat / DetectDoubleClick / Blink` | The standard timing behaviors |
+| `NowUIControlState.Transition / Repeat / DetectDoubleClick / ClickStreak / Blink` | The standard timing behaviors |
 | `NowUIControlState.RequestRepaint()` | Tell retained hosts (UGUI) to render another frame |
 | `NowUIFocus.IsFocused / Focus / Clear / LockNavigation` | Focus queries, explicit control, nav suppression while editing |
 | `Now.Mask(rect)` | Ambient clipping scope (what ScrollView uses) |
 | `NowUIOverlay.Defer(blockRect, draw)` | Draw above everything; input beneath is blocked |
 | `NowUIContextMenu.Open / Begin / Item / End` | Modal right-click menus on the overlay layer |
-| `NowUITextInput.current` | Frame-sampled keyboard text/editing input |
+| `NowUITextInput.current` | Frame-sampled keyboard text/editing input, including IME composition |
+| `NowUITextInput.setImeEnabled / setCompositionCursor` | IME hooks: editors toggle on focus and report the caret for the candidate window |
 | `NowTextEdit` | Headless caret/selection/editing engine for custom editors |
 | `NowTextWrap.Layout / Draw` | Word wrap: lay out once into positioned runs, draw many frames |
 | `NowTextArea.LayoutLines / LineOf` | Editing-grade line layout: every character covered, caret-exact metrics |
@@ -357,7 +360,9 @@ Conventions that keep custom controls consistent:
 
 - ScrollView is vertical-only and does not yet capture touch drags that start
   on child controls (wheel and scrollbar work everywhere).
-- IME composition is not yet handled in TextField or TextArea (typed
-  characters and the mobile on-screen keyboard are).
+- IME composition renders inline with the default screen-space cursor
+  reporting; hosts whose surface is not the screen (UGUI canvases, render
+  textures) should replace `NowUITextInput.setCompositionCursor` to transform
+  the caret point.
 - Dropdown popups are pointer-driven; focus navigation inside the popup is
   not yet wired.

@@ -160,6 +160,21 @@ public class NowTextSelectionTests
     }
 
     [Test]
+    public void TripleClickSelectsTheLine()
+    {
+        var insideWorld = new Vector2(XAt("hello wo"), 10f);
+
+        for (int i = 0; i < 3; ++i)
+        {
+            Frame(insideWorld, down: true, pressed: true, released: false);
+            Frame(insideWorld, down: false, pressed: false, released: true);
+        }
+
+        Frame(insideWorld, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+        Assert.AreEqual(Text, _copied, "Triple-click selects the whole line.");
+    }
+
+    [Test]
     public void ClickingOutsideClearsTheSelection()
     {
         var fromX = new Vector2(XAt("hello "), 10f);
