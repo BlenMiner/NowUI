@@ -40,9 +40,11 @@ point it became installable through UPM.
   matte-clipped strokes keep the scalar route.
 - Play-mode rendering test suite reading back real rendered pixels for
   rectangles, text (both font compilers), Lottie, and the GL camera path.
-- Controls library: `NowControls.Button/Checkbox/Radio/Slider/TextField/
-  Dropdown/ScrollView` in the fluent builder style, layout- and theme-
-  integrated, with keyboard/gamepad focus (`NowUIFocus`: spatial navigation,
+- Controls library: Button, Checkbox, Radio, Slider, TextField, Dropdown and
+  ScrollView in the fluent builder style — `NowLayout.*` for layout flow,
+  `Now.*` for explicit rects, `NowButton.Begin()` content scopes for custom
+  button content (icons, sub-labels) — theme-integrated, with
+  keyboard/gamepad focus (`NowUIFocus`: spatial navigation,
   submit activation), per-control ephemeral state and timing helpers
   (`NowUIControlState`), id scopes, ambient clipping (`Now.Mask`), an
   overlay layer with input occlusion (`NowUIOverlay`), frame-sampled text

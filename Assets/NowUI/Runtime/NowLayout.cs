@@ -663,7 +663,7 @@ namespace NowUI
     /// first appears or animates. Pass explicit ids to areas and groups whose
     /// order or existence changes between frames to keep measurements stable.
     /// </summary>
-    public static class NowLayout
+    public static partial class NowLayout
     {
         struct Group
         {

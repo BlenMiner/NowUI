@@ -5,7 +5,7 @@ namespace NowUI
     /// <summary>
     /// Single-line text field. <see cref="Draw(ref string)"/> edits the caller's
     /// string in place and returns true when it changed:
-    /// <code>NowControls.TextField("name").SetPlaceholder("Name...").Draw(ref playerName);</code>
+    /// <code>NowLayout.TextField("name").SetPlaceholder("Name...").Draw(ref playerName);</code>
     /// Click to place the caret (shaped-text cluster aware), drag to select,
     /// standard keyboard editing with key repeat, copy/cut/paste/select-all,
     /// double-click selects all. Mobile opens the on-screen keyboard while focused.
@@ -32,6 +32,12 @@ namespace NowUI
             _textPreset = "body";
         }
 
+        internal NowTextField(NowRect rect, string id) : this(id)
+        {
+            _rect = rect;
+            _hasRect = true;
+        }
+
         public NowTextField SetPlaceholder(string placeholder) { _placeholder = placeholder; return this; }
 
         public NowTextField SetOptions(NowLayoutOptions options) { _options = options; return this; }
@@ -39,8 +45,6 @@ namespace NowUI
         public NowTextField SetWidth(float width) { _options = _options.SetWidth(width); return this; }
 
         public NowTextField SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
-
-        public NowTextField SetPosition(NowRect rect) { _rect = rect; _hasRect = true; return this; }
 
         public NowTextField SetTextPreset(string textPreset) { _textPreset = textPreset; return this; }
 

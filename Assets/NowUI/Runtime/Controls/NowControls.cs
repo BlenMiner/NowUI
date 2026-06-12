@@ -5,24 +5,17 @@ using UnityEngine;
 namespace NowUI
 {
     /// <summary>
-    /// Immediate-mode controls in NowUI's fluent style:
-    /// <code>
-    /// if (NowControls.Button("Save").Draw())
-    ///     Save();
+    /// The control toolkit: ambient theme, id scopes, and the shared interaction
+    /// plumbing that both the built-in controls and custom controls run on.
     ///
-    /// NowControls.Checkbox("Shadows").Draw(ref shadows);
-    /// NowControls.Slider(0f, 1f).Draw(ref volume);
+    /// The controls themselves live where they belong:
+    /// <see cref="NowLayout"/> for layout-flowing controls
+    /// (<c>NowLayout.Button("Save").Draw()</c>) and <see cref="Now"/> for explicit
+    /// rects (<c>Now.Button(rect, "Save").Draw()</c>) — mirroring how
+    /// <c>NowLayout.Label</c> and <c>Now.Text</c> already split.
     ///
-    /// if (NowControls.Radio("High", quality == 2).Draw())
-    ///     quality = 2;
-    /// </code>
-    /// Controls are layout-integrated (they reserve through <see cref="NowLayout"/>)
-    /// unless given an explicit rect with SetPosition. Visuals come from the ambient
-    /// <see cref="theme"/>; values stay owned by the caller via ref parameters.
-    ///
-    /// Everything controls are built from is public — <see cref="NowUIInput"/>,
-    /// <see cref="NowUIFocus"/>, <see cref="NowUIControlState"/>, the layout and
-    /// theme — so custom controls are first-class, not second-class.
+    /// Everything here is public so custom controls are first-class, not
+    /// second-class.
     /// </summary>
     public static class NowControls
     {
@@ -41,7 +34,7 @@ namespace NowUI
             get
             {
                 if (_themeStack.Count > 0)
-                    return _themeStack[_themeStack.Count - 1];
+                    return _themeStack[^1];
 
                 if (_defaultTheme == null)
                 {
@@ -75,12 +68,12 @@ namespace NowUI
         /// panels: ids derive from the label hashed against the innermost scope.
         /// <code>
         /// using (NowControls.IdScope($"row-{i}"))
-        ///     NowControls.Button("Delete").Draw();
+        ///     NowLayout.Button("Delete").Draw();
         /// </code>
         /// </summary>
         public static ControlIdScope IdScope(string name)
         {
-            int seed = _idStack.Count > 0 ? _idStack[_idStack.Count - 1] : 0;
+            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
             _idStack.Add(NowUIInput.GetId(seed, name));
             return new ControlIdScope(true);
         }
@@ -94,7 +87,7 @@ namespace NowUI
         /// <summary>Derives a control id from a label within the active id scope.</summary>
         public static int GetControlId(string label)
         {
-            int seed = _idStack.Count > 0 ? _idStack[_idStack.Count - 1] : 0;
+            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
             return NowUIInput.GetId(seed, label);
         }
 
@@ -108,45 +101,6 @@ namespace NowUI
         static void ResetForRuntimeLoad()
         {
             Reset();
-        }
-
-        // ------------------------------------------------------------------
-        // Factories
-        // ------------------------------------------------------------------
-
-        public static NowButton Button(string label)
-        {
-            return new NowButton(label);
-        }
-
-        public static NowCheckbox Checkbox(string label)
-        {
-            return new NowCheckbox(label);
-        }
-
-        public static NowRadio Radio(string label, bool isOn)
-        {
-            return new NowRadio(label, isOn);
-        }
-
-        public static NowSlider Slider(float min, float max)
-        {
-            return new NowSlider(min, max);
-        }
-
-        public static NowScrollView ScrollView(string id)
-        {
-            return new NowScrollView(id);
-        }
-
-        public static NowTextField TextField(string id)
-        {
-            return new NowTextField(id);
-        }
-
-        public static NowDropdown Dropdown(string id, System.Collections.Generic.IReadOnlyList<string> options)
-        {
-            return new NowDropdown(id, options);
         }
 
         // ------------------------------------------------------------------

@@ -55,18 +55,15 @@ public class NowUIGraphicExample : NowUIGraphic
                 NowLayout.Label("I").Draw();
             }
 
-            NowLayout.Lottie(_lottie)
-                .SetWidth(128)
-                .SetTime(Time.time)
-                .Draw();
-
             DrawLottie();
+
+
+
             using (NowLayout.Horizontal())
             {
-                DrawLottie();
-                DrawLottie();
-                DrawLottie();
-                DrawLottie();
+                NowLayout.Button("A").Draw();
+                NowLayout.Button("B").Draw();
+                NowLayout.Button("C").Draw();
             }
             DrawLottie();
         }

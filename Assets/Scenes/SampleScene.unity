@@ -394,7 +394,8 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  _rebuildEveryFrame: 1
+  _rebuildEveryFrame: 0
+  _autoRebuildOnInteraction: 1
   _font: {fileID: 11400000, guid: d9b4fc19191445a4f851b19fd4cf730f, type: 2}
   _lottie: {fileID: 7868935432812623880, guid: 3fc211d4e815f3b49b550a4b8bc75850, type: 3}
   _size: 38.1

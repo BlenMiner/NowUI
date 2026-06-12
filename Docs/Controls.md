@@ -1,37 +1,40 @@
 # Controls
 
-`NowControls` is NowUI's immediate-mode control library: buttons, checkboxes,
-radios, sliders, text fields, dropdowns and scroll views, built entirely on
-public primitives so custom controls are first-class citizens. Controls work
-identically in the screen path (`Now.StartUI`), inside UGUI
-(`NowUIGraphic`), and in URP/HDRP overlays — pointer, touch, keyboard and
-gamepad included.
+NowUI's immediate-mode controls: buttons, checkboxes, radios, sliders, text
+fields, dropdowns and scroll views, built entirely on public primitives so
+custom controls are first-class citizens. Controls work identically in the
+screen path (`Now.StartUI`), inside UGUI (`NowUIGraphic`), and in URP/HDRP
+overlays — pointer, touch, keyboard and gamepad included.
+
+Controls live where drawing already lives: `NowLayout.*` flows in the active
+layout group (like `NowLayout.Label`), `Now.*` takes an explicit rect (like
+`Now.Text`), and `NowControls` is the shared toolkit — theme, id scopes, and
+the interaction plumbing.
 
 ## Using the built-in controls
 
-Controls reserve layout space like `NowLayout.Label` does, sized from their
-themed content; give them an explicit rect with `SetPosition` for free-form
-drawing. Values stay owned by you, passed by ref.
+Layout-flowing controls reserve space sized from their themed content; values
+stay owned by you, passed by ref.
 
 ```csharp
 using (NowLayout.Area(NowUIScreen.safeArea))
 using (NowLayout.Vertical(new NowLayoutOptions().SetPadding(16).SetSpacing(8)))
 {
-    if (NowControls.Button("Save").Draw())
+    if (NowLayout.Button("Save").Draw())
         Save();
 
-    NowControls.Checkbox("Enable shadows").Draw(ref shadows);
+    NowLayout.Checkbox("Enable shadows").Draw(ref shadows);
 
-    if (NowControls.Radio("Low", quality == 0).Draw()) quality = 0;
-    if (NowControls.Radio("High", quality == 1).Draw()) quality = 1;
+    if (NowLayout.Radio("Low", quality == 0).Draw()) quality = 0;
+    if (NowLayout.Radio("High", quality == 1).Draw()) quality = 1;
 
-    NowControls.Slider(0f, 1f).SetStretchWidth().Draw(ref volume);
+    NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref volume);
 
-    NowControls.TextField("player-name").SetPlaceholder("Name...").Draw(ref playerName);
+    NowLayout.TextField("player-name").SetPlaceholder("Name...").Draw(ref playerName);
 
-    NowControls.Dropdown("res", resolutionNames).Draw(ref resolutionIndex);
+    NowLayout.Dropdown("res", resolutionNames).Draw(ref resolutionIndex);
 
-    using (NowControls.ScrollView("log").SetHeight(160).Begin())
+    using (NowLayout.ScrollView("log").SetHeight(160).Begin())
         foreach (var line in logLines)
             NowLayout.Label(line).Draw();
 }
@@ -52,6 +55,41 @@ using (NowLayout.Vertical(new NowLayoutOptions().SetPadding(16).SetSpacing(8)))
   thumb; content height is the layout group's measured extent (one frame
   late, like all layout measurement). Vertical only for now.
 
+## Explicit rects
+
+Every control has a `Now.*` twin taking a rect, for HUDs and free-form
+drawing:
+
+```csharp
+if (Now.Button(new NowRect(20, 20, 120, 40), "Save").Draw())
+    Save();
+
+Now.Slider(new NowRect(20, 70, 200, 20), 0f, 1f).Draw(ref volume);
+Now.TextField(new NowRect(20, 100, 200, 30), "name").Draw(ref playerName);
+```
+
+## Custom content inside a button
+
+When a label is not enough — an icon, a sub-label, a Lottie spinner — open
+the button as a scope. Interaction runs immediately, so the result is
+readable inside, and children flow in a horizontal row:
+
+```csharp
+using (var save = NowLayout.Button("save-btn").Begin())
+{
+    if (save.clicked)
+        Save();
+
+    NowLayout.Lottie(spinner).SetHeight(18).Draw();
+    NowLayout.Label(saving ? "Saving..." : "Save").Draw();
+}
+```
+
+The scope exposes `clicked`, `focused`, `interaction`, and `rect`. In layout
+flow the button sizes to the previous frame's content, like all scope-form
+layout; the explicit-rect form (`Now.Button(rect, "id").Begin()`) is exact
+immediately.
+
 ## Repeated labels and ids
 
 Control ids derive from labels. Disambiguate repeats with an id scope:
@@ -59,7 +97,7 @@ Control ids derive from labels. Disambiguate repeats with an id scope:
 ```csharp
 for (int i = 0; i < rows.Count; ++i)
     using (NowControls.IdScope($"row-{i}"))
-        if (NowControls.Button("Delete").Draw())
+        if (NowLayout.Button("Delete").Draw())
             Delete(i);
 ```
 

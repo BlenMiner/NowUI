@@ -55,7 +55,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            result = NowControls.Button("Save").SetPosition(ButtonRect).Draw();
+            result = Now.Button(ButtonRect, "Save").Draw();
 
         return result;
     }
@@ -102,7 +102,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            activated = NowControls.Button("Save").SetPosition(ButtonRect).Draw();
+            activated = Now.Button(ButtonRect, "Save").Draw();
 
         Assert.IsTrue(activated, "Submit on a focused button must activate it.");
     }
@@ -118,7 +118,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            NowControls.Checkbox("Shadows").SetPosition(rect).Draw(ref value);
+            Now.Checkbox(rect, "Shadows").Draw(ref value);
 
         Assert.IsFalse(value);
 
@@ -127,7 +127,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            changed = NowControls.Checkbox("Shadows").SetPosition(rect).Draw(ref value);
+            changed = Now.Checkbox(rect, "Shadows").Draw(ref value);
 
         Assert.IsTrue(changed);
         Assert.IsTrue(value);
@@ -143,14 +143,14 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            NowControls.Radio("High", false).SetPosition(rect).Draw();
+            Now.Radio(rect, "High", false).Draw();
 
         _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
         bool clicked;
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            clicked = NowControls.Radio("High", false).SetPosition(rect).Draw();
+            clicked = Now.Radio(rect, "High", false).Draw();
 
         Assert.IsTrue(clicked);
     }
@@ -167,7 +167,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            changed = NowControls.Slider(0f, 1f).SetPosition(rect).Draw(ref value);
+            changed = Now.Slider(rect, 0f, 1f).Draw(ref value);
 
         Assert.IsTrue(changed);
         Assert.Greater(value, 0.6f);
@@ -257,6 +257,38 @@ public class NowControlsTests
         Assert.IsFalse(NowUIControlState.Repeat(1, held: true), "No pulse before the repeat delay.");
         Assert.IsFalse(NowUIControlState.Repeat(1, held: false));
         Assert.IsTrue(NowUIControlState.Repeat(1, held: true), "Releasing resets the initial pulse.");
+    }
+
+    [Test]
+    public void ButtonContentScopeReportsClickInside()
+    {
+        Vector2 inside = new Vector2(60, 36);
+
+        // Press frame: content draws, no click yet.
+        _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        using (var button = Now.Button(ButtonRect, "content-button").Begin())
+        {
+            Assert.IsFalse(button.clicked);
+            NowLayout.Label("Hi").Draw();
+        }
+
+        // Release frame: clicked is readable inside the scope.
+        _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+        bool sawClick = false;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        using (var button = Now.Button(ButtonRect, "content-button").Begin())
+        {
+            sawClick = button.clicked;
+            NowLayout.Label("Hi").Draw();
+        }
+
+        Assert.IsTrue(sawClick, "Click result must be readable inside the content scope.");
+        Assert.IsTrue(_drawList.hasGeometry);
     }
 
     [Test]

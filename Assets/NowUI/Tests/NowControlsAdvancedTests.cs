@@ -74,7 +74,7 @@ public class NowControlsAdvancedTests
 
         using (NowUIInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-            changed = NowControls.TextField("name").SetPosition(FieldRect).Draw(ref text);
+            changed = Now.TextField(FieldRect, "name").Draw(ref text);
 
         return changed;
     }
@@ -161,7 +161,7 @@ public class NowControlsAdvancedTests
 
         using (NowUIInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-            NowControls.TextField("name").SetPosition(FieldRect).Draw(ref text);
+            Now.TextField(FieldRect, "name").Draw(ref text);
 
         _pointer.snapshot = default;
         DrawTextFieldFrame(ref text, new NowUITextInputFrame { characters = "!" });
@@ -224,7 +224,7 @@ public class NowControlsAdvancedTests
         // Frame 1: populate the layout cache with tall content.
         using (NowUIInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-        using (NowControls.ScrollView("list").SetPosition(new NowRect(0, 0, 200, 100)).Begin())
+        using (Now.ScrollView(new NowRect(0, 0, 200, 100), "list").Begin())
         {
             for (int i = 0; i < 10; ++i)
                 NowLayout.Rect(new NowLayoutOptions().SetSize(180, 30));
@@ -239,7 +239,7 @@ public class NowControlsAdvancedTests
 
         using (NowUIInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-        using (NowControls.ScrollView("list").SetPosition(new NowRect(0, 0, 200, 100)).Begin())
+        using (Now.ScrollView(new NowRect(0, 0, 200, 100), "list").Begin())
         {
             for (int i = 0; i < 10; ++i)
                 NowLayout.Rect(new NowLayoutOptions().SetSize(180, 30));
@@ -262,13 +262,13 @@ public class NowControlsAdvancedTests
 
         using (NowUIInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-            NowControls.Dropdown("quality", options).SetPosition(rect).Draw(ref selected);
+            Now.Dropdown(rect, "quality", options).Draw(ref selected);
 
         _pointer.snapshot = new NowUIInputSnapshot(new Vector2(60, 35), false, false, true);
 
         using (NowUIInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-            NowControls.Dropdown("quality", options).SetPosition(rect).Draw(ref selected);
+            Now.Dropdown(rect, "quality", options).Draw(ref selected);
 
         Assert.IsTrue(NowUIControlState.Get<bool>(NowControls.GetControlId("quality")), "Click must open the dropdown.");
 
@@ -280,7 +280,7 @@ public class NowControlsAdvancedTests
 
         using (NowUIInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-            changed = NowControls.Dropdown("quality", options).SetPosition(rect).Draw(ref selected);
+            changed = Now.Dropdown(rect, "quality", options).Draw(ref selected);
 
         Assert.IsTrue(changed);
         Assert.AreEqual(2, selected, "Pending selection 3 maps to index 2.");

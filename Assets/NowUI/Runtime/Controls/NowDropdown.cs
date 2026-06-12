@@ -5,7 +5,7 @@ namespace NowUI
 {
     /// <summary>
     /// Dropdown selector:
-    /// <code>NowControls.Dropdown("quality", qualityNames).Draw(ref qualityIndex);</code>
+    /// <code>NowLayout.Dropdown("quality", qualityNames).Draw(ref qualityIndex);</code>
     /// The popup draws through <see cref="NowUIOverlay"/> — above everything, with
     /// the controls underneath pointer-blocked — and closes on selection, on a
     /// click outside, or on cancel. Long lists scroll. Selection from the popup
@@ -31,13 +31,17 @@ namespace NowUI
             _hasRect = false;
         }
 
+        internal NowDropdown(NowRect rect, string id, IReadOnlyList<string> options) : this(id, options)
+        {
+            _rect = rect;
+            _hasRect = true;
+        }
+
         public NowDropdown SetOptions(NowLayoutOptions options) { _layoutOptions = options; return this; }
 
         public NowDropdown SetWidth(float width) { _layoutOptions = _layoutOptions.SetWidth(width); return this; }
 
         public NowDropdown SetStretchWidth(float weight = 1f) { _layoutOptions = _layoutOptions.SetStretchWidth(weight); return this; }
-
-        public NowDropdown SetPosition(NowRect rect) { _rect = rect; _hasRect = true; return this; }
 
         public bool Draw(ref int selected)
         {
@@ -160,7 +164,7 @@ namespace NowUI
 
                 if (scrolls)
                 {
-                    using (NowControls.ScrollView(capturedId).SetPosition(itemArea).Begin())
+                    using (Now.ScrollView(itemArea, capturedId).Begin())
                         DrawItems();
                 }
                 else

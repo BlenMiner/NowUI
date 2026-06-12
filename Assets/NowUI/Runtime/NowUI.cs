@@ -11,7 +11,7 @@ namespace NowUI
     /// <see cref="FlushUI"/>) and the drawing factories (<see cref="Rectangle(NowRect)"/>,
     /// <see cref="Text(NowRect)"/>, <see cref="Lottie"/>).
     /// </summary>
-    public static class Now
+    public static partial class Now
     {
         static Material _defaultMaterial;
 

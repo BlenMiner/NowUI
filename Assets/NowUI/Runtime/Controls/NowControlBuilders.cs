@@ -8,7 +8,7 @@ namespace NowUI
     /// </summary>
     public struct NowButton
     {
-        string _label;
+        readonly string _label;
         NowLayoutOptions _options;
         string _rectPreset;
         string _textPreset;
@@ -25,6 +25,12 @@ namespace NowUI
             _hasRect = false;
         }
 
+        internal NowButton(NowRect rect, string label) : this(label)
+        {
+            _rect = rect;
+            _hasRect = true;
+        }
+
         public NowButton SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
         public NowButton SetWidth(float width) { _options = _options.SetWidth(width); return this; }
@@ -33,12 +39,55 @@ namespace NowUI
 
         public NowButton SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
-        /// <summary>Draws at an explicit rect instead of reserving layout space.</summary>
-        public NowButton SetPosition(NowRect rect) { _rect = rect; _hasRect = true; return this; }
-
         public NowButton SetPreset(string rectanglePreset) { _rectPreset = rectanglePreset; return this; }
 
         public NowButton SetTextPreset(string textPreset) { _textPreset = textPreset; return this; }
+
+        /// <summary>
+        /// Opens the button as a container for custom content — icons, sub-labels,
+        /// anything drawn with layout calls. Interaction runs immediately, so the
+        /// result is readable inside the scope; children flow in a horizontal row.
+        /// In layout flow the button sizes to the previous frame's content, like all
+        /// scope-form layout.
+        /// <code>
+        /// using (var save = NowLayout.Button("save-btn").Begin())
+        /// {
+        ///     if (save.clicked) Save();
+        ///     NowLayout.Lottie(spinner).SetHeight(18).Draw();
+        ///     NowLayout.Label("Save").Draw();
+        /// }
+        /// </code>
+        /// </summary>
+        public NowButtonScope Begin()
+        {
+            var theme = NowControls.theme;
+            int id = NowControls.GetControlId(_label);
+
+            Vector4 padding = theme.GetSpacing("md", new Vector4(12f, 12f, 12f, 12f));
+            NowLayout.TryGetCachedContentSize(_label, out Vector2 cached);
+            var fallback = new Vector2(padding.x + padding.z + 40f, padding.y + padding.w + 20f);
+            var contentSize = cached.x > 0f ? cached : fallback;
+
+            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
+            var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+            float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
+
+            var rectangle = theme.Rectangle(rect, _rectPreset);
+            rectangle.color = NowControls.StateTint(rectangle.color, hoverT, interaction.held);
+
+            if (focused)
+            {
+                rectangle.outline = Mathf.Max(rectangle.outline, 2f);
+                rectangle.outlineColor = theme.GetColor("text", Color.black);
+            }
+
+            rectangle.Draw();
+
+            var area = NowLayout.Area(_label, rect, new NowLayoutOptions().SetPadding(padding));
+            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f));
+
+            return new NowButtonScope(area, row, rect, interaction, focused, interaction.clicked || submitted);
+        }
 
         public bool Draw()
         {
@@ -73,6 +122,47 @@ namespace NowUI
     }
 
     /// <summary>
+    /// Scope returned by <see cref="NowButton.Begin"/>; interaction results are
+    /// readable inside the scope while custom content draws as layout children.
+    /// </summary>
+    public struct NowButtonScope : System.IDisposable
+    {
+        public readonly NowUIInteraction interaction;
+
+        public readonly NowRect rect;
+
+        /// <summary>True on click or on submit while focused.</summary>
+        public readonly bool clicked;
+
+        public readonly bool focused;
+
+        NowLayoutScope _area;
+        NowLayoutScope _row;
+        bool _disposed;
+
+        internal NowButtonScope(NowLayoutScope area, NowLayoutScope row, NowRect rect, NowUIInteraction interaction, bool focused, bool clicked)
+        {
+            _area = area;
+            _row = row;
+            this.rect = rect;
+            this.interaction = interaction;
+            this.focused = focused;
+            this.clicked = clicked;
+            _disposed = false;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            _row.Dispose();
+            _area.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Checkbox with a label. <see cref="Draw(ref bool)"/> toggles the caller's
     /// value on click/submit and returns true when it changed.
     /// </summary>
@@ -93,9 +183,13 @@ namespace NowUI
             _textPreset = "body";
         }
 
-        public NowCheckbox SetOptions(NowLayoutOptions options) { _options = options; return this; }
+        internal NowCheckbox(NowRect rect, string label) : this(label)
+        {
+            _rect = rect;
+            _hasRect = true;
+        }
 
-        public NowCheckbox SetPosition(NowRect rect) { _rect = rect; _hasRect = true; return this; }
+        public NowCheckbox SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
         public NowCheckbox SetTextPreset(string textPreset) { _textPreset = textPreset; return this; }
 
@@ -148,7 +242,7 @@ namespace NowUI
     /// <summary>
     /// Radio option; pass whether it is the selected one and set your selection when
     /// <see cref="Draw"/> returns true:
-    /// <code>if (NowControls.Radio("High", quality == 2).Draw()) quality = 2;</code>
+    /// <code>if (NowLayout.Radio("High", quality == 2).Draw()) quality = 2;</code>
     /// </summary>
     public struct NowRadio
     {
@@ -169,9 +263,13 @@ namespace NowUI
             _textPreset = "body";
         }
 
-        public NowRadio SetOptions(NowLayoutOptions options) { _options = options; return this; }
+        internal NowRadio(NowRect rect, string label, bool isOn) : this(label, isOn)
+        {
+            _rect = rect;
+            _hasRect = true;
+        }
 
-        public NowRadio SetPosition(NowRect rect) { _rect = rect; _hasRect = true; return this; }
+        public NowRadio SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
         public NowRadio SetTextPreset(string textPreset) { _textPreset = textPreset; return this; }
 
@@ -243,13 +341,17 @@ namespace NowUI
             _id = "slider";
         }
 
+        internal NowSlider(NowRect rect, float min, float max) : this(min, max)
+        {
+            _rect = rect;
+            _hasRect = true;
+        }
+
         public NowSlider SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
         public NowSlider SetWidth(float width) { _options = _options.SetWidth(width); return this; }
 
         public NowSlider SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
-
-        public NowSlider SetPosition(NowRect rect) { _rect = rect; _hasRect = true; return this; }
 
         /// <summary>Sliders have no label; give ones that coexist a distinct id.</summary>
         public NowSlider SetId(string id) { _id = id; return this; }

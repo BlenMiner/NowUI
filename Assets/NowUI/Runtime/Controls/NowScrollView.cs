@@ -6,9 +6,9 @@ namespace NowUI
     /// <summary>
     /// Vertical scroll container:
     /// <code>
-    /// using (NowControls.ScrollView("inventory").Begin())
+    /// using (NowLayout.ScrollView("inventory").Begin())
     ///     foreach (var item in items)
-    ///         NowControls.Button(item.name).Draw();
+    ///         NowLayout.Button(item.name).Draw();
     /// </code>
     /// Content lays out in a vertical group clipped to the viewport; the wheel
     /// scrolls while hovered and the scrollbar thumb drags. Content height is the
@@ -29,11 +29,15 @@ namespace NowUI
             _hasRect = false;
         }
 
+        internal NowScrollView(NowRect rect, string id) : this(id)
+        {
+            _rect = rect;
+            _hasRect = true;
+        }
+
         public NowScrollView SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
         public NowScrollView SetHeight(float height) { _options = _options.SetHeight(height); return this; }
-
-        public NowScrollView SetPosition(NowRect rect) { _rect = rect; _hasRect = true; return this; }
 
         public NowScrollScope Begin()
         {
