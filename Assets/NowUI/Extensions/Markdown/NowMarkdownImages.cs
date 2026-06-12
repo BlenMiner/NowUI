@@ -24,6 +24,9 @@ namespace NowUI.Markdown
         {
             public NowMarkdownImageState state;
             public Texture2D texture;
+
+            /// <summary>Only textures this cache downloaded get destroyed on Reset.</summary>
+            public bool owned;
         }
 
         static readonly Dictionary<string, Entry> _entries = new Dictionary<string, Entry>(8);
@@ -54,8 +57,11 @@ namespace NowUI.Markdown
 
             if (!http)
             {
-                entry.state = NowMarkdownImageState.Failed;
+                var resource = Resources.Load<Texture2D>(url);
+                entry.texture = resource;
+                entry.state = resource != null ? NowMarkdownImageState.Loaded : NowMarkdownImageState.Failed;
                 ++_version;
+                texture = entry.texture;
                 return entry.state;
             }
 
@@ -68,6 +74,7 @@ namespace NowUI.Markdown
                 if (request.result == UnityWebRequest.Result.Success)
                 {
                     entry.texture = DownloadHandlerTexture.GetContent(request);
+                    entry.owned = true;
                     entry.state = NowMarkdownImageState.Loaded;
                 }
                 else
@@ -97,7 +104,7 @@ namespace NowUI.Markdown
         {
             foreach (var entry in _entries.Values)
             {
-                if (entry.texture == null)
+                if (entry.texture == null || !entry.owned)
                     continue;
 
                 if (Application.isPlaying)

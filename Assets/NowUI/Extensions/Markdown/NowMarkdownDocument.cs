@@ -39,7 +39,8 @@ namespace NowUI.Markdown
             Text,
             Fill,
             Line,
-            Image
+            Image,
+            CopyButton
         }
 
         enum Role : byte
@@ -68,6 +69,7 @@ namespace NowUI.Markdown
             public OpKind kind;
             public Role role;
             public NowRect rect;
+            public NowRect hoverRect;
             public string text;
             public float fontSize;
             public NowFontStyle fontStyle;
@@ -78,6 +80,8 @@ namespace NowUI.Markdown
         readonly NowMarkdownStyle _style;
         readonly List<Op> _ops = new List<Op>(64);
         readonly List<string> _links = new List<string>(4);
+        readonly List<int> _linkHoverOp = new List<int>(4);
+        int _strikeSequence;
 
         float _layoutWidth = -1f;
         float _layoutHeight;
@@ -132,32 +136,40 @@ namespace NowUI.Markdown
 
             int docId = NowUIInput.GetId(GetHashCode(), "markdown");
 
+            // A link spanning several words is ONE link: the prepass finds the
+            // word the pointer is over per link, the link interacts ONCE through
+            // that rect (so press and release can land on different words), and
+            // every word of a hovered link highlights together.
+            _linkHoverOp.Clear();
+
+            for (int i = 0; i < _links.Count; ++i)
+                _linkHoverOp.Add(-1);
+
+            for (int i = 0; i < _ops.Count; ++i)
+            {
+                var op = _ops[i];
+
+                if (op.link < 0 || (op.kind != OpKind.Text && op.kind != OpKind.Image))
+                    continue;
+
+                var probe = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
+
+                if (NowUIInput.IsHovered(probe))
+                    _linkHoverOp[op.link] = i;
+            }
+
             for (int i = 0; i < _ops.Count; ++i)
             {
                 var op = _ops[i];
                 var target = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
-                bool hovered = false;
+                bool hovered = op.link >= 0 && op.link < _linkHoverOp.Count && _linkHoverOp[op.link] >= 0;
 
-                if (op.link >= 0 && op.kind == OpKind.Text)
+                if (op.link >= 0 && (op.kind == OpKind.Text || op.kind == OpKind.Image) &&
+                    _linkHoverOp[op.link] == i)
                 {
-                    int linkId;
-
-                    unchecked
-                    {
-                        linkId = (docId * 397) ^ i;
-                    }
-
-                    if (linkId == 0)
-                        linkId = 1;
-
-                    var interaction = NowUIInput.Interact(linkId, target);
-                    hovered = interaction.hovered;
-
-                    if (hovered)
-                    {
-                        result.hoveredLink = _links[op.link];
-                        NowUIControlState.RequestRepaint();
-                    }
+                    var interaction = NowUIInput.Interact(NowUIInput.CombineId(docId, op.link), target);
+                    result.hoveredLink = _links[op.link];
+                    NowUIControlState.RequestRepaint();
 
                     if (interaction.clicked)
                         result.clickedLink = _links[op.link];
@@ -189,15 +201,85 @@ namespace NowUI.Markdown
                         if (NowMarkdownImages.GetState(op.text, out var texture) == NowMarkdownImageState.Loaded &&
                             texture != null)
                         {
-                            Now.Rectangle(target).SetTexture(texture).SetRadius(4f).Draw();
+                            var image = Now.Rectangle(target).SetTexture(texture).SetRadius(4f);
+
+                            if (hovered)
+                                image.color = new Vector4(1.08f, 1.08f, 1.08f, 1f);
+
+                            image.Draw();
                         }
 
+                        break;
+                    }
+                    case OpKind.CopyButton:
+                    {
+                        DrawCopyButton(theme, docId, i, op, target);
                         break;
                     }
                 }
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Receives the code-block text when a copy button is clicked. Defaults to
+        /// the system clipboard; replace for custom handling (mobile toasts, web).
+        /// </summary>
+        public static System.Action<string> copyToClipboard = static text => GUIUtility.systemCopyBuffer = text;
+
+        void DrawCopyButton(NowUITheme theme, int docId, int opIndex, in Op op, NowRect target)
+        {
+            int buttonId = NowUIInput.CombineId(docId, ~opIndex);
+            ref float copiedAt = ref NowUIControlState.Get<float>(buttonId);
+            bool showCopied = copiedAt > 0f && Time.realtimeSinceStartup - copiedAt < 1.2f;
+
+            var panelTarget = new NowRect(
+                target.x + op.hoverRect.x - op.rect.x,
+                target.y + op.hoverRect.y - op.rect.y,
+                op.hoverRect.width,
+                op.hoverRect.height);
+
+            if (!NowUIInput.IsHovered(panelTarget) && !showCopied)
+                return;
+
+            var interaction = NowUIInput.Interact(buttonId, target);
+
+            if (interaction.clicked)
+            {
+                copyToClipboard?.Invoke(op.text);
+                copiedAt = Time.realtimeSinceStartup;
+                showCopied = true;
+            }
+
+            if (interaction.hovered || showCopied)
+                NowUIControlState.RequestRepaint();
+
+            var background = theme.Rectangle(target, NowRectangleStyle.Surface);
+            background.radius = new Vector4(4f, 4f, 4f, 4f);
+            background.outline = 1f;
+            background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
+
+            if (interaction.hovered)
+                background.color = NowControls.StateTint(background.color, 1f, interaction.held);
+
+            background.Draw();
+
+            string label = showCopied ? "Copied!" : "Copy";
+            var text = theme.Text(default(NowRect), _layoutFont);
+            text.fontSize = _style.fontSize * 0.75f;
+            Color labelColor = showCopied
+                ? theme.GetColor(NowColorToken.Accent, Color.blue)
+                : theme.GetColor(NowColorToken.TextMuted, Color.gray);
+            text.color = labelColor;
+
+            Vector2 size = text.Measure(label);
+            text.rect = new NowRect(
+                target.x + (target.width - size.x) * 0.5f,
+                target.y + (target.height - size.y) * 0.5f,
+                size.x + 1f,
+                size.y + 1f);
+            text.SetMask(target.Outset(4f)).Draw(label);
         }
 
         static Vector4 ResolveColor(NowUITheme theme, Role role, bool hovered)
@@ -265,6 +347,7 @@ namespace NowUI.Markdown
             _layoutFont = font;
             _imagesVersion = NowMarkdownImages.version;
             _hasLoadingImages = false;
+            _strikeSequence = 0;
             _ops.Clear();
             _links.Clear();
 
@@ -405,6 +488,18 @@ namespace NowUI.Markdown
             var panel = _ops[panelIndex];
             panel.rect = new NowRect(x, top, width - x, y - top);
             _ops[panelIndex] = panel;
+
+            float buttonWidth = _style.fontSize * 3.6f;
+            float buttonHeight = _style.fontSize * 1.5f;
+            _ops.Add(new Op
+            {
+                kind = OpKind.CopyButton,
+                role = Role.Body,
+                rect = new NowRect(width - 6f - buttonWidth, top + 6f, buttonWidth, buttonHeight),
+                hoverRect = panel.rect,
+                text = literal,
+                link = -1
+            });
         }
 
         static Role TokenRole(NowMarkdownTokenKind kind)
@@ -560,7 +655,9 @@ namespace NowUI.Markdown
                 lineHeight = LineHeight(fontSize)
             };
 
-            LayoutInlineNodes(inlines, ref cursor, fontSize, baseStyle, baseRole, link, false, true);
+            int opStart = _ops.Count;
+            LayoutInlineNodes(inlines, ref cursor, fontSize, baseStyle, baseRole, link, 0, true);
+            MergeDecorations(opStart);
             y = cursor.y + cursor.lineHeight;
         }
 
@@ -576,11 +673,13 @@ namespace NowUI.Markdown
                 lineHeight = LineHeight(fontSize)
             };
 
-            LayoutInlineNodes(inlines, ref cursor, fontSize, baseStyle, baseRole, -1, false, false);
+            int opStart = _ops.Count;
+            LayoutInlineNodes(inlines, ref cursor, fontSize, baseStyle, baseRole, -1, 0, false);
+            MergeDecorations(opStart);
         }
 
         void LayoutInlineNodes(List<NowMarkdownInline> nodes, ref InlineCursor cursor, float fontSize,
-            NowFontStyle style, Role role, int link, bool strike, bool wrap)
+            NowFontStyle style, Role role, int link, int strike, bool wrap)
         {
             for (int i = 0; i < nodes.Count; ++i)
             {
@@ -601,7 +700,7 @@ namespace NowUI.Markdown
                         LayoutInlineNodes(node.children, ref cursor, fontSize, style | NowFontStyle.Bold, role, link, strike, wrap);
                         break;
                     case NowMarkdownInlineType.Strikethrough:
-                        LayoutInlineNodes(node.children, ref cursor, fontSize, style, role, link, true, wrap);
+                        LayoutInlineNodes(node.children, ref cursor, fontSize, style, role, link, --_strikeSequence, wrap);
                         break;
                     case NowMarkdownInlineType.Link:
                     {
@@ -624,7 +723,7 @@ namespace NowUI.Markdown
         }
 
         void LayoutWords(string text, ref InlineCursor cursor, float fontSize, NowFontStyle style,
-            Role role, int link, bool strike, bool wrap)
+            Role role, int link, int strike, bool wrap)
         {
             if (string.IsNullOrEmpty(text))
                 return;
@@ -663,8 +762,8 @@ namespace NowUI.Markdown
                 if (link >= 0)
                     AddLine(Role.Link, new NowRect(cursor.x, cursor.y + cursor.lineHeight - 2f, wordWidth, 1f), link);
 
-                if (strike)
-                    AddLine(Role.Body, new NowRect(cursor.x, cursor.y + cursor.lineHeight * 0.55f, wordWidth, 1f), -1);
+                if (strike != 0)
+                    AddLine(Role.Body, new NowRect(cursor.x, cursor.y + cursor.lineHeight * 0.55f, wordWidth, 1f), strike);
 
                 cursor.x += wordWidth;
             }
@@ -716,14 +815,14 @@ namespace NowUI.Markdown
                 var inner = cursor;
                 inner.x = cursor.lineStart + fontSize * 0.5f;
                 inner.y = cursor.y + (panelHeight - cursor.lineHeight) * 0.5f;
-                LayoutInlineNodes(node.children, ref inner, fontSize, style, Role.Muted, -1, false, false);
+                LayoutInlineNodes(node.children, ref inner, fontSize, style, Role.Muted, -1, 0, false);
 
                 cursor.y += panelHeight;
                 cursor.x = cursor.lineStart;
                 return;
             }
 
-            LayoutInlineNodes(node.children, ref cursor, fontSize, style, Role.Muted, link, false, true);
+            LayoutInlineNodes(node.children, ref cursor, fontSize, style, Role.Muted, link, 0, true);
         }
 
         void LayoutCodeSpan(string code, ref InlineCursor cursor, float fontSize, int link, bool wrap)
@@ -806,6 +905,54 @@ namespace NowUI.Markdown
         void AddLine(Role role, NowRect rect, int link)
         {
             _ops.Add(new Op { kind = OpKind.Line, role = role, rect = rect, link = link });
+        }
+
+        /// <summary>
+        /// Per-word underline/strike segments on the same line merge into one
+        /// continuous decoration, bridging the spaces — a multi-word link reads
+        /// as one link, not one per word. Strike ops carry per-instance negative
+        /// tokens so separate strikethroughs never bridge. Decoration ops with
+        /// negative link tokens never interact, so only underlines (link >= 0)
+        /// affect hover visuals.
+        /// </summary>
+        void MergeDecorations(int fromOp)
+        {
+            float maxGap = _style.fontSize * 0.8f;
+
+            for (int i = fromOp; i < _ops.Count; ++i)
+            {
+                if (_ops[i].kind != OpKind.Line)
+                    continue;
+
+                for (int j = i + 1; j < _ops.Count; ++j)
+                {
+                    if (_ops[j].kind != OpKind.Line)
+                        continue;
+
+                    var first = _ops[i];
+                    var second = _ops[j];
+
+                    if (second.link != first.link || second.role != first.role ||
+                        Mathf.Abs(second.rect.y - first.rect.y) > 0.5f)
+                    {
+                        continue;
+                    }
+
+                    float gap = second.rect.x - (first.rect.x + first.rect.width);
+
+                    if (gap < -0.5f || gap > maxGap)
+                        continue;
+
+                    first.rect = new NowRect(
+                        first.rect.x,
+                        first.rect.y,
+                        second.rect.x + second.rect.width - first.rect.x,
+                        first.rect.height);
+                    _ops[i] = first;
+                    _ops.RemoveAt(j);
+                    --j;
+                }
+            }
         }
     }
 }

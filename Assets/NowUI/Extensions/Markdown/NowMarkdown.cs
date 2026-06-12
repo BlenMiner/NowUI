@@ -35,13 +35,9 @@ namespace NowUI.Markdown
         public static NowMarkdownResult Draw(string markdown)
         {
             var document = GetCached(markdown);
-            float height = Mathf.Max(document.lastHeight, 4f);
-            NowRect rect = NowLayout.Rect(new NowLayoutOptions().SetStretchWidth().SetHeight(height));
-            var result = document.Draw(rect);
-
-            if (Mathf.Abs(result.height - height) > 0.5f)
-                NowUIControlState.RequestRepaint();
-
+            var content = NowLayout.ContentRect();
+            var result = document.Draw(content.rect);
+            content.End(result.height);
             return result;
         }
 

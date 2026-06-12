@@ -448,6 +448,114 @@ public class NowMarkdownTests
     }
 
     [Test]
+    public void MultiWordLinksActAsOneLink()
+    {
+        var document = NowMarkdownDocument.Parse("[two words here](https://example.com/multi)");
+        var rect = new NowRect(0, 0, 400f, 60f);
+        var style = NowMarkdownStyle.Default;
+
+        float firstWordWidth = _font.MeasureText("two", style.fontSize).x;
+        float spaceWidth = _font.MeasureText(" ", style.fontSize).x;
+        Vector2 overFirstWord = new Vector2(3f, 8f);
+        Vector2 overSecondWord = new Vector2(firstWordWidth + spaceWidth + 3f, 8f);
+
+        _provider.snapshot = new NowUIInputSnapshot(overSecondWord, false, false, false);
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            var hover = document.Draw(rect);
+            Assert.AreEqual("https://example.com/multi", hover.hoveredLink,
+                "hovering any word of a multi-word link must report the link");
+        }
+
+        _provider.snapshot = new NowUIInputSnapshot(overFirstWord, true, true, false);
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            document.Draw(rect);
+
+        _provider.snapshot = new NowUIInputSnapshot(overSecondWord, false, false, true);
+        string clicked;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            clicked = document.Draw(rect).clickedLink;
+
+        Assert.AreEqual("https://example.com/multi", clicked,
+            "press on one word and release on another must still click the link");
+    }
+
+    [Test]
+    public void CopyButtonCopiesTheCodeBlock()
+    {
+        var previous = NowMarkdownDocument.copyToClipboard;
+        string copied = null;
+        NowMarkdownDocument.copyToClipboard = text => copied = text;
+
+        try
+        {
+            var document = NowMarkdownDocument.Parse("```\nint x = 1;\n```");
+            var rect = new NowRect(0, 0, 400f, 200f);
+            float buttonSize = NowMarkdownStyle.Default.fontSize;
+            Vector2 inside = new Vector2(400f - 6f - buttonSize * 1.8f, 6f + buttonSize * 0.75f);
+
+            _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+
+            using (NowUIInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+                document.Draw(rect);
+
+            _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+
+            using (NowUIInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+                document.Draw(rect);
+
+            Assert.AreEqual("int x = 1;", copied);
+        }
+        finally
+        {
+            NowMarkdownDocument.copyToClipboard = previous;
+        }
+    }
+
+    [Test]
+    public void ImagesInsideLinksReportClicks()
+    {
+        var texture = new Texture2D(48, 24, TextureFormat.RGBA32, false);
+
+        try
+        {
+            NowMarkdownImages.SetTexture("https://example.com/badge.png", texture);
+
+            var document = NowMarkdownDocument.Parse("[![badge](https://example.com/badge.png)](https://example.com/dest)");
+            var rect = new NowRect(0, 0, 400f, 100f);
+            Vector2 inside = new Vector2(10f, 10f);
+            string clicked = null;
+
+            _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+
+            using (NowUIInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+                document.Draw(rect);
+
+            _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+
+            using (NowUIInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+                clicked = document.Draw(rect).clickedLink;
+
+            Assert.AreEqual("https://example.com/dest", clicked);
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+            NowMarkdownImages.Reset();
+        }
+    }
+
+    [Test]
     public void DocumentMeasuresAndRendersGeometry()
     {
         var document = NowMarkdownDocument.Parse("# Title\n\nBody with **bold** and `code`.\n\n- item one\n- item two");

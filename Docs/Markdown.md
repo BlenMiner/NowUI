@@ -48,10 +48,14 @@ Links are not opened automatically: the result reports `clickedLink` /
 - GFM pipe tables with `:---:` alignment and `\|` escapes
 - `[links](url)`, http/https/www autolinks (GFM, trailing punctuation
   trimmed), backslash escapes
-- `![images](url)` — downloaded asynchronously (http/https), drawn at native
-  size scaled down to the available width with a placeholder while loading
-  and the alt text on failure; textures cache in `NowMarkdownImages`
-  (inject local art with `SetTexture`)
+- `![images](url)` — http/https URLs download asynchronously, other paths
+  load from `Resources`; drawn at native size scaled down to the available
+  width with a placeholder while loading and the alt text on failure.
+  Images wrapped in a link (`[![alt](img)](dest)`) are clickable. Textures
+  cache in `NowMarkdownImages` (inject art with `SetTexture`).
+- Code blocks carry a Copy button; the click handler defaults to the system
+  clipboard and is replaceable (`NowMarkdownDocument.copyToClipboard`) for
+  platforms that need their own copy flow
 - Syntax highlighting in fenced code blocks for `csharp`/`cs`, `json`, and a
   C-like generic (`js`, `ts`, `c`, `cpp`, `java`): keywords, strings,
   numbers and comments, with multiline comment/verbatim-string state carried
