@@ -566,6 +566,7 @@ namespace NowUI
             if (target == null || batches == null)
                 return;
 
+            using var profile = NowUIProfiler.MeshUpload.Auto();
             _vertices.Clear();
             _meshUvs.Clear();
             _uvs.Clear();
@@ -668,6 +669,7 @@ namespace NowUI
             if (_captureMesh)
                 return;
 
+            using var profile = NowUIProfiler.FlushUI.Auto();
             NowUIOverlay.Flush();
 
             var meshArray = _meshes.array;
@@ -767,19 +769,55 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
                 return;
 
+            using var profile = NowUIProfiler.TextDraw.Auto();
+
             if (!style.mask.isEmpty && style.mask == style.rect)
                 style.mask = style.mask.Outset(4f);
 
             style.mask = ApplyAmbientMask(style.mask);
 
+            // Fully masked text skips ALL the work — shaping lookups, glyph
+            // resolution, advance math — not just the final quads, so content
+            // scrolled out of a viewport costs nothing.
+            if (style.mask.isEmpty || !style.mask.Overlaps(style.rect.Outset(8f)))
+                return;
+
             if (textShaping && TryDrawShapedString(style, value))
                 return;
 
+            style.font.EnsureGlyphs(value, style.fontSize, style.fontStyle);
+            DrawStringCodepoints(style, value.AsSpan());
+        }
+
+        /// <summary>
+        /// Span draw for dynamic text (counters, timers) without allocating a
+        /// string. Always the per-codepoint path — HarfBuzz shaping is keyed by
+        /// string and does not apply to spans.
+        /// </summary>
+        internal static void DrawString(NowUIText style, ReadOnlySpan<char> value)
+        {
+            if (_suppressDrawDepth > 0 || value.IsEmpty || !style.font)
+                return;
+
+            using var profile = NowUIProfiler.TextDraw.Auto();
+
+            if (!style.mask.isEmpty && style.mask == style.rect)
+                style.mask = style.mask.Outset(4f);
+
+            style.mask = ApplyAmbientMask(style.mask);
+
+            if (style.mask.isEmpty || !style.mask.Overlaps(style.rect.Outset(8f)))
+                return;
+
+            DrawStringCodepoints(style, value);
+        }
+
+        static void DrawStringCodepoints(NowUIText style, ReadOnlySpan<char> value)
+        {
             var fontSize = style.fontSize;
             var fontAsset = style.font;
             NowMesh mesh = null;
 
-            fontAsset.EnsureGlyphs(value, fontSize, style.fontStyle);
             float lineHeight = fontAsset.GetLineHeight(style.fontStyle) * fontSize;
             float baseline = fontAsset.GetAscender(style.fontStyle) * fontSize;
             float leftPos = style.rect.x;
@@ -868,7 +906,11 @@ namespace NowUI
 
                 if (i > segmentStart)
                 {
-                    string segment = value.Substring(segmentStart, i - segmentStart);
+                    // The whole string is one segment in the common case (no \n/\t);
+                    // pass it through without copying.
+                    string segment = segmentStart == 0 && i == value.Length
+                        ? value
+                        : value.Substring(segmentStart, i - segmentStart);
 
                     if (!font.TryGetShapedRun(segment, out var segmentRun) ||
                         !font.EnsureShapedGlyphs(segmentRun, fontSize))
@@ -911,7 +953,9 @@ namespace NowUI
 
                 if (i > segmentStart)
                 {
-                    string segment = value.Substring(segmentStart, i - segmentStart);
+                    string segment = segmentStart == 0 && i == value.Length
+                        ? value
+                        : value.Substring(segmentStart, i - segmentStart);
                     font.TryGetShapedRun(segment, out var run);
 
                     for (int g = 0; g < run.Length; ++g)
@@ -974,6 +1018,9 @@ namespace NowUI
                 style.mask = style.mask.Outset(4f);
 
             style.mask = ApplyAmbientMask(style.mask);
+
+            if (style.mask.isEmpty || !style.mask.Overlaps(style.rect.Outset(8f)))
+                return;
 
             if (!style.font.TryResolveFont(style.fontStyle, out var resolvedFont))
                 return;
@@ -1065,6 +1112,14 @@ namespace NowUI
             if (composition == null)
                 return;
 
+            // Fully masked animations skip tessellation entirely, not just the
+            // geometry upload.
+            var lottieMask = !lottie.mask.isEmpty && lottie.mask == lottie.rect ? lottie.mask.Outset(2f) : lottie.mask;
+            lottieMask = ApplyAmbientMask(lottieMask);
+
+            if (lottieMask.isEmpty || !lottieMask.Overlaps(lottie.rect))
+                return;
+
             var mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
 
             if (mesh == null)
@@ -1095,8 +1150,7 @@ namespace NowUI
                 lottie.preserveAspect);
 
             mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, buffer.positions.count);
-            var lottieMask = !lottie.mask.isEmpty && lottie.mask == lottie.rect ? lottie.mask.Outset(2f) : lottie.mask;
-            mesh.AddGeometry(buffer, new Vector2(lottie.rect.x, lottie.rect.y), 1f / renderScale, tint, ApplyAmbientMask(lottieMask));
+            mesh.AddGeometry(buffer, new Vector2(lottie.rect.x, lottie.rect.y), 1f / renderScale, tint, lottieMask);
         }
 
         public static NowUIRectangle Rectangle(NowUIRectangle rect)

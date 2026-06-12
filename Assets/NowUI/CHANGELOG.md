@@ -62,6 +62,31 @@ point it became installable through UPM.
   screen input providers, drags preserved), completing the existing
   raycastTarget blocking in the other direction. EventSystem selection and
   NowUI focus are also mutually exclusive (`NowUIFocus.respectEventSystem`).
+- Span text APIs for zero-GC dynamic text: `NowUIText.Draw(ReadOnlySpan<char>)`
+  and `Measure(ReadOnlySpan<char>)` (plus `NowFontAsset.MeasureText` span
+  overload) — format counters/timers into a reusable char buffer and draw
+  the span; no string is ever created. Span draws use the per-codepoint
+  path (shaping is keyed by string). The zoo's FPS counter demonstrates
+  the pattern.
+- Dropdowns no longer allocate every frame while closed: the popup's
+  deferred closure lived in Draw's scope, so its display class was
+  allocated at method entry even on the early-return path; it now lives in
+  a method that only runs while the popup is open.
+- Per-frame GC eliminated in the text pipeline: the shaped draw and
+  measure paths copied the string (`Substring`) once or twice per call
+  even for single-segment text — the common case now passes the original
+  string through untouched. Constants are truly zero-alloc end to end.
+- Fully masked content is culled before the work, not after: text scrolled
+  out of a viewport skips shaping lookups, glyph resolution and advance
+  math entirely, and fully masked Lottie draws skip tessellation. Hidden
+  scroll content now costs ~nothing instead of "everything but the quads".
+- Profiler instrumentation: `NowUIProfiler` exposes "NowUI.*"
+  `ProfilerMarker`s around every subsystem — graphic rebuild, measure pass
+  vs draw pass, mesh upload, CanvasRenderer page assignment, per-string
+  text drawing, HarfBuzz shaping, glyph baking, Lottie tessellation,
+  overlay flush, and the screen path's GL submission. Markers compile out
+  of non-development builds. Also removed the last per-frame string
+  allocation in the library (dropdown popup item ids).
 - `NowUIGraphic` implements `ILayoutElement`: with Drive Layout Size (on by
   default) it reports the measured NowLayout content extent as its
   preferred size, so it participates in UGUI LayoutGroups and

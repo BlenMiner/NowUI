@@ -105,6 +105,7 @@ namespace NowUI
             if (_deferred.Count == 0)
                 return;
 
+            using var profile = NowUIProfiler.OverlayFlush.Auto();
             ++_overlayDepth;
 
             try

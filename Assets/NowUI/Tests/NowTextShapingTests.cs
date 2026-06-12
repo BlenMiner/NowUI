@@ -54,6 +54,20 @@ public class NowTextShapingTests
     }
 
     [Test]
+    public void SpanMeasureMatchesCodepointStringMeasure()
+    {
+        Now.textShaping = false;
+
+        const string Sample = "Span 1234.56 fps";
+        Vector2 byString = _fontAsset.MeasureText(Sample, 32f);
+        Vector2 bySpan = _fontAsset.MeasureText(System.MemoryExtensions.AsSpan(Sample), 32f);
+
+        Assert.Greater(byString.x, 0f);
+        Assert.AreEqual(byString.x, bySpan.x, 0.001f);
+        Assert.AreEqual(byString.y, bySpan.y, 0.001f);
+    }
+
+    [Test]
     public void ShapedRunsAreRejectedForMissingGlyphs()
     {
         if (!ShapingAvailable())

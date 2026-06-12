@@ -99,32 +99,36 @@ namespace NowUI
                 return changed;
 
             NowUIControlState.RequestRepaint();
+            DeferPopup(theme, _options, id, rect, selected, optionCount);
+            return changed;
+        }
 
+        /// <summary>
+        /// The popup closure lives here so its display class only allocates while
+        /// the popup is open — captured locals in Draw would otherwise allocate at
+        /// method entry on every frame, even with the popup closed.
+        /// </summary>
+        static void DeferPopup(NowUITheme theme, IReadOnlyList<string> options, int id, NowRect field, int selected, int optionCount)
+        {
             float popupHeight = Mathf.Min(optionCount * ItemHeight + 8f, MaxPopupHeight);
-            var popupRect = new NowRect(rect.x, rect.yMax + 4f, rect.width, popupHeight);
+            var popupRect = new NowRect(field.x, field.yMax + 4f, field.width, popupHeight);
             bool scrolls = optionCount * ItemHeight + 8f > MaxPopupHeight;
-
-            // Captured for the deferred callback (runs after Draw returns).
-            var capturedTheme = theme;
-            var capturedOptions = _options;
-            var capturedField = rect;
-            int capturedScrollId = NowUIInput.GetId(id, "popup-scroll");
-            int capturedDropdownId = id;
-            int capturedSelected = selected;
+            int scrollId = NowUIInput.GetId(id, "popup-scroll");
 
             NowUIOverlay.Defer(popupRect, () =>
             {
-                var background = capturedTheme.Rectangle(popupRect, NowRectangleStyle.Surface);
+                var background = theme.Rectangle(popupRect, NowRectangleStyle.Surface);
                 background.outline = 1f;
-                background.outlineColor = capturedTheme.GetColor(NowColorToken.Border, Color.gray);
+                background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
                 background.Draw();
 
                 var itemArea = popupRect.Inset(4f);
-                int pendingId = NowUIInput.GetId(capturedDropdownId, "pending");
+                int pendingId = NowUIInput.GetId(id, "pending");
+                int itemSeed = NowUIInput.GetId(id, "item");
 
                 void DrawItems()
                 {
-                    for (int i = 0; i < capturedOptions.Count; ++i)
+                    for (int i = 0; i < options.Count; ++i)
                     {
                         NowRect itemRect;
 
@@ -137,34 +141,42 @@ namespace NowUI
                             itemRect = new NowRect(itemArea.x, itemArea.y + i * ItemHeight, itemArea.width, ItemHeight);
                         }
 
-                        int itemId = NowUIInput.GetId(NowUIInput.GetId(capturedDropdownId, "item"), i.ToString());
+                        int itemId;
+
+                        unchecked
+                        {
+                            itemId = (itemSeed * 397) ^ (i + 1);
+                        }
+
+                        if (itemId == 0)
+                            itemId = 1;
                         var itemInteraction = NowUIInput.Interact(itemId, itemRect);
 
-                        if (itemInteraction.hovered || i == capturedSelected)
+                        if (itemInteraction.hovered || i == selected)
                         {
-                            var highlight = capturedTheme.Rectangle(itemRect, i == capturedSelected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
+                            var highlight = theme.Rectangle(itemRect, i == selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
 
-                            if (itemInteraction.hovered && i != capturedSelected)
+                            if (itemInteraction.hovered && i != selected)
                                 highlight.color = NowControls.StateTint(highlight.color, 1f, itemInteraction.held);
 
                             highlight.radius = new Vector4(4f, 4f, 4f, 4f);
                             highlight.Draw();
                         }
 
-                        NowTextStyle itemStyle = i == capturedSelected ? NowTextStyle.Button : NowTextStyle.Body;
-                        NowControls.DrawLeftLabel(capturedTheme, itemRect.Inset(8f, 0f, 4f, 0f), capturedOptions[i], itemStyle);
+                        NowTextStyle itemStyle = i == selected ? NowTextStyle.Button : NowTextStyle.Body;
+                        NowControls.DrawLeftLabel(theme, itemRect.Inset(8f, 0f, 4f, 0f), options[i], itemStyle);
 
                         if (itemInteraction.clicked)
                         {
                             NowUIControlState.Get<int>(pendingId) = i + 1;
-                            NowUIControlState.Get<bool>(capturedDropdownId) = false;
+                            NowUIControlState.Get<bool>(id) = false;
                         }
                     }
                 }
 
                 if (scrolls)
                 {
-                    using (new NowScrollView(itemArea, capturedScrollId).Begin())
+                    using (new NowScrollView(itemArea, scrollId).Begin())
                         DrawItems();
                 }
                 else
@@ -175,13 +187,11 @@ namespace NowUI
                 var snapshot = NowUIInput.current;
                 bool pressedOutside = snapshot.primaryPressed &&
                     !popupRect.Contains(snapshot.pointerPosition) &&
-                    !capturedField.Contains(snapshot.pointerPosition);
+                    !field.Contains(snapshot.pointerPosition);
 
                 if (pressedOutside || snapshot.cancelPressed)
-                    NowUIControlState.Get<bool>(capturedDropdownId) = false;
+                    NowUIControlState.Get<bool>(id) = false;
             });
-
-            return changed;
         }
     }
 }

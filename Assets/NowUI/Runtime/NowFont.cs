@@ -351,7 +351,9 @@ namespace NowUI
 
                 if (i > segmentStart)
                 {
-                    string segment = value.Substring(segmentStart, i - segmentStart);
+                    string segment = segmentStart == 0 && i == value.Length
+                        ? value
+                        : value.Substring(segmentStart, i - segmentStart);
 
                     if (!font.TryGetShapedRun(segment, out var run))
                         return false;
@@ -451,6 +453,60 @@ namespace NowUI
             return new Vector2(maxWidth, lineHeight * fontSize * lineCount);
         }
 
+        /// <summary>
+        /// Span measure for dynamic text (counters, timers) without allocating a
+        /// string. Per-codepoint advances only — shaping does not apply, matching
+        /// the span draw path.
+        /// </summary>
+        public Vector2 MeasureText(System.ReadOnlySpan<char> value, float fontSize, NowFontStyle style = NowFontStyle.Regular, int tabSpaces = 4)
+        {
+            if (value.IsEmpty || fontSize <= 0)
+                return default;
+
+            float lineWidth = 0;
+            float maxWidth = 0;
+            int lineCount = 1;
+            var visited = GetVisitCache();
+
+            for (int i = 0; i < value.Length; ++i)
+            {
+                int codepoint = NowFont.ReadCodepoint(value, ref i);
+
+                if (codepoint == '\n')
+                {
+                    if (lineWidth > maxWidth)
+                        maxWidth = lineWidth;
+
+                    lineWidth = 0;
+                    ++lineCount;
+                    continue;
+                }
+
+                if (codepoint == '\t')
+                {
+                    visited.Clear();
+
+                    if (TryResolveGlyph(' ', fontSize, style, visited, out _, out var space, out _))
+                        lineWidth += space.advance * fontSize * tabSpaces;
+
+                    continue;
+                }
+
+                visited.Clear();
+
+                if (TryResolveGlyph(codepoint, fontSize, style, visited, out _, out var glyph, out _))
+                    lineWidth += glyph.advance * fontSize;
+            }
+
+            if (lineWidth > maxWidth)
+                maxWidth = lineWidth;
+
+            visited.Clear();
+            float lineHeight = GetLineHeight(style, visited);
+            visited.Clear();
+            return new Vector2(maxWidth, lineHeight * fontSize * lineCount);
+        }
+
         public virtual Vector4 MeasureTextBounds(string value, float fontSize, int tabSpaces = 4)
         {
             return MeasureTextBounds(value, fontSize, NowFontStyle.Regular, tabSpaces);
@@ -486,7 +542,9 @@ namespace NowUI
 
                 if (i > segmentStart)
                 {
-                    string segment = value.Substring(segmentStart, i - segmentStart);
+                    string segment = segmentStart == 0 && i == value.Length
+                        ? value
+                        : value.Substring(segmentStart, i - segmentStart);
 
                     if (!font.TryGetShapedRun(segment, out var run) || !font.EnsureShapedGlyphs(run, fontSize))
                         return false;
@@ -956,6 +1014,24 @@ namespace NowUI
         public static int ReadCodepoint(string value, ref int index)
         {
             if (string.IsNullOrEmpty(value) || index < 0 || index >= value.Length)
+                return -1;
+
+            char character = value[index];
+
+            if (char.IsHighSurrogate(character) &&
+                index + 1 < value.Length &&
+                char.IsLowSurrogate(value[index + 1]))
+            {
+                ++index;
+                return char.ConvertToUtf32(character, value[index]);
+            }
+
+            return character;
+        }
+
+        public static int ReadCodepoint(System.ReadOnlySpan<char> value, ref int index)
+        {
+            if (index < 0 || index >= value.Length)
                 return -1;
 
             char character = value[index];
@@ -2528,6 +2604,7 @@ namespace NowUI
             if (fontData == null || string.IsNullOrEmpty(characters))
                 return false;
 
+            using var profile = NowUIProfiler.FontBake.Auto();
             _dynamicSourceIsColor ??= NowFontCompiler.IsColorFont(fontData);
 
             if (_dynamicSourceIsColor.Value)
@@ -2947,6 +3024,7 @@ namespace NowUI
             if (_dynamicSessionPage != null && !IsDynamicPageValid(_dynamicSessionPage))
                 ResetDynamicSession();
 
+            using var profile = NowUIProfiler.FontBake.Auto();
             var results = _dynamicSessionGlyphScratch ??= new List<NowFontAtlasInfo.Glyph>();
             results.Clear();
 

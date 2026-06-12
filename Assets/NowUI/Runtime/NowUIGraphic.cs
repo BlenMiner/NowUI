@@ -116,6 +116,7 @@ namespace NowUI
             if (!IsActive())
                 return;
 
+            using var profile = NowUIProfiler.GraphicRebuild.Auto();
             EnsureDrawList();
 
             var rect = rectTransform.rect;
@@ -144,21 +145,29 @@ namespace NowUI
                 {
                     if (useLayoutMeasurePass)
                     {
-                        int layoutCounter = NowLayout.BeginMeasurePass();
+                        using (NowUIProfiler.MeasurePass.Auto())
+                        {
+                            int layoutCounter = NowLayout.BeginMeasurePass();
 
-                        try
-                        {
-                            DrawNowUI(drawRect);
-                        }
-                        finally
-                        {
-                            NowLayout.EndMeasurePass(layoutCounter);
+                            try
+                            {
+                                DrawNowUI(drawRect);
+                            }
+                            finally
+                            {
+                                NowLayout.EndMeasurePass(layoutCounter);
+                            }
                         }
                     }
 
-                    NowLayout.BeginContentTracking();
-                    DrawNowUI(drawRect);
-                    Vector2 measured = NowLayout.EndContentTracking();
+                    Vector2 measured;
+
+                    using (NowUIProfiler.Draw.Auto())
+                    {
+                        NowLayout.BeginContentTracking();
+                        DrawNowUI(drawRect);
+                        measured = NowLayout.EndContentTracking();
+                    }
 
                     if (_driveLayoutSize && (measured - _preferredSize).sqrMagnitude > 0.25f)
                     {
@@ -416,6 +425,7 @@ namespace NowUI
 
         void ApplyCanvasPages()
         {
+            using var profile = NowUIProfiler.ApplyCanvasPages.Auto();
             PruneDestroyedExtraCanvasRenderers();
 
             if (_drawList == null)

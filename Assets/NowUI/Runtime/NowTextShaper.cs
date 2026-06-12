@@ -163,6 +163,8 @@ namespace NowUI.Internal
                 return true;
             }
 
+            using var profile = NowUIProfiler.TextShape.Auto();
+
             Array.Clear(_errorBuffer, 0, _errorBuffer.Length);
 
             int result = nowui_shaper_shape_utf16(

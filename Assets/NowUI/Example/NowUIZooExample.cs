@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using NowUI;
@@ -25,6 +26,11 @@ public class NowUIZooExample : NowUIGraphic
     int _resolution = 1;
     int _clicks;
     float _hoverSpin;
+    string _clicksLabel = "Clicked 0 times";
+    string _volumeLabel;
+    string _gammaLabel;
+    string _greetingLabel;
+    readonly char[] _fpsBuffer = new char[16];
     readonly List<string> _log = new List<string>();
 
     static readonly string[] Resolutions = { "1280 x 720", "1920 x 1080", "2560 x 1440", "3840 x 2160" };
@@ -86,10 +92,29 @@ public class NowUIZooExample : NowUIGraphic
                 .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
 
             NowLayout.FlexibleSpace();
+            DrawFpsCounter(theme);
             NowLayout.Checkbox("Animate").Draw(ref _animate);
         }
 
         Separator(theme);
+    }
+
+    /// <summary>
+    /// Truly zero-GC dynamic text: format into a reusable char buffer and draw
+    /// the span — no string is ever created.
+    /// </summary>
+    void DrawFpsCounter(NowUITheme theme)
+    {
+        var rect = NowLayout.Rect(new NowLayoutOptions().SetWidth(64).SetHeight(16).SetAlign(NowLayoutAlign.Center));
+        int fps = Mathf.RoundToInt(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f));
+
+        fps.TryFormat(_fpsBuffer, out int written);
+        " fps".AsSpan().CopyTo(_fpsBuffer.AsSpan(written));
+
+        Now.Text(rect)
+            .SetFontSize(12)
+            .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+            .Draw(_fpsBuffer.AsSpan(0, written + 4));
     }
 
     void Buttons(NowUITheme theme)
@@ -115,7 +140,7 @@ public class NowUIZooExample : NowUIGraphic
             if (_lottie != null)
                 NowLayout.Lottie(_lottie).SetTime(_hoverSpin).SetHeight(28).Draw();
 
-            NowLayout.Label($"Clicked {_clicks} times")
+            NowLayout.Label(_clicksLabel)
                 .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white)).Draw();
             NowLayout.Label("(hover spins the icon)").SetFontSize(10)
                 .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white)).Draw();
@@ -123,6 +148,7 @@ public class NowUIZooExample : NowUIGraphic
             if (button.clicked)
             {
                 _clicks++;
+                _clicksLabel = $"Clicked {_clicks} times";
                 Log($"Content button #{_clicks}");
             }
         }
@@ -156,18 +182,26 @@ public class NowUIZooExample : NowUIGraphic
     {
         SectionTitle(theme, "Sliders");
 
+        // Per-frame string interpolation is the classic UI GC trap: format only
+        // when the value changes, draw the cached string otherwise.
         using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(8).SetAlignItems(NowLayoutAlign.Center)))
         {
             NowLayout.Label("Volume").Draw();
-            NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _volume);
-            NowLayout.Label($"{Mathf.RoundToInt(_volume * 100)}%").SetFontSize(12).Draw();
+
+            if (NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _volume) || _volumeLabel == null)
+                _volumeLabel = $"{Mathf.RoundToInt(_volume * 100)}%";
+
+            NowLayout.Label(_volumeLabel).SetFontSize(12).Draw();
         }
 
         using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(8).SetAlignItems(NowLayoutAlign.Center)))
         {
             NowLayout.Label("Gamma").Draw();
-            NowLayout.Slider(1f, 3f).SetStretchWidth().Draw(ref _gamma);
-            NowLayout.Label($"{_gamma:0.00}").SetFontSize(12).Draw();
+
+            if (NowLayout.Slider(1f, 3f).SetStretchWidth().Draw(ref _gamma) || _gammaLabel == null)
+                _gammaLabel = $"{_gamma:0.00}";
+
+            NowLayout.Label(_gammaLabel).SetFontSize(12).Draw();
         }
     }
 
@@ -175,15 +209,16 @@ public class NowUIZooExample : NowUIGraphic
     {
         SectionTitle(theme, "Fields");
 
-        NowLayout.TextField().SetPlaceholder("Player name...").SetStretchWidth().Draw(ref _playerName);
+        if (NowLayout.TextField().SetPlaceholder("Player name...").SetStretchWidth().Draw(ref _playerName))
+            _greetingLabel = string.IsNullOrEmpty(_playerName) ? null : $"Hello, {_playerName}!";
 
         using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(8)))
         {
             NowLayout.Dropdown(Resolutions).SetStretchWidth().Draw(ref _resolution);
         }
 
-        if (!string.IsNullOrEmpty(_playerName))
-            NowLayout.Label($"Hello, {_playerName}!").SetFontSize(12)
+        if (_greetingLabel != null)
+            NowLayout.Label(_greetingLabel).SetFontSize(12)
                 .SetColor(theme.GetColor(NowColorToken.Accent, Color.cyan)).Draw();
     }
 
@@ -202,16 +237,21 @@ public class NowUIZooExample : NowUIGraphic
         }
     }
 
+    static readonly NowRectangleStyle[] SwatchStyles =
+    {
+        NowRectangleStyle.Surface, NowRectangleStyle.Muted, NowRectangleStyle.Outline, NowRectangleStyle.Accent
+    };
+
     void Swatches(NowUITheme theme)
     {
         SectionTitle(theme, "Theme presets");
 
         using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6)))
         {
-            foreach (NowRectangleStyle style in System.Enum.GetValues(typeof(NowRectangleStyle)))
+            for (int i = 0; i < SwatchStyles.Length; ++i)
             {
                 var swatch = NowLayout.Rect(54, 24);
-                theme.Rectangle(swatch, style).Draw();
+                theme.Rectangle(swatch, SwatchStyles[i]).Draw();
             }
         }
     }

@@ -121,7 +121,24 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// Allocation-free draw for dynamic text: format into a reusable char
+        /// buffer and pass the span. Always the per-codepoint path — shaping is
+        /// keyed by string and does not apply to spans.
+        /// </summary>
+        [NowConsumer]
+        public NowUIText Draw(System.ReadOnlySpan<char> value)
+        {
+            Now.DrawString(this, value);
+            return this;
+        }
+
         public Vector2 Measure(string value)
+        {
+            return font != null ? font.MeasureText(value, fontSize, fontStyle) : default;
+        }
+
+        public Vector2 Measure(System.ReadOnlySpan<char> value)
         {
             return font != null ? font.MeasureText(value, fontSize, fontStyle) : default;
         }
