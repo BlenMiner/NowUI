@@ -84,17 +84,52 @@ namespace NowUI
                 _idStack.RemoveAt(_idStack.Count - 1);
         }
 
-        /// <summary>Derives a control id from a label within the active id scope.</summary>
+        static readonly Dictionary<int, int> _labelOccurrences = new Dictionary<int, int>(32);
+
+        /// <summary>
+        /// Derives a control id from a label within the active id scope. Repeated
+        /// labels in the same frame are salted by occurrence so identical buttons
+        /// never share interaction state; the first occurrence keeps the stable
+        /// label-derived id. Occurrence order follows draw order — when controls
+        /// appear or vanish conditionally, prefer <c>SetId</c> or an
+        /// <see cref="IdScope"/> for ids that never shift.
+        /// </summary>
         public static int GetControlId(string label)
         {
             int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            return NowUIInput.GetId(seed, label);
+            int id = NowUIInput.GetId(seed, label);
+
+            // Measure passes draw the same controls again with interactions inert;
+            // counting them would desync ids between the passes.
+            if (NowUIInput.isPassive)
+                return id;
+
+            if (_labelOccurrences.TryGetValue(id, out int occurrence))
+            {
+                _labelOccurrences[id] = occurrence + 1;
+
+                unchecked
+                {
+                    int salted = (id * 397) ^ (occurrence * -1521134295);
+                    return salted != 0 ? salted : 1;
+                }
+            }
+
+            _labelOccurrences[id] = 1;
+            return id;
+        }
+
+        /// <summary>Starts a fresh occurrence count; called when an input surface begins.</summary>
+        internal static void ResetControlIdOccurrences()
+        {
+            _labelOccurrences.Clear();
         }
 
         public static void Reset()
         {
             _themeStack.Clear();
             _idStack.Clear();
+            _labelOccurrences.Clear();
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

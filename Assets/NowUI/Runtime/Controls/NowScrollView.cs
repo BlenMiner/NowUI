@@ -16,10 +16,10 @@ namespace NowUI
     /// </summary>
     public struct NowScrollView
     {
-        string _id;
+        readonly string _id;
         NowLayoutOptions _options;
-        NowRect _rect;
-        bool _hasRect;
+        readonly NowRect _rect;
+        readonly bool _hasRect;
 
         internal NowScrollView(string id)
         {
@@ -94,9 +94,9 @@ namespace NowUI
         NowLayoutScope _layout;
         NowMaskScope _mask;
         NowRect _viewport;
-        int _id;
-        float _maxScroll;
-        bool _barVisible;
+        readonly int _id;
+        readonly float _maxScroll;
+        readonly bool _barVisible;
         bool _disposed;
 
         internal NowScrollScope(NowLayoutScope layout, NowMaskScope mask, NowRect viewport, int id, float maxScroll, bool barVisible)

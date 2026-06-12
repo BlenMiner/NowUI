@@ -13,11 +13,11 @@ namespace NowUI
     /// </summary>
     public struct NowDropdown
     {
-        string _id;
-        IReadOnlyList<string> _options;
+        readonly string _id;
+        readonly IReadOnlyList<string> _options;
         NowLayoutOptions _layoutOptions;
-        NowRect _rect;
-        bool _hasRect;
+        readonly NowRect _rect;
+        readonly bool _hasRect;
 
         const float ItemHeight = 30f;
         const float MaxPopupHeight = 240f;

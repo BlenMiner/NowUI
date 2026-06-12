@@ -269,7 +269,12 @@ public class NowControlsAdvancedTests
                 NowLayout.Rect(new NowLayoutOptions().SetSize(180, 30));
         }
 
-        ref Vector2 scroll = ref NowUIControlState.Get<Vector2>(NowControls.GetControlId("list"));
+        int scrollId;
+
+        using (NowUIInput.Begin(_pointer, Surface))
+            scrollId = NowControls.GetControlId("list");
+
+        ref Vector2 scroll = ref NowUIControlState.Get<Vector2>(scrollId);
         Assert.Greater(scroll.y, 0f, "Wheel must scroll the content.");
         Assert.LessOrEqual(scroll.y, 200f, "Scroll must clamp to content - viewport.");
     }
@@ -294,10 +299,15 @@ public class NowControlsAdvancedTests
         using (_drawList.Begin(Surface))
             Now.Dropdown(rect, "quality", options).Draw(ref selected);
 
-        Assert.IsTrue(NowUIControlState.Get<bool>(NowControls.GetControlId("quality")), "Click must open the dropdown.");
+        int dropdownId;
+
+        using (NowUIInput.Begin(_pointer, Surface))
+            dropdownId = NowControls.GetControlId("quality");
+
+        Assert.IsTrue(NowUIControlState.Get<bool>(dropdownId), "Click must open the dropdown.");
 
         // Simulate the popup writing a pending selection (as the deferred item click does).
-        NowUIControlState.Get<int>(NowUIInput.GetId(NowControls.GetControlId("quality"), "pending")) = 3;
+        NowUIControlState.Get<int>(NowUIInput.GetId(dropdownId, "pending")) = 3;
 
         _pointer.snapshot = default;
         bool changed;

@@ -80,8 +80,13 @@ public class NowControlsTests
     [Test]
     public void ButtonPressTakesFocus()
     {
+        int expectedId;
+
+        using (NowUIInput.Begin(_provider, Surface))
+            expectedId = NowControls.GetControlId("Save");
+
         DrawButtonFrame(new Vector2(60, 36), true, true, false);
-        Assert.AreEqual(NowControls.GetControlId("Save"), NowUIFocus.focusedId);
+        Assert.AreEqual(expectedId, NowUIFocus.focusedId);
     }
 
     [Test]
@@ -172,6 +177,105 @@ public class NowControlsTests
         Assert.IsTrue(changed);
         Assert.Greater(value, 0.6f);
         Assert.Less(value, 0.9f);
+    }
+
+    [Test]
+    public void DuplicateLabelsGetDistinctStableIds()
+    {
+        int first, second, third;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        {
+            first = NowControls.GetControlId("Delete");
+            second = NowControls.GetControlId("Delete");
+            third = NowControls.GetControlId("Delete");
+        }
+
+        Assert.AreNotEqual(first, second);
+        Assert.AreNotEqual(second, third);
+        Assert.AreNotEqual(first, third);
+
+        // The first occurrence keeps the stable label-derived id across frames.
+        int firstNextFrame;
+
+        using (NowUIInput.Begin(_provider, Surface))
+            firstNextFrame = NowControls.GetControlId("Delete");
+
+        Assert.AreEqual(first, firstNextFrame);
+    }
+
+    [Test]
+    public void DuplicateLabelButtonsDoNotShareActivation()
+    {
+        var rect1 = new NowRect(0, 0, 100, 30);
+        var rect2 = new NowRect(0, 50, 100, 30);
+
+        // Learn the second button's id and focus it.
+        int secondId;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        {
+            NowControls.GetControlId("Delete");
+            secondId = NowControls.GetControlId("Delete");
+        }
+
+        NowUIFocus.Focus(secondId);
+
+        // Submit frame: only the focused (second) button may activate. With
+        // shared ids both fired.
+        _provider.snapshot = new NowUIInputSnapshot(
+            true, new Vector2(400, 200), new Vector2(400, 200), Vector2.zero,
+            NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            submitDown: true, submitPressed: true, submitReleased: false,
+            cancelDown: false, cancelPressed: false, cancelReleased: false,
+            frame: 1, time: 1f);
+
+        bool firstActivated, secondActivated;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            firstActivated = Now.Button(rect1, "Delete").Draw();
+            secondActivated = Now.Button(rect2, "Delete").Draw();
+        }
+
+        Assert.IsFalse(firstActivated, "Same-label sibling must not activate.");
+        Assert.IsTrue(secondActivated, "The focused duplicate must activate.");
+    }
+
+    [Test]
+    public void SetIdDecouplesIdentityFromLabel()
+    {
+        int byLabel, byId;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        {
+            byLabel = NowControls.GetControlId("Delete");
+            byId = NowControls.GetControlId("row-7-delete");
+        }
+
+        Assert.AreNotEqual(byLabel, byId);
+
+        // SetId routes interaction through the explicit id: focus it and the
+        // labeled button activates on submit regardless of its label hash.
+        NowUIFocus.Focus(byId);
+
+        _provider.snapshot = new NowUIInputSnapshot(
+            true, new Vector2(400, 200), new Vector2(400, 200), Vector2.zero,
+            NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            submitDown: true, submitPressed: true, submitReleased: false,
+            cancelDown: false, cancelPressed: false, cancelReleased: false,
+            frame: 1, time: 1f);
+
+        bool activated;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            activated = Now.Button(ButtonRect, "Delete").SetId("row-7-delete").Draw();
+
+        Assert.IsTrue(activated);
     }
 
     [Test]

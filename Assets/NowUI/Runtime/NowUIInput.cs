@@ -483,6 +483,7 @@ namespace NowUI
         {
             _surface = surface;
             _hasContext = true;
+            NowControls.ResetControlIdOccurrences();
 
             if (provider != null && provider.TryGetSnapshot(surface, out _snapshot))
                 return;

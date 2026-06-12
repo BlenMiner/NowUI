@@ -1258,6 +1258,16 @@ namespace NowUI
             contentWidth = (group.horizontal ? contentMain : contentCross) + group.padding.x + group.padding.z;
             contentHeight = (group.horizontal ? contentCross : contentMain) + group.padding.y + group.padding.w;
 
+            // Deferred sizing settles over a few frames; retained hosts (UGUI
+            // graphics) only rebuild when asked, so keep requesting repaints until
+            // the measurements stop changing.
+            if (!_cache.TryGetValue(group.id, out var previous) ||
+                Mathf.Abs(previous.contentWidth - contentWidth) > 0.25f ||
+                Mathf.Abs(previous.contentHeight - contentHeight) > 0.25f)
+            {
+                NowUIControlState.RequestRepaint();
+            }
+
             _cache[group.id] = new CachedGroup
             {
                 contentWidth = contentWidth,

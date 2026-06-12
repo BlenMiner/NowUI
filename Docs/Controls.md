@@ -110,9 +110,15 @@ immediately. ScrollView's `Begin()` is the same idea applied to a viewport.
 
 ## Repeated labels and ids
 
-Control ids derive from labels. Disambiguate repeats with an id scope:
+Control ids derive from labels. Repeated labels in the same frame are
+automatically salted by draw order, so two `Button("Delete")`s never share
+interaction state. The occurrence order follows draw order, though — when
+same-label controls appear or vanish conditionally, give them stable
+identities with `SetId` or an id scope:
 
 ```csharp
+NowLayout.Button("Delete").SetId($"delete-{item.id}").Draw();
+
 for (int i = 0; i < rows.Count; ++i)
     using (NowControls.IdScope($"row-{i}"))
         if (NowLayout.Button("Delete").Draw())

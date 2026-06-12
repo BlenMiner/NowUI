@@ -12,11 +12,11 @@ namespace NowUI
     /// </summary>
     public struct NowTextField
     {
-        string _id;
+        readonly string _id;
         string _placeholder;
         NowLayoutOptions _options;
-        NowRect _rect;
-        bool _hasRect;
+        readonly NowRect _rect;
+        readonly bool _hasRect;
         NowTextStyle _textPreset;
 
         static TouchScreenKeyboard s_touchKeyboard;
