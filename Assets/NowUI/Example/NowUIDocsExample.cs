@@ -14,10 +14,18 @@ using NowUI.Markdown;
 [AddComponentMenu("NowUI/Examples/NowUI Docs Browser")]
 public class NowUIDocsExample : NowUIGraphic
 {
+    enum PageKind
+    {
+        Markdown,
+        ControlsDemo,
+        LottieDemo,
+    }
+
     struct Page
     {
         public string title;
         public string file;
+        public PageKind kind;
     }
 
     static readonly Page[] Pages =
@@ -33,15 +41,19 @@ public class NowUIDocsExample : NowUIGraphic
         new Page { title = "Mobile", file = "Mobile.md" },
         new Page { title = "Render pipelines", file = "RenderPipelines.md" },
         new Page { title = "Editor GUI", file = "EditorGUI.md" },
-        new Page { title = "Live demo", file = null },
+        new Page { title = "Live demo", kind = PageKind.ControlsDemo },
+        new Page { title = "Lottie demo", kind = PageKind.LottieDemo },
     };
 
     [SerializeField] NowFontAsset _font;
+    [SerializeField] NowLottieAsset[] _lotties;
 
     int _selected;
     int _rating = 3;
     int _builderRating = 2;
     int _clicks;
+    bool _lottieScrub;
+    float _lottieProgress = 0.35f;
     readonly Dictionary<string, string> _docs = new Dictionary<string, string>();
 
     string LoadDoc(string file)
@@ -104,7 +116,7 @@ public class NowUIDocsExample : NowUIGraphic
                 var style = selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted;
                 var textStyle = selected ? NowTextStyle.Button : NowTextStyle.Body;
 
-                if (NowLayout.Button(Pages[i].title).SetId($"doc-{i}").SetStyle(style).SetTextStyle(textStyle).SetStretchWidth().Draw())
+                if (NowLayout.Button(Pages[i].title).SetId($"doc-{i}").SetStyle(style).SetTextStyle(textStyle).SetStretchWidth().SetHeight(30f).Draw())
                     _selected = i;
             }
         }
@@ -112,17 +124,82 @@ public class NowUIDocsExample : NowUIGraphic
         using (NowLayout.Area(contentRect))
         using (NowLayout.ScrollView($"docs-scroll-{_selected}").Begin())
         {
-            if (Pages[_selected].file == null)
+            switch (Pages[_selected].kind)
             {
-                DrawLiveDemo(theme);
-            }
-            else
-            {
-                var result = NowMarkdown.Draw(LoadDoc(Pages[_selected].file));
+                case PageKind.ControlsDemo:
+                    DrawLiveDemo(theme);
+                    break;
 
-                if (result.clickedLink != null)
-                    NavigateLink(result.clickedLink);
+                case PageKind.LottieDemo:
+                    DrawLottieDemo(theme);
+                    break;
+
+                default:
+                    var result = NowMarkdown.Draw(LoadDoc(Pages[_selected].file));
+
+                    if (result.clickedLink != null)
+                        NavigateLink(result.clickedLink);
+                    break;
             }
+        }
+    }
+
+    void DrawLottieDemo(NowUITheme theme)
+    {
+        NowMarkdown.Draw("# Lottie demo\n\nVector animations drawn through `NowLayout.Lottie` —" +
+            " tessellated at runtime, no textures. Add assets to the **Lotties** array on the" +
+            " `NowUIDocsExample` component and they show up here.");
+
+        if (_lotties == null || _lotties.Length == 0)
+        {
+            NowMarkdown.Draw("*No Lottie assets assigned.*");
+            return;
+        }
+
+        NowMarkdown.Draw("## Gallery");
+
+        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(16).SetAlignItems(NowLayoutAlign.Center)))
+        {
+            for (int i = 0; i < _lotties.Length; ++i)
+            {
+                if (_lotties[i] != null)
+                    NowLayout.Lottie(_lotties[i]).SetHeight(64).Draw();
+            }
+        }
+
+        NowMarkdown.Draw("## Playback\n\nAnimations advance on their own; `SetNormalizedTime` pins them for scrubbing.");
+
+        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(12).SetAlignItems(NowLayoutAlign.Center)))
+        {
+            NowLayout.Checkbox("Scrub").Draw(ref _lottieScrub);
+
+            if (_lottieScrub)
+                NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _lottieProgress);
+        }
+
+        var featured = NowLayout.Lottie(_lotties[0]).SetHeight(140);
+
+        if (_lottieScrub)
+            featured = featured.SetNormalizedTime(_lottieProgress);
+
+        featured.Draw();
+
+        NowMarkdown.Draw("## Sizes\n\nThe same asset scales with the layout box — geometry, not pixels.");
+
+        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(16).SetAlignItems(NowLayoutAlign.End)))
+        {
+            NowLayout.Lottie(_lotties[0]).SetHeight(24).Draw();
+            NowLayout.Lottie(_lotties[0]).SetHeight(48).Draw();
+            NowLayout.Lottie(_lotties[0]).SetHeight(96).Draw();
+        }
+
+        NowMarkdown.Draw("## Tinting\n\n`SetColor` multiplies the animation's own colors.");
+
+        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(16).SetAlignItems(NowLayoutAlign.Center)))
+        {
+            NowLayout.Lottie(_lotties[0]).SetHeight(56).Draw();
+            NowLayout.Lottie(_lotties[0]).SetHeight(56).SetColor(theme.GetColor(NowColorToken.Accent, Color.blue)).Draw();
+            NowLayout.Lottie(_lotties[0]).SetHeight(56).SetColor(new Color(1f, 1f, 1f, 0.35f)).Draw();
         }
     }
 

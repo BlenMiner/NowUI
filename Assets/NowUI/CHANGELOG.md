@@ -80,7 +80,9 @@ point it became installable through UPM.
   with custom hit shapes on the standard interaction bundle, and build from
   scratch — plus a docs browser scene (`Assets/Scenes/DocsScene.unity`) that
   renders the Docs folder through the markdown extension with a side menu,
-  relative-link navigation, and a live demo page running the guide's code.
+  relative-link navigation, a live demo page running the guide's code, and
+  a Lottie demo page (gallery, scrubbing via `SetNormalizedTime`, sizes,
+  tinting) fed by an inspector-assignable asset array.
 - IME composition in TextField and TextArea: the pre-edit text renders
   inline at the caret (underlined) without touching the value, editing keys
   belong to the IME until commit, and committed characters insert normally.
