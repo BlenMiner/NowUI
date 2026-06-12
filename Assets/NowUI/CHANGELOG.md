@@ -44,7 +44,9 @@ point it became installable through UPM.
   ScrollView in the fluent builder style — `NowLayout.*` for layout flow,
   `Now.*` for explicit rects, and `Begin()` content scopes on Button,
   Checkbox and Radio for custom content (icons, sub-labels) with results
-  readable inside the scope — theme-integrated, with
+  readable inside the scope — theme-integrated with enum styles
+  (`NowRectangleStyle`/`NowTextStyle`/`NowColorToken`/...; string preset ids
+  remain the low-level theme layer), with
   keyboard/gamepad focus (`NowUIFocus`: spatial navigation,
   submit activation), per-control ephemeral state and timing helpers
   (`NowUIControlState`), id scopes, ambient clipping (`Now.Mask`), an

@@ -17,7 +17,7 @@ namespace NowUI
         NowLayoutOptions _options;
         NowRect _rect;
         bool _hasRect;
-        string _textPreset;
+        NowTextStyle _textPreset;
 
         static TouchScreenKeyboard s_touchKeyboard;
         static int s_touchKeyboardId;
@@ -29,7 +29,7 @@ namespace NowUI
             _options = default;
             _rect = default;
             _hasRect = false;
-            _textPreset = NowUIThemeTokens.Text.Body;
+            _textPreset = NowTextStyle.Body;
         }
 
         internal NowTextField(NowRect rect, string id) : this(id)
@@ -46,7 +46,7 @@ namespace NowUI
 
         public NowTextField SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
-        public NowTextField SetTextPreset(string textPreset) { _textPreset = textPreset; return this; }
+        public NowTextField SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
         public bool Draw(ref string text)
         {
@@ -169,12 +169,12 @@ namespace NowUI
             state.scrollX = Mathf.Clamp(state.scrollX, 0f, Mathf.Max(0f, totalWidth - inner.width));
 
             // Visuals.
-            var box = theme.Rectangle(rect, NowUIThemeTokens.Rect.Outline);
+            var box = theme.Rectangle(rect, NowRectangleStyle.Outline);
 
             if (focused)
             {
                 box.outline = 2f;
-                box.outlineColor = theme.GetColor(NowUIThemeTokens.Color.Accent, Color.blue);
+                box.outlineColor = theme.GetColor(NowColorToken.Accent, Color.blue);
             }
 
             box.Draw();
@@ -187,7 +187,7 @@ namespace NowUI
                 {
                     float selectionMin = PrefixAdvance(fontAsset, resolvedFont, text, state.selectionMin, fontSize);
                     float selectionMax = PrefixAdvance(fontAsset, resolvedFont, text, state.selectionMax, fontSize);
-                    Color selectionColor = theme.GetColor(NowUIThemeTokens.Color.Accent, Color.blue);
+                    Color selectionColor = theme.GetColor(NowColorToken.Accent, Color.blue);
                     selectionColor.a = 0.35f;
 
                     Now.Rectangle(new NowRect(textX + selectionMin, inner.y, selectionMax - selectionMin, inner.height))
@@ -202,14 +202,14 @@ namespace NowUI
                 }
                 else if (!focused && !string.IsNullOrEmpty(_placeholder))
                 {
-                    var placeholder = theme.Text(new NowRect(inner.x, inner.y, inner.width, inner.height), NowUIThemeTokens.Text.Muted);
+                    var placeholder = theme.Text(new NowRect(inner.x, inner.y, inner.width, inner.height), NowTextStyle.Muted);
                     placeholder.SetFontSize(fontSize).Draw(_placeholder);
                 }
 
                 if (focused && NowUIControlState.Blink())
                 {
                     Now.Rectangle(new NowRect(textX + caretX, inner.y + 1f, 1.5f, inner.height - 2f))
-                        .SetColor(theme.GetColor(NowUIThemeTokens.Color.Text, Color.black))
+                        .SetColor(theme.GetColor(NowColorToken.Text, Color.black))
                         .Draw();
                 }
             }

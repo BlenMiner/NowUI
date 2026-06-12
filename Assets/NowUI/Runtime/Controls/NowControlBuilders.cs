@@ -10,8 +10,8 @@ namespace NowUI
     {
         readonly string _label;
         NowLayoutOptions _options;
-        string _rectPreset;
-        string _textPreset;
+        NowRectangleStyle _rectPreset;
+        NowTextStyle _textPreset;
         NowRect _rect;
         bool _hasRect;
 
@@ -19,8 +19,8 @@ namespace NowUI
         {
             _label = label ?? string.Empty;
             _options = default;
-            _rectPreset = NowUIThemeTokens.Rect.Accent;
-            _textPreset = NowUIThemeTokens.Text.Button;
+            _rectPreset = NowRectangleStyle.Accent;
+            _textPreset = NowTextStyle.Button;
             _rect = default;
             _hasRect = false;
         }
@@ -39,9 +39,9 @@ namespace NowUI
 
         public NowButton SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
-        public NowButton SetPreset(string rectanglePreset) { _rectPreset = rectanglePreset; return this; }
+        public NowButton SetStyle(NowRectangleStyle style) { _rectPreset = style; return this; }
 
-        public NowButton SetTextPreset(string textPreset) { _textPreset = textPreset; return this; }
+        public NowButton SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
         /// <summary>
         /// Opens the button as a container for custom content — icons, sub-labels,
@@ -63,7 +63,7 @@ namespace NowUI
             var theme = NowControls.theme;
             int id = NowControls.GetControlId(_label);
 
-            Vector4 padding = theme.GetSpacing(NowUIThemeTokens.Spacing.Md, new Vector4(12f, 12f, 12f, 12f));
+            Vector4 padding = theme.GetSpacing(NowSpacingToken.Md, new Vector4(12f, 12f, 12f, 12f));
             NowLayout.TryGetCachedContentSize(_label, out Vector2 cached);
             var fallback = new Vector2(padding.x + padding.z + 40f, padding.y + padding.w + 20f);
             var contentSize = cached.x > 0f ? cached : fallback;
@@ -78,7 +78,7 @@ namespace NowUI
             if (focused)
             {
                 rectangle.outline = Mathf.Max(rectangle.outline, 2f);
-                rectangle.outlineColor = theme.GetColor(NowUIThemeTokens.Color.Text, Color.black);
+                rectangle.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
             }
 
             rectangle.Draw();
@@ -96,7 +96,7 @@ namespace NowUI
 
             var text = theme.Text(default, _textPreset);
             Vector2 labelSize = text.Measure(_label);
-            Vector4 padding = theme.GetSpacing(NowUIThemeTokens.Spacing.Md, new Vector4(12f, 12f, 12f, 12f));
+            Vector4 padding = theme.GetSpacing(NowSpacingToken.Md, new Vector4(12f, 12f, 12f, 12f));
             var contentSize = new Vector2(
                 labelSize.x + padding.x + padding.z,
                 labelSize.y + (padding.y + padding.w) * 0.5f);
@@ -111,7 +111,7 @@ namespace NowUI
             if (focused)
             {
                 rectangle.outline = Mathf.Max(rectangle.outline, 2f);
-                rectangle.outlineColor = theme.GetColor(NowUIThemeTokens.Color.Text, Color.black);
+                rectangle.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
             }
 
             rectangle.Draw();
@@ -174,7 +174,7 @@ namespace NowUI
         NowLayoutOptions _options;
         NowRect _rect;
         bool _hasRect;
-        string _textPreset;
+        NowTextStyle _textPreset;
 
         internal NowCheckbox(string label)
         {
@@ -182,7 +182,7 @@ namespace NowUI
             _options = default;
             _rect = default;
             _hasRect = false;
-            _textPreset = NowUIThemeTokens.Text.Body;
+            _textPreset = NowTextStyle.Body;
         }
 
         internal NowCheckbox(NowRect rect, string label) : this(label)
@@ -193,7 +193,7 @@ namespace NowUI
 
         public NowCheckbox SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
-        public NowCheckbox SetTextPreset(string textPreset) { _textPreset = textPreset; return this; }
+        public NowCheckbox SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
         /// <summary>
         /// Opens the checkbox as a container: the box draws on the left and custom
@@ -242,13 +242,13 @@ namespace NowUI
             float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
             var boxRect = new NowRect(rect.x, rect.y + (rect.height - Box) * 0.5f, Box, Box);
 
-            var frame = theme.Rectangle(boxRect, value ? NowUIThemeTokens.Rect.Accent : NowUIThemeTokens.Rect.Outline);
+            var frame = theme.Rectangle(boxRect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
             frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
 
             if (focused)
             {
                 frame.outline = Mathf.Max(frame.outline, 2f);
-                frame.outlineColor = theme.GetColor(NowUIThemeTokens.Color.Text, Color.black);
+                frame.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
             }
 
             frame.Draw();
@@ -257,7 +257,7 @@ namespace NowUI
             {
                 float inset = Box * 0.3f;
                 Now.Rectangle(new NowRect(boxRect.x + inset, boxRect.y + inset, Box - inset * 2f, Box - inset * 2f))
-                    .SetColor(theme.GetColor(NowUIThemeTokens.Color.AccentText, Color.white))
+                    .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white))
                     .SetRadius(2f)
                     .Draw();
             }
@@ -284,13 +284,13 @@ namespace NowUI
             float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
             var boxRect = new NowRect(rect.x, rect.y + (rect.height - box) * 0.5f, box, box);
 
-            var frame = theme.Rectangle(boxRect, value ? NowUIThemeTokens.Rect.Accent : NowUIThemeTokens.Rect.Outline);
+            var frame = theme.Rectangle(boxRect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
             frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
 
             if (focused)
             {
                 frame.outline = Mathf.Max(frame.outline, 2f);
-                frame.outlineColor = theme.GetColor(NowUIThemeTokens.Color.Text, Color.black);
+                frame.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
             }
 
             frame.Draw();
@@ -299,7 +299,7 @@ namespace NowUI
             {
                 float inset = box * 0.3f;
                 Now.Rectangle(new NowRect(boxRect.x + inset, boxRect.y + inset, box - inset * 2f, box - inset * 2f))
-                    .SetColor(theme.GetColor(NowUIThemeTokens.Color.AccentText, Color.white))
+                    .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white))
                     .SetRadius(2f)
                     .Draw();
             }
@@ -321,7 +321,7 @@ namespace NowUI
         NowLayoutOptions _options;
         NowRect _rect;
         bool _hasRect;
-        string _textPreset;
+        NowTextStyle _textPreset;
 
         internal NowRadio(string label, bool isOn)
         {
@@ -330,7 +330,7 @@ namespace NowUI
             _options = default;
             _rect = default;
             _hasRect = false;
-            _textPreset = NowUIThemeTokens.Text.Body;
+            _textPreset = NowTextStyle.Body;
         }
 
         internal NowRadio(NowRect rect, string label, bool isOn) : this(label, isOn)
@@ -341,7 +341,7 @@ namespace NowUI
 
         public NowRadio SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
-        public NowRadio SetTextPreset(string textPreset) { _textPreset = textPreset; return this; }
+        public NowRadio SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
         /// <summary>
         /// Opens the radio as a container: the circle draws on the left and custom
@@ -385,14 +385,14 @@ namespace NowUI
             float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
             var circleRect = new NowRect(rect.x, rect.y + (rect.height - Circle) * 0.5f, Circle, Circle);
 
-            var frame = theme.Rectangle(circleRect, _isOn ? NowUIThemeTokens.Rect.Accent : NowUIThemeTokens.Rect.Outline);
+            var frame = theme.Rectangle(circleRect, _isOn ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
             frame.radius = new Vector4(Circle, Circle, Circle, Circle) * 0.5f;
             frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
 
             if (focused)
             {
                 frame.outline = Mathf.Max(frame.outline, 2f);
-                frame.outlineColor = theme.GetColor(NowUIThemeTokens.Color.Text, Color.black);
+                frame.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
             }
 
             frame.Draw();
@@ -402,7 +402,7 @@ namespace NowUI
                 float inset = Circle * 0.32f;
                 float dot = Circle - inset * 2f;
                 Now.Rectangle(new NowRect(circleRect.x + inset, circleRect.y + inset, dot, dot))
-                    .SetColor(theme.GetColor(NowUIThemeTokens.Color.AccentText, Color.white))
+                    .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white))
                     .SetRadius(dot * 0.5f)
                     .Draw();
             }
@@ -425,14 +425,14 @@ namespace NowUI
             float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
             var circleRect = new NowRect(rect.x, rect.y + (rect.height - circle) * 0.5f, circle, circle);
 
-            var frame = theme.Rectangle(circleRect, _isOn ? NowUIThemeTokens.Rect.Accent : NowUIThemeTokens.Rect.Outline);
+            var frame = theme.Rectangle(circleRect, _isOn ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
             frame.radius = new Vector4(circle, circle, circle, circle) * 0.5f;
             frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
 
             if (focused)
             {
                 frame.outline = Mathf.Max(frame.outline, 2f);
-                frame.outlineColor = theme.GetColor(NowUIThemeTokens.Color.Text, Color.black);
+                frame.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
             }
 
             frame.Draw();
@@ -442,7 +442,7 @@ namespace NowUI
                 float inset = circle * 0.32f;
                 float dot = circle - inset * 2f;
                 Now.Rectangle(new NowRect(circleRect.x + inset, circleRect.y + inset, dot, dot))
-                    .SetColor(theme.GetColor(NowUIThemeTokens.Color.AccentText, Color.white))
+                    .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white))
                     .SetRadius(dot * 0.5f)
                     .Draw();
             }
@@ -527,22 +527,22 @@ namespace NowUI
             float knobX = rect.x + normalized * (rect.width - Knob);
             float trackY = rect.y + (rect.height - Track) * 0.5f;
 
-            var track = theme.Rectangle(new NowRect(rect.x, trackY, rect.width, Track), NowUIThemeTokens.Rect.Muted);
+            var track = theme.Rectangle(new NowRect(rect.x, trackY, rect.width, Track), NowRectangleStyle.Muted);
             track.radius = new Vector4(Track, Track, Track, Track) * 0.5f;
             track.Draw();
 
-            var fill = theme.Rectangle(new NowRect(rect.x, trackY, knobX - rect.x + Knob * 0.5f, Track), NowUIThemeTokens.Rect.Accent);
+            var fill = theme.Rectangle(new NowRect(rect.x, trackY, knobX - rect.x + Knob * 0.5f, Track), NowRectangleStyle.Accent);
             fill.radius = track.radius;
             fill.Draw();
 
-            var knob = theme.Rectangle(new NowRect(knobX, rect.y + (rect.height - Knob) * 0.5f, Knob, Knob), NowUIThemeTokens.Rect.Accent);
+            var knob = theme.Rectangle(new NowRect(knobX, rect.y + (rect.height - Knob) * 0.5f, Knob, Knob), NowRectangleStyle.Accent);
             knob.radius = new Vector4(Knob, Knob, Knob, Knob) * 0.5f;
             knob.color = NowControls.StateTint(knob.color, hoverT, interaction.held);
 
             if (focused)
             {
                 knob.outline = 2f;
-                knob.outlineColor = theme.GetColor(NowUIThemeTokens.Color.Text, Color.black);
+                knob.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
             }
 
             knob.Draw();

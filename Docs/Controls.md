@@ -125,15 +125,24 @@ using (NowControls.Theme(myTheme))
     DrawSettingsPanel();
 ```
 
-Buttons use the `accent` rectangle preset and `button` text preset;
-checkboxes/radios/fields use `outline`/`muted`/`body`. Override per call with
-`SetPreset`/`SetTextPreset` or restyle the presets in your theme asset.
+Styles are enums — no magic strings:
 
-Built-in token and preset names have typed constants in
-`NowUIThemeTokens` (`Rect.Accent`, `Text.Body`, `Color.Accent`,
-`Spacing.Md`, `Radius.Pill`) — autocomplete instead of string literals. They
-are constants rather than an enum so custom preset names defined in theme
-assets keep working everywhere a token does.
+```csharp
+NowLayout.Button("Cancel").SetStyle(NowRectangleStyle.Outline).Draw();
+theme.Rectangle(rect, NowRectangleStyle.Accent).Draw();
+theme.GetColor(NowColorToken.Text, Color.black);
+theme.GetSpacing(NowSpacingToken.Md, fallback);
+```
+
+Buttons default to `NowRectangleStyle.Accent` + `NowTextStyle.Button`;
+checkboxes/radios/fields use `Outline`/`Muted`/`Body`. Restyle what the enums
+mean by editing the matching presets in your theme asset.
+
+For styling beyond the built-in set, compose your own control: the `.Draw()`
+separation means a `MyDangerButton()` function that pre-applies everything is
+a one-liner wrapper, and the string-id theme methods
+(`theme.Rectangle(rect, "danger")`) remain the low-level layer for custom
+preset names defined in theme assets.
 
 ## Focus, keyboard and gamepad
 
@@ -182,8 +191,8 @@ public static bool MyToggleSwitch(string label, ref bool value)
     // 3. Ephemeral state: animations, timers — keyed by the control id.
     float t = NowUIControlState.Transition(id, value, speed: 12f);
 
-    // 4. Draw with theme tokens.
-    var track = theme.Rectangle(rect, value ? "accent" : "muted");
+    // 4. Draw with theme styles.
+    var track = theme.Rectangle(rect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
     track.radius = new Vector4(rect.height, rect.height, rect.height, rect.height) * 0.5f;
     track.color = NowControls.StateTint(track.color, NowUIControlState.Transition(
         NowUIInput.GetId(id, "hover"), interaction.hovered), interaction.held);
@@ -191,7 +200,7 @@ public static bool MyToggleSwitch(string label, ref bool value)
     if (focused)
     {
         track.outline = 2f;
-        track.outlineColor = theme.GetColor("text", Color.black);
+        track.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
     }
 
     track.Draw();
@@ -199,7 +208,7 @@ public static bool MyToggleSwitch(string label, ref bool value)
     float knob = rect.height - 6f;
     float x = Mathf.Lerp(rect.x + 3f, rect.xMax - knob - 3f, t);
     Now.Rectangle(new NowRect(x, rect.y + 3f, knob, knob))
-        .SetColor(theme.GetColor("accent-text", Color.white))
+        .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white))
         .SetRadius(knob * 0.5f)
         .Draw();
 

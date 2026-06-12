@@ -153,9 +153,9 @@ namespace NowUI
             return NowLayout.Rect(options);
         }
 
-        internal static void DrawCenteredLabel(NowUITheme activeTheme, NowRect rect, string label, string textPreset, NowRect mask)
+        internal static void DrawCenteredLabel(NowUITheme activeTheme, NowRect rect, string label, NowTextStyle textStyle, NowRect mask)
         {
-            var text = activeTheme.Text(default, textPreset);
+            var text = activeTheme.Text(default, textStyle);
             Vector2 size = text.Measure(label);
 
             text.rect = new NowRect(
@@ -166,9 +166,9 @@ namespace NowUI
             text.SetMask(mask).Draw(label);
         }
 
-        internal static void DrawLeftLabel(NowUITheme activeTheme, NowRect rect, string label, string textPreset)
+        internal static void DrawLeftLabel(NowUITheme activeTheme, NowRect rect, string label, NowTextStyle textStyle)
         {
-            var text = activeTheme.Text(default, textPreset);
+            var text = activeTheme.Text(default, textStyle);
             Vector2 size = text.Measure(label);
 
             text.rect = new NowRect(

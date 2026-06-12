@@ -63,7 +63,7 @@ namespace NowUI
             pending = 0;
 
             // Field button.
-            var textStyle = theme.Text(default, NowUIThemeTokens.Text.Body);
+            var textStyle = theme.Text(default, NowTextStyle.Body);
             float lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _layoutOptions, new Vector2(180f, lineHeight + 12f));
 
@@ -78,21 +78,21 @@ namespace NowUI
 
             float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
 
-            var box = theme.Rectangle(rect, NowUIThemeTokens.Rect.Outline);
+            var box = theme.Rectangle(rect, NowRectangleStyle.Outline);
             box.color = NowControls.StateTint(box.color, hoverT, interaction.held);
 
             if (focused || open)
             {
                 box.outline = 2f;
-                box.outlineColor = theme.GetColor(NowUIThemeTokens.Color.Accent, Color.blue);
+                box.outlineColor = theme.GetColor(NowColorToken.Accent, Color.blue);
             }
 
             box.Draw();
 
             string current = selected >= 0 && selected < optionCount ? _options[selected] : string.Empty;
             var inner = rect.Inset(10f, 0f, 24f, 0f);
-            NowControls.DrawLeftLabel(theme, inner, current, NowUIThemeTokens.Text.Body);
-            NowControls.DrawLeftLabel(theme, new NowRect(rect.xMax - 20f, rect.y, 16f, rect.height), open ? "^" : "v", NowUIThemeTokens.Text.Muted);
+            NowControls.DrawLeftLabel(theme, inner, current, NowTextStyle.Body);
+            NowControls.DrawLeftLabel(theme, new NowRect(rect.xMax - 20f, rect.y, 16f, rect.height), open ? "^" : "v", NowTextStyle.Muted);
 
             if (!open)
                 return changed;
@@ -114,9 +114,9 @@ namespace NowUI
 
             NowUIOverlay.Defer(popupRect, () =>
             {
-                var background = capturedTheme.Rectangle(popupRect, NowUIThemeTokens.Rect.Surface);
+                var background = capturedTheme.Rectangle(popupRect, NowRectangleStyle.Surface);
                 background.outline = 1f;
-                background.outlineColor = capturedTheme.GetColor(NowUIThemeTokens.Color.Border, Color.gray);
+                background.outlineColor = capturedTheme.GetColor(NowColorToken.Border, Color.gray);
                 background.Draw();
 
                 var itemArea = popupRect.Inset(4f);
@@ -142,7 +142,7 @@ namespace NowUI
 
                         if (itemInteraction.hovered || i == capturedSelected)
                         {
-                            var highlight = capturedTheme.Rectangle(itemRect, i == capturedSelected ? NowUIThemeTokens.Rect.Accent : NowUIThemeTokens.Rect.Muted);
+                            var highlight = capturedTheme.Rectangle(itemRect, i == capturedSelected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
 
                             if (itemInteraction.hovered && i != capturedSelected)
                                 highlight.color = NowControls.StateTint(highlight.color, 1f, itemInteraction.held);
@@ -151,8 +151,8 @@ namespace NowUI
                             highlight.Draw();
                         }
 
-                        string itemPreset = i == capturedSelected ? NowUIThemeTokens.Text.Button : NowUIThemeTokens.Text.Body;
-                        NowControls.DrawLeftLabel(capturedTheme, itemRect.Inset(8f, 0f, 4f, 0f), capturedOptions[i], itemPreset);
+                        NowTextStyle itemStyle = i == capturedSelected ? NowTextStyle.Button : NowTextStyle.Body;
+                        NowControls.DrawLeftLabel(capturedTheme, itemRect.Inset(8f, 0f, 4f, 0f), capturedOptions[i], itemStyle);
 
                         if (itemInteraction.clicked)
                         {
