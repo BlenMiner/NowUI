@@ -10,6 +10,7 @@ namespace NowUI
     /// standard keyboard editing with key repeat, copy/cut/paste/select-all,
     /// double-click selects all. Mobile opens the on-screen keyboard while focused.
     /// </summary>
+    [NowBuilder]
     public struct NowTextField
     {
         readonly string _id;

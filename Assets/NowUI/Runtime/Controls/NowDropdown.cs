@@ -11,6 +11,7 @@ namespace NowUI
     /// click outside, or on cancel. Long lists scroll. Selection from the popup
     /// applies on the next frame's Draw (deferred draws run after Draw returns).
     /// </summary>
+    [NowBuilder]
     public struct NowDropdown
     {
         readonly string _id;

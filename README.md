@@ -105,6 +105,10 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
 - **Mobile** — density-scaled units (`Now.StartUI(uiScale)`), safe-area
   helpers, touch input, Android/iOS native plugins.
   [Docs/Mobile.md](Docs/Mobile.md)
+- **Analyzer** — a bundled Roslyn analyzer warns at compile time when a
+  builder is missing its `.Draw()` or a `using`-only scope is discarded,
+  in the Unity console and your IDE. No heuristics — it only flags provably
+  dead code. [Docs/Controls.md](Docs/Controls.md#compile-time-misuse-warnings)
 
 ## Platform support
 

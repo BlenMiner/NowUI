@@ -173,6 +173,7 @@ namespace NowUI
         }
     }
 
+    [NowScope]
     public struct NowUIGUIScope : IDisposable
     {
         NowUIGUI.CacheEntry _entry;

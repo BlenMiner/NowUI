@@ -232,6 +232,7 @@ namespace NowUI
     /// NowLayout.Label("Title").SetFontSize(24).SetColor(Color.white).Draw();
     /// </code>
     /// </summary>
+    [NowBuilder]
     public struct NowLabel
     {
         string _value;
@@ -421,6 +422,7 @@ namespace NowUI
         /// label.Draw();
         /// </code>
         /// </summary>
+        [NowConsumer]
         public NowLabel Reserve()
         {
             _rect = NowLayout.ReserveLabel(_style, _value, _options);
@@ -429,6 +431,7 @@ namespace NowUI
         }
 
         /// <summary>Draws the label into an explicit rect, consuming no layout space.</summary>
+        [NowConsumer]
         public NowUIText Draw(NowRect rect)
         {
             return NowLayout.DrawLabelAt(_style, _value, rect);
@@ -439,6 +442,7 @@ namespace NowUI
         /// otherwise this measures and allocates at the current layout position.
         /// Returns the positioned style.
         /// </summary>
+        [NowConsumer]
         public NowUIText Draw()
         {
             return _reserved
@@ -453,6 +457,7 @@ namespace NowUI
     /// native dimensions by default; fixing exactly one dimension derives the other
     /// from the animation's aspect ratio.
     /// </summary>
+    [NowBuilder]
     public struct NowLottie
     {
         NowUILottie _style;
@@ -613,6 +618,7 @@ namespace NowUI
         }
 
         /// <summary>Allocates the layout rect without drawing and stores it in <see cref="rect"/>.</summary>
+        [NowConsumer]
         public NowLottie Reserve()
         {
             _rect = NowLayout.ReserveLottie(_style, _options);
@@ -621,6 +627,7 @@ namespace NowUI
         }
 
         /// <summary>Draws the animation into an explicit rect, consuming no layout space.</summary>
+        [NowConsumer]
         public NowUILottie Draw(NowRect rect)
         {
             return NowLayout.DrawLottieAt(_style, rect);
@@ -630,6 +637,7 @@ namespace NowUI
         /// Draws the animation. A reserved animation renders into its <see cref="rect"/>;
         /// otherwise this allocates at the current layout position.
         /// </summary>
+        [NowConsumer]
         public NowUILottie Draw()
         {
             return _reserved

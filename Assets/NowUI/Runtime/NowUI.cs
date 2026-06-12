@@ -1109,6 +1109,7 @@ namespace NowUI
     /// Disposable handle returned by <see cref="Now.Mask(NowRect)"/>; disposing
     /// restores the previous ambient mask.
     /// </summary>
+    [NowScope]
     public struct NowMaskScope : IDisposable
     {
         bool _active;
@@ -1132,6 +1133,7 @@ namespace NowUI
     /// Disposable handle returned by <see cref="Now.Font(NowFontAsset)"/>;
     /// disposing restores the previously active font.
     /// </summary>
+    [NowScope]
     public struct NowFontScope : IDisposable
     {
         bool _active;

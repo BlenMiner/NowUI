@@ -14,6 +14,7 @@ namespace NowUI
     /// scrolls while hovered and the scrollbar thumb drags. Content height is the
     /// group's measured extent (one frame late, like all layout measurement).
     /// </summary>
+    [NowBuilder]
     public struct NowScrollView
     {
         readonly string _id;
@@ -89,6 +90,7 @@ namespace NowUI
         }
     }
 
+    [NowScope]
     public struct NowScrollScope : IDisposable
     {
         NowLayoutScope _layout;

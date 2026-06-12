@@ -62,6 +62,14 @@ point it became installable through UPM.
   screen input providers, drags preserved), completing the existing
   raycastTarget blocking in the other direction. EventSystem selection and
   NowUI focus are also mutually exclusive (`NowUIFocus.respectEventSystem`).
+- Bundled Roslyn analyzer (`Runtime/Analyzers/NowUI.Analyzers.dll`, applies
+  to every assembly referencing NowUI): NOWUI001 warns when a builder is
+  discarded as a bare statement (`NowLayout.Label("Hi");` without `.Draw()`),
+  NOWUI002 warns when a using-only scope (`Now.Mask`, `Begin()` scopes, ...)
+  is discarded and can therefore never be disposed. Both rules are exact —
+  no heuristics — and attribute-driven (`[NowBuilder]`, `[NowConsumer]`,
+  `[NowScope]`) so custom controls get the same checks. Sources in
+  `Assets/NowUI/Analyzers~`.
 - HarfBuzz text shaping (`Now.textShaping`, on by default): ligatures,
   kerning, and complex-script forms through the nowui-msdf v4 plugin, with
   shaped glyphs baked by the managed compiler. Measurement uses the same

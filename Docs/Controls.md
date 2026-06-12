@@ -125,6 +125,38 @@ for (int i = 0; i < rows.Count; ++i)
             Delete(i);
 ```
 
+## Compile-time misuse warnings
+
+Builders are inert until consumed, so `NowLayout.Label("Hello");` without
+`.Draw()` silently renders nothing. The package bundles a Roslyn analyzer
+(`Runtime/Analyzers/NowUI.Analyzers.dll`) that turns the two provably-dead
+patterns into compiler warnings — in the Unity console and in your IDE — for
+every assembly that references NowUI:
+
+- **NOWUI001** — a builder discarded as a bare statement:
+  `NowLayout.Label("Hello");` → *did you forget `.Draw()`?*
+- **NOWUI002** — a using-only scope discarded as a bare statement:
+  `Now.Mask(rect);` → the scope can never be disposed, so the pushed state
+  leaks for the rest of the frame. Wrap it in `using`. (`NowLayout.Area` and
+  the other layout groups are exempt: closing them with
+  `NowLayout.EndArea()`-style calls instead of `using` is supported.)
+
+Both rules fire only when the misuse is certain — there are no heuristic
+"maybe" warnings. To discard intentionally (rare, mostly tests), assign to
+the C# discard: `_ = NowLayout.Label("hello").SetFontSize(99);`.
+
+The detection is attribute-driven and works for your own controls too:
+
+- `[NowBuilder]` on a struct marks it as inert-until-consumed (NOWUI001).
+- `[NowConsumer]` on a method marks it as performing the work while returning
+  the builder for chaining, like `NowUIRectangle.Draw()` — statements ending
+  in a consumer call are never flagged.
+- `[NowScope]` on a disposable struct marks it as using-only (NOWUI002).
+
+Analyzer sources live in `Assets/NowUI/Analyzers~` (ignored by Unity);
+rebuild with `dotnet build -c Release` and copy the DLL over
+`Runtime/Analyzers/NowUI.Analyzers.dll`.
+
 ## Theming
 
 Controls read the ambient theme — a built-in default, a pushed scope, or your

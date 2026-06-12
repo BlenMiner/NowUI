@@ -774,6 +774,7 @@ namespace NowUI
         }
     }
 
+    [NowScope]
     public struct NowUIInputScope : IDisposable
     {
         readonly NowUIInputSurface _previousSurface;

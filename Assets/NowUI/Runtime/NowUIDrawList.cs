@@ -207,6 +207,7 @@ namespace NowUI
         }
     }
 
+    [NowScope]
     public struct NowUIDrawScope : IDisposable
     {
         NowUIDrawList _drawList;

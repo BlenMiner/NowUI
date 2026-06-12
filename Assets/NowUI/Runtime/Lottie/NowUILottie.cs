@@ -7,6 +7,7 @@ namespace NowUI
     /// style of <see cref="NowUIRectangle"/>:
     /// <code>Now.Lottie(rect, asset).SetTime(t).Draw();</code>
     /// </summary>
+    [NowBuilder]
     public struct NowUILottie
     {
         public NowRect mask;
@@ -109,6 +110,7 @@ namespace NowUI
             return this;
         }
 
+        [NowConsumer]
         public NowUILottie Draw()
         {
             Now.DrawLottie(this);

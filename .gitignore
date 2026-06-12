@@ -37,6 +37,10 @@
 ExportedObj/
 .consulo/
 *.csproj
+# ...except the hand-written Roslyn analyzer project (Unity ignores ~ folders)
+!Assets/NowUI/Analyzers~/**/*.csproj
+Assets/NowUI/Analyzers~/**/bin/
+Assets/NowUI/Analyzers~/**/obj/
 *.unityproj
 *.sln
 *.suo

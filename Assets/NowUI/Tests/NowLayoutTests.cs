@@ -404,7 +404,8 @@ public class NowLayoutTests
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
-        NowLayout.Label("hello").SetFontSize(99);
+        // '_ =' is the analyzer opt-out (NOWUI001): discarding the builder is the point here.
+        _ = NowLayout.Label("hello").SetFontSize(99);
         Vector4 below = NowLayout.Rect(50, 30);
 
         NowLayout.EndArea();

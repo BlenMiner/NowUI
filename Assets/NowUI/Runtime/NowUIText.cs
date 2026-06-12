@@ -2,6 +2,7 @@ using UnityEngine;
 
 namespace NowUI
 {
+    [NowBuilder]
     public struct NowUIText
     {
         public NowRect rect;
@@ -113,6 +114,7 @@ namespace NowUI
             return this;
         }
 
+        [NowConsumer]
         public NowUIText Draw(string value)
         {
             Now.DrawString(this, value);
@@ -129,6 +131,7 @@ namespace NowUI
             return font != null ? font.MeasureTextBounds(value, fontSize, fontStyle) : default;
         }
 
+        [NowConsumer]
         public NowUIText Draw(char character)
         {
             if (font != null &&
@@ -140,6 +143,7 @@ namespace NowUI
             return this;
         }
 
+        [NowConsumer]
         public NowUIText Draw(NowFontAtlasInfo.Glyph character)
         {
             Now.DrawCharacter(this, character);

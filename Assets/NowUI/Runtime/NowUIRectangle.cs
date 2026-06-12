@@ -2,6 +2,7 @@ using UnityEngine;
 
 namespace NowUI
 {
+    [NowBuilder]
     public struct NowUIRectangle
     {
         public NowRect mask;
@@ -105,6 +106,7 @@ namespace NowUI
             return this;
         }
 
+        [NowConsumer]
         public NowUIRectangle Draw()
         {
             Now.DrawRect(this);

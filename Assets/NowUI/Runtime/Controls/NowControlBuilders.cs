@@ -6,6 +6,7 @@ namespace NowUI
     /// Push button. <see cref="Draw"/> returns true on click or on submit while
     /// focused (keyboard/gamepad).
     /// </summary>
+    [NowBuilder]
     public struct NowButton
     {
         readonly string _label;
@@ -139,6 +140,7 @@ namespace NowUI
     /// For toggling controls (checkbox, radio), <see cref="clicked"/> doubles as
     /// "the value changed this frame".
     /// </summary>
+    [NowScope]
     public struct NowControlScope : System.IDisposable
     {
         public readonly NowUIInteraction interaction;
@@ -183,6 +185,7 @@ namespace NowUI
     /// Checkbox with a label. <see cref="Draw(ref bool)"/> toggles the caller's
     /// value on click/submit and returns true when it changed.
     /// </summary>
+    [NowBuilder]
     public struct NowCheckbox
     {
         readonly string _label;
@@ -337,6 +340,7 @@ namespace NowUI
     /// <see cref="Draw"/> returns true:
     /// <code>if (NowLayout.Radio("High", quality == 2).Draw()) quality = 2;</code>
     /// </summary>
+    [NowBuilder]
     public struct NowRadio
     {
         readonly string _label;
@@ -488,6 +492,7 @@ namespace NowUI
     /// from pointer drags (or navigation steps while focused) and returns true when
     /// it changed.
     /// </summary>
+    [NowBuilder]
     public struct NowSlider
     {
         readonly float _min;
