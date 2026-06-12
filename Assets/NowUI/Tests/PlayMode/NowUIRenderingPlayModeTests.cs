@@ -226,6 +226,55 @@ public class NowUIRenderingPlayModeTests
     }
 
     [UnityTest]
+    public IEnumerator UGUIElementsOccludeNowUIPointer()
+    {
+        var eventSystemObject = new GameObject("TestEventSystem", typeof(UnityEngine.EventSystems.EventSystem));
+        var canvasObject = new GameObject("Canvas", typeof(Canvas), typeof(UnityEngine.UI.GraphicRaycaster));
+        var canvas = canvasObject.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+        // Host NowUI graphic: bottom-left 200x200 of the screen.
+        var hostObject = new GameObject("Host", typeof(NowUIGraphic));
+        hostObject.transform.SetParent(canvasObject.transform, false);
+        var hostRect = hostObject.GetComponent<RectTransform>();
+        hostRect.anchorMin = Vector2.zero;
+        hostRect.anchorMax = Vector2.zero;
+        hostRect.pivot = Vector2.zero;
+        hostRect.anchoredPosition = Vector2.zero;
+        hostRect.sizeDelta = new Vector2(200, 200);
+        var host = hostObject.GetComponent<NowUIGraphic>();
+
+        // UGUI image drawn above the host, covering its bottom-left 100x100.
+        var blockerObject = new GameObject("Blocker", typeof(UnityEngine.UI.Image));
+        blockerObject.transform.SetParent(canvasObject.transform, false);
+        var blockerRect = blockerObject.GetComponent<RectTransform>();
+        blockerRect.anchorMin = Vector2.zero;
+        blockerRect.anchorMax = Vector2.zero;
+        blockerRect.pivot = Vector2.zero;
+        blockerRect.anchoredPosition = Vector2.zero;
+        blockerRect.sizeDelta = new Vector2(100, 100);
+
+        try
+        {
+            yield return null; // let the canvas lay out
+
+            Assert.IsFalse(
+                NowUIRaycastGate.IsPointerAllowed(host, new Vector2(50, 50)),
+                "A UGUI element above the host must occlude the pointer.");
+            Assert.IsTrue(
+                NowUIRaycastGate.IsPointerAllowed(host, new Vector2(150, 150)),
+                "The pointer over the host itself must pass.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(blockerObject);
+            Object.DestroyImmediate(hostObject);
+            Object.DestroyImmediate(canvasObject);
+            Object.DestroyImmediate(eventSystemObject);
+        }
+    }
+
+    [UnityTest]
     public IEnumerator EventSystemSelectionSuspendsNowUIFocus()
     {
         var eventSystemObject = new GameObject("TestEventSystem", typeof(UnityEngine.EventSystems.EventSystem));

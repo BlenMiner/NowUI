@@ -20,6 +20,9 @@ namespace NowUI
         [SerializeField, Tooltip("Rebuild automatically while the pointer is over this graphic or a control inside it requested a repaint (focus, animations, caret blink). Keeps NowControls live inside retained UGUI without Rebuild Every Frame.")]
         bool _autoRebuildOnInteraction = true;
 
+        [SerializeField, Tooltip("Withhold pointer input when UGUI elements draw above this graphic, so they occlude NowUI controls the same way this graphic's Raycast Target occludes UGUI beneath it.")]
+        bool _respectUGUIRaycast = true;
+
         [NonSerialized] bool _wantsInteractionRepaint;
 
         [NonSerialized] readonly List<CanvasRenderer> _extraCanvasRenderers = new List<CanvasRenderer>(2);
@@ -324,6 +327,12 @@ namespace NowUI
             _drawList = new NowUIDrawList(NowUIMeshLayout.Canvas, "NowUI Graphic Mesh");
         }
 
+        public bool respectUGUIRaycast
+        {
+            get => _respectUGUIRaycast;
+            set => _respectUGUIRaycast = value;
+        }
+
         protected virtual INowUIInputProvider GetInputProvider()
         {
             if (_inputProvider == null)
@@ -331,6 +340,7 @@ namespace NowUI
 
             _inputProvider.rectTransform = rectTransform;
             _inputProvider.eventCamera = GetEventCamera();
+            _inputProvider.raycastGate = _respectUGUIRaycast ? this : null;
             return _inputProvider;
         }
 

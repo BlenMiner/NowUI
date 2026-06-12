@@ -808,6 +808,14 @@ namespace NowUI
     {
         public static readonly NowUIScreenInputProvider instance = new NowUIScreenInputProvider();
 
+        /// <summary>
+        /// When true (default), the pointer is withheld while it is over raycastable
+        /// UGUI — canvas UI draws above the camera-rendered screen path, so it
+        /// should occlude NowUI the same way NowUI's raycastTarget occludes UGUI.
+        /// In-flight presses and releases always come through so drags never strand.
+        /// </summary>
+        public bool blockedWhenPointerOverUGUI = true;
+
         int _lastFrame = -1;
 
         bool _hasRawPosition;
@@ -908,7 +916,16 @@ namespace NowUI
                 return _rawInputAvailable;
             }
 
-            if (mouseInput.hasPointer)
+            bool buttonsInvolved =
+                mouseInput.pointerButtonsDown != NowUIPointerButtons.None ||
+                mouseInput.pointerButtonsPressed != NowUIPointerButtons.None ||
+                mouseInput.pointerButtonsReleased != NowUIPointerButtons.None ||
+                _previousButtonsDown != NowUIPointerButtons.None;
+
+            bool pointerVisible = mouseInput.hasPointer &&
+                (!blockedWhenPointerOverUGUI || buttonsInvolved || !NowUIRaycastGate.IsPointerOverUGUI());
+
+            if (pointerVisible)
             {
                 var nextPosition = new Vector2(mouseInput.screenPosition.x, Screen.height - mouseInput.screenPosition.y);
                 _rawDelta = _hasRawPosition ? nextPosition - _rawPosition : Vector2.zero;
@@ -920,6 +937,8 @@ namespace NowUI
                 _rawDelta = default;
                 _hasRawPosition = false;
             }
+
+            _previousButtonsDown = mouseInput.pointerButtonsDown;
 
             _pointerButtonsDown = mouseInput.pointerButtonsDown;
             _pointerButtonsPressed = mouseInput.pointerButtonsPressed;
@@ -937,6 +956,8 @@ namespace NowUI
         }
 
         Vector2 _rawDelta;
+
+        NowUIPointerButtons _previousButtonsDown;
     }
 
     public sealed class NowUIIMGUIInputProvider : INowUIInputProvider
@@ -1051,6 +1072,17 @@ namespace NowUI
 
         NowUIInputSnapshot _snapshot;
 
+        NowUIPointerButtons _previousButtonsDown;
+
+        /// <summary>
+        /// When set (NowUIGraphic assigns its host graphic), the pointer is withheld
+        /// unless the EventSystem's topmost raycast hit is this component or one of
+        /// its children — UGUI drawn above the host occludes NowUI input, mirroring
+        /// how the host's raycastTarget occludes UGUI beneath it. In-flight presses
+        /// and releases always come through so drags never strand.
+        /// </summary>
+        public Component raycastGate;
+
         public NowUIRectTransformInputProvider()
         {
         }
@@ -1114,6 +1146,23 @@ namespace NowUI
             }
 
             if (!mouseInput.hasPointer)
+            {
+                _hasPreviousPosition = false;
+                _previousButtonsDown = NowUIPointerButtons.None;
+                _snapshot = CreateNavigationOnlySnapshot(mouseInput);
+                return;
+            }
+
+            bool buttonsInvolved =
+                mouseInput.pointerButtonsDown != NowUIPointerButtons.None ||
+                mouseInput.pointerButtonsPressed != NowUIPointerButtons.None ||
+                mouseInput.pointerButtonsReleased != NowUIPointerButtons.None ||
+                _previousButtonsDown != NowUIPointerButtons.None;
+
+            _previousButtonsDown = mouseInput.pointerButtonsDown;
+
+            if (raycastGate != null && !buttonsInvolved &&
+                !NowUIRaycastGate.IsPointerAllowed(raycastGate, mouseInput.screenPosition))
             {
                 _hasPreviousPosition = false;
                 _snapshot = CreateNavigationOnlySnapshot(mouseInput);

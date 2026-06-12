@@ -57,6 +57,11 @@ point it became installable through UPM.
   Docs/Controls.md. UGUI hosting is first-class: `NowUIGraphic`
   auto-rebuilds while hovered or when a control requests a repaint,
   staying fully retained otherwise.
+- Mutual UGUI pointer occlusion: UGUI drawn above NowUI now blocks NowUI
+  hovers and clicks (EventSystem raycast gating in both the UGUI-hosted and
+  screen input providers, drags preserved), completing the existing
+  raycastTarget blocking in the other direction. EventSystem selection and
+  NowUI focus are also mutually exclusive (`NowUIFocus.respectEventSystem`).
 - HarfBuzz text shaping (`Now.textShaping`, on by default): ligatures,
   kerning, and complex-script forms through the nowui-msdf v4 plugin, with
   shaped glyphs baked by the managed compiler. Measurement uses the same

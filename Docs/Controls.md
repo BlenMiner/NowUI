@@ -158,6 +158,15 @@ focusing a NowUI control deselects the EventSystem. Disable with
 `NowUIFocus.respectEventSystem = false`. Seamless navigation handoff between
 the two systems is not attempted.
 
+Pointer occlusion is mutual too: a `NowUIGraphic`'s Raycast Target blocks
+UGUI beneath it, and UGUI drawn above NowUI blocks NowUI's pointer — the
+graphic withholds input unless the EventSystem's topmost hit is the graphic
+itself (**Respect UGUI Raycast**, on by default; needs Raycast Target
+enabled), and the screen render path withholds the pointer while it is over
+any raycastable UI (`NowUIScreenInputProvider.blockedWhenPointerOverUGUI`).
+In-flight drags and releases always come through, so controls never strand
+mid-interaction.
+
 ## Hosting in UGUI
 
 Drop a `NowUIGraphic` subclass on a Canvas and draw controls inside
