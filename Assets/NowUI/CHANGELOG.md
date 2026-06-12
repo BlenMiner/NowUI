@@ -95,7 +95,10 @@ point it became installable through UPM.
   stretching.
 - Context menus in the core: `NowUIContextMenu` (overlay-layer popup, one
   open at a time, closes on selection/outside-press/cancel) with an
-  immediate-mode Open/Begin/Item/End API. `NowTextSelection` reports
+  immediate-mode Open/Begin/Item/End API. Open menus are modal: everything
+  beneath is pointer-blocked (no hover, clicks, or wheel — the anchor
+  position stays meaningful) and an attempted scroll dismisses the menu,
+  matching browser behavior. `NowTextSelection` reports
   right-clicks (selection preserved) and gained `SelectAll`/`GetSelection`
   by id; markdown wires Copy and Select All onto right-click for both code
   blocks and paragraphs.

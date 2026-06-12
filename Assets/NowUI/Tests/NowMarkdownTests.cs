@@ -646,6 +646,56 @@ public class NowMarkdownTests
     }
 
     [Test]
+    public void OpenContextMenuBlocksHoverBeneathAndScrollDismisses()
+    {
+        var keyboard = new FakeKeyboard();
+        NowUITextInput.source = keyboard;
+
+        try
+        {
+            var document = NowMarkdownDocument.Parse("[link text](https://example.com/x)\n\n```\ncode\n```");
+            var rect = new NowRect(0, 0, 400f, 300f);
+            NowMarkdownResult last = default;
+
+            void Frame(NowUIInputSnapshot snapshot, bool forceOverlayFrame = false)
+            {
+                keyboard.frame = default;
+                NowUITextInput.Invalidate();
+                _provider.snapshot = snapshot;
+
+                using (NowUIInput.Begin(_provider, Surface))
+                using (_drawList.Begin(Surface))
+                {
+                    if (forceOverlayFrame)
+                        NowUIOverlay.ForceNewFrame();
+
+                    last = document.Draw(rect);
+                    NowUIOverlay.Flush();
+                }
+            }
+
+            var overLink = new Vector2(5f, 9f);
+            Frame(new NowUIInputSnapshot(overLink, false, false, false));
+            Assert.AreEqual("https://example.com/x", last.hoveredLink, "sanity: the link hovers before the menu opens");
+
+            var overCode = new Vector2(12f, 42f);
+            Frame(new NowUIInputSnapshot(overCode, NowUIPointerButtons.Secondary, NowUIPointerButtons.Secondary, NowUIPointerButtons.None));
+            Assert.IsTrue(NowUIContextMenu.isOpen, "right-clicking the code block must open the menu");
+
+            Frame(new NowUIInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
+            Assert.IsNull(last.hoveredLink, "an open context menu must block hover beneath it");
+            Assert.IsTrue(NowUIContextMenu.isOpen, "hovering elsewhere must not dismiss the menu");
+
+            Frame(new NowUIInputSnapshot(true, overLink, overLink, Vector2.zero, false, false, false, new Vector2(0f, 1f), 1, 1f));
+            Assert.IsFalse(NowUIContextMenu.isOpen, "scrolling must dismiss the menu");
+        }
+        finally
+        {
+            NowUITextInput.Reset();
+        }
+    }
+
+    [Test]
     public void CopyButtonCopiesTheCodeBlock()
     {
         var previous = NowMarkdownDocument.copyToClipboard;

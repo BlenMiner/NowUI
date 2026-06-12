@@ -114,6 +114,11 @@ namespace NowUI
 
             NowUIControlState.RequestRepaint();
 
+            // Modal while open: everything beneath is pointer-blocked (no hover,
+            // no clicks, no wheel), so the menu's anchor position stays
+            // meaningful. An attempted scroll dismisses the menu instead.
+            NowUIOverlay.Block(new NowRect(-100000f, -100000f, 200000f, 200000f));
+
             NowUIOverlay.Defer(popupRect, () =>
             {
                 var background = theme.Rectangle(popupRect, NowRectangleStyle.Surface);
@@ -152,8 +157,12 @@ namespace NowUI
                 bool pressed = snapshot.primaryPressed ||
                     (snapshot.pointerButtonsPressed & NowUIPointerButtons.Secondary) != 0;
 
-                if ((pressed && !popupRect.Contains(snapshot.pointerPosition)) || snapshot.cancelPressed)
+                if ((pressed && !popupRect.Contains(snapshot.pointerPosition)) ||
+                    snapshot.cancelPressed ||
+                    snapshot.scrollDelta != Vector2.zero)
+                {
                     Close();
+                }
             });
         }
 
