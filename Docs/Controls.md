@@ -314,17 +314,25 @@ The toolkit pieces:
 
 | Primitive | Purpose |
 | --- | --- |
-| `NowControls.GetControlId(label)` | Stable id from label + active id scope |
+| `NowControls.SiteId(file, line)` + `GetControlId(id)` | Call-site identity with id-scope seeding and loop salting |
 | `NowControls.Interact(id, rect, out focused, out submitted)` | Pointer interaction + focus registration + click-to-focus + submit |
+| `NowUIInput.Interact(rect)` | Id-less interaction: identity from the call site |
+| `NowUIInput.CombineId(a, b)` | Mint sub-element ids (rows, links, items) without strings |
 | `NowUIControlState.Get<T>(id)` | Persistent ephemeral slot (struct), evicted when stale |
 | `NowUIControlState.Transition / Repeat / DetectDoubleClick / Blink` | The standard timing behaviors |
 | `NowUIControlState.RequestRepaint()` | Tell retained hosts (UGUI) to render another frame |
-| `NowUIFocus.IsFocused / Focus / Clear` | Focus queries and explicit control |
+| `NowUIFocus.IsFocused / Focus / Clear / LockNavigation` | Focus queries, explicit control, nav suppression while editing |
 | `Now.Mask(rect)` | Ambient clipping scope (what ScrollView uses) |
 | `NowUIOverlay.Defer(blockRect, draw)` | Draw above everything; input beneath is blocked |
+| `NowUIContextMenu.Open / Begin / Item / End` | Modal right-click menus on the overlay layer |
 | `NowUITextInput.current` | Frame-sampled keyboard text/editing input |
 | `NowTextEdit` | Headless caret/selection/editing engine for custom editors |
-| `theme.Rectangle / theme.Text / theme.GetColor / GetSpacing / GetRadius` | Themed visuals |
+| `NowTextWrap.Layout / Draw` | Word wrap: lay out once into positioned runs, draw many frames |
+| `NowTextSelection.Draw / Interact / DrawHighlights` | Browser-style text selection over positioned line segments |
+| `NowUIClipboard.Copy / Paste / setText / getText` | The single clipboard hook every copy/paste path uses |
+| `NowLayout.ContentRect()` → `content.End(height)` | Frame-late reserve/measure for content sized by its width |
+| `theme.Rectangle / theme.Text / theme.ResolveText / theme.GetColor ...` | Themed visuals; `ResolveText` is the rect-free, mask-free starting point |
+| `font.MeasureText(text, start, length)` / span overloads | Allocation-free measuring for wrap engines and dynamic text |
 
 Conventions that keep custom controls consistent:
 

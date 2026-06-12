@@ -22,6 +22,10 @@ namespace NowUI.Markdown
         static readonly Dictionary<string, NowMarkdownDocument> _cache =
             new Dictionary<string, NowMarkdownDocument>(16);
 
+        static string _lastMarkdown;
+
+        static NowMarkdownDocument _lastDocument;
+
         public static NowMarkdownDocument Parse(string markdown)
         {
             return NowMarkdownDocument.Parse(markdown ?? string.Empty);
@@ -51,20 +55,28 @@ namespace NowUI.Markdown
         {
             markdown ??= string.Empty;
 
-            if (_cache.TryGetValue(markdown, out var document))
-                return document;
+            if (ReferenceEquals(markdown, _lastMarkdown))
+                return _lastDocument;
 
-            if (_cache.Count >= CacheLimit)
-                _cache.Clear();
+            if (!_cache.TryGetValue(markdown, out var document))
+            {
+                if (_cache.Count >= CacheLimit)
+                    _cache.Clear();
 
-            document = NowMarkdownDocument.Parse(markdown);
-            _cache[markdown] = document;
+                document = NowMarkdownDocument.Parse(markdown);
+                _cache[markdown] = document;
+            }
+
+            _lastMarkdown = markdown;
+            _lastDocument = document;
             return document;
         }
 
         public static void Reset()
         {
             _cache.Clear();
+            _lastMarkdown = null;
+            _lastDocument = null;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

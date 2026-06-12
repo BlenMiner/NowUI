@@ -66,14 +66,14 @@ public class NowTextSelectionTests
         };
 
         _copied = null;
-        _previousCopy = NowTextSelection.copyToClipboard;
-        NowTextSelection.copyToClipboard = text => _copied = text;
+        _previousCopy = NowUIClipboard.setText;
+        NowUIClipboard.setText = text => _copied = text;
     }
 
     [TearDown]
     public void TearDown()
     {
-        NowTextSelection.copyToClipboard = _previousCopy;
+        NowUIClipboard.setText = _previousCopy;
         _drawList.Dispose();
         NowUITextInput.Reset();
         NowUIInput.Reset();

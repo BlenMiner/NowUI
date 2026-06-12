@@ -19,8 +19,9 @@ namespace NowUI
     ///     NowUIContextMenu.End();
     /// }
     /// </code>
-    /// One menu is open at a time; it closes on selection, press outside, or
-    /// cancel.
+    /// One menu is open at a time and it is modal: everything beneath is
+    /// pointer-blocked so the anchor position stays meaningful, and it closes
+    /// on selection, press outside, cancel, or an attempted scroll.
     /// </summary>
     public static class NowUIContextMenu
     {
@@ -113,10 +114,6 @@ namespace NowUI
             int pendingId = NowUIInput.GetId(id, "ctx-pending");
 
             NowUIControlState.RequestRepaint();
-
-            // Modal while open: everything beneath is pointer-blocked (no hover,
-            // no clicks, no wheel), so the menu's anchor position stays
-            // meaningful. An attempted scroll dismisses the menu instead.
             NowUIOverlay.Block(new NowRect(-100000f, -100000f, 200000f, 200000f));
 
             NowUIOverlay.Defer(popupRect, () =>

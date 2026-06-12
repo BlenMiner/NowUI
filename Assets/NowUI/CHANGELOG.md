@@ -102,6 +102,16 @@ point it became installable through UPM.
   right-clicks (selection preserved) and gained `SelectAll`/`GetSelection`
   by id; markdown wires Copy and Select All onto right-click for both code
   blocks and paragraphs.
+- Right-clicking a markdown image offers "Copy image address" (Unity has
+  no managed image-clipboard API, so a bitmap copy that other programs
+  could paste is not possible — no fake affordance is shown). Image rects
+  are excluded from text-selection presses.
+- One clipboard hook: `NowUIClipboard` (`setText`/`getText`, default
+  system clipboard) now backs every copy/paste path — selection Ctrl+C,
+  text field copy/cut/paste, markdown copy buttons and context menus.
+  Replace it once per platform and everything follows; the previously
+  environment-skipped clipboard round-trip test is now deterministic
+  through it.
 - Document-wide selection: dragging selects across every selectable block
   — paragraphs, headings and code blocks in one sweep, like a webpage —
   over a document-flattened text (blocks separated by blank lines).

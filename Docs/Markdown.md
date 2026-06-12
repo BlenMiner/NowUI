@@ -51,15 +51,16 @@ Links are not opened automatically: the result reports `clickedLink` /
 - `![images](url)` — http/https URLs download asynchronously, other paths
   load from `Resources`; drawn at native size scaled down to the available
   width with a placeholder while loading and the alt text on failure.
-  Images wrapped in a link (`[![alt](img)](dest)`) are clickable. Textures
-  cache in `NowMarkdownImages` (inject art with `SetTexture`).
-- Code blocks carry a Copy button; the click handler defaults to the system
-  clipboard and is replaceable (`NowMarkdownDocument.copyToClipboard`) for
-  platforms that need their own copy flow
-- Code block text is selectable like a website — drag (double-click for a
-  word, Ctrl/Cmd+A for all) and Ctrl/Cmd+C copies the selection through the
-  core `NowTextSelection` helper, which any custom control can reuse for
-  copyable text regions
+  Images wrapped in a link (`[![alt](img)](dest)`) are clickable, and
+  right-clicking an image offers "Copy image address" (Unity has no managed
+  image-clipboard API, so there is no bitmap copy). Textures cache in
+  `NowMarkdownImages` (inject art with `SetTexture`).
+- Text is selectable like a website: drag across paragraphs, headings and
+  code blocks in one sweep (double-click for a word, Ctrl/Cmd+A for all),
+  Ctrl/Cmd+C copies, and right-click offers Copy / Select All. Code blocks
+  also carry a hover Copy button for the whole block. Everything copies
+  through the single `NowUIClipboard` hook — replace `setText`/`getText`
+  once for platforms with their own clipboard flow and every path follows.
 - Syntax highlighting in fenced code blocks for `csharp`/`cs`, `json`, and a
   C-like generic (`js`, `ts`, `c`, `cpp`, `java`): keywords, strings,
   numbers and comments, with multiline comment/verbatim-string state carried

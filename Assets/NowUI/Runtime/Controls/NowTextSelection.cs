@@ -33,7 +33,7 @@ namespace NowUI
     /// Browser-style text selection over caller-positioned line segments:
     /// press and drag selects (across everything the segment list covers, like
     /// dragging over a webpage), double-click selects a word, Ctrl/Cmd+A selects
-    /// all, Ctrl/Cmd+C copies through <see cref="copyToClipboard"/>. Selection
+    /// all, Ctrl/Cmd+C copies through <see cref="NowUIClipboard"/>. Selection
     /// state keys off the id in <see cref="NowUIControlState"/>; focus
     /// integration clears the selection when the user clicks elsewhere.
     /// <see cref="Interact"/> runs the input once for a whole document;
@@ -44,9 +44,6 @@ namespace NowUI
     /// </summary>
     public static class NowTextSelection
     {
-        /// <summary>Receives the selected text on Ctrl/Cmd+C; defaults to the system clipboard.</summary>
-        public static System.Action<string> copyToClipboard = static text => GUIUtility.systemCopyBuffer = text;
-
         static readonly List<NowRect> _singleExclusion = new List<NowRect>(1);
 
         /// <summary>Single-region convenience: <see cref="Interact"/> + <see cref="DrawHighlights"/>.</summary>
@@ -166,7 +163,7 @@ namespace NowUI
                     NowTextEdit.SelectAll(ref state, text);
 
                 if (frame.copyPressed && state.hasSelection)
-                    copyToClipboard?.Invoke(NowTextEdit.GetSelection(text, state));
+                    NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
             }
 
             result.hasSelection = state.hasSelection;

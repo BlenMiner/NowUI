@@ -130,23 +130,32 @@ public class NowControlsAdvancedTests
     [Test]
     public void TextFieldCopyPasteRoundTrip()
     {
-        GUIUtility.systemCopyBuffer = "probe";
+        var previousSet = NowUIClipboard.setText;
+        var previousGet = NowUIClipboard.getText;
+        string clipboard = string.Empty;
+        NowUIClipboard.setText = value => clipboard = value;
+        NowUIClipboard.getText = () => clipboard;
 
-        if (GUIUtility.systemCopyBuffer != "probe")
-            Assert.Ignore("System clipboard is not functional in this environment.");
+        try
+        {
+            string text = "copyme";
+            FocusField();
 
-        string text = "copyme";
-        FocusField();
+            DrawTextFieldFrame(ref text, new NowUITextInputFrame { selectAllPressed = true, command = true });
+            DrawTextFieldFrame(ref text, new NowUITextInputFrame { copyPressed = true, command = true });
+            Assert.AreEqual("copyme", clipboard);
 
-        DrawTextFieldFrame(ref text, new NowUITextInputFrame { selectAllPressed = true, command = true });
-        DrawTextFieldFrame(ref text, new NowUITextInputFrame { copyPressed = true, command = true });
-        Assert.AreEqual("copyme", GUIUtility.systemCopyBuffer);
+            DrawTextFieldFrame(ref text, new NowUITextInputFrame { pastePressed = true, command = true });
+            Assert.AreEqual("copyme", text, "Paste over a full selection keeps the same text.");
 
-        DrawTextFieldFrame(ref text, new NowUITextInputFrame { pastePressed = true, command = true });
-        Assert.AreEqual("copyme", text, "Paste over a full selection keeps the same text.");
-
-        DrawTextFieldFrame(ref text, new NowUITextInputFrame { pastePressed = true, command = true });
-        Assert.AreEqual("copymecopyme", text, "Second paste appends at the caret.");
+            DrawTextFieldFrame(ref text, new NowUITextInputFrame { pastePressed = true, command = true });
+            Assert.AreEqual("copymecopyme", text, "Second paste appends at the caret.");
+        }
+        finally
+        {
+            NowUIClipboard.setText = previousSet;
+            NowUIClipboard.getText = previousGet;
+        }
     }
 
     [Test]

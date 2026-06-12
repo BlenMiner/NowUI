@@ -903,7 +903,8 @@ namespace NowUI
 
         /// <summary>Draws a text block. The default mask (= the layout rect) is outset
         /// because glyphs legitimately overhang the advance box — descenders, italics;
-        /// explicit masks stay exact, and empty masks mean "no mask".</summary>
+        /// explicit masks stay exact, and empty masks mean "no mask". Fully masked
+        /// text skips all shaping/glyph work, so scrolled-out content costs nothing.</summary>
         internal static void DrawString(NowUIText style, string value)
         {
             if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
@@ -916,9 +917,6 @@ namespace NowUI
 
             style.mask = ApplyAmbientMask(style.mask);
 
-            // Fully masked text skips ALL the work — shaping lookups, glyph
-            // resolution, advance math — not just the final quads, so content
-            // scrolled out of a viewport costs nothing.
             if (style.mask.isEmpty || !style.mask.Overlaps(style.rect.Outset(8f)))
                 return;
 
@@ -1046,8 +1044,6 @@ namespace NowUI
 
                 if (i > segmentStart)
                 {
-                    // The whole string is one segment in the common case (no \n/\t);
-                    // pass it through without copying.
                     string segment = segmentStart == 0 && i == value.Length
                         ? value
                         : value.Substring(segmentStart, i - segmentStart);
@@ -1252,8 +1248,6 @@ namespace NowUI
             if (composition == null)
                 return;
 
-            // Fully masked animations skip tessellation entirely, not just the
-            // geometry upload.
             var lottieMask = !lottie.mask.isEmpty && lottie.mask == lottie.rect ? lottie.mask.Outset(2f) : lottie.mask;
             lottieMask = ApplyAmbientMask(lottieMask);
 

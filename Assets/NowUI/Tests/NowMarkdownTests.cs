@@ -362,8 +362,6 @@ public class NowMarkdownTests
             Assert.AreEqual(NowMarkdownBlockType.Paragraph, block.type, "raw HTML must stay inert text");
     }
 
-    // ------------------------------------------------------------------
-
     sealed class FakeProvider : INowUIInputProvider
     {
         public NowUIInputSnapshot snapshot;
@@ -506,9 +504,9 @@ public class NowMarkdownTests
     [Test]
     public void CodeBlockTextIsSelectableAndCopyable()
     {
-        var previousCopy = NowTextSelection.copyToClipboard;
+        var previousCopy = NowUIClipboard.setText;
         string copied = null;
-        NowTextSelection.copyToClipboard = text => copied = text;
+        NowUIClipboard.setText = text => copied = text;
         var keyboard = new FakeKeyboard();
         NowUITextInput.source = keyboard;
 
@@ -542,7 +540,7 @@ public class NowMarkdownTests
         }
         finally
         {
-            NowTextSelection.copyToClipboard = previousCopy;
+            NowUIClipboard.setText = previousCopy;
             NowUITextInput.Reset();
         }
     }
@@ -550,9 +548,9 @@ public class NowMarkdownTests
     [Test]
     public void ParagraphTextIsSelectableAcrossStyledWords()
     {
-        var previousCopy = NowTextSelection.copyToClipboard;
+        var previousCopy = NowUIClipboard.setText;
         string copied = null;
-        NowTextSelection.copyToClipboard = text => copied = text;
+        NowUIClipboard.setText = text => copied = text;
         var keyboard = new FakeKeyboard();
         NowUITextInput.source = keyboard;
 
@@ -585,7 +583,7 @@ public class NowMarkdownTests
         }
         finally
         {
-            NowTextSelection.copyToClipboard = previousCopy;
+            NowUIClipboard.setText = previousCopy;
             NowUITextInput.Reset();
         }
     }
@@ -593,9 +591,9 @@ public class NowMarkdownTests
     [Test]
     public void RightClickContextMenuCopiesTheSelection()
     {
-        var previousCopy = NowMarkdownDocument.copyToClipboard;
+        var previousCopy = NowUIClipboard.setText;
         string copied = null;
-        NowMarkdownDocument.copyToClipboard = text => copied = text;
+        NowUIClipboard.setText = text => copied = text;
         var keyboard = new FakeKeyboard();
         NowUITextInput.source = keyboard;
 
@@ -640,17 +638,62 @@ public class NowMarkdownTests
         }
         finally
         {
-            NowMarkdownDocument.copyToClipboard = previousCopy;
+            NowUIClipboard.setText = previousCopy;
             NowUITextInput.Reset();
+        }
+    }
+
+    [Test]
+    public void ImageContextMenuCopiesTheAddress()
+    {
+        var previousCopy = NowUIClipboard.setText;
+        string copied = null;
+        NowUIClipboard.setText = text => copied = text;
+        var injected = new Texture2D(200, 80, TextureFormat.RGBA32, false);
+
+        try
+        {
+            NowMarkdownImages.SetTexture("https://example.com/photo.png", injected);
+            var document = NowMarkdownDocument.Parse("![photo](https://example.com/photo.png)");
+            var rect = new NowRect(0, 0, 400f, 200f);
+
+            void Frame(NowUIInputSnapshot snapshot)
+            {
+                _provider.snapshot = snapshot;
+
+                using (NowUIInput.Begin(_provider, Surface))
+                using (_drawList.Begin(Surface))
+                {
+                    document.Draw(rect);
+                    NowUIOverlay.Flush();
+                }
+            }
+
+            var onImage = new Vector2(50f, 40f);
+            Frame(new NowUIInputSnapshot(onImage, NowUIPointerButtons.Secondary, NowUIPointerButtons.Secondary, NowUIPointerButtons.None));
+            Assert.IsTrue(NowUIContextMenu.isOpen, "right-clicking an image must open its menu");
+
+            var addressItem = new Vector2(onImage.x + 30f, onImage.y + 4f + 13f);
+            Frame(new NowUIInputSnapshot(addressItem, true, true, false));
+            Frame(new NowUIInputSnapshot(addressItem, false, false, true));
+            Frame(new NowUIInputSnapshot(addressItem, false, false, false));
+
+            Assert.AreEqual("https://example.com/photo.png", copied, "Copy image address must copy the URL");
+        }
+        finally
+        {
+            NowUIClipboard.setText = previousCopy;
+            Object.DestroyImmediate(injected);
+            NowMarkdownImages.Reset();
         }
     }
 
     [Test]
     public void DragAcrossBlocksSelectsLikeAWebpage()
     {
-        var previousCopy = NowTextSelection.copyToClipboard;
+        var previousCopy = NowUIClipboard.setText;
         string copied = null;
-        NowTextSelection.copyToClipboard = text => copied = text;
+        NowUIClipboard.setText = text => copied = text;
         var keyboard = new FakeKeyboard();
         NowUITextInput.source = keyboard;
 
@@ -683,7 +726,7 @@ public class NowMarkdownTests
         }
         finally
         {
-            NowTextSelection.copyToClipboard = previousCopy;
+            NowUIClipboard.setText = previousCopy;
             NowUITextInput.Reset();
         }
     }
@@ -746,9 +789,9 @@ public class NowMarkdownTests
     [Test]
     public void CopyButtonCopiesTheCodeBlock()
     {
-        var previous = NowMarkdownDocument.copyToClipboard;
+        var previous = NowUIClipboard.setText;
         string copied = null;
-        NowMarkdownDocument.copyToClipboard = text => copied = text;
+        NowUIClipboard.setText = text => copied = text;
 
         try
         {
@@ -773,7 +816,7 @@ public class NowMarkdownTests
         }
         finally
         {
-            NowMarkdownDocument.copyToClipboard = previous;
+            NowUIClipboard.setText = previous;
         }
     }
 

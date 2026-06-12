@@ -229,17 +229,7 @@ namespace NowUI.Markdown
                     }
                     case OpKind.Image:
                     {
-                        if (NowMarkdownImages.GetState(op.text, out var texture) == NowMarkdownImageState.Loaded &&
-                            texture != null)
-                        {
-                            var image = Now.Rectangle(target).SetTexture(texture).SetRadius(4f);
-
-                            if (hovered)
-                                image.color = new Vector4(1.08f, 1.08f, 1.08f, 1f);
-
-                            image.Draw();
-                        }
-
+                        DrawImage(theme, docId, i, op, target, hovered);
                         break;
                     }
                     case OpKind.CopyButton:
@@ -259,12 +249,6 @@ namespace NowUI.Markdown
 
             return result;
         }
-
-        /// <summary>
-        /// Receives the code-block text when a copy button is clicked. Defaults to
-        /// the system clipboard; replace for custom handling (mobile toasts, web).
-        /// </summary>
-        public static System.Action<string> copyToClipboard = static text => GUIUtility.systemCopyBuffer = text;
 
         void InteractDocumentSelection(int docId, NowRect origin)
         {
@@ -299,6 +283,20 @@ namespace NowUI.Markdown
                     button.height));
             }
 
+            for (int i = 0; i < _ops.Count; ++i)
+            {
+                var op = _ops[i];
+
+                if (op.kind != OpKind.Image)
+                    continue;
+
+                _exclusionScratch.Add(new NowRect(
+                    origin.x + op.rect.x,
+                    origin.y + op.rect.y,
+                    op.rect.width,
+                    op.rect.height));
+            }
+
             int selectionId = NowUIInput.GetId(docId, "selection");
             var selection = NowTextSelection.Interact(
                 selectionId, _documentText, _documentScratch, _layoutFont,
@@ -312,7 +310,7 @@ namespace NowUI.Markdown
             if (NowUIContextMenu.Begin(menuId))
             {
                 if (selection.hasSelection && NowUIContextMenu.Item("Copy"))
-                    copyToClipboard?.Invoke(NowTextSelection.GetSelection(selectionId, _documentText));
+                    NowUIClipboard.Copy(NowTextSelection.GetSelection(selectionId, _documentText));
 
                 if (NowUIContextMenu.Item("Select All"))
                     NowTextSelection.SelectAll(selectionId, _documentText);
@@ -360,14 +358,52 @@ namespace NowUI.Markdown
             if (!NowUIInput.IsHovered(panelTarget) && !showCopied)
                 return;
 
-            var interaction = NowUIInput.Interact(buttonId, target);
+            if (DrawBadgeButton(theme, buttonId, target, ref copiedAt))
+                NowUIClipboard.Copy(op.text);
+        }
 
-            if (interaction.clicked)
+        void DrawImage(NowUITheme theme, int docId, int opIndex, in Op op, NowRect target, bool linkHovered)
+        {
+            if (NowMarkdownImages.GetState(op.text, out var texture) != NowMarkdownImageState.Loaded ||
+                texture == null)
             {
-                copyToClipboard?.Invoke(op.text);
-                copiedAt = Time.realtimeSinceStartup;
-                showCopied = true;
+                return;
             }
+
+            var image = Now.Rectangle(target).SetTexture(texture).SetRadius(4f);
+
+            if (linkHovered)
+                image.color = new Vector4(1.08f, 1.08f, 1.08f, 1f);
+
+            image.Draw();
+
+            var snapshot = NowUIInput.current;
+            int menuId = NowUIInput.CombineId(NowUIInput.GetId(docId, "img-menu"), opIndex);
+
+            if (!NowUIInput.isPassive && snapshot.hasPointer && target.Contains(snapshot.pointerPosition) &&
+                (snapshot.pointerButtonsPressed & NowUIPointerButtons.Secondary) != 0)
+            {
+                NowUIContextMenu.Open(menuId, snapshot.pointerPosition);
+            }
+
+            if (NowUIContextMenu.Begin(menuId))
+            {
+                if (NowUIContextMenu.Item("Copy image address"))
+                    NowUIClipboard.Copy(op.text);
+
+                NowUIContextMenu.End();
+            }
+        }
+
+        bool DrawBadgeButton(NowUITheme theme, int buttonId, NowRect target, ref float copiedAt)
+        {
+            var interaction = NowUIInput.Interact(buttonId, target);
+            bool clicked = interaction.clicked;
+
+            if (clicked)
+                copiedAt = Time.realtimeSinceStartup;
+
+            bool showCopied = copiedAt > 0f && Time.realtimeSinceStartup - copiedAt < 1.2f;
 
             if (interaction.hovered || showCopied)
                 NowUIControlState.RequestRepaint();
@@ -397,6 +433,7 @@ namespace NowUI.Markdown
                 size.x + 1f,
                 size.y + 1f);
             text.SetMask(target.Outset(4f)).Draw(label);
+            return clicked;
         }
 
         static Vector4 ResolveColor(NowUITheme theme, Role role, bool hovered)
@@ -445,8 +482,6 @@ namespace NowUI.Markdown
                     return theme.GetColor(NowColorToken.Text, Color.black);
             }
         }
-
-        // ------------------------------------------------------------------
 
         void EnsureLayout(float width)
         {
@@ -808,8 +843,6 @@ namespace NowUI.Markdown
                 AddFill(Role.TableLine, new NowRect(x, y, total, 1f));
             }
         }
-
-        // ------------------------------------------------------------------
 
         struct InlineCursor
         {

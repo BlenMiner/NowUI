@@ -114,17 +114,17 @@ namespace NowUI
                     NowTextEdit.SelectAll(ref state, text);
 
                 if (frame.copyPressed && state.hasSelection)
-                    GUIUtility.systemCopyBuffer = NowTextEdit.GetSelection(text, state);
+                    NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
 
                 if (frame.cutPressed && state.hasSelection)
                 {
-                    GUIUtility.systemCopyBuffer = NowTextEdit.GetSelection(text, state);
+                    NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
                     NowTextEdit.DeleteSelection(ref text, ref state);
                 }
 
                 if (frame.pastePressed)
                 {
-                    string buffer = GUIUtility.systemCopyBuffer;
+                    string buffer = NowUIClipboard.Paste();
 
                     if (!string.IsNullOrEmpty(buffer))
                         NowTextEdit.Insert(ref text, ref state, buffer.Replace("\n", " ").Replace("\r", string.Empty));

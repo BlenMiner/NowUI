@@ -735,8 +735,13 @@ namespace NowUI
             _passiveDepth = 0;
         }
 
-        /// <summary>True during layout measure passes, when interactions are inert.</summary>
-        internal static bool isPassive => _passiveDepth > 0;
+        /// <summary>
+        /// True during layout measure passes, when interactions are inert.
+        /// Custom controls that read input outside <see cref="Interact"/> (raw
+        /// snapshots, right-click checks) should stand down while this is set,
+        /// or the measure pass double-processes their input.
+        /// </summary>
+        public static bool isPassive => _passiveDepth > 0;
 
         /// <summary>Enters passive mode (e.g. a layout measure pass): pure reads like hover
         /// still report so styling stays consistent, but press/drag state never transitions —
