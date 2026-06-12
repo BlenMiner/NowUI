@@ -59,12 +59,16 @@ namespace NowUI
 
         /// <summary>
         /// True when the pointer position is owned by overlay content registered
-        /// last frame; base-layer interactions treat it as hover-blocked.
+        /// last frame; base-layer interactions treat it as hover-blocked. Queries
+        /// roll the frame too, so blocks expire even when no overlay registers
+        /// this frame (a context menu that just closed must release the pointer).
         /// </summary>
         public static bool IsPointerBlocked(Vector2 pointerPosition)
         {
             if (_overlayDepth > 0)
                 return false;
+
+            BeginFrameIfNeeded();
 
             for (int i = 0; i < _blocksPrevious.Count; ++i)
             {
@@ -88,12 +92,15 @@ namespace NowUI
             _blocksCurrent.Clear();
         }
 
-        /// <summary>Forces the frame swap; used by tests where frameCount is static.</summary>
+        /// <summary>
+        /// Forces the frame swap; used by tests where frameCount is static. The
+        /// frame is left marked current so queries (which also roll the frame)
+        /// do not swap again until the next forced or real frame.
+        /// </summary>
         internal static void ForceNewFrame()
         {
             _registryFrame = -1;
             BeginFrameIfNeeded();
-            _registryFrame = -1;
         }
 
         /// <summary>

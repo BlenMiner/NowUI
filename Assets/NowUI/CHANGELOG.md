@@ -102,6 +102,17 @@ point it became installable through UPM.
   right-clicks (selection preserved) and gained `SelectAll`/`GetSelection`
   by id; markdown wires Copy and Select All onto right-click for both code
   blocks and paragraphs.
+- Document-wide selection: dragging selects across every selectable block
+  — paragraphs, headings and code blocks in one sweep, like a webpage —
+  over a document-flattened text (blocks separated by blank lines).
+  `NowTextSelection` splits into `Interact` (one input pass for the whole
+  document, exclusion-rect list for copy buttons) and `DrawHighlights`
+  (per-region slices so highlights layer between panel fills and text),
+  with per-segment font sizes so headings and code hit-test exactly.
+  Right-click menus act on the document selection; Copy only appears when
+  something is selected. Also fixed a stale overlay block: queries roll
+  the block registry forward, so a closed context menu releases the
+  pointer (scroll/hover no longer stay dead).
 - Markdown paragraphs and headings are selectable, not just code blocks:
   styled words register as selection segments over a flattened plain text
   (copy gives readable text with spaces and line breaks), with hit testing

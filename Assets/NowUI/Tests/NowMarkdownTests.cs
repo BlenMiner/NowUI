@@ -646,6 +646,49 @@ public class NowMarkdownTests
     }
 
     [Test]
+    public void DragAcrossBlocksSelectsLikeAWebpage()
+    {
+        var previousCopy = NowTextSelection.copyToClipboard;
+        string copied = null;
+        NowTextSelection.copyToClipboard = text => copied = text;
+        var keyboard = new FakeKeyboard();
+        NowUITextInput.source = keyboard;
+
+        try
+        {
+            var document = NowMarkdownDocument.Parse("first words\n\nsecond words");
+            var rect = new NowRect(0, 0, 400f, 200f);
+
+            void Frame(Vector2 pointer, bool down, bool pressed, bool released, NowUITextInputFrame keys = default)
+            {
+                keyboard.frame = keys;
+                NowUITextInput.Invalidate();
+                _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
+
+                using (NowUIInput.Begin(_provider, Surface))
+                using (_drawList.Begin(Surface))
+                    document.Draw(rect);
+            }
+
+            var inFirst = new Vector2(1f, 8f);
+            var inSecond = new Vector2(390f, 38f);
+
+            Frame(inFirst, down: true, pressed: true, released: false);
+            Frame(inSecond, down: true, pressed: false, released: false);
+            Frame(inSecond, down: false, pressed: false, released: true);
+            Frame(inSecond, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+
+            Assert.AreEqual("first words\n\nsecond words", copied,
+                "dragging across blocks must select and copy everything in between");
+        }
+        finally
+        {
+            NowTextSelection.copyToClipboard = previousCopy;
+            NowUITextInput.Reset();
+        }
+    }
+
+    [Test]
     public void OpenContextMenuBlocksHoverBeneathAndScrollDismisses()
     {
         var keyboard = new FakeKeyboard();
@@ -688,6 +731,11 @@ public class NowMarkdownTests
 
             Frame(new NowUIInputSnapshot(true, overLink, overLink, Vector2.zero, false, false, false, new Vector2(0f, 1f), 1, 1f));
             Assert.IsFalse(NowUIContextMenu.isOpen, "scrolling must dismiss the menu");
+
+            Frame(new NowUIInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
+            Frame(new NowUIInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
+            Assert.AreEqual("https://example.com/x", last.hoveredLink,
+                "closing the menu must release the pointer block");
         }
         finally
         {
