@@ -155,11 +155,11 @@ namespace NowUI
 
             float hoverT = NowUIControlState.Transition(thumbId, interaction.hovered || interaction.held);
 
-            var trackRectangle = theme.Rectangle(track, "muted");
+            var trackRectangle = theme.Rectangle(track, NowUIThemeTokens.Rect.Muted);
             trackRectangle.radius = new Vector4(BarWidth, BarWidth, BarWidth, BarWidth) * 0.5f;
             trackRectangle.Draw();
 
-            var thumb = theme.Rectangle(thumbRect, "accent");
+            var thumb = theme.Rectangle(thumbRect, NowUIThemeTokens.Rect.Accent);
             thumb.radius = trackRectangle.radius;
             thumb.color = NowControls.StateTint(thumb.color, hoverT, interaction.held);
             thumb.Draw();

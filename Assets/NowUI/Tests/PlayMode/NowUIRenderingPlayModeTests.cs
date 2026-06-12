@@ -225,6 +225,41 @@ public class NowUIRenderingPlayModeTests
         }
     }
 
+    [UnityTest]
+    public IEnumerator EventSystemSelectionSuspendsNowUIFocus()
+    {
+        var eventSystemObject = new GameObject("TestEventSystem", typeof(UnityEngine.EventSystems.EventSystem));
+        var selectable = new GameObject("Selected");
+
+        try
+        {
+            var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+            Assert.NotNull(eventSystem, "EventSystem must be live in play mode.");
+
+            // UGUI selection clears NowUI focus once the next frame processes.
+            NowUIFocus.Focus(7);
+            eventSystem.SetSelectedGameObject(selectable);
+            Assert.NotNull(eventSystem.currentSelectedGameObject);
+
+            yield return null;
+            NowUIFocus.Register(1, new NowRect(0, 0, 10, 10)); // drives the frame swap
+
+            Assert.AreEqual(0, NowUIFocus.focusedId, "UGUI selection must clear NowUI focus.");
+
+            // Focusing a NowUI control deselects the EventSystem.
+            eventSystem.SetSelectedGameObject(selectable);
+            NowUIFocus.Focus(9);
+            Assert.IsNull(eventSystem.currentSelectedGameObject, "NowUI focus must deselect the EventSystem.");
+            Assert.AreEqual(9, NowUIFocus.focusedId);
+        }
+        finally
+        {
+            NowUIFocus.Reset();
+            Object.DestroyImmediate(selectable);
+            Object.DestroyImmediate(eventSystemObject);
+        }
+    }
+
     /// <summary>Draws through the legacy GL/DrawMeshNow camera path on OnPostRender.</summary>
     class GLPathDriver : MonoBehaviour
     {

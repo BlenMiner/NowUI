@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace NowUI
 {
@@ -30,6 +31,14 @@ namespace NowUI
 
         static Vector2 _lastNavigation;
 
+        /// <summary>
+        /// Keeps NowUI focus and Unity's EventSystem selection mutually exclusive
+        /// (default on): selecting a UGUI control clears NowUI focus and pauses
+        /// NowUI navigation, and focusing a NowUI control deselects the EventSystem.
+        /// Cross-system navigation handoff is not attempted.
+        /// </summary>
+        public static bool respectEventSystem = true;
+
         /// <summary>The focused control id, or 0 when nothing has focus.</summary>
         public static int focusedId => _focusedId;
 
@@ -41,6 +50,14 @@ namespace NowUI
         public static void Focus(int id)
         {
             _focusedId = id;
+
+            if (respectEventSystem && id != 0)
+            {
+                var eventSystem = EventSystem.current;
+
+                if (eventSystem != null && eventSystem.currentSelectedGameObject != null)
+                    eventSystem.SetSelectedGameObject(null);
+            }
         }
 
         public static void Clear()
@@ -97,6 +114,20 @@ namespace NowUI
         static void ProcessNavigation()
         {
             var snapshot = NowUIInput.current;
+
+            // While a UGUI control is selected, the EventSystem owns focus and
+            // navigation; NowUI stands down until that selection clears.
+            if (respectEventSystem)
+            {
+                var eventSystem = EventSystem.current;
+
+                if (eventSystem != null && eventSystem.currentSelectedGameObject != null)
+                {
+                    Clear();
+                    _lastNavigation = snapshot.navigation;
+                    return;
+                }
+            }
 
             if (snapshot.cancelPressed)
                 Clear();
@@ -184,6 +215,7 @@ namespace NowUI
             _focusedId = 0;
             _registryFrame = -1;
             _lastNavigation = default;
+            respectEventSystem = true;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

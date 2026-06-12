@@ -129,12 +129,25 @@ Buttons use the `accent` rectangle preset and `button` text preset;
 checkboxes/radios/fields use `outline`/`muted`/`body`. Override per call with
 `SetPreset`/`SetTextPreset` or restyle the presets in your theme asset.
 
+Built-in token and preset names have typed constants in
+`NowUIThemeTokens` (`Rect.Accent`, `Text.Body`, `Color.Accent`,
+`Spacing.Md`, `Radius.Pill`) — autocomplete instead of string literals. They
+are constants rather than an enum so custom preset names defined in theme
+assets keep working everywhere a token does.
+
 ## Focus, keyboard and gamepad
 
 Focusable controls register with `NowUIFocus` every frame. Arrows, WASD, the
 d-pad or left stick move focus spatially; submit (enter/space/gamepad south)
 activates the focused control; cancel clears focus (and closes popups).
 Clicking a control focuses it. Focused controls draw a focus outline.
+
+NowUI focus and Unity's EventSystem stay mutually exclusive by default:
+selecting a UGUI control (clicking a classic Button, for example) clears
+NowUI focus and pauses NowUI navigation until that selection clears, and
+focusing a NowUI control deselects the EventSystem. Disable with
+`NowUIFocus.respectEventSystem = false`. Seamless navigation handoff between
+the two systems is not attempted.
 
 ## Hosting in UGUI
 

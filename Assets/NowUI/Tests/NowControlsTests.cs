@@ -356,6 +356,44 @@ public class NowControlsTests
     }
 
     [Test]
+    public void EventSystemSelectionSuspendsNowUIFocus()
+    {
+        var eventSystemObject = new GameObject("TestEventSystem", typeof(UnityEngine.EventSystems.EventSystem));
+        var selectable = new GameObject("Selected");
+
+        try
+        {
+            var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+
+            if (eventSystem == null)
+                Assert.Ignore("EventSystem.current unavailable in this environment.");
+
+            // A UGUI selection clears NowUI focus on the next frame swap.
+            NowUIFocus.Focus(7);
+            eventSystem.SetSelectedGameObject(selectable);
+
+            if (eventSystem.currentSelectedGameObject == null)
+                Assert.Ignore("EventSystem selection inactive in this environment.");
+
+            using (NowUIInput.Begin(_provider, Surface))
+                NowUIFocus.ForceNewFrame();
+
+            Assert.AreEqual(0, NowUIFocus.focusedId, "UGUI selection must clear NowUI focus.");
+
+            // Focusing a NowUI control deselects the EventSystem.
+            eventSystem.SetSelectedGameObject(selectable);
+            NowUIFocus.Focus(9);
+            Assert.IsNull(eventSystem.currentSelectedGameObject, "NowUI focus must deselect the EventSystem.");
+            Assert.AreEqual(9, NowUIFocus.focusedId);
+        }
+        finally
+        {
+            Object.DestroyImmediate(selectable);
+            Object.DestroyImmediate(eventSystemObject);
+        }
+    }
+
+    [Test]
     public void DefaultThemeIsAvailable()
     {
         Assert.NotNull(NowControls.theme);
