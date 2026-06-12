@@ -40,3 +40,9 @@ point it became installable through UPM.
   matte-clipped strokes keep the scalar route.
 - Play-mode rendering test suite reading back real rendered pixels for
   rectangles, text (both font compilers), Lottie, and the GL camera path.
+- HarfBuzz text shaping (`Now.textShaping`, on by default): ligatures,
+  kerning, and complex-script forms through the nowui-msdf v4 plugin, with
+  shaped glyphs baked by the managed compiler. Measurement uses the same
+  shaped runs as drawing. Segments the shaper cannot fully cover (missing
+  glyphs, color emoji, platforms without the plugin) automatically render
+  through the per-codepoint path with font fallbacks.

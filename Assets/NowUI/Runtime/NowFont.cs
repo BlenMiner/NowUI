@@ -1,3 +1,4 @@
+using NowUI.Internal;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -306,10 +307,86 @@ namespace NowUI
             return MeasureText(value, fontSize, NowFontStyle.Regular, tabSpaces);
         }
 
+        /// <summary>
+        /// Measures through the same shaped runs the draw path uses, so kerning and
+        /// ligatures affect layout consistently. Advances only — nothing is baked.
+        /// Returns false when any segment cannot shape; the caller then measures
+        /// per codepoint, matching the draw path's fallback decision.
+        /// </summary>
+        internal bool TryMeasureShapedText(string value, float fontSize, NowFontStyle style, int tabSpaces, out Vector2 size)
+        {
+            size = default;
+
+            if (!TryResolveFont(style, out var font) || font == null)
+                return false;
+
+            float lineWidth = 0f;
+            float maxWidth = 0f;
+            int lineCount = 1;
+            float tabAdvance = -1f;
+            int segmentStart = 0;
+
+            for (int i = 0; i <= value.Length; ++i)
+            {
+                char control = i < value.Length ? value[i] : '\0';
+
+                if (i < value.Length && control != '\n' && control != '\t')
+                    continue;
+
+                if (i > segmentStart)
+                {
+                    string segment = value.Substring(segmentStart, i - segmentStart);
+
+                    if (!font.TryGetShapedRun(segment, out var run))
+                        return false;
+
+                    for (int g = 0; g < run.Length; ++g)
+                        lineWidth += run[g].xAdvance * fontSize;
+                }
+
+                if (control == '\n')
+                {
+                    if (lineWidth > maxWidth)
+                        maxWidth = lineWidth;
+
+                    lineWidth = 0f;
+                    ++lineCount;
+                }
+                else if (control == '\t')
+                {
+                    if (tabAdvance < 0f)
+                    {
+                        if (!font.TryGetShapedRun(" ", out var spaceRun))
+                            return false;
+
+                        tabAdvance = 0f;
+
+                        for (int g = 0; g < spaceRun.Length; ++g)
+                            tabAdvance += spaceRun[g].xAdvance;
+
+                        tabAdvance *= fontSize * tabSpaces;
+                    }
+
+                    lineWidth += tabAdvance;
+                }
+
+                segmentStart = i + 1;
+            }
+
+            if (lineWidth > maxWidth)
+                maxWidth = lineWidth;
+
+            size = new Vector2(maxWidth, GetLineHeight(style) * fontSize * lineCount);
+            return true;
+        }
+
         public virtual Vector2 MeasureText(string value, float fontSize, NowFontStyle style, int tabSpaces = 4)
         {
             if (string.IsNullOrEmpty(value) || fontSize <= 0)
                 return default;
+
+            if (Now.textShaping && TryMeasureShapedText(value, fontSize, style, tabSpaces, out var shapedSize))
+                return shapedSize;
 
             float lineWidth = 0;
             float maxWidth = 0;
@@ -363,10 +440,115 @@ namespace NowUI
             return MeasureTextBounds(value, fontSize, NowFontStyle.Regular, tabSpaces);
         }
 
+        /// <summary>
+        /// Shaped equivalent of <see cref="MeasureTextBounds(string,float,NowFontStyle,int)"/>;
+        /// bakes the shaped records (like the codepoint path bakes via glyph
+        /// resolution) so plane bounds are available.
+        /// </summary>
+        internal bool TryMeasureShapedTextBounds(string value, float fontSize, NowFontStyle style, int tabSpaces, out Vector4 bounds)
+        {
+            bounds = default;
+
+            if (!TryResolveFont(style, out var font) || font == null)
+                return false;
+
+            float cursorX = 0f;
+            float lineY = 0f;
+            float lineHeight = GetLineHeight(style) * fontSize;
+            float baseline = GetAscender(style) * fontSize;
+            float tabAdvance = -1f;
+            float minX = 0f, minY = 0f, maxX = 0f, maxY = 0f;
+            bool hasBounds = false;
+            int segmentStart = 0;
+
+            for (int i = 0; i <= value.Length; ++i)
+            {
+                char control = i < value.Length ? value[i] : '\0';
+
+                if (i < value.Length && control != '\n' && control != '\t')
+                    continue;
+
+                if (i > segmentStart)
+                {
+                    string segment = value.Substring(segmentStart, i - segmentStart);
+
+                    if (!font.TryGetShapedRun(segment, out var run) || !font.EnsureShapedGlyphs(run, fontSize))
+                        return false;
+
+                    for (int g = 0; g < run.Length; ++g)
+                    {
+                        var shaped = run[g];
+
+                        if (!font.TryGetShapedGlyph((int)shaped.glyphIndex, fontSize, out var glyph, out _))
+                            return false;
+
+                        if (glyph.atlasBounds.left != glyph.atlasBounds.right)
+                        {
+                            float penX = cursorX + shaped.xOffset * fontSize;
+                            float penY = lineY - shaped.yOffset * fontSize;
+                            float glyphLeft = penX + glyph.planeBounds.left * fontSize;
+                            float glyphRight = penX + glyph.planeBounds.right * fontSize;
+                            float glyphTop = penY + baseline - glyph.planeBounds.top * fontSize;
+                            float glyphBottom = penY + baseline - glyph.planeBounds.bottom * fontSize;
+
+                            if (!hasBounds)
+                            {
+                                minX = glyphLeft;
+                                minY = glyphTop;
+                                maxX = glyphRight;
+                                maxY = glyphBottom;
+                                hasBounds = true;
+                            }
+                            else
+                            {
+                                if (glyphLeft < minX) minX = glyphLeft;
+                                if (glyphTop < minY) minY = glyphTop;
+                                if (glyphRight > maxX) maxX = glyphRight;
+                                if (glyphBottom > maxY) maxY = glyphBottom;
+                            }
+                        }
+
+                        cursorX += shaped.xAdvance * fontSize;
+                    }
+                }
+
+                if (control == '\n')
+                {
+                    cursorX = 0f;
+                    lineY += lineHeight;
+                }
+                else if (control == '\t')
+                {
+                    if (tabAdvance < 0f)
+                    {
+                        if (!font.TryGetShapedRun(" ", out var spaceRun))
+                            return false;
+
+                        tabAdvance = 0f;
+
+                        for (int g = 0; g < spaceRun.Length; ++g)
+                            tabAdvance += spaceRun[g].xAdvance;
+
+                        tabAdvance *= fontSize * tabSpaces;
+                    }
+
+                    cursorX += tabAdvance;
+                }
+
+                segmentStart = i + 1;
+            }
+
+            bounds = hasBounds ? new Vector4(minX, minY, maxX - minX, maxY - minY) : default;
+            return true;
+        }
+
         public virtual Vector4 MeasureTextBounds(string value, float fontSize, NowFontStyle style, int tabSpaces = 4)
         {
             if (string.IsNullOrEmpty(value) || fontSize <= 0)
                 return default;
+
+            if (Now.textShaping && TryMeasureShapedTextBounds(value, fontSize, style, tabSpaces, out var shapedBounds))
+                return shapedBounds;
 
             float cursorX = 0;
             float lineY = 0;
@@ -2539,6 +2721,10 @@ namespace NowUI
             _dynamicSourceCodepoints = null;
             _didReadDynamicSourceCodepoints = false;
             _dynamicSourceIsColor = null;
+            _textShaper?.Dispose();
+            _textShaper = null;
+            _textShaperFailed = false;
+            _shapeCache = null;
             ClearDynamicCache();
             ClearGlyphCache();
         }
@@ -2609,6 +2795,225 @@ namespace NowUI
                 return true;
             }
 
+            glyphMaterial = null;
+            return false;
+        }
+
+        // ------------------------------------------------------------------
+        // Text shaping (HarfBuzz). Shaped glyphs are addressed by glyph index;
+        // they reuse the whole dynamic page system through an encoded key that
+        // can never collide with codepoints.
+        // ------------------------------------------------------------------
+
+        [NonSerialized]
+        NowTextShaper _textShaper;
+
+        [NonSerialized]
+        bool _textShaperFailed;
+
+        [NonSerialized]
+        Dictionary<string, NowTextShaper.ShapedGlyph[]> _shapeCache;
+
+        [NonSerialized]
+        List<NowTextShaper.ShapedGlyph> _shapeScratch;
+
+        [NonSerialized]
+        List<int> _shapedMissingScratch;
+
+        const int SHAPE_CACHE_LIMIT = 512;
+
+        /// <summary>Glyph indices map into the negative key space so codepoint and
+        /// shaped records share pages, materials and miss tracking without collisions.</summary>
+        internal static int EncodeGlyphIndexKey(int glyphIndex)
+        {
+            return -1 - glyphIndex;
+        }
+
+        bool EnsureTextShaper()
+        {
+            if (_textShaper != null)
+                return true;
+
+            if (_textShaperFailed || !NowTextShaper.supported)
+                return false;
+
+            var bytes = DynamicFontBytes;
+
+            if (bytes == null)
+            {
+                _textShaperFailed = true;
+                return false;
+            }
+
+            // Color fonts render through the RGBA path; their sequences need the
+            // color glyph importer, not the SDF pipeline. Unshaped for now.
+            _dynamicSourceIsColor ??= NowFontCompiler.IsColorFont(bytes);
+
+            if (_dynamicSourceIsColor.Value || !NowTextShaper.TryCreate(bytes, out _textShaper, out _))
+            {
+                _textShaperFailed = true;
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Shapes one segment (no newlines/tabs) through HarfBuzz, cached per string.
+        /// Returns false when shaping is unavailable or when the shaped run contains
+        /// .notdef glyphs — those segments use the codepoint path so font fallbacks
+        /// keep resolving the characters this font lacks.
+        /// </summary>
+        internal bool TryGetShapedRun(string segment, out NowTextShaper.ShapedGlyph[] run)
+        {
+            run = null;
+
+            if (string.IsNullOrEmpty(segment) || !EnsureTextShaper())
+                return false;
+
+            _shapeCache ??= new Dictionary<string, NowTextShaper.ShapedGlyph[]>(64);
+
+            if (_shapeCache.TryGetValue(segment, out run))
+                return run != null;
+
+            var scratch = _shapeScratch ??= new List<NowTextShaper.ShapedGlyph>(64);
+            scratch.Clear();
+
+            bool usable = _textShaper.TryShape(segment, scratch, out _) && scratch.Count > 0;
+
+            for (int i = 0; usable && i < scratch.Count; ++i)
+            {
+                if (scratch[i].glyphIndex == 0)
+                    usable = false;
+            }
+
+            run = usable ? scratch.ToArray() : null;
+
+            if (_shapeCache.Count >= SHAPE_CACHE_LIMIT)
+                _shapeCache.Clear();
+
+            _shapeCache[segment] = run;
+            scratch.Clear();
+            return run != null;
+        }
+
+        /// <summary>
+        /// Bakes any glyphs of the shaped run that are not yet in a dynamic page.
+        /// Returns true when every glyph in the run has a record afterwards.
+        /// </summary>
+        internal bool EnsureShapedGlyphs(NowTextShaper.ShapedGlyph[] run, float fontSize)
+        {
+            if (run == null || run.Length == 0)
+                return false;
+
+            int atlasSize = GetDynamicGlyphSize(fontSize);
+            var missing = _shapedMissingScratch ??= new List<int>(32);
+            missing.Clear();
+
+            for (int i = 0; i < run.Length; ++i)
+            {
+                int encoded = EncodeGlyphIndexKey((int)run[i].glyphIndex);
+
+                if (_dynamicMisses != null && _dynamicMisses.Contains(new DynamicGlyphKey(encoded, atlasSize)))
+                    return false;
+
+                if (!TryGetDynamicCachedGlyph(encoded, atlasSize, out _) && !missing.Contains((int)run[i].glyphIndex))
+                    missing.Add((int)run[i].glyphIndex);
+            }
+
+            if (missing.Count == 0)
+                return true;
+
+            if (!TryBakeShapedGlyphs(missing, atlasSize))
+                return false;
+
+            for (int i = 0; i < run.Length; ++i)
+            {
+                if (!TryGetDynamicCachedGlyph(EncodeGlyphIndexKey((int)run[i].glyphIndex), atlasSize, out _))
+                    return false;
+            }
+
+            return true;
+        }
+
+        bool TryBakeShapedGlyphs(List<int> glyphIndices, int atlasSize)
+        {
+            if (s_dynamicSessionUnsupported || _dynamicSessionFailed)
+                return false;
+
+            var fontData = DynamicFontBytes;
+
+            if (fontData == null)
+                return false;
+
+            if (_dynamicSessionPage != null && !IsDynamicPageValid(_dynamicSessionPage))
+                ResetDynamicSession();
+
+            var results = _dynamicSessionGlyphScratch ??= new List<NowFontAtlasInfo.Glyph>();
+            results.Clear();
+
+            var indices = glyphIndices.ToArray();
+
+            // One batch with a single sealed-page retry: shaped runs are short, so a
+            // fresh fixed-size page practically always fits the whole batch.
+            for (int attempt = 0; attempt < 2; ++attempt)
+            {
+                if (!TryEnsureDynamicSession(fontData))
+                    return false;
+
+                if (!_dynamicSession.supportsGlyphIndexBaking)
+                    return false;
+
+                var status = _dynamicSession.TryAddGlyphsByIndex(indices, indices.Length, results, out _);
+
+                if (status == NowFontCompiler.DynamicSession.AddResult.Ok)
+                {
+                    // Records come back keyed by raw glyph index; move them into the
+                    // encoded key space before they enter the shared page tables.
+                    for (int i = 0; i < results.Count; ++i)
+                    {
+                        var record = results[i];
+                        record.unicode = EncodeGlyphIndexKey(record.unicode);
+                        results[i] = record;
+                    }
+
+                    bool committed = results.Count == 0 || TryCommitSessionGlyphs(results, atlasSize);
+                    results.Clear();
+                    return committed;
+                }
+
+                if (status == NowFontCompiler.DynamicSession.AddResult.AtlasFull)
+                {
+                    results.Clear();
+                    ResetDynamicSession(); // seal the page, retry on a fresh one
+                    continue;
+                }
+
+                results.Clear();
+                return false;
+            }
+
+            for (int i = 0; i < indices.Length; ++i)
+                AddDynamicMiss(new DynamicGlyphKey(EncodeGlyphIndexKey(indices[i]), atlasSize));
+
+            return false;
+        }
+
+        /// <summary>Resolves a baked shaped glyph record and its page material.</summary>
+        internal bool TryGetShapedGlyph(int glyphIndex, float fontSize, out NowFontAtlasInfo.Glyph glyph, out Material glyphMaterial)
+        {
+            int encoded = EncodeGlyphIndexKey(glyphIndex);
+            int atlasSize = GetDynamicGlyphSize(fontSize);
+
+            if (TryGetDynamicCachedGlyph(encoded, atlasSize, out glyph) &&
+                _dynamicGlyphPages != null &&
+                _dynamicGlyphPages.TryGetValue(new DynamicGlyphKey(encoded, atlasSize), out var page))
+            {
+                glyphMaterial = page.font.material;
+                return glyphMaterial != null;
+            }
+
+            glyph = default;
             glyphMaterial = null;
             return false;
         }

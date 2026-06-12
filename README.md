@@ -85,10 +85,11 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
 
 - **Rectangles** — rounded corners (per-corner radii), outlines, blur,
   padding, masks. [Docs/Features.md](Docs/Features.md)
-- **Text** — MTSDF atlases compiled from TrueType fonts in the editor or at
-  runtime from raw bytes; glyphs bake on demand into dynamic atlas pages;
-  color emoji fonts (sbix, CBDT/CBLC, COLR/CPAL, SVG) import through
-  FreeType; contextual font stack via `using (Now.Font(...))`.
+- **Text** — SDF atlases baked on demand by a Burst-compiled managed
+  compiler (native plugin covers CFF and color emoji fonts); HarfBuzz
+  shaping for ligatures, kerning, and complex scripts where the plugin is
+  present, falling back per codepoint elsewhere; contextual font stack via
+  `using (Now.Font(...))`.
 - **Layout** — flexbox-style horizontal/vertical groups with fixed, min/max,
   and weighted-stretch sizing. [Docs/Layout.md](Docs/Layout.md)
 - **Input** — immediate-mode `NowUIInput.Interact` with hover, press, drag,

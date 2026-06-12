@@ -346,6 +346,22 @@ namespace NowUI
                 return true;
             }
 
+            /// <summary>
+            /// True when this session can bake glyphs addressed by glyph index (the
+            /// currency of shaped text). Managed sessions only for now; CFF fonts on
+            /// the native session render unshaped.
+            /// </summary>
+            public bool supportsGlyphIndexBaking => _managed != null;
+
+            public AddResult TryAddGlyphsByIndex(int[] glyphIndices, int glyphIndexCount, List<NowFontAtlasInfo.Glyph> results, out string error)
+            {
+                if (_managed != null)
+                    return _managed.TryAddGlyphsByIndex(glyphIndices, glyphIndexCount, results, out error);
+
+                error = "Glyph-index baking requires the managed compiler session.";
+                return AddResult.Failed;
+            }
+
             public AddResult TryAddGlyphs(int[] codepoints, int codepointCount, List<NowFontAtlasInfo.Glyph> results, out string error)
             {
                 if (_managed != null)

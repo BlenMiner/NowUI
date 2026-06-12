@@ -27,6 +27,15 @@ namespace NowUI
         /// </summary>
         public static float uiScale => _uiScale;
 
+        /// <summary>
+        /// Shapes text through HarfBuzz when available: ligatures, kerning, and
+        /// complex-script forms. Segments the shaper cannot fully cover (missing
+        /// glyphs, platforms without the native plugin, color fonts) automatically
+        /// use the per-codepoint path with font fallbacks, so disabling this only
+        /// turns typography features off — text always renders either way.
+        /// </summary>
+        public static bool textShaping = true;
+
         static NowFontAsset _defaultFont;
 
         /// <summary>
@@ -697,6 +706,9 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
                 return;
 
+            if (textShaping && TryDrawShapedString(style, value))
+                return;
+
             var fontSize = style.fontSize;
             var fontAsset = style.font;
             NowMesh mesh = null;
@@ -758,6 +770,136 @@ namespace NowUI
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Draws the text through HarfBuzz-shaped runs (ligatures, kerning, complex
+        /// scripts). Returns false — drawing nothing — when any segment cannot be
+        /// shaped or baked, so the per-codepoint path can take over cleanly; the
+        /// validation pass runs before any geometry is emitted to make the handoff
+        /// all-or-nothing.
+        /// </summary>
+        static bool TryDrawShapedString(NowUIText style, string value)
+        {
+            if (!style.font.TryResolveFont(style.fontStyle, out var font) || font == null)
+                return false;
+
+            var fontSize = style.fontSize;
+            bool hasTab = false;
+
+            // Validation pass: shape every segment and bake every glyph record.
+            // Note: Substring(0, Length) returns the same instance, so single-line
+            // text (the common case) allocates nothing here.
+            int segmentStart = 0;
+
+            for (int i = 0; i <= value.Length; ++i)
+            {
+                char control = i < value.Length ? value[i] : '\0';
+
+                if (control == '\t')
+                    hasTab = true;
+
+                if (i < value.Length && control != '\n' && control != '\t')
+                    continue;
+
+                if (i > segmentStart)
+                {
+                    string segment = value.Substring(segmentStart, i - segmentStart);
+
+                    if (!font.TryGetShapedRun(segment, out var segmentRun) ||
+                        !font.EnsureShapedGlyphs(segmentRun, fontSize))
+                    {
+                        return false;
+                    }
+                }
+
+                segmentStart = i + 1;
+            }
+
+            float tabAdvance = 0f;
+
+            if (hasTab)
+            {
+                if (!font.TryGetShapedRun(" ", out var spaceRun) ||
+                    !font.EnsureShapedGlyphs(spaceRun, fontSize))
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < spaceRun.Length; ++i)
+                    tabAdvance += spaceRun[i].xAdvance;
+
+                tabAdvance *= fontSize * 4; // matches the codepoint path's TAB_SPACES
+            }
+
+            // Draw pass: everything below is cache hits.
+            float lineHeight = style.font.GetLineHeight(style.fontStyle) * fontSize;
+            float baseline = style.font.GetAscender(style.fontStyle) * fontSize;
+            float leftPos = style.rect.x;
+            NowMesh mesh = null;
+            segmentStart = 0;
+
+            for (int i = 0; i <= value.Length; ++i)
+            {
+                char control = i < value.Length ? value[i] : '\0';
+
+                if (i < value.Length && control != '\n' && control != '\t')
+                    continue;
+
+                if (i > segmentStart)
+                {
+                    string segment = value.Substring(segmentStart, i - segmentStart);
+                    font.TryGetShapedRun(segment, out var run);
+
+                    for (int g = 0; g < run.Length; ++g)
+                    {
+                        var shaped = run[g];
+
+                        if (!font.TryGetShapedGlyph((int)shaped.glyphIndex, fontSize, out var glyph, out var glyphMaterial))
+                        {
+                            style.rect.x += shaped.xAdvance * fontSize;
+                            continue;
+                        }
+
+                        if (!Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right))
+                        {
+                            if (mesh == null || !ReferenceEquals(mesh.material, glyphMaterial))
+                            {
+                                int encoded = NowFont.EncodeGlyphIndexKey((int)shaped.glyphIndex);
+                                int materialId = font.GetMaterialId(encoded, fontSize);
+                                mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
+                                font.SetMaterialId(encoded, fontSize, materialId);
+
+                                if (mesh == null)
+                                    return true;
+                            }
+
+                            mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
+
+                            var glyphStyle = style;
+                            glyphStyle.rect.x = style.rect.x + shaped.xOffset * fontSize;
+                            glyphStyle.rect.y = style.rect.y - shaped.yOffset * fontSize;
+                            DrawCharacter(glyphStyle, glyph, font, mesh, baseline);
+                        }
+
+                        style.rect.x += shaped.xAdvance * fontSize;
+                    }
+                }
+
+                if (control == '\n')
+                {
+                    style.rect.x = leftPos;
+                    style.rect.y += lineHeight;
+                }
+                else if (control == '\t')
+                {
+                    style.rect.x += tabAdvance;
+                }
+
+                segmentStart = i + 1;
+            }
+
+            return true;
         }
 
         internal static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph)
