@@ -177,7 +177,7 @@ public class NowLottieBurstTessellatorTests
     {
         var set = new NowLottieContourSet();
         AppendCircle(set, new Vector2(50, 50), 40f);
-        AppendCircle(set, new Vector2(50, 50), 15f, reversed: true); // hole
+        AppendCircle(set, new Vector2(50, 50), 15f, reversed: true);
 
         var paint = NowLottiePaint.Solid(new Vector4(1f, 0.5f, 0.25f, 0.9f));
 
@@ -191,7 +191,7 @@ public class NowLottieBurstTessellatorTests
     {
         var set = new NowLottieContourSet();
         AppendCircle(set, new Vector2(50, 50), 40f);
-        AppendCircle(set, new Vector2(60, 50), 30f); // overlapping, same winding
+        AppendCircle(set, new Vector2(60, 50), 30f);
 
         var paint = NowLottiePaint.Solid(Vector4.one);
 
@@ -257,7 +257,7 @@ public class NowLottieBurstTessellatorTests
     [Test]
     public void StrokeMatchesScalarForOpenPathWithCaps()
     {
-        foreach (int cap in new[] { 1, 2, 3 }) // butt, round, square
+        foreach (int cap in new[] { 1, 2, 3 })
         {
             var set = new NowLottieContourSet();
             AppendOpenWave(set);

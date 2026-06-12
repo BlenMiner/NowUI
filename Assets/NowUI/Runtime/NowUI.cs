@@ -116,11 +116,11 @@ namespace NowUI
 
         static readonly NowRect UnboundedMask = new NowRect(-100000f, -100000f, 200000f, 200000f);
 
+        /// <summary>Intersects a mask with the ambient mask stack. An empty mask means
+        /// "no mask": styles built from a default rect end up with a zero-size mask, and
+        /// clipping everything against it (which renders nothing) is never the intent.</summary>
         internal static NowRect ApplyAmbientMask(NowRect mask)
         {
-            // An empty mask means "no mask". Styles built from a default rect end
-            // up with a zero-size mask, and clipping everything against it (which
-            // renders nothing) is never the intent.
             if (mask.isEmpty)
                 mask = UnboundedMask;
 
@@ -394,8 +394,6 @@ namespace NowUI
         {
             _captureMesh = false;
 
-            // Self-heal: a font scope leaked in a previous frame must not poison
-            // every frame after it.
             _fontStack.Clear();
             _maskStack.Clear();
 
@@ -485,6 +483,8 @@ namespace NowUI
         /// </summary>
         const int MAX_VERTICES_PER_CANVAS_MESH = 65000;
 
+        /// <summary>A CanvasRenderer accepts at most 8 materials, so canvas pages are
+        /// planned around at most 8 mesh/material pairs.</summary>
         const int MAX_MESHES_PER_CANVAS_PAGE = 8;
 
         static readonly List<int> _pageStarts = new List<int>(4);
@@ -499,8 +499,6 @@ namespace NowUI
                 return;
             }
 
-            // Plan pages: at most 8 materials per CanvasRenderer, and each page mesh
-            // must keep 16 bit indices.
             _pageStarts.Clear();
             _pageCounts.Clear();
 
@@ -632,7 +630,6 @@ namespace NowUI
 
             if (layout == NowUIMeshLayout.Canvas)
             {
-                // One interleaved upload instead of eight per-channel copies.
                 target.SetVertexBufferParams(vertexCount, _canvasVertexLayout);
                 target.SetVertexBufferData(_canvasVertices.array, 0, 0, vertexCount, 0, MeshUpdateFlags.DontRecalculateBounds);
             }
@@ -671,7 +668,6 @@ namespace NowUI
             if (_captureMesh)
                 return;
 
-            // Popups and other deferred overlays draw last, above everything.
             NowUIOverlay.Flush();
 
             var meshArray = _meshes.array;
@@ -712,6 +708,10 @@ namespace NowUI
             return color;
         }
 
+        /// <summary>Draws a rounded rectangle. The style constructor defaults the mask to
+        /// the rect itself; that default mask is outset so the SDF edge, outline and blur
+        /// fall off instead of clipping the anti-aliasing hard at the bounds. Explicit
+        /// masks stay exact.</summary>
         internal static void DrawRect(NowUIRectangle rectangle)
         {
             if (_suppressDrawDepth > 0 || _defaultMaterial == null)
@@ -724,16 +724,21 @@ namespace NowUI
             position.y += pad.y;
             position.width = position.width - pad.x - pad.z;
             position.height = position.height - pad.y - pad.w;
-            int rectHeight = (int)position.height;
 
-            _tmpVertex.position.x = (int)position.x;
-            _tmpVertex.position.y = -(int)position.y - rectHeight;
-            _tmpVertex.position.z = (int)position.width;
+            // Snap to pixels by rounding EDGES, not origin + size: truncating them
+            // independently shifted fractional-position rects by up to a pixel, so
+            // nested glyphs (a radio dot inside its circle) came out visibly
+            // off-center depending on where layout placed the control.
+            int x0 = Mathf.RoundToInt(position.x);
+            int y0 = Mathf.RoundToInt(position.y);
+            int rectWidth = Mathf.RoundToInt(position.x + position.width) - x0;
+            int rectHeight = Mathf.RoundToInt(position.y + position.height) - y0;
+
+            _tmpVertex.position.x = x0;
+            _tmpVertex.position.y = -y0 - rectHeight;
+            _tmpVertex.position.z = rectWidth;
             _tmpVertex.position.w = rectHeight;
 
-            // The constructor defaults the mask to the rect itself; give the SDF
-            // edge, outline and blur room to fall off instead of clipping the
-            // anti-aliasing hard at the bounds. Explicit masks stay exact.
             var rectMask = rectangle.mask;
 
             if (!rectMask.isEmpty && rectMask == rectangle.rect)
@@ -754,14 +759,14 @@ namespace NowUI
             mesh.AddRect(_tmpVertex, rectangle.blur, rectangle.outline);
         }
 
+        /// <summary>Draws a text block. The default mask (= the layout rect) is outset
+        /// because glyphs legitimately overhang the advance box — descenders, italics;
+        /// explicit masks stay exact, and empty masks mean "no mask".</summary>
         internal static void DrawString(NowUIText style, string value)
         {
             if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
                 return;
 
-            // Default mask (= the layout rect): glyphs legitimately overhang the
-            // advance box — descenders, italics — so give them breathing room.
-            // Explicit masks stay exact; empty masks mean "no mask".
             if (!style.mask.isEmpty && style.mask == style.rect)
                 style.mask = style.mask.Outset(4f);
 
@@ -838,7 +843,8 @@ namespace NowUI
         /// scripts). Returns false — drawing nothing — when any segment cannot be
         /// shaped or baked, so the per-codepoint path can take over cleanly; the
         /// validation pass runs before any geometry is emitted to make the handoff
-        /// all-or-nothing.
+        /// all-or-nothing. Tabs advance by four spaces, matching the codepoint path's
+        /// TAB_SPACES.
         /// </summary>
         static bool TryDrawShapedString(NowUIText style, string value)
         {
@@ -848,9 +854,6 @@ namespace NowUI
             var fontSize = style.fontSize;
             bool hasTab = false;
 
-            // Validation pass: shape every segment and bake every glyph record.
-            // Note: Substring(0, Length) returns the same instance, so single-line
-            // text (the common case) allocates nothing here.
             int segmentStart = 0;
 
             for (int i = 0; i <= value.Length; ++i)
@@ -890,10 +893,9 @@ namespace NowUI
                 for (int i = 0; i < spaceRun.Length; ++i)
                     tabAdvance += spaceRun[i].xAdvance;
 
-                tabAdvance *= fontSize * 4; // matches the codepoint path's TAB_SPACES
+                tabAdvance *= fontSize * 4;
             }
 
-            // Draw pass: everything below is cache hits.
             float lineHeight = style.font.GetLineHeight(style.fontStyle) * fontSize;
             float baseline = style.font.GetAscender(style.fontStyle) * fontSize;
             float leftPos = style.rect.x;
@@ -1042,8 +1044,6 @@ namespace NowUI
             _tmpVertex.color = ApplyColorMultiplier(style.color);
             _tmpVertex.outlineColor = ApplyColorMultiplier(style.outlineColor);
 
-            // Text outline is authored relative to the font size (em units); the
-            // shader expects screen pixels.
             mesh.AddRect(_tmpVertex, style.outline * fontSize, font.GetScreenPixelRange(glyph.unicode, fontSize));
         }
 
@@ -1072,20 +1072,14 @@ namespace NowUI
 
             float frame = NowLottieRenderer.TimeToFrame(composition, lottie.time, lottie.loop);
 
-            // Optional playback rate cap: hold each displayed frame for several source
-            // frames so re-tessellation (and cache pressure) drops proportionally.
             if (lottie.playbackFrameRate > 0f && composition.frameRate > lottie.playbackFrameRate)
             {
                 float step = composition.frameRate / lottie.playbackFrameRate;
                 frame = Mathf.Floor(frame / step) * step;
             }
 
-            // Quantize to whole frames: animations are authored at frame granularity, so
-            // sub-frame sampling only multiplies cache misses.
             frame = Mathf.Round(frame);
 
-            // Tessellate at a capped resolution and scale the vertices up, so a huge
-            // (or accidental fullscreen) rect costs sharpness instead of CPU time.
             float renderScale = 1f;
             float maxSize = NowLottieRenderer.maxRenderSize;
             float maxDimension = Mathf.Max(lottie.rect.width, lottie.rect.height);

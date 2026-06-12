@@ -68,7 +68,6 @@ public class NowUIScreenTests
     {
         Assert.GreaterOrEqual(NowUIScreen.recommendedUIScale, 1f);
 
-        // A reference dpi far above any real display must clamp to 1, not below.
         NowUIScreen.referenceDpi = 100000f;
         Assert.AreEqual(1f, NowUIScreen.recommendedUIScale);
     }

@@ -85,6 +85,8 @@ namespace NowUI
             return _visitCache;
         }
 
+        /// <summary>Resolves the font for a style. A styled variant (bold/italic) nobody
+        /// provides falls back to Regular, so it renders as regular text, not as nothing.</summary>
         public bool TryResolveFont(NowFontStyle style, out NowFont font)
         {
             var visited = GetVisitCache();
@@ -94,8 +96,6 @@ namespace NowUI
                 if (TryResolveFont(style, visited, out font))
                     return true;
 
-                // A styled variant (bold/italic) nobody provides should render as
-                // regular text, not as nothing.
                 if (style == NowFontStyle.Regular)
                     return false;
 
@@ -709,8 +709,8 @@ namespace NowUI
             public int cursorY;
             public int rowHeight;
             public int materialId = -1;
-            // Pages owned by a native baking session are repacked and re-uploaded wholesale from
-            // native atlas storage; the legacy cursor-based packer must never write into them.
+            /// <summary>Pages owned by a native baking session are repacked and re-uploaded wholesale from
+            /// native atlas storage; the legacy cursor-based packer must never write into them.</summary>
             public bool sessionOwned;
         }
 
@@ -930,9 +930,6 @@ namespace NowUI
 
         void OnDisable()
         {
-            // Releases the native session (parsed font, atlas storage) when the asset unloads or
-            // the domain reloads; already-baked pages keep working and the session is recreated
-            // lazily on the next missing glyph.
             ResetDynamicSession();
         }
 
@@ -1590,8 +1587,6 @@ namespace NowUI
                 }
             }
 
-            // Without an ascender metric, fall back to the line height, which
-            // reproduces the legacy baseline-at-line-bottom placement.
             return GetLineHeight();
         }
 
@@ -2335,6 +2330,8 @@ namespace NowUI
             }
         }
 
+        /// <summary>Releases the native session (parsed font, atlas storage); already-baked
+        /// pages keep working and the session is recreated lazily on the next missing glyph.</summary>
         void ResetDynamicSession()
         {
             _dynamicSession?.Dispose();
@@ -2557,7 +2554,6 @@ namespace NowUI
             {
                 if (!TryEnsureDynamicSession(fontData))
                 {
-                    // Keep what was already baked usable, then let the legacy path take over.
                     if (results.Count > 0)
                         TryCommitSessionGlyphs(results, atlasSize);
 
@@ -2582,8 +2578,6 @@ namespace NowUI
 
                 if (status == NowFontCompiler.DynamicSession.AddResult.AtlasFull)
                 {
-                    // Commit pending glyphs into the current page before deciding how to retry;
-                    // the failed add did not modify the native session.
                     if (results.Count > 0)
                     {
                         bool committed = TryCommitSessionGlyphs(results, atlasSize);
@@ -2599,8 +2593,6 @@ namespace NowUI
 
                     if (_dynamicSessionPage == null)
                     {
-                        // Even an empty page cannot fit this chunk: shrink it, and record a
-                        // glyph that can never fit on its own as missing.
                         if (chunk <= 1)
                         {
                             AddDynamicMiss(new DynamicGlyphKey(codepoints[offset], atlasSize));
@@ -2613,8 +2605,6 @@ namespace NowUI
                         continue;
                     }
 
-                    // Seal the full page (it stays alive with its glyph mappings) and retry the
-                    // chunk in a fresh session backed by a new page.
                     ResetDynamicSession();
                     continue;
                 }
@@ -2815,12 +2805,6 @@ namespace NowUI
             return false;
         }
 
-        // ------------------------------------------------------------------
-        // Text shaping (HarfBuzz). Shaped glyphs are addressed by glyph index;
-        // they reuse the whole dynamic page system through an encoded key that
-        // can never collide with codepoints.
-        // ------------------------------------------------------------------
-
         [NonSerialized]
         NowTextShaper _textShaper;
 
@@ -2861,8 +2845,6 @@ namespace NowUI
                 return false;
             }
 
-            // Color fonts render through the RGBA path; their sequences need the
-            // color glyph importer, not the SDF pipeline. Unshaped for now.
             _dynamicSourceIsColor ??= NowFontCompiler.IsColorFont(bytes);
 
             if (_dynamicSourceIsColor.Value || !NowTextShaper.TryCreate(bytes, out _textShaper, out _))
@@ -2970,8 +2952,6 @@ namespace NowUI
 
             var indices = glyphIndices.ToArray();
 
-            // One batch with a single sealed-page retry: shaped runs are short, so a
-            // fresh fixed-size page practically always fits the whole batch.
             for (int attempt = 0; attempt < 2; ++attempt)
             {
                 if (!TryEnsureDynamicSession(fontData))
@@ -2984,8 +2964,6 @@ namespace NowUI
 
                 if (status == NowFontCompiler.DynamicSession.AddResult.Ok)
                 {
-                    // Records come back keyed by raw glyph index; move them into the
-                    // encoded key space before they enter the shared page tables.
                     for (int i = 0; i < results.Count; ++i)
                     {
                         var record = results[i];
@@ -3001,7 +2979,7 @@ namespace NowUI
                 if (status == NowFontCompiler.DynamicSession.AddResult.AtlasFull)
                 {
                     results.Clear();
-                    ResetDynamicSession(); // seal the page, retry on a fresh one
+                    ResetDynamicSession();
                     continue;
                 }
 
@@ -3087,6 +3065,9 @@ namespace NowUI
             return material;
         }
 
+        /// <summary>Distance-field range in local units; the text shaders convert it to
+        /// screen pixels per-fragment (and floor it there) so canvas/transform scale does
+        /// not soften or alias the glyph edges.</summary>
         public float GetScreenPixelRange(int unicode, float fontSize)
         {
             var fontAtlas = atlasInfo.atlas;
@@ -3103,9 +3084,6 @@ namespace NowUI
                 ? fontAtlas.distanceRange
                 : dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE;
 
-            // Distance-field range in local units; the text shaders convert this to
-            // screen pixels per-fragment (and floor it there) so canvas/transform
-            // scale does not soften or alias the glyph edges.
             return fontSize / atlasSize * pixelRange;
         }
 

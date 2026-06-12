@@ -26,10 +26,6 @@ namespace NowUI.Internal
 
         const float EPSILON = 0.0001f;
 
-        // ------------------------------------------------------------------
-        // Job-friendly paint
-        // ------------------------------------------------------------------
-
         struct BurstPaint
         {
             public bool isGradient;
@@ -168,10 +164,6 @@ namespace NowUI.Internal
 
             return stops[colorFloats + (alphaCount - 1) * 2 + 1];
         }
-
-        // ------------------------------------------------------------------
-        // Shared job pieces: polylines + flattening + output
-        // ------------------------------------------------------------------
 
         /// <summary>Start index and count into a shared point buffer, plus the closed flag.</summary>
         struct PolyRange
@@ -343,10 +335,6 @@ namespace NowUI.Internal
                 }
             }
         }
-
-        // ------------------------------------------------------------------
-        // Fill job
-        // ------------------------------------------------------------------
 
         struct ScanEdge
         {
@@ -884,10 +872,6 @@ namespace NowUI.Internal
             return magnitude > EPSILON ? value / magnitude : Vector2.zero;
         }
 
-        // ------------------------------------------------------------------
-        // Sorts (ports of the scalar in-place sorts)
-        // ------------------------------------------------------------------
-
         static void SortFloats(NativeList<float> values, int low, int high)
         {
             while (low < high)
@@ -1031,10 +1015,6 @@ namespace NowUI.Internal
                 edges[j + 1] = current;
             }
         }
-
-        // ------------------------------------------------------------------
-        // Stroke job
-        // ------------------------------------------------------------------
 
         [BurstCompile]
         struct StrokeJob : IJob
@@ -1247,10 +1227,6 @@ namespace NowUI.Internal
                 }
             }
         }
-
-        // ------------------------------------------------------------------
-        // Managed wrappers
-        // ------------------------------------------------------------------
 
         public static bool TryFill(
             NowLottieContourSet contours,

@@ -97,8 +97,6 @@ namespace NowUI.Internal
 
         public static bool Finish(NowLottieDrawBuffer buffer) => false;
 #else
-        // WebGL and iOS link the plugin statically into the player, so the
-        // binding resolves against the executable itself.
 #if (UNITY_WEBGL || UNITY_IOS) && !UNITY_EDITOR
         const string LIBRARY_NAME = "__Internal";
 #else

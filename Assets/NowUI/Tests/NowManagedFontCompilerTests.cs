@@ -90,15 +90,14 @@ public class NowManagedFontCompilerTests
             Assert.Greater(glyph.planeBounds.right, glyph.planeBounds.left);
             Assert.Greater(glyph.planeBounds.top, glyph.planeBounds.bottom);
 
-            // The padded cell must be larger than the distance range it carries.
-            Assert.GreaterOrEqual(glyph.atlasBounds.right - glyph.atlasBounds.left, PixelRange);
+            Assert.GreaterOrEqual(glyph.atlasBounds.right - glyph.atlasBounds.left, PixelRange,
+                "The padded cell must be larger than the distance range it carries.");
         }
 
         byte[] atlas = null;
         Assert.IsTrue(session.TryCopyAtlas(ref atlas, out error), error);
         Assert.AreEqual(AtlasSide * AtlasSide * 4, atlas.Length);
 
-        // Inside-glyph pixels encode above the 0.5 edge threshold (127).
         bool hasInk = false;
 
         for (int i = 0; i < atlas.Length && !hasInk; i += 4)
@@ -144,7 +143,6 @@ public class NowManagedFontCompilerTests
     [Test]
     public void FullAtlasReportsAtlasFullWithoutMutating()
     {
-        // A 32px page cannot fit a 64px-em glyph cell.
         Assert.IsTrue(NowManagedFontSession.TryCreate(_fontBytes, Size, PixelRange, 32, out var session, out string error), error);
 
         var results = new List<NowFontAtlasInfo.Glyph>();
@@ -162,7 +160,7 @@ public class NowManagedFontCompilerTests
         Assert.IsTrue(NowManagedFontSession.TryCreate(_fontBytes, Size, PixelRange, AtlasSide, out var session, out string error), error);
 
         var results = new List<NowFontAtlasInfo.Glyph>();
-        int[] codepoints = { 0xE321 }; // private use area, not mapped in NotoSans
+        int[] codepoints = { 0xE321 };
 
         var status = session.TryAddGlyphs(codepoints, 1, results, out error);
 
@@ -263,8 +261,6 @@ public class NowManagedFontCompilerTests
 
             Assert.Greater(totalAdvance, 0f);
 
-            // Kerned pairs (AV) shape to different total advance than raw advances
-            // would only with GPOS active; at minimum clusters must be monotonic.
             for (int i = 1; i < glyphs.Count; ++i)
                 Assert.GreaterOrEqual(glyphs[i].cluster, glyphs[i - 1].cluster);
         }

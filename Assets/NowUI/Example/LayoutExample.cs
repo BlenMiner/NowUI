@@ -64,8 +64,6 @@ public class LayoutExample : MonoBehaviour
             .SetRadius(16)
             .Draw();
 
-        // The callback form lays out in two passes (measure, then draw), so
-        // flexible space and auto-sized groups are exact every frame.
         NowLayout.Area("settings", panelRect,
             new NowLayoutOptions().SetPadding(20).SetSpacing(14),
             _drawPanelContent);

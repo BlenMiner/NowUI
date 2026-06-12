@@ -889,8 +889,6 @@ namespace NowUI
             if (ui == null)
                 throw new ArgumentNullException(nameof(ui));
 
-            // Already inside an outer measure pass: run once inline; the outer real
-            // pass will invoke this whole area again.
             if (_measurePass)
             {
                 using (Area(id, rect, options))
@@ -922,11 +920,11 @@ namespace NowUI
         /// callback Area overloads and by hosts that own a draw entry point (e.g.
         /// NowUIGraphic running DrawNowUI twice).
         /// </summary>
+        /// <remarks>Resolves the frame boundary before snapshotting so the counter rewind
+        /// hands the real pass the same anonymous area ids the measure pass used (the
+        /// boundary would otherwise reset the counter mid-measure).</remarks>
         internal static int BeginMeasurePass()
         {
-            // Resolve the frame boundary before snapshotting so the counter rewind
-            // hands the real pass the same anonymous area ids the measure pass used
-            // (the boundary would otherwise reset the counter mid-measure).
             OnFrameBoundary();
 
             int areaCounter = _areaCounter;
@@ -936,14 +934,15 @@ namespace NowUI
             return areaCounter;
         }
 
+        /// <summary>Exits measure mode and rewinds the anonymous area counter: ids are
+        /// sequential per frame, so the real pass resolves the same ids (and therefore
+        /// the fresh measurements).</summary>
         internal static void EndMeasurePass(int areaCounterSnapshot)
         {
             NowUIInput.EndPassive();
             Now.EndSuppressDraw();
             _measurePass = false;
 
-            // Anonymous area ids are sequential per frame; rewind so the real pass
-            // resolves the same ids (and therefore the fresh measurements).
             _areaCounter = areaCounterSnapshot;
         }
 
@@ -957,9 +956,38 @@ namespace NowUI
             if (!group.isArea)
                 throw new InvalidOperationException("EndArea called while a layout group is still open.");
 
-            StoreCache(ref group);
+            StoreCache(ref group, out float contentWidth, out float contentHeight);
+
+            if (_trackContent)
+            {
+                _trackedContent.x = Mathf.Max(_trackedContent.x, group.rect.x + contentWidth);
+                _trackedContent.y = Mathf.Max(_trackedContent.y, group.rect.y + contentHeight);
+            }
+
             _depth--;
             CleanupCache();
+        }
+
+        static bool _trackContent;
+
+        static Vector2 _trackedContent;
+
+        /// <summary>
+        /// Starts accumulating the content extent of root areas (area origin +
+        /// measured content, the union across all areas ended while tracking).
+        /// Hosts use this to learn their preferred size — frame-late, like all
+        /// layout measurement.
+        /// </summary>
+        internal static void BeginContentTracking()
+        {
+            _trackContent = true;
+            _trackedContent = default;
+        }
+
+        internal static Vector2 EndContentTracking()
+        {
+            _trackContent = false;
+            return _trackedContent;
         }
 
         public static NowLayoutScope Horizontal()
@@ -1251,6 +1279,9 @@ namespace NowUI
                 rect);
         }
 
+        /// <summary>Closes the current group. When the parent sized this group from stale
+        /// cached content, retro-corrects the parent's cursor so siblings placed after the
+        /// group stack correctly on the very first frame.</summary>
         static void EndGroup(bool horizontal)
         {
             if (_depth == 0)
@@ -1277,9 +1308,6 @@ namespace NowUI
 
             ref var parent = ref Top();
 
-            // When the parent sized this group from stale cached content, retro-correct
-            // the parent's cursor so siblings placed after the group stack correctly on
-            // the very first frame.
             if (ended.parentMainAuto)
             {
                 float actualMain = parent.horizontal ? contentWidth : contentHeight;
@@ -1336,6 +1364,9 @@ namespace NowUI
             return false;
         }
 
+        /// <summary>Caches the group's content size, requesting repaints while measurements
+        /// are still changing: deferred sizing settles over a few frames, and retained hosts
+        /// (UGUI graphics) only rebuild when asked.</summary>
         static void StoreCache(ref Group group, out float contentWidth, out float contentHeight)
         {
             float contentMain = group.cursor;
@@ -1344,9 +1375,6 @@ namespace NowUI
             contentWidth = (group.horizontal ? contentMain : contentCross) + group.padding.x + group.padding.z;
             contentHeight = (group.horizontal ? contentCross : contentMain) + group.padding.y + group.padding.w;
 
-            // Deferred sizing settles over a few frames; retained hosts (UGUI
-            // graphics) only rebuild when asked, so keep requesting repaints until
-            // the measurements stop changing.
             if (!_cache.TryGetValue(group.id, out var previous) ||
                 Mathf.Abs(previous.contentWidth - contentWidth) > 0.25f ||
                 Mathf.Abs(previous.contentHeight - contentHeight) > 0.25f)

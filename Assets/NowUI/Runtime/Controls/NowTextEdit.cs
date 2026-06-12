@@ -106,7 +106,8 @@ namespace NowUI
             return true;
         }
 
-        public static bool Backspace(ref string text, ref NowTextEditState state)
+        /// <summary>Deletes backward — one codepoint, or a whole word when <paramref name="word"/> is set.</summary>
+        public static bool Backspace(ref string text, ref NowTextEditState state, bool word = false)
         {
             text ??= string.Empty;
             Clamp(ref state, text);
@@ -117,14 +118,15 @@ namespace NowUI
             if (state.caret <= 0)
                 return false;
 
-            int previous = PrevIndex(text, state.caret);
+            int previous = word ? PrevWord(text, state.caret) : PrevIndex(text, state.caret);
             text = text.Remove(previous, state.caret - previous);
             state.caret = previous;
             state.anchor = previous;
             return true;
         }
 
-        public static bool Delete(ref string text, ref NowTextEditState state)
+        /// <summary>Deletes forward — one codepoint, or a whole word when <paramref name="word"/> is set.</summary>
+        public static bool Delete(ref string text, ref NowTextEditState state, bool word = false)
         {
             text ??= string.Empty;
             Clamp(ref state, text);
@@ -135,7 +137,7 @@ namespace NowUI
             if (state.caret >= text.Length)
                 return false;
 
-            int next = NextIndex(text, state.caret);
+            int next = word ? NextWord(text, state.caret) : NextIndex(text, state.caret);
             text = text.Remove(state.caret, next - state.caret);
             state.anchor = state.caret;
             return true;

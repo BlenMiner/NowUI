@@ -93,7 +93,6 @@ public class NowUIRenderingPlayModeTests
         Assert.GreaterOrEqual(red, 64 * 64 - 300, "Rectangle covered fewer pixels than expected.");
         Assert.LessOrEqual(red, 64 * 64 + 300, "Rectangle covered more pixels than expected.");
 
-        // Center is filled, the border region outside the rect is empty.
         Assert.Greater(pixels[(Side / 2) * Side + Side / 2].r, 200);
         Assert.AreEqual(0, pixels[4 * Side + 4].a);
     }
@@ -114,7 +113,6 @@ public class NowUIRenderingPlayModeTests
 
         int filled = CountPixels(pixels, p => p.a > 200);
 
-        // A 24px radius removes roughly 4 - pi/4 of each corner square.
         int square = 64 * 64;
         int expectedRemoved = Mathf.RoundToInt(24 * 24 * (4f - Mathf.PI));
 
@@ -162,8 +160,6 @@ public class NowUIRenderingPlayModeTests
 
         int ink = CountPixels(pixels, p => p.a > 128);
 
-        // Two 56px glyphs produce thousands of opaque pixels; a broken atlas,
-        // failed bake, or wrong UVs produce none.
         Assert.Greater(ink, 500, "Text produced almost no ink.");
         Assert.Less(ink, Side * Side / 2, "Text ink coverage is implausibly large.");
     }
@@ -215,7 +211,6 @@ public class NowUIRenderingPlayModeTests
 
             int red = CountPixels(pixels, p => p.r > 150 && p.g < 80 && p.a > 128);
 
-            // A 60x60 source square inside a 100px composition drawn into 100px.
             Assert.Greater(red, 2000, "Lottie shape produced too few red pixels.");
             Assert.Less(red, 5000, "Lottie shape produced implausibly many red pixels.");
         }
@@ -233,7 +228,6 @@ public class NowUIRenderingPlayModeTests
         var canvas = canvasObject.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
 
-        // Host NowUI graphic: bottom-left 200x200 of the screen.
         var hostObject = new GameObject("Host", typeof(NowUIGraphic));
         hostObject.transform.SetParent(canvasObject.transform, false);
         var hostRect = hostObject.GetComponent<RectTransform>();
@@ -244,7 +238,6 @@ public class NowUIRenderingPlayModeTests
         hostRect.sizeDelta = new Vector2(200, 200);
         var host = hostObject.GetComponent<NowUIGraphic>();
 
-        // UGUI image drawn above the host, covering its bottom-left 100x100.
         var blockerObject = new GameObject("Blocker", typeof(UnityEngine.UI.Image));
         blockerObject.transform.SetParent(canvasObject.transform, false);
         var blockerRect = blockerObject.GetComponent<RectTransform>();
@@ -256,7 +249,7 @@ public class NowUIRenderingPlayModeTests
 
         try
         {
-            yield return null; // let the canvas lay out
+            yield return null;
 
             Assert.IsFalse(
                 NowUIRaycastGate.IsPointerAllowed(host, new Vector2(50, 50)),
@@ -285,17 +278,15 @@ public class NowUIRenderingPlayModeTests
             var eventSystem = UnityEngine.EventSystems.EventSystem.current;
             Assert.NotNull(eventSystem, "EventSystem must be live in play mode.");
 
-            // UGUI selection clears NowUI focus once the next frame processes.
             NowUIFocus.Focus(7);
             eventSystem.SetSelectedGameObject(selectable);
             Assert.NotNull(eventSystem.currentSelectedGameObject);
 
             yield return null;
-            NowUIFocus.Register(1, new NowRect(0, 0, 10, 10)); // drives the frame swap
+            NowUIFocus.Register(1, new NowRect(0, 0, 10, 10));
 
             Assert.AreEqual(0, NowUIFocus.focusedId, "UGUI selection must clear NowUI focus.");
 
-            // Focusing a NowUI control deselects the EventSystem.
             eventSystem.SetSelectedGameObject(selectable);
             NowUIFocus.Focus(9);
             Assert.IsNull(eventSystem.currentSelectedGameObject, "NowUI focus must deselect the EventSystem.");

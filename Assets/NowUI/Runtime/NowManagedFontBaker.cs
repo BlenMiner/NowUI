@@ -131,6 +131,10 @@ namespace NowUI.Internal
             }
         }
 
+        /// <summary>Emits line/quad segments for one TrueType contour. Starts at the first
+        /// on-curve point; with none, the contour starts at the midpoint between the last
+        /// and first control points (TrueType convention). Two consecutive off-curve points
+        /// imply an on-curve midpoint.</summary>
         static void FlattenContour(
             NowGlyphOutline outline,
             int start,
@@ -144,8 +148,6 @@ namespace NowUI.Internal
             if (count < 2)
                 return;
 
-            // Find a starting on-curve point; with none, the contour starts at the
-            // midpoint of the first two control points (TrueType convention).
             int firstOn = -1;
 
             for (int i = start; i < end; ++i)
@@ -173,8 +175,6 @@ namespace NowUI.Internal
             }
             else
             {
-                // All points are control points: the contour starts at the midpoint
-                // between the last and first ones.
                 startPoint = (Point(end - 1) + Point(start)) * 0.5f;
                 cursor = start;
             }
@@ -206,7 +206,6 @@ namespace NowUI.Internal
                 }
                 else if (pendingControl.HasValue)
                 {
-                    // Two consecutive off-curve points imply an on-curve midpoint.
                     Vector2 implied = (pendingControl.Value + p) * 0.5f;
                     AppendQuad(current, pendingControl.Value, implied, segments);
                     current = implied;
@@ -218,7 +217,6 @@ namespace NowUI.Internal
                 }
             }
 
-            // Close the contour back to the start point.
             if (pendingControl.HasValue)
                 AppendQuad(current, pendingControl.Value, startPoint, segments);
             else
@@ -231,9 +229,10 @@ namespace NowUI.Internal
                 segments.Add(new Vector4(a.x, a.y, b.x, b.y));
         }
 
+        /// <summary>Flattens a quadratic Bézier; the step count comes from the maximum
+        /// deviation between the curve and its chord, |p0 - 2c + p1| / 4.</summary>
         static void AppendQuad(Vector2 p0, Vector2 control, Vector2 p1, List<Vector4> segments)
         {
-            // Max deviation between the curve and its chord is |p0 - 2c + p1| / 4.
             Vector2 deviationVector = p0 - 2f * control + p1;
             float deviation = deviationVector.magnitude * 0.25f;
             int steps = Mathf.Clamp(Mathf.CeilToInt(Mathf.Sqrt(deviation / FLATTEN_TOLERANCE)), 1, MAX_FLATTEN_STEPS);

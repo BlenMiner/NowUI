@@ -52,7 +52,6 @@ namespace NowUI
             int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
             int optionCount = _options?.Count ?? 0;
 
-            // Apply a selection made in last frame's deferred popup.
             ref int pending = ref NowUIControlState.Get<int>(NowUIInput.GetId(id, "pending"));
             bool changed = false;
 
@@ -65,7 +64,6 @@ namespace NowUI
 
             pending = 0;
 
-            // Field button.
             var textStyle = theme.Text(default, NowTextStyle.Body);
             float lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _layoutOptions, new Vector2(180f, lineHeight + 12f));
@@ -100,7 +98,6 @@ namespace NowUI
             if (!open)
                 return changed;
 
-            // Popup, deferred to the overlay layer.
             NowUIControlState.RequestRepaint();
 
             float popupHeight = Mathf.Min(optionCount * ItemHeight + 8f, MaxPopupHeight);
@@ -175,7 +172,6 @@ namespace NowUI
                     DrawItems();
                 }
 
-                // Close on click-outside or cancel.
                 var snapshot = NowUIInput.current;
                 bool pressedOutside = snapshot.primaryPressed &&
                     !popupRect.Contains(snapshot.pointerPosition) &&

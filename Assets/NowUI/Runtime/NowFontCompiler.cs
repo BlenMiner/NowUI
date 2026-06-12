@@ -268,6 +268,9 @@ namespace NowUI
                 ReleaseHandle();
             }
 
+            /// <summary>Tries the managed compiler first: the Burst SDF baker measures faster
+            /// than the native compiler and carries no binary dependency. The native plugin
+            /// remains the fallback for fonts the managed parser declines (CFF outlines).</summary>
             public static bool TryCreate(byte[] fontData, int size, int pixelRange, int atlasSide, out DynamicSession session, out string error)
             {
                 session = null;
@@ -278,9 +281,6 @@ namespace NowUI
                     return false;
                 }
 
-                // Managed first: the Burst SDF baker measures faster than the native
-                // compiler and carries no binary dependency. The native plugin remains
-                // the fallback for fonts the managed parser declines (CFF outlines).
                 if (forceManagedCompiler || !forceNativeCompiler)
                 {
                     if (NowManagedFontSession.TryCreate(fontData, size, pixelRange, atlasSide, out var managed, out string managedError))

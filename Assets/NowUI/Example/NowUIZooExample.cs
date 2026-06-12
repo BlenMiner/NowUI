@@ -15,7 +15,6 @@ public class NowUIZooExample : NowUIGraphic
     [SerializeField] NowFontAsset _font;
     [SerializeField] NowLottieAsset _lottie;
 
-    // All control state lives with the caller — NowUI never owns your data.
     bool _shadows = true;
     bool _vsync;
     bool _animate = true;
@@ -40,17 +39,13 @@ public class NowUIZooExample : NowUIGraphic
         var theme = NowControls.theme;
         var bounds = new NowRect(0, 0, rect.width, rect.height);
 
-        // Bare labels default to white (immediate-mode default); follow the
-        // theme's text color instead so they read on the light surface. The
-        // style must carry a font — labels don't resolve one at draw time.
+        // The style must carry a font — labels don't resolve one at draw time.
         NowLayout.labelStyle = new NowUIText(default, _font)
             .SetFontSize(14)
             .SetColor(theme.GetColor(NowColorToken.Text, Color.black));
 
         theme.Rectangle(bounds, NowRectangleStyle.Surface).SetRadius(14).Draw();
 
-        // Animations only advance when something repaints; while the zoo is
-        // animating, keep asking for the next frame.
         if (_animate)
             NowUIControlState.RequestRepaint();
 
@@ -113,8 +108,6 @@ public class NowUIZooExample : NowUIGraphic
                 Log("Muted clicked");
         }
 
-        // Content scope: anything inside, clipped to the button, result readable
-        // inside. No id needed — identity is the call site.
         using (var button = NowLayout.Button().SetAlignItems(NowLayoutAlign.Center).Begin())
         {
             _hoverSpin = button.interaction.hovered ? _hoverSpin + Time.deltaTime : 0f;
@@ -141,8 +134,6 @@ public class NowUIZooExample : NowUIGraphic
 
         NowLayout.Checkbox("Shadows").Draw(ref _shadows);
 
-        // Checkbox as a scope: custom content beside the box, toggled value
-        // readable inside.
         using (NowLayout.Checkbox().SetAlignItems(NowLayoutAlign.Center).Begin(ref _vsync))
         {
             NowLayout.Label("VSync").Draw();
@@ -152,7 +143,6 @@ public class NowUIZooExample : NowUIGraphic
 
         using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(10)))
         {
-            // One call site, salted per iteration — loops need no ceremony.
             for (int i = 0; i < Difficulties.Length; ++i)
                 if (NowLayout.Radio(Difficulties[i], _difficulty == i).Draw())
                 {
@@ -228,7 +218,6 @@ public class NowUIZooExample : NowUIGraphic
 
     void Marquee(NowUITheme theme)
     {
-        // Explicit masking: the strip clips a label sliding through it.
         var strip = NowLayout.Rect(new NowLayoutOptions().SetStretchWidth().SetHeight(22));
         theme.Rectangle(strip, NowRectangleStyle.Muted).SetRadius(6).Draw();
 

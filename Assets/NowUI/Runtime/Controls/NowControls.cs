@@ -183,10 +183,6 @@ namespace NowUI
             Reset();
         }
 
-        // ------------------------------------------------------------------
-        // Shared control plumbing (public: custom controls use the same calls)
-        // ------------------------------------------------------------------
-
         /// <summary>
         /// The standard interaction bundle for a control: pointer interaction, focus
         /// registration, click-to-focus, and submit activation — the same sequence
@@ -246,6 +242,11 @@ namespace NowUI
             text.SetMask(mask).Draw(label);
         }
 
+        /// <summary>
+        /// Draws a vertically centered, left-aligned label. The style is built from a
+        /// default rect whose zero mask would clip everything, so the mask is reset to
+        /// the given area (slightly outset so descenders survive; long values get cut).
+        /// </summary>
         internal static void DrawLeftLabel(NowUITheme activeTheme, NowRect rect, string label, NowTextStyle textStyle)
         {
             var text = activeTheme.Text(default, textStyle);
@@ -257,9 +258,6 @@ namespace NowUI
                 size.x + 1f,
                 size.y + 1f);
 
-            // The style was built from a default rect, which leaves the mask as a
-            // zero rect — and a zero mask clips everything. Clip to the area we
-            // were given instead (long values get cut, descenders survive).
             text.SetMask(rect.Outset(0f, 4f)).Draw(label);
         }
     }

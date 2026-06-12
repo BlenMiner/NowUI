@@ -166,7 +166,6 @@ public class NowControlsTests
         float value = 0f;
         var rect = new NowRect(0, 0, 200, 20);
 
-        // Press at 75% of the track.
         _provider.snapshot = new NowUIInputSnapshot(new Vector2(150, 10), true, true, false);
         bool changed;
 
@@ -195,7 +194,6 @@ public class NowControlsTests
         Assert.AreNotEqual(second, third);
         Assert.AreNotEqual(first, third);
 
-        // The first occurrence keeps the stable label-derived id across frames.
         int firstNextFrame;
 
         using (NowUIInput.Begin(_provider, Surface))
@@ -207,8 +205,6 @@ public class NowControlsTests
     [Test]
     public void SameSiteLoopButtonsDoNotShareActivation()
     {
-        // One call site drawn twice per frame (a loop): occurrence salting must
-        // keep the iterations apart, stably across press and release frames.
         var rects = new[] { new NowRect(0, 0, 100, 30), new NowRect(0, 50, 100, 30) };
         Vector2 insideSecond = new Vector2(50, 65);
         bool firstClicked = false, secondClicked = false;
@@ -240,8 +236,6 @@ public class NowControlsTests
     [Test]
     public void SameLabelDifferentCallSitesAreDistinctControls()
     {
-        // Labels no longer key identity: two "Delete" buttons on different lines
-        // are independent controls even though the text matches.
         var rect1 = new NowRect(0, 0, 100, 30);
         var rect2 = new NowRect(0, 50, 100, 30);
         Vector2 insideSecond = new Vector2(50, 65);
@@ -279,8 +273,6 @@ public class NowControlsTests
 
         Assert.AreNotEqual(byLabel, byId);
 
-        // SetId routes interaction through the explicit id: focus it and the
-        // labeled button activates on submit regardless of its label hash.
         NowUIFocus.Focus(byId);
 
         _provider.snapshot = new NowUIInputSnapshot(
@@ -324,7 +316,6 @@ public class NowControlsTests
         var left = new NowRect(10, 10, 80, 30);
         var right = new NowRect(200, 10, 80, 30);
 
-        // Frame 1: register both, left focused.
         using (NowUIInput.Begin(_provider, Surface))
         {
             _provider.snapshot = default;
@@ -333,7 +324,6 @@ public class NowControlsTests
             NowUIFocus.Focus(1);
         }
 
-        // Frame 2: navigation right; processed against frame 1's registry.
         _provider.snapshot = new NowUIInputSnapshot(
             true, default, default, default,
             NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
@@ -390,7 +380,6 @@ public class NowControlsTests
     {
         Vector2 inside = new Vector2(60, 36);
 
-        // Press frame: content draws, no click yet.
         _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
 
         using (NowUIInput.Begin(_provider, Surface))
@@ -401,7 +390,6 @@ public class NowControlsTests
             NowLayout.Label("Hi").Draw();
         }
 
-        // Release frame: clicked is readable inside the scope.
         _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
         bool sawClick = false;
 
@@ -423,8 +411,6 @@ public class NowControlsTests
         NowLayout.Reset();
         NowRect rect = default;
 
-        // Deferred sizing converges over a few frames; the button must end up
-        // encompassing a child larger than its first-frame fallback rect.
         for (int frame = 0; frame < 4; ++frame)
         {
             using (NowUIInput.Begin(_provider, Surface))
@@ -518,7 +504,6 @@ public class NowControlsTests
             if (eventSystem == null)
                 Assert.Ignore("EventSystem.current unavailable in this environment.");
 
-            // A UGUI selection clears NowUI focus on the next frame swap.
             NowUIFocus.Focus(7);
             eventSystem.SetSelectedGameObject(selectable);
 
@@ -530,7 +515,6 @@ public class NowControlsTests
 
             Assert.AreEqual(0, NowUIFocus.focusedId, "UGUI selection must clear NowUI focus.");
 
-            // Focusing a NowUI control deselects the EventSystem.
             eventSystem.SetSelectedGameObject(selectable);
             NowUIFocus.Focus(9);
             Assert.IsNull(eventSystem.currentSelectedGameObject, "NowUI focus must deselect the EventSystem.");

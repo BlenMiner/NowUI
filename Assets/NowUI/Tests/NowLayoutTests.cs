@@ -44,6 +44,22 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void ContentTrackingReportsRootAreaExtent()
+    {
+        NowLayout.BeginContentTracking();
+
+        NowLayout.Area(new Vector4(10, 10, 400, 300));
+        NowLayout.Rect(100, 30);
+        NowLayout.Rect(50, 40);
+        NowLayout.EndArea();
+
+        Vector2 size = NowLayout.EndContentTracking();
+
+        Assert.AreEqual(110f, size.x, 0.01f, "extent = area origin + widest content");
+        Assert.AreEqual(80f, size.y, 0.01f, "extent = area origin + stacked content height");
+    }
+
+    [Test]
     public void SpacingAndPaddingOffsetChildren()
     {
         NowLayout.Area(
@@ -123,10 +139,6 @@ public class NowLayoutTests
     [Test]
     public void CrossStretchedGroupMeasuresContentNotAllocation()
     {
-        // The area starts deliberately narrower than its content, like a Begin()
-        // control's first-frame fallback rect. The row stretches its width to the
-        // narrow area; the area must still measure the row's actual content so an
-        // auto-sized host can grow instead of locking onto its own width.
         NowLayout.Area("measure-area", new Vector4(0, 0, 60, 60));
         NowLayout.Horizontal();
         NowLayout.Rect(128, 128);
@@ -463,13 +475,12 @@ public class NowLayoutTests
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
-        // '_ =' is the analyzer opt-out (NOWUI001): discarding the builder is the point here.
         _ = NowLayout.Label("hello").SetFontSize(99);
         Vector4 below = NowLayout.Rect(50, 30);
 
         NowLayout.EndArea();
 
-        Assert.AreEqual(0f, below.y, 0.001f, "a label builder without Draw() must not reserve space");
+        Assert.AreEqual(0f, below.y, 0.001f, "a label builder without Draw() must not reserve space; the '_ =' discard is the NOWUI001 analyzer opt-out");
     }
 
     [Test]

@@ -10,7 +10,7 @@ namespace NowUI
     [AddComponentMenu("NowUI/NowUI Graphic")]
     [ExecuteAlways]
     [RequireComponent(typeof(CanvasRenderer))]
-    public class NowUIGraphic : MaskableGraphic
+    public class NowUIGraphic : MaskableGraphic, ILayoutElement
     {
         static readonly int _mainTexProp = Shader.PropertyToID("_MainTex");
 
@@ -22,6 +22,13 @@ namespace NowUI
 
         [SerializeField, Tooltip("Withhold pointer input when UGUI elements draw above this graphic, so they occlude NowUI controls the same way this graphic's Raycast Target occludes UGUI beneath it.")]
         bool _respectUGUIRaycast = true;
+
+        [SerializeField, Tooltip("Report the measured NowLayout content extent as this graphic's preferred size, so UGUI LayoutGroups and ContentSizeFitters size it like any other layout element. Settles one rebuild late, like all NowLayout measurement.")]
+        bool _driveLayoutSize = true;
+
+        [NonSerialized] Vector2 _preferredSize;
+
+        [NonSerialized] bool _layoutSizeDirty;
 
         [NonSerialized] bool _wantsInteractionRepaint;
 
@@ -149,7 +156,16 @@ namespace NowUI
                         }
                     }
 
+                    NowLayout.BeginContentTracking();
                     DrawNowUI(drawRect);
+                    Vector2 measured = NowLayout.EndContentTracking();
+
+                    if (_driveLayoutSize && (measured - _preferredSize).sqrMagnitude > 0.25f)
+                    {
+                        _preferredSize = measured;
+                        _layoutSizeDirty = true;
+                    }
+
                     NowUIOverlay.Flush();
                 }
 
@@ -164,6 +180,7 @@ namespace NowUI
                 if (colorMultiplierActive)
                     Now.EndColorMultiplier();
 
+                NowLayout.EndContentTracking();
                 scope.Cancel();
                 _drawList.Clear();
                 Debug.LogException(ex, this);
@@ -233,6 +250,12 @@ namespace NowUI
 
         protected virtual void LateUpdate()
         {
+            if (_layoutSizeDirty)
+            {
+                _layoutSizeDirty = false;
+                LayoutRebuilder.MarkLayoutForRebuild(rectTransform);
+            }
+
             if (_rebuildEveryFrame ||
                 (_autoRebuildOnInteraction && (_wantsInteractionRepaint || IsPointerOverGraphic())))
             {
@@ -332,6 +355,43 @@ namespace NowUI
             get => _respectUGUIRaycast;
             set => _respectUGUIRaycast = value;
         }
+
+        /// <summary>
+        /// When true (the default), the measured NowLayout content extent is
+        /// reported as this graphic's preferred size, so LayoutGroups and
+        /// ContentSizeFitters size it like any other layout element. The
+        /// measurement settles one rebuild late, like all NowLayout sizing.
+        /// </summary>
+        public bool driveLayoutSize
+        {
+            get => _driveLayoutSize;
+            set => _driveLayoutSize = value;
+        }
+
+        /// <summary>The last measured content extent (origin + content of the root layout areas).</summary>
+        public Vector2 measuredContentSize => _preferredSize;
+
+        public virtual void CalculateLayoutInputHorizontal()
+        {
+        }
+
+        public virtual void CalculateLayoutInputVertical()
+        {
+        }
+
+        public virtual float minWidth => -1f;
+
+        public virtual float preferredWidth => _driveLayoutSize ? _preferredSize.x : -1f;
+
+        public virtual float flexibleWidth => -1f;
+
+        public virtual float minHeight => -1f;
+
+        public virtual float preferredHeight => _driveLayoutSize ? _preferredSize.y : -1f;
+
+        public virtual float flexibleHeight => -1f;
+
+        public virtual int layoutPriority => 0;
 
         protected virtual INowUIInputProvider GetInputProvider()
         {
@@ -460,8 +520,6 @@ namespace NowUI
                 _extraCanvasRenderers.Add(go.GetComponent<CanvasRenderer>());
             }
 
-            // The loop below (re)applies the full transform and renderer state to every entry,
-            // including the ones just created.
             for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
             {
                 var crenderer = _extraCanvasRenderers[i];

@@ -133,6 +133,11 @@ namespace NowUI
             }
         }
 
+        /// <summary>
+        /// Advances playback but marks dirty only when the displayed frame index
+        /// changes: the draw call quantizes to whole frames (optionally capped by the
+        /// playback rate), so the rebuild gate must match that quantization.
+        /// </summary>
         protected override void LateUpdate()
         {
             base.LateUpdate();
@@ -148,8 +153,6 @@ namespace NowUI
                 _playing = false;
             }
 
-            // Only rebuild when the displayed frame changes; the draw call quantizes to
-            // whole frames (optionally capped by the playback rate), so match that here.
             float effectiveRate = Mathf.Max(1f, _animation.frameRate);
 
             if (_playbackFrameRate > 0f)

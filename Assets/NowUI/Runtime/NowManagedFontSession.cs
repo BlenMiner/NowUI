@@ -133,6 +133,10 @@ namespace NowUI.Internal
             return AddGlyphsCore(glyphIndices, glyphIndexCount, keysAreGlyphIndices: true, results, out error);
         }
 
+        /// <summary>All-or-nothing add matching the native session: a plan pass resolves,
+        /// flattens and packs every glyph before touching any session state, so a full
+        /// atlas (or any failure) returns nothing and changes nothing; packing state and
+        /// glyph records only commit once nothing can fail.</summary>
         NowFontCompiler.DynamicSession.AddResult AddGlyphsCore(
             int[] keys,
             int keyCount,
@@ -155,9 +159,6 @@ namespace NowUI.Internal
             segments.Clear();
             int resultsBefore = results.Count;
 
-            // Plan pass: resolve, flatten, and pack every glyph before touching any
-            // session state, so a full atlas leaves the session unchanged (matching
-            // the native session's all-or-nothing add semantics).
             int shelfX = _shelfX;
             int shelfY = _shelfY;
             int shelfHeight = _shelfHeight;
@@ -184,7 +185,7 @@ namespace NowUI.Internal
                 }
                 else if (!_font.TryGetGlyphIndex(unicode, out glyphIndex))
                 {
-                    continue; // not in the font: the caller records a miss
+                    continue;
                 }
 
                 float advance = _font.GetAdvanceWidth(glyphIndex) * _scale * invSize;
@@ -196,8 +197,6 @@ namespace NowUI.Internal
                     continue;
                 }
 
-                // Cell bounds in glyph-space pixels, padded so the distance ramp
-                // reaches zero inside the cell.
                 float pad = DistanceRange * 0.5f + 0.5f;
                 int cellX0 = Mathf.FloorToInt(min.x * _scale - pad);
                 int cellY0 = Mathf.FloorToInt(min.y * _scale - pad);
@@ -208,8 +207,6 @@ namespace NowUI.Internal
 
                 if (!TryPack(ref shelfX, ref shelfY, ref shelfHeight, width, height, out int atlasX, out int atlasY))
                 {
-                    // A failed add returns nothing and changes nothing, matching the
-                    // native session; drop any cached glyphs echoed earlier in this call.
                     results.RemoveRange(resultsBefore, results.Count - resultsBefore);
                     return NowFontCompiler.DynamicSession.AddResult.AtlasFull;
                 }
@@ -235,7 +232,6 @@ namespace NowUI.Internal
             if (pending.Count > 0)
                 BakePending(pending, segments);
 
-            // Commit: packing state and glyph records only change once nothing can fail.
             _shelfX = shelfX;
             _shelfY = shelfY;
             _shelfHeight = shelfHeight;
@@ -404,9 +400,9 @@ namespace NowUI.Internal
             return true;
         }
 
+        /// <summary>No-op: everything is managed memory; nothing to release eagerly.</summary>
         public void Dispose()
         {
-            // Everything is managed memory; nothing to release eagerly.
         }
     }
 }

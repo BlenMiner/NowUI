@@ -56,7 +56,6 @@ public class ManagedFontCompare : MonoBehaviour
         if (_sourceFont != null && _sourceFont.TryGetSourceBytes(out byte[] assigned))
             return assigned;
 
-        // Resolve the concrete NowFont behind the default font asset.
         var fallback = Now.defaultFont;
 
         if (fallback != null &&
@@ -136,7 +135,6 @@ public class ManagedFontCompare : MonoBehaviour
             y += size * 1.5f;
         }
 
-        // Outlines push the threshold away from 0.5 and expose any field artifacts.
         Now.Text(new NowRect(x + 8, y, width, 70), font)
             .SetFontSize(48)
             .SetColor(Color.white)

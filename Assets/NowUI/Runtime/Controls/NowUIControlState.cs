@@ -84,10 +84,6 @@ namespace NowUI
             s_sweepScratch.Clear();
         }
 
-        // ------------------------------------------------------------------
-        // Timing helpers
-        // ------------------------------------------------------------------
-
         struct TransitionState
         {
             public float t;
@@ -180,9 +176,15 @@ namespace NowUI
             return period <= 0f || Time.realtimeSinceStartup % period < period * 0.5f;
         }
 
-        // ------------------------------------------------------------------
-        // Repaint requests (retained hosts)
-        // ------------------------------------------------------------------
+        /// <summary>
+        /// Blink anchored to a moment: visible for the first half-period after
+        /// <paramref name="anchor"/>, so a caret that keeps moving (anchor
+        /// refreshed on every move) stays solid instead of blinking away.
+        /// </summary>
+        public static bool Blink(float period, float anchor)
+        {
+            return period <= 0f || (Time.realtimeSinceStartup - anchor) % period < period * 0.5f;
+        }
 
         /// <summary>
         /// Tells a retained host (a UGUI <see cref="NowUIGraphic"/>) that this

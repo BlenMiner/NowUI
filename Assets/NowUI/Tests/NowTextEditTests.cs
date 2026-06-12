@@ -45,8 +45,8 @@ public class NowTextEditTests
     [Test]
     public void SurrogatePairsNeverSplit()
     {
-        string text = "a\U0001F600b"; // a + emoji (surrogate pair) + b
-        var state = new NowTextEditState { caret = 3, anchor = 3 }; // after the pair
+        string text = "a\U0001F600b";
+        var state = new NowTextEditState { caret = 3, anchor = 3 };
 
         Assert.IsTrue(NowTextEdit.Backspace(ref text, ref state));
         Assert.AreEqual("ab", text, "Backspace must remove the whole surrogate pair.");
@@ -73,7 +73,7 @@ public class NowTextEditTests
     public void SelectionDeleteCollapsesToMin()
     {
         string text = "abcdef";
-        var state = new NowTextEditState { anchor = 4, caret = 2 }; // reversed selection
+        var state = new NowTextEditState { anchor = 4, caret = 2 };
 
         Assert.IsTrue(NowTextEdit.Backspace(ref text, ref state));
         Assert.AreEqual("abef", text);

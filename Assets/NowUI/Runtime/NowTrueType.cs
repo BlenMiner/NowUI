@@ -61,10 +61,10 @@ namespace NowUI.Internal
     /// </summary>
     internal sealed class NowTrueType
     {
-        const uint TAG_TTCF = 0x74746366; // 'ttcf'
-        const uint TAG_OTTO = 0x4F54544F; // 'OTTO'
+        const uint TAG_TTCF = 0x74746366;
+        const uint TAG_OTTO = 0x4F54544F;
         const uint SFNT_V1 = 0x00010000;
-        const uint TAG_TRUE = 0x74727565; // 'true'
+        const uint TAG_TRUE = 0x74727565;
 
         const int MAX_COMPOSITE_DEPTH = 8;
 
@@ -176,14 +176,14 @@ namespace NowUI.Internal
 
                 switch (tag)
                 {
-                    case 0x68656164: head = tableOffset; break;          // head
-                    case 0x6D617870: maxp = tableOffset; break;          // maxp
-                    case 0x68686561: hhea = tableOffset; break;          // hhea
-                    case 0x686D7478: _hmtx = tableOffset; break;         // hmtx
-                    case 0x636D6170: cmap = tableOffset; break;          // cmap
-                    case 0x6C6F6361: _loca = tableOffset; break;         // loca
-                    case 0x676C7966: _glyf = tableOffset; _glyfLength = tableLength; break; // glyf
-                    case 0x706F7374: post = tableOffset; break;          // post
+                    case 0x68656164: head = tableOffset; break;
+                    case 0x6D617870: maxp = tableOffset; break;
+                    case 0x68686561: hhea = tableOffset; break;
+                    case 0x686D7478: _hmtx = tableOffset; break;
+                    case 0x636D6170: cmap = tableOffset; break;
+                    case 0x6C6F6361: _loca = tableOffset; break;
+                    case 0x676C7966: _glyf = tableOffset; _glyfLength = tableLength; break;
+                    case 0x706F7374: post = tableOffset; break;
                 }
             }
 
@@ -406,6 +406,10 @@ namespace NowUI.Internal
             return true;
         }
 
+        /// <summary>Appends a glyph outline, recursing into composite components with the
+        /// composed (parent x child) transform. Composite entry flag bits: 0x0001 args are
+        /// words, 0x0002 args are XY offsets, 0x0008 uniform scale, 0x0040 separate X/Y
+        /// scale, 0x0080 2x2 matrix, 0x0020 more components follow.</summary>
         bool AppendGlyph(
             int glyphIndex,
             NowGlyphOutline outline,
@@ -429,7 +433,6 @@ namespace NowUI.Internal
                 return true;
             }
 
-            // Composite glyph: a list of transformed component glyphs.
             int cursor = glyph + 10;
 
             while (true)
@@ -440,7 +443,7 @@ namespace NowUI.Internal
 
                 float argX, argY;
 
-                if ((flags & 0x0001) != 0) // ARG_1_AND_2_ARE_WORDS
+                if ((flags & 0x0001) != 0)
                 {
                     argX = ReadS16(cursor);
                     argY = ReadS16(cursor + 2);
@@ -453,8 +456,7 @@ namespace NowUI.Internal
                     cursor += 2;
                 }
 
-                // Point-matching composites (ARGS_ARE_XY_VALUES unset) are vanishingly
-                // rare; treat the anchor as a zero offset rather than failing the glyph.
+                // Point-matching composites (ARGS_ARE_XY_VALUES unset) are vanishingly rare; treat the anchor as a zero offset.
                 if ((flags & 0x0002) == 0)
                 {
                     argX = 0f;
@@ -463,18 +465,18 @@ namespace NowUI.Internal
 
                 float a = 1f, b = 0f, c = 0f, d = 1f;
 
-                if ((flags & 0x0008) != 0) // WE_HAVE_A_SCALE
+                if ((flags & 0x0008) != 0)
                 {
                     a = d = ReadF2Dot14(cursor);
                     cursor += 2;
                 }
-                else if ((flags & 0x0040) != 0) // X_AND_Y_SCALE
+                else if ((flags & 0x0040) != 0)
                 {
                     a = ReadF2Dot14(cursor);
                     d = ReadF2Dot14(cursor + 2);
                     cursor += 4;
                 }
-                else if ((flags & 0x0080) != 0) // TWO_BY_TWO
+                else if ((flags & 0x0080) != 0)
                 {
                     a = ReadF2Dot14(cursor);
                     b = ReadF2Dot14(cursor + 2);
@@ -483,7 +485,6 @@ namespace NowUI.Internal
                     cursor += 8;
                 }
 
-                // Compose child transform (a,b,c,d,argX,argY) with the parent transform.
                 float cxx = a * xx + b * yx;
                 float cxy = a * xy + b * yy;
                 float cyx = c * xx + d * yx;
@@ -493,13 +494,18 @@ namespace NowUI.Internal
 
                 AppendGlyph(componentIndex, outline, cxx, cxy, cyx, cyy, cdx, cdy, depth + 1);
 
-                if ((flags & 0x0020) == 0) // MORE_COMPONENTS
+                if ((flags & 0x0020) == 0)
                     break;
             }
 
             return true;
         }
 
+        /// <summary>Parses a simple glyf entry: flags (0x08 = repeat run), then the
+        /// delta-encoded X and Y coordinate streams. Flag bits: 0x01 on-curve, 0x02/0x04
+        /// X/Y delta is a single byte, 0x10/0x20 byte-delta sign or, for 16-bit deltas,
+        /// same-as-previous. Applies the composite transform (identity for top-level
+        /// glyphs) to each point.</summary>
         void AppendSimpleGlyph(
             int glyph,
             int contourCount,
@@ -511,7 +517,6 @@ namespace NowUI.Internal
             int instructionLength = ReadU16(endPts + contourCount * 2);
             int flagsStart = endPts + contourCount * 2 + 2 + instructionLength;
 
-            // Decode flags (with repeats), then the delta-encoded coordinate streams.
             Span<byte> flags = pointCount <= 512 ? stackalloc byte[pointCount] : new byte[pointCount];
             int cursor = flagsStart;
 
@@ -520,7 +525,7 @@ namespace NowUI.Internal
                 byte flag = _data[cursor++];
                 flags[i++] = flag;
 
-                if ((flag & 0x08) != 0) // REPEAT
+                if ((flag & 0x08) != 0)
                 {
                     int repeats = _data[cursor++];
 
@@ -536,12 +541,12 @@ namespace NowUI.Internal
             {
                 byte flag = flags[i];
 
-                if ((flag & 0x02) != 0) // X_SHORT
+                if ((flag & 0x02) != 0)
                 {
                     int delta = _data[cursor++];
                     x += (flag & 0x10) != 0 ? delta : -delta;
                 }
-                else if ((flag & 0x10) == 0) // not SAME
+                else if ((flag & 0x10) == 0)
                 {
                     x += ReadS16(cursor);
                     cursor += 2;
@@ -557,12 +562,12 @@ namespace NowUI.Internal
             {
                 byte flag = flags[i];
 
-                if ((flag & 0x04) != 0) // Y_SHORT
+                if ((flag & 0x04) != 0)
                 {
                     int delta = _data[cursor++];
                     y += (flag & 0x20) != 0 ? delta : -delta;
                 }
-                else if ((flag & 0x20) == 0) // not SAME
+                else if ((flag & 0x20) == 0)
                 {
                     y += ReadS16(cursor);
                     cursor += 2;
@@ -571,7 +576,6 @@ namespace NowUI.Internal
                 Vector2 p = outline.points[basePoint + i];
                 p.y = y;
 
-                // Apply the composite transform (identity for top-level glyphs).
                 outline.points[basePoint + i] = new Vector2(
                     p.x * xx + p.y * yx + dx,
                     p.x * xy + p.y * yy + dy);

@@ -260,7 +260,8 @@ namespace NowUI.Internal
 
         public Vector4 color;
 
-        public int gradientType; // 1 linear, 2 radial
+        /// <summary>1 linear, 2 radial.</summary>
+        public int gradientType;
 
         public Vector2 gradientStart;
 
@@ -393,10 +394,6 @@ namespace NowUI.Internal
     {
         const float EPSILON = 0.0001f;
 
-        // ------------------------------------------------------------------
-        // Bezier flattening
-        // ------------------------------------------------------------------
-
         /// <summary>
         /// Flattens a packed contour set (see <see cref="NowLottieContourSet"/>) into
         /// pooled polylines. This is the managed fallback for the native tessellator.
@@ -442,7 +439,6 @@ namespace NowUI.Internal
                     FlattenCubic(p0, c1, c2, p1, tolerance, points, 0);
                 }
 
-                // The closing segment re-emits the first point; drop it to keep the contour clean.
                 if (closed && points.Count > 1 &&
                     (points[points.Count - 1] - points[0]).sqrMagnitude < EPSILON * EPSILON)
                 {
@@ -471,7 +467,6 @@ namespace NowUI.Internal
                 return;
             }
 
-            // De Casteljau split at t = 0.5.
             Vector2 p01 = (p0 + c1) * 0.5f;
             Vector2 p12 = (c1 + c2) * 0.5f;
             Vector2 p23 = (c2 + p1) * 0.5f;
@@ -498,10 +493,6 @@ namespace NowUI.Internal
             float distanceSum = (d1 + d2) / Mathf.Sqrt(chordLengthSquared);
             return distanceSum <= tolerance;
         }
-
-        // ------------------------------------------------------------------
-        // Scanline fill tessellation
-        // ------------------------------------------------------------------
 
         struct ScanEdge
         {
@@ -566,7 +557,6 @@ namespace NowUI.Internal
             if (_edges.count == 0)
                 return;
 
-            // Sort and deduplicate slab boundaries (in-place quicksort, no allocations).
             SortFloats(_slabYs.array, 0, _slabYs.count - 1);
 
             int uniqueYs = 0;
@@ -579,7 +569,6 @@ namespace NowUI.Internal
 
             _slabYs.count = uniqueYs;
 
-            // Sort edge indices by top y using a parallel key array (primitive sort).
             int edgeCount = _edges.count;
             _edgeSortKeys.Clear();
             _edgeSortOrder.Clear();
@@ -608,7 +597,6 @@ namespace NowUI.Internal
                 if (slabBottom - slabTop < EPSILON)
                     continue;
 
-                // Admit edges starting at or above this slab, retire finished ones.
                 while (nextEdge < edgeCount && _edgeSortKeys.array[nextEdge] <= slabTop + EPSILON)
                 {
                     _activeEdges.EnsureCapacity(1);
@@ -631,8 +619,6 @@ namespace NowUI.Internal
                 if (activeCount == 0)
                     continue;
 
-                // Snapshot the active edges with their x range over this slab so the
-                // sort and span walk never recompute intersections.
                 _slabEdges.Clear();
                 _slabEdges.EnsureCapacity(activeCount);
 
@@ -740,7 +726,6 @@ namespace NowUI.Internal
                     return;
                 }
 
-                // Median-of-three pivot.
                 int middle = low + (high - low) / 2;
                 if (values[middle] < values[low]) (values[low], values[middle]) = (values[middle], values[low]);
                 if (values[high] < values[low]) (values[low], values[high]) = (values[high], values[low]);
@@ -763,7 +748,6 @@ namespace NowUI.Internal
                     }
                 }
 
-                // Recurse into the smaller half, loop on the larger.
                 if (right - low < high - left)
                 {
                     SortFloats(values, low, right);
@@ -846,7 +830,6 @@ namespace NowUI.Internal
 
         static void SortSlabEdges()
         {
-            // Insertion sort by x: the active set is small and mostly sorted already.
             var edges = _slabEdges.array;
             int count = _slabEdges.count;
 
@@ -968,10 +951,6 @@ namespace NowUI.Internal
             }
         }
 
-        // ------------------------------------------------------------------
-        // Anti-alias fringe for fills
-        // ------------------------------------------------------------------
-
         static readonly List<Vector2> _fringeNormals = new List<Vector2>(128);
 
         static readonly List<bool> _fringeInside = new List<bool>(128);
@@ -1002,9 +981,7 @@ namespace NowUI.Internal
                 if (Mathf.Abs(area) < EPSILON)
                     continue;
 
-                // Even containment depth means the contour bounds filled area from the
-                // outside; odd depth means it is a hole. The fringe always feathers away
-                // from the filled side.
+                // Even containment depth bounds fill from outside, odd is a hole; the fringe feathers away from the filled side.
                 int depth = ContainmentDepth(contours, contourIndex);
                 float direction = Mathf.Sign(area) * ((depth & 1) == 0 ? 1f : -1f);
 
@@ -1032,8 +1009,6 @@ namespace NowUI.Internal
                     _fringeNormals.Add(average * (scale * direction * aaWidth));
                 }
 
-                // When the fill is matte-clipped, only feather edges that lie inside
-                // the matte so the fringe doesn't trace clipped-away geometry.
                 _fringeInside.Clear();
 
                 for (int i = 0; i < count; ++i)
@@ -1078,7 +1053,7 @@ namespace NowUI.Internal
                     previousOuter = outer;
                 }
 
-                // Closing quad back to the first pair (first outer is firstInner + 1).
+                // Close back to the first pair; the first outer vertex is firstInner + 1.
                 if (_fringeInside[count - 1] && _fringeInside[0])
                     buffer.AddQuad(previousInner, previousOuter, firstInner + 1, firstInner);
             }
@@ -1160,10 +1135,6 @@ namespace NowUI.Internal
             return magnitude > EPSILON ? value / magnitude : Vector2.zero;
         }
 
-        // ------------------------------------------------------------------
-        // Strokes
-        // ------------------------------------------------------------------
-
         static readonly List<Vector2> _strokePoints = new List<Vector2>(256);
 
         static readonly List<Vector2> _strokeNormals = new List<Vector2>(256);
@@ -1195,7 +1166,6 @@ namespace NowUI.Internal
             NowLottieDrawBuffer buffer,
             float aaWidth)
         {
-            // Deduplicate consecutive points so segment directions are well defined.
             _strokePoints.Clear();
             var source = polyline.points;
 
@@ -1339,7 +1309,6 @@ namespace NowUI.Internal
 
             for (int i = 0; i <= segments; ++i)
             {
-                // Sweep 180 degrees from +normal through +direction to -normal.
                 float angle = Mathf.PI * i / segments;
                 Vector2 radial = normal * Mathf.Cos(angle) + direction * Mathf.Sin(angle);
 
@@ -1356,10 +1325,6 @@ namespace NowUI.Internal
                 previousOuter = outer;
             }
         }
-
-        // ------------------------------------------------------------------
-        // Trim paths
-        // ------------------------------------------------------------------
 
         static readonly List<NowLottiePolyline> _trimScratch = new List<NowLottiePolyline>(16);
 
@@ -1381,7 +1346,7 @@ namespace NowUI.Internal
             float trimEnd = end + offset;
 
             if (end - start >= 1f)
-                return; // nothing trimmed
+                return;
 
             _trimScratch.Clear();
 
@@ -1404,8 +1369,6 @@ namespace NowUI.Internal
                 float globalEnd = trimEnd * totalLength;
                 float walked = 0f;
 
-                // Handle wrap-around by evaluating both the primary range and, when the
-                // range wraps past the total length, its continuation from zero.
                 for (int pass = 0; pass < 2; ++pass)
                 {
                     float rangeStart = pass == 0 ? globalStart : globalStart - totalLength;
@@ -1445,7 +1408,6 @@ namespace NowUI.Internal
             if (span <= EPSILON)
                 return;
 
-            // Normalize the start into [0, length) and keep the span, wrapping if needed.
             start = Mathf.Repeat(start, length);
             end = start + span;
 
@@ -1510,10 +1472,6 @@ namespace NowUI.Internal
             else
                 NowLottiePolylinePool.Release(result);
         }
-
-        // ------------------------------------------------------------------
-        // Polyline clipping against matte contours (used for strokes)
-        // ------------------------------------------------------------------
 
         static readonly List<float> _clipCrossings = new List<float>(16);
 

@@ -29,6 +29,8 @@ namespace NowUI
 
         static int _registryFrame = -1;
 
+        static int _navigationLockFrame = -1;
+
         static Vector2 _lastNavigation;
 
         /// <summary>
@@ -88,6 +90,22 @@ namespace NowUI
             return IsFocused(id) && !NowUIInput.isPassive && NowUIInput.current.submitPressed;
         }
 
+        /// <summary>
+        /// Suppresses spatial navigation while the focused control consumes
+        /// directional input itself — a text field's arrows move the caret and
+        /// WASD types characters, neither should move focus. Call every frame
+        /// from the focused control's draw; effective on the next frame swap,
+        /// like registration.
+        /// </summary>
+        public static void LockNavigation()
+        {
+            if (NowUIInput.isPassive)
+                return;
+
+            BeginFrameIfNeeded();
+            _navigationLockFrame = Time.frameCount;
+        }
+
         static void BeginFrameIfNeeded()
         {
             int frame = Time.frameCount;
@@ -115,8 +133,6 @@ namespace NowUI
         {
             var snapshot = NowUIInput.current;
 
-            // While a UGUI control is selected, the EventSystem owns focus and
-            // navigation; NowUI stands down until that selection clears.
             if (respectEventSystem)
             {
                 var eventSystem = EventSystem.current;
@@ -132,7 +148,23 @@ namespace NowUI
             if (snapshot.cancelPressed)
                 Clear();
 
-            // Edge-detect the navigation vector so one stick flick moves one step.
+            if (snapshot.primaryPressed && _focusedId != 0)
+            {
+                bool overControl = false;
+
+                for (int i = 0; i < _previous.Count; ++i)
+                {
+                    if (_previous[i].rect.Contains(snapshot.pointerPosition))
+                    {
+                        overControl = true;
+                        break;
+                    }
+                }
+
+                if (!overControl)
+                    Clear();
+            }
+
             Vector2 navigation = snapshot.navigation;
             const float Threshold = 0.55f;
 
@@ -150,7 +182,9 @@ namespace NowUI
 
             _lastNavigation = navigation;
 
-            if (direction == default || _previous.Count == 0)
+            bool navigationLocked = _navigationLockFrame >= Time.frameCount - 1;
+
+            if (navigationLocked || direction == default || _previous.Count == 0)
                 return;
 
             MoveFocus(direction);
@@ -158,8 +192,6 @@ namespace NowUI
 
         static void MoveFocus(Vector2 direction)
         {
-            // Nothing focused (or the focused control vanished): take the first
-            // registered control instead of guessing a direction from nowhere.
             int focusedIndex = -1;
 
             for (int i = 0; i < _previous.Count; ++i)
@@ -190,10 +222,8 @@ namespace NowUI
                 float along = Vector2.Dot(toCandidate, direction);
 
                 if (along <= 0.5f)
-                    continue; // behind or beside the direction of travel
+                    continue;
 
-                // Distance along the direction dominates; sideways drift is taxed so
-                // navigation prefers aligned neighbors over closer diagonal ones.
                 float sideways = (toCandidate - direction * along).magnitude;
                 float score = along + sideways * 2.5f;
 
@@ -214,6 +244,7 @@ namespace NowUI
             _previous.Clear();
             _focusedId = 0;
             _registryFrame = -1;
+            _navigationLockFrame = -1;
             _lastNavigation = default;
             respectEventSystem = true;
         }

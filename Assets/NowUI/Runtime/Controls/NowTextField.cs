@@ -83,7 +83,6 @@ namespace NowUI
             NowFont resolvedFont = null;
             fontAsset?.TryResolveFont(NowFontStyle.Regular, out resolvedFont);
 
-            // Pointer: caret placement and drag selection.
             if (interaction.pressed)
             {
                 int hit = HitTest(fontAsset, resolvedFont, text, interaction.pointerPosition.x - inner.x + state.scrollX, fontSize);
@@ -103,9 +102,9 @@ namespace NowUI
                 state.caret = HitTest(fontAsset, resolvedFont, text, interaction.pointerPosition.x - inner.x + state.scrollX, fontSize);
             }
 
-            // Keyboard editing while focused.
             if (focused && !NowUIInput.isPassive)
             {
+                NowUIFocus.LockNavigation();
                 var frame = NowUITextInput.current;
 
                 if (frame.enterPressed || frame.escapePressed)
@@ -135,10 +134,10 @@ namespace NowUI
                     NowTextEdit.Insert(ref text, ref state, frame.characters);
 
                 if (NowUIControlState.Repeat(NowUIInput.GetId(id, "bs"), frame.backspaceHeld))
-                    NowTextEdit.Backspace(ref text, ref state);
+                    NowTextEdit.Backspace(ref text, ref state, frame.command);
 
                 if (NowUIControlState.Repeat(NowUIInput.GetId(id, "del"), frame.deleteHeld))
-                    NowTextEdit.Delete(ref text, ref state);
+                    NowTextEdit.Delete(ref text, ref state, frame.command);
 
                 if (NowUIControlState.Repeat(NowUIInput.GetId(id, "left"), frame.leftHeld))
                     NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.command);
@@ -159,7 +158,15 @@ namespace NowUI
                 CloseTouchKeyboard();
             }
 
-            // Keep the caret visible inside the inner rect.
+            ref float blinkAnchor = ref NowUIControlState.Get<float>(NowUIInput.GetId(id, "blink"));
+            ref int lastCaret = ref NowUIControlState.Get<int>(NowUIInput.GetId(id, "lastcaret"));
+
+            if (state.caret != lastCaret || text != original || interaction.pressed)
+            {
+                lastCaret = state.caret;
+                blinkAnchor = Time.realtimeSinceStartup;
+            }
+
             float caretX = PrefixAdvance(fontAsset, resolvedFont, text, state.caret, fontSize);
             float totalWidth = PrefixAdvance(fontAsset, resolvedFont, text, text.Length, fontSize);
 
@@ -171,7 +178,6 @@ namespace NowUI
 
             state.scrollX = Mathf.Clamp(state.scrollX, 0f, Mathf.Max(0f, totalWidth - inner.width));
 
-            // Visuals.
             var box = theme.Rectangle(rect, NowRectangleStyle.Outline);
 
             if (focused)
@@ -209,9 +215,9 @@ namespace NowUI
                     placeholder.SetFontSize(fontSize).Draw(_placeholder);
                 }
 
-                if (focused && NowUIControlState.Blink())
+                if (focused && NowUIControlState.Blink(1f, blinkAnchor))
                 {
-                    Now.Rectangle(new NowRect(textX + caretX, inner.y + 1f, 1.5f, inner.height - 2f))
+                    Now.Rectangle(new NowRect(textX + caretX, inner.y, 2f, inner.height))
                         .SetColor(theme.GetColor(NowColorToken.Text, Color.black))
                         .Draw();
                 }
@@ -263,10 +269,10 @@ namespace NowUI
             s_touchKeyboardId = 0;
         }
 
-        // ------------------------------------------------------------------
-        // Text metrics: shaped clusters when available, codepoints otherwise.
-        // ------------------------------------------------------------------
-
+        /// <summary>
+        /// Advance width of the text before <paramref name="index"/>: shaped clusters
+        /// when available, codepoints otherwise.
+        /// </summary>
         internal static float PrefixAdvance(NowFontAsset asset, NowFont font, string text, int index, float fontSize)
         {
             if (string.IsNullOrEmpty(text) || index <= 0 || asset == null)

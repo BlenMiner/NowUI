@@ -130,7 +130,6 @@ public class NowControlsAdvancedTests
     [Test]
     public void TextFieldCopyPasteRoundTrip()
     {
-        // Batch-mode editors can lack a clipboard entirely; probe before testing.
         GUIUtility.systemCopyBuffer = "probe";
 
         if (GUIUtility.systemCopyBuffer != "probe")
@@ -156,7 +155,6 @@ public class NowControlsAdvancedTests
         string text = "hello";
         FocusField();
 
-        // Click far right: caret lands at the end.
         _pointer.snapshot = new NowUIInputSnapshot(new Vector2(FieldRect.xMax - 4, 35), true, true, false);
 
         using (NowUIInput.Begin(_pointer, Surface))
@@ -176,20 +174,15 @@ public class NowControlsAdvancedTests
     {
         bool latch = true;
 
-        // Idle over occluding UGUI: invisible.
         Assert.IsFalse(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: false, allowedNow: false));
 
-        // Press begins while blocked: invisible, and stays invisible for the whole
-        // press even if the gate would now allow (no click-through).
         Assert.IsFalse(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: false, allowedNow: false));
-        Assert.IsFalse(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: true, allowedNow: true));
+        Assert.IsFalse(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: true, allowedNow: true),
+            "A press that began blocked stays blocked for the whole press even if the gate would now allow (no click-through).");
         Assert.IsFalse(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: true, allowedNow: true));
 
-        // After release the gate re-evaluates.
         Assert.IsTrue(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: false, allowedNow: true));
 
-        // Press begins while allowed, drags under occluding UGUI: keeps tracking,
-        // and the release still arrives.
         Assert.IsTrue(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: false, allowedNow: true));
         Assert.IsTrue(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: true, allowedNow: false));
         Assert.IsTrue(NowUIRaycastGate.UpdatePressGate(ref latch, buttonsWereDown: true, allowedNow: false));
@@ -232,7 +225,6 @@ public class NowControlsAdvancedTests
         Assert.IsTrue(NowUIOverlay.IsPointerBlocked(new Vector2(50, 50)));
         Assert.IsFalse(NowUIOverlay.IsPointerBlocked(new Vector2(200, 200)));
 
-        // A control under the blocked area must not hover.
         _pointer.snapshot = new NowUIInputSnapshot(new Vector2(50, 50), false, false, false);
 
         using (NowUIInput.Begin(_pointer, Surface))
@@ -245,7 +237,6 @@ public class NowControlsAdvancedTests
     [Test]
     public void ScrollViewClampsAndStoresScroll()
     {
-        // Frame 1: populate the layout cache with tall content.
         using (NowUIInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
         using (Now.ScrollView(new NowRect(0, 0, 200, 100), "list").Begin())
@@ -254,7 +245,6 @@ public class NowControlsAdvancedTests
                 NowLayout.Rect(new NowLayoutOptions().SetSize(180, 30));
         }
 
-        // Frame 2: wheel down scrolls within bounds.
         _pointer.snapshot = new NowUIInputSnapshot(
             true, new Vector2(100, 50), new Vector2(100, 50), Vector2.zero,
             NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
@@ -286,7 +276,6 @@ public class NowControlsAdvancedTests
         int selected = 0;
         var rect = new NowRect(20, 20, 160, 30);
 
-        // Click the field: opens.
         _pointer.snapshot = new NowUIInputSnapshot(new Vector2(60, 35), true, true, false);
 
         using (NowUIInput.Begin(_pointer, Surface))
@@ -306,7 +295,6 @@ public class NowControlsAdvancedTests
 
         Assert.IsTrue(NowUIControlState.Get<bool>(dropdownId), "Click must open the dropdown.");
 
-        // Simulate the popup writing a pending selection (as the deferred item click does).
         NowUIControlState.Get<int>(NowUIInput.GetId(dropdownId, "pending")) = 3;
 
         _pointer.snapshot = default;

@@ -311,10 +311,6 @@ namespace NowUI.Internal
         }
     }
 
-    // ----------------------------------------------------------------------------
-    // Shape items
-    // ----------------------------------------------------------------------------
-
     public abstract class NowLottieShapeItem
     {
         public bool hidden;
@@ -350,9 +346,7 @@ namespace NowUI.Internal
                 case "gs": item = NowLottieGradientStroke.ParseGradientStroke(json); break;
                 case "tm": item = NowLottieTrim.ParseTrim(json); break;
                 case "tr": item = NowLottieGroupTransform.ParseGroupTransform(json); break;
-                // 'mm' (merge paths): additive merge is approximated by the nonzero
-                // compound fill already used for multi-path groups, so the item is skipped.
-                // 'rp' (repeater) and 'rd' (round corners) are not supported yet.
+                // 'mm' merge paths are approximated by the nonzero compound fill; 'rp' repeater and 'rd' round corners are unsupported.
                 default: return null;
             }
 
@@ -383,7 +377,6 @@ namespace NowUI.Internal
             var group = new NowLottieGroup();
             ParseList(json["it"], group.items);
 
-            // The group's transform lives in its item list as a 'tr' entry.
             for (int i = 0; i < group.items.Count; ++i)
             {
                 if (group.items[i] is NowLottieGroupTransform groupTransform)
@@ -444,7 +437,8 @@ namespace NowUI.Internal
 
     public sealed class NowLottiePolystar : NowLottieShapeItem
     {
-        public int starType = 1; // 1 star, 2 polygon
+        /// <summary>1 star, 2 polygon.</summary>
+        public int starType = 1;
 
         public NowLottieAnimatable points;
 
@@ -621,10 +615,6 @@ namespace NowUI.Internal
         }
     }
 
-    // ----------------------------------------------------------------------------
-    // Animatable values
-    // ----------------------------------------------------------------------------
-
     /// <summary>
     /// A Lottie animated property holding float vectors of arbitrary dimension
     /// (opacity, position, scale, color, gradient stop arrays, ...).
@@ -639,9 +629,9 @@ namespace NowUI.Internal
 
             public float[] endValue;
 
-            public float[] tangentOut; // spatial
+            public float[] tangentOut;
 
-            public float[] tangentIn;  // spatial
+            public float[] tangentIn;
 
             public float easeOutX, easeOutY, easeInX, easeInY;
 
@@ -715,7 +705,6 @@ namespace NowUI.Internal
                 return;
             }
 
-            // Sequential playback friendly segment search starting from the cached cursor.
             int segment = Mathf.Clamp(_cursor, 0, keys.Length - 2);
 
             while (segment > 0 && frame < keys[segment].time)
@@ -754,7 +743,6 @@ namespace NowUI.Internal
 
             if (spatial)
             {
-                // Animated position following a spatial bezier through the keyframe tangents.
                 float oneMinusT = 1f - easedT;
                 float b0 = oneMinusT * oneMinusT * oneMinusT;
                 float b1 = 3f * oneMinusT * oneMinusT * easedT;
@@ -919,7 +907,7 @@ namespace NowUI.Internal
                 return 1f;
 
             if (Mathf.Approximately(outX, outY) && Mathf.Approximately(inX, inY))
-                return t; // linear
+                return t;
 
             float u = SolveCurveX(outX, inX, t);
             return SampleCurve(outY, inY, u);
@@ -943,7 +931,6 @@ namespace NowUI.Internal
         {
             float t = x;
 
-            // Newton-Raphson.
             for (int i = 0; i < 6; ++i)
             {
                 float currentX = SampleCurve(p1, p2, t) - x;
@@ -959,7 +946,6 @@ namespace NowUI.Internal
                 t -= currentX / derivative;
             }
 
-            // Bisection fallback.
             float low = 0f;
             float high = 1f;
             t = x;
@@ -982,10 +968,6 @@ namespace NowUI.Internal
             return t;
         }
     }
-
-    // ----------------------------------------------------------------------------
-    // Animated bezier shapes
-    // ----------------------------------------------------------------------------
 
     /// <summary>
     /// One bezier contour: anchor points with in/out tangents relative to the anchors,

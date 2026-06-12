@@ -70,16 +70,6 @@ namespace NowUI.Internal
                 _contourSetPool.Push(set);
         }
 
-        // ------------------------------------------------------------------
-        // Tessellation cache
-        //
-        // Tessellation is position and tint independent (geometry is built at origin
-        // and offset/tinted on mesh append), so identical (animation, frame, size)
-        // draws reuse the buffer: paused animations, duplicated icons, color fades
-        // and displays running faster than the animation cost almost nothing.
-        // Main-thread only, like the rest of Now.
-        // ------------------------------------------------------------------
-
         /// <summary>
         /// Upper bound (in pixels) on the resolution an animation is tessellated at.
         /// Larger draws are tessellated at this size and scaled up on the mesh copy,
@@ -101,8 +91,10 @@ namespace NowUI.Internal
             public int stamp = -1;
         }
 
-        // Sized for grids of independently-staggered animations (a 10x10 chat grid
-        // produces ~19 unique frames per tick); entries are ~50-200KB each.
+        /// <summary>
+        /// Sized for grids of independently-staggered animations (a 10x10 chat grid
+        /// produces ~19 unique frames per tick); entries are ~50-200KB each.
+        /// </summary>
         const int CACHE_SIZE = 32;
 
         static readonly CacheEntry[] _cache = CreateCache();
@@ -247,10 +239,6 @@ namespace NowUI.Internal
             return buffer.indices.count > 0;
         }
 
-        // ------------------------------------------------------------------
-        // Layers
-        // ------------------------------------------------------------------
-
         static void RenderLayerList(
             NowLottieComposition composition,
             List<NowLottieLayer> layers,
@@ -315,7 +303,6 @@ namespace NowUI.Internal
 
                         if (!matteSet.isEmpty)
                         {
-                            // Nested mattes are rare; the innermost matte wins.
                             layerClipSet = matteSet;
                             layerClipInvert = inverted;
 
@@ -333,7 +320,7 @@ namespace NowUI.Internal
                     }
                     else if (!inverted)
                     {
-                        skipLayer = true; // alpha matte with nothing in it hides the layer
+                        skipLayer = true;
                     }
                 }
 
@@ -384,8 +371,10 @@ namespace NowUI.Internal
             }
         }
 
-        // Layer chain matrices are memoized per layer list render: parent layers are
-        // shared by many children and would otherwise be re-evaluated per child.
+        /// <summary>
+        /// Layer chain matrices memoized per layer list render: parent layers are
+        /// shared by many children and would otherwise be re-evaluated per child.
+        /// </summary>
         static readonly Dictionary<NowLottieLayer, NowMatrix2D> _matrixCache = new Dictionary<NowLottieLayer, NowMatrix2D>(32);
 
         static NowMatrix2D ResolveLayerMatrix(
@@ -457,10 +446,6 @@ namespace NowUI.Internal
             ReleaseContourSet(set);
         }
 
-        // ------------------------------------------------------------------
-        // Shape items
-        // ------------------------------------------------------------------
-
         static void RenderShapeItems(
             List<NowLottieShapeItem> items,
             float frame,
@@ -472,10 +457,8 @@ namespace NowUI.Internal
             List<NowLottiePolyline> clipPolylines,
             bool clipInvert)
         {
-            // Items are listed top-most first; render bottom-up so earlier items
-            // composite on top, and apply each style to the geometry above it.
-            // Styles usually share the exact same geometry (fill + stroke pairs), so
-            // the packed contours are cached between them.
+            // Items are listed top-most first; render bottom-up, applying each style to the
+            // geometry above it. Fill + stroke pairs share geometry, so packed contours are cached.
             NowLottieContourSet contourSet = null;
             int contourSourceCount = -1;
             var trim = default(NowLottieTrimInfo);
@@ -624,7 +607,8 @@ namespace NowUI.Internal
 
         /// <summary>
         /// Evaluates the group's trim path. Multiple trims in one group are extremely
-        /// rare; only the first one is honored.
+        /// rare; only the first one is honored. A full-range trim is returned inactive
+        /// so fills keep their fringe and the native call stays trivial.
         /// </summary>
         static NowLottieTrimInfo EvaluateTrim(List<NowLottieShapeItem> items, float frame)
         {
@@ -641,8 +625,6 @@ namespace NowUI.Internal
                         individual = trim.mode == 2
                     };
 
-                    // A full-range trim is a no-op; skip it so fills keep their fringe
-                    // and the native call stays trivial.
                     if (result.start <= 0f && result.end >= 1f && result.offset == 0f)
                         result.active = false;
 
@@ -652,10 +634,6 @@ namespace NowUI.Internal
 
             return default;
         }
-
-        // ------------------------------------------------------------------
-        // Painting
-        // ------------------------------------------------------------------
 
         static void PaintFill(
             NowLottieShapeItem item,
@@ -720,8 +698,6 @@ namespace NowUI.Internal
                 return;
             }
 
-            // Burst port of the scalar tessellator below; trim paths splice polylines
-            // on the managed side, so they keep using the scalar route.
             if (!trim.active &&
                 NowLottieBurstTessellator.TryFill(contours, clipPolylines, clipInvert, evenOdd, paint, buffer, AA_WIDTH, gradientSpan, FLATTEN_TOLERANCE))
             {
@@ -797,8 +773,6 @@ namespace NowUI.Internal
                 return;
             }
 
-            // Burst port of the scalar stroke below; trim and matte-clipped strokes
-            // splice polylines on the managed side, so they keep the scalar route.
             if (!trim.active && clipPolylines == null &&
                 NowLottieBurstTessellator.TryStroke(contours, width, cap, join, paint, buffer, AA_WIDTH, FLATTEN_TOLERANCE))
             {
@@ -872,10 +846,6 @@ namespace NowUI.Internal
             return color;
         }
 
-        // ------------------------------------------------------------------
-        // Matte geometry
-        // ------------------------------------------------------------------
-
         static void CollectLayerContours(
             NowLottieLayer layer,
             float localFrame,
@@ -900,10 +870,6 @@ namespace NowUI.Internal
             if (layer.shapes != null)
                 CollectContours(layer.shapes, layer.shapes.Count, localFrame, matrix, output);
         }
-
-        // ------------------------------------------------------------------
-        // Parametric shapes
-        // ------------------------------------------------------------------
 
         static void BuildEllipse(Vector2 center, Vector2 size, NowLottieBezierData destination)
         {
@@ -965,7 +931,6 @@ namespace NowUI.Internal
             destination.EnsureCapacity(8);
             destination.count = 8;
 
-            // Clockwise from the end of the top edge (matching AE's draw direction).
             destination.vertices[0] = center + new Vector2(halfWidth - radius, -halfHeight);
             destination.tangentsIn[0] = Vector2.zero;
             destination.tangentsOut[0] = new Vector2(tangent, 0f);

@@ -563,9 +563,6 @@ namespace NowUI
             bool hovered = hasPointer && rect.Contains(snapshot.pointerPosition) &&
                 !NowUIOverlay.IsPointerBlocked(snapshot.pointerPosition);
 
-            // Passive mode (e.g. a layout measure pass): report pure reads like hover
-            // so styling stays consistent, but never transition press/drag state — the
-            // same control will interact for real later this frame.
             if (_passiveDepth > 0)
             {
                 return new NowUIInteraction(
@@ -713,6 +710,9 @@ namespace NowUI
         /// <summary>True during layout measure passes, when interactions are inert.</summary>
         internal static bool isPassive => _passiveDepth > 0;
 
+        /// <summary>Enters passive mode (e.g. a layout measure pass): pure reads like hover
+        /// still report so styling stays consistent, but press/drag state never transitions —
+        /// the same control will interact for real later this frame.</summary>
         internal static void BeginPassive()
         {
             ++_passiveDepth;
@@ -918,9 +918,6 @@ namespace NowUI
                 return _rawInputAvailable;
             }
 
-            // The gate verdict latches at press time: presses that begin on
-            // occluding UGUI stay blocked through release; drags that began on
-            // NowUI keep tracking even when crossing occluding UGUI.
             bool buttonsWereDown = _previousButtonsDown != NowUIPointerButtons.None;
             bool allowedNow = !blockedWhenPointerOverUGUI || !NowUIRaycastGate.IsPointerOverUGUI();
             bool pointerVisible = mouseInput.hasPointer &&
@@ -1160,8 +1157,6 @@ namespace NowUI
                 return;
             }
 
-            // Press-latched gate: presses beginning on occluding UGUI stay blocked
-            // through release; drags that began on this host keep tracking.
             bool buttonsWereDown = _previousButtonsDown != NowUIPointerButtons.None;
             _previousButtonsDown = mouseInput.pointerButtonsDown;
 
@@ -1422,7 +1417,16 @@ namespace NowUI
             {
                 input.hasPointer = true;
                 input.screenPosition = mouse.position.ReadValue();
-                input.scrollDelta = mouse.scroll.ReadValue();
+
+                // Windows reports wheel ticks as ±120 through the input system
+                // (legacy and macOS report small values); normalize to notches so
+                // consumers can scale in pixels without teleporting.
+                Vector2 scroll = mouse.scroll.ReadValue();
+
+                if (Mathf.Abs(scroll.x) >= 60f || Mathf.Abs(scroll.y) >= 60f)
+                    scroll /= 120f;
+
+                input.scrollDelta = scroll;
                 AppendPointerButton(mouse.leftButton, NowUIPointerButton.Primary, ref input);
                 AppendPointerButton(mouse.rightButton, NowUIPointerButton.Secondary, ref input);
                 AppendPointerButton(mouse.middleButton, NowUIPointerButton.Middle, ref input);

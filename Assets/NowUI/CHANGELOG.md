@@ -62,6 +62,23 @@ point it became installable through UPM.
   screen input providers, drags preserved), completing the existing
   raycastTarget blocking in the other direction. EventSystem selection and
   NowUI focus are also mutually exclusive (`NowUIFocus.respectEventSystem`).
+- `NowUIGraphic` implements `ILayoutElement`: with Drive Layout Size (on by
+  default) it reports the measured NowLayout content extent as its
+  preferred size, so it participates in UGUI LayoutGroups and
+  ContentSizeFitters like any built-in graphic. Frame-late, like all
+  NowLayout measurement; `measuredContentSize` exposes the value.
+- Control interaction polish: clicking empty space clears focus; text
+  fields lock spatial navigation while editing (arrows move the caret and
+  WASD types instead of moving focus), reset the caret blink on every
+  caret move so a moving caret stays visible, draw a full-height caret,
+  and support Ctrl+Backspace / Ctrl+Delete word deletion
+  (`NowTextEdit.Backspace`/`Delete` gained a word flag). Scroll wheel
+  ticks are normalized (Windows reports ±120 per notch through the input
+  system, which made scroll views jump to the edges), and the scrollbar's
+  whole track is now the grab target with jump-to-click. Rectangle pixel
+  snapping rounds edges instead of truncating origin and size, which had
+  been shifting nested glyphs (radio dots, checkmarks) visibly off-center
+  at fractional layout positions.
 - An empty mask now means "no mask": styles built from a default rect carried
   a zero-size mask that clipped everything they drew (text fields' content
   was invisible). Ambient `Now.Mask` scopes still clip such draws normally.

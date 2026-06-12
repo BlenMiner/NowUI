@@ -166,7 +166,7 @@ namespace NowUI.Internal
 
         static NowJsonValue ParseObject(string text, ref int position)
         {
-            ++position; // consume '{'
+            ++position;
             var result = new NowJsonValue
             {
                 _kind = NowJsonKind.Object,
@@ -221,7 +221,7 @@ namespace NowUI.Internal
 
         static NowJsonValue ParseArray(string text, ref int position)
         {
-            ++position; // consume '['
+            ++position;
             var result = new NowJsonValue
             {
                 _kind = NowJsonKind.Array,
@@ -264,10 +264,9 @@ namespace NowUI.Internal
 
         static string ParseString(string text, ref int position)
         {
-            ++position; // consume '"'
+            ++position;
             int start = position;
 
-            // Fast path: no escapes.
             while (position < text.Length)
             {
                 char c = text[position];

@@ -254,6 +254,13 @@ the pointer is over it or a control requests a repaint (focus ring, caret
 blink, animations), staying fully retained otherwise. `raycastTarget` blocks
 UGUI Selectables underneath, so NowUI controls layer correctly with UGUI.
 
+The graphic is also a UGUI layout element: with **Drive Layout Size** (on by
+default) it reports the measured extent of its root `NowLayout` areas as its
+preferred width/height, so it sits inside a `VerticalLayoutGroup` or under a
+`ContentSizeFitter` like any Image or Text — sized by its NowUI content. The
+measurement settles one rebuild late, like all NowLayout sizing; read it from
+code via `measuredContentSize`.
+
 ---
 
 ## Building your own controls

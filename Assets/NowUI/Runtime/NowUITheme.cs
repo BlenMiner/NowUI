@@ -223,12 +223,12 @@ namespace NowUI
             return ApplyTextPreset(Now.Text(rect, font), ResolveTextPresetId(presetId));
         }
 
+        /// <summary>Creates preset-styled text. Preset fonts win over the ambient font,
+        /// but a preset without one still resolves to the active font stack.</summary>
         public NowUIText Text(NowRect rect, string presetId = null)
         {
             var text = ApplyTextPreset(Now.Text(rect, null), ResolveTextPresetId(presetId));
 
-            // Preset fonts win over the ambient font, but a preset without one
-            // still resolves to the active font stack.
             if (text.font == null)
                 text = text.SetFont(Now.font);
 

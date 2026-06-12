@@ -59,8 +59,6 @@ public class NowTextShapingTests
         if (!ShapingAvailable())
             Assert.Ignore("Shaping unavailable on this machine.");
 
-        // Private-use codepoint is not in NotoSans: the run must be declined so the
-        // codepoint path (with font fallbacks) handles the segment.
         Assert.IsFalse(_font.TryGetShapedRun("A\uE321B", out _));
     }
 
@@ -121,9 +119,8 @@ public class NowTextShapingTests
         Assert.Greater(shaped.x, 0f);
         Assert.Greater(unshaped.x, 0f);
 
-        // Kerning/ligatures only ever tighten this sample; equal means the font
-        // carries no features for it, which is fine — never wider.
-        Assert.LessOrEqual(shaped.x, unshaped.x + 0.01f);
+        Assert.LessOrEqual(shaped.x, unshaped.x + 0.01f,
+            "Kerning/ligatures only ever tighten this sample; equal means the font carries no features for it, which is fine — never wider.");
 
         Assert.IsTrue(_font.TryGetShapedRun("fi", out var ligatureRun));
 
@@ -136,8 +133,8 @@ public class NowTextShapingTests
     {
         AssertDrawsGeometry("Affinity AV fi", shaping: true);
         AssertDrawsGeometry("Affinity AV fi", shaping: false);
-        AssertDrawsGeometry("AB\nCD\tE", shaping: true); // newlines and tabs
-        AssertDrawsGeometry("A\uE321B", shaping: true);  // missing glyph: codepoint fallback
+        AssertDrawsGeometry("AB\nCD\tE", shaping: true);
+        AssertDrawsGeometry("A\uE321B", shaping: true);
     }
 
     void AssertDrawsGeometry(string text, bool shaping)

@@ -154,7 +154,11 @@ namespace NowUI
 
             int thumbId = NowUIInput.GetId(_id, "thumb");
             var thumbRect = new NowRect(track.x, track.y + travel * normalized, BarWidth, thumbHeight);
-            var interaction = NowUIInput.Interact(thumbId, thumbRect);
+
+            // The whole (slightly widened) track is the grab target: clicking
+            // anywhere on it jumps the thumb there and keeps dragging — an 8px
+            // thumb alone is a frustrating target.
+            var interaction = NowUIInput.Interact(thumbId, track.Outset(4f, 2f));
 
             if (interaction.held && travel > 0f)
             {
