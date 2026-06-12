@@ -48,7 +48,8 @@ namespace NowUI
         /// anything drawn with layout calls. Interaction runs immediately, so the
         /// result is readable inside the scope; children flow in a horizontal row.
         /// In layout flow the button sizes to the previous frame's content, like all
-        /// scope-form layout.
+        /// scope-form layout. The label is identity only here — never rendered, and
+        /// it must be non-empty (it keys interaction, focus and the size cache).
         /// <code>
         /// using (var save = NowLayout.Button("save-btn").Begin())
         /// {

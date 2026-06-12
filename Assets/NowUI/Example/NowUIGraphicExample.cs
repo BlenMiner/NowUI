@@ -64,6 +64,15 @@ public class NowUIGraphicExample : NowUIGraphic
                 NowLayout.Button("A").Draw();
                 NowLayout.Button("B").Draw();
                 NowLayout.Button("C").Draw();
+
+                using (var button = NowLayout.Button("lottie-button").Begin())
+                {
+                    DrawLottie();
+                    NowLayout.Label("Hello");
+
+                    if (button.clicked)
+                        Debug.Log("Clicked");
+                }
             }
             DrawLottie();
         }

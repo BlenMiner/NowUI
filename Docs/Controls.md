@@ -98,6 +98,10 @@ using (var high = NowLayout.Radio("high", quality == 2).Begin())
 }
 ```
 
+With `Begin()` the label is identity only — it is never rendered, and it must
+be non-empty: it keys interaction, focus, and the content size cache. Think
+of it as an id ("save-btn"), with the visible content drawn inside the scope.
+
 Checkbox toggles its ref value at `Begin`, so the updated value is also
 readable inside; `clicked` doubles as "changed this frame". In layout flow
 the control sizes to the previous frame's content, like all scope-form

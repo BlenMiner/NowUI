@@ -55,6 +55,13 @@ namespace NowUI
     /// </summary>
     public static partial class NowLayout
     {
+        /// <summary>
+        /// The label doubles as the control id and must be non-empty. With
+        /// <see cref="NowButton.Draw"/> it is also the rendered text; with
+        /// <see cref="NowButton.Begin"/> it is identity only and never rendered —
+        /// pass an id like "icon-button" and draw the visible content inside the
+        /// scope.
+        /// </summary>
         public static NowButton Button(string label)
         {
             return new NowButton(label);
