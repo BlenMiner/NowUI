@@ -62,6 +62,13 @@ point it became installable through UPM.
   screen input providers, drags preserved), completing the existing
   raycastTarget blocking in the other direction. EventSystem selection and
   NowUI focus are also mutually exclusive (`NowUIFocus.respectEventSystem`).
+- GitHub-flavored Markdown extension (`NowUI.Extensions.Markdown`, its own
+  assembly): headings, emphasis/strong/strikethrough, inline code, fenced
+  code blocks, quotes, nested + task lists, pipe tables with alignment,
+  links and autolinks — rendered through Now/NowLayout with theme colors,
+  word wrap, width-cached layout (steady-state draws allocate nothing) and
+  clickable links reported via `NowMarkdownResult`. No HTML, no JavaScript,
+  images render as linked alt text. See Docs/Markdown.md.
 - Span text APIs for zero-GC dynamic text: `NowUIText.Draw(ReadOnlySpan<char>)`
   and `Measure(ReadOnlySpan<char>)` (plus `NowFontAsset.MeasureText` span
   overload) — format counters/timers into a reusable char buffer and draw

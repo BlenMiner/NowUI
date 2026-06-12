@@ -1,0 +1,690 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace NowUI.Markdown
+{
+    public struct NowMarkdownResult
+    {
+        /// <summary>Laid-out content height for the width it was drawn at.</summary>
+        public float height;
+
+        /// <summary>Destination of a link clicked this frame, or null.</summary>
+        public string clickedLink;
+
+        /// <summary>Destination of the link under the pointer, or null.</summary>
+        public string hoveredLink;
+    }
+
+    /// <summary>
+    /// Visual sizing for a rendered document; colors come from the ambient
+    /// <see cref="NowControls.theme"/> at draw time.
+    /// </summary>
+    public struct NowMarkdownStyle
+    {
+        public float fontSize;
+
+        public static NowMarkdownStyle Default => new NowMarkdownStyle { fontSize = 15f };
+    }
+
+    /// <summary>
+    /// A parsed markdown document: parse once, draw every frame. Layout (word
+    /// wrap, tables, positions) is cached per width and only recomputed when the
+    /// width or font changes, so steady-state drawing allocates nothing.
+    /// </summary>
+    public sealed class NowMarkdownDocument
+    {
+        enum OpKind : byte
+        {
+            Text,
+            Fill,
+            Line
+        }
+
+        enum Role : byte
+        {
+            Body,
+            Heading,
+            Code,
+            CodePanel,
+            Link,
+            Muted,
+            Rule,
+            QuoteBar,
+            CheckBox,
+            CheckFill,
+            Bullet,
+            TableLine,
+            TableHeaderFill
+        }
+
+        struct Op
+        {
+            public OpKind kind;
+            public Role role;
+            public NowRect rect;
+            public string text;
+            public float fontSize;
+            public NowFontStyle fontStyle;
+            public int link;
+        }
+
+        readonly NowMarkdownBlock _root;
+        readonly NowMarkdownStyle _style;
+        readonly List<Op> _ops = new List<Op>(64);
+        readonly List<string> _links = new List<string>(4);
+
+        float _layoutWidth = -1f;
+        float _layoutHeight;
+        NowFontAsset _layoutFont;
+
+        public NowMarkdownDocument(NowMarkdownBlock root, NowMarkdownStyle style)
+        {
+            _root = root;
+            _style = style;
+        }
+
+        public static NowMarkdownDocument Parse(string markdown)
+        {
+            return new NowMarkdownDocument(NowMarkdownParser.Parse(markdown), NowMarkdownStyle.Default);
+        }
+
+        public static NowMarkdownDocument Parse(string markdown, NowMarkdownStyle style)
+        {
+            return new NowMarkdownDocument(NowMarkdownParser.Parse(markdown), style);
+        }
+
+        /// <summary>The height of the last layout; 0 before the first draw.</summary>
+        public float lastHeight => _layoutHeight;
+
+        /// <summary>Lays out (cached) and returns the content height for a width.</summary>
+        public float MeasureHeight(float width)
+        {
+            EnsureLayout(width);
+            return _layoutHeight;
+        }
+
+        /// <summary>
+        /// Draws the document into the rect (content wraps to rect.width; height
+        /// is reported in the result, content below rect.height simply overflows
+        /// unless an ambient mask clips it).
+        /// </summary>
+        public NowMarkdownResult Draw(NowRect rect)
+        {
+            var result = default(NowMarkdownResult);
+            var theme = NowControls.theme;
+
+            EnsureLayout(rect.width);
+            result.height = _layoutHeight;
+
+            if (_layoutFont == null)
+                return result;
+
+            int docId = NowUIInput.GetId(GetHashCode(), "markdown");
+
+            for (int i = 0; i < _ops.Count; ++i)
+            {
+                var op = _ops[i];
+                var target = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
+                bool hovered = false;
+
+                if (op.link >= 0 && op.kind == OpKind.Text)
+                {
+                    int linkId;
+
+                    unchecked
+                    {
+                        linkId = (docId * 397) ^ i;
+                    }
+
+                    if (linkId == 0)
+                        linkId = 1;
+
+                    var interaction = NowUIInput.Interact(linkId, target);
+                    hovered = interaction.hovered;
+
+                    if (hovered)
+                    {
+                        result.hoveredLink = _links[op.link];
+                        NowUIControlState.RequestRepaint();
+                    }
+
+                    if (interaction.clicked)
+                        result.clickedLink = _links[op.link];
+                }
+
+                switch (op.kind)
+                {
+                    case OpKind.Text:
+                    {
+                        var text = theme.Text(target, _layoutFont);
+                        text.fontSize = op.fontSize;
+                        text.fontStyle = op.fontStyle;
+                        text.color = ResolveColor(theme, op.role, hovered);
+                        text.SetMask(target.Outset(4f)).Draw(op.text);
+                        break;
+                    }
+                    case OpKind.Fill:
+                    case OpKind.Line:
+                    {
+                        Now.Rectangle(target)
+                            .SetColor(ResolveColor(theme, op.role, hovered))
+                            .SetRadius(op.role == Role.CodePanel || op.role == Role.CheckBox ? 4f :
+                                op.role == Role.Bullet ? op.rect.width * 0.5f : 0f)
+                            .Draw();
+                        break;
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        static Vector4 ResolveColor(NowUITheme theme, Role role, bool hovered)
+        {
+            switch (role)
+            {
+                case Role.Heading:
+                case Role.Body:
+                    return theme.GetColor(NowColorToken.Text, Color.black);
+                case Role.Code:
+                    return theme.GetColor(NowColorToken.Text, Color.black);
+                case Role.CodePanel:
+                case Role.TableHeaderFill:
+                    return theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
+                case Role.Link:
+                {
+                    Vector4 accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+
+                    if (hovered)
+                    {
+                        accent.x *= 1.2f;
+                        accent.y *= 1.2f;
+                        accent.z *= 1.2f;
+                    }
+
+                    return accent;
+                }
+                case Role.Muted:
+                    return theme.GetColor(NowColorToken.TextMuted, Color.gray);
+                case Role.Rule:
+                case Role.TableLine:
+                case Role.CheckBox:
+                    return theme.GetColor(NowColorToken.Border, new Color(0.886f, 0.910f, 0.941f, 1f));
+                case Role.QuoteBar:
+                case Role.Bullet:
+                case Role.CheckFill:
+                    return theme.GetColor(NowColorToken.Accent, Color.blue);
+                default:
+                    return theme.GetColor(NowColorToken.Text, Color.black);
+            }
+        }
+
+        // ------------------------------------------------------------------
+
+        void EnsureLayout(float width)
+        {
+            var theme = NowControls.theme;
+            var probe = theme.Text(default(NowRect), (string)null);
+            NowFontAsset font = probe.font;
+
+            if (font == _layoutFont && Mathf.Abs(width - _layoutWidth) <= 0.5f)
+                return;
+
+            _layoutWidth = width;
+            _layoutFont = font;
+            _ops.Clear();
+            _links.Clear();
+
+            if (font == null || width <= 1f)
+            {
+                _layoutHeight = 0f;
+                return;
+            }
+
+            float y = 0f;
+            LayoutChildren(_root, 0f, ref y, width, 0);
+            _layoutHeight = y;
+        }
+
+        float LineHeight(float fontSize)
+        {
+            return _layoutFont.GetLineHeight() * fontSize;
+        }
+
+        float BlockSpacing => _style.fontSize * 0.65f;
+
+        void LayoutChildren(NowMarkdownBlock parent, float x, ref float y, float width, int depth)
+        {
+            for (int i = 0; i < parent.children.Count; ++i)
+            {
+                if (i > 0)
+                    y += BlockSpacing;
+
+                LayoutBlock(parent.children[i], x, ref y, width, depth);
+            }
+        }
+
+        void LayoutBlock(NowMarkdownBlock block, float x, ref float y, float width, int depth)
+        {
+            switch (block.type)
+            {
+                case NowMarkdownBlockType.Heading:
+                {
+                    float scale = block.level switch
+                    {
+                        1 => 1.9f,
+                        2 => 1.55f,
+                        3 => 1.3f,
+                        4 => 1.15f,
+                        5 => 1f,
+                        _ => 0.9f
+                    };
+                    float size = _style.fontSize * scale;
+                    LayoutInlines(block.inlines, x, ref y, width, size, NowFontStyle.Bold, Role.Heading, -1);
+
+                    if (block.level <= 2)
+                    {
+                        y += size * 0.3f;
+                        AddFill(Role.Rule, new NowRect(x, y, width - x, 1f));
+                        y += 1f;
+                    }
+
+                    break;
+                }
+                case NowMarkdownBlockType.Paragraph:
+                    LayoutInlines(block.inlines, x, ref y, width, _style.fontSize, NowFontStyle.Regular, Role.Body, -1);
+                    break;
+                case NowMarkdownBlockType.CodeBlock:
+                    LayoutCodeBlock(block, x, ref y, width);
+                    break;
+                case NowMarkdownBlockType.Quote:
+                {
+                    float top = y;
+                    float inset = _style.fontSize * 0.9f;
+                    LayoutChildren(block, x + inset, ref y, width, depth);
+                    AddFill(Role.QuoteBar, new NowRect(x, top, 3f, y - top));
+                    break;
+                }
+                case NowMarkdownBlockType.List:
+                    LayoutList(block, x, ref y, width, depth);
+                    break;
+                case NowMarkdownBlockType.ThematicBreak:
+                    y += _style.fontSize * 0.25f;
+                    AddFill(Role.Rule, new NowRect(x, y, width - x, 1.5f));
+                    y += 1.5f + _style.fontSize * 0.25f;
+                    break;
+                case NowMarkdownBlockType.Table:
+                    LayoutTable(block, x, ref y, width);
+                    break;
+            }
+        }
+
+        void LayoutCodeBlock(NowMarkdownBlock block, float x, ref float y, float width)
+        {
+            float pad = _style.fontSize * 0.6f;
+            float size = _style.fontSize * 0.92f;
+            float lineHeight = LineHeight(size);
+            float top = y;
+            int panelIndex = _ops.Count;
+            AddFill(Role.CodePanel, default);
+
+            y += pad;
+            string literal = block.literal ?? string.Empty;
+            int lineStart = 0;
+
+            for (int i = 0; i <= literal.Length; ++i)
+            {
+                if (i != literal.Length && literal[i] != '\n')
+                    continue;
+
+                string line = literal.Substring(lineStart, i - lineStart);
+
+                if (line.Length > 0)
+                {
+                    AddText(line, new NowRect(x + pad, y, width - x - pad * 2f, lineHeight), size,
+                        NowFontStyle.Regular, Role.Code, -1);
+                }
+
+                y += lineHeight;
+                lineStart = i + 1;
+            }
+
+            y += pad;
+
+            var panel = _ops[panelIndex];
+            panel.rect = new NowRect(x, top, width - x, y - top);
+            _ops[panelIndex] = panel;
+        }
+
+        void LayoutList(NowMarkdownBlock list, float x, ref float y, float width, int depth)
+        {
+            float markerWidth = _style.fontSize * (list.ordered ? 1.6f : 1.2f);
+            int number = list.start;
+
+            for (int i = 0; i < list.children.Count; ++i)
+            {
+                if (i > 0)
+                    y += BlockSpacing * 0.5f;
+
+                var item = list.children[i];
+                float lineHeight = LineHeight(_style.fontSize);
+
+                if (item.isTask)
+                {
+                    float box = _style.fontSize * 0.85f;
+                    float boxY = y + (lineHeight - box) * 0.5f;
+                    AddFill(Role.CheckBox, new NowRect(x + 1f, boxY, box, box));
+
+                    if (item.isChecked)
+                    {
+                        float inset = box * 0.25f;
+                        AddFill(Role.CheckFill, new NowRect(x + 1f + inset, boxY + inset, box - inset * 2f, box - inset * 2f));
+                    }
+                }
+                else if (list.ordered)
+                {
+                    AddText(number + ".", new NowRect(x, y, markerWidth, lineHeight), _style.fontSize,
+                        NowFontStyle.Regular, Role.Muted, -1);
+                }
+                else
+                {
+                    float dot = _style.fontSize * 0.32f;
+                    AddFill(Role.Bullet, new NowRect(x + dot, y + (lineHeight - dot) * 0.5f, dot, dot));
+                }
+
+                ++number;
+                LayoutChildren(item, x + markerWidth, ref y, width, depth + 1);
+            }
+        }
+
+        void LayoutTable(NowMarkdownBlock table, float x, ref float y, float width)
+        {
+            int columns = table.tableAligns.Count;
+            int rows = table.tableRows.Count;
+            float cellPad = _style.fontSize * 0.45f;
+            float lineHeight = LineHeight(_style.fontSize);
+
+            Span<float> stackBuffer = stackalloc float[16];
+            Span<float> stackWidths = columns <= 16 ? stackBuffer.Slice(0, columns) : new float[columns];
+
+            for (int r = 0; r < rows; ++r)
+            {
+                for (int c = 0; c < columns; ++c)
+                {
+                    float w = MeasureInlines(table.tableRows[r][c], _style.fontSize,
+                        r == 0 ? NowFontStyle.Bold : NowFontStyle.Regular);
+
+                    if (w > stackWidths[c])
+                        stackWidths[c] = w;
+                }
+            }
+
+            float total = 0f;
+
+            for (int c = 0; c < columns; ++c)
+            {
+                stackWidths[c] += cellPad * 2f;
+                total += stackWidths[c];
+            }
+
+            float available = width - x;
+
+            if (total > available && total > 0f)
+            {
+                float shrink = available / total;
+
+                for (int c = 0; c < columns; ++c)
+                    stackWidths[c] *= shrink;
+
+                total = available;
+            }
+
+            for (int r = 0; r < rows; ++r)
+            {
+                float rowTop = y;
+                float rowHeight = lineHeight + cellPad;
+
+                if (r == 0)
+                    AddFill(Role.TableHeaderFill, new NowRect(x, rowTop, total, rowHeight));
+
+                float cx = x;
+
+                for (int c = 0; c < columns; ++c)
+                {
+                    var cell = table.tableRows[r][c];
+                    float cellWidth = stackWidths[c];
+                    float textWidth = MeasureInlines(cell, _style.fontSize, r == 0 ? NowFontStyle.Bold : NowFontStyle.Regular);
+                    float tx = cx + cellPad;
+
+                    var align = table.tableAligns[c];
+
+                    if (align == NowMarkdownAlign.Center)
+                        tx = cx + (cellWidth - textWidth) * 0.5f;
+                    else if (align == NowMarkdownAlign.Right)
+                        tx = cx + cellWidth - cellPad - textWidth;
+
+                    float cellY = rowTop + cellPad * 0.5f;
+                    LayoutInlineRow(cell, tx, cellY, cx + cellWidth - cellPad, _style.fontSize,
+                        r == 0 ? NowFontStyle.Bold : NowFontStyle.Regular, Role.Body);
+                    cx += cellWidth;
+                }
+
+                y = rowTop + rowHeight;
+                AddFill(Role.TableLine, new NowRect(x, y, total, 1f));
+            }
+        }
+
+        // ------------------------------------------------------------------
+
+        struct InlineCursor
+        {
+            public float x;
+            public float y;
+            public float lineStart;
+            public float limit;
+            public float lineHeight;
+        }
+
+        void LayoutInlines(List<NowMarkdownInline> inlines, float x, ref float y, float width,
+            float fontSize, NowFontStyle baseStyle, Role baseRole, int link)
+        {
+            var cursor = new InlineCursor
+            {
+                x = x,
+                y = y,
+                lineStart = x,
+                limit = width,
+                lineHeight = LineHeight(fontSize)
+            };
+
+            LayoutInlineNodes(inlines, ref cursor, fontSize, baseStyle, baseRole, link, false, true);
+            y = cursor.y + cursor.lineHeight;
+        }
+
+        void LayoutInlineRow(List<NowMarkdownInline> inlines, float x, float y, float limit,
+            float fontSize, NowFontStyle baseStyle, Role baseRole)
+        {
+            var cursor = new InlineCursor
+            {
+                x = x,
+                y = y,
+                lineStart = x,
+                limit = limit,
+                lineHeight = LineHeight(fontSize)
+            };
+
+            LayoutInlineNodes(inlines, ref cursor, fontSize, baseStyle, baseRole, -1, false, false);
+        }
+
+        void LayoutInlineNodes(List<NowMarkdownInline> nodes, ref InlineCursor cursor, float fontSize,
+            NowFontStyle style, Role role, int link, bool strike, bool wrap)
+        {
+            for (int i = 0; i < nodes.Count; ++i)
+            {
+                var node = nodes[i];
+
+                switch (node.type)
+                {
+                    case NowMarkdownInlineType.Text:
+                        LayoutWords(node.text, ref cursor, fontSize, style, role, link, strike, wrap);
+                        break;
+                    case NowMarkdownInlineType.Code:
+                        LayoutCodeSpan(node.text, ref cursor, fontSize, link, wrap);
+                        break;
+                    case NowMarkdownInlineType.Emphasis:
+                        LayoutInlineNodes(node.children, ref cursor, fontSize, style | NowFontStyle.Italic, role, link, strike, wrap);
+                        break;
+                    case NowMarkdownInlineType.Strong:
+                        LayoutInlineNodes(node.children, ref cursor, fontSize, style | NowFontStyle.Bold, role, link, strike, wrap);
+                        break;
+                    case NowMarkdownInlineType.Strikethrough:
+                        LayoutInlineNodes(node.children, ref cursor, fontSize, style, role, link, true, wrap);
+                        break;
+                    case NowMarkdownInlineType.Link:
+                    {
+                        _links.Add(node.url ?? string.Empty);
+                        LayoutInlineNodes(node.children, ref cursor, fontSize, style, Role.Link, _links.Count - 1, strike, wrap);
+                        break;
+                    }
+                    case NowMarkdownInlineType.HardBreak:
+                        cursor.x = cursor.lineStart;
+                        cursor.y += cursor.lineHeight;
+                        break;
+                    case NowMarkdownInlineType.SoftBreak:
+                        LayoutWords(" ", ref cursor, fontSize, style, role, link, strike, wrap);
+                        break;
+                }
+            }
+        }
+
+        void LayoutWords(string text, ref InlineCursor cursor, float fontSize, NowFontStyle style,
+            Role role, int link, bool strike, bool wrap)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            float spaceWidth = _layoutFont.MeasureText(" ", fontSize, style).x;
+            int i = 0;
+
+            while (i < text.Length)
+            {
+                if (text[i] == ' ')
+                {
+                    if (cursor.x > cursor.lineStart)
+                        cursor.x += spaceWidth;
+
+                    ++i;
+                    continue;
+                }
+
+                int wordStart = i;
+
+                while (i < text.Length && text[i] != ' ')
+                    ++i;
+
+                string word = text.Substring(wordStart, i - wordStart);
+                float wordWidth = _layoutFont.MeasureText(word, fontSize, style).x;
+
+                if (wrap && cursor.x > cursor.lineStart && cursor.x + wordWidth > cursor.limit)
+                {
+                    cursor.x = cursor.lineStart;
+                    cursor.y += cursor.lineHeight;
+                }
+
+                var rect = new NowRect(cursor.x, cursor.y, wordWidth + 1f, cursor.lineHeight);
+                AddText(word, rect, fontSize, style, role, link);
+
+                if (link >= 0)
+                    AddLine(Role.Link, new NowRect(cursor.x, cursor.y + cursor.lineHeight - 2f, wordWidth, 1f), link);
+
+                if (strike)
+                    AddLine(Role.Body, new NowRect(cursor.x, cursor.y + cursor.lineHeight * 0.55f, wordWidth, 1f), -1);
+
+                cursor.x += wordWidth;
+            }
+        }
+
+        void LayoutCodeSpan(string code, ref InlineCursor cursor, float fontSize, int link, bool wrap)
+        {
+            if (string.IsNullOrEmpty(code))
+                return;
+
+            float size = fontSize * 0.92f;
+            float pad = fontSize * 0.25f;
+            float textWidth = _layoutFont.MeasureText(code, size).x;
+            float total = textWidth + pad * 2f;
+
+            if (wrap && cursor.x > cursor.lineStart && cursor.x + total > cursor.limit)
+            {
+                cursor.x = cursor.lineStart;
+                cursor.y += cursor.lineHeight;
+            }
+
+            AddFill(Role.CodePanel, new NowRect(cursor.x, cursor.y + 1f, total, cursor.lineHeight - 2f));
+            AddText(code, new NowRect(cursor.x + pad, cursor.y, textWidth + 1f, cursor.lineHeight), size,
+                NowFontStyle.Regular, Role.Code, link);
+            cursor.x += total;
+        }
+
+        float MeasureInlines(List<NowMarkdownInline> nodes, float fontSize, NowFontStyle style)
+        {
+            float width = 0f;
+
+            for (int i = 0; i < nodes.Count; ++i)
+            {
+                var node = nodes[i];
+
+                switch (node.type)
+                {
+                    case NowMarkdownInlineType.Text:
+                        width += _layoutFont.MeasureText(node.text, fontSize, style).x;
+                        break;
+                    case NowMarkdownInlineType.Code:
+                        width += _layoutFont.MeasureText(node.text, fontSize * 0.92f).x + fontSize * 0.5f;
+                        break;
+                    case NowMarkdownInlineType.Emphasis:
+                        width += MeasureInlines(node.children, fontSize, style | NowFontStyle.Italic);
+                        break;
+                    case NowMarkdownInlineType.Strong:
+                        width += MeasureInlines(node.children, fontSize, style | NowFontStyle.Bold);
+                        break;
+                    case NowMarkdownInlineType.Strikethrough:
+                    case NowMarkdownInlineType.Link:
+                        width += MeasureInlines(node.children, fontSize, style);
+                        break;
+                    case NowMarkdownInlineType.SoftBreak:
+                    case NowMarkdownInlineType.HardBreak:
+                        width += _layoutFont.MeasureText(" ", fontSize, style).x;
+                        break;
+                }
+            }
+
+            return width;
+        }
+
+        void AddText(string text, NowRect rect, float fontSize, NowFontStyle style, Role role, int link)
+        {
+            _ops.Add(new Op
+            {
+                kind = OpKind.Text,
+                role = role,
+                rect = rect,
+                text = text,
+                fontSize = fontSize,
+                fontStyle = style,
+                link = link
+            });
+        }
+
+        void AddFill(Role role, NowRect rect)
+        {
+            _ops.Add(new Op { kind = OpKind.Fill, role = role, rect = rect, link = -1 });
+        }
+
+        void AddLine(Role role, NowRect rect, int link)
+        {
+            _ops.Add(new Op { kind = OpKind.Line, role = role, rect = rect, link = link });
+        }
+    }
+}

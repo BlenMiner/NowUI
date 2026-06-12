@@ -1,9 +1,8 @@
 {
-    "name": "NowUI.Examples",
-    "rootNamespace": "",
+    "name": "NowUI.Extensions.Markdown",
+    "rootNamespace": "NowUI.Markdown",
     "references": [
-        "GUID:f8d53a32dbb72f34987c15dba8a48aea",
-        "NowUI.Extensions.Markdown"
+        "NowUI.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

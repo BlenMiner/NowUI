@@ -109,6 +109,10 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
   builder is missing its `.Draw()` or a `using`-only scope is discarded,
   in the Unity console and your IDE. No heuristics — it only flags provably
   dead code. [Docs/Controls.md](Docs/Controls.md#compile-time-misuse-warnings)
+- **Markdown** — GitHub-flavored Markdown rendered through NowUI primitives
+  (headings, emphasis, code, quotes, lists, tables, links) with theme colors
+  and zero steady-state allocation. No HTML, no JavaScript.
+  [Docs/Markdown.md](Docs/Markdown.md)
 
 ## Platform support
 

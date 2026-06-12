@@ -6,6 +6,7 @@
         "UnityEditor.TestRunner",
         "NowUI.Editor",
         "NowUI.Runtime",
+        "NowUI.Extensions.Markdown",
         "Unity.PerformanceTesting",
         "UnityEngine.UI"
     ],
