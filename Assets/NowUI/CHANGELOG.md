@@ -93,6 +93,17 @@ point it became installable through UPM.
   gracefully when the rect is smaller than the borders); `SetUV(rect)`
   samples a sub-region; `SetPreserveAspect()` letterboxes instead of
   stretching.
+- Context menus in the core: `NowUIContextMenu` (overlay-layer popup, one
+  open at a time, closes on selection/outside-press/cancel) with an
+  immediate-mode Open/Begin/Item/End API. `NowTextSelection` reports
+  right-clicks (selection preserved) and gained `SelectAll`/`GetSelection`
+  by id; markdown wires Copy and Select All onto right-click for both code
+  blocks and paragraphs.
+- Markdown paragraphs and headings are selectable, not just code blocks:
+  styled words register as selection segments over a flattened plain text
+  (copy gives readable text with spaces and line breaks), with hit testing
+  resolving segments by row and x, and highlights bridging the gaps
+  between words.
 - Text selection in the core: `NowTextSelection` gives any text region
   browser-style selection — press/drag selects, double-click selects a
   word, Ctrl/Cmd+A selects all, Ctrl/Cmd+C copies (replaceable handler) —

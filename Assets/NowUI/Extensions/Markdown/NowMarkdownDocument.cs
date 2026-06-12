@@ -44,7 +44,7 @@ namespace NowUI.Markdown
             SelectionLayer
         }
 
-        struct CodeRegion
+        struct SelectionRegion
         {
             public string literal;
             public int lineStart;
@@ -91,9 +91,13 @@ namespace NowUI.Markdown
         readonly List<Op> _ops = new List<Op>(64);
         readonly List<string> _links = new List<string>(4);
         readonly List<int> _linkHoverOp = new List<int>(4);
-        readonly List<CodeRegion> _codeRegions = new List<CodeRegion>(4);
-        readonly List<NowTextSelectionLine> _codeLines = new List<NowTextSelectionLine>(16);
-        readonly List<NowTextSelectionLine> _codeLineScratch = new List<NowTextSelectionLine>(16);
+        readonly List<SelectionRegion> _selectionRegions = new List<SelectionRegion>(4);
+        readonly List<NowTextSelectionLine> _selectionLines = new List<NowTextSelectionLine>(16);
+        readonly List<NowTextSelectionLine> _selectionScratch = new List<NowTextSelectionLine>(16);
+        readonly System.Text.StringBuilder _regionBuilder = new System.Text.StringBuilder(128);
+        bool _regionActive;
+        int _regionSegmentStart;
+        float _regionLastY;
         int _strikeSequence;
 
         float _layoutWidth = -1f;
@@ -150,9 +154,10 @@ namespace NowUI.Markdown
             int docId = NowUIInput.GetId(GetHashCode(), "markdown");
 
             // A link spanning several words is ONE link: the prepass finds the
-            // word the pointer is over per link, the link interacts ONCE through
-            // that rect (so press and release can land on different words), and
-            // every word of a hovered link highlights together.
+            // word the pointer is over per link, then the link interacts ONCE
+            // through that rect (press and release can land on different words)
+            // BEFORE any selection layer runs, so pressing a link clicks it
+            // instead of starting a text selection.
             _linkHoverOp.Clear();
 
             for (int i = 0; i < _links.Count; ++i)
@@ -174,19 +179,27 @@ namespace NowUI.Markdown
             for (int i = 0; i < _ops.Count; ++i)
             {
                 var op = _ops[i];
+
+                if (op.link < 0 || (op.kind != OpKind.Text && op.kind != OpKind.Image) ||
+                    _linkHoverOp[op.link] != i)
+                {
+                    continue;
+                }
+
+                var target = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
+                var interaction = NowUIInput.Interact(NowUIInput.CombineId(docId, op.link), target);
+                result.hoveredLink = _links[op.link];
+                NowUIControlState.RequestRepaint();
+
+                if (interaction.clicked)
+                    result.clickedLink = _links[op.link];
+            }
+
+            for (int i = 0; i < _ops.Count; ++i)
+            {
+                var op = _ops[i];
                 var target = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
                 bool hovered = op.link >= 0 && op.link < _linkHoverOp.Count && _linkHoverOp[op.link] >= 0;
-
-                if (op.link >= 0 && (op.kind == OpKind.Text || op.kind == OpKind.Image) &&
-                    _linkHoverOp[op.link] == i)
-                {
-                    var interaction = NowUIInput.Interact(NowUIInput.CombineId(docId, op.link), target);
-                    result.hoveredLink = _links[op.link];
-                    NowUIControlState.RequestRepaint();
-
-                    if (interaction.clicked)
-                        result.clickedLink = _links[op.link];
-                }
 
                 switch (op.kind)
                 {
@@ -231,36 +244,9 @@ namespace NowUI.Markdown
                     }
                     case OpKind.SelectionLayer:
                     {
-                        var region = _codeRegions[op.link];
-                        _codeLineScratch.Clear();
+                        if (op.link >= 0)
+                            DrawSelectionRegion(theme, docId, op.link, rect);
 
-                        for (int l = 0; l < region.lineCount; ++l)
-                        {
-                            var line = _codeLines[region.lineStart + l];
-                            line.rect = new NowRect(
-                                rect.x + line.rect.x,
-                                rect.y + line.rect.y,
-                                line.rect.width,
-                                line.rect.height);
-                            _codeLineScratch.Add(line);
-                        }
-
-                        Color highlight = theme.GetColor(NowColorToken.Accent, Color.blue);
-                        highlight.a = 0.25f;
-
-                        NowTextSelection.Draw(
-                            NowUIInput.CombineId(NowUIInput.GetId(docId, "selection"), op.link),
-                            region.literal,
-                            _codeLineScratch,
-                            _layoutFont,
-                            region.fontSize,
-                            NowFontStyle.Regular,
-                            highlight,
-                            new NowRect(
-                                rect.x + region.buttonRect.x,
-                                rect.y + region.buttonRect.y,
-                                region.buttonRect.width,
-                                region.buttonRect.height));
                         break;
                     }
                 }
@@ -274,6 +260,58 @@ namespace NowUI.Markdown
         /// the system clipboard; replace for custom handling (mobile toasts, web).
         /// </summary>
         public static System.Action<string> copyToClipboard = static text => GUIUtility.systemCopyBuffer = text;
+
+        void DrawSelectionRegion(NowUITheme theme, int docId, int regionIndex, NowRect origin)
+        {
+            var region = _selectionRegions[regionIndex];
+            _selectionScratch.Clear();
+
+            for (int l = 0; l < region.lineCount; ++l)
+            {
+                var line = _selectionLines[region.lineStart + l];
+                line.rect = new NowRect(
+                    origin.x + line.rect.x,
+                    origin.y + line.rect.y,
+                    line.rect.width,
+                    line.rect.height);
+                _selectionScratch.Add(line);
+            }
+
+            Color highlight = theme.GetColor(NowColorToken.Accent, Color.blue);
+            highlight.a = 0.25f;
+
+            int selectionId = NowUIInput.CombineId(NowUIInput.GetId(docId, "selection"), regionIndex);
+            NowRect exclusion = region.buttonRect.isEmpty
+                ? default
+                : new NowRect(
+                    origin.x + region.buttonRect.x,
+                    origin.y + region.buttonRect.y,
+                    region.buttonRect.width,
+                    region.buttonRect.height);
+
+            var selection = NowTextSelection.Draw(
+                selectionId, region.literal, _selectionScratch, _layoutFont,
+                region.fontSize, NowFontStyle.Regular, highlight, exclusion);
+
+            int menuId = NowUIInput.GetId(selectionId, "menu");
+
+            if (selection.rightClicked)
+                NowUIContextMenu.Open(menuId, selection.rightClickPosition);
+
+            if (NowUIContextMenu.Begin(menuId))
+            {
+                if (NowUIContextMenu.Item("Copy"))
+                {
+                    string selected = NowTextSelection.GetSelection(selectionId, region.literal);
+                    copyToClipboard?.Invoke(string.IsNullOrEmpty(selected) ? region.literal : selected);
+                }
+
+                if (NowUIContextMenu.Item("Select All"))
+                    NowTextSelection.SelectAll(selectionId, region.literal);
+
+                NowUIContextMenu.End();
+            }
+        }
 
         void DrawCopyButton(NowUITheme theme, int docId, int opIndex, in Op op, NowRect target)
         {
@@ -397,8 +435,8 @@ namespace NowUI.Markdown
             _strikeSequence = 0;
             _ops.Clear();
             _links.Clear();
-            _codeRegions.Clear();
-            _codeLines.Clear();
+            _selectionRegions.Clear();
+            _selectionLines.Clear();
 
             if (font == null || width <= 1f)
             {
@@ -499,9 +537,9 @@ namespace NowUI.Markdown
             {
                 kind = OpKind.SelectionLayer,
                 role = Role.Body,
-                link = _codeRegions.Count
+                link = _selectionRegions.Count
             });
-            int regionLineStart = _codeLines.Count;
+            int regionLineStart = _selectionLines.Count;
 
             y += pad;
             string literal = block.literal ?? string.Empty;
@@ -514,7 +552,7 @@ namespace NowUI.Markdown
                 if (i != literal.Length && literal[i] != '\n')
                     continue;
 
-                _codeLines.Add(new NowTextSelectionLine
+                _selectionLines.Add(new NowTextSelectionLine
                 {
                     rect = new NowRect(x + pad, y, width - x - pad * 2f, lineHeight),
                     start = lineStart,
@@ -553,11 +591,11 @@ namespace NowUI.Markdown
             float buttonHeight = _style.fontSize * 1.5f;
             var buttonRect = new NowRect(width - 6f - buttonWidth, top + 6f, buttonWidth, buttonHeight);
 
-            _codeRegions.Add(new CodeRegion
+            _selectionRegions.Add(new SelectionRegion
             {
                 literal = literal,
                 lineStart = regionLineStart,
-                lineCount = _codeLines.Count - regionLineStart,
+                lineCount = _selectionLines.Count - regionLineStart,
                 fontSize = size,
                 buttonRect = buttonRect
             });
@@ -730,9 +768,37 @@ namespace NowUI.Markdown
                 lineHeight = LineHeight(fontSize)
             };
 
+            int selectionOpIndex = _ops.Count;
+            _ops.Add(new Op { kind = OpKind.SelectionLayer, role = Role.Body, link = _selectionRegions.Count });
+
+            _regionActive = true;
+            _regionBuilder.Length = 0;
+            _regionSegmentStart = _selectionLines.Count;
+            _regionLastY = float.MinValue;
+
             int opStart = _ops.Count;
             LayoutInlineNodes(inlines, ref cursor, fontSize, baseStyle, baseRole, link, 0, true);
             MergeDecorations(opStart);
+
+            _regionActive = false;
+
+            if (_selectionLines.Count > _regionSegmentStart)
+            {
+                _selectionRegions.Add(new SelectionRegion
+                {
+                    literal = _regionBuilder.ToString(),
+                    lineStart = _regionSegmentStart,
+                    lineCount = _selectionLines.Count - _regionSegmentStart,
+                    fontSize = fontSize
+                });
+            }
+            else
+            {
+                var inert = _ops[selectionOpIndex];
+                inert.link = -1;
+                _ops[selectionOpIndex] = inert;
+            }
+
             y = cursor.y + cursor.lineHeight;
         }
 
@@ -833,6 +899,7 @@ namespace NowUI.Markdown
 
                 var rect = new NowRect(cursor.x, cursor.y, wordWidth + 1f, cursor.lineHeight);
                 AddText(word, rect, fontSize, style, role, link);
+                CaptureRegionSegment(word, rect);
 
                 if (link >= 0)
                     AddLine(Role.Link, new NowRect(cursor.x, cursor.y + cursor.lineHeight - 2f, wordWidth, 1f), link);
@@ -917,9 +984,30 @@ namespace NowUI.Markdown
             }
 
             AddFill(Role.CodePanel, new NowRect(cursor.x, cursor.y + 1f, total, cursor.lineHeight - 2f));
-            AddText(code, new NowRect(cursor.x + pad, cursor.y, textWidth + 1f, cursor.lineHeight), size,
-                NowFontStyle.Regular, Role.Code, link);
+            var codeRect = new NowRect(cursor.x + pad, cursor.y, textWidth + 1f, cursor.lineHeight);
+            AddText(code, codeRect, size, NowFontStyle.Regular, Role.Code, link);
+            CaptureRegionSegment(code, codeRect);
             cursor.x += total;
+        }
+
+        void CaptureRegionSegment(string word, NowRect rect)
+        {
+            if (!_regionActive)
+                return;
+
+            if (_regionBuilder.Length > 0)
+                _regionBuilder.Append(rect.y > _regionLastY + 0.5f ? '\n' : ' ');
+
+            _regionLastY = rect.y;
+            int flatStart = _regionBuilder.Length;
+            _regionBuilder.Append(word);
+
+            _selectionLines.Add(new NowTextSelectionLine
+            {
+                rect = rect,
+                start = flatStart,
+                length = word.Length
+            });
         }
 
         float MeasureInlines(List<NowMarkdownInline> nodes, float fontSize, NowFontStyle style)

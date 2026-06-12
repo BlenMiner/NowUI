@@ -402,8 +402,11 @@ public class NowMarkdownTests
     public void SetUp()
     {
         NowUIInput.Reset();
+        NowUIFocus.Reset();
         NowUIControlState.Reset();
         NowControls.Reset();
+        NowUIOverlay.Reset();
+        NowUIContextMenu.Reset();
         NowMarkdown.Reset();
         _provider = new FakeProvider();
         _drawList = new NowUIDrawList();
@@ -416,8 +419,11 @@ public class NowMarkdownTests
         _drawList.Dispose();
         Now.defaultFont = null;
         NowUIInput.Reset();
+        NowUIFocus.Reset();
         NowUIControlState.Reset();
         NowControls.Reset();
+        NowUIOverlay.Reset();
+        NowUIContextMenu.Reset();
         NowMarkdown.Reset();
     }
 
@@ -537,6 +543,104 @@ public class NowMarkdownTests
         finally
         {
             NowTextSelection.copyToClipboard = previousCopy;
+            NowUITextInput.Reset();
+        }
+    }
+
+    [Test]
+    public void ParagraphTextIsSelectableAcrossStyledWords()
+    {
+        var previousCopy = NowTextSelection.copyToClipboard;
+        string copied = null;
+        NowTextSelection.copyToClipboard = text => copied = text;
+        var keyboard = new FakeKeyboard();
+        NowUITextInput.source = keyboard;
+
+        try
+        {
+            var document = NowMarkdownDocument.Parse("plain **bold** words");
+            var rect = new NowRect(0, 0, 400f, 100f);
+
+            void Frame(Vector2 pointer, bool down, bool pressed, bool released, NowUITextInputFrame keys = default)
+            {
+                keyboard.frame = keys;
+                NowUITextInput.Invalidate();
+                _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
+
+                using (NowUIInput.Begin(_provider, Surface))
+                using (_drawList.Begin(Surface))
+                    document.Draw(rect);
+            }
+
+            var lineMid = new Vector2(1f, 9f);
+            var lineEnd = new Vector2(390f, 9f);
+
+            Frame(lineMid, down: true, pressed: true, released: false);
+            Frame(lineEnd, down: true, pressed: false, released: false);
+            Frame(lineEnd, down: false, pressed: false, released: true);
+            Frame(lineEnd, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+
+            Assert.AreEqual("plain bold words", copied,
+                "selecting a styled paragraph must copy its plain text with spaces");
+        }
+        finally
+        {
+            NowTextSelection.copyToClipboard = previousCopy;
+            NowUITextInput.Reset();
+        }
+    }
+
+    [Test]
+    public void RightClickContextMenuCopiesTheSelection()
+    {
+        var previousCopy = NowMarkdownDocument.copyToClipboard;
+        string copied = null;
+        NowMarkdownDocument.copyToClipboard = text => copied = text;
+        var keyboard = new FakeKeyboard();
+        NowUITextInput.source = keyboard;
+
+        try
+        {
+            var document = NowMarkdownDocument.Parse("```\nint value = 42;\n```");
+            var rect = new NowRect(0, 0, 400f, 200f);
+            float pad = NowMarkdownStyle.Default.fontSize * 0.6f;
+            float codeSize = NowMarkdownStyle.Default.fontSize * 0.92f;
+            float lineMidY = pad + 8f;
+            var from = new Vector2(pad + 1f, lineMidY);
+            var to = new Vector2(pad + _font.MeasureText("int", codeSize).x + 1f, lineMidY);
+
+            void Frame(NowUIInputSnapshot snapshot)
+            {
+                keyboard.frame = default;
+                NowUITextInput.Invalidate();
+                _provider.snapshot = snapshot;
+
+                using (NowUIInput.Begin(_provider, Surface))
+                using (_drawList.Begin(Surface))
+                {
+                    document.Draw(rect);
+                    NowUIOverlay.Flush();
+                }
+            }
+
+            Frame(new NowUIInputSnapshot(from, true, true, false));
+            Frame(new NowUIInputSnapshot(to, true, false, false));
+            Frame(new NowUIInputSnapshot(to, false, false, true));
+
+            Frame(new NowUIInputSnapshot(to, NowUIPointerButtons.Secondary, NowUIPointerButtons.Secondary, NowUIPointerButtons.None));
+            Assert.IsTrue(NowUIContextMenu.isOpen, "right-clicking the code block must open the context menu");
+
+            var copyItem = new Vector2(to.x + 30f, to.y + 4f + 13f);
+            Frame(new NowUIInputSnapshot(copyItem, true, true, false));
+            Frame(new NowUIInputSnapshot(copyItem, false, false, true));
+            Frame(new NowUIInputSnapshot(copyItem, false, false, false));
+
+            Assert.AreEqual("int", copied, "the Copy item must copy the selected range");
+            Assert.IsFalse(NowUIContextMenu.isOpen, "choosing an item closes the menu");
+        }
+        finally
+        {
+            NowMarkdownDocument.copyToClipboard = previousCopy;
             NowUITextInput.Reset();
         }
     }

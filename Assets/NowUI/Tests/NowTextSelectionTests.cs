@@ -82,12 +82,29 @@ public class NowTextSelectionTests
         NowControls.Reset();
     }
 
-    bool Frame(Vector2 pointer, bool down, bool pressed, bool released, NowUITextInputFrame keys = default, bool forceFocusFrame = false)
+    NowTextSelectionResult Frame(Vector2 pointer, bool down, bool pressed, bool released, NowUITextInputFrame keys = default, bool forceFocusFrame = false)
     {
         _keyboard.frame = keys;
         NowUITextInput.Invalidate();
         _pointer.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
-        bool hasSelection;
+        return RunFrame(forceFocusFrame);
+    }
+
+    NowTextSelectionResult RightClickFrame(Vector2 pointer)
+    {
+        _keyboard.frame = default;
+        NowUITextInput.Invalidate();
+        _pointer.snapshot = new NowUIInputSnapshot(
+            pointer,
+            NowUIPointerButtons.Secondary,
+            NowUIPointerButtons.Secondary,
+            NowUIPointerButtons.None);
+        return RunFrame(false);
+    }
+
+    NowTextSelectionResult RunFrame(bool forceFocusFrame)
+    {
+        NowTextSelectionResult result;
 
         using (NowUIInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
@@ -95,11 +112,11 @@ public class NowTextSelectionTests
             if (forceFocusFrame)
                 NowUIFocus.ForceNewFrame();
 
-            hasSelection = NowTextSelection.Draw(
+            result = NowTextSelection.Draw(
                 42, Text, _lines, _font, Size, NowFontStyle.Regular, new Vector4(0f, 0f, 1f, 0.3f));
         }
 
-        return hasSelection;
+        return result;
     }
 
     float XAt(string prefix)
@@ -114,7 +131,7 @@ public class NowTextSelectionTests
         var toX = new Vector2(XAt("hello world"), 10f);
 
         Frame(fromX, down: true, pressed: true, released: false);
-        bool selected = Frame(toX, down: true, pressed: false, released: false);
+        bool selected = Frame(toX, down: true, pressed: false, released: false).hasSelection;
         Assert.IsTrue(selected, "drag must produce a selection");
 
         Frame(toX, down: false, pressed: false, released: true);
@@ -130,7 +147,7 @@ public class NowTextSelectionTests
 
         Frame(insideWorld, down: true, pressed: true, released: false);
         Frame(insideWorld, down: false, pressed: false, released: true);
-        bool selected = Frame(insideWorld, down: true, pressed: true, released: false);
+        bool selected = Frame(insideWorld, down: true, pressed: true, released: false).hasSelection;
         Assert.IsTrue(selected, "double click must select the word");
 
         Frame(insideWorld, down: false, pressed: false, released: true);
@@ -155,11 +172,30 @@ public class NowTextSelectionTests
         var outside = new Vector2(450f, 200f);
         Frame(outside, down: true, pressed: true, released: false, forceFocusFrame: true);
         Frame(outside, down: false, pressed: false, released: true);
-        bool selected = Frame(outside, down: false, pressed: false, released: false);
+        bool selected = Frame(outside, down: false, pressed: false, released: false).hasSelection;
 
         Assert.IsFalse(selected, "clicking empty space must clear the selection");
 
         Frame(outside, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
         Assert.IsNull(_copied, "no selection means nothing to copy");
+    }
+
+    [Test]
+    public void RightClickReportsAndPreservesTheSelection()
+    {
+        var fromX = new Vector2(XAt("hello "), 10f);
+        var toX = new Vector2(XAt("hello world"), 10f);
+
+        Frame(fromX, down: true, pressed: true, released: false);
+        Frame(toX, down: true, pressed: false, released: false);
+        Frame(toX, down: false, pressed: false, released: true);
+
+        var result = RightClickFrame(new Vector2(XAt("hello wo"), 10f));
+
+        Assert.IsTrue(result.rightClicked, "secondary press inside the region must report");
+        Assert.IsTrue(result.hasSelection, "right-clicking must not destroy the selection");
+
+        Frame(toX, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+        Assert.AreEqual("world", _copied, "the selection survives the right-click");
     }
 }

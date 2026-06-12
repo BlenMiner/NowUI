@@ -1,0 +1,173 @@
+using UnityEngine;
+using System.Collections.Generic;
+
+namespace NowUI
+{
+    /// <summary>
+    /// Immediate-mode context menu on the overlay layer. The owner opens it on a
+    /// right-click and declares items every frame while it is open; a click on an
+    /// item reports through that item's call the next frame (deferred overlay
+    /// draws run after the owner returns):
+    /// <code>
+    /// if (selection.rightClicked)
+    ///     NowUIContextMenu.Open(menuId, selection.rightClickPosition);
+    ///
+    /// if (NowUIContextMenu.Begin(menuId))
+    /// {
+    ///     if (NowUIContextMenu.Item("Copy")) Copy();
+    ///     if (NowUIContextMenu.Item("Select All")) SelectAll();
+    ///     NowUIContextMenu.End();
+    /// }
+    /// </code>
+    /// One menu is open at a time; it closes on selection, press outside, or
+    /// cancel.
+    /// </summary>
+    public static class NowUIContextMenu
+    {
+        const float ItemHeight = 26f;
+        const float PaddingX = 14f;
+        const float MinWidth = 120f;
+
+        static int _openId;
+        static Vector2 _position;
+        static int _activeId;
+        static readonly List<string> _items = new List<string>(8);
+
+        /// <summary>True while any context menu is open.</summary>
+        public static bool isOpen => _openId != 0;
+
+        public static void Open(int id, Vector2 position)
+        {
+            _openId = id;
+            _position = position;
+            NowUIControlState.RequestRepaint();
+        }
+
+        public static void Close()
+        {
+            _openId = 0;
+        }
+
+        /// <summary>
+        /// True while the menu with this id is open — declare items, then call
+        /// <see cref="End"/>. Also true for one frame after an item was clicked
+        /// (the menu has closed by then) so the clicked item can deliver.
+        /// </summary>
+        public static bool Begin(int id)
+        {
+            if (NowUIInput.isPassive)
+                return false;
+
+            if (_openId != id &&
+                NowUIControlState.Get<int>(NowUIInput.GetId(id, "ctx-pending")) == 0)
+            {
+                return false;
+            }
+
+            _items.Clear();
+            _activeId = id;
+            return true;
+        }
+
+        /// <summary>Adds an item; true when it was clicked (the frame after the click).</summary>
+        public static bool Item(string label)
+        {
+            _items.Add(label);
+            int index = _items.Count;
+            ref int pending = ref NowUIControlState.Get<int>(NowUIInput.GetId(_activeId, "ctx-pending"));
+
+            if (pending == index)
+            {
+                pending = 0;
+                return true;
+            }
+
+            return false;
+        }
+
+        public static void End()
+        {
+            if (_activeId == 0)
+                return;
+
+            int id = _activeId;
+            _activeId = 0;
+
+            if (_openId != id)
+                return;
+
+            if (_items.Count == 0)
+            {
+                Close();
+                return;
+            }
+
+            var theme = NowControls.theme;
+            var textStyle = theme.ResolveText(NowTextStyle.Body);
+            float width = MinWidth;
+
+            for (int i = 0; i < _items.Count; ++i)
+                width = Mathf.Max(width, textStyle.Measure(_items[i]).x + PaddingX * 2f);
+
+            var popupRect = new NowRect(_position.x, _position.y, width, _items.Count * ItemHeight + 8f);
+            int pendingId = NowUIInput.GetId(id, "ctx-pending");
+
+            NowUIControlState.RequestRepaint();
+
+            NowUIOverlay.Defer(popupRect, () =>
+            {
+                var background = theme.Rectangle(popupRect, NowRectangleStyle.Surface);
+                background.radius = new Vector4(6f, 6f, 6f, 6f);
+                background.outline = 1f;
+                background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
+                background.Draw();
+
+                for (int i = 0; i < _items.Count; ++i)
+                {
+                    var itemRect = new NowRect(
+                        popupRect.x + 4f,
+                        popupRect.y + 4f + i * ItemHeight,
+                        popupRect.width - 8f,
+                        ItemHeight);
+                    var interaction = NowUIInput.Interact(NowUIInput.CombineId(pendingId, i + 1), itemRect);
+
+                    if (interaction.hovered)
+                    {
+                        var highlight = theme.Rectangle(itemRect, NowRectangleStyle.Muted);
+                        highlight.radius = new Vector4(4f, 4f, 4f, 4f);
+                        highlight.color = NowControls.StateTint(highlight.color, 1f, interaction.held);
+                        highlight.Draw();
+                    }
+
+                    NowControls.DrawLeftLabel(theme, itemRect.Inset(PaddingX * 0.7f, 0f, 4f, 0f), _items[i], NowTextStyle.Body);
+
+                    if (interaction.clicked)
+                    {
+                        NowUIControlState.Get<int>(pendingId) = i + 1;
+                        Close();
+                    }
+                }
+
+                var snapshot = NowUIInput.current;
+                bool pressed = snapshot.primaryPressed ||
+                    (snapshot.pointerButtonsPressed & NowUIPointerButtons.Secondary) != 0;
+
+                if ((pressed && !popupRect.Contains(snapshot.pointerPosition)) || snapshot.cancelPressed)
+                    Close();
+            });
+        }
+
+        public static void Reset()
+        {
+            _openId = 0;
+            _activeId = 0;
+            _items.Clear();
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetForRuntimeLoad()
+        {
+            Reset();
+        }
+    }
+}

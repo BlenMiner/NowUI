@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace NowUI
 {
-    /// <summary>One selectable line: a rect plus the range of the source text it shows.</summary>
+    /// <summary>One selectable line segment: a rect plus the range of the source text it shows.</summary>
     public struct NowTextSelectionLine
     {
         public NowRect rect;
@@ -11,6 +11,16 @@ namespace NowUI
         public int start;
 
         public int length;
+    }
+
+    public struct NowTextSelectionResult
+    {
+        public bool hasSelection;
+
+        /// <summary>A secondary-button press landed in the region this frame.</summary>
+        public bool rightClicked;
+
+        public Vector2 rightClickPosition;
     }
 
     /// <summary>
@@ -34,11 +44,13 @@ namespace NowUI
         /// </summary>
         /// <summary>
         /// Runs selection interaction for the region and draws the highlight
-        /// rects; returns true while a selection exists. Presses that start
-        /// inside <paramref name="exclusion"/> are left for the overlapping
-        /// control (a copy button on top of the region, for example).
+        /// rects. Lines may be SEGMENTS: several entries sharing a y (styled
+        /// words in a wrapped paragraph) resolve hits by x, and highlights
+        /// bridge the gaps between segments the selection spans. Presses that
+        /// start inside <paramref name="exclusion"/> are left for the
+        /// overlapping control (a copy button on top of the region).
         /// </summary>
-        public static bool Draw(
+        public static NowTextSelectionResult Draw(
             int id,
             string text,
             List<NowTextSelectionLine> lines,
@@ -48,15 +60,29 @@ namespace NowUI
             Vector4 highlightColor,
             NowRect exclusion = default)
         {
+            var result = default(NowTextSelectionResult);
+
             if (string.IsNullOrEmpty(text) || lines == null || lines.Count == 0 || font == null)
-                return false;
+                return result;
 
             NowRect bounds = lines[0].rect;
 
             for (int i = 1; i < lines.Count; ++i)
                 bounds = bounds.Union(lines[i].rect);
 
+            ref var state = ref NowUIControlState.Get<NowTextEditState>(id);
+            NowTextEdit.Clamp(ref state, text);
+
             var snapshot = NowUIInput.current;
+
+            if (!NowUIInput.isPassive && snapshot.hasPointer && bounds.Contains(snapshot.pointerPosition) &&
+                (snapshot.pointerButtonsPressed & NowUIPointerButtons.Secondary) != 0)
+            {
+                NowUIFocus.Focus(id);
+                result.rightClicked = true;
+                result.rightClickPosition = snapshot.pointerPosition;
+            }
+
             bool pressExcluded = !exclusion.isEmpty &&
                 snapshot.primaryPressed &&
                 exclusion.Contains(snapshot.pointerPosition);
@@ -64,15 +90,12 @@ namespace NowUI
             if (pressExcluded)
             {
                 NowUIFocus.Register(id, bounds);
-                ref var excludedState = ref NowUIControlState.Get<NowTextEditState>(id);
-                DrawHighlights(text, lines, font, fontSize, fontStyle, highlightColor, ref excludedState);
-                return excludedState.hasSelection;
+                result.hasSelection = DrawHighlights(text, lines, font, fontSize, fontStyle, highlightColor, ref state);
+                return result;
             }
 
             var interaction = NowUIInput.Interact(id, bounds);
             NowUIFocus.Register(id, bounds);
-            ref var state = ref NowUIControlState.Get<NowTextEditState>(id);
-            NowTextEdit.Clamp(ref state, text);
 
             if (interaction.pressed)
             {
@@ -111,7 +134,24 @@ namespace NowUI
                     copyToClipboard?.Invoke(NowTextEdit.GetSelection(text, state));
             }
 
-            return DrawHighlights(text, lines, font, fontSize, fontStyle, highlightColor, ref state);
+            result.hasSelection = DrawHighlights(text, lines, font, fontSize, fontStyle, highlightColor, ref state);
+            return result;
+        }
+
+        /// <summary>Selects the whole region's text (for context menus and shortcuts).</summary>
+        public static void SelectAll(int id, string text)
+        {
+            ref var state = ref NowUIControlState.Get<NowTextEditState>(id);
+            NowTextEdit.SelectAll(ref state, text ?? string.Empty);
+            NowUIFocus.Focus(id);
+            NowUIControlState.RequestRepaint();
+        }
+
+        /// <summary>The selected text of a region, or empty.</summary>
+        public static string GetSelection(int id, string text)
+        {
+            ref var state = ref NowUIControlState.Get<NowTextEditState>(id);
+            return NowTextEdit.GetSelection(text ?? string.Empty, state);
         }
 
         static bool DrawHighlights(
@@ -143,7 +183,13 @@ namespace NowUI
                 float x1 = line.rect.x + Advance(text, line.start, to - line.start, font, fontSize, fontStyle);
 
                 if (selectionMax > lineEnd && to == lineEnd)
-                    x1 += fontSize * 0.35f;
+                {
+                    bool bridged = i + 1 < lines.Count &&
+                        Mathf.Abs(lines[i + 1].rect.y - line.rect.y) < 0.5f &&
+                        lines[i + 1].rect.x > x1;
+
+                    x1 = bridged ? lines[i + 1].rect.x : x1 + fontSize * 0.35f;
+                }
 
                 Now.Rectangle(new NowRect(x0, line.rect.y, Mathf.Max(x1 - x0, 1f), line.rect.height))
                     .SetColor(highlightColor)
@@ -160,40 +206,55 @@ namespace NowUI
 
         static int HitTest(string text, List<NowTextSelectionLine> lines, NowFontAsset font, float fontSize, NowFontStyle style, Vector2 position)
         {
-            int lineIndex = lines.Count - 1;
+            float rowY = lines[lines.Count - 1].rect.y;
 
             for (int i = 0; i < lines.Count; ++i)
             {
                 if (position.y < lines[i].rect.yMax)
                 {
-                    lineIndex = i;
+                    rowY = lines[i].rect.y;
                     break;
                 }
             }
 
-            var line = lines[lineIndex];
-            float x = position.x - line.rect.x;
+            int previousEnd = -1;
 
-            if (x <= 0f)
-                return line.start;
-
-            int index = line.start;
-            int end = line.start + line.length;
-            float advance = 0f;
-
-            while (index < end)
+            for (int i = 0; i < lines.Count; ++i)
             {
-                int next = NowTextEdit.NextIndex(text, index);
-                float glyphWidth = Advance(text, index, next - index, font, fontSize, style);
+                var segment = lines[i];
 
-                if (advance + glyphWidth * 0.5f >= x)
-                    return index;
+                if (Mathf.Abs(segment.rect.y - rowY) > 0.5f)
+                    continue;
 
-                advance += glyphWidth;
-                index = next;
+                if (position.x < segment.rect.x)
+                    return previousEnd >= 0 ? previousEnd : segment.start;
+
+                if (position.x <= segment.rect.xMax)
+                {
+                    float x = position.x - segment.rect.x;
+                    int index = segment.start;
+                    int end = segment.start + segment.length;
+                    float advance = 0f;
+
+                    while (index < end)
+                    {
+                        int next = NowTextEdit.NextIndex(text, index);
+                        float glyphWidth = Advance(text, index, next - index, font, fontSize, style);
+
+                        if (advance + glyphWidth * 0.5f >= x)
+                            return index;
+
+                        advance += glyphWidth;
+                        index = next;
+                    }
+
+                    return end;
+                }
+
+                previousEnd = segment.start + segment.length;
             }
 
-            return end;
+            return previousEnd >= 0 ? previousEnd : lines[0].start;
         }
     }
 }
