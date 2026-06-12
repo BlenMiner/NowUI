@@ -48,13 +48,19 @@ Links are not opened automatically: the result reports `clickedLink` /
 - GFM pipe tables with `:---:` alignment and `\|` escapes
 - `[links](url)`, http/https/www autolinks (GFM, trailing punctuation
   trimmed), backslash escapes
+- `![images](url)` — downloaded asynchronously (http/https), drawn at native
+  size scaled down to the available width with a placeholder while loading
+  and the alt text on failure; textures cache in `NowMarkdownImages`
+  (inject local art with `SetTexture`)
+- Syntax highlighting in fenced code blocks for `csharp`/`cs`, `json`, and a
+  C-like generic (`js`, `ts`, `c`, `cpp`, `java`): keywords, strings,
+  numbers and comments, with multiline comment/verbatim-string state carried
+  across lines; unknown languages render plain
 
 ## Deliberately out of scope
 
 - Raw HTML, blocks and inline: rendered as plain text, never interpreted
 - JavaScript in any form
-- Images: `![alt](url)` renders as its alt text linking to the destination
-  (no texture/network pipeline)
 - Indented (4-space) code blocks — use fences
 - Link reference definitions (`[text][ref]`) and entity references
 

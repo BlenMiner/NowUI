@@ -5,7 +5,8 @@ namespace NowUI.Internal
     public enum NowMeshKind
     {
         Rectangle,
-        Text
+        Text,
+        TexturedRectangle
     }
 
     internal struct NowUIMeshBatch

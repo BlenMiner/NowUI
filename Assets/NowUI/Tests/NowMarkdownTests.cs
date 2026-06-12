@@ -242,12 +242,87 @@ public class NowMarkdownTests
     }
 
     [Test]
-    public void ImagesRenderAsLinkedAltText()
+    public void ImagesParseAsImageNodes()
     {
         var inlines = NowMarkdownInlineParser.Parse("![alt text](https://example.com/img.png)");
 
-        Assert.AreEqual(NowMarkdownInlineType.Link, inlines[0].type);
+        Assert.AreEqual(NowMarkdownInlineType.Image, inlines[0].type);
+        Assert.AreEqual("https://example.com/img.png", inlines[0].url);
         Assert.AreEqual("alt text", PlainText(inlines[0].children));
+    }
+
+    [Test]
+    public void CSharpTokenizerClassifiesKindsAndCarriesState()
+    {
+        var tokens = new List<NowMarkdownToken>();
+        var state = default(NowMarkdownSyntaxState);
+
+        NowMarkdownSyntax.TokenizeLine("var x = 42; // answer", NowMarkdownSyntax.Language.CSharp, ref state, tokens);
+
+        Assert.AreEqual(NowMarkdownTokenKind.Keyword, tokens[0].kind, "var");
+        bool sawNumber = false;
+
+        foreach (var token in tokens)
+            sawNumber |= token.kind == NowMarkdownTokenKind.Number;
+
+        Assert.IsTrue(sawNumber, "42");
+        Assert.AreEqual(NowMarkdownTokenKind.Comment, tokens[tokens.Count - 1].kind);
+
+        NowMarkdownSyntax.TokenizeLine("string s = \"hi \\\" there\"; /* open", NowMarkdownSyntax.Language.CSharp, ref state, tokens);
+
+        Assert.AreEqual(NowMarkdownTokenKind.Keyword, tokens[0].kind, "string");
+        bool sawString = false;
+
+        foreach (var token in tokens)
+            sawString |= token.kind == NowMarkdownTokenKind.String;
+
+        Assert.IsTrue(sawString);
+        Assert.IsTrue(state.inBlockComment, "block comment must carry to the next line");
+
+        NowMarkdownSyntax.TokenizeLine("still comment */ return 1;", NowMarkdownSyntax.Language.CSharp, ref state, tokens);
+
+        Assert.AreEqual(NowMarkdownTokenKind.Comment, tokens[0].kind);
+        Assert.IsFalse(state.inBlockComment);
+        bool sawKeyword = false;
+
+        foreach (var token in tokens)
+            sawKeyword |= token.kind == NowMarkdownTokenKind.Keyword;
+
+        Assert.IsTrue(sawKeyword, "return after the comment closes");
+    }
+
+    [Test]
+    public void UnknownLanguageStaysPlain()
+    {
+        var tokens = new List<NowMarkdownToken>();
+        var state = default(NowMarkdownSyntaxState);
+
+        NowMarkdownSyntax.TokenizeLine("var if \"x\" 42", NowMarkdownSyntax.Language.None, ref state, tokens);
+
+        Assert.AreEqual(1, tokens.Count);
+        Assert.AreEqual(NowMarkdownTokenKind.Plain, tokens[0].kind);
+    }
+
+    [Test]
+    public void JsonTokenizerColorsLiterals()
+    {
+        var tokens = new List<NowMarkdownToken>();
+        var state = default(NowMarkdownSyntaxState);
+
+        NowMarkdownSyntax.TokenizeLine("{ \"a\": true, \"b\": 1.5 }", NowMarkdownSyntax.Language.Json, ref state, tokens);
+
+        bool sawKeyword = false, sawString = false, sawNumber = false;
+
+        foreach (var token in tokens)
+        {
+            sawKeyword |= token.kind == NowMarkdownTokenKind.Keyword;
+            sawString |= token.kind == NowMarkdownTokenKind.String;
+            sawNumber |= token.kind == NowMarkdownTokenKind.Number;
+        }
+
+        Assert.IsTrue(sawKeyword, "true");
+        Assert.IsTrue(sawString);
+        Assert.IsTrue(sawNumber);
     }
 
     [Test]
@@ -333,6 +408,43 @@ public class NowMarkdownTests
         NowUIControlState.Reset();
         NowControls.Reset();
         NowMarkdown.Reset();
+    }
+
+    [Test]
+    public void LoadedImagesLayoutAtAspectSizeAndFailedOnesFallBackToAlt()
+    {
+        var texture = new Texture2D(64, 32, TextureFormat.RGBA32, false);
+
+        try
+        {
+            NowMarkdownImages.SetTexture("https://example.com/pic.png", texture);
+
+            var withImage = NowMarkdownDocument.Parse("![pic](https://example.com/pic.png)");
+            var withBrokenImage = NowMarkdownDocument.Parse("![alt only](notaurl.png)");
+
+            using (NowUIInput.Begin(_provider, Surface))
+            {
+                float imageHeight = withImage.MeasureHeight(400f);
+                Assert.GreaterOrEqual(imageHeight, 32f, "native-size image plus line spacing");
+
+                float clamped = withImage.MeasureHeight(32f);
+                Assert.Less(clamped, imageHeight, "image scales down with the available width");
+
+                float altHeight = withBrokenImage.MeasureHeight(400f);
+                Assert.Greater(altHeight, 0f, "failed images render their alt text");
+                Assert.Less(altHeight, 64f);
+
+                using (_drawList.Begin(Surface))
+                    withImage.Draw(new NowRect(0, 0, 400f, imageHeight));
+
+                Assert.IsTrue(_drawList.hasGeometry, "loaded image must emit textured geometry");
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+            NowMarkdownImages.Reset();
+        }
     }
 
     [Test]

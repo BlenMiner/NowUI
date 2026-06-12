@@ -40,6 +40,12 @@ public class NowUIMarkdownExample : NowUIGraphic
         "- [x] Task lists (GFM)\n" +
         "- [ ] Unchecked\n" +
         "\n" +
+        "## Images\n" +
+        "\n" +
+        "Images download asynchronously and scale to the available width:\n" +
+        "\n" +
+        "![GitHub logo](https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png)\n" +
+        "\n" +
         "## Tables\n" +
         "\n" +
         "| Feature | Status | Notes |\n" +

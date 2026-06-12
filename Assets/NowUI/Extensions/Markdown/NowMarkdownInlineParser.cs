@@ -115,10 +115,14 @@ namespace NowUI.Markdown
 
                 if (c == '[' || (c == '!' && i + 1 < text.Length && text[i + 1] == '['))
                 {
-                    int open = c == '!' ? i + 1 : i;
+                    bool isImage = c == '!';
+                    int open = isImage ? i + 1 : i;
 
                     if (TryParseLink(text, open, out var link, out int consumedEnd))
                     {
+                        if (isImage)
+                            link.type = NowMarkdownInlineType.Image;
+
                         FlushPlain();
                         items.Add(new Item { node = link });
                         i = consumedEnd - 1;

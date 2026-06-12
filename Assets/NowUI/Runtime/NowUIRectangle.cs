@@ -21,6 +21,9 @@ namespace NowUI
 
         public Vector4 outlineColor;
 
+        /// <summary>Optional texture; the rect samples it across its full UV range.</summary>
+        public Texture texture;
+
         public NowUIRectangle(NowRect rect)
         {
             mask = rect;
@@ -31,6 +34,7 @@ namespace NowUI
             outline = default;
             color = new Vector4(1, 1, 1, 1);
             outlineColor = default;
+            texture = null;
         }
 
         public NowUIRectangle SetBlur(float blur)
@@ -103,6 +107,17 @@ namespace NowUI
         public NowUIRectangle SetOutlineColor(Vector4 color)
         {
             outlineColor = color;
+            return this;
+        }
+
+        /// <summary>
+        /// Draws the texture inside the rect (tinted by the color, clipped by
+        /// radius and masks like any rectangle):
+        /// <code>Now.Rectangle(rect).SetTexture(photo).SetRadius(8).Draw();</code>
+        /// </summary>
+        public NowUIRectangle SetTexture(Texture texture)
+        {
+            this.texture = texture;
             return this;
         }
 

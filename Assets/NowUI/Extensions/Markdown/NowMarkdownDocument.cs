@@ -38,7 +38,8 @@ namespace NowUI.Markdown
         {
             Text,
             Fill,
-            Line
+            Line,
+            Image
         }
 
         enum Role : byte
@@ -55,7 +56,11 @@ namespace NowUI.Markdown
             CheckFill,
             Bullet,
             TableLine,
-            TableHeaderFill
+            TableHeaderFill,
+            SyntaxKeyword,
+            SyntaxString,
+            SyntaxNumber,
+            SyntaxComment
         }
 
         struct Op
@@ -77,6 +82,8 @@ namespace NowUI.Markdown
         float _layoutWidth = -1f;
         float _layoutHeight;
         NowFontAsset _layoutFont;
+        int _imagesVersion = -1;
+        bool _hasLoadingImages;
 
         public NowMarkdownDocument(NowMarkdownBlock root, NowMarkdownStyle style)
         {
@@ -119,6 +126,9 @@ namespace NowUI.Markdown
 
             if (_layoutFont == null)
                 return result;
+
+            if (_hasLoadingImages)
+                NowUIControlState.RequestRepaint();
 
             int docId = NowUIInput.GetId(GetHashCode(), "markdown");
 
@@ -174,6 +184,16 @@ namespace NowUI.Markdown
                             .Draw();
                         break;
                     }
+                    case OpKind.Image:
+                    {
+                        if (NowMarkdownImages.GetState(op.text, out var texture) == NowMarkdownImageState.Loaded &&
+                            texture != null)
+                        {
+                            Now.Rectangle(target).SetTexture(texture).SetRadius(4f).Draw();
+                        }
+
+                        break;
+                    }
                 }
             }
 
@@ -206,7 +226,14 @@ namespace NowUI.Markdown
                     return accent;
                 }
                 case Role.Muted:
+                case Role.SyntaxComment:
                     return theme.GetColor(NowColorToken.TextMuted, Color.gray);
+                case Role.SyntaxKeyword:
+                    return theme.GetColor(NowColorToken.Accent, Color.blue);
+                case Role.SyntaxString:
+                    return new Vector4(0.16f, 0.52f, 0.26f, 1f);
+                case Role.SyntaxNumber:
+                    return new Vector4(0.55f, 0.27f, 0.68f, 1f);
                 case Role.Rule:
                 case Role.TableLine:
                 case Role.CheckBox:
@@ -228,11 +255,16 @@ namespace NowUI.Markdown
             var probe = theme.Text(default(NowRect), (string)null);
             NowFontAsset font = probe.font;
 
-            if (font == _layoutFont && Mathf.Abs(width - _layoutWidth) <= 0.5f)
+            if (font == _layoutFont && Mathf.Abs(width - _layoutWidth) <= 0.5f &&
+                _imagesVersion == NowMarkdownImages.version)
+            {
                 return;
+            }
 
             _layoutWidth = width;
             _layoutFont = font;
+            _imagesVersion = NowMarkdownImages.version;
+            _hasLoadingImages = false;
             _ops.Clear();
             _links.Clear();
 
@@ -320,6 +352,8 @@ namespace NowUI.Markdown
             }
         }
 
+        static readonly List<NowMarkdownToken> _tokenScratch = new List<NowMarkdownToken>(16);
+
         void LayoutCodeBlock(NowMarkdownBlock block, float x, ref float y, float width)
         {
             float pad = _style.fontSize * 0.6f;
@@ -331,6 +365,8 @@ namespace NowUI.Markdown
 
             y += pad;
             string literal = block.literal ?? string.Empty;
+            var language = NowMarkdownSyntax.GetLanguage(block.info);
+            var syntaxState = default(NowMarkdownSyntaxState);
             int lineStart = 0;
 
             for (int i = 0; i <= literal.Length; ++i)
@@ -340,10 +376,24 @@ namespace NowUI.Markdown
 
                 string line = literal.Substring(lineStart, i - lineStart);
 
+                if (line.IndexOf('\t') >= 0)
+                    line = line.Replace("\t", "    ");
+
                 if (line.Length > 0)
                 {
-                    AddText(line, new NowRect(x + pad, y, width - x - pad * 2f, lineHeight), size,
-                        NowFontStyle.Regular, Role.Code, -1);
+                    NowMarkdownSyntax.TokenizeLine(line, language, ref syntaxState, _tokenScratch);
+                    float cx = x + pad;
+
+                    for (int t = 0; t < _tokenScratch.Count; ++t)
+                    {
+                        var token = _tokenScratch[t];
+                        string segment = line.Substring(token.start, token.length);
+                        float segmentWidth = _layoutFont.MeasureText(segment, size).x;
+
+                        AddText(segment, new NowRect(cx, y, segmentWidth + 1f, lineHeight), size,
+                            NowFontStyle.Regular, TokenRole(token.kind), -1);
+                        cx += segmentWidth;
+                    }
                 }
 
                 y += lineHeight;
@@ -355,6 +405,18 @@ namespace NowUI.Markdown
             var panel = _ops[panelIndex];
             panel.rect = new NowRect(x, top, width - x, y - top);
             _ops[panelIndex] = panel;
+        }
+
+        static Role TokenRole(NowMarkdownTokenKind kind)
+        {
+            switch (kind)
+            {
+                case NowMarkdownTokenKind.Keyword: return Role.SyntaxKeyword;
+                case NowMarkdownTokenKind.String: return Role.SyntaxString;
+                case NowMarkdownTokenKind.Number: return Role.SyntaxNumber;
+                case NowMarkdownTokenKind.Comment: return Role.SyntaxComment;
+                default: return Role.Code;
+            }
         }
 
         void LayoutList(NowMarkdownBlock list, float x, ref float y, float width, int depth)
@@ -547,6 +609,9 @@ namespace NowUI.Markdown
                         LayoutInlineNodes(node.children, ref cursor, fontSize, style, Role.Link, _links.Count - 1, strike, wrap);
                         break;
                     }
+                    case NowMarkdownInlineType.Image:
+                        LayoutImage(node, ref cursor, fontSize, style, link);
+                        break;
                     case NowMarkdownInlineType.HardBreak:
                         cursor.x = cursor.lineStart;
                         cursor.y += cursor.lineHeight;
@@ -603,6 +668,62 @@ namespace NowUI.Markdown
 
                 cursor.x += wordWidth;
             }
+        }
+
+        void LayoutImage(NowMarkdownInline node, ref InlineCursor cursor, float fontSize, NowFontStyle style, int link)
+        {
+            var state = NowMarkdownImages.GetState(node.url, out var texture);
+
+            if (state == NowMarkdownImageState.Loaded && texture != null)
+            {
+                if (cursor.x > cursor.lineStart)
+                {
+                    cursor.x = cursor.lineStart;
+                    cursor.y += cursor.lineHeight;
+                }
+
+                float maxWidth = Mathf.Max(cursor.limit - cursor.lineStart, 16f);
+                float drawWidth = Mathf.Min(texture.width, maxWidth);
+                float drawHeight = texture.height * (drawWidth / Mathf.Max(texture.width, 1f));
+
+                _ops.Add(new Op
+                {
+                    kind = OpKind.Image,
+                    role = Role.Body,
+                    rect = new NowRect(cursor.lineStart, cursor.y, drawWidth, drawHeight),
+                    text = node.url,
+                    link = link
+                });
+
+                cursor.y += drawHeight;
+                cursor.x = cursor.lineStart;
+                return;
+            }
+
+            if (state == NowMarkdownImageState.Loading)
+            {
+                _hasLoadingImages = true;
+
+                if (cursor.x > cursor.lineStart)
+                {
+                    cursor.x = cursor.lineStart;
+                    cursor.y += cursor.lineHeight;
+                }
+
+                float panelHeight = cursor.lineHeight * 2f;
+                AddFill(Role.CodePanel, new NowRect(cursor.lineStart, cursor.y, cursor.limit - cursor.lineStart, panelHeight));
+
+                var inner = cursor;
+                inner.x = cursor.lineStart + fontSize * 0.5f;
+                inner.y = cursor.y + (panelHeight - cursor.lineHeight) * 0.5f;
+                LayoutInlineNodes(node.children, ref inner, fontSize, style, Role.Muted, -1, false, false);
+
+                cursor.y += panelHeight;
+                cursor.x = cursor.lineStart;
+                return;
+            }
+
+            LayoutInlineNodes(node.children, ref cursor, fontSize, style, Role.Muted, link, false, true);
         }
 
         void LayoutCodeSpan(string code, ref InlineCursor cursor, float fontSize, int link, bool wrap)

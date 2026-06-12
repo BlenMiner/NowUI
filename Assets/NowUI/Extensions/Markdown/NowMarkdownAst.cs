@@ -23,6 +23,7 @@ namespace NowUI.Markdown
         Strikethrough,
         Code,
         Link,
+        Image,
         HardBreak,
         SoftBreak
     }

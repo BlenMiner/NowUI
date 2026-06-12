@@ -616,6 +616,31 @@ namespace NowUI
                 return _rectangleMaterial != null ? _rectangleMaterial : batch.material;
             }
 
+            if (batch.kind == NowMeshKind.TexturedRectangle)
+            {
+                if (batch.material == null)
+                    return null;
+
+                if (_textMaterials.TryGetValue(batch.material, out var texturedRect) && texturedRect != null)
+                    return texturedRect;
+
+                if (_rectangleMaterial == null)
+                    _rectangleMaterial = Resources.Load<Material>("NowUI/UIMaterialUGUI");
+
+                if (_rectangleMaterial == null)
+                    return batch.material;
+
+                texturedRect = new Material(_rectangleMaterial)
+                {
+                    name = "NowUI Textured Rect UGUI",
+                    hideFlags = HideFlags.HideAndDontSave,
+                    mainTexture = batch.material.mainTexture
+                };
+
+                _textMaterials[batch.material] = texturedRect;
+                return texturedRect;
+            }
+
             if (batch.material == null)
                 return null;
 

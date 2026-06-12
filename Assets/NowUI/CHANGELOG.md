@@ -64,11 +64,15 @@ point it became installable through UPM.
   NowUI focus are also mutually exclusive (`NowUIFocus.respectEventSystem`).
 - GitHub-flavored Markdown extension (`NowUI.Extensions.Markdown`, its own
   assembly): headings, emphasis/strong/strikethrough, inline code, fenced
-  code blocks, quotes, nested + task lists, pipe tables with alignment,
-  links and autolinks — rendered through Now/NowLayout with theme colors,
-  word wrap, width-cached layout (steady-state draws allocate nothing) and
-  clickable links reported via `NowMarkdownResult`. No HTML, no JavaScript,
-  images render as linked alt text. See Docs/Markdown.md.
+  code blocks with syntax highlighting (csharp/json/C-like), quotes,
+  nested + task lists, pipe tables with alignment, links and autolinks,
+  and images (downloaded asynchronously, aspect-scaled to width) — rendered
+  through Now/NowLayout with theme colors, word wrap, width-cached layout
+  (steady-state draws allocate nothing) and clickable links reported via
+  `NowMarkdownResult`. No HTML, no JavaScript. See Docs/Markdown.md.
+- Textured rectangles: `Now.Rectangle(rect).SetTexture(texture).Draw()`
+  draws any texture with the full rectangle feature set (rounded corners,
+  tint, outline, masks) in both the screen and UGUI render paths.
 - Span text APIs for zero-GC dynamic text: `NowUIText.Draw(ReadOnlySpan<char>)`
   and `Measure(ReadOnlySpan<char>)` (plus `NowFontAsset.MeasureText` span
   overload) — format counters/timers into a reusable char buffer and draw

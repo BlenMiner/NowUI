@@ -223,6 +223,37 @@ namespace NowUI
             return _meshes.array[id];
         }
 
+        sealed class TextureMaterialEntry
+        {
+            public Material material;
+            public int meshId = -1;
+        }
+
+        static readonly Dictionary<Texture, TextureMaterialEntry> _textureMaterials =
+            new Dictionary<Texture, TextureMaterialEntry>();
+
+        static NowMesh UseTextureMaterial(Texture texture)
+        {
+            if (_defaultMaterial == null)
+                return null;
+
+            if (!_textureMaterials.TryGetValue(texture, out var entry) || entry.material == null)
+            {
+                entry = new TextureMaterialEntry
+                {
+                    material = new Material(_defaultMaterial)
+                    {
+                        name = "NowUI Textured Rect",
+                        hideFlags = HideFlags.HideAndDontSave,
+                        mainTexture = texture
+                    }
+                };
+                _textureMaterials[texture] = entry;
+            }
+
+            return UseMaterial(entry.material, ref entry.meshId, NowMeshKind.TexturedRectangle);
+        }
+
         static NowMesh UseMaterial(Material material, ref int cachedMeshId, NowMeshKind kind)
         {
             if (material == null)
@@ -752,12 +783,27 @@ namespace NowUI
             _tmpVertex.outlineColor = ApplyColorMultiplier(rectangle.outlineColor);
             _tmpVertex.uvwh = _defaultUV;
 
-            var mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
+            NowMesh mesh;
 
-            if (mesh == null)
-                return;
+            if (rectangle.texture != null)
+            {
+                mesh = UseTextureMaterial(rectangle.texture);
 
-            mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, 4);
+                if (mesh == null)
+                    return;
+
+                mesh = EnsureMeshCapacity(mesh, mesh.material, NowMeshKind.TexturedRectangle, 4);
+            }
+            else
+            {
+                mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
+
+                if (mesh == null)
+                    return;
+
+                mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, 4);
+            }
+
             mesh.AddRect(_tmpVertex, rectangle.blur, rectangle.outline);
         }
 
