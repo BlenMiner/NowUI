@@ -102,6 +102,19 @@ namespace NowUI
             return theme.Text(rect, font, style.Id());
         }
 
+        /// <summary>
+        /// Resolves a themed text style with no rect and no mask — the safe
+        /// starting point for custom drawing and measuring. The font falls back
+        /// to the ambient <see cref="Now.font"/> when the preset has none; set
+        /// the rect (and optionally a mask) before drawing.
+        /// </summary>
+        public static NowUIText ResolveText(this NowUITheme theme, NowTextStyle style = NowTextStyle.Body)
+        {
+            var text = theme.Text(default(NowRect), style.Id());
+            text.mask = default;
+            return text;
+        }
+
         public static Color GetColor(this NowUITheme theme, NowColorToken token, Color fallback)
         {
             return theme.GetColor(token.Id(), fallback);

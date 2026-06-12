@@ -170,6 +170,39 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void ContentRectReservesLastHeightAndConvergesViaEnd()
+    {
+        NowControls.Reset();
+        NowUIControlState.Reset();
+
+        NowContentRect Next() => NowLayout.ContentRect();
+
+        NowLayout.Area(new Vector4(0, 0, 400, 300));
+        var first = Next();
+        Assert.AreEqual(1f, first.rect.height, 0.001f, "unknown height reserves a minimal rect");
+        Assert.AreEqual(400f, first.rect.width, 0.001f, "content rects stretch to the available width");
+
+        NowUIControlState.BeginRepaintTracking();
+        first.End(72f);
+        Assert.IsTrue(NowUIControlState.EndRepaintTracking(), "height change must request a repaint");
+        NowLayout.EndArea();
+
+        NowControls.Reset();
+
+        NowLayout.Area(new Vector4(0, 0, 400, 300));
+        var second = Next();
+        Assert.AreEqual(72f, second.rect.height, 0.001f, "the site-keyed height survives to the next frame");
+
+        NowUIControlState.BeginRepaintTracking();
+        second.End(72f);
+        Assert.IsFalse(NowUIControlState.EndRepaintTracking(), "settled height must not keep repainting");
+        NowLayout.EndArea();
+
+        NowControls.Reset();
+        NowUIControlState.Reset();
+    }
+
+    [Test]
     public void CrossStretchedGroupShrinksWhenContentShrinks()
     {
         for (int pass = 0; pass < 2; ++pass)

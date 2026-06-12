@@ -70,9 +70,38 @@ point it became installable through UPM.
   through Now/NowLayout with theme colors, word wrap, width-cached layout
   (steady-state draws allocate nothing) and clickable links reported via
   `NowMarkdownResult`. No HTML, no JavaScript. See Docs/Markdown.md.
-- Textured rectangles: `Now.Rectangle(rect).SetTexture(texture).Draw()`
-  draws any texture with the full rectangle feature set (rounded corners,
-  tint, outline, masks) in both the screen and UGUI render paths.
+- Extension-author DX round (lessons from building the markdown extension):
+  `NowTextWrap` brings word wrap to the core (layout once into positioned
+  runs measured straight off the source string, draw for many frames);
+  `theme.ResolveText(style)` resolves a themed text style with the ambient
+  font and no rect/mask — the safe starting point for custom drawing;
+  `MeasureText(string, start, length)` measures ranges without substring
+  allocation; `NowUIInput.CombineId(a, b)` is the blessed sub-element id
+  mint, and a new id-less `NowUIInput.Interact(rect)` overload derives
+  identity from the call site with per-frame occurrence salting (loops over
+  sub-elements need no ids at all); `NowLayout.ContentRect()` codifies the
+  frame-late reserve-draw-measure-repaint pattern for content whose height
+  depends on its width, with the last height stored per call site so the
+  caller manages no state (`var c = NowLayout.ContentRect(); ...;
+  c.End(measuredHeight);`).
+- Image and sprite rendering on rectangles:
+  `Now.Rectangle(rect).SetTexture(texture)` draws any texture with the full
+  rectangle feature set (rounded corners, tint, outline, masks) in both
+  render paths; `SetSprite(sprite)` resolves atlas sub-rects;
+  `SetSprite(sprite, sliced: true)` draws a 9-slice from the sprite border
+  (corners pixel-fixed, edges/center stretched, seam-free, collapsing
+  gracefully when the rect is smaller than the borders); `SetUV(rect)`
+  samples a sub-region; `SetPreserveAspect()` letterboxes instead of
+  stretching.
+- Markdown: multi-word links behave as one link — all words share a single
+  interaction (press one word, release on another, still a click), hovering
+  any word highlights the whole link, and underline/strikethrough
+  decorations merge across spaces into continuous lines (separate
+  strikethroughs never bridge).
+- Markdown: code blocks have a Copy button (hover-tinted, "Copied!"
+  feedback; handler replaceable via `NowMarkdownDocument.copyToClipboard`),
+  images inside links are clickable, and non-http image paths load from
+  `Resources` so bundled art works offline.
 - Span text APIs for zero-GC dynamic text: `NowUIText.Draw(ReadOnlySpan<char>)`
   and `Measure(ReadOnlySpan<char>)` (plus `NowFontAsset.MeasureText` span
   overload) — format counters/timers into a reusable char buffer and draw

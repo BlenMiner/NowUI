@@ -518,6 +518,34 @@ namespace NowUI
             return _hasContext && _snapshot.WasPointerReleased(button);
         }
 
+        /// <summary>
+        /// Combines two ids into one (a parent control id and a sub-element
+        /// index, for example) — the blessed way to mint ids for interactive
+        /// sub-regions without strings. Never returns 0.
+        /// </summary>
+        public static int CombineId(int a, int b)
+        {
+            unchecked
+            {
+                int id = (a * 397) ^ b;
+                return id != 0 ? id : 1;
+            }
+        }
+
+        /// <summary>
+        /// Interaction with no id at all: identity comes from the call site, and
+        /// repeated calls from one site (a loop over sub-elements) are salted by
+        /// per-frame occurrence — draw-order stable, like control identity. Use
+        /// an explicit id instead when looped items can reorder mid-press.
+        /// </summary>
+        public static NowUIInteraction Interact(
+            NowRect rect,
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            return Interact(NowControls.GetControlId(NowControls.SiteId(file, line)), rect);
+        }
+
         public static NowUIInteraction Interact(string id, NowRect rect)
         {
             return Interact(id, rect, NowUIPointerButton.Primary);

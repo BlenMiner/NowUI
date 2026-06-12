@@ -234,6 +234,35 @@ public class NowControlsTests
     }
 
     [Test]
+    public void CombineIdIsStableAndNeverZero()
+    {
+        Assert.AreEqual(NowUIInput.CombineId(7, 3), NowUIInput.CombineId(7, 3));
+        Assert.AreNotEqual(NowUIInput.CombineId(7, 3), NowUIInput.CombineId(7, 4));
+        Assert.AreNotEqual(0, NowUIInput.CombineId(0, 0));
+    }
+
+    [Test]
+    public void IdlessInteractClicksAcrossFramesFromOneSite()
+    {
+        var rect = new NowRect(10, 10, 100, 30);
+        Vector2 inside = new Vector2(40, 24);
+        bool clicked = false;
+
+        void Frame(bool down, bool pressed, bool released)
+        {
+            _provider.snapshot = new NowUIInputSnapshot(inside, down, pressed, released);
+
+            using (NowUIInput.Begin(_provider, Surface))
+                clicked = NowUIInput.Interact(rect).clicked;
+        }
+
+        Frame(down: true, pressed: true, released: false);
+        Assert.IsFalse(clicked);
+        Frame(down: false, pressed: false, released: true);
+        Assert.IsTrue(clicked, "site-identity interact must track press and release across frames");
+    }
+
+    [Test]
     public void SameLabelDifferentCallSitesAreDistinctControls()
     {
         var rect1 = new NowRect(0, 0, 100, 30);

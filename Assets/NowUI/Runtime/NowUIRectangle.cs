@@ -21,8 +21,23 @@ namespace NowUI
 
         public Vector4 outlineColor;
 
-        /// <summary>Optional texture; the rect samples it across its full UV range.</summary>
+        /// <summary>Optional texture; sampled across <see cref="uvRect"/>.</summary>
         public Texture texture;
+
+        /// <summary>Texture sub-region as (u, v, width, height), default full.</summary>
+        public Vector4 uvRect;
+
+        /// <summary>Sprite border in source pixels (left, bottom, right, top) for 9-slice.</summary>
+        public Vector4 spriteBorder;
+
+        /// <summary>Sprite source size in pixels; needed to map 9-slice borders to UVs.</summary>
+        public Vector2 spritePixelSize;
+
+        /// <summary>Draw as a 9-slice: corners stay fixed, edges and center stretch.</summary>
+        public bool sliced;
+
+        /// <summary>Letterbox the texture inside the rect instead of stretching.</summary>
+        public bool preserveAspect;
 
         public NowUIRectangle(NowRect rect)
         {
@@ -35,6 +50,11 @@ namespace NowUI
             color = new Vector4(1, 1, 1, 1);
             outlineColor = default;
             texture = null;
+            uvRect = new Vector4(0f, 0f, 1f, 1f);
+            spriteBorder = default;
+            spritePixelSize = default;
+            sliced = false;
+            preserveAspect = false;
         }
 
         public NowUIRectangle SetBlur(float blur)
@@ -118,6 +138,47 @@ namespace NowUI
         public NowUIRectangle SetTexture(Texture texture)
         {
             this.texture = texture;
+            return this;
+        }
+
+        /// <summary>Restricts sampling to a texture sub-region (u, v, width, height in 0..1).</summary>
+        public NowUIRectangle SetUV(Vector4 uvRect)
+        {
+            this.uvRect = uvRect;
+            return this;
+        }
+
+        /// <summary>
+        /// Draws a sprite — atlas sub-rect resolved automatically. With
+        /// <paramref name="sliced"/> and a sprite border, corners keep their pixel
+        /// size while edges and the center stretch (9-slice); radius, outline and
+        /// blur do not apply to sliced draws.
+        /// <code>Now.Rectangle(rect).SetSprite(panelSprite, sliced: true).Draw();</code>
+        /// </summary>
+        public NowUIRectangle SetSprite(Sprite sprite, bool sliced = false)
+        {
+            if (sprite == null || sprite.texture == null)
+                return this;
+
+            texture = sprite.texture;
+            var textureRect = sprite.textureRect;
+            float textureWidth = sprite.texture.width;
+            float textureHeight = sprite.texture.height;
+            uvRect = new Vector4(
+                textureRect.x / textureWidth,
+                textureRect.y / textureHeight,
+                textureRect.width / textureWidth,
+                textureRect.height / textureHeight);
+            spriteBorder = sprite.border;
+            spritePixelSize = new Vector2(textureRect.width, textureRect.height);
+            this.sliced = sliced && sprite.border != Vector4.zero;
+            return this;
+        }
+
+        /// <summary>Letterboxes the texture inside the rect instead of stretching it.</summary>
+        public NowUIRectangle SetPreserveAspect(bool preserve = true)
+        {
+            preserveAspect = preserve;
             return this;
         }
 

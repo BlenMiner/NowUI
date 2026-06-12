@@ -758,6 +758,27 @@ namespace NowUI
             position.width = position.width - pad.x - pad.z;
             position.height = position.height - pad.y - pad.w;
 
+            if (rectangle.texture != null && rectangle.preserveAspect && !rectangle.sliced &&
+                position.width > 0f && position.height > 0f)
+            {
+                float sourceAspect = rectangle.uvRect.z * rectangle.texture.width /
+                    Mathf.Max(rectangle.uvRect.w * rectangle.texture.height, 1f);
+                float rectAspect = position.width / position.height;
+
+                if (rectAspect > sourceAspect)
+                {
+                    float fitted = position.height * sourceAspect;
+                    position.x += (position.width - fitted) * 0.5f;
+                    position.width = fitted;
+                }
+                else
+                {
+                    float fitted = position.width / sourceAspect;
+                    position.y += (position.height - fitted) * 0.5f;
+                    position.height = fitted;
+                }
+            }
+
             // Snap to pixels by rounding EDGES, not origin + size: truncating them
             // independently shifted fractional-position rects by up to a pixel, so
             // nested glyphs (a radio dot inside its circle) came out visibly
@@ -766,11 +787,6 @@ namespace NowUI
             int y0 = Mathf.RoundToInt(position.y);
             int rectWidth = Mathf.RoundToInt(position.x + position.width) - x0;
             int rectHeight = Mathf.RoundToInt(position.y + position.height) - y0;
-
-            _tmpVertex.position.x = x0;
-            _tmpVertex.position.y = -y0 - rectHeight;
-            _tmpVertex.position.z = rectWidth;
-            _tmpVertex.position.w = rectHeight;
 
             var rectMask = rectangle.mask;
 
@@ -781,7 +797,7 @@ namespace NowUI
             _tmpVertex.radius = rectangle.radius;
             _tmpVertex.color = ApplyColorMultiplier(rectangle.color);
             _tmpVertex.outlineColor = ApplyColorMultiplier(rectangle.outlineColor);
-            _tmpVertex.uvwh = _defaultUV;
+            _tmpVertex.uvwh = rectangle.uvRect;
 
             NowMesh mesh;
 
@@ -792,7 +808,14 @@ namespace NowUI
                 if (mesh == null)
                     return;
 
-                mesh = EnsureMeshCapacity(mesh, mesh.material, NowMeshKind.TexturedRectangle, 4);
+                int quads = rectangle.sliced ? 9 : 1;
+                mesh = EnsureMeshCapacity(mesh, mesh.material, NowMeshKind.TexturedRectangle, quads * 4);
+
+                if (rectangle.sliced)
+                {
+                    DrawSliced(rectangle, mesh, x0, y0, rectWidth, rectHeight);
+                    return;
+                }
             }
             else
             {
@@ -804,7 +827,78 @@ namespace NowUI
                 mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, 4);
             }
 
+            _tmpVertex.position.x = x0;
+            _tmpVertex.position.y = -y0 - rectHeight;
+            _tmpVertex.position.z = rectWidth;
+            _tmpVertex.position.w = rectHeight;
+
             mesh.AddRect(_tmpVertex, rectangle.blur, rectangle.outline);
+        }
+
+        /// <summary>
+        /// Emits the nine quads of a sliced sprite: corners at source pixel size
+        /// (scaled down when the rect is smaller than the borders), edges and the
+        /// center stretched. Cell edges share rounded coordinates so slices never
+        /// seam. Radius, outline and blur do not apply.
+        /// </summary>
+        static void DrawSliced(NowUIRectangle rectangle, NowMesh mesh, int x0, int y0, int rectWidth, int rectHeight)
+        {
+            Vector4 border = rectangle.spriteBorder;
+            float sourceWidth = Mathf.Max(rectangle.spritePixelSize.x, 1f);
+            float sourceHeight = Mathf.Max(rectangle.spritePixelSize.y, 1f);
+
+            float scale = Mathf.Min(
+                1f,
+                rectWidth / Mathf.Max(border.x + border.z, 1f),
+                rectHeight / Mathf.Max(border.y + border.w, 1f));
+
+            int xLeft = x0 + Mathf.RoundToInt(border.x * scale);
+            int xRight = x0 + rectWidth - Mathf.RoundToInt(border.z * scale);
+            int yTop = y0 + Mathf.RoundToInt(border.w * scale);
+            int yBottom = y0 + rectHeight - Mathf.RoundToInt(border.y * scale);
+
+            Vector4 uv = rectangle.uvRect;
+            float uLeft = uv.z * (border.x / sourceWidth);
+            float uRight = uv.z * (border.z / sourceWidth);
+            float vBottom = uv.w * (border.y / sourceHeight);
+            float vTop = uv.w * (border.w / sourceHeight);
+
+            Span<int> xs = stackalloc int[4] { x0, xLeft, xRight, x0 + rectWidth };
+            Span<int> ys = stackalloc int[4] { y0, yTop, yBottom, y0 + rectHeight };
+            Span<float> us = stackalloc float[4] { uv.x, uv.x + uLeft, uv.x + uv.z - uRight, uv.x + uv.z };
+            Span<float> vs = stackalloc float[4] { uv.y + uv.w, uv.y + uv.w - vTop, uv.y + vBottom, uv.y };
+
+            _tmpVertex.radius = default;
+
+            for (int row = 0; row < 3; ++row)
+            {
+                int cellY = ys[row];
+                int cellHeight = ys[row + 1] - cellY;
+
+                if (cellHeight <= 0)
+                    continue;
+
+                for (int col = 0; col < 3; ++col)
+                {
+                    int cellX = xs[col];
+                    int cellWidth = xs[col + 1] - cellX;
+
+                    if (cellWidth <= 0)
+                        continue;
+
+                    _tmpVertex.position.x = cellX;
+                    _tmpVertex.position.y = -cellY - cellHeight;
+                    _tmpVertex.position.z = cellWidth;
+                    _tmpVertex.position.w = cellHeight;
+                    _tmpVertex.uvwh = new Vector4(
+                        us[col],
+                        vs[row + 1],
+                        us[col + 1] - us[col],
+                        vs[row] - vs[row + 1]);
+
+                    mesh.AddRect(_tmpVertex, 0f, 0f);
+                }
+            }
         }
 
         /// <summary>Draws a text block. The default mask (= the layout rect) is outset

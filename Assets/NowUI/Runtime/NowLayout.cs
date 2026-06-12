@@ -180,6 +180,44 @@ namespace NowUI
     }
 
     /// <summary>
+    /// Handle returned by <see cref="NowLayout.ContentRect()"/>: the reserved
+    /// rect plus the site-keyed slot the measured height reports back into.
+    /// </summary>
+    public readonly struct NowContentRect
+    {
+        /// <summary>The reserved rect — stretch width, last frame's height.</summary>
+        public readonly NowRect rect;
+
+        readonly int _slot;
+
+        internal NowContentRect(NowRect rect, int slot)
+        {
+            this.rect = rect;
+            _slot = slot;
+        }
+
+        public static implicit operator NowRect(NowContentRect content)
+        {
+            return content.rect;
+        }
+
+        /// <summary>
+        /// Reports the height the content actually produced; requests a repaint
+        /// while the reservation is still converging toward it.
+        /// </summary>
+        public void End(float measuredHeight)
+        {
+            ref float lastHeight = ref NowUIControlState.Get<float>(_slot);
+
+            if (Mathf.Abs(measuredHeight - lastHeight) <= 0.5f)
+                return;
+
+            lastHeight = measuredHeight;
+            NowUIControlState.RequestRepaint();
+        }
+    }
+
+    /// <summary>
     /// Disposable handle returned by <see cref="NowLayout.Area(NowRect)"/>,
     /// <see cref="NowLayout.Horizontal()"/> and <see cref="NowLayout.Vertical()"/>,
     /// mirroring the <see cref="NowUIInput.Begin(Vector2)"/> flow: wrap it in a using
@@ -1343,6 +1381,43 @@ namespace NowUI
         /// Last measured content size of an explicit-id group — how scroll views
         /// learn their content extent (one frame late, like all layout measures).
         /// </summary>
+        /// <summary>
+        /// Reserves a stretch-width rect for content whose height is only known
+        /// after drawing — the standard frame-late pattern for expensive layout
+        /// (markdown documents, wrapped text):
+        /// <code>
+        /// var content = NowLayout.ContentRect();
+        /// float height = DrawMyContent(content.rect);
+        /// content.End(height);
+        /// </code>
+        /// The last reported height is stored per call site (loops are salted by
+        /// per-frame occurrence, like control identity), so the caller manages no
+        /// state; <see cref="NowContentRect.End"/> requests a repaint while the
+        /// measurement is still converging so retained hosts settle within a few
+        /// frames.
+        /// </summary>
+        public static NowContentRect ContentRect(
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            return ContentRect(default, file, line);
+        }
+
+        public static NowContentRect ContentRect(
+            NowLayoutOptions options,
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            int slot = NowControls.GetControlId(NowControls.SiteId(file, line));
+            float lastHeight = NowUIControlState.Get<float>(slot);
+
+            if (!options.Has(NowLayoutOptions.Field.Width) && !options.Has(NowLayoutOptions.Field.StretchWidth))
+                options = options.SetStretchWidth();
+
+            var rect = Rect(options.SetHeight(Mathf.Max(lastHeight, 1f)));
+            return new NowContentRect(rect, slot);
+        }
+
         internal static bool TryGetCachedContentSize(string id, out Vector2 size)
         {
             if (id != null)

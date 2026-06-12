@@ -454,6 +454,19 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Measures a range of the string without allocating a substring —
+        /// word-wrap engines measure candidate words straight off the source
+        /// text. Per-codepoint advances, like the span overload.
+        /// </summary>
+        public Vector2 MeasureText(string value, int start, int length, float fontSize, NowFontStyle style = NowFontStyle.Regular, int tabSpaces = 4)
+        {
+            if (string.IsNullOrEmpty(value) || start < 0 || length <= 0 || start + length > value.Length)
+                return default;
+
+            return MeasureText(System.MemoryExtensions.AsSpan(value, start, length), fontSize, style, tabSpaces);
+        }
+
+        /// <summary>
         /// Span measure for dynamic text (counters, timers) without allocating a
         /// string. Per-codepoint advances only — shaping does not apply, matching
         /// the span draw path.

@@ -400,16 +400,83 @@ MonoBehaviour:
   _respectUGUIRaycast: 1
   _driveLayoutSize: 1
   _font: {fileID: 11400000, guid: d9b4fc19191445a4f851b19fd4cf730f, type: 2}
-  _markdown: "# NowUI Markdown\n\nEverything below renders through `Now` and `NowLayout`
-    \u2014 no HTML, no JavaScript.\n\n## Inline styles\n\nText can be **bold**, *italic*,
-    ***both***, ~~struck through~~, or `inline code`.\nLinks work too: [the GFM spec](https://github.github.com/gfm/)
-    and bare autolinks\nlike https://github.com just work.\n\n## Blocks\n\n> Block
-    quotes carry a bar and inset their content.\n> They can span multiple lines.\n\n```csharp\nif
-    (NowLayout.Button(\"Save\").Draw())\n    Save();\n```\n\n## Lists\n\n- Bullets\n-
-    Nest as you expect\n  - Like this\n1. Ordered too\n2. With numbers\n- [x] Task
-    lists (GFM)\n- [ ] Unchecked\n\n## Tables\n\n| Feature | Status | Notes |\n|
-    :--- | :---: | ---: |\n| Tables | done | aligned |\n| **Styling** | works | in
-    cells |\n\n---\n\nThat's a thematic break above.\n"
+  _markdown: "# PurrNet - Unity3D \n\nPurrNet is our attempt at the purrfect networking
+    solution... It's a 100% free Unity Networking solution with no pro or premium
+    version, and no features locked behind a pay-gate.\nYou can use it to release,
+    and we ask nothing in return! Read the Unique to PurrNet section to see what
+    we offer above other solutions!\n\nWebsite: https://purrnet.dev/\nDocs: https://purrnet.gitbook.io/docs 
+    \nDocs (source): https://github.com/BlenMiner/PurrNet-Docs\n\n## Install\n\nYou
+    can install PurrNet through Unity's Package Manager by adding a package through
+    this URL:\n\n```bash\nhttps://github.com/PurrNet/PurrNet.git?path=/Assets/PurrNet#release\n```\n\nOr
+    through OpenUM [![openupm](https://img.shields.io/npm/v/dev.purrnet.purrnet?label=PurrNet&registry_uri=https://package.openupm.com)](https://openupm.com/packages/dev.purrnet.purrnet/)\n\n`openupm
+    add dev.purrnet.purrnet`\n\nYou can also fallback to the asset store but versions
+    will be behind.\n\n[*Asset store link.*](https://assetstore.unity.com/packages/tools/network/purrnet-297320)\n\n##
+    Discord\n\n<a href=\"https://discord.gg/HnNKdkq9ta\" target=\"_blank\">\n   
+    <img src=\"https://discord.com/api/guilds/1288872904272121957/widget.png?style=banner2\"
+    alt=\"Discord Banner\">\n</a>\n\n## Quick Introduction\n\n### Transports\n\n-
+    UDP (reliable and unreliable)\n- WebSockets\n- Steam\n- Local (no socket)\n-
+    PurrTransport (Relay free for development)\n- Composite (Allows multiple transports)\n\n###
+    Spawning and Despawning\n \n```csharp\n[SerializedField] GameObject playerPrefab;\n\nprivate
+    GameObject _player;\n\nvoid SpawnPlayer()\n{\n    _player = Instantiate(playerPrefab);\n}\n\nvoid
+    DespawnPlayer()\n{\n    Destroy(_player);\n}\n\n```\n\nYes, you are done! PurrNet
+    will handle the rest for you.\nThe best part is that if you want to allow flexibility
+    over security, you can even have clients spawn and despawn their own objects
+    depending on which NetworkRules you pick.\nWith no changes to this code.\n\nBonus,
+    you can also drag and drop prefabs into the scene and have them spawn automatically.\nAs
+    long as they have a NetworkIdentity component attached to them and are part of
+    your NetworkPrefabs list.\n\n### RPCs\n\nYou have `TargetRPC`s, `ServerRPC`s,
+    and `ObserverRPC`s.\nDepending on your network rules, these can all be called
+    by clients too.\nOr if you want to keep it secure but still allow clients to
+    call some of them, you can use the `requireServer: false` parameter.\n\n```csharp\n[ServerRPC]\nvoid
+    DoSomethingOnServer()\n{\n    Debug.Log(\"Doing something on the server!\");\n}\n```\n\nStatic
+    RPCs are also supported.\n\n```csharp\n[ServerRPC]\nstatic void DoSomethingOnServer()\n{\n   
+    Debug.Log(\"Doing something on the server!\");\n}\n```\n\nAwaitable RPCs are
+    also supported.\n\n```csharp\n[ServerRPC]\nstatic Task<int> GetMyNymber()\n{\n   
+    return Task.FromResult(42);\n}\n```\n\nUnitTask integration is also supported.\n\n```csharp\n[ServerRPC]\nstatic
+    UniTask<int> GetMyNymber()\n{\n    return UniTask.FromResult(42);\n}\n```\n\nWhy
+    not Coroutine RPCs? We have that too!\n\n```csharp\n[ServerRPC]\nstatic IEnumerator
+    DoSomethingOnServer()\n{\n    yield return new WaitForSeconds(1);\n    Debug.Log(\"Doing
+    something on the server!\");\n}\n```\n\nGeneric RPCs are also supported.\n\n```csharp\n[ServerRPC]\nstatic
+    void DoSomethingOnServer<T>(T value)\n{\n    Debug.Log($\"Doing something on
+    the server with {value}!\");\n}\n```\n\nAll of these can be combined. For example,
+    you can have a static RPC that returns a value and is awaitable and generic.\n\n###
+    Network Modules\n\nNetwork Modules are a way to extend PurrNet with your own
+    custom logic.\nSyncVars are built using Network Modules, and you can create your
+    own Network Modules to add custom logic to your networked objects.\nThis opens
+    up a whole new world of possibilities for modularity and extensibility.\n\nYou
+    can also nest these modules inside each other.\nSo for this next example we could
+    have used a `SyncVar<int>` (another `NetworkModule`) but for demonstration purposes
+    we won't.\n\n```csharp\n[Serializable]\npublic class PlayerHealthModule : NetworkModule\n{\n   
+    [SerializeField] int _health;\n    \n    [ServerRPC(requireOwnership: true)]\n   
+    public void TakeDamage(int damage)\n    {\n        _health -= damage;\n    }\n}\n```\n\nThe
+    example above shows a simple health module that can be attached to any networked
+    object.\nNote that any of the mentioned RPCs can be used in Network Modules.\n\nHere
+    is how you would use it:\n\n```csharp\nclass SomeIdentity : NetworkIdentity\n{\n   
+    [SerializeField] PlayerHealthModule _healthModule;\n    \n    void TakeDamage(int
+    damage)\n    {\n        _healthModule.TakeDamage(damage);\n    }\n}\n```\n\nThis
+    is just a simple example, but you can create much more complex modules with multiple
+    RPCs and SyncVars.\nAll our built-in features are implemented using Network Modules,
+    so you can be sure that they are powerful and flexible.\n\nDon't forget they
+    can also be generic!\n\n### Network Rules\n\nNetwork Rules are a way to define
+    how your networked objects behave.\nYou can define who can spawn, despawn, and
+    call RPCs on your objects.\nYou can also define who can observe your objects
+    and how they are synchronized.\nAlmost everything is customizable, and every
+    object can have its own set of rules.\n\n![image](https://github.com/user-attachments/assets/aa702bc4-ad6b-4cd4-841b-700d21f28d3e)\n\n###
+    Serialization\n\nPurrNet uses a custom serialization system that is both fast
+    and flexible.\nI will keep this short as you shouldn't have to worry about it.\n\nJust
+    want to mention some of the features:\n\n```csharp\n// sending an RPC with an
+    object\n// PurrNet will automatically serialize it for you and resolve it's type\n[ServerRPC]\nvoid
+    DoSomethingOnServer(object someValue)\n{\n    Debug.Log($\"Doing something on
+    the server with {someValue}!\");\n}\n```\n\nYou can also use the BitPacker directly
+    if you want to send custom data.\nThis avoids creating garbage and is much faster
+    than using the object serialization.\nIt also allows you to send data that might
+    not be able to be represented by a type.\n\n```csharp\nvoid SendSometing()\n{\n   
+    using var writer = BitPackerPool.Get();\n    \n    writer.Write(42);\n    writer.Write(\"Hello,
+    World!\");\n    \n    DoSomethingOnServer(writer);\n}\n\n[ServerRPC]\nvoid DoSomethingOnServer(BitPacker
+    data)\n{\n    int value = default;\n    string message = default;\n    \n   
+    Packer<int>.Read(data, ref value);\n    Packer<string>.Read(data, ref message);\n   
+    \n    Debug.Log($\"Doing something on the server with {value} and '{message}'!\");\n   
+    \n    data.Dispose();\n}\n```\n \n"
 --- !u!1 &1457374376
 GameObject:
   m_ObjectHideFlags: 0

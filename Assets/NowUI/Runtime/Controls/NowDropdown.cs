@@ -141,16 +141,7 @@ namespace NowUI
                             itemRect = new NowRect(itemArea.x, itemArea.y + i * ItemHeight, itemArea.width, ItemHeight);
                         }
 
-                        int itemId;
-
-                        unchecked
-                        {
-                            itemId = (itemSeed * 397) ^ (i + 1);
-                        }
-
-                        if (itemId == 0)
-                            itemId = 1;
-                        var itemInteraction = NowUIInput.Interact(itemId, itemRect);
+                        var itemInteraction = NowUIInput.Interact(NowUIInput.CombineId(itemSeed, i + 1), itemRect);
 
                         if (itemInteraction.hovered || i == selected)
                         {
