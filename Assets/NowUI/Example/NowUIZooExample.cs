@@ -23,6 +23,7 @@ public class NowUIZooExample : NowUIGraphic
     float _volume = 0.7f;
     float _gamma = 2.2f;
     string _playerName = "";
+    string _notes = "";
     int _resolution = 1;
     int _clicks;
     float _hoverSpin;
@@ -216,6 +217,8 @@ public class NowUIZooExample : NowUIGraphic
         {
             NowLayout.Dropdown(Resolutions).SetStretchWidth().Draw(ref _resolution);
         }
+
+        NowLayout.TextArea().SetPlaceholder("Notes... (Enter for a new line)").SetStretchWidth().SetLines(3, 6).Draw(ref _notes);
 
         if (_greetingLabel != null)
             NowLayout.Label(_greetingLabel).SetFontSize(12)

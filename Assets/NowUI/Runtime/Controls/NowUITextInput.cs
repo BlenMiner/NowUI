@@ -16,6 +16,8 @@ namespace NowUI
         public bool deleteHeld;
         public bool leftHeld;
         public bool rightHeld;
+        public bool upHeld;
+        public bool downHeld;
         public bool homePressed;
         public bool endPressed;
         public bool enterPressed;
@@ -144,6 +146,8 @@ namespace NowUI
                 frame.deleteHeld = keyboard.deleteKey.isPressed;
                 frame.leftHeld = keyboard.leftArrowKey.isPressed;
                 frame.rightHeld = keyboard.rightArrowKey.isPressed;
+                frame.upHeld = keyboard.upArrowKey.isPressed;
+                frame.downHeld = keyboard.downArrowKey.isPressed;
                 frame.homePressed = keyboard.homeKey.wasPressedThisFrame;
                 frame.endPressed = keyboard.endKey.wasPressedThisFrame;
                 frame.enterPressed = keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame;
@@ -197,6 +201,8 @@ namespace NowUI
                 frame.deleteHeld = Input.GetKey(KeyCode.Delete);
                 frame.leftHeld = Input.GetKey(KeyCode.LeftArrow);
                 frame.rightHeld = Input.GetKey(KeyCode.RightArrow);
+                frame.upHeld = Input.GetKey(KeyCode.UpArrow);
+                frame.downHeld = Input.GetKey(KeyCode.DownArrow);
                 frame.homePressed = Input.GetKeyDown(KeyCode.Home);
                 frame.endPressed = Input.GetKeyDown(KeyCode.End);
                 frame.enterPressed = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);

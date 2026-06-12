@@ -32,6 +32,8 @@ using (NowLayout.Vertical(new NowLayoutOptions().SetPadding(16).SetSpacing(8)))
 
     NowLayout.TextField("player-name").SetPlaceholder("Name...").Draw(ref playerName);
 
+    NowLayout.TextArea("notes").SetPlaceholder("Notes...").SetLines(3, 8).Draw(ref notes);
+
     NowLayout.Dropdown("res", resolutionNames).Draw(ref resolutionIndex);
 
     using (NowLayout.ScrollView("log").SetHeight(160).Begin())
@@ -48,6 +50,12 @@ using (NowLayout.Vertical(new NowLayoutOptions().SetPadding(16).SetSpacing(8)))
 - `TextField` supports click/drag selection (shaped-text cluster aware),
   standard editing keys with repeat, copy/cut/paste/select-all, double-click
   select-all, placeholder text, and the mobile on-screen keyboard.
+- `TextArea` is the multi-line editor: word-wrapped with every character
+  preserved, caret up/down with a pixel goal column, Home/End per line and
+  Ctrl+Home/End per document, shift-selection on every movement, click/drag
+  and double-click word selection, Enter inserts a newline (Escape blurs),
+  multi-line clipboard, and a height that grows with content between
+  `SetLines(min, max)` with scroll-to-caret and wheel scrolling beyond it.
 - `Dropdown` opens an overlay popup that blocks input underneath, scrolls when
   long, and closes on selection, outside click, or cancel. Selection applies
   on the next frame's Draw.
@@ -328,6 +336,7 @@ The toolkit pieces:
 | `NowUITextInput.current` | Frame-sampled keyboard text/editing input |
 | `NowTextEdit` | Headless caret/selection/editing engine for custom editors |
 | `NowTextWrap.Layout / Draw` | Word wrap: lay out once into positioned runs, draw many frames |
+| `NowTextArea.LayoutLines / LineOf` | Editing-grade line layout: every character covered, caret-exact metrics |
 | `NowTextSelection.Draw / Interact / DrawHighlights` | Browser-style text selection over positioned line segments |
 | `NowUIClipboard.Copy / Paste / setText / getText` | The single clipboard hook every copy/paste path uses |
 | `NowLayout.ContentRect()` → `content.End(height)` | Frame-late reserve/measure for content sized by its width |
@@ -348,7 +357,7 @@ Conventions that keep custom controls consistent:
 
 - ScrollView is vertical-only and does not yet capture touch drags that start
   on child controls (wheel and scrollbar work everywhere).
-- TextField is single-line; IME composition is not yet handled (typed
+- IME composition is not yet handled in TextField or TextArea (typed
   characters and the mobile on-screen keyboard are).
 - Dropdown popups are pointer-driven; focus navigation inside the popup is
   not yet wired.

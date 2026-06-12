@@ -46,6 +46,11 @@ namespace NowUI
             return new NowTextField(rect, id, NowControls.SiteId(file, line));
         }
 
+        public static NowTextArea TextArea(NowRect rect, string id = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTextArea(rect, id, NowControls.SiteId(file, line));
+        }
+
         public static NowDropdown Dropdown(NowRect rect, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowDropdown(rect, null, options, NowControls.SiteId(file, line));
@@ -108,6 +113,11 @@ namespace NowUI
         public static NowTextField TextField(string id = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowTextField(id, NowControls.SiteId(file, line));
+        }
+
+        public static NowTextArea TextArea(string id = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTextArea(id, NowControls.SiteId(file, line));
         }
 
         public static NowDropdown Dropdown(IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)

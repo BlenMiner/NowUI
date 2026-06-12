@@ -57,6 +57,17 @@ point it became installable through UPM.
   Docs/Controls.md. UGUI hosting is first-class: `NowUIGraphic`
   auto-rebuilds while hovered or when a control requests a repaint,
   staying fully retained otherwise.
+- Multi-line text editing: `NowLayout.TextArea()` / `Now.TextArea(rect)` with
+  modern editor ergonomics — word wrap that preserves every character (words
+  wider than the area hard-split), caret up/down with a pixel goal column,
+  Home/End per visual line and Ctrl+Home/End per document, shift-selection on
+  every movement, click/drag and double-click word selection, Enter inserts a
+  newline while Escape blurs, Ctrl+Backspace/Delete word deletion, multi-line
+  copy/cut/paste (CRLF normalized) through `NowUIClipboard`, height that
+  grows with content between `SetLines(min, max)` plus scroll-to-caret, wheel
+  scrolling and a slim scroll indicator, and the multiline on-screen keyboard
+  on mobile. The line layout (`NowTextArea.LayoutLines`) is public for custom
+  editors, and the input frame gained up/down arrow keys.
 - Mutual UGUI pointer occlusion: UGUI drawn above NowUI now blocks NowUI
   hovers and clicks (EventSystem raycast gating in both the UGUI-hosted and
   screen input providers, drags preserved), completing the existing
