@@ -292,6 +292,70 @@ public class NowControlsTests
     }
 
     [Test]
+    public void CheckboxContentScopeTogglesInside()
+    {
+        bool value = false;
+        var rect = new NowRect(10, 10, 180, 28);
+        Vector2 inside = new Vector2(20, 24);
+
+        _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        using (var box = Now.Checkbox(rect, "scope-box").Begin(ref value))
+        {
+            Assert.IsFalse(box.clicked);
+            NowLayout.Label("On").Draw();
+        }
+
+        Assert.IsFalse(value);
+
+        _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+        bool sawChange = false;
+        bool sawValue = false;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        using (var box = Now.Checkbox(rect, "scope-box").Begin(ref value))
+        {
+            sawChange = box.clicked;
+            sawValue = value;
+            NowLayout.Label("On").Draw();
+        }
+
+        Assert.IsTrue(sawChange, "Toggle must be reported inside the scope.");
+        Assert.IsTrue(sawValue, "Updated value must be readable inside the scope.");
+        Assert.IsTrue(value);
+    }
+
+    [Test]
+    public void RadioContentScopeReportsClickInside()
+    {
+        var rect = new NowRect(10, 10, 180, 28);
+        Vector2 inside = new Vector2(20, 24);
+
+        _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        using (var radio = Now.Radio(rect, "scope-radio", false).Begin())
+            NowLayout.Label("High").Draw();
+
+        _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+        bool sawClick = false;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        using (var radio = Now.Radio(rect, "scope-radio", false).Begin())
+        {
+            sawClick = radio.clicked;
+            NowLayout.Label("High").Draw();
+        }
+
+        Assert.IsTrue(sawClick);
+    }
+
+    [Test]
     public void DefaultThemeIsAvailable()
     {
         Assert.NotNull(NowControls.theme);

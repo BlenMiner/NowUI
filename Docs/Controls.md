@@ -68,11 +68,12 @@ Now.Slider(new NowRect(20, 70, 200, 20), 0f, 1f).Draw(ref volume);
 Now.TextField(new NowRect(20, 100, 200, 30), "name").Draw(ref playerName);
 ```
 
-## Custom content inside a button
+## Custom content inside controls
 
 When a label is not enough — an icon, a sub-label, a Lottie spinner — open
-the button as a scope. Interaction runs immediately, so the result is
-readable inside, and children flow in a horizontal row:
+the control as a scope with `Begin()`. Interaction runs immediately, so the
+result is readable inside (a `NowControlScope` with `clicked`, `focused`,
+`interaction`, `rect`), and children flow in a horizontal row:
 
 ```csharp
 using (var save = NowLayout.Button("save-btn").Begin())
@@ -83,12 +84,25 @@ using (var save = NowLayout.Button("save-btn").Begin())
     NowLayout.Lottie(spinner).SetHeight(18).Draw();
     NowLayout.Label(saving ? "Saving..." : "Save").Draw();
 }
+
+using (var box = NowLayout.Checkbox("shadows").Begin(ref shadows))
+{
+    NowLayout.Label("Shadows").Draw();
+    NowLayout.Label("(expensive)").SetFontSize(11).Draw();
+}
+
+using (var high = NowLayout.Radio("high", quality == 2).Begin())
+{
+    if (high.clicked) quality = 2;
+    NowLayout.Label("High").Draw();
+}
 ```
 
-The scope exposes `clicked`, `focused`, `interaction`, and `rect`. In layout
-flow the button sizes to the previous frame's content, like all scope-form
-layout; the explicit-rect form (`Now.Button(rect, "id").Begin()`) is exact
-immediately.
+Checkbox toggles its ref value at `Begin`, so the updated value is also
+readable inside; `clicked` doubles as "changed this frame". In layout flow
+the control sizes to the previous frame's content, like all scope-form
+layout; the explicit-rect forms (`Now.Button(rect, "id").Begin()`) are exact
+immediately. ScrollView's `Begin()` is the same idea applied to a viewport.
 
 ## Repeated labels and ids
 

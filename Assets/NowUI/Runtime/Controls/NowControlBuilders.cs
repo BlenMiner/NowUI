@@ -58,7 +58,7 @@ namespace NowUI
         /// }
         /// </code>
         /// </summary>
-        public NowButtonScope Begin()
+        public NowControlScope Begin()
         {
             var theme = NowControls.theme;
             int id = NowControls.GetControlId(_label);
@@ -86,7 +86,7 @@ namespace NowUI
             var area = NowLayout.Area(_label, rect, new NowLayoutOptions().SetPadding(padding));
             var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f));
 
-            return new NowButtonScope(area, row, rect, interaction, focused, interaction.clicked || submitted);
+            return new NowControlScope(area, row, rect, interaction, focused, interaction.clicked || submitted);
         }
 
         public bool Draw()
@@ -122,10 +122,12 @@ namespace NowUI
     }
 
     /// <summary>
-    /// Scope returned by <see cref="NowButton.Begin"/>; interaction results are
+    /// Scope returned by the controls' Begin() methods; interaction results are
     /// readable inside the scope while custom content draws as layout children.
+    /// For toggling controls (checkbox, radio), <see cref="clicked"/> doubles as
+    /// "the value changed this frame".
     /// </summary>
-    public struct NowButtonScope : System.IDisposable
+    public struct NowControlScope : System.IDisposable
     {
         public readonly NowUIInteraction interaction;
 
@@ -140,7 +142,7 @@ namespace NowUI
         NowLayoutScope _row;
         bool _disposed;
 
-        internal NowButtonScope(NowLayoutScope area, NowLayoutScope row, NowRect rect, NowUIInteraction interaction, bool focused, bool clicked)
+        internal NowControlScope(NowLayoutScope area, NowLayoutScope row, NowRect rect, NowUIInteraction interaction, bool focused, bool clicked)
         {
             _area = area;
             _row = row;
@@ -192,6 +194,74 @@ namespace NowUI
         public NowCheckbox SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
         public NowCheckbox SetTextPreset(string textPreset) { _textPreset = textPreset; return this; }
+
+        /// <summary>
+        /// Opens the checkbox as a container: the box draws on the left and custom
+        /// content (labels, icons) flows beside it. The toggle happens here, so the
+        /// updated value and <see cref="NowControlScope.clicked"/> (= changed) are
+        /// readable inside the scope.
+        /// <code>
+        /// using (var shadowsBox = NowLayout.Checkbox("shadows").Begin(ref shadows))
+        /// {
+        ///     NowLayout.Label("Shadows").Draw();
+        ///     NowLayout.Label("(expensive)").SetFontSize(11).Draw();
+        /// }
+        /// </code>
+        /// </summary>
+        public NowControlScope Begin(ref bool value)
+        {
+            var theme = NowControls.theme;
+            int id = NowControls.GetControlId(_label);
+
+            const float Box = 18f;
+            const float Gap = 8f;
+
+            NowLayout.TryGetCachedContentSize(_label, out Vector2 cached);
+            var contentSize = new Vector2(
+                Box + Gap + Mathf.Max(cached.x, 40f),
+                Mathf.Max(Box, cached.y));
+
+            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
+            var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+            bool clicked = interaction.clicked || submitted;
+
+            if (clicked)
+                value = !value;
+
+            DrawCheckboxGlyph(theme, rect, id, value, focused, interaction);
+
+            var area = NowLayout.Area(_label, new NowRect(rect.x + Box + Gap, rect.y, rect.width - Box - Gap, rect.height));
+            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f));
+
+            return new NowControlScope(area, row, rect, interaction, focused, clicked);
+        }
+
+        void DrawCheckboxGlyph(NowUITheme theme, NowRect rect, int id, bool value, bool focused, in NowUIInteraction interaction)
+        {
+            const float Box = 18f;
+            float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
+            var boxRect = new NowRect(rect.x, rect.y + (rect.height - Box) * 0.5f, Box, Box);
+
+            var frame = theme.Rectangle(boxRect, value ? "accent" : "outline");
+            frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
+
+            if (focused)
+            {
+                frame.outline = Mathf.Max(frame.outline, 2f);
+                frame.outlineColor = theme.GetColor("text", Color.black);
+            }
+
+            frame.Draw();
+
+            if (value)
+            {
+                float inset = Box * 0.3f;
+                Now.Rectangle(new NowRect(boxRect.x + inset, boxRect.y + inset, Box - inset * 2f, Box - inset * 2f))
+                    .SetColor(theme.GetColor("accent-text", Color.white))
+                    .SetRadius(2f)
+                    .Draw();
+            }
+        }
 
         public bool Draw(ref bool value)
         {
@@ -272,6 +342,71 @@ namespace NowUI
         public NowRadio SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
         public NowRadio SetTextPreset(string textPreset) { _textPreset = textPreset; return this; }
+
+        /// <summary>
+        /// Opens the radio as a container: the circle draws on the left and custom
+        /// content flows beside it; <see cref="NowControlScope.clicked"/> is readable
+        /// inside the scope.
+        /// <code>
+        /// using (var high = NowLayout.Radio("high", quality == 2).Begin())
+        /// {
+        ///     if (high.clicked) quality = 2;
+        ///     NowLayout.Label("High").Draw();
+        /// }
+        /// </code>
+        /// </summary>
+        public NowControlScope Begin()
+        {
+            var theme = NowControls.theme;
+            int id = NowControls.GetControlId(_label);
+
+            const float Circle = 18f;
+            const float Gap = 8f;
+
+            NowLayout.TryGetCachedContentSize(_label, out Vector2 cached);
+            var contentSize = new Vector2(
+                Circle + Gap + Mathf.Max(cached.x, 40f),
+                Mathf.Max(Circle, cached.y));
+
+            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
+            var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+
+            DrawRadioGlyph(theme, rect, id, focused, interaction);
+
+            var area = NowLayout.Area(_label, new NowRect(rect.x + Circle + Gap, rect.y, rect.width - Circle - Gap, rect.height));
+            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f));
+
+            return new NowControlScope(area, row, rect, interaction, focused, interaction.clicked || submitted);
+        }
+
+        void DrawRadioGlyph(NowUITheme theme, NowRect rect, int id, bool focused, in NowUIInteraction interaction)
+        {
+            const float Circle = 18f;
+            float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
+            var circleRect = new NowRect(rect.x, rect.y + (rect.height - Circle) * 0.5f, Circle, Circle);
+
+            var frame = theme.Rectangle(circleRect, _isOn ? "accent" : "outline");
+            frame.radius = new Vector4(Circle, Circle, Circle, Circle) * 0.5f;
+            frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
+
+            if (focused)
+            {
+                frame.outline = Mathf.Max(frame.outline, 2f);
+                frame.outlineColor = theme.GetColor("text", Color.black);
+            }
+
+            frame.Draw();
+
+            if (_isOn)
+            {
+                float inset = Circle * 0.32f;
+                float dot = Circle - inset * 2f;
+                Now.Rectangle(new NowRect(circleRect.x + inset, circleRect.y + inset, dot, dot))
+                    .SetColor(theme.GetColor("accent-text", Color.white))
+                    .SetRadius(dot * 0.5f)
+                    .Draw();
+            }
+        }
 
         public bool Draw()
         {

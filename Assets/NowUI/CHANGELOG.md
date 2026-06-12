@@ -42,8 +42,9 @@ point it became installable through UPM.
   rectangles, text (both font compilers), Lottie, and the GL camera path.
 - Controls library: Button, Checkbox, Radio, Slider, TextField, Dropdown and
   ScrollView in the fluent builder style — `NowLayout.*` for layout flow,
-  `Now.*` for explicit rects, `NowButton.Begin()` content scopes for custom
-  button content (icons, sub-labels) — theme-integrated, with
+  `Now.*` for explicit rects, and `Begin()` content scopes on Button,
+  Checkbox and Radio for custom content (icons, sub-labels) with results
+  readable inside the scope — theme-integrated, with
   keyboard/gamepad focus (`NowUIFocus`: spatial navigation,
   submit activation), per-control ephemeral state and timing helpers
   (`NowUIControlState`), id scopes, ambient clipping (`Now.Mask`), an
