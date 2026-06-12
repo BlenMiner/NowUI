@@ -10,6 +10,7 @@ namespace NowUI
     public struct NowButton
     {
         readonly string _label;
+        readonly int _site;
         string _id;
         NowLayoutOptions _options;
         NowRectangleStyle _rectPreset;
@@ -18,11 +19,14 @@ namespace NowUI
         readonly NowRect _rect;
         readonly bool _hasRect;
 
-        string identity => _id ?? _label;
+        int ResolveControlId() => _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
-        internal NowButton(string label)
+        int areaKey => _id != null ? NowUIInput.GetId(_id) : _site;
+
+        internal NowButton(string label, int site)
         {
             _label = label ?? string.Empty;
+            _site = site;
             _id = null;
             _options = default;
             _rectPreset = NowRectangleStyle.Accent;
@@ -32,7 +36,7 @@ namespace NowUI
             _hasRect = false;
         }
 
-        internal NowButton(NowRect rect, string label) : this(label)
+        internal NowButton(NowRect rect, string label, int site) : this(label, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -61,10 +65,10 @@ namespace NowUI
         /// anything drawn with layout calls. Interaction runs immediately, so the
         /// result is readable inside the scope; children flow in a horizontal row.
         /// In layout flow the button sizes to the previous frame's content, like all
-        /// scope-form layout. The label is identity only here — never rendered, and
-        /// it must be non-empty (it keys interaction, focus and the size cache).
+        /// scope-form layout. The label is never rendered here — identity comes from
+        /// the call site, so it can simply be omitted.
         /// <code>
-        /// using (var save = NowLayout.Button("save-btn").Begin())
+        /// using (var save = NowLayout.Button().Begin())
         /// {
         ///     if (save.clicked) Save();
         ///     NowLayout.Lottie(spinner).SetHeight(18).Draw();
@@ -75,10 +79,10 @@ namespace NowUI
         public NowControlScope Begin()
         {
             var theme = NowControls.theme;
-            int id = NowControls.GetControlId(identity);
+            int id = ResolveControlId();
 
             Vector4 padding = theme.GetSpacing(NowSpacingToken.Md, new Vector4(12f, 12f, 12f, 12f));
-            NowLayout.TryGetCachedContentSize(identity, out Vector2 cached);
+            NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
             var fallback = new Vector2(padding.x + padding.z + 40f, padding.y + padding.w + 20f);
             var contentSize = cached.x > 0f ? cached : fallback;
 
@@ -101,7 +105,7 @@ namespace NowUI
             // frames can be smaller than the content, and oversized children should
             // never escape the control visually.
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(identity, rect, new NowLayoutOptions().SetPadding(padding));
+            var area = NowLayout.Area(areaKey, rect, new NowLayoutOptions().SetPadding(padding));
             var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f).SetAlignItems(_alignItems));
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
@@ -110,7 +114,7 @@ namespace NowUI
         public bool Draw()
         {
             var theme = NowControls.theme;
-            int id = NowControls.GetControlId(identity);
+            int id = ResolveControlId();
 
             var text = theme.Text(default, _textPreset);
             Vector2 labelSize = text.Measure(_label);
@@ -194,6 +198,7 @@ namespace NowUI
     public struct NowCheckbox
     {
         readonly string _label;
+        readonly int _site;
         string _id;
         NowLayoutOptions _options;
         readonly NowRect _rect;
@@ -201,11 +206,14 @@ namespace NowUI
         NowTextStyle _textPreset;
         NowLayoutAlign _alignItems;
 
-        string identity => _id ?? _label;
+        int ResolveControlId() => _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
-        internal NowCheckbox(string label)
+        int areaKey => _id != null ? NowUIInput.GetId(_id) : _site;
+
+        internal NowCheckbox(string label, int site)
         {
             _label = label ?? string.Empty;
+            _site = site;
             _id = null;
             _options = default;
             _rect = default;
@@ -214,7 +222,7 @@ namespace NowUI
             _alignItems = NowLayoutAlign.Start;
         }
 
-        internal NowCheckbox(NowRect rect, string label) : this(label)
+        internal NowCheckbox(NowRect rect, string label, int site) : this(label, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -246,12 +254,12 @@ namespace NowUI
         public NowControlScope Begin(ref bool value)
         {
             var theme = NowControls.theme;
-            int id = NowControls.GetControlId(identity);
+            int id = ResolveControlId();
 
             const float Box = 18f;
             const float Gap = 8f;
 
-            NowLayout.TryGetCachedContentSize(identity, out Vector2 cached);
+            NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
             var contentSize = new Vector2(
                 Box + Gap + Mathf.Max(cached.x, 40f),
                 Mathf.Max(Box, cached.y));
@@ -266,7 +274,7 @@ namespace NowUI
             DrawCheckboxGlyph(theme, rect, id, value, focused, interaction);
 
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(identity, new NowRect(rect.x + Box + Gap, rect.y, rect.width - Box - Gap, rect.height));
+            var area = NowLayout.Area(areaKey, new NowRect(rect.x + Box + Gap, rect.y, rect.width - Box - Gap, rect.height));
             var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f).SetAlignItems(_alignItems));
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, clicked);
@@ -302,7 +310,7 @@ namespace NowUI
         public bool Draw(ref bool value)
         {
             var theme = NowControls.theme;
-            int id = NowControls.GetControlId(identity);
+            int id = ResolveControlId();
 
             var text = theme.Text(default, _textPreset);
             Vector2 labelSize = text.Measure(_label);
@@ -354,6 +362,7 @@ namespace NowUI
     public struct NowRadio
     {
         readonly string _label;
+        readonly int _site;
         string _id;
         readonly bool _isOn;
         NowLayoutOptions _options;
@@ -362,11 +371,14 @@ namespace NowUI
         NowTextStyle _textPreset;
         NowLayoutAlign _alignItems;
 
-        string identity => _id ?? _label;
+        int ResolveControlId() => _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
-        internal NowRadio(string label, bool isOn)
+        int areaKey => _id != null ? NowUIInput.GetId(_id) : _site;
+
+        internal NowRadio(string label, bool isOn, int site)
         {
             _label = label ?? string.Empty;
+            _site = site;
             _id = null;
             _isOn = isOn;
             _options = default;
@@ -376,7 +388,7 @@ namespace NowUI
             _alignItems = NowLayoutAlign.Start;
         }
 
-        internal NowRadio(NowRect rect, string label, bool isOn) : this(label, isOn)
+        internal NowRadio(NowRect rect, string label, bool isOn, int site) : this(label, isOn, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -407,12 +419,12 @@ namespace NowUI
         public NowControlScope Begin()
         {
             var theme = NowControls.theme;
-            int id = NowControls.GetControlId(identity);
+            int id = ResolveControlId();
 
             const float Circle = 18f;
             const float Gap = 8f;
 
-            NowLayout.TryGetCachedContentSize(identity, out Vector2 cached);
+            NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
             var contentSize = new Vector2(
                 Circle + Gap + Mathf.Max(cached.x, 40f),
                 Mathf.Max(Circle, cached.y));
@@ -423,7 +435,7 @@ namespace NowUI
             DrawRadioGlyph(theme, rect, id, focused, interaction);
 
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(identity, new NowRect(rect.x + Circle + Gap, rect.y, rect.width - Circle - Gap, rect.height));
+            var area = NowLayout.Area(areaKey, new NowRect(rect.x + Circle + Gap, rect.y, rect.width - Circle - Gap, rect.height));
             var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f).SetAlignItems(_alignItems));
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
@@ -461,7 +473,7 @@ namespace NowUI
         public bool Draw()
         {
             var theme = NowControls.theme;
-            int id = NowControls.GetControlId(identity);
+            int id = ResolveControlId();
 
             var text = theme.Text(default, _textPreset);
             Vector2 labelSize = text.Measure(_label);
@@ -515,19 +527,21 @@ namespace NowUI
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
+        readonly int _site;
         string _id;
 
-        internal NowSlider(float min, float max)
+        internal NowSlider(float min, float max, int site)
         {
             _min = min;
             _max = max;
             _options = default;
             _rect = default;
             _hasRect = false;
-            _id = "slider";
+            _site = site;
+            _id = null;
         }
 
-        internal NowSlider(NowRect rect, float min, float max) : this(min, max)
+        internal NowSlider(NowRect rect, float min, float max, int site) : this(min, max, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -539,13 +553,13 @@ namespace NowUI
 
         public NowSlider SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
-        /// <summary>Sliders have no label; give ones that coexist a distinct id.</summary>
+        /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowSlider SetId(string id) { _id = id; return this; }
 
         public bool Draw(ref float value)
         {
             var theme = NowControls.theme;
-            int id = NowControls.GetControlId(_id);
+            int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
             const float Height = 20f;
             const float Knob = 16f;

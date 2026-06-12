@@ -62,6 +62,18 @@ point it became installable through UPM.
   screen input providers, drags preserved), completing the existing
   raycastTarget blocking in the other direction. EventSystem selection and
   NowUI focus are also mutually exclusive (`NowUIFocus.respectEventSystem`).
+- Automatic control identity from the call site: the control factories
+  capture `[CallerFilePath]`/`[CallerLineNumber]`, so every textual call
+  site is its own control and labels are purely visual — duplicate labels
+  never collide, renaming a label keeps state, sliders need no manual ids,
+  and `Begin()` content scopes need no identity string at all
+  (`NowLayout.Button().Begin()`). Loop iterations over one site are salted
+  by per-frame draw order; `SetId`, the optional string ids on
+  TextField/Dropdown/ScrollView, and `NowControls.IdScope` anchor identity
+  to data when items can reorder or one control draws from several code
+  paths. Custom controls opt in via `NowControls.SiteId` +
+  `NowControls.GetControlId(int)`. Ids are session-scoped and never
+  persisted.
 - Group-level cross-axis alignment: `NowLayoutOptions.SetAlignItems`
   (flexbox `align-items`) sets the default alignment for a group's children,
   with per-child `SetAlign` overriding; exposed on the `Begin()` controls

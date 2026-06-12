@@ -18,19 +18,27 @@ namespace NowUI
     public struct NowScrollView
     {
         readonly string _id;
+        readonly int _site;
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
 
-        internal NowScrollView(string id)
+        internal NowScrollView(string id, int site)
         {
-            _id = id ?? "scroll";
+            _id = id;
+            _site = site;
             _options = default;
             _rect = default;
             _hasRect = false;
         }
 
-        internal NowScrollView(NowRect rect, string id) : this(id)
+        internal NowScrollView(NowRect rect, string id, int site) : this(id, site)
+        {
+            _rect = rect;
+            _hasRect = true;
+        }
+
+        internal NowScrollView(NowRect rect, int identity) : this(null, identity)
         {
             _rect = rect;
             _hasRect = true;
@@ -54,9 +62,10 @@ namespace NowUI
             }
 
             NowRect viewport = NowControls.ReserveRect(_hasRect, _rect, options, new Vector2(200f, 200f));
-            int id = NowControls.GetControlId(_id);
+            int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+            int areaKey = _id != null ? NowUIInput.GetId(_id) : _site;
 
-            NowLayout.TryGetCachedContentSize(_id, out Vector2 content);
+            NowLayout.TryGetCachedContentSize(areaKey, out Vector2 content);
             bool barVisible = content.y > viewport.height + 0.5f;
             float maxScroll = Mathf.Max(0f, content.y - viewport.height);
 
@@ -80,7 +89,7 @@ namespace NowUI
             float contentWidth = viewport.width - (barVisible ? BarWidth + BarPad : 0f);
 
             var mask = Now.Mask(viewport);
-            var layout = NowLayout.Area(_id, new NowRect(
+            var layout = NowLayout.Area(areaKey, new NowRect(
                 viewport.x,
                 viewport.y - scroll.y,
                 contentWidth,

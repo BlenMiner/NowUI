@@ -64,7 +64,7 @@ public class NowUIGraphicExample : NowUIGraphic
                 NowLayout.Button("B").Draw();
                 NowLayout.Button("C").Draw();
 
-                using (var button = NowLayout.Button("lottie-button").SetAlignItems(NowLayoutAlign.Center).Begin())
+                using (var button = NowLayout.Button().SetAlignItems(NowLayoutAlign.Center).Begin())
                 {
                     if (button.interaction.hovered)
                         _animation += Time.deltaTime;
@@ -74,7 +74,6 @@ public class NowUIGraphicExample : NowUIGraphic
                         .SetTime(_animation)
                         .SetWidth(64)
                         .Draw();
-
                     NowLayout.Label("Hello").SetFontSize(64).Draw();
 
                     if (button.clicked)
@@ -82,14 +81,5 @@ public class NowUIGraphicExample : NowUIGraphic
                 }
             }
         }
-    }
-
-    private void DrawLottie()
-    {
-        var reservedRect = NowLayout.Rect(128, 128);
-
-        Now.Lottie(reservedRect, _lottie)
-            .SetTime(Time.time)
-            .Draw();
     }
 }

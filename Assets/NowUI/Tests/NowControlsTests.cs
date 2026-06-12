@@ -107,7 +107,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            activated = Now.Button(ButtonRect, "Save").Draw();
+            activated = Now.Button(ButtonRect, "Save").SetId("Save").Draw();
 
         Assert.IsTrue(activated, "Submit on a focused button must activate it.");
     }
@@ -123,7 +123,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            Now.Checkbox(rect, "Shadows").Draw(ref value);
+            Now.Checkbox(rect, "Shadows").SetId("shadows").Draw(ref value);
 
         Assert.IsFalse(value);
 
@@ -132,7 +132,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            changed = Now.Checkbox(rect, "Shadows").Draw(ref value);
+            changed = Now.Checkbox(rect, "Shadows").SetId("shadows").Draw(ref value);
 
         Assert.IsTrue(changed);
         Assert.IsTrue(value);
@@ -148,14 +148,14 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            Now.Radio(rect, "High", false).Draw();
+            Now.Radio(rect, "High", false).SetId("high").Draw();
 
         _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
         bool clicked;
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-            clicked = Now.Radio(rect, "High", false).Draw();
+            clicked = Now.Radio(rect, "High", false).SetId("high").Draw();
 
         Assert.IsTrue(clicked);
     }
@@ -205,43 +205,65 @@ public class NowControlsTests
     }
 
     [Test]
-    public void DuplicateLabelButtonsDoNotShareActivation()
+    public void SameSiteLoopButtonsDoNotShareActivation()
     {
+        // One call site drawn twice per frame (a loop): occurrence salting must
+        // keep the iterations apart, stably across press and release frames.
+        var rects = new[] { new NowRect(0, 0, 100, 30), new NowRect(0, 50, 100, 30) };
+        Vector2 insideSecond = new Vector2(50, 65);
+        bool firstClicked = false, secondClicked = false;
+
+        void Frame(bool down, bool pressed, bool released)
+        {
+            _provider.snapshot = new NowUIInputSnapshot(insideSecond, down, pressed, released);
+
+            using (NowUIInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                for (int i = 0; i < rects.Length; ++i)
+                {
+                    bool clicked = Now.Button(rects[i], "Delete").Draw();
+
+                    if (i == 0) firstClicked = clicked;
+                    else secondClicked = clicked;
+                }
+            }
+        }
+
+        Frame(down: true, pressed: true, released: false);
+        Frame(down: false, pressed: false, released: true);
+
+        Assert.IsFalse(firstClicked, "Same-site sibling must not activate.");
+        Assert.IsTrue(secondClicked, "The clicked loop iteration must activate.");
+    }
+
+    [Test]
+    public void SameLabelDifferentCallSitesAreDistinctControls()
+    {
+        // Labels no longer key identity: two "Delete" buttons on different lines
+        // are independent controls even though the text matches.
         var rect1 = new NowRect(0, 0, 100, 30);
         var rect2 = new NowRect(0, 50, 100, 30);
+        Vector2 insideSecond = new Vector2(50, 65);
+        bool firstClicked = false, secondClicked = false;
 
-        // Learn the second button's id and focus it.
-        int secondId;
-
-        using (NowUIInput.Begin(_provider, Surface))
+        void Frame(bool down, bool pressed, bool released)
         {
-            NowControls.GetControlId("Delete");
-            secondId = NowControls.GetControlId("Delete");
+            _provider.snapshot = new NowUIInputSnapshot(insideSecond, down, pressed, released);
+
+            using (NowUIInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                firstClicked = Now.Button(rect1, "Delete").Draw();
+                secondClicked = Now.Button(rect2, "Delete").Draw();
+            }
         }
 
-        NowUIFocus.Focus(secondId);
+        Frame(down: true, pressed: true, released: false);
+        Frame(down: false, pressed: false, released: true);
 
-        // Submit frame: only the focused (second) button may activate. With
-        // shared ids both fired.
-        _provider.snapshot = new NowUIInputSnapshot(
-            true, new Vector2(400, 200), new Vector2(400, 200), Vector2.zero,
-            NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
-            Vector2.zero, Vector2.zero,
-            submitDown: true, submitPressed: true, submitReleased: false,
-            cancelDown: false, cancelPressed: false, cancelReleased: false,
-            frame: 1, time: 1f);
-
-        bool firstActivated, secondActivated;
-
-        using (NowUIInput.Begin(_provider, Surface))
-        using (_drawList.Begin(Surface))
-        {
-            firstActivated = Now.Button(rect1, "Delete").Draw();
-            secondActivated = Now.Button(rect2, "Delete").Draw();
-        }
-
-        Assert.IsFalse(firstActivated, "Same-label sibling must not activate.");
-        Assert.IsTrue(secondActivated, "The focused duplicate must activate.");
+        Assert.IsFalse(firstClicked, "A same-label button at another site must not activate.");
+        Assert.IsTrue(secondClicked, "The button under the pointer must activate.");
     }
 
     [Test]
@@ -373,7 +395,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-        using (var button = Now.Button(ButtonRect, "content-button").Begin())
+        using (var button = Now.Button(ButtonRect).SetId("content-button").Begin())
         {
             Assert.IsFalse(button.clicked);
             NowLayout.Label("Hi").Draw();
@@ -385,7 +407,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-        using (var button = Now.Button(ButtonRect, "content-button").Begin())
+        using (var button = Now.Button(ButtonRect).SetId("content-button").Begin())
         {
             sawClick = button.clicked;
             NowLayout.Label("Hi").Draw();
@@ -430,7 +452,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-        using (var box = Now.Checkbox(rect, "scope-box").Begin(ref value))
+        using (var box = Now.Checkbox(rect).SetId("scope-box").Begin(ref value))
         {
             Assert.IsFalse(box.clicked);
             NowLayout.Label("On").Draw();
@@ -444,7 +466,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-        using (var box = Now.Checkbox(rect, "scope-box").Begin(ref value))
+        using (var box = Now.Checkbox(rect).SetId("scope-box").Begin(ref value))
         {
             sawChange = box.clicked;
             sawValue = value;
@@ -466,7 +488,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-        using (var radio = Now.Radio(rect, "scope-radio", false).Begin())
+        using (var radio = Now.Radio(rect, false).SetId("scope-radio").Begin())
             NowLayout.Label("High").Draw();
 
         _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
@@ -474,7 +496,7 @@ public class NowControlsTests
 
         using (NowUIInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
-        using (var radio = Now.Radio(rect, "scope-radio", false).Begin())
+        using (var radio = Now.Radio(rect, false).SetId("scope-radio").Begin())
         {
             sawClick = radio.clicked;
             NowLayout.Label("High").Draw();

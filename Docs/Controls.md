@@ -76,7 +76,7 @@ result is readable inside (a `NowControlScope` with `clicked`, `focused`,
 `interaction`, `rect`), and children flow in a horizontal row:
 
 ```csharp
-using (var save = NowLayout.Button("save-btn").Begin())
+using (var save = NowLayout.Button().Begin())
 {
     if (save.clicked)
         Save();
@@ -85,22 +85,22 @@ using (var save = NowLayout.Button("save-btn").Begin())
     NowLayout.Label(saving ? "Saving..." : "Save").Draw();
 }
 
-using (var box = NowLayout.Checkbox("shadows").Begin(ref shadows))
+using (var box = NowLayout.Checkbox().Begin(ref shadows))
 {
     NowLayout.Label("Shadows").Draw();
     NowLayout.Label("(expensive)").SetFontSize(11).Draw();
 }
 
-using (var high = NowLayout.Radio("high", quality == 2).Begin())
+using (var high = NowLayout.Radio(quality == 2).Begin())
 {
     if (high.clicked) quality = 2;
     NowLayout.Label("High").Draw();
 }
 ```
 
-With `Begin()` the label is identity only — it is never rendered, and it must
-be non-empty: it keys interaction, focus, and the content size cache. Think
-of it as an id ("save-btn"), with the visible content drawn inside the scope.
+With `Begin()` no label is needed at all — identity comes from the call site
+(see *Identity* below) and the visible content draws inside the scope. A
+label passed anyway is ignored visually.
 
 Checkbox toggles its ref value at `Begin`, so the updated value is also
 readable inside; `clicked` doubles as "changed this frame". In layout flow
@@ -121,22 +121,45 @@ using (var save = NowLayout.Button("save-btn").SetAlignItems(NowLayoutAlign.Cent
 }
 ```
 
-## Repeated labels and ids
+## Identity
 
-Control ids derive from labels. Repeated labels in the same frame are
-automatically salted by draw order, so two `Button("Delete")`s never share
-interaction state. The occurrence order follows draw order, though — when
-same-label controls appear or vanish conditionally, give them stable
-identities with `SetId` or an id scope:
+Control identity is automatic: it comes from the call site. The factories
+capture their caller via `[CallerFilePath]`/`[CallerLineNumber]`, so every
+textual `Button(...)` in your code is its own control — labels are purely
+visual and never part of the id. Two `Button("Delete")`s on different lines
+are independent; renaming a label never resets state. Ids are session-scoped
+(they shift when code moves between compiles) and must never be persisted.
+
+A loop shares one call site; iterations are salted by per-frame draw order,
+so looped buttons work with no ceremony:
+
+```csharp
+foreach (var line in logLines)
+    NowLayout.Label(line).Draw();
+
+for (int i = 0; i < rows.Count; ++i)
+    if (NowLayout.Button(rows[i].name).Draw())   // one site, salted per iteration
+        Open(i);
+```
+
+Draw-order salting means state follows the *position* in the loop, not the
+item. When looped items can reorder, appear, or vanish — or when one logical
+control draws from several code paths — anchor identity to your data instead:
 
 ```csharp
 NowLayout.Button("Delete").SetId($"delete-{item.id}").Draw();
 
 for (int i = 0; i < rows.Count; ++i)
-    using (NowControls.IdScope($"row-{i}"))
+    using (NowControls.IdScope(rows[i].id))
         if (NowLayout.Button("Delete").Draw())
-            Delete(i);
+            Delete(rows[i]);
 ```
+
+`TextField`, `Dropdown`, and `ScrollView` keep their optional explicit string
+id as the first parameter (`TextField("player-name")`) for the same purpose;
+omit it and the call site is the id. Custom controls get site identity by
+declaring the caller-info parameters themselves and passing them through
+`NowControls.SiteId(file, line)` into `NowControls.GetControlId(int)`.
 
 ## Compile-time misuse warnings
 

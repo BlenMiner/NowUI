@@ -87,18 +87,63 @@ namespace NowUI
         static readonly Dictionary<int, int> _labelOccurrences = new Dictionary<int, int>(32);
 
         /// <summary>
-        /// Derives a control id from a label within the active id scope. Repeated
-        /// labels in the same frame are salted by occurrence so identical buttons
-        /// never share interaction state; the first occurrence keeps the stable
-        /// label-derived id. Occurrence order follows draw order — when controls
-        /// appear or vanish conditionally, prefer <c>SetId</c> or an
-        /// <see cref="IdScope"/> for ids that never shift.
+        /// Hashes a call site (file + line) into a control identity. The control
+        /// factories capture their caller via [CallerFilePath]/[CallerLineNumber]
+        /// and pass it here, so every textual call site is automatically its own
+        /// control — no explicit id needed. Loops share a site and are
+        /// disambiguated by per-frame occurrence in <see cref="GetControlId(int)"/>.
+        /// Custom controls get the same behavior by declaring the caller-info
+        /// parameters themselves and forwarding them here.
         /// </summary>
-        public static int GetControlId(string label)
+        public static int SiteId(string file, int line)
+        {
+            unchecked
+            {
+                int hash = ((file != null ? file.GetHashCode() : 0) * 397) ^ line;
+                return hash != 0 ? hash : 1;
+            }
+        }
+
+        /// <summary>
+        /// Derives a control id from an explicit string id within the active id
+        /// scope, with the same per-frame occurrence salting as the site overload.
+        /// </summary>
+        public static int GetControlId(string id)
         {
             int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            int id = NowUIInput.GetId(seed, label);
+            return Salt(NowUIInput.GetId(seed, id));
+        }
 
+        /// <summary>
+        /// Derives a control id from a precomputed identity hash (usually a
+        /// <see cref="SiteId"/>) within the active id scope. Repeated draws of the
+        /// same identity in one frame — loop iterations over a single call site —
+        /// are salted by occurrence so they never share interaction state; the
+        /// first occurrence keeps the stable id. Occurrence order follows draw
+        /// order, so when looped controls appear, vanish, or reorder, prefer
+        /// <c>SetId</c> or an <see cref="IdScope"/> keyed by your data.
+        /// </summary>
+        public static int GetControlId(int identity)
+        {
+            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
+            int id = identity;
+
+            if (seed != 0)
+            {
+                unchecked
+                {
+                    id = (seed * 397) ^ identity;
+                }
+            }
+
+            if (id == 0)
+                id = 1;
+
+            return Salt(id);
+        }
+
+        static int Salt(int id)
+        {
             // Measure passes draw the same controls again with interactions inert;
             // counting them would desync ids between the passes.
             if (NowUIInput.isPassive)

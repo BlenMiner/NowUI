@@ -15,6 +15,7 @@ namespace NowUI
     public struct NowDropdown
     {
         readonly string _id;
+        readonly int _site;
         readonly IReadOnlyList<string> _options;
         NowLayoutOptions _layoutOptions;
         readonly NowRect _rect;
@@ -23,16 +24,17 @@ namespace NowUI
         const float ItemHeight = 30f;
         const float MaxPopupHeight = 240f;
 
-        internal NowDropdown(string id, IReadOnlyList<string> options)
+        internal NowDropdown(string id, IReadOnlyList<string> options, int site)
         {
-            _id = id ?? "dropdown";
+            _id = id;
+            _site = site;
             _options = options;
             _layoutOptions = default;
             _rect = default;
             _hasRect = false;
         }
 
-        internal NowDropdown(NowRect rect, string id, IReadOnlyList<string> options) : this(id, options)
+        internal NowDropdown(NowRect rect, string id, IReadOnlyList<string> options, int site) : this(id, options, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -47,7 +49,7 @@ namespace NowUI
         public bool Draw(ref int selected)
         {
             var theme = NowControls.theme;
-            int id = NowControls.GetControlId(_id);
+            int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
             int optionCount = _options?.Count ?? 0;
 
             // Apply a selection made in last frame's deferred popup.
@@ -109,7 +111,7 @@ namespace NowUI
             var capturedTheme = theme;
             var capturedOptions = _options;
             var capturedField = rect;
-            string capturedId = _id;
+            int capturedScrollId = NowUIInput.GetId(id, "popup-scroll");
             int capturedDropdownId = id;
             int capturedSelected = selected;
 
@@ -165,7 +167,7 @@ namespace NowUI
 
                 if (scrolls)
                 {
-                    using (Now.ScrollView(itemArea, capturedId).Begin())
+                    using (new NowScrollView(itemArea, capturedScrollId).Begin())
                         DrawItems();
                 }
                 else

@@ -14,6 +14,7 @@ namespace NowUI
     public struct NowTextField
     {
         readonly string _id;
+        readonly int _site;
         string _placeholder;
         NowLayoutOptions _options;
         readonly NowRect _rect;
@@ -23,9 +24,10 @@ namespace NowUI
         static TouchScreenKeyboard s_touchKeyboard;
         static int s_touchKeyboardId;
 
-        internal NowTextField(string id)
+        internal NowTextField(string id, int site)
         {
-            _id = id ?? "textfield";
+            _id = id;
+            _site = site;
             _placeholder = null;
             _options = default;
             _rect = default;
@@ -33,7 +35,7 @@ namespace NowUI
             _textPreset = NowTextStyle.Body;
         }
 
-        internal NowTextField(NowRect rect, string id) : this(id)
+        internal NowTextField(NowRect rect, string id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -55,7 +57,7 @@ namespace NowUI
             string original = text;
 
             var theme = NowControls.theme;
-            int id = NowControls.GetControlId(_id);
+            int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
             var textStyle = theme.Text(default, _textPreset);
             var fontAsset = textStyle.font;

@@ -827,8 +827,21 @@ namespace NowUI
         public static NowLayoutScope Area(string id, NowRect rect, NowLayoutOptions options)
         {
             OnFrameBoundary();
+            return Area(id != null ? NowUIInput.GetId(id) : HashCombine(AreaSeed, _areaCounter), rect, options);
+        }
 
-            int areaId = id != null ? NowUIInput.GetId(id) : HashCombine(AreaSeed, _areaCounter);
+        /// <summary>Area keyed by a precomputed identity hash (e.g. <see cref="NowControls.SiteId"/>).</summary>
+        public static NowLayoutScope Area(int id, NowRect rect)
+        {
+            return Area(id, rect, default(NowLayoutOptions));
+        }
+
+        /// <summary>Area keyed by a precomputed identity hash (e.g. <see cref="NowControls.SiteId"/>).</summary>
+        public static NowLayoutScope Area(int id, NowRect rect, NowLayoutOptions options)
+        {
+            OnFrameBoundary();
+
+            int areaId = id;
             _areaCounter++;
 
             Push(new Group
@@ -1304,7 +1317,16 @@ namespace NowUI
         /// </summary>
         internal static bool TryGetCachedContentSize(string id, out Vector2 size)
         {
-            if (id != null && _cache.TryGetValue(NowUIInput.GetId(id), out var cached))
+            if (id != null)
+                return TryGetCachedContentSize(NowUIInput.GetId(id), out size);
+
+            size = default;
+            return false;
+        }
+
+        internal static bool TryGetCachedContentSize(int id, out Vector2 size)
+        {
+            if (_cache.TryGetValue(id, out var cached))
             {
                 size = new Vector2(cached.contentWidth, cached.contentHeight);
                 return true;
