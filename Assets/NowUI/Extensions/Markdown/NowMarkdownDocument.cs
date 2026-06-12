@@ -40,7 +40,17 @@ namespace NowUI.Markdown
             Fill,
             Line,
             Image,
-            CopyButton
+            CopyButton,
+            SelectionLayer
+        }
+
+        struct CodeRegion
+        {
+            public string literal;
+            public int lineStart;
+            public int lineCount;
+            public float fontSize;
+            public NowRect buttonRect;
         }
 
         enum Role : byte
@@ -81,6 +91,9 @@ namespace NowUI.Markdown
         readonly List<Op> _ops = new List<Op>(64);
         readonly List<string> _links = new List<string>(4);
         readonly List<int> _linkHoverOp = new List<int>(4);
+        readonly List<CodeRegion> _codeRegions = new List<CodeRegion>(4);
+        readonly List<NowTextSelectionLine> _codeLines = new List<NowTextSelectionLine>(16);
+        readonly List<NowTextSelectionLine> _codeLineScratch = new List<NowTextSelectionLine>(16);
         int _strikeSequence;
 
         float _layoutWidth = -1f;
@@ -214,6 +227,40 @@ namespace NowUI.Markdown
                     case OpKind.CopyButton:
                     {
                         DrawCopyButton(theme, docId, i, op, target);
+                        break;
+                    }
+                    case OpKind.SelectionLayer:
+                    {
+                        var region = _codeRegions[op.link];
+                        _codeLineScratch.Clear();
+
+                        for (int l = 0; l < region.lineCount; ++l)
+                        {
+                            var line = _codeLines[region.lineStart + l];
+                            line.rect = new NowRect(
+                                rect.x + line.rect.x,
+                                rect.y + line.rect.y,
+                                line.rect.width,
+                                line.rect.height);
+                            _codeLineScratch.Add(line);
+                        }
+
+                        Color highlight = theme.GetColor(NowColorToken.Accent, Color.blue);
+                        highlight.a = 0.25f;
+
+                        NowTextSelection.Draw(
+                            NowUIInput.CombineId(NowUIInput.GetId(docId, "selection"), op.link),
+                            region.literal,
+                            _codeLineScratch,
+                            _layoutFont,
+                            region.fontSize,
+                            NowFontStyle.Regular,
+                            highlight,
+                            new NowRect(
+                                rect.x + region.buttonRect.x,
+                                rect.y + region.buttonRect.y,
+                                region.buttonRect.width,
+                                region.buttonRect.height));
                         break;
                     }
                 }
@@ -350,6 +397,8 @@ namespace NowUI.Markdown
             _strikeSequence = 0;
             _ops.Clear();
             _links.Clear();
+            _codeRegions.Clear();
+            _codeLines.Clear();
 
             if (font == null || width <= 1f)
             {
@@ -446,6 +495,14 @@ namespace NowUI.Markdown
             int panelIndex = _ops.Count;
             AddFill(Role.CodePanel, default);
 
+            _ops.Add(new Op
+            {
+                kind = OpKind.SelectionLayer,
+                role = Role.Body,
+                link = _codeRegions.Count
+            });
+            int regionLineStart = _codeLines.Count;
+
             y += pad;
             string literal = block.literal ?? string.Empty;
             var language = NowMarkdownSyntax.GetLanguage(block.info);
@@ -456,6 +513,13 @@ namespace NowUI.Markdown
             {
                 if (i != literal.Length && literal[i] != '\n')
                     continue;
+
+                _codeLines.Add(new NowTextSelectionLine
+                {
+                    rect = new NowRect(x + pad, y, width - x - pad * 2f, lineHeight),
+                    start = lineStart,
+                    length = i - lineStart
+                });
 
                 string line = literal.Substring(lineStart, i - lineStart);
 
@@ -485,17 +549,28 @@ namespace NowUI.Markdown
 
             y += pad;
 
+            float buttonWidth = _style.fontSize * 3.6f;
+            float buttonHeight = _style.fontSize * 1.5f;
+            var buttonRect = new NowRect(width - 6f - buttonWidth, top + 6f, buttonWidth, buttonHeight);
+
+            _codeRegions.Add(new CodeRegion
+            {
+                literal = literal,
+                lineStart = regionLineStart,
+                lineCount = _codeLines.Count - regionLineStart,
+                fontSize = size,
+                buttonRect = buttonRect
+            });
+
             var panel = _ops[panelIndex];
             panel.rect = new NowRect(x, top, width - x, y - top);
             _ops[panelIndex] = panel;
 
-            float buttonWidth = _style.fontSize * 3.6f;
-            float buttonHeight = _style.fontSize * 1.5f;
             _ops.Add(new Op
             {
                 kind = OpKind.CopyButton,
                 role = Role.Body,
-                rect = new NowRect(width - 6f - buttonWidth, top + 6f, buttonWidth, buttonHeight),
+                rect = buttonRect,
                 hoverRect = panel.rect,
                 text = literal,
                 link = -1

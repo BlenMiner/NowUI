@@ -190,6 +190,49 @@ namespace NowUI
             state.caret = text?.Length ?? 0;
         }
 
+        /// <summary>Selects the word (or whitespace run) containing <paramref name="index"/>.</summary>
+        public static void SelectWord(ref NowTextEditState state, string text, int index)
+        {
+            text ??= string.Empty;
+            state.caret = Mathf.Clamp(index, 0, text.Length);
+            state.anchor = state.caret;
+
+            if (text.Length == 0)
+                return;
+
+            int at = Mathf.Min(state.caret, text.Length - 1);
+
+            if (char.IsWhiteSpace(text[at]))
+            {
+                int wsStart = at;
+
+                while (wsStart > 0 && char.IsWhiteSpace(text[wsStart - 1]))
+                    --wsStart;
+
+                int wsEnd = at;
+
+                while (wsEnd < text.Length && char.IsWhiteSpace(text[wsEnd]))
+                    ++wsEnd;
+
+                state.anchor = wsStart;
+                state.caret = wsEnd;
+                return;
+            }
+
+            int start = at;
+
+            while (start > 0 && !char.IsWhiteSpace(text[start - 1]))
+                start = PrevIndex(text, start);
+
+            int end = at;
+
+            while (end < text.Length && !char.IsWhiteSpace(text[end]))
+                end = NextIndex(text, end);
+
+            state.anchor = start;
+            state.caret = end;
+        }
+
         public static string GetSelection(string text, in NowTextEditState state)
         {
             if (string.IsNullOrEmpty(text) || !state.hasSelection)

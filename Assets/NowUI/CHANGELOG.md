@@ -93,6 +93,13 @@ point it became installable through UPM.
   gracefully when the rect is smaller than the borders); `SetUV(rect)`
   samples a sub-region; `SetPreserveAspect()` letterboxes instead of
   stretching.
+- Text selection in the core: `NowTextSelection` gives any text region
+  browser-style selection — press/drag selects, double-click selects a
+  word, Ctrl/Cmd+A selects all, Ctrl/Cmd+C copies (replaceable handler) —
+  over caller-positioned lines, with focus integration so clicking
+  elsewhere deselects, plus `NowTextEdit.SelectWord`. Markdown code blocks
+  are selectable with it, like a website: drag to copy parts, the Copy
+  button still takes the whole block.
 - Markdown: multi-word links behave as one link — all words share a single
   interaction (press one word, release on another, still a click), hovering
   any word highlights the whole link, and underline/strikethrough

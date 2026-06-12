@@ -375,6 +375,17 @@ public class NowMarkdownTests
         }
     }
 
+    sealed class FakeKeyboard : INowUITextInputSource
+    {
+        public NowUITextInputFrame frame;
+
+        public bool TryGetFrame(out NowUITextInputFrame result)
+        {
+            result = frame;
+            return true;
+        }
+    }
+
     NowFontAsset _font;
     FakeProvider _provider;
     NowUIDrawList _drawList;
@@ -484,6 +495,50 @@ public class NowMarkdownTests
 
         Assert.AreEqual("https://example.com/multi", clicked,
             "press on one word and release on another must still click the link");
+    }
+
+    [Test]
+    public void CodeBlockTextIsSelectableAndCopyable()
+    {
+        var previousCopy = NowTextSelection.copyToClipboard;
+        string copied = null;
+        NowTextSelection.copyToClipboard = text => copied = text;
+        var keyboard = new FakeKeyboard();
+        NowUITextInput.source = keyboard;
+
+        try
+        {
+            var document = NowMarkdownDocument.Parse("```\nint value = 42;\n```");
+            var rect = new NowRect(0, 0, 400f, 200f);
+            float pad = NowMarkdownStyle.Default.fontSize * 0.6f;
+            float codeSize = NowMarkdownStyle.Default.fontSize * 0.92f;
+            float lineMidY = pad + 8f;
+            var from = new Vector2(pad + 1f, lineMidY);
+            var to = new Vector2(pad + _font.MeasureText("int", codeSize).x + 1f, lineMidY);
+
+            void Frame(Vector2 pointer, bool down, bool pressed, bool released, NowUITextInputFrame keys = default)
+            {
+                keyboard.frame = keys;
+                NowUITextInput.Invalidate();
+                _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
+
+                using (NowUIInput.Begin(_provider, Surface))
+                using (_drawList.Begin(Surface))
+                    document.Draw(rect);
+            }
+
+            Frame(from, down: true, pressed: true, released: false);
+            Frame(to, down: true, pressed: false, released: false);
+            Frame(to, down: false, pressed: false, released: true);
+            Frame(to, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+
+            Assert.AreEqual("int", copied, "dragging over code and pressing Ctrl+C must copy the selected range");
+        }
+        finally
+        {
+            NowTextSelection.copyToClipboard = previousCopy;
+            NowUITextInput.Reset();
+        }
     }
 
     [Test]

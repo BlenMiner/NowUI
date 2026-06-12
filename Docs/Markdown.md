@@ -56,6 +56,10 @@ Links are not opened automatically: the result reports `clickedLink` /
 - Code blocks carry a Copy button; the click handler defaults to the system
   clipboard and is replaceable (`NowMarkdownDocument.copyToClipboard`) for
   platforms that need their own copy flow
+- Code block text is selectable like a website — drag (double-click for a
+  word, Ctrl/Cmd+A for all) and Ctrl/Cmd+C copies the selection through the
+  core `NowTextSelection` helper, which any custom control can reuse for
+  copyable text regions
 - Syntax highlighting in fenced code blocks for `csharp`/`cs`, `json`, and a
   C-like generic (`js`, `ts`, `c`, `cpp`, `java`): keywords, strings,
   numbers and comments, with multiline comment/verbatim-string state carried
