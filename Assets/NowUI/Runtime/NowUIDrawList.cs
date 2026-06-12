@@ -107,6 +107,10 @@ namespace NowUI
         {
             if (capturesMesh)
             {
+                // Popups and other deferred overlays land inside this capture; hosts
+                // that flushed earlier (with their input scope active) make this a no-op.
+                NowUIOverlay.Flush();
+
                 if (_layout == NowUIMeshLayout.Canvas)
                     Now.EndCanvasMeshCapture(this, positionOffset);
                 else

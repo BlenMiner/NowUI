@@ -129,7 +129,7 @@ namespace NowUI
 
             ref var state = ref Get<DoubleClickState>(id);
             float now = Time.realtimeSinceStartup;
-            bool isDouble = now - state.lastClickTime <= window;
+            bool isDouble = state.lastClickTime > 0f && now - state.lastClickTime <= window;
             state.lastClickTime = isDouble ? 0f : now;
             return isDouble;
         }

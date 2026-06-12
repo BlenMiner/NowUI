@@ -497,7 +497,9 @@ namespace NowUI
 
         public static bool IsHovered(Rect rect)
         {
-            return _hasContext && _snapshot.hasPointer && rect.Contains(_snapshot.pointerPosition);
+            return _hasContext && _snapshot.hasPointer &&
+                rect.Contains(_snapshot.pointerPosition) &&
+                !NowUIOverlay.IsPointerBlocked(_snapshot.pointerPosition);
         }
 
         public static bool IsPointerDown(NowUIPointerButton button)
@@ -557,7 +559,8 @@ namespace NowUI
 
             var snapshot = _snapshot;
             bool hasPointer = _hasContext && snapshot.hasPointer;
-            bool hovered = hasPointer && rect.Contains(snapshot.pointerPosition);
+            bool hovered = hasPointer && rect.Contains(snapshot.pointerPosition) &&
+                !NowUIOverlay.IsPointerBlocked(snapshot.pointerPosition);
 
             // Passive mode (e.g. a layout measure pass): report pure reads like hover
             // so styling stays consistent, but never transition press/drag state — the

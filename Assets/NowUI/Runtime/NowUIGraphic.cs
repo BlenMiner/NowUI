@@ -147,6 +147,7 @@ namespace NowUI
                     }
 
                     DrawNowUI(drawRect);
+                    NowUIOverlay.Flush();
                 }
 
                 Now.EndColorMultiplier();

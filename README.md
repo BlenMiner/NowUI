@@ -95,6 +95,9 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
 - **Input** — immediate-mode `NowUIInput.Interact` with hover, press, drag,
   and click across mouse, touch, keyboard, and gamepad; pluggable providers
   for RenderTextures, tests, and remote input.
+- **Controls** — buttons, checkboxes, radios, sliders, text fields,
+  dropdowns, and scroll views with focus navigation, theming, and a public
+  toolkit for building custom controls. [Docs/Controls.md](Docs/Controls.md)
 - **Lottie** — vector animations tessellated live on the CPU, never
   rasterized to textures. [Docs/Lottie.md](Docs/Lottie.md)
 - **Themes** — ScriptableObject color/spacing/radius tokens and presets.

@@ -103,7 +103,10 @@ namespace NowUI
                 surface.size /= uiScale;
 
                 using (NowUIInput.Begin(NowUIInput.defaultProvider, surface))
+                {
                     DrawAll(camera, new Rect(0, 0, size.x, size.y));
+                    NowUIOverlay.Flush();
+                }
 
                 scope.Dispose();
             }

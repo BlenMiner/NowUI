@@ -134,6 +134,21 @@ namespace NowUI
             return new NowSlider(min, max);
         }
 
+        public static NowScrollView ScrollView(string id)
+        {
+            return new NowScrollView(id);
+        }
+
+        public static NowTextField TextField(string id)
+        {
+            return new NowTextField(id);
+        }
+
+        public static NowDropdown Dropdown(string id, System.Collections.Generic.IReadOnlyList<string> options)
+        {
+            return new NowDropdown(id, options);
+        }
+
         // ------------------------------------------------------------------
         // Shared control plumbing (public: custom controls use the same calls)
         // ------------------------------------------------------------------

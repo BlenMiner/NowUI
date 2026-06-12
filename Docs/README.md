@@ -9,6 +9,8 @@ it.
 
 - [Feature Usage](Features.md): core drawing lifecycle, rectangles, text, UGUI,
   and font compilation examples.
+- [Controls](Controls.md): buttons, checkboxes, radios, sliders, text fields,
+  dropdowns, scroll views — and the toolkit for building custom controls.
 - [Layout](Layout.md): flexbox-style groups, sizing options, flexible space,
   and the two measurement modes.
 - [Lottie](Lottie.md): importing `.lottie` assets, the `Now.Lottie` builder,

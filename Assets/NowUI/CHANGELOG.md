@@ -40,14 +40,18 @@ point it became installable through UPM.
   matte-clipped strokes keep the scalar route.
 - Play-mode rendering test suite reading back real rendered pixels for
   rectangles, text (both font compilers), Lottie, and the GL camera path.
-- Controls foundation and first controls: `NowControls.Button/Checkbox/
-  Radio/Slider` in the fluent builder style, layout- and theme-integrated,
-  with keyboard/gamepad focus (`NowUIFocus`: spatial navigation, submit
-  activation), per-control ephemeral state and timing helpers
-  (`NowUIControlState`), and id scopes. Custom controls build on the same
-  public primitives. UGUI hosting is first-class: `NowUIGraphic` auto-
-  rebuilds while hovered or when a control requests a repaint, staying
-  fully retained otherwise.
+- Controls library: `NowControls.Button/Checkbox/Radio/Slider/TextField/
+  Dropdown/ScrollView` in the fluent builder style, layout- and theme-
+  integrated, with keyboard/gamepad focus (`NowUIFocus`: spatial navigation,
+  submit activation), per-control ephemeral state and timing helpers
+  (`NowUIControlState`), id scopes, ambient clipping (`Now.Mask`), an
+  overlay layer with input occlusion (`NowUIOverlay`), frame-sampled text
+  editing input (`NowUITextInput`) and a headless single-line editing
+  engine (`NowTextEdit`, surrogate-safe, shaped-cluster caret hit-testing).
+  Custom controls build on the same public primitives — see
+  Docs/Controls.md. UGUI hosting is first-class: `NowUIGraphic`
+  auto-rebuilds while hovered or when a control requests a repaint,
+  staying fully retained otherwise.
 - HarfBuzz text shaping (`Now.textShaping`, on by default): ligatures,
   kerning, and complex-script forms through the nowui-msdf v4 plugin, with
   shaped glyphs baked by the managed compiler. Measurement uses the same

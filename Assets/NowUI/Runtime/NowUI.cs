@@ -88,6 +88,37 @@ namespace NowUI
                 _fontStack.RemoveAt(_fontStack.Count - 1);
         }
 
+        static readonly List<NowRect> _maskStack = new List<NowRect>(4);
+
+        /// <summary>
+        /// Pushes an ambient clip rect: every draw inside the scope is masked to the
+        /// intersection of all pushed masks and its own mask. The backbone of scroll
+        /// views and any clipped container:
+        /// <code>
+        /// using (Now.Mask(viewport))
+        ///     DrawContent();
+        /// </code>
+        /// </summary>
+        public static NowMaskScope Mask(NowRect mask)
+        {
+            if (_maskStack.Count > 0)
+                mask = mask.Intersect(_maskStack[_maskStack.Count - 1]);
+
+            _maskStack.Add(mask);
+            return new NowMaskScope(true);
+        }
+
+        internal static void PopMask()
+        {
+            if (_maskStack.Count > 0)
+                _maskStack.RemoveAt(_maskStack.Count - 1);
+        }
+
+        internal static NowRect ApplyAmbientMask(NowRect mask)
+        {
+            return _maskStack.Count > 0 ? mask.Intersect(_maskStack[_maskStack.Count - 1]) : mask;
+        }
+
         static int _defaultMesh = -1;
 
         static StaticList<NowMesh> _meshes = new StaticList<NowMesh>(100);
@@ -341,6 +372,7 @@ namespace NowUI
 
             _captureMesh = false;
             _fontStack.Clear();
+            _maskStack.Clear();
             _uiScale = uiScale;
 
             screenMask = new NowRect(0f, 0f, Screen.width / uiScale, Screen.height / uiScale);
@@ -357,6 +389,7 @@ namespace NowUI
             // Self-heal: a font scope leaked in a previous frame must not poison
             // every frame after it.
             _fontStack.Clear();
+            _maskStack.Clear();
 
             _uiScale = 1f;
             Now.screenMask = screenMask;
@@ -372,6 +405,7 @@ namespace NowUI
         internal static void BeginMeshCapture(Vector4 screenMask)
         {
             Now.screenMask = screenMask;
+            _maskStack.Clear();
             Initialize();
             _captureMesh = true;
             _meshes.count = 0;
@@ -629,6 +663,9 @@ namespace NowUI
             if (_captureMesh)
                 return;
 
+            // Popups and other deferred overlays draw last, above everything.
+            NowUIOverlay.Flush();
+
             var meshArray = _meshes.array;
             int count = _meshes.count;
 
@@ -686,7 +723,7 @@ namespace NowUI
             _tmpVertex.position.z = (int)position.width;
             _tmpVertex.position.w = rectHeight;
 
-            _tmpVertex.mask = rectangle.mask;
+            _tmpVertex.mask = ApplyAmbientMask(rectangle.mask);
             _tmpVertex.radius = rectangle.radius;
             _tmpVertex.color = ApplyColorMultiplier(rectangle.color);
             _tmpVertex.outlineColor = ApplyColorMultiplier(rectangle.outlineColor);
@@ -705,6 +742,8 @@ namespace NowUI
         {
             if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
                 return;
+
+            style.mask = ApplyAmbientMask(style.mask);
 
             if (textShaping && TryDrawShapedString(style, value))
                 return;
@@ -907,6 +946,8 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || style.font == null)
                 return;
 
+            style.mask = ApplyAmbientMask(style.mask);
+
             if (!style.font.TryResolveFont(style.fontStyle, out var resolvedFont))
                 return;
 
@@ -1035,7 +1076,7 @@ namespace NowUI
                 lottie.preserveAspect);
 
             mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, buffer.positions.count);
-            mesh.AddGeometry(buffer, new Vector2(lottie.rect.x, lottie.rect.y), 1f / renderScale, tint, lottie.mask);
+            mesh.AddGeometry(buffer, new Vector2(lottie.rect.x, lottie.rect.y), 1f / renderScale, tint, ApplyAmbientMask(lottie.mask));
         }
 
         public static NowUIRectangle Rectangle(NowUIRectangle rect)
@@ -1061,6 +1102,29 @@ namespace NowUI
         public static NowUILottie Lottie(NowRect position, NowLottieAsset asset)
         {
             return new NowUILottie(position, asset);
+        }
+    }
+
+    /// <summary>
+    /// Disposable handle returned by <see cref="Now.Mask(NowRect)"/>; disposing
+    /// restores the previous ambient mask.
+    /// </summary>
+    public struct NowMaskScope : IDisposable
+    {
+        bool _active;
+
+        internal NowMaskScope(bool active)
+        {
+            _active = active;
+        }
+
+        public void Dispose()
+        {
+            if (!_active)
+                return;
+
+            _active = false;
+            Now.PopMask();
         }
     }
 

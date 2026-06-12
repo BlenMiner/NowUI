@@ -1234,6 +1234,22 @@ namespace NowUI
             StoreCache(ref group, out _, out _);
         }
 
+        /// <summary>
+        /// Last measured content size of an explicit-id group — how scroll views
+        /// learn their content extent (one frame late, like all layout measures).
+        /// </summary>
+        internal static bool TryGetCachedContentSize(string id, out Vector2 size)
+        {
+            if (id != null && _cache.TryGetValue(NowUIInput.GetId(id), out var cached))
+            {
+                size = new Vector2(cached.contentWidth, cached.contentHeight);
+                return true;
+            }
+
+            size = default;
+            return false;
+        }
+
         static void StoreCache(ref Group group, out float contentWidth, out float contentHeight)
         {
             float contentMain = group.cursor;
