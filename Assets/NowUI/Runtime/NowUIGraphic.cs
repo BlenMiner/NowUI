@@ -17,6 +17,11 @@ namespace NowUI
         [Header("NowUI")]
         [SerializeField] bool _rebuildEveryFrame;
 
+        [SerializeField, Tooltip("Rebuild automatically while the pointer is over this graphic or a control inside it requested a repaint (focus, animations, caret blink). Keeps NowControls live inside retained UGUI without Rebuild Every Frame.")]
+        bool _autoRebuildOnInteraction = true;
+
+        [NonSerialized] bool _wantsInteractionRepaint;
+
         [NonSerialized] readonly List<CanvasRenderer> _extraCanvasRenderers = new List<CanvasRenderer>(2);
 
         [NonSerialized] readonly List<IMaterialModifier> _materialModifiers = new List<IMaterialModifier>(4);
@@ -44,6 +49,12 @@ namespace NowUI
         bool _validClipRect;
 
         public event Action<NowUIGraphic, NowRect> rebuildNowUI;
+
+        public bool autoRebuildOnInteraction
+        {
+            get => _autoRebuildOnInteraction;
+            set => _autoRebuildOnInteraction = value;
+        }
 
         public bool rebuildEveryFrame
         {
@@ -111,6 +122,8 @@ namespace NowUI
 
             var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset);
             bool colorMultiplierActive = false;
+            NowUIControlState.BeginRepaintTracking();
+            _wantsInteractionRepaint = false;
 
             try
             {
@@ -138,6 +151,7 @@ namespace NowUI
 
                 Now.EndColorMultiplier();
                 colorMultiplierActive = false;
+                _wantsInteractionRepaint = NowUIControlState.EndRepaintTracking();
 
                 scope.Dispose();
             }
@@ -215,8 +229,34 @@ namespace NowUI
 
         protected virtual void LateUpdate()
         {
-            if (_rebuildEveryFrame)
+            if (_rebuildEveryFrame ||
+                (_autoRebuildOnInteraction && (_wantsInteractionRepaint || IsPointerOverGraphic())))
+            {
                 SetVerticesDirty();
+            }
+        }
+
+        /// <summary>
+        /// Cheap pointer-over test so hosted controls get their first hover rebuild
+        /// while the graphic is otherwise fully retained.
+        /// </summary>
+        bool IsPointerOverGraphic()
+        {
+            var rect = rectTransform.rect;
+
+            if (rect.width <= 0f || rect.height <= 0f)
+                return false;
+
+            var provider = GetInputProvider();
+
+            if (!provider.TryGetSnapshot(new NowUIInputSurface(new Vector2(rect.width, rect.height)), out var snapshot) ||
+                !snapshot.hasPointer)
+            {
+                return false;
+            }
+
+            Vector2 position = snapshot.pointerPosition;
+            return position.x >= 0f && position.y >= 0f && position.x <= rect.width && position.y <= rect.height;
         }
 
         protected override void OnEnable()

@@ -1,0 +1,268 @@
+using System.Collections.Generic;
+using NUnit.Framework;
+using UnityEngine;
+using NowUI;
+
+/// <summary>
+/// Controls foundation tests: driven entirely through fake input providers, the
+/// same seam custom controls and UGUI hosting use.
+/// </summary>
+public class NowControlsTests
+{
+    sealed class FakeProvider : INowUIInputProvider
+    {
+        public NowUIInputSnapshot snapshot;
+        public bool hasInput = true;
+
+        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot result)
+        {
+            result = snapshot;
+            return hasInput;
+        }
+    }
+
+    static readonly Vector2 Surface = new Vector2(512, 256);
+    static readonly NowRect ButtonRect = new NowRect(20, 20, 120, 40);
+
+    FakeProvider _provider;
+    NowUIDrawList _drawList;
+
+    [SetUp]
+    public void SetUp()
+    {
+        NowUIInput.Reset();
+        NowUIFocus.Reset();
+        NowUIControlState.Reset();
+        NowControls.Reset();
+        _provider = new FakeProvider();
+        _drawList = new NowUIDrawList();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _drawList.Dispose();
+        NowUIInput.Reset();
+        NowUIFocus.Reset();
+        NowUIControlState.Reset();
+        NowControls.Reset();
+    }
+
+    bool DrawButtonFrame(Vector2 pointer, bool down, bool pressed, bool released)
+    {
+        _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
+        bool result;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            result = NowControls.Button("Save").SetPosition(ButtonRect).Draw();
+
+        return result;
+    }
+
+    [Test]
+    public void ButtonClicksOnPressAndReleaseInside()
+    {
+        Vector2 inside = new Vector2(60, 36);
+
+        Assert.IsFalse(DrawButtonFrame(inside, down: true, pressed: true, released: false));
+        Assert.IsTrue(DrawButtonFrame(inside, down: false, pressed: false, released: true));
+        Assert.IsTrue(_drawList.hasGeometry, "Button drew no visuals.");
+    }
+
+    [Test]
+    public void ButtonDoesNotClickWhenReleasedOutside()
+    {
+        Assert.IsFalse(DrawButtonFrame(new Vector2(60, 36), true, true, false));
+        Assert.IsFalse(DrawButtonFrame(new Vector2(400, 200), false, false, true));
+    }
+
+    [Test]
+    public void ButtonPressTakesFocus()
+    {
+        DrawButtonFrame(new Vector2(60, 36), true, true, false);
+        Assert.AreEqual(NowControls.GetControlId("Save"), NowUIFocus.focusedId);
+    }
+
+    [Test]
+    public void FocusedButtonActivatesOnSubmit()
+    {
+        int id = NowControls.GetControlId("Save");
+        NowUIFocus.Focus(id);
+
+        _provider.snapshot = new NowUIInputSnapshot(
+            true, new Vector2(400, 200), new Vector2(400, 200), Vector2.zero,
+            NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            submitDown: true, submitPressed: true, submitReleased: false,
+            cancelDown: false, cancelPressed: false, cancelReleased: false,
+            frame: 1, time: 1f);
+
+        bool activated;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            activated = NowControls.Button("Save").SetPosition(ButtonRect).Draw();
+
+        Assert.IsTrue(activated, "Submit on a focused button must activate it.");
+    }
+
+    [Test]
+    public void CheckboxTogglesRefValueOnClick()
+    {
+        bool value = false;
+        var rect = new NowRect(10, 10, 160, 28);
+        Vector2 inside = new Vector2(20, 24);
+
+        _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            NowControls.Checkbox("Shadows").SetPosition(rect).Draw(ref value);
+
+        Assert.IsFalse(value);
+
+        _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+        bool changed;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            changed = NowControls.Checkbox("Shadows").SetPosition(rect).Draw(ref value);
+
+        Assert.IsTrue(changed);
+        Assert.IsTrue(value);
+    }
+
+    [Test]
+    public void RadioReportsClickForSelection()
+    {
+        var rect = new NowRect(10, 10, 160, 28);
+        Vector2 inside = new Vector2(20, 24);
+
+        _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            NowControls.Radio("High", false).SetPosition(rect).Draw();
+
+        _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+        bool clicked;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            clicked = NowControls.Radio("High", false).SetPosition(rect).Draw();
+
+        Assert.IsTrue(clicked);
+    }
+
+    [Test]
+    public void SliderDragsValueFromPointer()
+    {
+        float value = 0f;
+        var rect = new NowRect(0, 0, 200, 20);
+
+        // Press at 75% of the track.
+        _provider.snapshot = new NowUIInputSnapshot(new Vector2(150, 10), true, true, false);
+        bool changed;
+
+        using (NowUIInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            changed = NowControls.Slider(0f, 1f).SetPosition(rect).Draw(ref value);
+
+        Assert.IsTrue(changed);
+        Assert.Greater(value, 0.6f);
+        Assert.Less(value, 0.9f);
+    }
+
+    [Test]
+    public void IdScopesDisambiguateIdenticalLabels()
+    {
+        int outer = NowControls.GetControlId("Delete");
+        int scoped;
+
+        using (NowControls.IdScope("row-1"))
+            scoped = NowControls.GetControlId("Delete");
+
+        int scopedOther;
+
+        using (NowControls.IdScope("row-2"))
+            scopedOther = NowControls.GetControlId("Delete");
+
+        Assert.AreNotEqual(outer, scoped);
+        Assert.AreNotEqual(scoped, scopedOther);
+    }
+
+    [Test]
+    public void SpatialNavigationMovesFocusRight()
+    {
+        var left = new NowRect(10, 10, 80, 30);
+        var right = new NowRect(200, 10, 80, 30);
+
+        // Frame 1: register both, left focused.
+        using (NowUIInput.Begin(_provider, Surface))
+        {
+            _provider.snapshot = default;
+            NowUIFocus.Register(1, left);
+            NowUIFocus.Register(2, right);
+            NowUIFocus.Focus(1);
+        }
+
+        // Frame 2: navigation right; processed against frame 1's registry.
+        _provider.snapshot = new NowUIInputSnapshot(
+            true, default, default, default,
+            NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
+            Vector2.zero, new Vector2(1f, 0f),
+            false, false, false, false, false, false, 2, 2f);
+
+        using (NowUIInput.Begin(_provider, Surface))
+            NowUIFocus.ForceNewFrame();
+
+        Assert.AreEqual(2, NowUIFocus.focusedId);
+    }
+
+    [Test]
+    public void CancelClearsFocus()
+    {
+        NowUIFocus.Focus(42);
+
+        _provider.snapshot = new NowUIInputSnapshot(
+            true, default, default, default,
+            NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            false, false, false,
+            cancelDown: true, cancelPressed: true, cancelReleased: false, frame: 1, time: 1f);
+
+        using (NowUIInput.Begin(_provider, Surface))
+            NowUIFocus.ForceNewFrame();
+
+        Assert.AreEqual(0, NowUIFocus.focusedId);
+    }
+
+    [Test]
+    public void ControlStateSlotsPersistAndReset()
+    {
+        ref int slot = ref NowUIControlState.Get<int>(7);
+        slot = 123;
+
+        Assert.AreEqual(123, NowUIControlState.Get<int>(7));
+
+        NowUIControlState.Reset();
+        Assert.AreEqual(0, NowUIControlState.Get<int>(7));
+    }
+
+    [Test]
+    public void RepeatPulsesOnInitialPress()
+    {
+        Assert.IsTrue(NowUIControlState.Repeat(1, held: true));
+        Assert.IsFalse(NowUIControlState.Repeat(1, held: true), "No pulse before the repeat delay.");
+        Assert.IsFalse(NowUIControlState.Repeat(1, held: false));
+        Assert.IsTrue(NowUIControlState.Repeat(1, held: true), "Releasing resets the initial pulse.");
+    }
+
+    [Test]
+    public void DefaultThemeIsAvailable()
+    {
+        Assert.NotNull(NowControls.theme);
+        Assert.AreEqual(NowControls.theme, NowControls.theme, "Default theme must be cached.");
+    }
+}

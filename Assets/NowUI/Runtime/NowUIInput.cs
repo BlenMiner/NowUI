@@ -706,6 +706,9 @@ namespace NowUI
             _passiveDepth = 0;
         }
 
+        /// <summary>True during layout measure passes, when interactions are inert.</summary>
+        internal static bool isPassive => _passiveDepth > 0;
+
         internal static void BeginPassive()
         {
             ++_passiveDepth;
