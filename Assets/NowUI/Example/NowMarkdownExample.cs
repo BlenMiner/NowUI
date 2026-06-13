@@ -66,7 +66,7 @@ public class NowMarkdownExample : NowGraphic
             return;
 
         Now.defaultFont = _font;
-        var theme = NowControls.theme;
+        var theme = NowControls.themeAsset;
         var bounds = new NowRect(0, 0, rect.width, rect.height);
 
         theme.Rectangle(bounds, NowRectangleStyle.Surface).SetRadius(14).Draw();

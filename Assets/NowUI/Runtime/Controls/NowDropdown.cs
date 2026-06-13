@@ -48,7 +48,7 @@ namespace NowUI
 
         public bool Draw(ref int selected)
         {
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
             int optionCount = _options?.Count ?? 0;
 
@@ -108,7 +108,7 @@ namespace NowUI
         /// the popup is open — captured locals in Draw would otherwise allocate at
         /// method entry on every frame, even with the popup closed.
         /// </summary>
-        static void DeferPopup(NowTheme theme, IReadOnlyList<string> options, int id, NowRect field, int selected, int optionCount)
+        static void DeferPopup(NowThemeAsset themeAsset, IReadOnlyList<string> options, int id, NowRect field, int selected, int optionCount)
         {
             float popupHeight = Mathf.Min(optionCount * ItemHeight + 8f, MaxPopupHeight);
             var popupRect = new NowRect(field.x, field.yMax + 4f, field.width, popupHeight);
@@ -117,9 +117,9 @@ namespace NowUI
 
             NowOverlay.Defer(popupRect, () =>
             {
-                var background = theme.Rectangle(popupRect, NowRectangleStyle.Surface);
+                var background = themeAsset.Rectangle(popupRect, NowRectangleStyle.Surface);
                 background.outline = 1f;
-                background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
+                background.outlineColor = themeAsset.GetColor(NowColorToken.Border, Color.gray);
                 background.Draw();
 
                 var itemArea = popupRect.Inset(4f);
@@ -145,7 +145,7 @@ namespace NowUI
 
                         if (itemInteraction.hovered || i == selected)
                         {
-                            var highlight = theme.Rectangle(itemRect, i == selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
+                            var highlight = themeAsset.Rectangle(itemRect, i == selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
 
                             if (itemInteraction.hovered && i != selected)
                                 highlight.color = NowControls.StateTint(highlight.color, 1f, itemInteraction.held);
@@ -155,7 +155,7 @@ namespace NowUI
                         }
 
                         NowTextStyle itemStyle = i == selected ? NowTextStyle.Button : NowTextStyle.Body;
-                        NowControls.DrawLeftLabel(theme, itemRect.Inset(8f, 0f, 4f, 0f), options[i], itemStyle);
+                        NowControls.DrawLeftLabel(themeAsset, itemRect.Inset(8f, 0f, 4f, 0f), options[i], itemStyle);
 
                         if (itemInteraction.clicked)
                         {

@@ -97,7 +97,7 @@ namespace NowUI
             text ??= string.Empty;
             string original = text;
 
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
             var textStyle = theme.Text(default, _textPreset);
@@ -468,11 +468,11 @@ namespace NowUI
                 state.anchor = state.caret;
         }
 
-        static void DrawSelection(NowTheme theme, string text, List<NowTextLine> lines, NowFontAsset font,
+        static void DrawSelection(NowThemeAsset themeAsset, string text, List<NowTextLine> lines, NowFontAsset font,
             float fontSize, NowFontStyle style, NowRect inner, float lineHeight, float scrollY,
             in NowTextEditState state, int firstVisible, int lastVisible)
         {
-            Color highlight = theme.GetColor(NowColorToken.Accent, Color.blue);
+            Color highlight = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
             highlight.a = 0.3f;
             int selectionMin = state.selectionMin;
             int selectionMax = state.selectionMax;
@@ -503,11 +503,11 @@ namespace NowUI
             }
         }
 
-        static void DrawCompositionUnderline(NowTheme theme, string display, List<NowTextLine> lines,
+        static void DrawCompositionUnderline(NowThemeAsset themeAsset, string display, List<NowTextLine> lines,
             NowFontAsset font, float fontSize, NowFontStyle style, NowRect inner, float lineHeight, float scrollY,
             int from, int to, int firstVisible, int lastVisible)
         {
-            Color underline = theme.GetColor(NowColorToken.Text, Color.black);
+            Color underline = themeAsset.GetColor(NowColorToken.Text, Color.black);
 
             for (int i = firstVisible; i <= lastVisible && i < lines.Count; ++i)
             {

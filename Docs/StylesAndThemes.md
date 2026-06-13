@@ -6,6 +6,10 @@ still builds rectangles and text explicitly.
 
 Create a theme from Unity with `Create > NowUI > Theme`.
 
+The package includes built-in `White` and `Dark` theme assets under
+`Assets/NowUI/Assets/Themes`. They share the same token and preset IDs, so UI
+code can switch between them without changing call sites.
+
 ## Theme Contents
 
 The theme currently has five style groups.
@@ -22,6 +26,17 @@ The theme currently has five style groups.
 
 The inspector includes a live preview so changes to colors and presets are
 visible while editing the asset.
+
+## Generating Themes
+
+The `NowTheme` inspector includes a generator for quick palette exploration.
+Choose light or dark mode, set a key color and an accent color, then press
+**Derive From Key Colors** to update the built-in palette tokens and matching
+preset fallbacks. Press **Random From Seed** for a reproducible generated
+palette, or **New Random** to pick a fresh seed and leave it visible for later.
+The generator controls are serialized on the theme asset, so Undo/Redo works
+through Unity's normal inspector flow and duplicated themes keep their
+generator settings.
 
 ## Drawing With A Theme
 

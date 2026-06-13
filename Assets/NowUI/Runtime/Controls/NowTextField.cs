@@ -58,7 +58,7 @@ namespace NowUI
             text ??= string.Empty;
             string original = text;
 
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
             var textStyle = theme.Text(default, _textPreset);

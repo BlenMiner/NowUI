@@ -19,36 +19,36 @@ namespace NowUI
     /// </summary>
     public static class NowControls
     {
-        static NowTheme _defaultTheme;
+        static NowThemeAsset _defaultThemeAsset;
 
-        static readonly List<NowTheme> _themeStack = new List<NowTheme>(4);
+        static readonly List<NowThemeAsset> _themeStack = new List<NowThemeAsset>(4);
 
         static readonly List<int> _idStack = new List<int>(8);
 
         /// <summary>
-        /// The active theme: the innermost <see cref="Theme(NowTheme)"/> scope, or
+        /// The active theme: the innermost <see cref="Theme(NowThemeAsset)"/> scope, or
         /// a built-in default created on first use.
         /// </summary>
-        public static NowTheme theme
+        public static NowThemeAsset themeAsset
         {
             get
             {
                 if (_themeStack.Count > 0)
                     return _themeStack[^1];
 
-                if (_defaultTheme == null)
+                if (_defaultThemeAsset == null)
                 {
-                    _defaultTheme = ScriptableObject.CreateInstance<NowTheme>();
-                    _defaultTheme.name = "Now Default Theme";
-                    _defaultTheme.hideFlags = HideFlags.HideAndDontSave;
+                    _defaultThemeAsset = ScriptableObject.CreateInstance<NowThemeAsset>();
+                    _defaultThemeAsset.name = "Now Default Theme";
+                    _defaultThemeAsset.hideFlags = HideFlags.HideAndDontSave;
                 }
 
-                return _defaultTheme;
+                return _defaultThemeAsset;
             }
         }
 
         /// <summary>Pushes a contextual theme; dispose the scope to restore the previous one.</summary>
-        public static ThemeScope Theme(NowTheme value)
+        public static ThemeScope Theme(NowThemeAsset value)
         {
             if (value == null)
                 throw new ArgumentNullException(nameof(value));
@@ -238,9 +238,9 @@ namespace NowUI
             return NowLayout.Rect(options);
         }
 
-        internal static void DrawCenteredLabel(NowTheme activeTheme, NowRect rect, string label, NowTextStyle textStyle, NowRect mask)
+        internal static void DrawCenteredLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle, NowRect mask)
         {
-            var text = activeTheme.Text(default, textStyle);
+            var text = activeThemeAsset.Text(default, textStyle);
             Vector2 size = text.Measure(label);
 
             text.rect = new NowRect(
@@ -256,9 +256,9 @@ namespace NowUI
         /// default rect whose zero mask would clip everything, so the mask is reset to
         /// the given area (slightly outset so descenders survive; long values get cut).
         /// </summary>
-        internal static void DrawLeftLabel(NowTheme activeTheme, NowRect rect, string label, NowTextStyle textStyle)
+        internal static void DrawLeftLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle)
         {
-            var text = activeTheme.Text(default, textStyle);
+            var text = activeThemeAsset.Text(default, textStyle);
             Vector2 size = text.Measure(label);
 
             text.rect = new NowRect(

@@ -78,7 +78,7 @@ namespace NowUI
         /// </summary>
         public NowControlScope Begin()
         {
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             int id = ResolveControlId();
 
             Vector4 padding = theme.GetSpacing(NowSpacingToken.Md, new Vector4(12f, 12f, 12f, 12f));
@@ -113,7 +113,7 @@ namespace NowUI
 
         public bool Draw()
         {
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             int id = ResolveControlId();
 
             var text = theme.Text(default, _textPreset);
@@ -253,7 +253,7 @@ namespace NowUI
         /// </summary>
         public NowControlScope Begin(ref bool value)
         {
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             int id = ResolveControlId();
 
             const float Box = 18f;
@@ -280,19 +280,19 @@ namespace NowUI
             return new NowControlScope(mask, area, row, rect, interaction, focused, clicked);
         }
 
-        void DrawCheckboxGlyph(NowTheme theme, NowRect rect, int id, bool value, bool focused, in NowInteraction interaction)
+        void DrawCheckboxGlyph(NowThemeAsset themeAsset, NowRect rect, int id, bool value, bool focused, in NowInteraction interaction)
         {
             const float Box = 18f;
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             var boxRect = new NowRect(rect.x, rect.y + (rect.height - Box) * 0.5f, Box, Box);
 
-            var frame = theme.Rectangle(boxRect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
+            var frame = themeAsset.Rectangle(boxRect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
             frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
 
             if (focused)
             {
                 frame.outline = Mathf.Max(frame.outline, 2f);
-                frame.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
+                frame.outlineColor = themeAsset.GetColor(NowColorToken.Text, Color.black);
             }
 
             frame.Draw();
@@ -301,7 +301,7 @@ namespace NowUI
             {
                 float inset = Box * 0.3f;
                 Now.Rectangle(new NowRect(boxRect.x + inset, boxRect.y + inset, Box - inset * 2f, Box - inset * 2f))
-                    .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white))
+                    .SetColor(themeAsset.GetColor(NowColorToken.AccentText, Color.white))
                     .SetRadius(2f)
                     .Draw();
             }
@@ -309,7 +309,7 @@ namespace NowUI
 
         public bool Draw(ref bool value)
         {
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             int id = ResolveControlId();
 
             var text = theme.Text(default, _textPreset);
@@ -418,7 +418,7 @@ namespace NowUI
         /// </summary>
         public NowControlScope Begin()
         {
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             int id = ResolveControlId();
 
             const float Circle = 18f;
@@ -441,20 +441,20 @@ namespace NowUI
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
         }
 
-        void DrawRadioGlyph(NowTheme theme, NowRect rect, int id, bool focused, in NowInteraction interaction)
+        void DrawRadioGlyph(NowThemeAsset themeAsset, NowRect rect, int id, bool focused, in NowInteraction interaction)
         {
             const float Circle = 18f;
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             var circleRect = new NowRect(rect.x, rect.y + (rect.height - Circle) * 0.5f, Circle, Circle);
 
-            var frame = theme.Rectangle(circleRect, _isOn ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
+            var frame = themeAsset.Rectangle(circleRect, _isOn ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
             frame.radius = new Vector4(Circle, Circle, Circle, Circle) * 0.5f;
             frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
 
             if (focused)
             {
                 frame.outline = Mathf.Max(frame.outline, 2f);
-                frame.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
+                frame.outlineColor = themeAsset.GetColor(NowColorToken.Text, Color.black);
             }
 
             frame.Draw();
@@ -464,7 +464,7 @@ namespace NowUI
                 float inset = Circle * 0.32f;
                 float dot = Circle - inset * 2f;
                 Now.Rectangle(new NowRect(circleRect.x + inset, circleRect.y + inset, dot, dot))
-                    .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white))
+                    .SetColor(themeAsset.GetColor(NowColorToken.AccentText, Color.white))
                     .SetRadius(dot * 0.5f)
                     .Draw();
             }
@@ -472,7 +472,7 @@ namespace NowUI
 
         public bool Draw()
         {
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             int id = ResolveControlId();
 
             var text = theme.Text(default, _textPreset);
@@ -558,7 +558,7 @@ namespace NowUI
 
         public bool Draw(ref float value)
         {
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
             const float Height = 20f;

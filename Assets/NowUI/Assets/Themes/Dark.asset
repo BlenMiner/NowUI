@@ -10,27 +10,27 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 04c5a0a2a8e8407792a9d8e3844255a0, type: 3}
-  m_Name: White
+  m_Name: Dark
   m_EditorClassIdentifier: NowUI.Runtime::NowTheme
   _defaultRectanglePreset: surface
   _defaultTextPreset: body
   _palette:
   - _id: background
-    _color: {r: 0.945, g: 0.961, b: 0.976, a: 1}
+    _color: {r: 0.079799995, g: 0.09807273, b: 0.12, a: 1}
   - _id: surface
-    _color: {r: 1, g: 1, b: 1, a: 1}
+    _color: {r: 0.110688, g: 0.13310255, b: 0.16, a: 1}
   - _id: surface-muted
-    _color: {r: 0.973, g: 0.98, b: 0.988, a: 1}
+    _color: {r: 0.159566, g: 0.18703601, b: 0.22, a: 1}
   - _id: text
-    _color: {r: 0.067, g: 0.094, b: 0.153, a: 1}
+    _color: {r: 0.92120004, g: 0.9479273, b: 0.98, a: 1}
   - _id: text-muted
-    _color: {r: 0.42, g: 0.447, b: 0.502, a: 1}
+    _color: {r: 0.60480005, g: 0.6571637, b: 0.72, a: 1}
   - _id: border
-    _color: {r: 0.886, g: 0.91, b: 0.941, a: 1}
+    _color: {r: 0.254575, g: 0.29340455, b: 0.34, a: 1}
   - _id: accent
-    _color: {r: 0.102, g: 0.451, b: 0.91, a: 1}
+    _color: {r: 0.37599996, g: 0.647, b: 0.98, a: 1}
   - _id: accent-text
-    _color: {r: 1, g: 1, b: 1, a: 1}
+    _color: {r: 0.052, g: 0.07381819, b: 0.1, a: 1}
   _spacings:
   - _id: none
     _insets: {x: 0, y: 0, z: 0, w: 0}
@@ -59,7 +59,7 @@ MonoBehaviour:
   - _id: surface
     _fill:
       _token: surface
-      _fallback: {r: 1, g: 1, b: 1, a: 1}
+      _fallback: {r: 0.110688, g: 0.13310255, b: 0.16, a: 1}
     _radius:
       _token: md
       _fallback: {x: 8, y: 8, z: 8, w: 8}
@@ -74,7 +74,7 @@ MonoBehaviour:
   - _id: muted
     _fill:
       _token: surface-muted
-      _fallback: {r: 0.973, g: 0.98, b: 0.988, a: 1}
+      _fallback: {r: 0.159566, g: 0.18703601, b: 0.22, a: 1}
     _radius:
       _token: md
       _fallback: {x: 8, y: 8, z: 8, w: 8}
@@ -100,11 +100,11 @@ MonoBehaviour:
     _outline: 1
     _outlineColor:
       _token: border
-      _fallback: {r: 0.886, g: 0.91, b: 0.941, a: 1}
+      _fallback: {r: 0.254575, g: 0.29340455, b: 0.34, a: 1}
   - _id: accent
     _fill:
       _token: accent
-      _fallback: {r: 0.102, g: 0.451, b: 0.91, a: 1}
+      _fallback: {r: 0.37599996, g: 0.647, b: 0.98, a: 1}
     _radius:
       _token: md
       _fallback: {x: 8, y: 8, z: 8, w: 8}
@@ -122,7 +122,7 @@ MonoBehaviour:
     _fontSize: 28
     _color:
       _token: text
-      _fallback: {r: 0.067, g: 0.094, b: 0.153, a: 1}
+      _fallback: {r: 0.92120004, g: 0.9479273, b: 0.98, a: 1}
     _outline: 0
     _outlineColor:
       _token: 
@@ -135,7 +135,7 @@ MonoBehaviour:
     _fontSize: 16
     _color:
       _token: text
-      _fallback: {r: 0.067, g: 0.094, b: 0.153, a: 1}
+      _fallback: {r: 0.92120004, g: 0.9479273, b: 0.98, a: 1}
     _outline: 0
     _outlineColor:
       _token: 
@@ -148,7 +148,7 @@ MonoBehaviour:
     _fontSize: 14
     _color:
       _token: text-muted
-      _fallback: {r: 0.42, g: 0.447, b: 0.502, a: 1}
+      _fallback: {r: 0.60480005, g: 0.6571637, b: 0.72, a: 1}
     _outline: 0
     _outlineColor:
       _token: 
@@ -161,7 +161,7 @@ MonoBehaviour:
     _fontSize: 14
     _color:
       _token: accent-text
-      _fallback: {r: 1, g: 1, b: 1, a: 1}
+      _fallback: {r: 0.052, g: 0.07381819, b: 0.1, a: 1}
     _outline: 0
     _outlineColor:
       _token: 
@@ -169,7 +169,7 @@ MonoBehaviour:
     _padding:
       _token: 
       _fallback: {x: 0, y: 0, z: 0, w: 0}
-  _generatorDark: 0
+  _generatorDark: 1
   _generatorKeyColor: {r: 0.18, g: 0.28, b: 0.4, a: 1}
-  _generatorAccentColor: {r: 0.102, g: 0.451, b: 0.91, a: 1}
+  _generatorAccentColor: {r: 0.376, g: 0.647, b: 0.98, a: 1}
   _generatorSeed: 42069

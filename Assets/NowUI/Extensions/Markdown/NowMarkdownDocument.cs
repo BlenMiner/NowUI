@@ -18,7 +18,7 @@ namespace NowUI.Markdown
 
     /// <summary>
     /// Visual sizing for a rendered document; colors come from the ambient
-    /// <see cref="NowControls.theme"/> at draw time.
+    /// <see cref="NowControls.themeAsset"/> at draw time.
     /// </summary>
     public struct NowMarkdownStyle
     {
@@ -143,7 +143,7 @@ namespace NowUI.Markdown
         public NowMarkdownResult Draw(NowRect rect)
         {
             var result = default(NowMarkdownResult);
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
 
             EnsureLayout(rect.width);
             result.height = _layoutHeight;
@@ -319,7 +319,7 @@ namespace NowUI.Markdown
             }
         }
 
-        void DrawSelectionRegion(NowTheme theme, int docId, int regionIndex, NowRect origin)
+        void DrawSelectionRegion(NowThemeAsset themeAsset, int docId, int regionIndex, NowRect origin)
         {
             var region = _selectionRegions[regionIndex];
             _selectionScratch.Clear();
@@ -335,7 +335,7 @@ namespace NowUI.Markdown
                 _selectionScratch.Add(line);
             }
 
-            Color highlight = theme.GetColor(NowColorToken.Accent, Color.blue);
+            Color highlight = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
             highlight.a = 0.25f;
 
             NowTextSelection.DrawHighlights(
@@ -343,7 +343,7 @@ namespace NowUI.Markdown
                 _layoutFont, region.fontSize, NowFontStyle.Regular, highlight);
         }
 
-        void DrawCopyButton(NowTheme theme, int docId, int opIndex, in Op op, NowRect target)
+        void DrawCopyButton(NowThemeAsset themeAsset, int docId, int opIndex, in Op op, NowRect target)
         {
             int buttonId = NowInput.CombineId(docId, ~opIndex);
             ref float copiedAt = ref NowControlState.Get<float>(buttonId);
@@ -358,11 +358,11 @@ namespace NowUI.Markdown
             if (!NowInput.IsHovered(panelTarget) && !showCopied)
                 return;
 
-            if (DrawBadgeButton(theme, buttonId, target, ref copiedAt))
+            if (DrawBadgeButton(themeAsset, buttonId, target, ref copiedAt))
                 NowClipboard.Copy(op.text);
         }
 
-        void DrawImage(NowTheme theme, int docId, int opIndex, in Op op, NowRect target, bool linkHovered)
+        void DrawImage(NowThemeAsset themeAsset, int docId, int opIndex, in Op op, NowRect target, bool linkHovered)
         {
             if (NowMarkdownImages.GetState(op.text, out var texture) != NowMarkdownImageState.Loaded ||
                 texture == null)
@@ -395,7 +395,7 @@ namespace NowUI.Markdown
             }
         }
 
-        bool DrawBadgeButton(NowTheme theme, int buttonId, NowRect target, ref float copiedAt)
+        bool DrawBadgeButton(NowThemeAsset themeAsset, int buttonId, NowRect target, ref float copiedAt)
         {
             var interaction = NowInput.Interact(buttonId, target);
             bool clicked = interaction.clicked;
@@ -408,10 +408,10 @@ namespace NowUI.Markdown
             if (interaction.hovered || showCopied)
                 NowControlState.RequestRepaint();
 
-            var background = theme.Rectangle(target, NowRectangleStyle.Surface);
+            var background = themeAsset.Rectangle(target, NowRectangleStyle.Surface);
             background.radius = new Vector4(4f, 4f, 4f, 4f);
             background.outline = 1f;
-            background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
+            background.outlineColor = themeAsset.GetColor(NowColorToken.Border, Color.gray);
 
             if (interaction.hovered)
                 background.color = NowControls.StateTint(background.color, 1f, interaction.held);
@@ -419,11 +419,11 @@ namespace NowUI.Markdown
             background.Draw();
 
             string label = showCopied ? "Copied!" : "Copy";
-            var text = theme.Text(default(NowRect), _layoutFont);
+            var text = themeAsset.Text(default(NowRect), _layoutFont);
             text.fontSize = _style.fontSize * 0.75f;
             Color labelColor = showCopied
-                ? theme.GetColor(NowColorToken.Accent, Color.blue)
-                : theme.GetColor(NowColorToken.TextMuted, Color.gray);
+                ? themeAsset.GetColor(NowColorToken.Accent, Color.blue)
+                : themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
             text.color = labelColor;
 
             Vector2 size = text.Measure(label);
@@ -436,21 +436,21 @@ namespace NowUI.Markdown
             return clicked;
         }
 
-        static Vector4 ResolveColor(NowTheme theme, Role role, bool hovered)
+        static Vector4 ResolveColor(NowThemeAsset themeAsset, Role role, bool hovered)
         {
             switch (role)
             {
                 case Role.Heading:
                 case Role.Body:
-                    return theme.GetColor(NowColorToken.Text, Color.black);
+                    return themeAsset.GetColor(NowColorToken.Text, Color.black);
                 case Role.Code:
-                    return theme.GetColor(NowColorToken.Text, Color.black);
+                    return themeAsset.GetColor(NowColorToken.Text, Color.black);
                 case Role.CodePanel:
                 case Role.TableHeaderFill:
-                    return theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
+                    return themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
                 case Role.Link:
                 {
-                    Vector4 accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+                    Vector4 accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
 
                     if (hovered)
                     {
@@ -463,9 +463,9 @@ namespace NowUI.Markdown
                 }
                 case Role.Muted:
                 case Role.SyntaxComment:
-                    return theme.GetColor(NowColorToken.TextMuted, Color.gray);
+                    return themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
                 case Role.SyntaxKeyword:
-                    return theme.GetColor(NowColorToken.Accent, Color.blue);
+                    return themeAsset.GetColor(NowColorToken.Accent, Color.blue);
                 case Role.SyntaxString:
                     return new Vector4(0.16f, 0.52f, 0.26f, 1f);
                 case Role.SyntaxNumber:
@@ -473,19 +473,19 @@ namespace NowUI.Markdown
                 case Role.Rule:
                 case Role.TableLine:
                 case Role.CheckBox:
-                    return theme.GetColor(NowColorToken.Border, new Color(0.886f, 0.910f, 0.941f, 1f));
+                    return themeAsset.GetColor(NowColorToken.Border, new Color(0.886f, 0.910f, 0.941f, 1f));
                 case Role.QuoteBar:
                 case Role.Bullet:
                 case Role.CheckFill:
-                    return theme.GetColor(NowColorToken.Accent, Color.blue);
+                    return themeAsset.GetColor(NowColorToken.Accent, Color.blue);
                 default:
-                    return theme.GetColor(NowColorToken.Text, Color.black);
+                    return themeAsset.GetColor(NowColorToken.Text, Color.black);
             }
         }
 
         void EnsureLayout(float width)
         {
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             var probe = theme.Text(default(NowRect), (string)null);
             NowFontAsset font = probe.font;
 

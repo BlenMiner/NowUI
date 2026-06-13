@@ -60,7 +60,7 @@ namespace NowUI
     /// theme.Rectangle(rect, NowRectangleStyle.Accent).Draw();
     /// theme.GetColor(NowColorToken.Text, Color.black);
     /// </code>
-    /// The string-id methods on <see cref="NowTheme"/> remain the low-level
+    /// The string-id methods on <see cref="NowThemeAsset"/> remain the low-level
     /// layer: theme assets stay data-driven, and custom controls that define
     /// their own preset names use them directly.
     /// </summary>
@@ -87,19 +87,19 @@ namespace NowUI
 
         public static string Id(this NowRadiusToken token) => RadiusIds[(int)token];
 
-        public static NowRectangle Rectangle(this NowTheme theme, NowRect rect, NowRectangleStyle style)
+        public static NowRectangle Rectangle(this NowThemeAsset themeAsset, NowRect rect, NowRectangleStyle style)
         {
-            return theme.Rectangle(rect, style.Id());
+            return themeAsset.Rectangle(rect, style.Id());
         }
 
-        public static NowText Text(this NowTheme theme, NowRect rect, NowTextStyle style)
+        public static NowText Text(this NowThemeAsset themeAsset, NowRect rect, NowTextStyle style)
         {
-            return theme.Text(rect, style.Id());
+            return themeAsset.Text(rect, style.Id());
         }
 
-        public static NowText Text(this NowTheme theme, NowRect rect, NowFontAsset font, NowTextStyle style)
+        public static NowText Text(this NowThemeAsset themeAsset, NowRect rect, NowFontAsset font, NowTextStyle style)
         {
-            return theme.Text(rect, font, style.Id());
+            return themeAsset.Text(rect, font, style.Id());
         }
 
         /// <summary>
@@ -108,26 +108,26 @@ namespace NowUI
         /// to the ambient <see cref="Now.font"/> when the preset has none; set
         /// the rect (and optionally a mask) before drawing.
         /// </summary>
-        public static NowText ResolveText(this NowTheme theme, NowTextStyle style = NowTextStyle.Body)
+        public static NowText ResolveText(this NowThemeAsset themeAsset, NowTextStyle style = NowTextStyle.Body)
         {
-            var text = theme.Text(default(NowRect), style.Id());
+            var text = themeAsset.Text(default(NowRect), style.Id());
             text.mask = default;
             return text;
         }
 
-        public static Color GetColor(this NowTheme theme, NowColorToken token, Color fallback)
+        public static Color GetColor(this NowThemeAsset themeAsset, NowColorToken token, Color fallback)
         {
-            return theme.GetColor(token.Id(), fallback);
+            return themeAsset.GetColor(token.Id(), fallback);
         }
 
-        public static Vector4 GetSpacing(this NowTheme theme, NowSpacingToken token, Vector4 fallback)
+        public static Vector4 GetSpacing(this NowThemeAsset themeAsset, NowSpacingToken token, Vector4 fallback)
         {
-            return theme.GetSpacing(token.Id(), fallback);
+            return themeAsset.GetSpacing(token.Id(), fallback);
         }
 
-        public static Vector4 GetRadius(this NowTheme theme, NowRadiusToken token, Vector4 fallback)
+        public static Vector4 GetRadius(this NowThemeAsset themeAsset, NowRadiusToken token, Vector4 fallback)
         {
-            return theme.GetRadius(token.Id(), fallback);
+            return themeAsset.GetRadius(token.Id(), fallback);
         }
     }
 }

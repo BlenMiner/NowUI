@@ -58,6 +58,7 @@ public class NowDocsExample : NowGraphic
         new Page { title = "Editor demo", kind = PageKind.CodeEditorDemo },
     };
 
+    [SerializeField] NowThemeAsset _themeAsset;
     [SerializeField] NowFontAsset _font;
     [SerializeField] NowLottieAsset[] _lotties;
 
@@ -118,8 +119,10 @@ public class NowDocsExample : NowGraphic
         if (!_font)
             return;
 
+        using var _ = NowControls.Theme(_themeAsset);
+
         Now.defaultFont = _font;
-        var theme = NowControls.theme;
+        var theme = NowControls.themeAsset;
         var bounds = new NowRect(0, 0, rect.width, rect.height);
 
         theme.Rectangle(bounds, NowRectangleStyle.Surface).SetRadius(14).Draw();
@@ -217,22 +220,22 @@ public class NowDocsExample : NowGraphic
             NowCode.Editor(NowMarkdownCodeLanguage.instance, "demo-md").SetHeight(260).Draw(ref _markdownText);
     }
 
-    void DrawSdfDemo(NowTheme theme)
+    void DrawSdfDemo(NowThemeAsset themeAsset)
     {
         NowMarkdown.Document("# SDF demo\n\nThe first panel combines reusable graphs with scene-level operations and a generated texture. The second panel morphs between two graphs every frame.").Draw();
 
         NowMarkdown.Document("## Graph operations").Draw();
-        DrawSdfOperationsPanel(theme);
+        DrawSdfOperationsPanel(themeAsset);
 
         NowMarkdown.Document("## Morph").Draw();
-        DrawSdfMorphPanel(theme);
+        DrawSdfMorphPanel(themeAsset);
 
         NowControlState.RequestRepaint();
     }
 
-    void DrawSdfOperationsPanel(NowTheme theme)
+    void DrawSdfOperationsPanel(NowThemeAsset themeAsset)
     {
-        var scene = ReserveSdfPanel(theme, 172f);
+        var scene = ReserveSdfPanel(themeAsset, 172f);
 
         if (scene.isEmpty)
             return;
@@ -284,9 +287,9 @@ public class NowDocsExample : NowGraphic
             .Draw();
     }
 
-    void DrawSdfMorphPanel(NowTheme theme)
+    void DrawSdfMorphPanel(NowThemeAsset themeAsset)
     {
-        var scene = ReserveSdfPanel(theme, 172f);
+        var scene = ReserveSdfPanel(themeAsset, 172f);
 
         if (scene.isEmpty)
             return;
@@ -322,10 +325,10 @@ public class NowDocsExample : NowGraphic
             .Draw();
     }
 
-    NowRect ReserveSdfPanel(NowTheme theme, float height)
+    NowRect ReserveSdfPanel(NowThemeAsset themeAsset, float height)
     {
         var panel = NowLayout.Rect(height: height, stretchWidth: true);
-        theme.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
         return panel.Inset(14f, 14f);
     }
 
@@ -376,7 +379,7 @@ public class NowDocsExample : NowGraphic
         base.OnDestroy();
     }
 
-    void DrawRichTextDemo(NowTheme theme)
+    void DrawRichTextDemo(NowThemeAsset themeAsset)
     {
         NowMarkdown.Document("# Rich text demo\n\nRich text has two entry points: explicit spans for generated content, and tag parsing for small hand-authored UI strings.").Draw();
 
@@ -385,20 +388,20 @@ public class NowDocsExample : NowGraphic
             .SetStretchWidth()
             .Draw();
 
-        if (result.clicked && result.TryGetHitTag(out var tag) && tag.name == "link")
+        if (result.clicked && result.TryGetHitTag(out var hitTag) && hitTag.name == "link")
         {
             ++_richTextLinkClicks;
-            _richTextLastLink = tag.value;
+            _richTextLastLink = hitTag.value;
         }
 
         NowLayout.Label($"Link clicks: {_richTextLinkClicks}   Last link: {_richTextLastLink}")
             .SetFontSize(12)
-            .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+            .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
             .Draw();
 
         NowMarkdown.Document("## Explicit spans").Draw();
 
-        _richTextDemoSpans[0] = new NowRichTextSpan(0, 5, new NowRichTextStyle(15f, NowFontStyle.Bold).SetColor(theme.GetColor(NowColorToken.Accent, Color.blue)));
+        _richTextDemoSpans[0] = new NowRichTextSpan(0, 5, new NowRichTextStyle(15f, NowFontStyle.Bold).SetColor(themeAsset.GetColor(NowColorToken.Accent, Color.blue)));
         _richTextDemoSpans[1] = new NowRichTextSpan(6, 3, new NowRichTextStyle(15f).SetUnderline());
         _richTextDemoSpans[2] = new NowRichTextSpan(31, 6, new NowRichTextStyle(15f).SetStrikethrough());
 
@@ -485,7 +488,7 @@ public class NowDocsExample : NowGraphic
         NowControlState.RequestRepaint();
     }
 
-    void DrawLottieDemo(NowTheme theme)
+    void DrawLottieDemo(NowThemeAsset themeAsset)
     {
         NowMarkdown.Document("# Lottie demo\n\nVector animations drawn through `NowLayout.Lottie` —" +
             " tessellated at runtime, no textures. Add assets to the **Lotties** array on the" +
@@ -543,12 +546,12 @@ public class NowDocsExample : NowGraphic
         using (NowLayout.Horizontal(spacing: 16, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(56).Draw();
-            NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(56).SetColor(theme.GetColor(NowColorToken.Accent, Color.blue)).Draw();
+            NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(56).SetColor(themeAsset.GetColor(NowColorToken.Accent, Color.blue)).Draw();
             NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(56).SetColor(new Color(1f, 1f, 1f, 0.35f)).Draw();
         }
     }
 
-    void DrawLiveDemo(NowTheme theme)
+    void DrawLiveDemo(NowThemeAsset themeAsset)
     {
         NowMarkdown.Document("# Live demo\n\nThe controls below run the code from" +
             " [CustomControls.md](CustomControls.md) — a wrapped variant, a reshaped" +
@@ -571,7 +574,7 @@ public class NowDocsExample : NowGraphic
         GuideControls.Rating().SetMax(7).Draw(ref _builderRating);
 
         NowLayout.Label($"Clicks: {_clicks}   Rating: {_rating}   Builder rating: {_builderRating}")
-            .SetFontSize(12).SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
+            .SetFontSize(12).SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
     }
 }
 
@@ -590,7 +593,7 @@ public static class GuideControls
         string label,
         [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
     {
-        var theme = NowControls.theme;
+        var theme = NowControls.themeAsset;
         int id = NowControls.GetControlId(NowControls.SiteId(file, line));
 
         NowRect rect = NowLayout.Rect(44f, 44f);
@@ -642,7 +645,7 @@ public static class GuideControls
     {
         const float Dot = 18f, Gap = 6f;
 
-        var theme = NowControls.theme;
+        var theme = NowControls.themeAsset;
 
         NowRect rect = NowLayout.Rect(max * Dot + (max - 1) * Gap, Dot);
         var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);

@@ -256,7 +256,7 @@ namespace NowUI
                 NowContextMenu.End();
             }
 
-            Color highlight = NowControls.theme.GetColor(NowColorToken.Accent, Color.blue);
+            Color highlight = NowControls.themeAsset.GetColor(NowColorToken.Accent, Color.blue);
             highlight.a = 0.25f;
 
             return NowTextSelection.DrawHighlights(
@@ -272,7 +272,7 @@ namespace NowUI
         NowRichTextDocument PrepareDocument(ref State state)
         {
             var baseStyle = new NowRichTextStyle(_style.fontSize, _style.fontStyle).SetColor(_style.color);
-            Vector4 accentColor = NowControls.theme.GetColor(NowColorToken.Accent, Color.blue);
+            Vector4 accentColor = NowControls.themeAsset.GetColor(NowColorToken.Accent, Color.blue);
 
             if (state.document == null)
                 state.document = new NowRichTextDocument();
@@ -345,7 +345,9 @@ namespace NowUI
                 return;
             }
 
-            float height = state.layout.lines.Count > 0 ? state.layout.lines.Count * lineHeight : lineHeight;
+            float height = state.layout.bounds.height > 0f
+                ? state.layout.bounds.height
+                : state.layout.lines.Count > 0 ? state.layout.lines.Count * lineHeight : lineHeight;
 
             if (Mathf.Abs(state.contentHeight - height) > 0.25f)
             {
@@ -370,7 +372,9 @@ namespace NowUI
             SharedLayout.Clear();
             BuildLayout(SharedLayout, new NowRect(0f, 0f, width, float.MaxValue), lineHeight, document);
             SharedLayout.CompleteLines();
-            return SharedLayout.lines.Count > 0 ? SharedLayout.lines.Count * lineHeight : lineHeight;
+            return SharedLayout.bounds.height > 0f
+                ? SharedLayout.bounds.height
+                : SharedLayout.lines.Count > 0 ? SharedLayout.lines.Count * lineHeight : lineHeight;
         }
 
         void BuildLayout(NowRichTextLayout layout, NowRect rect, float lineHeight, NowRichTextDocument document)
@@ -511,7 +515,7 @@ namespace NowUI
 
                 if (run.isInline)
                 {
-                    run.drawInline?.Invoke(run, mask);
+                    run.drawInline?.Invoke(run, RunMask(run.rect, mask));
                     continue;
                 }
 
@@ -520,7 +524,7 @@ namespace NowUI
 
                 var style = _style
                     .SetPosition(run.rect)
-                    .SetMask(mask)
+                    .SetMask(RunMask(run.rect, mask))
                     .SetFontSize(run.fontSize)
                     .SetFontStyle(run.fontStyle);
 
@@ -540,6 +544,11 @@ namespace NowUI
                         .Draw();
             }
         }
+
+        static NowRect RunMask(NowRect runRect, NowRect regionMask)
+        {
+            return regionMask.Union(runRect).Outset(4f);
+        }
     }
 
     public static partial class Now
@@ -550,7 +559,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return new NowRichText(rect, value, NowControls.theme.ResolveText(NowTextStyle.Body), NowControls.SiteId(file, line));
+            return new NowRichText(rect, value, NowControls.themeAsset.ResolveText(NowTextStyle.Body), NowControls.SiteId(file, line));
         }
     }
 
@@ -561,7 +570,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return new NowRichText(value, NowControls.theme.ResolveText(NowTextStyle.Body), NowControls.SiteId(file, line));
+            return new NowRichText(value, NowControls.themeAsset.ResolveText(NowTextStyle.Body), NowControls.SiteId(file, line));
         }
     }
 }

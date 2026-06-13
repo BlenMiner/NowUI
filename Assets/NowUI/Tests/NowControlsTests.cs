@@ -583,7 +583,7 @@ public class NowControlsTests
     [Test]
     public void DefaultThemeIsAvailable()
     {
-        Assert.NotNull(NowControls.theme);
-        Assert.AreEqual(NowControls.theme, NowControls.theme, "Default theme must be cached.");
+        Assert.NotNull(NowControls.themeAsset);
+        Assert.AreEqual(NowControls.themeAsset, NowControls.themeAsset, "Default theme must be cached.");
     }
 }

@@ -80,7 +80,7 @@ namespace NowUI
             return true;
         }
 
-        public static void Draw(NowTheme theme, int id, NowScrollbarAxis axis, in NowScrollbarMetrics metrics)
+        public static void Draw(NowThemeAsset themeAsset, int id, NowScrollbarAxis axis, in NowScrollbarMetrics metrics)
         {
             if (!metrics.visible)
                 return;
@@ -89,11 +89,11 @@ namespace NowUI
             var interaction = NowInput.Interact(id, metrics.track.Outset(4f, 2f));
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
 
-            var track = theme.Rectangle(metrics.track, NowRectangleStyle.Muted);
+            var track = themeAsset.Rectangle(metrics.track, NowRectangleStyle.Muted);
             track.radius = new Vector4(radius, radius, radius, radius);
             track.Draw();
 
-            var thumb = theme.Rectangle(metrics.thumb, NowRectangleStyle.Accent);
+            var thumb = themeAsset.Rectangle(metrics.thumb, NowRectangleStyle.Accent);
             thumb.radius = track.radius;
             thumb.color = NowControls.StateTint(thumb.color, hoverT, interaction.held);
             thumb.Draw();

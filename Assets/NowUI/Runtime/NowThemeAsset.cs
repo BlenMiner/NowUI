@@ -5,7 +5,7 @@ using UnityEngine;
 namespace NowUI
 {
     [CreateAssetMenu(menuName = "NowUI/Theme", fileName = "NowTheme")]
-    public sealed class NowTheme : ScriptableObject
+    public sealed class NowThemeAsset : ScriptableObject
     {
         [SerializeField] string _defaultRectanglePreset = "surface";
 
@@ -113,6 +113,16 @@ namespace NowUI
                 new NowThemeColorReference(string.Empty, Color.clear),
                 default)
         };
+
+        #pragma warning disable 0414
+        [HideInInspector, SerializeField] bool _generatorDark;
+
+        [HideInInspector, SerializeField] Color _generatorKeyColor = new Color(0.18f, 0.28f, 0.40f, 1f);
+
+        [HideInInspector, SerializeField] Color _generatorAccentColor = new Color(0.10f, 0.45f, 0.91f, 1f);
+
+        [HideInInspector, SerializeField] int _generatorSeed = 42069;
+        #pragma warning restore 0414
 
         public string defaultRectanglePreset => _defaultRectanglePreset;
 
@@ -343,9 +353,9 @@ namespace NowUI
 
         public Color fallback => _fallback;
 
-        public Color Resolve(NowTheme theme)
+        public Color Resolve(NowThemeAsset themeAsset)
         {
-            if (theme != null && !string.IsNullOrEmpty(_token) && theme.TryGetColor(_token, out var color))
+            if (themeAsset != null && !string.IsNullOrEmpty(_token) && themeAsset.TryGetColor(_token, out var color))
                 return color;
 
             return _fallback;
@@ -369,9 +379,9 @@ namespace NowUI
 
         public Vector4 fallback => _fallback;
 
-        public Vector4 Resolve(NowTheme theme)
+        public Vector4 Resolve(NowThemeAsset themeAsset)
         {
-            if (theme != null && !string.IsNullOrEmpty(_token) && theme.TryGetSpacing(_token, out var spacing))
+            if (themeAsset != null && !string.IsNullOrEmpty(_token) && themeAsset.TryGetSpacing(_token, out var spacing))
                 return spacing;
 
             return _fallback;
@@ -395,9 +405,9 @@ namespace NowUI
 
         public Vector4 fallback => _fallback;
 
-        public Vector4 Resolve(NowTheme theme)
+        public Vector4 Resolve(NowThemeAsset themeAsset)
         {
-            if (theme != null && !string.IsNullOrEmpty(_token) && theme.TryGetRadius(_token, out var radius))
+            if (themeAsset != null && !string.IsNullOrEmpty(_token) && themeAsset.TryGetRadius(_token, out var radius))
                 return radius;
 
             return _fallback;
@@ -445,14 +455,14 @@ namespace NowUI
 
         public float outline => _outline;
 
-        public NowRectangle Apply(NowTheme theme, NowRectangle rectangle)
+        public NowRectangle Apply(NowThemeAsset themeAsset, NowRectangle rectangle)
         {
-            rectangle.color = _fill.Resolve(theme);
-            rectangle.radius = _radius.Resolve(theme);
-            rectangle = rectangle.SetPadding(_padding.Resolve(theme));
+            rectangle.color = _fill.Resolve(themeAsset);
+            rectangle.radius = _radius.Resolve(themeAsset);
+            rectangle = rectangle.SetPadding(_padding.Resolve(themeAsset));
             rectangle.blur = _blur;
             rectangle.outline = _outline;
-            rectangle.outlineColor = _outlineColor.Resolve(theme);
+            rectangle.outlineColor = _outlineColor.Resolve(themeAsset);
             return rectangle;
         }
     }
@@ -496,7 +506,7 @@ namespace NowUI
 
         public float fontSize => _fontSize;
 
-        public NowText Apply(NowTheme theme, NowText text)
+        public NowText Apply(NowThemeAsset themeAsset, NowText text)
         {
             if (_font != null)
                 text.font = _font;
@@ -504,24 +514,24 @@ namespace NowUI
             if (_fontSize > 0f)
                 text.fontSize = _fontSize;
 
-            text.color = _color.Resolve(theme);
+            text.color = _color.Resolve(themeAsset);
             text.outline = _outline;
-            text.outlineColor = _outlineColor.Resolve(theme);
-            text.padding = _padding.Resolve(theme);
+            text.outlineColor = _outlineColor.Resolve(themeAsset);
+            text.padding = _padding.Resolve(themeAsset);
             return text;
         }
     }
 
     public static class NowThemeExtensions
     {
-        public static NowRectangle SetStyle(this NowRectangle rectangle, NowTheme theme, string presetId = null)
+        public static NowRectangle SetStyle(this NowRectangle rectangle, NowThemeAsset themeAsset, string presetId = null)
         {
-            return theme != null ? theme.ApplyRectanglePreset(rectangle, presetId) : rectangle;
+            return themeAsset != null ? themeAsset.ApplyRectanglePreset(rectangle, presetId) : rectangle;
         }
 
-        public static NowText SetStyle(this NowText text, NowTheme theme, string presetId = null)
+        public static NowText SetStyle(this NowText text, NowThemeAsset themeAsset, string presetId = null)
         {
-            return theme != null ? theme.ApplyTextPreset(text, presetId) : text;
+            return themeAsset != null ? themeAsset.ApplyTextPreset(text, presetId) : text;
         }
     }
 }

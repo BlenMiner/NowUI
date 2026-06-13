@@ -43,7 +43,7 @@ public class NowZooExample : NowGraphic
             return;
 
         Now.defaultFont = _font;
-        var theme = NowControls.theme;
+        var theme = NowControls.themeAsset;
         var bounds = new NowRect(0, 0, rect.width, rect.height);
 
         // The style must carry a font — labels don't resolve one at draw time.
@@ -81,7 +81,7 @@ public class NowZooExample : NowGraphic
         }
     }
 
-    void Header(NowTheme theme)
+    void Header(NowThemeAsset themeAsset)
     {
         using (NowLayout.Horizontal(spacing: 10, alignItems: NowLayoutAlign.Center))
         {
@@ -90,21 +90,21 @@ public class NowZooExample : NowGraphic
 
             NowLayout.Label("Now Zoo").SetFontSize(26).SetBold().Draw();
             NowLayout.Label("Tab / arrows navigate, Enter activates").SetFontSize(11)
-                .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
+                .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
 
             NowLayout.FlexibleSpace();
-            DrawFpsCounter(theme);
+            DrawFpsCounter(themeAsset);
             NowLayout.Checkbox("Animate").Draw(ref _animate);
         }
 
-        Separator(theme);
+        Separator(themeAsset);
     }
 
     /// <summary>
     /// Truly zero-GC dynamic text: format into a reusable char buffer and draw
     /// the span — no string is ever created.
     /// </summary>
-    void DrawFpsCounter(NowTheme theme)
+    void DrawFpsCounter(NowThemeAsset themeAsset)
     {
         var rect = NowLayout.Rect(64, 16, align: NowLayoutAlign.Center);
         int fps = Mathf.RoundToInt(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f));
@@ -114,13 +114,13 @@ public class NowZooExample : NowGraphic
 
         Now.Text(rect)
             .SetFontSize(12)
-            .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+            .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
             .Draw(_fpsBuffer.AsSpan(0, written + 4));
     }
 
-    void Buttons(NowTheme theme)
+    void Buttons(NowThemeAsset themeAsset)
     {
-        SectionTitle(theme, "Buttons");
+        SectionTitle(themeAsset, "Buttons");
 
         using (NowLayout.Horizontal(spacing: 6))
         {
@@ -142,9 +142,9 @@ public class NowZooExample : NowGraphic
                 NowLayout.Lottie(_lottie).SetTime(_hoverSpin).SetHeight(28).Draw();
 
             NowLayout.Label(_clicksLabel)
-                .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white)).Draw();
+                .SetColor(themeAsset.GetColor(NowColorToken.AccentText, Color.white)).Draw();
             NowLayout.Label("(hover spins the icon)").SetFontSize(10)
-                .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white)).Draw();
+                .SetColor(themeAsset.GetColor(NowColorToken.AccentText, Color.white)).Draw();
 
             if (button.clicked)
             {
@@ -155,9 +155,9 @@ public class NowZooExample : NowGraphic
         }
     }
 
-    void Toggles(NowTheme theme)
+    void Toggles(NowThemeAsset themeAsset)
     {
-        SectionTitle(theme, "Toggles");
+        SectionTitle(themeAsset, "Toggles");
 
         NowLayout.Checkbox("Shadows").Draw(ref _shadows);
 
@@ -165,7 +165,7 @@ public class NowZooExample : NowGraphic
         {
             NowLayout.Label("VSync").Draw();
             NowLayout.Label(_vsync ? "(locked to refresh)" : "(uncapped)").SetFontSize(11)
-                .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
+                .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
         }
 
         using (NowLayout.Horizontal(spacing: 10))
@@ -179,9 +179,9 @@ public class NowZooExample : NowGraphic
         }
     }
 
-    void Sliders(NowTheme theme)
+    void Sliders(NowThemeAsset themeAsset)
     {
-        SectionTitle(theme, "Sliders");
+        SectionTitle(themeAsset, "Sliders");
 
         // Per-frame string interpolation is the classic UI GC trap: format only
         // when the value changes, draw the cached string otherwise.
@@ -206,9 +206,9 @@ public class NowZooExample : NowGraphic
         }
     }
 
-    void Fields(NowTheme theme)
+    void Fields(NowThemeAsset themeAsset)
     {
-        SectionTitle(theme, "Fields");
+        SectionTitle(themeAsset, "Fields");
 
         if (NowLayout.TextField().SetPlaceholder("Player name...").SetStretchWidth().Draw(ref _playerName))
             _greetingLabel = string.IsNullOrEmpty(_playerName) ? null : $"Hello, {_playerName}!";
@@ -222,18 +222,18 @@ public class NowZooExample : NowGraphic
 
         if (_greetingLabel != null)
             NowLayout.Label(_greetingLabel).SetFontSize(12)
-                .SetColor(theme.GetColor(NowColorToken.Accent, Color.cyan)).Draw();
+                .SetColor(themeAsset.GetColor(NowColorToken.Accent, Color.cyan)).Draw();
     }
 
-    void ScrollLog(NowTheme theme)
+    void ScrollLog(NowThemeAsset themeAsset)
     {
-        SectionTitle(theme, "Scroll view (event log)");
+        SectionTitle(themeAsset, "Scroll view (event log)");
 
         using (NowLayout.ScrollView().SetHeight(120).Begin())
         {
             if (_log.Count == 0)
                 NowLayout.Label("Interact with anything...").SetFontSize(12)
-                    .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
+                    .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
 
             for (int i = _log.Count - 1; i >= 0; --i)
                 NowLayout.Label(_log[i]).SetFontSize(12).Draw();
@@ -245,24 +245,24 @@ public class NowZooExample : NowGraphic
         NowRectangleStyle.Surface, NowRectangleStyle.Muted, NowRectangleStyle.Outline, NowRectangleStyle.Accent
     };
 
-    void Swatches(NowTheme theme)
+    void Swatches(NowThemeAsset themeAsset)
     {
-        SectionTitle(theme, "Theme presets");
+        SectionTitle(themeAsset, "Theme presets");
 
         using (NowLayout.Horizontal(spacing: 6))
         {
             for (int i = 0; i < SwatchStyles.Length; ++i)
             {
                 var swatch = NowLayout.Rect(54, 24);
-                theme.Rectangle(swatch, SwatchStyles[i]).Draw();
+                themeAsset.Rectangle(swatch, SwatchStyles[i]).Draw();
             }
         }
     }
 
-    void Marquee(NowTheme theme)
+    void Marquee(NowThemeAsset themeAsset)
     {
         var strip = NowLayout.Rect(height: 22, stretchWidth: true);
-        theme.Rectangle(strip, NowRectangleStyle.Muted).SetRadius(6).Draw();
+        themeAsset.Rectangle(strip, NowRectangleStyle.Muted).SetRadius(6).Draw();
 
         const string Text = "  masks * lottie * shaped text * focus * overlays * burst fonts  ";
         float scroll = _animate ? Mathf.Repeat(Time.time * 60f, strip.width + 460f) : 80f;
@@ -270,20 +270,20 @@ public class NowZooExample : NowGraphic
         using (Now.Mask(strip))
         {
             NowLayout.Label(Text).SetFontSize(13)
-                .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+                .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
                 .Draw(new NowRect(strip.x + strip.width - scroll, strip.y + 3f, 460f, 18f));
         }
     }
 
-    void SectionTitle(NowTheme theme, string title)
+    void SectionTitle(NowThemeAsset themeAsset, string title)
     {
         NowLayout.Label(title).SetFontSize(15).SetBold().Draw();
     }
 
-    void Separator(NowTheme theme)
+    void Separator(NowThemeAsset themeAsset)
     {
         var line = NowLayout.Rect(height: 1, stretchWidth: true);
-        theme.Rectangle(line, NowRectangleStyle.Muted).Draw();
+        themeAsset.Rectangle(line, NowRectangleStyle.Muted).Draw();
     }
 
     void Log(string entry)

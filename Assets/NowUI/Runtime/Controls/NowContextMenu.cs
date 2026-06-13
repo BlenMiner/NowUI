@@ -103,7 +103,7 @@ namespace NowUI
                 return;
             }
 
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             var textStyle = theme.ResolveText(NowTextStyle.Body);
             float width = MinWidth;
 

@@ -145,7 +145,7 @@ namespace NowUI.CodeEditor
             if (_language == null)
                 return result;
 
-            var theme = NowControls.theme;
+            var theme = NowControls.themeAsset;
             int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
             var textStyle = theme.Text(default, NowTextStyle.Body).SetFontSize(_fontSize);
@@ -540,7 +540,7 @@ namespace NowUI.CodeEditor
             return !Mathf.Approximately(nextY, scrollY) || !Mathf.Approximately(nextX, scrollX);
         }
 
-        void DrawVisuals(NowTheme theme, NowText textStyle, NowFontAsset font, NowRect rect, NowRect textRect,
+        void DrawVisuals(NowThemeAsset themeAsset, NowText textStyle, NowFontAsset font, NowRect rect, NowRect textRect,
             float gutterWidth, float statusHeight, float lineHeight, string text, EditorCache cache,
             in NowTextEditState state, ref EditorState editor, bool focused, string composition,
             int caretLine, float caretX, Vector2 pointer, bool hovered)
@@ -548,9 +548,9 @@ namespace NowUI.CodeEditor
             float fontSize = _fontSize;
             var fontStyle = textStyle.fontStyle;
 
-            Vector4 cornerRadius = theme.Rectangle(rect, NowRectangleStyle.Outline).radius;
+            Vector4 cornerRadius = themeAsset.Rectangle(rect, NowRectangleStyle.Outline).radius;
 
-            theme.Rectangle(rect, NowRectangleStyle.Surface).SetRadius(cornerRadius).Draw();
+            themeAsset.Rectangle(rect, NowRectangleStyle.Surface).SetRadius(cornerRadius).Draw();
 
             int firstVisible = Mathf.Max(0, Mathf.FloorToInt(editor.scrollY / lineHeight));
             int lastVisible = Mathf.Min(cache.lines.Count - 1, Mathf.CeilToInt((editor.scrollY + textRect.height) / lineHeight));
@@ -559,13 +559,13 @@ namespace NowUI.CodeEditor
             {
                 float gutterBottomLeft = statusHeight > 0f ? 0f : cornerRadius.z;
                 Now.Rectangle(new NowRect(rect.x, rect.y, gutterWidth, rect.height - statusHeight))
-                    .SetColor(theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
+                    .SetColor(themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
                     .SetRadius(Corners(cornerRadius.w, 0f, 0f, gutterBottomLeft))
                     .Draw();
 
                 using (Now.Mask(new NowRect(rect.x, textRect.y, gutterWidth, textRect.height)))
                 {
-                    var numberStyle = theme.Text(default, NowTextStyle.Muted).SetFontSize(fontSize - 2f);
+                    var numberStyle = themeAsset.Text(default, NowTextStyle.Muted).SetFontSize(fontSize - 2f);
 
                     for (int i = firstVisible; i <= lastVisible; ++i)
                     {
@@ -585,7 +585,7 @@ namespace NowUI.CodeEditor
             {
                 if (focused && caretLine >= firstVisible && caretLine <= lastVisible)
                 {
-                    Color lineTint = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
+                    Color lineTint = themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
                     lineTint.a *= 0.6f;
                     Now.Rectangle(new NowRect(textRect.x, textRect.y + caretLine * lineHeight - editor.scrollY, textRect.width, lineHeight))
                         .SetColor(lineTint)
@@ -593,7 +593,7 @@ namespace NowUI.CodeEditor
                 }
 
                 if (focused && state.hasSelection && composition == null)
-                    DrawSelection(theme, text, cache, font, fontSize, fontStyle, textRect, lineHeight, in state, ref editor, firstVisible, lastVisible);
+                    DrawSelection(themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, in state, ref editor, firstVisible, lastVisible);
 
                 float originX = textRect.x - editor.scrollX;
 
@@ -621,7 +621,7 @@ namespace NowUI.CodeEditor
                             segmentEnd = Mathf.Min(token.start, lineEnd);
 
                             if (segmentEnd > segmentStart)
-                                x += DrawSegment(textStyle, theme, text, segmentStart, segmentEnd - segmentStart,
+                                x += DrawSegment(textStyle, themeAsset, text, segmentStart, segmentEnd - segmentStart,
                                     NowCodeTokenKind.Plain, font, fontSize, fontStyle, x, y, lineHeight);
 
                             segmentStart = token.start;
@@ -636,7 +636,7 @@ namespace NowUI.CodeEditor
                         }
 
                         if (segmentEnd > segmentStart)
-                            x += DrawSegment(textStyle, theme, text, segmentStart, segmentEnd - segmentStart,
+                            x += DrawSegment(textStyle, themeAsset, text, segmentStart, segmentEnd - segmentStart,
                                 kind, font, fontSize, fontStyle, x, y, lineHeight);
 
                         cursor = Mathf.Max(cursor, segmentEnd);
@@ -652,7 +652,7 @@ namespace NowUI.CodeEditor
 
                         float compositionWidth = Advance(composition, font, fontSize, fontStyle);
                         Now.Rectangle(new NowRect(compositionStart, y + lineHeight - 1f, Mathf.Max(compositionWidth, 1f), 1f))
-                            .SetColor(theme.GetColor(NowColorToken.Text, Color.black))
+                            .SetColor(themeAsset.GetColor(NowColorToken.Text, Color.black))
                             .Draw();
                     }
                 }
@@ -666,30 +666,30 @@ namespace NowUI.CodeEditor
                             textRect.y + caretLine * lineHeight - editor.scrollY,
                             2f,
                             lineHeight))
-                        .SetColor(theme.GetColor(NowColorToken.Text, Color.black))
+                        .SetColor(themeAsset.GetColor(NowColorToken.Text, Color.black))
                         .Draw();
                 }
             }
 
             if (statusHeight > 0f)
-                DrawStatusBar(theme, font, fontSize, fontStyle, rect, statusHeight, text, cache, in state, caretLine, cornerRadius);
+                DrawStatusBar(themeAsset, font, fontSize, fontStyle, rect, statusHeight, text, cache, in state, caretLine, cornerRadius);
 
-            DrawScrollbars(theme, cache, rect, textRect, statusHeight, lineHeight, ref editor, hovered || focused);
+            DrawScrollbars(themeAsset, cache, rect, textRect, statusHeight, lineHeight, ref editor, hovered || focused);
 
             // The border is drawn last with a transparent fill, so it covers
             // every seam between the gutter, body, status bar and scrollbars
             // with one clean rounded outline.
-            var border = theme.Rectangle(rect, NowRectangleStyle.Outline);
+            var border = themeAsset.Rectangle(rect, NowRectangleStyle.Outline);
             border.color = new Vector4(0f, 0f, 0f, 0f);
             border = border.SetRadius(cornerRadius);
             border.outline = focused ? 2f : 1f;
             border.outlineColor = focused
-                ? theme.GetColor(NowColorToken.Accent, Color.blue)
-                : theme.GetColor(NowColorToken.Border, Color.gray);
+                ? themeAsset.GetColor(NowColorToken.Accent, Color.blue)
+                : themeAsset.GetColor(NowColorToken.Border, Color.gray);
             border.Draw();
 
             if (hovered)
-                DrawDiagnosticTooltip(theme, text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, pointer);
+                DrawDiagnosticTooltip(themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, pointer);
         }
 
         static Vector4 Corners(float topLeft, float topRight, float bottomRight, float bottomLeft)
@@ -718,15 +718,15 @@ namespace NowUI.CodeEditor
             hThumb = hMetrics.visible ? hMetrics.thumb : default;
         }
 
-        void DrawScrollbars(NowTheme theme, EditorCache cache, NowRect rect, NowRect textRect, float statusHeight,
+        void DrawScrollbars(NowThemeAsset themeAsset, EditorCache cache, NowRect rect, NowRect textRect, float statusHeight,
             float lineHeight, ref EditorState editor, bool active)
         {
             Scrollbars(cache, rect, textRect, statusHeight, lineHeight, editor,
                 out float maxScrollX, out float maxScrollY, out var vTrack, out var vThumb, out var hTrack, out var hThumb);
 
-            Color trackColor = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
+            Color trackColor = themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
             trackColor.a *= 0.5f;
-            Color thumbColor = theme.GetColor(NowColorToken.Border, Color.gray);
+            Color thumbColor = themeAsset.GetColor(NowColorToken.Border, Color.gray);
             thumbColor.a *= active ? 0.95f : 0.55f;
 
             if (maxScrollY > 0f)
@@ -742,19 +742,19 @@ namespace NowUI.CodeEditor
             }
         }
 
-        float DrawSegment(NowText textStyle, NowTheme theme, string text, int start, int length,
+        float DrawSegment(NowText textStyle, NowThemeAsset themeAsset, string text, int start, int length,
             NowCodeTokenKind kind, NowFontAsset font, float fontSize, NowFontStyle fontStyle,
             float x, float y, float lineHeight)
         {
             float width = Advance(text, font, fontSize, fontStyle, start, length);
             var style = textStyle;
             style.rect = new NowRect(x, y, width + 4f, lineHeight);
-            style.color = KindColor(theme, kind);
+            style.color = KindColor(themeAsset, kind);
             style.Draw(System.MemoryExtensions.AsSpan(text, start, length));
             return width;
         }
 
-        static Vector4 KindColor(NowTheme theme, NowCodeTokenKind kind)
+        static Vector4 KindColor(NowThemeAsset themeAsset, NowCodeTokenKind kind)
         {
             switch (kind)
             {
@@ -762,7 +762,7 @@ namespace NowUI.CodeEditor
                 case NowCodeTokenKind.Heading:
                 case NowCodeTokenKind.Link:
                 case NowCodeTokenKind.ListMarker:
-                    return theme.GetColor(NowColorToken.Accent, Color.blue);
+                    return themeAsset.GetColor(NowColorToken.Accent, Color.blue);
                 case NowCodeTokenKind.String:
                 case NowCodeTokenKind.CodeSpan:
                     return new Vector4(0.16f, 0.52f, 0.26f, 1f);
@@ -776,19 +776,19 @@ namespace NowUI.CodeEditor
                 case NowCodeTokenKind.Punctuation:
                 case NowCodeTokenKind.Quote:
                 case NowCodeTokenKind.Fence:
-                    return theme.GetColor(NowColorToken.TextMuted, Color.gray);
+                    return themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
                 case NowCodeTokenKind.Error:
                     return new Vector4(0.86f, 0.24f, 0.24f, 1f);
                 default:
-                    return theme.GetColor(NowColorToken.Text, Color.black);
+                    return themeAsset.GetColor(NowColorToken.Text, Color.black);
             }
         }
 
-        void DrawSelection(NowTheme theme, string text, EditorCache cache, NowFontAsset font, float fontSize,
+        void DrawSelection(NowThemeAsset themeAsset, string text, EditorCache cache, NowFontAsset font, float fontSize,
             NowFontStyle fontStyle, NowRect textRect, float lineHeight, in NowTextEditState state,
             ref EditorState editor, int firstVisible, int lastVisible)
         {
-            Color highlight = theme.GetColor(NowColorToken.Accent, Color.blue);
+            Color highlight = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
             highlight.a = 0.3f;
             int selectionMin = state.selectionMin;
             int selectionMax = state.selectionMax;
@@ -858,14 +858,14 @@ namespace NowUI.CodeEditor
             }
         }
 
-        void DrawStatusBar(NowTheme theme, NowFontAsset font, float fontSize, NowFontStyle fontStyle,
+        void DrawStatusBar(NowThemeAsset themeAsset, NowFontAsset font, float fontSize, NowFontStyle fontStyle,
             NowRect rect, float statusHeight, string text, EditorCache cache, in NowTextEditState state, int caretLine,
             Vector4 cornerRadius)
         {
             var statusRect = new NowRect(rect.x, rect.yMax - statusHeight, rect.width, statusHeight);
 
             Now.Rectangle(statusRect)
-                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
+                .SetColor(themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
                 .SetRadius(Corners(0f, 0f, cornerRadius.x, cornerRadius.z))
                 .Draw();
 
@@ -879,24 +879,24 @@ namespace NowUI.CodeEditor
                 cache.positionText = $"Ln {caretLine + 1}, Col {column + 1}";
             }
 
-            var positionStyle = theme.Text(
+            var positionStyle = themeAsset.Text(
                 new NowRect(statusRect.x + 8f, statusRect.y, 220f, statusRect.height), NowTextStyle.Muted);
             positionStyle.SetFontSize(11f).Draw(cache.positionText);
 
             string message = cache.statusMessage ?? string.Empty;
             Vector4 messageColor = cache.diagnostics.Count == 0
-                ? theme.GetColor(NowColorToken.TextMuted, Color.gray)
+                ? themeAsset.GetColor(NowColorToken.TextMuted, Color.gray)
                 : new Vector4(0.86f, 0.24f, 0.24f, 1f);
 
             float messageWidth = Advance(message, font, 11f, fontStyle);
             var messageRect = new NowRect(statusRect.xMax - messageWidth - 12f, statusRect.y, messageWidth + 8f, statusRect.height);
 
-            var messageStyle = theme.Text(messageRect, NowTextStyle.Muted);
+            var messageStyle = themeAsset.Text(messageRect, NowTextStyle.Muted);
             messageStyle.color = messageColor;
             messageStyle.SetFontSize(11f).Draw(message);
         }
 
-        void DrawDiagnosticTooltip(NowTheme theme, string text, EditorCache cache, NowFontAsset font,
+        void DrawDiagnosticTooltip(NowThemeAsset themeAsset, string text, EditorCache cache, NowFontAsset font,
             float fontSize, NowFontStyle fontStyle, NowRect textRect, float lineHeight, ref EditorState editor, Vector2 pointer)
         {
             if (cache.diagnostics.Count == 0 || !textRect.Contains(pointer))
@@ -923,12 +923,12 @@ namespace NowUI.CodeEditor
 
                 NowOverlay.Defer(default, () =>
                 {
-                    var background = NowControls.theme.Rectangle(tooltipRect, NowRectangleStyle.Surface);
+                    var background = NowControls.themeAsset.Rectangle(tooltipRect, NowRectangleStyle.Surface);
                     background.outline = 1f;
-                    background.outlineColor = NowControls.theme.GetColor(NowColorToken.Border, Color.gray);
+                    background.outlineColor = NowControls.themeAsset.GetColor(NowColorToken.Border, Color.gray);
                     background.SetRadius(4f).Draw();
 
-                    var tooltipStyle = NowControls.theme.Text(
+                    var tooltipStyle = NowControls.themeAsset.Text(
                         new NowRect(tooltipRect.x + 8f, tooltipRect.y, tooltipRect.width, tooltipRect.height),
                         NowTextStyle.Body);
                     tooltipStyle.SetFontSize(12f).Draw(message);
