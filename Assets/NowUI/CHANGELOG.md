@@ -10,6 +10,11 @@ point it became installable through UPM.
 
 ### Added
 
+- Code editor line shortcuts and key repeat: Ctrl+D duplicates the current
+  line (or selected lines), and Ctrl+C / Ctrl+X with no selection copy / cut
+  the whole line. Newlines and Tab now repeat while held, like characters
+  (the text input frame gained `enterHeld` / `tabHeld`, plus a
+  `duplicatePressed` chord). TextArea's Enter repeats while held too.
 - Code editor rendering: rounded corners no longer fight the gutter and
   status bar. The editor now draws a rounded surface fill, gives the gutter
   and status bar matching rounded outer corners, and lays the outline border

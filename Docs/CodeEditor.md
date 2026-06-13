@@ -43,6 +43,12 @@ layout flow), `SetFontSize` (default 14), `SetLineNumbers(false)`,
 - **Tab** inserts two spaces; with a multi-line selection it indents the
   lines, Shift+Tab dedents.
 - **Smart Home** jumps to the first non-space character, then column zero.
+- **Line shortcuts**: Ctrl+D duplicates the current line (or the selected
+  lines) below; Ctrl+C / Ctrl+X with no selection copy / cut the whole line
+  (newline included).
+- **Held-key repeat** applies to newlines and Tab as well as characters, so
+  holding Enter or Tab keeps inserting (matching how holding a letter
+  repeats).
 - **Undo/redo** (Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z) with typing coalesced
   into single steps.
 - Line numbers, current-line highlight, two-axis scrolling with the caret

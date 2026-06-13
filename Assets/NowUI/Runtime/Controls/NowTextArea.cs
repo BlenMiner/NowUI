@@ -207,7 +207,7 @@ namespace NowUI
                             NowTextEdit.Insert(ref text, ref state, buffer.Replace("\r\n", "\n").Replace('\r', '\n'));
                     }
 
-                    if (frame.enterPressed)
+                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "enter"), frame.enterHeld))
                         NowTextEdit.Insert(ref text, ref state, "\n");
 
                     if (NowUIControlState.Repeat(NowUIInput.GetId(id, "bs"), frame.backspaceHeld))

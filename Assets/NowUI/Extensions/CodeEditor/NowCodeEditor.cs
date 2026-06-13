@@ -50,7 +50,7 @@ namespace NowUI.CodeEditor
 
         const float ScrollbarThickness = 8f;
 
-        const string IndentUnit = "  ";
+        const string IndentUnit = "    ";
 
         readonly string _id;
         readonly int _site;
@@ -322,14 +322,31 @@ namespace NowUI.CodeEditor
                     if (frame.selectAllPressed)
                         NowTextEdit.SelectAll(ref state, text);
 
-                    if (frame.copyPressed && state.hasSelection)
-                        NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                    // Copy/cut with no selection act on the whole line, like an IDE.
+                    if (frame.copyPressed)
+                        NowUIClipboard.Copy(state.hasSelection
+                            ? NowTextEdit.GetSelection(text, state)
+                            : CurrentLine(text, state.caret));
 
-                    if (frame.cutPressed && state.hasSelection)
+                    if (frame.cutPressed)
                     {
                         PushUndo(cache, text, in state, typing: false);
-                        NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
-                        NowTextEdit.DeleteSelection(ref text, ref state);
+
+                        if (state.hasSelection)
+                        {
+                            NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                            NowTextEdit.DeleteSelection(ref text, ref state);
+                        }
+                        else
+                        {
+                            CutLine(ref text, ref state);
+                        }
+                    }
+
+                    if (frame.duplicatePressed)
+                    {
+                        PushUndo(cache, text, in state, typing: false);
+                        DuplicateLines(ref text, ref state);
                     }
 
                     if (frame.pastePressed)
@@ -343,18 +360,18 @@ namespace NowUI.CodeEditor
                         }
                     }
 
-                    if (frame.enterPressed)
+                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "enter"), frame.enterHeld))
                     {
-                        PushUndo(cache, text, in state, typing: false);
+                        PushUndo(cache, text, in state, typing: true);
                         InsertNewlineWithIndent(ref text, ref state, _language);
                     }
 
-                    if (frame.tabPressed)
+                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "tab"), frame.tabHeld))
                     {
                         if (!ReferenceEquals(cache.text, text))
                             Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
 
-                        PushUndo(cache, text, in state, typing: false);
+                        PushUndo(cache, text, in state, typing: true);
                         HandleTab(ref text, ref state, cache, frame.shift);
                     }
 
@@ -1054,6 +1071,59 @@ namespace NowUI.CodeEditor
 
             if (!select)
                 state.anchor = state.caret;
+        }
+
+        /// <summary>The newline-delimited line containing <paramref name="index"/> (newline excluded).</summary>
+        static void LineBounds(string text, int index, out int start, out int end)
+        {
+            start = Mathf.Clamp(index, 0, text.Length);
+
+            while (start > 0 && text[start - 1] != '\n')
+                --start;
+
+            end = Mathf.Clamp(index, 0, text.Length);
+
+            while (end < text.Length && text[end] != '\n')
+                ++end;
+        }
+
+        static string CurrentLine(string text, int caret)
+        {
+            LineBounds(text, caret, out int start, out int end);
+            return text.Substring(start, end - start) + "\n";
+        }
+
+        static void CutLine(ref string text, ref NowTextEditState state)
+        {
+            LineBounds(text, state.caret, out int start, out int end);
+            NowUIClipboard.Copy(text.Substring(start, end - start) + "\n");
+
+            int removeStart = start;
+            int removeEnd = end;
+
+            if (end < text.Length)
+                removeEnd = end + 1;
+            else if (start > 0)
+                removeStart = start - 1;
+
+            text = text.Remove(removeStart, removeEnd - removeStart);
+            state.caret = Mathf.Clamp(removeStart, 0, text.Length);
+            state.anchor = state.caret;
+        }
+
+        static void DuplicateLines(ref string text, ref NowTextEditState state)
+        {
+            int from = state.hasSelection ? state.selectionMin : state.caret;
+            int to = state.hasSelection ? state.selectionMax : state.caret;
+            LineBounds(text, from, out int start, out _);
+            LineBounds(text, to, out _, out int end);
+
+            string block = text.Substring(start, end - start);
+            text = text.Insert(end, "\n" + block);
+
+            int delta = block.Length + 1;
+            state.caret += delta;
+            state.anchor += delta;
         }
 
         static void SmartHome(string text, EditorCache cache, ref NowTextEditState state, bool select)

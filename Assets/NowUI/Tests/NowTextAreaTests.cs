@@ -193,7 +193,7 @@ public class NowTextAreaTests
         Focus();
 
         Assert.IsTrue(Frame(ref text, new NowUITextInputFrame { characters = "ab" }));
-        Assert.IsTrue(Frame(ref text, new NowUITextInputFrame { enterPressed = true }));
+        Assert.IsTrue(Frame(ref text, new NowUITextInputFrame { enterHeld = true }));
         Assert.IsTrue(Frame(ref text, new NowUITextInputFrame { characters = "c" }));
         Assert.AreEqual("ab\nc", text);
     }
@@ -346,7 +346,7 @@ public class NowTextAreaTests
         Focus();
 
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { enterPressed = true });
+        Frame(ref text, new NowUITextInputFrame { enterHeld = true });
 
         Assert.AreEqual("ab\n", text);
         Assert.AreEqual(Id, NowUIFocus.focusedId, "Enter must not blur a text area.");
@@ -416,7 +416,7 @@ public class NowTextAreaTests
         {
             composition = "か",
             backspaceHeld = true,
-            enterPressed = true,
+            enterHeld = true,
             escapePressed = true
         });
 
@@ -452,7 +452,7 @@ public class NowTextAreaTests
     {
         string text = "keep";
 
-        Assert.IsFalse(Frame(ref text, new NowUITextInputFrame { characters = "x", enterPressed = true }));
+        Assert.IsFalse(Frame(ref text, new NowUITextInputFrame { characters = "x", enterHeld = true }));
         Assert.AreEqual("keep", text);
     }
 }

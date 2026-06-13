@@ -28,8 +28,10 @@ namespace NowUI
         public bool homePressed;
         public bool endPressed;
         public bool enterPressed;
+        public bool enterHeld;
         public bool escapePressed;
         public bool tabPressed;
+        public bool tabHeld;
 
         public bool shift;
 
@@ -42,6 +44,7 @@ namespace NowUI
         public bool selectAllPressed;
         public bool undoPressed;
         public bool redoPressed;
+        public bool duplicatePressed;
     }
 
     public interface INowUITextInputSource
@@ -237,8 +240,10 @@ namespace NowUI
                 frame.homePressed = keyboard.homeKey.wasPressedThisFrame;
                 frame.endPressed = keyboard.endKey.wasPressedThisFrame;
                 frame.enterPressed = keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame;
+                frame.enterHeld = keyboard.enterKey.isPressed || keyboard.numpadEnterKey.isPressed;
                 frame.escapePressed = keyboard.escapeKey.wasPressedThisFrame;
                 frame.tabPressed = keyboard.tabKey.wasPressedThisFrame;
+                frame.tabHeld = keyboard.tabKey.isPressed;
                 frame.shift = keyboard.shiftKey.isPressed;
                 frame.composition = _composition;
 
@@ -257,8 +262,8 @@ namespace NowUI
                     frame.undoPressed = keyboard.zKey.wasPressedThisFrame && !frame.shift;
                     frame.redoPressed = keyboard.yKey.wasPressedThisFrame ||
                         (keyboard.zKey.wasPressedThisFrame && frame.shift);
+                    frame.duplicatePressed = keyboard.dKey.wasPressedThisFrame;
 
-                    // Command chords never insert their letter.
                     frame.characters = null;
                 }
 
@@ -297,8 +302,10 @@ namespace NowUI
                 frame.homePressed = Input.GetKeyDown(KeyCode.Home);
                 frame.endPressed = Input.GetKeyDown(KeyCode.End);
                 frame.enterPressed = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
+                frame.enterHeld = Input.GetKey(KeyCode.Return) || Input.GetKey(KeyCode.KeypadEnter);
                 frame.escapePressed = Input.GetKeyDown(KeyCode.Escape);
                 frame.tabPressed = Input.GetKeyDown(KeyCode.Tab);
+                frame.tabHeld = Input.GetKey(KeyCode.Tab);
                 frame.shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
 
                 string composing = Input.compositionString;
@@ -317,6 +324,7 @@ namespace NowUI
                     frame.selectAllPressed = Input.GetKeyDown(KeyCode.A);
                     frame.undoPressed = Input.GetKeyDown(KeyCode.Z) && !frame.shift;
                     frame.redoPressed = Input.GetKeyDown(KeyCode.Y) || (Input.GetKeyDown(KeyCode.Z) && frame.shift);
+                    frame.duplicatePressed = Input.GetKeyDown(KeyCode.D);
                     frame.characters = null;
                 }
 
