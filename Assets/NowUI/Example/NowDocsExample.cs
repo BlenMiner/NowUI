@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using JetBrains.Annotations;
 using UnityEngine;
 using NowUI;
 using NowUI.CodeEditor;
@@ -17,6 +18,7 @@ public class NowDocsExample : NowGraphic
 {
     enum PageKind
     {
+        [UsedImplicitly]
         Markdown,
         ControlsDemo,
         LottieDemo,
