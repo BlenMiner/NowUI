@@ -21,7 +21,8 @@ namespace NowUI.Sdf
         Box = 1,
         RoundedBox = 2,
         Ellipse = 3,
-        Capsule = 4
+        Capsule = 4,
+        Glyph = 5
     }
 
     enum NowSdfLayerKind
@@ -298,6 +299,27 @@ namespace NowUI.Sdf
             return Capsule(from, to, radius);
         }
 
+        public NowSdfGraph Text(Vector2 position, string value, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
+        {
+            return Text(position, value, Now.font, fontSize, fontStyle, tabSpaces);
+        }
+
+        public NowSdfGraph Text(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
+        {
+            AddText(position, value, font != null ? font : Now.font, fontSize, fontStyle, tabSpaces);
+            return this;
+        }
+
+        public NowSdfGraph Text(NowRect rect, string value, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
+        {
+            return Text(rect.position, value, Now.font, fontSize, fontStyle, tabSpaces);
+        }
+
+        public NowSdfGraph Text(NowRect rect, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
+        {
+            return Text(rect.position, value, font, fontSize, fontStyle, tabSpaces);
+        }
+
         internal void CopyStyleFrom(NowSdfGraph source)
         {
             _color = source._color;
@@ -308,23 +330,137 @@ namespace NowUI.Sdf
 
         void Add(NowSdfShapeType type, Vector4 data1, Vector4 data2, NowRect bounds)
         {
-            var operation = _nodes.Count == 0 ? NowSdfOperation.Union : _operation;
+            Add(type, data1, data2, bounds, _textureUv, _useTexture, _operation, _smoothing, true);
+        }
+
+        void Add(
+            NowSdfShapeType type,
+            Vector4 data1,
+            Vector4 data2,
+            NowRect bounds,
+            Vector4 uv,
+            bool useTexture,
+            NowSdfOperation operation,
+            float smoothing,
+            bool resetOperation)
+        {
+            operation = _nodes.Count == 0 ? NowSdfOperation.Union : operation;
             _nodes.Add(new NowSdfNode
             {
                 type = type,
                 operation = operation,
-                smoothing = _smoothing,
+                smoothing = smoothing,
                 data1 = data1,
                 data2 = data2,
                 color = _color,
-                uv = _textureUv,
-                useTexture = _useTexture,
+                uv = uv,
+                useTexture = useTexture,
                 bounds = bounds
             });
 
             Encapsulate(bounds);
+
+            if (resetOperation)
+            {
+                _operation = NowSdfOperation.Union;
+                _smoothing = 0f;
+            }
+        }
+
+        void AddText(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle, int tabSpaces)
+        {
+            if (font == null || string.IsNullOrEmpty(value) || fontSize <= 0f)
+                return;
+
+            font.EnsureGlyphs(value, fontSize, fontStyle);
+
+            float lineHeight = font.GetLineHeight(fontStyle) * fontSize;
+            float baseline = font.GetAscender(fontStyle) * fontSize;
+            float left = position.x;
+            float x = position.x;
+            float y = position.y;
+            int spaces = Mathf.Max(1, tabSpaces);
+            var glyphOperation = _nodes.Count == 0 ? NowSdfOperation.Union : _operation;
+            float glyphSmoothing = _nodes.Count == 0 ? 0f : _smoothing;
+
+            for (int i = 0; i < value.Length; ++i)
+            {
+                int codepoint = NowFont.ReadCodepoint(value, ref i);
+
+                if (codepoint == '\n')
+                {
+                    x = left;
+                    y += lineHeight;
+                    continue;
+                }
+
+                if (codepoint == '\t')
+                {
+                    if (font.TryResolveGlyph(' ', fontSize, fontStyle, out _, out var space, out _))
+                        x += space.advance * fontSize * spaces;
+
+                    continue;
+                }
+
+                if (!font.TryResolveGlyph(codepoint, fontSize, fontStyle, out var resolvedFont, out var glyph, out var material))
+                    continue;
+
+                if (resolvedFont != null &&
+                    !resolvedFont.isColor &&
+                    !Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right) &&
+                    material != null &&
+                    material.mainTexture != null &&
+                    TryBindTexture(material.mainTexture))
+                {
+                    var rect = GlyphRect(x, y, baseline, fontSize, glyph);
+                    var uv = new Vector4(
+                        glyph.atlasBounds.left,
+                        glyph.atlasBounds.bottom,
+                        glyph.atlasBounds.right - glyph.atlasBounds.left,
+                        glyph.atlasBounds.top - glyph.atlasBounds.bottom);
+                    float range = resolvedFont.GetScreenPixelRange(codepoint, fontSize);
+
+                    Add(
+                        NowSdfShapeType.Glyph,
+                        RectData(rect),
+                        new Vector4(range, 0f, 0f, 0f),
+                        rect,
+                        uv,
+                        false,
+                        glyphOperation,
+                        glyphSmoothing,
+                        false);
+                }
+
+                x += glyph.advance * fontSize;
+            }
+
             _operation = NowSdfOperation.Union;
             _smoothing = 0f;
+        }
+
+        bool TryBindTexture(Texture texture)
+        {
+            if (texture == null)
+                return false;
+
+            if (_texture == null)
+            {
+                _texture = texture;
+                return true;
+            }
+
+            return ReferenceEquals(_texture, texture);
+        }
+
+        static NowRect GlyphRect(float x, float y, float baseline, float fontSize, NowFontAtlasInfo.Glyph glyph)
+        {
+            var plane = glyph.planeBounds;
+            float left = plane.left * fontSize;
+            float right = plane.right * fontSize;
+            float bottom = plane.bottom * fontSize;
+            float top = plane.top * fontSize;
+            return new NowRect(x + left, y + baseline - top, right - left, top - bottom);
         }
 
         static Vector4 RectData(NowRect rect)
@@ -701,6 +837,28 @@ namespace NowUI.Sdf
             return this;
         }
 
+        public NowSdfBuilder Text(Vector2 position, string value, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
+        {
+            _cache.Text(position, value, Now.font, fontSize, fontStyle, tabSpaces);
+            return this;
+        }
+
+        public NowSdfBuilder Text(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
+        {
+            _cache.Text(position, value, font != null ? font : Now.font, fontSize, fontStyle, tabSpaces);
+            return this;
+        }
+
+        public NowSdfBuilder Text(NowRect rect, string value, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
+        {
+            return Text(rect.position, value, fontSize, fontStyle, tabSpaces);
+        }
+
+        public NowSdfBuilder Text(NowRect rect, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
+        {
+            return Text(rect.position, value, font, fontSize, fontStyle, tabSpaces);
+        }
+
         public Vector2 Measure()
         {
             return _cache.measureSize;
@@ -941,6 +1099,14 @@ namespace NowUI.Sdf
             _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Capsule(rect);
             ResetPendingOperation();
             Encapsulate(rect);
+        }
+
+        public void Text(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle, int tabSpaces)
+        {
+            PrepareActivePrimitive();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Text(position, value, font, fontSize, fontStyle, tabSpaces);
+            ResetPendingOperation();
+            Encapsulate(_activeGraph.measureSize);
         }
 
         public void Draw(NowRect rect, NowRect mask, Vector4 tint)

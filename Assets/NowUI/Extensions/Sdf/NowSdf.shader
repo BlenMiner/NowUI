@@ -139,7 +139,28 @@ Shader "NowUI/SDF Scene"
                 return length(pa - ba * h) - r;
             }
 
-            float shapeDistance(float type, float4 data1, float4 data2, float2 scenePos)
+            float median(float r, float g, float b)
+            {
+                return max(min(r, g), min(max(r, g), b));
+            }
+
+            float sdGlyph(float2 scenePos, float4 data1, float4 data2, float4 uvRect)
+            {
+                float2 size = max(data1.zw, 0.0001);
+                float2 halfSize = size * 0.5;
+                float2 local = scenePos - data1.xy;
+                float2 glyphUv = local / size + 0.5;
+                float boundsDist = sdBox(local, halfSize);
+
+                if (glyphUv.x < 0.0 || glyphUv.y < 0.0 || glyphUv.x > 1.0 || glyphUv.y > 1.0)
+                    return max(data2.x, 1.0) + max(boundsDist, 0.0);
+
+                float2 atlasUv = uvRect.xy + float2(glyphUv.x, 1.0 - glyphUv.y) * uvRect.zw;
+                float4 msd = tex2D(_MainTex, atlasUv);
+                return (0.5 - median(msd.r, msd.g, msd.b)) * max(data2.x, 0.0001);
+            }
+
+            float shapeDistance(int index, float type, float4 data1, float4 data2, float2 scenePos)
             {
                 if (type < 0.5)
                     return length(scenePos - data1.xy) - data1.z;
@@ -153,7 +174,10 @@ Shader "NowUI/SDF Scene"
                 if (type < 3.5)
                     return sdEllipse(scenePos - data1.xy, max(data1.zw * 0.5, 0.0001));
 
-                return sdCapsule(scenePos, data1.xy, data1.zw, data2.x);
+                if (type < 4.5)
+                    return sdCapsule(scenePos, data1.xy, data1.zw, data2.x);
+
+                return sdGlyph(scenePos, data1, data2, _SdfUvs[index]);
             }
 
             float2 shapeUv(float type, float4 data1, float4 data2, float2 scenePos)
@@ -178,14 +202,15 @@ Shader "NowUI/SDF Scene"
                     maxPoint = max(data1.xy, data1.zw) + data2.xx;
                 }
 
-                return saturate((scenePos - minPoint) / max(maxPoint - minPoint, 0.0001));
+                float2 uv = saturate((scenePos - minPoint) / max(maxPoint - minPoint, 0.0001));
+                return float2(uv.x, 1.0 - uv.y);
             }
 
             float4 shapeFill(int index, float type, float4 data1, float4 data2, float2 scenePos, float4 tint)
             {
                 float4 color = _SdfColors[index] * tint;
 
-                if (_SdfShapeMeta[index].y < 0.5)
+                if (type > 4.5 || _SdfShapeMeta[index].y < 0.5)
                     return color;
 
                 float2 uv = shapeUv(type, data1, data2, scenePos);
@@ -264,7 +289,7 @@ Shader "NowUI/SDF Scene"
                     float4 data0 = _SdfData0[n];
                     float4 data1 = _SdfData1[n];
                     float4 data2 = _SdfData2[n];
-                    float shapeDist = shapeDistance(data0.x, data1, data2, scenePos);
+                    float shapeDist = shapeDistance(n, data0.x, data1, data2, scenePos);
                     float4 nextFill = shapeFill(n, data0.x, data1, data2, scenePos, tint);
 
                     if (!found)
@@ -325,8 +350,9 @@ Shader "NowUI/SDF Scene"
 
             fixed4 frag(v2f i) : SV_Target
             {
-                float2 scenePos = i.rawUV * i.rect.zw;
-                float2 meshPos = i.rect.xy + scenePos;
+                float2 quadPos = i.rawUV * i.rect.zw;
+                float2 scenePos = float2(quadPos.x, i.rect.w - quadPos.y);
+                float2 meshPos = i.rect.xy + quadPos;
                 float4 mask = i.mask;
 
                 clip(min(

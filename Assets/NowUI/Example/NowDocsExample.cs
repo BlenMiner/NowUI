@@ -68,15 +68,19 @@ public class NowDocsExample : NowGraphic
     int _clicks;
     bool _lottieScrub;
     float _lottieProgress = 0.35f;
+    bool _sdfDemoLocked;
     int _richTextLinkClicks;
     string _richTextLastLink = "none";
     NowRichTextParser _richTextDemoParser;
     readonly NowRichTextSpan[] _richTextDemoSpans = new NowRichTextSpan[3];
     Texture2D _sdfDemoTexture;
-    readonly NowSdfGraph _sdfIntersectLeft = NowSdf.Graph();
-    readonly NowSdfGraph _sdfIntersectRight = NowSdf.Graph();
-    readonly NowSdfGraph _sdfMorphA = NowSdf.Graph();
-    readonly NowSdfGraph _sdfMorphB = NowSdf.Graph();
+    readonly NowSdfGraph _sdfDemoIdle = NowSdf.Graph();
+    readonly NowSdfGraph _sdfDemoActive = NowSdf.Graph();
+    readonly NowSdfGraph _sdfDemoGlow = NowSdf.Graph();
+    readonly NowSdfGraph _sdfDemoStreaks = NowSdf.Graph();
+    readonly NowSdfGraph _sdfDemoOrbit = NowSdf.Graph();
+    readonly NowSdfGraph _sdfDemoTextIdle = NowSdf.Graph();
+    readonly NowSdfGraph _sdfDemoTextActive = NowSdf.Graph();
     readonly Dictionary<string, string> _docs = new Dictionary<string, string>();
 
     string LoadDoc(string file)
@@ -222,107 +226,202 @@ public class NowDocsExample : NowGraphic
 
     void DrawSdfDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# SDF demo\n\nThe first panel combines reusable graphs with scene-level operations and a generated texture. The second panel morphs between two graphs every frame.").Draw();
+        NowMarkdown.Document("# SDF demo\n\nHover the scene to steer the field and light the SDF text. Click it to morph into cut mode.").Draw();
 
-        NowMarkdown.Document("## Graph operations").Draw();
-        DrawSdfOperationsPanel(themeAsset);
-
-        NowMarkdown.Document("## Morph").Draw();
-        DrawSdfMorphPanel(themeAsset);
-
+        DrawSdfPlaygroundPanel(themeAsset);
         NowControlState.RequestRepaint();
     }
 
-    void DrawSdfOperationsPanel(NowThemeAsset themeAsset)
+    void DrawSdfPlaygroundPanel(NowThemeAsset themeAsset)
     {
-        var scene = ReserveSdfPanel(themeAsset, 172f);
+        var panel = ReserveSdfPanel(themeAsset, 318f);
 
-        if (scene.isEmpty)
+        if (panel.isEmpty)
             return;
 
-        float gap = 18f;
-        float width = Mathf.Max(1f, (scene.width - gap * 2f) / 3f);
-        float height = scene.height;
-        var unionRect = new NowRect(scene.x, scene.y, width, height);
-        var subtractRect = new NowRect(unionRect.xMax + gap, scene.y, width, height);
-        var intersectRect = new NowRect(subtractRect.xMax + gap, scene.y, width, height);
+        int id = NowControls.GetControlId("docs-sdf-playground");
+        var interaction = NowControls.Interact(id, panel, out bool focused, out bool submitted);
 
-        float w = unionRect.width;
-        float h = unionRect.height;
+        if (interaction.clicked || submitted)
+            _sdfDemoLocked = !_sdfDemoLocked;
 
-        NowSdf.Scene(unionRect, "docs-sdf-op-union")
-            .SetTexture(GetSdfDemoTexture())
-            .RoundedBox(new NowRect(w * 0.08f, h * 0.22f, w * 0.64f, h * 0.56f), h * 0.16f)
-            .SetColor(new Color(1f, 0.34f, 0.18f, 1f))
+        var scene = panel.Inset(18f, 14f, 18f, 40f);
+        float hoverT = NowControlState.Transition(NowInput.GetId(id, "hover"), interaction.hovered || focused, 8f);
+        float pressT = NowControlState.Transition(NowInput.GetId(id, "press"), interaction.held, 18f);
+        float lockT = NowControlState.Transition(NowInput.GetId(id, "lock"), _sdfDemoLocked, 7f);
+        float autoX = Mathf.SmoothStep(0f, 1f, Mathf.PingPong(Time.time * 0.18f, 1f));
+        float autoY = Mathf.Sin(Time.time * 0.7f) * 0.5f + 0.5f;
+        float w = scene.width;
+        float h = scene.height;
+        var autoCursor = new Vector2(
+            Mathf.Lerp(w * 0.16f, w * 0.84f, autoX),
+            Mathf.Lerp(h * 0.24f, h * 0.76f, autoY));
+        var cursor = autoCursor;
+
+        if (interaction.hasPointer && (interaction.hovered || interaction.held))
+        {
+            cursor = new Vector2(
+                Mathf.Clamp(interaction.pointerPosition.x - scene.x, 0f, w),
+                Mathf.Clamp(interaction.pointerPosition.y - scene.y, 0f, h));
+        }
+
+        float steerX = Mathf.Clamp01(cursor.x / Mathf.Max(w, 1f));
+        float steerY = Mathf.Clamp01(cursor.y / Mathf.Max(h, 1f));
+        float pulse = Mathf.Sin(Time.time * 5.2f) * 0.5f + 0.5f;
+        float morphT = Mathf.Clamp01(0.18f + hoverT * 0.46f + lockT * 0.28f + pulse * 0.08f);
+
+        var glow = _sdfDemoGlow.Clear()
+            .SetColor(new Color(0.12f, 0.55f, 1f, 0.15f + hoverT * 0.12f))
             .UseColor()
-            .SmoothUnion(14f)
-            .Circle(new Vector2(w * 0.72f, h * 0.5f), h * 0.29f)
-            .Draw();
-
-        w = subtractRect.width;
-        h = subtractRect.height;
-
-        NowSdf.Scene(subtractRect, "docs-sdf-op-subtract")
-            .SetColor(new Color(0.16f, 0.48f, 0.95f, 1f))
-            .RoundedBox(new NowRect(w * 0.12f, h * 0.22f, w * 0.76f, h * 0.56f), h * 0.18f)
-            .SmoothSubtract(9f)
-            .Circle(new Vector2(w * 0.5f, h * 0.5f), h * 0.2f)
-            .Draw();
-
-        w = intersectRect.width;
-        h = intersectRect.height;
-        var left = _sdfIntersectLeft.Clear()
-            .SetColor(new Color(0.12f, 0.82f, 0.68f, 1f))
+            .Ellipse(new NowRect(w * 0.08f, h * 0.20f, w * 0.84f, h * 0.56f))
+            .SetColor(new Color(0.92f, 0.24f, 0.58f, 0.12f + lockT * 0.18f))
             .UseColor()
-            .Circle(new Vector2(w * 0.42f, h * 0.5f), h * 0.31f);
-        var right = _sdfIntersectRight.Clear()
-            .SetColor(new Color(0.82f, 0.42f, 1f, 1f))
+            .SmoothUnion(34f)
+            .Circle(new Vector2(w * (0.24f + steerX * 0.1f), h * 0.34f), h * 0.24f);
+
+        var idle = _sdfDemoIdle.Clear()
+            .SetColor(new Color(0.06f, 0.52f, 0.98f, 1f))
             .UseColor()
-            .Circle(new Vector2(w * 0.58f, h * 0.5f), h * 0.31f);
-
-        NowSdf.Scene(intersectRect, "docs-sdf-op-intersect")
-            .Graph(left)
-            .SmoothIntersect(12f)
-            .Graph(right)
-            .Draw();
-    }
-
-    void DrawSdfMorphPanel(NowThemeAsset themeAsset)
-    {
-        var scene = ReserveSdfPanel(themeAsset, 172f);
-
-        if (scene.isEmpty)
-            return;
-
-        float width = scene.width;
-        float height = scene.height;
-        float t = Mathf.SmoothStep(0f, 1f, Mathf.PingPong(Time.time * 0.55f, 1f));
-
-        var sceneA = _sdfMorphA.Clear()
-            .SetColor(new Color(0.14f, 0.86f, 0.95f, 1f))
+            .Capsule(new NowRect(w * 0.13f, h * 0.33f, w * 0.74f, h * 0.34f))
+            .SetColor(new Color(0.05f, 0.86f, 0.67f, 1f))
             .UseColor()
-            .Circle(new Vector2(width * 0.34f, height * 0.5f), height * 0.28f)
-            .SetColor(new Color(0.42f, 0.6f, 1f, 1f))
+            .SmoothUnion(24f)
+            .Circle(new Vector2(w * 0.23f, h * 0.46f), h * 0.19f)
+            .SetColor(new Color(1f, 0.62f, 0.16f, 1f))
             .UseColor()
-            .SmoothUnion(14f)
-            .Circle(new Vector2(width * 0.56f, height * 0.5f), height * 0.28f)
-            .SetColor(new Color(0.16f, 0.95f, 0.62f, 1f))
-            .UseColor()
-            .SmoothUnion(14f)
-            .Circle(new Vector2(width * 0.45f, height * 0.34f), height * 0.22f);
-
-        var sceneB = _sdfMorphB.Clear()
-            .SetColor(new Color(0.96f, 0.34f, 0.58f, 1f))
-            .UseColor()
-            .Capsule(new NowRect(width * 0.2f, height * 0.3f, width * 0.6f, height * 0.4f))
-            .SetColor(new Color(1f, 0.78f, 0.22f, 1f))
+            .SmoothUnion(22f)
+            .Circle(new Vector2(w * 0.77f, h * 0.54f), h * 0.17f)
+            .SetColor(new Color(0.85f, 0.23f, 0.95f, 1f))
             .UseColor()
             .SmoothUnion(18f)
-            .Circle(new Vector2(width * 0.5f, height * 0.5f), height * 0.24f);
+            .RoundedBox(new NowRect(w * 0.42f, h * 0.25f, w * 0.20f, h * 0.50f), h * 0.08f);
 
-        NowSdf.Scene(scene, "docs-sdf-morph")
-            .Morph(sceneA, sceneB, t)
+        var active = _sdfDemoActive.Clear()
+            .SetColor(Color.Lerp(new Color(0.16f, 0.39f, 0.96f, 1f), new Color(0.9f, 0.18f, 0.52f, 1f), lockT))
+            .UseColor()
+            .RoundedBox(new NowRect(w * 0.15f, h * 0.24f, w * 0.70f, h * 0.52f), h * 0.18f)
+            .SetColor(Color.Lerp(new Color(0.1f, 0.94f, 0.74f, 1f), new Color(1f, 0.74f, 0.16f, 1f), lockT))
+            .UseColor()
+            .SmoothUnion(22f)
+            .Circle(cursor, h * (0.13f + hoverT * 0.035f + lockT * 0.05f + pressT * 0.02f))
+            .SetColor(new Color(1f, 1f, 1f, 0.42f))
+            .UseColor()
+            .SmoothUnion(18f)
+            .Capsule(new NowRect(w * 0.26f, h * (0.69f - steerY * 0.10f), w * 0.48f, h * 0.07f));
+
+        var streaks = _sdfDemoStreaks.Clear()
+            .SetColor(new Color(1f, 1f, 1f, 0.24f + hoverT * 0.22f))
+            .UseColor()
+            .Capsule(new NowRect(w * (0.19f + steerX * 0.16f), h * 0.21f, w * 0.32f, h * 0.055f))
+            .SetColor(new Color(0.05f, 0.95f, 0.78f, 0.30f + lockT * 0.18f))
+            .UseColor()
+            .SmoothUnion(10f)
+            .Capsule(new NowRect(w * 0.51f, h * (0.18f + steerY * 0.12f), w * 0.25f, h * 0.06f));
+
+        var orbit = _sdfDemoOrbit.Clear()
+            .SetColor(new Color(1f, 0.82f, 0.22f, 0.82f))
+            .UseColor()
+            .Circle(new Vector2(w * (0.17f + Mathf.Sin(Time.time * 1.7f) * 0.035f), h * 0.72f), h * 0.045f)
+            .SetColor(new Color(0.08f, 0.9f, 0.72f, 0.78f))
+            .UseColor()
+            .SmoothUnion(8f)
+            .Circle(new Vector2(w * (0.84f + Mathf.Cos(Time.time * 1.3f) * 0.028f), h * 0.28f), h * 0.038f);
+
+        var sdfFont = _font != null ? _font : Now.font;
+        const string idleText = "SDF";
+        const string activeText = "CUT";
+        float textSize = Mathf.Min(116f, h * 0.39f);
+        float textLift = Mathf.Sin(Time.time * 2.8f) * (hoverT + lockT) * 2.5f;
+        var textPush = new Vector2(
+            (steerX - 0.5f) * hoverT * 22f,
+            (steerY - 0.5f) * hoverT * 12f + textLift);
+        Vector2 idleSize = sdfFont != null
+            ? sdfFont.MeasureText(idleText, textSize, NowFontStyle.Bold)
+            : new Vector2(w * 0.33f, textSize);
+        Vector2 activeSize = sdfFont != null
+            ? sdfFont.MeasureText(activeText, textSize, NowFontStyle.Bold)
+            : new Vector2(w * 0.34f, textSize);
+        var idlePosition = new Vector2(
+            (w - idleSize.x) * 0.5f,
+            h * 0.48f - idleSize.y * 0.5f) + textPush;
+        var activePosition = new Vector2(
+            (w - activeSize.x) * 0.5f,
+            h * 0.48f - activeSize.y * 0.5f) + textPush;
+        string currentText = lockT > 0.5f ? activeText : idleText;
+        Vector2 currentSize = lockT > 0.5f ? activeSize : idleSize;
+        Vector2 currentPosition = lockT > 0.5f ? activePosition : idlePosition;
+        float sweepX = Mathf.Repeat(Time.time * (0.23f + hoverT * 0.15f) + steerX * 0.22f, 1f);
+        var sweepRect = new NowRect(
+            Mathf.Lerp(-w * 0.12f, w * 0.92f, sweepX),
+            currentPosition.y + currentSize.y * 0.22f,
+            w * 0.20f,
+            currentSize.y * 0.38f);
+        float textMorphT = Mathf.Clamp01(lockT + pressT * 0.12f);
+
+        var textIdle = _sdfDemoTextIdle.Clear()
+            .SetColor(new Color(0.06f, 0.08f, 0.13f, 1f))
+            .UseColor()
+            .Text(idlePosition, idleText, sdfFont, textSize, NowFontStyle.Bold);
+        var textActive = _sdfDemoTextActive.Clear()
+            .SetColor(new Color(0.08f, 0.07f, 0.12f, 1f))
+            .UseColor()
+            .Text(activePosition, activeText, sdfFont, textSize, NowFontStyle.Bold);
+
+        NowSdf.Scene(scene, "docs-sdf-playground-main")
+            .Graph(glow)
+            .SmoothUnion(28f)
+            .Morph(idle, active, morphT)
+            .SmoothUnion(10f)
+            .Graph(streaks)
+            .SmoothUnion(8f)
+            .Graph(orbit)
             .Draw();
+
+        NowSdf.Scene(scene, "docs-sdf-playground-text")
+            .Morph(textIdle, textActive, textMorphT)
+            .Draw();
+
+        NowSdf.Scene(scene, "docs-sdf-playground-text-spotlight")
+            .SetColor(Color.Lerp(new Color(0.03f, 0.92f, 0.78f, 0.56f), new Color(1f, 0.72f, 0.18f, 0.68f), lockT))
+            .Text(currentPosition, currentText, sdfFont, textSize, NowFontStyle.Bold)
+            .SmoothIntersect(16f)
+            .Circle(cursor, h * (0.21f + hoverT * 0.06f + pressT * 0.04f))
+            .Draw();
+
+        NowSdf.Scene(scene, "docs-sdf-playground-text-sweep")
+            .SetColor(new Color(1f, 1f, 0.82f, 0.42f + hoverT * 0.24f))
+            .Text(currentPosition, currentText, sdfFont, textSize, NowFontStyle.Bold)
+            .SmoothIntersect(7f)
+            .Capsule(sweepRect)
+            .Draw();
+
+        var textureRect = new NowRect(scene.x + scene.width * 0.055f, scene.y + scene.height * 0.68f, scene.width * 0.22f, scene.height * 0.19f);
+        NowSdf.Scene(textureRect, "docs-sdf-playground-texture")
+            .SetTexture(GetSdfDemoTexture())
+            .RoundedBox(new NowRect(0f, 0f, textureRect.width, textureRect.height), textureRect.height * 0.32f)
+            .SmoothSubtract(6f)
+            .Circle(new Vector2(textureRect.width * (0.30f + steerX * 0.32f), textureRect.height * 0.5f), textureRect.height * 0.28f)
+            .Draw();
+
+        DrawSdfPanelLabel(
+            themeAsset,
+            new NowRect(panel.x, panel.y + panel.height - 29f, panel.width, 22f),
+            _sdfDemoLocked ? "cut mode locked" : hoverT > 0.5f ? "click to morph the text" : "hover to steer the field",
+            themeAsset.GetColor(NowColorToken.TextMuted, Color.gray));
+    }
+
+    void DrawSdfPanelLabel(NowThemeAsset themeAsset, NowRect rect, string value, Color color)
+    {
+        var text = themeAsset.Text(default, NowTextStyle.Muted)
+            .SetFontSize(12f)
+            .SetColor(color);
+        Vector2 size = text.Measure(value);
+        text.rect = new NowRect(
+            rect.x + (rect.width - size.x) * 0.5f,
+            rect.y + (rect.height - size.y) * 0.5f,
+            size.x + 1f,
+            size.y + 1f);
+        text.SetMask(rect.Outset(2f, 4f)).Draw(value);
     }
 
     NowRect ReserveSdfPanel(NowThemeAsset themeAsset, float height)

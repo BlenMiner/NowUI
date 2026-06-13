@@ -383,7 +383,7 @@ MonoBehaviour:
   _autoRebuildOnInteraction: 1
   _respectUGUIRaycast: 1
   _driveLayoutSize: 0
-  _themeAsset: {fileID: 11400000, guid: 0b62b516323a0344d986f69c621021fd, type: 2}
+  _themeAsset: {fileID: 11400000, guid: ff2b8683af2ba094bb2015088323548f, type: 2}
   _font: {fileID: 11400000, guid: d9b4fc19191445a4f851b19fd4cf730f, type: 2}
   _lotties:
   - {fileID: 7868935432812623880, guid: 3fc211d4e815f3b49b550a4b8bc75850, type: 3}

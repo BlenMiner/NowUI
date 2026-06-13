@@ -85,6 +85,9 @@ void Draw(NowRect rect)
 }
 ```
 
+The same pattern works inside custom controls: keep `NowControls.Interact` on a
+stable rect, then animate the graph content from hover/focus transitions.
+
 The same scene operations work on graph layers:
 
 ```csharp
@@ -115,31 +118,6 @@ var pill = NowSdf.Graph()
 NowSdf.Scene(new NowRect(20, 20, 160, 120))
     .Morph(circle, pill, Mathf.PingPong(Time.time, 1f))
     .Draw();
-```
-
-## Interactive Controls
-
-SDF scenes are a good fit for custom controls with animated silhouettes. Keep
-the interaction rect stable, then animate the SDF content inside it:
-
-```csharp
-int id = NowControls.GetControlId("sdf-action");
-NowRect rect = NowLayout.Rect(width: 260, height: 64);
-var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
-float hover = NowControlState.Transition(
-    NowInput.GetId(id, "hover"),
-    interaction.hovered || focused);
-
-NowSdf.Scene(rect)
-    .SetColor(Color.Lerp(new Color(0.1f, 0.2f, 0.35f), Color.blue, hover))
-    .Capsule(new NowRect(0, 0, rect.width, rect.height))
-    .SetColor(new Color(0.2f, 1f, 0.8f, 1f))
-    .SmoothUnion(18f)
-    .Circle(new Vector2(rect.width * (0.18f + hover * 0.05f), rect.height * 0.5f), rect.height * 0.32f)
-    .Draw();
-
-if (interaction.clicked || submitted)
-    Debug.Log("SDF action");
 ```
 
 Colors are per shape. One scene texture can be bound and used by subsequent
