@@ -9,7 +9,7 @@ namespace NowUI
     /// occludes UGUI: providers ask the EventSystem what is under the pointer and
     /// withhold it when something other than the NowUI host is on top.
     /// </summary>
-    internal static class NowUIRaycastGate
+    internal static class NowRaycastGate
     {
         static PointerEventData s_pointerData;
 

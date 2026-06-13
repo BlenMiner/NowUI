@@ -7,15 +7,15 @@ namespace NowUI
 {
     public sealed class NowDrawList : IDisposable
     {
-        readonly NowUIMeshLayout _layout;
+        readonly NowMeshLayout _layout;
 
         readonly string _meshName;
 
-        readonly List<NowUICanvasMeshPage> _extraCanvasPages = new List<NowUICanvasMeshPage>(2);
+        readonly List<NowCanvasMeshPage> _extraCanvasPages = new List<NowCanvasMeshPage>(2);
 
         int _canvasPageCount = 1;
 
-        internal List<NowUIMeshBatch> batches { get; } = new List<NowUIMeshBatch>(4);
+        internal List<NowMeshBatch> batches { get; } = new List<NowMeshBatch>(4);
 
         public Mesh mesh { get; private set; }
 
@@ -26,11 +26,11 @@ namespace NowUI
         public bool hasGeometry => mesh != null && mesh.vertexCount > 0 && batches.Count > 0;
 
         public NowDrawList()
-            : this(NowUIMeshLayout.Render, "NowUI Draw List Mesh")
+            : this(NowMeshLayout.Render, "NowUI Draw List Mesh")
         {
         }
 
-        internal NowDrawList(NowUIMeshLayout layout, string meshName)
+        internal NowDrawList(NowMeshLayout layout, string meshName)
         {
             _layout = layout;
             _meshName = meshName;
@@ -43,12 +43,12 @@ namespace NowUI
             mesh.MarkDynamic();
         }
 
-        public NowUIDrawScope Begin(Vector2 size)
+        public NowDrawScope Begin(Vector2 size)
         {
             return Begin(size, Vector2.zero);
         }
 
-        internal NowUIDrawScope Begin(Vector2 size, Vector2 positionOffset)
+        internal NowDrawScope Begin(Vector2 size, Vector2 positionOffset)
         {
             ThrowIfDisposed();
 
@@ -58,12 +58,12 @@ namespace NowUI
             if (size.x <= 0f || size.y <= 0f)
             {
                 Now.BeginSuppressDraw();
-                return new NowUIDrawScope(this, positionOffset, false);
+                return new NowDrawScope(this, positionOffset, false);
             }
 
             var mask = new Vector4(0, 0, size.x, size.y);
             Now.BeginMeshCapture(mask);
-            return new NowUIDrawScope(this, positionOffset, true);
+            return new NowDrawScope(this, positionOffset, true);
         }
 
         public void Clear()
@@ -109,9 +109,9 @@ namespace NowUI
             {
                 // Popups and other deferred overlays land inside this capture; hosts
                 // that flushed earlier (with their input scope active) make this a no-op.
-                NowUIOverlay.Flush();
+                NowOverlay.Flush();
 
-                if (_layout == NowUIMeshLayout.Canvas)
+                if (_layout == NowMeshLayout.Canvas)
                     Now.EndCanvasMeshCapture(this, positionOffset);
                 else
                     Now.EndMeshCapture(mesh, batches, positionOffset, _layout);
@@ -147,7 +147,7 @@ namespace NowUI
             while (_extraCanvasPages.Count < _canvasPageCount - 1)
             {
                 int pageIndex = _extraCanvasPages.Count + 1;
-                _extraCanvasPages.Add(new NowUICanvasMeshPage($"{_meshName} Page {pageIndex + 1}"));
+                _extraCanvasPages.Add(new NowCanvasMeshPage($"{_meshName} Page {pageIndex + 1}"));
             }
 
             batches.Clear();
@@ -161,19 +161,19 @@ namespace NowUI
             return pageIndex == 0 ? mesh : _extraCanvasPages[pageIndex - 1].mesh;
         }
 
-        internal List<NowUIMeshBatch> GetCanvasBatches(int pageIndex)
+        internal List<NowMeshBatch> GetCanvasBatches(int pageIndex)
         {
             return pageIndex == 0 ? batches : _extraCanvasPages[pageIndex - 1].batches;
         }
     }
 
-    sealed class NowUICanvasMeshPage : IDisposable
+    sealed class NowCanvasMeshPage : IDisposable
     {
         public Mesh mesh { get; private set; }
 
-        internal List<NowUIMeshBatch> batches { get; } = new List<NowUIMeshBatch>(8);
+        internal List<NowMeshBatch> batches { get; } = new List<NowMeshBatch>(8);
 
-        public NowUICanvasMeshPage(string meshName)
+        public NowCanvasMeshPage(string meshName)
         {
             mesh = new Mesh
             {
@@ -208,7 +208,7 @@ namespace NowUI
     }
 
     [NowScope]
-    public struct NowUIDrawScope : IDisposable
+    public struct NowDrawScope : IDisposable
     {
         NowDrawList _drawList;
 
@@ -218,7 +218,7 @@ namespace NowUI
 
         bool _disposed;
 
-        internal NowUIDrawScope(NowDrawList drawList, Vector2 positionOffset, bool capturesMesh)
+        internal NowDrawScope(NowDrawList drawList, Vector2 positionOffset, bool capturesMesh)
         {
             _drawList = drawList;
             _positionOffset = positionOffset;

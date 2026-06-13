@@ -305,17 +305,17 @@ namespace NowUI.Markdown
             int menuId = NowInput.GetId(selectionId, "menu");
 
             if (selection.rightClicked)
-                NowUIContextMenu.Open(menuId, selection.rightClickPosition);
+                NowContextMenu.Open(menuId, selection.rightClickPosition);
 
-            if (NowUIContextMenu.Begin(menuId))
+            if (NowContextMenu.Begin(menuId))
             {
-                if (selection.hasSelection && NowUIContextMenu.Item("Copy"))
-                    NowUIClipboard.Copy(NowTextSelection.GetSelection(selectionId, _documentText));
+                if (selection.hasSelection && NowContextMenu.Item("Copy"))
+                    NowClipboard.Copy(NowTextSelection.GetSelection(selectionId, _documentText));
 
-                if (NowUIContextMenu.Item("Select All"))
+                if (NowContextMenu.Item("Select All"))
                     NowTextSelection.SelectAll(selectionId, _documentText);
 
-                NowUIContextMenu.End();
+                NowContextMenu.End();
             }
         }
 
@@ -359,7 +359,7 @@ namespace NowUI.Markdown
                 return;
 
             if (DrawBadgeButton(theme, buttonId, target, ref copiedAt))
-                NowUIClipboard.Copy(op.text);
+                NowClipboard.Copy(op.text);
         }
 
         void DrawImage(NowTheme theme, int docId, int opIndex, in Op op, NowRect target, bool linkHovered)
@@ -381,17 +381,17 @@ namespace NowUI.Markdown
             int menuId = NowInput.CombineId(NowInput.GetId(docId, "img-menu"), opIndex);
 
             if (!NowInput.isPassive && snapshot.hasPointer && target.Contains(snapshot.pointerPosition) &&
-                (snapshot.pointerButtonsPressed & NowUIPointerButtons.Secondary) != 0)
+                (snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0)
             {
-                NowUIContextMenu.Open(menuId, snapshot.pointerPosition);
+                NowContextMenu.Open(menuId, snapshot.pointerPosition);
             }
 
-            if (NowUIContextMenu.Begin(menuId))
+            if (NowContextMenu.Begin(menuId))
             {
-                if (NowUIContextMenu.Item("Copy image address"))
-                    NowUIClipboard.Copy(op.text);
+                if (NowContextMenu.Item("Copy image address"))
+                    NowClipboard.Copy(op.text);
 
-                NowUIContextMenu.End();
+                NowContextMenu.End();
             }
         }
 

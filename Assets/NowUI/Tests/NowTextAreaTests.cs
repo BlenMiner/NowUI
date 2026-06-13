@@ -12,20 +12,20 @@ public class NowTextAreaTests
 {
     sealed class FakePointer : INowInputProvider
     {
-        public NowUIInputSnapshot snapshot;
+        public NowInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot result)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot result)
         {
             result = snapshot;
             return true;
         }
     }
 
-    sealed class FakeKeyboard : INowUITextInputSource
+    sealed class FakeKeyboard : INowTextInputSource
     {
-        public NowUITextInputFrame frame;
+        public NowTextInputFrame frame;
 
-        public bool TryGetFrame(out NowUITextInputFrame result)
+        public bool TryGetFrame(out NowTextInputFrame result)
         {
             result = frame;
             return true;
@@ -51,15 +51,15 @@ public class NowTextAreaTests
     public void SetUp()
     {
         NowInput.Reset();
-        NowUIFocus.Reset();
+        NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
-        NowUIOverlay.Reset();
-        NowUITextInput.Reset();
+        NowOverlay.Reset();
+        NowTextInput.Reset();
 
         _pointer = new FakePointer();
         _keyboard = new FakeKeyboard();
-        NowUITextInput.source = _keyboard;
+        NowTextInput.source = _keyboard;
         _drawList = new NowDrawList();
     }
 
@@ -67,18 +67,18 @@ public class NowTextAreaTests
     public void TearDown()
     {
         _drawList.Dispose();
-        NowUITextInput.Reset();
-        NowUIOverlay.Reset();
+        NowTextInput.Reset();
+        NowOverlay.Reset();
         NowInput.Reset();
-        NowUIFocus.Reset();
+        NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
     }
 
-    bool Frame(ref string text, NowUITextInputFrame keys = default)
+    bool Frame(ref string text, NowTextInputFrame keys = default)
     {
         _keyboard.frame = keys;
-        NowUITextInput.Invalidate();
+        NowTextInput.Invalidate();
         bool changed;
 
         using (NowInput.Begin(_pointer, Surface))
@@ -92,7 +92,7 @@ public class NowTextAreaTests
 
     void Focus()
     {
-        NowUIFocus.Focus(Id);
+        NowFocus.Focus(Id);
     }
 
     ref NowTextEditState State()
@@ -192,9 +192,9 @@ public class NowTextAreaTests
         string text = string.Empty;
         Focus();
 
-        Assert.IsTrue(Frame(ref text, new NowUITextInputFrame { characters = "ab" }));
-        Assert.IsTrue(Frame(ref text, new NowUITextInputFrame { enterHeld = true }));
-        Assert.IsTrue(Frame(ref text, new NowUITextInputFrame { characters = "c" }));
+        Assert.IsTrue(Frame(ref text, new NowTextInputFrame { characters = "ab" }));
+        Assert.IsTrue(Frame(ref text, new NowTextInputFrame { enterHeld = true }));
+        Assert.IsTrue(Frame(ref text, new NowTextInputFrame { characters = "c" }));
         Assert.AreEqual("ab\nc", text);
     }
 
@@ -207,17 +207,17 @@ public class NowTextAreaTests
         Frame(ref text);
         Assert.AreEqual(12, State().caret, "Focus without a click puts the caret at the end.");
 
-        Frame(ref text, new NowUITextInputFrame { upHeld = true });
+        Frame(ref text, new NowTextInputFrame { upHeld = true });
         Assert.AreEqual(7, State().caret, "Up clamps to the shorter middle line's end.");
 
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { upHeld = true });
+        Frame(ref text, new NowTextInputFrame { upHeld = true });
         Assert.AreEqual(4, State().caret, "The original column survives crossing a shorter line.");
 
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { downHeld = true });
+        Frame(ref text, new NowTextInputFrame { downHeld = true });
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { downHeld = true });
+        Frame(ref text, new NowTextInputFrame { downHeld = true });
         Assert.AreEqual(12, State().caret, "Down retraces to the original position.");
     }
 
@@ -228,13 +228,13 @@ public class NowTextAreaTests
         Focus();
 
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { downHeld = true });
+        Frame(ref text, new NowTextInputFrame { downHeld = true });
         Assert.AreEqual(5, State().caret);
 
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { upHeld = true });
+        Frame(ref text, new NowTextInputFrame { upHeld = true });
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { upHeld = true });
+        Frame(ref text, new NowTextInputFrame { upHeld = true });
         Assert.AreEqual(0, State().caret, "Up from the first line jumps to the document start.");
     }
 
@@ -247,16 +247,16 @@ public class NowTextAreaTests
         Frame(ref text);
         Assert.AreEqual(12, State().caret);
 
-        Frame(ref text, new NowUITextInputFrame { homePressed = true });
+        Frame(ref text, new NowTextInputFrame { homePressed = true });
         Assert.AreEqual(6, State().caret, "Home goes to the start of the caret's line.");
 
-        Frame(ref text, new NowUITextInputFrame { endPressed = true });
+        Frame(ref text, new NowTextInputFrame { endPressed = true });
         Assert.AreEqual(12, State().caret, "End goes to the end of the caret's line.");
 
-        Frame(ref text, new NowUITextInputFrame { homePressed = true, command = true });
+        Frame(ref text, new NowTextInputFrame { homePressed = true, command = true });
         Assert.AreEqual(0, State().caret, "Ctrl+Home goes to the document start.");
 
-        Frame(ref text, new NowUITextInputFrame { endPressed = true, command = true });
+        Frame(ref text, new NowTextInputFrame { endPressed = true, command = true });
         Assert.AreEqual(12, State().caret, "Ctrl+End goes to the document end.");
     }
 
@@ -267,8 +267,8 @@ public class NowTextAreaTests
         Focus();
 
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { homePressed = true, command = true });
-        Frame(ref text, new NowUITextInputFrame { downHeld = true, shift = true });
+        Frame(ref text, new NowTextInputFrame { homePressed = true, command = true });
+        Frame(ref text, new NowTextInputFrame { downHeld = true, shift = true });
 
         Assert.IsTrue(State().hasSelection);
         Assert.AreEqual(0, State().selectionMin);
@@ -278,49 +278,49 @@ public class NowTextAreaTests
     [Test]
     public void CopyAndCutKeepNewlines()
     {
-        var previousSet = NowUIClipboard.setText;
-        var previousGet = NowUIClipboard.getText;
+        var previousSet = NowClipboard.setText;
+        var previousGet = NowClipboard.getText;
         string clipboard = string.Empty;
-        NowUIClipboard.setText = value => clipboard = value;
-        NowUIClipboard.getText = () => clipboard;
+        NowClipboard.setText = value => clipboard = value;
+        NowClipboard.getText = () => clipboard;
 
         try
         {
             string text = "ab\ncd";
             Focus();
 
-            Frame(ref text, new NowUITextInputFrame { selectAllPressed = true, command = true });
-            Frame(ref text, new NowUITextInputFrame { copyPressed = true, command = true });
+            Frame(ref text, new NowTextInputFrame { selectAllPressed = true, command = true });
+            Frame(ref text, new NowTextInputFrame { copyPressed = true, command = true });
             Assert.AreEqual("ab\ncd", clipboard, "Copy must keep the newline.");
 
-            Frame(ref text, new NowUITextInputFrame { cutPressed = true, command = true });
+            Frame(ref text, new NowTextInputFrame { cutPressed = true, command = true });
             Assert.AreEqual(string.Empty, text, "Cut removes the selection.");
             Assert.AreEqual("ab\ncd", clipboard);
         }
         finally
         {
-            NowUIClipboard.setText = previousSet;
-            NowUIClipboard.getText = previousGet;
+            NowClipboard.setText = previousSet;
+            NowClipboard.getText = previousGet;
         }
     }
 
     [Test]
     public void PasteNormalizesWindowsLineEndings()
     {
-        var previousGet = NowUIClipboard.getText;
-        NowUIClipboard.getText = () => "a\r\nb\rc";
+        var previousGet = NowClipboard.getText;
+        NowClipboard.getText = () => "a\r\nb\rc";
 
         try
         {
             string text = string.Empty;
             Focus();
 
-            Frame(ref text, new NowUITextInputFrame { pastePressed = true, command = true });
+            Frame(ref text, new NowTextInputFrame { pastePressed = true, command = true });
             Assert.AreEqual("a\nb\nc", text);
         }
         finally
         {
-            NowUIClipboard.getText = previousGet;
+            NowClipboard.getText = previousGet;
         }
     }
 
@@ -334,7 +334,7 @@ public class NowTextAreaTests
         State().caret = 3;
         State().anchor = 3;
 
-        Frame(ref text, new NowUITextInputFrame { backspaceHeld = true });
+        Frame(ref text, new NowTextInputFrame { backspaceHeld = true });
         Assert.AreEqual("abcd", text);
         Assert.AreEqual(2, State().caret);
     }
@@ -346,13 +346,13 @@ public class NowTextAreaTests
         Focus();
 
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { enterHeld = true });
+        Frame(ref text, new NowTextInputFrame { enterHeld = true });
 
         Assert.AreEqual("ab\n", text);
-        Assert.AreEqual(Id, NowUIFocus.focusedId, "Enter must not blur a text area.");
+        Assert.AreEqual(Id, NowFocus.focusedId, "Enter must not blur a text area.");
 
-        Frame(ref text, new NowUITextInputFrame { escapePressed = true });
-        Assert.AreEqual(0, NowUIFocus.focusedId, "Escape blurs.");
+        Frame(ref text, new NowTextInputFrame { escapePressed = true });
+        Assert.AreEqual(0, NowFocus.focusedId, "Escape blurs.");
     }
 
     [Test]
@@ -364,7 +364,7 @@ public class NowTextAreaTests
         float lineHeight = textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize;
         var inner = AreaRect.Inset(8f, 6f, 8f, 6f);
 
-        _pointer.snapshot = new NowUIInputSnapshot(
+        _pointer.snapshot = new NowInputSnapshot(
             new Vector2(inner.x + 200f, inner.y + lineHeight * 1.5f), true, true, false);
         Frame(ref text);
 
@@ -383,9 +383,9 @@ public class NowTextAreaTests
 
         for (int i = 0; i < 3; ++i)
         {
-            _pointer.snapshot = new NowUIInputSnapshot(click, true, true, false);
+            _pointer.snapshot = new NowInputSnapshot(click, true, true, false);
             Frame(ref text);
-            _pointer.snapshot = new NowUIInputSnapshot(click, false, false, true);
+            _pointer.snapshot = new NowInputSnapshot(click, false, false, true);
             Frame(ref text);
         }
 
@@ -412,7 +412,7 @@ public class NowTextAreaTests
         Frame(ref text);
         Assert.AreEqual(2, State().caret);
 
-        bool changed = Frame(ref text, new NowUITextInputFrame
+        bool changed = Frame(ref text, new NowTextInputFrame
         {
             composition = "か",
             backspaceHeld = true,
@@ -423,9 +423,9 @@ public class NowTextAreaTests
         Assert.IsFalse(changed, "Composition must not edit the text.");
         Assert.AreEqual("ab", text);
         Assert.AreEqual(2, State().caret);
-        Assert.AreEqual(Id, NowUIFocus.focusedId, "Escape belongs to the IME while composing.");
+        Assert.AreEqual(Id, NowFocus.focusedId, "Escape belongs to the IME while composing.");
 
-        Frame(ref text, new NowUITextInputFrame { characters = "か" });
+        Frame(ref text, new NowTextInputFrame { characters = "か" });
         Assert.AreEqual("abか", text, "Committed characters insert normally.");
     }
 
@@ -433,13 +433,13 @@ public class NowTextAreaTests
     public void ImeEnablesOnFocusGainAndDisablesOnLoss()
     {
         var calls = new List<bool>();
-        NowUITextInput.setImeEnabled = enabled => calls.Add(enabled);
+        NowTextInput.setImeEnabled = enabled => calls.Add(enabled);
 
         string text = "ab";
         Focus();
         Frame(ref text);
 
-        NowUIFocus.Clear();
+        NowFocus.Clear();
         Frame(ref text);
 
         Assert.AreEqual(2, calls.Count);
@@ -452,7 +452,7 @@ public class NowTextAreaTests
     {
         string text = "keep";
 
-        Assert.IsFalse(Frame(ref text, new NowUITextInputFrame { characters = "x", enterHeld = true }));
+        Assert.IsFalse(Frame(ref text, new NowTextInputFrame { characters = "x", enterHeld = true }));
         Assert.AreEqual("keep", text);
     }
 }

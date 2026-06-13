@@ -6,11 +6,11 @@ namespace NowUI
 {
     [AddComponentMenu("NowUI/NowUI Pipeline Graphic")]
     [ExecuteAlways]
-    public class NowUIPipelineGraphic : MonoBehaviour
+    public class NowPipelineGraphic : MonoBehaviour
     {
-        static readonly List<NowUIPipelineGraphic> _graphics = new List<NowUIPipelineGraphic>(16);
+        static readonly List<NowPipelineGraphic> _graphics = new List<NowPipelineGraphic>(16);
 
-        static readonly Comparison<NowUIPipelineGraphic> _orderComparison = CompareOrder;
+        static readonly Comparison<NowPipelineGraphic> _orderComparison = CompareOrder;
 
         static int _nextRegistrationIndex;
 
@@ -26,7 +26,7 @@ namespace NowUI
 
         int _registrationIndex;
 
-        public event Action<NowUIPipelineGraphic, Camera, Rect> rebuildNowUI;
+        public event Action<NowPipelineGraphic, Camera, Rect> rebuildNowUI;
 
         public Camera targetCamera
         {
@@ -105,7 +105,7 @@ namespace NowUI
                 using (NowInput.Begin(NowInput.defaultProvider, surface))
                 {
                     DrawAll(camera, new Rect(0, 0, size.x, size.y));
-                    NowUIOverlay.Flush();
+                    NowOverlay.Flush();
                 }
 
                 scope.Dispose();
@@ -178,7 +178,7 @@ namespace NowUI
             }
         }
 
-        static int CompareOrder(NowUIPipelineGraphic lhs, NowUIPipelineGraphic rhs)
+        static int CompareOrder(NowPipelineGraphic lhs, NowPipelineGraphic rhs)
         {
             if (ReferenceEquals(lhs, rhs))
                 return 0;

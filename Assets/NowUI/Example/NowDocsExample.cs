@@ -42,8 +42,9 @@ public class NowDocsExample : NowGraphic
         new Page { title = "Lottie", file = "Lottie.md" },
         new Page { title = "Mobile", file = "Mobile.md" },
         new Page { title = "Render pipelines", file = "RenderPipelines.md" },
-        new Page { title = "Editor GUI", file = "EditorGUI.md" },
+        new Page { title = "IMGUI", file = "EditorGUI.md" },
         new Page { title = "Code editor", file = "CodeEditor.md" },
+        new Page { title = "Rich text", file = "RichText.md" },
         new Page { title = "Live demo", kind = PageKind.ControlsDemo },
         new Page { title = "Lottie demo", kind = PageKind.LottieDemo },
         new Page { title = "Editor demo", kind = PageKind.CodeEditorDemo },
@@ -143,7 +144,7 @@ public class NowDocsExample : NowGraphic
                     break;
 
                 default:
-                    var result = NowMarkdown.Draw(LoadDoc(Pages[_selected].file));
+                    var result = NowMarkdown.Document(LoadDoc(Pages[_selected].file)).Draw();
 
                     if (result.clickedLink != null)
                         NavigateLink(result.clickedLink);
@@ -162,10 +163,10 @@ public class NowDocsExample : NowGraphic
 
     void DrawCodeEditorDemo()
     {
-        NowMarkdown.Draw("# Code editor\n\n`NowUI.Extensions.CodeEditor` — syntax highlighting, validation" +
+        NowMarkdown.Document("# Code editor\n\n`NowUI.Extensions.CodeEditor` — syntax highlighting, validation" +
             " squiggles (hover them, click the status error to jump), bracket/quote auto-close, Enter" +
             " auto-indent, Tab indent/dedent, smart Home, undo/redo, line numbers. Break the JSON below" +
-            " and watch the squiggle and status bar.\n\n## JSON");
+            " and watch the squiggle and status bar.\n\n## JSON").Draw();
 
         var json = NowCode.Editor(NowJsonLanguage.instance, "demo-json").SetHeight(220).Draw(ref _jsonText);
 
@@ -173,33 +174,33 @@ public class NowDocsExample : NowGraphic
             NowLayout.Label("Invalid JSON — the status bar shows where.").SetFontSize(11)
                 .SetColor(new Color(0.86f, 0.24f, 0.24f)).Draw();
 
-        NowMarkdown.Draw("## Markdown\n\nThe same editor, different language profile — markdown source" +
-            " highlights inline and ```json fences highlight as JSON inside it.");
+        NowMarkdown.Document("## Markdown\n\nThe same editor, different language profile — markdown source" +
+            " highlights inline and ```json fences highlight as JSON inside it.").Draw();
 
         NowLayout.Checkbox("Preview").Draw(ref _markdownPreview);
 
         if (_markdownPreview)
-            NowMarkdown.Draw(_markdownText);
+            NowMarkdown.Document(_markdownText).Draw();
         else
             NowCode.Editor(NowMarkdownCodeLanguage.instance, "demo-md").SetHeight(260).Draw(ref _markdownText);
     }
 
     void DrawLottieDemo(NowTheme theme)
     {
-        NowMarkdown.Draw("# Lottie demo\n\nVector animations drawn through `NowLayout.Lottie` —" +
+        NowMarkdown.Document("# Lottie demo\n\nVector animations drawn through `NowLayout.Lottie` —" +
             " tessellated at runtime, no textures. Add assets to the **Lotties** array on the" +
-            " `NowUIDocsExample` component and they show up here.");
+            " `NowDocsExample` component and they show up here.").Draw();
 
         if (_lotties == null || _lotties.Length == 0)
         {
-            NowMarkdown.Draw("*No Lottie assets assigned.*");
+            NowMarkdown.Document("*No Lottie assets assigned.*").Draw();
             return;
         }
 
         // Time-driven content: ask retained hosts for the next frame.
         NowControlState.RequestRepaint();
 
-        NowMarkdown.Draw("## Gallery");
+        NowMarkdown.Document("## Gallery").Draw();
 
         using (NowLayout.Horizontal(spacing: 16, alignItems: NowLayoutAlign.Center))
         {
@@ -210,7 +211,7 @@ public class NowDocsExample : NowGraphic
             }
         }
 
-        NowMarkdown.Draw("## Playback\n\n`SetTime(Time.time)` plays; `SetNormalizedTime` pins a frame for scrubbing.");
+        NowMarkdown.Document("## Playback\n\n`SetTime(Time.time)` plays; `SetNormalizedTime` pins a frame for scrubbing.").Draw();
 
         using (NowLayout.Horizontal(spacing: 12, alignItems: NowLayoutAlign.Center))
         {
@@ -228,7 +229,7 @@ public class NowDocsExample : NowGraphic
 
         featured.Draw();
 
-        NowMarkdown.Draw("## Sizes\n\nThe same asset scales with the layout box — geometry, not pixels.");
+        NowMarkdown.Document("## Sizes\n\nThe same asset scales with the layout box — geometry, not pixels.").Draw();
 
         using (NowLayout.Horizontal(spacing: 16, alignItems: NowLayoutAlign.End))
         {
@@ -237,7 +238,7 @@ public class NowDocsExample : NowGraphic
             NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(96).Draw();
         }
 
-        NowMarkdown.Draw("## Tinting\n\n`SetColor` multiplies the animation's own colors.");
+        NowMarkdown.Document("## Tinting\n\n`SetColor` multiplies the animation's own colors.").Draw();
 
         using (NowLayout.Horizontal(spacing: 16, alignItems: NowLayoutAlign.Center))
         {
@@ -249,23 +250,23 @@ public class NowDocsExample : NowGraphic
 
     void DrawLiveDemo(NowTheme theme)
     {
-        NowMarkdown.Draw("# Live demo\n\nThe controls below run the code from" +
+        NowMarkdown.Document("# Live demo\n\nThe controls below run the code from" +
             " [CustomControls.md](CustomControls.md) — a wrapped variant, a reshaped" +
-            " round button, and a from-scratch rating control.\n\n## Wrap: `DangerButton`");
+            " round button, and a from-scratch rating control.\n\n## Wrap: `DangerButton`").Draw();
 
         if (GuideControls.DangerButton("Delete save").Draw())
             ++_clicks;
 
-        NowMarkdown.Draw("## Reshape: `RoundButton`");
+        NowMarkdown.Document("## Reshape: `RoundButton`").Draw();
 
         if (GuideControls.RoundButton("+"))
             ++_clicks;
 
-        NowMarkdown.Draw("## Build: `Rating`");
+        NowMarkdown.Document("## Build: `Rating`").Draw();
 
         GuideControls.Rating(ref _rating);
 
-        NowMarkdown.Draw("## Builder form: `MyControls.Rating()`");
+        NowMarkdown.Document("## Builder form: `MyControls.Rating()`").Draw();
 
         GuideControls.Rating().SetMax(7).Draw(ref _builderRating);
 

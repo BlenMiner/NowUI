@@ -1,6 +1,6 @@
 # IMGUI
 
-`NowUIGUI` renders NowUI inside IMGUI. It can be called from any existing
+`NowGUI` renders NowUI inside IMGUI. It can be called from any existing
 `OnGUI` method in runtime scripts, custom inspectors, property drawers, editor
 windows, or small debugging panels. Callers do not inherit from a NowUI-specific
 base class.
@@ -22,7 +22,7 @@ public sealed class RuntimeOnGUIExample : MonoBehaviour
     {
         Rect rect = GUILayoutUtility.GetRect(320, 120);
 
-        using (var ui = NowUIGUI.Auto(rect))
+        using (var ui = NowGUI.Auto(rect))
         {
             Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
                 .SetColor(new Color(0.08f, 0.1f, 0.14f, 1f))
@@ -40,8 +40,8 @@ public sealed class RuntimeOnGUIExample : MonoBehaviour
 
 ## Editor OnGUI
 
-The runtime API also works in editor IMGUI. `NowUIEditorGUI` and
-`NowUIEditorGUILayout` are editor-only aliases that pass editor pixel density to
+The runtime API also works in editor IMGUI. `NowEditorGUI` and
+`NowEditorGUILayout` are editor-only aliases that pass editor pixel density to
 the runtime renderer and dispose cached textures before assembly reload.
 
 ```csharp
@@ -56,7 +56,7 @@ public sealed class MyWindow : EditorWindow
     {
         Rect rect = GUILayoutUtility.GetRect(320, 120);
 
-        using (var ui = NowUIEditorGUI.Auto(rect))
+        using (var ui = NowEditorGUI.Auto(rect))
         {
             Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
                 .SetColor(Color.black)
@@ -69,13 +69,13 @@ public sealed class MyWindow : EditorWindow
 
 ## GUILayout Helpers
 
-Use `NowUIGUILayout` when the control should reserve layout space in runtime
-IMGUI. Use `NowUIEditorGUILayout` when doing the same inside editor code.
-`NowUIEditorGUI.Auto()` is a convenience shorthand for an editor layout rect
+Use `NowGUILayout` when the control should reserve layout space in runtime
+IMGUI. Use `NowEditorGUILayout` when doing the same inside editor code.
+`NowEditorGUI.Auto()` is a convenience shorthand for an editor layout rect
 with the default preview height.
 
 ```csharp
-using (var ui = NowUIEditorGUI.Auto())
+using (var ui = NowEditorGUI.Auto())
 {
     Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
         .SetColor(Color.black)
@@ -85,7 +85,7 @@ using (var ui = NowUIEditorGUI.Auto())
 ```
 
 ```csharp
-using (var ui = NowUIGUILayout.Auto(96))
+using (var ui = NowGUILayout.Auto(96))
 {
     Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
         .SetColor(Color.black)
@@ -99,7 +99,7 @@ using (var ui = NowUIGUILayout.Auto(96))
 Pass a clear color when the preview should be opaque.
 
 ```csharp
-using (var ui = NowUIGUI.Auto(rect, Color.white))
+using (var ui = NowGUI.Auto(rect, Color.white))
 {
     Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
         .SetColor(Color.white)
@@ -109,10 +109,10 @@ using (var ui = NowUIGUI.Auto(rect, Color.white))
 
 ## Notes
 
-- `NowUIGUIScope.rect`, `width`, and `height` use IMGUI point units.
-- `NowUIEditorGUI` accounts for editor pixel density automatically.
+- `NowGUIScope.rect`, `width`, and `height` use IMGUI point units.
+- `NowEditorGUI` accounts for editor pixel density automatically.
 - The cache is keyed by IMGUI control ID.
 - Non-Repaint events create a no-op scope so draw calls inside the block are
   ignored instead of leaking into another NowUI target.
-- Call `NowUIGUI.DisposeAll()` if a runtime host needs to eagerly release all
+- Call `NowGUI.DisposeAll()` if a runtime host needs to eagerly release all
   cached render textures.

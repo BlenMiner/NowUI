@@ -22,7 +22,7 @@ namespace NowUI
         /// <summary>
         /// Pixels per UI unit for the current frame, set by <see cref="StartUI(float)"/>.
         /// 1 means UI units are screen pixels. Pass
-        /// <see cref="NowUIScreen.recommendedUIScale"/> to size UI by display density,
+        /// <see cref="NowScreen.recommendedUIScale"/> to size UI by display density,
         /// which keeps controls a consistent physical size on high-DPI phones.
         /// </summary>
         public static float uiScale => _uiScale;
@@ -496,7 +496,7 @@ namespace NowUI
             _lastUsedMeshId = -1;
         }
 
-        internal static void EndMeshCapture(Mesh target, List<NowUIMeshBatch> batches, Vector2 positionOffset, NowUIMeshLayout layout)
+        internal static void EndMeshCapture(Mesh target, List<NowMeshBatch> batches, Vector2 positionOffset, NowMeshLayout layout)
         {
             if (target == null)
             {
@@ -578,7 +578,7 @@ namespace NowUI
                     drawList.GetCanvasMesh(pageIndex),
                     drawList.GetCanvasBatches(pageIndex),
                     positionOffset,
-                    NowUIMeshLayout.Canvas,
+                    NowMeshLayout.Canvas,
                     pageIndex < _pageStarts.Count ? _pageStarts[pageIndex] : 0,
                     pageIndex < _pageCounts.Count ? _pageCounts[pageIndex] : 0);
             }
@@ -588,16 +588,16 @@ namespace NowUI
 
         static void UploadCapturedMeshes(
             Mesh target,
-            List<NowUIMeshBatch> batches,
+            List<NowMeshBatch> batches,
             Vector2 positionOffset,
-            NowUIMeshLayout layout,
+            NowMeshLayout layout,
             int activeStart,
             int activeLimit)
         {
             if (target == null || batches == null)
                 return;
 
-            using var profile = NowUIProfiler.MeshUpload.Auto();
+            using var profile = NowProfiler.MeshUpload.Auto();
             _vertices.Clear();
             _meshUvs.Clear();
             _uvs.Clear();
@@ -628,9 +628,9 @@ namespace NowUI
                     break;
 
                 _capturedMeshIndices.Add(i);
-                batches.Add(new NowUIMeshBatch(mesh.material, mesh.kind));
+                batches.Add(new NowMeshBatch(mesh.material, mesh.kind));
 
-                if (layout == NowUIMeshLayout.Canvas)
+                if (layout == NowMeshLayout.Canvas)
                 {
                     mesh.AppendCanvasVertices(ref _canvasVertices, positionOffset);
                     continue;
@@ -651,7 +651,7 @@ namespace NowUI
 
             target.Clear();
 
-            int vertexCount = layout == NowUIMeshLayout.Canvas ? _canvasVertices.count : _vertices.count;
+            int vertexCount = layout == NowMeshLayout.Canvas ? _canvasVertices.count : _vertices.count;
 
             if (vertexCount == 0)
             {
@@ -660,7 +660,7 @@ namespace NowUI
 
             target.indexFormat = vertexCount > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
 
-            if (layout == NowUIMeshLayout.Canvas)
+            if (layout == NowMeshLayout.Canvas)
             {
                 target.SetVertexBufferParams(vertexCount, _canvasVertexLayout);
                 target.SetVertexBufferData(_canvasVertices.array, 0, 0, vertexCount, 0, MeshUpdateFlags.DontRecalculateBounds);
@@ -700,8 +700,8 @@ namespace NowUI
             if (_captureMesh)
                 return;
 
-            using var profile = NowUIProfiler.FlushUI.Auto();
-            NowUIOverlay.Flush();
+            using var profile = NowProfiler.FlushUI.Auto();
+            NowOverlay.Flush();
 
             var meshArray = _meshes.array;
             int count = _meshes.count;
@@ -910,7 +910,7 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
                 return;
 
-            using var profile = NowUIProfiler.TextDraw.Auto();
+            using var profile = NowProfiler.TextDraw.Auto();
 
             if (!style.mask.isEmpty && style.mask == style.rect)
                 style.mask = style.mask.Outset(4f);
@@ -937,7 +937,7 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || value.IsEmpty || !style.font)
                 return;
 
-            using var profile = NowUIProfiler.TextDraw.Auto();
+            using var profile = NowProfiler.TextDraw.Auto();
 
             if (!style.mask.isEmpty && style.mask == style.rect)
                 style.mask = style.mask.Outset(4f);

@@ -41,15 +41,15 @@ public class OverlayExample : MonoBehaviour
 {
     void OnPostRender()
     {
-        Now.StartUI(NowUIScreen.recommendedUIScale);
+        Now.StartUI(NowScreen.recommendedUIScale);
 
-        using (NowLayout.Area(NowUIScreen.safeArea))
+        using (NowLayout.Area(NowScreen.safeArea))
         using (NowLayout.Vertical(new NowLayoutOptions().SetPadding(16).SetSpacing(8)))
         {
             NowLayout.Label("Hello Now-UI", 32).Draw();
 
             NowRect button = NowLayout.Rect(NowLayout.Size(160, 44));
-            var state = NowUIInput.Interact("ok-button", button);
+            var state = NowInput.Interact("ok-button", button);
 
             Now.Rectangle(button)
                 .SetColor(state.hovered ? Color.white : Color.gray)
@@ -92,7 +92,7 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
   `using (Now.Font(...))`.
 - **Layout** — flexbox-style horizontal/vertical groups with fixed, min/max,
   and weighted-stretch sizing. [Docs/Layout.md](Docs/Layout.md)
-- **Input** — immediate-mode `NowUIInput.Interact` with hover, press, drag,
+- **Input** — immediate-mode `NowInput.Interact` with hover, press, drag,
   and click across mouse, touch, keyboard, and gamepad; pluggable providers
   for RenderTextures, tests, and remote input.
 - **Controls** — buttons, checkboxes, radios, sliders, text fields,

@@ -11,24 +11,30 @@ using NowUI.Markdown;
 
 // In layout flow — stretches to the available width, height settles one
 // frame late like all scope-form layout:
-var result = NowMarkdown.Draw(changelogText);
+var result = NowMarkdown.Document(changelogText).Draw();
 
 if (result.clickedLink != null)
     Application.OpenURL(result.clickedLink);
 
 // Explicit rect:
-NowMarkdown.Draw(rect, readmeText);
+NowMarkdown.Document(readmeText).Draw(rect);
+
+// Builder options:
+NowMarkdown.Document(readmeText)
+    .SetFontSize(16)
+    .SetWidth(520)
+    .Draw();
 
 // Retained, for content you control the lifetime of:
-var doc = NowMarkdownDocument.Parse(text);
+var doc = NowMarkdown.Parse(text);
 float height = doc.MeasureHeight(width);
 doc.Draw(new NowRect(x, y, width, height));
 ```
 
-`NowMarkdown.Draw(string)` caches parsed documents by text (capped, cleared on
-overflow). Layout — word wrap, tables, positions — is cached per width and
-recomputed only when the width or font changes, so steady-state drawing
-allocates nothing.
+`NowMarkdown.Document(string).Draw()` caches parsed documents by text (capped,
+cleared on overflow). Layout — word wrap, tables, positions — is cached per
+width and recomputed only when the width or font changes, so steady-state
+drawing allocates nothing.
 
 Colors come from the ambient theme (`Text`, `TextMuted`, `Accent` for links
 and quote bars, `SurfaceMuted` for code panels, `Border` for rules and table
@@ -60,7 +66,7 @@ Links are not opened automatically: the result reports `clickedLink` /
   line, Ctrl/Cmd+A for all),
   Ctrl/Cmd+C copies, and right-click offers Copy / Select All. Code blocks
   also carry a hover Copy button for the whole block. Everything copies
-  through the single `NowUIClipboard` hook — replace `setText`/`getText`
+  through the single `NowClipboard` hook — replace `setText`/`getText`
   once for platforms with their own clipboard flow and every path follows.
 - Syntax highlighting in fenced code blocks for `csharp`/`cs`, `json`, and a
   C-like generic (`js`, `ts`, `c`, `cpp`, `java`): keywords, strings,

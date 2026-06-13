@@ -11,10 +11,10 @@ public class NowControlsTests
 {
     sealed class FakeProvider : INowInputProvider
     {
-        public NowUIInputSnapshot snapshot;
+        public NowInputSnapshot snapshot;
         public bool hasInput = true;
 
-        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot result)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot result)
         {
             result = snapshot;
             return hasInput;
@@ -31,7 +31,7 @@ public class NowControlsTests
     public void SetUp()
     {
         NowInput.Reset();
-        NowUIFocus.Reset();
+        NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
         _provider = new FakeProvider();
@@ -43,14 +43,14 @@ public class NowControlsTests
     {
         _drawList.Dispose();
         NowInput.Reset();
-        NowUIFocus.Reset();
+        NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
     }
 
     bool DrawButtonFrame(Vector2 pointer, bool down, bool pressed, bool released)
     {
-        _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
+        _provider.snapshot = new NowInputSnapshot(pointer, down, pressed, released);
         bool result;
 
         using (NowInput.Begin(_provider, Surface))
@@ -110,18 +110,18 @@ public class NowControlsTests
             expectedId = NowControls.GetControlId("Save");
 
         DrawButtonFrame(new Vector2(60, 36), true, true, false);
-        Assert.AreEqual(expectedId, NowUIFocus.focusedId);
+        Assert.AreEqual(expectedId, NowFocus.focusedId);
     }
 
     [Test]
     public void FocusedButtonActivatesOnSubmit()
     {
         int id = NowControls.GetControlId("Save");
-        NowUIFocus.Focus(id);
+        NowFocus.Focus(id);
 
-        _provider.snapshot = new NowUIInputSnapshot(
+        _provider.snapshot = new NowInputSnapshot(
             true, new Vector2(400, 200), new Vector2(400, 200), Vector2.zero,
-            NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
             Vector2.zero, Vector2.zero,
             submitDown: true, submitPressed: true, submitReleased: false,
             cancelDown: false, cancelPressed: false, cancelReleased: false,
@@ -143,7 +143,7 @@ public class NowControlsTests
         var rect = new NowRect(10, 10, 160, 28);
         Vector2 inside = new Vector2(20, 24);
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+        _provider.snapshot = new NowInputSnapshot(inside, true, true, false);
 
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
@@ -151,7 +151,7 @@ public class NowControlsTests
 
         Assert.IsFalse(value);
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+        _provider.snapshot = new NowInputSnapshot(inside, false, false, true);
         bool changed;
 
         using (NowInput.Begin(_provider, Surface))
@@ -168,13 +168,13 @@ public class NowControlsTests
         var rect = new NowRect(10, 10, 160, 28);
         Vector2 inside = new Vector2(20, 24);
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+        _provider.snapshot = new NowInputSnapshot(inside, true, true, false);
 
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             Now.Radio(rect, "High", false).SetId("high").Draw();
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+        _provider.snapshot = new NowInputSnapshot(inside, false, false, true);
         bool clicked;
 
         using (NowInput.Begin(_provider, Surface))
@@ -190,7 +190,7 @@ public class NowControlsTests
         float value = 0f;
         var rect = new NowRect(0, 0, 200, 20);
 
-        _provider.snapshot = new NowUIInputSnapshot(new Vector2(150, 10), true, true, false);
+        _provider.snapshot = new NowInputSnapshot(new Vector2(150, 10), true, true, false);
         bool changed;
 
         using (NowInput.Begin(_provider, Surface))
@@ -235,7 +235,7 @@ public class NowControlsTests
 
         void Frame(bool down, bool pressed, bool released)
         {
-            _provider.snapshot = new NowUIInputSnapshot(insideSecond, down, pressed, released);
+            _provider.snapshot = new NowInputSnapshot(insideSecond, down, pressed, released);
 
             using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
@@ -274,7 +274,7 @@ public class NowControlsTests
 
         void Frame(bool down, bool pressed, bool released)
         {
-            _provider.snapshot = new NowUIInputSnapshot(inside, down, pressed, released);
+            _provider.snapshot = new NowInputSnapshot(inside, down, pressed, released);
 
             using (NowInput.Begin(_provider, Surface))
                 clicked = NowInput.Interact(rect).clicked;
@@ -296,7 +296,7 @@ public class NowControlsTests
 
         void Frame(bool down, bool pressed, bool released)
         {
-            _provider.snapshot = new NowUIInputSnapshot(insideSecond, down, pressed, released);
+            _provider.snapshot = new NowInputSnapshot(insideSecond, down, pressed, released);
 
             using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
@@ -326,11 +326,11 @@ public class NowControlsTests
 
         Assert.AreNotEqual(byLabel, byId);
 
-        NowUIFocus.Focus(byId);
+        NowFocus.Focus(byId);
 
-        _provider.snapshot = new NowUIInputSnapshot(
+        _provider.snapshot = new NowInputSnapshot(
             true, new Vector2(400, 200), new Vector2(400, 200), Vector2.zero,
-            NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
             Vector2.zero, Vector2.zero,
             submitDown: true, submitPressed: true, submitReleased: false,
             cancelDown: false, cancelPressed: false, cancelReleased: false,
@@ -372,39 +372,39 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
         {
             _provider.snapshot = default;
-            NowUIFocus.Register(1, left);
-            NowUIFocus.Register(2, right);
-            NowUIFocus.Focus(1);
+            NowFocus.Register(1, left);
+            NowFocus.Register(2, right);
+            NowFocus.Focus(1);
         }
 
-        _provider.snapshot = new NowUIInputSnapshot(
+        _provider.snapshot = new NowInputSnapshot(
             true, default, default, default,
-            NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
             Vector2.zero, new Vector2(1f, 0f),
             false, false, false, false, false, false, 2, 2f);
 
         using (NowInput.Begin(_provider, Surface))
-            NowUIFocus.ForceNewFrame();
+            NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowUIFocus.focusedId);
+        Assert.AreEqual(2, NowFocus.focusedId);
     }
 
     [Test]
     public void CancelClearsFocus()
     {
-        NowUIFocus.Focus(42);
+        NowFocus.Focus(42);
 
-        _provider.snapshot = new NowUIInputSnapshot(
+        _provider.snapshot = new NowInputSnapshot(
             true, default, default, default,
-            NowUIPointerButtons.None, NowUIPointerButtons.None, NowUIPointerButtons.None,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
             Vector2.zero, Vector2.zero,
             false, false, false,
             cancelDown: true, cancelPressed: true, cancelReleased: false, frame: 1, time: 1f);
 
         using (NowInput.Begin(_provider, Surface))
-            NowUIFocus.ForceNewFrame();
+            NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(0, NowUIFocus.focusedId);
+        Assert.AreEqual(0, NowFocus.focusedId);
     }
 
     [Test]
@@ -433,7 +433,7 @@ public class NowControlsTests
     {
         Vector2 inside = new Vector2(60, 36);
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+        _provider.snapshot = new NowInputSnapshot(inside, true, true, false);
 
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
@@ -443,7 +443,7 @@ public class NowControlsTests
             NowLayout.Label("Hi").Draw();
         }
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+        _provider.snapshot = new NowInputSnapshot(inside, false, false, true);
         bool sawClick = false;
 
         using (NowInput.Begin(_provider, Surface))
@@ -487,7 +487,7 @@ public class NowControlsTests
         var rect = new NowRect(10, 10, 180, 28);
         Vector2 inside = new Vector2(20, 24);
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+        _provider.snapshot = new NowInputSnapshot(inside, true, true, false);
 
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
@@ -499,7 +499,7 @@ public class NowControlsTests
 
         Assert.IsFalse(value);
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+        _provider.snapshot = new NowInputSnapshot(inside, false, false, true);
         bool sawChange = false;
         bool sawValue = false;
 
@@ -523,14 +523,14 @@ public class NowControlsTests
         var rect = new NowRect(10, 10, 180, 28);
         Vector2 inside = new Vector2(20, 24);
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+        _provider.snapshot = new NowInputSnapshot(inside, true, true, false);
 
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         using (var radio = Now.Radio(rect, false).SetId("scope-radio").Begin())
             NowLayout.Label("High").Draw();
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+        _provider.snapshot = new NowInputSnapshot(inside, false, false, true);
         bool sawClick = false;
 
         using (NowInput.Begin(_provider, Surface))
@@ -545,7 +545,7 @@ public class NowControlsTests
     }
 
     [Test]
-    public void EventSystemSelectionSuspendsNowUIFocus()
+    public void EventSystemSelectionSuspendsNowFocus()
     {
         var eventSystemObject = new GameObject("TestEventSystem", typeof(UnityEngine.EventSystems.EventSystem));
         var selectable = new GameObject("Selected");
@@ -557,21 +557,21 @@ public class NowControlsTests
             if (eventSystem == null)
                 Assert.Ignore("EventSystem.current unavailable in this environment.");
 
-            NowUIFocus.Focus(7);
+            NowFocus.Focus(7);
             eventSystem.SetSelectedGameObject(selectable);
 
             if (eventSystem.currentSelectedGameObject == null)
                 Assert.Ignore("EventSystem selection inactive in this environment.");
 
             using (NowInput.Begin(_provider, Surface))
-                NowUIFocus.ForceNewFrame();
+                NowFocus.ForceNewFrame();
 
-            Assert.AreEqual(0, NowUIFocus.focusedId, "UGUI selection must clear NowUI focus.");
+            Assert.AreEqual(0, NowFocus.focusedId, "UGUI selection must clear NowUI focus.");
 
             eventSystem.SetSelectedGameObject(selectable);
-            NowUIFocus.Focus(9);
+            NowFocus.Focus(9);
             Assert.IsNull(eventSystem.currentSelectedGameObject, "NowUI focus must deselect the EventSystem.");
-            Assert.AreEqual(9, NowUIFocus.focusedId);
+            Assert.AreEqual(9, NowFocus.focusedId);
         }
         finally
         {

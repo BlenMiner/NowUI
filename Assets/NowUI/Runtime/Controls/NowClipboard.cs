@@ -9,7 +9,7 @@ namespace NowUI
     /// platforms with their own copy flow (WebGL, mobile toasts, tests) and
     /// every path follows.
     /// </summary>
-    public static class NowUIClipboard
+    public static class NowClipboard
     {
         public static System.Action<string> setText = static text => GUIUtility.systemCopyBuffer = text;
 

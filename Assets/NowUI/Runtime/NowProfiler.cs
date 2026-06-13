@@ -8,9 +8,9 @@ namespace NowUI
     /// compiled out of non-development builds, so they stay in shipping code.
     /// Custom controls can use these or declare their own.
     /// </summary>
-    public static class NowUIProfiler
+    public static class NowProfiler
     {
-        /// <summary>A full retained-host rebuild (NowUIGraphic.UpdateGeometry).</summary>
+        /// <summary>A full retained-host rebuild (NowGraphic.UpdateGeometry).</summary>
         public static readonly ProfilerMarker GraphicRebuild = new ProfilerMarker("NowUI.Graphic.Rebuild");
 
         /// <summary>The extra layout measure pass that precedes the real pass.</summary>

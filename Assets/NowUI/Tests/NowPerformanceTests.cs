@@ -8,7 +8,7 @@ using NowUI;
 /// regressions in draw-call building cost, not to assert absolute numbers:
 /// compare against previous runs in the Performance Test Report window.
 /// </summary>
-public class NowUIPerformanceTests
+public class NowPerformanceTests
 {
     const int RectanglesPerFrame = 1000;
 

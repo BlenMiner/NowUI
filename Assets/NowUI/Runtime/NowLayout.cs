@@ -704,7 +704,7 @@ namespace NowUI
     /// Open an area over a screen rect, nest horizontal/vertical groups, and request
     /// rects that are stacked automatically with spacing, padding, stretching and
     /// flexible space. Group calls return a <see cref="NowLayoutScope"/>, so groups
-    /// are closed with a using statement, mirroring the NowUIInput.Begin flow:
+    /// are closed with a using statement, mirroring the NowInput.Begin flow:
     ///
     /// <code>
     /// using (NowLayout.Area(panelRect))
@@ -986,7 +986,7 @@ namespace NowUI
         /// this frame's sizes. Run the UI once, call <see cref="EndMeasurePass"/> with
         /// the returned snapshot, then run the same UI again for real. Used by the
         /// callback Area overloads and by hosts that own a draw entry point (e.g.
-        /// NowUIGraphic running DrawNowUI twice).
+        /// NowGraphic running DrawNowUI twice).
         /// </summary>
         /// <remarks>Resolves the frame boundary before snapshotting so the counter rewind
         /// hands the real pass the same anonymous area ids the measure pass used (the

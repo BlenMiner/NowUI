@@ -13,7 +13,7 @@ namespace NowUI
     /// <see cref="SubmitPressed"/> lets the focused control activate from
     /// keyboard/gamepad submit.
     /// </summary>
-    public static class NowUIFocus
+    public static class NowFocus
     {
         struct Focusable
         {

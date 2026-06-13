@@ -11,10 +11,10 @@ namespace NowUI
     /// underneath (resolved one frame late, like the focus registry — immediate
     /// mode has no z-order to query).
     /// <code>
-    /// NowUIOverlay.Defer(popupRect, static () => DrawPopup());
+    /// NowOverlay.Defer(popupRect, static () => DrawPopup());
     /// </code>
     /// </summary>
-    public static class NowUIOverlay
+    public static class NowOverlay
     {
         static readonly List<Action> _deferred = new List<Action>(4);
 
@@ -112,7 +112,7 @@ namespace NowUI
             if (_deferred.Count == 0)
                 return;
 
-            using var profile = NowUIProfiler.OverlayFlush.Auto();
+            using var profile = NowProfiler.OverlayFlush.Auto();
             ++_overlayDepth;
 
             try

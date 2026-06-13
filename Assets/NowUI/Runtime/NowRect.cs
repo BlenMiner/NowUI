@@ -36,9 +36,9 @@ namespace NowUI
             height = size.y;
         }
 
-        public float xMax => x + width;
+        public readonly float xMax => x + width;
 
-        public float yMax => y + height;
+        public readonly float yMax => y + height;
 
         public Vector2 position => new Vector2(x, y);
 
@@ -48,50 +48,50 @@ namespace NowUI
 
         public bool isEmpty => width <= 0f || height <= 0f;
 
-        public bool Contains(Vector2 point)
+        public readonly bool Contains(Vector2 point)
         {
             return point.x >= x && point.x < xMax && point.y >= y && point.y < yMax;
         }
 
-        public bool Overlaps(NowRect other)
+        public readonly bool Overlaps(NowRect other)
         {
             return other.x < xMax && other.xMax > x && other.y < yMax && other.yMax > y;
         }
 
         /// <summary>Shrinks the rect inward by the given amount on every edge.</summary>
-        public NowRect Inset(float all)
+        public readonly NowRect Inset(float all)
         {
             return Inset(all, all, all, all);
         }
 
-        public NowRect Inset(float horizontal, float vertical)
+        public readonly NowRect Inset(float horizontal, float vertical)
         {
             return Inset(horizontal, vertical, horizontal, vertical);
         }
 
-        public NowRect Inset(float left, float top, float right, float bottom)
+        public readonly NowRect Inset(float left, float top, float right, float bottom)
         {
             return new NowRect(x + left, y + top, width - left - right, height - top - bottom);
         }
 
         /// <summary>Grows the rect outward by the given amount on every edge.</summary>
-        public NowRect Outset(float all)
+        public readonly NowRect Outset(float all)
         {
             return Inset(-all, -all, -all, -all);
         }
 
-        public NowRect Outset(float horizontal, float vertical)
+        public readonly NowRect Outset(float horizontal, float vertical)
         {
             return Inset(-horizontal, -vertical, -horizontal, -vertical);
         }
 
-        public NowRect Outset(float left, float top, float right, float bottom)
+        public readonly NowRect Outset(float left, float top, float right, float bottom)
         {
             return Inset(-left, -top, -right, -bottom);
         }
 
         /// <summary>Smallest rect containing both this rect and <paramref name="other"/>.</summary>
-        public NowRect Union(NowRect other)
+        public readonly NowRect Union(NowRect other)
         {
             float minX = Mathf.Min(x, other.x);
             float minY = Mathf.Min(y, other.y);
@@ -101,7 +101,7 @@ namespace NowUI
         }
 
         /// <summary>Overlapping region of this rect and <paramref name="other"/>; empty when they do not overlap.</summary>
-        public NowRect Intersect(NowRect other)
+        public readonly NowRect Intersect(NowRect other)
         {
             float minX = Mathf.Max(x, other.x);
             float minY = Mathf.Max(y, other.y);
@@ -111,12 +111,12 @@ namespace NowUI
         }
 
         /// <summary>The rect translated by the given offset.</summary>
-        public NowRect Offset(Vector2 delta)
+        public readonly NowRect Offset(Vector2 delta)
         {
             return new NowRect(x + delta.x, y + delta.y, width, height);
         }
 
-        public NowRect Offset(float dx, float dy)
+        public readonly NowRect Offset(float dx, float dy)
         {
             return new NowRect(x + dx, y + dy, width, height);
         }

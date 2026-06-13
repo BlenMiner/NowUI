@@ -1,6 +1,6 @@
 # Styles And Themes
 
-`NowUITheme` makes style data a first-class ScriptableObject while keeping the
+`NowTheme` makes style data a first-class ScriptableObject while keeping the
 runtime API code-forward. The asset stores named tokens and presets; draw code
 still builds rectangles and text explicitly.
 
@@ -32,7 +32,7 @@ using UnityEngine;
 
 public sealed class ThemedOverlay : MonoBehaviour
 {
-    [SerializeField] NowUITheme theme;
+    [SerializeField] NowTheme theme;
     [SerializeField] NowFont font;
 
     void OnPostRender()
@@ -83,7 +83,7 @@ theme.Text(content, font, "body")
     .Draw("The same rect can be inset or outset by named spacing tokens.");
 ```
 
-`NowUITheme.Inset(rect, spacing)` and `NowUITheme.Outset(rect, spacing)` also
+`NowTheme.Inset(rect, spacing)` and `NowTheme.Outset(rect, spacing)` also
 accept raw `Vector4` spacing values for one-off calculations.
 
 ## Token Lookup

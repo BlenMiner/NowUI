@@ -12,7 +12,7 @@ Open an area over a rect, then nest groups. Scopes follow the same
 ```csharp
 Now.StartUI();
 
-using (NowLayout.Area(NowUIScreen.safeArea))
+using (NowLayout.Area(NowScreen.safeArea))
 using (NowLayout.Vertical(padding: 16, spacing: 8))
 {
     NowLayout.Label("Settings", 24).Draw();
@@ -33,7 +33,7 @@ the bridge to free-form drawing and interaction:
 
 ```csharp
 NowRect rect = NowLayout.Rect(160, 44);
-var state = NowUIInput.Interact("save", rect);
+var state = NowInput.Interact("save", rect);
 
 Now.Rectangle(rect)
     .SetColor(state.hovered ? Color.white : Color.gray)
@@ -91,5 +91,5 @@ space like an invisible stretch element.
 When a layout's identity is ambiguous across frames (rows generated in a loop,
 collapsing panels), pass an explicit id: `NowLayout.Vertical($"row-{i}")`.
 
-During the callback form's measure pass, `NowUIInput.Interact` reports hover
+During the callback form's measure pass, `NowInput.Interact` reports hover
 but never presses or drags, so interaction code is safe to run in both passes.

@@ -3,7 +3,7 @@ using UnityEngine;
 using NowUI;
 using NowUI.Internal;
 
-public class NowUIImageRenderingTests
+public class NowImageRenderingTests
 {
     static readonly Vector2 Surface = new Vector2(256, 256);
 

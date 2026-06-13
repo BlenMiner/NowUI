@@ -12,7 +12,7 @@ Raw pixels make UI microscopic on phone screens. Pass a scale to
 ```csharp
 void OnPostRender()
 {
-    Now.StartUI(NowUIScreen.recommendedUIScale);
+    Now.StartUI(NowScreen.recommendedUIScale);
 
     // 1 unit is now roughly 1/160 inch; a 44-unit button is finger-sized
     // on every screen. Now.screenMask reflects the logical size.
@@ -22,25 +22,25 @@ void OnPostRender()
 }
 ```
 
-- `NowUIScreen.recommendedUIScale` is `Screen.dpi / NowUIScreen.referenceDpi`
+- `NowScreen.recommendedUIScale` is `Screen.dpi / NowScreen.referenceDpi`
   (reference defaults to 160, Android's dp), clamped so it never shrinks UI
   below 1:1 on low-dpi desktops.
 - Pointer input is converted into the same units automatically; `Now.uiScale`
   exposes the current frame's scale.
-- For URP and HDRP, `NowUIUniversalRendererFeature` and
-  `NowUIHighDefinitionCustomPass` have a `UI Scale` field plus a
+- For URP and HDRP, `NowUniversalRendererFeature` and
+  `NowHighDefinitionCustomPass` have a `UI Scale` field plus a
   `Scale By Display Density` toggle, and
-  `NowUIPipelineGraphic.BuildDrawList(camera, drawList, uiScale)` accepts the
+  `NowPipelineGraphic.BuildDrawList(camera, drawList, uiScale)` accepts the
   scale directly.
 
 ## Safe areas
 
-`NowUIScreen.safeArea` returns `Screen.safeArea` converted to NowUI
+`NowScreen.safeArea` returns `Screen.safeArea` converted to NowUI
 coordinates (top-left origin, current UI scale). Use it as the root layout
 rect to stay clear of notches, punch-holes, and rounded corners:
 
 ```csharp
-using (NowLayout.Area(NowUIScreen.safeArea))
+using (NowLayout.Area(NowScreen.safeArea))
 {
     // content
 }
@@ -49,7 +49,7 @@ using (NowLayout.Area(NowUIScreen.safeArea))
 ## Touch input
 
 The default input provider reads the primary touch as the primary pointer —
-press, drag, and release map onto the same `NowUIInput.Interact` states as a
+press, drag, and release map onto the same `NowInput.Interact` states as a
 mouse. The touchscreen only acts as a pointer while a finger is in contact, so
 hover states do not stick to the last touch position. Both the Input System
 (`Touchscreen.current`) and the legacy input manager (`Input.GetTouch`) paths

@@ -34,7 +34,7 @@ namespace NowUI
     /// press and drag selects (across everything the segment list covers, like
     /// dragging over a webpage), double-click selects a word, triple-click a
     /// line, Ctrl/Cmd+A selects all, Ctrl/Cmd+C copies through
-    /// <see cref="NowUIClipboard"/>. Selection
+    /// <see cref="NowClipboard"/>. Selection
     /// state keys off the id in <see cref="NowControlState"/>; focus
     /// integration clears the selection when the user clicks elsewhere.
     /// <see cref="Interact"/> runs the input once for a whole document;
@@ -99,9 +99,9 @@ namespace NowUI
             var snapshot = NowInput.current;
 
             if (!NowInput.isPassive && snapshot.hasPointer && bounds.Contains(snapshot.pointerPosition) &&
-                (snapshot.pointerButtonsPressed & NowUIPointerButtons.Secondary) != 0)
+                (snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0)
             {
-                NowUIFocus.Focus(id);
+                NowFocus.Focus(id);
                 result.rightClicked = true;
                 result.rightClickPosition = snapshot.pointerPosition;
             }
@@ -122,17 +122,17 @@ namespace NowUI
 
             if (pressExcluded)
             {
-                NowUIFocus.Register(id, bounds);
+                NowFocus.Register(id, bounds);
                 result.hasSelection = state.hasSelection;
                 return result;
             }
 
             var interaction = NowInput.Interact(id, bounds);
-            NowUIFocus.Register(id, bounds);
+            NowFocus.Register(id, bounds);
 
             if (interaction.pressed)
             {
-                NowUIFocus.Focus(id);
+                NowFocus.Focus(id);
                 int hit = HitTest(text, lines, font, fontSize, fontStyle, interaction.pointerPosition);
                 int streak = NowControlState.ClickStreak(id, true);
 
@@ -156,20 +156,20 @@ namespace NowUI
                 NowControlState.RequestRepaint();
             }
 
-            bool focused = NowUIFocus.IsFocused(id);
+            bool focused = NowFocus.IsFocused(id);
 
             if (!focused && !interaction.held && state.hasSelection)
                 state.anchor = state.caret;
 
             if (focused && !NowInput.isPassive)
             {
-                var frame = NowUITextInput.current;
+                var frame = NowTextInput.current;
 
                 if (frame.selectAllPressed)
                     NowTextEdit.SelectAll(ref state, text);
 
                 if (frame.copyPressed && state.hasSelection)
-                    NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                    NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
             }
 
             result.hasSelection = state.hasSelection;
@@ -236,7 +236,7 @@ namespace NowUI
         {
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.SelectAll(ref state, text ?? string.Empty);
-            NowUIFocus.Focus(id);
+            NowFocus.Focus(id);
             NowControlState.RequestRepaint();
         }
 

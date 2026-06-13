@@ -116,7 +116,7 @@ namespace NowUI
             if (!IsActive())
                 return;
 
-            using var profile = NowUIProfiler.GraphicRebuild.Auto();
+            using var profile = NowProfiler.GraphicRebuild.Auto();
             EnsureDrawList();
 
             var rect = rectTransform.rect;
@@ -145,7 +145,7 @@ namespace NowUI
                 {
                     if (useLayoutMeasurePass)
                     {
-                        using (NowUIProfiler.MeasurePass.Auto())
+                        using (NowProfiler.MeasurePass.Auto())
                         {
                             int layoutCounter = NowLayout.BeginMeasurePass();
 
@@ -162,7 +162,7 @@ namespace NowUI
 
                     Vector2 measured;
 
-                    using (NowUIProfiler.Draw.Auto())
+                    using (NowProfiler.Draw.Auto())
                     {
                         NowLayout.BeginContentTracking();
                         DrawNowUI(drawRect);
@@ -175,7 +175,7 @@ namespace NowUI
                         _layoutSizeDirty = true;
                     }
 
-                    NowUIOverlay.Flush();
+                    NowOverlay.Flush();
                 }
 
                 Now.EndColorMultiplier();
@@ -356,7 +356,7 @@ namespace NowUI
             if (_drawList != null)
                 return;
 
-            _drawList = new NowDrawList(NowUIMeshLayout.Canvas, "NowUI Graphic Mesh");
+            _drawList = new NowDrawList(NowMeshLayout.Canvas, "NowUI Graphic Mesh");
         }
 
         public bool respectUGUIRaycast
@@ -425,7 +425,7 @@ namespace NowUI
 
         void ApplyCanvasPages()
         {
-            using var profile = NowUIProfiler.ApplyCanvasPages.Auto();
+            using var profile = NowProfiler.ApplyCanvasPages.Auto();
             PruneDestroyedExtraCanvasRenderers();
 
             if (_drawList == null)
@@ -469,7 +469,7 @@ namespace NowUI
             _materialModifiers.Clear();
         }
 
-        void ApplyCanvasPage(CanvasRenderer crenderer, Mesh mesh, List<NowUIMeshBatch> batches)
+        void ApplyCanvasPage(CanvasRenderer crenderer, Mesh mesh, List<NowMeshBatch> batches)
         {
             if (crenderer == null)
                 return;
@@ -606,7 +606,7 @@ namespace NowUI
             _extraCanvasRenderers.Clear();
         }
 
-        Material GetCanvasMaterial(NowUIMeshBatch batch)
+        Material GetCanvasMaterial(NowMeshBatch batch)
         {
             if (batch.kind == NowMeshKind.Rectangle)
             {
@@ -681,7 +681,7 @@ namespace NowUI
             return _textMaterialTemplate;
         }
 
-        Material GetCanvasMaterialForRendering(NowUIMeshBatch batch)
+        Material GetCanvasMaterialForRendering(NowMeshBatch batch)
         {
             var currentMaterial = GetCanvasMaterial(batch);
 

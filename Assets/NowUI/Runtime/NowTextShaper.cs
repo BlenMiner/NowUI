@@ -163,7 +163,7 @@ namespace NowUI.Internal
                 return true;
             }
 
-            using var profile = NowUIProfiler.TextShape.Auto();
+            using var profile = NowProfiler.TextShape.Auto();
 
             Array.Clear(_errorBuffer, 0, _errorBuffer.Length);
 

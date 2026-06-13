@@ -3,12 +3,103 @@ using UnityEngine;
 
 namespace NowUI.Markdown
 {
+    [NowBuilder]
+    public struct NowMarkdownBuilder
+    {
+        readonly string _markdown;
+        readonly string _file;
+        readonly int _line;
+
+        NowLayoutOptions _options;
+        NowMarkdownStyle _style;
+        bool _hasStyle;
+
+        internal NowMarkdownBuilder(string markdown, string file, int line)
+        {
+            _markdown = markdown ?? string.Empty;
+            _file = file;
+            _line = line;
+            _options = default;
+            _style = default;
+            _hasStyle = false;
+        }
+
+        public NowMarkdownBuilder SetOptions(NowLayoutOptions options)
+        {
+            _options = options;
+            return this;
+        }
+
+        public NowMarkdownBuilder SetWidth(float width)
+        {
+            _options = _options.SetWidth(width);
+            return this;
+        }
+
+        public NowMarkdownBuilder SetHeight(float height)
+        {
+            _options = _options.SetHeight(height);
+            return this;
+        }
+
+        public NowMarkdownBuilder SetStretchWidth(float weight = 1f)
+        {
+            _options = _options.SetStretchWidth(weight);
+            return this;
+        }
+
+        public NowMarkdownBuilder SetStyle(NowMarkdownStyle style)
+        {
+            _style = style;
+            _hasStyle = true;
+            return this;
+        }
+
+        public NowMarkdownBuilder SetFontSize(float fontSize)
+        {
+            _style = _hasStyle ? _style : NowMarkdownStyle.Default;
+            _style.fontSize = fontSize;
+            _hasStyle = true;
+            return this;
+        }
+
+        /// <summary>Draws in the active layout group.</summary>
+        [NowConsumer]
+        public NowMarkdownResult Draw()
+        {
+            var document = GetDocument();
+            var content = NowLayout.ContentRect(_options, _file, _line);
+            var result = document.Draw(content.rect);
+            content.End(result.height);
+            return result;
+        }
+
+        /// <summary>Draws into an explicit rect without consuming layout space.</summary>
+        [NowConsumer]
+        public NowMarkdownResult Draw(NowRect rect)
+        {
+            return GetDocument().Draw(rect);
+        }
+
+        public NowMarkdownDocument Parse()
+        {
+            return GetDocument();
+        }
+
+        NowMarkdownDocument GetDocument()
+        {
+            return _hasStyle
+                ? NowMarkdownDocument.Parse(_markdown, _style)
+                : NowMarkdown.GetCached(_markdown);
+        }
+    }
+
     /// <summary>
     /// Immediate-mode entry points for rendering GitHub-flavored Markdown.
     /// <code>
-    /// NowMarkdown.Draw(changelogText);                  // flows in the active layout
-    /// NowMarkdown.Draw(rect, readmeText);               // explicit rect
-    /// var doc = NowMarkdownDocument.Parse(text);        // retained, for many draws
+    /// NowMarkdown.Document(changelogText).Draw();       // flows in the active layout
+    /// NowMarkdown.Document(readmeText).Draw(rect);      // explicit rect
+    /// var doc = NowMarkdown.Parse(text);                // retained, for many draws
     /// </code>
     /// Drawn documents are parsed once and cached by text; layout re-runs only
     /// when the width or font changes, so steady-state drawing allocates nothing.
@@ -26,36 +117,25 @@ namespace NowUI.Markdown
 
         static NowMarkdownDocument _lastDocument;
 
+        public static NowMarkdownBuilder Document(
+            string markdown,
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            return new NowMarkdownBuilder(markdown, file, line);
+        }
+
         public static NowMarkdownDocument Parse(string markdown)
         {
             return NowMarkdownDocument.Parse(markdown ?? string.Empty);
         }
 
-        /// <summary>
-        /// Draws the markdown in the active layout group, stretching to the
-        /// available width. Height settles one frame late, like all scope-form
-        /// layout measurement. Identity comes from the call site, so several
-        /// blocks can interleave with other layout content.
-        /// </summary>
-        public static NowMarkdownResult Draw(
-            string markdown,
-            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
-            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        public static NowMarkdownDocument Parse(string markdown, NowMarkdownStyle style)
         {
-            var document = GetCached(markdown);
-            var content = NowLayout.ContentRect(default, file, line);
-            var result = document.Draw(content.rect);
-            content.End(result.height);
-            return result;
+            return NowMarkdownDocument.Parse(markdown ?? string.Empty, style);
         }
 
-        /// <summary>Draws the markdown wrapped to the rect's width.</summary>
-        public static NowMarkdownResult Draw(NowRect rect, string markdown)
-        {
-            return GetCached(markdown).Draw(rect);
-        }
-
-        static NowMarkdownDocument GetCached(string markdown)
+        internal static NowMarkdownDocument GetCached(string markdown)
         {
             markdown ??= string.Empty;
 

@@ -7,7 +7,7 @@ using UnityEngine.InputSystem;
 namespace NowUI
 {
     /// <summary>One frame of text-editing input, normalized across backends.</summary>
-    public struct NowUITextInputFrame
+    public struct NowTextInputFrame
     {
         /// <summary>Printable characters typed this frame (control characters stripped).</summary>
         public string characters;
@@ -47,9 +47,9 @@ namespace NowUI
         public bool duplicatePressed;
     }
 
-    public interface INowUITextInputSource
+    public interface INowTextInputSource
     {
-        bool TryGetFrame(out NowUITextInputFrame frame);
+        bool TryGetFrame(out NowTextInputFrame frame);
     }
 
     /// <summary>
@@ -58,21 +58,21 @@ namespace NowUI
     /// <see cref="source"/> with a fake in tests, the same seam the pointer
     /// providers use.
     /// </summary>
-    public static class NowUITextInput
+    public static class NowTextInput
     {
-        static INowUITextInputSource _source;
+        static INowTextInputSource _source;
 
-        static NowUITextInputFrame _frame;
+        static NowTextInputFrame _frame;
 
         static int _frameStamp = -1;
 
-        public static INowUITextInputSource source
+        public static INowTextInputSource source
         {
-            get => _source ??= NowUIKeyboardTextInputSource.instance;
+            get => _source ??= NowKeyboardTextInputSource.instance;
             set => _source = value;
         }
 
-        public static NowUITextInputFrame current
+        public static NowTextInputFrame current
         {
             get
             {
@@ -171,9 +171,9 @@ namespace NowUI
     }
 
     /// <summary>Default keyboard-backed source.</summary>
-    sealed class NowUIKeyboardTextInputSource : INowUITextInputSource
+    sealed class NowKeyboardTextInputSource : INowTextInputSource
     {
-        public static readonly NowUIKeyboardTextInputSource instance = new NowUIKeyboardTextInputSource();
+        public static readonly NowKeyboardTextInputSource instance = new NowKeyboardTextInputSource();
 
         readonly StringBuilder _pending = new StringBuilder(16);
 
@@ -215,7 +215,7 @@ namespace NowUI
         }
 #endif
 
-        public bool TryGetFrame(out NowUITextInputFrame frame)
+        public bool TryGetFrame(out NowTextInputFrame frame)
         {
             frame = default;
 

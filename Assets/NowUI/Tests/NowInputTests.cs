@@ -24,7 +24,7 @@ public class NowInputTests
     [Test]
     public void InteractionReportsHoverFromProviderSnapshot()
     {
-        _provider.snapshot = new NowUIInputSnapshot(new Vector2(18, 20), false, false, false);
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
@@ -39,7 +39,7 @@ public class NowInputTests
     [Test]
     public void InteractionClicksWhenPressedAndReleasedInsideRect()
     {
-        _provider.snapshot = new NowUIInputSnapshot(new Vector2(18, 20), true, true, false);
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
@@ -51,7 +51,7 @@ public class NowInputTests
             Assert.IsFalse(press.clicked);
         }
 
-        _provider.snapshot = new NowUIInputSnapshot(new Vector2(18, 20), false, false, true);
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, true);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
@@ -68,12 +68,12 @@ public class NowInputTests
     [Test]
     public void InteractionDoesNotClickAfterDrag()
     {
-        _provider.snapshot = new NowUIInputSnapshot(new Vector2(18, 20), true, true, false);
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
             NowInput.Interact(1, _rect);
 
-        _provider.snapshot = new NowUIInputSnapshot(new Vector2(28, 20), new Vector2(10, 0), true, false, false);
+        _provider.snapshot = new NowInputSnapshot(new Vector2(28, 20), new Vector2(10, 0), true, false, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
@@ -84,7 +84,7 @@ public class NowInputTests
             Assert.AreEqual(new Vector2(10, 0), drag.dragDelta);
         }
 
-        _provider.snapshot = new NowUIInputSnapshot(new Vector2(30, 20), new Vector2(2, 0), false, false, true);
+        _provider.snapshot = new NowInputSnapshot(new Vector2(30, 20), new Vector2(2, 0), false, false, true);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
@@ -98,32 +98,32 @@ public class NowInputTests
     [Test]
     public void InteractionCanUseSecondaryPointerButton()
     {
-        _provider.snapshot = new NowUIInputSnapshot(
+        _provider.snapshot = new NowInputSnapshot(
             new Vector2(18, 20),
-            NowUIPointerButtons.Secondary,
-            NowUIPointerButtons.Secondary,
-            NowUIPointerButtons.None);
+            NowPointerButtons.Secondary,
+            NowPointerButtons.Secondary,
+            NowPointerButtons.None);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
             var primary = NowInput.Interact(1, _rect);
-            var secondary = NowInput.Interact(2, _rect, NowUIPointerButton.Secondary);
+            var secondary = NowInput.Interact(2, _rect, NowPointerButton.Secondary);
 
             Assert.IsFalse(primary.pressed);
             Assert.IsTrue(secondary.pressed);
             Assert.IsTrue(secondary.held);
-            Assert.AreEqual(NowUIPointerButton.Secondary, secondary.button);
+            Assert.AreEqual(NowPointerButton.Secondary, secondary.button);
         }
 
-        _provider.snapshot = new NowUIInputSnapshot(
+        _provider.snapshot = new NowInputSnapshot(
             new Vector2(18, 20),
-            NowUIPointerButtons.None,
-            NowUIPointerButtons.None,
-            NowUIPointerButtons.Secondary);
+            NowPointerButtons.None,
+            NowPointerButtons.None,
+            NowPointerButtons.Secondary);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var secondary = NowInput.Interact(2, _rect, NowUIPointerButton.Secondary);
+            var secondary = NowInput.Interact(2, _rect, NowPointerButton.Secondary);
 
             Assert.IsTrue(secondary.released);
             Assert.IsTrue(secondary.clicked);
@@ -133,14 +133,14 @@ public class NowInputTests
     [Test]
     public void SnapshotCanCarryNavigationWithoutPointer()
     {
-        _provider.snapshot = new NowUIInputSnapshot(
+        _provider.snapshot = new NowInputSnapshot(
             false,
             default,
             default,
             default,
-            NowUIPointerButtons.None,
-            NowUIPointerButtons.None,
-            NowUIPointerButtons.None,
+            NowPointerButtons.None,
+            NowPointerButtons.None,
+            NowPointerButtons.None,
             default,
             Vector2.right,
             true,
@@ -169,11 +169,11 @@ public class NowInputTests
     {
         var first = new MockInputProvider
         {
-            snapshot = new NowUIInputSnapshot(new Vector2(12, 12), false, false, false)
+            snapshot = new NowInputSnapshot(new Vector2(12, 12), false, false, false)
         };
         var second = new MockInputProvider
         {
-            snapshot = new NowUIInputSnapshot(new Vector2(80, 80), false, false, false)
+            snapshot = new NowInputSnapshot(new Vector2(80, 80), false, false, false)
         };
 
         using (NowInput.Begin(first, new Vector2(100, 100)))
@@ -191,9 +191,9 @@ public class NowInputTests
 
     sealed class MockInputProvider : INowInputProvider
     {
-        public NowUIInputSnapshot snapshot;
+        public NowInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
             snapshot = this.snapshot;
             return true;

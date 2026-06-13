@@ -4,113 +4,113 @@ using UnityEngine;
 
 namespace NowUI
 {
-    [CreateAssetMenu(menuName = "NowUI/Theme", fileName = "NowUITheme")]
+    [CreateAssetMenu(menuName = "NowUI/Theme", fileName = "NowTheme")]
     public sealed class NowTheme : ScriptableObject
     {
         [SerializeField] string _defaultRectanglePreset = "surface";
 
         [SerializeField] string _defaultTextPreset = "body";
 
-        [SerializeField] NowUIColorToken[] _palette =
+        [SerializeField] NowThemeColorToken[] _palette =
         {
-            new NowUIColorToken("background", new Color(0.945f, 0.961f, 0.976f, 1f)),
-            new NowUIColorToken("surface", Color.white),
-            new NowUIColorToken("surface-muted", new Color(0.973f, 0.980f, 0.988f, 1f)),
-            new NowUIColorToken("text", new Color(0.067f, 0.094f, 0.153f, 1f)),
-            new NowUIColorToken("text-muted", new Color(0.420f, 0.447f, 0.502f, 1f)),
-            new NowUIColorToken("border", new Color(0.886f, 0.910f, 0.941f, 1f)),
-            new NowUIColorToken("accent", new Color(0.102f, 0.451f, 0.910f, 1f)),
-            new NowUIColorToken("accent-text", Color.white)
+            new NowThemeColorToken("background", new Color(0.945f, 0.961f, 0.976f, 1f)),
+            new NowThemeColorToken("surface", Color.white),
+            new NowThemeColorToken("surface-muted", new Color(0.973f, 0.980f, 0.988f, 1f)),
+            new NowThemeColorToken("text", new Color(0.067f, 0.094f, 0.153f, 1f)),
+            new NowThemeColorToken("text-muted", new Color(0.420f, 0.447f, 0.502f, 1f)),
+            new NowThemeColorToken("border", new Color(0.886f, 0.910f, 0.941f, 1f)),
+            new NowThemeColorToken("accent", new Color(0.102f, 0.451f, 0.910f, 1f)),
+            new NowThemeColorToken("accent-text", Color.white)
         };
 
-        [SerializeField] NowUISpacingToken[] _spacings =
+        [SerializeField] NowThemeSpacingToken[] _spacings =
         {
-            new NowUISpacingToken("none", default),
-            new NowUISpacingToken("xs", new Vector4(4f, 4f, 4f, 4f)),
-            new NowUISpacingToken("sm", new Vector4(8f, 8f, 8f, 8f)),
-            new NowUISpacingToken("md", new Vector4(12f, 12f, 12f, 12f)),
-            new NowUISpacingToken("lg", new Vector4(20f, 20f, 20f, 20f)),
-            new NowUISpacingToken("panel", new Vector4(24f, 20f, 24f, 20f))
+            new NowThemeSpacingToken("none", default),
+            new NowThemeSpacingToken("xs", new Vector4(4f, 4f, 4f, 4f)),
+            new NowThemeSpacingToken("sm", new Vector4(8f, 8f, 8f, 8f)),
+            new NowThemeSpacingToken("md", new Vector4(12f, 12f, 12f, 12f)),
+            new NowThemeSpacingToken("lg", new Vector4(20f, 20f, 20f, 20f)),
+            new NowThemeSpacingToken("panel", new Vector4(24f, 20f, 24f, 20f))
         };
 
-        [SerializeField] NowUIRadiusToken[] _radii =
+        [SerializeField] NowThemeRadiusToken[] _radii =
         {
-            new NowUIRadiusToken("none", default),
-            new NowUIRadiusToken("sm", new Vector4(4f, 4f, 4f, 4f)),
-            new NowUIRadiusToken("md", new Vector4(8f, 8f, 8f, 8f)),
-            new NowUIRadiusToken("lg", new Vector4(14f, 14f, 14f, 14f)),
-            new NowUIRadiusToken("pill", new Vector4(999f, 999f, 999f, 999f))
+            new NowThemeRadiusToken("none", default),
+            new NowThemeRadiusToken("sm", new Vector4(4f, 4f, 4f, 4f)),
+            new NowThemeRadiusToken("md", new Vector4(8f, 8f, 8f, 8f)),
+            new NowThemeRadiusToken("lg", new Vector4(14f, 14f, 14f, 14f)),
+            new NowThemeRadiusToken("pill", new Vector4(999f, 999f, 999f, 999f))
         };
 
-        [SerializeField] NowUIRectanglePreset[] _rectanglePresets =
+        [SerializeField] NowRectanglePreset[] _rectanglePresets =
         {
-            new NowUIRectanglePreset(
+            new NowRectanglePreset(
                 "surface",
-                new NowUIColorReference("surface", Color.white),
-                new NowUIRadiusReference("md", new Vector4(8f, 8f, 8f, 8f)),
+                new NowThemeColorReference("surface", Color.white),
+                new NowThemeRadiusReference("md", new Vector4(8f, 8f, 8f, 8f)),
                 default,
                 0f,
                 0f,
-                new NowUIColorReference("border", Color.clear)),
-            new NowUIRectanglePreset(
+                new NowThemeColorReference("border", Color.clear)),
+            new NowRectanglePreset(
                 "muted",
-                new NowUIColorReference("surface-muted", new Color(0.973f, 0.980f, 0.988f, 1f)),
-                new NowUIRadiusReference("md", new Vector4(8f, 8f, 8f, 8f)),
+                new NowThemeColorReference("surface-muted", new Color(0.973f, 0.980f, 0.988f, 1f)),
+                new NowThemeRadiusReference("md", new Vector4(8f, 8f, 8f, 8f)),
                 default,
                 0f,
                 0f,
-                new NowUIColorReference("border", Color.clear)),
-            new NowUIRectanglePreset(
+                new NowThemeColorReference("border", Color.clear)),
+            new NowRectanglePreset(
                 "outline",
-                new NowUIColorReference(string.Empty, Color.clear),
-                new NowUIRadiusReference("md", new Vector4(8f, 8f, 8f, 8f)),
+                new NowThemeColorReference(string.Empty, Color.clear),
+                new NowThemeRadiusReference("md", new Vector4(8f, 8f, 8f, 8f)),
                 default,
                 0f,
                 1f,
-                new NowUIColorReference("border", new Color(0.886f, 0.910f, 0.941f, 1f))),
-            new NowUIRectanglePreset(
+                new NowThemeColorReference("border", new Color(0.886f, 0.910f, 0.941f, 1f))),
+            new NowRectanglePreset(
                 "accent",
-                new NowUIColorReference("accent", new Color(0.102f, 0.451f, 0.910f, 1f)),
-                new NowUIRadiusReference("md", new Vector4(8f, 8f, 8f, 8f)),
+                new NowThemeColorReference("accent", new Color(0.102f, 0.451f, 0.910f, 1f)),
+                new NowThemeRadiusReference("md", new Vector4(8f, 8f, 8f, 8f)),
                 default,
                 0f,
                 0f,
-                new NowUIColorReference("accent", Color.clear))
+                new NowThemeColorReference("accent", Color.clear))
         };
 
-        [SerializeField] NowUITextPreset[] _textPresets =
+        [SerializeField] NowTextPreset[] _textPresets =
         {
-            new NowUITextPreset(
+            new NowTextPreset(
                 "title",
                 null,
                 28f,
-                new NowUIColorReference("text", new Color(0.067f, 0.094f, 0.153f, 1f)),
+                new NowThemeColorReference("text", new Color(0.067f, 0.094f, 0.153f, 1f)),
                 0f,
-                new NowUIColorReference(string.Empty, Color.clear),
+                new NowThemeColorReference(string.Empty, Color.clear),
                 default),
-            new NowUITextPreset(
+            new NowTextPreset(
                 "body",
                 null,
                 16f,
-                new NowUIColorReference("text", new Color(0.067f, 0.094f, 0.153f, 1f)),
+                new NowThemeColorReference("text", new Color(0.067f, 0.094f, 0.153f, 1f)),
                 0f,
-                new NowUIColorReference(string.Empty, Color.clear),
+                new NowThemeColorReference(string.Empty, Color.clear),
                 default),
-            new NowUITextPreset(
+            new NowTextPreset(
                 "muted",
                 null,
                 14f,
-                new NowUIColorReference("text-muted", new Color(0.420f, 0.447f, 0.502f, 1f)),
+                new NowThemeColorReference("text-muted", new Color(0.420f, 0.447f, 0.502f, 1f)),
                 0f,
-                new NowUIColorReference(string.Empty, Color.clear),
+                new NowThemeColorReference(string.Empty, Color.clear),
                 default),
-            new NowUITextPreset(
+            new NowTextPreset(
                 "button",
                 null,
                 14f,
-                new NowUIColorReference("accent-text", Color.white),
+                new NowThemeColorReference("accent-text", Color.white),
                 0f,
-                new NowUIColorReference(string.Empty, Color.clear),
+                new NowThemeColorReference(string.Empty, Color.clear),
                 default)
         };
 
@@ -118,15 +118,15 @@ namespace NowUI
 
         public string defaultTextPreset => _defaultTextPreset;
 
-        public IReadOnlyList<NowUIColorToken> palette => _palette;
+        public IReadOnlyList<NowThemeColorToken> palette => _palette;
 
-        public IReadOnlyList<NowUISpacingToken> spacings => _spacings;
+        public IReadOnlyList<NowThemeSpacingToken> spacings => _spacings;
 
-        public IReadOnlyList<NowUIRadiusToken> radii => _radii;
+        public IReadOnlyList<NowThemeRadiusToken> radii => _radii;
 
-        public IReadOnlyList<NowUIRectanglePreset> rectanglePresets => _rectanglePresets;
+        public IReadOnlyList<NowRectanglePreset> rectanglePresets => _rectanglePresets;
 
-        public IReadOnlyList<NowUITextPreset> textPresets => _textPresets;
+        public IReadOnlyList<NowTextPreset> textPresets => _textPresets;
 
         public bool TryGetColor(string id, out Color color)
         {
@@ -164,17 +164,17 @@ namespace NowUI
             return TryGetRadius(id, out var radius) ? radius : fallback;
         }
 
-        public bool TryGetRectanglePreset(string id, out NowUIRectanglePreset preset)
+        public bool TryGetRectanglePreset(string id, out NowRectanglePreset preset)
         {
             return TryFindToken(_rectanglePresets, id, out preset);
         }
 
-        public bool TryGetTextPreset(string id, out NowUITextPreset preset)
+        public bool TryGetTextPreset(string id, out NowTextPreset preset)
         {
             return TryFindToken(_textPresets, id, out preset);
         }
 
-        static bool TryFindToken<T>(T[] tokens, string id, out T token) where T : INowUIThemeToken
+        static bool TryFindToken<T>(T[] tokens, string id, out T token) where T : INowThemeToken
         {
             token = default;
 
@@ -267,19 +267,19 @@ namespace NowUI
         }
     }
 
-    interface INowUIThemeToken
+    interface INowThemeToken
     {
         string id { get; }
     }
 
     [Serializable]
-    public struct NowUIColorToken : INowUIThemeToken
+    public struct NowThemeColorToken : INowThemeToken
     {
         [SerializeField] string _id;
 
         [SerializeField] Color _color;
 
-        public NowUIColorToken(string id, Color color)
+        public NowThemeColorToken(string id, Color color)
         {
             _id = id;
             _color = color;
@@ -291,13 +291,13 @@ namespace NowUI
     }
 
     [Serializable]
-    public struct NowUISpacingToken : INowUIThemeToken
+    public struct NowThemeSpacingToken : INowThemeToken
     {
         [SerializeField] string _id;
 
         [SerializeField] Vector4 _insets;
 
-        public NowUISpacingToken(string id, Vector4 insets)
+        public NowThemeSpacingToken(string id, Vector4 insets)
         {
             _id = id;
             _insets = insets;
@@ -309,13 +309,13 @@ namespace NowUI
     }
 
     [Serializable]
-    public struct NowUIRadiusToken : INowUIThemeToken
+    public struct NowThemeRadiusToken : INowThemeToken
     {
         [SerializeField] string _id;
 
         [SerializeField] Vector4 _radius;
 
-        public NowUIRadiusToken(string id, Vector4 radius)
+        public NowThemeRadiusToken(string id, Vector4 radius)
         {
             _id = id;
             _radius = radius;
@@ -327,13 +327,13 @@ namespace NowUI
     }
 
     [Serializable]
-    public struct NowUIColorReference
+    public struct NowThemeColorReference
     {
         [SerializeField] string _token;
 
         [SerializeField] Color _fallback;
 
-        public NowUIColorReference(string token, Color fallback)
+        public NowThemeColorReference(string token, Color fallback)
         {
             _token = token;
             _fallback = fallback;
@@ -353,13 +353,13 @@ namespace NowUI
     }
 
     [Serializable]
-    public struct NowUISpacingReference
+    public struct NowThemeSpacingReference
     {
         [SerializeField] string _token;
 
         [SerializeField] Vector4 _fallback;
 
-        public NowUISpacingReference(string token, Vector4 fallback)
+        public NowThemeSpacingReference(string token, Vector4 fallback)
         {
             _token = token;
             _fallback = fallback;
@@ -379,13 +379,13 @@ namespace NowUI
     }
 
     [Serializable]
-    public struct NowUIRadiusReference
+    public struct NowThemeRadiusReference
     {
         [SerializeField] string _token;
 
         [SerializeField] Vector4 _fallback;
 
-        public NowUIRadiusReference(string token, Vector4 fallback)
+        public NowThemeRadiusReference(string token, Vector4 fallback)
         {
             _token = token;
             _fallback = fallback;
@@ -405,30 +405,30 @@ namespace NowUI
     }
 
     [Serializable]
-    public struct NowUIRectanglePreset : INowUIThemeToken
+    public struct NowRectanglePreset : INowThemeToken
     {
         [SerializeField] string _id;
 
-        [SerializeField] NowUIColorReference _fill;
+        [SerializeField] NowThemeColorReference _fill;
 
-        [SerializeField] NowUIRadiusReference _radius;
+        [SerializeField] NowThemeRadiusReference _radius;
 
-        [SerializeField] NowUISpacingReference _padding;
+        [SerializeField] NowThemeSpacingReference _padding;
 
         [SerializeField] float _blur;
 
         [SerializeField] float _outline;
 
-        [SerializeField] NowUIColorReference _outlineColor;
+        [SerializeField] NowThemeColorReference _outlineColor;
 
-        public NowUIRectanglePreset(
+        public NowRectanglePreset(
             string id,
-            NowUIColorReference fill,
-            NowUIRadiusReference radius,
-            NowUISpacingReference padding,
+            NowThemeColorReference fill,
+            NowThemeRadiusReference radius,
+            NowThemeSpacingReference padding,
             float blur,
             float outline,
-            NowUIColorReference outlineColor)
+            NowThemeColorReference outlineColor)
         {
             _id = id;
             _fill = fill;
@@ -458,7 +458,7 @@ namespace NowUI
     }
 
     [Serializable]
-    public struct NowUITextPreset : INowUIThemeToken
+    public struct NowTextPreset : INowThemeToken
     {
         [SerializeField] string _id;
 
@@ -466,22 +466,22 @@ namespace NowUI
 
         [SerializeField] float _fontSize;
 
-        [SerializeField] NowUIColorReference _color;
+        [SerializeField] NowThemeColorReference _color;
 
         [SerializeField] float _outline;
 
-        [SerializeField] NowUIColorReference _outlineColor;
+        [SerializeField] NowThemeColorReference _outlineColor;
 
-        [SerializeField] NowUISpacingReference _padding;
+        [SerializeField] NowThemeSpacingReference _padding;
 
-        public NowUITextPreset(
+        public NowTextPreset(
             string id,
             NowFontAsset font,
             float fontSize,
-            NowUIColorReference color,
+            NowThemeColorReference color,
             float outline,
-            NowUIColorReference outlineColor,
-            NowUISpacingReference padding)
+            NowThemeColorReference outlineColor,
+            NowThemeSpacingReference padding)
         {
             _id = id;
             _font = font;
@@ -512,7 +512,7 @@ namespace NowUI
         }
     }
 
-    public static class NowUIThemeExtensions
+    public static class NowThemeExtensions
     {
         public static NowRectangle SetStyle(this NowRectangle rectangle, NowTheme theme, string presetId = null)
         {

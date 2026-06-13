@@ -3,7 +3,7 @@
 NowUI's immediate-mode controls: buttons, checkboxes, radios, sliders, text
 fields, dropdowns and scroll views, built entirely on public primitives so
 custom controls are first-class citizens. Controls work identically in the
-screen path (`Now.StartUI`), inside UGUI (`NowUIGraphic`), and in URP/HDRP
+screen path (`Now.StartUI`), inside UGUI (`NowGraphic`), and in URP/HDRP
 overlays — pointer, touch, keyboard and gamepad included.
 
 Controls live where drawing already lives: `NowLayout.*` flows in the active
@@ -17,7 +17,7 @@ Layout-flowing controls reserve space sized from their themed content; values
 stay owned by you, passed by ref.
 
 ```csharp
-using (NowLayout.Area(NowUIScreen.safeArea))
+using (NowLayout.Area(NowScreen.safeArea))
 using (NowLayout.Vertical(padding: 16, spacing: 8))
 {
     if (NowLayout.Button("Save").Draw())
@@ -195,7 +195,7 @@ The detection is attribute-driven and works for your own controls too:
 
 - `[NowBuilder]` on a struct marks it as inert-until-consumed (NOWUI001).
 - `[NowConsumer]` on a method marks it as performing the work while returning
-  the builder for chaining, like `NowUIRectangle.Draw()` — statements ending
+  the builder for chaining, like `NowRectangle.Draw()` — statements ending
   in a consumer call are never flagged.
 - `[NowScope]` on a disposable struct marks it as using-only (NOWUI002).
 
@@ -206,7 +206,7 @@ rebuild with `dotnet build -c Release` and copy the DLL over
 ## Theming
 
 Controls read the ambient theme — a built-in default, a pushed scope, or your
-own `NowUITheme` asset:
+own `NowTheme` asset:
 
 ```csharp
 using (NowControls.Theme(myTheme))
@@ -234,7 +234,7 @@ preset names defined in theme assets.
 
 ## Focus, keyboard and gamepad
 
-Focusable controls register with `NowUIFocus` every frame. Arrows, WASD, the
+Focusable controls register with `NowFocus` every frame. Arrows, WASD, the
 d-pad or left stick move focus spatially; submit (enter/space/gamepad south)
 activates the focused control; cancel clears focus (and closes popups).
 Clicking a control focuses it. Focused controls draw a focus outline.
@@ -243,21 +243,21 @@ NowUI focus and Unity's EventSystem stay mutually exclusive by default:
 selecting a UGUI control (clicking a classic Button, for example) clears
 NowUI focus and pauses NowUI navigation until that selection clears, and
 focusing a NowUI control deselects the EventSystem. Disable with
-`NowUIFocus.respectEventSystem = false`. Seamless navigation handoff between
+`NowFocus.respectEventSystem = false`. Seamless navigation handoff between
 the two systems is not attempted.
 
-Pointer occlusion is mutual too: a `NowUIGraphic`'s Raycast Target blocks
+Pointer occlusion is mutual too: a `NowGraphic`'s Raycast Target blocks
 UGUI beneath it, and UGUI drawn above NowUI blocks NowUI's pointer — the
 graphic withholds input unless the EventSystem's topmost hit is the graphic
 itself (**Respect UGUI Raycast**, on by default; needs Raycast Target
 enabled), and the screen render path withholds the pointer while it is over
-any raycastable UI (`NowUIScreenInputProvider.blockedWhenPointerOverUGUI`).
+any raycastable UI (`NowScreenInputProvider.blockedWhenPointerOverUGUI`).
 In-flight drags and releases always come through, so controls never strand
 mid-interaction.
 
 ## Hosting in UGUI
 
-Drop a `NowUIGraphic` subclass on a Canvas and draw controls inside
+Drop a `NowGraphic` subclass on a Canvas and draw controls inside
 `DrawNowUI` — input arrives through the RectTransform provider, and the
 graphic's **Auto Rebuild On Interaction** (on by default) re-renders while
 the pointer is over it or a control requests a repaint (focus ring, caret
@@ -296,13 +296,13 @@ public static bool MyToggleSwitch(string label, ref bool value)
         value = !value;
 
     // 3. Ephemeral state: animations, timers — keyed by the control id.
-    float t = NowUIControlState.Transition(id, value, speed: 12f);
+    float t = NowControlState.Transition(id, value, speed: 12f);
 
     // 4. Draw with theme styles.
     var track = theme.Rectangle(rect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
     track.radius = new Vector4(rect.height, rect.height, rect.height, rect.height) * 0.5f;
-    track.color = NowControls.StateTint(track.color, NowUIControlState.Transition(
-        NowUIInput.GetId(id, "hover"), interaction.hovered), interaction.held);
+    track.color = NowControls.StateTint(track.color, NowControlState.Transition(
+        NowInput.GetId(id, "hover"), interaction.hovered), interaction.held);
 
     if (focused)
     {
@@ -329,22 +329,22 @@ The toolkit pieces:
 | --- | --- |
 | `NowControls.SiteId(file, line)` + `GetControlId(id)` | Call-site identity with id-scope seeding and loop salting |
 | `NowControls.Interact(id, rect, out focused, out submitted)` | Pointer interaction + focus registration + click-to-focus + submit |
-| `NowUIInput.Interact(rect)` | Id-less interaction: identity from the call site |
-| `NowUIInput.CombineId(a, b)` | Mint sub-element ids (rows, links, items) without strings |
-| `NowUIControlState.Get<T>(id)` | Persistent ephemeral slot (struct), evicted when stale |
-| `NowUIControlState.Transition / Repeat / DetectDoubleClick / ClickStreak / Blink` | The standard timing behaviors |
-| `NowUIControlState.RequestRepaint()` | Tell retained hosts (UGUI) to render another frame |
-| `NowUIFocus.IsFocused / Focus / Clear / LockNavigation` | Focus queries, explicit control, nav suppression while editing |
+| `NowInput.Interact(rect)` | Id-less interaction: identity from the call site |
+| `NowInput.CombineId(a, b)` | Mint sub-element ids (rows, links, items) without strings |
+| `NowControlState.Get<T>(id)` | Persistent ephemeral slot (struct), evicted when stale |
+| `NowControlState.Transition / Repeat / DetectDoubleClick / ClickStreak / Blink` | The standard timing behaviors |
+| `NowControlState.RequestRepaint()` | Tell retained hosts (UGUI) to render another frame |
+| `NowFocus.IsFocused / Focus / Clear / LockNavigation` | Focus queries, explicit control, nav suppression while editing |
 | `Now.Mask(rect)` | Ambient clipping scope (what ScrollView uses) |
-| `NowUIOverlay.Defer(blockRect, draw)` | Draw above everything; input beneath is blocked |
-| `NowUIContextMenu.Open / Begin / Item / End` | Modal right-click menus on the overlay layer |
-| `NowUITextInput.current` | Frame-sampled keyboard text/editing input, including IME composition |
-| `NowUITextInput.setImeEnabled / setCompositionCursor` | IME hooks: editors toggle on focus and report the caret for the candidate window |
+| `NowOverlay.Defer(blockRect, draw)` | Draw above everything; input beneath is blocked |
+| `NowContextMenu.Open / Begin / Item / End` | Modal right-click menus on the overlay layer |
+| `NowTextInput.current` | Frame-sampled keyboard text/editing input, including IME composition |
+| `NowTextInput.setImeEnabled / setCompositionCursor` | IME hooks: editors toggle on focus and report the caret for the candidate window |
 | `NowTextEdit` | Headless caret/selection/editing engine for custom editors |
 | `NowTextWrap.Layout / Draw` | Word wrap: lay out once into positioned runs, draw many frames |
 | `NowTextArea.LayoutLines / LineOf` | Editing-grade line layout: every character covered, caret-exact metrics |
 | `NowTextSelection.Draw / Interact / DrawHighlights` | Browser-style text selection over positioned line segments |
-| `NowUIClipboard.Copy / Paste / setText / getText` | The single clipboard hook every copy/paste path uses |
+| `NowClipboard.Copy / Paste / setText / getText` | The single clipboard hook every copy/paste path uses |
 | `NowLayout.ContentRect()` → `content.End(height)` | Frame-late reserve/measure for content sized by its width |
 | `theme.Rectangle / theme.Text / theme.ResolveText / theme.GetColor ...` | Themed visuals; `ResolveText` is the rect-free, mask-free starting point |
 | `font.MeasureText(text, start, length)` / span overloads | Allocation-free measuring for wrap engines and dynamic text |
@@ -353,11 +353,11 @@ Conventions that keep custom controls consistent:
 
 - Run `NowControls.Interact` first; draw after mutating state so visuals show
   this frame's reality.
-- Store only ephemera in `NowUIControlState`; the caller owns real values.
+- Store only ephemera in `NowControlState`; the caller owns real values.
 - Call `RequestRepaint()` whenever the control is time-dependent (the
   `Transition`/`Repeat` helpers do it for you).
 - Everything must behave inertly during layout measure passes — interaction
-  helpers already are; guard manual input reads with `NowUIInput.isPassive`.
+  helpers already are; guard manual input reads with `NowInput.isPassive`.
 
 ## Current limitations
 
@@ -365,7 +365,7 @@ Conventions that keep custom controls consistent:
   on child controls (wheel and scrollbar work everywhere).
 - IME composition renders inline with the default screen-space cursor
   reporting; hosts whose surface is not the screen (UGUI canvases, render
-  textures) should replace `NowUITextInput.setCompositionCursor` to transform
+  textures) should replace `NowTextInput.setCompositionCursor` to transform
   the caret point.
 - Dropdown popups are pointer-driven; focus navigation inside the popup is
   not yet wired.

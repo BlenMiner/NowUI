@@ -74,7 +74,7 @@ public class NowMarkdownExample : NowGraphic
         using (NowLayout.Area(bounds.Inset(16)))
         using (NowLayout.ScrollView().Begin())
         {
-            var result = NowMarkdown.Draw(_markdown);
+            var result = NowMarkdown.Document(_markdown).Draw();
 
             if (result.clickedLink != null)
                 Application.OpenURL(result.clickedLink);

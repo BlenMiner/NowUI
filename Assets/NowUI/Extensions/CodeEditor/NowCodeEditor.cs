@@ -192,7 +192,7 @@ namespace NowUI.CodeEditor
                     var vDrag = NowInput.Interact(NowInput.GetId(id, "vscroll"), vThumb);
 
                     if (vDrag.pressed)
-                        NowUIFocus.Focus(id);
+                        NowFocus.Focus(id);
 
                     if (vDrag.dragging)
                     {
@@ -206,7 +206,7 @@ namespace NowUI.CodeEditor
                     var hDrag = NowInput.Interact(NowInput.GetId(id, "hscroll"), hThumb);
 
                     if (hDrag.pressed)
-                        NowUIFocus.Focus(id);
+                        NowFocus.Focus(id);
 
                     if (hDrag.dragging)
                     {
@@ -220,14 +220,14 @@ namespace NowUI.CodeEditor
 
             if (focused && editor.hadFocus == 0)
             {
-                NowUITextInput.setImeEnabled?.Invoke(true);
+                NowTextInput.setImeEnabled?.Invoke(true);
 
                 if (!interaction.pressed)
                     NowTextEdit.MoveEnd(ref state, text, false);
             }
             else if (!focused && editor.hadFocus == 1)
             {
-                NowUITextInput.setImeEnabled?.Invoke(false);
+                NowTextInput.setImeEnabled?.Invoke(false);
             }
 
             editor.hadFocus = focused ? (byte)1 : (byte)0;
@@ -279,8 +279,8 @@ namespace NowUI.CodeEditor
 
             if (focused && !NowInput.isPassive)
             {
-                NowUIFocus.LockNavigation();
-                var frame = NowUITextInput.current;
+                NowFocus.LockNavigation();
+                var frame = NowTextInput.current;
                 composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
 
                 if (!string.IsNullOrEmpty(frame.characters))
@@ -295,7 +295,7 @@ namespace NowUI.CodeEditor
                 if (composition == null)
                 {
                     if (frame.escapePressed)
-                        NowUIFocus.Clear();
+                        NowFocus.Clear();
 
                     if (frame.undoPressed)
                         cache.undo.Undo(ref text, ref state);
@@ -308,7 +308,7 @@ namespace NowUI.CodeEditor
 
                     // Copy/cut with no selection act on the whole line, like an IDE.
                     if (frame.copyPressed)
-                        NowUIClipboard.Copy(state.hasSelection
+                        NowClipboard.Copy(state.hasSelection
                             ? NowTextEdit.GetSelection(text, state)
                             : CurrentLine(text, state.caret));
 
@@ -318,7 +318,7 @@ namespace NowUI.CodeEditor
 
                         if (state.hasSelection)
                         {
-                            NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                            NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
                             NowTextEdit.DeleteSelection(ref text, ref state);
                         }
                         else
@@ -335,7 +335,7 @@ namespace NowUI.CodeEditor
 
                     if (frame.pastePressed)
                     {
-                        string buffer = NowUIClipboard.Paste();
+                        string buffer = NowClipboard.Paste();
 
                         if (!string.IsNullOrEmpty(buffer))
                         {
@@ -484,7 +484,7 @@ namespace NowUI.CodeEditor
             editor.scrollX = Mathf.Clamp(editor.scrollX, 0f, maxScrollX);
 
             if (focused && !NowInput.isPassive)
-                NowUITextInput.setCompositionCursor?.Invoke(new Vector2(
+                NowTextInput.setCompositionCursor?.Invoke(new Vector2(
                     textRect.x + caretX - editor.scrollX,
                     textRect.y + caretLine * lineHeight - editor.scrollY + lineHeight));
 
@@ -879,7 +879,7 @@ namespace NowUI.CodeEditor
                 float width = Advance(message, font, 12f, fontStyle) + 16f;
                 var tooltipRect = new NowRect(pointer.x + 12f, pointer.y + 18f, width, 24f);
 
-                NowUIOverlay.Defer(default, () =>
+                NowOverlay.Defer(default, () =>
                 {
                     var background = NowControls.theme.Rectangle(tooltipRect, NowRectangleStyle.Surface);
                     background.outline = 1f;
@@ -1029,7 +1029,7 @@ namespace NowUI.CodeEditor
         static void CutLine(ref string text, ref NowTextEditState state)
         {
             NowTextMetrics.LineBounds(text, state.caret, out int start, out int end);
-            NowUIClipboard.Copy(text.Substring(start, end - start) + "\n");
+            NowClipboard.Copy(text.Substring(start, end - start) + "\n");
 
             int removeStart = start;
             int removeEnd = end;

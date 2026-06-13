@@ -8,20 +8,20 @@ public class NowTextSelectionTests
 {
     sealed class FakePointer : INowInputProvider
     {
-        public NowUIInputSnapshot snapshot;
+        public NowInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot result)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot result)
         {
             result = snapshot;
             return true;
         }
     }
 
-    sealed class FakeKeyboard : INowUITextInputSource
+    sealed class FakeKeyboard : INowTextInputSource
     {
-        public NowUITextInputFrame frame;
+        public NowTextInputFrame frame;
 
-        public bool TryGetFrame(out NowUITextInputFrame result)
+        public bool TryGetFrame(out NowTextInputFrame result)
         {
             result = frame;
             return true;
@@ -51,14 +51,14 @@ public class NowTextSelectionTests
     public void SetUp()
     {
         NowInput.Reset();
-        NowUIFocus.Reset();
+        NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
-        NowUITextInput.Reset();
+        NowTextInput.Reset();
 
         _pointer = new FakePointer();
         _keyboard = new FakeKeyboard();
-        NowUITextInput.source = _keyboard;
+        NowTextInput.source = _keyboard;
         _drawList = new NowDrawList();
         _lines = new List<NowTextSelectionLine>
         {
@@ -66,39 +66,39 @@ public class NowTextSelectionTests
         };
 
         _copied = null;
-        _previousCopy = NowUIClipboard.setText;
-        NowUIClipboard.setText = text => _copied = text;
+        _previousCopy = NowClipboard.setText;
+        NowClipboard.setText = text => _copied = text;
     }
 
     [TearDown]
     public void TearDown()
     {
-        NowUIClipboard.setText = _previousCopy;
+        NowClipboard.setText = _previousCopy;
         _drawList.Dispose();
-        NowUITextInput.Reset();
+        NowTextInput.Reset();
         NowInput.Reset();
-        NowUIFocus.Reset();
+        NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
     }
 
-    NowTextSelectionResult Frame(Vector2 pointer, bool down, bool pressed, bool released, NowUITextInputFrame keys = default, bool forceFocusFrame = false)
+    NowTextSelectionResult Frame(Vector2 pointer, bool down, bool pressed, bool released, NowTextInputFrame keys = default, bool forceFocusFrame = false)
     {
         _keyboard.frame = keys;
-        NowUITextInput.Invalidate();
-        _pointer.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
+        NowTextInput.Invalidate();
+        _pointer.snapshot = new NowInputSnapshot(pointer, down, pressed, released);
         return RunFrame(forceFocusFrame);
     }
 
     NowTextSelectionResult RightClickFrame(Vector2 pointer)
     {
         _keyboard.frame = default;
-        NowUITextInput.Invalidate();
-        _pointer.snapshot = new NowUIInputSnapshot(
+        NowTextInput.Invalidate();
+        _pointer.snapshot = new NowInputSnapshot(
             pointer,
-            NowUIPointerButtons.Secondary,
-            NowUIPointerButtons.Secondary,
-            NowUIPointerButtons.None);
+            NowPointerButtons.Secondary,
+            NowPointerButtons.Secondary,
+            NowPointerButtons.None);
         return RunFrame(false);
     }
 
@@ -110,7 +110,7 @@ public class NowTextSelectionTests
         using (_drawList.Begin(Surface))
         {
             if (forceFocusFrame)
-                NowUIFocus.ForceNewFrame();
+                NowFocus.ForceNewFrame();
 
             result = NowTextSelection.Draw(
                 42, Text, _lines, _font, Size, NowFontStyle.Regular, new Vector4(0f, 0f, 1f, 0.3f));
@@ -135,7 +135,7 @@ public class NowTextSelectionTests
         Assert.IsTrue(selected, "drag must produce a selection");
 
         Frame(toX, down: false, pressed: false, released: true);
-        Frame(toX, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+        Frame(toX, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
 
         Assert.AreEqual("world", _copied);
     }
@@ -151,11 +151,11 @@ public class NowTextSelectionTests
         Assert.IsTrue(selected, "double click must select the word");
 
         Frame(insideWorld, down: false, pressed: false, released: true);
-        Frame(insideWorld, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+        Frame(insideWorld, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
         Assert.AreEqual("world", _copied);
 
-        Frame(insideWorld, down: false, pressed: false, released: false, new NowUITextInputFrame { selectAllPressed = true });
-        Frame(insideWorld, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+        Frame(insideWorld, down: false, pressed: false, released: false, new NowTextInputFrame { selectAllPressed = true });
+        Frame(insideWorld, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
         Assert.AreEqual(Text, _copied);
     }
 
@@ -170,7 +170,7 @@ public class NowTextSelectionTests
             Frame(insideWorld, down: false, pressed: false, released: true);
         }
 
-        Frame(insideWorld, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+        Frame(insideWorld, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
         Assert.AreEqual(Text, _copied, "Triple-click selects the whole line.");
     }
 
@@ -191,7 +191,7 @@ public class NowTextSelectionTests
 
         Assert.IsFalse(selected, "clicking empty space must clear the selection");
 
-        Frame(outside, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+        Frame(outside, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
         Assert.IsNull(_copied, "no selection means nothing to copy");
     }
 
@@ -210,7 +210,7 @@ public class NowTextSelectionTests
         Assert.IsTrue(result.rightClicked, "secondary press inside the region must report");
         Assert.IsTrue(result.hasSelection, "right-clicking must not destroy the selection");
 
-        Frame(toX, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+        Frame(toX, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
         Assert.AreEqual("world", _copied, "the selection survives the right-click");
     }
 }

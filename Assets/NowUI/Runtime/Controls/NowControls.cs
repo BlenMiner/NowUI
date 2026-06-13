@@ -200,13 +200,13 @@ namespace NowUI
         public static NowInteraction Interact(int id, NowRect rect, out bool focused, out bool submitted)
         {
             var interaction = NowInput.Interact(id, rect);
-            NowUIFocus.Register(id, rect);
+            NowFocus.Register(id, rect);
 
             if (interaction.pressed)
-                NowUIFocus.Focus(id);
+                NowFocus.Focus(id);
 
-            focused = NowUIFocus.IsFocused(id);
-            submitted = NowUIFocus.SubmitPressed(id);
+            focused = NowFocus.IsFocused(id);
+            submitted = NowFocus.SubmitPressed(id);
 
             if (interaction.hovered || interaction.held || focused)
                 NowControlState.RequestRepaint();

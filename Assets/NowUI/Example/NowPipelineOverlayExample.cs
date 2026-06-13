@@ -2,7 +2,7 @@ using UnityEngine;
 using NowUI;
 
 [AddComponentMenu("NowUI/Examples/NowUI Pipeline Overlay Example")]
-public sealed class NowUIPipelineOverlayExample : NowUIPipelineGraphic
+public sealed class NowPipelineOverlayExample : NowPipelineGraphic
 {
     [SerializeField] NowFontAsset _font;
 

@@ -149,7 +149,7 @@ public class NowRendererTests
             var graphic = graphicObject.AddComponent<TestPipelineGraphic>();
             graphic.targetCamera = camera;
 
-            Assert.IsTrue(NowUIPipelineGraphic.BuildDrawList(camera, drawList));
+            Assert.IsTrue(NowPipelineGraphic.BuildDrawList(camera, drawList));
             Assert.AreEqual(1, graphic.drawCount);
             Assert.IsTrue(drawList.hasGeometry);
             Assert.AreEqual(4, drawList.mesh.vertexCount);
@@ -248,7 +248,7 @@ public class NowRendererTests
         Assert.IsTrue(material.HasProperty("_UseUIAlphaClip"));
     }
 
-    sealed class TestPipelineGraphic : NowUIPipelineGraphic
+    sealed class TestPipelineGraphic : NowPipelineGraphic
     {
         public int drawCount;
 

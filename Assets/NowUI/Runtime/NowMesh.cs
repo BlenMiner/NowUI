@@ -9,20 +9,20 @@ namespace NowUI.Internal
         TexturedRectangle
     }
 
-    internal struct NowUIMeshBatch
+    internal struct NowMeshBatch
     {
         public readonly Material material;
 
         public readonly NowMeshKind kind;
 
-        public NowUIMeshBatch(Material material, NowMeshKind kind)
+        public NowMeshBatch(Material material, NowMeshKind kind)
         {
             this.material = material;
             this.kind = kind;
         }
     }
 
-    internal enum NowUIMeshLayout
+    internal enum NowMeshLayout
     {
         Render,
         Canvas

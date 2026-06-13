@@ -21,13 +21,13 @@ namespace NowUI
 
         public bool hasGeometry => _drawList.hasGeometry;
 
-        public NowUIDrawScope Begin(Vector2 size)
+        public NowDrawScope Begin(Vector2 size)
         {
             ThrowIfDisposed();
             return _drawList.Begin(size);
         }
 
-        public NowUIDrawScope Begin(RenderTexture target)
+        public NowDrawScope Begin(RenderTexture target)
         {
             ThrowIfDisposed();
 

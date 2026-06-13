@@ -79,14 +79,14 @@ namespace NowUI
 
             if (focused && hadFocus == 0)
             {
-                NowUITextInput.setImeEnabled?.Invoke(true);
+                NowTextInput.setImeEnabled?.Invoke(true);
 
                 if (!interaction.pressed)
                     NowTextEdit.MoveEnd(ref state, text, false);
             }
             else if (!focused && hadFocus == 1)
             {
-                NowUITextInput.setImeEnabled?.Invoke(false);
+                NowTextInput.setImeEnabled?.Invoke(false);
             }
 
             hadFocus = focused ? (byte)1 : (byte)0;
@@ -117,8 +117,8 @@ namespace NowUI
 
             if (focused && !NowInput.isPassive)
             {
-                NowUIFocus.LockNavigation();
-                var frame = NowUITextInput.current;
+                NowFocus.LockNavigation();
+                var frame = NowTextInput.current;
                 composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
 
                 if (!string.IsNullOrEmpty(frame.characters))
@@ -128,23 +128,23 @@ namespace NowUI
                 if (composition == null)
                 {
                     if (frame.enterPressed || frame.escapePressed)
-                        NowUIFocus.Clear();
+                        NowFocus.Clear();
 
                     if (frame.selectAllPressed)
                         NowTextEdit.SelectAll(ref state, text);
 
                     if (frame.copyPressed && state.hasSelection)
-                        NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                        NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
 
                     if (frame.cutPressed && state.hasSelection)
                     {
-                        NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                        NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
                         NowTextEdit.DeleteSelection(ref text, ref state);
                     }
 
                     if (frame.pastePressed)
                     {
-                        string buffer = NowUIClipboard.Paste();
+                        string buffer = NowClipboard.Paste();
 
                         if (!string.IsNullOrEmpty(buffer))
                             NowTextEdit.Insert(ref text, ref state, buffer.Replace("\n", " ").Replace("\r", string.Empty));
@@ -206,7 +206,7 @@ namespace NowUI
             state.scrollX = Mathf.Clamp(state.scrollX, 0f, Mathf.Max(0f, totalWidth - inner.width));
 
             if (focused && !NowInput.isPassive)
-                NowUITextInput.setCompositionCursor?.Invoke(new Vector2(inner.x - state.scrollX + caretX, inner.yMax));
+                NowTextInput.setCompositionCursor?.Invoke(new Vector2(inner.x - state.scrollX + caretX, inner.yMax));
 
             var box = theme.Rectangle(rect, NowRectangleStyle.Outline);
 
@@ -294,7 +294,7 @@ namespace NowUI
                     NowTextEdit.MoveEnd(ref state, text, false);
                 }
 
-                NowUIFocus.Clear();
+                NowFocus.Clear();
                 CloseTouchKeyboard();
             }
         }

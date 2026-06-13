@@ -414,7 +414,7 @@ public class NowLayoutTests
         NowInput.Reset();
         var provider = new LayoutMockInputProvider
         {
-            snapshot = new NowUIInputSnapshot(new Vector2(20, 20), true, true, false)
+            snapshot = new NowInputSnapshot(new Vector2(20, 20), true, true, false)
         };
 
         try
@@ -657,9 +657,9 @@ public class NowLayoutTests
 
     sealed class LayoutMockInputProvider : INowInputProvider
     {
-        public NowUIInputSnapshot snapshot;
+        public NowInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
             snapshot = this.snapshot;
             return true;

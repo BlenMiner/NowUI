@@ -116,7 +116,7 @@ namespace NowUI
             CacheEntry entry,
             RenderTexture target,
             Rect rect,
-            NowUIDrawScope drawScope,
+            NowDrawScope drawScope,
             Color clearColor)
         {
             drawScope.Dispose();
@@ -180,13 +180,13 @@ namespace NowUI
 
         RenderTexture _target;
 
-        NowUIDrawScope _drawScope;
+        NowDrawScope _drawScope;
 
         Rect _rect;
 
         Color _clearColor;
 
-        NowUIInputScope _inputScope;
+        NowInputScope _inputScope;
 
         bool _renders;
 
@@ -200,9 +200,9 @@ namespace NowUI
             Rect rect,
             NowGUI.CacheEntry entry,
             RenderTexture target,
-            NowUIDrawScope drawScope,
+            NowDrawScope drawScope,
             Color clearColor,
-            NowUIInputScope inputScope)
+            NowInputScope inputScope)
         {
             return new NowGUIScope(rect, entry, target, drawScope, clearColor, true, false, inputScope, true);
         }
@@ -213,7 +213,7 @@ namespace NowUI
             return new NowGUIScope(rect, null, null, default, Color.clear, false, true);
         }
 
-        internal static NowGUIScope Suppress(Rect rect, NowUIInputScope inputScope)
+        internal static NowGUIScope Suppress(Rect rect, NowInputScope inputScope)
         {
             Now.BeginSuppressDraw();
             return new NowGUIScope(rect, null, null, default, Color.clear, false, true, inputScope, true);
@@ -223,11 +223,11 @@ namespace NowUI
             Rect rect,
             NowGUI.CacheEntry entry,
             RenderTexture target,
-            NowUIDrawScope drawScope,
+            NowDrawScope drawScope,
             Color clearColor,
             bool renders,
             bool suppresses = false,
-            NowUIInputScope inputScope = default,
+            NowInputScope inputScope = default,
             bool hasInputScope = false)
         {
             _rect = rect;
@@ -284,7 +284,7 @@ namespace NowUI
         }
     }
 
-    public static class NowUIGUILayout
+    public static class NowGUILayout
     {
         const float DefaultHeight = 120f;
 

@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace NowUI.Internal
 {
-    public class NowUIBootstrap : MonoBehaviour
+    public class NowBootstrap : MonoBehaviour
     {
         public event Action onPreUpdate;
 

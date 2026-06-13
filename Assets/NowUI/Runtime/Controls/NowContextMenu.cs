@@ -10,20 +10,20 @@ namespace NowUI
     /// draws run after the owner returns):
     /// <code>
     /// if (selection.rightClicked)
-    ///     NowUIContextMenu.Open(menuId, selection.rightClickPosition);
+    ///     NowContextMenu.Open(menuId, selection.rightClickPosition);
     ///
-    /// if (NowUIContextMenu.Begin(menuId))
+    /// if (NowContextMenu.Begin(menuId))
     /// {
-    ///     if (NowUIContextMenu.Item("Copy")) Copy();
-    ///     if (NowUIContextMenu.Item("Select All")) SelectAll();
-    ///     NowUIContextMenu.End();
+    ///     if (NowContextMenu.Item("Copy")) Copy();
+    ///     if (NowContextMenu.Item("Select All")) SelectAll();
+    ///     NowContextMenu.End();
     /// }
     /// </code>
     /// One menu is open at a time and it is modal: everything beneath is
     /// pointer-blocked so the anchor position stays meaningful, and it closes
     /// on selection, press outside, cancel, or an attempted scroll.
     /// </summary>
-    public static class NowUIContextMenu
+    public static class NowContextMenu
     {
         const float ItemHeight = 26f;
         const float PaddingX = 14f;
@@ -114,9 +114,9 @@ namespace NowUI
             int pendingId = NowInput.GetId(id, "ctx-pending");
 
             NowControlState.RequestRepaint();
-            NowUIOverlay.Block(new NowRect(-100000f, -100000f, 200000f, 200000f));
+            NowOverlay.Block(new NowRect(-100000f, -100000f, 200000f, 200000f));
 
-            NowUIOverlay.Defer(popupRect, () =>
+            NowOverlay.Defer(popupRect, () =>
             {
                 var background = theme.Rectangle(popupRect, NowRectangleStyle.Surface);
                 background.radius = new Vector4(6f, 6f, 6f, 6f);
@@ -152,7 +152,7 @@ namespace NowUI
 
                 var snapshot = NowInput.current;
                 bool pressed = snapshot.primaryPressed ||
-                    (snapshot.pointerButtonsPressed & NowUIPointerButtons.Secondary) != 0;
+                    (snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0;
 
                 if ((pressed && !popupRect.Contains(snapshot.pointerPosition)) ||
                     snapshot.cancelPressed ||

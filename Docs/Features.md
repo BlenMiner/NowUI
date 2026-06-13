@@ -36,21 +36,21 @@ public sealed class OverlayExample : MonoBehaviour
 
 Coordinates use `Vector4(x, y, width, height)` in UI units with a top-left
 origin. By default one unit is one pixel; pass a scale to
-`Now.StartUI(NowUIScreen.recommendedUIScale)` to draw in density-independent
+`Now.StartUI(NowScreen.recommendedUIScale)` to draw in density-independent
 units on high-DPI screens (see [Mobile](Mobile.md)). For automatic sizing and
 nesting instead of hand-placed rects, see [Layout](Layout.md); for vector
 animation, see [Lottie](Lottie.md).
 
 ## Interaction And Input
 
-NowUI keeps input separate from rendering through `INowUIInputProvider`.
+NowUI keeps input separate from rendering through `INowInputProvider`.
 Providers normalize their source into the current NowUI surface coordinates, so
-controls can use the same `NowUIInput.Interact(...)` calls in screen rendering,
+controls can use the same `NowInput.Interact(...)` calls in screen rendering,
 IMGUI, UGUI, RenderTexture, SRP overlays, and tests.
 
 ```csharp
 var rect = new Vector4(20, 20, 160, 44);
-var state = NowUIInput.Interact("save-button", rect);
+var state = NowInput.Interact("save-button", rect);
 
 Now.Rectangle(rect)
     .SetColor(state.hovered ? Color.white : Color.gray)
@@ -61,26 +61,26 @@ if (state.clicked)
     Save();
 ```
 
-`NowUIInteraction` reports `hovered`, `pressed`, `held`, `released`, `clicked`,
+`NowInteraction` reports `hovered`, `pressed`, `held`, `released`, `clicked`,
 `dragging`, `dragStarted`, and `dragEnded`. Primary mouse/button interaction is
 the default, and the same API can target right click, middle click, and common
 mouse navigation buttons.
 
 ```csharp
-var context = NowUIInput.Interact("row-menu", rowRect, NowUIPointerButton.Secondary);
+var context = NowInput.Interact("row-menu", rowRect, NowPointerButton.Secondary);
 
 if (context.clicked)
     OpenContextMenu();
 ```
 
 Control id strings are hashed with a stable internal hash; pass an integer id
-when you already have stable ids. `NowUIInput.current.navigation` carries
+when you already have stable ids. `NowInput.current.navigation` carries
 keyboard/gamepad navigation as a `Vector2`, while `submit*` and `cancel*` fields
 track action buttons.
 
 The built-in render paths set up input where they already own a surface:
 
-- `Now.StartUI(...)` uses `NowUIInput.defaultProvider`, which defaults to
+- `Now.StartUI(...)` uses `NowInput.defaultProvider`, which defaults to
   screen-space mouse and touch input from the Unity Input System. It falls
   back to legacy `UnityEngine.Input` only when the legacy input manager is
   enabled. If neither source is available, it returns no pointer instead of
@@ -91,28 +91,28 @@ The built-in render paths set up input where they already own a surface:
   arrows/WASD, gamepad left stick/D-pad, submit, and cancel. Legacy fallback
   covers touch, mouse buttons 0-4, arrows/WASD, enter/space, escape, and the
   first two joystick buttons.
-- `NowUIGUI.Auto(...)` and `NowUIGUILayout.Auto(...)` use IMGUI events.
-- `NowUIGraphic` uses a `RectTransform` mouse provider.
-- `NowUIPipelineGraphic.BuildDrawList(...)` maps screen mouse input into the
+- `NowGUI.Auto(...)` and `NowGUILayout.Auto(...)` use IMGUI events.
+- `NowGraphic` uses a `RectTransform` mouse provider.
+- `NowPipelineGraphic.BuildDrawList(...)` maps screen mouse input into the
   camera pixel rect.
 
 For RenderTexture previews, world-space quads, remote input, or tests, scope a
 custom provider around the draw code.
 
 ```csharp
-using (NowUIInput.Begin(myInputProvider, new Vector2(target.width, target.height)))
+using (NowInput.Begin(myInputProvider, new Vector2(target.width, target.height)))
 using (renderer.Begin(target))
 {
-    var state = NowUIInput.Interact(42, new Rect(8, 8, 120, 32));
+    var state = NowInput.Interact(42, new Rect(8, 8, 120, 32));
 }
 ```
 
-Mock providers only need to return a `NowUIInputSnapshot`, which makes immediate
+Mock providers only need to return a `NowInputSnapshot`, which makes immediate
 mode controls testable without Unity's live input devices.
 
 ## Rectangles
 
-`NowUIRectangle` is a value struct. Configure it fluently and call `Draw()`.
+`NowRectangle` is a value struct. Configure it fluently and call `Draw()`.
 
 ```csharp
 Now.Rectangle(new Vector4(10, 10, 220, 120))
@@ -139,7 +139,7 @@ outline color, blur, mask, and position.
 
 ## Text
 
-`NowUIText` draws MSDF glyphs from a compiled `NowFont` asset.
+`NowText` draws MSDF glyphs from a compiled `NowFont` asset.
 
 ```csharp
 Now.Text(new Vector4(24, 24, 360, 60), font)
@@ -170,17 +170,17 @@ supplementary-plane glyphs when the font atlas contains those glyphs.
 
 ## UGUI Rendering
 
-Use `NowUIGraphic` when NowUI should render into a UGUI `CanvasRenderer`.
-Override `DrawNowUI(Rect rect)` and do not call `StartUI()` or `FlushUI()`.
+Use `NowGraphic` when NowUI should render into a UGUI `CanvasRenderer`.
+Override `DrawNowUI(NowRect rect)` and do not call `StartUI()` or `FlushUI()`.
 
 ```csharp
 using UnityEngine;
 
-public sealed class MyPanel : NowUIGraphic
+public sealed class MyPanel : NowGraphic
 {
     [SerializeField] NowFont font;
 
-    protected override void DrawNowUI(Rect rect)
+    protected override void DrawNowUI(NowRect rect)
     {
         Vector4 bounds = new Vector4(0, 0, rect.width, rect.height);
 
@@ -204,13 +204,13 @@ Frame` only for animated graphics or continuously changing data.
 
 ## IMGUI
 
-Use `NowUIGUI.Auto(rect)` or `NowUIGUILayout.Auto(...)` from runtime
-`OnGUI` code. In editor code, `NowUIEditorGUI` and `NowUIEditorGUILayout` are
+Use `NowGUI.Auto(rect)` or `NowGUILayout.Auto(...)` from runtime
+`OnGUI` code. In editor code, `NowEditorGUI` and `NowEditorGUILayout` are
 aliases that add editor pixel-density handling. These helpers render NowUI into
 a cached `RenderTexture` and draw it with IMGUI.
 
 ```csharp
-using (var ui = NowUIGUILayout.Auto(96))
+using (var ui = NowGUILayout.Auto(96))
 {
     Now.Rectangle(new Vector4(0, 0, ui.width, ui.height))
         .SetColor(Color.black)
@@ -221,24 +221,24 @@ using (var ui = NowUIGUILayout.Auto(96))
 
 ## RenderTexture And Command Buffers
 
-Use `NowUIRenderer` when NowUI should render outside Canvas and outside the
-legacy `OnPostRender` path. Internally this uses `NowUIDrawList`, the shared
+Use `NowRenderer` when NowUI should render outside Canvas and outside the
+legacy `OnPostRender` path. Internally this uses `NowDrawList`, the shared
 capture container that turns immediate NowUI calls into a mesh plus material
 batches. Pipeline integrations should stay thin: build a draw list, then call
-`NowUIRenderer.Draw(commandBuffer, drawList)` or set the target with
-`NowUIRenderer.PopulateCommandBuffer(...)`.
+`NowRenderer.Draw(commandBuffer, drawList)` or set the target with
+`NowRenderer.PopulateCommandBuffer(...)`.
 
 Render directly into a pure `RenderTexture`.
 
 ```csharp
 using UnityEngine;
 
-public sealed class NowUITextureExample : MonoBehaviour
+public sealed class NowRenderTextureExample : MonoBehaviour
 {
     [SerializeField] RenderTexture target;
     [SerializeField] NowFont font;
 
-    readonly NowUIRenderer renderer = new NowUIRenderer();
+    readonly NowRenderer renderer = new NowRenderer();
 
     void Update()
     {
@@ -274,9 +274,9 @@ pass.
 using UnityEngine;
 using UnityEngine.Rendering;
 
-public sealed class NowUISrpExample : MonoBehaviour
+public sealed class NowSrpExample : MonoBehaviour
 {
-    readonly NowUIRenderer renderer = new NowUIRenderer();
+    readonly NowRenderer renderer = new NowRenderer();
     readonly CommandBuffer commandBuffer = new CommandBuffer { name = "NowUI" };
 
     void OnEnable()
@@ -314,10 +314,10 @@ public sealed class NowUISrpExample : MonoBehaviour
 }
 ```
 
-`NowUIRenderer.Begin(...)` builds the renderer's current draw list.
-`NowUIRenderer.Draw(commandBuffer)` draws that current draw list into the
+`NowRenderer.Begin(...)` builds the renderer's current draw list.
+`NowRenderer.Draw(commandBuffer)` draws that current draw list into the
 command buffer's current render target.
-`NowUIRenderer.Draw(commandBuffer, drawList)` does the same for an external
+`NowRenderer.Draw(commandBuffer, drawList)` does the same for an external
 draw list. `PopulateCommandBuffer(...)` sets an explicit target first.
 
 ## Font Compilation
@@ -378,10 +378,10 @@ Current example scripts live under `Assets/NowUI/Example`.
 - `ShapedRectangles.cs`: stress-tests rectangle radius, outline, blur, and
   padding.
 - `TextTests.cs`: exercises text rendering behavior.
-- `NowUIGraphicExample.cs`: demonstrates UGUI mesh capture.
-- `NowUIRenderTextureExample.cs`: renders NowUI into a `RenderTexture` and
+- `NowGraphicExample.cs`: demonstrates UGUI mesh capture.
+- `NowRenderTextureExample.cs`: renders NowUI into a `RenderTexture` and
   applies it to a scene `Renderer`.
-- `NowUIPipelineOverlayExample.cs`: demonstrates an SRP overlay source for URP
+- `NowPipelineOverlayExample.cs`: demonstrates an SRP overlay source for URP
   and HDRP wrappers.
 - `MailClientMockup.cs`: demonstrates a larger immediate-mode layout with
   responsive panels, rows, labels, masks, and truncation.

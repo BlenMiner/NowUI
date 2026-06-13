@@ -6,7 +6,7 @@ namespace NowUI
     /// <summary>
     /// Dropdown selector:
     /// <code>NowLayout.Dropdown("quality", qualityNames).Draw(ref qualityIndex);</code>
-    /// The popup draws through <see cref="NowUIOverlay"/> — above everything, with
+    /// The popup draws through <see cref="NowOverlay"/> — above everything, with
     /// the controls underneath pointer-blocked — and closes on selection, on a
     /// click outside, or on cancel. Long lists scroll. Selection from the popup
     /// applies on the next frame's Draw (deferred draws run after Draw returns).
@@ -115,7 +115,7 @@ namespace NowUI
             bool scrolls = optionCount * ItemHeight + 8f > MaxPopupHeight;
             int scrollId = NowInput.GetId(id, "popup-scroll");
 
-            NowUIOverlay.Defer(popupRect, () =>
+            NowOverlay.Defer(popupRect, () =>
             {
                 var background = theme.Rectangle(popupRect, NowRectangleStyle.Surface);
                 background.outline = 1f;

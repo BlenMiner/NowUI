@@ -55,7 +55,7 @@ Useful options:
 participates in flex sizing like a label:
 
 ```csharp
-using (NowLayout.Area(NowUIScreen.safeArea))
+using (NowLayout.Area(NowScreen.safeArea))
 using (NowLayout.Horizontal())
 {
     NowLayout.Lottie(spinner).SetHeight(32).Draw();
@@ -65,7 +65,7 @@ using (NowLayout.Horizontal())
 
 ## UGUI
 
-`NowUILottieGraphic` renders an animation through a `CanvasRenderer`; add it to
+`NowLottieGraphic` renders an animation through a `CanvasRenderer`; add it to
 a `RectTransform` like any other graphic.
 
 ## Performance notes

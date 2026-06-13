@@ -4,19 +4,19 @@ NowUI supports three non-retained output paths.
 
 - Built-in Render Pipeline: call `Now.StartUI()` and `Now.FlushUI()` from
   camera callbacks such as `OnPostRender`.
-- UGUI: derive from `NowUIGraphic` and render into `CanvasRenderer`.
-- SRP: derive from `NowUIPipelineGraphic` and use the URP or HDRP wrapper.
+- UGUI: derive from `NowGraphic` and render into `CanvasRenderer`.
+- SRP: derive from `NowPipelineGraphic` and use the URP or HDRP wrapper.
 
 ## Shared SRP Source
 
-`NowUIPipelineGraphic` is the shared source component for URP and HDRP. Attach a
+`NowPipelineGraphic` is the shared source component for URP and HDRP. Attach a
 derived component to a GameObject, assign a `NowFont` or other draw data, then
 override `DrawNowUI`.
 
 ```csharp
 using UnityEngine;
 
-public sealed class MySrpOverlay : NowUIPipelineGraphic
+public sealed class MySrpOverlay : NowPipelineGraphic
 {
     [SerializeField] NowFont font;
 
@@ -44,7 +44,7 @@ Use the component fields to choose which cameras it draws into.
 - `Order`: controls draw order when multiple pipeline graphics target the same
   camera.
 
-The included `NowUIPipelineOverlayExample` demonstrates this component.
+The included `NowPipelineOverlayExample` demonstrates this component.
 
 ## URP
 
@@ -52,15 +52,15 @@ URP support lives in the optional `NowUI.URP` assembly. It is enabled only when
 the `com.unity.render-pipelines.universal` package is installed.
 
 1. Install or enable URP in the project.
-2. Add `NowUIUniversalRendererFeature` to the active URP Renderer asset.
+2. Add `NowUniversalRendererFeature` to the active URP Renderer asset.
 3. Choose the render pass event, usually `After Rendering Post Processing`.
-4. Add one or more `NowUIPipelineGraphic` components in the scene.
+4. Add one or more `NowPipelineGraphic` components in the scene.
 
-The renderer feature builds a `NowUIDrawList` for each camera that has matching
+The renderer feature builds a `NowDrawList` for each camera that has matching
 pipeline graphics, then appends the draw commands to URP's command buffer.
 
 The feature's `UI Scale` field sets pixels per UI unit, and
-`Scale By Display Density` follows `NowUIScreen.recommendedUIScale` instead so
+`Scale By Display Density` follows `NowScreen.recommendedUIScale` instead so
 UI keeps a consistent physical size on phones. See [Mobile](Mobile.md).
 
 ## HDRP
@@ -70,12 +70,12 @@ the `com.unity.render-pipelines.high-definition` package is installed.
 
 1. Install or enable HDRP in the project.
 2. Add a Custom Pass Volume.
-3. Add `NowUIHighDefinitionCustomPass` to the volume's custom pass list.
+3. Add `NowHighDefinitionCustomPass` to the volume's custom pass list.
 4. Pick an injection point such as `After Post Process`.
-5. Add one or more `NowUIPipelineGraphic` components in the scene.
+5. Add one or more `NowPipelineGraphic` components in the scene.
 
 The custom pass uses the `CommandBuffer` from `CustomPassContext` and draws the
-same `NowUIDrawList` format as URP and RenderTexture output. It exposes the
+same `NowDrawList` format as URP and RenderTexture output. It exposes the
 same `UI Scale` / `Scale By Display Density` options as the URP feature.
 
 ## Wrapper Shape
@@ -83,8 +83,8 @@ same `UI Scale` / `Scale By Display Density` options as the URP feature.
 Future pipeline targets should remain thin wrappers.
 
 ```csharp
-if (NowUIPipelineGraphic.BuildDrawList(camera, drawList))
-    NowUIRenderer.Draw(commandBuffer, drawList);
+if (NowPipelineGraphic.BuildDrawList(camera, drawList))
+    NowRenderer.Draw(commandBuffer, drawList);
 ```
 
 The draw-list layer owns immediate-mode capture. Pipeline wrappers should only

@@ -10,7 +10,7 @@ using Object = UnityEngine.Object;
 /// back: the GPU draw path, shader output, font atlas uploads, and Lottie
 /// tessellation — everything the edit-mode capture tests cannot see.
 /// </summary>
-public class NowUIRenderingPlayModeTests
+public class NowRenderingPlayModeTests
 {
     const int Side = 128;
 
@@ -252,10 +252,10 @@ public class NowUIRenderingPlayModeTests
             yield return null;
 
             Assert.IsFalse(
-                NowUIRaycastGate.IsPointerAllowed(host, new Vector2(50, 50)),
+                NowRaycastGate.IsPointerAllowed(host, new Vector2(50, 50)),
                 "A UGUI element above the host must occlude the pointer.");
             Assert.IsTrue(
-                NowUIRaycastGate.IsPointerAllowed(host, new Vector2(150, 150)),
+                NowRaycastGate.IsPointerAllowed(host, new Vector2(150, 150)),
                 "The pointer over the host itself must pass.");
         }
         finally
@@ -268,7 +268,7 @@ public class NowUIRenderingPlayModeTests
     }
 
     [UnityTest]
-    public IEnumerator EventSystemSelectionSuspendsNowUIFocus()
+    public IEnumerator EventSystemSelectionSuspendsNowFocus()
     {
         var eventSystemObject = new GameObject("TestEventSystem", typeof(UnityEngine.EventSystems.EventSystem));
         var selectable = new GameObject("Selected");
@@ -278,23 +278,23 @@ public class NowUIRenderingPlayModeTests
             var eventSystem = UnityEngine.EventSystems.EventSystem.current;
             Assert.NotNull(eventSystem, "EventSystem must be live in play mode.");
 
-            NowUIFocus.Focus(7);
+            NowFocus.Focus(7);
             eventSystem.SetSelectedGameObject(selectable);
             Assert.NotNull(eventSystem.currentSelectedGameObject);
 
             yield return null;
-            NowUIFocus.Register(1, new NowRect(0, 0, 10, 10));
+            NowFocus.Register(1, new NowRect(0, 0, 10, 10));
 
-            Assert.AreEqual(0, NowUIFocus.focusedId, "UGUI selection must clear NowUI focus.");
+            Assert.AreEqual(0, NowFocus.focusedId, "UGUI selection must clear NowUI focus.");
 
             eventSystem.SetSelectedGameObject(selectable);
-            NowUIFocus.Focus(9);
+            NowFocus.Focus(9);
             Assert.IsNull(eventSystem.currentSelectedGameObject, "NowUI focus must deselect the EventSystem.");
-            Assert.AreEqual(9, NowUIFocus.focusedId);
+            Assert.AreEqual(9, NowFocus.focusedId);
         }
         finally
         {
-            NowUIFocus.Reset();
+            NowFocus.Reset();
             Object.DestroyImmediate(selectable);
             Object.DestroyImmediate(eventSystemObject);
         }

@@ -18,7 +18,7 @@ the how-to that goes with it.
 ## 1. Restyle: themes
 
 Built-ins resolve every color, radius, spacing and font through the ambient
-`NowUITheme`. Before writing any code, check whether the look you want is
+`NowTheme`. Before writing any code, check whether the look you want is
 just different values for the same slots:
 
 ```csharp
@@ -99,8 +99,8 @@ public static bool RoundButton(
     bool inCircle = (interaction.pointerPosition - rect.center).sqrMagnitude <= radius * radius;
     bool clicked = (interaction.clicked && inCircle) || submitted;
 
-    float hoverT = NowUIControlState.Transition(
-        NowUIInput.GetId(id, "hover"), interaction.hovered && inCircle);
+    float hoverT = NowControlState.Transition(
+        NowInput.GetId(id, "hover"), interaction.hovered && inCircle);
 
     var circle = theme.Rectangle(rect, NowRectangleStyle.Accent);
     circle.radius = Vector4.one * radius;
@@ -132,7 +132,7 @@ generalizes to any shape you can hit-test against a point.
 ## 4. Build: a new control from scratch
 
 The anatomy is always the same four steps — identity, space, interaction,
-draw — with ephemeral state in `NowUIControlState` slots where needed. A
+draw — with ephemeral state in `NowControlState` slots where needed. A
 rating control, complete:
 
 ```csharp
@@ -251,19 +251,19 @@ and constructor that carry a `NowRect` and skip `NowLayout.Rect` — compare
 
 - Real values live with the caller (`ref int value`); only ephemera —
   animation phase, scroll offsets, blink anchors — go in
-  `NowUIControlState.Get<T>(id)` slots, which are evicted when stale.
-  Sub-key extra slots off your id: `NowUIInput.GetId(id, "hover")`.
+  `NowControlState.Get<T>(id)` slots, which are evicted when stale.
+  Sub-key extra slots off your id: `NowInput.GetId(id, "hover")`.
 - The timing helpers cover the standard behaviors so you never hand-roll
   them: `Transition` (animated 0..1), `Repeat` (key repeat), `Blink`
   (caret), `DetectDoubleClick`, `ClickStreak` (double = 2, triple = 3).
-- Call `NowUIControlState.RequestRepaint()` whenever the control will look
+- Call `NowControlState.RequestRepaint()` whenever the control will look
   different next frame for reasons input can't predict (running animations,
   timers). `Transition` and `Repeat` already do.
 - Interact first, mutate state, then draw — visuals must show this frame's
   reality, not last frame's.
 - Layout measure passes redraw everything inertly. The interaction helpers
-  are already measure-safe; guard any *manual* `NowUIInput.current` reads
-  with `NowUIInput.isPassive`.
+  are already measure-safe; guard any *manual* `NowInput.current` reads
+  with `NowInput.isPassive`.
 
 ## Reaching for bigger pieces
 
@@ -271,17 +271,17 @@ Larger controls are mostly composition of existing engines — check these
 before writing one:
 
 - **Text editing**: `NowTextEdit` is the headless caret/selection engine,
-  `NowUITextInput.current` the normalized keyboard frame (including IME
+  `NowTextInput.current` the normalized keyboard frame (including IME
   composition), `NowTextWrap` display word-wrap, `NowTextArea.LayoutLines`
   editing-grade line layout, `NowTextSelection` browser-style selection over
   positioned segments.
-- **Popups**: `NowUIOverlay.Defer(blockRect, draw)` draws above everything
-  and blocks input beneath; `NowUIContextMenu` is the ready-made modal menu.
+- **Popups**: `NowOverlay.Defer(blockRect, draw)` draws above everything
+  and blocks input beneath; `NowContextMenu` is the ready-made modal menu.
   Remember overlay blocks apply one frame late — deliver results the frame
-  after closing, the way `NowDropdown` and `NowUIContextMenu` do.
+  after closing, the way `NowDropdown` and `NowContextMenu` do.
 - **Clipping**: `using (Now.Mask(rect))` is all a viewport is; ScrollView is
   a mask plus a stored offset.
-- **Clipboard**: route copy/paste through `NowUIClipboard` so platform
+- **Clipboard**: route copy/paste through `NowClipboard` so platform
   swaps stay one-line.
 
 And when a built-in is *almost* right, copying its source into your project
@@ -297,8 +297,8 @@ and they are the reference for the conventions above.
       (free-form) — ideally both, as twin factories.
 - [ ] `NowControls.Interact` for pointer + focus + submit; draw a visible
       focus state when `focused` is true.
-- [ ] Caller owns real values; `NowUIControlState` holds only ephemera.
+- [ ] Caller owns real values; `NowControlState` holds only ephemera.
 - [ ] Colors and metrics from the theme, not constants.
 - [ ] `RequestRepaint()` for anything time-driven.
-- [ ] Manual input reads guarded by `NowUIInput.isPassive`.
+- [ ] Manual input reads guarded by `NowInput.isPassive`.
 - [ ] `[NowBuilder]` on builder structs so misuse warns at compile time.

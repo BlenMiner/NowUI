@@ -7,10 +7,10 @@ namespace NowUI
 {
     public interface INowInputProvider
     {
-        bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot);
+        bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot);
     }
 
-    public enum NowUIPointerButton
+    public enum NowPointerButton
     {
         Primary = 0,
         Secondary = 1,
@@ -20,7 +20,7 @@ namespace NowUI
     }
 
     [Flags]
-    public enum NowUIPointerButtons
+    public enum NowPointerButtons
     {
         None = 0,
         Primary = 1 << 0,
@@ -76,7 +76,7 @@ namespace NowUI
         }
     }
 
-    public struct NowUIInputSnapshot
+    public struct NowInputSnapshot
     {
         public readonly bool hasPointer;
 
@@ -92,11 +92,11 @@ namespace NowUI
 
         public bool primaryReleased;
 
-        public readonly NowUIPointerButtons pointerButtonsDown;
+        public readonly NowPointerButtons pointerButtonsDown;
 
-        public readonly NowUIPointerButtons pointerButtonsPressed;
+        public readonly NowPointerButtons pointerButtonsPressed;
 
-        public readonly NowUIPointerButtons pointerButtonsReleased;
+        public readonly NowPointerButtons pointerButtonsReleased;
 
         public Vector2 scrollDelta;
 
@@ -118,7 +118,7 @@ namespace NowUI
 
         public float time;
 
-        public NowUIInputSnapshot(
+        public NowInputSnapshot(
             Vector2 pointerPosition,
             bool primaryDown,
             bool primaryPressed,
@@ -128,9 +128,9 @@ namespace NowUI
                 pointerPosition,
                 pointerPosition,
                 Vector2.zero,
-                ToButtonMask(primaryDown, NowUIPointerButton.Primary),
-                ToButtonMask(primaryPressed, NowUIPointerButton.Primary),
-                ToButtonMask(primaryReleased, NowUIPointerButton.Primary),
+                ToButtonMask(primaryDown, NowPointerButton.Primary),
+                ToButtonMask(primaryPressed, NowPointerButton.Primary),
+                ToButtonMask(primaryReleased, NowPointerButton.Primary),
                 Vector2.zero,
                 Vector2.zero,
                 false,
@@ -144,11 +144,11 @@ namespace NowUI
         {
         }
 
-        public NowUIInputSnapshot(
+        public NowInputSnapshot(
             Vector2 pointerPosition,
-            NowUIPointerButtons pointerButtonsDown,
-            NowUIPointerButtons pointerButtonsPressed,
-            NowUIPointerButtons pointerButtonsReleased)
+            NowPointerButtons pointerButtonsDown,
+            NowPointerButtons pointerButtonsPressed,
+            NowPointerButtons pointerButtonsReleased)
             : this(
                 true,
                 pointerPosition,
@@ -170,7 +170,7 @@ namespace NowUI
         {
         }
 
-        public NowUIInputSnapshot(
+        public NowInputSnapshot(
             Vector2 pointerPosition,
             Vector2 pointerDelta,
             bool primaryDown,
@@ -181,9 +181,9 @@ namespace NowUI
                 pointerPosition,
                 pointerPosition - pointerDelta,
                 pointerDelta,
-                ToButtonMask(primaryDown, NowUIPointerButton.Primary),
-                ToButtonMask(primaryPressed, NowUIPointerButton.Primary),
-                ToButtonMask(primaryReleased, NowUIPointerButton.Primary),
+                ToButtonMask(primaryDown, NowPointerButton.Primary),
+                ToButtonMask(primaryPressed, NowPointerButton.Primary),
+                ToButtonMask(primaryReleased, NowPointerButton.Primary),
                 Vector2.zero,
                 Vector2.zero,
                 false,
@@ -197,12 +197,12 @@ namespace NowUI
         {
         }
 
-        public NowUIInputSnapshot(
+        public NowInputSnapshot(
             Vector2 pointerPosition,
             Vector2 pointerDelta,
-            NowUIPointerButtons pointerButtonsDown,
-            NowUIPointerButtons pointerButtonsPressed,
-            NowUIPointerButtons pointerButtonsReleased)
+            NowPointerButtons pointerButtonsDown,
+            NowPointerButtons pointerButtonsPressed,
+            NowPointerButtons pointerButtonsReleased)
             : this(
                 true,
                 pointerPosition,
@@ -224,7 +224,7 @@ namespace NowUI
         {
         }
 
-        public NowUIInputSnapshot(
+        public NowInputSnapshot(
             bool hasPointer,
             Vector2 pointerPosition,
             Vector2 previousPointerPosition,
@@ -240,9 +240,9 @@ namespace NowUI
                 pointerPosition,
                 previousPointerPosition,
                 pointerDelta,
-                ToButtonMask(primaryDown, NowUIPointerButton.Primary),
-                ToButtonMask(primaryPressed, NowUIPointerButton.Primary),
-                ToButtonMask(primaryReleased, NowUIPointerButton.Primary),
+                ToButtonMask(primaryDown, NowPointerButton.Primary),
+                ToButtonMask(primaryPressed, NowPointerButton.Primary),
+                ToButtonMask(primaryReleased, NowPointerButton.Primary),
                 scrollDelta,
                 Vector2.zero,
                 false,
@@ -256,14 +256,14 @@ namespace NowUI
         {
         }
 
-        public NowUIInputSnapshot(
+        public NowInputSnapshot(
             bool hasPointer,
             Vector2 pointerPosition,
             Vector2 previousPointerPosition,
             Vector2 pointerDelta,
-            NowUIPointerButtons pointerButtonsDown,
-            NowUIPointerButtons pointerButtonsPressed,
-            NowUIPointerButtons pointerButtonsReleased,
+            NowPointerButtons pointerButtonsDown,
+            NowPointerButtons pointerButtonsPressed,
+            NowPointerButtons pointerButtonsReleased,
             Vector2 scrollDelta,
             Vector2 navigation,
             bool submitDown,
@@ -282,9 +282,9 @@ namespace NowUI
             this.pointerButtonsDown = pointerButtonsDown;
             this.pointerButtonsPressed = pointerButtonsPressed;
             this.pointerButtonsReleased = pointerButtonsReleased;
-            primaryDown = IsSet(pointerButtonsDown, NowUIPointerButton.Primary);
-            primaryPressed = IsSet(pointerButtonsPressed, NowUIPointerButton.Primary);
-            primaryReleased = IsSet(pointerButtonsReleased, NowUIPointerButton.Primary);
+            primaryDown = IsSet(pointerButtonsDown, NowPointerButton.Primary);
+            primaryPressed = IsSet(pointerButtonsPressed, NowPointerButton.Primary);
+            primaryReleased = IsSet(pointerButtonsReleased, NowPointerButton.Primary);
             this.scrollDelta = scrollDelta;
             this.navigation = navigation;
             this.submitDown = submitDown;
@@ -297,32 +297,32 @@ namespace NowUI
             this.time = time;
         }
 
-        public bool IsPointerDown(NowUIPointerButton button)
+        public bool IsPointerDown(NowPointerButton button)
         {
             return IsSet(pointerButtonsDown, button);
         }
 
-        public bool WasPointerPressed(NowUIPointerButton button)
+        public bool WasPointerPressed(NowPointerButton button)
         {
             return IsSet(pointerButtonsPressed, button);
         }
 
-        public bool WasPointerReleased(NowUIPointerButton button)
+        public bool WasPointerReleased(NowPointerButton button)
         {
             return IsSet(pointerButtonsReleased, button);
         }
 
-        public static NowUIPointerButtons ToButtonMask(bool value, NowUIPointerButton button)
+        public static NowPointerButtons ToButtonMask(bool value, NowPointerButton button)
         {
-            return value ? ToButtonMask(button) : NowUIPointerButtons.None;
+            return value ? ToButtonMask(button) : NowPointerButtons.None;
         }
 
-        public static NowUIPointerButtons ToButtonMask(NowUIPointerButton button)
+        public static NowPointerButtons ToButtonMask(NowPointerButton button)
         {
-            return (NowUIPointerButtons)(1 << (int)button);
+            return (NowPointerButtons)(1 << (int)button);
         }
 
-        static bool IsSet(NowUIPointerButtons buttons, NowUIPointerButton button)
+        static bool IsSet(NowPointerButtons buttons, NowPointerButton button)
         {
             return (buttons & ToButtonMask(button)) != 0;
         }
@@ -334,7 +334,7 @@ namespace NowUI
 
         public readonly Rect rect;
 
-        public readonly NowUIPointerButton button;
+        public readonly NowPointerButton button;
 
         public readonly bool hasPointer;
 
@@ -365,7 +365,7 @@ namespace NowUI
         internal NowInteraction(
             int id,
             Rect rect,
-            NowUIPointerButton button,
+            NowPointerButton button,
             bool hasPointer,
             Vector2 pointerPosition,
             Vector2 pointerDelta,
@@ -407,13 +407,13 @@ namespace NowUI
 
         static NowInputSurface _surface;
 
-        static NowUIInputSnapshot _snapshot;
+        static NowInputSnapshot _snapshot;
 
         static bool _hasContext;
 
         static int _activeId;
 
-        static NowUIPointerButton _activeButton;
+        static NowPointerButton _activeButton;
 
         static int _dragId;
 
@@ -433,13 +433,13 @@ namespace NowUI
 
         public static NowInputSurface surface => _surface;
 
-        public static NowUIInputSnapshot current => _snapshot;
+        public static NowInputSnapshot current => _snapshot;
 
         public static bool hasContext => _hasContext;
 
         public static int activeId => _activeId;
 
-        public static NowUIPointerButton activeButton => _activeButton;
+        public static NowPointerButton activeButton => _activeButton;
 
         public static float dragThreshold
         {
@@ -447,24 +447,24 @@ namespace NowUI
             set => _dragThreshold = Mathf.Max(0f, value);
         }
 
-        public static NowUIInputScope Begin(Vector2 size)
+        public static NowInputScope Begin(Vector2 size)
         {
             return Begin(_defaultProvider, new NowInputSurface(size));
         }
 
-        public static NowUIInputScope Begin(Vector2 size, Rect screenRect)
+        public static NowInputScope Begin(Vector2 size, Rect screenRect)
         {
             return Begin(_defaultProvider, new NowInputSurface(size, screenRect));
         }
 
-        public static NowUIInputScope Begin(INowInputProvider provider, Vector2 size)
+        public static NowInputScope Begin(INowInputProvider provider, Vector2 size)
         {
             return Begin(provider, new NowInputSurface(size));
         }
 
-        public static NowUIInputScope Begin(INowInputProvider provider, NowInputSurface surface)
+        public static NowInputScope Begin(INowInputProvider provider, NowInputSurface surface)
         {
-            var scope = new NowUIInputScope(_surface, _snapshot, _hasContext);
+            var scope = new NowInputScope(_surface, _snapshot, _hasContext);
             Update(provider, surface);
             return scope;
         }
@@ -500,20 +500,20 @@ namespace NowUI
         {
             return _hasContext && _snapshot.hasPointer &&
                 rect.Contains(_snapshot.pointerPosition) &&
-                !NowUIOverlay.IsPointerBlocked(_snapshot.pointerPosition);
+                !NowOverlay.IsPointerBlocked(_snapshot.pointerPosition);
         }
 
-        public static bool IsPointerDown(NowUIPointerButton button)
+        public static bool IsPointerDown(NowPointerButton button)
         {
             return _hasContext && _snapshot.IsPointerDown(button);
         }
 
-        public static bool WasPointerPressed(NowUIPointerButton button)
+        public static bool WasPointerPressed(NowPointerButton button)
         {
             return _hasContext && _snapshot.WasPointerPressed(button);
         }
 
-        public static bool WasPointerReleased(NowUIPointerButton button)
+        public static bool WasPointerReleased(NowPointerButton button)
         {
             return _hasContext && _snapshot.WasPointerReleased(button);
         }
@@ -548,40 +548,40 @@ namespace NowUI
 
         public static NowInteraction Interact(string id, NowRect rect)
         {
-            return Interact(id, rect, NowUIPointerButton.Primary);
+            return Interact(id, rect, NowPointerButton.Primary);
         }
 
-        public static NowInteraction Interact(string id, NowRect rect, NowUIPointerButton button)
+        public static NowInteraction Interact(string id, NowRect rect, NowPointerButton button)
         {
             return Interact(GetId(id), (Rect)rect, button);
         }
 
         public static NowInteraction Interact(string id, Rect rect)
         {
-            return Interact(id, rect, NowUIPointerButton.Primary);
+            return Interact(id, rect, NowPointerButton.Primary);
         }
 
-        public static NowInteraction Interact(string id, Rect rect, NowUIPointerButton button)
+        public static NowInteraction Interact(string id, Rect rect, NowPointerButton button)
         {
             return Interact(GetId(id), rect, button);
         }
 
         public static NowInteraction Interact(int id, NowRect rect)
         {
-            return Interact(id, rect, NowUIPointerButton.Primary);
+            return Interact(id, rect, NowPointerButton.Primary);
         }
 
-        public static NowInteraction Interact(int id, NowRect rect, NowUIPointerButton button)
+        public static NowInteraction Interact(int id, NowRect rect, NowPointerButton button)
         {
             return Interact(id, (Rect)rect, button);
         }
 
         public static NowInteraction Interact(int id, Rect rect)
         {
-            return Interact(id, rect, NowUIPointerButton.Primary);
+            return Interact(id, rect, NowPointerButton.Primary);
         }
 
-        public static NowInteraction Interact(int id, Rect rect, NowUIPointerButton button)
+        public static NowInteraction Interact(int id, Rect rect, NowPointerButton button)
         {
             if (id == 0)
                 throw new ArgumentException("Control id 0 is reserved.", nameof(id));
@@ -589,7 +589,7 @@ namespace NowUI
             var snapshot = _snapshot;
             bool hasPointer = _hasContext && snapshot.hasPointer;
             bool hovered = hasPointer && rect.Contains(snapshot.pointerPosition) &&
-                !NowUIOverlay.IsPointerBlocked(snapshot.pointerPosition);
+                !NowOverlay.IsPointerBlocked(snapshot.pointerPosition);
 
             if (_passiveDepth > 0)
             {
@@ -726,7 +726,7 @@ namespace NowUI
             _snapshot = default;
             _hasContext = false;
             _activeId = 0;
-            _activeButton = NowUIPointerButton.Primary;
+            _activeButton = NowPointerButton.Primary;
             _dragId = 0;
             _activeDragged = false;
             _pressPosition = default;
@@ -788,7 +788,7 @@ namespace NowUI
                 topLeftScreenDelta.y * surface.size.y / screenRect.height);
         }
 
-        internal static void Restore(NowInputSurface surface, NowUIInputSnapshot snapshot, bool hasContext)
+        internal static void Restore(NowInputSurface surface, NowInputSnapshot snapshot, bool hasContext)
         {
             _surface = surface;
             _snapshot = snapshot;
@@ -803,7 +803,7 @@ namespace NowUI
         static void ClearActive()
         {
             _activeId = 0;
-            _activeButton = NowUIPointerButton.Primary;
+            _activeButton = NowPointerButton.Primary;
             _dragId = 0;
             _activeDragged = false;
             _pressPosition = default;
@@ -811,19 +811,19 @@ namespace NowUI
     }
 
     [NowScope]
-    public struct NowUIInputScope : IDisposable
+    public struct NowInputScope : IDisposable
     {
         readonly NowInputSurface _previousSurface;
 
-        readonly NowUIInputSnapshot _previousSnapshot;
+        readonly NowInputSnapshot _previousSnapshot;
 
         readonly bool _previousHasContext;
 
         bool _disposed;
 
-        internal NowUIInputScope(
+        internal NowInputScope(
             NowInputSurface previousSurface,
-            NowUIInputSnapshot previousSnapshot,
+            NowInputSnapshot previousSnapshot,
             bool previousHasContext)
         {
             _previousSurface = previousSurface;
@@ -860,11 +860,11 @@ namespace NowUI
 
         Vector2 _rawPosition;
 
-        NowUIPointerButtons _pointerButtonsDown;
+        NowPointerButtons _pointerButtonsDown;
 
-        NowUIPointerButtons _pointerButtonsPressed;
+        NowPointerButtons _pointerButtonsPressed;
 
-        NowUIPointerButtons _pointerButtonsReleased;
+        NowPointerButtons _pointerButtonsReleased;
 
         Vector2 _scrollDelta;
 
@@ -884,7 +884,7 @@ namespace NowUI
 
         bool _rawInputAvailable = true;
 
-        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
             if (!TryUpdateRawInput())
             {
@@ -906,7 +906,7 @@ namespace NowUI
                 delta = NowInput.ScaleScreenDelta(_rawDelta, surface);
             }
 
-            snapshot = new NowUIInputSnapshot(
+            snapshot = new NowInputSnapshot(
                 _hasRawPosition,
                 position,
                 position - delta,
@@ -936,12 +936,12 @@ namespace NowUI
 
             _lastFrame = frame;
 
-            if (!NowUIMouseInput.TryGet(out var mouseInput))
+            if (!NowMouseInput.TryGet(out var mouseInput))
             {
                 _hasRawPosition = false;
-                _pointerButtonsDown = NowUIPointerButtons.None;
-                _pointerButtonsPressed = NowUIPointerButtons.None;
-                _pointerButtonsReleased = NowUIPointerButtons.None;
+                _pointerButtonsDown = NowPointerButtons.None;
+                _pointerButtonsPressed = NowPointerButtons.None;
+                _pointerButtonsReleased = NowPointerButtons.None;
                 _scrollDelta = default;
                 _navigation = default;
                 _submitDown = false;
@@ -954,10 +954,10 @@ namespace NowUI
                 return _rawInputAvailable;
             }
 
-            bool buttonsWereDown = _previousButtonsDown != NowUIPointerButtons.None;
-            bool allowedNow = !blockedWhenPointerOverUGUI || !NowUIRaycastGate.IsPointerOverUGUI();
+            bool buttonsWereDown = _previousButtonsDown != NowPointerButtons.None;
+            bool allowedNow = !blockedWhenPointerOverUGUI || !NowRaycastGate.IsPointerOverUGUI();
             bool pointerVisible = mouseInput.hasPointer &&
-                NowUIRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow);
+                NowRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow);
 
             if (pointerVisible)
             {
@@ -991,7 +991,7 @@ namespace NowUI
 
         Vector2 _rawDelta;
 
-        NowUIPointerButtons _previousButtonsDown;
+        NowPointerButtons _previousButtonsDown;
 
         bool _pressAllowed = true;
     }
@@ -1000,9 +1000,9 @@ namespace NowUI
     {
         public static readonly NowIMGUIInputProvider instance = new NowIMGUIInputProvider();
 
-        NowUIPointerButtons _buttonsDown;
+        NowPointerButtons _buttonsDown;
 
-        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
             Event current = Event.current;
 
@@ -1018,12 +1018,12 @@ namespace NowUI
                 return false;
             }
 
-            NowUIPointerButtons pressed = NowUIPointerButtons.None;
-            NowUIPointerButtons released = NowUIPointerButtons.None;
+            NowPointerButtons pressed = NowPointerButtons.None;
+            NowPointerButtons released = NowPointerButtons.None;
 
             if (TryGetIMGUIButton(current.button, out var button))
             {
-                var buttonMask = NowUIInputSnapshot.ToButtonMask(button);
+                var buttonMask = NowInputSnapshot.ToButtonMask(button);
 
                 if (current.type == EventType.MouseDown)
                 {
@@ -1042,12 +1042,12 @@ namespace NowUI
             }
 
             if (current.type == EventType.MouseLeaveWindow)
-                _buttonsDown = NowUIPointerButtons.None;
+                _buttonsDown = NowPointerButtons.None;
 
             Vector2 delta = NowInput.ScaleScreenDelta(current.delta, surface);
             Vector2 scrollDelta = current.type == EventType.ScrollWheel ? current.delta : Vector2.zero;
 
-            snapshot = new NowUIInputSnapshot(
+            snapshot = new NowInputSnapshot(
                 true,
                 position,
                 position - delta,
@@ -1068,24 +1068,24 @@ namespace NowUI
             return true;
         }
 
-        static bool TryGetIMGUIButton(int button, out NowUIPointerButton pointerButton)
+        static bool TryGetIMGUIButton(int button, out NowPointerButton pointerButton)
         {
             switch (button)
             {
                 case 0:
-                    pointerButton = NowUIPointerButton.Primary;
+                    pointerButton = NowPointerButton.Primary;
                     return true;
                 case 1:
-                    pointerButton = NowUIPointerButton.Secondary;
+                    pointerButton = NowPointerButton.Secondary;
                     return true;
                 case 2:
-                    pointerButton = NowUIPointerButton.Middle;
+                    pointerButton = NowPointerButton.Middle;
                     return true;
                 case 3:
-                    pointerButton = NowUIPointerButton.Back;
+                    pointerButton = NowPointerButton.Back;
                     return true;
                 case 4:
-                    pointerButton = NowUIPointerButton.Forward;
+                    pointerButton = NowPointerButton.Forward;
                     return true;
                 default:
                     pointerButton = default;
@@ -1106,14 +1106,14 @@ namespace NowUI
 
         Vector2 _previousPosition;
 
-        NowUIInputSnapshot _snapshot;
+        NowInputSnapshot _snapshot;
 
-        NowUIPointerButtons _previousButtonsDown;
+        NowPointerButtons _previousButtonsDown;
 
         bool _pressAllowed = true;
 
         /// <summary>
-        /// When set (NowUIGraphic assigns its host graphic), the pointer is withheld
+        /// When set (NowGraphic assigns its host graphic), the pointer is withheld
         /// unless the EventSystem's topmost raycast hit is this component or one of
         /// its children — UGUI drawn above the host occludes NowUI input, mirroring
         /// how the host's raycastTarget occludes UGUI beneath it. The verdict latches
@@ -1152,7 +1152,7 @@ namespace NowUI
             set => _eventCamera = value;
         }
 
-        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
             if (_lastFrame != Time.frameCount)
                 UpdateSnapshot();
@@ -1173,7 +1173,7 @@ namespace NowUI
         {
             _lastFrame = Time.frameCount;
 
-            if (!NowUIMouseInput.TryGet(out var mouseInput))
+            if (!NowMouseInput.TryGet(out var mouseInput))
             {
                 _snapshot = default;
                 return;
@@ -1188,18 +1188,18 @@ namespace NowUI
             if (!mouseInput.hasPointer)
             {
                 _hasPreviousPosition = false;
-                _previousButtonsDown = NowUIPointerButtons.None;
+                _previousButtonsDown = NowPointerButtons.None;
                 _snapshot = CreateNavigationOnlySnapshot(mouseInput);
                 return;
             }
 
-            bool buttonsWereDown = _previousButtonsDown != NowUIPointerButtons.None;
+            bool buttonsWereDown = _previousButtonsDown != NowPointerButtons.None;
             _previousButtonsDown = mouseInput.pointerButtonsDown;
 
             bool allowedNow = raycastGate == null ||
-                NowUIRaycastGate.IsPointerAllowed(raycastGate, mouseInput.screenPosition);
+                NowRaycastGate.IsPointerAllowed(raycastGate, mouseInput.screenPosition);
 
-            if (!NowUIRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow))
+            if (!NowRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow))
             {
                 _hasPreviousPosition = false;
                 _snapshot = CreateNavigationOnlySnapshot(mouseInput);
@@ -1225,7 +1225,7 @@ namespace NowUI
             _previousPosition = position;
             _hasPreviousPosition = true;
 
-            _snapshot = new NowUIInputSnapshot(
+            _snapshot = new NowInputSnapshot(
                 true,
                 position,
                 previousPosition,
@@ -1245,16 +1245,16 @@ namespace NowUI
                 Time.realtimeSinceStartup);
         }
 
-        static NowUIInputSnapshot CreateNavigationOnlySnapshot(NowUIMouseInput input)
+        static NowInputSnapshot CreateNavigationOnlySnapshot(NowMouseInput input)
         {
-            return new NowUIInputSnapshot(
+            return new NowInputSnapshot(
                 false,
                 default,
                 default,
                 default,
-                NowUIPointerButtons.None,
-                NowUIPointerButtons.None,
-                NowUIPointerButtons.None,
+                NowPointerButtons.None,
+                NowPointerButtons.None,
+                NowPointerButtons.None,
                 default,
                 input.navigation,
                 input.submitDown,
@@ -1268,17 +1268,17 @@ namespace NowUI
         }
     }
 
-    internal struct NowUIMouseInput
+    internal struct NowMouseInput
     {
         public bool hasPointer;
 
         public Vector2 screenPosition;
 
-        public NowUIPointerButtons pointerButtonsDown;
+        public NowPointerButtons pointerButtonsDown;
 
-        public NowUIPointerButtons pointerButtonsPressed;
+        public NowPointerButtons pointerButtonsPressed;
 
-        public NowUIPointerButtons pointerButtonsReleased;
+        public NowPointerButtons pointerButtonsReleased;
 
         public Vector2 scrollDelta;
 
@@ -1296,24 +1296,24 @@ namespace NowUI
 
         public bool cancelReleased;
 
-        public static bool TryGet(out NowUIMouseInput input)
+        public static bool TryGet(out NowMouseInput input)
         {
-            if (NowUIInputSystemInput.TryGet(out input))
+            if (NowInputSystemInput.TryGet(out input))
                 return true;
 
     #if ENABLE_LEGACY_INPUT_MANAGER
             try
             {
                 Vector3 mousePosition = Input.mousePosition;
-                NowUIPointerButtons down = NowUIPointerButtons.None;
-                NowUIPointerButtons pressed = NowUIPointerButtons.None;
-                NowUIPointerButtons released = NowUIPointerButtons.None;
+                NowPointerButtons down = NowPointerButtons.None;
+                NowPointerButtons pressed = NowPointerButtons.None;
+                NowPointerButtons released = NowPointerButtons.None;
 
                 if (Input.touchCount > 0)
                 {
                     UnityEngine.Touch touch = Input.GetTouch(0);
                     mousePosition = touch.position;
-                    var primaryMask = NowUIInputSnapshot.ToButtonMask(NowUIPointerButton.Primary);
+                    var primaryMask = NowInputSnapshot.ToButtonMask(NowPointerButton.Primary);
 
                     if (touch.phase == UnityEngine.TouchPhase.Began)
                         pressed |= primaryMask;
@@ -1324,13 +1324,13 @@ namespace NowUI
                         down |= primaryMask;
                 }
 
-                AppendLegacyMouseButton(0, NowUIPointerButton.Primary, ref down, ref pressed, ref released);
-                AppendLegacyMouseButton(1, NowUIPointerButton.Secondary, ref down, ref pressed, ref released);
-                AppendLegacyMouseButton(2, NowUIPointerButton.Middle, ref down, ref pressed, ref released);
-                AppendLegacyMouseButton(3, NowUIPointerButton.Back, ref down, ref pressed, ref released);
-                AppendLegacyMouseButton(4, NowUIPointerButton.Forward, ref down, ref pressed, ref released);
+                AppendLegacyMouseButton(0, NowPointerButton.Primary, ref down, ref pressed, ref released);
+                AppendLegacyMouseButton(1, NowPointerButton.Secondary, ref down, ref pressed, ref released);
+                AppendLegacyMouseButton(2, NowPointerButton.Middle, ref down, ref pressed, ref released);
+                AppendLegacyMouseButton(3, NowPointerButton.Back, ref down, ref pressed, ref released);
+                AppendLegacyMouseButton(4, NowPointerButton.Forward, ref down, ref pressed, ref released);
                 Vector2 navigation = ReadLegacyNavigation();
-                input = new NowUIMouseInput
+                input = new NowMouseInput
                 {
                     hasPointer = true,
                     screenPosition = mousePosition,
@@ -1360,12 +1360,12 @@ namespace NowUI
     #if ENABLE_LEGACY_INPUT_MANAGER
         static void AppendLegacyMouseButton(
             int index,
-            NowUIPointerButton button,
-            ref NowUIPointerButtons down,
-            ref NowUIPointerButtons pressed,
-            ref NowUIPointerButtons released)
+            NowPointerButton button,
+            ref NowPointerButtons down,
+            ref NowPointerButtons pressed,
+            ref NowPointerButtons released)
         {
-            var mask = NowUIInputSnapshot.ToButtonMask(button);
+            var mask = NowInputSnapshot.ToButtonMask(button);
 
             if (Input.GetMouseButton(index))
                 down |= mask;
@@ -1441,9 +1441,9 @@ namespace NowUI
     #endif
     }
 
-    internal static class NowUIInputSystemInput
+    internal static class NowInputSystemInput
     {
-        public static bool TryGet(out NowUIMouseInput input)
+        public static bool TryGet(out NowMouseInput input)
         {
             input = default;
             bool hasAnyInput = false;
@@ -1463,11 +1463,11 @@ namespace NowUI
                     scroll /= 120f;
 
                 input.scrollDelta = scroll;
-                AppendPointerButton(mouse.leftButton, NowUIPointerButton.Primary, ref input);
-                AppendPointerButton(mouse.rightButton, NowUIPointerButton.Secondary, ref input);
-                AppendPointerButton(mouse.middleButton, NowUIPointerButton.Middle, ref input);
-                AppendPointerButton(mouse.backButton, NowUIPointerButton.Back, ref input);
-                AppendPointerButton(mouse.forwardButton, NowUIPointerButton.Forward, ref input);
+                AppendPointerButton(mouse.leftButton, NowPointerButton.Primary, ref input);
+                AppendPointerButton(mouse.rightButton, NowPointerButton.Secondary, ref input);
+                AppendPointerButton(mouse.middleButton, NowPointerButton.Middle, ref input);
+                AppendPointerButton(mouse.backButton, NowPointerButton.Back, ref input);
+                AppendPointerButton(mouse.forwardButton, NowPointerButton.Forward, ref input);
                 hasAnyInput = true;
             }
 
@@ -1486,7 +1486,7 @@ namespace NowUI
                 {
                     input.hasPointer = true;
                     input.screenPosition = primaryTouch.position.ReadValue();
-                    AppendPointerButton(press, NowUIPointerButton.Primary, ref input);
+                    AppendPointerButton(press, NowPointerButton.Primary, ref input);
                     hasAnyInput = true;
                 }
             }
@@ -1520,12 +1520,12 @@ namespace NowUI
             return hasAnyInput;
         }
 
-        static void AppendPointerButton(ButtonControl control, NowUIPointerButton button, ref NowUIMouseInput input)
+        static void AppendPointerButton(ButtonControl control, NowPointerButton button, ref NowMouseInput input)
         {
             if (control == null)
                 return;
 
-            var mask = NowUIInputSnapshot.ToButtonMask(button);
+            var mask = NowInputSnapshot.ToButtonMask(button);
 
             if (control.isPressed)
                 input.pointerButtonsDown |= mask;

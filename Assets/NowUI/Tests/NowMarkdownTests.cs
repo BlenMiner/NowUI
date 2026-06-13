@@ -364,20 +364,20 @@ public class NowMarkdownTests
 
     sealed class FakeProvider : INowInputProvider
     {
-        public NowUIInputSnapshot snapshot;
+        public NowInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot result)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot result)
         {
             result = snapshot;
             return true;
         }
     }
 
-    sealed class FakeKeyboard : INowUITextInputSource
+    sealed class FakeKeyboard : INowTextInputSource
     {
-        public NowUITextInputFrame frame;
+        public NowTextInputFrame frame;
 
-        public bool TryGetFrame(out NowUITextInputFrame result)
+        public bool TryGetFrame(out NowTextInputFrame result)
         {
             result = frame;
             return true;
@@ -400,11 +400,11 @@ public class NowMarkdownTests
     public void SetUp()
     {
         NowInput.Reset();
-        NowUIFocus.Reset();
+        NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
-        NowUIOverlay.Reset();
-        NowUIContextMenu.Reset();
+        NowOverlay.Reset();
+        NowContextMenu.Reset();
         NowMarkdown.Reset();
         _provider = new FakeProvider();
         _drawList = new NowDrawList();
@@ -417,11 +417,11 @@ public class NowMarkdownTests
         _drawList.Dispose();
         Now.defaultFont = null;
         NowInput.Reset();
-        NowUIFocus.Reset();
+        NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
-        NowUIOverlay.Reset();
-        NowUIContextMenu.Reset();
+        NowOverlay.Reset();
+        NowContextMenu.Reset();
         NowMarkdown.Reset();
     }
 
@@ -474,7 +474,7 @@ public class NowMarkdownTests
         Vector2 overFirstWord = new Vector2(3f, 8f);
         Vector2 overSecondWord = new Vector2(firstWordWidth + spaceWidth + 3f, 8f);
 
-        _provider.snapshot = new NowUIInputSnapshot(overSecondWord, false, false, false);
+        _provider.snapshot = new NowInputSnapshot(overSecondWord, false, false, false);
 
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
@@ -484,13 +484,13 @@ public class NowMarkdownTests
                 "hovering any word of a multi-word link must report the link");
         }
 
-        _provider.snapshot = new NowUIInputSnapshot(overFirstWord, true, true, false);
+        _provider.snapshot = new NowInputSnapshot(overFirstWord, true, true, false);
 
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             document.Draw(rect);
 
-        _provider.snapshot = new NowUIInputSnapshot(overSecondWord, false, false, true);
+        _provider.snapshot = new NowInputSnapshot(overSecondWord, false, false, true);
         string clicked;
 
         using (NowInput.Begin(_provider, Surface))
@@ -504,11 +504,11 @@ public class NowMarkdownTests
     [Test]
     public void CodeBlockTextIsSelectableAndCopyable()
     {
-        var previousCopy = NowUIClipboard.setText;
+        var previousCopy = NowClipboard.setText;
         string copied = null;
-        NowUIClipboard.setText = text => copied = text;
+        NowClipboard.setText = text => copied = text;
         var keyboard = new FakeKeyboard();
-        NowUITextInput.source = keyboard;
+        NowTextInput.source = keyboard;
 
         try
         {
@@ -520,11 +520,11 @@ public class NowMarkdownTests
             var from = new Vector2(pad + 1f, lineMidY);
             var to = new Vector2(pad + _font.MeasureText("int", codeSize).x + 1f, lineMidY);
 
-            void Frame(Vector2 pointer, bool down, bool pressed, bool released, NowUITextInputFrame keys = default)
+            void Frame(Vector2 pointer, bool down, bool pressed, bool released, NowTextInputFrame keys = default)
             {
                 keyboard.frame = keys;
-                NowUITextInput.Invalidate();
-                _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
+                NowTextInput.Invalidate();
+                _provider.snapshot = new NowInputSnapshot(pointer, down, pressed, released);
 
                 using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
@@ -534,36 +534,36 @@ public class NowMarkdownTests
             Frame(from, down: true, pressed: true, released: false);
             Frame(to, down: true, pressed: false, released: false);
             Frame(to, down: false, pressed: false, released: true);
-            Frame(to, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+            Frame(to, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
 
             Assert.AreEqual("int", copied, "dragging over code and pressing Ctrl+C must copy the selected range");
         }
         finally
         {
-            NowUIClipboard.setText = previousCopy;
-            NowUITextInput.Reset();
+            NowClipboard.setText = previousCopy;
+            NowTextInput.Reset();
         }
     }
 
     [Test]
     public void ParagraphTextIsSelectableAcrossStyledWords()
     {
-        var previousCopy = NowUIClipboard.setText;
+        var previousCopy = NowClipboard.setText;
         string copied = null;
-        NowUIClipboard.setText = text => copied = text;
+        NowClipboard.setText = text => copied = text;
         var keyboard = new FakeKeyboard();
-        NowUITextInput.source = keyboard;
+        NowTextInput.source = keyboard;
 
         try
         {
             var document = NowMarkdownDocument.Parse("plain **bold** words");
             var rect = new NowRect(0, 0, 400f, 100f);
 
-            void Frame(Vector2 pointer, bool down, bool pressed, bool released, NowUITextInputFrame keys = default)
+            void Frame(Vector2 pointer, bool down, bool pressed, bool released, NowTextInputFrame keys = default)
             {
                 keyboard.frame = keys;
-                NowUITextInput.Invalidate();
-                _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
+                NowTextInput.Invalidate();
+                _provider.snapshot = new NowInputSnapshot(pointer, down, pressed, released);
 
                 using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
@@ -576,26 +576,26 @@ public class NowMarkdownTests
             Frame(lineMid, down: true, pressed: true, released: false);
             Frame(lineEnd, down: true, pressed: false, released: false);
             Frame(lineEnd, down: false, pressed: false, released: true);
-            Frame(lineEnd, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+            Frame(lineEnd, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
 
             Assert.AreEqual("plain bold words", copied,
                 "selecting a styled paragraph must copy its plain text with spaces");
         }
         finally
         {
-            NowUIClipboard.setText = previousCopy;
-            NowUITextInput.Reset();
+            NowClipboard.setText = previousCopy;
+            NowTextInput.Reset();
         }
     }
 
     [Test]
     public void RightClickContextMenuCopiesTheSelection()
     {
-        var previousCopy = NowUIClipboard.setText;
+        var previousCopy = NowClipboard.setText;
         string copied = null;
-        NowUIClipboard.setText = text => copied = text;
+        NowClipboard.setText = text => copied = text;
         var keyboard = new FakeKeyboard();
-        NowUITextInput.source = keyboard;
+        NowTextInput.source = keyboard;
 
         try
         {
@@ -607,48 +607,48 @@ public class NowMarkdownTests
             var from = new Vector2(pad + 1f, lineMidY);
             var to = new Vector2(pad + _font.MeasureText("int", codeSize).x + 1f, lineMidY);
 
-            void Frame(NowUIInputSnapshot snapshot)
+            void Frame(NowInputSnapshot snapshot)
             {
                 keyboard.frame = default;
-                NowUITextInput.Invalidate();
+                NowTextInput.Invalidate();
                 _provider.snapshot = snapshot;
 
                 using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
                 {
                     document.Draw(rect);
-                    NowUIOverlay.Flush();
+                    NowOverlay.Flush();
                 }
             }
 
-            Frame(new NowUIInputSnapshot(from, true, true, false));
-            Frame(new NowUIInputSnapshot(to, true, false, false));
-            Frame(new NowUIInputSnapshot(to, false, false, true));
+            Frame(new NowInputSnapshot(from, true, true, false));
+            Frame(new NowInputSnapshot(to, true, false, false));
+            Frame(new NowInputSnapshot(to, false, false, true));
 
-            Frame(new NowUIInputSnapshot(to, NowUIPointerButtons.Secondary, NowUIPointerButtons.Secondary, NowUIPointerButtons.None));
-            Assert.IsTrue(NowUIContextMenu.isOpen, "right-clicking the code block must open the context menu");
+            Frame(new NowInputSnapshot(to, NowPointerButtons.Secondary, NowPointerButtons.Secondary, NowPointerButtons.None));
+            Assert.IsTrue(NowContextMenu.isOpen, "right-clicking the code block must open the context menu");
 
             var copyItem = new Vector2(to.x + 30f, to.y + 4f + 13f);
-            Frame(new NowUIInputSnapshot(copyItem, true, true, false));
-            Frame(new NowUIInputSnapshot(copyItem, false, false, true));
-            Frame(new NowUIInputSnapshot(copyItem, false, false, false));
+            Frame(new NowInputSnapshot(copyItem, true, true, false));
+            Frame(new NowInputSnapshot(copyItem, false, false, true));
+            Frame(new NowInputSnapshot(copyItem, false, false, false));
 
             Assert.AreEqual("int", copied, "the Copy item must copy the selected range");
-            Assert.IsFalse(NowUIContextMenu.isOpen, "choosing an item closes the menu");
+            Assert.IsFalse(NowContextMenu.isOpen, "choosing an item closes the menu");
         }
         finally
         {
-            NowUIClipboard.setText = previousCopy;
-            NowUITextInput.Reset();
+            NowClipboard.setText = previousCopy;
+            NowTextInput.Reset();
         }
     }
 
     [Test]
     public void ImageContextMenuCopiesTheAddress()
     {
-        var previousCopy = NowUIClipboard.setText;
+        var previousCopy = NowClipboard.setText;
         string copied = null;
-        NowUIClipboard.setText = text => copied = text;
+        NowClipboard.setText = text => copied = text;
         var injected = new Texture2D(200, 80, TextureFormat.RGBA32, false);
 
         try
@@ -657,7 +657,7 @@ public class NowMarkdownTests
             var document = NowMarkdownDocument.Parse("![photo](https://example.com/photo.png)");
             var rect = new NowRect(0, 0, 400f, 200f);
 
-            void Frame(NowUIInputSnapshot snapshot)
+            void Frame(NowInputSnapshot snapshot)
             {
                 _provider.snapshot = snapshot;
 
@@ -665,24 +665,24 @@ public class NowMarkdownTests
                 using (_drawList.Begin(Surface))
                 {
                     document.Draw(rect);
-                    NowUIOverlay.Flush();
+                    NowOverlay.Flush();
                 }
             }
 
             var onImage = new Vector2(50f, 40f);
-            Frame(new NowUIInputSnapshot(onImage, NowUIPointerButtons.Secondary, NowUIPointerButtons.Secondary, NowUIPointerButtons.None));
-            Assert.IsTrue(NowUIContextMenu.isOpen, "right-clicking an image must open its menu");
+            Frame(new NowInputSnapshot(onImage, NowPointerButtons.Secondary, NowPointerButtons.Secondary, NowPointerButtons.None));
+            Assert.IsTrue(NowContextMenu.isOpen, "right-clicking an image must open its menu");
 
             var addressItem = new Vector2(onImage.x + 30f, onImage.y + 4f + 13f);
-            Frame(new NowUIInputSnapshot(addressItem, true, true, false));
-            Frame(new NowUIInputSnapshot(addressItem, false, false, true));
-            Frame(new NowUIInputSnapshot(addressItem, false, false, false));
+            Frame(new NowInputSnapshot(addressItem, true, true, false));
+            Frame(new NowInputSnapshot(addressItem, false, false, true));
+            Frame(new NowInputSnapshot(addressItem, false, false, false));
 
             Assert.AreEqual("https://example.com/photo.png", copied, "Copy image address must copy the URL");
         }
         finally
         {
-            NowUIClipboard.setText = previousCopy;
+            NowClipboard.setText = previousCopy;
             Object.DestroyImmediate(injected);
             NowMarkdownImages.Reset();
         }
@@ -691,22 +691,22 @@ public class NowMarkdownTests
     [Test]
     public void DragAcrossBlocksSelectsLikeAWebpage()
     {
-        var previousCopy = NowUIClipboard.setText;
+        var previousCopy = NowClipboard.setText;
         string copied = null;
-        NowUIClipboard.setText = text => copied = text;
+        NowClipboard.setText = text => copied = text;
         var keyboard = new FakeKeyboard();
-        NowUITextInput.source = keyboard;
+        NowTextInput.source = keyboard;
 
         try
         {
             var document = NowMarkdownDocument.Parse("first words\n\nsecond words");
             var rect = new NowRect(0, 0, 400f, 200f);
 
-            void Frame(Vector2 pointer, bool down, bool pressed, bool released, NowUITextInputFrame keys = default)
+            void Frame(Vector2 pointer, bool down, bool pressed, bool released, NowTextInputFrame keys = default)
             {
                 keyboard.frame = keys;
-                NowUITextInput.Invalidate();
-                _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
+                NowTextInput.Invalidate();
+                _provider.snapshot = new NowInputSnapshot(pointer, down, pressed, released);
 
                 using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
@@ -719,15 +719,15 @@ public class NowMarkdownTests
             Frame(inFirst, down: true, pressed: true, released: false);
             Frame(inSecond, down: true, pressed: false, released: false);
             Frame(inSecond, down: false, pressed: false, released: true);
-            Frame(inSecond, down: false, pressed: false, released: false, new NowUITextInputFrame { copyPressed = true });
+            Frame(inSecond, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
 
             Assert.AreEqual("first words\n\nsecond words", copied,
                 "dragging across blocks must select and copy everything in between");
         }
         finally
         {
-            NowUIClipboard.setText = previousCopy;
-            NowUITextInput.Reset();
+            NowClipboard.setText = previousCopy;
+            NowTextInput.Reset();
         }
     }
 
@@ -735,7 +735,7 @@ public class NowMarkdownTests
     public void OpenContextMenuBlocksHoverBeneathAndScrollDismisses()
     {
         var keyboard = new FakeKeyboard();
-        NowUITextInput.source = keyboard;
+        NowTextInput.source = keyboard;
 
         try
         {
@@ -743,55 +743,55 @@ public class NowMarkdownTests
             var rect = new NowRect(0, 0, 400f, 300f);
             NowMarkdownResult last = default;
 
-            void Frame(NowUIInputSnapshot snapshot, bool forceOverlayFrame = false)
+            void Frame(NowInputSnapshot snapshot, bool forceOverlayFrame = false)
             {
                 keyboard.frame = default;
-                NowUITextInput.Invalidate();
+                NowTextInput.Invalidate();
                 _provider.snapshot = snapshot;
 
                 using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
                 {
                     if (forceOverlayFrame)
-                        NowUIOverlay.ForceNewFrame();
+                        NowOverlay.ForceNewFrame();
 
                     last = document.Draw(rect);
-                    NowUIOverlay.Flush();
+                    NowOverlay.Flush();
                 }
             }
 
             var overLink = new Vector2(5f, 9f);
-            Frame(new NowUIInputSnapshot(overLink, false, false, false));
+            Frame(new NowInputSnapshot(overLink, false, false, false));
             Assert.AreEqual("https://example.com/x", last.hoveredLink, "sanity: the link hovers before the menu opens");
 
             var overCode = new Vector2(12f, 42f);
-            Frame(new NowUIInputSnapshot(overCode, NowUIPointerButtons.Secondary, NowUIPointerButtons.Secondary, NowUIPointerButtons.None));
-            Assert.IsTrue(NowUIContextMenu.isOpen, "right-clicking the code block must open the menu");
+            Frame(new NowInputSnapshot(overCode, NowPointerButtons.Secondary, NowPointerButtons.Secondary, NowPointerButtons.None));
+            Assert.IsTrue(NowContextMenu.isOpen, "right-clicking the code block must open the menu");
 
-            Frame(new NowUIInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
+            Frame(new NowInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
             Assert.IsNull(last.hoveredLink, "an open context menu must block hover beneath it");
-            Assert.IsTrue(NowUIContextMenu.isOpen, "hovering elsewhere must not dismiss the menu");
+            Assert.IsTrue(NowContextMenu.isOpen, "hovering elsewhere must not dismiss the menu");
 
-            Frame(new NowUIInputSnapshot(true, overLink, overLink, Vector2.zero, false, false, false, new Vector2(0f, 1f), 1, 1f));
-            Assert.IsFalse(NowUIContextMenu.isOpen, "scrolling must dismiss the menu");
+            Frame(new NowInputSnapshot(true, overLink, overLink, Vector2.zero, false, false, false, new Vector2(0f, 1f), 1, 1f));
+            Assert.IsFalse(NowContextMenu.isOpen, "scrolling must dismiss the menu");
 
-            Frame(new NowUIInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
-            Frame(new NowUIInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
+            Frame(new NowInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
+            Frame(new NowInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
             Assert.AreEqual("https://example.com/x", last.hoveredLink,
                 "closing the menu must release the pointer block");
         }
         finally
         {
-            NowUITextInput.Reset();
+            NowTextInput.Reset();
         }
     }
 
     [Test]
     public void CopyButtonCopiesTheCodeBlock()
     {
-        var previous = NowUIClipboard.setText;
+        var previous = NowClipboard.setText;
         string copied = null;
-        NowUIClipboard.setText = text => copied = text;
+        NowClipboard.setText = text => copied = text;
 
         try
         {
@@ -800,13 +800,13 @@ public class NowMarkdownTests
             float buttonSize = NowMarkdownStyle.Default.fontSize;
             Vector2 inside = new Vector2(400f - 6f - buttonSize * 1.8f, 6f + buttonSize * 0.75f);
 
-            _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+            _provider.snapshot = new NowInputSnapshot(inside, true, true, false);
 
             using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
                 document.Draw(rect);
 
-            _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+            _provider.snapshot = new NowInputSnapshot(inside, false, false, true);
 
             using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
@@ -816,7 +816,7 @@ public class NowMarkdownTests
         }
         finally
         {
-            NowUIClipboard.setText = previous;
+            NowClipboard.setText = previous;
         }
     }
 
@@ -834,13 +834,13 @@ public class NowMarkdownTests
             Vector2 inside = new Vector2(10f, 10f);
             string clicked = null;
 
-            _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+            _provider.snapshot = new NowInputSnapshot(inside, true, true, false);
 
             using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
                 document.Draw(rect);
 
-            _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+            _provider.snapshot = new NowInputSnapshot(inside, false, false, true);
 
             using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
@@ -895,13 +895,13 @@ public class NowMarkdownTests
         Vector2 inside = new Vector2(8f, 8f);
         string clicked = null;
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
+        _provider.snapshot = new NowInputSnapshot(inside, true, true, false);
 
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             document.Draw(rect);
 
-        _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
+        _provider.snapshot = new NowInputSnapshot(inside, false, false, true);
 
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))

@@ -9,13 +9,13 @@ namespace NowUI
     {
         [SerializeField] RenderPassEvent _renderPassEvent = RenderPassEvent.AfterRenderingPostProcessing;
 
-        [SerializeField, Tooltip("Pixels per UI unit. 1 draws in raw pixels; enable Scale By Display Density to follow NowUIScreen.recommendedUIScale instead.")]
+        [SerializeField, Tooltip("Pixels per UI unit. 1 draws in raw pixels; enable Scale By Display Density to follow NowScreen.recommendedUIScale instead.")]
         float _uiScale = 1f;
 
-        [SerializeField, Tooltip("Use NowUIScreen.recommendedUIScale so UI keeps a consistent physical size on high-DPI displays. Overrides UI Scale.")]
+        [SerializeField, Tooltip("Use NowScreen.recommendedUIScale so UI keeps a consistent physical size on high-DPI displays. Overrides UI Scale.")]
         bool _scaleByDisplayDensity;
 
-        NowUIUniversalRenderPass _pass;
+        NowUniversalRenderPass _pass;
 
         public float uiScale
         {
@@ -31,12 +31,12 @@ namespace NowUI
 
         float ResolveUIScale()
         {
-            return _scaleByDisplayDensity ? NowUIScreen.recommendedUIScale : _uiScale;
+            return _scaleByDisplayDensity ? NowScreen.recommendedUIScale : _uiScale;
         }
 
         public override void Create()
         {
-            _pass = new NowUIUniversalRenderPass
+            _pass = new NowUniversalRenderPass
             {
                 renderPassEvent = _renderPassEvent
             };
@@ -46,7 +46,7 @@ namespace NowUI
         {
             var camera = renderingData.cameraData.camera;
 
-            if (!NowUIPipelineGraphic.HasGraphicsFor(camera))
+            if (!NowPipelineGraphic.HasGraphicsFor(camera))
                 return;
 
             if (_pass == null)
@@ -63,9 +63,9 @@ namespace NowUI
             _pass = null;
         }
 
-        sealed class NowUIUniversalRenderPass : ScriptableRenderPass
+        sealed class NowUniversalRenderPass : ScriptableRenderPass
         {
-            readonly NowUIDrawList _drawList = new NowUIDrawList();
+            readonly NowDrawList _drawList = new NowDrawList();
 
             public float uiScale = 1f;
 
@@ -73,14 +73,14 @@ namespace NowUI
             {
                 var camera = renderingData.cameraData.camera;
 
-                if (!NowUIPipelineGraphic.BuildDrawList(camera, _drawList, uiScale))
+                if (!NowPipelineGraphic.BuildDrawList(camera, _drawList, uiScale))
                     return;
 
                 var commandBuffer = CommandBufferPool.Get("NowUI URP");
 
                 try
                 {
-                    NowUIRenderer.Draw(commandBuffer, _drawList);
+                    NowRenderer.Draw(commandBuffer, _drawList);
                     context.ExecuteCommandBuffer(commandBuffer);
                 }
                 finally

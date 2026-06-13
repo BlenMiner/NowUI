@@ -28,15 +28,15 @@ point it became installable through UPM.
 - Flexbox-style layout system (`NowLayout`) with deferred and same-frame
   measurement modes.
 - Pointer, touch, keyboard, and gamepad input with an immediate-mode
-  interaction API (`NowUIInput.Interact`).
+  interaction API (`NowInput.Interact`).
 - Lottie vector animation playback with a native tessellator and managed
   fallback.
-- UGUI integration (`NowUIGraphic`), render-pipeline integration for URP and
+- UGUI integration (`NowGraphic`), render-pipeline integration for URP and
   HDRP, and RenderTexture/IMGUI bridges.
-- Theme tokens and presets (`NowUITheme`).
+- Theme tokens and presets (`NowTheme`).
 - UI scaling for high-DPI displays (`Now.StartUI(float uiScale)`,
-  `NowUIScreen.recommendedUIScale`) and safe-area helpers
-  (`NowUIScreen.safeArea`).
+  `NowScreen.recommendedUIScale`) and safe-area helpers
+  (`NowScreen.safeArea`).
 - Native plugins (font compiler + vector tessellator) for Windows x64,
   Linux x64, macOS x64/arm64, WebGL, Android arm64-v8a, and iOS arm64, built
   by a single auto-triggering CI workflow.
@@ -58,14 +58,14 @@ point it became installable through UPM.
   readable inside the scope — theme-integrated with enum styles
   (`NowRectangleStyle`/`NowTextStyle`/`NowColorToken`/...; string preset ids
   remain the low-level theme layer), with
-  keyboard/gamepad focus (`NowUIFocus`: spatial navigation,
+  keyboard/gamepad focus (`NowFocus`: spatial navigation,
   submit activation), per-control ephemeral state and timing helpers
-  (`NowUIControlState`), id scopes, ambient clipping (`Now.Mask`), an
-  overlay layer with input occlusion (`NowUIOverlay`), frame-sampled text
-  editing input (`NowUITextInput`) and a headless single-line editing
+  (`NowControlState`), id scopes, ambient clipping (`Now.Mask`), an
+  overlay layer with input occlusion (`NowOverlay`), frame-sampled text
+  editing input (`NowTextInput`) and a headless single-line editing
   engine (`NowTextEdit`, surrogate-safe, shaped-cluster caret hit-testing).
   Custom controls build on the same public primitives — see
-  Docs/Controls.md. UGUI hosting is first-class: `NowUIGraphic`
+  Docs/Controls.md. UGUI hosting is first-class: `NowGraphic`
   auto-rebuilds while hovered or when a control requests a repaint,
   staying fully retained otherwise.
 - Multi-line text editing: `NowLayout.TextArea()` / `Now.TextArea(rect)` with
@@ -74,7 +74,7 @@ point it became installable through UPM.
   Home/End per visual line and Ctrl+Home/End per document, shift-selection on
   every movement, click/drag and double-click word selection, Enter inserts a
   newline while Escape blurs, Ctrl+Backspace/Delete word deletion, multi-line
-  copy/cut/paste (CRLF normalized) through `NowUIClipboard`, height that
+  copy/cut/paste (CRLF normalized) through `NowClipboard`, height that
   grows with content between `SetLines(min, max)` plus scroll-to-caret, wheel
   scrolling and a slim scroll indicator, and the multiline on-screen keyboard
   on mobile. The line layout (`NowTextArea.LayoutLines`) is public for custom
@@ -104,7 +104,7 @@ point it became installable through UPM.
 - Measure passes resolve the same control ids as the real pass: occurrence
   salting now counts in a per-pass table instead of being skipped while
   passive, so loop-salted controls and `NowLayout.ContentRect` reservations
-  no longer collide during layout measurement. `NowMarkdown.Draw(string)`
+  no longer collide during layout measurement. `NowMarkdown.Document(string).Draw()`
   also takes identity from its caller, so several markdown blocks can
   interleave with other layout content (this is what the docs browser's
   live demo page does).
@@ -120,18 +120,18 @@ point it became installable through UPM.
   inline at the caret (underlined) without touching the value, editing keys
   belong to the IME until commit, and committed characters insert normally.
   The IME is enabled on focus and the caret position is reported for the
-  candidate window each frame (`NowUITextInput.setImeEnabled` /
+  candidate window each frame (`NowTextInput.setImeEnabled` /
   `setCompositionCursor` are replaceable for non-screen hosts). Both
-  keyboard backends feed `NowUITextInputFrame.composition`.
+  keyboard backends feed `NowTextInputFrame.composition`.
 - Triple-click selects a line: in TextArea (the hard, newline-delimited
   line) and in `NowTextSelection` regions including markdown documents.
-  Built on `NowUIControlState.ClickStreak` (consecutive-click counter) and
+  Built on `NowControlState.ClickStreak` (consecutive-click counter) and
   `NowTextEdit.SelectLine`, both public for custom controls.
 - Mutual UGUI pointer occlusion: UGUI drawn above NowUI now blocks NowUI
   hovers and clicks (EventSystem raycast gating in both the UGUI-hosted and
   screen input providers, drags preserved), completing the existing
   raycastTarget blocking in the other direction. EventSystem selection and
-  NowUI focus are also mutually exclusive (`NowUIFocus.respectEventSystem`).
+  NowUI focus are also mutually exclusive (`NowFocus.respectEventSystem`).
 - GitHub-flavored Markdown extension (`NowUI.Extensions.Markdown`, its own
   assembly): headings, emphasis/strong/strikethrough, inline code, fenced
   code blocks with syntax highlighting (csharp/json/C-like), quotes,
@@ -146,8 +146,8 @@ point it became installable through UPM.
   `theme.ResolveText(style)` resolves a themed text style with the ambient
   font and no rect/mask — the safe starting point for custom drawing;
   `MeasureText(string, start, length)` measures ranges without substring
-  allocation; `NowUIInput.CombineId(a, b)` is the blessed sub-element id
-  mint, and a new id-less `NowUIInput.Interact(rect)` overload derives
+  allocation; `NowInput.CombineId(a, b)` is the blessed sub-element id
+  mint, and a new id-less `NowInput.Interact(rect)` overload derives
   identity from the call site with per-frame occurrence salting (loops over
   sub-elements need no ids at all); `NowLayout.ContentRect()` codifies the
   frame-late reserve-draw-measure-repaint pattern for content whose height
@@ -163,7 +163,7 @@ point it became installable through UPM.
   gracefully when the rect is smaller than the borders); `SetUV(rect)`
   samples a sub-region; `SetPreserveAspect()` letterboxes instead of
   stretching.
-- Context menus in the core: `NowUIContextMenu` (overlay-layer popup, one
+- Context menus in the core: `NowContextMenu` (overlay-layer popup, one
   open at a time, closes on selection/outside-press/cancel) with an
   immediate-mode Open/Begin/Item/End API. Open menus are modal: everything
   beneath is pointer-blocked (no hover, clicks, or wheel — the anchor
@@ -176,7 +176,7 @@ point it became installable through UPM.
   no managed image-clipboard API, so a bitmap copy that other programs
   could paste is not possible — no fake affordance is shown). Image rects
   are excluded from text-selection presses.
-- One clipboard hook: `NowUIClipboard` (`setText`/`getText`, default
+- One clipboard hook: `NowClipboard` (`setText`/`getText`, default
   system clipboard) now backs every copy/paste path — selection Ctrl+C,
   text field copy/cut/paste, markdown copy buttons and context menus.
   Replace it once per platform and everything follows; the previously
@@ -214,7 +214,7 @@ point it became installable through UPM.
   feedback; handler replaceable via `NowMarkdownDocument.copyToClipboard`),
   images inside links are clickable, and non-http image paths load from
   `Resources` so bundled art works offline.
-- Span text APIs for zero-GC dynamic text: `NowUIText.Draw(ReadOnlySpan<char>)`
+- Span text APIs for zero-GC dynamic text: `NowText.Draw(ReadOnlySpan<char>)`
   and `Measure(ReadOnlySpan<char>)` (plus `NowFontAsset.MeasureText` span
   overload) — format counters/timers into a reusable char buffer and draw
   the span; no string is ever created. Span draws use the per-codepoint
@@ -232,14 +232,14 @@ point it became installable through UPM.
   out of a viewport skips shaping lookups, glyph resolution and advance
   math entirely, and fully masked Lottie draws skip tessellation. Hidden
   scroll content now costs ~nothing instead of "everything but the quads".
-- Profiler instrumentation: `NowUIProfiler` exposes "NowUI.*"
+- Profiler instrumentation: `NowProfiler` exposes "NowUI.*"
   `ProfilerMarker`s around every subsystem — graphic rebuild, measure pass
   vs draw pass, mesh upload, CanvasRenderer page assignment, per-string
   text drawing, HarfBuzz shaping, glyph baking, Lottie tessellation,
   overlay flush, and the screen path's GL submission. Markers compile out
   of non-development builds. Also removed the last per-frame string
   allocation in the library (dropdown popup item ids).
-- `NowUIGraphic` implements `ILayoutElement`: with Drive Layout Size (on by
+- `NowGraphic` implements `ILayoutElement`: with Drive Layout Size (on by
   default) it reports the measured NowLayout content extent as its
   preferred size, so it participates in UGUI LayoutGroups and
   ContentSizeFitters like any built-in graphic. Frame-late, like all
@@ -275,7 +275,7 @@ point it became installable through UPM.
   radio, dropdown values, popup items) rendering nothing: the style carried
   a zero-size mask from its default-rect construction, which clips
   everything. They now clip to the label area.
-- Zoo example (`NowUIZooExample`): one component exercising every feature —
+- Zoo example (`NowZooExample`): one component exercising every feature —
   styled buttons, content scopes, toggles, radios, sliders, text fields,
   dropdowns, a scroll-view event log, theme swatches, Lottie, masks, and
   align-items.

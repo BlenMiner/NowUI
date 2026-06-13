@@ -207,7 +207,7 @@ namespace NowUI.Internal
             if (rect.z <= 0f || rect.w <= 0f || tint.w <= 0f)
                 return false;
 
-            using var profile = NowUIProfiler.LottieRender.Auto();
+            using var profile = NowProfiler.LottieRender.Auto();
             float scaleX = rect.z / composition.width;
             float scaleY = rect.w / composition.height;
             float offsetX = rect.x;

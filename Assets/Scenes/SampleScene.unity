@@ -342,7 +342,7 @@ GameObject:
   - component: {fileID: 1263346709}
   - component: {fileID: 1263346710}
   m_Layer: 5
-  m_Name: NowUIMarkdownExample
+  m_Name: NowMarkdownExample
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -386,7 +386,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c4869303c35c2af4c81580faf8dbe3f9, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: NowUI.Examples::NowUIMarkdownExample
+  m_EditorClassIdentifier: NowUI.Examples::NowMarkdownExample
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1
@@ -533,7 +533,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 08fe18be331b9cd43bd8e0700b9ac603, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: NowUI.Examples::NowUIZooExample
+  m_EditorClassIdentifier: NowUI.Examples::NowZooExample
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1

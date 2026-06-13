@@ -13,20 +13,20 @@ public class NowCodeEditorTests
 {
     sealed class FakePointer : INowInputProvider
     {
-        public NowUIInputSnapshot snapshot;
+        public NowInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot result)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot result)
         {
             result = snapshot;
             return true;
         }
     }
 
-    sealed class FakeKeyboard : INowUITextInputSource
+    sealed class FakeKeyboard : INowTextInputSource
     {
-        public NowUITextInputFrame frame;
+        public NowTextInputFrame frame;
 
-        public bool TryGetFrame(out NowUITextInputFrame result)
+        public bool TryGetFrame(out NowTextInputFrame result)
         {
             result = frame;
             return true;
@@ -44,16 +44,16 @@ public class NowCodeEditorTests
     public void SetUp()
     {
         NowInput.Reset();
-        NowUIFocus.Reset();
+        NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
-        NowUIOverlay.Reset();
-        NowUITextInput.Reset();
+        NowOverlay.Reset();
+        NowTextInput.Reset();
         NowCodeEditor.ResetCaches();
 
         _pointer = new FakePointer();
         _keyboard = new FakeKeyboard();
-        NowUITextInput.source = _keyboard;
+        NowTextInput.source = _keyboard;
         _drawList = new NowDrawList();
     }
 
@@ -62,18 +62,18 @@ public class NowCodeEditorTests
     {
         _drawList.Dispose();
         NowCodeEditor.ResetCaches();
-        NowUITextInput.Reset();
-        NowUIOverlay.Reset();
+        NowTextInput.Reset();
+        NowOverlay.Reset();
         NowInput.Reset();
-        NowUIFocus.Reset();
+        NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
     }
 
-    NowCodeEditorResult Frame(ref string text, NowUITextInputFrame keys = default)
+    NowCodeEditorResult Frame(ref string text, NowTextInputFrame keys = default)
     {
         _keyboard.frame = keys;
-        NowUITextInput.Invalidate();
+        NowTextInput.Invalidate();
         NowCodeEditorResult result;
 
         using (NowInput.Begin(_pointer, Surface))
@@ -87,7 +87,7 @@ public class NowCodeEditorTests
 
     void Focus()
     {
-        NowUIFocus.Focus(Id);
+        NowFocus.Focus(Id);
     }
 
     ref NowTextEditState State()
@@ -202,7 +202,7 @@ public class NowCodeEditorTests
         string text = string.Empty;
         Focus();
 
-        Frame(ref text, new NowUITextInputFrame { characters = "{" });
+        Frame(ref text, new NowTextInputFrame { characters = "{" });
 
         Assert.AreEqual("{}", text);
         Assert.AreEqual(1, State().caret, "The caret sits between the pair.");
@@ -214,8 +214,8 @@ public class NowCodeEditorTests
         string text = string.Empty;
         Focus();
 
-        Frame(ref text, new NowUITextInputFrame { characters = "{" });
-        Frame(ref text, new NowUITextInputFrame { characters = "}" });
+        Frame(ref text, new NowTextInputFrame { characters = "{" });
+        Frame(ref text, new NowTextInputFrame { characters = "}" });
 
         Assert.AreEqual("{}", text, "No duplicate closer.");
         Assert.AreEqual(2, State().caret);
@@ -227,8 +227,8 @@ public class NowCodeEditorTests
         string text = string.Empty;
         Focus();
 
-        Frame(ref text, new NowUITextInputFrame { characters = "[" });
-        Frame(ref text, new NowUITextInputFrame { backspaceHeld = true });
+        Frame(ref text, new NowTextInputFrame { characters = "[" });
+        Frame(ref text, new NowTextInputFrame { backspaceHeld = true });
 
         Assert.AreEqual(string.Empty, text);
     }
@@ -239,8 +239,8 @@ public class NowCodeEditorTests
         string text = string.Empty;
         Focus();
 
-        Frame(ref text, new NowUITextInputFrame { characters = "{" });
-        Frame(ref text, new NowUITextInputFrame { enterHeld = true });
+        Frame(ref text, new NowTextInputFrame { characters = "{" });
+        Frame(ref text, new NowTextInputFrame { enterHeld = true });
 
         Assert.AreEqual("{\n  \n}", text);
         Assert.AreEqual(4, State().caret, "The caret sits on the indented middle line.");
@@ -252,8 +252,8 @@ public class NowCodeEditorTests
         string text = "hello";
         Focus();
 
-        Frame(ref text, new NowUITextInputFrame { selectAllPressed = true, command = true });
-        Frame(ref text, new NowUITextInputFrame { characters = "\"" });
+        Frame(ref text, new NowTextInputFrame { selectAllPressed = true, command = true });
+        Frame(ref text, new NowTextInputFrame { characters = "\"" });
 
         Assert.AreEqual("\"hello\"", text, "Typing a quote around a selection wraps it.");
     }
@@ -265,12 +265,12 @@ public class NowCodeEditorTests
         Focus();
 
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { selectAllPressed = true, command = true });
-        Frame(ref text, new NowUITextInputFrame { tabHeld = true });
+        Frame(ref text, new NowTextInputFrame { selectAllPressed = true, command = true });
+        Frame(ref text, new NowTextInputFrame { tabHeld = true });
         Assert.AreEqual("  a\n  b", text, "Tab with a multi-line selection indents the lines.");
 
-        Frame(ref text, new NowUITextInputFrame { selectAllPressed = true, command = true });
-        Frame(ref text, new NowUITextInputFrame { tabHeld = true, shift = true });
+        Frame(ref text, new NowTextInputFrame { selectAllPressed = true, command = true });
+        Frame(ref text, new NowTextInputFrame { tabHeld = true, shift = true });
         Assert.AreEqual("a\nb", text, "Shift+Tab dedents them back.");
     }
 
@@ -281,13 +281,13 @@ public class NowCodeEditorTests
         Focus();
 
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { enterHeld = true });
+        Frame(ref text, new NowTextInputFrame { enterHeld = true });
         Assert.AreNotEqual("{}", text);
 
-        Frame(ref text, new NowUITextInputFrame { undoPressed = true, command = true });
+        Frame(ref text, new NowTextInputFrame { undoPressed = true, command = true });
         Assert.AreEqual("{}", text, "Undo restores the previous text.");
 
-        Frame(ref text, new NowUITextInputFrame { redoPressed = true, command = true });
+        Frame(ref text, new NowTextInputFrame { redoPressed = true, command = true });
         Assert.AreNotEqual("{}", text, "Redo reapplies the edit.");
     }
 
@@ -300,7 +300,7 @@ public class NowCodeEditorTests
         State().caret = 1;
         State().anchor = 1;
 
-        Frame(ref text, new NowUITextInputFrame { duplicatePressed = true, command = true });
+        Frame(ref text, new NowTextInputFrame { duplicatePressed = true, command = true });
 
         Assert.AreEqual("abc\nabc\ndef", text, "Ctrl+D duplicates the caret's line below it.");
     }
@@ -308,11 +308,11 @@ public class NowCodeEditorTests
     [Test]
     public void CopyWithoutSelectionCopiesTheWholeLine()
     {
-        var previousSet = NowUIClipboard.setText;
-        var previousGet = NowUIClipboard.getText;
+        var previousSet = NowClipboard.setText;
+        var previousGet = NowClipboard.getText;
         string clipboard = string.Empty;
-        NowUIClipboard.setText = value => clipboard = value;
-        NowUIClipboard.getText = () => clipboard;
+        NowClipboard.setText = value => clipboard = value;
+        NowClipboard.getText = () => clipboard;
 
         try
         {
@@ -322,25 +322,25 @@ public class NowCodeEditorTests
             State().caret = 5;
             State().anchor = 5;
 
-            Frame(ref text, new NowUITextInputFrame { copyPressed = true, command = true });
+            Frame(ref text, new NowTextInputFrame { copyPressed = true, command = true });
             Assert.AreEqual("def\n", clipboard, "Copy with no selection grabs the whole line plus a newline.");
             Assert.AreEqual("abc\ndef", text, "Copy does not change the text.");
         }
         finally
         {
-            NowUIClipboard.setText = previousSet;
-            NowUIClipboard.getText = previousGet;
+            NowClipboard.setText = previousSet;
+            NowClipboard.getText = previousGet;
         }
     }
 
     [Test]
     public void CutWithoutSelectionRemovesTheWholeLine()
     {
-        var previousSet = NowUIClipboard.setText;
-        var previousGet = NowUIClipboard.getText;
+        var previousSet = NowClipboard.setText;
+        var previousGet = NowClipboard.getText;
         string clipboard = string.Empty;
-        NowUIClipboard.setText = value => clipboard = value;
-        NowUIClipboard.getText = () => clipboard;
+        NowClipboard.setText = value => clipboard = value;
+        NowClipboard.getText = () => clipboard;
 
         try
         {
@@ -350,14 +350,14 @@ public class NowCodeEditorTests
             State().caret = 5;
             State().anchor = 5;
 
-            Frame(ref text, new NowUITextInputFrame { cutPressed = true, command = true });
+            Frame(ref text, new NowTextInputFrame { cutPressed = true, command = true });
             Assert.AreEqual("def\n", clipboard);
             Assert.AreEqual("abc\nghi", text, "Cut with no selection removes the line and its newline.");
         }
         finally
         {
-            NowUIClipboard.setText = previousSet;
-            NowUIClipboard.getText = previousGet;
+            NowClipboard.setText = previousSet;
+            NowClipboard.getText = previousGet;
         }
     }
 
@@ -368,12 +368,12 @@ public class NowCodeEditorTests
         Focus();
         Frame(ref text);
 
-        Frame(ref text, new NowUITextInputFrame { enterHeld = true });
-        Frame(ref text, new NowUITextInputFrame { enterHeld = true });
+        Frame(ref text, new NowTextInputFrame { enterHeld = true });
+        Frame(ref text, new NowTextInputFrame { enterHeld = true });
         Assert.AreEqual("\n", text, "A held key does not re-fire within the repeat delay.");
 
         Frame(ref text);
-        Frame(ref text, new NowUITextInputFrame { enterHeld = true });
+        Frame(ref text, new NowTextInputFrame { enterHeld = true });
         Assert.AreEqual("\n\n", text, "Releasing and pressing again fires another newline.");
     }
 
@@ -398,7 +398,7 @@ public class NowCodeEditorTests
     {
         string text = "{}";
 
-        var result = Frame(ref text, new NowUITextInputFrame { characters = "x", tabHeld = true });
+        var result = Frame(ref text, new NowTextInputFrame { characters = "x", tabHeld = true });
 
         Assert.IsFalse(result.changed);
         Assert.AreEqual("{}", text);

@@ -3,12 +3,12 @@ using NUnit.Framework;
 using UnityEngine;
 using NowUI;
 
-public class NowUIScreenTests
+public class NowScreenTests
 {
     [TearDown]
     public void TearDown()
     {
-        NowUIScreen.referenceDpi = 160f;
+        NowScreen.referenceDpi = 160f;
         Now.StartUI();
     }
 
@@ -66,17 +66,17 @@ public class NowUIScreenTests
     [Test]
     public void RecommendedUIScaleNeverShrinksUI()
     {
-        Assert.GreaterOrEqual(NowUIScreen.recommendedUIScale, 1f);
+        Assert.GreaterOrEqual(NowScreen.recommendedUIScale, 1f);
 
-        NowUIScreen.referenceDpi = 100000f;
-        Assert.AreEqual(1f, NowUIScreen.recommendedUIScale);
+        NowScreen.referenceDpi = 100000f;
+        Assert.AreEqual(1f, NowScreen.recommendedUIScale);
     }
 
     [Test]
     public void ReferenceDpiRejectsNonPositiveValues()
     {
-        NowUIScreen.referenceDpi = -5f;
-        Assert.GreaterOrEqual(NowUIScreen.referenceDpi, 1f);
+        NowScreen.referenceDpi = -5f;
+        Assert.GreaterOrEqual(NowScreen.referenceDpi, 1f);
     }
 
     [Test]
@@ -85,7 +85,7 @@ public class NowUIScreenTests
         Now.StartUI(2f);
 
         Rect pixels = Screen.safeArea;
-        NowRect safe = NowUIScreen.safeArea;
+        NowRect safe = NowScreen.safeArea;
 
         Assert.AreEqual(pixels.x / 2f, safe.x, 0.001f);
         Assert.AreEqual((Screen.height - pixels.yMax) / 2f, safe.y, 0.001f);
@@ -98,7 +98,7 @@ public class NowUIScreenTests
     {
         Now.StartUI(2f);
 
-        NowRect safe = NowUIScreen.safeArea;
+        NowRect safe = NowScreen.safeArea;
         NowRect mask = Now.screenMask;
 
         Assert.GreaterOrEqual(safe.x, mask.x - 0.001f);

@@ -2617,7 +2617,7 @@ namespace NowUI
             if (fontData == null || string.IsNullOrEmpty(characters))
                 return false;
 
-            using var profile = NowUIProfiler.FontBake.Auto();
+            using var profile = NowProfiler.FontBake.Auto();
             _dynamicSourceIsColor ??= NowFontCompiler.IsColorFont(fontData);
 
             if (_dynamicSourceIsColor.Value)
@@ -3037,7 +3037,7 @@ namespace NowUI
             if (_dynamicSessionPage != null && !IsDynamicPageValid(_dynamicSessionPage))
                 ResetDynamicSession();
 
-            using var profile = NowUIProfiler.FontBake.Auto();
+            using var profile = NowProfiler.FontBake.Auto();
             var results = _dynamicSessionGlyphScratch ??= new List<NowFontAtlasInfo.Glyph>();
             results.Clear();
 

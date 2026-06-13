@@ -370,7 +370,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7a3d0c5e9f214b08a6d2e4c1b5f09a37, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: NowUI.Examples::NowUIDocsExample
+  m_EditorClassIdentifier: NowUI.Examples::NowDocsExample
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1

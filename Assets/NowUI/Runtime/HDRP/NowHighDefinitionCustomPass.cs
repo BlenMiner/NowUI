@@ -4,15 +4,15 @@ using UnityEngine.Rendering.HighDefinition;
 
 namespace NowUI
 {
-    public sealed class NowUIHighDefinitionCustomPass : CustomPass
+    public sealed class NowHighDefinitionCustomPass : CustomPass
     {
-        [UnityEngine.SerializeField, UnityEngine.Tooltip("Pixels per UI unit. 1 draws in raw pixels; enable Scale By Display Density to follow NowUIScreen.recommendedUIScale instead.")]
+        [UnityEngine.SerializeField, UnityEngine.Tooltip("Pixels per UI unit. 1 draws in raw pixels; enable Scale By Display Density to follow NowScreen.recommendedUIScale instead.")]
         float _uiScale = 1f;
 
-        [UnityEngine.SerializeField, UnityEngine.Tooltip("Use NowUIScreen.recommendedUIScale so UI keeps a consistent physical size on high-DPI displays. Overrides UI Scale.")]
+        [UnityEngine.SerializeField, UnityEngine.Tooltip("Use NowScreen.recommendedUIScale so UI keeps a consistent physical size on high-DPI displays. Overrides UI Scale.")]
         bool _scaleByDisplayDensity;
 
-        NowUIDrawList _drawList;
+        NowDrawList _drawList;
 
         public float uiScale
         {
@@ -28,18 +28,18 @@ namespace NowUI
 
         protected override void Setup(ScriptableRenderContext renderContext, CommandBuffer cmd)
         {
-            _drawList = new NowUIDrawList();
+            _drawList = new NowDrawList();
         }
 
         protected override void Execute(CustomPassContext ctx)
         {
             var camera = ctx.hdCamera.camera;
-            float scale = _scaleByDisplayDensity ? NowUIScreen.recommendedUIScale : _uiScale;
+            float scale = _scaleByDisplayDensity ? NowScreen.recommendedUIScale : _uiScale;
 
-            if (!NowUIPipelineGraphic.BuildDrawList(camera, _drawList, scale))
+            if (!NowPipelineGraphic.BuildDrawList(camera, _drawList, scale))
                 return;
 
-            NowUIRenderer.Draw(ctx.cmd, _drawList);
+            NowRenderer.Draw(ctx.cmd, _drawList);
         }
 
         protected override void Cleanup()

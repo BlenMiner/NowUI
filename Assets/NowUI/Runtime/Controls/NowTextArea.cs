@@ -21,7 +21,7 @@ namespace NowUI
     /// newline (Escape blurs), triple-click selects the line, IME composition
     /// rendered inline at the caret (underlined, editing keys suppressed until
     /// committed), Ctrl+Backspace/Delete word ops, multi-line
-    /// clipboard through <see cref="NowUIClipboard"/>, auto-growing height
+    /// clipboard through <see cref="NowClipboard"/>, auto-growing height
     /// between min and max lines with scroll-to-caret and wheel scrolling, and a
     /// multiline on-screen keyboard on mobile. Rendering uses per-codepoint
     /// metrics so the caret always matches the glyphs.
@@ -132,14 +132,14 @@ namespace NowUI
 
             if (focused && area.hadFocus == 0)
             {
-                NowUITextInput.setImeEnabled?.Invoke(true);
+                NowTextInput.setImeEnabled?.Invoke(true);
 
                 if (!interaction.pressed)
                     NowTextEdit.MoveEnd(ref state, text, false);
             }
             else if (!focused && area.hadFocus == 1)
             {
-                NowUITextInput.setImeEnabled?.Invoke(false);
+                NowTextInput.setImeEnabled?.Invoke(false);
             }
 
             area.hadFocus = focused ? (byte)1 : (byte)0;
@@ -176,8 +176,8 @@ namespace NowUI
 
             if (focused && !NowInput.isPassive)
             {
-                NowUIFocus.LockNavigation();
-                var frame = NowUITextInput.current;
+                NowFocus.LockNavigation();
+                var frame = NowTextInput.current;
                 composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
 
                 if (!string.IsNullOrEmpty(frame.characters))
@@ -187,23 +187,23 @@ namespace NowUI
                 if (composition == null)
                 {
                     if (frame.escapePressed)
-                        NowUIFocus.Clear();
+                        NowFocus.Clear();
 
                     if (frame.selectAllPressed)
                         NowTextEdit.SelectAll(ref state, text);
 
                     if (frame.copyPressed && state.hasSelection)
-                        NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                        NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
 
                     if (frame.cutPressed && state.hasSelection)
                     {
-                        NowUIClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                        NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
                         NowTextEdit.DeleteSelection(ref text, ref state);
                     }
 
                     if (frame.pastePressed)
                     {
-                        string buffer = NowUIClipboard.Paste();
+                        string buffer = NowClipboard.Paste();
 
                         if (!string.IsNullOrEmpty(buffer))
                             NowTextEdit.Insert(ref text, ref state, buffer.Replace("\r\n", "\n").Replace('\r', '\n'));
@@ -334,7 +334,7 @@ namespace NowUI
             area.scrollY = Mathf.Clamp(area.scrollY, 0f, maxScroll);
 
             if (focused && !NowInput.isPassive)
-                NowUITextInput.setCompositionCursor?.Invoke(new Vector2(
+                NowTextInput.setCompositionCursor?.Invoke(new Vector2(
                     inner.x + caretX,
                     inner.y + caretLine * lineHeight - area.scrollY + lineHeight));
 
@@ -561,7 +561,7 @@ namespace NowUI
                     NowTextEdit.MoveEnd(ref state, text, false);
                 }
 
-                NowUIFocus.Clear();
+                NowFocus.Clear();
                 CloseTouchKeyboard();
             }
         }
