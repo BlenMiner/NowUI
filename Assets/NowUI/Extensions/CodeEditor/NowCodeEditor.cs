@@ -48,6 +48,8 @@ namespace NowUI.CodeEditor
 
         const float StatusHeight = 22f;
 
+        const float ScrollbarThickness = 8f;
+
         const string IndentUnit = "  ";
 
         readonly string _id;
@@ -175,8 +177,6 @@ namespace NowUI.CodeEditor
                 ? _rect
                 : NowLayout.Rect(width: _width, height: _height, stretchWidth: _width <= 0f);
 
-            var interaction = NowControls.Interact(id, rect, out bool focused, out _);
-
             ref var state = ref NowUIControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
             ref var editor = ref NowUIControlState.Get<EditorState>(NowUIInput.GetId(id, "editor"));
@@ -195,6 +195,44 @@ namespace NowUI.CodeEditor
                 rect.y + Padding,
                 rect.width - gutterWidth - Padding * 2f - 4f,
                 rect.height - Padding * 2f - statusHeight);
+
+            // Scrollbars claim their press before the text body, so dragging a
+            // thumb scrolls instead of moving the caret (first interaction wins).
+            if (!NowUIInput.isPassive)
+            {
+                Scrollbars(cache, rect, textRect, statusHeight, lineHeight, editor,
+                    out float maxX, out float maxY, out _, out var vThumb, out _, out var hThumb);
+
+                if (maxY > 0f)
+                {
+                    var vDrag = NowUIInput.Interact(NowUIInput.GetId(id, "vscroll"), vThumb);
+
+                    if (vDrag.pressed)
+                        NowUIFocus.Focus(id);
+
+                    if (vDrag.dragging)
+                    {
+                        editor.scrollY += vDrag.dragDelta.y / Mathf.Max(textRect.height - vThumb.height, 1f) * maxY;
+                        NowUIControlState.RequestRepaint();
+                    }
+                }
+
+                if (maxX > 0f)
+                {
+                    var hDrag = NowUIInput.Interact(NowUIInput.GetId(id, "hscroll"), hThumb);
+
+                    if (hDrag.pressed)
+                        NowUIFocus.Focus(id);
+
+                    if (hDrag.dragging)
+                    {
+                        editor.scrollX += hDrag.dragDelta.x / Mathf.Max(textRect.width - hThumb.width, 1f) * maxX;
+                        NowUIControlState.RequestRepaint();
+                    }
+                }
+            }
+
+            var interaction = NowControls.Interact(id, rect, out bool focused, out _);
 
             if (focused && editor.hadFocus == 0)
             {
@@ -467,26 +505,22 @@ namespace NowUI.CodeEditor
             float fontSize = _fontSize;
             var fontStyle = textStyle.fontStyle;
 
-            var box = theme.Rectangle(rect, NowRectangleStyle.Outline);
+            Vector4 cornerRadius = theme.Rectangle(rect, NowRectangleStyle.Outline).radius;
 
-            if (focused)
-            {
-                box.outline = 2f;
-                box.outlineColor = theme.GetColor(NowColorToken.Accent, Color.blue);
-            }
-
-            box.Draw();
+            theme.Rectangle(rect, NowRectangleStyle.Surface).SetRadius(cornerRadius).Draw();
 
             int firstVisible = Mathf.Max(0, Mathf.FloorToInt(editor.scrollY / lineHeight));
             int lastVisible = Mathf.Min(cache.lines.Count - 1, Mathf.CeilToInt((editor.scrollY + textRect.height) / lineHeight));
 
             if (gutterWidth > 0f)
             {
-                Now.Rectangle(new NowRect(rect.x + 1f, rect.y + 1f, gutterWidth, rect.height - 2f - statusHeight))
+                float gutterBottomLeft = statusHeight > 0f ? 0f : cornerRadius.z;
+                Now.Rectangle(new NowRect(rect.x, rect.y, gutterWidth, rect.height - statusHeight))
                     .SetColor(theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
+                    .SetRadius(Corners(cornerRadius.w, 0f, 0f, gutterBottomLeft))
                     .Draw();
 
-                using (Now.Mask(new NowRect(rect.x + 1f, textRect.y, gutterWidth, textRect.height)))
+                using (Now.Mask(new NowRect(rect.x, textRect.y, gutterWidth, textRect.height)))
                 {
                     var numberStyle = theme.Text(default, NowTextStyle.Muted).SetFontSize(fontSize - 2f);
 
@@ -595,10 +629,74 @@ namespace NowUI.CodeEditor
             }
 
             if (statusHeight > 0f)
-                DrawStatusBar(theme, font, fontSize, fontStyle, rect, statusHeight, text, cache, in state, caretLine);
+                DrawStatusBar(theme, font, fontSize, fontStyle, rect, statusHeight, text, cache, in state, caretLine, cornerRadius);
+
+            DrawScrollbars(theme, cache, rect, textRect, statusHeight, lineHeight, ref editor, hovered || focused);
+
+            // The border is drawn last with a transparent fill, so it covers
+            // every seam between the gutter, body, status bar and scrollbars
+            // with one clean rounded outline.
+            var border = theme.Rectangle(rect, NowRectangleStyle.Outline);
+            border.color = new Vector4(0f, 0f, 0f, 0f);
+            border.SetRadius(cornerRadius);
+            border.outline = focused ? 2f : 1f;
+            border.outlineColor = focused
+                ? theme.GetColor(NowColorToken.Accent, Color.blue)
+                : theme.GetColor(NowColorToken.Border, Color.gray);
+            border.Draw();
 
             if (hovered)
                 DrawDiagnosticTooltip(theme, text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, pointer);
+        }
+
+        static Vector4 Corners(float topLeft, float topRight, float bottomRight, float bottomLeft)
+        {
+            // The rounded-rect SDF packs corners as (BR, TR, BL, TL).
+            return new Vector4(bottomRight, topRight, bottomLeft, topLeft);
+        }
+
+        static void Scrollbars(EditorCache cache, NowRect rect, NowRect textRect, float statusHeight, float lineHeight,
+            in EditorState editor, out float maxScrollX, out float maxScrollY,
+            out NowRect vTrack, out NowRect vThumb, out NowRect hTrack, out NowRect hThumb)
+        {
+            float contentHeight = cache.lines.Count * lineHeight;
+            float contentWidth = cache.contentWidth + 24f;
+            maxScrollY = Mathf.Max(0f, contentHeight - textRect.height);
+            maxScrollX = Mathf.Max(0f, contentWidth - textRect.width);
+
+            vTrack = new NowRect(rect.xMax - ScrollbarThickness - 3f, textRect.y, ScrollbarThickness, textRect.height);
+            float vThumbHeight = maxScrollY > 0f ? Mathf.Max(28f, vTrack.height * (textRect.height / contentHeight)) : 0f;
+            float vNormalized = maxScrollY > 0f ? Mathf.Clamp01(editor.scrollY / maxScrollY) : 0f;
+            vThumb = new NowRect(vTrack.x, vTrack.y + (vTrack.height - vThumbHeight) * vNormalized, ScrollbarThickness, vThumbHeight);
+
+            hTrack = new NowRect(textRect.x, rect.yMax - statusHeight - ScrollbarThickness - 3f, textRect.width, ScrollbarThickness);
+            float hThumbWidth = maxScrollX > 0f ? Mathf.Max(28f, hTrack.width * (textRect.width / contentWidth)) : 0f;
+            float hNormalized = maxScrollX > 0f ? Mathf.Clamp01(editor.scrollX / maxScrollX) : 0f;
+            hThumb = new NowRect(hTrack.x + (hTrack.width - hThumbWidth) * hNormalized, hTrack.y, hThumbWidth, ScrollbarThickness);
+        }
+
+        void DrawScrollbars(NowUITheme theme, EditorCache cache, NowRect rect, NowRect textRect, float statusHeight,
+            float lineHeight, ref EditorState editor, bool active)
+        {
+            Scrollbars(cache, rect, textRect, statusHeight, lineHeight, editor,
+                out float maxScrollX, out float maxScrollY, out var vTrack, out var vThumb, out var hTrack, out var hThumb);
+
+            Color trackColor = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
+            trackColor.a *= 0.5f;
+            Color thumbColor = theme.GetColor(NowColorToken.Border, Color.gray);
+            thumbColor.a *= active ? 0.95f : 0.55f;
+
+            if (maxScrollY > 0f)
+            {
+                Now.Rectangle(vTrack).SetColor(trackColor).SetRadius(ScrollbarThickness * 0.5f).Draw();
+                Now.Rectangle(vThumb).SetColor(thumbColor).SetRadius(ScrollbarThickness * 0.5f).Draw();
+            }
+
+            if (maxScrollX > 0f)
+            {
+                Now.Rectangle(hTrack).SetColor(trackColor).SetRadius(ScrollbarThickness * 0.5f).Draw();
+                Now.Rectangle(hThumb).SetColor(thumbColor).SetRadius(ScrollbarThickness * 0.5f).Draw();
+            }
         }
 
         float DrawSegment(NowUIText textStyle, NowUITheme theme, string text, int start, int length,
@@ -718,12 +816,14 @@ namespace NowUI.CodeEditor
         }
 
         void DrawStatusBar(NowUITheme theme, NowFontAsset font, float fontSize, NowFontStyle fontStyle,
-            NowRect rect, float statusHeight, string text, EditorCache cache, in NowTextEditState state, int caretLine)
+            NowRect rect, float statusHeight, string text, EditorCache cache, in NowTextEditState state, int caretLine,
+            Vector4 cornerRadius)
         {
-            var statusRect = new NowRect(rect.x + 1f, rect.yMax - statusHeight - 1f, rect.width - 2f, statusHeight);
+            var statusRect = new NowRect(rect.x, rect.yMax - statusHeight, rect.width, statusHeight);
 
             Now.Rectangle(statusRect)
                 .SetColor(theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
+                .SetRadius(Corners(0f, 0f, cornerRadius.x, cornerRadius.z))
                 .Draw();
 
             var line = cache.lines[caretLine];

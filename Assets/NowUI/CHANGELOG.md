@@ -10,6 +10,12 @@ point it became installable through UPM.
 
 ### Added
 
+- Code editor rendering: rounded corners no longer fight the gutter and
+  status bar. The editor now draws a rounded surface fill, gives the gutter
+  and status bar matching rounded outer corners, and lays the outline border
+  on top so every inner seam is covered. Draggable scrollbars (vertical and
+  horizontal) appear when the content overflows, with thumbs sized to the
+  viewport; dragging a thumb scrolls without moving the caret.
 - Immediate-mode drawing API (`Now.Rectangle`, `Now.Text`, `Now.Lottie`) with
   per-material mesh batching.
 - MSDF text rendering with dynamic atlas pages, runtime font compilation, a
