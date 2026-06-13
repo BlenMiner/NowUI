@@ -1962,7 +1962,7 @@ namespace NowUI
             bool isColorPage = glyphFont.isColor;
             var pageTexture = new Texture2D(pageSize, pageSize, TextureFormat.RGBA32, isColorPage, !isColorPage)
             {
-                name = isColorPage ? $"NowUI Color Page {pageIndex}" : $"NowUI Font Page {pageIndex}",
+                name = isColorPage ? $"Now Color Page {pageIndex}" : $"Now Font Page {pageIndex}",
                 filterMode = FilterMode.Bilinear,
                 wrapMode = TextureWrapMode.Clamp,
                 hideFlags = HideFlags.HideAndDontSave
@@ -1979,7 +1979,7 @@ namespace NowUI
             };
 
             var pageFont = CreateInstance<NowFont>();
-            pageFont.name = isColorPage ? "NowUI Runtime Color Font Page" : "NowUI Runtime Font Page";
+            pageFont.name = isColorPage ? "Now Runtime Color Font Page" : "Now Runtime Font Page";
             pageFont.hideFlags = HideFlags.HideAndDontSave;
             pageFont.atlas = pageTexture;
             pageFont.material = pageMaterial;
@@ -2479,7 +2479,7 @@ namespace NowUI
 
             var texture = new Texture2D(side, side, TextureFormat.RGBA32, false, true)
             {
-                name = $"NowUI Font Page {_dynamicPages?.Count ?? 0}",
+                name = $"Now Font Page {_dynamicPages?.Count ?? 0}",
                 filterMode = FilterMode.Bilinear,
                 wrapMode = TextureWrapMode.Clamp,
                 hideFlags = HideFlags.HideAndDontSave
@@ -2493,7 +2493,7 @@ namespace NowUI
             };
 
             var pageFont = CreateInstance<NowFont>();
-            pageFont.name = "NowUI Runtime Font Page";
+            pageFont.name = "Now Runtime Font Page";
             pageFont.hideFlags = HideFlags.HideAndDontSave;
             pageFont.atlas = texture;
             pageFont.material = material;

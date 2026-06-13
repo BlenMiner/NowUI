@@ -1,7 +1,7 @@
 using UnityEngine;
 using NowUI;
 
-[AddComponentMenu("NowUI/Examples/NowUI Graphic Example")]
+[AddComponentMenu("NowUI/Examples/Now Graphic Example")]
 public class NowGraphicExample : NowGraphic
 {
     [SerializeField] NowFontAsset _font;
@@ -36,8 +36,8 @@ public class NowGraphicExample : NowGraphic
 
         using (NowLayout.Area(bounds.Inset(10)))
         {
-            NowLayout.Label("NowUI Graphic").Draw();
-            NowLayout.Label("Hello World\nNowUI Graphic").Draw();
+            NowLayout.Label("Now Graphic").Draw();
+            NowLayout.Label("Hello World\nNow Graphic").Draw();
             var content = NowLayout.Label(_content)
                 .SetFontSize(_size)
                 .SetOutlineColor(Color.green)

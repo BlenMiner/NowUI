@@ -135,8 +135,8 @@ public class NowRendererTests
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
 
-        var cameraObject = new GameObject("NowUI Test Camera");
-        var graphicObject = new GameObject("NowUI Test Pipeline Graphic");
+        var cameraObject = new GameObject("Now Test Camera");
+        var graphicObject = new GameObject("Now Test Pipeline Graphic");
         var targetTexture = new RenderTexture(64, 32, 0);
         var drawList = new NowDrawList();
         Camera camera = null;
@@ -172,7 +172,7 @@ public class NowRendererTests
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
 
-        var graphicObject = new GameObject("NowUI Test Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+        var graphicObject = new GameObject("Now Test Graphic", typeof(RectTransform), typeof(CanvasRenderer));
 
         try
         {
@@ -209,9 +209,9 @@ public class NowRendererTests
         var material = Resources.Load<Material>("NowUI/UIMaterialUGUI");
         Assert.NotNull(material);
 
-        var canvasObject = new GameObject("NowUI Test Canvas", typeof(RectTransform), typeof(Canvas));
-        var maskObject = new GameObject("NowUI Test Mask", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Mask));
-        var graphicObject = new GameObject("NowUI Test Masked Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+        var canvasObject = new GameObject("Now Test Canvas", typeof(RectTransform), typeof(Canvas));
+        var maskObject = new GameObject("Now Test Mask", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Mask));
+        var graphicObject = new GameObject("Now Test Masked Graphic", typeof(RectTransform), typeof(CanvasRenderer));
 
         try
         {

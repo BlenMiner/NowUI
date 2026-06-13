@@ -142,7 +142,7 @@ namespace NowUI
 
                 target = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32)
                 {
-                    name = "NowUI IMGUI",
+                    name = "Now IMGUI",
                     hideFlags = HideFlags.HideAndDontSave
                 };
 

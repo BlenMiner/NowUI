@@ -39,7 +39,7 @@ namespace NowUI
                 if (_defaultTheme == null)
                 {
                     _defaultTheme = ScriptableObject.CreateInstance<NowTheme>();
-                    _defaultTheme.name = "NowUI Default Theme";
+                    _defaultTheme.name = "Now Default Theme";
                     _defaultTheme.hideFlags = HideFlags.HideAndDontSave;
                 }
 

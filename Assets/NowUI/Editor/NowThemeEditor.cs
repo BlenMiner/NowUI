@@ -54,7 +54,7 @@ namespace NowUI.Editor
             DrawStyledRect(theme, panel, "surface");
 
             Rect titleRect = new Rect(panel.x + 18f, panel.y + 14f, panel.width - 36f, 30f);
-            DrawText(theme, titleRect, "NowUI Theme", "title");
+            DrawText(theme, titleRect, "Now Theme", "title");
 
             Rect bodyRect = new Rect(panel.x + 18f, panel.y + 46f, panel.width - 36f, 22f);
             DrawText(theme, bodyRect, "Palette, spacing, radius, text, and rectangle presets", "muted");

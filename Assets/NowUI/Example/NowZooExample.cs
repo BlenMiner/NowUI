@@ -10,7 +10,7 @@ using NowUI;
 /// keyboard/gamepad focus. Drop it on a Canvas, assign a font (and optionally
 /// a Lottie asset), and poke around.
 /// </summary>
-[AddComponentMenu("NowUI/Examples/NowUI Zoo")]
+[AddComponentMenu("NowUI/Examples/Now Zoo")]
 public class NowZooExample : NowGraphic
 {
     [SerializeField] NowFontAsset _font;
@@ -88,7 +88,7 @@ public class NowZooExample : NowGraphic
             if (_lottie != null)
                 NowLayout.Lottie(_lottie).SetTime(Time.time).SetHeight(36).Draw();
 
-            NowLayout.Label("NowUI Zoo").SetFontSize(26).SetBold().Draw();
+            NowLayout.Label("Now Zoo").SetFontSize(26).SetBold().Draw();
             NowLayout.Label("Tab / arrows navigate, Enter activates").SetFontSize(11)
                 .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
 

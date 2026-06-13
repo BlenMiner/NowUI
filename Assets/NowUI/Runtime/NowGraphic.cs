@@ -7,7 +7,7 @@ using UnityEngine.UI;
 
 namespace NowUI
 {
-    [AddComponentMenu("NowUI/NowUI Graphic")]
+    [AddComponentMenu("NowUI/Now Graphic")]
     [ExecuteAlways]
     [RequireComponent(typeof(CanvasRenderer))]
     public class NowGraphic : MaskableGraphic, ILayoutElement
@@ -356,7 +356,7 @@ namespace NowUI
             if (_drawList != null)
                 return;
 
-            _drawList = new NowDrawList(NowMeshLayout.Canvas, "NowUI Graphic Mesh");
+            _drawList = new NowDrawList(NowMeshLayout.Canvas, "Now Graphic Mesh");
         }
 
         public bool respectUGUIRaycast
@@ -521,7 +521,7 @@ namespace NowUI
             while (_extraCanvasRenderers.Count < count)
             {
                 int pageIndex = _extraCanvasRenderers.Count + 1;
-                var go = new GameObject($"NowUI Graphic Renderer {pageIndex + 1}", typeof(RectTransform), typeof(CanvasRenderer))
+                var go = new GameObject($"Now Graphic Renderer {pageIndex + 1}", typeof(RectTransform), typeof(CanvasRenderer))
                 {
                     hideFlags = HideFlags.HideAndDontSave
                 };
@@ -632,7 +632,7 @@ namespace NowUI
 
                 texturedRect = new Material(_rectangleMaterial)
                 {
-                    name = "NowUI Textured Rect UGUI",
+                    name = "Now Textured Rect UGUI",
                     hideFlags = HideFlags.HideAndDontSave,
                     mainTexture = batch.material.mainTexture
                 };

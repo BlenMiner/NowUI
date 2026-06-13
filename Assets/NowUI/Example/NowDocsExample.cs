@@ -12,7 +12,7 @@ using NowUI.Markdown;
 /// the code from Docs/CustomControls.md. Relative .md links navigate between
 /// pages; external links open in the browser.
 /// </summary>
-[AddComponentMenu("NowUI/Examples/NowUI Docs Browser")]
+[AddComponentMenu("NowUI/Examples/Now Docs Browser")]
 public class NowDocsExample : NowGraphic
 {
     enum PageKind
@@ -112,7 +112,7 @@ public class NowDocsExample : NowGraphic
 
         using (NowLayout.Area(menuRect))
         {
-            NowLayout.Label("NowUI Docs").SetFontSize(13)
+            NowLayout.Label("Now Docs").SetFontSize(13)
                 .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
 
             for (int i = 0; i < Pages.Length; ++i)

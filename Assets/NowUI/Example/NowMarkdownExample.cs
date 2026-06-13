@@ -6,11 +6,11 @@ using NowUI.Markdown;
 /// Renders GitHub-flavored Markdown inside a scroll view. Edit the text in the
 /// inspector; clicked links open in the system browser.
 /// </summary>
-[AddComponentMenu("NowUI/Examples/NowUI Markdown")]
+[AddComponentMenu("NowUI/Examples/Now Markdown")]
 public class NowMarkdownExample : NowGraphic
 {
     const string Sample =
-        "# NowUI Markdown\n" +
+        "# Now Markdown\n" +
         "\n" +
         "Everything below renders through `Now` and `NowLayout` — no HTML, no JavaScript.\n" +
         "\n" +

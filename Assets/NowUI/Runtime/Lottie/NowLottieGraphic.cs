@@ -7,7 +7,7 @@ namespace NowUI
     /// vector pipeline. The animation is re-tessellated at display resolution every
     /// frame, so it stays sharp at any scale.
     /// </summary>
-    [AddComponentMenu("NowUI/NowUI Lottie")]
+    [AddComponentMenu("NowUI/Now Lottie")]
     public class NowLottieGraphic : NowGraphic
     {
         [SerializeField] NowLottieAsset _animation;

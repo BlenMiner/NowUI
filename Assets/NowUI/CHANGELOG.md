@@ -232,7 +232,7 @@ point it became installable through UPM.
   out of a viewport skips shaping lookups, glyph resolution and advance
   math entirely, and fully masked Lottie draws skip tessellation. Hidden
   scroll content now costs ~nothing instead of "everything but the quads".
-- Profiler instrumentation: `NowProfiler` exposes "NowUI.*"
+- Profiler instrumentation: `NowProfiler` exposes "Now.*"
   `ProfilerMarker`s around every subsystem — graphic rebuild, measure pass
   vs draw pass, mesh upload, CanvasRenderer page assignment, per-string
   text drawing, HarfBuzz shaping, glyph baking, Lottie tessellation,

@@ -531,7 +531,7 @@ namespace NowUI
             }
 
             font = ScriptableObject.CreateInstance<NowFont>();
-            font.name = "NowUI Runtime Font";
+            font.name = "Now Runtime Font";
             font.InitializeDynamicSource(fontData, size, pixelRange, materialTemplate: materialTemplate);
             error = null;
             return true;
@@ -838,7 +838,7 @@ namespace NowUI
 
             var texture = new Texture2D(info.width, info.height, TextureFormat.RGBA32, false, true)
             {
-                name = "NowUI Dynamic Font Atlas",
+                name = "Now Dynamic Font Atlas",
                 filterMode = FilterMode.Bilinear,
                 wrapMode = TextureWrapMode.Clamp
             };
@@ -847,11 +847,11 @@ namespace NowUI
             texture.Apply(false, false);
 
             var material = UnityEngine.Object.Instantiate(materialTemplate);
-            material.name = "NowUI Dynamic Font Material";
+            material.name = "Now Dynamic Font Material";
             material.mainTexture = texture;
 
             var font = ScriptableObject.CreateInstance<NowFont>();
-            font.name = "NowUI Runtime Font";
+            font.name = "Now Runtime Font";
             font.atlas = texture;
             font.material = material;
             font.atlasInfo = ToAtlasInfo(nativeGlyphs, info);
@@ -872,13 +872,13 @@ namespace NowUI
 
             if (materialTemplate == null)
             {
-                error = "Failed to load NowUI RGBA text material template.";
+                error = "Failed to load Now RGBA text material template.";
                 return null;
             }
 
             var texture = new Texture2D(info.width, info.height, TextureFormat.RGBA32, false, false)
             {
-                name = "NowUI Dynamic Color Font Atlas",
+                name = "Now Dynamic Color Font Atlas",
                 filterMode = FilterMode.Bilinear,
                 wrapMode = TextureWrapMode.Clamp
             };
@@ -888,11 +888,11 @@ namespace NowUI
             texture.Apply(false, false);
 
             var material = UnityEngine.Object.Instantiate(materialTemplate);
-            material.name = "NowUI Dynamic Color Font Material";
+            material.name = "Now Dynamic Color Font Material";
             material.mainTexture = texture;
 
             var font = ScriptableObject.CreateInstance<NowFont>();
-            font.name = "NowUI Runtime Color Font";
+            font.name = "Now Runtime Color Font";
             font.atlas = texture;
             font.material = material;
             font.atlasInfo = ToColorAtlasInfo(nativeGlyphs, info);

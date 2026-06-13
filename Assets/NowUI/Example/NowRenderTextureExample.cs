@@ -1,7 +1,7 @@
 using UnityEngine;
 using NowUI;
 
-[AddComponentMenu("NowUI/Examples/NowUI Render Texture Example")]
+[AddComponentMenu("NowUI/Examples/Now Render Texture Example")]
 public sealed class NowRenderTextureExample : MonoBehaviour
 {
     static readonly int _mainTexId = Shader.PropertyToID("_MainTex");
@@ -90,7 +90,7 @@ public sealed class NowRenderTextureExample : MonoBehaviour
 
         _ownedTarget = new RenderTexture(_fallbackSize.x, _fallbackSize.y, 0, RenderTextureFormat.ARGB32)
         {
-            name = "NowUI Render Texture Example",
+            name = "Now Render Texture Example",
             hideFlags = HideFlags.HideAndDontSave
         };
 
@@ -155,7 +155,7 @@ public sealed class NowRenderTextureExample : MonoBehaviour
             .SetColor(Rgb(71, 85, 105))
             .Draw();
 
-        DrawText("NowUI Renderer", Rect(rect.x + 24, rect.y + 22, rect.z - 48, 34), 26, Color.white);
+        DrawText("Now Renderer", Rect(rect.x + 24, rect.y + 22, rect.z - 48, 34), 26, Color.white);
         DrawText(
             "Immediate UI drawn into a pure texture, then applied to scene geometry.",
             Rect(rect.x + 24, rect.y + 88, rect.z - 48, 28),

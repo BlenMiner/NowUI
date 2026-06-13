@@ -10,7 +10,7 @@ namespace NowUI
 
         CommandBuffer _commandBuffer = new()
         {
-            name = "NowUI Renderer"
+            name = "Now Renderer"
         };
 
         public Mesh mesh => _drawList.mesh;

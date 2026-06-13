@@ -321,7 +321,7 @@ public class NowRenderingPlayModeTests
     [UnityTest]
     public IEnumerator CameraGLPathRendersThroughOnPostRender()
     {
-        var go = new GameObject("NowUI GL Test Camera");
+        var go = new GameObject("Now GL Test Camera");
 
         try
         {

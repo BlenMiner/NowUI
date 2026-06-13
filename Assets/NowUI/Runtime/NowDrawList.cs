@@ -26,7 +26,7 @@ namespace NowUI
         public bool hasGeometry => mesh != null && mesh.vertexCount > 0 && batches.Count > 0;
 
         public NowDrawList()
-            : this(NowMeshLayout.Render, "NowUI Draw List Mesh")
+            : this(NowMeshLayout.Render, "Now Draw List Mesh")
         {
         }
 

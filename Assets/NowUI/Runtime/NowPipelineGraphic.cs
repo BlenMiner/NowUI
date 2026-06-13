@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace NowUI
 {
-    [AddComponentMenu("NowUI/NowUI Pipeline Graphic")]
+    [AddComponentMenu("NowUI/Now Pipeline Graphic")]
     [ExecuteAlways]
     public class NowPipelineGraphic : MonoBehaviour
     {

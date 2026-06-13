@@ -33,7 +33,7 @@ public class MailClientMockup : MonoBehaviour
     }
 
     static readonly MailItem[] _mail = {
-        new MailItem("GitHub", "NowUI WebGL artifact is ready", "The nowui-msdf-webgl artifact finished and is available to import.", "10:42 AM", true),
+        new MailItem("GitHub", "Now WebGL artifact is ready", "The nowui-msdf-webgl artifact finished and is available to import.", "10:42 AM", true),
         new MailItem("Unity Cloud", "Build report for WebGL", "Build time was 2m 14s. No player errors were reported.", "9:18 AM", true),
         new MailItem("Maya Chen", "Design pass notes", "The compact sidebar feels better, but the reader pane needs a quieter header.", "Yesterday", false),
         new MailItem("Linear", "UI polish tasks moved", "Runtime fonts, native artifacts, and docs were moved into the next milestone.", "Yesterday", false),
@@ -302,7 +302,7 @@ public class MailClientMockup : MonoBehaviour
         DrawRect(Rect(x, y, width, height), Color.white);
 
         float pad = Mathf.Clamp(width * 0.05f, 28, 56);
-        DrawText("NowUI WebGL artifact is ready", Rect(x + pad, y + 36, width - pad * 2, 38), 28, Rgb(17, 24, 39));
+        DrawText("Now WebGL artifact is ready", Rect(x + pad, y + 36, width - pad * 2, 38), 28, Rgb(17, 24, 39));
 
         Vector4 avatarRect = Rect(x + pad, y + 94, 42, 42);
         DrawRect(avatarRect, Rgb(66, 133, 244), 21);

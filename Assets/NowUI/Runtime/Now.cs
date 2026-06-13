@@ -243,7 +243,7 @@ namespace NowUI
                 {
                     material = new Material(_defaultMaterial)
                     {
-                        name = "NowUI Textured Rect",
+                        name = "Now Textured Rect",
                         hideFlags = HideFlags.HideAndDontSave,
                         mainTexture = texture
                     }

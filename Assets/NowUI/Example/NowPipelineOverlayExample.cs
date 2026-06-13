@@ -1,7 +1,7 @@
 using UnityEngine;
 using NowUI;
 
-[AddComponentMenu("NowUI/Examples/NowUI Pipeline Overlay Example")]
+[AddComponentMenu("NowUI/Examples/Now Pipeline Overlay Example")]
 public sealed class NowPipelineOverlayExample : NowPipelineGraphic
 {
     [SerializeField] NowFontAsset _font;
@@ -34,7 +34,7 @@ public sealed class NowPipelineOverlayExample : NowPipelineGraphic
             .SetRadius(new Vector4(14, 0, 0, 14))
             .Draw();
 
-        DrawText("NowUI SRP Overlay", Rect(panel.x + 22, panel.y + 18, panel.z - 44, 30), 22, Color.white);
+        DrawText("Now SRP Overlay", Rect(panel.x + 22, panel.y + 18, panel.z - 44, 30), 22, Color.white);
         DrawText(
             camera != null ? camera.name : "Pipeline camera",
             Rect(panel.x + 22, panel.y + 52, panel.z - 44, 22),
