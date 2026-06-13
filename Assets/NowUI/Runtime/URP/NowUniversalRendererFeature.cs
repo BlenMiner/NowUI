@@ -76,7 +76,7 @@ namespace NowUI
                 if (!NowPipelineGraphic.BuildDrawList(camera, _drawList, uiScale))
                     return;
 
-                var commandBuffer = CommandBufferPool.Get("NowUI URP");
+                var commandBuffer = CommandBufferPool.Get("Now URP");
 
                 try
                 {
