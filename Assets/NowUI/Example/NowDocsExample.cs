@@ -139,7 +139,7 @@ public class NowDocsExample : NowGraphic
                     break;
 
                 case PageKind.CodeEditorDemo:
-                    DrawCodeEditorDemo(theme);
+                    DrawCodeEditorDemo();
                     break;
 
                 default:
@@ -160,7 +160,7 @@ public class NowDocsExample : NowGraphic
     string _markdownText = MarkdownSample;
     bool _markdownPreview;
 
-    void DrawCodeEditorDemo(NowTheme theme)
+    void DrawCodeEditorDemo()
     {
         NowMarkdown.Draw("# Code editor\n\n`NowUI.Extensions.CodeEditor` — syntax highlighting, validation" +
             " squiggles (hover them, click the status error to jump), bracket/quote auto-close, Enter" +
