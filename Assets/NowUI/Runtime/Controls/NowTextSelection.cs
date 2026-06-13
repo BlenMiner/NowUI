@@ -134,7 +134,7 @@ namespace NowUI
             {
                 NowFocus.Focus(id);
                 int hit = HitTest(text, lines, font, fontSize, fontStyle, interaction.pointerPosition);
-                int streak = NowControlState.ClickStreak(id, true);
+                int streak = NowControlState.ClickStreak(id, true, interaction.pointerPosition);
 
                 if (streak >= 3)
                 {

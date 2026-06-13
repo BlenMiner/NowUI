@@ -133,7 +133,9 @@ namespace NowUI
         struct ClickStreakState
         {
             public float lastClickTime;
+            public Vector2 lastPosition;
             public int count;
+            public bool hasPosition;
         }
 
         /// <summary>
@@ -143,13 +145,38 @@ namespace NowUI
         /// </summary>
         public static int ClickStreak(int id, bool clicked, float window = 0.35f)
         {
+            return ClickStreak(id, clicked, default, -1f, window);
+        }
+
+        /// <summary>
+        /// Consecutive-click count for this click, requiring subsequent clicks to
+        /// land near the previous click as well as inside the time window.
+        /// </summary>
+        public static int ClickStreak(int id, bool clicked, Vector2 position, float maxDistance = 6f, float window = 0.35f)
+        {
             if (!clicked)
                 return 0;
 
             ref var state = ref Get<ClickStreakState>(id);
             float now = Time.realtimeSinceStartup;
-            state.count = state.lastClickTime > 0f && now - state.lastClickTime <= window ? state.count + 1 : 1;
+            bool inWindow = state.lastClickTime > 0f && now - state.lastClickTime <= window;
+            bool usePosition = maxDistance >= 0f;
+            bool inRange = !usePosition || (state.hasPosition &&
+                (position - state.lastPosition).sqrMagnitude <= maxDistance * maxDistance);
+
+            state.count = inWindow && inRange ? state.count + 1 : 1;
             state.lastClickTime = now;
+
+            if (usePosition)
+            {
+                state.lastPosition = position;
+                state.hasPosition = true;
+            }
+            else
+            {
+                state.hasPosition = false;
+            }
+
             return state.count;
         }
 

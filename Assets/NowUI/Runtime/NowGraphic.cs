@@ -14,6 +14,8 @@ namespace NowUI
     {
         static readonly int _mainTexProp = Shader.PropertyToID("_MainTex");
 
+        static readonly int _nowCanvasLayoutProp = Shader.PropertyToID("_NowCanvasLayout");
+
         [Header("NowUI")]
         [SerializeField] bool _rebuildEveryFrame;
 
@@ -641,6 +643,9 @@ namespace NowUI
                 return texturedRect;
             }
 
+            if (batch.kind == NowMeshKind.Sdf)
+                return GetSdfCanvasMaterial(batch.material);
+
             if (batch.material == null)
                 return null;
 
@@ -679,6 +684,32 @@ namespace NowUI
                 _textMaterialTemplate = Resources.Load<Material>("NowUI/TxtMaterialUGUI");
 
             return _textMaterialTemplate;
+        }
+
+        Material GetSdfCanvasMaterial(Material material)
+        {
+            if (material == null)
+                return null;
+
+            if (!_textMaterials.TryGetValue(material, out var canvasMaterial) || canvasMaterial == null)
+            {
+                canvasMaterial = new Material(material)
+                {
+                    name = material.name + " UGUI",
+                    hideFlags = HideFlags.HideAndDontSave
+                };
+
+                _textMaterials[material] = canvasMaterial;
+            }
+            else
+            {
+                canvasMaterial.CopyPropertiesFromMaterial(material);
+            }
+
+            if (canvasMaterial.HasProperty(_nowCanvasLayoutProp))
+                canvasMaterial.SetFloat(_nowCanvasLayoutProp, 1f);
+
+            return canvasMaterial;
         }
 
         Material GetCanvasMaterialForRendering(NowMeshBatch batch)

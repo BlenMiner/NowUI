@@ -31,11 +31,15 @@ it.
 - [Code Editor](CodeEditor.md): the embeddable code editor extension —
   syntax highlighting, validation squiggles, auto-pairs, auto-indent,
   undo/redo; JSON and markdown profiles with a registry for adding more.
-- [Rich Text](RichText.md): design notes for spans, tag parsing, hit testing,
-  and future custom inline tags such as Lottie.
+- [SDF Shapes](SDF.md): composable signed-distance-field circles, boxes,
+  rounded boxes, ellipses and capsules with union/subtract/intersect operations,
+  smooth blends, colors, and texture fills.
+- [Rich Text](RichText.md): spans, default tag parsing, custom inline tags,
+  Lottie tags, and link/tag hit testing.
 
 All of these render in-engine: open `Assets/Scenes/DocsScene.unity` for a
-browsable version with a side menu, powered by the markdown extension.
+browsable version with a scrollable side menu, powered by the markdown
+extension.
 
 ## Documentation Guidelines
 

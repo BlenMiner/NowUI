@@ -15,16 +15,16 @@
 
 extern "C" {
 
-typedef struct NowUIMsdfMetrics {
+typedef struct NowMsdfMetrics {
     float em_size;
     float line_height;
     float ascender;
     float descender;
     float underline_y;
     float underline_thickness;
-} NowUIMsdfMetrics;
+} NowMsdfMetrics;
 
-typedef struct NowUIMsdfGlyph {
+typedef struct NowMsdfGlyph {
     unsigned int unicode;
     float advance;
     float plane_left;
@@ -35,19 +35,19 @@ typedef struct NowUIMsdfGlyph {
     float atlas_bottom;
     float atlas_right;
     float atlas_top;
-} NowUIMsdfGlyph;
+} NowMsdfGlyph;
 
-typedef struct NowUIMsdfAtlasInfo {
+typedef struct NowMsdfAtlasInfo {
     int width;
     int height;
     int glyph_count;
     int atlas_byte_count;
     float size;
     float distance_range;
-    NowUIMsdfMetrics metrics;
-} NowUIMsdfAtlasInfo;
+    NowMsdfMetrics metrics;
+} NowMsdfAtlasInfo;
 
-typedef struct NowUIColorGlyph {
+typedef struct NowColorGlyph {
     unsigned int unicode;
     unsigned int glyph_index;
     float advance;
@@ -59,9 +59,9 @@ typedef struct NowUIColorGlyph {
     float atlas_bottom;
     float atlas_right;
     float atlas_top;
-} NowUIColorGlyph;
+} NowColorGlyph;
 
-typedef struct NowUIColorAtlasInfo {
+typedef struct NowColorAtlasInfo {
     int width;
     int height;
     int glyph_count;
@@ -70,7 +70,7 @@ typedef struct NowUIColorAtlasInfo {
     float line_height;
     float ascender;
     float descender;
-} NowUIColorAtlasInfo;
+} NowColorAtlasInfo;
 
 NOWUI_MSDF_EXPORT int nowui_compile_font(
     const char *font_path,
@@ -88,9 +88,9 @@ NOWUI_MSDF_EXPORT int nowui_compile_font_from_memory(
     int pixel_range,
     unsigned char *atlas_rgba,
     int atlas_rgba_length,
-    NowUIMsdfGlyph *glyphs,
+    NowMsdfGlyph *glyphs,
     int glyph_capacity,
-    NowUIMsdfAtlasInfo *info,
+    NowMsdfAtlasInfo *info,
     char *error_buffer,
     int error_buffer_length);
 
@@ -103,9 +103,9 @@ NOWUI_MSDF_EXPORT int nowui_compile_font_from_memory_with_codepoints(
     int codepoint_count,
     unsigned char *atlas_rgba,
     int atlas_rgba_length,
-    NowUIMsdfGlyph *glyphs,
+    NowMsdfGlyph *glyphs,
     int glyph_capacity,
-    NowUIMsdfAtlasInfo *info,
+    NowMsdfAtlasInfo *info,
     char *error_buffer,
     int error_buffer_length);
 
@@ -115,9 +115,9 @@ NOWUI_MSDF_EXPORT int nowui_compile_color_font_from_memory(
     int size,
     unsigned char *atlas_rgba,
     int atlas_rgba_length,
-    NowUIColorGlyph *glyphs,
+    NowColorGlyph *glyphs,
     int glyph_capacity,
-    NowUIColorAtlasInfo *info,
+    NowColorAtlasInfo *info,
     char *error_buffer,
     int error_buffer_length);
 
@@ -129,9 +129,9 @@ NOWUI_MSDF_EXPORT int nowui_compile_color_font_from_memory_with_codepoints(
     int codepoint_count,
     unsigned char *atlas_rgba,
     int atlas_rgba_length,
-    NowUIColorGlyph *glyphs,
+    NowColorGlyph *glyphs,
     int glyph_capacity,
-    NowUIColorAtlasInfo *info,
+    NowColorAtlasInfo *info,
     char *error_buffer,
     int error_buffer_length);
 
@@ -139,11 +139,11 @@ NOWUI_MSDF_EXPORT int nowui_compile_color_font_from_memory_with_codepoints(
  * Keeps the FreeType face, font geometry and a dynamic atlas alive across calls so
  * adding glyphs on demand does not re-parse the font or re-bake existing glyphs. */
 
-typedef struct NowUIMsdfSessionInfo {
+typedef struct NowMsdfSessionInfo {
     float size;
     float distance_range;
-    NowUIMsdfMetrics metrics;
-} NowUIMsdfSessionInfo;
+    NowMsdfMetrics metrics;
+} NowMsdfSessionInfo;
 
 #define NOWUI_MSDF_SESSION_RESIZED 1
 
@@ -152,7 +152,7 @@ NOWUI_MSDF_EXPORT int nowui_msdf_session_create(
     int font_data_length,
     int size,
     int pixel_range,
-    NowUIMsdfSessionInfo *info,
+    NowMsdfSessionInfo *info,
     void **out_session,
     char *error_buffer,
     int error_buffer_length);
@@ -168,13 +168,13 @@ NOWUI_MSDF_EXPORT int nowui_msdf_session_create_fixed(
     int size,
     int pixel_range,
     int atlas_side,
-    NowUIMsdfSessionInfo *info,
+    NowMsdfSessionInfo *info,
     void **out_session,
     char *error_buffer,
     int error_buffer_length);
 
 /* Bakes the requested codepoints that are not yet in the atlas into it and writes one
- * NowUIMsdfGlyph per successfully loaded glyph (codepoints missing from the font are
+ * NowMsdfGlyph per successfully loaded glyph (codepoints missing from the font are
  * skipped; the caller diffs against its request to detect misses).
  * out_change_flags has NOWUI_MSDF_SESSION_RESIZED set when the atlas grew (growable
  * sessions only); previously returned glyph atlas coordinates remain valid in the
@@ -184,7 +184,7 @@ NOWUI_MSDF_EXPORT int nowui_msdf_session_add_glyphs(
     void *session,
     const unsigned int *codepoints,
     int codepoint_count,
-    NowUIMsdfGlyph *glyphs,
+    NowMsdfGlyph *glyphs,
     int glyph_capacity,
     int *out_glyph_count,
     int *out_atlas_side,
@@ -206,14 +206,14 @@ NOWUI_MSDF_EXPORT void nowui_msdf_session_destroy(void *session);
  * shaping composes with both the native and the managed glyph bakers. Shaped
  * output is glyph indices with positions in em units and UTF-16 cluster mapping. */
 
-typedef struct NowUIShapedGlyph {
+typedef struct NowShapedGlyph {
     unsigned int glyph_index;
     unsigned int cluster;  /* UTF-16 code unit index into the input text */
     float x_advance;       /* em units (font units / unitsPerEm) */
     float y_advance;
     float x_offset;
     float y_offset;
-} NowUIShapedGlyph;
+} NowShapedGlyph;
 
 NOWUI_MSDF_EXPORT int nowui_shaper_create(
     const unsigned char *font_data,
@@ -229,7 +229,7 @@ NOWUI_MSDF_EXPORT int nowui_shaper_shape_utf16(
     void *shaper,
     const unsigned short *text,
     int text_length,
-    NowUIShapedGlyph *glyphs,
+    NowShapedGlyph *glyphs,
     int glyph_capacity,
     int *out_glyph_count,
     char *error_buffer,

@@ -6,7 +6,8 @@ namespace NowUI.Internal
     {
         Rectangle,
         Text,
-        TexturedRectangle
+        TexturedRectangle,
+        Sdf
     }
 
     internal struct NowMeshBatch

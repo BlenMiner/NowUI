@@ -251,7 +251,7 @@ namespace NowUI.CodeEditor
                 {
                     int hit = HitTest(text, cache, font, _fontSize, textStyle.fontStyle,
                         interaction.pointerPosition, textRect, lineHeight, editor.scrollX, editor.scrollY);
-                    int streak = NowControlState.ClickStreak(id, true);
+                    int streak = NowControlState.ClickStreak(id, true, interaction.pointerPosition);
 
                     if (onGutter || streak >= 3)
                     {
@@ -363,8 +363,11 @@ namespace NowUI.CodeEditor
                     {
                         cache.undo.Push(text, in state, typing: true);
 
-                        if (!PairBackspace(ref text, ref state, _language))
+                        if (!PairBackspace(ref text, ref state, _language) &&
+                            (frame.command || !IndentBackspace(ref text, ref state)))
+                        {
                             NowTextEdit.Backspace(ref text, ref state, frame.command);
+                        }
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "del"), frame.deleteHeld))
@@ -451,9 +454,16 @@ namespace NowUI.CodeEditor
             float maxScrollY = Mathf.Max(0f, contentHeight - textRect.height);
             float maxScrollX = Mathf.Max(0f, cache.contentWidth + 24f - textRect.width);
 
-            if (!NowInput.isPassive && interaction.hovered)
+            editor.scrollY = Mathf.Clamp(editor.scrollY, 0f, maxScrollY);
+            editor.scrollX = Mathf.Clamp(editor.scrollX, 0f, maxScrollX);
+
+            Vector2 pendingWheel = NowInput.current.scrollDelta;
+            bool canWheelScroll = WouldWheelMove(editor.scrollX, editor.scrollY, maxScrollX, maxScrollY, pendingWheel,
+                lineHeight, focused, caretLine, caretX, textRect);
+
+            if (interaction.hovered && canWheelScroll)
             {
-                Vector2 wheel = NowInput.current.scrollDelta;
+                Vector2 wheel = NowInput.ConsumeScrollDelta(rect);
 
                 if (wheel != Vector2.zero)
                 {
@@ -496,6 +506,38 @@ namespace NowUI.CodeEditor
                 NowControlState.RequestRepaint();
 
             return result;
+        }
+
+        static bool WouldWheelMove(float scrollX, float scrollY, float maxScrollX, float maxScrollY, Vector2 wheel,
+            float lineHeight, bool focused, int caretLine, float caretX, NowRect textRect)
+        {
+            if (wheel == Vector2.zero)
+                return false;
+
+            float nextY = Mathf.Clamp(scrollY - wheel.y * lineHeight * 2f, 0f, maxScrollY);
+            float nextX = Mathf.Clamp(scrollX + wheel.x * lineHeight * 2f, 0f, maxScrollX);
+
+            if (focused)
+            {
+                float caretTop = caretLine * lineHeight;
+
+                if (caretTop < nextY)
+                    nextY = caretTop;
+
+                if (caretTop + lineHeight > nextY + textRect.height)
+                    nextY = caretTop + lineHeight - textRect.height;
+
+                if (caretX < nextX)
+                    nextX = Mathf.Max(0f, caretX - 24f);
+
+                if (caretX > nextX + textRect.width - 8f)
+                    nextX = caretX - textRect.width + 24f;
+
+                nextY = Mathf.Clamp(nextY, 0f, maxScrollY);
+                nextX = Mathf.Clamp(nextX, 0f, maxScrollX);
+            }
+
+            return !Mathf.Approximately(nextY, scrollY) || !Mathf.Approximately(nextX, scrollX);
         }
 
         void DrawVisuals(NowTheme theme, NowText textStyle, NowFontAsset font, NowRect rect, NowRect textRect,
@@ -1167,6 +1209,37 @@ namespace NowUI.CodeEditor
             }
 
             return false;
+        }
+
+        static bool IndentBackspace(ref string text, ref NowTextEditState state)
+        {
+            if (state.hasSelection || state.caret <= 0)
+                return false;
+
+            NowTextMetrics.LineBounds(text, state.caret, out int lineStart, out _);
+            int column = state.caret - lineStart;
+
+            if (column <= 0)
+                return false;
+
+            int remove = column % IndentUnit.Length;
+
+            if (remove == 0)
+                remove = IndentUnit.Length;
+
+            if (state.caret - remove < lineStart)
+                return false;
+
+            for (int i = state.caret - remove; i < state.caret; ++i)
+            {
+                if (text[i] != ' ')
+                    return false;
+            }
+
+            text = text.Remove(state.caret - remove, remove);
+            state.caret -= remove;
+            state.anchor = state.caret;
+            return true;
         }
 
         static void InsertNewlineWithIndent(ref string text, ref NowTextEditState state, NowCodeLanguage language)

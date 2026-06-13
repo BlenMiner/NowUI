@@ -59,7 +59,7 @@ std::string to_string(T value) {
 
 #ifndef NOWUI_MSDF_NO_SHAPING
 /* Owns the HarfBuzz objects for one font; see nowui_shaper_create. */
-struct NowUIShaperState {
+struct NowShaperState {
     std::vector<unsigned char> data;
     hb_blob_t *blob = nullptr;
     hb_face_t *face = nullptr;
@@ -67,7 +67,7 @@ struct NowUIShaperState {
     hb_buffer_t *buffer = nullptr;
     unsigned int upem = 0;
 
-    ~NowUIShaperState() {
+    ~NowShaperState() {
         if (buffer)
             hb_buffer_destroy(buffer);
         if (font)
@@ -193,7 +193,7 @@ void pack_glyphs(
 }
 
 void fill_info(
-    NowUIMsdfAtlasInfo *info,
+    NowMsdfAtlasInfo *info,
     const msdf_atlas::FontGeometry &font_geometry,
     int width,
     int height,
@@ -220,7 +220,7 @@ void fill_info(
     info->metrics.underline_thickness = static_cast<float>(metrics.underlineThickness);
 }
 
-void fill_glyphs(NowUIMsdfGlyph *output, const msdf_atlas::FontGeometry &font_geometry) {
+void fill_glyphs(NowMsdfGlyph *output, const msdf_atlas::FontGeometry &font_geometry) {
     if (!output)
         return;
 
@@ -460,9 +460,9 @@ int compile_color_font_to_memory(
     int size,
     unsigned char *atlas_rgba,
     int atlas_rgba_length,
-    NowUIColorGlyph *glyphs_output,
+    NowColorGlyph *glyphs_output,
     int glyph_capacity,
-    NowUIColorAtlasInfo *info,
+    NowColorAtlasInfo *info,
     const unsigned int *codepoints = nullptr,
     int codepoint_count = 0) {
 
@@ -610,7 +610,7 @@ const int SESSION_MAX_SIDE = 1 << 14;
 // full, but pack() places rectangles in best-fit order, so after an atlas resize arbitrary
 // glyphs could remain unplaced at (0, 0) and overlap each other. The session drives the
 // packer and generator directly and retries the whole batch from a packer snapshot instead.
-struct NowUIMsdfSessionState {
+struct NowMsdfSessionState {
     std::vector<unsigned char> font_data;
     FreetypeLibrary freetype;
     msdfgen::FontHandle *font = nullptr;
@@ -622,20 +622,20 @@ struct NowUIMsdfSessionState {
     int side = 0;
     int max_side = 0;
 
-    ~NowUIMsdfSessionState() {
+    ~NowMsdfSessionState() {
         if (font)
             msdfgen::destroyFont(font);
     }
 };
 
-NowUIMsdfSessionState *create_session(
+NowMsdfSessionState *create_session(
     const unsigned char *font_data,
     int font_data_length,
     int size,
     int pixel_range,
     int min_side,
     int max_side,
-    NowUIMsdfSessionInfo *info) {
+    NowMsdfSessionInfo *info) {
 
     if (!font_data || font_data_length <= 0)
         throw std::runtime_error("Font data is empty.");
@@ -646,7 +646,7 @@ NowUIMsdfSessionState *create_session(
     if (min_side <= 0 || max_side < min_side || max_side > SESSION_MAX_SIDE)
         throw std::runtime_error("Session atlas side constraints are invalid.");
 
-    std::unique_ptr<NowUIMsdfSessionState> session(new NowUIMsdfSessionState());
+    std::unique_ptr<NowMsdfSessionState> session(new NowMsdfSessionState());
 
     // FreeType keeps referencing the memory of FT_New_Memory_Face for the lifetime of
     // the face, so the session owns a copy of the font bytes.
@@ -691,10 +691,10 @@ NowUIMsdfSessionState *create_session(
 }
 
 int session_add_glyphs(
-    NowUIMsdfSessionState *session,
+    NowMsdfSessionState *session,
     const unsigned int *codepoints,
     int codepoint_count,
-    NowUIMsdfGlyph *glyphs_output,
+    NowMsdfGlyph *glyphs_output,
     int glyph_capacity,
     int *out_glyph_count,
     int *out_atlas_side,
@@ -802,7 +802,7 @@ int session_add_glyphs(
         glyph.getQuadPlaneBounds(plane_left, plane_bottom, plane_right, plane_top);
         glyph.getQuadAtlasBounds(atlas_left, atlas_bottom, atlas_right, atlas_top);
 
-        NowUIMsdfGlyph &output = glyphs_output[i];
+        NowMsdfGlyph &output = glyphs_output[i];
         output.unicode = glyph.getCodepoint();
         output.advance = static_cast<float>(glyph.getAdvance());
         output.plane_left = static_cast<float>(plane_left);
@@ -825,7 +825,7 @@ int session_add_glyphs(
     return NOWUI_MSDF_OK;
 }
 
-int session_copy_atlas(NowUIMsdfSessionState *session, unsigned char *atlas_rgba, int atlas_rgba_length) {
+int session_copy_atlas(NowMsdfSessionState *session, unsigned char *atlas_rgba, int atlas_rgba_length) {
     if (!session)
         throw std::runtime_error("Session is null.");
 
@@ -848,9 +848,9 @@ int compile_font_to_memory(
     int pixel_range,
     unsigned char *atlas_rgba,
     int atlas_rgba_length,
-    NowUIMsdfGlyph *glyphs_output,
+    NowMsdfGlyph *glyphs_output,
     int glyph_capacity,
-    NowUIMsdfAtlasInfo *info,
+    NowMsdfAtlasInfo *info,
     const unsigned int *codepoints = nullptr,
     int codepoint_count = 0) {
 
@@ -939,9 +939,9 @@ int nowui_compile_font_from_memory(
     int pixel_range,
     unsigned char *atlas_rgba,
     int atlas_rgba_length,
-    NowUIMsdfGlyph *glyphs,
+    NowMsdfGlyph *glyphs,
     int glyph_capacity,
-    NowUIMsdfAtlasInfo *info,
+    NowMsdfAtlasInfo *info,
     char *error_buffer,
     int error_buffer_length) {
 
@@ -977,9 +977,9 @@ int nowui_compile_font_from_memory_with_codepoints(
     int codepoint_count,
     unsigned char *atlas_rgba,
     int atlas_rgba_length,
-    NowUIMsdfGlyph *glyphs,
+    NowMsdfGlyph *glyphs,
     int glyph_capacity,
-    NowUIMsdfAtlasInfo *info,
+    NowMsdfAtlasInfo *info,
     char *error_buffer,
     int error_buffer_length) {
 
@@ -1014,9 +1014,9 @@ int nowui_compile_color_font_from_memory(
     int size,
     unsigned char *atlas_rgba,
     int atlas_rgba_length,
-    NowUIColorGlyph *glyphs,
+    NowColorGlyph *glyphs,
     int glyph_capacity,
-    NowUIColorAtlasInfo *info,
+    NowColorAtlasInfo *info,
     char *error_buffer,
     int error_buffer_length) {
 
@@ -1050,9 +1050,9 @@ int nowui_compile_color_font_from_memory_with_codepoints(
     int codepoint_count,
     unsigned char *atlas_rgba,
     int atlas_rgba_length,
-    NowUIColorGlyph *glyphs,
+    NowColorGlyph *glyphs,
     int glyph_capacity,
-    NowUIColorAtlasInfo *info,
+    NowColorAtlasInfo *info,
     char *error_buffer,
     int error_buffer_length) {
 
@@ -1085,7 +1085,7 @@ int nowui_msdf_session_create(
     int font_data_length,
     int size,
     int pixel_range,
-    NowUIMsdfSessionInfo *info,
+    NowMsdfSessionInfo *info,
     void **out_session,
     char *error_buffer,
     int error_buffer_length) {
@@ -1115,7 +1115,7 @@ int nowui_msdf_session_create_fixed(
     int size,
     int pixel_range,
     int atlas_side,
-    NowUIMsdfSessionInfo *info,
+    NowMsdfSessionInfo *info,
     void **out_session,
     char *error_buffer,
     int error_buffer_length) {
@@ -1143,7 +1143,7 @@ int nowui_msdf_session_add_glyphs(
     void *session,
     const unsigned int *codepoints,
     int codepoint_count,
-    NowUIMsdfGlyph *glyphs,
+    NowMsdfGlyph *glyphs,
     int glyph_capacity,
     int *out_glyph_count,
     int *out_atlas_side,
@@ -1153,7 +1153,7 @@ int nowui_msdf_session_add_glyphs(
 
     try {
         const int result = session_add_glyphs(
-            static_cast<NowUIMsdfSessionState *>(session),
+            static_cast<NowMsdfSessionState *>(session),
             codepoints,
             codepoint_count,
             glyphs,
@@ -1182,7 +1182,7 @@ int nowui_msdf_session_copy_atlas(
 
     try {
         const int result = session_copy_atlas(
-            static_cast<NowUIMsdfSessionState *>(session),
+            static_cast<NowMsdfSessionState *>(session),
             atlas_rgba,
             atlas_rgba_length);
 
@@ -1198,7 +1198,7 @@ int nowui_msdf_session_copy_atlas(
 }
 
 void nowui_msdf_session_destroy(void *session) {
-    delete static_cast<NowUIMsdfSessionState *>(session);
+    delete static_cast<NowMsdfSessionState *>(session);
 }
 
 #ifdef NOWUI_MSDF_NO_SHAPING
@@ -1226,7 +1226,7 @@ int nowui_shaper_shape_utf16(
     void *shaper_handle,
     const unsigned short *text,
     int text_length,
-    NowUIShapedGlyph *glyphs,
+    NowShapedGlyph *glyphs,
     int glyph_capacity,
     int *out_glyph_count,
     char *error_buffer,
@@ -1265,7 +1265,7 @@ int nowui_shaper_create(
             return NOWUI_MSDF_ERROR;
         }
 
-        std::unique_ptr<NowUIShaperState> shaper(new NowUIShaperState());
+        std::unique_ptr<NowShaperState> shaper(new NowShaperState());
 
         // Own a copy: the managed caller's array is only pinned for this call.
         shaper->data.assign(font_data, font_data + font_data_length);
@@ -1310,7 +1310,7 @@ int nowui_shaper_shape_utf16(
     void *shaper_handle,
     const unsigned short *text,
     int text_length,
-    NowUIShapedGlyph *glyphs,
+    NowShapedGlyph *glyphs,
     int glyph_capacity,
     int *out_glyph_count,
     char *error_buffer,
@@ -1319,7 +1319,7 @@ int nowui_shaper_shape_utf16(
         *out_glyph_count = 0;
 
     try {
-        auto *shaper = static_cast<NowUIShaperState *>(shaper_handle);
+        auto *shaper = static_cast<NowShaperState *>(shaper_handle);
 
         if (!shaper || !text || text_length <= 0 || !out_glyph_count) {
             set_error(error_buffer, error_buffer_length, "Shape arguments are invalid.");
@@ -1370,7 +1370,7 @@ int nowui_shaper_shape_utf16(
 }
 
 void nowui_shaper_destroy(void *shaper) {
-    delete static_cast<NowUIShaperState *>(shaper);
+    delete static_cast<NowShaperState *>(shaper);
 }
 
 #endif /* NOWUI_MSDF_NO_SHAPING */

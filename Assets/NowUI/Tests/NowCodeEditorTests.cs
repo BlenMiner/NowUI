@@ -47,6 +47,7 @@ public class NowCodeEditorTests
         NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
+        NowLayout.Reset();
         NowOverlay.Reset();
         NowTextInput.Reset();
         NowCodeEditor.ResetCaches();
@@ -68,6 +69,7 @@ public class NowCodeEditorTests
         NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
+        NowLayout.Reset();
     }
 
     NowCodeEditorResult Frame(ref string text, NowTextInputFrame keys = default)
@@ -83,7 +85,24 @@ public class NowCodeEditorTests
         return result;
     }
 
+    void NestedScrollFrame(ref string text)
+    {
+        _keyboard.frame = default;
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        using (Now.ScrollView(new NowRect(0, 0, 500, 200), "outer").Begin())
+        {
+            NowLayout.Rect(height: 90f, stretchWidth: true);
+            NowCode.Editor(NowJsonLanguage.instance, "code").SetHeight(120f).Draw(ref text);
+            NowLayout.Rect(height: 500f, stretchWidth: true);
+        }
+    }
+
     static int Id => NowInput.GetId(0, "code");
+
+    static int OuterId => NowInput.GetId(0, "outer");
 
     void Focus()
     {
@@ -107,6 +126,18 @@ public class NowCodeEditorTests
         var diagnostics = new List<NowCodeDiagnostic>();
         NowJsonLanguage.instance.Validate(text, diagnostics);
         return diagnostics;
+    }
+
+    static string LongJsonDocument()
+    {
+        var lines = new List<string> { "{" };
+
+        for (int i = 0; i < 40; ++i)
+            lines.Add($"  \"value{i}\": {i},");
+
+        lines.Add("  \"last\": true");
+        lines.Add("}");
+        return string.Join("\n", lines);
     }
 
     [Test]
@@ -402,5 +433,26 @@ public class NowCodeEditorTests
 
         Assert.IsFalse(result.changed);
         Assert.AreEqual("{}", text);
+    }
+
+    [Test]
+    public void WheelAtEditorEdgeFallsThroughToParentScrollView()
+    {
+        string text = LongJsonDocument();
+        NestedScrollFrame(ref text);
+
+        ref Vector2 outerScroll = ref NowControlState.Get<Vector2>(OuterId);
+        outerScroll.y = 80f;
+        NestedScrollFrame(ref text);
+
+        Assert.AreEqual(80f, outerScroll.y, 0.001f, "Fixture must start with the parent scroll view away from its top.");
+
+        _pointer.snapshot = new NowInputSnapshot(
+            true, new Vector2(100f, 50f), new Vector2(100f, 50f), Vector2.zero,
+            false, false, false, new Vector2(0f, 2f), 2, 2f);
+
+        NestedScrollFrame(ref text);
+
+        Assert.Less(outerScroll.y, 80f, "Wheel-up over a top-pinned editor must remain available to the parent scroll view.");
     }
 }

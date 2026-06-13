@@ -1,11 +1,8 @@
 {
-    "name": "NowUI.Examples",
-    "rootNamespace": "",
+    "name": "NowUI.Extensions.Sdf",
+    "rootNamespace": "NowUI.Sdf",
     "references": [
-        "GUID:f8d53a32dbb72f34987c15dba8a48aea",
-        "NowUI.Extensions.Markdown",
-        "NowUI.Extensions.CodeEditor",
-        "NowUI.Extensions.Sdf"
+        "NowUI.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -24,12 +24,39 @@ namespace NowUI
         {
             return attributes != null && attributes.TryGetValue(key, out var value) ? value : fallback;
         }
+
+        public bool TryAttribute(string key, out string value)
+        {
+            if (attributes != null && attributes.TryGetValue(key, out value))
+                return true;
+
+            value = string.Empty;
+            return false;
+        }
+
+        public float FloatAttribute(string key, float fallback, float min = 0f)
+        {
+            string value = Attribute(key);
+
+            return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed)
+                ? Mathf.Max(parsed, min)
+                : fallback;
+        }
     }
 
     public struct NowRichTextTagResult
     {
         public bool hasInline;
         public NowRichTextInline inline;
+
+        public static NowRichTextTagResult Inline(NowRichTextInline inline)
+        {
+            return new NowRichTextTagResult
+            {
+                hasInline = true,
+                inline = inline
+            };
+        }
     }
 
     public sealed class NowRichTextDocument
@@ -250,6 +277,9 @@ namespace NowUI
                     entry = current;
                     entry.name = tag.name;
                     entry.start = output.Length;
+                    entry.style = current.style
+                        .SetColor(NowControls.theme.GetColor(NowColorToken.Accent, Color.blue))
+                        .SetUnderline();
                     entry.tag = id;
                     return true;
                 }
@@ -610,32 +640,22 @@ namespace NowUI
             if (string.IsNullOrEmpty(id))
                 return false;
 
-            float size = ReadFloat(context, "size", context.style.fontSize);
-            float width = ReadFloat(context, "width", size);
-            float height = ReadFloat(context, "height", size);
+            float size = context.FloatAttribute("size", context.style.fontSize);
+            float width = context.FloatAttribute("width", size);
+            float height = context.FloatAttribute("height", size);
             var asset = Resources.Load<NowLottieAsset>($"Lottie/{id}") ?? Resources.Load<NowLottieAsset>(id);
 
             if (asset == null)
                 return false;
 
-            result.hasInline = true;
-            result.inline = new NowRichTextInline
+            result = NowRichTextTagResult.Inline(new NowRichTextInline
             {
                 width = width,
                 height = height,
                 payload = asset,
                 draw = Draw
-            };
+            });
             return true;
-        }
-
-        static float ReadFloat(in NowRichTextTagContext context, string key, float fallback)
-        {
-            string value = context.Attribute(key);
-
-            return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed)
-                ? Mathf.Max(parsed, 0f)
-                : fallback;
         }
 
         static void Draw(in NowRichTextRun run, NowRect mask)

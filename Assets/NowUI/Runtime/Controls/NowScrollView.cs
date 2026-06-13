@@ -71,17 +71,6 @@ namespace NowUI
 
             ref Vector2 scroll = ref NowControlState.Get<Vector2>(id);
 
-            if (!NowInput.isPassive && NowInput.IsHovered(viewport))
-            {
-                float wheel = NowInput.current.scrollDelta.y;
-
-                if (wheel != 0f)
-                {
-                    scroll.y -= wheel * 40f;
-                    NowControlState.RequestRepaint();
-                }
-            }
-
             scroll.y = Mathf.Clamp(scroll.y, 0f, maxScroll);
 
             const float BarWidth = 8f;
@@ -133,6 +122,28 @@ namespace NowUI
             _layout.Dispose();
             _mask.Dispose();
 
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(_id);
+
+            if (_maxScroll > 0f)
+            {
+                if (NowInput.current.scrollDelta.y != 0f)
+                {
+                    float wheel = NowInput.ConsumeScrollDelta(_viewport).y;
+
+                    if (wheel != 0f)
+                    {
+                        scroll.y -= wheel * 40f;
+                        NowControlState.RequestRepaint();
+                    }
+                }
+
+                scroll.y = Mathf.Clamp(scroll.y, 0f, _maxScroll);
+            }
+            else
+            {
+                scroll.y = 0f;
+            }
+
             if (!_barVisible)
                 return;
 
@@ -144,8 +155,6 @@ namespace NowUI
                 _viewport.y + 2f,
                 BarWidth,
                 _viewport.height - 4f);
-
-            ref Vector2 scroll = ref NowControlState.Get<Vector2>(_id);
 
             int thumbId = NowInput.GetId(_id, "thumb");
             var metrics = NowScrollbar.Calculate(

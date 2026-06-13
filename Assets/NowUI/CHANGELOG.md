@@ -3,6 +3,17 @@
 All notable changes to the NowUI package are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- SDF shape extension (`NowUI.Extensions.Sdf`, its own assembly): composable
+  circles, boxes, rounded boxes, ellipses and capsules drawn as one
+  material-backed quad, with union/subtract/intersect operations, smooth
+  blends, reusable graph operands, distance-field morphs between graphs,
+  per-shape colors, scene texture fills, explicit-rect and layout-flow builders,
+  and UGUI capture support through the standard NowUI batcher.
+
 ## [0.1.0] - 2026-06-11
 
 First versioned release; everything below is the state of the package at the

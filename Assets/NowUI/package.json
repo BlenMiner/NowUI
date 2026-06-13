@@ -15,6 +15,7 @@
     "ui",
     "immediate-mode",
     "msdf",
+    "sdf",
     "text",
     "layout",
     "lottie",

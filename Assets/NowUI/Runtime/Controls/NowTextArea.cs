@@ -151,7 +151,7 @@ namespace NowUI
             {
                 int hit = NowTextMetrics.HitTest(text, lines, fontAsset, fontSize, textStyle.fontStyle,
                     interaction.pointerPosition, inner, lineHeight, 0f, area.scrollY);
-                int streak = NowControlState.ClickStreak(id, true);
+                int streak = NowControlState.ClickStreak(id, true, interaction.pointerPosition);
 
                 if (streak >= 3)
                 {
@@ -309,9 +309,9 @@ namespace NowUI
             float contentHeight = lines.Count * lineHeight;
             float maxScroll = Mathf.Max(0f, contentHeight - inner.height);
 
-            if (!NowInput.isPassive && interaction.hovered && maxScroll > 0f)
+            if (interaction.hovered && maxScroll > 0f && NowInput.current.scrollDelta.y != 0f)
             {
-                float wheel = NowInput.current.scrollDelta.y;
+                float wheel = NowInput.ConsumeScrollDelta(inner).y;
 
                 if (wheel != 0f)
                 {

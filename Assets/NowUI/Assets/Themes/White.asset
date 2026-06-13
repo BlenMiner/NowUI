@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 04c5a0a2a8e8407792a9d8e3844255a0, type: 3}
-  m_Name: NowTheme
+  m_Name: White
   m_EditorClassIdentifier: NowUI.Runtime::NowTheme
   _defaultRectanglePreset: surface
   _defaultTextPreset: body

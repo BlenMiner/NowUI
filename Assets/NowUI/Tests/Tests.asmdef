@@ -8,6 +8,7 @@
         "NowUI.Runtime",
         "NowUI.Extensions.Markdown",
         "NowUI.Extensions.CodeEditor",
+        "NowUI.Extensions.Sdf",
         "Unity.PerformanceTesting",
         "UnityEngine.UI"
     ],

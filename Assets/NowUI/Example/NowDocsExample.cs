@@ -6,11 +6,12 @@ using UnityEngine;
 using NowUI;
 using NowUI.CodeEditor;
 using NowUI.Markdown;
+using NowUI.Sdf;
 
 /// <summary>
 /// Browses the repository's Docs/ folder: a side menu of pages, the selected
-/// page rendered through the markdown extension, and a live demo page running
-/// the code from Docs/CustomControls.md. Relative .md links navigate between
+/// page rendered through the markdown extension, and live demo pages for
+/// extension/runtime examples. Relative .md links navigate between
 /// pages; external links open in the browser.
 /// </summary>
 [AddComponentMenu("NowUI/Examples/Now Docs Browser")]
@@ -23,6 +24,8 @@ public class NowDocsExample : NowGraphic
         ControlsDemo,
         LottieDemo,
         CodeEditorDemo,
+        RichTextDemo,
+        SdfDemo,
     }
 
     struct Page
@@ -47,6 +50,9 @@ public class NowDocsExample : NowGraphic
         new Page { title = "IMGUI", file = "EditorGUI.md" },
         new Page { title = "Code editor", file = "CodeEditor.md" },
         new Page { title = "Rich text", file = "RichText.md" },
+        new Page { title = "SDF shapes", file = "SDF.md" },
+        new Page { title = "Rich text demo", kind = PageKind.RichTextDemo },
+        new Page { title = "SDF demo", kind = PageKind.SdfDemo },
         new Page { title = "Live demo", kind = PageKind.ControlsDemo },
         new Page { title = "Lottie demo", kind = PageKind.LottieDemo },
         new Page { title = "Editor demo", kind = PageKind.CodeEditorDemo },
@@ -61,6 +67,9 @@ public class NowDocsExample : NowGraphic
     int _clicks;
     bool _lottieScrub;
     float _lottieProgress = 0.35f;
+    int _richTextLinkClicks;
+    string _richTextLastLink = "none";
+    Texture2D _sdfDemoTexture;
     readonly Dictionary<string, string> _docs = new Dictionary<string, string>();
 
     string LoadDoc(string file)
@@ -112,11 +121,18 @@ public class NowDocsExample : NowGraphic
         var menuRect = new NowRect(bounds.x + 12, bounds.y + 12, 180, bounds.height - 24);
         var contentRect = new NowRect(menuRect.xMax + 12, bounds.y + 12, bounds.xMax - menuRect.xMax - 24, bounds.height - 24);
 
-        using (NowLayout.Area(menuRect))
+        var menuTitleRect = new NowRect(menuRect.x, menuRect.y, menuRect.width, 24f);
+        var menuListRect = new NowRect(menuRect.x, menuTitleRect.yMax + 8f, menuRect.width, menuRect.yMax - menuTitleRect.yMax - 8f);
+
+        using (NowLayout.Area(menuTitleRect))
         {
             NowLayout.Label("Now Docs").SetFontSize(13)
                 .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
+        }
 
+        using (NowLayout.Area(menuListRect))
+        using (NowLayout.ScrollView("docs-menu").Begin())
+        {
             for (int i = 0; i < Pages.Length; ++i)
             {
                 bool selected = i == _selected;
@@ -143,6 +159,14 @@ public class NowDocsExample : NowGraphic
 
                 case PageKind.CodeEditorDemo:
                     DrawCodeEditorDemo();
+                    break;
+
+                case PageKind.RichTextDemo:
+                    DrawRichTextDemo(theme);
+                    break;
+
+                case PageKind.SdfDemo:
+                    DrawSdfDemo(theme);
                     break;
 
                 default:
@@ -185,6 +209,266 @@ public class NowDocsExample : NowGraphic
             NowMarkdown.Document(_markdownText).Draw();
         else
             NowCode.Editor(NowMarkdownCodeLanguage.instance, "demo-md").SetHeight(260).Draw(ref _markdownText);
+    }
+
+    void DrawSdfDemo(NowTheme theme)
+    {
+        NowMarkdown.Document("# SDF demo\n\nThe first panel combines reusable graphs with scene-level operations and a generated texture. The second panel morphs between two graphs every frame.").Draw();
+
+        NowMarkdown.Document("## Graph operations").Draw();
+        DrawSdfOperationsPanel(theme);
+
+        NowMarkdown.Document("## Morph").Draw();
+        DrawSdfMorphPanel(theme);
+
+        NowControlState.RequestRepaint();
+    }
+
+    void DrawSdfOperationsPanel(NowTheme theme)
+    {
+        var scene = ReserveSdfPanel(theme, 172f);
+
+        if (scene.isEmpty)
+            return;
+
+        float gap = 18f;
+        float width = Mathf.Max(1f, (scene.width - gap * 2f) / 3f);
+        float height = scene.height;
+        var unionRect = new NowRect(scene.x, scene.y, width, height);
+        var subtractRect = new NowRect(unionRect.xMax + gap, scene.y, width, height);
+        var intersectRect = new NowRect(subtractRect.xMax + gap, scene.y, width, height);
+
+        float w = unionRect.width;
+        float h = unionRect.height;
+
+        NowSdf.Scene(unionRect, "docs-sdf-op-union")
+            .SetTexture(GetSdfDemoTexture())
+            .RoundedBox(new NowRect(w * 0.08f, h * 0.22f, w * 0.64f, h * 0.56f), h * 0.16f)
+            .SetColor(new Color(1f, 0.34f, 0.18f, 1f))
+            .UseColor()
+            .SmoothUnion(14f)
+            .Circle(new Vector2(w * 0.72f, h * 0.5f), h * 0.29f)
+            .Draw();
+
+        w = subtractRect.width;
+        h = subtractRect.height;
+
+        NowSdf.Scene(subtractRect, "docs-sdf-op-subtract")
+            .SetColor(new Color(0.16f, 0.48f, 0.95f, 1f))
+            .RoundedBox(new NowRect(w * 0.12f, h * 0.22f, w * 0.76f, h * 0.56f), h * 0.18f)
+            .SmoothSubtract(9f)
+            .Circle(new Vector2(w * 0.5f, h * 0.5f), h * 0.2f)
+            .Draw();
+
+        w = intersectRect.width;
+        h = intersectRect.height;
+        var left = NowSdf.Graph()
+            .SetColor(new Color(0.12f, 0.82f, 0.68f, 1f))
+            .Circle(new Vector2(w * 0.42f, h * 0.5f), h * 0.31f);
+        var right = NowSdf.Graph()
+            .SetColor(new Color(0.82f, 0.42f, 1f, 1f))
+            .Circle(new Vector2(w * 0.58f, h * 0.5f), h * 0.31f);
+
+        NowSdf.Scene(intersectRect, "docs-sdf-op-intersect")
+            .Graph(left)
+            .SmoothIntersect(12f)
+            .Graph(right)
+            .Draw();
+    }
+
+    void DrawSdfMorphPanel(NowTheme theme)
+    {
+        var scene = ReserveSdfPanel(theme, 172f);
+
+        if (scene.isEmpty)
+            return;
+
+        float width = scene.width;
+        float height = scene.height;
+        float t = Mathf.SmoothStep(0f, 1f, Mathf.PingPong(Time.time * 0.55f, 1f));
+
+        var sceneA = NowSdf.Graph()
+            .SetColor(new Color(0.14f, 0.86f, 0.95f, 1f))
+            .Circle(new Vector2(width * 0.34f, height * 0.5f), height * 0.28f)
+            .SetColor(new Color(0.42f, 0.6f, 1f, 1f))
+            .SmoothUnion(14f)
+            .Circle(new Vector2(width * 0.56f, height * 0.5f), height * 0.28f)
+            .SetColor(new Color(0.16f, 0.95f, 0.62f, 1f))
+            .SmoothUnion(14f)
+            .Circle(new Vector2(width * 0.45f, height * 0.34f), height * 0.22f);
+
+        var sceneB = NowSdf.Graph()
+            .SetColor(new Color(0.96f, 0.34f, 0.58f, 1f))
+            .Capsule(new NowRect(width * 0.2f, height * 0.3f, width * 0.6f, height * 0.4f))
+            .SetColor(new Color(1f, 0.78f, 0.22f, 1f))
+            .SmoothUnion(18f)
+            .Circle(new Vector2(width * 0.5f, height * 0.5f), height * 0.24f);
+
+        NowSdf.Scene(scene, "docs-sdf-morph")
+            .Morph(sceneA, sceneB, t)
+            .Draw();
+    }
+
+    NowRect ReserveSdfPanel(NowTheme theme, float height)
+    {
+        var panel = NowLayout.Rect(height: height, stretchWidth: true);
+        theme.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+        return panel.Inset(14f, 14f);
+    }
+
+    Texture2D GetSdfDemoTexture()
+    {
+        if (_sdfDemoTexture != null)
+            return _sdfDemoTexture;
+
+        const int Size = 64;
+        _sdfDemoTexture = new Texture2D(Size, Size, TextureFormat.RGBA32, false)
+        {
+            name = "Now Docs SDF Demo Texture",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Repeat,
+            hideFlags = HideFlags.HideAndDontSave
+        };
+
+        var a = new Color(0.12f, 0.48f, 0.95f, 1f);
+        var b = new Color(1f, 0.78f, 0.24f, 1f);
+        var c = new Color(0.1f, 0.82f, 0.68f, 1f);
+
+        for (int y = 0; y < Size; ++y)
+        {
+            for (int x = 0; x < Size; ++x)
+            {
+                float stripe = ((x / 8 + y / 8) & 1) == 0 ? 0.25f : 0.75f;
+                float wave = Mathf.Sin((x + y) * 0.22f) * 0.5f + 0.5f;
+                _sdfDemoTexture.SetPixel(x, y, Color.Lerp(Color.Lerp(a, b, stripe), c, wave * 0.35f));
+            }
+        }
+
+        _sdfDemoTexture.Apply(false, true);
+        return _sdfDemoTexture;
+    }
+
+    protected override void OnDestroy()
+    {
+        if (_sdfDemoTexture != null)
+        {
+            if (Application.isPlaying)
+                Destroy(_sdfDemoTexture);
+            else
+                DestroyImmediate(_sdfDemoTexture);
+
+            _sdfDemoTexture = null;
+        }
+
+        base.OnDestroy();
+    }
+
+    void DrawRichTextDemo(NowTheme theme)
+    {
+        NowMarkdown.Document("# Rich text demo\n\nRich text has two entry points: explicit spans for generated content, and tag parsing for small hand-authored UI strings.").Draw();
+
+        var result = NowLayout.RichText("This label has <b>bold</b>, <i>italic</i>, <u>underline</u>, <s>strike</s>, <color=#ffcc00>color</color>, and a <link=\"docs/rich-text\">clickable link</link>.")
+            .ParseDefaultTags()
+            .SetStretchWidth()
+            .Draw();
+
+        if (result.clicked && result.TryGetHitTag(out var tag) && tag.name == "link")
+        {
+            ++_richTextLinkClicks;
+            _richTextLastLink = tag.value;
+        }
+
+        NowLayout.Label($"Link clicks: {_richTextLinkClicks}   Last link: {_richTextLastLink}")
+            .SetFontSize(12)
+            .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+            .Draw();
+
+        NowMarkdown.Document("## Explicit spans").Draw();
+
+        var spans = new[]
+        {
+            new NowRichTextSpan(0, 5, new NowRichTextStyle(15f, NowFontStyle.Bold).SetColor(theme.GetColor(NowColorToken.Accent, Color.blue))),
+            new NowRichTextSpan(6, 3, new NowRichTextStyle(15f).SetUnderline()),
+            new NowRichTextSpan(31, 6, new NowRichTextStyle(15f).SetStrikethrough()),
+        };
+
+        NowLayout.RichText("Spans are useful for generated ranges.")
+            .SetSpans(spans)
+            .SetStretchWidth()
+            .Draw();
+
+        NowMarkdown.Document("## Selectable text").Draw();
+
+        NowLayout.RichText("Drag across this sentence to select plain text. Ctrl/Cmd+C copies it, and right-click opens Copy / Select All.")
+            .SetSelectable()
+            .SetStretchWidth()
+            .Draw();
+
+        NowMarkdown.Document("## Custom inline tags").Draw();
+
+        if (_lotties != null && _lotties.Length > 0 && _lotties[0] != null)
+        {
+            NowLayout.RichText("Loading <lottie id=\"0\" size=\"22\"/> inline with text.")
+                .ParseDefaultTags()
+                .ParseTag("lottie", ParseDemoLottieTag)
+                .SetStretchWidth()
+                .Draw();
+        }
+        else
+        {
+            NowMarkdown.Document("Assign a Lottie asset to the docs component to see the `<lottie />` rich-text tag render inline.").Draw();
+        }
+    }
+
+    bool ParseDemoLottieTag(in NowRichTextTagContext context, out NowRichTextTagResult result)
+    {
+        result = default;
+
+        if (_lotties == null || _lotties.Length == 0)
+            return false;
+
+        string id = context.Attribute("id", "0");
+        NowLottieAsset asset = null;
+
+        if (int.TryParse(id, out int index) && index >= 0 && index < _lotties.Length)
+            asset = _lotties[index];
+
+        if (asset == null)
+        {
+            for (int i = 0; i < _lotties.Length; ++i)
+            {
+                if (_lotties[i] != null && _lotties[i].name == id)
+                {
+                    asset = _lotties[i];
+                    break;
+                }
+            }
+        }
+
+        if (asset == null)
+            return false;
+
+        float size = context.FloatAttribute("size", context.style.fontSize);
+        result = NowRichTextTagResult.Inline(new NowRichTextInline
+        {
+            width = context.FloatAttribute("width", size),
+            height = context.FloatAttribute("height", size),
+            payload = asset,
+            draw = DrawDemoLottieInline
+        });
+        return true;
+    }
+
+    static void DrawDemoLottieInline(in NowRichTextRun run, NowRect mask)
+    {
+        if (run.payload is not NowLottieAsset asset)
+            return;
+
+        Now.Lottie(run.rect, asset)
+            .SetMask(mask)
+            .SetTime(Time.time)
+            .Draw();
+        NowControlState.RequestRepaint();
     }
 
     void DrawLottieDemo(NowTheme theme)

@@ -28,6 +28,7 @@ namespace NowUI
         public bool clicked;
         public NowRichTextHit pointerHit;
         public NowRichTextLayout layout;
+        public bool hasSelection;
 
         public bool TryHit(out NowRichTextHit hit)
         {
@@ -44,6 +45,28 @@ namespace NowUI
             }
 
             return layout.TryHit(position, out hit);
+        }
+
+        public bool TryGetTag(int tag, out NowRichTextTagPayload payload)
+        {
+            if (layout == null)
+            {
+                payload = default;
+                return false;
+            }
+
+            return layout.TryGetTag(tag, out payload);
+        }
+
+        public bool TryGetHitTag(out NowRichTextTagPayload payload)
+        {
+            if (!pointerHit.valid || pointerHit.tag == 0)
+            {
+                payload = default;
+                return false;
+            }
+
+            return TryGetTag(pointerHit.tag, out payload);
         }
     }
 
@@ -64,6 +87,7 @@ namespace NowUI
         NowRichTextParser _parser;
         float _lineHeight;
         bool _wrap;
+        bool _selectable;
 
         static readonly NowRichTextLayout SharedLayout = new NowRichTextLayout();
         static readonly NowRichTextDocument SharedDocument = new NowRichTextDocument();
@@ -71,6 +95,7 @@ namespace NowUI
         struct State
         {
             public NowRichTextLayout layout;
+            public float contentHeight;
         }
 
         int ResolveControlId() => _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
@@ -88,6 +113,7 @@ namespace NowUI
             _parser = null;
             _lineHeight = 0f;
             _wrap = true;
+            _selectable = false;
         }
 
         internal NowRichText(NowRect rect, string value, NowText style, int site) : this(value, style, site)
@@ -132,7 +158,7 @@ namespace NowUI
             return this;
         }
 
-        public NowRichText ParseTags(NowRichTextParser parser)
+        public NowRichText UseParser(NowRichTextParser parser)
         {
             _parser = parser;
             return this;
@@ -142,15 +168,17 @@ namespace NowUI
 
         public NowRichText SetLineHeight(float lineHeight) { _lineHeight = lineHeight; return this; }
 
+        public NowRichText SetSelectable(bool selectable = true) { _selectable = selectable; return this; }
+
         [NowConsumer]
         public NowRichTextResult Draw()
         {
             int id = ResolveControlId();
             float lineHeight = _lineHeight > 0f ? _lineHeight : _style.fontSize * DefaultLineHeight;
             var document = PrepareDocument();
-            NowRect rect = Reserve(lineHeight, document);
-            var interaction = NowInput.Interact(id, rect);
             ref var state = ref NowControlState.Get<State>(id);
+            NowRect rect = Reserve(lineHeight, document, ref state);
+            var interaction = _selectable ? default : NowInput.Interact(id, rect);
 
             if (state.layout == null)
                 state.layout = new NowRichTextLayout();
@@ -158,23 +186,81 @@ namespace NowUI
             state.layout.Clear();
             BuildLayout(state.layout, rect, lineHeight, document);
             state.layout.CompleteLines();
+            UpdateReservedHeight(ref state, lineHeight);
+
+            bool hovered = _selectable ? NowInput.IsHovered(rect) : interaction.hovered;
+            bool hasSelection = false;
 
             if (!NowLayout.isMeasurePass)
+            {
+                if (_selectable)
+                    hasSelection = DrawSelection(id, state.layout);
+
                 DrawRuns(state.layout, rect);
+            }
 
             var result = new NowRichTextResult
             {
                 rect = rect,
-                hovered = interaction.hovered,
+                hovered = hovered,
                 pressed = interaction.pressed,
                 clicked = interaction.clicked,
-                layout = state.layout
+                layout = state.layout,
+                hasSelection = hasSelection
             };
 
-            if (interaction.hovered)
-                state.layout.TryHit(interaction.pointerPosition, out result.pointerHit);
+            if (hovered)
+            {
+                Vector2 pointer = _selectable ? NowInput.current.pointerPosition : interaction.pointerPosition;
+                state.layout.TryHit(pointer, out result.pointerHit);
+            }
 
             return result;
+        }
+
+        bool DrawSelection(int id, NowRichTextLayout layout)
+        {
+            string text = layout.text;
+
+            if (string.IsNullOrEmpty(text) || layout.selectionLines.Count == 0 || _style.font == null)
+                return false;
+
+            int selectionId = NowInput.GetId(id, "selection");
+            var selection = NowTextSelection.Interact(
+                selectionId,
+                text,
+                layout.selectionLines,
+                _style.font,
+                _style.fontSize,
+                _style.fontStyle);
+
+            int menuId = NowInput.GetId(selectionId, "menu");
+
+            if (selection.rightClicked)
+                NowContextMenu.Open(menuId, selection.rightClickPosition);
+
+            if (NowContextMenu.Begin(menuId))
+            {
+                if (selection.hasSelection && NowContextMenu.Item("Copy"))
+                    NowClipboard.Copy(NowTextSelection.GetSelection(selectionId, text));
+
+                if (NowContextMenu.Item("Select All"))
+                    NowTextSelection.SelectAll(selectionId, text);
+
+                NowContextMenu.End();
+            }
+
+            Color highlight = NowControls.theme.GetColor(NowColorToken.Accent, Color.blue);
+            highlight.a = 0.25f;
+
+            return NowTextSelection.DrawHighlights(
+                selectionId,
+                text,
+                layout.selectionLines,
+                _style.font,
+                _style.fontSize,
+                _style.fontStyle,
+                highlight);
         }
 
         NowRichTextDocument PrepareDocument()
@@ -199,14 +285,46 @@ namespace NowUI
             return SharedDocument;
         }
 
-        NowRect Reserve(float lineHeight, NowRichTextDocument document)
+        NowRect Reserve(float lineHeight, NowRichTextDocument document, ref State state)
         {
             if (_hasRect)
                 return _rect;
 
+            if (_options.Has(NowLayoutOptions.Field.StretchWidth))
+            {
+                var options = _options;
+
+                if (!options.Has(NowLayoutOptions.Field.Height) &&
+                    !options.Has(NowLayoutOptions.Field.StretchHeight))
+                {
+                    options = options.SetHeight(Mathf.Max(state.contentHeight, lineHeight));
+                }
+
+                return NowLayout.Rect(options);
+            }
+
             float width = ResolveLayoutWidth(document.text);
             float height = MeasureHeight(width, lineHeight, document);
             return NowControls.ReserveRect(false, default, _options, new Vector2(width, height));
+        }
+
+        void UpdateReservedHeight(ref State state, float lineHeight)
+        {
+            if (_hasRect ||
+                !_options.Has(NowLayoutOptions.Field.StretchWidth) ||
+                _options.Has(NowLayoutOptions.Field.Height) ||
+                _options.Has(NowLayoutOptions.Field.StretchHeight))
+            {
+                return;
+            }
+
+            float height = state.layout.lines.Count > 0 ? state.layout.lines.Count * lineHeight : lineHeight;
+
+            if (Mathf.Abs(state.contentHeight - height) > 0.25f)
+            {
+                state.contentHeight = height;
+                NowControlState.RequestRepaint();
+            }
         }
 
         float ResolveLayoutWidth(string text)
@@ -416,7 +534,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return new NowRichText(value, labelStyle, NowControls.SiteId(file, line));
+            return new NowRichText(value, NowControls.theme.ResolveText(NowTextStyle.Body), NowControls.SiteId(file, line));
         }
     }
 }

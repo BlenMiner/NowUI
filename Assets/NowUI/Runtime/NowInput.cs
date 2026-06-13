@@ -425,6 +425,8 @@ namespace NowUI
 
         static int _passiveDepth;
 
+        static bool _scrollConsumed;
+
         public static INowInputProvider defaultProvider
         {
             get => _defaultProvider;
@@ -484,6 +486,7 @@ namespace NowUI
             _surface = surface;
             _hasContext = true;
             NowControls.ResetControlIdOccurrences();
+            _scrollConsumed = false;
 
             if (provider != null && provider.TryGetSnapshot(surface, out _snapshot))
                 return;
@@ -501,6 +504,28 @@ namespace NowUI
             return _hasContext && _snapshot.hasPointer &&
                 rect.Contains(_snapshot.pointerPosition) &&
                 !NowOverlay.IsPointerBlocked(_snapshot.pointerPosition);
+        }
+
+        public static Vector2 ConsumeScrollDelta(NowRect rect)
+        {
+            return ConsumeScrollDelta((Rect)rect);
+        }
+
+        public static Vector2 ConsumeScrollDelta(Rect rect)
+        {
+            if (_passiveDepth > 0 || _scrollConsumed || !_hasContext || !_snapshot.hasPointer)
+                return default;
+
+            Vector2 scroll = _snapshot.scrollDelta;
+
+            if (scroll == Vector2.zero || !rect.Contains(_snapshot.pointerPosition) ||
+                NowOverlay.IsPointerBlocked(_snapshot.pointerPosition))
+            {
+                return default;
+            }
+
+            _scrollConsumed = true;
+            return scroll;
         }
 
         public static bool IsPointerDown(NowPointerButton button)
@@ -733,6 +758,7 @@ namespace NowUI
             _dragThreshold = DefaultDragThreshold;
             _defaultProvider = NowScreenInputProvider.instance;
             _passiveDepth = 0;
+            _scrollConsumed = false;
         }
 
         /// <summary>

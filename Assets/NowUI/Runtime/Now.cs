@@ -232,6 +232,14 @@ namespace NowUI
         static readonly Dictionary<Texture, TextureMaterialEntry> _textureMaterials =
             new Dictionary<Texture, TextureMaterialEntry>();
 
+        sealed class MaterialMeshEntry
+        {
+            public int meshId = -1;
+        }
+
+        static readonly Dictionary<Material, MaterialMeshEntry> _materialMeshes =
+            new Dictionary<Material, MaterialMeshEntry>();
+
         static NowMesh UseTextureMaterial(Texture texture)
         {
             if (_defaultMaterial == null)
@@ -252,6 +260,20 @@ namespace NowUI
             }
 
             return UseMaterial(entry.material, ref entry.meshId, NowMeshKind.TexturedRectangle);
+        }
+
+        static NowMesh UseSdfMaterial(Material material)
+        {
+            if (material == null)
+                return null;
+
+            if (!_materialMeshes.TryGetValue(material, out var entry))
+            {
+                entry = new MaterialMeshEntry();
+                _materialMeshes[material] = entry;
+            }
+
+            return UseMaterial(material, ref entry.meshId, NowMeshKind.Sdf);
         }
 
         static NowMesh UseMaterial(Material material, ref int cachedMeshId, NowMeshKind kind)
@@ -833,6 +855,46 @@ namespace NowUI
             _tmpVertex.position.w = rectHeight;
 
             mesh.AddRect(_tmpVertex, rectangle.blur, rectangle.outline);
+        }
+
+        /// <summary>
+        /// Draws a material-driven full-rect effect using the same quad, mask,
+        /// texture coordinate and canvas capture path as NowRectangle. Extensions
+        /// provide the material shader and per-material data.
+        /// </summary>
+        internal static void DrawSdf(NowRect rect, NowRect mask, Material material, Vector4 color)
+        {
+            if (_suppressDrawDepth > 0 || material == null || rect.width <= 0f || rect.height <= 0f)
+                return;
+
+            int x0 = Mathf.RoundToInt(rect.x);
+            int y0 = Mathf.RoundToInt(rect.y);
+            int rectWidth = Mathf.RoundToInt(rect.x + rect.width) - x0;
+            int rectHeight = Mathf.RoundToInt(rect.y + rect.height) - y0;
+
+            if (rectWidth <= 0 || rectHeight <= 0)
+                return;
+
+            if (!mask.isEmpty && mask == rect)
+                mask = mask.Outset(2f);
+
+            _tmpVertex.mask = ApplyAmbientMask(mask);
+            _tmpVertex.radius = default;
+            _tmpVertex.color = ApplyColorMultiplier(color);
+            _tmpVertex.outlineColor = default;
+            _tmpVertex.uvwh = _defaultUV;
+            _tmpVertex.position.x = x0;
+            _tmpVertex.position.y = -y0 - rectHeight;
+            _tmpVertex.position.z = rectWidth;
+            _tmpVertex.position.w = rectHeight;
+
+            var mesh = UseSdfMaterial(material);
+
+            if (mesh == null)
+                return;
+
+            mesh = EnsureMeshCapacity(mesh, material, NowMeshKind.Sdf, 4);
+            mesh.AddRect(_tmpVertex, 0f, 0f);
         }
 
         /// <summary>

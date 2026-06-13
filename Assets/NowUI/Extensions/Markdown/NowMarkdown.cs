@@ -81,11 +81,6 @@ namespace NowUI.Markdown
             return GetDocument().Draw(rect);
         }
 
-        public NowMarkdownDocument Parse()
-        {
-            return GetDocument();
-        }
-
         NowMarkdownDocument GetDocument()
         {
             return _hasStyle
@@ -169,4 +164,5 @@ namespace NowUI.Markdown
             Reset();
         }
     }
+
 }

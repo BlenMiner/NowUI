@@ -181,6 +181,20 @@ namespace NowUI
             return index >= 0 && index < tags.Count ? tags[index].payload : null;
         }
 
+        public bool TryGetTag(int tag, out NowRichTextTagPayload payload)
+        {
+            int index = tag - 1;
+
+            if (index >= 0 && index < tags.Count)
+            {
+                payload = tags[index];
+                return true;
+            }
+
+            payload = default;
+            return false;
+        }
+
         public void AddTagPayloads(IReadOnlyList<NowRichTextTagPayload> payloads)
         {
             if (payloads == null)
