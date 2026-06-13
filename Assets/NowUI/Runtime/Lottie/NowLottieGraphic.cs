@@ -8,7 +8,7 @@ namespace NowUI
     /// frame, so it stays sharp at any scale.
     /// </summary>
     [AddComponentMenu("NowUI/NowUI Lottie")]
-    public class NowUILottieGraphic : NowUIGraphic
+    public class NowLottieGraphic : NowGraphic
     {
         [SerializeField] NowLottieAsset _animation;
 

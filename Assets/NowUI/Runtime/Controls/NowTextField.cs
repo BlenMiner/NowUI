@@ -71,11 +71,11 @@ namespace NowUI
 
             var interaction = NowControls.Interact(id, rect, out bool focused, out _);
 
-            ref var state = ref NowUIControlState.Get<NowTextEditState>(id);
+            ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
 
             // Focus gained without a click (tab/gamepad/programmatic): caret to end.
-            ref byte hadFocus = ref NowUIControlState.Get<byte>(NowUIInput.GetId(id, "hadfocus"));
+            ref byte hadFocus = ref NowControlState.Get<byte>(NowInput.GetId(id, "hadfocus"));
 
             if (focused && hadFocus == 0)
             {
@@ -98,7 +98,7 @@ namespace NowUI
             {
                 int hit = HitTest(fontAsset, resolvedFont, text, interaction.pointerPosition.x - inner.x + state.scrollX, fontSize);
 
-                if (NowUIControlState.DetectDoubleClick(id, true))
+                if (NowControlState.DetectDoubleClick(id, true))
                 {
                     NowTextEdit.SelectAll(ref state, text);
                 }
@@ -115,7 +115,7 @@ namespace NowUI
 
             string composition = null;
 
-            if (focused && !NowUIInput.isPassive)
+            if (focused && !NowInput.isPassive)
             {
                 NowUIFocus.LockNavigation();
                 var frame = NowUITextInput.current;
@@ -150,16 +150,16 @@ namespace NowUI
                             NowTextEdit.Insert(ref text, ref state, buffer.Replace("\n", " ").Replace("\r", string.Empty));
                     }
 
-                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "bs"), frame.backspaceHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "bs"), frame.backspaceHeld))
                         NowTextEdit.Backspace(ref text, ref state, frame.command);
 
-                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "del"), frame.deleteHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "del"), frame.deleteHeld))
                         NowTextEdit.Delete(ref text, ref state, frame.command);
 
-                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "left"), frame.leftHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "left"), frame.leftHeld))
                         NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.command);
 
-                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "right"), frame.rightHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "right"), frame.rightHeld))
                         NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.command);
 
                     if (frame.homePressed)
@@ -176,8 +176,8 @@ namespace NowUI
                 CloseTouchKeyboard();
             }
 
-            ref float blinkAnchor = ref NowUIControlState.Get<float>(NowUIInput.GetId(id, "blink"));
-            ref int lastCaret = ref NowUIControlState.Get<int>(NowUIInput.GetId(id, "lastcaret"));
+            ref float blinkAnchor = ref NowControlState.Get<float>(NowInput.GetId(id, "blink"));
+            ref int lastCaret = ref NowControlState.Get<int>(NowInput.GetId(id, "lastcaret"));
 
             if (state.caret != lastCaret || text != original || interaction.pressed)
             {
@@ -205,7 +205,7 @@ namespace NowUI
 
             state.scrollX = Mathf.Clamp(state.scrollX, 0f, Mathf.Max(0f, totalWidth - inner.width));
 
-            if (focused && !NowUIInput.isPassive)
+            if (focused && !NowInput.isPassive)
                 NowUITextInput.setCompositionCursor?.Invoke(new Vector2(inner.x - state.scrollX + caretX, inner.yMax));
 
             var box = theme.Rectangle(rect, NowRectangleStyle.Outline);
@@ -254,7 +254,7 @@ namespace NowUI
                         .Draw();
                 }
 
-                if (focused && NowUIControlState.Blink(1f, blinkAnchor))
+                if (focused && NowControlState.Blink(1f, blinkAnchor))
                 {
                     Now.Rectangle(new NowRect(textX + caretX, inner.y, 2f, inner.height))
                         .SetColor(theme.GetColor(NowColorToken.Text, Color.black))

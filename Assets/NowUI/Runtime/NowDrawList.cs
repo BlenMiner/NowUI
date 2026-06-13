@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace NowUI
 {
-    public sealed class NowUIDrawList : IDisposable
+    public sealed class NowDrawList : IDisposable
     {
         readonly NowUIMeshLayout _layout;
 
@@ -25,12 +25,12 @@ namespace NowUI
 
         public bool hasGeometry => mesh != null && mesh.vertexCount > 0 && batches.Count > 0;
 
-        public NowUIDrawList()
+        public NowDrawList()
             : this(NowUIMeshLayout.Render, "NowUI Draw List Mesh")
         {
         }
 
-        internal NowUIDrawList(NowUIMeshLayout layout, string meshName)
+        internal NowDrawList(NowUIMeshLayout layout, string meshName)
         {
             _layout = layout;
             _meshName = meshName;
@@ -135,7 +135,7 @@ namespace NowUI
         void ThrowIfDisposed()
         {
             if (mesh == null)
-                throw new ObjectDisposedException(nameof(NowUIDrawList));
+                throw new ObjectDisposedException(nameof(NowDrawList));
         }
 
         internal int canvasPageCount => _canvasPageCount;
@@ -210,7 +210,7 @@ namespace NowUI
     [NowScope]
     public struct NowUIDrawScope : IDisposable
     {
-        NowUIDrawList _drawList;
+        NowDrawList _drawList;
 
         readonly Vector2 _positionOffset;
 
@@ -218,7 +218,7 @@ namespace NowUI
 
         bool _disposed;
 
-        internal NowUIDrawScope(NowUIDrawList drawList, Vector2 positionOffset, bool capturesMesh)
+        internal NowUIDrawScope(NowDrawList drawList, Vector2 positionOffset, bool capturesMesh)
         {
             _drawList = drawList;
             _positionOffset = positionOffset;

@@ -5,14 +5,14 @@ using UnityEngine.UI;
 using Object = UnityEngine.Object;
 using NowUI;
 
-public class NowUIRendererTests
+public class NowRendererTests
 {
     [Test]
     public void DrawListBuildCapturesRectangleGeometry()
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
 
-        var drawList = new NowUIDrawList();
+        var drawList = new NowDrawList();
 
         try
         {
@@ -35,7 +35,7 @@ public class NowUIRendererTests
     [Test]
     public void DrawListClearRemovesGeometry()
     {
-        var drawList = new NowUIDrawList();
+        var drawList = new NowDrawList();
 
         try
         {
@@ -60,7 +60,7 @@ public class NowUIRendererTests
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
 
-        var renderer = new NowUIRenderer();
+        var renderer = new NowRenderer();
 
         try
         {
@@ -83,7 +83,7 @@ public class NowUIRendererTests
     [Test]
     public void RendererBuildClearsGeometryWhenSizeIsInvalid()
     {
-        var renderer = new NowUIRenderer();
+        var renderer = new NowRenderer();
 
         try
         {
@@ -103,7 +103,7 @@ public class NowUIRendererTests
     [Test]
     public void RendererDrawRejectsMissingCommandBuffer()
     {
-        var renderer = new NowUIRenderer();
+        var renderer = new NowRenderer();
 
         try
         {
@@ -122,7 +122,7 @@ public class NowUIRendererTests
 
         try
         {
-            Assert.Throws<ArgumentNullException>(() => NowUIRenderer.Draw(commandBuffer, null));
+            Assert.Throws<ArgumentNullException>(() => NowRenderer.Draw(commandBuffer, null));
         }
         finally
         {
@@ -138,7 +138,7 @@ public class NowUIRendererTests
         var cameraObject = new GameObject("NowUI Test Camera");
         var graphicObject = new GameObject("NowUI Test Pipeline Graphic");
         var targetTexture = new RenderTexture(64, 32, 0);
-        var drawList = new NowUIDrawList();
+        var drawList = new NowDrawList();
         Camera camera = null;
 
         try
@@ -262,7 +262,7 @@ public class NowUIRendererTests
         }
     }
 
-    sealed class TestGraphic : NowUIGraphic
+    sealed class TestGraphic : NowGraphic
     {
         protected override void DrawNowUI(NowRect rect)
         {

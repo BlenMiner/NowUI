@@ -3,7 +3,7 @@ using UnityEngine;
 namespace NowUI
 {
     [NowBuilder]
-    public struct NowUIText
+    public struct NowText
     {
         public NowRect rect;
 
@@ -23,7 +23,7 @@ namespace NowUI
 
         public NowFontStyle fontStyle;
 
-        public NowUIText(NowRect rect, NowFontAsset font)
+        public NowText(NowRect rect, NowFontAsset font)
         {
             this.rect = rect;
             padding = default;
@@ -36,37 +36,37 @@ namespace NowUI
             this.font = font;
         }
 
-        public NowUIText SetFont(NowFontAsset font)
+        public NowText SetFont(NowFontAsset font)
         {
             this.font = font;
             return this;
         }
 
-        public NowUIText SetFontStyle(NowFontStyle fontStyle)
+        public NowText SetFontStyle(NowFontStyle fontStyle)
         {
             this.fontStyle = fontStyle;
             return this;
         }
 
-        public NowUIText SetBold(bool value = true)
+        public NowText SetBold(bool value = true)
         {
             fontStyle = value ? fontStyle | NowFontStyle.Bold : fontStyle & ~NowFontStyle.Bold;
             return this;
         }
 
-        public NowUIText SetItalic(bool value = true)
+        public NowText SetItalic(bool value = true)
         {
             fontStyle = value ? fontStyle | NowFontStyle.Italic : fontStyle & ~NowFontStyle.Italic;
             return this;
         }
 
-        public NowUIText SetFontSize(float fontSize)
+        public NowText SetFontSize(float fontSize)
         {
             this.fontSize = fontSize;
             return this;
         }
 
-        public NowUIText SetPadding(float all)
+        public NowText SetPadding(float all)
         {
             padding = new Vector4(all, all, all, all);
             return this;
@@ -78,44 +78,44 @@ namespace NowUI
         /// Negative values inset the outline. For an absolute pixel width, pass
         /// <c>pixels / fontSize</c>.
         /// </summary>
-        public NowUIText SetOutline(float outline)
+        public NowText SetOutline(float outline)
         {
             this.outline = outline;
             return this;
         }
 
-        public NowUIText SetOutlineColor(Vector4 outline)
+        public NowText SetOutlineColor(Vector4 outline)
         {
             outlineColor = outline;
             return this;
         }
 
-        public NowUIText SetPosition(NowRect rect)
+        public NowText SetPosition(NowRect rect)
         {
             this.rect = rect;
             return this;
         }
 
-        public NowUIText SetMask(NowRect mask)
+        public NowText SetMask(NowRect mask)
         {
             this.mask = mask;
             return this;
         }
 
-        public NowUIText SetColor(Color color)
+        public NowText SetColor(Color color)
         {
             this.color = color;
             return this;
         }
 
-        public NowUIText SetColor(Vector4 color)
+        public NowText SetColor(Vector4 color)
         {
             this.color = color;
             return this;
         }
 
         [NowConsumer]
-        public NowUIText Draw(string value)
+        public NowText Draw(string value)
         {
             Now.DrawString(this, value);
             return this;
@@ -127,7 +127,7 @@ namespace NowUI
         /// keyed by string and does not apply to spans.
         /// </summary>
         [NowConsumer]
-        public NowUIText Draw(System.ReadOnlySpan<char> value)
+        public NowText Draw(System.ReadOnlySpan<char> value)
         {
             Now.DrawString(this, value);
             return this;
@@ -149,7 +149,7 @@ namespace NowUI
         }
 
         [NowConsumer]
-        public NowUIText Draw(char character)
+        public NowText Draw(char character)
         {
             if (font != null &&
                 font.TryResolveGlyph(character, fontSize, fontStyle, out var resolvedFont, out var glyph, out _))
@@ -161,7 +161,7 @@ namespace NowUI
         }
 
         [NowConsumer]
-        public NowUIText Draw(NowFontAtlasInfo.Glyph character)
+        public NowText Draw(NowFontAtlasInfo.Glyph character)
         {
             Now.DrawCharacter(this, character);
             return this;

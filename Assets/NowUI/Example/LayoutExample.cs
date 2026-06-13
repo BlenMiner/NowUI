@@ -40,7 +40,7 @@ public class LayoutExample : MonoBehaviour
     {
         Now.StartUI();
 
-        using (NowUIInput.Begin(new Vector2(Screen.width, Screen.height)))
+        using (NowInput.Begin(new Vector2(Screen.width, Screen.height)))
         {
             DrawPanel();
         }
@@ -146,7 +146,7 @@ public class LayoutExample : MonoBehaviour
     bool Button(string id, string label, NowLayoutOptions options, Color background)
     {
         Vector4 rect = NowLayout.Rect(options);
-        var interaction = NowUIInput.Interact(id, rect);
+        var interaction = NowInput.Interact(id, rect);
 
         if (interaction.hovered)
             background = Color.Lerp(background, Color.white, interaction.held ? 0.25f : 0.12f);
@@ -165,7 +165,7 @@ public class LayoutExample : MonoBehaviour
         Vector4 rect = NowLayout.Rect(
             NowLayout.Size(44, 24).SetAlign(NowLayoutAlign.Center));
 
-        var interaction = NowUIInput.Interact(id, rect);
+        var interaction = NowInput.Interact(id, rect);
 
         var track = value ? Rgb(72, 110, 235) : Rgb(60, 65, 77);
 

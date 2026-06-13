@@ -4,9 +4,9 @@ using UnityEngine.Rendering;
 
 namespace NowUI
 {
-    public sealed class NowUIRenderer : IDisposable
+    public sealed class NowRenderer : IDisposable
     {
-        readonly NowUIDrawList _drawList = new NowUIDrawList();
+        readonly NowDrawList _drawList = new NowDrawList();
 
         CommandBuffer _commandBuffer = new()
         {
@@ -43,7 +43,7 @@ namespace NowUI
             Draw(commandBuffer, _drawList);
         }
 
-        public static void Draw(CommandBuffer commandBuffer, NowUIDrawList drawList)
+        public static void Draw(CommandBuffer commandBuffer, NowDrawList drawList)
         {
             if (commandBuffer == null)
                 throw new ArgumentNullException(nameof(commandBuffer));
@@ -81,7 +81,7 @@ namespace NowUI
 
         public static void PopulateCommandBuffer(
             CommandBuffer commandBuffer,
-            NowUIDrawList drawList,
+            NowDrawList drawList,
             RenderTargetIdentifier target,
             bool clear,
             Color clearColor)
@@ -137,7 +137,7 @@ namespace NowUI
         void ThrowIfDisposed()
         {
             if (_drawList.mesh == null || _commandBuffer == null)
-                throw new ObjectDisposedException(nameof(NowUIRenderer));
+                throw new ObjectDisposedException(nameof(NowRenderer));
         }
 
         static Matrix4x4 GetProjectionMatrix(Vector2 size)

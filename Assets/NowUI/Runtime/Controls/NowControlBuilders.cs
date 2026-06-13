@@ -21,7 +21,7 @@ namespace NowUI
 
         int ResolveControlId() => _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
-        int areaKey => _id != null ? NowUIInput.GetId(_id) : _site;
+        int areaKey => _id != null ? NowInput.GetId(_id) : _site;
 
         internal NowButton(string label, int site)
         {
@@ -88,7 +88,7 @@ namespace NowUI
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
-            float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
 
             var rectangle = theme.Rectangle(rect, _rectPreset);
             rectangle.color = NowControls.StateTint(rectangle.color, hoverT, interaction.held);
@@ -125,7 +125,7 @@ namespace NowUI
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
-            float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
 
             var rectangle = theme.Rectangle(rect, _rectPreset);
             rectangle.color = NowControls.StateTint(rectangle.color, hoverT, interaction.held);
@@ -152,7 +152,7 @@ namespace NowUI
     [NowScope]
     public struct NowControlScope : System.IDisposable
     {
-        public readonly NowUIInteraction interaction;
+        public readonly NowInteraction interaction;
 
         public readonly NowRect rect;
 
@@ -166,7 +166,7 @@ namespace NowUI
         NowMaskScope _mask;
         bool _disposed;
 
-        internal NowControlScope(NowMaskScope mask, NowLayoutScope area, NowLayoutScope row, NowRect rect, NowUIInteraction interaction, bool focused, bool clicked)
+        internal NowControlScope(NowMaskScope mask, NowLayoutScope area, NowLayoutScope row, NowRect rect, NowInteraction interaction, bool focused, bool clicked)
         {
             _mask = mask;
             _area = area;
@@ -208,7 +208,7 @@ namespace NowUI
 
         int ResolveControlId() => _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
-        int areaKey => _id != null ? NowUIInput.GetId(_id) : _site;
+        int areaKey => _id != null ? NowInput.GetId(_id) : _site;
 
         internal NowCheckbox(string label, int site)
         {
@@ -280,10 +280,10 @@ namespace NowUI
             return new NowControlScope(mask, area, row, rect, interaction, focused, clicked);
         }
 
-        void DrawCheckboxGlyph(NowUITheme theme, NowRect rect, int id, bool value, bool focused, in NowUIInteraction interaction)
+        void DrawCheckboxGlyph(NowTheme theme, NowRect rect, int id, bool value, bool focused, in NowInteraction interaction)
         {
             const float Box = 18f;
-            float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             var boxRect = new NowRect(rect.x, rect.y + (rect.height - Box) * 0.5f, Box, Box);
 
             var frame = theme.Rectangle(boxRect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
@@ -325,7 +325,7 @@ namespace NowUI
             if (changed)
                 value = !value;
 
-            float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             var boxRect = new NowRect(rect.x, rect.y + (rect.height - box) * 0.5f, box, box);
 
             var frame = theme.Rectangle(boxRect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
@@ -373,7 +373,7 @@ namespace NowUI
 
         int ResolveControlId() => _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
-        int areaKey => _id != null ? NowUIInput.GetId(_id) : _site;
+        int areaKey => _id != null ? NowInput.GetId(_id) : _site;
 
         internal NowRadio(string label, bool isOn, int site)
         {
@@ -441,10 +441,10 @@ namespace NowUI
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
         }
 
-        void DrawRadioGlyph(NowUITheme theme, NowRect rect, int id, bool focused, in NowUIInteraction interaction)
+        void DrawRadioGlyph(NowTheme theme, NowRect rect, int id, bool focused, in NowInteraction interaction)
         {
             const float Circle = 18f;
-            float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             var circleRect = new NowRect(rect.x, rect.y + (rect.height - Circle) * 0.5f, Circle, Circle);
 
             var frame = theme.Rectangle(circleRect, _isOn ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
@@ -484,7 +484,7 @@ namespace NowUI
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
 
-            float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             var circleRect = new NowRect(rect.x, rect.y + (rect.height - circle) * 0.5f, circle, circle);
 
             var frame = theme.Rectangle(circleRect, _isOn ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
@@ -577,17 +577,17 @@ namespace NowUI
                 value = _min + t * range;
             }
 
-            if (focused && !NowUIInput.isPassive)
+            if (focused && !NowInput.isPassive)
             {
-                float navX = NowUIInput.current.navigation.x;
+                float navX = NowInput.current.navigation.x;
 
-                if (NowUIControlState.Repeat(NowUIInput.GetId(id, "nav"), Mathf.Abs(navX) > 0.55f, 0.35f, 0.08f))
+                if (NowControlState.Repeat(NowInput.GetId(id, "nav"), Mathf.Abs(navX) > 0.55f, 0.35f, 0.08f))
                     value += Mathf.Sign(navX) * range * 0.05f;
             }
 
             value = Mathf.Clamp(value, _min, _max);
 
-            float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             float normalized = (value - _min) / range;
             float knobX = rect.x + normalized * (rect.width - Knob);
             float trackY = rect.y + (rect.height - Track) * 0.5f;

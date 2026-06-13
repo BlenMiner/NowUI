@@ -63,22 +63,22 @@ namespace NowUI
 
             NowRect viewport = NowControls.ReserveRect(_hasRect, _rect, options, new Vector2(200f, 200f));
             int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
-            int areaKey = _id != null ? NowUIInput.GetId(_id) : _site;
+            int areaKey = _id != null ? NowInput.GetId(_id) : _site;
 
             NowLayout.TryGetCachedContentSize(areaKey, out Vector2 content);
             bool barVisible = content.y > viewport.height + 0.5f;
             float maxScroll = Mathf.Max(0f, content.y - viewport.height);
 
-            ref Vector2 scroll = ref NowUIControlState.Get<Vector2>(id);
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(id);
 
-            if (!NowUIInput.isPassive && NowUIInput.IsHovered(viewport))
+            if (!NowInput.isPassive && NowInput.IsHovered(viewport))
             {
-                float wheel = NowUIInput.current.scrollDelta.y;
+                float wheel = NowInput.current.scrollDelta.y;
 
                 if (wheel != 0f)
                 {
                     scroll.y -= wheel * 40f;
-                    NowUIControlState.RequestRepaint();
+                    NowControlState.RequestRepaint();
                 }
             }
 
@@ -145,38 +145,38 @@ namespace NowUI
                 BarWidth,
                 _viewport.height - 4f);
 
-            ref Vector2 scroll = ref NowUIControlState.Get<Vector2>(_id);
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(_id);
 
-            float visibleFraction = _viewport.height / (_viewport.height + _maxScroll);
-            float thumbHeight = Mathf.Max(24f, track.height * visibleFraction);
-            float travel = track.height - thumbHeight;
-            float normalized = _maxScroll > 0f ? scroll.y / _maxScroll : 0f;
-
-            int thumbId = NowUIInput.GetId(_id, "thumb");
-            var thumbRect = new NowRect(track.x, track.y + travel * normalized, BarWidth, thumbHeight);
+            int thumbId = NowInput.GetId(_id, "thumb");
+            var metrics = NowScrollbar.Calculate(
+                NowScrollbarAxis.Vertical,
+                track,
+                _viewport.height,
+                _viewport.height + _maxScroll,
+                scroll.y,
+                24f);
 
             // The whole (slightly widened) track is the grab target: clicking
             // anywhere on it jumps the thumb there and keeps dragging — an 8px
             // thumb alone is a frustrating target.
-            var interaction = NowUIInput.Interact(thumbId, track.Outset(4f, 2f));
+            bool dragging = NowScrollbar.Interact(thumbId, NowScrollbarAxis.Vertical, metrics, ref scroll.y);
+            metrics = NowScrollbar.Calculate(
+                NowScrollbarAxis.Vertical,
+                track,
+                _viewport.height,
+                _viewport.height + _maxScroll,
+                scroll.y,
+                24f);
 
-            if (interaction.held && travel > 0f)
-            {
-                float t = Mathf.Clamp01((interaction.pointerPosition.y - track.y - thumbHeight * 0.5f) / travel);
-                scroll.y = t * _maxScroll;
-                thumbRect.y = track.y + travel * t;
-                NowUIControlState.RequestRepaint();
-            }
-
-            float hoverT = NowUIControlState.Transition(thumbId, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(thumbId, NowInput.IsHovered(track.Outset(4f, 2f)));
 
             var trackRectangle = theme.Rectangle(track, NowRectangleStyle.Muted);
             trackRectangle.radius = new Vector4(BarWidth, BarWidth, BarWidth, BarWidth) * 0.5f;
             trackRectangle.Draw();
 
-            var thumb = theme.Rectangle(thumbRect, NowRectangleStyle.Accent);
+            var thumb = theme.Rectangle(metrics.thumb, NowRectangleStyle.Accent);
             thumb.radius = trackRectangle.radius;
-            thumb.color = NowControls.StateTint(thumb.color, hoverT, interaction.held);
+            thumb.color = NowControls.StateTint(thumb.color, hoverT, dragging);
             thumb.Draw();
         }
     }

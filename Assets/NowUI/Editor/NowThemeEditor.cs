@@ -3,8 +3,8 @@ using UnityEngine;
 
 namespace NowUI.Editor
 {
-    [CustomEditor(typeof(NowUITheme))]
-    public sealed class NowUIThemeEditor : UnityEditor.Editor
+    [CustomEditor(typeof(NowTheme))]
+    public sealed class NowThemeEditor : UnityEditor.Editor
     {
         const float InspectorPreviewHeight = 260f;
 
@@ -28,7 +28,7 @@ namespace NowUI.Editor
             EditorGUILayout.LabelField("Live Preview", EditorStyles.boldLabel);
 
             Rect rect = GUILayoutUtility.GetRect(1f, InspectorPreviewHeight, GUILayout.ExpandWidth(true));
-            DrawPreview((NowUITheme)target, rect);
+            DrawPreview((NowTheme)target, rect);
         }
 
         public override bool HasPreviewGUI()
@@ -38,10 +38,10 @@ namespace NowUI.Editor
 
         public override void OnPreviewGUI(Rect rect, GUIStyle background)
         {
-            DrawPreview((NowUITheme)target, rect);
+            DrawPreview((NowTheme)target, rect);
         }
 
-        static void DrawPreview(NowUITheme theme, Rect rect)
+        static void DrawPreview(NowTheme theme, Rect rect)
         {
             if (theme == null || Event.current.type != EventType.Repaint)
                 return;
@@ -63,7 +63,7 @@ namespace NowUI.Editor
             DrawPresetRows(theme, new Rect(panel.x + 18f, panel.y + 152f, panel.width - 36f, panel.height - 168f));
         }
 
-        static void DrawPalette(NowUITheme theme, Rect rect)
+        static void DrawPalette(NowTheme theme, Rect rect)
         {
             var palette = theme.palette;
             if (palette == null || palette.Count == 0)
@@ -85,7 +85,7 @@ namespace NowUI.Editor
             }
         }
 
-        static void DrawPresetRows(NowUITheme theme, Rect rect)
+        static void DrawPresetRows(NowTheme theme, Rect rect)
         {
             var presets = theme.rectanglePresets;
             if (presets == null)
@@ -113,18 +113,18 @@ namespace NowUI.Editor
             DrawText(theme, caption, "Code stays fluent: theme.Rectangle(rect, \"accent\")", "body");
         }
 
-        static void DrawStyledRect(NowUITheme theme, Rect rect, string presetId)
+        static void DrawStyledRect(NowTheme theme, Rect rect, string presetId)
         {
-            NowUIRectangle styled = theme.Rectangle(new Vector4(rect.x, rect.y, rect.width, rect.height), presetId);
+            NowRectangle styled = theme.Rectangle(new Vector4(rect.x, rect.y, rect.width, rect.height), presetId);
             EditorGUI.DrawRect(rect, styled.color);
 
             if (styled.outline > 0f && styled.outlineColor.w > 0f)
                 DrawOutline(rect, styled.outlineColor, Mathf.Max(1, Mathf.CeilToInt(styled.outline)));
         }
 
-        static void DrawText(NowUITheme theme, Rect rect, string text, string presetId, TextAnchor alignment = TextAnchor.MiddleLeft)
+        static void DrawText(NowTheme theme, Rect rect, string text, string presetId, TextAnchor alignment = TextAnchor.MiddleLeft)
         {
-            NowUIText styled = theme.Text(new Vector4(rect.x, rect.y, rect.width, rect.height), presetId);
+            NowText styled = theme.Text(new Vector4(rect.x, rect.y, rect.width, rect.height), presetId);
             DrawLabel(rect, text, styled.color, Mathf.RoundToInt(styled.fontSize), alignment);
         }
 
@@ -144,9 +144,9 @@ namespace NowUI.Editor
             GUI.Label(rect, text, style);
         }
 
-        static Color ResolveReadableTextColor(NowUITheme theme, string presetId)
+        static Color ResolveReadableTextColor(NowTheme theme, string presetId)
         {
-            NowUIRectangle styled = theme.Rectangle(Vector4.zero, presetId);
+            NowRectangle styled = theme.Rectangle(Vector4.zero, presetId);
             if (styled.color.w < 0.2f)
                 return theme.GetColor("text", Color.black);
 

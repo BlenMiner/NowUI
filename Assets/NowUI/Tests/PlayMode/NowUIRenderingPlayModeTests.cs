@@ -15,14 +15,14 @@ public class NowUIRenderingPlayModeTests
     const int Side = 128;
 
     RenderTexture _target;
-    NowUIRenderer _renderer;
+    NowRenderer _renderer;
 
     [SetUp]
     public void SetUp()
     {
         _target = new RenderTexture(Side, Side, 0, RenderTextureFormat.ARGB32);
         _target.Create();
-        _renderer = new NowUIRenderer();
+        _renderer = new NowRenderer();
         NowFontCompiler.forceManagedCompiler = false;
     }
 
@@ -228,7 +228,7 @@ public class NowUIRenderingPlayModeTests
         var canvas = canvasObject.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
 
-        var hostObject = new GameObject("Host", typeof(NowUIGraphic));
+        var hostObject = new GameObject("Host", typeof(NowGraphic));
         hostObject.transform.SetParent(canvasObject.transform, false);
         var hostRect = hostObject.GetComponent<RectTransform>();
         hostRect.anchorMin = Vector2.zero;
@@ -236,7 +236,7 @@ public class NowUIRenderingPlayModeTests
         hostRect.pivot = Vector2.zero;
         hostRect.anchoredPosition = Vector2.zero;
         hostRect.sizeDelta = new Vector2(200, 200);
-        var host = hostObject.GetComponent<NowUIGraphic>();
+        var host = hostObject.GetComponent<NowGraphic>();
 
         var blockerObject = new GameObject("Blocker", typeof(UnityEngine.UI.Image));
         blockerObject.transform.SetParent(canvasObject.transform, false);

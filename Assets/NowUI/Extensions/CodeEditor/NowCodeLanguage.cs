@@ -64,7 +64,7 @@ namespace NowUI.CodeEditor
     /// by name so languages can embed each other (markdown fences delegate to
     /// the registered language of their info string).
     /// </summary>
-    public abstract class NowCodeLanguage
+    public abstract class NowCodeLanguage : INowTextSyntaxProfile
     {
         static readonly NowCodeAutoPair[] DefaultPairs =
         {
@@ -73,6 +73,10 @@ namespace NowUI.CodeEditor
             new NowCodeAutoPair('(', ')'),
             new NowCodeAutoPair('"', '"'),
         };
+
+        static readonly List<NowCodeToken> TokenAdapterScratch = new List<NowCodeToken>(32);
+
+        static readonly List<NowCodeDiagnostic> DiagnosticAdapterScratch = new List<NowCodeDiagnostic>(4);
 
         /// <summary>Registry key and status-bar label, e.g. "json".</summary>
         public abstract string name { get; }
@@ -142,6 +146,42 @@ namespace NowUI.CodeEditor
         {
             EnsureRegistry();
             return index >= 0 && index < _registered.Count ? _registered[index] : null;
+        }
+
+        int INowTextSyntaxProfile.TokenizeLine(string text, int start, int length, int state, List<NowTextToken> tokens)
+        {
+            TokenAdapterScratch.Clear();
+            int next = TokenizeLine(text, start, length, state, TokenAdapterScratch);
+
+            for (int i = 0; i < TokenAdapterScratch.Count; ++i)
+            {
+                var token = TokenAdapterScratch[i];
+                tokens.Add(new NowTextToken
+                {
+                    start = token.start,
+                    length = token.length,
+                    kind = (NowTextTokenKind)token.kind
+                });
+            }
+
+            return next;
+        }
+
+        void INowTextSyntaxProfile.Validate(string text, List<NowTextDiagnostic> diagnostics)
+        {
+            DiagnosticAdapterScratch.Clear();
+            Validate(text, DiagnosticAdapterScratch);
+
+            for (int i = 0; i < DiagnosticAdapterScratch.Count; ++i)
+            {
+                var diagnostic = DiagnosticAdapterScratch[i];
+                diagnostics.Add(new NowTextDiagnostic
+                {
+                    start = diagnostic.start,
+                    length = diagnostic.length,
+                    message = diagnostic.message
+                });
+            }
         }
     }
 }

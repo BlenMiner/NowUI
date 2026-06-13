@@ -6,11 +6,11 @@ using NowUI.Internal;
 
 public class NowTextSelectionTests
 {
-    sealed class FakePointer : INowUIInputProvider
+    sealed class FakePointer : INowInputProvider
     {
         public NowUIInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot result)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot result)
         {
             result = snapshot;
             return true;
@@ -35,7 +35,7 @@ public class NowTextSelectionTests
     NowFontAsset _font;
     FakePointer _pointer;
     FakeKeyboard _keyboard;
-    NowUIDrawList _drawList;
+    NowDrawList _drawList;
     List<NowTextSelectionLine> _lines;
     string _copied;
     System.Action<string> _previousCopy;
@@ -50,16 +50,16 @@ public class NowTextSelectionTests
     [SetUp]
     public void SetUp()
     {
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
         NowUITextInput.Reset();
 
         _pointer = new FakePointer();
         _keyboard = new FakeKeyboard();
         NowUITextInput.source = _keyboard;
-        _drawList = new NowUIDrawList();
+        _drawList = new NowDrawList();
         _lines = new List<NowTextSelectionLine>
         {
             new NowTextSelectionLine { rect = new NowRect(0, 0, 300, 20), start = 0, length = Text.Length }
@@ -76,9 +76,9 @@ public class NowTextSelectionTests
         NowUIClipboard.setText = _previousCopy;
         _drawList.Dispose();
         NowUITextInput.Reset();
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
     }
 
@@ -106,7 +106,7 @@ public class NowTextSelectionTests
     {
         NowTextSelectionResult result;
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
         {
             if (forceFocusFrame)

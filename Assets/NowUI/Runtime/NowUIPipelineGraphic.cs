@@ -72,7 +72,7 @@ namespace NowUI
             return false;
         }
 
-        public static bool BuildDrawList(Camera camera, NowUIDrawList drawList)
+        public static bool BuildDrawList(Camera camera, NowDrawList drawList)
         {
             return BuildDrawList(camera, drawList, 1f);
         }
@@ -82,7 +82,7 @@ namespace NowUI
         /// mirroring <see cref="Now.StartUI(float)"/> for pipeline rendering. Values
         /// at or below zero fall back to 1.
         /// </summary>
-        public static bool BuildDrawList(Camera camera, NowUIDrawList drawList, float uiScale)
+        public static bool BuildDrawList(Camera camera, NowDrawList drawList, float uiScale)
         {
             if (camera == null)
                 throw new ArgumentNullException(nameof(camera));
@@ -99,10 +99,10 @@ namespace NowUI
 
             try
             {
-                var surface = NowUIInputSurface.FromCamera(camera);
+                var surface = NowInputSurface.FromCamera(camera);
                 surface.size /= uiScale;
 
-                using (NowUIInput.Begin(NowUIInput.defaultProvider, surface))
+                using (NowInput.Begin(NowInput.defaultProvider, surface))
                 {
                     DrawAll(camera, new Rect(0, 0, size.x, size.y));
                     NowUIOverlay.Flush();

@@ -52,7 +52,7 @@ namespace NowUI
             int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
             int optionCount = _options?.Count ?? 0;
 
-            ref int pending = ref NowUIControlState.Get<int>(NowUIInput.GetId(id, "pending"));
+            ref int pending = ref NowControlState.Get<int>(NowInput.GetId(id, "pending"));
             bool changed = false;
 
             if (pending > 0 && pending - 1 < optionCount)
@@ -69,7 +69,7 @@ namespace NowUI
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _layoutOptions, new Vector2(180f, lineHeight + 12f));
 
             var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
-            ref bool open = ref NowUIControlState.Get<bool>(id);
+            ref bool open = ref NowControlState.Get<bool>(id);
 
             if (interaction.clicked || submitted)
                 open = !open;
@@ -77,7 +77,7 @@ namespace NowUI
             if (open && optionCount == 0)
                 open = false;
 
-            float hoverT = NowUIControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
 
             var box = theme.Rectangle(rect, NowRectangleStyle.Outline);
             box.color = NowControls.StateTint(box.color, hoverT, interaction.held);
@@ -98,7 +98,7 @@ namespace NowUI
             if (!open)
                 return changed;
 
-            NowUIControlState.RequestRepaint();
+            NowControlState.RequestRepaint();
             DeferPopup(theme, _options, id, rect, selected, optionCount);
             return changed;
         }
@@ -108,12 +108,12 @@ namespace NowUI
         /// the popup is open — captured locals in Draw would otherwise allocate at
         /// method entry on every frame, even with the popup closed.
         /// </summary>
-        static void DeferPopup(NowUITheme theme, IReadOnlyList<string> options, int id, NowRect field, int selected, int optionCount)
+        static void DeferPopup(NowTheme theme, IReadOnlyList<string> options, int id, NowRect field, int selected, int optionCount)
         {
             float popupHeight = Mathf.Min(optionCount * ItemHeight + 8f, MaxPopupHeight);
             var popupRect = new NowRect(field.x, field.yMax + 4f, field.width, popupHeight);
             bool scrolls = optionCount * ItemHeight + 8f > MaxPopupHeight;
-            int scrollId = NowUIInput.GetId(id, "popup-scroll");
+            int scrollId = NowInput.GetId(id, "popup-scroll");
 
             NowUIOverlay.Defer(popupRect, () =>
             {
@@ -123,8 +123,8 @@ namespace NowUI
                 background.Draw();
 
                 var itemArea = popupRect.Inset(4f);
-                int pendingId = NowUIInput.GetId(id, "pending");
-                int itemSeed = NowUIInput.GetId(id, "item");
+                int pendingId = NowInput.GetId(id, "pending");
+                int itemSeed = NowInput.GetId(id, "item");
 
                 void DrawItems()
                 {
@@ -141,7 +141,7 @@ namespace NowUI
                             itemRect = new NowRect(itemArea.x, itemArea.y + i * ItemHeight, itemArea.width, ItemHeight);
                         }
 
-                        var itemInteraction = NowUIInput.Interact(NowUIInput.CombineId(itemSeed, i + 1), itemRect);
+                        var itemInteraction = NowInput.Interact(NowInput.CombineId(itemSeed, i + 1), itemRect);
 
                         if (itemInteraction.hovered || i == selected)
                         {
@@ -159,8 +159,8 @@ namespace NowUI
 
                         if (itemInteraction.clicked)
                         {
-                            NowUIControlState.Get<int>(pendingId) = i + 1;
-                            NowUIControlState.Get<bool>(id) = false;
+                            NowControlState.Get<int>(pendingId) = i + 1;
+                            NowControlState.Get<bool>(id) = false;
                         }
                     }
                 }
@@ -175,13 +175,13 @@ namespace NowUI
                     DrawItems();
                 }
 
-                var snapshot = NowUIInput.current;
+                var snapshot = NowInput.current;
                 bool pressedOutside = snapshot.primaryPressed &&
                     !popupRect.Contains(snapshot.pointerPosition) &&
                     !field.Contains(snapshot.pointerPosition);
 
                 if (pressedOutside || snapshot.cancelPressed)
-                    NowUIControlState.Get<bool>(id) = false;
+                    NowControlState.Get<bool>(id) = false;
             });
         }
     }

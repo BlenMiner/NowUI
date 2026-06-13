@@ -4,7 +4,7 @@ namespace NowUI
 {
     /// <summary>
     /// Caret and selection state for a single-line editor. The caller owns the
-    /// text; this travels alongside it (typically in <see cref="NowUIControlState"/>).
+    /// text; this travels alongside it (typically in <see cref="NowControlState"/>).
     /// </summary>
     public struct NowTextEditState
     {

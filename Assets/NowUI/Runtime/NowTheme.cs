@@ -5,7 +5,7 @@ using UnityEngine;
 namespace NowUI
 {
     [CreateAssetMenu(menuName = "NowUI/Theme", fileName = "NowUITheme")]
-    public sealed class NowUITheme : ScriptableObject
+    public sealed class NowTheme : ScriptableObject
     {
         [SerializeField] string _defaultRectanglePreset = "surface";
 
@@ -213,19 +213,19 @@ namespace NowUI
             return rect.Outset(spacing.x, spacing.y, spacing.z, spacing.w);
         }
 
-        public NowUIRectangle Rectangle(NowRect rect, string presetId = null)
+        public NowRectangle Rectangle(NowRect rect, string presetId = null)
         {
             return ApplyRectanglePreset(Now.Rectangle(rect), ResolveRectanglePresetId(presetId));
         }
 
-        public NowUIText Text(NowRect rect, NowFontAsset font, string presetId = null)
+        public NowText Text(NowRect rect, NowFontAsset font, string presetId = null)
         {
             return ApplyTextPreset(Now.Text(rect, font), ResolveTextPresetId(presetId));
         }
 
         /// <summary>Creates preset-styled text. Preset fonts win over the ambient font,
         /// but a preset without one still resolves to the active font stack.</summary>
-        public NowUIText Text(NowRect rect, string presetId = null)
+        public NowText Text(NowRect rect, string presetId = null)
         {
             var text = ApplyTextPreset(Now.Text(rect, null), ResolveTextPresetId(presetId));
 
@@ -235,7 +235,7 @@ namespace NowUI
             return text;
         }
 
-        public NowUIRectangle ApplyRectanglePreset(NowUIRectangle rectangle, string presetId = null)
+        public NowRectangle ApplyRectanglePreset(NowRectangle rectangle, string presetId = null)
         {
             if (!TryGetRectanglePreset(ResolveRectanglePresetId(presetId), out var preset))
                 return rectangle;
@@ -243,7 +243,7 @@ namespace NowUI
             return preset.Apply(this, rectangle);
         }
 
-        public NowUIText ApplyTextPreset(NowUIText text, string presetId = null)
+        public NowText ApplyTextPreset(NowText text, string presetId = null)
         {
             if (!TryGetTextPreset(ResolveTextPresetId(presetId), out var preset))
                 return text;
@@ -343,7 +343,7 @@ namespace NowUI
 
         public Color fallback => _fallback;
 
-        public Color Resolve(NowUITheme theme)
+        public Color Resolve(NowTheme theme)
         {
             if (theme != null && !string.IsNullOrEmpty(_token) && theme.TryGetColor(_token, out var color))
                 return color;
@@ -369,7 +369,7 @@ namespace NowUI
 
         public Vector4 fallback => _fallback;
 
-        public Vector4 Resolve(NowUITheme theme)
+        public Vector4 Resolve(NowTheme theme)
         {
             if (theme != null && !string.IsNullOrEmpty(_token) && theme.TryGetSpacing(_token, out var spacing))
                 return spacing;
@@ -395,7 +395,7 @@ namespace NowUI
 
         public Vector4 fallback => _fallback;
 
-        public Vector4 Resolve(NowUITheme theme)
+        public Vector4 Resolve(NowTheme theme)
         {
             if (theme != null && !string.IsNullOrEmpty(_token) && theme.TryGetRadius(_token, out var radius))
                 return radius;
@@ -445,7 +445,7 @@ namespace NowUI
 
         public float outline => _outline;
 
-        public NowUIRectangle Apply(NowUITheme theme, NowUIRectangle rectangle)
+        public NowRectangle Apply(NowTheme theme, NowRectangle rectangle)
         {
             rectangle.color = _fill.Resolve(theme);
             rectangle.radius = _radius.Resolve(theme);
@@ -496,7 +496,7 @@ namespace NowUI
 
         public float fontSize => _fontSize;
 
-        public NowUIText Apply(NowUITheme theme, NowUIText text)
+        public NowText Apply(NowTheme theme, NowText text)
         {
             if (_font != null)
                 text.font = _font;
@@ -514,12 +514,12 @@ namespace NowUI
 
     public static class NowUIThemeExtensions
     {
-        public static NowUIRectangle SetStyle(this NowUIRectangle rectangle, NowUITheme theme, string presetId = null)
+        public static NowRectangle SetStyle(this NowRectangle rectangle, NowTheme theme, string presetId = null)
         {
             return theme != null ? theme.ApplyRectanglePreset(rectangle, presetId) : rectangle;
         }
 
-        public static NowUIText SetStyle(this NowUIText text, NowUITheme theme, string presetId = null)
+        public static NowText SetStyle(this NowText text, NowTheme theme, string presetId = null)
         {
             return theme != null ? theme.ApplyTextPreset(text, presetId) : text;
         }

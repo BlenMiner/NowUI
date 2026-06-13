@@ -362,11 +362,11 @@ public class NowMarkdownTests
             Assert.AreEqual(NowMarkdownBlockType.Paragraph, block.type, "raw HTML must stay inert text");
     }
 
-    sealed class FakeProvider : INowUIInputProvider
+    sealed class FakeProvider : INowInputProvider
     {
         public NowUIInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot result)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot result)
         {
             result = snapshot;
             return true;
@@ -386,7 +386,7 @@ public class NowMarkdownTests
 
     NowFontAsset _font;
     FakeProvider _provider;
-    NowUIDrawList _drawList;
+    NowDrawList _drawList;
     static readonly Vector2 Surface = new Vector2(512, 512);
 
     [OneTimeSetUp]
@@ -399,15 +399,15 @@ public class NowMarkdownTests
     [SetUp]
     public void SetUp()
     {
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
         NowUIOverlay.Reset();
         NowUIContextMenu.Reset();
         NowMarkdown.Reset();
         _provider = new FakeProvider();
-        _drawList = new NowUIDrawList();
+        _drawList = new NowDrawList();
         Now.defaultFont = _font;
     }
 
@@ -416,9 +416,9 @@ public class NowMarkdownTests
     {
         _drawList.Dispose();
         Now.defaultFont = null;
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
         NowUIOverlay.Reset();
         NowUIContextMenu.Reset();
@@ -437,7 +437,7 @@ public class NowMarkdownTests
             var withImage = NowMarkdownDocument.Parse("![pic](https://example.com/pic.png)");
             var withBrokenImage = NowMarkdownDocument.Parse("![alt only](notaurl.png)");
 
-            using (NowUIInput.Begin(_provider, Surface))
+            using (NowInput.Begin(_provider, Surface))
             {
                 float imageHeight = withImage.MeasureHeight(400f);
                 Assert.GreaterOrEqual(imageHeight, 32f, "native-size image plus line spacing");
@@ -476,7 +476,7 @@ public class NowMarkdownTests
 
         _provider.snapshot = new NowUIInputSnapshot(overSecondWord, false, false, false);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         {
             var hover = document.Draw(rect);
@@ -486,14 +486,14 @@ public class NowMarkdownTests
 
         _provider.snapshot = new NowUIInputSnapshot(overFirstWord, true, true, false);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             document.Draw(rect);
 
         _provider.snapshot = new NowUIInputSnapshot(overSecondWord, false, false, true);
         string clicked;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             clicked = document.Draw(rect).clickedLink;
 
@@ -526,7 +526,7 @@ public class NowMarkdownTests
                 NowUITextInput.Invalidate();
                 _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
 
-                using (NowUIInput.Begin(_provider, Surface))
+                using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
                     document.Draw(rect);
             }
@@ -565,7 +565,7 @@ public class NowMarkdownTests
                 NowUITextInput.Invalidate();
                 _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
 
-                using (NowUIInput.Begin(_provider, Surface))
+                using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
                     document.Draw(rect);
             }
@@ -613,7 +613,7 @@ public class NowMarkdownTests
                 NowUITextInput.Invalidate();
                 _provider.snapshot = snapshot;
 
-                using (NowUIInput.Begin(_provider, Surface))
+                using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
                 {
                     document.Draw(rect);
@@ -661,7 +661,7 @@ public class NowMarkdownTests
             {
                 _provider.snapshot = snapshot;
 
-                using (NowUIInput.Begin(_provider, Surface))
+                using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
                 {
                     document.Draw(rect);
@@ -708,7 +708,7 @@ public class NowMarkdownTests
                 NowUITextInput.Invalidate();
                 _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
 
-                using (NowUIInput.Begin(_provider, Surface))
+                using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
                     document.Draw(rect);
             }
@@ -749,7 +749,7 @@ public class NowMarkdownTests
                 NowUITextInput.Invalidate();
                 _provider.snapshot = snapshot;
 
-                using (NowUIInput.Begin(_provider, Surface))
+                using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
                 {
                     if (forceOverlayFrame)
@@ -802,13 +802,13 @@ public class NowMarkdownTests
 
             _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
 
-            using (NowUIInput.Begin(_provider, Surface))
+            using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
                 document.Draw(rect);
 
             _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
 
-            using (NowUIInput.Begin(_provider, Surface))
+            using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
                 document.Draw(rect);
 
@@ -836,13 +836,13 @@ public class NowMarkdownTests
 
             _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
 
-            using (NowUIInput.Begin(_provider, Surface))
+            using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
                 document.Draw(rect);
 
             _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
 
-            using (NowUIInput.Begin(_provider, Surface))
+            using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
                 clicked = document.Draw(rect).clickedLink;
 
@@ -860,7 +860,7 @@ public class NowMarkdownTests
     {
         var document = NowMarkdownDocument.Parse("# Title\n\nBody with **bold** and `code`.\n\n- item one\n- item two");
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         {
             float height = document.MeasureHeight(400f);
@@ -879,7 +879,7 @@ public class NowMarkdownTests
         var document = NowMarkdownDocument.Parse(
             "a long paragraph with quite a few words that will definitely need wrapping");
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         {
             float wide = document.MeasureHeight(500f);
             float narrow = document.MeasureHeight(120f);
@@ -897,13 +897,13 @@ public class NowMarkdownTests
 
         _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             document.Draw(rect);
 
         _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             clicked = document.Draw(rect).clickedLink;
 
@@ -916,7 +916,7 @@ public class NowMarkdownTests
         var document = NowMarkdownDocument.Parse("steady *state* drawing with [a link](https://x.y)");
         var rect = new NowRect(0, 0, 300f, 100f);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         {
             document.Draw(rect);

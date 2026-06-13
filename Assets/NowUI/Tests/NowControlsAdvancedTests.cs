@@ -9,11 +9,11 @@ using NowUI;
 /// </summary>
 public class NowControlsAdvancedTests
 {
-    sealed class FakePointer : INowUIInputProvider
+    sealed class FakePointer : INowInputProvider
     {
         public NowUIInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot result)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot result)
         {
             result = snapshot;
             return true;
@@ -36,14 +36,14 @@ public class NowControlsAdvancedTests
 
     FakePointer _pointer;
     FakeKeyboard _keyboard;
-    NowUIDrawList _drawList;
+    NowDrawList _drawList;
 
     [SetUp]
     public void SetUp()
     {
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
         NowUIOverlay.Reset();
         NowUITextInput.Reset();
@@ -51,7 +51,7 @@ public class NowControlsAdvancedTests
         _pointer = new FakePointer();
         _keyboard = new FakeKeyboard();
         NowUITextInput.source = _keyboard;
-        _drawList = new NowUIDrawList();
+        _drawList = new NowDrawList();
     }
 
     [TearDown]
@@ -60,9 +60,9 @@ public class NowControlsAdvancedTests
         _drawList.Dispose();
         NowUITextInput.Reset();
         NowUIOverlay.Reset();
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
     }
 
@@ -72,7 +72,7 @@ public class NowControlsAdvancedTests
         NowUITextInput.Invalidate();
         bool changed;
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
             changed = Now.TextField(FieldRect, "name").Draw(ref text);
 
@@ -166,7 +166,7 @@ public class NowControlsAdvancedTests
 
         _pointer.snapshot = new NowUIInputSnapshot(new Vector2(FieldRect.xMax - 4, 35), true, true, false);
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
             Now.TextField(FieldRect, "name").Draw(ref text);
 
@@ -222,7 +222,7 @@ public class NowControlsAdvancedTests
     {
         bool ran = false;
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
         {
             NowUIOverlay.Defer(new NowRect(0, 0, 100, 100), () =>
@@ -243,7 +243,7 @@ public class NowControlsAdvancedTests
     {
         var blocked = new NowRect(0, 0, 100, 100);
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         {
             NowUIOverlay.Block(blocked);
             Assert.IsFalse(NowUIOverlay.IsPointerBlocked(new Vector2(50, 50)), "Blocking applies one frame late.");
@@ -256,9 +256,9 @@ public class NowControlsAdvancedTests
 
         _pointer.snapshot = new NowUIInputSnapshot(new Vector2(50, 50), false, false, false);
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         {
-            var interaction = NowUIInput.Interact(99, new NowRect(0, 0, 100, 100));
+            var interaction = NowInput.Interact(99, new NowRect(0, 0, 100, 100));
             Assert.IsFalse(interaction.hovered);
         }
     }
@@ -266,7 +266,7 @@ public class NowControlsAdvancedTests
     [Test]
     public void ScrollViewClampsAndStoresScroll()
     {
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
         using (Now.ScrollView(new NowRect(0, 0, 200, 100), "list").Begin())
         {
@@ -280,7 +280,7 @@ public class NowControlsAdvancedTests
             new Vector2(0f, -2f), Vector2.zero,
             false, false, false, false, false, false, 2, 2f);
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
         using (Now.ScrollView(new NowRect(0, 0, 200, 100), "list").Begin())
         {
@@ -290,10 +290,10 @@ public class NowControlsAdvancedTests
 
         int scrollId;
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
             scrollId = NowControls.GetControlId("list");
 
-        ref Vector2 scroll = ref NowUIControlState.Get<Vector2>(scrollId);
+        ref Vector2 scroll = ref NowControlState.Get<Vector2>(scrollId);
         Assert.Greater(scroll.y, 0f, "Wheel must scroll the content.");
         Assert.LessOrEqual(scroll.y, 200f, "Scroll must clamp to content - viewport.");
     }
@@ -307,29 +307,29 @@ public class NowControlsAdvancedTests
 
         _pointer.snapshot = new NowUIInputSnapshot(new Vector2(60, 35), true, true, false);
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
             Now.Dropdown(rect, "quality", options).Draw(ref selected);
 
         _pointer.snapshot = new NowUIInputSnapshot(new Vector2(60, 35), false, false, true);
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
             Now.Dropdown(rect, "quality", options).Draw(ref selected);
 
         int dropdownId;
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
             dropdownId = NowControls.GetControlId("quality");
 
-        Assert.IsTrue(NowUIControlState.Get<bool>(dropdownId), "Click must open the dropdown.");
+        Assert.IsTrue(NowControlState.Get<bool>(dropdownId), "Click must open the dropdown.");
 
-        NowUIControlState.Get<int>(NowUIInput.GetId(dropdownId, "pending")) = 3;
+        NowControlState.Get<int>(NowInput.GetId(dropdownId, "pending")) = 3;
 
         _pointer.snapshot = default;
         bool changed;
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
             changed = Now.Dropdown(rect, "quality", options).Draw(ref selected);
 

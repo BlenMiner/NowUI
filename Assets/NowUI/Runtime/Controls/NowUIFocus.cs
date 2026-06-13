@@ -74,7 +74,7 @@ namespace NowUI
         /// </summary>
         public static void Register(int id, NowRect rect)
         {
-            if (id == 0 || NowUIInput.isPassive)
+            if (id == 0 || NowInput.isPassive)
                 return;
 
             BeginFrameIfNeeded();
@@ -87,7 +87,7 @@ namespace NowUI
         /// </summary>
         public static bool SubmitPressed(int id)
         {
-            return IsFocused(id) && !NowUIInput.isPassive && NowUIInput.current.submitPressed;
+            return IsFocused(id) && !NowInput.isPassive && NowInput.current.submitPressed;
         }
 
         /// <summary>
@@ -99,7 +99,7 @@ namespace NowUI
         /// </summary>
         public static void LockNavigation()
         {
-            if (NowUIInput.isPassive)
+            if (NowInput.isPassive)
                 return;
 
             BeginFrameIfNeeded();
@@ -131,7 +131,7 @@ namespace NowUI
 
         static void ProcessNavigation()
         {
-            var snapshot = NowUIInput.current;
+            var snapshot = NowInput.current;
 
             if (respectEventSystem)
             {

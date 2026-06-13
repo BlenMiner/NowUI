@@ -38,7 +38,7 @@ namespace NowUI
     /// </summary>
     public static class NowTextWrap
     {
-        public static Vector2 Layout(in NowUIText style, string text, float width, List<NowTextRun> runs)
+        public static Vector2 Layout(in NowText style, string text, float width, List<NowTextRun> runs)
         {
             runs.Clear();
 
@@ -123,7 +123,7 @@ namespace NowUI
         /// <paramref name="origin"/>. The style's mask passes through (empty
         /// means unmasked); its rect is replaced per run.
         /// </summary>
-        public static void Draw(in NowUIText style, string text, List<NowTextRun> runs, Vector2 origin)
+        public static void Draw(in NowText style, string text, List<NowTextRun> runs, Vector2 origin)
         {
             var runStyle = style;
             runStyle.font = style.font != null ? style.font : Now.font;

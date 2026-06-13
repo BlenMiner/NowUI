@@ -5,7 +5,7 @@ using System.IO;
 
 namespace NowUI.Editor
 {
-    public class NowUIFontCompiler : UnityEditor.Editor
+    public class NowFontCompiler : UnityEditor.Editor
     {
         const int ATLAS_SIZE = 64;
         const int PIXEL_RANGE = 16;
@@ -37,7 +37,7 @@ namespace NowUI.Editor
 
                     EditorUtility.DisplayProgressBar("Compile Font", target.name, i / (float)selection.Length);
 
-                    if (!NowFontCompiler.TryCompile(
+                    if (!NowUI.NowFontCompiler.TryCompile(
                         fontData,
                         ATLAS_SIZE,
                         PIXEL_RANGE,

@@ -17,7 +17,7 @@ public class NowUIPerformanceTests
     [Test, Performance]
     public void RectangleFrameBuild()
     {
-        var drawList = new NowUIDrawList();
+        var drawList = new NowDrawList();
 
         try
         {
@@ -49,7 +49,7 @@ public class NowUIPerformanceTests
     {
         Assert.NotNull(Now.defaultFont, "Default font resource is required for the text baseline.");
 
-        var drawList = new NowUIDrawList();
+        var drawList = new NowDrawList();
 
         try
         {

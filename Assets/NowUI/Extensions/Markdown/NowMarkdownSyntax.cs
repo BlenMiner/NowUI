@@ -36,6 +36,8 @@ namespace NowUI.Markdown
     /// </summary>
     public static class NowMarkdownSyntax
     {
+        static readonly List<NowMarkdownToken> TextTokenScratch = new List<NowMarkdownToken>(16);
+
         public enum Language
         {
             None,
@@ -257,6 +259,27 @@ namespace NowUI.Markdown
                 int plainStart = i;
                 ++i;
                 Emit(tokens, plainStart, 1, NowMarkdownTokenKind.Plain);
+            }
+        }
+
+        public static void TokenizeLine(string line, Language language, ref NowMarkdownSyntaxState state, List<NowTextToken> tokens)
+        {
+            tokens.Clear();
+
+            if (string.IsNullOrEmpty(line))
+                return;
+
+            TokenizeLine(line, language, ref state, TextTokenScratch);
+
+            for (int i = 0; i < TextTokenScratch.Count; ++i)
+            {
+                var token = TextTokenScratch[i];
+                tokens.Add(new NowTextToken
+                {
+                    start = token.start,
+                    length = token.length,
+                    kind = (NowTextTokenKind)token.kind
+                });
             }
         }
 

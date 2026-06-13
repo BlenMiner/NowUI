@@ -19,17 +19,17 @@ namespace NowUI
     /// </summary>
     public static class NowControls
     {
-        static NowUITheme _defaultTheme;
+        static NowTheme _defaultTheme;
 
-        static readonly List<NowUITheme> _themeStack = new List<NowUITheme>(4);
+        static readonly List<NowTheme> _themeStack = new List<NowTheme>(4);
 
         static readonly List<int> _idStack = new List<int>(8);
 
         /// <summary>
-        /// The active theme: the innermost <see cref="Theme(NowUITheme)"/> scope, or
+        /// The active theme: the innermost <see cref="Theme(NowTheme)"/> scope, or
         /// a built-in default created on first use.
         /// </summary>
-        public static NowUITheme theme
+        public static NowTheme theme
         {
             get
             {
@@ -38,7 +38,7 @@ namespace NowUI
 
                 if (_defaultTheme == null)
                 {
-                    _defaultTheme = ScriptableObject.CreateInstance<NowUITheme>();
+                    _defaultTheme = ScriptableObject.CreateInstance<NowTheme>();
                     _defaultTheme.name = "NowUI Default Theme";
                     _defaultTheme.hideFlags = HideFlags.HideAndDontSave;
                 }
@@ -48,7 +48,7 @@ namespace NowUI
         }
 
         /// <summary>Pushes a contextual theme; dispose the scope to restore the previous one.</summary>
-        public static ThemeScope Theme(NowUITheme value)
+        public static ThemeScope Theme(NowTheme value)
         {
             if (value == null)
                 throw new ArgumentNullException(nameof(value));
@@ -74,7 +74,7 @@ namespace NowUI
         public static ControlIdScope IdScope(string name)
         {
             int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            _idStack.Add(NowUIInput.GetId(seed, name));
+            _idStack.Add(NowInput.GetId(seed, name));
             return new ControlIdScope(true);
         }
 
@@ -113,7 +113,7 @@ namespace NowUI
         public static int GetControlId(string id)
         {
             int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            return Salt(NowUIInput.GetId(seed, id));
+            return Salt(NowInput.GetId(seed, id));
         }
 
         /// <summary>
@@ -149,7 +149,7 @@ namespace NowUI
             // Measure passes draw the same controls again, so they count in their
             // own table (cleared each time a pass begins): occurrence N during the
             // pass resolves to the same id as occurrence N in the real pass.
-            var occurrences = NowUIInput.isPassive ? _passiveOccurrences : _labelOccurrences;
+            var occurrences = NowInput.isPassive ? _passiveOccurrences : _labelOccurrences;
 
             if (occurrences.TryGetValue(id, out int occurrence))
             {
@@ -197,9 +197,9 @@ namespace NowUI
         /// registration, click-to-focus, and submit activation — the same sequence
         /// every built-in control runs first.
         /// </summary>
-        public static NowUIInteraction Interact(int id, NowRect rect, out bool focused, out bool submitted)
+        public static NowInteraction Interact(int id, NowRect rect, out bool focused, out bool submitted)
         {
-            var interaction = NowUIInput.Interact(id, rect);
+            var interaction = NowInput.Interact(id, rect);
             NowUIFocus.Register(id, rect);
 
             if (interaction.pressed)
@@ -209,7 +209,7 @@ namespace NowUI
             submitted = NowUIFocus.SubmitPressed(id);
 
             if (interaction.hovered || interaction.held || focused)
-                NowUIControlState.RequestRepaint();
+                NowControlState.RequestRepaint();
 
             return interaction;
         }
@@ -238,7 +238,7 @@ namespace NowUI
             return NowLayout.Rect(options);
         }
 
-        internal static void DrawCenteredLabel(NowUITheme activeTheme, NowRect rect, string label, NowTextStyle textStyle, NowRect mask)
+        internal static void DrawCenteredLabel(NowTheme activeTheme, NowRect rect, string label, NowTextStyle textStyle, NowRect mask)
         {
             var text = activeTheme.Text(default, textStyle);
             Vector2 size = text.Measure(label);
@@ -256,7 +256,7 @@ namespace NowUI
         /// default rect whose zero mask would clip everything, so the mask is reset to
         /// the given area (slightly outset so descenders survive; long values get cut).
         /// </summary>
-        internal static void DrawLeftLabel(NowUITheme activeTheme, NowRect rect, string label, NowTextStyle textStyle)
+        internal static void DrawLeftLabel(NowTheme activeTheme, NowRect rect, string label, NowTextStyle textStyle)
         {
             var text = activeTheme.Text(default, textStyle);
             Vector2 size = text.Measure(label);

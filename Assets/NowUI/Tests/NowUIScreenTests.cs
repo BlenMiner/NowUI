@@ -37,7 +37,7 @@ public class NowUIScreenTests
     {
         Now.StartUI(2f);
 
-        var surface = NowUIInput.surface;
+        var surface = NowInput.surface;
 
         Assert.AreEqual(Screen.width / 2f, surface.size.x, 0.001f);
         Assert.AreEqual(Screen.height / 2f, surface.size.y, 0.001f);

@@ -384,7 +384,7 @@ namespace NowUI.Editor
             if (Event.current.type != EventType.Repaint)
                 return;
 
-            using var preview = NowUIEditorGUI.Auto(rect, PreviewBackground);
+            using var preview = NowEditorGUI.Auto(rect, PreviewBackground);
             var panel = new Vector4(0f, 0f, preview.rect.width, preview.rect.height);
             Now.Rectangle(panel)
                 .SetColor(PreviewBackground)

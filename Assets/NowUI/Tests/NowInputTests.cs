@@ -2,7 +2,7 @@ using NUnit.Framework;
 using UnityEngine;
 using NowUI;
 
-public class NowUIInputTests
+public class NowInputTests
 {
     readonly Rect _rect = new Rect(10, 10, 40, 30);
 
@@ -11,14 +11,14 @@ public class NowUIInputTests
     [SetUp]
     public void SetUp()
     {
-        NowUIInput.Reset();
+        NowInput.Reset();
         _provider = new MockInputProvider();
     }
 
     [TearDown]
     public void TearDown()
     {
-        NowUIInput.Reset();
+        NowInput.Reset();
     }
 
     [Test]
@@ -26,9 +26,9 @@ public class NowUIInputTests
     {
         _provider.snapshot = new NowUIInputSnapshot(new Vector2(18, 20), false, false, false);
 
-        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var interaction = NowUIInput.Interact(1, _rect);
+            var interaction = NowInput.Interact(1, _rect);
 
             Assert.IsTrue(interaction.hovered);
             Assert.IsFalse(interaction.pressed);
@@ -41,9 +41,9 @@ public class NowUIInputTests
     {
         _provider.snapshot = new NowUIInputSnapshot(new Vector2(18, 20), true, true, false);
 
-        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var press = NowUIInput.Interact(1, _rect);
+            var press = NowInput.Interact(1, _rect);
 
             Assert.IsTrue(press.pressed);
             Assert.IsTrue(press.held);
@@ -53,16 +53,16 @@ public class NowUIInputTests
 
         _provider.snapshot = new NowUIInputSnapshot(new Vector2(18, 20), false, false, true);
 
-        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var release = NowUIInput.Interact(1, _rect);
+            var release = NowInput.Interact(1, _rect);
 
             Assert.IsTrue(release.released);
             Assert.IsTrue(release.clicked);
             Assert.IsFalse(release.dragEnded);
         }
 
-        Assert.AreEqual(0, NowUIInput.activeId);
+        Assert.AreEqual(0, NowInput.activeId);
     }
 
     [Test]
@@ -70,14 +70,14 @@ public class NowUIInputTests
     {
         _provider.snapshot = new NowUIInputSnapshot(new Vector2(18, 20), true, true, false);
 
-        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
-            NowUIInput.Interact(1, _rect);
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+            NowInput.Interact(1, _rect);
 
         _provider.snapshot = new NowUIInputSnapshot(new Vector2(28, 20), new Vector2(10, 0), true, false, false);
 
-        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var drag = NowUIInput.Interact(1, _rect);
+            var drag = NowInput.Interact(1, _rect);
 
             Assert.IsTrue(drag.dragStarted);
             Assert.IsTrue(drag.dragging);
@@ -86,9 +86,9 @@ public class NowUIInputTests
 
         _provider.snapshot = new NowUIInputSnapshot(new Vector2(30, 20), new Vector2(2, 0), false, false, true);
 
-        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var release = NowUIInput.Interact(1, _rect);
+            var release = NowInput.Interact(1, _rect);
 
             Assert.IsTrue(release.dragEnded);
             Assert.IsFalse(release.clicked);
@@ -104,10 +104,10 @@ public class NowUIInputTests
             NowUIPointerButtons.Secondary,
             NowUIPointerButtons.None);
 
-        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var primary = NowUIInput.Interact(1, _rect);
-            var secondary = NowUIInput.Interact(2, _rect, NowUIPointerButton.Secondary);
+            var primary = NowInput.Interact(1, _rect);
+            var secondary = NowInput.Interact(2, _rect, NowUIPointerButton.Secondary);
 
             Assert.IsFalse(primary.pressed);
             Assert.IsTrue(secondary.pressed);
@@ -121,9 +121,9 @@ public class NowUIInputTests
             NowUIPointerButtons.None,
             NowUIPointerButtons.Secondary);
 
-        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var secondary = NowUIInput.Interact(2, _rect, NowUIPointerButton.Secondary);
+            var secondary = NowInput.Interact(2, _rect, NowUIPointerButton.Secondary);
 
             Assert.IsTrue(secondary.released);
             Assert.IsTrue(secondary.clicked);
@@ -152,15 +152,15 @@ public class NowUIInputTests
             1,
             0.5f);
 
-        using (NowUIInput.Begin(_provider, new Vector2(100, 100)))
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var interaction = NowUIInput.Interact(1, _rect);
+            var interaction = NowInput.Interact(1, _rect);
 
             Assert.IsFalse(interaction.hovered);
             Assert.IsFalse(interaction.pressed);
-            Assert.AreEqual(Vector2.right, NowUIInput.current.navigation);
-            Assert.IsTrue(NowUIInput.current.submitDown);
-            Assert.IsTrue(NowUIInput.current.submitPressed);
+            Assert.AreEqual(Vector2.right, NowInput.current.navigation);
+            Assert.IsTrue(NowInput.current.submitDown);
+            Assert.IsTrue(NowInput.current.submitPressed);
         }
     }
 
@@ -176,24 +176,24 @@ public class NowUIInputTests
             snapshot = new NowUIInputSnapshot(new Vector2(80, 80), false, false, false)
         };
 
-        using (NowUIInput.Begin(first, new Vector2(100, 100)))
+        using (NowInput.Begin(first, new Vector2(100, 100)))
         {
-            Assert.AreEqual(new Vector2(12, 12), NowUIInput.current.pointerPosition);
+            Assert.AreEqual(new Vector2(12, 12), NowInput.current.pointerPosition);
 
-            using (NowUIInput.Begin(second, new Vector2(100, 100)))
-                Assert.AreEqual(new Vector2(80, 80), NowUIInput.current.pointerPosition);
+            using (NowInput.Begin(second, new Vector2(100, 100)))
+                Assert.AreEqual(new Vector2(80, 80), NowInput.current.pointerPosition);
 
-            Assert.AreEqual(new Vector2(12, 12), NowUIInput.current.pointerPosition);
+            Assert.AreEqual(new Vector2(12, 12), NowInput.current.pointerPosition);
         }
 
-        Assert.IsFalse(NowUIInput.hasContext);
+        Assert.IsFalse(NowInput.hasContext);
     }
 
-    sealed class MockInputProvider : INowUIInputProvider
+    sealed class MockInputProvider : INowInputProvider
     {
         public NowUIInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot snapshot)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot)
         {
             snapshot = this.snapshot;
             return true;

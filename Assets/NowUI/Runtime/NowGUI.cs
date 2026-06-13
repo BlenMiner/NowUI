@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace NowUI
 {
-    public static class NowUIGUI
+    public static class NowGUI
     {
         const int ControlHint = 0x4e6f7747;
 
@@ -16,30 +16,30 @@ namespace NowUI
 
         static double _lastCleanupTime;
 
-        public static NowUIGUIScope Auto(Rect rect)
+        public static NowGUIScope Auto(Rect rect)
         {
             return Auto(rect, Color.clear);
         }
 
-        public static NowUIGUIScope Auto(Rect rect, Color clearColor)
+        public static NowGUIScope Auto(Rect rect, Color clearColor)
         {
             return Auto(rect, clearColor, 1f);
         }
 
-        public static NowUIGUIScope Auto(Rect rect, Color clearColor, float pixelsPerPoint)
+        public static NowGUIScope Auto(Rect rect, Color clearColor, float pixelsPerPoint)
         {
             if (Event.current == null)
-                return NowUIGUIScope.Suppress(rect);
+                return NowGUIScope.Suppress(rect);
 
             int controlId = GUIUtility.GetControlID(ControlHint, FocusType.Passive, rect);
-            var inputSurface = new NowUIInputSurface(new Vector2(rect.width, rect.height), rect);
-            var inputScope = NowUIInput.Begin(NowUIIMGUIInputProvider.instance, inputSurface);
+            var inputSurface = new NowInputSurface(new Vector2(rect.width, rect.height), rect);
+            var inputScope = NowInput.Begin(NowIMGUIInputProvider.instance, inputSurface);
 
             if (Event.current.type != EventType.Repaint)
-                return NowUIGUIScope.Suppress(rect, inputScope);
+                return NowGUIScope.Suppress(rect, inputScope);
 
             if (rect.width <= 0f || rect.height <= 0f)
-                return NowUIGUIScope.Suppress(rect, inputScope);
+                return NowGUIScope.Suppress(rect, inputScope);
 
             var entry = GetEntry(controlId);
             entry.lastUsedTime = CurrentTime();
@@ -49,7 +49,7 @@ namespace NowUI
             int pixelHeight = Mathf.Max(1, Mathf.CeilToInt(rect.height * pixelsPerPoint));
 
             RenderTexture target = entry.GetTarget(pixelWidth, pixelHeight);
-            return NowUIGUIScope.Render(
+            return NowGUIScope.Render(
                 rect,
                 entry,
                 target,
@@ -127,7 +127,7 @@ namespace NowUI
 
         internal sealed class CacheEntry : IDisposable
         {
-            public readonly NowUIRenderer renderer = new NowUIRenderer();
+            public readonly NowRenderer renderer = new NowRenderer();
 
             public RenderTexture target;
 
@@ -174,9 +174,9 @@ namespace NowUI
     }
 
     [NowScope]
-    public struct NowUIGUIScope : IDisposable
+    public struct NowGUIScope : IDisposable
     {
-        NowUIGUI.CacheEntry _entry;
+        NowGUI.CacheEntry _entry;
 
         RenderTexture _target;
 
@@ -196,32 +196,32 @@ namespace NowUI
 
         bool _disposed;
 
-        internal static NowUIGUIScope Render(
+        internal static NowGUIScope Render(
             Rect rect,
-            NowUIGUI.CacheEntry entry,
+            NowGUI.CacheEntry entry,
             RenderTexture target,
             NowUIDrawScope drawScope,
             Color clearColor,
             NowUIInputScope inputScope)
         {
-            return new NowUIGUIScope(rect, entry, target, drawScope, clearColor, true, false, inputScope, true);
+            return new NowGUIScope(rect, entry, target, drawScope, clearColor, true, false, inputScope, true);
         }
 
-        internal static NowUIGUIScope Suppress(Rect rect)
+        internal static NowGUIScope Suppress(Rect rect)
         {
             Now.BeginSuppressDraw();
-            return new NowUIGUIScope(rect, null, null, default, Color.clear, false, true);
+            return new NowGUIScope(rect, null, null, default, Color.clear, false, true);
         }
 
-        internal static NowUIGUIScope Suppress(Rect rect, NowUIInputScope inputScope)
+        internal static NowGUIScope Suppress(Rect rect, NowUIInputScope inputScope)
         {
             Now.BeginSuppressDraw();
-            return new NowUIGUIScope(rect, null, null, default, Color.clear, false, true, inputScope, true);
+            return new NowGUIScope(rect, null, null, default, Color.clear, false, true, inputScope, true);
         }
 
-        NowUIGUIScope(
+        NowGUIScope(
             Rect rect,
-            NowUIGUI.CacheEntry entry,
+            NowGUI.CacheEntry entry,
             RenderTexture target,
             NowUIDrawScope drawScope,
             Color clearColor,
@@ -270,7 +270,7 @@ namespace NowUI
                 return;
             }
 
-            NowUIGUI.CompleteScope(_entry, _target, _rect, _drawScope, _clearColor);
+            NowGUI.CompleteScope(_entry, _target, _rect, _drawScope, _clearColor);
             DisposeInputScope();
         }
 
@@ -288,31 +288,31 @@ namespace NowUI
     {
         const float DefaultHeight = 120f;
 
-        public static NowUIGUIScope Auto()
+        public static NowGUIScope Auto()
         {
             return Auto(DefaultHeight, Color.clear);
         }
 
-        public static NowUIGUIScope Auto(float height, params GUILayoutOption[] options)
+        public static NowGUIScope Auto(float height, params GUILayoutOption[] options)
         {
             return Auto(height, Color.clear, options);
         }
 
-        public static NowUIGUIScope Auto(float height, Color clearColor, params GUILayoutOption[] options)
+        public static NowGUIScope Auto(float height, Color clearColor, params GUILayoutOption[] options)
         {
             Rect rect = GUILayoutUtility.GetRect(0f, float.MaxValue, height, height, options);
-            return NowUIGUI.Auto(rect, clearColor);
+            return NowGUI.Auto(rect, clearColor);
         }
 
-        public static NowUIGUIScope Auto(Vector2 size, params GUILayoutOption[] options)
+        public static NowGUIScope Auto(Vector2 size, params GUILayoutOption[] options)
         {
             return Auto(size, Color.clear, options);
         }
 
-        public static NowUIGUIScope Auto(Vector2 size, Color clearColor, params GUILayoutOption[] options)
+        public static NowGUIScope Auto(Vector2 size, Color clearColor, params GUILayoutOption[] options)
         {
             Rect rect = GUILayoutUtility.GetRect(size.x, size.x, size.y, size.y, options);
-            return NowUIGUI.Auto(rect, clearColor);
+            return NowGUI.Auto(rect, clearColor);
         }
     }
 }

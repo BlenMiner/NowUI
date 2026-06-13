@@ -155,7 +155,7 @@ public class NowTextShapingTests
     {
         Now.textShaping = shaping;
 
-        var drawList = new NowUIDrawList();
+        var drawList = new NowDrawList();
 
         try
         {

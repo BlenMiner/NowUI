@@ -36,7 +36,7 @@ namespace NowUI
         /// </summary>
         public static void Defer(NowRect blockRect, Action draw)
         {
-            if (draw == null || NowUIInput.isPassive)
+            if (draw == null || NowInput.isPassive)
                 return;
 
             BeginFrameIfNeeded();
@@ -50,7 +50,7 @@ namespace NowUI
         /// </summary>
         public static void Block(NowRect blockRect)
         {
-            if (NowUIInput.isPassive)
+            if (NowInput.isPassive)
                 return;
 
             BeginFrameIfNeeded();

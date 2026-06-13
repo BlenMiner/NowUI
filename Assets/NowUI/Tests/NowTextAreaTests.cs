@@ -10,11 +10,11 @@ using NowUI;
 /// </summary>
 public class NowTextAreaTests
 {
-    sealed class FakePointer : INowUIInputProvider
+    sealed class FakePointer : INowInputProvider
     {
         public NowUIInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot result)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot result)
         {
             result = snapshot;
             return true;
@@ -38,7 +38,7 @@ public class NowTextAreaTests
     NowFontAsset _font;
     FakePointer _pointer;
     FakeKeyboard _keyboard;
-    NowUIDrawList _drawList;
+    NowDrawList _drawList;
 
     [OneTimeSetUp]
     public void LoadFont()
@@ -50,9 +50,9 @@ public class NowTextAreaTests
     [SetUp]
     public void SetUp()
     {
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
         NowUIOverlay.Reset();
         NowUITextInput.Reset();
@@ -60,7 +60,7 @@ public class NowTextAreaTests
         _pointer = new FakePointer();
         _keyboard = new FakeKeyboard();
         NowUITextInput.source = _keyboard;
-        _drawList = new NowUIDrawList();
+        _drawList = new NowDrawList();
     }
 
     [TearDown]
@@ -69,9 +69,9 @@ public class NowTextAreaTests
         _drawList.Dispose();
         NowUITextInput.Reset();
         NowUIOverlay.Reset();
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
     }
 
@@ -81,14 +81,14 @@ public class NowTextAreaTests
         NowUITextInput.Invalidate();
         bool changed;
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
             changed = Now.TextArea(AreaRect, "notes").Draw(ref text);
 
         return changed;
     }
 
-    static int Id => NowUIInput.GetId(0, "notes");
+    static int Id => NowInput.GetId(0, "notes");
 
     void Focus()
     {
@@ -97,7 +97,7 @@ public class NowTextAreaTests
 
     ref NowTextEditState State()
     {
-        return ref NowUIControlState.Get<NowTextEditState>(Id);
+        return ref NowControlState.Get<NowTextEditState>(Id);
     }
 
     static List<NowTextAreaLine> Layout(string text, NowFontAsset font, float width, float fontSize = 16f)

@@ -7,14 +7,14 @@ public class NowUIImageRenderingTests
 {
     static readonly Vector2 Surface = new Vector2(256, 256);
 
-    NowUIDrawList _drawList;
+    NowDrawList _drawList;
     Texture2D _texture;
     Sprite _sprite;
 
     [SetUp]
     public void SetUp()
     {
-        _drawList = new NowUIDrawList();
+        _drawList = new NowDrawList();
         _texture = new Texture2D(32, 32, TextureFormat.RGBA32, false);
         _sprite = Sprite.Create(
             _texture,

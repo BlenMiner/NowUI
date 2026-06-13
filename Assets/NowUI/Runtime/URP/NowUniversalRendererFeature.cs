@@ -5,7 +5,7 @@ using UnityEngine.Rendering.Universal;
 
 namespace NowUI
 {
-    public sealed class NowUIUniversalRendererFeature : ScriptableRendererFeature
+    public sealed class NowUniversalRendererFeature : ScriptableRendererFeature
     {
         [SerializeField] RenderPassEvent _renderPassEvent = RenderPassEvent.AfterRenderingPostProcessing;
 

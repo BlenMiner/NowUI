@@ -3,7 +3,7 @@ using UnityEngine;
 namespace NowUI
 {
     [NowBuilder]
-    public struct NowUIRectangle
+    public struct NowRectangle
     {
         public NowRect mask;
 
@@ -39,7 +39,7 @@ namespace NowUI
         /// <summary>Letterbox the texture inside the rect instead of stretching.</summary>
         public bool preserveAspect;
 
-        public NowUIRectangle(NowRect rect)
+        public NowRectangle(NowRect rect)
         {
             mask = rect;
             this.rect = rect;
@@ -57,30 +57,30 @@ namespace NowUI
             preserveAspect = false;
         }
 
-        public NowUIRectangle SetBlur(float blur)
+        public NowRectangle SetBlur(float blur)
         {
             this.blur = blur;
             return this;
         }
 
-        public NowUIRectangle SetRadius(float allRadius)
+        public NowRectangle SetRadius(float allRadius)
         {
             radius = new Vector4(allRadius, allRadius, allRadius, allRadius);
             return this;
         }
 
-        public NowUIRectangle SetRadius(Vector4 radius)
+        public NowRectangle SetRadius(Vector4 radius)
         {
             this.radius = radius;
             return this;
         }
 
-        public NowUIRectangle SetPadding(float all)
+        public NowRectangle SetPadding(float all)
         {
             return SetPadding(new Vector4(all, all, all, all));
         }
 
-        public NowUIRectangle SetPadding(Vector4 padding)
+        public NowRectangle SetPadding(Vector4 padding)
         {
             padding = new Vector4(-padding.x, -padding.y, -padding.z, -padding.w);
             this.padding = padding;
@@ -88,43 +88,43 @@ namespace NowUI
             return this;
         }
 
-        public NowUIRectangle SetOutline(float outline)
+        public NowRectangle SetOutline(float outline)
         {
             this.outline = outline;
             return this;
         }
 
-        public NowUIRectangle SetPosition(NowRect rect)
+        public NowRectangle SetPosition(NowRect rect)
         {
             this.rect = rect;
             return this;
         }
 
-        public NowUIRectangle SetMask(NowRect mask)
+        public NowRectangle SetMask(NowRect mask)
         {
             this.mask = mask;
             return this;
         }
 
-        public NowUIRectangle SetColor(Color color)
+        public NowRectangle SetColor(Color color)
         {
             this.color = color;
             return this;
         }
 
-        public NowUIRectangle SetColor(Vector4 color)
+        public NowRectangle SetColor(Vector4 color)
         {
             this.color = color;
             return this;
         }
 
-        public NowUIRectangle SetOutlineColor(Color color)
+        public NowRectangle SetOutlineColor(Color color)
         {
             outlineColor = color;
             return this;
         }
 
-        public NowUIRectangle SetOutlineColor(Vector4 color)
+        public NowRectangle SetOutlineColor(Vector4 color)
         {
             outlineColor = color;
             return this;
@@ -135,14 +135,14 @@ namespace NowUI
         /// radius and masks like any rectangle):
         /// <code>Now.Rectangle(rect).SetTexture(photo).SetRadius(8).Draw();</code>
         /// </summary>
-        public NowUIRectangle SetTexture(Texture texture)
+        public NowRectangle SetTexture(Texture texture)
         {
             this.texture = texture;
             return this;
         }
 
         /// <summary>Restricts sampling to a texture sub-region (u, v, width, height in 0..1).</summary>
-        public NowUIRectangle SetUV(Vector4 uvRect)
+        public NowRectangle SetUV(Vector4 uvRect)
         {
             this.uvRect = uvRect;
             return this;
@@ -155,7 +155,7 @@ namespace NowUI
         /// blur do not apply to sliced draws.
         /// <code>Now.Rectangle(rect).SetSprite(panelSprite, sliced: true).Draw();</code>
         /// </summary>
-        public NowUIRectangle SetSprite(Sprite sprite, bool sliced = false)
+        public NowRectangle SetSprite(Sprite sprite, bool sliced = false)
         {
             if (sprite == null || sprite.texture == null)
                 return this;
@@ -176,14 +176,14 @@ namespace NowUI
         }
 
         /// <summary>Letterboxes the texture inside the rect instead of stretching it.</summary>
-        public NowUIRectangle SetPreserveAspect(bool preserve = true)
+        public NowRectangle SetPreserveAspect(bool preserve = true)
         {
             preserveAspect = preserve;
             return this;
         }
 
         [NowConsumer]
-        public NowUIRectangle Draw()
+        public NowRectangle Draw()
         {
             Now.DrawRect(this);
             return this;

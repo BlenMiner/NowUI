@@ -14,7 +14,7 @@ namespace NowUI
     /// Custom controls build on the same helpers the built-in ones use; nothing
     /// here is internal-only.
     /// </summary>
-    public static class NowUIControlState
+    public static class NowControlState
     {
         const float EVICT_AFTER_SECONDS = 10f;
 
@@ -210,7 +210,7 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Tells a retained host (a UGUI <see cref="NowUIGraphic"/>) that this
+        /// Tells a retained host (a UGUI <see cref="NowGraphic"/>) that this
         /// control needs another frame — call while animating, focused with a
         /// blinking caret, or otherwise time-dependent. The immediate-mode screen
         /// path repaints every frame anyway, so calling it there is free.

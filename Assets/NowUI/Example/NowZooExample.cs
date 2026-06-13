@@ -11,7 +11,7 @@ using NowUI;
 /// a Lottie asset), and poke around.
 /// </summary>
 [AddComponentMenu("NowUI/Examples/NowUI Zoo")]
-public class NowUIZooExample : NowUIGraphic
+public class NowZooExample : NowGraphic
 {
     [SerializeField] NowFontAsset _font;
     [SerializeField] NowLottieAsset _lottie;
@@ -47,14 +47,14 @@ public class NowUIZooExample : NowUIGraphic
         var bounds = new NowRect(0, 0, rect.width, rect.height);
 
         // The style must carry a font — labels don't resolve one at draw time.
-        NowLayout.labelStyle = new NowUIText(default, _font)
+        NowLayout.labelStyle = new NowText(default, _font)
             .SetFontSize(14)
             .SetColor(theme.GetColor(NowColorToken.Text, Color.black));
 
         theme.Rectangle(bounds, NowRectangleStyle.Surface).SetRadius(14).Draw();
 
         if (_animate)
-            NowUIControlState.RequestRepaint();
+            NowControlState.RequestRepaint();
 
         using (NowLayout.Area(bounds.Inset(16), spacing: 12))
         {
@@ -81,7 +81,7 @@ public class NowUIZooExample : NowUIGraphic
         }
     }
 
-    void Header(NowUITheme theme)
+    void Header(NowTheme theme)
     {
         using (NowLayout.Horizontal(spacing: 10, alignItems: NowLayoutAlign.Center))
         {
@@ -104,7 +104,7 @@ public class NowUIZooExample : NowUIGraphic
     /// Truly zero-GC dynamic text: format into a reusable char buffer and draw
     /// the span — no string is ever created.
     /// </summary>
-    void DrawFpsCounter(NowUITheme theme)
+    void DrawFpsCounter(NowTheme theme)
     {
         var rect = NowLayout.Rect(64, 16, align: NowLayoutAlign.Center);
         int fps = Mathf.RoundToInt(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f));
@@ -118,7 +118,7 @@ public class NowUIZooExample : NowUIGraphic
             .Draw(_fpsBuffer.AsSpan(0, written + 4));
     }
 
-    void Buttons(NowUITheme theme)
+    void Buttons(NowTheme theme)
     {
         SectionTitle(theme, "Buttons");
 
@@ -155,7 +155,7 @@ public class NowUIZooExample : NowUIGraphic
         }
     }
 
-    void Toggles(NowUITheme theme)
+    void Toggles(NowTheme theme)
     {
         SectionTitle(theme, "Toggles");
 
@@ -179,7 +179,7 @@ public class NowUIZooExample : NowUIGraphic
         }
     }
 
-    void Sliders(NowUITheme theme)
+    void Sliders(NowTheme theme)
     {
         SectionTitle(theme, "Sliders");
 
@@ -206,7 +206,7 @@ public class NowUIZooExample : NowUIGraphic
         }
     }
 
-    void Fields(NowUITheme theme)
+    void Fields(NowTheme theme)
     {
         SectionTitle(theme, "Fields");
 
@@ -225,7 +225,7 @@ public class NowUIZooExample : NowUIGraphic
                 .SetColor(theme.GetColor(NowColorToken.Accent, Color.cyan)).Draw();
     }
 
-    void ScrollLog(NowUITheme theme)
+    void ScrollLog(NowTheme theme)
     {
         SectionTitle(theme, "Scroll view (event log)");
 
@@ -245,7 +245,7 @@ public class NowUIZooExample : NowUIGraphic
         NowRectangleStyle.Surface, NowRectangleStyle.Muted, NowRectangleStyle.Outline, NowRectangleStyle.Accent
     };
 
-    void Swatches(NowUITheme theme)
+    void Swatches(NowTheme theme)
     {
         SectionTitle(theme, "Theme presets");
 
@@ -259,7 +259,7 @@ public class NowUIZooExample : NowUIGraphic
         }
     }
 
-    void Marquee(NowUITheme theme)
+    void Marquee(NowTheme theme)
     {
         var strip = NowLayout.Rect(height: 22, stretchWidth: true);
         theme.Rectangle(strip, NowRectangleStyle.Muted).SetRadius(6).Draw();
@@ -275,12 +275,12 @@ public class NowUIZooExample : NowUIGraphic
         }
     }
 
-    void SectionTitle(NowUITheme theme, string title)
+    void SectionTitle(NowTheme theme, string title)
     {
         NowLayout.Label(title).SetFontSize(15).SetBold().Draw();
     }
 
-    void Separator(NowUITheme theme)
+    void Separator(NowTheme theme)
     {
         var line = NowLayout.Rect(height: 1, stretchWidth: true);
         theme.Rectangle(line, NowRectangleStyle.Muted).Draw();

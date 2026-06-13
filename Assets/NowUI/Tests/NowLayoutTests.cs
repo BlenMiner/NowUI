@@ -12,7 +12,7 @@ public class NowLayoutTests
 
         // The engine falls back to a bundled default font, so pin a font-less
         // label style: these tests rely on labels measuring zero.
-        NowLayout.labelStyle = new NowUIText(default, null).SetFontSize(16);
+        NowLayout.labelStyle = new NowText(default, null).SetFontSize(16);
     }
 
     [TearDown]
@@ -173,7 +173,7 @@ public class NowLayoutTests
     public void ContentRectReservesLastHeightAndConvergesViaEnd()
     {
         NowControls.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
 
         NowContentRect Next() => NowLayout.ContentRect();
 
@@ -182,9 +182,9 @@ public class NowLayoutTests
         Assert.AreEqual(1f, first.rect.height, 0.001f, "unknown height reserves a minimal rect");
         Assert.AreEqual(400f, first.rect.width, 0.001f, "content rects stretch to the available width");
 
-        NowUIControlState.BeginRepaintTracking();
+        NowControlState.BeginRepaintTracking();
         first.End(72f);
-        Assert.IsTrue(NowUIControlState.EndRepaintTracking(), "height change must request a repaint");
+        Assert.IsTrue(NowControlState.EndRepaintTracking(), "height change must request a repaint");
         NowLayout.EndArea();
 
         NowControls.Reset();
@@ -193,13 +193,13 @@ public class NowLayoutTests
         var second = Next();
         Assert.AreEqual(72f, second.rect.height, 0.001f, "the site-keyed height survives to the next frame");
 
-        NowUIControlState.BeginRepaintTracking();
+        NowControlState.BeginRepaintTracking();
         second.End(72f);
-        Assert.IsFalse(NowUIControlState.EndRepaintTracking(), "settled height must not keep repainting");
+        Assert.IsFalse(NowControlState.EndRepaintTracking(), "settled height must not keep repainting");
         NowLayout.EndArea();
 
         NowControls.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
     }
 
     [Test]
@@ -411,7 +411,7 @@ public class NowLayoutTests
     [Test]
     public void CallbackAreaInteractionsAreInertDuringMeasurePass()
     {
-        NowUIInput.Reset();
+        NowInput.Reset();
         var provider = new LayoutMockInputProvider
         {
             snapshot = new NowUIInputSnapshot(new Vector2(20, 20), true, true, false)
@@ -419,15 +419,15 @@ public class NowLayoutTests
 
         try
         {
-            using (NowUIInput.Begin(provider, new Vector2(200, 200)))
+            using (NowInput.Begin(provider, new Vector2(200, 200)))
             {
-                NowUIInteraction measure = default;
-                NowUIInteraction real = default;
+                NowInteraction measure = default;
+                NowInteraction real = default;
 
                 NowLayout.Area(new Vector4(0, 0, 200, 200), () =>
                 {
                     Vector4 rect = NowLayout.Rect(100, 100);
-                    var interaction = NowUIInput.Interact(1, rect);
+                    var interaction = NowInput.Interact(1, rect);
 
                     if (NowLayout.isMeasurePass)
                         measure = interaction;
@@ -442,7 +442,7 @@ public class NowLayoutTests
         }
         finally
         {
-            NowUIInput.Reset();
+            NowInput.Reset();
         }
     }
 
@@ -463,7 +463,7 @@ public class NowLayoutTests
     [Test]
     public void LabelUsesConfiguredDefaultStyle()
     {
-        NowLayout.labelStyle = new NowUIText(default, null)
+        NowLayout.labelStyle = new NowText(default, null)
             .SetFontSize(22)
             .SetColor(Color.red);
 
@@ -655,11 +655,11 @@ public class NowLayoutTests
         Assert.Throws<InvalidOperationException>(NowLayout.EndArea);
     }
 
-    sealed class LayoutMockInputProvider : INowUIInputProvider
+    sealed class LayoutMockInputProvider : INowInputProvider
     {
         public NowUIInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot snapshot)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot)
         {
             snapshot = this.snapshot;
             return true;

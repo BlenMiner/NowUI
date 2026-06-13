@@ -31,6 +31,8 @@ it.
 - [Code Editor](CodeEditor.md): the embeddable code editor extension —
   syntax highlighting, validation squiggles, auto-pairs, auto-indent,
   undo/redo; JSON and markdown profiles with a registry for adding more.
+- [Rich Text](RichText.md): design notes for spans, tag parsing, hit testing,
+  and future custom inline tags such as Lottie.
 
 All of these render in-engine: open `Assets/Scenes/DocsScene.unity` for a
 browsable version with a side menu, powered by the markdown extension.

@@ -10,7 +10,7 @@ namespace NowUI
     [AddComponentMenu("NowUI/NowUI Graphic")]
     [ExecuteAlways]
     [RequireComponent(typeof(CanvasRenderer))]
-    public class NowUIGraphic : MaskableGraphic, ILayoutElement
+    public class NowGraphic : MaskableGraphic, ILayoutElement
     {
         static readonly int _mainTexProp = Shader.PropertyToID("_MainTex");
 
@@ -42,7 +42,7 @@ namespace NowUI
 
         [NonSerialized] readonly Dictionary<Material, Material> _textMaterials = new Dictionary<Material, Material>();
 
-        [NonSerialized] NowUIDrawList _drawList;
+        [NonSerialized] NowDrawList _drawList;
 
         [NonSerialized] Material _rectangleMaterial;
 
@@ -50,7 +50,7 @@ namespace NowUI
 
         [NonSerialized] Material _rgbaTextMaterialTemplate;
 
-        [NonSerialized] NowUIRectTransformInputProvider _inputProvider;
+        [NonSerialized] NowRectTransformInputProvider _inputProvider;
 
         Rect _clipRect;
 
@@ -58,7 +58,7 @@ namespace NowUI
 
         bool _validClipRect;
 
-        public event Action<NowUIGraphic, NowRect> rebuildNowUI;
+        public event Action<NowGraphic, NowRect> rebuildNowUI;
 
         public bool autoRebuildOnInteraction
         {
@@ -133,7 +133,7 @@ namespace NowUI
 
             var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset);
             bool colorMultiplierActive = false;
-            NowUIControlState.BeginRepaintTracking();
+            NowControlState.BeginRepaintTracking();
             _wantsInteractionRepaint = false;
 
             try
@@ -141,7 +141,7 @@ namespace NowUI
                 Now.BeginColorMultiplier(color);
                 colorMultiplierActive = true;
 
-                using (NowUIInput.Begin(GetInputProvider(), new NowUIInputSurface(new Vector2(rect.width, rect.height))))
+                using (NowInput.Begin(GetInputProvider(), new NowInputSurface(new Vector2(rect.width, rect.height))))
                 {
                     if (useLayoutMeasurePass)
                     {
@@ -180,7 +180,7 @@ namespace NowUI
 
                 Now.EndColorMultiplier();
                 colorMultiplierActive = false;
-                _wantsInteractionRepaint = NowUIControlState.EndRepaintTracking();
+                _wantsInteractionRepaint = NowControlState.EndRepaintTracking();
 
                 scope.Dispose();
             }
@@ -285,7 +285,7 @@ namespace NowUI
 
             var provider = GetInputProvider();
 
-            if (!provider.TryGetSnapshot(new NowUIInputSurface(new Vector2(rect.width, rect.height)), out var snapshot) ||
+            if (!provider.TryGetSnapshot(new NowInputSurface(new Vector2(rect.width, rect.height)), out var snapshot) ||
                 !snapshot.hasPointer)
             {
                 return false;
@@ -356,7 +356,7 @@ namespace NowUI
             if (_drawList != null)
                 return;
 
-            _drawList = new NowUIDrawList(NowUIMeshLayout.Canvas, "NowUI Graphic Mesh");
+            _drawList = new NowDrawList(NowUIMeshLayout.Canvas, "NowUI Graphic Mesh");
         }
 
         public bool respectUGUIRaycast
@@ -402,10 +402,10 @@ namespace NowUI
 
         public virtual int layoutPriority => 0;
 
-        protected virtual INowUIInputProvider GetInputProvider()
+        protected virtual INowInputProvider GetInputProvider()
         {
             if (_inputProvider == null)
-                _inputProvider = new NowUIRectTransformInputProvider();
+                _inputProvider = new NowRectTransformInputProvider();
 
             _inputProvider.rectTransform = rectTransform;
             _inputProvider.eventCamera = GetEventCamera();

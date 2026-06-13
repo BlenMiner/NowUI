@@ -415,7 +415,7 @@ namespace NowUI
             _uiScale = uiScale;
 
             screenMask = new NowRect(0f, 0f, Screen.width / uiScale, Screen.height / uiScale);
-            NowUIInput.Update(new NowUIInputSurface(
+            NowInput.Update(new NowInputSurface(
                 new Vector2(screenMask.width, screenMask.height),
                 new Rect(0f, 0f, Screen.width, Screen.height)));
             Initialize();
@@ -430,7 +430,7 @@ namespace NowUI
 
             _uiScale = 1f;
             Now.screenMask = screenMask;
-            NowUIInput.Update(NowUIInputSurface.FromScreenMask(screenMask));
+            NowInput.Update(NowInputSurface.FromScreenMask(screenMask));
             Initialize();
         }
 
@@ -522,7 +522,7 @@ namespace NowUI
 
         static readonly List<int> _pageCounts = new List<int>(4);
 
-        internal static void EndCanvasMeshCapture(NowUIDrawList drawList, Vector2 positionOffset)
+        internal static void EndCanvasMeshCapture(NowDrawList drawList, Vector2 positionOffset)
         {
             if (drawList == null)
             {
@@ -745,7 +745,7 @@ namespace NowUI
         /// the rect itself; that default mask is outset so the SDF edge, outline and blur
         /// fall off instead of clipping the anti-aliasing hard at the bounds. Explicit
         /// masks stay exact.</summary>
-        internal static void DrawRect(NowUIRectangle rectangle)
+        internal static void DrawRect(NowRectangle rectangle)
         {
             if (_suppressDrawDepth > 0 || _defaultMaterial == null)
                 return;
@@ -841,7 +841,7 @@ namespace NowUI
         /// center stretched. Cell edges share rounded coordinates so slices never
         /// seam. Radius, outline and blur do not apply.
         /// </summary>
-        static void DrawSliced(NowUIRectangle rectangle, NowMesh mesh, int x0, int y0, int rectWidth, int rectHeight)
+        static void DrawSliced(NowRectangle rectangle, NowMesh mesh, int x0, int y0, int rectWidth, int rectHeight)
         {
             Vector4 border = rectangle.spriteBorder;
             float sourceWidth = Mathf.Max(rectangle.spritePixelSize.x, 1f);
@@ -905,7 +905,7 @@ namespace NowUI
         /// because glyphs legitimately overhang the advance box — descenders, italics;
         /// explicit masks stay exact, and empty masks mean "no mask". Fully masked
         /// text skips all shaping/glyph work, so scrolled-out content costs nothing.</summary>
-        internal static void DrawString(NowUIText style, string value)
+        internal static void DrawString(NowText style, string value)
         {
             if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
                 return;
@@ -932,7 +932,7 @@ namespace NowUI
         /// string. Always the per-codepoint path — HarfBuzz shaping is keyed by
         /// string and does not apply to spans.
         /// </summary>
-        internal static void DrawString(NowUIText style, ReadOnlySpan<char> value)
+        internal static void DrawString(NowText style, ReadOnlySpan<char> value)
         {
             if (_suppressDrawDepth > 0 || value.IsEmpty || !style.font)
                 return;
@@ -950,7 +950,7 @@ namespace NowUI
             DrawStringCodepoints(style, value);
         }
 
-        static void DrawStringCodepoints(NowUIText style, ReadOnlySpan<char> value)
+        static void DrawStringCodepoints(NowText style, ReadOnlySpan<char> value)
         {
             var fontSize = style.fontSize;
             var fontAsset = style.font;
@@ -1022,7 +1022,7 @@ namespace NowUI
         /// all-or-nothing. Tabs advance by four spaces, matching the codepoint path's
         /// TAB_SPACES.
         /// </summary>
-        static bool TryDrawShapedString(NowUIText style, string value)
+        static bool TryDrawShapedString(NowText style, string value)
         {
             if (!style.font.TryResolveFont(style.fontStyle, out var font) || font == null)
                 return false;
@@ -1145,7 +1145,7 @@ namespace NowUI
             return true;
         }
 
-        internal static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph)
+        internal static void DrawCharacter(NowText style, NowFontAtlasInfo.Glyph glyph)
         {
             if (_suppressDrawDepth > 0 || style.font == null)
                 return;
@@ -1164,7 +1164,7 @@ namespace NowUI
             DrawCharacter(style, glyph, resolvedFont);
         }
 
-        internal static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowFont font)
+        internal static void DrawCharacter(NowText style, NowFontAtlasInfo.Glyph glyph, NowFont font)
         {
             if (_suppressDrawDepth > 0 || font == null)
                 return;
@@ -1181,7 +1181,7 @@ namespace NowUI
             DrawCharacter(style, glyph, font, mesh);
         }
 
-        static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowFont font, NowMesh mesh)
+        static void DrawCharacter(NowText style, NowFontAtlasInfo.Glyph glyph, NowFont font, NowMesh mesh)
         {
             float baseline = (style.font != null ? style.font.GetAscender(style.fontStyle) : font.GetAscender()) * style.fontSize;
             DrawCharacter(style, glyph, font, mesh, baseline);
@@ -1192,7 +1192,7 @@ namespace NowUI
         /// to the text baseline (ascender), so descenders stay inside the measured
         /// line height instead of hanging below the rect.
         /// </summary>
-        static void DrawCharacter(NowUIText style, NowFontAtlasInfo.Glyph glyph, NowFont font, NowMesh mesh, float baseline)
+        static void DrawCharacter(NowText style, NowFontAtlasInfo.Glyph glyph, NowFont font, NowMesh mesh, float baseline)
         {
             var fontSize = style.fontSize;
             var rect = style.rect;
@@ -1230,7 +1230,7 @@ namespace NowUI
             mesh.AddRect(_tmpVertex, style.outline * fontSize, font.GetScreenPixelRange(glyph.unicode, fontSize));
         }
 
-        internal static void DrawLottie(NowUILottie lottie)
+        internal static void DrawLottie(NowLottie lottie)
         {
             if (_suppressDrawDepth > 0 || _defaultMaterial == null)
                 return;
@@ -1287,29 +1287,29 @@ namespace NowUI
             mesh.AddGeometry(buffer, new Vector2(lottie.rect.x, lottie.rect.y), 1f / renderScale, tint, lottieMask);
         }
 
-        public static NowUIRectangle Rectangle(NowUIRectangle rect)
+        public static NowRectangle Rectangle(NowRectangle rect)
         {
             return rect;
         }
 
-        public static NowUIRectangle Rectangle(NowRect position)
+        public static NowRectangle Rectangle(NowRect position)
         {
-            return new NowUIRectangle(position);
+            return new NowRectangle(position);
         }
 
-        public static NowUIText Text(NowRect position, NowFontAsset font)
+        public static NowText Text(NowRect position, NowFontAsset font)
         {
-            return new NowUIText(position, font);
+            return new NowText(position, font);
         }
 
-        public static NowUIText Text(NowRect position)
+        public static NowText Text(NowRect position)
         {
-            return new NowUIText(position, defaultFont);
+            return new NowText(position, defaultFont);
         }
 
-        public static NowUILottie Lottie(NowRect position, NowLottieAsset asset)
+        public static NowLottie Lottie(NowRect position, NowLottieAsset asset)
         {
-            return new NowUILottie(position, asset);
+            return new NowLottie(position, asset);
         }
     }
 

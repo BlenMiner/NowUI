@@ -41,7 +41,7 @@ namespace NowUI
         {
             _openId = id;
             _position = position;
-            NowUIControlState.RequestRepaint();
+            NowControlState.RequestRepaint();
         }
 
         public static void Close()
@@ -56,11 +56,11 @@ namespace NowUI
         /// </summary>
         public static bool Begin(int id)
         {
-            if (NowUIInput.isPassive)
+            if (NowInput.isPassive)
                 return false;
 
             if (_openId != id &&
-                NowUIControlState.Get<int>(NowUIInput.GetId(id, "ctx-pending")) == 0)
+                NowControlState.Get<int>(NowInput.GetId(id, "ctx-pending")) == 0)
             {
                 return false;
             }
@@ -75,7 +75,7 @@ namespace NowUI
         {
             _items.Add(label);
             int index = _items.Count;
-            ref int pending = ref NowUIControlState.Get<int>(NowUIInput.GetId(_activeId, "ctx-pending"));
+            ref int pending = ref NowControlState.Get<int>(NowInput.GetId(_activeId, "ctx-pending"));
 
             if (pending == index)
             {
@@ -111,9 +111,9 @@ namespace NowUI
                 width = Mathf.Max(width, textStyle.Measure(_items[i]).x + PaddingX * 2f);
 
             var popupRect = new NowRect(_position.x, _position.y, width, _items.Count * ItemHeight + 8f);
-            int pendingId = NowUIInput.GetId(id, "ctx-pending");
+            int pendingId = NowInput.GetId(id, "ctx-pending");
 
-            NowUIControlState.RequestRepaint();
+            NowControlState.RequestRepaint();
             NowUIOverlay.Block(new NowRect(-100000f, -100000f, 200000f, 200000f));
 
             NowUIOverlay.Defer(popupRect, () =>
@@ -131,7 +131,7 @@ namespace NowUI
                         popupRect.y + 4f + i * ItemHeight,
                         popupRect.width - 8f,
                         ItemHeight);
-                    var interaction = NowUIInput.Interact(NowUIInput.CombineId(pendingId, i + 1), itemRect);
+                    var interaction = NowInput.Interact(NowInput.CombineId(pendingId, i + 1), itemRect);
 
                     if (interaction.hovered)
                     {
@@ -145,12 +145,12 @@ namespace NowUI
 
                     if (interaction.clicked)
                     {
-                        NowUIControlState.Get<int>(pendingId) = i + 1;
+                        NowControlState.Get<int>(pendingId) = i + 1;
                         Close();
                     }
                 }
 
-                var snapshot = NowUIInput.current;
+                var snapshot = NowInput.current;
                 bool pressed = snapshot.primaryPressed ||
                     (snapshot.pointerButtonsPressed & NowUIPointerButtons.Secondary) != 0;
 

@@ -11,11 +11,11 @@ using NowUI.CodeEditor;
 /// </summary>
 public class NowCodeEditorTests
 {
-    sealed class FakePointer : INowUIInputProvider
+    sealed class FakePointer : INowInputProvider
     {
         public NowUIInputSnapshot snapshot;
 
-        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot result)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot result)
         {
             result = snapshot;
             return true;
@@ -38,14 +38,14 @@ public class NowCodeEditorTests
 
     FakePointer _pointer;
     FakeKeyboard _keyboard;
-    NowUIDrawList _drawList;
+    NowDrawList _drawList;
 
     [SetUp]
     public void SetUp()
     {
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
         NowUIOverlay.Reset();
         NowUITextInput.Reset();
@@ -54,7 +54,7 @@ public class NowCodeEditorTests
         _pointer = new FakePointer();
         _keyboard = new FakeKeyboard();
         NowUITextInput.source = _keyboard;
-        _drawList = new NowUIDrawList();
+        _drawList = new NowDrawList();
     }
 
     [TearDown]
@@ -64,9 +64,9 @@ public class NowCodeEditorTests
         NowCodeEditor.ResetCaches();
         NowUITextInput.Reset();
         NowUIOverlay.Reset();
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
     }
 
@@ -76,14 +76,14 @@ public class NowCodeEditorTests
         NowUITextInput.Invalidate();
         NowCodeEditorResult result;
 
-        using (NowUIInput.Begin(_pointer, Surface))
+        using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
             result = NowCode.Editor(EditorRect, NowJsonLanguage.instance, "code").Draw(ref text);
 
         return result;
     }
 
-    static int Id => NowUIInput.GetId(0, "code");
+    static int Id => NowInput.GetId(0, "code");
 
     void Focus()
     {
@@ -92,7 +92,7 @@ public class NowCodeEditorTests
 
     ref NowTextEditState State()
     {
-        return ref NowUIControlState.Get<NowTextEditState>(Id);
+        return ref NowControlState.Get<NowTextEditState>(Id);
     }
 
     static List<NowCodeToken> Tokenize(NowCodeLanguage language, string line, int state = 0)

@@ -13,7 +13,7 @@ namespace NowUI
 
     /// <summary>
     /// Sizing and group options for <see cref="NowLayout"/> calls, following the same
-    /// fluent builder pattern as <see cref="NowUIRectangle"/> and <see cref="NowUIText"/>.
+    /// fluent builder pattern as <see cref="NowRectangle"/> and <see cref="NowText"/>.
     /// A default instance means "auto": elements use their content size and groups
     /// stretch across the parent's cross axis.
     /// </summary>
@@ -207,20 +207,20 @@ namespace NowUI
         /// </summary>
         public void End(float measuredHeight)
         {
-            ref float lastHeight = ref NowUIControlState.Get<float>(_slot);
+            ref float lastHeight = ref NowControlState.Get<float>(_slot);
 
             if (Mathf.Abs(measuredHeight - lastHeight) <= 0.5f)
                 return;
 
             lastHeight = measuredHeight;
-            NowUIControlState.RequestRepaint();
+            NowControlState.RequestRepaint();
         }
     }
 
     /// <summary>
     /// Disposable handle returned by <see cref="NowLayout.Area(NowRect)"/>,
     /// <see cref="NowLayout.Horizontal()"/> and <see cref="NowLayout.Vertical()"/>,
-    /// mirroring the <see cref="NowUIInput.Begin(Vector2)"/> flow: wrap it in a using
+    /// mirroring the <see cref="NowInput.Begin(Vector2)"/> flow: wrap it in a using
     /// statement and the group ends when the scope is disposed.
     /// </summary>
     public struct NowLayoutScope : IDisposable
@@ -277,7 +277,7 @@ namespace NowUI
 
     /// <summary>
     /// Fluent label builder returned by <see cref="NowLayout.Label(string)"/>.
-    /// Like <see cref="NowUIRectangle"/> and <see cref="NowUIText"/>, nothing happens
+    /// Like <see cref="NowRectangle"/> and <see cref="NowText"/>, nothing happens
     /// until <see cref="Draw"/> is called — that is when the label is measured,
     /// allocated at the current layout position and drawn:
     ///
@@ -290,7 +290,7 @@ namespace NowUI
     {
         string _value;
 
-        NowUIText _style;
+        NowText _style;
 
         NowLayoutOptions _options;
 
@@ -298,7 +298,7 @@ namespace NowUI
 
         bool _reserved;
 
-        internal NowLabel(NowUIText style, string value, NowLayoutOptions options)
+        internal NowLabel(NowText style, string value, NowLayoutOptions options)
         {
             _style = style;
             _value = value;
@@ -485,7 +485,7 @@ namespace NowUI
 
         /// <summary>Draws the label into an explicit rect, consuming no layout space.</summary>
         [NowConsumer]
-        public NowUIText Draw(NowRect rect)
+        public NowText Draw(NowRect rect)
         {
             return NowLayout.DrawLabelAt(_style, _value, rect);
         }
@@ -496,7 +496,7 @@ namespace NowUI
         /// Returns the positioned style.
         /// </summary>
         [NowConsumer]
-        public NowUIText Draw()
+        public NowText Draw()
         {
             return _reserved
                 ? NowLayout.DrawLabelAt(_style, _value, _rect)
@@ -511,9 +511,9 @@ namespace NowUI
     /// from the animation's aspect ratio.
     /// </summary>
     [NowBuilder]
-    public struct NowLottie
+    public struct NowLottieBuilder
     {
-        NowUILottie _style;
+        NowLottie _style;
 
         NowLayoutOptions _options;
 
@@ -521,7 +521,7 @@ namespace NowUI
 
         bool _reserved;
 
-        internal NowLottie(NowUILottie style, NowLayoutOptions options)
+        internal NowLottieBuilder(NowLottie style, NowLayoutOptions options)
         {
             _style = style;
             _options = options;
@@ -549,116 +549,116 @@ namespace NowUI
 
         public float height => rect.height;
 
-        public NowLottie SetTime(float seconds)
+        public NowLottieBuilder SetTime(float seconds)
         {
             _style = _style.SetTime(seconds);
             return this;
         }
 
-        public NowLottie SetNormalizedTime(float normalizedTime)
+        public NowLottieBuilder SetNormalizedTime(float normalizedTime)
         {
             _style = _style.SetNormalizedTime(normalizedTime);
             return this;
         }
 
-        public NowLottie SetFrame(float frame)
+        public NowLottieBuilder SetFrame(float frame)
         {
             _style = _style.SetFrame(frame);
             return this;
         }
 
-        public NowLottie SetLoop(bool loop)
+        public NowLottieBuilder SetLoop(bool loop)
         {
             _style = _style.SetLoop(loop);
             return this;
         }
 
-        public NowLottie SetPreserveAspect(bool preserveAspect)
+        public NowLottieBuilder SetPreserveAspect(bool preserveAspect)
         {
             _style = _style.SetPreserveAspect(preserveAspect);
             return this;
         }
 
-        public NowLottie SetPlaybackFrameRate(float framesPerSecond)
+        public NowLottieBuilder SetPlaybackFrameRate(float framesPerSecond)
         {
             _style = _style.SetPlaybackFrameRate(framesPerSecond);
             return this;
         }
 
-        public NowLottie SetColor(Color color)
+        public NowLottieBuilder SetColor(Color color)
         {
             _style = _style.SetColor(color);
             return this;
         }
 
-        public NowLottie SetColor(Vector4 color)
+        public NowLottieBuilder SetColor(Vector4 color)
         {
             _style = _style.SetColor(color);
             return this;
         }
 
         /// <summary>Replaces all layout options at once.</summary>
-        public NowLottie SetOptions(NowLayoutOptions options)
+        public NowLottieBuilder SetOptions(NowLayoutOptions options)
         {
             _options = options;
             return this;
         }
 
-        public NowLottie SetWidth(float width)
+        public NowLottieBuilder SetWidth(float width)
         {
             _options = _options.SetWidth(width);
             return this;
         }
 
-        public NowLottie SetHeight(float height)
+        public NowLottieBuilder SetHeight(float height)
         {
             _options = _options.SetHeight(height);
             return this;
         }
 
-        public NowLottie SetLayoutSize(float width, float height)
+        public NowLottieBuilder SetLayoutSize(float width, float height)
         {
             _options = _options.SetSize(width, height);
             return this;
         }
 
-        public NowLottie SetMinWidth(float minWidth)
+        public NowLottieBuilder SetMinWidth(float minWidth)
         {
             _options = _options.SetMinWidth(minWidth);
             return this;
         }
 
-        public NowLottie SetMaxWidth(float maxWidth)
+        public NowLottieBuilder SetMaxWidth(float maxWidth)
         {
             _options = _options.SetMaxWidth(maxWidth);
             return this;
         }
 
-        public NowLottie SetMinHeight(float minHeight)
+        public NowLottieBuilder SetMinHeight(float minHeight)
         {
             _options = _options.SetMinHeight(minHeight);
             return this;
         }
 
-        public NowLottie SetMaxHeight(float maxHeight)
+        public NowLottieBuilder SetMaxHeight(float maxHeight)
         {
             _options = _options.SetMaxHeight(maxHeight);
             return this;
         }
 
-        public NowLottie SetStretchWidth(float weight = 1f)
+        public NowLottieBuilder SetStretchWidth(float weight = 1f)
         {
             _options = _options.SetStretchWidth(weight);
             return this;
         }
 
-        public NowLottie SetStretchHeight(float weight = 1f)
+        public NowLottieBuilder SetStretchHeight(float weight = 1f)
         {
             _options = _options.SetStretchHeight(weight);
             return this;
         }
 
-        public NowLottie SetAlign(NowLayoutAlign align)
+        public NowLottieBuilder SetAlign(NowLayoutAlign align)
         {
             _options = _options.SetAlign(align);
             return this;
@@ -672,7 +672,7 @@ namespace NowUI
 
         /// <summary>Allocates the layout rect without drawing and stores it in <see cref="rect"/>.</summary>
         [NowConsumer]
-        public NowLottie Reserve()
+        public NowLottieBuilder Reserve()
         {
             _rect = NowLayout.ReserveLottie(_style, _options);
             _reserved = true;
@@ -681,7 +681,7 @@ namespace NowUI
 
         /// <summary>Draws the animation into an explicit rect, consuming no layout space.</summary>
         [NowConsumer]
-        public NowUILottie Draw(NowRect rect)
+        public NowLottie Draw(NowRect rect)
         {
             return NowLayout.DrawLottieAt(_style, rect);
         }
@@ -691,7 +691,7 @@ namespace NowUI
         /// otherwise this allocates at the current layout position.
         /// </summary>
         [NowConsumer]
-        public NowUILottie Draw()
+        public NowLottie Draw()
         {
             return _reserved
                 ? NowLayout.DrawLottieAt(_style, _rect)
@@ -792,7 +792,7 @@ namespace NowUI
 
         const float DefaultLabelFontSize = 16f;
 
-        static NowUIText _labelStyle;
+        static NowText _labelStyle;
 
         static bool _hasLabelStyle;
 
@@ -879,7 +879,7 @@ namespace NowUI
         public static NowLayoutScope Area(string id, NowRect rect, NowLayoutOptions options)
         {
             OnFrameBoundary();
-            return Area(id != null ? NowUIInput.GetId(id) : HashCombine(AreaSeed, _areaCounter), rect, options);
+            return Area(id != null ? NowInput.GetId(id) : HashCombine(AreaSeed, _areaCounter), rect, options);
         }
 
         /// <summary>Area keyed by a precomputed identity hash (e.g. <see cref="NowControls.SiteId"/>).</summary>
@@ -998,7 +998,7 @@ namespace NowUI
             int areaCounter = _areaCounter;
             _measurePass = true;
             Now.BeginSuppressDraw();
-            NowUIInput.BeginPassive();
+            NowInput.BeginPassive();
             return areaCounter;
         }
 
@@ -1007,7 +1007,7 @@ namespace NowUI
         /// the fresh measurements).</summary>
         internal static void EndMeasurePass(int areaCounterSnapshot)
         {
-            NowUIInput.EndPassive();
+            NowInput.EndPassive();
             Now.EndSuppressDraw();
             _measurePass = false;
 
@@ -1241,11 +1241,11 @@ namespace NowUI
         /// Style template used by <see cref="Label(string)"/> overloads that take no
         /// explicit style. Defaults to the active <see cref="Now.font"/> at a 16px font size.
         /// </summary>
-        public static NowUIText labelStyle
+        public static NowText labelStyle
         {
             get => _hasLabelStyle
                 ? _labelStyle
-                : new NowUIText(default, Now.font).SetFontSize(DefaultLabelFontSize);
+                : new NowText(default, Now.font).SetFontSize(DefaultLabelFontSize);
             set
             {
                 _labelStyle = value;
@@ -1279,40 +1279,40 @@ namespace NowUI
             return new NowLabel(labelStyle.SetFontSize(fontSize).SetColor(color), value, options);
         }
 
-        public static NowLabel Label(NowUIText style, string value)
+        public static NowLabel Label(NowText style, string value)
         {
             return new NowLabel(style, value, default);
         }
 
-        public static NowLabel Label(NowUIText style, string value, NowLayoutOptions options)
+        public static NowLabel Label(NowText style, string value, NowLayoutOptions options)
         {
             return new NowLabel(style, value, options);
         }
 
         /// <summary>
         /// Starts a Lottie builder sized to the animation's native dimensions;
-        /// nothing is allocated or drawn until <see cref="NowLottie.Draw()"/>:
+        /// nothing is allocated or drawn until <see cref="NowLottieBuilder.Draw()"/>:
         /// <c>NowLayout.Lottie(spinner).SetHeight(32).Draw();</c>
         /// </summary>
-        public static NowLottie Lottie(NowLottieAsset asset)
+        public static NowLottieBuilder Lottie(NowLottieAsset asset)
         {
-            return new NowLottie(Now.Lottie(default, asset), default);
+            return new NowLottieBuilder(Now.Lottie(default, asset), default);
         }
 
-        public static NowLottie Lottie(NowLottieAsset asset, NowLayoutOptions options)
+        public static NowLottieBuilder Lottie(NowLottieAsset asset, NowLayoutOptions options)
         {
-            return new NowLottie(Now.Lottie(default, asset), options);
+            return new NowLottieBuilder(Now.Lottie(default, asset), options);
         }
 
         /// <summary>Allocates layout space for an animation without drawing it.</summary>
-        internal static NowRect ReserveLottie(in NowUILottie style, NowLayoutOptions options)
+        internal static NowRect ReserveLottie(in NowLottie style, NowLayoutOptions options)
         {
             ref var group = ref RequireGroup();
             return Allocate(ref group, options, LottieAutoSize(style, options), false, out _, out _);
         }
 
         /// <summary>Draws an animation into an already-reserved rect, consuming no layout space.</summary>
-        internal static NowUILottie DrawLottieAt(NowUILottie style, NowRect rect)
+        internal static NowLottie DrawLottieAt(NowLottie style, NowRect rect)
         {
             return style
                 .SetPosition(rect)
@@ -1324,7 +1324,7 @@ namespace NowUI
         /// Native animation size; with exactly one fixed dimension the other is
         /// derived from the animation's aspect ratio.
         /// </summary>
-        internal static Vector2 LottieAutoSize(in NowUILottie style, in NowLayoutOptions options)
+        internal static Vector2 LottieAutoSize(in NowLottie style, in NowLayoutOptions options)
         {
             var asset = style.asset;
 
@@ -1344,14 +1344,14 @@ namespace NowUI
         }
 
         /// <summary>Measures, allocates and draws a label at the current layout position.</summary>
-        internal static NowUIText PlaceLabel(NowUIText style, string value, NowLayoutOptions options)
+        internal static NowText PlaceLabel(NowText style, string value, NowLayoutOptions options)
         {
             var rect = ReserveLabel(style, value, options);
             return DrawLabelAt(style, value, rect);
         }
 
         /// <summary>Allocates layout space for a label without drawing it.</summary>
-        internal static NowRect ReserveLabel(NowUIText style, string value, NowLayoutOptions options)
+        internal static NowRect ReserveLabel(NowText style, string value, NowLayoutOptions options)
         {
             ref var group = ref RequireGroup();
             var measured = style.Measure(value);
@@ -1359,7 +1359,7 @@ namespace NowUI
         }
 
         /// <summary>Draws a label into an already-reserved rect, consuming no layout space.</summary>
-        internal static NowUIText DrawLabelAt(NowUIText style, string value, NowRect rect)
+        internal static NowText DrawLabelAt(NowText style, string value, NowRect rect)
         {
             style = style
                 .SetPosition(rect)
@@ -1395,7 +1395,7 @@ namespace NowUI
             ref var parent = ref RequireGroup("Layout groups require an open area. Call NowLayout.Area first.");
 
             int groupId = id != null
-                ? HashCombine(parent.id, NowUIInput.GetId(id))
+                ? HashCombine(parent.id, NowInput.GetId(id))
                 : HashCombine(parent.id, parent.childIndex);
             parent.childIndex++;
 
@@ -1535,7 +1535,7 @@ namespace NowUI
             [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
         {
             int slot = NowControls.GetControlId(NowControls.SiteId(file, line));
-            float lastHeight = NowUIControlState.Get<float>(slot);
+            float lastHeight = NowControlState.Get<float>(slot);
 
             if (!options.Has(NowLayoutOptions.Field.Width) && !options.Has(NowLayoutOptions.Field.StretchWidth))
                 options = options.SetStretchWidth();
@@ -1547,7 +1547,7 @@ namespace NowUI
         internal static bool TryGetCachedContentSize(string id, out Vector2 size)
         {
             if (id != null)
-                return TryGetCachedContentSize(NowUIInput.GetId(id), out size);
+                return TryGetCachedContentSize(NowInput.GetId(id), out size);
 
             size = default;
             return false;
@@ -1580,7 +1580,7 @@ namespace NowUI
                 Mathf.Abs(previous.contentWidth - contentWidth) > 0.25f ||
                 Mathf.Abs(previous.contentHeight - contentHeight) > 0.25f)
             {
-                NowUIControlState.RequestRepaint();
+                NowControlState.RequestRepaint();
             }
 
             _cache[group.id] = new CachedGroup
@@ -1740,7 +1740,7 @@ namespace NowUI
         /// (descenders, italic overhang), so the mask covers the union of the rect and
         /// the measured visual bounds.
         /// </summary>
-        static NowRect LabelMask(in NowUIText style, string value, NowRect rect)
+        static NowRect LabelMask(in NowText style, string value, NowRect rect)
         {
             var mask = rect;
 

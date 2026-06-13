@@ -9,12 +9,12 @@ using NowUI;
 /// </summary>
 public class NowControlsTests
 {
-    sealed class FakeProvider : INowUIInputProvider
+    sealed class FakeProvider : INowInputProvider
     {
         public NowUIInputSnapshot snapshot;
         public bool hasInput = true;
 
-        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot result)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot result)
         {
             result = snapshot;
             return hasInput;
@@ -25,26 +25,26 @@ public class NowControlsTests
     static readonly NowRect ButtonRect = new NowRect(20, 20, 120, 40);
 
     FakeProvider _provider;
-    NowUIDrawList _drawList;
+    NowDrawList _drawList;
 
     [SetUp]
     public void SetUp()
     {
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
         _provider = new FakeProvider();
-        _drawList = new NowUIDrawList();
+        _drawList = new NowDrawList();
     }
 
     [TearDown]
     public void TearDown()
     {
         _drawList.Dispose();
-        NowUIInput.Reset();
+        NowInput.Reset();
         NowUIFocus.Reset();
-        NowUIControlState.Reset();
+        NowControlState.Reset();
         NowControls.Reset();
     }
 
@@ -53,7 +53,7 @@ public class NowControlsTests
         _provider.snapshot = new NowUIInputSnapshot(pointer, down, pressed, released);
         bool result;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             result = Now.Button(ButtonRect, "Save").SetId("Save").Draw();
 
@@ -80,19 +80,19 @@ public class NowControlsTests
     [Test]
     public void PassiveMeasurePassMirrorsActiveOccurrenceSalting()
     {
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         {
             int active1 = NowControls.GetControlId("row");
             int active2 = NowControls.GetControlId("row");
 
-            NowUIInput.BeginPassive();
+            NowInput.BeginPassive();
             int passive1 = NowControls.GetControlId("row");
             int passive2 = NowControls.GetControlId("row");
-            NowUIInput.EndPassive();
+            NowInput.EndPassive();
 
-            NowUIInput.BeginPassive();
+            NowInput.BeginPassive();
             int secondPass1 = NowControls.GetControlId("row");
-            NowUIInput.EndPassive();
+            NowInput.EndPassive();
 
             Assert.AreNotEqual(active1, active2, "Repeated draws of one id must salt apart.");
             Assert.AreEqual(active1, passive1, "Measure passes must resolve the same ids as the real pass.");
@@ -106,7 +106,7 @@ public class NowControlsTests
     {
         int expectedId;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
             expectedId = NowControls.GetControlId("Save");
 
         DrawButtonFrame(new Vector2(60, 36), true, true, false);
@@ -129,7 +129,7 @@ public class NowControlsTests
 
         bool activated;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             activated = Now.Button(ButtonRect, "Save").SetId("Save").Draw();
 
@@ -145,7 +145,7 @@ public class NowControlsTests
 
         _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             Now.Checkbox(rect, "Shadows").SetId("shadows").Draw(ref value);
 
@@ -154,7 +154,7 @@ public class NowControlsTests
         _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
         bool changed;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             changed = Now.Checkbox(rect, "Shadows").SetId("shadows").Draw(ref value);
 
@@ -170,14 +170,14 @@ public class NowControlsTests
 
         _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             Now.Radio(rect, "High", false).SetId("high").Draw();
 
         _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
         bool clicked;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             clicked = Now.Radio(rect, "High", false).SetId("high").Draw();
 
@@ -193,7 +193,7 @@ public class NowControlsTests
         _provider.snapshot = new NowUIInputSnapshot(new Vector2(150, 10), true, true, false);
         bool changed;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             changed = Now.Slider(rect, 0f, 1f).Draw(ref value);
 
@@ -207,7 +207,7 @@ public class NowControlsTests
     {
         int first, second, third;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         {
             first = NowControls.GetControlId("Delete");
             second = NowControls.GetControlId("Delete");
@@ -220,7 +220,7 @@ public class NowControlsTests
 
         int firstNextFrame;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
             firstNextFrame = NowControls.GetControlId("Delete");
 
         Assert.AreEqual(first, firstNextFrame);
@@ -237,7 +237,7 @@ public class NowControlsTests
         {
             _provider.snapshot = new NowUIInputSnapshot(insideSecond, down, pressed, released);
 
-            using (NowUIInput.Begin(_provider, Surface))
+            using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
             {
                 for (int i = 0; i < rects.Length; ++i)
@@ -260,9 +260,9 @@ public class NowControlsTests
     [Test]
     public void CombineIdIsStableAndNeverZero()
     {
-        Assert.AreEqual(NowUIInput.CombineId(7, 3), NowUIInput.CombineId(7, 3));
-        Assert.AreNotEqual(NowUIInput.CombineId(7, 3), NowUIInput.CombineId(7, 4));
-        Assert.AreNotEqual(0, NowUIInput.CombineId(0, 0));
+        Assert.AreEqual(NowInput.CombineId(7, 3), NowInput.CombineId(7, 3));
+        Assert.AreNotEqual(NowInput.CombineId(7, 3), NowInput.CombineId(7, 4));
+        Assert.AreNotEqual(0, NowInput.CombineId(0, 0));
     }
 
     [Test]
@@ -276,8 +276,8 @@ public class NowControlsTests
         {
             _provider.snapshot = new NowUIInputSnapshot(inside, down, pressed, released);
 
-            using (NowUIInput.Begin(_provider, Surface))
-                clicked = NowUIInput.Interact(rect).clicked;
+            using (NowInput.Begin(_provider, Surface))
+                clicked = NowInput.Interact(rect).clicked;
         }
 
         Frame(down: true, pressed: true, released: false);
@@ -298,7 +298,7 @@ public class NowControlsTests
         {
             _provider.snapshot = new NowUIInputSnapshot(insideSecond, down, pressed, released);
 
-            using (NowUIInput.Begin(_provider, Surface))
+            using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
             {
                 firstClicked = Now.Button(rect1, "Delete").Draw();
@@ -318,7 +318,7 @@ public class NowControlsTests
     {
         int byLabel, byId;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         {
             byLabel = NowControls.GetControlId("Delete");
             byId = NowControls.GetControlId("row-7-delete");
@@ -338,7 +338,7 @@ public class NowControlsTests
 
         bool activated;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
             activated = Now.Button(ButtonRect, "Delete").SetId("row-7-delete").Draw();
 
@@ -369,7 +369,7 @@ public class NowControlsTests
         var left = new NowRect(10, 10, 80, 30);
         var right = new NowRect(200, 10, 80, 30);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         {
             _provider.snapshot = default;
             NowUIFocus.Register(1, left);
@@ -383,7 +383,7 @@ public class NowControlsTests
             Vector2.zero, new Vector2(1f, 0f),
             false, false, false, false, false, false, 2, 2f);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
             NowUIFocus.ForceNewFrame();
 
         Assert.AreEqual(2, NowUIFocus.focusedId);
@@ -401,7 +401,7 @@ public class NowControlsTests
             false, false, false,
             cancelDown: true, cancelPressed: true, cancelReleased: false, frame: 1, time: 1f);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
             NowUIFocus.ForceNewFrame();
 
         Assert.AreEqual(0, NowUIFocus.focusedId);
@@ -410,22 +410,22 @@ public class NowControlsTests
     [Test]
     public void ControlStateSlotsPersistAndReset()
     {
-        ref int slot = ref NowUIControlState.Get<int>(7);
+        ref int slot = ref NowControlState.Get<int>(7);
         slot = 123;
 
-        Assert.AreEqual(123, NowUIControlState.Get<int>(7));
+        Assert.AreEqual(123, NowControlState.Get<int>(7));
 
-        NowUIControlState.Reset();
-        Assert.AreEqual(0, NowUIControlState.Get<int>(7));
+        NowControlState.Reset();
+        Assert.AreEqual(0, NowControlState.Get<int>(7));
     }
 
     [Test]
     public void RepeatPulsesOnInitialPress()
     {
-        Assert.IsTrue(NowUIControlState.Repeat(1, held: true));
-        Assert.IsFalse(NowUIControlState.Repeat(1, held: true), "No pulse before the repeat delay.");
-        Assert.IsFalse(NowUIControlState.Repeat(1, held: false));
-        Assert.IsTrue(NowUIControlState.Repeat(1, held: true), "Releasing resets the initial pulse.");
+        Assert.IsTrue(NowControlState.Repeat(1, held: true));
+        Assert.IsFalse(NowControlState.Repeat(1, held: true), "No pulse before the repeat delay.");
+        Assert.IsFalse(NowControlState.Repeat(1, held: false));
+        Assert.IsTrue(NowControlState.Repeat(1, held: true), "Releasing resets the initial pulse.");
     }
 
     [Test]
@@ -435,7 +435,7 @@ public class NowControlsTests
 
         _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         using (var button = Now.Button(ButtonRect).SetId("content-button").Begin())
         {
@@ -446,7 +446,7 @@ public class NowControlsTests
         _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
         bool sawClick = false;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         using (var button = Now.Button(ButtonRect).SetId("content-button").Begin())
         {
@@ -466,7 +466,7 @@ public class NowControlsTests
 
         for (int frame = 0; frame < 4; ++frame)
         {
-            using (NowUIInput.Begin(_provider, Surface))
+            using (NowInput.Begin(_provider, Surface))
             using (_drawList.Begin(Surface))
             using (NowLayout.Area(new Vector4(0, 0, 400, 300)))
             using (var button = NowLayout.Button("grow-button").Begin())
@@ -489,7 +489,7 @@ public class NowControlsTests
 
         _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         using (var box = Now.Checkbox(rect).SetId("scope-box").Begin(ref value))
         {
@@ -503,7 +503,7 @@ public class NowControlsTests
         bool sawChange = false;
         bool sawValue = false;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         using (var box = Now.Checkbox(rect).SetId("scope-box").Begin(ref value))
         {
@@ -525,7 +525,7 @@ public class NowControlsTests
 
         _provider.snapshot = new NowUIInputSnapshot(inside, true, true, false);
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         using (var radio = Now.Radio(rect, false).SetId("scope-radio").Begin())
             NowLayout.Label("High").Draw();
@@ -533,7 +533,7 @@ public class NowControlsTests
         _provider.snapshot = new NowUIInputSnapshot(inside, false, false, true);
         bool sawClick = false;
 
-        using (NowUIInput.Begin(_provider, Surface))
+        using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         using (var radio = Now.Radio(rect, false).SetId("scope-radio").Begin())
         {
@@ -563,7 +563,7 @@ public class NowControlsTests
             if (eventSystem.currentSelectedGameObject == null)
                 Assert.Ignore("EventSystem selection inactive in this environment.");
 
-            using (NowUIInput.Begin(_provider, Surface))
+            using (NowInput.Begin(_provider, Surface))
                 NowUIFocus.ForceNewFrame();
 
             Assert.AreEqual(0, NowUIFocus.focusedId, "UGUI selection must clear NowUI focus.");

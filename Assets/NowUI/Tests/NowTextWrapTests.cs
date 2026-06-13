@@ -7,7 +7,7 @@ using NowUI.Internal;
 public class NowTextWrapTests
 {
     NowFontAsset _font;
-    NowUIDrawList _drawList;
+    NowDrawList _drawList;
     static readonly Vector2 Surface = new Vector2(512, 512);
 
     [OneTimeSetUp]
@@ -20,7 +20,7 @@ public class NowTextWrapTests
     [SetUp]
     public void SetUp()
     {
-        _drawList = new NowUIDrawList();
+        _drawList = new NowDrawList();
         Now.defaultFont = _font;
     }
 
@@ -31,9 +31,9 @@ public class NowTextWrapTests
         Now.defaultFont = null;
     }
 
-    NowUIText Style(float size = 16f)
+    NowText Style(float size = 16f)
     {
-        return new NowUIText(default, _font).SetFontSize(size);
+        return new NowText(default, _font).SetFontSize(size);
     }
 
     [Test]

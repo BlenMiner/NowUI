@@ -13,7 +13,7 @@ using NowUI.Markdown;
 /// pages; external links open in the browser.
 /// </summary>
 [AddComponentMenu("NowUI/Examples/NowUI Docs Browser")]
-public class NowUIDocsExample : NowUIGraphic
+public class NowDocsExample : NowGraphic
 {
     enum PageKind
     {
@@ -160,7 +160,7 @@ public class NowUIDocsExample : NowUIGraphic
     string _markdownText = MarkdownSample;
     bool _markdownPreview;
 
-    void DrawCodeEditorDemo(NowUITheme theme)
+    void DrawCodeEditorDemo(NowTheme theme)
     {
         NowMarkdown.Draw("# Code editor\n\n`NowUI.Extensions.CodeEditor` — syntax highlighting, validation" +
             " squiggles (hover them, click the status error to jump), bracket/quote auto-close, Enter" +
@@ -184,7 +184,7 @@ public class NowUIDocsExample : NowUIGraphic
             NowCode.Editor(NowMarkdownCodeLanguage.instance, "demo-md").SetHeight(260).Draw(ref _markdownText);
     }
 
-    void DrawLottieDemo(NowUITheme theme)
+    void DrawLottieDemo(NowTheme theme)
     {
         NowMarkdown.Draw("# Lottie demo\n\nVector animations drawn through `NowLayout.Lottie` —" +
             " tessellated at runtime, no textures. Add assets to the **Lotties** array on the" +
@@ -197,7 +197,7 @@ public class NowUIDocsExample : NowUIGraphic
         }
 
         // Time-driven content: ask retained hosts for the next frame.
-        NowUIControlState.RequestRepaint();
+        NowControlState.RequestRepaint();
 
         NowMarkdown.Draw("## Gallery");
 
@@ -247,7 +247,7 @@ public class NowUIDocsExample : NowUIGraphic
         }
     }
 
-    void DrawLiveDemo(NowUITheme theme)
+    void DrawLiveDemo(NowTheme theme)
     {
         NowMarkdown.Draw("# Live demo\n\nThe controls below run the code from" +
             " [CustomControls.md](CustomControls.md) — a wrapped variant, a reshaped" +
@@ -299,8 +299,8 @@ public static class GuideControls
         bool inCircle = (interaction.pointerPosition - rect.center).sqrMagnitude <= radius * radius;
         bool clicked = (interaction.clicked && inCircle) || submitted;
 
-        float hoverT = NowUIControlState.Transition(
-            NowUIInput.GetId(id, "hover"), interaction.hovered && inCircle);
+        float hoverT = NowControlState.Transition(
+            NowInput.GetId(id, "hover"), interaction.hovered && inCircle);
 
         var circle = theme.Rectangle(rect, NowRectangleStyle.Accent);
         circle.radius = Vector4.one * radius;

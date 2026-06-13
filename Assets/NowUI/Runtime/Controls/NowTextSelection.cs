@@ -35,7 +35,7 @@ namespace NowUI
     /// dragging over a webpage), double-click selects a word, triple-click a
     /// line, Ctrl/Cmd+A selects all, Ctrl/Cmd+C copies through
     /// <see cref="NowUIClipboard"/>. Selection
-    /// state keys off the id in <see cref="NowUIControlState"/>; focus
+    /// state keys off the id in <see cref="NowControlState"/>; focus
     /// integration clears the selection when the user clicks elsewhere.
     /// <see cref="Interact"/> runs the input once for a whole document;
     /// <see cref="DrawHighlights"/> renders any slice of its segments, so
@@ -93,12 +93,12 @@ namespace NowUI
             for (int i = 1; i < lines.Count; ++i)
                 bounds = bounds.Union(lines[i].rect);
 
-            ref var state = ref NowUIControlState.Get<NowTextEditState>(id);
+            ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
 
-            var snapshot = NowUIInput.current;
+            var snapshot = NowInput.current;
 
-            if (!NowUIInput.isPassive && snapshot.hasPointer && bounds.Contains(snapshot.pointerPosition) &&
+            if (!NowInput.isPassive && snapshot.hasPointer && bounds.Contains(snapshot.pointerPosition) &&
                 (snapshot.pointerButtonsPressed & NowUIPointerButtons.Secondary) != 0)
             {
                 NowUIFocus.Focus(id);
@@ -127,14 +127,14 @@ namespace NowUI
                 return result;
             }
 
-            var interaction = NowUIInput.Interact(id, bounds);
+            var interaction = NowInput.Interact(id, bounds);
             NowUIFocus.Register(id, bounds);
 
             if (interaction.pressed)
             {
                 NowUIFocus.Focus(id);
                 int hit = HitTest(text, lines, font, fontSize, fontStyle, interaction.pointerPosition);
-                int streak = NowUIControlState.ClickStreak(id, true);
+                int streak = NowControlState.ClickStreak(id, true);
 
                 if (streak >= 3)
                 {
@@ -153,7 +153,7 @@ namespace NowUI
             else if (interaction.dragging)
             {
                 state.caret = HitTest(text, lines, font, fontSize, fontStyle, interaction.pointerPosition);
-                NowUIControlState.RequestRepaint();
+                NowControlState.RequestRepaint();
             }
 
             bool focused = NowUIFocus.IsFocused(id);
@@ -161,7 +161,7 @@ namespace NowUI
             if (!focused && !interaction.held && state.hasSelection)
                 state.anchor = state.caret;
 
-            if (focused && !NowUIInput.isPassive)
+            if (focused && !NowInput.isPassive)
             {
                 var frame = NowUITextInput.current;
 
@@ -192,7 +192,7 @@ namespace NowUI
             if (string.IsNullOrEmpty(text) || lines == null || font == null)
                 return false;
 
-            ref var state = ref NowUIControlState.Get<NowTextEditState>(id);
+            ref var state = ref NowControlState.Get<NowTextEditState>(id);
 
             if (!state.hasSelection)
                 return false;
@@ -234,16 +234,16 @@ namespace NowUI
         /// <summary>Selects the whole region's text (for context menus and shortcuts).</summary>
         public static void SelectAll(int id, string text)
         {
-            ref var state = ref NowUIControlState.Get<NowTextEditState>(id);
+            ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.SelectAll(ref state, text ?? string.Empty);
             NowUIFocus.Focus(id);
-            NowUIControlState.RequestRepaint();
+            NowControlState.RequestRepaint();
         }
 
         /// <summary>The selected text of a region, or empty.</summary>
         public static string GetSelection(int id, string text)
         {
-            ref var state = ref NowUIControlState.Get<NowTextEditState>(id);
+            ref var state = ref NowControlState.Get<NowTextEditState>(id);
             return NowTextEdit.GetSelection(text ?? string.Empty, state);
         }
 

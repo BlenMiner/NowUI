@@ -2,7 +2,7 @@ using UnityEngine;
 using NowUI;
 
 [AddComponentMenu("NowUI/Examples/NowUI Render Texture Example")]
-public sealed class NowUIRenderTextureExample : MonoBehaviour
+public sealed class NowRenderTextureExample : MonoBehaviour
 {
     static readonly int _mainTexId = Shader.PropertyToID("_MainTex");
 
@@ -18,7 +18,7 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
 
     [SerializeField, Range(0.75f, 1.5f)] float _scale = 1f;
 
-    NowUIRenderer _renderer;
+    NowRenderer _renderer;
 
     RenderTexture _ownedTarget;
 
@@ -36,12 +36,12 @@ public sealed class NowUIRenderTextureExample : MonoBehaviour
 
     void OnEnable()
     {
-        _renderer = new NowUIRenderer();
+        _renderer = new NowRenderer();
     }
 
     void Update()
     {
-        _renderer ??= new NowUIRenderer();
+        _renderer ??= new NowRenderer();
 
         var target = GetTarget();
 

@@ -88,7 +88,9 @@ namespace NowUI
             public byte hadFocus;
         }
 
-        static readonly List<NowTextAreaLine> _lineScratch = new List<NowTextAreaLine>(16);
+        static readonly List<NowTextLine> _lineScratch = new List<NowTextLine>(16);
+
+        static readonly List<NowTextLine> _compatLineScratch = new List<NowTextLine>(16);
 
         public bool Draw(ref string text)
         {
@@ -103,7 +105,7 @@ namespace NowUI
             float fontSize = textStyle.fontSize;
             float lineHeight = fontAsset != null ? fontAsset.GetLineHeight(textStyle.fontStyle) * fontSize : fontSize * 1.2f;
 
-            ref int lastLineCount = ref NowUIControlState.Get<int>(NowUIInput.GetId(id, "lines"));
+            ref int lastLineCount = ref NowControlState.Get<int>(NowInput.GetId(id, "lines"));
             int visualLines = Mathf.Clamp(Mathf.Max(lastLineCount, 1), _minLines, _maxLines);
             float boxHeight = visualLines * lineHeight + 12f;
 
@@ -112,9 +114,9 @@ namespace NowUI
 
             var interaction = NowControls.Interact(id, rect, out bool focused, out _);
 
-            ref var state = ref NowUIControlState.Get<NowTextEditState>(id);
+            ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
-            ref var area = ref NowUIControlState.Get<AreaState>(NowUIInput.GetId(id, "area"));
+            ref var area = ref NowControlState.Get<AreaState>(NowInput.GetId(id, "area"));
 
             if (fontAsset == null)
                 return false;
@@ -125,7 +127,7 @@ namespace NowUI
             if (lastLineCount != lines.Count)
             {
                 lastLineCount = lines.Count;
-                NowUIControlState.RequestRepaint();
+                NowControlState.RequestRepaint();
             }
 
             if (focused && area.hadFocus == 0)
@@ -147,9 +149,9 @@ namespace NowUI
 
             if (interaction.pressed)
             {
-                int hit = HitTest(text, lines, fontAsset, fontSize, textStyle.fontStyle,
-                    interaction.pointerPosition, inner, lineHeight, area.scrollY);
-                int streak = NowUIControlState.ClickStreak(id, true);
+                int hit = NowTextMetrics.HitTest(text, lines, fontAsset, fontSize, textStyle.fontStyle,
+                    interaction.pointerPosition, inner, lineHeight, 0f, area.scrollY);
+                int streak = NowControlState.ClickStreak(id, true);
 
                 if (streak >= 3)
                 {
@@ -167,12 +169,12 @@ namespace NowUI
             }
             else if (interaction.dragging)
             {
-                state.caret = HitTest(text, lines, fontAsset, fontSize, textStyle.fontStyle,
-                    interaction.pointerPosition, inner, lineHeight, area.scrollY);
-                NowUIControlState.RequestRepaint();
+                state.caret = NowTextMetrics.HitTest(text, lines, fontAsset, fontSize, textStyle.fontStyle,
+                    interaction.pointerPosition, inner, lineHeight, 0f, area.scrollY);
+                NowControlState.RequestRepaint();
             }
 
-            if (focused && !NowUIInput.isPassive)
+            if (focused && !NowInput.isPassive)
             {
                 NowUIFocus.LockNavigation();
                 var frame = NowUITextInput.current;
@@ -207,33 +209,35 @@ namespace NowUI
                             NowTextEdit.Insert(ref text, ref state, buffer.Replace("\r\n", "\n").Replace('\r', '\n'));
                     }
 
-                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "enter"), frame.enterHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "enter"), frame.enterHeld))
                         NowTextEdit.Insert(ref text, ref state, "\n");
 
-                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "bs"), frame.backspaceHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "bs"), frame.backspaceHeld))
                         NowTextEdit.Backspace(ref text, ref state, frame.command);
 
-                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "del"), frame.deleteHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "del"), frame.deleteHeld))
                         NowTextEdit.Delete(ref text, ref state, frame.command);
 
-                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "left"), frame.leftHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "left"), frame.leftHeld))
                         NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.command);
 
-                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "right"), frame.rightHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "right"), frame.rightHeld))
                         NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.command);
 
                     if (text != original)
                         LayoutLines(text, fontAsset, fontSize, textStyle.fontStyle, inner.width, lines);
 
-                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "up"), frame.upHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "up"), frame.upHeld))
                     {
-                        MoveVertical(ref state, ref area, text, lines, fontAsset, fontSize, textStyle.fontStyle, -1, frame.shift);
+                        MoveVertical(ref state, text, lines, fontAsset, fontSize,
+                            textStyle.fontStyle, area.goalX, -1, frame.shift);
                         verticalMove = true;
                     }
 
-                    if (NowUIControlState.Repeat(NowUIInput.GetId(id, "down"), frame.downHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "down"), frame.downHeld))
                     {
-                        MoveVertical(ref state, ref area, text, lines, fontAsset, fontSize, textStyle.fontStyle, 1, frame.shift);
+                        MoveVertical(ref state, text, lines, fontAsset, fontSize,
+                            textStyle.fontStyle, area.goalX, 1, frame.shift);
                         verticalMove = true;
                     }
 
@@ -245,7 +249,7 @@ namespace NowUI
                         }
                         else
                         {
-                            int line = LineOf(text, lines, state.caret);
+                            int line = NowTextMetrics.LineOf(text, lines, state.caret);
                             state.caret = lines[line].start;
 
                             if (!frame.shift)
@@ -261,7 +265,7 @@ namespace NowUI
                         }
                         else
                         {
-                            int line = LineOf(text, lines, state.caret);
+                            int line = NowTextMetrics.LineOf(text, lines, state.caret);
                             state.caret = lines[line].start + lines[line].length;
 
                             if (!frame.shift)
@@ -289,8 +293,9 @@ namespace NowUI
             if (text != original || composition != null)
                 LayoutLines(display, fontAsset, fontSize, textStyle.fontStyle, inner.width, lines);
 
-            int caretLine = LineOf(display, lines, displayCaret);
-            float caretX = Advance(display, fontAsset, fontSize, textStyle.fontStyle, lines[caretLine].start, displayCaret - lines[caretLine].start);
+            int caretLine = NowTextMetrics.LineOf(display, lines, displayCaret);
+            float caretX = NowTextMetrics.Advance(display, fontAsset, fontSize, textStyle.fontStyle,
+                lines[caretLine].start, displayCaret - lines[caretLine].start);
 
             if (state.caret != area.lastCaret || text != original || interaction.pressed)
             {
@@ -304,14 +309,14 @@ namespace NowUI
             float contentHeight = lines.Count * lineHeight;
             float maxScroll = Mathf.Max(0f, contentHeight - inner.height);
 
-            if (!NowUIInput.isPassive && interaction.hovered && maxScroll > 0f)
+            if (!NowInput.isPassive && interaction.hovered && maxScroll > 0f)
             {
-                float wheel = NowUIInput.current.scrollDelta.y;
+                float wheel = NowInput.current.scrollDelta.y;
 
                 if (wheel != 0f)
                 {
                     area.scrollY -= wheel * lineHeight * 2f;
-                    NowUIControlState.RequestRepaint();
+                    NowControlState.RequestRepaint();
                 }
             }
 
@@ -328,7 +333,7 @@ namespace NowUI
 
             area.scrollY = Mathf.Clamp(area.scrollY, 0f, maxScroll);
 
-            if (focused && !NowUIInput.isPassive)
+            if (focused && !NowInput.isPassive)
                 NowUITextInput.setCompositionCursor?.Invoke(new Vector2(
                     inner.x + caretX,
                     inner.y + caretLine * lineHeight - area.scrollY + lineHeight));
@@ -374,7 +379,7 @@ namespace NowUI
                     DrawCompositionUnderline(theme, display, lines, fontAsset, fontSize, textStyle.fontStyle,
                         inner, lineHeight, area.scrollY, state.caret, displayCaret, firstVisible, lastVisible);
 
-                if (focused && NowUIControlState.Blink(1f, area.blinkAnchor))
+                if (focused && NowControlState.Blink(1f, area.blinkAnchor))
                 {
                     Now.Rectangle(new NowRect(
                             inner.x + caretX,
@@ -400,7 +405,7 @@ namespace NowUI
             }
 
             if (focused)
-                NowUIControlState.RequestRepaint();
+                NowControlState.RequestRepaint();
 
             return text != original;
         }
@@ -414,55 +419,15 @@ namespace NowUI
         public static void LayoutLines(string text, NowFontAsset font, float fontSize, NowFontStyle style, float width, List<NowTextAreaLine> lines)
         {
             lines.Clear();
+            NowTextMetrics.LayoutWrappedLines(text, font, fontSize, style, width, _compatLineScratch);
 
-            if (string.IsNullOrEmpty(text))
-            {
-                lines.Add(new NowTextAreaLine { start = 0, length = 0 });
-                return;
-            }
+            for (int i = 0; i < _compatLineScratch.Count; ++i)
+                lines.Add(new NowTextAreaLine { start = _compatLineScratch[i].start, length = _compatLineScratch[i].length });
+        }
 
-            int lineStart = 0;
-            int lastBreak = -1;
-            float x = 0f;
-            int i = 0;
-
-            while (i < text.Length)
-            {
-                char c = text[i];
-
-                if (c == '\n')
-                {
-                    lines.Add(new NowTextAreaLine { start = lineStart, length = i - lineStart });
-                    ++i;
-                    lineStart = i;
-                    lastBreak = -1;
-                    x = 0f;
-                    continue;
-                }
-
-                int next = NowTextEdit.NextIndex(text, i);
-                float advance = font.MeasureText(text, i, next - i, fontSize, style).x;
-
-                if (x + advance > width && i > lineStart && c != ' ')
-                {
-                    int breakAt = lastBreak > lineStart ? lastBreak : i;
-                    lines.Add(new NowTextAreaLine { start = lineStart, length = breakAt - lineStart });
-                    lineStart = breakAt;
-                    lastBreak = -1;
-                    i = breakAt;
-                    x = 0f;
-                    continue;
-                }
-
-                x += advance;
-
-                if (c == ' ')
-                    lastBreak = next;
-
-                i = next;
-            }
-
-            lines.Add(new NowTextAreaLine { start = lineStart, length = text.Length - lineStart });
+        internal static void LayoutLines(string text, NowFontAsset font, float fontSize, NowFontStyle style, float width, List<NowTextLine> lines)
+        {
+            NowTextMetrics.LayoutWrappedLines(text, font, fontSize, style, width, lines);
         }
 
         /// <summary>The line containing the caret index (wrap boundaries belong to the next line).</summary>
@@ -480,45 +445,8 @@ namespace NowUI
             return lines.Count - 1;
         }
 
-        static float Advance(string text, NowFontAsset font, float fontSize, NowFontStyle style, int start, int count)
-        {
-            return count <= 0 ? 0f : font.MeasureText(text, start, count, fontSize, style).x;
-        }
-
-        static int HitIndex(string text, in NowTextAreaLine line, NowFontAsset font, float fontSize, NowFontStyle style, float x)
-        {
-            if (x <= 0f)
-                return line.start;
-
-            int index = line.start;
-            int end = line.start + line.length;
-            float advance = 0f;
-
-            while (index < end)
-            {
-                int next = NowTextEdit.NextIndex(text, index);
-                float glyph = font.MeasureText(text, index, next - index, fontSize, style).x;
-
-                if (advance + glyph * 0.5f >= x)
-                    return index;
-
-                advance += glyph;
-                index = next;
-            }
-
-            return end;
-        }
-
-        static int HitTest(string text, List<NowTextAreaLine> lines, NowFontAsset font, float fontSize, NowFontStyle style,
-            Vector2 pointer, NowRect inner, float lineHeight, float scrollY)
-        {
-            float localY = pointer.y - inner.y + scrollY;
-            int lineIndex = Mathf.Clamp(Mathf.FloorToInt(localY / lineHeight), 0, lines.Count - 1);
-            return HitIndex(text, lines[lineIndex], font, fontSize, style, pointer.x - inner.x);
-        }
-
-        static void MoveVertical(ref NowTextEditState state, ref AreaState area, string text, List<NowTextAreaLine> lines,
-            NowFontAsset font, float fontSize, NowFontStyle style, int direction, bool select)
+        static void MoveVertical(ref NowTextEditState state, string text, List<NowTextLine> lines,
+            NowFontAsset font, float fontSize, NowFontStyle style, float goalX, int direction, bool select)
         {
             if (!select && state.hasSelection)
             {
@@ -526,27 +454,21 @@ namespace NowUI
                 state.anchor = state.caret;
             }
 
-            int line = LineOf(text, lines, state.caret);
+            int line = NowTextMetrics.LineOf(text, lines, state.caret);
             int target = line + direction;
 
             if (target < 0)
-            {
                 state.caret = 0;
-            }
             else if (target >= lines.Count)
-            {
                 state.caret = text.Length;
-            }
             else
-            {
-                state.caret = HitIndex(text, lines[target], font, fontSize, style, area.goalX);
-            }
+                state.caret = NowTextMetrics.HitIndex(text, lines[target], font, fontSize, style, goalX);
 
             if (!select)
                 state.anchor = state.caret;
         }
 
-        static void DrawSelection(NowUITheme theme, string text, List<NowTextAreaLine> lines, NowFontAsset font,
+        static void DrawSelection(NowTheme theme, string text, List<NowTextLine> lines, NowFontAsset font,
             float fontSize, NowFontStyle style, NowRect inner, float lineHeight, float scrollY,
             in NowTextEditState state, int firstVisible, int lastVisible)
         {
@@ -565,8 +487,8 @@ namespace NowUI
 
                 int from = Mathf.Max(selectionMin, line.start);
                 int to = Mathf.Min(selectionMax, lineEnd);
-                float x0 = Advance(text, font, fontSize, style, line.start, from - line.start);
-                float x1 = Advance(text, font, fontSize, style, line.start, to - line.start);
+                float x0 = NowTextMetrics.Advance(text, font, fontSize, style, line.start, from - line.start);
+                float x1 = NowTextMetrics.Advance(text, font, fontSize, style, line.start, to - line.start);
 
                 if (selectionMax > lineEnd)
                     x1 += fontSize * 0.35f;
@@ -581,7 +503,7 @@ namespace NowUI
             }
         }
 
-        static void DrawCompositionUnderline(NowUITheme theme, string display, List<NowTextAreaLine> lines,
+        static void DrawCompositionUnderline(NowTheme theme, string display, List<NowTextLine> lines,
             NowFontAsset font, float fontSize, NowFontStyle style, NowRect inner, float lineHeight, float scrollY,
             int from, int to, int firstVisible, int lastVisible)
         {
@@ -597,8 +519,8 @@ namespace NowUI
 
                 int rangeFrom = Mathf.Max(from, line.start);
                 int rangeTo = Mathf.Min(to, lineEnd);
-                float x0 = Advance(display, font, fontSize, style, line.start, rangeFrom - line.start);
-                float x1 = Advance(display, font, fontSize, style, line.start, rangeTo - line.start);
+                float x0 = NowTextMetrics.Advance(display, font, fontSize, style, line.start, rangeFrom - line.start);
+                float x1 = NowTextMetrics.Advance(display, font, fontSize, style, line.start, rangeTo - line.start);
 
                 Now.Rectangle(new NowRect(
                         inner.x + x0,

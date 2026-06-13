@@ -2,12 +2,12 @@ using NUnit.Framework;
 using UnityEngine;
 using NowUI;
 
-public class NowUIThemeTests
+public class NowThemeTests
 {
     [Test]
     public void ThemeDefaultsResolvePaletteTokensCaseInsensitively()
     {
-        var theme = ScriptableObject.CreateInstance<NowUITheme>();
+        var theme = ScriptableObject.CreateInstance<NowTheme>();
 
         try
         {
@@ -25,7 +25,7 @@ public class NowUIThemeTests
     [Test]
     public void ThemeInsetsRectUsingNamedSpacing()
     {
-        var theme = ScriptableObject.CreateInstance<NowUITheme>();
+        var theme = ScriptableObject.CreateInstance<NowTheme>();
 
         try
         {
@@ -45,11 +45,11 @@ public class NowUIThemeTests
     [Test]
     public void ThemeAppliesRectanglePreset()
     {
-        var theme = ScriptableObject.CreateInstance<NowUITheme>();
+        var theme = ScriptableObject.CreateInstance<NowTheme>();
 
         try
         {
-            NowUIRectangle rectangle = theme.Rectangle(new Vector4(4, 8, 100, 40), "accent");
+            NowRectangle rectangle = theme.Rectangle(new Vector4(4, 8, 100, 40), "accent");
 
             Assert.AreEqual(new NowRect(4, 8, 100, 40), rectangle.rect);
             Assert.AreEqual(0.102f, rectangle.color.x, 0.0001f);
@@ -66,12 +66,12 @@ public class NowUIThemeTests
     [Test]
     public void ThemeAppliesTextPresetWithoutReplacingProvidedFont()
     {
-        var theme = ScriptableObject.CreateInstance<NowUITheme>();
+        var theme = ScriptableObject.CreateInstance<NowTheme>();
         var font = ScriptableObject.CreateInstance<NowFont>();
 
         try
         {
-            NowUIText text = theme.Text(new Vector4(0, 0, 100, 24), font, "button");
+            NowText text = theme.Text(new Vector4(0, 0, 100, 24), font, "button");
 
             Assert.AreSame(font, text.font);
             Assert.AreEqual(14, text.fontSize, 0.0001f);

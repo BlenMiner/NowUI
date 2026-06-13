@@ -2,7 +2,7 @@ using UnityEngine;
 using NowUI;
 
 [AddComponentMenu("NowUI/Examples/NowUI Graphic Example")]
-public class NowUIGraphicExample : NowUIGraphic
+public class NowGraphicExample : NowGraphic
 {
     [SerializeField] NowFontAsset _font;
     [SerializeField] NowLottieAsset _lottie;

@@ -5,9 +5,9 @@ using UnityEngine.InputSystem.Controls;
 
 namespace NowUI
 {
-    public interface INowUIInputProvider
+    public interface INowInputProvider
     {
-        bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot snapshot);
+        bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot);
     }
 
     public enum NowUIPointerButton
@@ -30,37 +30,37 @@ namespace NowUI
         Forward = 1 << 4
     }
 
-    public struct NowUIInputSurface
+    public struct NowInputSurface
     {
         public Vector2 size;
 
         public Rect screenRect;
 
-        public NowUIInputSurface(Vector2 size)
+        public NowInputSurface(Vector2 size)
             : this(size, new Rect(0f, 0f, size.x, size.y))
         {
         }
 
-        public NowUIInputSurface(Vector2 size, Rect screenRect)
+        public NowInputSurface(Vector2 size, Rect screenRect)
         {
             this.size = size;
             this.screenRect = screenRect;
         }
 
-        public static NowUIInputSurface FromScreen()
+        public static NowInputSurface FromScreen()
         {
             var size = new Vector2(Screen.width, Screen.height);
-            return new NowUIInputSurface(size);
+            return new NowInputSurface(size);
         }
 
-        public static NowUIInputSurface FromScreenMask(NowRect screenMask)
+        public static NowInputSurface FromScreenMask(NowRect screenMask)
         {
             var size = new Vector2(screenMask.width, screenMask.height);
             var screenRect = new Rect(screenMask.x, screenMask.y, screenMask.width, screenMask.height);
-            return new NowUIInputSurface(size, screenRect);
+            return new NowInputSurface(size, screenRect);
         }
 
-        public static NowUIInputSurface FromCamera(Camera camera)
+        public static NowInputSurface FromCamera(Camera camera)
         {
             if (camera == null)
                 return FromScreen();
@@ -72,7 +72,7 @@ namespace NowUI
                 Screen.height - pixelRect.yMax,
                 pixelRect.width,
                 pixelRect.height);
-            return new NowUIInputSurface(size, screenRect);
+            return new NowInputSurface(size, screenRect);
         }
     }
 
@@ -328,7 +328,7 @@ namespace NowUI
         }
     }
 
-    public readonly struct NowUIInteraction
+    public readonly struct NowInteraction
     {
         public readonly int id;
 
@@ -362,7 +362,7 @@ namespace NowUI
 
         public readonly bool dragEnded;
 
-        internal NowUIInteraction(
+        internal NowInteraction(
             int id,
             Rect rect,
             NowUIPointerButton button,
@@ -399,13 +399,13 @@ namespace NowUI
         }
     }
 
-    public static class NowUIInput
+    public static class NowInput
     {
         const float DefaultDragThreshold = 4f;
 
-        static INowUIInputProvider _defaultProvider = NowUIScreenInputProvider.instance;
+        static INowInputProvider _defaultProvider = NowScreenInputProvider.instance;
 
-        static NowUIInputSurface _surface;
+        static NowInputSurface _surface;
 
         static NowUIInputSnapshot _snapshot;
 
@@ -425,13 +425,13 @@ namespace NowUI
 
         static int _passiveDepth;
 
-        public static INowUIInputProvider defaultProvider
+        public static INowInputProvider defaultProvider
         {
             get => _defaultProvider;
             set => _defaultProvider = value;
         }
 
-        public static NowUIInputSurface surface => _surface;
+        public static NowInputSurface surface => _surface;
 
         public static NowUIInputSnapshot current => _snapshot;
 
@@ -449,20 +449,20 @@ namespace NowUI
 
         public static NowUIInputScope Begin(Vector2 size)
         {
-            return Begin(_defaultProvider, new NowUIInputSurface(size));
+            return Begin(_defaultProvider, new NowInputSurface(size));
         }
 
         public static NowUIInputScope Begin(Vector2 size, Rect screenRect)
         {
-            return Begin(_defaultProvider, new NowUIInputSurface(size, screenRect));
+            return Begin(_defaultProvider, new NowInputSurface(size, screenRect));
         }
 
-        public static NowUIInputScope Begin(INowUIInputProvider provider, Vector2 size)
+        public static NowUIInputScope Begin(INowInputProvider provider, Vector2 size)
         {
-            return Begin(provider, new NowUIInputSurface(size));
+            return Begin(provider, new NowInputSurface(size));
         }
 
-        public static NowUIInputScope Begin(INowUIInputProvider provider, NowUIInputSurface surface)
+        public static NowUIInputScope Begin(INowInputProvider provider, NowInputSurface surface)
         {
             var scope = new NowUIInputScope(_surface, _snapshot, _hasContext);
             Update(provider, surface);
@@ -471,15 +471,15 @@ namespace NowUI
 
         public static void Update(Vector2 size)
         {
-            Update(_defaultProvider, new NowUIInputSurface(size));
+            Update(_defaultProvider, new NowInputSurface(size));
         }
 
-        public static void Update(NowUIInputSurface surface)
+        public static void Update(NowInputSurface surface)
         {
             Update(_defaultProvider, surface);
         }
 
-        public static void Update(INowUIInputProvider provider, NowUIInputSurface surface)
+        public static void Update(INowInputProvider provider, NowInputSurface surface)
         {
             _surface = surface;
             _hasContext = true;
@@ -538,7 +538,7 @@ namespace NowUI
         /// per-frame occurrence — draw-order stable, like control identity. Use
         /// an explicit id instead when looped items can reorder mid-press.
         /// </summary>
-        public static NowUIInteraction Interact(
+        public static NowInteraction Interact(
             NowRect rect,
             [System.Runtime.CompilerServices.CallerFilePath] string file = "",
             [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
@@ -546,42 +546,42 @@ namespace NowUI
             return Interact(NowControls.GetControlId(NowControls.SiteId(file, line)), rect);
         }
 
-        public static NowUIInteraction Interact(string id, NowRect rect)
+        public static NowInteraction Interact(string id, NowRect rect)
         {
             return Interact(id, rect, NowUIPointerButton.Primary);
         }
 
-        public static NowUIInteraction Interact(string id, NowRect rect, NowUIPointerButton button)
+        public static NowInteraction Interact(string id, NowRect rect, NowUIPointerButton button)
         {
             return Interact(GetId(id), (Rect)rect, button);
         }
 
-        public static NowUIInteraction Interact(string id, Rect rect)
+        public static NowInteraction Interact(string id, Rect rect)
         {
             return Interact(id, rect, NowUIPointerButton.Primary);
         }
 
-        public static NowUIInteraction Interact(string id, Rect rect, NowUIPointerButton button)
+        public static NowInteraction Interact(string id, Rect rect, NowUIPointerButton button)
         {
             return Interact(GetId(id), rect, button);
         }
 
-        public static NowUIInteraction Interact(int id, NowRect rect)
+        public static NowInteraction Interact(int id, NowRect rect)
         {
             return Interact(id, rect, NowUIPointerButton.Primary);
         }
 
-        public static NowUIInteraction Interact(int id, NowRect rect, NowUIPointerButton button)
+        public static NowInteraction Interact(int id, NowRect rect, NowUIPointerButton button)
         {
             return Interact(id, (Rect)rect, button);
         }
 
-        public static NowUIInteraction Interact(int id, Rect rect)
+        public static NowInteraction Interact(int id, Rect rect)
         {
             return Interact(id, rect, NowUIPointerButton.Primary);
         }
 
-        public static NowUIInteraction Interact(int id, Rect rect, NowUIPointerButton button)
+        public static NowInteraction Interact(int id, Rect rect, NowUIPointerButton button)
         {
             if (id == 0)
                 throw new ArgumentException("Control id 0 is reserved.", nameof(id));
@@ -593,7 +593,7 @@ namespace NowUI
 
             if (_passiveDepth > 0)
             {
-                return new NowUIInteraction(
+                return new NowInteraction(
                     id,
                     rect,
                     button,
@@ -656,7 +656,7 @@ namespace NowUI
 
             bool clicked = released && hovered && !_activeDragged;
 
-            var interaction = new NowUIInteraction(
+            var interaction = new NowInteraction(
                 id,
                 rect,
                 button,
@@ -731,7 +731,7 @@ namespace NowUI
             _activeDragged = false;
             _pressPosition = default;
             _dragThreshold = DefaultDragThreshold;
-            _defaultProvider = NowUIScreenInputProvider.instance;
+            _defaultProvider = NowScreenInputProvider.instance;
             _passiveDepth = 0;
         }
 
@@ -760,7 +760,7 @@ namespace NowUI
                 --_passiveDepth;
         }
 
-        internal static bool TryScreenToSurface(Vector2 topLeftScreenPosition, NowUIInputSurface surface, out Vector2 position)
+        internal static bool TryScreenToSurface(Vector2 topLeftScreenPosition, NowInputSurface surface, out Vector2 position)
         {
             Rect screenRect = surface.screenRect;
 
@@ -776,7 +776,7 @@ namespace NowUI
             return true;
         }
 
-        internal static Vector2 ScaleScreenDelta(Vector2 topLeftScreenDelta, NowUIInputSurface surface)
+        internal static Vector2 ScaleScreenDelta(Vector2 topLeftScreenDelta, NowInputSurface surface)
         {
             Rect screenRect = surface.screenRect;
 
@@ -788,7 +788,7 @@ namespace NowUI
                 topLeftScreenDelta.y * surface.size.y / screenRect.height);
         }
 
-        internal static void Restore(NowUIInputSurface surface, NowUIInputSnapshot snapshot, bool hasContext)
+        internal static void Restore(NowInputSurface surface, NowUIInputSnapshot snapshot, bool hasContext)
         {
             _surface = surface;
             _snapshot = snapshot;
@@ -813,7 +813,7 @@ namespace NowUI
     [NowScope]
     public struct NowUIInputScope : IDisposable
     {
-        readonly NowUIInputSurface _previousSurface;
+        readonly NowInputSurface _previousSurface;
 
         readonly NowUIInputSnapshot _previousSnapshot;
 
@@ -822,7 +822,7 @@ namespace NowUI
         bool _disposed;
 
         internal NowUIInputScope(
-            NowUIInputSurface previousSurface,
+            NowInputSurface previousSurface,
             NowUIInputSnapshot previousSnapshot,
             bool previousHasContext)
         {
@@ -838,13 +838,13 @@ namespace NowUI
                 return;
 
             _disposed = true;
-            NowUIInput.Restore(_previousSurface, _previousSnapshot, _previousHasContext);
+            NowInput.Restore(_previousSurface, _previousSnapshot, _previousHasContext);
         }
     }
 
-    public sealed class NowUIScreenInputProvider : INowUIInputProvider
+    public sealed class NowScreenInputProvider : INowInputProvider
     {
-        public static readonly NowUIScreenInputProvider instance = new NowUIScreenInputProvider();
+        public static readonly NowScreenInputProvider instance = new NowScreenInputProvider();
 
         /// <summary>
         /// When true (default), the pointer is withheld while it is over raycastable
@@ -884,7 +884,7 @@ namespace NowUI
 
         bool _rawInputAvailable = true;
 
-        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot snapshot)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot)
         {
             if (!TryUpdateRawInput())
             {
@@ -897,13 +897,13 @@ namespace NowUI
 
             if (_hasRawPosition)
             {
-                if (!NowUIInput.TryScreenToSurface(_rawPosition, surface, out position))
+                if (!NowInput.TryScreenToSurface(_rawPosition, surface, out position))
                 {
                     snapshot = default;
                     return false;
                 }
 
-                delta = NowUIInput.ScaleScreenDelta(_rawDelta, surface);
+                delta = NowInput.ScaleScreenDelta(_rawDelta, surface);
             }
 
             snapshot = new NowUIInputSnapshot(
@@ -996,13 +996,13 @@ namespace NowUI
         bool _pressAllowed = true;
     }
 
-    public sealed class NowUIIMGUIInputProvider : INowUIInputProvider
+    public sealed class NowIMGUIInputProvider : INowInputProvider
     {
-        public static readonly NowUIIMGUIInputProvider instance = new NowUIIMGUIInputProvider();
+        public static readonly NowIMGUIInputProvider instance = new NowIMGUIInputProvider();
 
         NowUIPointerButtons _buttonsDown;
 
-        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot snapshot)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot)
         {
             Event current = Event.current;
 
@@ -1012,7 +1012,7 @@ namespace NowUI
                 return false;
             }
 
-            if (!NowUIInput.TryScreenToSurface(current.mousePosition, surface, out var position))
+            if (!NowInput.TryScreenToSurface(current.mousePosition, surface, out var position))
             {
                 snapshot = default;
                 return false;
@@ -1044,7 +1044,7 @@ namespace NowUI
             if (current.type == EventType.MouseLeaveWindow)
                 _buttonsDown = NowUIPointerButtons.None;
 
-            Vector2 delta = NowUIInput.ScaleScreenDelta(current.delta, surface);
+            Vector2 delta = NowInput.ScaleScreenDelta(current.delta, surface);
             Vector2 scrollDelta = current.type == EventType.ScrollWheel ? current.delta : Vector2.zero;
 
             snapshot = new NowUIInputSnapshot(
@@ -1094,7 +1094,7 @@ namespace NowUI
         }
     }
 
-    public sealed class NowUIRectTransformInputProvider : INowUIInputProvider
+    public sealed class NowRectTransformInputProvider : INowInputProvider
     {
         RectTransform _rectTransform;
 
@@ -1123,11 +1123,11 @@ namespace NowUI
         /// </summary>
         public Component raycastGate;
 
-        public NowUIRectTransformInputProvider()
+        public NowRectTransformInputProvider()
         {
         }
 
-        public NowUIRectTransformInputProvider(RectTransform rectTransform, Camera eventCamera = null)
+        public NowRectTransformInputProvider(RectTransform rectTransform, Camera eventCamera = null)
         {
             _rectTransform = rectTransform;
             _eventCamera = eventCamera;
@@ -1152,7 +1152,7 @@ namespace NowUI
             set => _eventCamera = value;
         }
 
-        public bool TryGetSnapshot(NowUIInputSurface surface, out NowUIInputSnapshot snapshot)
+        public bool TryGetSnapshot(NowInputSurface surface, out NowUIInputSnapshot snapshot)
         {
             if (_lastFrame != Time.frameCount)
                 UpdateSnapshot();

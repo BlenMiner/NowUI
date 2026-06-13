@@ -72,7 +72,7 @@ namespace NowUI.Editor
 
         public override void OnPreviewGUI(Rect rect, GUIStyle background)
         {
-            using (var preview = NowUIEditorGUI.Auto(rect, PREVIEW_BACKGROUND_COLOR))
+            using (var preview = NowEditorGUI.Auto(rect, PREVIEW_BACKGROUND_COLOR))
                 DrawPreview((NowFont)target, preview.rect);
         }
 

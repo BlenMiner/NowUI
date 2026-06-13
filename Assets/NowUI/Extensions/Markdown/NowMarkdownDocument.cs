@@ -97,10 +97,10 @@ namespace NowUI.Markdown
         readonly System.Text.StringBuilder _regionBuilder = new System.Text.StringBuilder(128);
         readonly List<NowTextSelectionLine> _documentScratch = new List<NowTextSelectionLine>(32);
         readonly List<NowRect> _exclusionScratch = new List<NowRect>(2);
+        readonly NowRichTextLayout _richText = new NowRichTextLayout();
         string _documentText = string.Empty;
         bool _regionActive;
         int _regionSegmentStart;
-        float _regionLastY;
         int _strikeSequence;
 
         float _layoutWidth = -1f;
@@ -152,9 +152,9 @@ namespace NowUI.Markdown
                 return result;
 
             if (_hasLoadingImages)
-                NowUIControlState.RequestRepaint();
+                NowControlState.RequestRepaint();
 
-            int docId = NowUIInput.GetId(GetHashCode(), "markdown");
+            int docId = NowInput.GetId(GetHashCode(), "markdown");
 
             // A link spanning several words is ONE link: the prepass finds the
             // word the pointer is over per link, then the link interacts ONCE
@@ -175,7 +175,7 @@ namespace NowUI.Markdown
 
                 var probe = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
 
-                if (NowUIInput.IsHovered(probe))
+                if (NowInput.IsHovered(probe))
                     _linkHoverOp[op.link] = i;
             }
 
@@ -190,9 +190,9 @@ namespace NowUI.Markdown
                 }
 
                 var target = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
-                var interaction = NowUIInput.Interact(NowUIInput.CombineId(docId, op.link), target);
+                var interaction = NowInput.Interact(NowInput.CombineId(docId, op.link), target);
                 result.hoveredLink = _links[op.link];
-                NowUIControlState.RequestRepaint();
+                NowControlState.RequestRepaint();
 
                 if (interaction.clicked)
                     result.clickedLink = _links[op.link];
@@ -297,12 +297,12 @@ namespace NowUI.Markdown
                     op.rect.height));
             }
 
-            int selectionId = NowUIInput.GetId(docId, "selection");
+            int selectionId = NowInput.GetId(docId, "selection");
             var selection = NowTextSelection.Interact(
                 selectionId, _documentText, _documentScratch, _layoutFont,
                 _style.fontSize, NowFontStyle.Regular, _exclusionScratch);
 
-            int menuId = NowUIInput.GetId(selectionId, "menu");
+            int menuId = NowInput.GetId(selectionId, "menu");
 
             if (selection.rightClicked)
                 NowUIContextMenu.Open(menuId, selection.rightClickPosition);
@@ -319,7 +319,7 @@ namespace NowUI.Markdown
             }
         }
 
-        void DrawSelectionRegion(NowUITheme theme, int docId, int regionIndex, NowRect origin)
+        void DrawSelectionRegion(NowTheme theme, int docId, int regionIndex, NowRect origin)
         {
             var region = _selectionRegions[regionIndex];
             _selectionScratch.Clear();
@@ -339,14 +339,14 @@ namespace NowUI.Markdown
             highlight.a = 0.25f;
 
             NowTextSelection.DrawHighlights(
-                NowUIInput.GetId(docId, "selection"), _documentText, _selectionScratch,
+                NowInput.GetId(docId, "selection"), _documentText, _selectionScratch,
                 _layoutFont, region.fontSize, NowFontStyle.Regular, highlight);
         }
 
-        void DrawCopyButton(NowUITheme theme, int docId, int opIndex, in Op op, NowRect target)
+        void DrawCopyButton(NowTheme theme, int docId, int opIndex, in Op op, NowRect target)
         {
-            int buttonId = NowUIInput.CombineId(docId, ~opIndex);
-            ref float copiedAt = ref NowUIControlState.Get<float>(buttonId);
+            int buttonId = NowInput.CombineId(docId, ~opIndex);
+            ref float copiedAt = ref NowControlState.Get<float>(buttonId);
             bool showCopied = copiedAt > 0f && Time.realtimeSinceStartup - copiedAt < 1.2f;
 
             var panelTarget = new NowRect(
@@ -355,14 +355,14 @@ namespace NowUI.Markdown
                 op.hoverRect.width,
                 op.hoverRect.height);
 
-            if (!NowUIInput.IsHovered(panelTarget) && !showCopied)
+            if (!NowInput.IsHovered(panelTarget) && !showCopied)
                 return;
 
             if (DrawBadgeButton(theme, buttonId, target, ref copiedAt))
                 NowUIClipboard.Copy(op.text);
         }
 
-        void DrawImage(NowUITheme theme, int docId, int opIndex, in Op op, NowRect target, bool linkHovered)
+        void DrawImage(NowTheme theme, int docId, int opIndex, in Op op, NowRect target, bool linkHovered)
         {
             if (NowMarkdownImages.GetState(op.text, out var texture) != NowMarkdownImageState.Loaded ||
                 texture == null)
@@ -377,10 +377,10 @@ namespace NowUI.Markdown
 
             image.Draw();
 
-            var snapshot = NowUIInput.current;
-            int menuId = NowUIInput.CombineId(NowUIInput.GetId(docId, "img-menu"), opIndex);
+            var snapshot = NowInput.current;
+            int menuId = NowInput.CombineId(NowInput.GetId(docId, "img-menu"), opIndex);
 
-            if (!NowUIInput.isPassive && snapshot.hasPointer && target.Contains(snapshot.pointerPosition) &&
+            if (!NowInput.isPassive && snapshot.hasPointer && target.Contains(snapshot.pointerPosition) &&
                 (snapshot.pointerButtonsPressed & NowUIPointerButtons.Secondary) != 0)
             {
                 NowUIContextMenu.Open(menuId, snapshot.pointerPosition);
@@ -395,9 +395,9 @@ namespace NowUI.Markdown
             }
         }
 
-        bool DrawBadgeButton(NowUITheme theme, int buttonId, NowRect target, ref float copiedAt)
+        bool DrawBadgeButton(NowTheme theme, int buttonId, NowRect target, ref float copiedAt)
         {
-            var interaction = NowUIInput.Interact(buttonId, target);
+            var interaction = NowInput.Interact(buttonId, target);
             bool clicked = interaction.clicked;
 
             if (clicked)
@@ -406,7 +406,7 @@ namespace NowUI.Markdown
             bool showCopied = copiedAt > 0f && Time.realtimeSinceStartup - copiedAt < 1.2f;
 
             if (interaction.hovered || showCopied)
-                NowUIControlState.RequestRepaint();
+                NowControlState.RequestRepaint();
 
             var background = theme.Rectangle(target, NowRectangleStyle.Surface);
             background.radius = new Vector4(4f, 4f, 4f, 4f);
@@ -436,7 +436,7 @@ namespace NowUI.Markdown
             return clicked;
         }
 
-        static Vector4 ResolveColor(NowUITheme theme, Role role, bool hovered)
+        static Vector4 ResolveColor(NowTheme theme, Role role, bool hovered)
         {
             switch (role)
             {
@@ -620,7 +620,7 @@ namespace NowUI.Markdown
             }
         }
 
-        static readonly List<NowMarkdownToken> _tokenScratch = new List<NowMarkdownToken>(16);
+        static readonly List<NowTextToken> _tokenScratch = new List<NowTextToken>(16);
 
         void LayoutCodeBlock(NowMarkdownBlock block, float x, ref float y, float width)
         {
@@ -722,6 +722,18 @@ namespace NowUI.Markdown
                 case NowMarkdownTokenKind.String: return Role.SyntaxString;
                 case NowMarkdownTokenKind.Number: return Role.SyntaxNumber;
                 case NowMarkdownTokenKind.Comment: return Role.SyntaxComment;
+                default: return Role.Code;
+            }
+        }
+
+        static Role TokenRole(NowTextTokenKind kind)
+        {
+            switch (kind)
+            {
+                case NowTextTokenKind.Keyword: return Role.SyntaxKeyword;
+                case NowTextTokenKind.String: return Role.SyntaxString;
+                case NowTextTokenKind.Number: return Role.SyntaxNumber;
+                case NowTextTokenKind.Comment: return Role.SyntaxComment;
                 default: return Role.Code;
             }
         }
@@ -844,19 +856,10 @@ namespace NowUI.Markdown
             }
         }
 
-        struct InlineCursor
-        {
-            public float x;
-            public float y;
-            public float lineStart;
-            public float limit;
-            public float lineHeight;
-        }
-
         void LayoutInlines(List<NowMarkdownInline> inlines, float x, ref float y, float width,
             float fontSize, NowFontStyle baseStyle, Role baseRole, int link)
         {
-            var cursor = new InlineCursor
+            var cursor = new NowRichTextCursor
             {
                 x = x,
                 y = y,
@@ -869,23 +872,26 @@ namespace NowUI.Markdown
             _ops.Add(new Op { kind = OpKind.SelectionLayer, role = Role.Body, link = _selectionRegions.Count });
 
             _regionActive = true;
-            _regionBuilder.Length = 0;
             _regionSegmentStart = _selectionLines.Count;
-            _regionLastY = float.MinValue;
+            _richText.Clear();
 
             int opStart = _ops.Count;
             LayoutInlineNodes(inlines, ref cursor, fontSize, baseStyle, baseRole, link, 0, true);
             MergeDecorations(opStart);
+            _richText.CompleteLines();
 
             _regionActive = false;
 
-            if (_selectionLines.Count > _regionSegmentStart)
+            for (int i = 0; i < _richText.selectionLines.Count; ++i)
+                _selectionLines.Add(_richText.selectionLines[i]);
+
+            if (_richText.selectionLines.Count > 0)
             {
                 _selectionRegions.Add(new SelectionRegion
                 {
-                    literal = _regionBuilder.ToString(),
+                    literal = _richText.text,
                     lineStart = _regionSegmentStart,
-                    lineCount = _selectionLines.Count - _regionSegmentStart,
+                    lineCount = _richText.selectionLines.Count,
                     fontSize = fontSize
                 });
             }
@@ -902,7 +908,7 @@ namespace NowUI.Markdown
         void LayoutInlineRow(List<NowMarkdownInline> inlines, float x, float y, float limit,
             float fontSize, NowFontStyle baseStyle, Role baseRole)
         {
-            var cursor = new InlineCursor
+            var cursor = new NowRichTextCursor
             {
                 x = x,
                 y = y,
@@ -916,7 +922,7 @@ namespace NowUI.Markdown
             MergeDecorations(opStart);
         }
 
-        void LayoutInlineNodes(List<NowMarkdownInline> nodes, ref InlineCursor cursor, float fontSize,
+        void LayoutInlineNodes(List<NowMarkdownInline> nodes, ref NowRichTextCursor cursor, float fontSize,
             NowFontStyle style, Role role, int link, int strike, bool wrap)
         {
             for (int i = 0; i < nodes.Count; ++i)
@@ -950,8 +956,7 @@ namespace NowUI.Markdown
                         LayoutImage(node, ref cursor, fontSize, style, link);
                         break;
                     case NowMarkdownInlineType.HardBreak:
-                        cursor.x = cursor.lineStart;
-                        cursor.y += cursor.lineHeight;
+                        NowRichTextFlow.NewLine(ref cursor);
                         break;
                     case NowMarkdownInlineType.SoftBreak:
                         LayoutWords(" ", ref cursor, fontSize, style, role, link, strike, wrap);
@@ -960,7 +965,7 @@ namespace NowUI.Markdown
             }
         }
 
-        void LayoutWords(string text, ref InlineCursor cursor, float fontSize, NowFontStyle style,
+        void LayoutWords(string text, ref NowRichTextCursor cursor, float fontSize, NowFontStyle style,
             Role role, int link, int strike, bool wrap)
         {
             if (string.IsNullOrEmpty(text))
@@ -986,39 +991,29 @@ namespace NowUI.Markdown
                     ++i;
 
                 string word = text.Substring(wordStart, i - wordStart);
-                float wordWidth = _layoutFont.MeasureText(word, fontSize, style).x;
-
-                if (wrap && cursor.x > cursor.lineStart && cursor.x + wordWidth > cursor.limit)
-                {
-                    cursor.x = cursor.lineStart;
-                    cursor.y += cursor.lineHeight;
-                }
-
-                var rect = new NowRect(cursor.x, cursor.y, wordWidth + 1f, cursor.lineHeight);
+                var rect = _regionActive
+                    ? _richText.AddWord(ref cursor, word, _layoutFont, fontSize, style, wrap)
+                    : NowRichTextFlow.AddWord(ref cursor, word, 0, word.Length, _layoutFont, fontSize, style, wrap);
+                float wordWidth = rect.width - 1f;
                 AddText(word, rect, fontSize, style, role, link);
-                CaptureRegionSegment(word, rect, fontSize);
 
                 if (link >= 0)
-                    AddLine(Role.Link, new NowRect(cursor.x, cursor.y + cursor.lineHeight - 2f, wordWidth, 1f), link);
+                    AddLine(Role.Link, new NowRect(rect.x, rect.y + cursor.lineHeight - 2f, wordWidth, 1f), link);
 
                 if (strike != 0)
-                    AddLine(Role.Body, new NowRect(cursor.x, cursor.y + cursor.lineHeight * 0.55f, wordWidth, 1f), strike);
+                    AddLine(Role.Body, new NowRect(rect.x, rect.y + cursor.lineHeight * 0.55f, wordWidth, 1f), strike);
 
-                cursor.x += wordWidth;
             }
         }
 
-        void LayoutImage(NowMarkdownInline node, ref InlineCursor cursor, float fontSize, NowFontStyle style, int link)
+        void LayoutImage(NowMarkdownInline node, ref NowRichTextCursor cursor, float fontSize, NowFontStyle style, int link)
         {
             var state = NowMarkdownImages.GetState(node.url, out var texture);
 
             if (state == NowMarkdownImageState.Loaded && texture != null)
             {
                 if (cursor.x > cursor.lineStart)
-                {
-                    cursor.x = cursor.lineStart;
-                    cursor.y += cursor.lineHeight;
-                }
+                    NowRichTextFlow.NewLine(ref cursor);
 
                 float maxWidth = Mathf.Max(cursor.limit - cursor.lineStart, 16f);
                 float drawWidth = Mathf.Min(texture.width, maxWidth);
@@ -1033,8 +1028,9 @@ namespace NowUI.Markdown
                     link = link
                 });
 
-                cursor.y += drawHeight;
                 cursor.x = cursor.lineStart;
+                cursor.y += drawHeight;
+                ++cursor.lineIndex;
                 return;
             }
 
@@ -1043,10 +1039,7 @@ namespace NowUI.Markdown
                 _hasLoadingImages = true;
 
                 if (cursor.x > cursor.lineStart)
-                {
-                    cursor.x = cursor.lineStart;
-                    cursor.y += cursor.lineHeight;
-                }
+                    NowRichTextFlow.NewLine(ref cursor);
 
                 float panelHeight = cursor.lineHeight * 2f;
                 AddFill(Role.CodePanel, new NowRect(cursor.lineStart, cursor.y, cursor.limit - cursor.lineStart, panelHeight));
@@ -1056,15 +1049,16 @@ namespace NowUI.Markdown
                 inner.y = cursor.y + (panelHeight - cursor.lineHeight) * 0.5f;
                 LayoutInlineNodes(node.children, ref inner, fontSize, style, Role.Muted, -1, 0, false);
 
-                cursor.y += panelHeight;
                 cursor.x = cursor.lineStart;
+                cursor.y += panelHeight;
+                ++cursor.lineIndex;
                 return;
             }
 
             LayoutInlineNodes(node.children, ref cursor, fontSize, style, Role.Muted, link, 0, true);
         }
 
-        void LayoutCodeSpan(string code, ref InlineCursor cursor, float fontSize, int link, bool wrap)
+        void LayoutCodeSpan(string code, ref NowRichTextCursor cursor, float fontSize, int link, bool wrap)
         {
             if (string.IsNullOrEmpty(code))
                 return;
@@ -1074,38 +1068,17 @@ namespace NowUI.Markdown
             float textWidth = _layoutFont.MeasureText(code, size).x;
             float total = textWidth + pad * 2f;
 
-            if (wrap && cursor.x > cursor.lineStart && cursor.x + total > cursor.limit)
-            {
-                cursor.x = cursor.lineStart;
-                cursor.y += cursor.lineHeight;
-            }
+            NowRichTextFlow.WrapBefore(ref cursor, total, wrap);
 
             AddFill(Role.CodePanel, new NowRect(cursor.x, cursor.y + 1f, total, cursor.lineHeight - 2f));
             var codeRect = new NowRect(cursor.x + pad, cursor.y, textWidth + 1f, cursor.lineHeight);
             AddText(code, codeRect, size, NowFontStyle.Regular, Role.Code, link);
-            CaptureRegionSegment(code, codeRect, size);
+
+            if (_regionActive)
+                _richText.AddPlacedRun(code, codeRect, new NowRichTextStyle(size, NowFontStyle.Regular),
+                    cursor.lineIndex, font: _layoutFont);
+
             cursor.x += total;
-        }
-
-        void CaptureRegionSegment(string word, NowRect rect, float fontSize)
-        {
-            if (!_regionActive)
-                return;
-
-            if (_regionBuilder.Length > 0)
-                _regionBuilder.Append(rect.y > _regionLastY + 0.5f ? '\n' : ' ');
-
-            _regionLastY = rect.y;
-            int flatStart = _regionBuilder.Length;
-            _regionBuilder.Append(word);
-
-            _selectionLines.Add(new NowTextSelectionLine
-            {
-                rect = rect,
-                start = flatStart,
-                length = word.Length,
-                fontSize = fontSize
-            });
         }
 
         float MeasureInlines(List<NowMarkdownInline> nodes, float fontSize, NowFontStyle style)
