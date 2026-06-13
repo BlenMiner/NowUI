@@ -31,6 +31,8 @@ it.
 - [Code Editor](CodeEditor.md): the embeddable code editor extension —
   syntax highlighting, validation squiggles, auto-pairs, auto-indent,
   undo/redo; JSON and markdown profiles with a registry for adding more.
+- [Docking](Docking.md): dockable tabbed windows with side splits, splitter
+  resizing, floating windows, tab-drag dock guides, and retained layout state.
 - [SDF Shapes](SDF.md): composable signed-distance-field circles, boxes,
   rounded boxes, ellipses and capsules with union/subtract/intersect operations,
   smooth blends, colors, and texture fills.

@@ -5,6 +5,7 @@ using JetBrains.Annotations;
 using UnityEngine;
 using NowUI;
 using NowUI.CodeEditor;
+using NowUI.Docking;
 using NowUI.Markdown;
 using NowUI.Sdf;
 
@@ -26,6 +27,7 @@ public class NowDocsExample : NowGraphic
         CodeEditorDemo,
         RichTextDemo,
         SdfDemo,
+        DockingDemo,
     }
 
     struct Page
@@ -49,10 +51,12 @@ public class NowDocsExample : NowGraphic
         new Page { title = "Render pipelines", file = "RenderPipelines.md" },
         new Page { title = "IMGUI", file = "EditorGUI.md" },
         new Page { title = "Code editor", file = "CodeEditor.md" },
+        new Page { title = "Docking", file = "Docking.md" },
         new Page { title = "Rich text", file = "RichText.md" },
         new Page { title = "SDF shapes", file = "SDF.md" },
         new Page { title = "Rich text demo", kind = PageKind.RichTextDemo },
         new Page { title = "SDF demo", kind = PageKind.SdfDemo },
+        new Page { title = "Docking demo", kind = PageKind.DockingDemo },
         new Page { title = "Live demo", kind = PageKind.ControlsDemo },
         new Page { title = "Lottie demo", kind = PageKind.LottieDemo },
         new Page { title = "Editor demo", kind = PageKind.CodeEditorDemo },
@@ -69,6 +73,12 @@ public class NowDocsExample : NowGraphic
     bool _lottieScrub;
     float _lottieProgress = 0.35f;
     bool _sdfDemoLocked;
+    readonly NowDockSpace _dockDemo = new NowDockSpace();
+    bool _dockDemoLayoutApplied;
+    bool _dockDemoGrid = true;
+    float _dockDemoExposure = 0.62f;
+    int _dockDemoSelection = 1;
+    int _dockDemoMessages;
     int _richTextLinkClicks;
     string _richTextLastLink = "none";
     NowRichTextParser _richTextDemoParser;
@@ -182,6 +192,10 @@ public class NowDocsExample : NowGraphic
                     DrawSdfDemo(theme);
                     break;
 
+                case PageKind.DockingDemo:
+                    DrawDockingDemo(theme);
+                    break;
+
                 default:
                     var result = NowMarkdown.Document(LoadDoc(Pages[_selected].file)).Draw();
 
@@ -199,6 +213,120 @@ public class NowDocsExample : NowGraphic
     string _jsonText = JsonSample;
     string _markdownText = MarkdownSample;
     bool _markdownPreview;
+
+    static readonly string[] DockDemoObjects =
+    {
+        "Main Camera",
+        "Key Light",
+        "Docking Canvas",
+        "Player Controller"
+    };
+
+    void DrawDockingDemo(NowThemeAsset themeAsset)
+    {
+        NowMarkdown.Document("# Docking demo\n\nDrag tabs onto a pane edge to split, across the tab bar to merge or reorder, or outside the dockspace to float. A drop guide shows where the tab will land, and the layout commits when you release. The layout below is a retained `NowDockSpace`, while each panel's content is still submitted every frame.").Draw();
+
+        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        {
+            if (NowLayout.Button("Reset layout").Draw())
+            {
+                _dockDemo.ClearLayout();
+                _dockDemoLayoutApplied = false;
+            }
+
+            if (NowLayout.Button("Add log").Draw())
+                ++_dockDemoMessages;
+
+            NowLayout.FlexibleSpace();
+            NowLayout.Checkbox("Grid").Draw(ref _dockDemoGrid);
+        }
+
+        var panel = NowLayout.Rect(height: 430f, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(8f).Draw();
+
+        SubmitDockDemoWindows();
+
+        if (!_dockDemoLayoutApplied)
+        {
+            _dockDemoLayoutApplied = true;
+            _dockDemo.Dock("Hierarchy", "Scene", NowDockSide.Left);
+            _dockDemo.Dock("Inspector", "Scene", NowDockSide.Right);
+            _dockDemo.Dock("Console", "Scene", NowDockSide.Bottom);
+        }
+
+        NowDock.Space(_dockDemo, panel.Inset(10f), "docs-dock-demo")
+            .SetMinPaneSize(120f)
+            .SetContentPadding(8f)
+            .Draw();
+    }
+
+    void SubmitDockDemoWindows()
+    {
+        _dockDemo.Window("Scene", DrawDockDemoScene, id: "Scene");
+        _dockDemo.Window("Hierarchy", DrawDockDemoHierarchy, id: "Hierarchy");
+        _dockDemo.Window("Inspector", DrawDockDemoInspector, id: "Inspector");
+        _dockDemo.Window("Console", DrawDockDemoConsole, id: "Console");
+    }
+
+    void DrawDockDemoScene(NowRect rect)
+    {
+        Now.Rectangle(rect)
+            .SetColor(new Color(0.07f, 0.08f, 0.10f, 1f))
+            .SetRadius(3f)
+            .Draw();
+
+        if (_dockDemoGrid)
+        {
+            for (float x = rect.x + 18f; x < rect.xMax; x += 26f)
+                Now.Rectangle(new NowRect(x, rect.y, 1f, rect.height)).SetColor(new Color(1f, 1f, 1f, 0.055f)).Draw();
+
+            for (float y = rect.y + 18f; y < rect.yMax; y += 26f)
+                Now.Rectangle(new NowRect(rect.x, y, rect.width, 1f)).SetColor(new Color(1f, 1f, 1f, 0.055f)).Draw();
+        }
+
+        NowLayout.Label("Scene View").SetFontSize(20f).Draw();
+        NowLayout.Label("Dock this tab into another panel or split the workspace.").SetFontSize(12f).Draw();
+        NowLayout.FlexibleSpace();
+
+        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Label("Exposure").SetWidth(72f).Draw();
+            NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _dockDemoExposure);
+        }
+
+        NowControlState.RequestRepaint();
+    }
+
+    void DrawDockDemoHierarchy(NowRect rect)
+    {
+        NowLayout.Label("Objects").SetFontSize(16f).Draw();
+
+        for (int i = 0; i < DockDemoObjects.Length; ++i)
+        {
+            if (NowLayout.Radio(DockDemoObjects[i], _dockDemoSelection == i).Draw())
+                _dockDemoSelection = i;
+        }
+    }
+
+    void DrawDockDemoInspector(NowRect rect)
+    {
+        NowLayout.Label("Inspector").SetFontSize(16f).Draw();
+        NowLayout.Label(DockDemoObjects[_dockDemoSelection]).SetFontSize(13f).Draw();
+        NowLayout.Checkbox("Show scene grid").Draw(ref _dockDemoGrid);
+
+        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Label("Exposure").SetWidth(72f).Draw();
+            NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _dockDemoExposure);
+        }
+    }
+
+    void DrawDockDemoConsole(NowRect rect)
+    {
+        NowLayout.Label("Console").SetFontSize(16f).Draw();
+        NowLayout.Label("Docking initialized").SetFontSize(12f).Draw();
+        NowLayout.Label($"Messages: {_dockDemoMessages}").SetFontSize(12f).Draw();
+    }
 
     void DrawCodeEditorDemo()
     {

@@ -19,7 +19,8 @@
     "text",
     "layout",
     "lottie",
-    "vector-graphics"
+    "vector-graphics",
+    "docking"
   ],
   "author": {
     "name": "BlenMiner",

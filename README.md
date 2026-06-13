@@ -113,6 +113,10 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
   (headings, emphasis, code, quotes, lists, tables, links) with theme colors
   and zero steady-state allocation. No HTML, no JavaScript.
   [Docs/Markdown.md](Docs/Markdown.md)
+- **Docking** — dockable tabbed windows with side splits, splitter resizing,
+  floating windows, tab-drag dock guides, and tab reordering via the
+  `NowDockSpace` extension.
+  [Docs/Docking.md](Docs/Docking.md)
 - **SDF Shapes** — composable SDF circles, boxes, rounded boxes, ellipses and
   capsules with union/subtract/intersect operations, smooth blends, colors, and
   texture fills. [Docs/SDF.md](Docs/SDF.md)
