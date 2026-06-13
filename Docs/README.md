@@ -28,6 +28,9 @@ it.
 - [Styles And Themes](StylesAndThemes.md): ScriptableObject themes, palette
   tokens, spacing/radius tokens, rectangle presets, text presets, and preview
   workflow.
+- [Code Editor](CodeEditor.md): the embeddable code editor extension —
+  syntax highlighting, validation squiggles, auto-pairs, auto-indent,
+  undo/redo; JSON and markdown profiles with a registry for adding more.
 
 All of these render in-engine: open `Assets/Scenes/DocsScene.unity` for a
 browsable version with a side menu, powered by the markdown extension.

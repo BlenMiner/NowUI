@@ -29,6 +29,7 @@ namespace NowUI
         public bool endPressed;
         public bool enterPressed;
         public bool escapePressed;
+        public bool tabPressed;
 
         public bool shift;
 
@@ -39,6 +40,8 @@ namespace NowUI
         public bool pastePressed;
         public bool cutPressed;
         public bool selectAllPressed;
+        public bool undoPressed;
+        public bool redoPressed;
     }
 
     public interface INowUITextInputSource
@@ -235,6 +238,7 @@ namespace NowUI
                 frame.endPressed = keyboard.endKey.wasPressedThisFrame;
                 frame.enterPressed = keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame;
                 frame.escapePressed = keyboard.escapeKey.wasPressedThisFrame;
+                frame.tabPressed = keyboard.tabKey.wasPressedThisFrame;
                 frame.shift = keyboard.shiftKey.isPressed;
                 frame.composition = _composition;
 
@@ -250,6 +254,9 @@ namespace NowUI
                     frame.pastePressed = keyboard.vKey.wasPressedThisFrame;
                     frame.cutPressed = keyboard.xKey.wasPressedThisFrame;
                     frame.selectAllPressed = keyboard.aKey.wasPressedThisFrame;
+                    frame.undoPressed = keyboard.zKey.wasPressedThisFrame && !frame.shift;
+                    frame.redoPressed = keyboard.yKey.wasPressedThisFrame ||
+                        (keyboard.zKey.wasPressedThisFrame && frame.shift);
 
                     // Command chords never insert their letter.
                     frame.characters = null;
@@ -291,6 +298,7 @@ namespace NowUI
                 frame.endPressed = Input.GetKeyDown(KeyCode.End);
                 frame.enterPressed = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
                 frame.escapePressed = Input.GetKeyDown(KeyCode.Escape);
+                frame.tabPressed = Input.GetKeyDown(KeyCode.Tab);
                 frame.shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
 
                 string composing = Input.compositionString;
@@ -307,6 +315,8 @@ namespace NowUI
                     frame.pastePressed = Input.GetKeyDown(KeyCode.V);
                     frame.cutPressed = Input.GetKeyDown(KeyCode.X);
                     frame.selectAllPressed = Input.GetKeyDown(KeyCode.A);
+                    frame.undoPressed = Input.GetKeyDown(KeyCode.Z) && !frame.shift;
+                    frame.redoPressed = Input.GetKeyDown(KeyCode.Y) || (Input.GetKeyDown(KeyCode.Z) && frame.shift);
                     frame.characters = null;
                 }
 

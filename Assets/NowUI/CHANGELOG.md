@@ -68,6 +68,21 @@ point it became installable through UPM.
   scrolling and a slim scroll indicator, and the multiline on-screen keyboard
   on mobile. The line layout (`NowTextArea.LayoutLines`) is public for custom
   editors, and the input frame gained up/down arrow keys.
+- Code editor extension (`NowUI.Extensions.CodeEditor`, its own assembly):
+  an embeddable editor with syntax highlighting (line tokenizers with
+  cross-line state), validation squiggles with hover tooltips and a status
+  bar whose error message jumps the caret on click, auto-closing pairs
+  (insert/skip-over/wrap-selection/backspace-both), Enter auto-indent with
+  brace expansion, Tab indent / Shift+Tab dedent (multi-line with a
+  selection), smart Home, undo/redo with typing coalescing, line numbers,
+  current-line highlight, two-axis scrolling with caret-into-view, and the
+  standard selection/clipboard/IME/focus conventions. Ships with a JSON
+  profile (full validating parser with positioned human messages) and a
+  markdown-source profile that delegates fenced blocks to the registered
+  language of their info string — one system, two languages, extensible via
+  `NowCodeLanguage.Register`. The text input frame gained Tab and
+  undo/redo keys. See Docs/CodeEditor.md and the docs browser's
+  "Code editor" page.
 - Layout groups and rects take their common settings as optional parameters:
   `NowLayout.Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center)`,
   `Vertical(spacing: 10, stretchWidth: true)`,

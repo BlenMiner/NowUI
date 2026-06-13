@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using NowUI;
+using NowUI.CodeEditor;
 using NowUI.Markdown;
 
 /// <summary>
@@ -19,6 +20,7 @@ public class NowUIDocsExample : NowUIGraphic
         Markdown,
         ControlsDemo,
         LottieDemo,
+        CodeEditorDemo,
     }
 
     struct Page
@@ -41,8 +43,10 @@ public class NowUIDocsExample : NowUIGraphic
         new Page { title = "Mobile", file = "Mobile.md" },
         new Page { title = "Render pipelines", file = "RenderPipelines.md" },
         new Page { title = "Editor GUI", file = "EditorGUI.md" },
+        new Page { title = "Code editor", file = "CodeEditor.md" },
         new Page { title = "Live demo", kind = PageKind.ControlsDemo },
         new Page { title = "Lottie demo", kind = PageKind.LottieDemo },
+        new Page { title = "Editor demo", kind = PageKind.CodeEditorDemo },
     };
 
     [SerializeField] NowFontAsset _font;
@@ -134,6 +138,10 @@ public class NowUIDocsExample : NowUIGraphic
                     DrawLottieDemo(theme);
                     break;
 
+                case PageKind.CodeEditorDemo:
+                    DrawCodeEditorDemo(theme);
+                    break;
+
                 default:
                     var result = NowMarkdown.Draw(LoadDoc(Pages[_selected].file));
 
@@ -142,6 +150,38 @@ public class NowUIDocsExample : NowUIGraphic
                     break;
             }
         }
+    }
+
+    const string JsonSample = "{\n  \"name\": \"NowUI\",\n  \"version\": \"0.1.0\",\n  \"mobileForward\": true,\n  \"platforms\": [\"windows\", \"android\", \"ios\", \"webgl\"],\n  \"dependencies\": null,\n  \"stars\": 5\n}";
+
+    const string MarkdownSample = "# Editing markdown\n\nThis is **markdown source** with **live highlighting** — headings, *emphasis*,\n`inline code`, [links](https://example.com) and fenced blocks:\n\n```json\n{ \"fences\": \"highlight as JSON\" }\n```\n\n- toggle the preview to render it\n- same selection, undo and clipboard as the JSON editor\n";
+
+    string _jsonText = JsonSample;
+    string _markdownText = MarkdownSample;
+    bool _markdownPreview;
+
+    void DrawCodeEditorDemo(NowUITheme theme)
+    {
+        NowMarkdown.Draw("# Code editor\n\n`NowUI.Extensions.CodeEditor` — syntax highlighting, validation" +
+            " squiggles (hover them, click the status error to jump), bracket/quote auto-close, Enter" +
+            " auto-indent, Tab indent/dedent, smart Home, undo/redo, line numbers. Break the JSON below" +
+            " and watch the squiggle and status bar.\n\n## JSON");
+
+        var json = NowCode.Editor(NowJsonLanguage.instance, "demo-json").SetHeight(220).Draw(ref _jsonText);
+
+        if (!json.isValid)
+            NowLayout.Label("Invalid JSON — the status bar shows where.").SetFontSize(11)
+                .SetColor(new Color(0.86f, 0.24f, 0.24f)).Draw();
+
+        NowMarkdown.Draw("## Markdown\n\nThe same editor, different language profile — markdown source" +
+            " highlights inline and ```json fences highlight as JSON inside it.");
+
+        NowLayout.Checkbox("Preview").Draw(ref _markdownPreview);
+
+        if (_markdownPreview)
+            NowMarkdown.Draw(_markdownText);
+        else
+            NowCode.Editor(NowMarkdownCodeLanguage.instance, "demo-md").SetHeight(260).Draw(ref _markdownText);
     }
 
     void DrawLottieDemo(NowUITheme theme)

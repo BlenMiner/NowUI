@@ -1,10 +1,8 @@
 {
-    "name": "NowUI.Examples",
-    "rootNamespace": "",
+    "name": "NowUI.Extensions.CodeEditor",
+    "rootNamespace": "NowUI.CodeEditor",
     "references": [
-        "GUID:f8d53a32dbb72f34987c15dba8a48aea",
-        "NowUI.Extensions.Markdown",
-        "NowUI.Extensions.CodeEditor"
+        "NowUI.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
