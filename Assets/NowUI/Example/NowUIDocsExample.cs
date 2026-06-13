@@ -156,20 +156,23 @@ public class NowUIDocsExample : NowUIGraphic
             return;
         }
 
+        // Time-driven content: ask retained hosts for the next frame.
+        NowUIControlState.RequestRepaint();
+
         NowMarkdown.Draw("## Gallery");
 
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(16).SetAlignItems(NowLayoutAlign.Center)))
+        using (NowLayout.Horizontal(spacing: 16, alignItems: NowLayoutAlign.Center))
         {
             for (int i = 0; i < _lotties.Length; ++i)
             {
                 if (_lotties[i] != null)
-                    NowLayout.Lottie(_lotties[i]).SetHeight(64).Draw();
+                    NowLayout.Lottie(_lotties[i]).SetTime(Time.time).SetHeight(64).Draw();
             }
         }
 
-        NowMarkdown.Draw("## Playback\n\nAnimations advance on their own; `SetNormalizedTime` pins them for scrubbing.");
+        NowMarkdown.Draw("## Playback\n\n`SetTime(Time.time)` plays; `SetNormalizedTime` pins a frame for scrubbing.");
 
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(12).SetAlignItems(NowLayoutAlign.Center)))
+        using (NowLayout.Horizontal(spacing: 12, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Checkbox("Scrub").Draw(ref _lottieScrub);
 
@@ -179,27 +182,28 @@ public class NowUIDocsExample : NowUIGraphic
 
         var featured = NowLayout.Lottie(_lotties[0]).SetHeight(140);
 
-        if (_lottieScrub)
-            featured = featured.SetNormalizedTime(_lottieProgress);
+        featured = _lottieScrub
+            ? featured.SetNormalizedTime(_lottieProgress)
+            : featured.SetTime(Time.time);
 
         featured.Draw();
 
         NowMarkdown.Draw("## Sizes\n\nThe same asset scales with the layout box — geometry, not pixels.");
 
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(16).SetAlignItems(NowLayoutAlign.End)))
+        using (NowLayout.Horizontal(spacing: 16, alignItems: NowLayoutAlign.End))
         {
-            NowLayout.Lottie(_lotties[0]).SetHeight(24).Draw();
-            NowLayout.Lottie(_lotties[0]).SetHeight(48).Draw();
-            NowLayout.Lottie(_lotties[0]).SetHeight(96).Draw();
+            NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(24).Draw();
+            NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(48).Draw();
+            NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(96).Draw();
         }
 
         NowMarkdown.Draw("## Tinting\n\n`SetColor` multiplies the animation's own colors.");
 
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(16).SetAlignItems(NowLayoutAlign.Center)))
+        using (NowLayout.Horizontal(spacing: 16, alignItems: NowLayoutAlign.Center))
         {
-            NowLayout.Lottie(_lotties[0]).SetHeight(56).Draw();
-            NowLayout.Lottie(_lotties[0]).SetHeight(56).SetColor(theme.GetColor(NowColorToken.Accent, Color.blue)).Draw();
-            NowLayout.Lottie(_lotties[0]).SetHeight(56).SetColor(new Color(1f, 1f, 1f, 0.35f)).Draw();
+            NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(56).Draw();
+            NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(56).SetColor(theme.GetColor(NowColorToken.Accent, Color.blue)).Draw();
+            NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(56).SetColor(new Color(1f, 1f, 1f, 0.35f)).Draw();
         }
     }
 
@@ -248,7 +252,7 @@ public static class GuideControls
         var theme = NowControls.theme;
         int id = NowControls.GetControlId(NowControls.SiteId(file, line));
 
-        NowRect rect = NowLayout.Rect(new NowLayoutOptions().SetSize(44f, 44f));
+        NowRect rect = NowLayout.Rect(44f, 44f);
         var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
 
         float radius = rect.width * 0.5f;
@@ -299,8 +303,7 @@ public static class GuideControls
 
         var theme = NowControls.theme;
 
-        NowRect rect = NowLayout.Rect(new NowLayoutOptions()
-            .SetSize(max * Dot + (max - 1) * Gap, Dot));
+        NowRect rect = NowLayout.Rect(max * Dot + (max - 1) * Gap, Dot);
         var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
 
         int hoveredIndex = interaction.hovered

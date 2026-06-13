@@ -68,6 +68,13 @@ point it became installable through UPM.
   scrolling and a slim scroll indicator, and the multiline on-screen keyboard
   on mobile. The line layout (`NowTextArea.LayoutLines`) is public for custom
   editors, and the input frame gained up/down arrow keys.
+- Layout groups and rects take their common settings as optional parameters:
+  `NowLayout.Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center)`,
+  `Vertical(spacing: 10, stretchWidth: true)`,
+  `Area(rect, padding: 16, spacing: 8)` (scope, callback and id-keyed forms)
+  and `Rect(height: 22, stretchWidth: true)` — no more
+  `new NowLayoutOptions().Set...` chains inside `using` headers. The
+  `NowLayoutOptions` overloads remain for everything beyond the common set.
 - Measure passes resolve the same control ids as the real pass: occurrence
   salting now counts in a per-pass table instead of being skipped while
   passive, so loop-salted controls and `NowLayout.ContentRect` reservations

@@ -847,9 +847,18 @@ namespace NowUI
         /// flexible space) resolve from the previous frame; use the callback
         /// overloads for exact same-frame layout.
         /// </summary>
-        public static NowLayoutScope Area(NowRect rect)
+        /// <summary>
+        /// Starts a root area at an explicit rect. The common settings are
+        /// optional parameters (<c>Area(rect, padding: 16, spacing: 8)</c>);
+        /// pass a <see cref="NowLayoutOptions"/> for anything beyond them.
+        /// </summary>
+        public static NowLayoutScope Area(
+            NowRect rect,
+            float spacing = 0f,
+            float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
-            return Area(null, rect, default(NowLayoutOptions));
+            return Area(null, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
         }
 
         public static NowLayoutScope Area(NowRect rect, NowLayoutOptions options)
@@ -857,9 +866,14 @@ namespace NowUI
             return Area(null, rect, options);
         }
 
-        public static NowLayoutScope Area(string id, NowRect rect)
+        public static NowLayoutScope Area(
+            string id,
+            NowRect rect,
+            float spacing = 0f,
+            float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
-            return Area(id, rect, default(NowLayoutOptions));
+            return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
         }
 
         public static NowLayoutScope Area(string id, NowRect rect, NowLayoutOptions options)
@@ -869,9 +883,14 @@ namespace NowUI
         }
 
         /// <summary>Area keyed by a precomputed identity hash (e.g. <see cref="NowControls.SiteId"/>).</summary>
-        public static NowLayoutScope Area(int id, NowRect rect)
+        public static NowLayoutScope Area(
+            int id,
+            NowRect rect,
+            float spacing = 0f,
+            float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
-            return Area(id, rect, default(NowLayoutOptions));
+            return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
         }
 
         /// <summary>Area keyed by a precomputed identity hash (e.g. <see cref="NowControls.SiteId"/>).</summary>
@@ -907,9 +926,14 @@ namespace NowUI
         /// so reacting to clicks is always safe); check <see cref="isMeasurePass"/>
         /// when in doubt.
         /// </summary>
-        public static void Area(NowRect rect, Action ui)
+        public static void Area(
+            NowRect rect,
+            Action ui,
+            float spacing = 0f,
+            float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
-            Area(null, rect, default, ui);
+            Area(null, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
         }
 
         public static void Area(NowRect rect, NowLayoutOptions options, Action ui)
@@ -917,9 +941,15 @@ namespace NowUI
             Area(null, rect, options, ui);
         }
 
-        public static void Area(string id, NowRect rect, Action ui)
+        public static void Area(
+            string id,
+            NowRect rect,
+            Action ui,
+            float spacing = 0f,
+            float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
-            Area(id, rect, default, ui);
+            Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
         }
 
         public static void Area(string id, NowRect rect, NowLayoutOptions options, Action ui)
@@ -1028,9 +1058,21 @@ namespace NowUI
             return _trackedContent;
         }
 
-        public static NowLayoutScope Horizontal()
+        /// <summary>
+        /// Starts a horizontal group. The common settings are optional parameters
+        /// (<c>Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center)</c>);
+        /// pass a <see cref="NowLayoutOptions"/> for anything beyond them.
+        /// </summary>
+        public static NowLayoutScope Horizontal(
+            float spacing = 0f,
+            float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            float width = 0f,
+            float height = 0f,
+            bool stretchWidth = false,
+            bool stretchHeight = false)
         {
-            return BeginGroup(true, null, default);
+            return BeginGroup(true, null, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
         public static NowLayoutScope Horizontal(NowLayoutOptions options)
@@ -1038,9 +1080,17 @@ namespace NowUI
             return BeginGroup(true, null, options);
         }
 
-        public static NowLayoutScope Horizontal(string id)
+        public static NowLayoutScope Horizontal(
+            string id,
+            float spacing = 0f,
+            float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            float width = 0f,
+            float height = 0f,
+            bool stretchWidth = false,
+            bool stretchHeight = false)
         {
-            return BeginGroup(true, id, default);
+            return BeginGroup(true, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
         public static NowLayoutScope Horizontal(string id, NowLayoutOptions options)
@@ -1048,14 +1098,56 @@ namespace NowUI
             return BeginGroup(true, id, options);
         }
 
+        static NowLayoutOptions GroupOptions(
+            float spacing, float padding, NowLayoutAlign alignItems,
+            float width, float height, bool stretchWidth, bool stretchHeight)
+        {
+            var options = default(NowLayoutOptions);
+
+            if (spacing != 0f)
+                options = options.SetSpacing(spacing);
+
+            if (padding != 0f)
+                options = options.SetPadding(padding);
+
+            if (alignItems != NowLayoutAlign.Start)
+                options = options.SetAlignItems(alignItems);
+
+            if (width > 0f)
+                options = options.SetWidth(width);
+
+            if (height > 0f)
+                options = options.SetHeight(height);
+
+            if (stretchWidth)
+                options = options.SetStretchWidth();
+
+            if (stretchHeight)
+                options = options.SetStretchHeight();
+
+            return options;
+        }
+
         public static void EndHorizontal()
         {
             EndGroup(true);
         }
 
-        public static NowLayoutScope Vertical()
+        /// <summary>
+        /// Starts a vertical group. The common settings are optional parameters
+        /// (<c>Vertical(spacing: 8, padding: 16)</c>); pass a
+        /// <see cref="NowLayoutOptions"/> for anything beyond them.
+        /// </summary>
+        public static NowLayoutScope Vertical(
+            float spacing = 0f,
+            float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            float width = 0f,
+            float height = 0f,
+            bool stretchWidth = false,
+            bool stretchHeight = false)
         {
-            return BeginGroup(false, null, default);
+            return BeginGroup(false, null, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
         public static NowLayoutScope Vertical(NowLayoutOptions options)
@@ -1063,9 +1155,17 @@ namespace NowUI
             return BeginGroup(false, null, options);
         }
 
-        public static NowLayoutScope Vertical(string id)
+        public static NowLayoutScope Vertical(
+            string id,
+            float spacing = 0f,
+            float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            float width = 0f,
+            float height = 0f,
+            bool stretchWidth = false,
+            bool stretchHeight = false)
         {
-            return BeginGroup(false, id, default);
+            return BeginGroup(false, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
         public static NowLayoutScope Vertical(string id, NowLayoutOptions options)
@@ -1078,10 +1178,36 @@ namespace NowUI
             EndGroup(false);
         }
 
-        /// <summary>Reserves a fixed-size rect at the current layout position.</summary>
-        public static NowRect Rect(float width, float height)
+        /// <summary>
+        /// Reserves a rect at the current layout position. The common settings
+        /// are optional parameters (<c>Rect(height: 22, stretchWidth: true)</c>);
+        /// pass a <see cref="NowLayoutOptions"/> for anything beyond them.
+        /// </summary>
+        public static NowRect Rect(
+            float width = 0f,
+            float height = 0f,
+            bool stretchWidth = false,
+            bool stretchHeight = false,
+            NowLayoutAlign align = NowLayoutAlign.Start)
         {
-            return Rect(new NowLayoutOptions().SetWidth(width).SetHeight(height));
+            var options = default(NowLayoutOptions);
+
+            if (width > 0f)
+                options = options.SetWidth(width);
+
+            if (height > 0f)
+                options = options.SetHeight(height);
+
+            if (stretchWidth)
+                options = options.SetStretchWidth();
+
+            if (stretchHeight)
+                options = options.SetStretchHeight();
+
+            if (align != NowLayoutAlign.Start)
+                options = options.SetAlign(align);
+
+            return Rect(options);
         }
 
         /// <summary>Reserves a rect sized by <paramref name="options"/> at the current layout position.</summary>

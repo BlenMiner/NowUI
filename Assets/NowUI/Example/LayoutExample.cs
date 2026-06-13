@@ -64,9 +64,7 @@ public class LayoutExample : MonoBehaviour
             .SetRadius(16)
             .Draw();
 
-        NowLayout.Area("settings", panelRect,
-            new NowLayoutOptions().SetPadding(20).SetSpacing(14),
-            _drawPanelContent);
+        NowLayout.Area("settings", panelRect, _drawPanelContent, padding: 20, spacing: 14);
     }
 
     void DrawPanelContent()
@@ -96,7 +94,7 @@ public class LayoutExample : MonoBehaviour
 
     void DrawTabs()
     {
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(8)))
+        using (NowLayout.Horizontal(spacing: 8))
         {
             for (int i = 0; i < _tabs.Length; ++i)
             {
@@ -111,12 +109,11 @@ public class LayoutExample : MonoBehaviour
 
     void DrawOptions()
     {
-        using (NowLayout.Vertical("options", new NowLayoutOptions().SetSpacing(8)))
+        using (NowLayout.Vertical("options", spacing: 8))
         {
             for (int i = 0; i < _options.Length; ++i)
             {
-                using var row = NowLayout.Horizontal(_options[i],
-                    new NowLayoutOptions().SetHeight(44).SetPadding(10));
+                using var row = NowLayout.Horizontal(_options[i], height: 44, padding: 10);
 
                 Now.Rectangle(row.rect)
                     .SetColor(Rgb(40, 44, 53))
@@ -137,7 +134,7 @@ public class LayoutExample : MonoBehaviour
 
     void DrawFooter()
     {
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(10)))
+        using (NowLayout.Horizontal(spacing: 10))
         {
             NowLayout.FlexibleSpace();
 

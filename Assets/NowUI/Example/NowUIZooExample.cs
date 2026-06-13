@@ -56,20 +56,20 @@ public class NowUIZooExample : NowUIGraphic
         if (_animate)
             NowUIControlState.RequestRepaint();
 
-        using (NowLayout.Area(bounds.Inset(16), new NowLayoutOptions().SetSpacing(12)))
+        using (NowLayout.Area(bounds.Inset(16), spacing: 12))
         {
             Header(theme);
 
-            using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(16)))
+            using (NowLayout.Horizontal(spacing: 16))
             {
-                using (NowLayout.Vertical(new NowLayoutOptions().SetSpacing(10).SetStretchWidth()))
+                using (NowLayout.Vertical(spacing: 10, stretchWidth: true))
                 {
                     Buttons(theme);
                     Toggles(theme);
                     Sliders(theme);
                 }
 
-                using (NowLayout.Vertical(new NowLayoutOptions().SetSpacing(10).SetStretchWidth()))
+                using (NowLayout.Vertical(spacing: 10, stretchWidth: true))
                 {
                     Fields(theme);
                     ScrollLog(theme);
@@ -83,7 +83,7 @@ public class NowUIZooExample : NowUIGraphic
 
     void Header(NowUITheme theme)
     {
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(10).SetAlignItems(NowLayoutAlign.Center)))
+        using (NowLayout.Horizontal(spacing: 10, alignItems: NowLayoutAlign.Center))
         {
             if (_lottie != null)
                 NowLayout.Lottie(_lottie).SetTime(Time.time).SetHeight(36).Draw();
@@ -106,7 +106,7 @@ public class NowUIZooExample : NowUIGraphic
     /// </summary>
     void DrawFpsCounter(NowUITheme theme)
     {
-        var rect = NowLayout.Rect(new NowLayoutOptions().SetWidth(64).SetHeight(16).SetAlign(NowLayoutAlign.Center));
+        var rect = NowLayout.Rect(64, 16, align: NowLayoutAlign.Center);
         int fps = Mathf.RoundToInt(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f));
 
         fps.TryFormat(_fpsBuffer, out int written);
@@ -122,7 +122,7 @@ public class NowUIZooExample : NowUIGraphic
     {
         SectionTitle(theme, "Buttons");
 
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6)))
+        using (NowLayout.Horizontal(spacing: 6))
         {
             if (NowLayout.Button("Accent").Draw())
                 Log("Accent clicked");
@@ -168,7 +168,7 @@ public class NowUIZooExample : NowUIGraphic
                 .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
         }
 
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(10)))
+        using (NowLayout.Horizontal(spacing: 10))
         {
             for (int i = 0; i < Difficulties.Length; ++i)
                 if (NowLayout.Radio(Difficulties[i], _difficulty == i).Draw())
@@ -185,7 +185,7 @@ public class NowUIZooExample : NowUIGraphic
 
         // Per-frame string interpolation is the classic UI GC trap: format only
         // when the value changes, draw the cached string otherwise.
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(8).SetAlignItems(NowLayoutAlign.Center)))
+        using (NowLayout.Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label("Volume").Draw();
 
@@ -195,7 +195,7 @@ public class NowUIZooExample : NowUIGraphic
             NowLayout.Label(_volumeLabel).SetFontSize(12).Draw();
         }
 
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(8).SetAlignItems(NowLayoutAlign.Center)))
+        using (NowLayout.Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label("Gamma").Draw();
 
@@ -213,7 +213,7 @@ public class NowUIZooExample : NowUIGraphic
         if (NowLayout.TextField().SetPlaceholder("Player name...").SetStretchWidth().Draw(ref _playerName))
             _greetingLabel = string.IsNullOrEmpty(_playerName) ? null : $"Hello, {_playerName}!";
 
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(8)))
+        using (NowLayout.Horizontal(spacing: 8))
         {
             NowLayout.Dropdown(Resolutions).SetStretchWidth().Draw(ref _resolution);
         }
@@ -249,7 +249,7 @@ public class NowUIZooExample : NowUIGraphic
     {
         SectionTitle(theme, "Theme presets");
 
-        using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6)))
+        using (NowLayout.Horizontal(spacing: 6))
         {
             for (int i = 0; i < SwatchStyles.Length; ++i)
             {
@@ -261,7 +261,7 @@ public class NowUIZooExample : NowUIGraphic
 
     void Marquee(NowUITheme theme)
     {
-        var strip = NowLayout.Rect(new NowLayoutOptions().SetStretchWidth().SetHeight(22));
+        var strip = NowLayout.Rect(height: 22, stretchWidth: true);
         theme.Rectangle(strip, NowRectangleStyle.Muted).SetRadius(6).Draw();
 
         const string Text = "  masks * lottie * shaped text * focus * overlays * burst fonts  ";
@@ -282,7 +282,7 @@ public class NowUIZooExample : NowUIGraphic
 
     void Separator(NowUITheme theme)
     {
-        var line = NowLayout.Rect(new NowLayoutOptions().SetStretchWidth().SetHeight(1));
+        var line = NowLayout.Rect(height: 1, stretchWidth: true);
         theme.Rectangle(line, NowRectangleStyle.Muted).Draw();
     }
 

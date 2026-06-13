@@ -18,7 +18,7 @@ namespace NowUI
 
         public NowLottieAsset asset;
 
-        /// <summary>Playback position in seconds.</summary>
+        /// <summary>Playback position in seconds (e.g. <c>SetTime(Time.time)</c> to play).</summary>
         public float time;
 
         public bool loop;

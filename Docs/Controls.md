@@ -18,7 +18,7 @@ stay owned by you, passed by ref.
 
 ```csharp
 using (NowLayout.Area(NowUIScreen.safeArea))
-using (NowLayout.Vertical(new NowLayoutOptions().SetPadding(16).SetSpacing(8)))
+using (NowLayout.Vertical(padding: 16, spacing: 8))
 {
     if (NowLayout.Button("Save").Draw())
         Save();
@@ -91,7 +91,7 @@ using (var save = NowLayout.Button().Begin())
     if (save.clicked)
         Save();
 
-    NowLayout.Lottie(spinner).SetHeight(18).Draw();
+    NowLayout.Lottie(spinner).SetTime(Time.time).SetHeight(18).Draw();
     NowLayout.Label(saving ? "Saving..." : "Save").Draw();
 }
 
@@ -125,8 +125,8 @@ child's own `SetAlign` still overrides it:
 ```csharp
 using (var save = NowLayout.Button("save-btn").SetAlignItems(NowLayoutAlign.Center).Begin())
 {
-    NowLayout.Lottie(bigIcon).SetHeight(64).Draw();   // tallest, defines the row
-    NowLayout.Lottie(spinner).SetHeight(18).Draw();   // vertically centered
+    NowLayout.Lottie(bigIcon).SetTime(Time.time).SetHeight(64).Draw();   // tallest, defines the row
+    NowLayout.Lottie(spinner).SetTime(Time.time).SetHeight(18).Draw();   // vertically centered
     NowLayout.Label("Save").Draw();                   // vertically centered
 }
 ```
@@ -287,7 +287,7 @@ public static bool MyToggleSwitch(string label, ref bool value)
     int id = NowControls.GetControlId(label);
 
     // 1. Reserve space (layout) or take a rect parameter (free-form).
-    NowRect rect = NowLayout.Rect(new NowLayoutOptions().SetSize(52f, 28f));
+    NowRect rect = NowLayout.Rect(52f, 28f);
 
     // 2. The standard interaction bundle: pointer + focus + submit.
     var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);

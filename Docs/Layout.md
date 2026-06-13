@@ -13,7 +13,7 @@ Open an area over a rect, then nest groups. Scopes follow the same
 Now.StartUI();
 
 using (NowLayout.Area(NowUIScreen.safeArea))
-using (NowLayout.Vertical(new NowLayoutOptions().SetPadding(16).SetSpacing(8)))
+using (NowLayout.Vertical(padding: 16, spacing: 8))
 {
     NowLayout.Label("Settings", 24).Draw();
 
@@ -32,7 +32,7 @@ Now.FlushUI();
 the bridge to free-form drawing and interaction:
 
 ```csharp
-NowRect rect = NowLayout.Rect(NowLayout.Width(160).SetHeight(44));
+NowRect rect = NowLayout.Rect(160, 44);
 var state = NowUIInput.Interact("save", rect);
 
 Now.Rectangle(rect)
@@ -43,9 +43,21 @@ Now.Rectangle(rect)
 
 ## Sizing options
 
-`NowLayoutOptions` is a fluent struct; a default instance means "auto" (content
-size, stretch across the parent's cross axis). Shorthand factories exist on
-`NowLayout`:
+Groups and rects take their common settings as optional parameters — no
+options struct needed for the everyday cases:
+
+```csharp
+using (NowLayout.Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center)) { ... }
+using (NowLayout.Vertical(spacing: 10, stretchWidth: true)) { ... }
+using (NowLayout.Area(rect, padding: 16, spacing: 8)) { ... }
+NowLayout.Area(rect, DrawContent, padding: 16);           // callback form too
+NowRect bar = NowLayout.Rect(height: 22, stretchWidth: true);
+```
+
+For everything beyond them — min/max sizes, weighted stretching, per-element
+alignment — `NowLayoutOptions` is a fluent struct; a default instance means
+"auto" (content size, stretch across the parent's cross axis). Shorthand
+factories exist on `NowLayout`:
 
 ```csharp
 NowLayout.Width(120)                  // fixed main-axis size

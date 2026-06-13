@@ -71,7 +71,7 @@ using (var save = NowLayout.Button().SetAlignItems(NowLayoutAlign.Center).Begin(
     if (save.clicked)
         Save();
 
-    NowLayout.Lottie(spinner).SetHeight(18).Draw();
+    NowLayout.Lottie(spinner).SetTime(Time.time).SetHeight(18).Draw();
     NowLayout.Label("Save").Draw();
 }
 ```
@@ -91,7 +91,7 @@ public static bool RoundButton(
     var theme = NowControls.theme;
     int id = NowControls.GetControlId(NowControls.SiteId(file, line));
 
-    NowRect rect = NowLayout.Rect(new NowLayoutOptions().SetSize(44f, 44f));
+    NowRect rect = NowLayout.Rect(44f, 44f);
     var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
 
     // Round shape: reject pointer events that land in the rect's corners.
@@ -145,8 +145,7 @@ public static bool Rating(
     var theme = NowControls.theme;
     int id = NowControls.GetControlId(NowControls.SiteId(file, line));
 
-    NowRect rect = NowLayout.Rect(new NowLayoutOptions()
-        .SetSize(max * Dot + (max - 1) * Gap, Dot));
+    NowRect rect = NowLayout.Rect(max * Dot + (max - 1) * Gap, Dot);
     var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
 
     int hoveredIndex = interaction.hovered

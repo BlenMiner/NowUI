@@ -400,14 +400,14 @@ MonoBehaviour:
   _respectUGUIRaycast: 1
   _driveLayoutSize: 1
   _font: {fileID: 11400000, guid: d9b4fc19191445a4f851b19fd4cf730f, type: 2}
-  _markdown: "# PurrNet - Unity3D \n\nPurrNet is our attempt at the purrfect networking
-    solution... It's a 100% free Unity Networking solution with no pro or premium
-    version, and no features locked behind a pay-gate.\nYou can use it to release,
-    and we ask nothing in return! Read the Unique to PurrNet section to see what
-    we offer above other solutions!\n\nWebsite: https://purrnet.dev/\nDocs: https://purrnet.gitbook.io/docs 
-    \nDocs (source): https://github.com/BlenMiner/PurrNet-Docs\n\n## Install\n\nYou
-    can install PurrNet through Unity's Package Manager by adding a package through
-    this URL:\n\n```bash\nhttps://github.com/PurrNet/PurrNet.git?path=/Assets/PurrNet#release\n```\n\nOr
+  _markdown: "# PurrNet - Unity3D MAGIC\n\nPurrNet is our attempt at the purrfect
+    networking solution... It's a 100% free Unity Networking solution with no pro
+    or premium version, and no features locked behind a pay-gate.\nYou can use it
+    to release, and we ask nothing in return! Read the Unique to PurrNet section
+    to see what we offer above other solutions!\n\nWebsite: https://purrnet.dev/\nDocs:
+    https://purrnet.gitbook.io/docs  \nDocs (source): https://github.com/BlenMiner/PurrNet-Docs\n\n##
+    Install\n\nYou can install PurrNet through Unity's Package Manager by adding
+    a package through this URL:\n\n```bash\nhttps://github.com/PurrNet/PurrNet.git?path=/Assets/PurrNet#release\n```\n\nOr
     through OpenUM [![openupm](https://img.shields.io/npm/v/dev.purrnet.purrnet?label=PurrNet&registry_uri=https://package.openupm.com)](https://openupm.com/packages/dev.purrnet.purrnet/)\n\n`openupm
     add dev.purrnet.purrnet`\n\nYou can also fallback to the asset store but versions
     will be behind.\n\n[*Asset store link.*](https://assetstore.unity.com/packages/tools/network/purrnet-297320)\n\n##
