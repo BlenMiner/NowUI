@@ -69,7 +69,13 @@ public class NowDocsExample : NowGraphic
     float _lottieProgress = 0.35f;
     int _richTextLinkClicks;
     string _richTextLastLink = "none";
+    NowRichTextParser _richTextDemoParser;
+    readonly NowRichTextSpan[] _richTextDemoSpans = new NowRichTextSpan[3];
     Texture2D _sdfDemoTexture;
+    readonly NowSdfGraph _sdfIntersectLeft = NowSdf.Graph();
+    readonly NowSdfGraph _sdfIntersectRight = NowSdf.Graph();
+    readonly NowSdfGraph _sdfMorphA = NowSdf.Graph();
+    readonly NowSdfGraph _sdfMorphB = NowSdf.Graph();
     readonly Dictionary<string, string> _docs = new Dictionary<string, string>();
 
     string LoadDoc(string file)
@@ -109,7 +115,7 @@ public class NowDocsExample : NowGraphic
 
     protected override void DrawNowUI(NowRect rect)
     {
-        if (_font == null)
+        if (!_font)
             return;
 
         Now.defaultFont = _font;
@@ -262,11 +268,13 @@ public class NowDocsExample : NowGraphic
 
         w = intersectRect.width;
         h = intersectRect.height;
-        var left = NowSdf.Graph()
+        var left = _sdfIntersectLeft.Clear()
             .SetColor(new Color(0.12f, 0.82f, 0.68f, 1f))
+            .UseColor()
             .Circle(new Vector2(w * 0.42f, h * 0.5f), h * 0.31f);
-        var right = NowSdf.Graph()
+        var right = _sdfIntersectRight.Clear()
             .SetColor(new Color(0.82f, 0.42f, 1f, 1f))
+            .UseColor()
             .Circle(new Vector2(w * 0.58f, h * 0.5f), h * 0.31f);
 
         NowSdf.Scene(intersectRect, "docs-sdf-op-intersect")
@@ -287,20 +295,25 @@ public class NowDocsExample : NowGraphic
         float height = scene.height;
         float t = Mathf.SmoothStep(0f, 1f, Mathf.PingPong(Time.time * 0.55f, 1f));
 
-        var sceneA = NowSdf.Graph()
+        var sceneA = _sdfMorphA.Clear()
             .SetColor(new Color(0.14f, 0.86f, 0.95f, 1f))
+            .UseColor()
             .Circle(new Vector2(width * 0.34f, height * 0.5f), height * 0.28f)
             .SetColor(new Color(0.42f, 0.6f, 1f, 1f))
+            .UseColor()
             .SmoothUnion(14f)
             .Circle(new Vector2(width * 0.56f, height * 0.5f), height * 0.28f)
             .SetColor(new Color(0.16f, 0.95f, 0.62f, 1f))
+            .UseColor()
             .SmoothUnion(14f)
             .Circle(new Vector2(width * 0.45f, height * 0.34f), height * 0.22f);
 
-        var sceneB = NowSdf.Graph()
+        var sceneB = _sdfMorphB.Clear()
             .SetColor(new Color(0.96f, 0.34f, 0.58f, 1f))
+            .UseColor()
             .Capsule(new NowRect(width * 0.2f, height * 0.3f, width * 0.6f, height * 0.4f))
             .SetColor(new Color(1f, 0.78f, 0.22f, 1f))
+            .UseColor()
             .SmoothUnion(18f)
             .Circle(new Vector2(width * 0.5f, height * 0.5f), height * 0.24f);
 
@@ -385,15 +398,12 @@ public class NowDocsExample : NowGraphic
 
         NowMarkdown.Document("## Explicit spans").Draw();
 
-        var spans = new[]
-        {
-            new NowRichTextSpan(0, 5, new NowRichTextStyle(15f, NowFontStyle.Bold).SetColor(theme.GetColor(NowColorToken.Accent, Color.blue))),
-            new NowRichTextSpan(6, 3, new NowRichTextStyle(15f).SetUnderline()),
-            new NowRichTextSpan(31, 6, new NowRichTextStyle(15f).SetStrikethrough()),
-        };
+        _richTextDemoSpans[0] = new NowRichTextSpan(0, 5, new NowRichTextStyle(15f, NowFontStyle.Bold).SetColor(theme.GetColor(NowColorToken.Accent, Color.blue)));
+        _richTextDemoSpans[1] = new NowRichTextSpan(6, 3, new NowRichTextStyle(15f).SetUnderline());
+        _richTextDemoSpans[2] = new NowRichTextSpan(31, 6, new NowRichTextStyle(15f).SetStrikethrough());
 
         NowLayout.RichText("Spans are useful for generated ranges.")
-            .SetSpans(spans)
+            .SetSpans(_richTextDemoSpans)
             .SetStretchWidth()
             .Draw();
 
@@ -409,8 +419,7 @@ public class NowDocsExample : NowGraphic
         if (_lotties != null && _lotties.Length > 0 && _lotties[0] != null)
         {
             NowLayout.RichText("Loading <lottie id=\"0\" size=\"22\"/> inline with text.")
-                .ParseDefaultTags()
-                .ParseTag("lottie", ParseDemoLottieTag)
+                .UseParser(RichTextDemoParser())
                 .SetStretchWidth()
                 .Draw();
         }
@@ -418,6 +427,11 @@ public class NowDocsExample : NowGraphic
         {
             NowMarkdown.Document("Assign a Lottie asset to the docs component to see the `<lottie />` rich-text tag render inline.").Draw();
         }
+    }
+
+    NowRichTextParser RichTextDemoParser()
+    {
+        return _richTextDemoParser ??= NowRichTextParser.Default.WithTag("lottie", ParseDemoLottieTag);
     }
 
     bool ParseDemoLottieTag(in NowRichTextTagContext context, out NowRichTextTagResult result)

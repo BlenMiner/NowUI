@@ -66,6 +66,25 @@ NowSdf.Scene(new NowRect(20, 20, 180, 120))
     .Draw();
 ```
 
+For animated graphs, keep the graph instance and call `Clear()` before
+rebuilding it. That keeps steady-state frames free of graph object allocation:
+
+```csharp
+readonly NowSdfGraph _blob = NowSdf.Graph();
+
+void Draw(NowRect rect)
+{
+    _blob.Clear()
+        .SetColor(Color.cyan)
+        .UseColor()
+        .Circle(new Vector2(Mathf.PingPong(Time.time * 40f, 120f), 48f), 32f);
+
+    NowSdf.Scene(rect)
+        .Graph(_blob)
+        .Draw();
+}
+```
+
 The same scene operations work on graph layers:
 
 ```csharp

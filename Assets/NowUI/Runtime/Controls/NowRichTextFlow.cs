@@ -130,6 +130,7 @@ namespace NowUI
     public sealed class NowRichTextLayout
     {
         readonly System.Text.StringBuilder _text = new System.Text.StringBuilder(128);
+        string _textCache;
         float _lastSelectionY = float.MinValue;
 
         public readonly List<NowRichTextRun> runs = new List<NowRichTextRun>(32);
@@ -140,7 +141,7 @@ namespace NowUI
 
         public readonly List<NowRichTextTagPayload> tags = new List<NowRichTextTagPayload>(8);
 
-        public string text => _text.ToString();
+        public string text => _textCache ??= _text.ToString();
 
         public int textLength => _text.Length;
 
@@ -149,6 +150,7 @@ namespace NowUI
         public void Clear()
         {
             _text.Length = 0;
+            _textCache = null;
             _lastSelectionY = float.MinValue;
             runs.Clear();
             lines.Clear();
@@ -233,7 +235,7 @@ namespace NowUI
 
             if (selectable)
             {
-                run.start = Capture(source.Substring(start, length), run.rect, run.fontSize, separate);
+                run.start = Capture(source, start, length, run.rect, run.fontSize, separate);
                 runs[runs.Count - 1] = run;
             }
 
@@ -259,23 +261,30 @@ namespace NowUI
         {
             int start = _text.Length;
             _text.Append(text);
+            _textCache = null;
             return start;
         }
 
         public int Capture(string text, NowRect rect, float fontSize, bool separate = true)
+        {
+            return Capture(text, 0, text?.Length ?? 0, rect, fontSize, separate);
+        }
+
+        public int Capture(string text, int sourceStart, int length, NowRect rect, float fontSize, bool separate = true)
         {
             if (separate && _text.Length > 0)
                 _text.Append(rect.y > _lastSelectionY + 0.5f ? '\n' : ' ');
 
             _lastSelectionY = rect.y;
             int start = _text.Length;
-            _text.Append(text);
+            _text.Append(text, sourceStart, length);
+            _textCache = null;
 
             selectionLines.Add(new NowTextSelectionLine
             {
                 rect = rect,
                 start = start,
-                length = text.Length,
+                length = length,
                 fontSize = fontSize
             });
 

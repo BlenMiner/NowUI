@@ -88,6 +88,8 @@ namespace NowUI
 
         readonly bool _defaultTags;
         readonly Dictionary<string, NowRichTextTagHandler> _handlers;
+        readonly StringBuilder _output = new StringBuilder(128);
+        readonly List<StackEntry> _stack = new List<StackEntry>(8);
 
         static readonly Dictionary<string, string> EmptyAttributes = new Dictionary<string, string>(0);
 
@@ -103,7 +105,13 @@ namespace NowUI
 
         public NowRichTextParser WithDefaultTags()
         {
-            return _defaultTags ? this : new NowRichTextParser(true, CloneHandlers());
+            if (_defaultTags)
+                return this;
+
+            if (_handlers == null || _handlers.Count == 0)
+                return Default;
+
+            return new NowRichTextParser(true, CloneHandlers());
         }
 
         public NowRichTextParser WithTag(string name, NowRichTextTagHandler handler)
@@ -132,11 +140,11 @@ namespace NowUI
             document.Clear();
             source ??= string.Empty;
 
-            var output = new StringBuilder(source.Length);
-            var stack = new List<StackEntry>(8)
-            {
-                new StackEntry { name = string.Empty, start = 0, style = baseStyle }
-            };
+            var output = _output;
+            var stack = _stack;
+            output.Length = 0;
+            stack.Clear();
+            stack.Add(new StackEntry { name = string.Empty, start = 0, style = baseStyle });
 
             int i = 0;
 

@@ -90,11 +90,17 @@ namespace NowUI
         bool _selectable;
 
         static readonly NowRichTextLayout SharedLayout = new NowRichTextLayout();
-        static readonly NowRichTextDocument SharedDocument = new NowRichTextDocument();
 
         struct State
         {
             public NowRichTextLayout layout;
+            public NowRichTextDocument document;
+            public string parsedValue;
+            public NowRichTextParser parsedParser;
+            public float parsedFontSize;
+            public NowFontStyle parsedFontStyle;
+            public Vector4 parsedColor;
+            public Vector4 parsedAccentColor;
             public float contentHeight;
         }
 
@@ -175,8 +181,8 @@ namespace NowUI
         {
             int id = ResolveControlId();
             float lineHeight = _lineHeight > 0f ? _lineHeight : _style.fontSize * DefaultLineHeight;
-            var document = PrepareDocument();
             ref var state = ref NowControlState.Get<State>(id);
+            var document = PrepareDocument(ref state);
             NowRect rect = Reserve(lineHeight, document, ref state);
             var interaction = _selectable ? default : NowInput.Interact(id, rect);
 
@@ -263,26 +269,47 @@ namespace NowUI
                 highlight);
         }
 
-        NowRichTextDocument PrepareDocument()
+        NowRichTextDocument PrepareDocument(ref State state)
         {
             var baseStyle = new NowRichTextStyle(_style.fontSize, _style.fontStyle).SetColor(_style.color);
+            Vector4 accentColor = NowControls.theme.GetColor(NowColorToken.Accent, Color.blue);
+
+            if (state.document == null)
+                state.document = new NowRichTextDocument();
 
             if (_parser != null)
             {
-                _parser.Parse(_value, baseStyle, SharedDocument);
-                return SharedDocument;
+                if (!string.Equals(state.parsedValue, _value) ||
+                    !ReferenceEquals(state.parsedParser, _parser) ||
+                    !Mathf.Approximately(state.parsedFontSize, baseStyle.fontSize) ||
+                    state.parsedFontStyle != baseStyle.fontStyle ||
+                    state.parsedColor != baseStyle.color ||
+                    state.parsedAccentColor != accentColor)
+                {
+                    _parser.Parse(_value, baseStyle, state.document);
+                    state.parsedValue = _value;
+                    state.parsedParser = _parser;
+                    state.parsedFontSize = baseStyle.fontSize;
+                    state.parsedFontStyle = baseStyle.fontStyle;
+                    state.parsedColor = baseStyle.color;
+                    state.parsedAccentColor = accentColor;
+                }
+
+                return state.document;
             }
 
-            SharedDocument.Clear();
-            SharedDocument.text = _value;
+            state.parsedValue = null;
+            state.parsedParser = null;
+            state.document.Clear();
+            state.document.text = _value;
 
             if (_spans != null)
             {
                 for (int i = 0; i < _spans.Count; ++i)
-                    SharedDocument.spans.Add(_spans[i]);
+                    state.document.spans.Add(_spans[i]);
             }
 
-            return SharedDocument;
+            return state.document;
         }
 
         NowRect Reserve(float lineHeight, NowRichTextDocument document, ref State state)

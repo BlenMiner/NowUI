@@ -89,6 +89,16 @@ namespace NowUI.Sdf
             return this;
         }
 
+        internal NowSdfGraph ResetForReuse()
+        {
+            Clear();
+            _color = Vector4.one;
+            _textureUv = new Vector4(0f, 0f, 1f, 1f);
+            _texture = null;
+            _useTexture = false;
+            return this;
+        }
+
         public NowSdfGraph SetColor(Color color)
         {
             _color = color;
@@ -750,10 +760,12 @@ namespace NowUI.Sdf
         readonly Vector4[] _layerData1 = new Vector4[NowSdf.MaxLayers];
 
         readonly List<NowSdfLayer> _layers = new List<NowSdfLayer>(4);
+        readonly List<NowSdfGraph> _inlineGraphs = new List<NowSdfGraph>(4);
         readonly Dictionary<NowSdfGraph, int> _graphIds = new Dictionary<NowSdfGraph, int>(8);
 
         Material _material;
-        NowSdfGraph _activeGraph = new NowSdfGraph();
+        NowSdfGraph _activeGraph;
+        int _inlineGraphCursor;
         NowSdfOperation _pendingOperation;
         float _pendingSmoothing;
         NowSdfOperation _activeLayerOperation;
@@ -763,13 +775,18 @@ namespace NowUI.Sdf
         NowRect _bounds;
         bool _hasBounds;
 
-        public Vector2 measureSize => _hasBounds ? new Vector2(_bounds.xMax, _bounds.yMax) : _activeGraph.measureSize;
+        public Vector2 measureSize => _hasBounds
+            ? new Vector2(_bounds.xMax, _bounds.yMax)
+            : _activeGraph != null
+                ? _activeGraph.measureSize
+                : Vector2.zero;
 
         public void Begin()
         {
             _layers.Clear();
             _graphIds.Clear();
-            _activeGraph = new NowSdfGraph();
+            _inlineGraphCursor = 0;
+            _activeGraph = RentInlineGraph();
             _pendingOperation = NowSdfOperation.Union;
             _pendingSmoothing = 0f;
             _activeLayerOperation = NowSdfOperation.Union;
@@ -778,6 +795,14 @@ namespace NowUI.Sdf
             _texture = null;
             _bounds = default;
             _hasBounds = false;
+        }
+
+        NowSdfGraph RentInlineGraph()
+        {
+            if (_inlineGraphCursor == _inlineGraphs.Count)
+                _inlineGraphs.Add(new NowSdfGraph());
+
+            return _inlineGraphs[_inlineGraphCursor++].ResetForReuse();
         }
 
         public void Release()
@@ -956,7 +981,7 @@ namespace NowUI.Sdf
                 graph = _activeGraph
             });
 
-            var next = new NowSdfGraph();
+            var next = RentInlineGraph();
             next.CopyStyleFrom(_activeGraph);
             _activeGraph = next;
             _activeLayerOperation = NowSdfOperation.Union;
