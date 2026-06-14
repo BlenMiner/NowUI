@@ -273,8 +273,8 @@ public class NowCodeEditorTests
         Frame(ref text, new NowTextInputFrame { characters = "{" });
         Frame(ref text, new NowTextInputFrame { enterHeld = true });
 
-        Assert.AreEqual("{\n  \n}", text);
-        Assert.AreEqual(4, State().caret, "The caret sits on the indented middle line.");
+        Assert.AreEqual("{\n    \n}", text);
+        Assert.AreEqual(6, State().caret, "The caret sits on the indented middle line.");
     }
 
     [Test]
@@ -298,7 +298,7 @@ public class NowCodeEditorTests
         Frame(ref text);
         Frame(ref text, new NowTextInputFrame { selectAllPressed = true, command = true });
         Frame(ref text, new NowTextInputFrame { tabHeld = true });
-        Assert.AreEqual("  a\n  b", text, "Tab with a multi-line selection indents the lines.");
+        Assert.AreEqual("    a\n    b", text, "Tab with a multi-line selection indents the lines.");
 
         Frame(ref text, new NowTextInputFrame { selectAllPressed = true, command = true });
         Frame(ref text, new NowTextInputFrame { tabHeld = true, shift = true });

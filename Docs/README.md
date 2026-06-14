@@ -9,6 +9,10 @@ it.
 
 - [Feature Usage](Features.md): core drawing lifecycle, rectangles, text, UGUI,
   and font compilation examples.
+- [Lines](Lines.md): anti-aliased straight lines, cubic Beziers, dashed
+  strokes, arrow heads, clipping, and performance notes.
+- [Shapes](Shapes.md): filled or outlined circles, ellipses, triangles, and
+  reusable array/list-backed polygons.
 - [Controls](Controls.md): buttons, checkboxes, radios, sliders, text fields,
   dropdowns, scroll views — and the toolkit for building custom controls.
 - [Custom Controls](CustomControls.md): the how-to guide — restyling through

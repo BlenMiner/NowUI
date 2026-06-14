@@ -8,8 +8,8 @@ overlays — pointer, touch, keyboard and gamepad included.
 
 Controls live where drawing already lives: `NowLayout.*` flows in the active
 layout group (like `NowLayout.Label`), `Now.*` takes an explicit rect (like
-`Now.Text`), and `NowControls` is the shared toolkit — theme, id scopes, and
-the interaction plumbing.
+`Now.Text`), `NowTheme` owns the ambient theme, and `NowControls` is the
+shared toolkit for id scopes and interaction plumbing.
 
 ## Using the built-in controls
 
@@ -206,10 +206,10 @@ rebuild with `dotnet build -c Release` and copy the DLL over
 ## Theming
 
 Controls read the ambient theme — a built-in default, a pushed scope, or your
-own `NowTheme` asset:
+own `NowThemeAsset`:
 
 ```csharp
-using (NowControls.Theme(myTheme))
+using (NowTheme.Scope(myTheme))
     DrawSettingsPanel();
 ```
 
@@ -283,7 +283,7 @@ of a control:
 ```csharp
 public static bool MyToggleSwitch(string label, ref bool value)
 {
-    var theme = NowControls.theme;
+    var theme = NowTheme.themeAsset;
     int id = NowControls.GetControlId(label);
 
     // 1. Reserve space (layout) or take a rect parameter (free-form).

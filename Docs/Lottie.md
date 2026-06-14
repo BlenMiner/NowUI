@@ -75,7 +75,8 @@ a `RectTransform` like any other graphic.
   frame; rapidly scrubbing many large animations is the expensive case.
 - Frames are quantized to whole composition frames before hitting the cache.
 - Oversized rects tessellate at a capped resolution and scale up; configure
-  with `NowLottieRenderer.maxRenderSize`.
+  with `NowLottieRenderer.maxRenderSize`. The cap is measured in screen pixels
+  after applying the active `Now.uiScale` or UGUI canvas scale.
 - `NowLottieNative.forceManagedTessellation` switches to the managed
   tessellator for profiling comparisons. Platforms without the native plugin
   fall back automatically, except WebGL and iOS where the plugin links

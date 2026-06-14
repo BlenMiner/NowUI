@@ -145,7 +145,7 @@ namespace NowUI.CodeEditor
             if (_language == null)
                 return result;
 
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
             int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
             var textStyle = theme.Text(default, NowTextStyle.Body).SetFontSize(_fontSize);
@@ -923,12 +923,12 @@ namespace NowUI.CodeEditor
 
                 NowOverlay.Defer(default, () =>
                 {
-                    var background = NowControls.themeAsset.Rectangle(tooltipRect, NowRectangleStyle.Surface);
+                    var background = NowTheme.themeAsset.Rectangle(tooltipRect, NowRectangleStyle.Surface);
                     background.outline = 1f;
-                    background.outlineColor = NowControls.themeAsset.GetColor(NowColorToken.Border, Color.gray);
+                    background.outlineColor = NowTheme.themeAsset.GetColor(NowColorToken.Border, Color.gray);
                     background.SetRadius(4f).Draw();
 
-                    var tooltipStyle = NowControls.themeAsset.Text(
+                    var tooltipStyle = NowTheme.themeAsset.Text(
                         new NowRect(tooltipRect.x + 8f, tooltipRect.y, tooltipRect.width, tooltipRect.height),
                         NowTextStyle.Body);
                     tooltipStyle.SetFontSize(12f).Draw(message);

@@ -33,6 +33,7 @@ public class NowZooExample : NowGraphic
     string _greetingLabel;
     readonly char[] _fpsBuffer = new char[16];
     readonly List<string> _log = new List<string>();
+    readonly Vector2[] _shapePolygon = new Vector2[5];
 
     static readonly string[] Resolutions = { "1280 x 720", "1920 x 1080", "2560 x 1440", "3840 x 2160" };
     static readonly string[] Difficulties = { "Story", "Normal", "Hard" };
@@ -43,7 +44,7 @@ public class NowZooExample : NowGraphic
             return;
 
         Now.defaultFont = _font;
-        var theme = NowControls.themeAsset;
+        var theme = NowTheme.themeAsset;
         var bounds = new NowRect(0, 0, rect.width, rect.height);
 
         // The style must carry a font — labels don't resolve one at draw time.
@@ -67,6 +68,7 @@ public class NowZooExample : NowGraphic
                     Buttons(theme);
                     Toggles(theme);
                     Sliders(theme);
+                    Lines(theme);
                 }
 
                 using (NowLayout.Vertical(spacing: 10, stretchWidth: true))
@@ -74,6 +76,7 @@ public class NowZooExample : NowGraphic
                     Fields(theme);
                     ScrollLog(theme);
                     Swatches(theme);
+                    Shapes(theme);
                 }
             }
 
@@ -257,6 +260,74 @@ public class NowZooExample : NowGraphic
                 themeAsset.Rectangle(swatch, SwatchStyles[i]).Draw();
             }
         }
+    }
+
+    void Lines(NowThemeAsset themeAsset)
+    {
+        SectionTitle(themeAsset, "Lines");
+
+        var panel = NowLayout.Rect(height: 90f, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(8f).Draw();
+
+        var area = panel.Inset(12f, 10f);
+        float dash = _animate ? Time.time * 28f : 0f;
+
+        Now.Line(new Vector2(area.x, area.y + 18f), new Vector2(area.xMax, area.y + 18f))
+            .SetWidth(2f)
+            .SetDash(10f, 7f, dash)
+            .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+            .Draw();
+
+        Now.Bezier(
+                new Vector2(area.x + 4f, area.y + 58f),
+                new Vector2(area.x + area.width * 0.28f, area.y - 12f),
+                new Vector2(area.x + area.width * 0.70f, area.y + 102f),
+                new Vector2(area.xMax - 6f, area.y + 44f))
+            .SetWidth(4f)
+            .SetCap(NowLineCap.Round)
+            .SetArrow(NowLineArrow.End, 16f, 12f)
+            .SetColor(themeAsset.GetColor(NowColorToken.Accent, Color.blue))
+            .Draw();
+    }
+
+    void Shapes(NowThemeAsset themeAsset)
+    {
+        SectionTitle(themeAsset, "Shapes");
+
+        var panel = NowLayout.Rect(height: 92f, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(8f).Draw();
+
+        var area = panel.Inset(12f, 10f);
+        Color accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+        Color muted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+        float pulse = _animate ? Mathf.Sin(Time.time * 2.8f) * 0.5f + 0.5f : 0.5f;
+        Vector2 center = new Vector2(area.xMax - 52f, area.y + 42f);
+
+        for (int i = 0; i < _shapePolygon.Length; ++i)
+        {
+            float angle = Mathf.PI * 2f * i / _shapePolygon.Length - Mathf.PI * 0.5f;
+            float radius = (i & 1) == 0 ? 36f : 22f + pulse * 6f;
+            _shapePolygon[i] = center + new Vector2(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius);
+        }
+
+        Now.Circle(new Vector2(area.x + 34f, area.y + 42f), 28f)
+            .SetColor(new Color(0.05f, 0.86f, 0.67f, 1f))
+            .SetOutline(2f)
+            .SetOutlineColor(muted)
+            .Draw();
+
+        Now.Triangle(
+                new Vector2(area.x + 92f, area.y + 68f),
+                new Vector2(area.x + 146f, area.y + 68f),
+                new Vector2(area.x + 118f, area.y + 18f))
+            .SetColor(new Color(1f, 0.72f, 0.16f, 1f))
+            .Draw();
+
+        Now.Polygon(_shapePolygon)
+            .SetColor(new Color(accent.r, accent.g, accent.b, 0.72f))
+            .SetOutline(2f)
+            .SetOutlineColor(themeAsset.GetColor(NowColorToken.Text, Color.white))
+            .Draw();
     }
 
     void Marquee(NowThemeAsset themeAsset)

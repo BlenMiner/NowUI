@@ -48,7 +48,7 @@ namespace NowUI
 
         public bool Draw(ref int selected)
         {
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
             int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
             int optionCount = _options?.Count ?? 0;
 

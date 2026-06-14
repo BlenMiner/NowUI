@@ -26,7 +26,7 @@ just different values for the same slots:
 NowLayout.Button("Cancel").SetStyle(NowRectangleStyle.Outline).Draw();
 
 // A region: push a theme asset.
-using (NowControls.Theme(darkTheme))
+using (NowTheme.Scope(darkTheme))
     DrawSettingsPanel();
 ```
 
@@ -88,7 +88,7 @@ public static bool RoundButton(
     string label,
     [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
 {
-    var theme = NowControls.theme;
+    var theme = NowTheme.themeAsset;
     int id = NowControls.GetControlId(NowControls.SiteId(file, line));
 
     NowRect rect = NowLayout.Rect(44f, 44f);
@@ -142,7 +142,7 @@ public static bool Rating(
 {
     const float Dot = 18f, Gap = 6f;
 
-    var theme = NowControls.theme;
+    var theme = NowTheme.themeAsset;
     int id = NowControls.GetControlId(NowControls.SiteId(file, line));
 
     NowRect rect = NowLayout.Rect(max * Dot + (max - 1) * Gap, Dot);

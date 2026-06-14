@@ -208,7 +208,7 @@ namespace NowUI.Docking
             try
             {
                 _dockRect = rect;
-                var theme = NowControls.themeAsset;
+                var theme = NowTheme.themeAsset;
 
                 EnsureLayout(GetCurrentlySubmittedWindows(includeFloating: false));
 
@@ -226,8 +226,8 @@ namespace NowUI.Docking
                     DrawNode(_root, controlId, style, theme);
                 }
 
+                CompleteLostTabDrag(controlId, style, theme);
                 DrawFloatingWindows(controlId, style, theme);
-                CompleteLostTabDrag(style, theme);
                 DrawTabDragFeedback(controlId, style, theme);
 
                 if (_pendingCloseId != null)
@@ -902,8 +902,13 @@ namespace NowUI.Docking
                 return;
             }
 
+            bool wasFloating = window.floating;
+
             if (TryGetDropTarget(pointer, style, theme, windowId, out var target))
             {
+                if (wasFloating && target.side == NowDockSide.Center)
+                    target.tabIndex = -1;
+
                 ApplyDropTarget(windowId, target);
                 return;
             }
@@ -911,7 +916,7 @@ namespace NowUI.Docking
             FloatWindow(windowId, pointer, style);
         }
 
-        void CompleteLostTabDrag(Style style, NowThemeAsset theme)
+        void CompleteLostTabDrag(int controlId, Style style, NowThemeAsset theme)
         {
             if (string.IsNullOrEmpty(_draggingWindowId) || NowInput.isPassive)
                 return;
@@ -924,6 +929,7 @@ namespace NowUI.Docking
             if (NowInput.hasContext && NowInput.current.hasPointer)
                 CommitTabDrag(windowId, NowInput.current.pointerPosition, style, theme);
 
+            NowInput.ClearActiveIf(DockTabId(controlId, windowId));
             EndTabDrag(windowId);
         }
 
@@ -1226,7 +1232,7 @@ namespace NowUI.Docking
 
             if (hasTarget)
             {
-                NowOverlay.Defer(target.leaf.rect.Outset(8f), () =>
+                NowOverlay.Defer(default, () =>
                 {
                     DrawDropGuide(target, window.id, style, theme);
                 });
@@ -1236,7 +1242,7 @@ namespace NowUI.Docking
             {
                 var pill = DraggedTabPillRect(pointer, window.title, style, theme);
 
-                NowOverlay.Defer(pill.Outset(2f), () =>
+                NowOverlay.Defer(default, () =>
                 {
                     DrawDraggedTabPill(pill, window.title, theme);
                 });
@@ -1250,7 +1256,7 @@ namespace NowUI.Docking
             var draw = window.draw;
             string title = window.title;
 
-            NowOverlay.Defer(ghostRect.Outset(2f), () =>
+            NowOverlay.Defer(default, () =>
             {
                 DrawDragGhostWindow(controlId, ghostRect, title, draw, style, theme);
             });

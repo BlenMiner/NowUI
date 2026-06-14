@@ -583,7 +583,37 @@ public class NowControlsTests
     [Test]
     public void DefaultThemeIsAvailable()
     {
-        Assert.NotNull(NowControls.themeAsset);
-        Assert.AreEqual(NowControls.themeAsset, NowControls.themeAsset, "Default theme must be cached.");
+        Assert.NotNull(NowTheme.themeAsset);
+        Assert.AreEqual(NowTheme.themeAsset, NowTheme.themeAsset, "Default theme must be cached.");
+        Assert.AreEqual(NowTheme.themeAsset, NowControls.themeAsset, "NowControls should delegate to NowTheme.");
+    }
+
+    [Test]
+    public void ThemeScopesRestorePreviousTheme()
+    {
+        var first = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var second = ScriptableObject.CreateInstance<NowThemeAsset>();
+
+        try
+        {
+            using (NowTheme.Scope(first))
+            {
+                Assert.AreSame(first, NowTheme.themeAsset);
+
+                using (NowControls.Theme(second))
+                    Assert.AreSame(second, NowTheme.themeAsset);
+
+                Assert.AreSame(first, NowTheme.themeAsset);
+            }
+
+            Assert.AreSame(NowTheme.themeAsset, NowControls.themeAsset);
+            Assert.AreNotSame(first, NowTheme.themeAsset);
+            Assert.AreNotSame(second, NowTheme.themeAsset);
+        }
+        finally
+        {
+            Object.DestroyImmediate(second);
+            Object.DestroyImmediate(first);
+        }
     }
 }

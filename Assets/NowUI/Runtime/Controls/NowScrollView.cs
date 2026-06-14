@@ -147,7 +147,7 @@ namespace NowUI
             if (!_barVisible)
                 return;
 
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
             const float BarWidth = 8f;
 
             var track = new NowRect(

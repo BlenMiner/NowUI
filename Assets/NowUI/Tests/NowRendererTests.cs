@@ -81,6 +81,104 @@ public class NowRendererTests
     }
 
     [Test]
+    public void DrawListBuildCapturesLineGeometry()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+                Now.Line(new Vector2(8, 12), new Vector2(96, 48))
+                    .SetWidth(4f)
+                    .SetColor(Color.white)
+                    .Draw();
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(1, drawList.batchCount);
+            Assert.AreEqual(1, drawList.mesh.subMeshCount);
+            Assert.AreEqual(8, drawList.mesh.vertexCount);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void DrawListBuildCapturesBezierDashAndArrowGeometry()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(160, 100)))
+                Now.Bezier(
+                        new Vector2(12, 80),
+                        new Vector2(40, 4),
+                        new Vector2(108, 96),
+                        new Vector2(144, 20))
+                    .SetWidth(3f)
+                    .SetDash(8f, 5f, 2f)
+                    .SetArrow(NowLineArrow.End)
+                    .SetColor(Color.white)
+                    .Draw();
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(1, drawList.batchCount);
+            Assert.Greater(drawList.mesh.vertexCount, 8);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void DrawListBuildCapturesCoreShapeGeometry()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        var polygon = new[]
+        {
+            new Vector2(68, 10),
+            new Vector2(118, 34),
+            new Vector2(96, 78),
+            new Vector2(38, 78),
+            new Vector2(18, 34)
+        };
+
+        try
+        {
+            using (drawList.Begin(new Vector2(140, 96)))
+            {
+                Now.Circle(new Vector2(34, 38), 20f)
+                    .SetSegments(24)
+                    .SetColor(Color.white)
+                    .SetOutline(2f)
+                    .SetOutlineColor(Color.black)
+                    .Draw();
+
+                Now.Polygon(polygon)
+                    .SetColor(Color.white)
+                    .Draw();
+            }
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(1, drawList.batchCount);
+            Assert.Greater(drawList.mesh.vertexCount, polygon.Length);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
     public void RendererBuildClearsGeometryWhenSizeIsInvalid()
     {
         var renderer = new NowRenderer();
@@ -204,6 +302,39 @@ public class NowRendererTests
     }
 
     [Test]
+    public void GraphicDrawUsesCanvasScaleFactor()
+    {
+        var canvasObject = new GameObject("Now Test Canvas", typeof(RectTransform), typeof(Canvas));
+        var graphicObject = new GameObject("Now Test Scaled Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+
+        try
+        {
+            var canvas = canvasObject.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.scaleFactor = 2f;
+
+            graphicObject.transform.SetParent(canvasObject.transform, false);
+
+            var rectTransform = graphicObject.GetComponent<RectTransform>();
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 64f);
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 32f);
+
+            Now.SetUIScale(1f);
+
+            var graphic = graphicObject.AddComponent<ScaleRecordingGraphic>();
+            graphic.Rebuild(CanvasUpdate.PreRender);
+
+            Assert.AreEqual(2f, graphic.recordedScale, 0.0001f);
+            Assert.AreEqual(1f, Now.uiScale, 0.0001f);
+        }
+        finally
+        {
+            Now.SetUIScale(1f);
+            Object.DestroyImmediate(canvasObject);
+        }
+    }
+
+    [Test]
     public void GraphicUsesStencilMaterialWhenUnderUnityMask()
     {
         var material = Resources.Load<Material>("NowUI/UIMaterialUGUI");
@@ -269,6 +400,18 @@ public class NowRendererTests
             Now.Rectangle(new Vector4(2, 2, 12, 8))
                 .SetColor(Color.white)
                 .Draw();
+        }
+    }
+
+    sealed class ScaleRecordingGraphic : NowGraphic
+    {
+        public float recordedScale;
+
+        protected override bool useLayoutMeasurePass => false;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            recordedScale = Now.uiScale;
         }
     }
 }

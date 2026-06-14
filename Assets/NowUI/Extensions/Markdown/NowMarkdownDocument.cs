@@ -18,7 +18,7 @@ namespace NowUI.Markdown
 
     /// <summary>
     /// Visual sizing for a rendered document; colors come from the ambient
-    /// <see cref="NowControls.themeAsset"/> at draw time.
+    /// <see cref="NowTheme.themeAsset"/> at draw time.
     /// </summary>
     public struct NowMarkdownStyle
     {
@@ -143,7 +143,7 @@ namespace NowUI.Markdown
         public NowMarkdownResult Draw(NowRect rect)
         {
             var result = default(NowMarkdownResult);
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
 
             EnsureLayout(rect.width);
             result.height = _layoutHeight;
@@ -485,7 +485,7 @@ namespace NowUI.Markdown
 
         void EnsureLayout(float width)
         {
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
             var probe = theme.Text(default(NowRect), (string)null);
             NowFontAsset font = probe.font;
 

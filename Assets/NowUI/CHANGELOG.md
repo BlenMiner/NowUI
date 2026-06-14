@@ -44,7 +44,7 @@ point it became installable through UPM.
   fallback.
 - UGUI integration (`NowGraphic`), render-pipeline integration for URP and
   HDRP, and RenderTexture/IMGUI bridges.
-- Theme tokens and presets (`NowTheme`).
+- Theme tokens and presets (`NowThemeAsset`).
 - UI scaling for high-DPI displays (`Now.StartUI(float uiScale)`,
   `NowScreen.recommendedUIScale`) and safe-area helpers
   (`NowScreen.safeArea`).

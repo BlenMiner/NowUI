@@ -108,7 +108,7 @@ public class NowTextWrapTests
     [Test]
     public void ResolveTextCarriesAmbientFontAndNoMask()
     {
-        var resolved = NowControls.themeAsset.ResolveText();
+        var resolved = NowTheme.themeAsset.ResolveText();
 
         Assert.AreEqual(_font, resolved.font);
         Assert.IsTrue(resolved.mask.isEmpty, "resolved styles start unmasked");

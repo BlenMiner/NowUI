@@ -78,7 +78,7 @@ namespace NowUI
         /// </summary>
         public NowControlScope Begin()
         {
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
             int id = ResolveControlId();
 
             Vector4 padding = theme.GetSpacing(NowSpacingToken.Md, new Vector4(12f, 12f, 12f, 12f));
@@ -113,7 +113,7 @@ namespace NowUI
 
         public bool Draw()
         {
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
             int id = ResolveControlId();
 
             var text = theme.Text(default, _textPreset);
@@ -253,7 +253,7 @@ namespace NowUI
         /// </summary>
         public NowControlScope Begin(ref bool value)
         {
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
             int id = ResolveControlId();
 
             const float Box = 18f;
@@ -309,7 +309,7 @@ namespace NowUI
 
         public bool Draw(ref bool value)
         {
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
             int id = ResolveControlId();
 
             var text = theme.Text(default, _textPreset);
@@ -418,7 +418,7 @@ namespace NowUI
         /// </summary>
         public NowControlScope Begin()
         {
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
             int id = ResolveControlId();
 
             const float Circle = 18f;
@@ -472,7 +472,7 @@ namespace NowUI
 
         public bool Draw()
         {
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
             int id = ResolveControlId();
 
             var text = theme.Text(default, _textPreset);
@@ -558,7 +558,7 @@ namespace NowUI
 
         public bool Draw(ref float value)
         {
-            var theme = NowControls.themeAsset;
+            var theme = NowTheme.themeAsset;
             int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
 
             const float Height = 20f;

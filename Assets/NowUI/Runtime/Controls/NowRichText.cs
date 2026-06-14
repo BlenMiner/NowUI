@@ -256,7 +256,7 @@ namespace NowUI
                 NowContextMenu.End();
             }
 
-            Color highlight = NowControls.themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            Color highlight = NowTheme.themeAsset.GetColor(NowColorToken.Accent, Color.blue);
             highlight.a = 0.25f;
 
             return NowTextSelection.DrawHighlights(
@@ -272,7 +272,7 @@ namespace NowUI
         NowRichTextDocument PrepareDocument(ref State state)
         {
             var baseStyle = new NowRichTextStyle(_style.fontSize, _style.fontStyle).SetColor(_style.color);
-            Vector4 accentColor = NowControls.themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            Vector4 accentColor = NowTheme.themeAsset.GetColor(NowColorToken.Accent, Color.blue);
 
             if (state.document == null)
                 state.document = new NowRichTextDocument();
@@ -559,7 +559,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return new NowRichText(rect, value, NowControls.themeAsset.ResolveText(NowTextStyle.Body), NowControls.SiteId(file, line));
+            return new NowRichText(rect, value, NowTheme.themeAsset.ResolveText(NowTextStyle.Body), NowControls.SiteId(file, line));
         }
     }
 
@@ -570,7 +570,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return new NowRichText(value, NowControls.themeAsset.ResolveText(NowTextStyle.Body), NowControls.SiteId(file, line));
+            return new NowRichText(value, NowTheme.themeAsset.ResolveText(NowTextStyle.Body), NowControls.SiteId(file, line));
         }
     }
 }

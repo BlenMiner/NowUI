@@ -85,6 +85,10 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
 
 - **Rectangles** — rounded corners (per-corner radii), outlines, blur,
   padding, masks. [Docs/Features.md](Docs/Features.md)
+- **Lines** — anti-aliased straight lines, cubic Beziers, dashed strokes,
+  rounded caps, masks, and arrow heads. [Docs/Lines.md](Docs/Lines.md)
+- **Shapes** — filled or outlined circles, ellipses, triangles, and reusable
+  array/list-backed polygons. [Docs/Shapes.md](Docs/Shapes.md)
 - **Text** — SDF atlases baked on demand by a Burst-compiled managed
   compiler (native plugin covers CFF and color emoji fonts); HarfBuzz
   shaping for ligatures, kerning, and complex scripts where the plugin is

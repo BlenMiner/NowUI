@@ -360,7 +360,7 @@ public class NowTextAreaTests
     {
         string text = "aaaa\naa";
 
-        var textStyle = NowControls.themeAsset.Text(default, NowTextStyle.Body);
+        var textStyle = NowTheme.themeAsset.Text(default, NowTextStyle.Body);
         float lineHeight = textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize;
         var inner = AreaRect.Inset(8f, 6f, 8f, 6f);
 
@@ -376,7 +376,7 @@ public class NowTextAreaTests
     {
         string text = "first line\nsecond";
 
-        var textStyle = NowControls.themeAsset.Text(default, NowTextStyle.Body);
+        var textStyle = NowTheme.themeAsset.Text(default, NowTextStyle.Body);
         float lineHeight = textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize;
         var inner = AreaRect.Inset(8f, 6f, 8f, 6f);
         var click = new Vector2(inner.x + 4f, inner.y + lineHeight * 0.5f);

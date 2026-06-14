@@ -1,8 +1,8 @@
 # Feature Usage
 
 NowUI is an immediate-mode renderer for Unity. The current public surface is
-small: start a draw pass, configure lightweight value structs, draw rectangles
-and text, then flush.
+small: start a draw pass, configure lightweight value structs, draw rectangles,
+lines, shapes and text, then flush.
 
 ## Draw Lifecycle
 
@@ -136,6 +136,46 @@ Now.Rectangle(new Vector4(24, 24, 180, 48))
 
 The rectangle API currently covers fill color, radius, padding, outline,
 outline color, blur, mask, and position.
+
+## Lines
+
+`NowLine` draws anti-aliased strokes, cubic Beziers, dashes, caps and arrow
+heads. See [Lines](Lines.md) for the full stroke API.
+
+```csharp
+Now.Bezier(
+        new Vector2(24, 96),
+        new Vector2(88, 24),
+        new Vector2(180, 168),
+        new Vector2(244, 96))
+    .SetWidth(4f)
+    .SetCap(NowLineCap.Round)
+    .SetDash(12f, 8f)
+    .SetArrow(NowLineArrow.End)
+    .SetColor(new Color(0.05f, 0.86f, 0.67f, 1f))
+    .Draw();
+```
+
+## Shapes
+
+`NowCircle`, `NowTriangle`, and `NowPolygon` draw simple filled or outlined
+geometry. Polygons use caller-owned `Vector2[]` or `List<Vector2>` point
+storage. See [Shapes](Shapes.md) for the full shape API.
+
+```csharp
+Now.Circle(new Vector2(72, 72), 32f)
+    .SetColor(new Color(0.1f, 0.55f, 1f, 1f))
+    .SetOutline(2f)
+    .SetOutlineColor(Color.white)
+    .Draw();
+
+Now.Triangle(
+        new Vector2(140, 104),
+        new Vector2(196, 104),
+        new Vector2(168, 48))
+    .SetColor(new Color(0.92f, 0.24f, 0.58f, 1f))
+    .Draw();
+```
 
 ## Text
 

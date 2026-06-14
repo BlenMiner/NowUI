@@ -350,6 +350,133 @@ namespace NowUI.Internal
             _tris.count += 6;
         }
 
+        public void AddTextGlyph(
+            NowFontAtlasInfo.Glyph glyph,
+            float x,
+            float y,
+            float fontSize,
+            float baseline,
+            Vector4 mask,
+            Vector4 color,
+            Vector4 outlineColor,
+            float outline,
+            float pixelRange)
+        {
+            var planeBounds = glyph.planeBounds;
+            float left = planeBounds.left * fontSize;
+            float right = planeBounds.right * fontSize;
+            float bottom = planeBounds.bottom * fontSize;
+            float top = planeBounds.top * fontSize;
+
+            float width = right - left;
+            float height = top - bottom;
+
+            if (width <= 0f || height <= 0f)
+                return;
+
+            float px = x + left;
+            float py = y - bottom + baseline - height;
+            Vector4 position = new Vector4(px, -(py + height), width, height);
+
+            if (position.x + position.z < mask.x ||
+                position.x >= mask.x + mask.z ||
+                -position.y < mask.y ||
+                -position.y - position.w >= mask.y + mask.w)
+            {
+                return;
+            }
+
+            EnsureRectCapacity();
+
+            int indexOffset = _verts.count;
+            var atlasBounds = glyph.atlasBounds;
+            Vector4 extra = default;
+            extra.x = outline;
+            extra.y = pixelRange;
+
+            var maskArray = _mask.array;
+            int maskCount = _mask.count;
+            maskArray[maskCount] = mask;
+            maskArray[maskCount + 1] = mask;
+            maskArray[maskCount + 2] = mask;
+            maskArray[maskCount + 3] = mask;
+            _mask.count += 4;
+
+            var rectArray = _rect.array;
+            int rectCount = _rect.count;
+            rectArray[rectCount] = position;
+            rectArray[rectCount + 1] = position;
+            rectArray[rectCount + 2] = position;
+            rectArray[rectCount + 3] = position;
+            _rect.count += 4;
+
+            var radiusArray = _radius.array;
+            int radiusCount = _radius.count;
+            radiusArray[radiusCount] = default;
+            radiusArray[radiusCount + 1] = default;
+            radiusArray[radiusCount + 2] = default;
+            radiusArray[radiusCount + 3] = default;
+            _radius.count += 4;
+
+            var colorArray = _color.array;
+            int colorCount = _color.count;
+            colorArray[colorCount] = color;
+            colorArray[colorCount + 1] = color;
+            colorArray[colorCount + 2] = color;
+            colorArray[colorCount + 3] = color;
+            _color.count += 4;
+
+            var outlineArray = _outlineColor.array;
+            int outlineCount = _outlineColor.count;
+            outlineArray[outlineCount] = outlineColor;
+            outlineArray[outlineCount + 1] = outlineColor;
+            outlineArray[outlineCount + 2] = outlineColor;
+            outlineArray[outlineCount + 3] = outlineColor;
+            _outlineColor.count += 4;
+
+            var extraArray = _extra.array;
+            int extraCount = _extra.count;
+            extraArray[extraCount] = extra;
+            extraArray[extraCount + 1] = extra;
+            extraArray[extraCount + 2] = extra;
+            extraArray[extraCount + 3] = extra;
+            _extra.count += 4;
+
+            var vertexArray = _verts.array;
+            int vertexCount = _verts.count;
+            vertexArray[vertexCount] = new Vector3(position.x, position.y, 0f);
+            vertexArray[vertexCount + 1] = new Vector3(position.x, position.y + position.w, 0f);
+            vertexArray[vertexCount + 2] = new Vector3(position.x + position.z, position.y + position.w, 0f);
+            vertexArray[vertexCount + 3] = new Vector3(position.x + position.z, position.y, 0f);
+            _verts.count += 4;
+
+            var uvArray = _uvs.array;
+            int uvCount = _uvs.count;
+            uvArray[uvCount] = new Vector2(atlasBounds.left, atlasBounds.bottom);
+            uvArray[uvCount + 1] = new Vector2(atlasBounds.left, atlasBounds.top);
+            uvArray[uvCount + 2] = new Vector2(atlasBounds.right, atlasBounds.top);
+            uvArray[uvCount + 3] = new Vector2(atlasBounds.right, atlasBounds.bottom);
+            _uvs.count += 4;
+
+            var rawUvArray = _rawuv.array;
+            int rawUvCount = _rawuv.count;
+            rawUvArray[rawUvCount] = _uv0;
+            rawUvArray[rawUvCount + 1] = _uv1;
+            rawUvArray[rawUvCount + 2] = _uv2;
+            rawUvArray[rawUvCount + 3] = _uv3;
+            _rawuv.count += 4;
+
+            int triCount = _tris.count;
+            var triArray = _tris.array;
+            triArray[triCount] = indexOffset;
+            triArray[triCount + 1] = indexOffset + 1;
+            triArray[triCount + 2] = indexOffset + 2;
+            triArray[triCount + 3] = indexOffset;
+            triArray[triCount + 4] = indexOffset + 2;
+            triArray[triCount + 5] = indexOffset + 3;
+            _tris.count += 6;
+        }
+
         /// <summary>
         /// Appends arbitrary tessellated triangles (positions in UI space, y down).
         /// The shared rect is the padded bounds of the geometry; UVs are derived from

@@ -132,7 +132,9 @@ namespace NowUI
 
             var positionOffset = new Vector2(rect.xMin, rect.yMax);
             var drawRect = new Rect(0, 0, rect.width, rect.height);
+            float previousUIScale = Now.uiScale;
 
+            Now.SetUIScale(GetCanvasScaleFactor());
             var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset);
             bool colorMultiplierActive = false;
             NowControlState.BeginRepaintTracking();
@@ -195,6 +197,10 @@ namespace NowUI
                 scope.Cancel();
                 _drawList.Clear();
                 Debug.LogException(ex, this);
+            }
+            finally
+            {
+                Now.SetUIScale(previousUIScale);
             }
 
             ApplyCanvasPages();
@@ -423,6 +429,17 @@ namespace NowUI
                 return null;
 
             return targetCanvas.worldCamera;
+        }
+
+        float GetCanvasScaleFactor()
+        {
+            var targetCanvas = canvas;
+
+            if (targetCanvas == null)
+                return 1f;
+
+            float scale = targetCanvas.scaleFactor;
+            return scale > 0f && !float.IsNaN(scale) && !float.IsInfinity(scale) ? scale : 1f;
         }
 
         void ApplyCanvasPages()

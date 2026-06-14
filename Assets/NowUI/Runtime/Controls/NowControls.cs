@@ -5,8 +5,8 @@ using UnityEngine;
 namespace NowUI
 {
     /// <summary>
-    /// The control toolkit: ambient theme, id scopes, and the shared interaction
-    /// plumbing that both the built-in controls and custom controls run on.
+    /// The control toolkit: id scopes and the shared interaction plumbing that
+    /// both the built-in controls and custom controls run on.
     ///
     /// The controls themselves live where they belong:
     /// <see cref="NowLayout"/> for layout-flowing controls
@@ -19,48 +19,15 @@ namespace NowUI
     /// </summary>
     public static class NowControls
     {
-        static NowThemeAsset _defaultThemeAsset;
-
-        static readonly List<NowThemeAsset> _themeStack = new List<NowThemeAsset>(4);
-
         static readonly List<int> _idStack = new List<int>(8);
 
-        /// <summary>
-        /// The active theme: the innermost <see cref="Theme(NowThemeAsset)"/> scope, or
-        /// a built-in default created on first use.
-        /// </summary>
-        public static NowThemeAsset themeAsset
-        {
-            get
-            {
-                if (_themeStack.Count > 0)
-                    return _themeStack[^1];
-
-                if (_defaultThemeAsset == null)
-                {
-                    _defaultThemeAsset = ScriptableObject.CreateInstance<NowThemeAsset>();
-                    _defaultThemeAsset.name = "Now Default Theme";
-                    _defaultThemeAsset.hideFlags = HideFlags.HideAndDontSave;
-                }
-
-                return _defaultThemeAsset;
-            }
-        }
+        /// <summary>The active theme, provided by <see cref="NowTheme"/>.</summary>
+        public static NowThemeAsset themeAsset => NowTheme.themeAsset;
 
         /// <summary>Pushes a contextual theme; dispose the scope to restore the previous one.</summary>
         public static ThemeScope Theme(NowThemeAsset value)
         {
-            if (value == null)
-                throw new ArgumentNullException(nameof(value));
-
-            _themeStack.Add(value);
-            return new ThemeScope(true);
-        }
-
-        internal static void PopTheme()
-        {
-            if (_themeStack.Count > 0)
-                _themeStack.RemoveAt(_themeStack.Count - 1);
+            return NowTheme.Scope(value);
         }
 
         /// <summary>
@@ -180,7 +147,7 @@ namespace NowUI
 
         public static void Reset()
         {
-            _themeStack.Clear();
+            NowTheme.Reset();
             _idStack.Clear();
             _labelOccurrences.Clear();
             _passiveOccurrences.Clear();
@@ -268,25 +235,6 @@ namespace NowUI
                 size.y + 1f);
 
             text.SetMask(rect.Outset(0f, 4f)).Draw(label);
-        }
-    }
-
-    public struct ThemeScope : IDisposable
-    {
-        bool _active;
-
-        internal ThemeScope(bool active)
-        {
-            _active = active;
-        }
-
-        public void Dispose()
-        {
-            if (!_active)
-                return;
-
-            _active = false;
-            NowControls.PopTheme();
         }
     }
 

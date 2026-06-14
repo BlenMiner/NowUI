@@ -137,6 +137,8 @@ namespace NowUI
 
         static int _suppressDrawDepth;
 
+        static readonly HashSet<NowFontAsset> _textGlyphResolveVisited = new HashSet<NowFontAsset>();
+
         static Vector4 _colorMultiplier = Vector4.one;
 
         static readonly List<Vector4> _colorMultiplierStack = new List<Vector4>(4);
@@ -458,7 +460,19 @@ namespace NowUI
 
         internal static void SetUIScale(float uiScale)
         {
-            _uiScale = uiScale > 0f ? uiScale : 1f;
+            _uiScale = uiScale > 0f && !float.IsNaN(uiScale) && !float.IsInfinity(uiScale)
+                ? uiScale
+                : 1f;
+        }
+
+        internal static float ScreenPixelsToUiUnits(float pixels)
+        {
+            return pixels / _uiScale;
+        }
+
+        internal static float UiUnitsToScreenPixels(float units)
+        {
+            return units * _uiScale;
         }
 
         internal static void BeginMeshCapture(Vector4 screenMask)
@@ -1016,7 +1030,13 @@ namespace NowUI
         {
             var fontSize = style.fontSize;
             var fontAsset = style.font;
+            var color = ApplyColorMultiplier(style.color);
+            var outlineColor = ApplyColorMultiplier(style.outlineColor);
+            float outline = style.outline * fontSize;
             NowMesh mesh = null;
+            NowFont pixelRangeFont = null;
+            Material pixelRangeMaterial = null;
+            float pixelRange = 0f;
 
             float lineHeight = fontAsset.GetLineHeight(style.fontStyle) * fontSize;
             float baseline = fontAsset.GetAscender(style.fontStyle) * fontSize;
@@ -1036,13 +1056,14 @@ namespace NowUI
                         break;
                     case '\t':
                     {
-                        if (fontAsset.TryResolveGlyph(' ', fontSize, style.fontStyle, out _, out var space, out _))
+                        if (TryResolveTextGlyph(fontAsset, ' ', fontSize, style.fontStyle, out _, out var space, out _))
                             style.rect.x += space.advance * fontSize * TAB_SPACES;
                         break;
                     }
                     default:
                     {
-                        if (!fontAsset.TryResolveGlyph(
+                        if (!TryResolveTextGlyph(
+                            fontAsset,
                             codepoint,
                             fontSize,
                             style.fontStyle,
@@ -1065,14 +1086,81 @@ namespace NowUI
                                     return;
                             }
 
+                            if (!ReferenceEquals(pixelRangeFont, resolvedFont) ||
+                                !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
+                            {
+                                pixelRange = resolvedFont.GetScreenPixelRange(glyph.unicode, fontSize);
+                                pixelRangeFont = resolvedFont;
+                                pixelRangeMaterial = glyphMaterial;
+                            }
+
                             mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
-                            DrawCharacter(style, glyph, resolvedFont, mesh, baseline);
+                            mesh.AddTextGlyph(
+                                glyph,
+                                style.rect.x,
+                                style.rect.y,
+                                fontSize,
+                                baseline,
+                                style.mask,
+                                color,
+                                outlineColor,
+                                outline,
+                                pixelRange);
                         }
 
                         style.rect.x += glyph.advance * fontSize;
                         break;
                     }
                 }
+            }
+        }
+
+        static bool TryResolveTextGlyph(
+            NowFontAsset fontAsset,
+            int codepoint,
+            float fontSize,
+            NowFontStyle style,
+            out NowFont font,
+            out NowFontAtlasInfo.Glyph glyph,
+            out Material material)
+        {
+            font = null;
+            glyph = default;
+            material = null;
+
+            if (fontAsset == null)
+                return false;
+
+            if (fontAsset is NowFont directFont &&
+                directFont.GetGlyph(codepoint, fontSize, out glyph, out material))
+            {
+                font = directFont;
+                return true;
+            }
+
+            var fallbacks = fontAsset.fallbacks;
+
+            if ((fallbacks == null || fallbacks.Count == 0) && style == NowFontStyle.Regular)
+                return false;
+
+            var visited = _textGlyphResolveVisited;
+
+            try
+            {
+                visited.Clear();
+
+                if (fontAsset.TryResolveGlyph(codepoint, fontSize, style, visited, out font, out glyph, out material))
+                    return true;
+
+                if (style == NowFontStyle.Regular)
+                    return false;
+
+                visited.Clear();
+                return fontAsset.TryResolveGlyph(codepoint, fontSize, NowFontStyle.Regular, visited, out font, out glyph, out material);
+            }
+            finally
+            {
+                visited.Clear();
             }
         }
 
@@ -1139,7 +1227,13 @@ namespace NowUI
             float lineHeight = style.font.GetLineHeight(style.fontStyle) * fontSize;
             float baseline = style.font.GetAscender(style.fontStyle) * fontSize;
             float leftPos = style.rect.x;
+            var color = ApplyColorMultiplier(style.color);
+            var outlineColor = ApplyColorMultiplier(style.outlineColor);
+            float outline = style.outline * fontSize;
             NowMesh mesh = null;
+            NowFont pixelRangeFont = null;
+            Material pixelRangeMaterial = null;
+            float pixelRange = 0f;
             segmentStart = 0;
 
             for (int i = 0; i <= value.Length; ++i)
@@ -1179,12 +1273,27 @@ namespace NowUI
                                     return true;
                             }
 
+                            if (!ReferenceEquals(pixelRangeFont, font) ||
+                                !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
+                            {
+                                pixelRange = font.GetScreenPixelRange(glyph.unicode, fontSize);
+                                pixelRangeFont = font;
+                                pixelRangeMaterial = glyphMaterial;
+                            }
+
                             mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
 
-                            var glyphStyle = style;
-                            glyphStyle.rect.x = style.rect.x + shaped.xOffset * fontSize;
-                            glyphStyle.rect.y = style.rect.y - shaped.yOffset * fontSize;
-                            DrawCharacter(glyphStyle, glyph, font, mesh, baseline);
+                            mesh.AddTextGlyph(
+                                glyph,
+                                style.rect.x + shaped.xOffset * fontSize,
+                                style.rect.y - shaped.yOffset * fontSize,
+                                fontSize,
+                                baseline,
+                                style.mask,
+                                color,
+                                outlineColor,
+                                outline,
+                                pixelRange);
                         }
 
                         style.rect.x += shaped.xAdvance * fontSize;
@@ -1257,39 +1366,17 @@ namespace NowUI
         static void DrawCharacter(NowText style, NowFontAtlasInfo.Glyph glyph, NowFont font, NowMesh mesh, float baseline)
         {
             var fontSize = style.fontSize;
-            var rect = style.rect;
-            var planeBounds = glyph.planeBounds;
-
-            planeBounds.left *= fontSize;
-            planeBounds.right *= fontSize;
-            planeBounds.bottom *= fontSize;
-            planeBounds.top *= fontSize;
-
-            float px = rect.x + planeBounds.left;
-            float py = rect.y - planeBounds.bottom;
-            float pz = planeBounds.right - planeBounds.left;
-            float pw = planeBounds.top - planeBounds.bottom;
-
-            py += baseline - pw;
-
-            var atlasBounds = glyph.atlasBounds;
-
-            _tmpVertex.position.x = px;
-            _tmpVertex.position.y = -(py + pw);
-            _tmpVertex.position.z = pz;
-            _tmpVertex.position.w = pw;
-
-            _tmpVertex.uvwh.x = atlasBounds.left;
-            _tmpVertex.uvwh.y = atlasBounds.bottom;
-            _tmpVertex.uvwh.z = atlasBounds.right - atlasBounds.left;
-            _tmpVertex.uvwh.w = atlasBounds.top - atlasBounds.bottom;
-
-            _tmpVertex.mask = style.mask;
-            _tmpVertex.radius = default;
-            _tmpVertex.color = ApplyColorMultiplier(style.color);
-            _tmpVertex.outlineColor = ApplyColorMultiplier(style.outlineColor);
-
-            mesh.AddRect(_tmpVertex, style.outline * fontSize, font.GetScreenPixelRange(glyph.unicode, fontSize));
+            mesh.AddTextGlyph(
+                glyph,
+                style.rect.x,
+                style.rect.y,
+                fontSize,
+                baseline,
+                style.mask,
+                ApplyColorMultiplier(style.color),
+                ApplyColorMultiplier(style.outlineColor),
+                style.outline * fontSize,
+                font.GetScreenPixelRange(glyph.unicode, fontSize));
         }
 
         internal static void DrawLottie(NowLottie lottie)
@@ -1331,12 +1418,12 @@ namespace NowUI
 
             frame = Mathf.Round(frame);
 
-            float renderScale = 1f;
+            float renderScale = Mathf.Max(_uiScale, 0.0001f);
             float maxSize = NowLottieRenderer.maxRenderSize;
-            float maxDimension = Mathf.Max(lottie.rect.width, lottie.rect.height);
+            float maxDimension = Mathf.Max(lottie.rect.width, lottie.rect.height) * renderScale;
 
             if (maxSize > 0f && maxDimension > maxSize)
-                renderScale = maxSize / maxDimension;
+                renderScale *= maxSize / maxDimension;
 
             var buffer = NowLottieRenderer.RenderCached(
                 composition,

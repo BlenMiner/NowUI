@@ -286,7 +286,7 @@ namespace NowUI
                     entry.name = tag.name;
                     entry.start = output.Length;
                     entry.style = current.style
-                        .SetColor(NowControls.themeAsset.GetColor(NowColorToken.Accent, Color.blue))
+                        .SetColor(NowTheme.themeAsset.GetColor(NowColorToken.Accent, Color.blue))
                         .SetUnderline();
                     entry.tag = id;
                     return true;

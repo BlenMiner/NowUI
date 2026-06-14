@@ -821,6 +821,12 @@ namespace NowUI
             _hasContext = hasContext;
         }
 
+        internal static void ClearActiveIf(int id, NowPointerButton button = NowPointerButton.Primary)
+        {
+            if (_activeId == id && _activeButton == button)
+                ClearActive();
+        }
+
         static Rect ToRect(Vector4 rect)
         {
             return new Rect(rect.x, rect.y, rect.z, rect.w);

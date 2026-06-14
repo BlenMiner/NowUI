@@ -1,8 +1,8 @@
 # Styles And Themes
 
-`NowTheme` makes style data a first-class ScriptableObject while keeping the
-runtime API code-forward. The asset stores named tokens and presets; draw code
-still builds rectangles and text explicitly.
+`NowThemeAsset` makes style data a first-class ScriptableObject while keeping
+the runtime API code-forward. The asset stores named tokens and presets; draw
+code still builds rectangles and text explicitly.
 
 Create a theme from Unity with `Create > NowUI > Theme`.
 
@@ -29,14 +29,14 @@ visible while editing the asset.
 
 ## Generating Themes
 
-The `NowTheme` inspector includes a generator for quick palette exploration.
-Choose light or dark mode, set a key color and an accent color, then press
-**Derive From Key Colors** to update the built-in palette tokens and matching
-preset fallbacks. Press **Random From Seed** for a reproducible generated
-palette, or **New Random** to pick a fresh seed and leave it visible for later.
-The generator controls are serialized on the theme asset, so Undo/Redo works
-through Unity's normal inspector flow and duplicated themes keep their
-generator settings.
+The `NowThemeAsset` inspector includes a generator for quick palette
+exploration. Choose light or dark mode, set a key color and an accent color,
+then press **Derive From Key Colors** to update the built-in palette tokens and
+matching preset fallbacks. Press **Random From Seed** for a reproducible
+generated palette, or **New Random** to pick a fresh seed and leave it visible
+for later. The generator controls are serialized on the theme asset, so
+Undo/Redo works through Unity's normal inspector flow and duplicated themes
+keep their generator settings.
 
 ## Drawing With A Theme
 
@@ -47,7 +47,7 @@ using UnityEngine;
 
 public sealed class ThemedOverlay : MonoBehaviour
 {
-    [SerializeField] NowTheme theme;
+    [SerializeField] NowThemeAsset theme;
     [SerializeField] NowFont font;
 
     void OnPostRender()
@@ -98,8 +98,8 @@ theme.Text(content, font, "body")
     .Draw("The same rect can be inset or outset by named spacing tokens.");
 ```
 
-`NowTheme.Inset(rect, spacing)` and `NowTheme.Outset(rect, spacing)` also
-accept raw `Vector4` spacing values for one-off calculations.
+`NowTheme.Inset(rect, spacing)` and `NowTheme.Outset(rect, spacing)` are also
+available for one-off calculations with raw `Vector4` spacing values.
 
 ## Token Lookup
 

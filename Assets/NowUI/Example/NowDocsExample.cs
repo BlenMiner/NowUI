@@ -28,6 +28,8 @@ public class NowDocsExample : NowGraphic
         RichTextDemo,
         SdfDemo,
         DockingDemo,
+        LinesDemo,
+        ShapesDemo,
     }
 
     struct Page
@@ -43,6 +45,8 @@ public class NowDocsExample : NowGraphic
         new Page { title = "Features", file = "Features.md" },
         new Page { title = "Layout", file = "Layout.md" },
         new Page { title = "Controls", file = "Controls.md" },
+        new Page { title = "Lines", file = "Lines.md" },
+        new Page { title = "Shapes", file = "Shapes.md" },
         new Page { title = "Custom controls", file = "CustomControls.md" },
         new Page { title = "Styles & themes", file = "StylesAndThemes.md" },
         new Page { title = "Markdown", file = "Markdown.md" },
@@ -57,6 +61,8 @@ public class NowDocsExample : NowGraphic
         new Page { title = "Rich text demo", kind = PageKind.RichTextDemo },
         new Page { title = "SDF demo", kind = PageKind.SdfDemo },
         new Page { title = "Docking demo", kind = PageKind.DockingDemo },
+        new Page { title = "Lines demo", kind = PageKind.LinesDemo },
+        new Page { title = "Shapes demo", kind = PageKind.ShapesDemo },
         new Page { title = "Live demo", kind = PageKind.ControlsDemo },
         new Page { title = "Lottie demo", kind = PageKind.LottieDemo },
         new Page { title = "Editor demo", kind = PageKind.CodeEditorDemo },
@@ -91,6 +97,7 @@ public class NowDocsExample : NowGraphic
     readonly NowSdfGraph _sdfDemoOrbit = NowSdf.Graph();
     readonly NowSdfGraph _sdfDemoTextIdle = NowSdf.Graph();
     readonly NowSdfGraph _sdfDemoTextActive = NowSdf.Graph();
+    readonly Vector2[] _shapeDemoPolygon = new Vector2[6];
     readonly Dictionary<string, string> _docs = new Dictionary<string, string>();
 
     string LoadDoc(string file)
@@ -133,10 +140,10 @@ public class NowDocsExample : NowGraphic
         if (!_font)
             return;
 
-        using var _ = NowControls.Theme(_themeAsset);
+        using var _ = NowTheme.Scope(_themeAsset);
 
         Now.defaultFont = _font;
-        var theme = NowControls.themeAsset;
+        var theme = NowTheme.themeAsset;
         var bounds = new NowRect(0, 0, rect.width, rect.height);
 
         theme.Rectangle(bounds, NowRectangleStyle.Surface).SetRadius(14).Draw();
@@ -194,6 +201,14 @@ public class NowDocsExample : NowGraphic
 
                 case PageKind.DockingDemo:
                     DrawDockingDemo(theme);
+                    break;
+
+                case PageKind.LinesDemo:
+                    DrawLinesDemo(theme);
+                    break;
+
+                case PageKind.ShapesDemo:
+                    DrawShapesDemo(theme);
                     break;
 
                 default:
@@ -715,6 +730,133 @@ public class NowDocsExample : NowGraphic
         NowControlState.RequestRepaint();
     }
 
+    void DrawLinesDemo(NowThemeAsset themeAsset)
+    {
+        NowMarkdown.Document("# Lines demo\n\nStraight strokes, cubic Beziers, dash patterns, masks, and arrow heads are all immediate-mode draw calls.").Draw();
+
+        var panel = NowLayout.Rect(height: 280f, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+
+        var area = panel.Inset(24f, 18f);
+        Color muted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+        Color accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+        Color text = themeAsset.GetColor(NowColorToken.Text, Color.white);
+        Color warm = new Color(1f, 0.72f, 0.16f, 1f);
+        Color pink = new Color(0.92f, 0.24f, 0.58f, 1f);
+
+        using (Now.Mask(panel))
+        {
+            Now.Line(new Vector2(area.x, area.y + 38f), new Vector2(area.xMax, area.y + 38f))
+                .SetWidth(2f)
+                .SetDash(12f, 8f, Time.time * 32f)
+                .SetColor(muted)
+                .Draw();
+
+            Now.Bezier(
+                    new Vector2(area.x + 6f, area.y + 132f),
+                    new Vector2(area.x + area.width * 0.25f, area.y - 10f),
+                    new Vector2(area.x + area.width * 0.72f, area.y + 230f),
+                    new Vector2(area.xMax - 8f, area.y + 112f))
+                .SetWidth(6f)
+                .SetCap(NowLineCap.Round)
+                .SetColor(accent)
+                .Draw();
+
+            Now.Bezier(
+                    new Vector2(area.x + 4f, area.y + 198f),
+                    new Vector2(area.x + area.width * 0.24f, area.y + 132f),
+                    new Vector2(area.x + area.width * 0.72f, area.y + 262f),
+                    new Vector2(area.xMax - 8f, area.y + 190f))
+                .SetWidth(3f)
+                .SetDash(16f, 10f, -Time.time * 44f)
+                .SetArrow(NowLineArrow.End, 20f, 16f)
+                .SetColor(warm)
+                .Draw();
+
+            Now.Line(new Vector2(area.x + 28f, area.y + 236f), new Vector2(area.xMax - 28f, area.y + 236f))
+                .SetWidth(4f)
+                .SetArrow(NowLineArrow.Both, 18f, 14f)
+                .SetColor(pink)
+                .Draw();
+        }
+
+        Now.Text(new NowRect(area.x + 8f, area.y + 6f, area.width - 16f, 22f))
+            .SetFontSize(12f)
+            .SetColor(text)
+            .Draw("Dashed separators, round Beziers, and arrowed connectors share the default mesh batch.");
+
+        NowControlState.RequestRepaint();
+    }
+
+    void DrawShapesDemo(NowThemeAsset themeAsset)
+    {
+        NowMarkdown.Document("# Shapes demo\n\nCore shapes are filled or outlined geometry submitted through the same mesh batch as other NowUI draws.").Draw();
+
+        var panel = NowLayout.Rect(height: 280f, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+
+        var area = panel.Inset(24f, 18f);
+        Color accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+        Color text = themeAsset.GetColor(NowColorToken.Text, Color.white);
+        Color muted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+        Color green = new Color(0.05f, 0.86f, 0.67f, 1f);
+        Color warm = new Color(1f, 0.72f, 0.16f, 1f);
+        Color pink = new Color(0.92f, 0.24f, 0.58f, 1f);
+        float pulse = Mathf.Sin(Time.time * 2.4f) * 0.5f + 0.5f;
+
+        Vector2 polygonCenter = new Vector2(area.x + area.width * 0.72f, area.y + 132f);
+
+        for (int i = 0; i < _shapeDemoPolygon.Length; ++i)
+        {
+            float angle = Mathf.PI * 2f * i / _shapeDemoPolygon.Length - Mathf.PI * 0.5f;
+            float radius = (i & 1) == 0 ? 58f : 36f + pulse * 8f;
+            _shapeDemoPolygon[i] = polygonCenter + new Vector2(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius);
+        }
+
+        using (Now.Mask(panel))
+        {
+            Now.Circle(new Vector2(area.x + 70f, area.y + 82f), 42f)
+                .SetColor(green)
+                .SetOutline(3f)
+                .SetOutlineColor(new Color(1f, 1f, 1f, 0.88f))
+                .Draw();
+
+            Now.Circle(new Vector2(area.x + 176f, area.y + 82f), 36f)
+                .SetFill(false)
+                .SetOutline(5f)
+                .SetOutlineColor(accent)
+                .Draw();
+
+            Now.Ellipse(new NowRect(area.x + 34f, area.y + 166f, 128f, 62f))
+                .SetColor(warm)
+                .SetOutline(2f)
+                .SetOutlineColor(new Color(0f, 0f, 0f, 0.22f))
+                .Draw();
+
+            Now.Triangle(
+                    new Vector2(area.x + 198f, area.y + 226f),
+                    new Vector2(area.x + 268f, area.y + 226f),
+                    new Vector2(area.x + 232f, area.y + 156f))
+                .SetColor(pink)
+                .SetOutline(2f)
+                .SetOutlineColor(new Color(1f, 1f, 1f, 0.8f))
+                .Draw();
+
+            Now.Polygon(_shapeDemoPolygon)
+                .SetColor(new Color(accent.r, accent.g, accent.b, 0.78f))
+                .SetOutline(3f)
+                .SetOutlineColor(text)
+                .Draw();
+        }
+
+        Now.Text(new NowRect(area.x + 8f, area.y + 6f, area.width - 16f, 22f))
+            .SetFontSize(12f)
+            .SetColor(muted)
+            .Draw("Circles, ellipses, triangles, and reusable-buffer polygons.");
+
+        NowControlState.RequestRepaint();
+    }
+
     void DrawLottieDemo(NowThemeAsset themeAsset)
     {
         NowMarkdown.Document("# Lottie demo\n\nVector animations drawn through `NowLayout.Lottie` —" +
@@ -820,7 +962,7 @@ public static class GuideControls
         string label,
         [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
     {
-        var theme = NowControls.themeAsset;
+        var theme = NowTheme.themeAsset;
         int id = NowControls.GetControlId(NowControls.SiteId(file, line));
 
         NowRect rect = NowLayout.Rect(44f, 44f);
@@ -872,7 +1014,7 @@ public static class GuideControls
     {
         const float Dot = 18f, Gap = 6f;
 
-        var theme = NowControls.themeAsset;
+        var theme = NowTheme.themeAsset;
 
         NowRect rect = NowLayout.Rect(max * Dot + (max - 1) * Gap, Dot);
         var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
