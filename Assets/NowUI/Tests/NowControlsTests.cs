@@ -60,6 +60,17 @@ public class NowControlsTests
         return result;
     }
 
+    bool DrawInteractionFrame(Vector2 pointer)
+    {
+        _provider.snapshot = new NowInputSnapshot(pointer, false, false, false);
+        NowControlState.BeginRepaintTracking();
+
+        using (NowInput.Begin(_provider, Surface))
+            NowControls.Interact(101, ButtonRect, out _, out _);
+
+        return NowControlState.EndRepaintTracking();
+    }
+
     [Test]
     public void ButtonClicksOnPressAndReleaseInside()
     {
@@ -68,6 +79,18 @@ public class NowControlsTests
         Assert.IsFalse(DrawButtonFrame(inside, down: true, pressed: true, released: false));
         Assert.IsTrue(DrawButtonFrame(inside, down: false, pressed: false, released: true));
         Assert.IsTrue(_drawList.hasGeometry, "Button drew no visuals.");
+    }
+
+    [Test]
+    public void InteractRequestsRepaintOnlyWhenInteractionStateChanges()
+    {
+        Vector2 inside = new Vector2(60, 36);
+        Vector2 outside = new Vector2(400, 200);
+
+        Assert.IsTrue(DrawInteractionFrame(inside), "Entering hover should repaint.");
+        Assert.IsFalse(DrawInteractionFrame(inside), "Stable hover should stay retained.");
+        Assert.IsTrue(DrawInteractionFrame(outside), "Leaving hover should repaint.");
+        Assert.IsFalse(DrawInteractionFrame(outside), "Stable non-hover should stay retained.");
     }
 
     [Test]

@@ -170,6 +170,8 @@ namespace NowUI
 
                 if (frame.copyPressed && state.hasSelection)
                     NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
+
+                NowControlState.RequestRepaint();
             }
 
             result.hasSelection = state.hasSelection;

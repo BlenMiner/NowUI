@@ -259,10 +259,11 @@ mid-interaction.
 
 Drop a `NowGraphic` subclass on a Canvas and draw controls inside
 `DrawNowUI` — input arrives through the RectTransform provider, and the
-graphic's **Auto Rebuild On Interaction** (on by default) re-renders while
-the pointer is over it or a control requests a repaint (focus ring, caret
-blink, animations), staying fully retained otherwise. `raycastTarget` blocks
-UGUI Selectables underneath, so NowUI controls layer correctly with UGUI.
+graphic's **Auto Rebuild On Interaction** (on by default) re-renders when
+pointer, button, scroll, or navigation input changes for the graphic, or when
+a control requests a repaint (caret blink, animations, layout settling),
+staying fully retained while idle. `raycastTarget` blocks UGUI Selectables
+underneath, so NowUI controls layer correctly with UGUI.
 
 The graphic is also a UGUI layout element: with **Drive Layout Size** (on by
 default) it reports the measured extent of its root `NowLayout` areas as its

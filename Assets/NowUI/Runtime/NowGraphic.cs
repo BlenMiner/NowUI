@@ -19,7 +19,7 @@ namespace NowUI
         [Header("NowUI")]
         [SerializeField] bool _rebuildEveryFrame;
 
-        [SerializeField, Tooltip("Rebuild automatically while the pointer is over this graphic or a control inside it requested a repaint (focus, animations, caret blink). Keeps NowControls live inside retained UGUI without Rebuild Every Frame.")]
+        [SerializeField, Tooltip("Rebuild automatically when pointer/button/scroll/navigation input changes for this graphic or a control inside it requested a repaint (animations, caret blink). Keeps NowControls live inside retained UGUI without Rebuild Every Frame.")]
         bool _autoRebuildOnInteraction = true;
 
         [SerializeField, Tooltip("Withhold pointer input when UGUI elements draw above this graphic, so they occlude NowUI controls the same way this graphic's Raycast Target occludes UGUI beneath it.")]
@@ -33,6 +33,10 @@ namespace NowUI
         [NonSerialized] bool _layoutSizeDirty;
 
         [NonSerialized] bool _wantsInteractionRepaint;
+
+        [NonSerialized] bool _hasLastInteractionInput;
+
+        [NonSerialized] InteractionInputState _lastInteractionInput;
 
         [NonSerialized] readonly List<CanvasRenderer> _extraCanvasRenderers = new List<CanvasRenderer>(2);
 
@@ -59,6 +63,96 @@ namespace NowUI
         Vector2 _clipSoftness;
 
         bool _validClipRect;
+
+        struct InteractionInputState
+        {
+            const float PositionEpsilonSqr = 0.25f;
+
+            public bool pointerInside;
+
+            public Vector2 pointerPosition;
+
+            public NowPointerButtons pointerButtonsDown;
+
+            public NowPointerButtons pointerButtonsPressed;
+
+            public NowPointerButtons pointerButtonsReleased;
+
+            public Vector2 scrollDelta;
+
+            public Vector2 navigation;
+
+            public bool submitDown;
+
+            public bool submitPressed;
+
+            public bool submitReleased;
+
+            public bool cancelDown;
+
+            public bool cancelPressed;
+
+            public bool cancelReleased;
+
+            public static InteractionInputState FromSnapshot(NowInputSnapshot snapshot, Vector2 size)
+            {
+                bool inside = snapshot.hasPointer &&
+                    snapshot.pointerPosition.x >= 0f &&
+                    snapshot.pointerPosition.y >= 0f &&
+                    snapshot.pointerPosition.x <= size.x &&
+                    snapshot.pointerPosition.y <= size.y;
+
+                return new InteractionInputState
+                {
+                    pointerInside = inside,
+                    pointerPosition = snapshot.pointerPosition,
+                    pointerButtonsDown = snapshot.pointerButtonsDown,
+                    pointerButtonsPressed = snapshot.pointerButtonsPressed,
+                    pointerButtonsReleased = snapshot.pointerButtonsReleased,
+                    scrollDelta = snapshot.scrollDelta,
+                    navigation = snapshot.navigation,
+                    submitDown = snapshot.submitDown,
+                    submitPressed = snapshot.submitPressed,
+                    submitReleased = snapshot.submitReleased,
+                    cancelDown = snapshot.cancelDown,
+                    cancelPressed = snapshot.cancelPressed,
+                    cancelReleased = snapshot.cancelReleased
+                };
+            }
+
+            public bool HasChangedSince(in InteractionInputState previous)
+            {
+                bool pointerRelevant =
+                    pointerInside ||
+                    previous.pointerInside ||
+                    pointerButtonsDown != NowPointerButtons.None ||
+                    previous.pointerButtonsDown != NowPointerButtons.None;
+
+                if (pointerInside != previous.pointerInside)
+                    return true;
+
+                if (pointerRelevant && (pointerPosition - previous.pointerPosition).sqrMagnitude > PositionEpsilonSqr)
+                    return true;
+
+                if (pointerButtonsDown != previous.pointerButtonsDown)
+                    return true;
+
+                if (pointerButtonsPressed != NowPointerButtons.None ||
+                    pointerButtonsReleased != NowPointerButtons.None)
+                    return true;
+
+                if (pointerRelevant && scrollDelta != Vector2.zero)
+                    return true;
+
+                if ((navigation - previous.navigation).sqrMagnitude > PositionEpsilonSqr)
+                    return true;
+
+                if (submitDown != previous.submitDown || cancelDown != previous.cancelDown)
+                    return true;
+
+                return submitPressed || submitReleased || cancelPressed || cancelReleased;
+            }
+        }
 
         public event Action<NowGraphic, NowRect> rebuildNowUI;
 
@@ -145,8 +239,12 @@ namespace NowUI
                 Now.BeginColorMultiplier(color);
                 colorMultiplierActive = true;
 
-                using (NowInput.Begin(GetInputProvider(), new NowInputSurface(new Vector2(rect.width, rect.height))))
+                var inputSurface = new NowInputSurface(new Vector2(rect.width, rect.height));
+
+                using (NowInput.Begin(GetInputProvider(), inputSurface))
                 {
+                    StoreLastInteractionInput(NowInput.current, inputSurface.size);
+
                     if (useLayoutMeasurePass)
                     {
                         using (NowProfiler.MeasurePass.Auto())
@@ -274,17 +372,18 @@ namespace NowUI
             }
 
             if (_rebuildEveryFrame ||
-                (_autoRebuildOnInteraction && (_wantsInteractionRepaint || IsPointerOverGraphic())))
+                (_autoRebuildOnInteraction && (_wantsInteractionRepaint || HasInteractionInputChanged())))
             {
                 SetVerticesDirty();
             }
         }
 
         /// <summary>
-        /// Cheap pointer-over test so hosted controls get their first hover rebuild
-        /// while the graphic is otherwise fully retained.
+        /// Cheap input watcher so hosted controls get a rebuild when pointer,
+        /// button, scroll or navigation input changes, while idle hover stays
+        /// retained.
         /// </summary>
-        bool IsPointerOverGraphic()
+        bool HasInteractionInputChanged()
         {
             var rect = rectTransform.rect;
 
@@ -292,25 +391,40 @@ namespace NowUI
                 return false;
 
             var provider = GetInputProvider();
+            var size = new Vector2(rect.width, rect.height);
+            var surface = new NowInputSurface(size);
 
-            if (!provider.TryGetSnapshot(new NowInputSurface(new Vector2(rect.width, rect.height)), out var snapshot) ||
-                !snapshot.hasPointer)
+            if (!provider.TryGetSnapshot(surface, out var snapshot))
+                snapshot = default;
+
+            var current = InteractionInputState.FromSnapshot(snapshot, size);
+
+            if (!_hasLastInteractionInput)
             {
+                _lastInteractionInput = current;
+                _hasLastInteractionInput = true;
                 return false;
             }
 
-            Vector2 position = snapshot.pointerPosition;
-            return position.x >= 0f && position.y >= 0f && position.x <= rect.width && position.y <= rect.height;
+            return current.HasChangedSince(_lastInteractionInput);
+        }
+
+        void StoreLastInteractionInput(NowInputSnapshot snapshot, Vector2 size)
+        {
+            _lastInteractionInput = InteractionInputState.FromSnapshot(snapshot, size);
+            _hasLastInteractionInput = true;
         }
 
         protected override void OnEnable()
         {
             base.OnEnable();
+            _hasLastInteractionInput = false;
             EnsureCanvasChannels();
         }
 
         protected override void OnDisable()
         {
+            _hasLastInteractionInput = false;
             ReleaseStencilMaterials();
             ClearCanvasRenderer(canvasRenderer);
             ClearExtraCanvasRenderers();

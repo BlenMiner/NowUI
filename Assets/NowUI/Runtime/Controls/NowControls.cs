@@ -55,6 +55,15 @@ namespace NowUI
 
         static readonly Dictionary<int, int> _passiveOccurrences = new Dictionary<int, int>(32);
 
+        struct InteractionRepaintState
+        {
+            public bool hovered;
+
+            public bool held;
+
+            public bool focused;
+        }
+
         /// <summary>
         /// Hashes a call site (file + line) into a control identity. The control
         /// factories capture their caller via [CallerFilePath]/[CallerLineNumber]
@@ -175,8 +184,21 @@ namespace NowUI
             focused = NowFocus.IsFocused(id);
             submitted = NowFocus.SubmitPressed(id);
 
-            if (interaction.hovered || interaction.held || focused)
-                NowControlState.RequestRepaint();
+            if (!NowInput.isPassive)
+            {
+                ref var repaint = ref NowControlState.Get<InteractionRepaintState>(NowInput.GetId(id, "interaction"));
+
+                if (repaint.hovered != interaction.hovered ||
+                    repaint.held != interaction.held ||
+                    repaint.focused != focused)
+                {
+                    NowControlState.RequestRepaint();
+                }
+
+                repaint.hovered = interaction.hovered;
+                repaint.held = interaction.held;
+                repaint.focused = focused;
+            }
 
             return interaction;
         }

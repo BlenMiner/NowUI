@@ -999,7 +999,9 @@ namespace NowUI
             if (textShaping && TryDrawShapedString(style, value))
                 return;
 
-            style.font.EnsureGlyphs(value, style.fontSize, style.fontStyle);
+            if (ShouldEnsureGlyphsBeforeCodepointDraw(style.font))
+                style.font.EnsureGlyphs(value, style.fontSize, style.fontStyle);
+
             DrawStringCodepoints(style, value.AsSpan());
         }
 
@@ -1024,6 +1026,17 @@ namespace NowUI
                 return;
 
             DrawStringCodepoints(style, value);
+        }
+
+        static bool ShouldEnsureGlyphsBeforeCodepointDraw(NowFontAsset fontAsset)
+        {
+            if (fontAsset is NowFont font && !font.HasEmbeddedSource)
+            {
+                var fallbacks = fontAsset.fallbacks;
+                return fallbacks != null && fallbacks.Count > 0;
+            }
+
+            return true;
         }
 
         static void DrawStringCodepoints(NowText style, ReadOnlySpan<char> value)
@@ -1178,6 +1191,10 @@ namespace NowUI
                 return false;
 
             var fontSize = style.fontSize;
+
+            if (!HasShapedControlCharacters(value))
+                return TryDrawSingleShapedLine(style, font, value, fontSize);
+
             bool hasTab = false;
 
             int segmentStart = 0;
@@ -1250,53 +1267,21 @@ namespace NowUI
                         : value.Substring(segmentStart, i - segmentStart);
                     font.TryGetShapedRun(segment, out var run);
 
-                    for (int g = 0; g < run.Length; ++g)
+                    if (!AppendShapedRun(
+                        ref style,
+                        font,
+                        run,
+                        fontSize,
+                        baseline,
+                        color,
+                        outlineColor,
+                        outline,
+                        ref mesh,
+                        ref pixelRangeFont,
+                        ref pixelRangeMaterial,
+                        ref pixelRange))
                     {
-                        var shaped = run[g];
-
-                        if (!font.TryGetShapedGlyph((int)shaped.glyphIndex, fontSize, out var glyph, out var glyphMaterial))
-                        {
-                            style.rect.x += shaped.xAdvance * fontSize;
-                            continue;
-                        }
-
-                        if (!Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right))
-                        {
-                            if (mesh == null || !ReferenceEquals(mesh.material, glyphMaterial))
-                            {
-                                int encoded = NowFont.EncodeGlyphIndexKey((int)shaped.glyphIndex);
-                                int materialId = font.GetMaterialId(encoded, fontSize);
-                                mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
-                                font.SetMaterialId(encoded, fontSize, materialId);
-
-                                if (mesh == null)
-                                    return true;
-                            }
-
-                            if (!ReferenceEquals(pixelRangeFont, font) ||
-                                !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
-                            {
-                                pixelRange = font.GetScreenPixelRange(glyph.unicode, fontSize);
-                                pixelRangeFont = font;
-                                pixelRangeMaterial = glyphMaterial;
-                            }
-
-                            mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
-
-                            mesh.AddTextGlyph(
-                                glyph,
-                                style.rect.x + shaped.xOffset * fontSize,
-                                style.rect.y - shaped.yOffset * fontSize,
-                                fontSize,
-                                baseline,
-                                style.mask,
-                                color,
-                                outlineColor,
-                                outline,
-                                pixelRange);
-                        }
-
-                        style.rect.x += shaped.xAdvance * fontSize;
+                        return true;
                     }
                 }
 
@@ -1311,6 +1296,116 @@ namespace NowUI
                 }
 
                 segmentStart = i + 1;
+            }
+
+            return true;
+        }
+
+        static bool HasShapedControlCharacters(string value)
+        {
+            for (int i = 0; i < value.Length; ++i)
+            {
+                char character = value[i];
+
+                if (character == '\n' || character == '\t')
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool TryDrawSingleShapedLine(NowText style, NowFont font, string value, float fontSize)
+        {
+            if (!font.TryGetShapedRun(value, out var run) || !font.EnsureShapedGlyphs(run, fontSize))
+                return false;
+
+            float baseline = style.font.GetAscender(style.fontStyle) * fontSize;
+            var color = ApplyColorMultiplier(style.color);
+            var outlineColor = ApplyColorMultiplier(style.outlineColor);
+            float outline = style.outline * fontSize;
+            NowMesh mesh = null;
+            NowFont pixelRangeFont = null;
+            Material pixelRangeMaterial = null;
+            float pixelRange = 0f;
+
+            AppendShapedRun(
+                ref style,
+                font,
+                run,
+                fontSize,
+                baseline,
+                color,
+                outlineColor,
+                outline,
+                ref mesh,
+                ref pixelRangeFont,
+                ref pixelRangeMaterial,
+                ref pixelRange);
+
+            return true;
+        }
+
+        static bool AppendShapedRun(
+            ref NowText style,
+            NowFont font,
+            NowTextShaper.ShapedGlyph[] run,
+            float fontSize,
+            float baseline,
+            Vector4 color,
+            Vector4 outlineColor,
+            float outline,
+            ref NowMesh mesh,
+            ref NowFont pixelRangeFont,
+            ref Material pixelRangeMaterial,
+            ref float pixelRange)
+        {
+            for (int g = 0; g < run.Length; ++g)
+            {
+                var shaped = run[g];
+
+                if (!font.TryGetShapedGlyph((int)shaped.glyphIndex, fontSize, out var glyph, out var glyphMaterial))
+                {
+                    style.rect.x += shaped.xAdvance * fontSize;
+                    continue;
+                }
+
+                if (!Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right))
+                {
+                    if (mesh == null || !ReferenceEquals(mesh.material, glyphMaterial))
+                    {
+                        int encoded = NowFont.EncodeGlyphIndexKey((int)shaped.glyphIndex);
+                        int materialId = font.GetMaterialId(encoded, fontSize);
+                        mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
+                        font.SetMaterialId(encoded, fontSize, materialId);
+
+                        if (mesh == null)
+                            return false;
+                    }
+
+                    if (!ReferenceEquals(pixelRangeFont, font) ||
+                        !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
+                    {
+                        pixelRange = font.GetScreenPixelRange(glyph.unicode, fontSize);
+                        pixelRangeFont = font;
+                        pixelRangeMaterial = glyphMaterial;
+                    }
+
+                    mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
+
+                    mesh.AddTextGlyph(
+                        glyph,
+                        style.rect.x + shaped.xOffset * fontSize,
+                        style.rect.y - shaped.yOffset * fontSize,
+                        fontSize,
+                        baseline,
+                        style.mask,
+                        color,
+                        outlineColor,
+                        outline,
+                        pixelRange);
+                }
+
+                style.rect.x += shaped.xAdvance * fontSize;
             }
 
             return true;

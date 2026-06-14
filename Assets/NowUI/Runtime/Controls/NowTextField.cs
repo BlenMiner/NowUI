@@ -262,6 +262,9 @@ namespace NowUI
                 }
             }
 
+            if (focused && !NowInput.isPassive)
+                NowControlState.RequestRepaint();
+
             return text != original;
         }
 
