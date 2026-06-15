@@ -84,7 +84,7 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
 ## Features
 
 - **Rectangles** — rounded corners (per-corner radii), outlines, blur,
-  padding, masks. [Docs/Features.md](Docs/Features.md)
+  padding, masks, textures, sprites, and custom materials. [Docs/Features.md](Docs/Features.md)
 - **Lines** — anti-aliased straight lines, cubic Beziers, dashed strokes,
   rounded caps, masks, and arrow heads. [Docs/Lines.md](Docs/Lines.md)
 - **Shapes** — filled or outlined circles, ellipses, triangles, and reusable

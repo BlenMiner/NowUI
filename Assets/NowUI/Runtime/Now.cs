@@ -1,6 +1,7 @@
 using NowUI.Internal;
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -204,13 +205,18 @@ namespace NowUI
 
         static int CreateMesh(Material mat, NowMeshKind kind)
         {
+            return CreateMesh(mat, null, kind);
+        }
+
+        static int CreateMesh(Material mat, Material canvasMaterial, NowMeshKind kind)
+        {
             _meshes.EnsureCapacity(1);
             int id = _meshes.count;
 
             if (_meshes.array[id] == null)
-                _meshes.array[id] = new NowMesh(mat, kind);
+                _meshes.array[id] = new NowMesh(mat, canvasMaterial, kind);
             else
-                _meshes.array[id].SetMaterial(mat, kind);
+                _meshes.array[id].SetMaterial(mat, canvasMaterial, kind);
 
             _meshes.count = id + 1;
             return id;
@@ -234,7 +240,7 @@ namespace NowUI
             if (mesh.vertexCount + incomingVertices <= MAX_VERTICES_PER_MESH)
                 return mesh;
 
-            int id = CreateMesh(material, kind);
+            int id = CreateMesh(material, mesh.canvasMaterial, kind);
             _lastUsedMeshId = id;
             return _meshes.array[id];
         }
@@ -255,6 +261,92 @@ namespace NowUI
 
         static readonly Dictionary<Material, MaterialMeshEntry> _materialMeshes =
             new Dictionary<Material, MaterialMeshEntry>();
+
+        readonly struct RectangleMaterialKey : IEquatable<RectangleMaterialKey>
+        {
+            readonly Material _material;
+
+            readonly Material _canvasMaterial;
+
+            readonly NowMeshKind _kind;
+
+            public RectangleMaterialKey(Material material, Material canvasMaterial, NowMeshKind kind)
+            {
+                _material = material;
+                _canvasMaterial = canvasMaterial;
+                _kind = kind;
+            }
+
+            public bool Equals(RectangleMaterialKey other)
+            {
+                return ReferenceEquals(_material, other._material) &&
+                    ReferenceEquals(_canvasMaterial, other._canvasMaterial) &&
+                    _kind == other._kind;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is RectangleMaterialKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 31 + (_material != null ? RuntimeHelpers.GetHashCode(_material) : 0);
+                    hash = hash * 31 + (_canvasMaterial != null ? RuntimeHelpers.GetHashCode(_canvasMaterial) : 0);
+                    hash = hash * 31 + (int)_kind;
+                    return hash;
+                }
+            }
+        }
+
+        readonly struct TexturedMaterialKey : IEquatable<TexturedMaterialKey>
+        {
+            readonly Material _material;
+
+            readonly Texture _texture;
+
+            public TexturedMaterialKey(Material material, Texture texture)
+            {
+                _material = material;
+                _texture = texture;
+            }
+
+            public bool Equals(TexturedMaterialKey other)
+            {
+                return ReferenceEquals(_material, other._material) &&
+                    ReferenceEquals(_texture, other._texture);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is TexturedMaterialKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 31 + (_material != null ? RuntimeHelpers.GetHashCode(_material) : 0);
+                    hash = hash * 31 + (_texture != null ? RuntimeHelpers.GetHashCode(_texture) : 0);
+                    return hash;
+                }
+            }
+        }
+
+        sealed class TexturedMaterialEntry
+        {
+            public Material material;
+        }
+
+        static readonly Dictionary<RectangleMaterialKey, MaterialMeshEntry> _rectangleMaterialMeshes =
+            new Dictionary<RectangleMaterialKey, MaterialMeshEntry>();
+
+        static readonly Dictionary<TexturedMaterialKey, TexturedMaterialEntry> _texturedMaterialCache =
+            new Dictionary<TexturedMaterialKey, TexturedMaterialEntry>();
 
         static NowMesh UseTextureMaterial(Texture texture)
         {
@@ -294,6 +386,11 @@ namespace NowUI
 
         static NowMesh UseMaterial(Material material, ref int cachedMeshId, NowMeshKind kind)
         {
+            return UseMaterial(material, null, ref cachedMeshId, kind);
+        }
+
+        static NowMesh UseMaterial(Material material, Material canvasMaterial, ref int cachedMeshId, NowMeshKind kind)
+        {
             if (material == null)
                 return null;
 
@@ -302,12 +399,13 @@ namespace NowUI
                 if (_lastUsedMeshId >= 0 &&
                     _lastUsedMeshId < _meshes.count &&
                     ReferenceEquals(_meshes.array[_lastUsedMeshId].material, material) &&
+                    ReferenceEquals(_meshes.array[_lastUsedMeshId].canvasMaterial, canvasMaterial) &&
                     _meshes.array[_lastUsedMeshId].kind == kind)
                 {
                     return _meshes.array[_lastUsedMeshId];
                 }
 
-                int captureId = CreateMesh(material, kind);
+                int captureId = CreateMesh(material, canvasMaterial, kind);
                 _lastUsedMeshId = captureId;
                 return _meshes.array[captureId];
             }
@@ -317,6 +415,7 @@ namespace NowUI
             if (id >= 0 &&
                 id < _meshes.count &&
                 ReferenceEquals(_meshes.array[id].material, material) &&
+                ReferenceEquals(_meshes.array[id].canvasMaterial, canvasMaterial) &&
                 _meshes.array[id].kind == kind)
             {
                 if (!UseMesh(id))
@@ -325,7 +424,7 @@ namespace NowUI
                 return _meshes.array[id];
             }
 
-            id = CreateMesh(material, kind);
+            id = CreateMesh(material, canvasMaterial, kind);
             cachedMeshId = id;
 
             if (!UseMesh(id))
@@ -337,6 +436,71 @@ namespace NowUI
         internal static NowMesh UseEffectMaterial(Material material, ref int cachedMeshId, NowMeshKind kind)
         {
             return UseMaterial(material, ref cachedMeshId, kind);
+        }
+
+        static NowMesh UseRectangleMaterial(Material material, Material canvasMaterial, NowMeshKind kind)
+        {
+            if (material == null)
+                return null;
+
+            var key = new RectangleMaterialKey(material, canvasMaterial, kind);
+
+            if (!_rectangleMaterialMeshes.TryGetValue(key, out var entry))
+            {
+                entry = new MaterialMeshEntry();
+                _rectangleMaterialMeshes[key] = entry;
+            }
+
+            return UseMaterial(material, canvasMaterial, ref entry.meshId, kind);
+        }
+
+        static Material GetTexturedMaterial(Material source, Texture texture)
+        {
+            if (source == null)
+                return null;
+
+            if (texture == null)
+                return source;
+
+            var key = new TexturedMaterialKey(source, texture);
+
+            if (!_texturedMaterialCache.TryGetValue(key, out var entry))
+            {
+                entry = new TexturedMaterialEntry();
+                _texturedMaterialCache[key] = entry;
+            }
+
+            if (entry.material == null || entry.material.shader != source.shader)
+            {
+                entry.material = new Material(source)
+                {
+                    name = source.name + " Textured",
+                    hideFlags = HideFlags.HideAndDontSave
+                };
+            }
+            else
+            {
+                entry.material.CopyPropertiesFromMaterial(source);
+            }
+
+            entry.material.mainTexture = texture;
+            return entry.material;
+        }
+
+        static NowMesh UseCustomRectangleMaterial(NowRectangle rectangle)
+        {
+            Material material = rectangle.material;
+            Material canvasMaterial = rectangle.canvasMaterial;
+
+            if (material == null)
+                material = rectangle.texture != null ? GetTexturedMaterial(_defaultMaterial, rectangle.texture) : _defaultMaterial;
+            else if (rectangle.texture != null)
+                material = GetTexturedMaterial(material, rectangle.texture);
+
+            if (canvasMaterial != null && rectangle.texture != null)
+                canvasMaterial = GetTexturedMaterial(canvasMaterial, rectangle.texture);
+
+            return UseRectangleMaterial(material, canvasMaterial, NowMeshKind.CustomRectangle);
         }
 
         static Matrix4x4 GetProjectionMatrix()
@@ -736,7 +900,7 @@ namespace NowUI
                     break;
 
                 _capturedMeshIndices.Add(i);
-                batches.Add(new NowMeshBatch(mesh.material, mesh.kind));
+                batches.Add(new NowMeshBatch(mesh.material, mesh.canvasMaterial, mesh.kind));
 
                 if (layout == NowMeshLayout.Canvas)
                 {
@@ -909,7 +1073,23 @@ namespace NowUI
 
             NowMesh mesh;
 
-            if (rectangle.texture != null)
+            if (rectangle.material != null || rectangle.canvasMaterial != null)
+            {
+                mesh = UseCustomRectangleMaterial(rectangle);
+
+                if (mesh == null)
+                    return;
+
+                int quads = rectangle.sliced ? 9 : 1;
+                mesh = EnsureMeshCapacity(mesh, mesh.material, NowMeshKind.CustomRectangle, quads * 4);
+
+                if (rectangle.sliced)
+                {
+                    DrawSliced(rectangle, mesh, x0, y0, rectWidth, rectHeight);
+                    return;
+                }
+            }
+            else if (rectangle.texture != null)
             {
                 mesh = UseTextureMaterial(rectangle.texture);
 

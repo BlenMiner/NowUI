@@ -39,6 +39,12 @@ namespace NowUI
         /// <summary>Letterbox the texture inside the rect instead of stretching.</summary>
         public bool preserveAspect;
 
+        /// <summary>Optional material used by non-UGUI renderers instead of the built-in rectangle material.</summary>
+        public Material material;
+
+        /// <summary>Optional UGUI-specific material used by <see cref="NowGraphic"/>.</summary>
+        public Material canvasMaterial;
+
         public NowRectangle(NowRect rect)
         {
             mask = rect;
@@ -55,6 +61,8 @@ namespace NowUI
             spritePixelSize = default;
             sliced = false;
             preserveAspect = false;
+            material = null;
+            canvasMaterial = null;
         }
 
         public NowRectangle SetBlur(float blur)
@@ -185,6 +193,39 @@ namespace NowUI
         public NowRectangle SetPreserveAspect(bool preserve = true)
         {
             preserveAspect = preserve;
+            return this;
+        }
+
+        /// <summary>
+        /// Uses a caller-provided material for this rectangle. The material shader
+        /// receives the same quad geometry and vertex streams as NowUI's built-in
+        /// rectangle shader; if a texture is also set, NowUI draws with a cached
+        /// material instance whose main texture is assigned to that texture.
+        /// </summary>
+        public NowRectangle SetMaterial(Material material)
+        {
+            this.material = material;
+            return this;
+        }
+
+        /// <summary>
+        /// Uses one material for normal render paths and a separate UGUI-compatible
+        /// material when the rectangle is drawn inside <see cref="NowGraphic"/>.
+        /// </summary>
+        public NowRectangle SetMaterial(Material material, Material canvasMaterial)
+        {
+            this.material = material;
+            this.canvasMaterial = canvasMaterial;
+            return this;
+        }
+
+        /// <summary>
+        /// Overrides only the UGUI material. Non-UGUI hosts keep using the normal
+        /// built-in or custom rectangle material.
+        /// </summary>
+        public NowRectangle SetCanvasMaterial(Material canvasMaterial)
+        {
+            this.canvasMaterial = canvasMaterial;
             return this;
         }
 

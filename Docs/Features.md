@@ -135,8 +135,33 @@ Now.Rectangle(new Vector4(24, 24, 180, 48))
     .Draw();
 ```
 
-The rectangle API currently covers fill color, radius, padding, outline,
-outline color, blur, mask, and position.
+The rectangle API covers fill color, radius, padding, outline, outline color,
+blur, mask, position, textures, sprites, and custom materials.
+
+Custom rectangle materials draw the same quad geometry as the built-in
+rectangle shader:
+
+```csharp
+Now.Rectangle(new NowRect(24, 96, 180, 72))
+    .SetTexture(frostTexture)
+    .SetMaterial(frostMaterial)
+    .Draw();
+```
+
+If the shader used inside UGUI needs different stencil, clipping, or vertex
+layout support, pass a UGUI variant as the second material:
+
+```csharp
+Now.Rectangle(panel)
+    .SetMaterial(frostMaterial, frostUGUIMaterial)
+    .Draw();
+```
+
+`SetCanvasMaterial(...)` can override only the UGUI material while non-UGUI
+hosts keep the normal rectangle material. A custom material receives NowUI's
+rectangle vertex streams; for UGUI it should include Unity UI stencil and clip
+properties if it needs to work under `Mask`, `RectMask2D`, or material
+modifiers.
 
 ## Lines
 

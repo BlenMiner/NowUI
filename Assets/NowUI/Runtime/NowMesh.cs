@@ -7,6 +7,7 @@ namespace NowUI.Internal
         Rectangle,
         Text,
         TexturedRectangle,
+        CustomRectangle,
         Sdf
     }
 
@@ -14,11 +15,19 @@ namespace NowUI.Internal
     {
         public readonly Material material;
 
+        public readonly Material canvasMaterial;
+
         public readonly NowMeshKind kind;
 
         public NowMeshBatch(Material material, NowMeshKind kind)
+            : this(material, null, kind)
+        {
+        }
+
+        public NowMeshBatch(Material material, Material canvasMaterial, NowMeshKind kind)
         {
             this.material = material;
+            this.canvasMaterial = canvasMaterial;
             this.kind = kind;
         }
     }
@@ -147,11 +156,19 @@ namespace NowUI.Internal
 
         public Material material;
 
+        public Material canvasMaterial;
+
         public NowMeshKind kind;
 
         public NowMesh(Material mat, NowMeshKind kind)
+            : this(mat, null, kind)
+        {
+        }
+
+        public NowMesh(Material mat, Material canvasMaterial, NowMeshKind kind)
         {
             material = mat;
+            this.canvasMaterial = canvasMaterial;
             this.kind = kind;
 
             _radius = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
@@ -168,7 +185,13 @@ namespace NowUI.Internal
 
         public void SetMaterial(Material material, NowMeshKind kind)
         {
+            SetMaterial(material, null, kind);
+        }
+
+        public void SetMaterial(Material material, Material canvasMaterial, NowMeshKind kind)
+        {
             this.material = material;
+            this.canvasMaterial = canvasMaterial;
             this.kind = kind;
             ClearVertices();
         }

@@ -611,6 +611,39 @@ public class NowRendererTests
         AssertUguiMaskProperties(Resources.Load<Material>("NowUI/TxtMaterialRGBAUGUI"));
     }
 
+    [Test]
+    public void GraphicUsesCustomCanvasRectangleMaterial()
+    {
+        var baseMaterial = Resources.Load<Material>("NowUI/UIMaterial");
+        var baseCanvasMaterial = Resources.Load<Material>("NowUI/UIMaterialUGUI");
+        Assert.NotNull(baseMaterial);
+        Assert.NotNull(baseCanvasMaterial);
+
+        var material = new Material(baseMaterial);
+        var canvasMaterial = new Material(baseCanvasMaterial);
+        var graphicObject = new GameObject("Now Test Custom Material Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+
+        try
+        {
+            var rectTransform = graphicObject.GetComponent<RectTransform>();
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 64f);
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 32f);
+
+            var graphic = graphicObject.AddComponent<CustomMaterialGraphic>();
+            graphic.materialOverride = material;
+            graphic.canvasMaterialOverride = canvasMaterial;
+            graphic.Rebuild(CanvasUpdate.PreRender);
+
+            Assert.AreSame(canvasMaterial, graphic.canvasRenderer.GetMaterial(0));
+        }
+        finally
+        {
+            Object.DestroyImmediate(graphicObject);
+            Object.DestroyImmediate(canvasMaterial);
+            Object.DestroyImmediate(material);
+        }
+    }
+
     static void AssertUguiMaskProperties(Material material)
     {
         Assert.NotNull(material);
@@ -640,6 +673,22 @@ public class NowRendererTests
         {
             Now.Rectangle(new Vector4(2, 2, 12, 8))
                 .SetColor(Color.white)
+                .Draw();
+        }
+    }
+
+    sealed class CustomMaterialGraphic : NowGraphic
+    {
+        public Material materialOverride;
+
+        public Material canvasMaterialOverride;
+
+        protected override bool useLayoutMeasurePass => false;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            Now.Rectangle(new Vector4(2, 2, 12, 8))
+                .SetMaterial(materialOverride, canvasMaterialOverride)
                 .Draw();
         }
     }

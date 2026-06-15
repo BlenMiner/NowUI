@@ -741,6 +741,9 @@ namespace NowUI
 
         Material GetCanvasMaterial(NowMeshBatch batch)
         {
+            if (batch.kind == NowMeshKind.CustomRectangle)
+                return batch.canvasMaterial != null ? batch.canvasMaterial : batch.material;
+
             if (batch.kind == NowMeshKind.Rectangle)
             {
                 if (_rectangleMaterial == null)
