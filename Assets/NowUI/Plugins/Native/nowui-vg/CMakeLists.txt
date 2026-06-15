@@ -19,9 +19,26 @@ add_library(nowui-vg ${NOWUI_VG_LIBRARY_TYPE}
 target_compile_features(nowui-vg PRIVATE cxx_std_17)
 
 if(MSVC)
-    target_compile_options(nowui-vg PRIVATE /W4 /permissive- /O2)
+    target_compile_options(nowui-vg PRIVATE /W4 /permissive- /O2 $<$<CONFIG:Release>:/Gy>)
+    if(NOWUI_VG_LIBRARY_TYPE STREQUAL "SHARED")
+        target_link_options(nowui-vg PRIVATE $<$<CONFIG:Release>:/OPT:REF> $<$<CONFIG:Release>:/OPT:ICF>)
+    endif()
 else()
-    target_compile_options(nowui-vg PRIVATE -Wall -Wextra -Wpedantic -O2)
+    target_compile_options(nowui-vg PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -O2
+        $<$<CONFIG:Release>:-ffunction-sections>
+        $<$<CONFIG:Release>:-fdata-sections>
+    )
+    if(NOWUI_VG_LIBRARY_TYPE STREQUAL "SHARED")
+        if(APPLE)
+            target_link_options(nowui-vg PRIVATE $<$<CONFIG:Release>:-Wl,-dead_strip>)
+        elseif(NOT EMSCRIPTEN)
+            target_link_options(nowui-vg PRIVATE $<$<CONFIG:Release>:-Wl,--gc-sections>)
+        endif()
+    endif()
 endif()
 
 set_target_properties(nowui-vg PROPERTIES

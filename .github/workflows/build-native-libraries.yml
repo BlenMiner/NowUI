@@ -209,6 +209,25 @@ jobs:
             Copy-Item -Path "$env:NOWUI_VG_INSTALL_DIR/lib/libnowui-vg*" -Destination "$env:PLUGIN_DIR" -Force
           }
 
+          if ($env:RUNNER_OS -eq "Linux") {
+            Get-ChildItem -Path "$env:PLUGIN_DIR" -File | Where-Object { $_.Name -match '\.so(\.|$)' } | ForEach-Object {
+              strip --strip-unneeded $_.FullName
+            }
+          } elseif ($env:RUNNER_OS -eq "macOS") {
+            Get-ChildItem -Path "$env:PLUGIN_DIR" -File -Filter "*.dylib" | ForEach-Object {
+              strip -S -x $_.FullName
+            }
+          }
+
+          $maxBytes = 8MB
+          Get-ChildItem "$env:PLUGIN_DIR" -File | ForEach-Object {
+            $sizeMiB = [math]::Round($_.Length / 1MB, 2)
+            Write-Host "$($_.Name): $sizeMiB MiB"
+            if ($_.Length -gt $maxBytes) {
+              throw "Native artifact is unexpectedly large: $($_.FullName) ($sizeMiB MiB)"
+            }
+          }
+
           Get-ChildItem "$env:PLUGIN_DIR"
 
       - name: Upload artifact
@@ -339,7 +358,7 @@ jobs:
             exit 1
           fi
 
-          emcc -r -Wl,--whole-archive "${archives[@]}" -Wl,--no-whole-archive -o "$PLUGIN_DIR/nowui-msdf.bc"
+          emcc -r -O3 -g0 -Wl,--whole-archive "${archives[@]}" -Wl,--no-whole-archive -o "$PLUGIN_DIR/nowui-msdf.bc"
 
           vg_archive=$(find "$NOWUI_VG_BUILD_DIR" -maxdepth 2 -type f -name 'libnowui-vg.a' | head -n 1)
 
@@ -348,12 +367,18 @@ jobs:
             exit 1
           fi
 
-          emcc -r -Wl,--whole-archive "$vg_archive" -Wl,--no-whole-archive -o "$PLUGIN_DIR/nowui-vg.bc"
+          emcc -r -O3 -g0 -Wl,--whole-archive "$vg_archive" -Wl,--no-whole-archive -o "$PLUGIN_DIR/nowui-vg.bc"
 
+          max_bytes=$((8 * 1024 * 1024))
           for merged in "$PLUGIN_DIR/nowui-msdf.bc" "$PLUGIN_DIR/nowui-vg.bc"; do
             byte_count=$(wc -c < "$merged")
+            echo "$(basename "$merged"): $byte_count bytes"
             if [ "$byte_count" -lt 1024 ]; then
               echo "Merged WebGL library is unexpectedly small: $merged ($byte_count bytes)"
+              exit 1
+            fi
+            if [ "$byte_count" -gt "$max_bytes" ]; then
+              echo "Merged WebGL library is unexpectedly large: $merged ($byte_count bytes)"
               exit 1
             fi
           done
@@ -477,6 +502,18 @@ jobs:
           cp "$NOWUI_MSDF_INSTALL_DIR/lib/libnowui-msdf.so" "$PLUGIN_DIR/"
           cp "$NOWUI_VG_INSTALL_DIR/lib/libnowui-vg.so" "$PLUGIN_DIR/"
 
+          strip_tool="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          if [ ! -x "$strip_tool" ]; then
+            strip_tool="$(find "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" -path '*/bin/llvm-strip' -type f | head -n 1)"
+          fi
+
+          if [ -z "$strip_tool" ] || [ ! -x "$strip_tool" ]; then
+            echo "Unable to find Android llvm-strip."
+            exit 1
+          fi
+
+          "$strip_tool" --strip-unneeded "$PLUGIN_DIR/libnowui-msdf.so" "$PLUGIN_DIR/libnowui-vg.so"
+
           write_meta() {
             cat > "$1" <<EOF
           fileFormatVersion: 2
@@ -527,6 +564,16 @@ jobs:
           write_folder_meta "$plugins_root/Android/arm64-v8a.meta" "b2c3d4e5f60718293a4b5c6d7e8f0112"
           write_meta "$PLUGIN_DIR/libnowui-msdf.so.meta" "c3d4e5f60718293a4b5c6d7e8f011223"
           write_meta "$PLUGIN_DIR/libnowui-vg.so.meta" "d4e5f60718293a4b5c6d7e8f01122334"
+
+          max_bytes=$((8 * 1024 * 1024))
+          for artifact in "$PLUGIN_DIR"/*.so; do
+            byte_count=$(wc -c < "$artifact")
+            echo "$(basename "$artifact"): $byte_count bytes"
+            if [ "$byte_count" -gt "$max_bytes" ]; then
+              echo "Android native artifact is unexpectedly large: $artifact ($byte_count bytes)"
+              exit 1
+            fi
+          done
 
           ls -la "$PLUGIN_DIR"
 
@@ -662,10 +709,18 @@ jobs:
           libtool -static -o "$PLUGIN_DIR/libnowui-msdf.a" "${archives[@]}"
           cp "$NOWUI_VG_INSTALL_DIR/lib/libnowui-vg.a" "$PLUGIN_DIR/"
 
+          strip -S "$PLUGIN_DIR/libnowui-msdf.a" "$PLUGIN_DIR/libnowui-vg.a"
+
+          max_bytes=$((8 * 1024 * 1024))
           for merged in "$PLUGIN_DIR/libnowui-msdf.a" "$PLUGIN_DIR/libnowui-vg.a"; do
             byte_count=$(wc -c < "$merged")
+            echo "$(basename "$merged"): $byte_count bytes"
             if [ "$byte_count" -lt 1024 ]; then
               echo "iOS static library is unexpectedly small: $merged ($byte_count bytes)"
+              exit 1
+            fi
+            if [ "$byte_count" -gt "$max_bytes" ]; then
+              echo "iOS static library is unexpectedly large: $merged ($byte_count bytes)"
               exit 1
             fi
           done

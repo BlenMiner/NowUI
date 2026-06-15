@@ -5,6 +5,8 @@ NowUI supports three non-retained output paths.
 - Built-in Render Pipeline: call `Now.StartUI()` and `Now.FlushUI()` from
   camera callbacks such as `OnPostRender`.
 - UGUI: derive from `NowGraphic` and render into `CanvasRenderer`.
+- UI Toolkit: place `NowVisualElement` in UXML/UI Builder and render into a
+  cached `RenderTexture` drawn by the element.
 - SRP: derive from `NowPipelineGraphic` and use the URP or HDRP wrapper.
 
 For nameplates, hover tooltips, and diegetic panels that should exist as scene
@@ -50,6 +52,88 @@ Use the component fields to choose which cameras it draws into.
   camera.
 
 The included `NowPipelineOverlayExample` demonstrates this component.
+
+## UI Toolkit
+
+`NowVisualElement` is a UI Toolkit `VisualElement` exposed to UXML and UI
+Builder. It keeps UI Toolkit responsible for retained layout, focus, clipping
+and authoring, while NowUI owns the drawing inside the element's content rect.
+The bridge renders into a cached `RenderTexture`, so rectangles, MSDF text,
+effects, Lottie and custom materials behave the same as the other NowUI hosts.
+
+Use it directly from code:
+
+```csharp
+using NowUI;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+public sealed class MyDocument : MonoBehaviour
+{
+    [SerializeField] UIDocument document;
+
+    void OnEnable()
+    {
+        var now = document.rootVisualElement.Q<NowVisualElement>("preview");
+
+        now.rebuildNowUI += (element, rect) =>
+        {
+            Now.Rectangle(rect)
+                .SetColor(new Color(0.08f, 0.1f, 0.14f, 1f))
+                .SetRadius(10f)
+                .Draw();
+
+            Now.Text(new NowRect(16, 14, rect.width - 32, 28))
+                .SetFontSize(18f)
+                .SetColor(Color.white)
+                .Draw("NowUI in UI Toolkit");
+        };
+    }
+}
+```
+
+Or place it in UXML/UI Builder and bind drawing from a controller:
+
+```xml
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:now="NowUI">
+    <now:NowVisualElement name="preview"
+                          rebuild-every-frame="false"
+                          auto-rebuild-on-interaction="true" />
+</ui:UXML>
+```
+
+For reusable UI Builder controls, derive a concrete element and override
+`DrawNowUI`:
+
+```csharp
+using NowUI;
+using UnityEngine;
+
+[UxmlElement]
+public partial class NowStatusBadge : NowVisualElement
+{
+    [UxmlAttribute] public string label { get; set; } = "Ready";
+
+    protected override void DrawNowUI(NowRect rect)
+    {
+        Now.Rectangle(rect)
+            .SetColor(new Color(0.12f, 0.55f, 0.32f, 1f))
+            .SetRadius(rect.height * 0.5f)
+            .Draw();
+
+        Now.Text(new NowRect(12f, 4f, rect.width - 24f, rect.height - 8f))
+            .SetFontSize(14f)
+            .SetColor(Color.white)
+            .Draw(label);
+    }
+}
+```
+
+The generic `NowVisualElement` can be authored in UXML, but UXML does not
+contain immediate NowUI draw commands. Put draw code in a callback or subclass.
+Call `MarkDirty()` when retained data changes. Enable `Rebuild Every Frame`
+only for continuously animated content; controls request repaint automatically
+while hover, press, caret blink, scrolling or other transient state is active.
 
 ## URP
 

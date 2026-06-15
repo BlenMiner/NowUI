@@ -9,7 +9,8 @@
   "dependencies": {
     "com.unity.collections": "6.4.0",
     "com.unity.inputsystem": "1.19.0",
-    "com.unity.ugui": "2.0.0"
+    "com.unity.ugui": "2.0.0",
+    "com.unity.modules.uielements": "1.0.0"
   },
   "keywords": [
     "ui",

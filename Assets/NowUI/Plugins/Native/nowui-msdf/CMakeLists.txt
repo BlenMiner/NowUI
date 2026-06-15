@@ -51,9 +51,25 @@ if(NOWUI_MSDF_DISABLE_FILE_API)
 endif()
 
 if(MSVC)
-    target_compile_options(nowui-msdf PRIVATE /W4 /permissive-)
+    target_compile_options(nowui-msdf PRIVATE /W4 /permissive- $<$<CONFIG:Release>:/Gy>)
+    if(NOWUI_MSDF_LIBRARY_TYPE STREQUAL "SHARED")
+        target_link_options(nowui-msdf PRIVATE $<$<CONFIG:Release>:/OPT:REF> $<$<CONFIG:Release>:/OPT:ICF>)
+    endif()
 else()
-    target_compile_options(nowui-msdf PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(nowui-msdf PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        $<$<CONFIG:Release>:-ffunction-sections>
+        $<$<CONFIG:Release>:-fdata-sections>
+    )
+    if(NOWUI_MSDF_LIBRARY_TYPE STREQUAL "SHARED")
+        if(APPLE)
+            target_link_options(nowui-msdf PRIVATE $<$<CONFIG:Release>:-Wl,-dead_strip>)
+        elseif(NOT EMSCRIPTEN)
+            target_link_options(nowui-msdf PRIVATE $<$<CONFIG:Release>:-Wl,--gc-sections>)
+        endif()
+    endif()
 endif()
 
 set_target_properties(nowui-msdf PROPERTIES

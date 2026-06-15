@@ -7,8 +7,8 @@ compilation, a flexbox-style layout system, pointer/touch/gamepad interaction,
 themes, and Lottie vector animation.
 
 It renders through the built-in pipeline (`GL`/`Graphics.DrawMeshNow`), URP,
-HDRP, a UGUI `CanvasRenderer`, a world-space `MeshRenderer`, a
-`RenderTexture`, or IMGUI — same drawing code everywhere.
+HDRP, a UGUI `CanvasRenderer`, UI Toolkit/UXML, a world-space `MeshRenderer`,
+a `RenderTexture`, or IMGUI — same drawing code everywhere.
 
 ## Installation
 
@@ -166,7 +166,8 @@ changes its bundled toolchain.
 
 - `Assets/NowUI` — the UPM package (runtime, editor, tests, examples, native
   plugin sources and binaries)
-- `Assets/NowUI/Runtime` — drawing API, layout, input, text, Lottie, themes
+- `Assets/NowUI/Runtime` — drawing API, layout, input, text, Lottie, themes,
+  and host integrations including UGUI, UI Toolkit, IMGUI, and world space
 - `Assets/NowUI/Editor` — font compiler menu, `.lottie` importer
 - `Assets/NowUI/Plugins/Native` — native wrapper sources built by CI
 - `Assets/NowUI/Example` — sample scripts, including `MailClientMockup`, a
