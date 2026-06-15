@@ -112,6 +112,12 @@ namespace NowUI
             return this;
         }
 
+        public NowRectangle SetColor(Color color, float alpha)
+        {
+            this.color = new Color(color.r, color.g, color.b, alpha);
+            return this;
+        }
+
         public NowRectangle SetColor(Vector4 color)
         {
             this.color = color;

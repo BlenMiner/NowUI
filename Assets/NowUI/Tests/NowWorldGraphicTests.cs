@@ -46,6 +46,29 @@ public class NowWorldGraphicTests
         }
     }
 
+    sealed class LayoutWorldGraphic : NowWorldGraphic
+    {
+        public bool stretchItems;
+        public int itemCount = 2;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            using (NowLayout.Area(new NowRect(0, 0, rect.width, rect.height)))
+            {
+                if (stretchItems)
+                {
+                    for (int i = 0; i < itemCount; ++i)
+                        NowLayout.Rect(NowLayout.StretchWidth().SetHeight(24f));
+
+                    return;
+                }
+
+                NowLayout.Rect(80f, 30f);
+                NowLayout.Rect(120f, 40f);
+            }
+        }
+    }
+
     sealed class FakeProvider : INowInputProvider
     {
         public NowInputSnapshot snapshot;
@@ -87,6 +110,7 @@ public class NowWorldGraphicTests
         NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
+        NowLayout.Reset();
     }
 
     [Test]
@@ -140,6 +164,52 @@ public class NowWorldGraphicTests
             Assert.AreEqual(2, graphic.batchCount);
             Assert.AreEqual(2, mesh.subMeshCount);
             Assert.AreEqual(2, renderer.sharedMaterials.Length);
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void WorldGraphicCanAutoSizeToLayoutContent()
+    {
+        var go = new GameObject("Now World Auto Size");
+
+        try
+        {
+            var graphic = go.AddComponent<LayoutWorldGraphic>();
+            graphic.size = new Vector2(300f, 200f);
+            graphic.layoutAutoSizeAxes = NowWorldAutoSizeAxes.Both;
+
+            graphic.RebuildNowUI();
+
+            Assert.AreEqual(120f, graphic.size.x, 0.001f);
+            Assert.AreEqual(70f, graphic.size.y, 0.001f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void WorldGraphicCanAutoSizeLayoutHeightFromFixedWidth()
+    {
+        var go = new GameObject("Now World Auto Height");
+
+        try
+        {
+            var graphic = go.AddComponent<LayoutWorldGraphic>();
+            graphic.stretchItems = true;
+            graphic.itemCount = 3;
+            graphic.size = new Vector2(180f, 20f);
+            graphic.layoutAutoSizeAxes = NowWorldAutoSizeAxes.Height;
+
+            graphic.RebuildNowUI();
+
+            Assert.AreEqual(180f, graphic.size.x, 0.001f);
+            Assert.AreEqual(72f, graphic.size.y, 0.001f);
         }
         finally
         {

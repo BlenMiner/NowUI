@@ -18,6 +18,15 @@ namespace NowUI
         SceneOccluded
     }
 
+    [Flags]
+    public enum NowWorldAutoSizeAxes
+    {
+        None = 0,
+        Width = 1,
+        Height = 2,
+        Both = Width | Height
+    }
+
     public readonly struct NowWorldVertex
     {
         public readonly int index;
@@ -285,13 +294,13 @@ namespace NowUI
         static readonly RaycastHit[] _sceneOcclusionHits = new RaycastHit[16];
         static InputRayResolution _inputRayResolution;
 
-        [Header("NowUI")]
-        [SerializeField] Vector2 _size = new Vector2(220f, 72f);
-        [SerializeField, Min(0.0001f)] float _pixelsPerUnit = 100f;
-        [SerializeField] Vector2 _pivot = new Vector2(0.5f, 0.5f);
-        [SerializeField] NowWorldFacingMode _facingMode = NowWorldFacingMode.FaceCamera;
         [SerializeField] Camera _targetCamera;
+        [SerializeField] NowWorldFacingMode _facingMode = NowWorldFacingMode.FaceCamera;
         [SerializeField] NowWorldDepthMode _depthMode = NowWorldDepthMode.AlwaysVisible;
+        [SerializeField] NowWorldAutoSizeAxes _layoutAutoSizeAxes;
+        [SerializeField] Vector2 _size = new Vector2(220f, 72f);
+        [SerializeField] Vector2 _pivot = new Vector2(0.5f, 0.5f);
+        [SerializeField, Min(0.0001f)] float _pixelsPerUnit = 100f;
         [SerializeField] bool _rebuildEveryFrame;
         [SerializeField] bool _autoRebuildOnInteraction = true;
         [SerializeField] bool _acceptNavigation;
@@ -484,6 +493,21 @@ namespace NowUI
             }
         }
 
+        public NowWorldAutoSizeAxes layoutAutoSizeAxes
+        {
+            get => _layoutAutoSizeAxes;
+            set
+            {
+                if (_layoutAutoSizeAxes == value)
+                    return;
+
+                _layoutAutoSizeAxes = value;
+                MarkDirty();
+                _inputProvider?.ResetPosition();
+                InvalidateInputResolution();
+            }
+        }
+
         public bool rebuildEveryFrame
         {
             get => _rebuildEveryFrame;
@@ -545,9 +569,8 @@ namespace NowUI
             var currentSize = SanitizeSize(_size);
             _size = currentSize;
             _pixelsPerUnit = SanitizePixelsPerUnit(_pixelsPerUnit);
-            var surface = new NowInputSurface(currentSize);
             float previousScale = Now.uiScale;
-            var scope = _drawList.Begin(currentSize);
+            NowDrawScope scope = default;
             bool repaintTracking = false;
 
             try
@@ -555,6 +578,12 @@ namespace NowUI
                 Now.SetUIScale(1f);
                 NowControlState.BeginRepaintTracking();
                 repaintTracking = true;
+
+                if (_layoutAutoSizeAxes != NowWorldAutoSizeAxes.None)
+                    currentSize = ResolveLayoutAutoSize(currentSize);
+
+                var surface = new NowInputSurface(currentSize);
+                scope = _drawList.Begin(currentSize);
 
                 using (NowInput.Begin(GetInputProvider(), surface))
                 using (NowControls.IdScope(GetScopeId()))
@@ -673,6 +702,60 @@ namespace NowUI
             return _deformer ? _deformer.Deform(vertex) : vertex.localPosition;
         }
 
+        Vector2 ResolveLayoutAutoSize(Vector2 availableSize)
+        {
+            Vector2 measured;
+
+            using (NowInput.Begin(GetInputProvider(), new NowInputSurface(availableSize)))
+            using (NowControls.IdScope(GetScopeId()))
+            {
+                measured = MeasureLayoutContent(availableSize);
+            }
+
+            var resolved = availableSize;
+
+            if ((_layoutAutoSizeAxes & NowWorldAutoSizeAxes.Width) != 0 && measured.x > 0f)
+                resolved.x = measured.x;
+
+            if ((_layoutAutoSizeAxes & NowWorldAutoSizeAxes.Height) != 0 && measured.y > 0f)
+                resolved.y = measured.y;
+
+            resolved = SanitizeSize(resolved);
+
+            if ((resolved - _size).sqrMagnitude > 0.0001f)
+            {
+                _size = resolved;
+                _inputProvider?.ResetPosition();
+                InvalidateInputResolution();
+            }
+
+            return resolved;
+        }
+
+        Vector2 MeasureLayoutContent(Vector2 availableSize)
+        {
+            int layoutCounter = NowLayout.BeginMeasurePass();
+            bool tracking = false;
+
+            try
+            {
+                NowLayout.BeginContentTracking();
+                tracking = true;
+
+                DrawNowUI(new NowRect(0f, 0f, availableSize.x, availableSize.y));
+
+                tracking = false;
+                return NowLayout.EndContentTracking();
+            }
+            finally
+            {
+                if (tracking)
+                    NowLayout.EndContentTracking();
+
+                NowLayout.EndMeasurePass(layoutCounter);
+            }
+        }
+
         protected virtual void OnEnable()
         {
             if (!_instances.Contains(this))
@@ -727,6 +810,7 @@ namespace NowUI
         {
             _size = SanitizeSize(_size);
             _pixelsPerUnit = SanitizePixelsPerUnit(_pixelsPerUnit);
+            _layoutAutoSizeAxes &= NowWorldAutoSizeAxes.Both;
             MarkDirty();
             _inputProvider?.ResetPosition();
             InvalidateInputResolution();
