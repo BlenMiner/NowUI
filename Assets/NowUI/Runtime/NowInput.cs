@@ -576,9 +576,19 @@ namespace NowUI
             return Interact(id, rect, NowPointerButton.Primary);
         }
 
+        public static NowInteraction Interact(NowId id, NowRect rect)
+        {
+            return Interact(id, rect, NowPointerButton.Primary);
+        }
+
         public static NowInteraction Interact(string id, NowRect rect, NowPointerButton button)
         {
             return Interact(GetId(id), (Rect)rect, button);
+        }
+
+        public static NowInteraction Interact(NowId id, NowRect rect, NowPointerButton button)
+        {
+            return Interact(RequireExplicitId(id, nameof(id)), (Rect)rect, button);
         }
 
         public static NowInteraction Interact(string id, Rect rect)
@@ -586,9 +596,19 @@ namespace NowUI
             return Interact(id, rect, NowPointerButton.Primary);
         }
 
+        public static NowInteraction Interact(NowId id, Rect rect)
+        {
+            return Interact(id, rect, NowPointerButton.Primary);
+        }
+
         public static NowInteraction Interact(string id, Rect rect, NowPointerButton button)
         {
             return Interact(GetId(id), rect, button);
+        }
+
+        public static NowInteraction Interact(NowId id, Rect rect, NowPointerButton button)
+        {
+            return Interact(RequireExplicitId(id, nameof(id)), rect, button);
         }
 
         public static NowInteraction Interact(int id, NowRect rect)
@@ -743,6 +763,19 @@ namespace NowUI
 
                 return hash != 0 ? hash : 1;
             }
+        }
+
+        public static int GetId(NowId id, int fallback)
+        {
+            return id.ResolveStableId(fallback);
+        }
+
+        static int RequireExplicitId(NowId id, string paramName)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("This API requires an explicit NowId.", paramName);
+
+            return id.ResolveStableId(0);
         }
 
         public static void Reset()

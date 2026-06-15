@@ -11,7 +11,7 @@ namespace NowUI
     /// Identity comes from the call site (captured via caller-info attributes):
     /// every textual call site is its own control, labels are purely visual, and
     /// loop iterations over one site are salted by occurrence. Use
-    /// <c>SetId</c> (or the string-id overloads) when one logical control draws
+    /// <c>SetId</c> or an explicit <see cref="NowId"/> when one logical control draws
     /// from several places or when looped items can reorder.
     /// </summary>
     public static partial class Now
@@ -41,27 +41,27 @@ namespace NowUI
             return new NowSlider(rect, min, max, NowControls.SiteId(file, line));
         }
 
-        public static NowTextField TextField(NowRect rect, string id = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        public static NowTextField TextField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowTextField(rect, id, NowControls.SiteId(file, line));
         }
 
-        public static NowTextArea TextArea(NowRect rect, string id = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        public static NowTextArea TextArea(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowTextArea(rect, id, NowControls.SiteId(file, line));
         }
 
         public static NowDropdown Dropdown(NowRect rect, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowDropdown(rect, null, options, NowControls.SiteId(file, line));
+            return new NowDropdown(rect, default, options, NowControls.SiteId(file, line));
         }
 
-        public static NowDropdown Dropdown(NowRect rect, string id, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        public static NowDropdown Dropdown(NowRect rect, NowId id, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowDropdown(rect, id, options, NowControls.SiteId(file, line));
         }
 
-        public static NowScrollView ScrollView(NowRect rect, string id = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        public static NowScrollView ScrollView(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowScrollView(rect, id, NowControls.SiteId(file, line));
         }
@@ -110,27 +110,27 @@ namespace NowUI
             return new NowSlider(min, max, NowControls.SiteId(file, line));
         }
 
-        public static NowTextField TextField(string id = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        public static NowTextField TextField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowTextField(id, NowControls.SiteId(file, line));
         }
 
-        public static NowTextArea TextArea(string id = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        public static NowTextArea TextArea(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowTextArea(id, NowControls.SiteId(file, line));
         }
 
         public static NowDropdown Dropdown(IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowDropdown(null, options, NowControls.SiteId(file, line));
+            return new NowDropdown(default, options, NowControls.SiteId(file, line));
         }
 
-        public static NowDropdown Dropdown(string id, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        public static NowDropdown Dropdown(NowId id, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowDropdown(id, options, NowControls.SiteId(file, line));
         }
 
-        public static NowScrollView ScrollView(string id = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        public static NowScrollView ScrollView(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowScrollView(id, NowControls.SiteId(file, line));
         }

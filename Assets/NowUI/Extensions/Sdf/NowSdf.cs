@@ -506,7 +506,7 @@ namespace NowUI.Sdf
 
         public static NowSdfBuilder Scene(
             NowRect rect,
-            string id = null,
+            NowId id = default,
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
@@ -514,7 +514,7 @@ namespace NowUI.Sdf
         }
 
         public static NowSdfBuilder Scene(
-            string id = null,
+            NowId id = default,
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
@@ -524,7 +524,7 @@ namespace NowUI.Sdf
         public static NowSdfBuilder Scene(
             float width,
             float height,
-            string id = null,
+            NowId id = default,
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
@@ -534,7 +534,7 @@ namespace NowUI.Sdf
 
         public static NowSdfBuilder Scene(
             NowLayoutOptions options,
-            string id = null,
+            NowId id = default,
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
@@ -549,11 +549,9 @@ namespace NowUI.Sdf
             _caches.Clear();
         }
 
-        static int ControlId(string id, string file, int line)
+        static int ControlId(NowId id, string file, int line)
         {
-            return id != null
-                ? NowControls.GetControlId(id)
-                : NowControls.GetControlId(NowControls.SiteId(file, line));
+            return NowControls.GetControlId(id, NowControls.SiteId(file, line));
         }
 
         static NowSdfCache GetCache(int id)

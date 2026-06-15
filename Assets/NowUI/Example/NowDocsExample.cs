@@ -30,6 +30,7 @@ public class NowDocsExample : NowGraphic
         DockingDemo,
         LinesDemo,
         ShapesDemo,
+        EffectsDemo,
     }
 
     struct Page
@@ -47,6 +48,7 @@ public class NowDocsExample : NowGraphic
         new Page { title = "Controls", file = "Controls.md" },
         new Page { title = "Lines", file = "Lines.md" },
         new Page { title = "Shapes", file = "Shapes.md" },
+        new Page { title = "Effects", file = "Effects.md" },
         new Page { title = "Custom controls", file = "CustomControls.md" },
         new Page { title = "Styles & themes", file = "StylesAndThemes.md" },
         new Page { title = "Markdown", file = "Markdown.md" },
@@ -63,6 +65,7 @@ public class NowDocsExample : NowGraphic
         new Page { title = "Docking demo", kind = PageKind.DockingDemo },
         new Page { title = "Lines demo", kind = PageKind.LinesDemo },
         new Page { title = "Shapes demo", kind = PageKind.ShapesDemo },
+        new Page { title = "Effects demo", kind = PageKind.EffectsDemo },
         new Page { title = "Live demo", kind = PageKind.ControlsDemo },
         new Page { title = "Lottie demo", kind = PageKind.LottieDemo },
         new Page { title = "Editor demo", kind = PageKind.CodeEditorDemo },
@@ -85,6 +88,11 @@ public class NowDocsExample : NowGraphic
     float _dockDemoExposure = 0.62f;
     int _dockDemoSelection = 1;
     int _dockDemoMessages;
+    bool _effectsDemoTexture;
+    bool _effectsDemoAuto = true;
+    bool _effectsDemoWave = true;
+    float _effectsDemoProgress = 0.55f;
+    float _effectsDemoSubdivision = 4f;
     int _richTextLinkClicks;
     string _richTextLastLink = "none";
     NowRichTextParser _richTextDemoParser;
@@ -211,6 +219,10 @@ public class NowDocsExample : NowGraphic
                     DrawShapesDemo(theme);
                     break;
 
+                case PageKind.EffectsDemo:
+                    DrawEffectsDemo(theme);
+                    break;
+
                 default:
                     var result = NowMarkdown.Document(LoadDoc(Pages[_selected].file)).Draw();
 
@@ -269,7 +281,7 @@ public class NowDocsExample : NowGraphic
             _dockDemo.Dock("Console", "Scene", NowDockSide.Bottom);
         }
 
-        NowDock.Space(_dockDemo, panel.Inset(10f), "docs-dock-demo")
+        NowDock.Space(_dockDemo, panel.Inset(10f), 3001)
             .SetMinPaneSize(120f)
             .SetContentPadding(8f)
             .Draw();
@@ -857,6 +869,176 @@ public class NowDocsExample : NowGraphic
         NowControlState.RequestRepaint();
     }
 
+    void DrawEffectsDemo(NowThemeAsset themeAsset)
+    {
+        NowMarkdown.Document("# Effects demo\n\n`NowEffects.Modifier(...)` captures ordinary draw commands inside a scope, then deforms the captured vertices. Mesh mode keeps text and geometry crisp; texture mode flattens the scope first and deforms one textured surface.").Draw();
+
+        using (NowLayout.Horizontal(spacing: 12f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Checkbox("Texture backend").Draw(ref _effectsDemoTexture);
+            NowLayout.Checkbox("Wave").Draw(ref _effectsDemoWave);
+            NowLayout.Checkbox("Auto").Draw(ref _effectsDemoAuto);
+        }
+
+        using (NowLayout.Horizontal(spacing: 10f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Label("Progress").SetWidth(74f).Draw();
+            if (!_effectsDemoAuto)
+                NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _effectsDemoProgress);
+            else
+                NowLayout.Label("Animated").SetFontSize(12f).SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
+        }
+
+        using (NowLayout.Horizontal(spacing: 10f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Label("Subdivision").SetWidth(74f).Draw();
+            NowLayout.Slider(1f, 10f).SetStretchWidth().Draw(ref _effectsDemoSubdivision);
+            NowLayout.Label(Mathf.RoundToInt(_effectsDemoSubdivision).ToString()).SetWidth(28f).Draw();
+        }
+
+        var panel = NowLayout.Rect(height: 360f, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+
+        float progress = _effectsDemoAuto
+            ? Mathf.PingPong(Time.time * 0.38f, 1f)
+            : Mathf.Clamp01(_effectsDemoProgress);
+        int subdivisions = Mathf.Max(1, Mathf.RoundToInt(_effectsDemoSubdivision));
+        var area = panel.Inset(26f, 24f);
+        var windowRect = new NowRect(area.x + 20f, area.y + 34f, Mathf.Min(360f, area.width * 0.62f), 210f);
+        var targetRect = new NowRect(area.xMax - 92f, area.yMax - 64f, 70f, 38f);
+
+        using (Now.Mask(panel))
+        {
+            DrawEffectsDemoBackdrop(area, targetRect, progress, themeAsset);
+
+            if (_effectsDemoWave)
+            {
+                var modifier = NowEffects.Modifier(NowDeformers.Wave(Time.time * 0.45f, 9f, 44f, NowWaveAxis.Y))
+                    .SetId(2001)
+                    .SetSubdivision(subdivisions);
+
+                if (_effectsDemoTexture)
+                    modifier = modifier.SetRenderToTexture();
+
+                using (modifier.Begin())
+                    DrawEffectsDemoWindow(windowRect, themeAsset);
+            }
+            else
+            {
+                var modifier = NowEffects.Modifier(NowDeformers.Genie(targetRect, progress, NowEffectDirection.Bottom))
+                    .SetId(2001)
+                    .SetSubdivision(subdivisions);
+
+                if (_effectsDemoTexture)
+                    modifier = modifier.SetRenderToTexture();
+
+                using (modifier.Begin())
+                    DrawEffectsDemoWindow(windowRect, themeAsset);
+            }
+        }
+
+        var labelRect = new NowRect(area.x + 20f, area.yMax - 28f, area.width - 40f, 20f);
+        string backend = _effectsDemoTexture ? "RenderTexture backend" : "Mesh backend";
+        string effect = _effectsDemoWave ? "wave vertex deformation" : "genie target deformation";
+
+        Now.Text(labelRect)
+            .SetFontSize(12f)
+            .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+            .Draw($"{backend}, {effect}, {subdivisions} x {subdivisions} subdivision");
+
+        NowControlState.RequestRepaint();
+    }
+
+    static void DrawEffectsDemoBackdrop(NowRect area, NowRect targetRect, float progress, NowThemeAsset themeAsset)
+    {
+        Color muted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+        Color accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+
+        for (int i = 0; i < 5; ++i)
+        {
+            float y = area.y + 44f + i * 42f;
+            Now.Line(new Vector2(area.x + 8f, y), new Vector2(area.xMax - 8f, y))
+                .SetWidth(1f)
+                .SetColor(new Color(muted.r, muted.g, muted.b, 0.18f))
+                .Draw();
+        }
+
+        Now.Rectangle(targetRect)
+            .SetColor(new Color(accent.r, accent.g, accent.b, 0.18f + progress * 0.16f))
+            .SetOutline(1f)
+            .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.7f))
+            .SetRadius(8f)
+            .Draw();
+
+        Now.Text(targetRect.Inset(6f, 9f))
+            .SetFontSize(10f)
+            .SetColor(accent)
+            .Draw("target");
+    }
+
+    static void DrawEffectsDemoWindow(NowRect rect, NowThemeAsset themeAsset)
+    {
+        Color surface = themeAsset.GetColor(NowColorToken.Surface, new Color(0.12f, 0.14f, 0.18f, 1f));
+        Color panel = themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.16f, 0.18f, 0.23f, 1f));
+        Color border = themeAsset.GetColor(NowColorToken.Border, Color.gray);
+        Color text = themeAsset.GetColor(NowColorToken.Text, Color.white);
+        Color muted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+        Color accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+
+        Now.Rectangle(rect)
+            .SetColor(surface)
+            .SetOutline(1f)
+            .SetOutlineColor(border)
+            .SetRadius(10f)
+            .Draw();
+
+        var title = new NowRect(rect.x, rect.y, rect.width, 40f);
+        Now.Rectangle(title)
+            .SetColor(panel)
+            .SetRadius(new Vector4(10f, 10f, 0f, 0f))
+            .Draw();
+
+        for (int i = 0; i < 3; ++i)
+        {
+            Now.Circle(new Vector2(title.x + 20f + i * 18f, title.y + 20f), 5f)
+                .SetColor(i == 0 ? new Color(1f, 0.38f, 0.34f, 1f) : i == 1 ? new Color(1f, 0.74f, 0.25f, 1f) : new Color(0.21f, 0.82f, 0.46f, 1f))
+                .Draw();
+        }
+
+        Now.Text(new NowRect(title.x + 78f, title.y + 11f, title.width - 96f, 18f))
+            .SetFontSize(13f)
+            .SetColor(text)
+            .Draw("Modifier scope");
+
+        var body = rect.Inset(18f, 56f, 18f, 18f);
+
+        Now.Text(new NowRect(body.x, body.y, body.width, 24f))
+            .SetFontSize(20f)
+            .SetColor(text)
+            .Draw("Normal draw commands");
+
+        Now.Text(new NowRect(body.x, body.y + 34f, body.width, 34f))
+            .SetFontSize(12f)
+            .SetColor(muted)
+            .Draw("Rectangles, text, lines and shapes are captured visually; input remains passive.");
+
+        float cardWidth = (body.width - 18f) / 2f;
+        var left = new NowRect(body.x, body.y + 86f, cardWidth, 52f);
+        var right = new NowRect(left.xMax + 18f, left.y, cardWidth, 52f);
+
+        Now.Rectangle(left).SetColor(new Color(accent.r, accent.g, accent.b, 0.22f)).SetRadius(8f).Draw();
+        Now.Rectangle(right).SetColor(new Color(0.05f, 0.86f, 0.67f, 0.18f)).SetRadius(8f).Draw();
+
+        Now.Text(left.Inset(10f, 9f)).SetFontSize(12f).SetColor(text).Draw("Mesh: crisp glyph quads");
+        Now.Text(right.Inset(10f, 9f)).SetFontSize(12f).SetColor(text).Draw("Texture: flattened group");
+
+        Now.Line(new Vector2(body.x, body.yMax - 14f), new Vector2(body.xMax, body.yMax - 14f))
+            .SetWidth(3f)
+            .SetDash(12f, 8f, Time.time * 28f)
+            .SetColor(accent)
+            .Draw();
+    }
+
     void DrawLottieDemo(NowThemeAsset themeAsset)
     {
         NowMarkdown.Document("# Lottie demo\n\nVector animations drawn through `NowLayout.Lottie` —" +
@@ -1064,23 +1246,23 @@ public static class GuideControls
 public struct MyRating
 {
     readonly int _site;
-    string _id;
+    NowId _id;
     int _max;
 
     internal MyRating(int site)
     {
         _site = site;
-        _id = null;
+        _id = default;
         _max = 5;
     }
 
-    public MyRating SetId(string id) { _id = id; return this; }
+    public MyRating SetId(NowId id) { _id = id; return this; }
 
     public MyRating SetMax(int max) { _max = max; return this; }
 
     public bool Draw(ref int value)
     {
-        int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+        int id = NowControls.GetControlId(_id, _site);
         return GuideControls.DrawRating(id, ref value, _max);
     }
 }

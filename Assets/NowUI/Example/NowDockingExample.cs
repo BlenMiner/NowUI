@@ -43,7 +43,7 @@ public sealed class NowDockingExample : MonoBehaviour
                 _dock.Dock("Hierarchy", "Scene", NowDockSide.Left);
             }
 
-            NowDock.Space(_dock, new NowRect(24f, 24f, Screen.width - 48f, Screen.height - 48f), "main-dock")
+            NowDock.Space(_dock, new NowRect(24f, 24f, Screen.width - 48f, Screen.height - 48f), 3001)
                 .SetMinPaneSize(140f)
                 .Draw();
         }

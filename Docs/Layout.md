@@ -33,7 +33,7 @@ the bridge to free-form drawing and interaction:
 
 ```csharp
 NowRect rect = NowLayout.Rect(160, 44);
-var state = NowInput.Interact("save", rect);
+var state = NowInput.Interact(100, rect);
 
 Now.Rectangle(rect)
     .SetColor(state.hovered ? Color.white : Color.gray)

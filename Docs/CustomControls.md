@@ -204,23 +204,23 @@ chaining, executed by `Draw()`:
 public struct MyRating
 {
     readonly int _site;
-    string _id;
+    NowId _id;
     int _max;
 
     internal MyRating(int site)
     {
         _site = site;
-        _id = null;
+        _id = default;
         _max = 5;
     }
 
-    public MyRating SetId(string id) { _id = id; return this; }
+    public MyRating SetId(NowId id) { _id = id; return this; }
 
     public MyRating SetMax(int max) { _max = max; return this; }
 
     public bool Draw(ref int value)
     {
-        int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+        int id = NowControls.GetControlId(_id, _site);
         // ... body as above, using _max ...
         return false;
     }
@@ -292,7 +292,7 @@ and they are the reference for the conventions above.
 ## Checklist
 
 - [ ] Identity from the call site (`[CallerFilePath]`/`[CallerLineNumber]` →
-      `SiteId` → `GetControlId`), with a `SetId`/string-id escape hatch.
+      `SiteId` → `GetControlId`), with a `SetId(NowId)` escape hatch.
 - [ ] Space from `NowLayout.Rect(options)` (flow) or a rect parameter
       (free-form) — ideally both, as twin factories.
 - [ ] `NowControls.Interact` for pointer + focus + submit; draw a visible

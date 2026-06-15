@@ -80,7 +80,7 @@ namespace NowUI
         readonly NowRect _rect;
         readonly bool _hasRect;
 
-        string _id;
+        NowId _id;
         NowText _style;
         NowLayoutOptions _options;
         IReadOnlyList<NowRichTextSpan> _spans;
@@ -104,7 +104,7 @@ namespace NowUI
             public float contentHeight;
         }
 
-        int ResolveControlId() => _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+        int ResolveControlId() => NowControls.GetControlId(_id, _site);
 
         internal NowRichText(string value, NowText style, int site)
         {
@@ -112,7 +112,7 @@ namespace NowUI
             _site = site;
             _rect = default;
             _hasRect = false;
-            _id = null;
+            _id = default;
             _style = style;
             _options = default;
             _spans = null;
@@ -128,7 +128,7 @@ namespace NowUI
             _hasRect = true;
         }
 
-        public NowRichText SetId(string id) { _id = id; return this; }
+        public NowRichText SetId(NowId id) { _id = id; return this; }
 
         public NowRichText SetOptions(NowLayoutOptions options) { _options = options; return this; }
 

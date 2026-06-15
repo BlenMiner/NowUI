@@ -42,7 +42,7 @@ namespace NowUI
                 return NowGUIScope.Suppress(rect, inputScope);
 
             var entry = GetEntry(controlId);
-            entry.lastUsedTime = CurrentTime();
+            entry.lastUsedTime = NowTime.realtimeSinceStartup;
 
             pixelsPerPoint = Mathf.Max(1f, pixelsPerPoint);
             int pixelWidth = Mathf.Max(1, Mathf.CeilToInt(rect.width * pixelsPerPoint));
@@ -85,7 +85,7 @@ namespace NowUI
 
         static void CleanupUnusedEntries()
         {
-            double now = CurrentTime();
+            double now = NowTime.realtimeSinceStartup;
 
             if (now - _lastCleanupTime < 1.0)
                 return;
@@ -105,11 +105,6 @@ namespace NowUI
                 _entries[id].Dispose();
                 _entries.Remove(id);
             }
-        }
-
-        static double CurrentTime()
-        {
-            return DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerSecond;
         }
 
         internal static void CompleteScope(

@@ -349,4 +349,107 @@ public class NowRenderingPlayModeTests
             Object.DestroyImmediate(go);
         }
     }
+
+    class WorldPanelDriver : NowWorldGraphic
+    {
+        public Color color = Color.red;
+
+        protected override bool useLayoutMeasurePass => false;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            Now.Rectangle(rect)
+                .SetColor(color)
+                .Draw();
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator WorldGraphicRendersThroughCamera()
+    {
+        var cameraObject = new GameObject("Now World Test Camera");
+        var panelObject = new GameObject("Now World Test Panel");
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = Color.clear;
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.targetTexture = _target;
+            cameraObject.transform.position = new Vector3(0f, 0f, -2f);
+
+            var panel = panelObject.AddComponent<WorldPanelDriver>();
+            panel.targetCamera = camera;
+            panel.size = new Vector2(64f, 64f);
+            panel.pixelsPerUnit = 100f;
+            panel.depthMode = NowWorldDepthMode.AlwaysVisible;
+            panel.RebuildNowUI();
+
+            camera.Render();
+            yield return null;
+
+            var pixels = ReadPixels(_target);
+            int red = CountPixels(pixels, p => p.r > 180 && p.g < 60 && p.a > 180);
+
+            Assert.Greater(red, 1000, "World-space NowUI produced too few red pixels.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(panelObject);
+            Object.DestroyImmediate(cameraObject);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator WorldGraphicDepthModeCanRespectSceneDepth()
+    {
+        var cameraObject = new GameObject("Now World Depth Camera");
+        var panelObject = new GameObject("Now World Depth Panel");
+        var blockerObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = Color.clear;
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.targetTexture = _target;
+            cameraObject.transform.position = new Vector3(0f, 0f, -2f);
+
+            blockerObject.name = "Now World Depth Blocker";
+            blockerObject.transform.position = new Vector3(0f, 0f, -0.2f);
+            blockerObject.transform.localScale = new Vector3(1.4f, 1.4f, 0.1f);
+
+            var panel = panelObject.AddComponent<WorldPanelDriver>();
+            panel.targetCamera = camera;
+            panel.size = new Vector2(64f, 64f);
+            panel.pixelsPerUnit = 100f;
+
+            panel.depthMode = NowWorldDepthMode.SceneOccluded;
+            panel.RebuildNowUI();
+            camera.Render();
+            yield return null;
+
+            int occludedRed = CountPixels(ReadPixels(_target), p => p.r > 180 && p.g < 60 && p.a > 180);
+
+            panel.depthMode = NowWorldDepthMode.AlwaysVisible;
+            panel.RebuildNowUI();
+            camera.Render();
+            yield return null;
+
+            int visibleRed = CountPixels(ReadPixels(_target), p => p.r > 180 && p.g < 60 && p.a > 180);
+
+            Assert.Less(occludedRed, 200, "Scene-occluded world UI should be hidden by nearer geometry.");
+            Assert.Greater(visibleRed, 1000, "Always-visible world UI should draw over nearer geometry.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(blockerObject);
+            Object.DestroyImmediate(panelObject);
+            Object.DestroyImmediate(cameraObject);
+        }
+    }
 }

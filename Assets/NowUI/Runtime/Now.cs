@@ -135,6 +135,20 @@ namespace NowUI
 
         static bool _captureMesh;
 
+        sealed class MeshCaptureState
+        {
+            public StaticList<NowMesh> meshes;
+            public int lastUsedMeshId;
+            public bool captureMesh;
+            public NowRect screenMask;
+        }
+
+        static readonly List<MeshCaptureState> _meshCaptureStack = new List<MeshCaptureState>(4);
+
+        static readonly Stack<MeshCaptureState> _meshCaptureStatePool = new Stack<MeshCaptureState>(4);
+
+        static readonly Stack<NowMesh[]> _meshCapturePool = new Stack<NowMesh[]>(4);
+
         static int _suppressDrawDepth;
 
         static readonly HashSet<NowFontAsset> _textGlyphResolveVisited = new HashSet<NowFontAsset>();
@@ -320,6 +334,11 @@ namespace NowUI
             return _meshes.array[id];
         }
 
+        internal static NowMesh UseEffectMaterial(Material material, ref int cachedMeshId, NowMeshKind kind)
+        {
+            return UseMaterial(material, ref cachedMeshId, kind);
+        }
+
         static Matrix4x4 GetProjectionMatrix()
         {
             if (!Mathf.Approximately(_projectionWidth, screenMask.width) || !Mathf.Approximately(_projectionHeight, screenMask.height))
@@ -477,12 +496,49 @@ namespace NowUI
 
         internal static void BeginMeshCapture(Vector4 screenMask)
         {
+            BeginMeshCapture(screenMask, false);
+        }
+
+        internal static void BeginMeshCapture(Vector4 screenMask, bool inheritMasks)
+        {
+            MeshCaptureState state = _meshCaptureStatePool.Count > 0
+                ? _meshCaptureStatePool.Pop()
+                : new MeshCaptureState();
+
+            state.meshes = _meshes;
+            state.lastUsedMeshId = _lastUsedMeshId;
+            state.captureMesh = _captureMesh;
+            state.screenMask = Now.screenMask;
+            _meshCaptureStack.Add(state);
+
             Now.screenMask = screenMask;
-            _maskStack.Clear();
+            if (!inheritMasks)
+                _maskStack.Clear();
             Initialize();
             _captureMesh = true;
-            _meshes.count = 0;
+            _meshes = RentCaptureMeshes();
             _lastUsedMeshId = -1;
+        }
+
+        static StaticList<NowMesh> RentCaptureMeshes()
+        {
+            return new StaticList<NowMesh>
+            {
+                array = _meshCapturePool.Count > 0 ? _meshCapturePool.Pop() : new NowMesh[100],
+                count = 0
+            };
+        }
+
+        static void ReturnCaptureMeshes(StaticList<NowMesh> meshes)
+        {
+            if (meshes.array == null)
+                return;
+
+            for (int i = 0; i < meshes.count; ++i)
+                meshes.array[i]?.ClearVertices();
+
+            meshes.count = 0;
+            _meshCapturePool.Push(meshes.array);
         }
 
         internal static void BeginSuppressDraw()
@@ -525,11 +581,27 @@ namespace NowUI
             if (!_captureMesh)
                 return;
 
-            for (int i = 0; i < _meshes.count; ++i)
-                _meshes.array[i].ClearVertices();
+            var currentMeshes = _meshes;
+            ReturnCaptureMeshes(currentMeshes);
 
-            _captureMesh = false;
-            _lastUsedMeshId = -1;
+            if (_meshCaptureStack.Count == 0)
+            {
+                _meshes = new StaticList<NowMesh>(100);
+                _captureMesh = false;
+                _lastUsedMeshId = -1;
+                return;
+            }
+
+            var state = _meshCaptureStack[^1];
+            _meshCaptureStack.RemoveAt(_meshCaptureStack.Count - 1);
+
+            _meshes = state.meshes;
+            _lastUsedMeshId = state.lastUsedMeshId;
+            _captureMesh = state.captureMesh;
+            Now.screenMask = state.screenMask;
+
+            state.meshes = default;
+            _meshCaptureStatePool.Push(state);
         }
 
         internal static void EndMeshCapture(Mesh target, List<NowMeshBatch> batches, Vector2 positionOffset, NowMeshLayout layout)

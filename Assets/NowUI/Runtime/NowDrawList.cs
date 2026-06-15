@@ -50,6 +50,11 @@ namespace NowUI
 
         internal NowDrawScope Begin(Vector2 size, Vector2 positionOffset)
         {
+            return Begin(size, positionOffset, false);
+        }
+
+        internal NowDrawScope Begin(Vector2 size, Vector2 positionOffset, bool inheritMasks)
+        {
             ThrowIfDisposed();
 
             this.size = size;
@@ -62,7 +67,7 @@ namespace NowUI
             }
 
             var mask = new Vector4(0, 0, size.x, size.y);
-            Now.BeginMeshCapture(mask);
+            Now.BeginMeshCapture(mask, inheritMasks);
             return new NowDrawScope(this, positionOffset, true);
         }
 

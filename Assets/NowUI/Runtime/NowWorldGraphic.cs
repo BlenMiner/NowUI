@@ -1,0 +1,1109 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+namespace NowUI
+{
+    public enum NowWorldFacingMode
+    {
+        None,
+        FaceCamera,
+        FaceCameraYOnly
+    }
+
+    public enum NowWorldDepthMode
+    {
+        AlwaysVisible,
+        SceneOccluded
+    }
+
+    public readonly struct NowWorldVertex
+    {
+        public readonly int index;
+        public readonly Vector2 uiPosition;
+        public readonly Vector2 normalized;
+        public readonly Vector3 localPosition;
+
+        public NowWorldVertex(int index, Vector2 uiPosition, Vector2 normalized, Vector3 localPosition)
+        {
+            this.index = index;
+            this.uiPosition = uiPosition;
+            this.normalized = normalized;
+            this.localPosition = localPosition;
+        }
+    }
+
+    public abstract class NowWorldDeformer : MonoBehaviour
+    {
+        public virtual Vector3 Deform(in NowWorldVertex vertex)
+        {
+            return vertex.localPosition;
+        }
+    }
+
+    public sealed class NowWorldInputProvider : INowInputProvider
+    {
+        NowWorldGraphic _graphic;
+        Transform _transform;
+        Camera _camera;
+        Vector2 _size = new Vector2(200f, 80f);
+        Vector2 _pivot = new Vector2(0.5f, 0.5f);
+        float _pixelsPerUnit = 100f;
+        bool _acceptNavigation;
+        int _lastFrame = -1;
+        bool _hasPreviousPosition;
+        Vector2 _previousPosition;
+        NowInputSnapshot _snapshot;
+        bool _rawInputAvailable;
+
+        public NowWorldGraphic graphic
+        {
+            get => _graphic;
+            set
+            {
+                if (_graphic == value)
+                    return;
+
+                _graphic = value;
+                ResetPosition();
+            }
+        }
+
+        public Transform transform
+        {
+            get => _transform;
+            set
+            {
+                if (_transform == value)
+                    return;
+
+                _transform = value;
+                ResetPosition();
+            }
+        }
+
+        public Camera camera
+        {
+            get => _camera;
+            set => _camera = value;
+        }
+
+        public Vector2 size
+        {
+            get => _graphic != null ? _graphic.size : _size;
+            set => _size = SanitizeSize(value);
+        }
+
+        public Vector2 pivot
+        {
+            get => _graphic != null ? _graphic.pivot : _pivot;
+            set => _pivot = value;
+        }
+
+        public float pixelsPerUnit
+        {
+            get => _graphic != null ? _graphic.pixelsPerUnit : _pixelsPerUnit;
+            set => _pixelsPerUnit = SanitizePixelsPerUnit(value);
+        }
+
+        public bool acceptNavigation
+        {
+            get => _graphic != null ? _graphic.acceptNavigation : _acceptNavigation;
+            set => _acceptNavigation = value;
+        }
+
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
+        {
+            int frame = Time.frameCount;
+
+            if (_lastFrame != frame)
+            {
+                _lastFrame = frame;
+
+                if (NowMouseInput.TryGet(out var input))
+                    _rawInputAvailable = TryGetSnapshot(surface, input, out _snapshot);
+                else
+                {
+                    _snapshot = default;
+                    _rawInputAvailable = false;
+                }
+            }
+
+            snapshot = _snapshot;
+            return _rawInputAvailable;
+        }
+
+        internal bool TryGetSnapshot(NowInputSurface surface, NowMouseInput input, out NowInputSnapshot snapshot)
+        {
+            if (!input.hasPointer)
+            {
+                _hasPreviousPosition = false;
+                snapshot = CreateSnapshot(false, default, default, default, input);
+                return true;
+            }
+
+            bool hit = TryScreenPointToSurface(input.screenPosition, out var position);
+            bool inside = hit &&
+                          position is { x: >= 0f, y: >= 0f } &&
+                          position.x <= surface.size.x &&
+                          position.y <= surface.size.y;
+            bool hasPointer = hit && (inside ||
+                input.pointerButtonsDown != NowPointerButtons.None ||
+                input.pointerButtonsReleased != NowPointerButtons.None);
+
+            var previous = _hasPreviousPosition ? _previousPosition : position;
+            var delta = hit ? position - previous : default;
+
+            if (hit)
+            {
+                _previousPosition = position;
+                _hasPreviousPosition = true;
+            }
+            else if (_hasPreviousPosition &&
+                     input.pointerButtonsReleased != NowPointerButtons.None)
+            {
+                position = _previousPosition;
+                previous = _previousPosition;
+                hasPointer = true;
+                _hasPreviousPosition = false;
+            }
+            else if (_hasPreviousPosition &&
+                     input.pointerButtonsDown != NowPointerButtons.None &&
+                     input.pointerButtonsPressed == NowPointerButtons.None)
+            {
+                position = _previousPosition;
+                previous = _previousPosition;
+                hasPointer = true;
+            }
+            else
+            {
+                _hasPreviousPosition = false;
+                previous = default;
+                position = default;
+            }
+
+            snapshot = CreateSnapshot(hasPointer, position, previous, delta, input);
+            return true;
+        }
+
+        public bool TryScreenPointToSurface(Vector2 screenPosition, out Vector2 surfacePosition)
+        {
+            if (_graphic != null)
+                return _graphic.TryScreenPointToSurface(screenPosition, out surfacePosition);
+
+            surfacePosition = default;
+
+            var targetTransform = _transform;
+            var targetCamera = ResolveCamera();
+
+            if (targetTransform == null || targetCamera == null)
+                return false;
+
+            var ray = targetCamera.ScreenPointToRay(screenPosition);
+            var plane = new Plane(targetTransform.forward, targetTransform.position);
+
+            if (!plane.Raycast(ray, out float distance))
+                return false;
+
+            var local = targetTransform.InverseTransformPoint(ray.GetPoint(distance));
+            float ppu = SanitizePixelsPerUnit(_pixelsPerUnit);
+            var targetSize = SanitizeSize(_size);
+            surfacePosition = new Vector2(
+                local.x * ppu + targetSize.x * _pivot.x,
+                targetSize.y * (1f - _pivot.y) - local.y * ppu);
+            return true;
+        }
+
+        public void ResetPosition()
+        {
+            _lastFrame = -1;
+            _hasPreviousPosition = false;
+            _previousPosition = default;
+            _snapshot = default;
+        }
+
+        NowInputSnapshot CreateSnapshot(
+            bool hasPointer,
+            Vector2 position,
+            Vector2 previous,
+            Vector2 delta,
+            NowMouseInput input)
+        {
+            bool navigation = acceptNavigation;
+
+            return new NowInputSnapshot(
+                hasPointer,
+                position,
+                previous,
+                delta,
+                input.pointerButtonsDown,
+                input.pointerButtonsPressed,
+                input.pointerButtonsReleased,
+                input.scrollDelta,
+                navigation ? input.navigation : Vector2.zero,
+                navigation && input.submitDown,
+                navigation && input.submitPressed,
+                navigation && input.submitReleased,
+                navigation && input.cancelDown,
+                navigation && input.cancelPressed,
+                navigation && input.cancelReleased,
+                Time.frameCount,
+                Time.realtimeSinceStartup);
+        }
+
+        Camera ResolveCamera()
+        {
+            if (_camera != null)
+                return _camera;
+
+            return Camera.main;
+        }
+
+        static Vector2 SanitizeSize(Vector2 value)
+        {
+            return new Vector2(Mathf.Max(1f, value.x), Mathf.Max(1f, value.y));
+        }
+
+        static float SanitizePixelsPerUnit(float value)
+        {
+            return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value) ? value : 100f;
+        }
+    }
+
+    [AddComponentMenu("NowUI/Now World Graphic")]
+    [ExecuteAlways]
+    [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
+    public class NowWorldGraphic : MonoBehaviour
+    {
+        static readonly int _zTestId = Shader.PropertyToID("_ZTest");
+        const float InputOcclusionEpsilon = 0.0001f;
+
+        static int _nextScopeId;
+        static int _inputResolverVersion;
+        static readonly List<NowWorldGraphic> _instances = new List<NowWorldGraphic>(16);
+        static readonly RaycastHit[] _sceneOcclusionHits = new RaycastHit[16];
+        static InputRayResolution _inputRayResolution;
+
+        [Header("NowUI")]
+        [SerializeField] Vector2 _size = new Vector2(220f, 72f);
+        [SerializeField, Min(0.0001f)] float _pixelsPerUnit = 100f;
+        [SerializeField] Vector2 _pivot = new Vector2(0.5f, 0.5f);
+        [SerializeField] NowWorldFacingMode _facingMode = NowWorldFacingMode.FaceCamera;
+        [SerializeField] Camera _targetCamera;
+        [SerializeField] NowWorldDepthMode _depthMode = NowWorldDepthMode.AlwaysVisible;
+        [SerializeField] bool _rebuildEveryFrame;
+        [SerializeField] bool _autoRebuildOnInteraction = true;
+        [SerializeField] bool _acceptNavigation;
+        [SerializeField] NowWorldDeformer _deformer;
+
+        [NonSerialized] MeshFilter _meshFilter;
+        [NonSerialized] MeshRenderer _meshRenderer;
+        [NonSerialized] NowDrawList _drawList;
+        [NonSerialized] NowWorldInputProvider _inputProvider;
+        [NonSerialized] readonly List<Vector3> _vertices = new List<Vector3>(256);
+        [NonSerialized] readonly Dictionary<Material, Material> _materials = new Dictionary<Material, Material>(8);
+        [NonSerialized] Material[] _sharedMaterials = Array.Empty<Material>();
+        [NonSerialized] bool _dirty = true;
+        [NonSerialized] bool _wantsInteractionRepaint;
+        [NonSerialized] bool _hasLastInteractionInput;
+        [NonSerialized] int _scopeId;
+        [NonSerialized] InteractionInputState _lastInteractionInput;
+
+        struct InputRayResolution
+        {
+            public bool valid;
+            public int frame;
+            public int version;
+            public Camera camera;
+            public Vector2 screenPosition;
+            public Ray ray;
+            public NowWorldGraphic owner;
+            public Vector2 ownerSurfacePosition;
+            public float ownerDistance;
+            public float sceneBlockDistance;
+        }
+
+        struct InteractionInputState
+        {
+            const float PositionEpsilonSqr = 0.25f;
+
+            private bool pointerInside;
+            private Vector2 pointerPosition;
+            private NowPointerButtons pointerButtonsDown;
+            private NowPointerButtons pointerButtonsPressed;
+            private NowPointerButtons pointerButtonsReleased;
+            private Vector2 scrollDelta;
+            private Vector2 navigation;
+            private bool submitDown;
+            private bool submitPressed;
+            private bool submitReleased;
+            private bool cancelDown;
+            private bool cancelPressed;
+            private bool cancelReleased;
+
+            public static InteractionInputState FromSnapshot(NowInputSnapshot snapshot, Vector2 size)
+            {
+                bool inside = snapshot is { hasPointer: true, pointerPosition: { x: >= 0f, y: >= 0f } } &&
+                              snapshot.pointerPosition.x <= size.x &&
+                              snapshot.pointerPosition.y <= size.y;
+
+                return new InteractionInputState
+                {
+                    pointerInside = inside,
+                    pointerPosition = snapshot.pointerPosition,
+                    pointerButtonsDown = snapshot.pointerButtonsDown,
+                    pointerButtonsPressed = snapshot.pointerButtonsPressed,
+                    pointerButtonsReleased = snapshot.pointerButtonsReleased,
+                    scrollDelta = snapshot.scrollDelta,
+                    navigation = snapshot.navigation,
+                    submitDown = snapshot.submitDown,
+                    submitPressed = snapshot.submitPressed,
+                    submitReleased = snapshot.submitReleased,
+                    cancelDown = snapshot.cancelDown,
+                    cancelPressed = snapshot.cancelPressed,
+                    cancelReleased = snapshot.cancelReleased
+                };
+            }
+
+            public bool HasChangedSince(in InteractionInputState previous)
+            {
+                bool pointerRelevant =
+                    pointerInside ||
+                    previous.pointerInside ||
+                    pointerButtonsDown != NowPointerButtons.None ||
+                    previous.pointerButtonsDown != NowPointerButtons.None;
+
+                if (pointerInside != previous.pointerInside)
+                    return true;
+
+                if (pointerRelevant && (pointerPosition - previous.pointerPosition).sqrMagnitude > PositionEpsilonSqr)
+                    return true;
+
+                if (pointerButtonsDown != previous.pointerButtonsDown)
+                    return true;
+
+                if (pointerButtonsPressed != NowPointerButtons.None ||
+                    pointerButtonsReleased != NowPointerButtons.None)
+                {
+                    return true;
+                }
+
+                if (pointerRelevant && scrollDelta != Vector2.zero)
+                    return true;
+
+                if ((navigation - previous.navigation).sqrMagnitude > PositionEpsilonSqr)
+                    return true;
+
+                if (submitDown != previous.submitDown || cancelDown != previous.cancelDown)
+                    return true;
+
+                return submitPressed || submitReleased || cancelPressed || cancelReleased;
+            }
+        }
+
+        public event Action<NowWorldGraphic, NowRect> rebuildNowUI;
+
+        public Vector2 size
+        {
+            get => _size;
+            set
+            {
+                var sanitized = SanitizeSize(value);
+
+                if ((_size - sanitized).sqrMagnitude <= 0.0001f)
+                    return;
+
+                _size = sanitized;
+                MarkDirty();
+                _inputProvider?.ResetPosition();
+                InvalidateInputResolution();
+            }
+        }
+
+        public float pixelsPerUnit
+        {
+            get => _pixelsPerUnit;
+            set
+            {
+                float sanitized = SanitizePixelsPerUnit(value);
+
+                if (Mathf.Approximately(_pixelsPerUnit, sanitized))
+                    return;
+
+                _pixelsPerUnit = sanitized;
+                MarkDirty();
+                _inputProvider?.ResetPosition();
+                InvalidateInputResolution();
+            }
+        }
+
+        public Vector2 pivot
+        {
+            get => _pivot;
+            set
+            {
+                if ((_pivot - value).sqrMagnitude <= 0.0001f)
+                    return;
+
+                _pivot = value;
+                MarkDirty();
+                _inputProvider?.ResetPosition();
+                InvalidateInputResolution();
+            }
+        }
+
+        public NowWorldFacingMode facingMode
+        {
+            get => _facingMode;
+            set => _facingMode = value;
+        }
+
+        public Camera targetCamera
+        {
+            get => _targetCamera;
+            set
+            {
+                _targetCamera = value;
+                _inputProvider?.ResetPosition();
+                InvalidateInputResolution();
+            }
+        }
+
+        public NowWorldDepthMode depthMode
+        {
+            get => _depthMode;
+            set
+            {
+                if (_depthMode == value)
+                    return;
+
+                _depthMode = value;
+                MarkDirty();
+                InvalidateInputResolution();
+            }
+        }
+
+        public bool rebuildEveryFrame
+        {
+            get => _rebuildEveryFrame;
+            set => _rebuildEveryFrame = value;
+        }
+
+        public bool autoRebuildOnInteraction
+        {
+            get => _autoRebuildOnInteraction;
+            set => _autoRebuildOnInteraction = value;
+        }
+
+        public bool acceptNavigation
+        {
+            get => _acceptNavigation;
+            set
+            {
+                if (_acceptNavigation == value)
+                    return;
+
+                _acceptNavigation = value;
+                _inputProvider?.ResetPosition();
+            }
+        }
+
+        public NowWorldDeformer deformer
+        {
+            get => _deformer;
+            set
+            {
+                if (_deformer == value)
+                    return;
+
+                _deformer = value;
+                MarkDirty();
+            }
+        }
+
+        protected virtual bool useLayoutMeasurePass => true;
+
+        public Mesh mesh => _drawList?.mesh;
+
+        public int batchCount => _drawList?.batchCount ?? 0;
+
+        public bool hasGeometry => _drawList is { hasGeometry: true };
+
+        public void MarkDirty()
+        {
+            _dirty = true;
+        }
+
+        public void RebuildNowUI()
+        {
+            using var profile = NowProfiler.WorldRebuild.Auto();
+
+            EnsureRuntimeObjects();
+            ApplyFacing();
+
+            var currentSize = SanitizeSize(_size);
+            _size = currentSize;
+            _pixelsPerUnit = SanitizePixelsPerUnit(_pixelsPerUnit);
+            var surface = new NowInputSurface(currentSize);
+            float previousScale = Now.uiScale;
+            var scope = _drawList.Begin(currentSize);
+            bool repaintTracking = false;
+
+            try
+            {
+                Now.SetUIScale(1f);
+                NowControlState.BeginRepaintTracking();
+                repaintTracking = true;
+
+                using (NowInput.Begin(GetInputProvider(), surface))
+                using (NowControls.IdScope(GetScopeId()))
+                {
+                    StoreLastInteractionInput(NowInput.current, currentSize);
+
+                    if (useLayoutMeasurePass)
+                    {
+                        int layoutCounter = NowLayout.BeginMeasurePass();
+
+                        try
+                        {
+                            DrawNowUI(new NowRect(0f, 0f, currentSize.x, currentSize.y));
+                        }
+                        finally
+                        {
+                            NowLayout.EndMeasurePass(layoutCounter);
+                        }
+                    }
+
+                    DrawNowUI(new NowRect(0f, 0f, currentSize.x, currentSize.y));
+                    NowOverlay.Flush();
+                }
+
+                _wantsInteractionRepaint = NowControlState.EndRepaintTracking();
+                repaintTracking = false;
+                scope.Dispose();
+                ApplyWorldTransform();
+                ApplyRendererState();
+                _dirty = false;
+            }
+            catch (Exception ex)
+            {
+                if (repaintTracking)
+                    NowControlState.EndRepaintTracking();
+
+                scope.Cancel();
+                _drawList.Clear();
+                ApplyRendererState();
+                Debug.LogException(ex, this);
+            }
+            finally
+            {
+                Now.SetUIScale(previousScale);
+            }
+        }
+
+        public Vector3 UIToLocal(Vector2 uiPosition)
+        {
+            var currentSize = SanitizeSize(_size);
+            float ppu = SanitizePixelsPerUnit(_pixelsPerUnit);
+
+            return new Vector3(
+                (uiPosition.x - currentSize.x * _pivot.x) / ppu,
+                (currentSize.y * (1f - _pivot.y) - uiPosition.y) / ppu,
+                0f);
+        }
+
+        public Vector2 LocalToUI(Vector3 localPosition)
+        {
+            var currentSize = SanitizeSize(_size);
+            float ppu = SanitizePixelsPerUnit(_pixelsPerUnit);
+
+            return new Vector2(
+                localPosition.x * ppu + currentSize.x * _pivot.x,
+                currentSize.y * (1f - _pivot.y) - localPosition.y * ppu);
+        }
+
+        public bool TryScreenPointToSurface(Vector2 screenPosition, out Vector2 surfacePosition)
+        {
+            surfacePosition = default;
+
+            var cmr = ResolveCamera();
+
+            if (!cmr)
+                return false;
+
+            var ray = cmr.ScreenPointToRay(screenPosition);
+
+            var resolution = ResolveInputRay(cmr, screenPosition);
+
+            if (resolution.owner == this)
+            {
+                surfacePosition = resolution.ownerSurfacePosition;
+                return true;
+            }
+
+            if (resolution.owner != null)
+                return false;
+
+            if (!TryRayToSurface(resolution.ray, out surfacePosition, out float distance))
+                return false;
+
+            if (_depthMode == NowWorldDepthMode.SceneOccluded && IsSceneBlocked(resolution.sceneBlockDistance, distance))
+                return false;
+
+            return true;
+        }
+
+        protected virtual void DrawNowUI(NowRect rect)
+        {
+            rebuildNowUI?.Invoke(this, rect);
+        }
+
+        protected virtual INowInputProvider GetInputProvider()
+        {
+            _inputProvider ??= new NowWorldInputProvider();
+            _inputProvider.graphic = this;
+            _inputProvider.camera = ResolveCamera();
+            _inputProvider.acceptNavigation = _acceptNavigation;
+            return _inputProvider;
+        }
+
+        protected virtual Vector3 DeformVertex(in NowWorldVertex vertex)
+        {
+            return _deformer ? _deformer.Deform(vertex) : vertex.localPosition;
+        }
+
+        protected virtual void OnEnable()
+        {
+            if (!_instances.Contains(this))
+            {
+                _instances.Add(this);
+                InvalidateInputResolution();
+            }
+
+            _hasLastInteractionInput = false;
+            EnsureRuntimeObjects();
+            MarkDirty();
+        }
+
+        protected virtual void OnDisable()
+        {
+            if (_instances.Remove(this))
+                InvalidateInputResolution();
+
+            _hasLastInteractionInput = false;
+            ClearRendererState();
+        }
+
+        protected virtual void OnDestroy()
+        {
+            if (_instances.Remove(this))
+                InvalidateInputResolution();
+
+            ClearRendererState();
+            ReleaseMaterials();
+
+            if (_drawList != null)
+            {
+                _drawList.Dispose();
+                _drawList = null;
+            }
+        }
+
+        protected virtual void LateUpdate()
+        {
+            ApplyFacing();
+
+            if (_dirty ||
+                _rebuildEveryFrame ||
+                (_autoRebuildOnInteraction && (_wantsInteractionRepaint || HasInteractionInputChanged())))
+            {
+                RebuildNowUI();
+            }
+        }
+
+    #if UNITY_EDITOR
+        protected virtual void OnValidate()
+        {
+            _size = SanitizeSize(_size);
+            _pixelsPerUnit = SanitizePixelsPerUnit(_pixelsPerUnit);
+            MarkDirty();
+            _inputProvider?.ResetPosition();
+            InvalidateInputResolution();
+        }
+    #endif
+
+        void EnsureRuntimeObjects()
+        {
+            if (!_meshFilter)
+                _meshFilter = GetComponent<MeshFilter>();
+
+            if (!_meshRenderer)
+                _meshRenderer = GetComponent<MeshRenderer>();
+
+            _drawList ??= new NowDrawList();
+
+            if (_meshFilter && _meshFilter.sharedMesh != _drawList.mesh)
+                _meshFilter.sharedMesh = _drawList.mesh;
+        }
+
+        int GetScopeId()
+        {
+            if (_scopeId != 0)
+                return _scopeId;
+
+            _scopeId = ++_nextScopeId;
+            return _scopeId;
+        }
+
+        void ApplyWorldTransform()
+        {
+            var targetMesh = _drawList.mesh;
+
+            if (!targetMesh || targetMesh.vertexCount == 0)
+                return;
+
+            targetMesh.GetVertices(_vertices);
+
+            var currentSize = SanitizeSize(_size);
+
+            for (int i = 0; i < _vertices.Count; ++i)
+            {
+                var source = _vertices[i];
+                var ui = new Vector2(source.x, -source.y);
+                var local = UIToLocal(ui);
+                local.z = source.z / SanitizePixelsPerUnit(_pixelsPerUnit);
+                var normalized = new Vector2(
+                    currentSize.x > 0f ? Mathf.Clamp01(ui.x / currentSize.x) : 0f,
+                    currentSize.y > 0f ? Mathf.Clamp01(ui.y / currentSize.y) : 0f);
+
+                _vertices[i] = DeformVertex(new NowWorldVertex(i, ui, normalized, local));
+            }
+
+            targetMesh.SetVertices(_vertices);
+            targetMesh.RecalculateBounds();
+        }
+
+        void ApplyRendererState()
+        {
+            if (!_meshRenderer)
+                return;
+
+            if (_drawList is not { hasGeometry: true })
+            {
+                _meshRenderer.sharedMaterials = Array.Empty<Material>();
+                return;
+            }
+
+            var batches = _drawList.batches;
+            int count = batches.Count;
+
+            if (_sharedMaterials.Length != count)
+                _sharedMaterials = new Material[count];
+
+            for (int i = 0; i < count; ++i)
+                _sharedMaterials[i] = GetMaterial(batches[i].material);
+
+            _meshRenderer.sharedMaterials = _sharedMaterials;
+        }
+
+        Material GetMaterial(Material source)
+        {
+            if (!source)
+                return null;
+
+            if (!_materials.TryGetValue(source, out var material) || !material)
+            {
+                material = new Material(source)
+                {
+                    name = source.name + " World",
+                    hideFlags = HideFlags.HideAndDontSave
+                };
+                _materials[source] = material;
+            }
+            else
+            {
+                material.CopyPropertiesFromMaterial(source);
+            }
+
+            ApplyDepthMode(material);
+            return material;
+        }
+
+        void ApplyDepthMode(Material material)
+        {
+            if (!material || !material.HasProperty(_zTestId))
+                return;
+
+            material.SetFloat(
+                _zTestId,
+                _depthMode == NowWorldDepthMode.SceneOccluded
+                    ? (float)CompareFunction.LessEqual
+                    : (float)CompareFunction.Always);
+        }
+
+        bool HasInteractionInputChanged()
+        {
+            var provider = GetInputProvider();
+            var currentSize = SanitizeSize(_size);
+
+            if (!provider.TryGetSnapshot(new NowInputSurface(currentSize), out var snapshot))
+                snapshot = default;
+
+            var current = InteractionInputState.FromSnapshot(snapshot, currentSize);
+
+            if (!_hasLastInteractionInput)
+            {
+                _lastInteractionInput = current;
+                _hasLastInteractionInput = true;
+                return false;
+            }
+
+            return current.HasChangedSince(_lastInteractionInput);
+        }
+
+        void StoreLastInteractionInput(NowInputSnapshot snapshot, Vector2 currentSize)
+        {
+            _lastInteractionInput = InteractionInputState.FromSnapshot(snapshot, currentSize);
+            _hasLastInteractionInput = true;
+        }
+
+        void ApplyFacing()
+        {
+            if (_facingMode == NowWorldFacingMode.None)
+                return;
+
+            var cmr = ResolveCamera();
+
+            if (!cmr)
+                return;
+
+            var direction = transform.position - cmr.transform.position;
+
+            if (_facingMode == NowWorldFacingMode.FaceCameraYOnly)
+            {
+                direction.y = 0f;
+
+                if (direction.sqrMagnitude <= 0.000001f)
+                    return;
+
+                transform.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+                return;
+            }
+
+            if (direction.sqrMagnitude <= 0.000001f)
+                return;
+
+            transform.rotation = Quaternion.LookRotation(direction.normalized, cmr.transform.up);
+        }
+
+        Camera ResolveCamera()
+        {
+            if (_targetCamera)
+                return _targetCamera;
+            _targetCamera = Camera.main;
+            return _targetCamera;
+        }
+
+        bool TryRayToSurface(Ray ray, out Vector2 surfacePosition, out float distance)
+        {
+            surfacePosition = default;
+            distance = default;
+
+            var plane = new Plane(transform.forward, transform.position);
+
+            if (!plane.Raycast(ray, out distance) || distance < 0f)
+                return false;
+
+            surfacePosition = LocalToUI(transform.InverseTransformPoint(ray.GetPoint(distance)));
+            return true;
+        }
+
+        static InputRayResolution ResolveInputRay(Camera cmr, Vector2 screenPosition)
+        {
+            int frame = Time.frameCount;
+
+            if (_inputRayResolution.valid &&
+                _inputRayResolution.frame == frame &&
+                _inputRayResolution.version == _inputResolverVersion &&
+                _inputRayResolution.camera == cmr &&
+                (_inputRayResolution.screenPosition - screenPosition).sqrMagnitude <= 0.0001f)
+            {
+                return _inputRayResolution;
+            }
+
+            var resolution = new InputRayResolution
+            {
+                valid = true,
+                frame = frame,
+                version = _inputResolverVersion,
+                camera = cmr,
+                screenPosition = screenPosition,
+                ray = cmr.ScreenPointToRay(screenPosition),
+                owner = null,
+                ownerSurfacePosition = default,
+                ownerDistance = float.PositiveInfinity,
+                sceneBlockDistance = float.PositiveInfinity
+            };
+
+            resolution.sceneBlockDistance = FindSceneBlockDistance(cmr, resolution.ray);
+
+            for (int i = _instances.Count - 1; i >= 0; --i)
+            {
+                var other = _instances[i];
+
+                if (!other)
+                {
+                    _instances.RemoveAt(i);
+                    InvalidateInputResolution();
+                    continue;
+                }
+
+                if (!other.enabled || !other.gameObject.activeInHierarchy)
+                    continue;
+
+                if (other.ResolveCamera() != cmr)
+                    continue;
+
+                if (!other.TryRayToSurface(resolution.ray, out var surfacePosition, out float distance))
+                    continue;
+
+                if (!other.ContainsSurfacePoint(surfacePosition))
+                    continue;
+
+                if (other._depthMode == NowWorldDepthMode.SceneOccluded &&
+                    IsSceneBlocked(resolution.sceneBlockDistance, distance))
+                {
+                    continue;
+                }
+
+                if (distance >= resolution.ownerDistance - InputOcclusionEpsilon)
+                    continue;
+
+                resolution.owner = other;
+                resolution.ownerSurfacePosition = surfacePosition;
+                resolution.ownerDistance = distance;
+            }
+
+            _inputRayResolution = resolution;
+            return _inputRayResolution;
+        }
+
+        static float FindSceneBlockDistance(Camera cmr, Ray ray)
+        {
+            int hitCount = Physics.RaycastNonAlloc(
+                ray,
+                _sceneOcclusionHits,
+                cmr.farClipPlane,
+                cmr.cullingMask,
+                QueryTriggerInteraction.Ignore);
+
+            var nearest = float.PositiveInfinity;
+
+            for (int i = 0; i < hitCount; ++i)
+            {
+                var collider = _sceneOcclusionHits[i].collider;
+
+                if (!collider)
+                    continue;
+
+                var colliderTransform = collider.transform;
+
+                if (IsWorldGraphicTransform(colliderTransform))
+                    continue;
+
+                if (_sceneOcclusionHits[i].distance < nearest)
+                    nearest = _sceneOcclusionHits[i].distance;
+            }
+
+            return nearest;
+        }
+
+        static bool IsSceneBlocked(float sceneBlockDistance, float surfaceDistance)
+        {
+            return sceneBlockDistance < surfaceDistance - InputOcclusionEpsilon;
+        }
+
+        static bool IsWorldGraphicTransform(Transform candidate)
+        {
+            for (int i = _instances.Count - 1; i >= 0; --i)
+            {
+                var graphic = _instances[i];
+
+                if (!graphic)
+                {
+                    _instances.RemoveAt(i);
+                    InvalidateInputResolution();
+                    continue;
+                }
+
+                if (candidate == graphic.transform || candidate.IsChildOf(graphic.transform))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static void InvalidateInputResolution()
+        {
+            unchecked
+            {
+                ++_inputResolverVersion;
+            }
+
+            _inputRayResolution.valid = false;
+        }
+
+        bool ContainsSurfacePoint(Vector2 surfacePosition)
+        {
+            var currentSize = SanitizeSize(_size);
+            return surfacePosition.x >= 0f && surfacePosition.x <= currentSize.x &&
+                   surfacePosition.y >= 0f && surfacePosition.y <= currentSize.y;
+        }
+
+        void ClearRendererState()
+        {
+            if (_meshRenderer != null)
+                _meshRenderer.sharedMaterials = Array.Empty<Material>();
+
+            if (_meshFilter != null && _meshFilter.sharedMesh == _drawList?.mesh)
+                _meshFilter.sharedMesh = null;
+        }
+
+        void ReleaseMaterials()
+        {
+            foreach (var material in _materials.Values)
+            {
+                if (material == null)
+                    continue;
+
+                if (Application.isPlaying)
+                    Destroy(material);
+                else
+                    DestroyImmediate(material);
+            }
+
+            _materials.Clear();
+            _sharedMaterials = Array.Empty<Material>();
+        }
+
+        static Vector2 SanitizeSize(Vector2 value)
+        {
+            return new Vector2(Mathf.Max(1f, value.x), Mathf.Max(1f, value.y));
+        }
+
+        static float SanitizePixelsPerUnit(float value)
+        {
+            return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value) ? value : 100f;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetForRuntimeLoad()
+        {
+            _nextScopeId = 0;
+            _inputResolverVersion = 0;
+            _instances.Clear();
+            _inputRayResolution = default;
+        }
+    }
+}

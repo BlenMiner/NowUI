@@ -858,16 +858,16 @@ namespace NowUI
             float padding = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
-            return Area(null, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
+            return Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
         }
 
         public static NowLayoutScope Area(NowRect rect, NowLayoutOptions options)
         {
-            return Area(null, rect, options);
+            return Area(default(NowId), rect, options);
         }
 
         public static NowLayoutScope Area(
-            string id,
+            NowId id,
             NowRect rect,
             float spacing = 0f,
             float padding = 0f,
@@ -876,10 +876,10 @@ namespace NowUI
             return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
         }
 
-        public static NowLayoutScope Area(string id, NowRect rect, NowLayoutOptions options)
+        public static NowLayoutScope Area(NowId id, NowRect rect, NowLayoutOptions options)
         {
             OnFrameBoundary();
-            return Area(id != null ? NowInput.GetId(id) : HashCombine(AreaSeed, _areaCounter), rect, options);
+            return Area(id.ResolveStableId(HashCombine(AreaSeed, _areaCounter)), rect, options);
         }
 
         /// <summary>Area keyed by a precomputed identity hash (e.g. <see cref="NowControls.SiteId"/>).</summary>
@@ -933,16 +933,16 @@ namespace NowUI
             float padding = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
-            Area(null, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
+            Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
         }
 
         public static void Area(NowRect rect, NowLayoutOptions options, Action ui)
         {
-            Area(null, rect, options, ui);
+            Area(default(NowId), rect, options, ui);
         }
 
         public static void Area(
-            string id,
+            NowId id,
             NowRect rect,
             Action ui,
             float spacing = 0f,
@@ -952,7 +952,7 @@ namespace NowUI
             Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
         }
 
-        public static void Area(string id, NowRect rect, NowLayoutOptions options, Action ui)
+        public static void Area(NowId id, NowRect rect, NowLayoutOptions options, Action ui)
         {
             if (ui == null)
                 throw new ArgumentNullException(nameof(ui));
@@ -1072,16 +1072,16 @@ namespace NowUI
             bool stretchWidth = false,
             bool stretchHeight = false)
         {
-            return BeginGroup(true, null, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+            return BeginGroup(true, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
         public static NowLayoutScope Horizontal(NowLayoutOptions options)
         {
-            return BeginGroup(true, null, options);
+            return BeginGroup(true, default, options);
         }
 
         public static NowLayoutScope Horizontal(
-            string id,
+            NowId id,
             float spacing = 0f,
             float padding = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start,
@@ -1093,7 +1093,7 @@ namespace NowUI
             return BeginGroup(true, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
-        public static NowLayoutScope Horizontal(string id, NowLayoutOptions options)
+        public static NowLayoutScope Horizontal(NowId id, NowLayoutOptions options)
         {
             return BeginGroup(true, id, options);
         }
@@ -1147,16 +1147,16 @@ namespace NowUI
             bool stretchWidth = false,
             bool stretchHeight = false)
         {
-            return BeginGroup(false, null, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+            return BeginGroup(false, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
         public static NowLayoutScope Vertical(NowLayoutOptions options)
         {
-            return BeginGroup(false, null, options);
+            return BeginGroup(false, default, options);
         }
 
         public static NowLayoutScope Vertical(
-            string id,
+            NowId id,
             float spacing = 0f,
             float padding = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start,
@@ -1168,7 +1168,7 @@ namespace NowUI
             return BeginGroup(false, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
-        public static NowLayoutScope Vertical(string id, NowLayoutOptions options)
+        public static NowLayoutScope Vertical(NowId id, NowLayoutOptions options)
         {
             return BeginGroup(false, id, options);
         }
@@ -1390,12 +1390,12 @@ namespace NowUI
             Reset();
         }
 
-        static NowLayoutScope BeginGroup(bool horizontal, string id, NowLayoutOptions options)
+        static NowLayoutScope BeginGroup(bool horizontal, NowId id, NowLayoutOptions options)
         {
             ref var parent = ref RequireGroup("Layout groups require an open area. Call NowLayout.Area first.");
 
-            int groupId = id != null
-                ? HashCombine(parent.id, NowInput.GetId(id))
+            int groupId = id.hasValue
+                ? HashCombine(parent.id, id.ResolveStableId(1))
                 : HashCombine(parent.id, parent.childIndex);
             parent.childIndex++;
 
@@ -1553,6 +1553,15 @@ namespace NowUI
             return false;
         }
 
+        internal static bool TryGetCachedContentSize(NowId id, out Vector2 size)
+        {
+            if (id.hasValue)
+                return TryGetCachedContentSize(id.ResolveStableId(1), out size);
+
+            size = default;
+            return false;
+        }
+
         internal static bool TryGetCachedContentSize(int id, out Vector2 size)
         {
             if (_cache.TryGetValue(id, out var cached))
@@ -1589,7 +1598,7 @@ namespace NowUI
                 contentHeight = contentHeight,
                 fixedMain = group.fixedMain,
                 flexTotal = group.flexTotal,
-                lastUsed = CurrentTime()
+                lastUsed = NowTime.realtimeSinceStartup
             };
         }
 
@@ -1811,7 +1820,7 @@ namespace NowUI
 
         static void CleanupCache()
         {
-            double now = CurrentTime();
+            double now = NowTime.realtimeSinceStartup;
 
             if (now - _lastCleanupTime < 1.0)
                 return;
@@ -1827,11 +1836,6 @@ namespace NowUI
 
             for (int i = 0; i < _removeIds.Count; ++i)
                 _cache.Remove(_removeIds[i]);
-        }
-
-        static double CurrentTime()
-        {
-            return DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerSecond;
         }
 
         static int HashCombine(int a, int b)

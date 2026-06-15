@@ -52,6 +52,11 @@ namespace NowUI
         bool TryGetFrame(out NowTextInputFrame frame);
     }
 
+    public interface INowTextInputBuffer
+    {
+        void DiscardPendingText();
+    }
+
     /// <summary>
     /// Frame-sampled text-editing input for text fields and custom editors.
     /// Reads the Input System keyboard (legacy input as fallback); replace
@@ -92,6 +97,19 @@ namespace NowUI
         public static void Invalidate()
         {
             _frameStamp = -1;
+        }
+
+        /// <summary>Discards characters captured before an editor became active.</summary>
+        public static void DiscardPending()
+        {
+            if (source is INowTextInputBuffer buffer)
+                buffer.DiscardPendingText();
+
+            if (_frameStamp == Time.frameCount)
+            {
+                _frame.characters = null;
+                _frame.composition = null;
+            }
         }
 
         /// <summary>
@@ -171,7 +189,7 @@ namespace NowUI
     }
 
     /// <summary>Default keyboard-backed source.</summary>
-    sealed class NowKeyboardTextInputSource : INowTextInputSource
+    sealed class NowKeyboardTextInputSource : INowTextInputSource, INowTextInputBuffer
     {
         public static readonly NowKeyboardTextInputSource instance = new NowKeyboardTextInputSource();
 
@@ -214,6 +232,15 @@ namespace NowUI
             _composition = composition.Count > 0 ? composition.ToString() : null;
         }
 #endif
+
+        public void DiscardPendingText()
+        {
+            _pending.Clear();
+
+#if ENABLE_INPUT_SYSTEM
+            _composition = null;
+#endif
+        }
 
         public bool TryGetFrame(out NowTextInputFrame frame)
         {

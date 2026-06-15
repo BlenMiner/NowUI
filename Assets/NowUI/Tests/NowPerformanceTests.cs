@@ -1,7 +1,9 @@
+using System;
 using NUnit.Framework;
 using Unity.PerformanceTesting;
 using UnityEngine;
 using NowUI;
+using Object = UnityEngine.Object;
 
 /// <summary>
 /// Baseline timings for the immediate-mode hot paths. These exist to catch
@@ -13,6 +15,58 @@ public class NowPerformanceTests
     const int RectanglesPerFrame = 1000;
 
     const int LabelsPerFrame = 100;
+
+    const string TextSample = "The quick brown fox jumps over 0123456789";
+
+    static int _overlayState;
+
+    sealed class PerfWorldGraphic : NowWorldGraphic
+    {
+        protected override bool useLayoutMeasurePass => false;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            for (int i = 0; i < 24; ++i)
+            {
+                Now.Rectangle(new NowRect((i * 17) % 260, (i * 11) % 180, 48, 24))
+                    .SetColor(Color.white)
+                    .SetRadius(3f)
+                    .Draw();
+            }
+        }
+    }
+
+    static long AllocatedBytesOrIgnore()
+    {
+        try
+        {
+            return GC.GetAllocatedBytesForCurrentThread();
+        }
+        catch (NotImplementedException)
+        {
+            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
+            return 0;
+        }
+    }
+
+    static void AssertNoAllocAfterWarmup(Action draw, string message)
+    {
+        draw();
+        draw();
+        draw();
+
+        long before = AllocatedBytesOrIgnore();
+        draw();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.AreEqual(0, allocated, message);
+    }
+
+    static void DrawDeferredOverlay(int state)
+    {
+        _overlayState = state;
+        Now.Rectangle(new NowRect(8, 8, 24, 24)).SetColor(Color.white).Draw();
+    }
 
     [Test, Performance]
     public void RectangleFrameBuild()
@@ -62,7 +116,7 @@ public class NowPerformanceTests
                             Now.Text(new NowRect(8, (i * 24) % 1000, 600, 24))
                                 .SetFontSize(18)
                                 .SetColor(Color.white)
-                                .Draw("The quick brown fox jumps over 0123456789");
+                                .Draw(TextSample);
                         }
                     }
                 })
@@ -73,6 +127,206 @@ public class NowPerformanceTests
         finally
         {
             drawList.Dispose();
+        }
+    }
+
+    [Test, Performance]
+    public void EffectModifierFrameBuild()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Measure.Method(() =>
+                {
+                    using (drawList.Begin(new Vector2(512, 256)))
+                    using (NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 18f))
+                               .SetId(12001)
+                               .SetSubdivision(4)
+                               .Begin())
+                    {
+                        for (int i = 0; i < 40; ++i)
+                        {
+                            Now.Rectangle(new NowRect((i * 13) % 460, (i * 7) % 220, 48, 24))
+                                .SetColor(Color.white)
+                                .Draw();
+                        }
+                    }
+                })
+                .WarmupCount(5)
+                .MeasurementCount(20)
+                .Run();
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test, Performance]
+    public void WorldGraphicRebuild()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        var go = new GameObject("Now Perf World Graphic");
+
+        try
+        {
+            var graphic = go.AddComponent<PerfWorldGraphic>();
+
+            Measure.Method(() => graphic.RebuildNowUI())
+                .WarmupCount(5)
+                .MeasurementCount(20)
+                .Run();
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void RectangleFrameBuildIsAllocationFreeAfterWarmup()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        var drawList = new NowDrawList();
+
+        try
+        {
+            void DrawFrame()
+            {
+                using (drawList.Begin(new Vector2(640, 360)))
+                {
+                    for (int i = 0; i < 128; ++i)
+                    {
+                        Now.Rectangle(new NowRect((i * 7) % 600, (i * 13) % 320, 32, 18))
+                            .SetColor(Color.white)
+                            .Draw();
+                    }
+                }
+            }
+
+            AssertNoAllocAfterWarmup(DrawFrame, "steady-state rectangle draw-list build must not allocate");
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void TextFrameBuildIsAllocationFreeAfterGlyphWarmup()
+    {
+        Assert.NotNull(Now.defaultFont, "Default font resource is required for the text allocation baseline.");
+        var drawList = new NowDrawList();
+
+        try
+        {
+            void DrawFrame()
+            {
+                using (drawList.Begin(new Vector2(640, 360)))
+                {
+                    for (int i = 0; i < 24; ++i)
+                    {
+                        Now.Text(new NowRect(8, (i * 20) % 320, 500, 20))
+                            .SetFontSize(16f)
+                            .SetColor(Color.white)
+                            .Draw(TextSample);
+                    }
+                }
+            }
+
+            AssertNoAllocAfterWarmup(DrawFrame, "steady-state text draw-list build must not allocate after glyph warmup");
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void EffectMeshModifierIsAllocationFreeAfterWarmup()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        var drawList = new NowDrawList();
+
+        try
+        {
+            void DrawFrame()
+            {
+                using (drawList.Begin(new Vector2(256, 128)))
+                using (NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 16f))
+                           .SetId(12002)
+                           .SetSubdivision(4)
+                           .Begin())
+                {
+                    Now.Rectangle(new NowRect(8, 8, 80, 40))
+                        .SetColor(Color.white)
+                        .Draw();
+                }
+            }
+
+            AssertNoAllocAfterWarmup(DrawFrame, "steady-state mesh effect modifier must not allocate");
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void EffectTextureModifierStableSizeIsAllocationFreeAfterWarmup()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        var drawList = new NowDrawList();
+        var sourceRect = new NowRect(8, 8, 80, 40);
+
+        try
+        {
+            void DrawFrame()
+            {
+                using (drawList.Begin(new Vector2(256, 128)))
+                using (NowEffects.Modifier(NowDeformers.Genie(new NowRect(96, 48, 20, 12), 0.5f))
+                           .SetId(12003)
+                           .SetRenderToTexture()
+                           .SetSourceRect(sourceRect)
+                           .SetSubdivision(4)
+                           .Begin())
+                {
+                    Now.Rectangle(sourceRect)
+                        .SetColor(Color.white)
+                        .Draw();
+                }
+            }
+
+            AssertNoAllocAfterWarmup(DrawFrame, "steady-state texture effect modifier must not allocate at stable size");
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void OverlayIntegerDeferIsAllocationFreeAfterWarmup()
+    {
+        var drawList = new NowDrawList();
+
+        try
+        {
+            void DrawFrame()
+            {
+                using (drawList.Begin(new Vector2(128, 64)))
+                    NowOverlay.Defer(new NowRect(8, 8, 24, 24), 42, DrawDeferredOverlay);
+            }
+
+            AssertNoAllocAfterWarmup(DrawFrame, "steady-state integer overlay defer must not allocate");
+            Assert.AreEqual(42, _overlayState);
+        }
+        finally
+        {
+            drawList.Dispose();
+            NowOverlay.Reset();
         }
     }
 }

@@ -7,6 +7,11 @@ NowUI supports three non-retained output paths.
 - UGUI: derive from `NowGraphic` and render into `CanvasRenderer`.
 - SRP: derive from `NowPipelineGraphic` and use the URP or HDRP wrapper.
 
+For nameplates, hover tooltips, and diegetic panels that should exist as scene
+geometry, use `NowWorldGraphic` instead. It renders through a normal
+`MeshRenderer`, so it does not need a pipeline feature or custom pass; see
+[WorldSpace](WorldSpace.md).
+
 ## Shared SRP Source
 
 `NowPipelineGraphic` is the shared source component for URP and HDRP. Attach a

@@ -7,8 +7,8 @@ compilation, a flexbox-style layout system, pointer/touch/gamepad interaction,
 themes, and Lottie vector animation.
 
 It renders through the built-in pipeline (`GL`/`Graphics.DrawMeshNow`), URP,
-HDRP, a UGUI `CanvasRenderer`, a `RenderTexture`, or IMGUI — same drawing code
-everywhere.
+HDRP, a UGUI `CanvasRenderer`, a world-space `MeshRenderer`, a
+`RenderTexture`, or IMGUI — same drawing code everywhere.
 
 ## Installation
 
@@ -49,7 +49,7 @@ public class OverlayExample : MonoBehaviour
             NowLayout.Label("Hello Now-UI", 32).Draw();
 
             NowRect button = NowLayout.Rect(NowLayout.Size(160, 44));
-            var state = NowInput.Interact("ok-button", button);
+            var state = NowInput.Interact(100, button);
 
             Now.Rectangle(button)
                 .SetColor(state.hovered ? Color.white : Color.gray)
@@ -89,6 +89,11 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
   rounded caps, masks, and arrow heads. [Docs/Lines.md](Docs/Lines.md)
 - **Shapes** — filled or outlined circles, ellipses, triangles, and reusable
   array/list-backed polygons. [Docs/Shapes.md](Docs/Shapes.md)
+- **Effects** — scoped mesh and texture-backed visual modifiers with custom
+  vertex deformers and explicit subdivision. [Docs/Effects.md](Docs/Effects.md)
+- **World Space** — direct-mesh nameplates, hover tooltips and diegetic
+  panels with ray-mapped input, configurable depth, and vertex deformation.
+  [Docs/WorldSpace.md](Docs/WorldSpace.md)
 - **Text** — SDF atlases baked on demand by a Burst-compiled managed
   compiler (native plugin covers CFF and color emoji fonts); HarfBuzz
   shaping for ligatures, kerning, and complex scripts where the plugin is
@@ -165,15 +170,20 @@ changes its bundled toolchain.
 - `Assets/NowUI/Editor` — font compiler menu, `.lottie` importer
 - `Assets/NowUI/Plugins/Native` — native wrapper sources built by CI
 - `Assets/NowUI/Example` — sample scripts, including `MailClientMockup`, a
-  Gmail-like inbox drawn entirely with immediate NowUI calls
+  Gmail-like inbox drawn entirely with immediate NowUI calls, and
+  `NowWorldGraphicExample`, a direct-mesh world-space label
 - `Docs` — feature guides
 
 ## Notes
 
 - Call `Now.StartUI()` before drawing and `Now.FlushUI()` after. Draw order is
   preserved; switching materials flushes the active mesh.
-- The hot path is allocation-free; mesh buffers start small and grow on
-  demand, so the first heavy frame may allocate.
+- Prefer stable non-zero integer ids (`SetId(item.id)`, `IdScope(item.id)`,
+  `NowInput.Interact(100, rect)`) for data-backed controls; strings remain
+  convenient for one-off named controls.
+- The hot path is allocation-free once buffers, glyphs, effect textures, and
+  world-space material batches are warm. First use, new ids, new material
+  batches, and capacity growth may allocate.
 - Emoji sequence shaping (ZWJ families, skin tones, flags) needs a future
   HarfBuzz shaping layer; single-glyph emoji render today.
 

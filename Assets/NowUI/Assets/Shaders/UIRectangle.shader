@@ -3,13 +3,14 @@ Shader "NowUI/UI Rectangle"
     Properties
     {
         _MainTex ("Texture", 2D) = "white" {}
+        _ZTest ("ZTest", Float) = 8
     }
     SubShader
     {
         Tags {
+            "Queue"="Transparent"
             "RenderType"="Transparent"
             "IgnoreProjector"="True"
-            "RenderType"="Transparent"
             "PreviewType"="Plane"
             "CanUseSpriteAtlas"="True"
         }
@@ -17,7 +18,7 @@ Shader "NowUI/UI Rectangle"
         Cull Off
         Lighting Off
         ZWrite Off
-        ZTest Off
+        ZTest [_ZTest]
         Blend SrcAlpha OneMinusSrcAlpha
 
         Pass

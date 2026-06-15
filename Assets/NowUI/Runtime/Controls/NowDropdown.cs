@@ -14,7 +14,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowDropdown
     {
-        readonly string _id;
+        readonly NowId _id;
         readonly int _site;
         readonly IReadOnlyList<string> _options;
         NowLayoutOptions _layoutOptions;
@@ -24,7 +24,25 @@ namespace NowUI
         const float ItemHeight = 30f;
         const float MaxPopupHeight = 240f;
 
-        internal NowDropdown(string id, IReadOnlyList<string> options, int site)
+        sealed class PopupState
+        {
+            public NowThemeAsset themeAsset;
+            public IReadOnlyList<string> options;
+            public int id;
+            public int selected;
+            public int optionCount;
+            public int pendingId;
+            public int itemSeed;
+            public int scrollId;
+            public bool scrolls;
+            public NowRect field;
+            public NowRect popupRect;
+            public NowRect itemArea;
+        }
+
+        static readonly Dictionary<int, PopupState> _popupStates = new Dictionary<int, PopupState>(8);
+
+        internal NowDropdown(NowId id, IReadOnlyList<string> options, int site)
         {
             _id = id;
             _site = site;
@@ -34,7 +52,7 @@ namespace NowUI
             _hasRect = false;
         }
 
-        internal NowDropdown(NowRect rect, string id, IReadOnlyList<string> options, int site) : this(id, options, site)
+        internal NowDropdown(NowRect rect, NowId id, IReadOnlyList<string> options, int site) : this(id, options, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -49,7 +67,7 @@ namespace NowUI
         public bool Draw(ref int selected)
         {
             var theme = NowTheme.themeAsset;
-            int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+            int id = NowControls.GetControlId(_id, _site);
             int optionCount = _options?.Count ?? 0;
 
             ref int pending = ref NowControlState.Get<int>(NowInput.GetId(id, "pending"));
@@ -110,79 +128,105 @@ namespace NowUI
         /// </summary>
         static void DeferPopup(NowThemeAsset themeAsset, IReadOnlyList<string> options, int id, NowRect field, int selected, int optionCount)
         {
-            float popupHeight = Mathf.Min(optionCount * ItemHeight + 8f, MaxPopupHeight);
+            float contentHeight = optionCount * ItemHeight + 8f;
+            float popupHeight = Mathf.Min(contentHeight, MaxPopupHeight);
             var popupRect = new NowRect(field.x, field.yMax + 4f, field.width, popupHeight);
-            bool scrolls = optionCount * ItemHeight + 8f > MaxPopupHeight;
-            int scrollId = NowInput.GetId(id, "popup-scroll");
 
-            NowOverlay.Defer(popupRect, () =>
+            if (!_popupStates.TryGetValue(id, out var state))
             {
-                var background = themeAsset.Rectangle(popupRect, NowRectangleStyle.Surface);
-                background.outline = 1f;
-                background.outlineColor = themeAsset.GetColor(NowColorToken.Border, Color.gray);
-                background.Draw();
+                state = new PopupState();
+                _popupStates[id] = state;
+            }
 
-                var itemArea = popupRect.Inset(4f);
-                int pendingId = NowInput.GetId(id, "pending");
-                int itemSeed = NowInput.GetId(id, "item");
+            state.themeAsset = themeAsset;
+            state.options = options;
+            state.id = id;
+            state.selected = selected;
+            state.optionCount = optionCount;
+            state.pendingId = NowInput.GetId(id, "pending");
+            state.itemSeed = NowInput.GetId(id, "item");
+            state.scrollId = NowInput.GetId(id, "popup-scroll");
+            state.scrolls = contentHeight > MaxPopupHeight;
+            state.field = field;
+            state.popupRect = popupRect;
+            state.itemArea = popupRect.Inset(4f);
 
-                void DrawItems()
+            NowOverlay.Defer(popupRect, id, DrawPopup);
+        }
+
+        static void DrawPopup(int stateId)
+        {
+            if (!_popupStates.TryGetValue(stateId, out var state) || state.options == null)
+                return;
+
+            var themeAsset = state.themeAsset;
+            var popupRect = state.popupRect;
+            var background = themeAsset.Rectangle(popupRect, NowRectangleStyle.Surface);
+            background.outline = 1f;
+            background.outlineColor = themeAsset.GetColor(NowColorToken.Border, Color.gray);
+            background.Draw();
+
+            if (state.scrolls)
+            {
+                using (new NowScrollView(state.itemArea, state.scrollId).Begin())
+                    DrawItems(state);
+            }
+            else
+            {
+                DrawItems(state);
+            }
+
+            var snapshot = NowInput.current;
+            bool pressedOutside = snapshot.primaryPressed &&
+                !popupRect.Contains(snapshot.pointerPosition) &&
+                !state.field.Contains(snapshot.pointerPosition);
+
+            if (pressedOutside || snapshot.cancelPressed)
+                NowControlState.Get<bool>(state.id) = false;
+        }
+
+        static void DrawItems(PopupState state)
+        {
+            for (int i = 0; i < state.optionCount; ++i)
+            {
+                NowRect itemRect = state.scrolls
+                    ? NowLayout.Rect(new NowLayoutOptions().SetHeight(ItemHeight).SetStretchWidth())
+                    : new NowRect(
+                        state.itemArea.x,
+                        state.itemArea.y + i * ItemHeight,
+                        state.itemArea.width,
+                        ItemHeight);
+
+                var itemInteraction = NowInput.Interact(NowInput.CombineId(state.itemSeed, i + 1), itemRect);
+
+                if (itemInteraction.hovered || i == state.selected)
                 {
-                    for (int i = 0; i < options.Count; ++i)
-                    {
-                        NowRect itemRect;
+                    var highlight = state.themeAsset.Rectangle(
+                        itemRect,
+                        i == state.selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
 
-                        if (scrolls)
-                        {
-                            itemRect = NowLayout.Rect(new NowLayoutOptions().SetHeight(ItemHeight).SetStretchWidth());
-                        }
-                        else
-                        {
-                            itemRect = new NowRect(itemArea.x, itemArea.y + i * ItemHeight, itemArea.width, ItemHeight);
-                        }
+                    if (itemInteraction.hovered && i != state.selected)
+                        highlight.color = NowControls.StateTint(highlight.color, 1f, itemInteraction.held);
 
-                        var itemInteraction = NowInput.Interact(NowInput.CombineId(itemSeed, i + 1), itemRect);
-
-                        if (itemInteraction.hovered || i == selected)
-                        {
-                            var highlight = themeAsset.Rectangle(itemRect, i == selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
-
-                            if (itemInteraction.hovered && i != selected)
-                                highlight.color = NowControls.StateTint(highlight.color, 1f, itemInteraction.held);
-
-                            highlight.radius = new Vector4(4f, 4f, 4f, 4f);
-                            highlight.Draw();
-                        }
-
-                        NowTextStyle itemStyle = i == selected ? NowTextStyle.Button : NowTextStyle.Body;
-                        NowControls.DrawLeftLabel(themeAsset, itemRect.Inset(8f, 0f, 4f, 0f), options[i], itemStyle);
-
-                        if (itemInteraction.clicked)
-                        {
-                            NowControlState.Get<int>(pendingId) = i + 1;
-                            NowControlState.Get<bool>(id) = false;
-                        }
-                    }
+                    highlight.radius = new Vector4(4f, 4f, 4f, 4f);
+                    highlight.Draw();
                 }
 
-                if (scrolls)
-                {
-                    using (new NowScrollView(itemArea, scrollId).Begin())
-                        DrawItems();
-                }
-                else
-                {
-                    DrawItems();
-                }
+                NowTextStyle itemStyle = i == state.selected ? NowTextStyle.Button : NowTextStyle.Body;
+                NowControls.DrawLeftLabel(state.themeAsset, itemRect.Inset(8f, 0f, 4f, 0f), state.options[i], itemStyle);
 
-                var snapshot = NowInput.current;
-                bool pressedOutside = snapshot.primaryPressed &&
-                    !popupRect.Contains(snapshot.pointerPosition) &&
-                    !field.Contains(snapshot.pointerPosition);
+                if (itemInteraction.clicked)
+                {
+                    NowControlState.Get<int>(state.pendingId) = i + 1;
+                    NowControlState.Get<bool>(state.id) = false;
+                }
+            }
+        }
 
-                if (pressedOutside || snapshot.cancelPressed)
-                    NowControlState.Get<bool>(id) = false;
-            });
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetForRuntimeLoad()
+        {
+            _popupStates.Clear();
         }
     }
 }

@@ -17,13 +17,13 @@ namespace NowUI.CodeEditor
     /// <summary>Factories for <see cref="NowCodeEditor"/>, mirroring the core control factories.</summary>
     public static class NowCode
     {
-        public static NowCodeEditor Editor(NowCodeLanguage language, string id = null,
+        public static NowCodeEditor Editor(NowCodeLanguage language, NowId id = default,
             [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowCodeEditor(language, id, NowControls.SiteId(file, line));
         }
 
-        public static NowCodeEditor Editor(NowRect rect, NowCodeLanguage language, string id = null,
+        public static NowCodeEditor Editor(NowRect rect, NowCodeLanguage language, NowId id = default,
             [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowCodeEditor(rect, language, id, NowControls.SiteId(file, line));
@@ -52,7 +52,7 @@ namespace NowUI.CodeEditor
 
         const string IndentUnit = "    ";
 
-        readonly string _id;
+        readonly NowId _id;
         readonly int _site;
         readonly NowCodeLanguage _language;
         readonly NowRect _rect;
@@ -63,7 +63,7 @@ namespace NowUI.CodeEditor
         bool _hideLineNumbers;
         bool _hideStatusBar;
 
-        internal NowCodeEditor(NowCodeLanguage language, string id, int site)
+        internal NowCodeEditor(NowCodeLanguage language, NowId id, int site)
         {
             _language = language;
             _id = id;
@@ -77,7 +77,7 @@ namespace NowUI.CodeEditor
             _hideStatusBar = false;
         }
 
-        internal NowCodeEditor(NowRect rect, NowCodeLanguage language, string id, int site) : this(language, id, site)
+        internal NowCodeEditor(NowRect rect, NowCodeLanguage language, NowId id, int site) : this(language, id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -106,6 +106,8 @@ namespace NowUI.CodeEditor
             public string positionText;
             public int positionLine = -1;
             public int positionColumn = -1;
+            public string tooltipMessage;
+            public NowRect tooltipRect;
         }
 
         struct EditorState
@@ -146,7 +148,7 @@ namespace NowUI.CodeEditor
                 return result;
 
             var theme = NowTheme.themeAsset;
-            int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+            int id = NowControls.GetControlId(_id, _site);
 
             var textStyle = theme.Text(default, NowTextStyle.Body).SetFontSize(_fontSize);
             var font = textStyle.font;
@@ -220,6 +222,7 @@ namespace NowUI.CodeEditor
 
             if (focused && editor.hadFocus == 0)
             {
+                NowTextInput.DiscardPending();
                 NowTextInput.setImeEnabled?.Invoke(true);
 
                 if (!interaction.pressed)
@@ -498,7 +501,7 @@ namespace NowUI.CodeEditor
                     textRect.x + caretX - editor.scrollX,
                     textRect.y + caretLine * lineHeight - editor.scrollY + lineHeight));
 
-            DrawVisuals(theme, textStyle, font, rect, textRect, gutterWidth, statusHeight, lineHeight,
+            DrawVisuals(id, theme, textStyle, font, rect, textRect, gutterWidth, statusHeight, lineHeight,
                 text, cache, in state, ref editor, focused, composition, caretLine, caretX,
                 interaction.pointerPosition, interaction.hovered);
 
@@ -540,7 +543,7 @@ namespace NowUI.CodeEditor
             return !Mathf.Approximately(nextY, scrollY) || !Mathf.Approximately(nextX, scrollX);
         }
 
-        void DrawVisuals(NowThemeAsset themeAsset, NowText textStyle, NowFontAsset font, NowRect rect, NowRect textRect,
+        void DrawVisuals(int id, NowThemeAsset themeAsset, NowText textStyle, NowFontAsset font, NowRect rect, NowRect textRect,
             float gutterWidth, float statusHeight, float lineHeight, string text, EditorCache cache,
             in NowTextEditState state, ref EditorState editor, bool focused, string composition,
             int caretLine, float caretX, Vector2 pointer, bool hovered)
@@ -689,7 +692,7 @@ namespace NowUI.CodeEditor
             border.Draw();
 
             if (hovered)
-                DrawDiagnosticTooltip(themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, pointer);
+                DrawDiagnosticTooltip(id, themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, pointer);
         }
 
         static Vector4 Corners(float topLeft, float topRight, float bottomRight, float bottomLeft)
@@ -896,7 +899,7 @@ namespace NowUI.CodeEditor
             messageStyle.SetFontSize(11f).Draw(message);
         }
 
-        void DrawDiagnosticTooltip(NowThemeAsset themeAsset, string text, EditorCache cache, NowFontAsset font,
+        void DrawDiagnosticTooltip(int id, NowThemeAsset themeAsset, string text, EditorCache cache, NowFontAsset font,
             float fontSize, NowFontStyle fontStyle, NowRect textRect, float lineHeight, ref EditorState editor, Vector2 pointer)
         {
             if (cache.diagnostics.Count == 0 || !textRect.Contains(pointer))
@@ -917,24 +920,33 @@ namespace NowUI.CodeEditor
                 if (hoverIndex < diagnostic.start || hoverIndex > diagnostic.start + diagnostic.length)
                     continue;
 
-                string message = diagnostic.message;
+                string message = diagnostic.message ?? string.Empty;
                 float width = Advance(message, font, 12f, fontStyle) + 16f;
-                var tooltipRect = new NowRect(pointer.x + 12f, pointer.y + 18f, width, 24f);
+                cache.tooltipMessage = message;
+                cache.tooltipRect = new NowRect(pointer.x + 12f, pointer.y + 18f, width, 24f);
 
-                NowOverlay.Defer(default, () =>
-                {
-                    var background = NowTheme.themeAsset.Rectangle(tooltipRect, NowRectangleStyle.Surface);
-                    background.outline = 1f;
-                    background.outlineColor = NowTheme.themeAsset.GetColor(NowColorToken.Border, Color.gray);
-                    background.SetRadius(4f).Draw();
-
-                    var tooltipStyle = NowTheme.themeAsset.Text(
-                        new NowRect(tooltipRect.x + 8f, tooltipRect.y, tooltipRect.width, tooltipRect.height),
-                        NowTextStyle.Body);
-                    tooltipStyle.SetFontSize(12f).Draw(message);
-                });
+                NowOverlay.Defer(default, id, DrawDiagnosticTooltipOverlay);
                 return;
             }
+        }
+
+        static void DrawDiagnosticTooltipOverlay(int id)
+        {
+            if (!_caches.TryGetValue(id, out var cache) || string.IsNullOrEmpty(cache.tooltipMessage))
+                return;
+
+            var tooltipRect = cache.tooltipRect;
+            var theme = NowTheme.themeAsset;
+            var background = theme.Rectangle(tooltipRect, NowRectangleStyle.Surface);
+            background.outline = 1f;
+            background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
+            background.SetRadius(4f).Draw();
+
+            var tooltipStyle = theme.Text(
+                new NowRect(tooltipRect.x + 8f, tooltipRect.y, tooltipRect.width, tooltipRect.height),
+                NowTextStyle.Body);
+            tooltipStyle.SetFontSize(12f).Draw(cache.tooltipMessage);
+            cache.tooltipMessage = null;
         }
 
         static string NumberString(int value)

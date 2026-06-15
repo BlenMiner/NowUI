@@ -40,6 +40,18 @@ namespace NowUI
         /// <summary>Deferred overlay draws (dropdown popups, tooltips).</summary>
         public static readonly ProfilerMarker OverlayFlush = new ProfilerMarker("Now.Overlay.Flush");
 
+        /// <summary>Capturing draw commands into an effects draw list.</summary>
+        public static readonly ProfilerMarker EffectsCapture = new ProfilerMarker("Now.Effects.Capture");
+
+        /// <summary>Copying and deforming captured effect vertices.</summary>
+        public static readonly ProfilerMarker EffectsDeform = new ProfilerMarker("Now.Effects.Deform");
+
+        /// <summary>Rendering an effect capture into a texture backend.</summary>
+        public static readonly ProfilerMarker EffectsRenderTexture = new ProfilerMarker("Now.Effects.RenderTexture");
+
+        /// <summary>Building a world-space NowUI mesh and renderer state.</summary>
+        public static readonly ProfilerMarker WorldRebuild = new ProfilerMarker("Now.World.Rebuild");
+
         /// <summary>The screen path's end-of-frame GL submission.</summary>
         public static readonly ProfilerMarker FlushUI = new ProfilerMarker("Now.FlushUI");
     }

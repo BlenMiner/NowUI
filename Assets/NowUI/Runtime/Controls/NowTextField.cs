@@ -15,7 +15,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowTextField
     {
-        readonly string _id;
+        readonly NowId _id;
         readonly int _site;
         string _placeholder;
         NowLayoutOptions _options;
@@ -26,7 +26,7 @@ namespace NowUI
         static TouchScreenKeyboard s_touchKeyboard;
         static int s_touchKeyboardId;
 
-        internal NowTextField(string id, int site)
+        internal NowTextField(NowId id, int site)
         {
             _id = id;
             _site = site;
@@ -37,7 +37,7 @@ namespace NowUI
             _textPreset = NowTextStyle.Body;
         }
 
-        internal NowTextField(NowRect rect, string id, int site) : this(id, site)
+        internal NowTextField(NowRect rect, NowId id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -59,7 +59,7 @@ namespace NowUI
             string original = text;
 
             var theme = NowTheme.themeAsset;
-            int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+            int id = NowControls.GetControlId(_id, _site);
 
             var textStyle = theme.Text(default, _textPreset);
             var fontAsset = textStyle.font;
@@ -79,6 +79,7 @@ namespace NowUI
 
             if (focused && hadFocus == 0)
             {
+                NowTextInput.DiscardPending();
                 NowTextInput.setImeEnabled?.Invoke(true);
 
                 if (!interaction.pressed)

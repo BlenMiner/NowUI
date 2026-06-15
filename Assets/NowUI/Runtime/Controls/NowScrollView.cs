@@ -17,13 +17,13 @@ namespace NowUI
     [NowBuilder]
     public struct NowScrollView
     {
-        readonly string _id;
+        readonly NowId _id;
         readonly int _site;
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
 
-        internal NowScrollView(string id, int site)
+        internal NowScrollView(NowId id, int site)
         {
             _id = id;
             _site = site;
@@ -32,13 +32,13 @@ namespace NowUI
             _hasRect = false;
         }
 
-        internal NowScrollView(NowRect rect, string id, int site) : this(id, site)
+        internal NowScrollView(NowRect rect, NowId id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
         }
 
-        internal NowScrollView(NowRect rect, int identity) : this(null, identity)
+        internal NowScrollView(NowRect rect, int identity) : this(default(NowId), identity)
         {
             _rect = rect;
             _hasRect = true;
@@ -62,8 +62,8 @@ namespace NowUI
             }
 
             NowRect viewport = NowControls.ReserveRect(_hasRect, _rect, options, new Vector2(200f, 200f));
-            int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
-            int areaKey = _id != null ? NowInput.GetId(_id) : _site;
+            int id = NowControls.GetControlId(_id, _site);
+            int areaKey = NowInput.CombineId(id, 0x4e535641);
 
             NowLayout.TryGetCachedContentSize(areaKey, out Vector2 content);
             bool barVisible = content.y > viewport.height + 0.5f;

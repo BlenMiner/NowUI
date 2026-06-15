@@ -289,6 +289,54 @@ public class NowControlsTests
     }
 
     [Test]
+    public void NowIdSupportsStringIntAndDefaultIdentity()
+    {
+        NowId none = (string)null;
+        NowId stringId = "row-7";
+        NowId intId = 77;
+
+        Assert.IsFalse(none.hasValue);
+        Assert.AreEqual(123, NowInput.GetId(none, 123));
+
+        Assert.IsTrue(stringId.isString);
+        Assert.AreEqual("row-7", stringId.stringValue);
+        Assert.AreEqual(NowInput.GetId("row-7"), NowInput.GetId(stringId, 1));
+
+        Assert.IsTrue(intId.isInt);
+        Assert.AreEqual(77, intId.intValue);
+        Assert.AreEqual(77, NowInput.GetId(intId, 1));
+    }
+
+    [Test]
+    public void NowIdRejectsReservedOrEmptyExplicitIds()
+    {
+        Assert.Throws<System.ArgumentException>(() => { NowId id = 0; _ = id; });
+        Assert.Throws<System.ArgumentException>(() => { NowId id = string.Empty; _ = id; });
+        Assert.Throws<System.ArgumentException>(() => NowInput.Interact(default(NowId), ButtonRect));
+    }
+
+    [Test]
+    public void NowIdInteractClicksAcrossFrames()
+    {
+        var id = new NowId(7001);
+        Vector2 inside = new Vector2(60, 36);
+        bool clicked = false;
+
+        void Frame(bool down, bool pressed, bool released)
+        {
+            _provider.snapshot = new NowInputSnapshot(inside, down, pressed, released);
+
+            using (NowInput.Begin(_provider, Surface))
+                clicked = NowInput.Interact(id, ButtonRect).clicked;
+        }
+
+        Frame(down: true, pressed: true, released: false);
+        Assert.IsFalse(clicked);
+        Frame(down: false, pressed: false, released: true);
+        Assert.IsTrue(clicked);
+    }
+
+    [Test]
     public void IdlessInteractClicksAcrossFramesFromOneSite()
     {
         var rect = new NowRect(10, 10, 100, 30);
@@ -369,6 +417,38 @@ public class NowControlsTests
     }
 
     [Test]
+    public void IntegerSetIdDecouplesIdentityFromLabel()
+    {
+        int byLabel, byId;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            byLabel = NowControls.GetControlId("Delete");
+            byId = NowControls.GetControlId(9007);
+        }
+
+        Assert.AreNotEqual(byLabel, byId);
+
+        NowFocus.Focus(byId);
+
+        _provider.snapshot = new NowInputSnapshot(
+            true, new Vector2(400, 200), new Vector2(400, 200), Vector2.zero,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            submitDown: true, submitPressed: true, submitReleased: false,
+            cancelDown: false, cancelPressed: false, cancelReleased: false,
+            frame: 1, time: 1f);
+
+        bool activated;
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            activated = Now.Button(ButtonRect, "Delete").SetId(9007).Draw();
+
+        Assert.IsTrue(activated);
+    }
+
+    [Test]
     public void IdScopesDisambiguateIdenticalLabels()
     {
         int outer = NowControls.GetControlId("Delete");
@@ -384,6 +464,42 @@ public class NowControlsTests
 
         Assert.AreNotEqual(outer, scoped);
         Assert.AreNotEqual(scoped, scopedOther);
+    }
+
+    [Test]
+    public void ScopedContentControlsKeepSeparateLayoutCaches()
+    {
+        NowLayout.Reset();
+        NowRect small = default;
+        NowRect large = default;
+
+        for (int frame = 0; frame < 5; ++frame)
+        {
+            _provider.snapshot = default;
+
+            using (NowInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+            using (NowLayout.Area(new Vector4(0, 0, 420, 220)))
+            {
+                using (NowControls.IdScope(1001))
+                using (var button = NowLayout.Button("Item").SetId(7).Begin())
+                {
+                    small = button.rect;
+                    NowLayout.Rect(width: 40f, height: 20f);
+                }
+
+                using (NowControls.IdScope(1002))
+                using (var button = NowLayout.Button("Item").SetId(7).Begin())
+                {
+                    large = button.rect;
+                    NowLayout.Rect(width: 160f, height: 20f);
+                }
+            }
+        }
+
+        Assert.GreaterOrEqual(small.width, 40f);
+        Assert.GreaterOrEqual(large.width, 160f);
+        Assert.Less(small.width, large.width, "Scoped controls with the same child id must not share a layout cache.");
     }
 
     [Test]

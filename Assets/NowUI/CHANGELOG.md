@@ -7,6 +7,11 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- World-space rendering: `NowWorldGraphic` hosts NowUI directly on a
+  `MeshFilter`/`MeshRenderer` for billboards, nameplates, hover tooltips and
+  diegetic panels, with ray-mapped pointer input, per-instance control id
+  scoping, configurable always-visible vs scene-occluded depth, and an
+  optional `NowWorldDeformer` hook for curved or wrapped surfaces.
 - SDF shape extension (`NowUI.Extensions.Sdf`, its own assembly): composable
   circles, boxes, rounded boxes, ellipses and capsules drawn as one
   material-backed quad, with union/subtract/intersect operations, smooth

@@ -20,7 +20,7 @@ void OnPostRender()
         _dock.Window("Hierarchy", DrawHierarchy, id: "Hierarchy");
         _dock.Window("Inspector", DrawInspector, id: "Inspector");
 
-        NowDock.Space(_dock, new NowRect(20, 20, Screen.width - 40, Screen.height - 40), "main")
+        NowDock.Space(_dock, new NowRect(20, 20, Screen.width - 40, Screen.height - 40), 100)
             .SetMinPaneSize(140)
             .Draw();
     }
@@ -51,8 +51,12 @@ _dock.Window("Console", DrawConsole, id: "Console");
 _dock.Dock("Inspector", "Scene", NowDockSide.Right);
 _dock.Dock("Console", "Scene", NowDockSide.Bottom);
 
-NowDock.Space(_dock, rect, "main").Draw();
+NowDock.Space(_dock, rect, 100).Draw();
 ```
+
+Window ids are semantic strings inside `NowDockSpace`; the dock-space control
+id is a `NowId`, so use a stable non-zero integer when the dock surface is tied
+to data or instantiated repeatedly.
 
 Users can drag tabs onto a panel's tab bar to merge or reorder tabs, or onto an
 edge to split. Dragging outside the dockspace detaches the tab as a floating

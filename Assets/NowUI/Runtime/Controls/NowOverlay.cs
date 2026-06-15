@@ -11,12 +11,21 @@ namespace NowUI
     /// underneath (resolved one frame late, like the focus registry — immediate
     /// mode has no z-order to query).
     /// <code>
-    /// NowOverlay.Defer(popupRect, static () => DrawPopup());
+    /// NowOverlay.Defer(popupRect, popupId, DrawPopup);
     /// </code>
     /// </summary>
     public static class NowOverlay
     {
-        static readonly List<Action> _deferred = new List<Action>(4);
+        public delegate void DrawCallback(int state);
+
+        struct DeferredDraw
+        {
+            public Action draw;
+            public DrawCallback drawWithState;
+            public int state;
+        }
+
+        static readonly List<DeferredDraw> _deferred = new List<DeferredDraw>(4);
 
         static readonly List<NowRect> _blocksCurrent = new List<NowRect>(4);
 
@@ -40,7 +49,22 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _deferred.Add(draw);
+            _deferred.Add(new DeferredDraw { draw = draw });
+            _blocksCurrent.Add(blockRect);
+        }
+
+        /// <summary>
+        /// Queues a non-capturing draw callback. Store per-overlay state under
+        /// <paramref name="state"/> and pass a static method to avoid closure
+        /// allocation on warmed popup paths.
+        /// </summary>
+        public static void Defer(NowRect blockRect, int state, DrawCallback draw)
+        {
+            if (draw == null || NowInput.isPassive)
+                return;
+
+            BeginFrameIfNeeded();
+            _deferred.Add(new DeferredDraw { drawWithState = draw, state = state });
             _blocksCurrent.Add(blockRect);
         }
 
@@ -120,7 +144,14 @@ namespace NowUI
                 // Callbacks may defer more overlays (nested menus); those run within
                 // the same flush, drawn after their parents.
                 for (int i = 0; i < _deferred.Count; ++i)
-                    _deferred[i]();
+                {
+                    var deferred = _deferred[i];
+
+                    if (deferred.drawWithState != null)
+                        deferred.drawWithState(deferred.state);
+                    else
+                        deferred.draw?.Invoke();
+                }
             }
             finally
             {

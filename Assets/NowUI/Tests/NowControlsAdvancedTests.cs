@@ -31,6 +31,26 @@ public class NowControlsAdvancedTests
         }
     }
 
+    sealed class BufferedKeyboard : INowTextInputSource, INowTextInputBuffer
+    {
+        public string pending;
+
+        public int discardCount;
+
+        public bool TryGetFrame(out NowTextInputFrame result)
+        {
+            result = new NowTextInputFrame { characters = pending };
+            pending = null;
+            return true;
+        }
+
+        public void DiscardPendingText()
+        {
+            ++discardCount;
+            pending = null;
+        }
+    }
+
     static readonly Vector2 Surface = new Vector2(512, 256);
     static readonly NowRect FieldRect = new NowRect(20, 20, 200, 30);
 
@@ -104,6 +124,34 @@ public class NowControlsAdvancedTests
 
         Assert.IsFalse(DrawTextFieldFrame(ref text, new NowTextInputFrame { characters = "x" }));
         Assert.AreEqual("keep", text);
+    }
+
+    [Test]
+    public void TextFieldDiscardsBufferedCharactersWhenFocusedByClick()
+    {
+        var keyboard = new BufferedKeyboard { pending = "ghost" };
+        NowTextInput.source = keyboard;
+        string text = string.Empty;
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(FieldRect.x + 10f, FieldRect.y + 10f), true, true, false);
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            Assert.IsFalse(Now.TextField(FieldRect, "name").Draw(ref text));
+
+        Assert.AreEqual(string.Empty, text);
+        Assert.AreEqual(1, keyboard.discardCount);
+
+        _pointer.snapshot = default;
+        keyboard.pending = "n";
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            Assert.IsTrue(Now.TextField(FieldRect, "name").Draw(ref text));
+
+        Assert.AreEqual("n", text);
     }
 
     [Test]

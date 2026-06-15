@@ -3,13 +3,14 @@ Shader "NowUI/Text Renderer"
     Properties
     {
         _MainTex ("Texture", 2D) = "white" {}
+        _ZTest ("ZTest", Float) = 8
     }
     SubShader
     {
         Tags {
+            "Queue"="Transparent"
             "RenderType"="Transparent"
             "IgnoreProjector"="True"
-            "RenderType"="Transparent"
             "PreviewType"="Plane"
             "CanUseSpriteAtlas"="True"
         }
@@ -17,7 +18,7 @@ Shader "NowUI/Text Renderer"
         Cull Off
         Lighting Off
         ZWrite Off
-        ZTest Off
+        ZTest [_ZTest]
         Blend SrcAlpha OneMinusSrcAlpha
 
         Pass
@@ -76,7 +77,7 @@ Shader "NowUI/Text Renderer"
                 return max(min(r, g), min(max(r, g), b));
             }
 
-            fixed4 frag (v2f i) : SV_Target
+            float4 frag (v2f i) : SV_Target
             {
                 float4 rect = i.rect;
                 float4 mask = i.mask;
@@ -96,7 +97,7 @@ Shader "NowUI/Text Renderer"
 
 
                 float outline = i.extras.x;
-                fixed4 msd = tex2D(_MainTex, i.uv);
+                float4 msd = tex2D(_MainTex, i.uv);
 
                 // extras.y is the distance-field range in local units; convert it to
                 // actual screen pixels so canvas scale / transform scale keeps text crisp.

@@ -29,7 +29,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowTextArea
     {
-        readonly string _id;
+        readonly NowId _id;
         readonly int _site;
         string _placeholder;
         NowLayoutOptions _options;
@@ -42,7 +42,7 @@ namespace NowUI
         static TouchScreenKeyboard s_touchKeyboard;
         static int s_touchKeyboardId;
 
-        internal NowTextArea(string id, int site)
+        internal NowTextArea(NowId id, int site)
         {
             _id = id;
             _site = site;
@@ -55,7 +55,7 @@ namespace NowUI
             _maxLines = 8;
         }
 
-        internal NowTextArea(NowRect rect, string id, int site) : this(id, site)
+        internal NowTextArea(NowRect rect, NowId id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -98,7 +98,7 @@ namespace NowUI
             string original = text;
 
             var theme = NowTheme.themeAsset;
-            int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+            int id = NowControls.GetControlId(_id, _site);
 
             var textStyle = theme.Text(default, _textPreset);
             var fontAsset = textStyle.font;
@@ -132,6 +132,7 @@ namespace NowUI
 
             if (focused && area.hadFocus == 0)
             {
+                NowTextInput.DiscardPending();
                 NowTextInput.setImeEnabled?.Invoke(true);
 
                 if (!interaction.pressed)

@@ -7,6 +7,17 @@ using NowUI;
 
 public class NowRendererTests
 {
+    sealed class FakeProvider : INowInputProvider
+    {
+        public NowInputSnapshot snapshot;
+
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot result)
+        {
+            result = snapshot;
+            return true;
+        }
+    }
+
     [Test]
     public void DrawListBuildCapturesRectangleGeometry()
     {
@@ -77,6 +88,236 @@ public class NowRendererTests
         finally
         {
             renderer.Dispose();
+        }
+    }
+
+    [Test]
+    public void ModifierScopeCapturesAndAppendsMeshGeometry()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            using (NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 16f)).Begin())
+            {
+                Now.Rectangle(new NowRect(4, 6, 32, 20))
+                    .SetColor(Color.white)
+                    .Draw();
+            }
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(1, drawList.batchCount);
+            Assert.AreEqual(4, drawList.mesh.vertexCount);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void ModifierSubdivisionSplitsQuadGeometry()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            using (NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 16f))
+                       .SetSubdivision(4)
+                       .Begin())
+            {
+                Now.Rectangle(new NowRect(4, 6, 32, 20))
+                    .SetColor(Color.white)
+                    .Draw();
+            }
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(25, drawList.mesh.vertexCount);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void ModifierTextureBackendDrawsSubdividedSurface()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            using (NowEffects.Modifier(NowDeformers.Genie(new NowRect(80, 44, 20, 12), 0.5f))
+                       .SetRenderToTexture()
+                       .SetSubdivision(4)
+                       .Begin())
+            {
+                Now.Rectangle(new NowRect(4, 6, 32, 20))
+                    .SetColor(Color.white)
+                    .Draw();
+            }
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(25, drawList.mesh.vertexCount);
+            Assert.AreEqual(1, drawList.batchCount);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void SnapshotTextureSizeUsesUiScaleAndPixelSnappedBounds()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        float previousScale = Now.uiScale;
+        NowSnapshotScope snapshot = default;
+
+        try
+        {
+            Now.SetUIScale(2f);
+
+            using (drawList.Begin(new Vector2(128, 64)))
+            {
+                snapshot = NowEffects.Snapshot(new NowRect(4.25f, 6.25f, 10.5f, 8.5f))
+                    .SetId("pixel-snapped-snapshot")
+                    .Begin();
+
+                using (snapshot)
+                {
+                    Now.Rectangle(new NowRect(4.25f, 6.25f, 10.5f, 8.5f))
+                        .SetColor(Color.white)
+                        .Draw();
+                }
+            }
+
+            Assert.NotNull(snapshot.texture);
+            Assert.AreEqual(22, snapshot.texture.width);
+            Assert.AreEqual(18, snapshot.texture.height);
+            Assert.AreEqual(FilterMode.Bilinear, snapshot.texture.filterMode);
+            Assert.AreEqual(TextureWrapMode.Clamp, snapshot.texture.wrapMode);
+        }
+        finally
+        {
+            drawList.Dispose();
+            Now.SetUIScale(previousScale);
+        }
+    }
+
+    [Test]
+    public void ModifierSubdivisionKeepsTextGlyphQuadsByDefault()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        Assert.NotNull(font, "Default font resource missing.");
+
+        var previousFont = Now.defaultFont;
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Now.defaultFont = font;
+
+            using (drawList.Begin(new Vector2(128, 64)))
+            using (NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 16f))
+                       .SetSubdivision(4)
+                       .Begin())
+            {
+                Now.Text(new NowRect(4, 6, 80, 24), font)
+                    .SetFontSize(18f)
+                    .Draw("A");
+            }
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(4, drawList.mesh.vertexCount);
+        }
+        finally
+        {
+            drawList.Dispose();
+            Now.defaultFont = previousFont;
+        }
+    }
+
+    [Test]
+    public void ModifierSubdivisionCanOptIntoTextGlyphSubdivision()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        Assert.NotNull(font, "Default font resource missing.");
+
+        var previousFont = Now.defaultFont;
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Now.defaultFont = font;
+
+            using (drawList.Begin(new Vector2(128, 64)))
+            using (NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 16f))
+                       .SetSubdivision(4)
+                       .SetSubdivideText()
+                       .Begin())
+            {
+                Now.Text(new NowRect(4, 6, 80, 24), font)
+                    .SetFontSize(18f)
+                    .Draw("A");
+            }
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(25, drawList.mesh.vertexCount);
+        }
+        finally
+        {
+            drawList.Dispose();
+            Now.defaultFont = previousFont;
+        }
+    }
+
+    [Test]
+    public void ModifierScopeRunsControlsPassively()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var provider = new FakeProvider
+        {
+            snapshot = new NowInputSnapshot(new Vector2(30, 24), true, true, false)
+        };
+        var drawList = new NowDrawList();
+        bool clicked;
+
+        try
+        {
+            using (NowInput.Begin(provider, new Vector2(128, 64)))
+            using (drawList.Begin(new Vector2(128, 64)))
+            using (NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 16f)).Begin())
+            {
+                clicked = Now.Button(new NowRect(4, 6, 64, 28), "Save")
+                    .SetId("passive-save")
+                    .Draw();
+            }
+
+            Assert.IsFalse(clicked);
+            Assert.AreEqual(0, NowInput.activeId);
+        }
+        finally
+        {
+            drawList.Dispose();
+            NowInput.Reset();
+            NowFocus.Reset();
+            NowControlState.Reset();
+            NowControls.Reset();
         }
     }
 

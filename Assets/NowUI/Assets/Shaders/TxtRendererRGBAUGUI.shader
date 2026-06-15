@@ -96,7 +96,7 @@ Shader "NowUI/Text Renderer RGBA UGUI"
                 return o;
             }
 
-            fixed4 frag(v2f i) : SV_Target
+            float4 frag(v2f i) : SV_Target
             {
                 float2 pos = i.rect.xy + i.uv.zw * i.rect.zw;
                 float4 mask = i.mask;
@@ -106,7 +106,7 @@ Shader "NowUI/Text Renderer RGBA UGUI"
                     min(-pos.y - mask.y, (mask.y + mask.w) + pos.y)
                 ));
 
-                fixed4 col = tex2D(_MainTex, i.uv.xy) * i.color;
+                float4 col = tex2D(_MainTex, i.uv.xy) * i.color;
                 col.rgb = col.a > 0 ? saturate(col.rgb / col.a) : col.rgb;
 
                 #ifdef UNITY_UI_CLIP_RECT

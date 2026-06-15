@@ -106,7 +106,7 @@ Shader "NowUI/Text Renderer UGUI"
                 return max(min(r, g), min(max(r, g), b));
             }
 
-            fixed4 frag(v2f i) : SV_Target
+            float4 frag(v2f i) : SV_Target
             {
                 float4 rect = i.rect;
                 float4 mask = i.mask;
@@ -119,7 +119,7 @@ Shader "NowUI/Text Renderer UGUI"
                 ));
 
                 float outline = i.extras.x;
-                fixed4 msd = tex2D(_MainTex, i.uv.xy);
+                float4 msd = tex2D(_MainTex, i.uv.xy);
 
                 // extras.y is the distance-field range in local units; convert it to
                 // actual screen pixels so canvas scale / transform scale keeps text crisp.

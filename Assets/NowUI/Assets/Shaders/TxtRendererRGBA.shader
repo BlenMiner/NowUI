@@ -3,10 +3,12 @@ Shader "NowUI/Text Renderer RGBA"
     Properties
     {
         _MainTex ("Texture", 2D) = "white" {}
+        _ZTest ("ZTest", Float) = 8
     }
     SubShader
     {
         Tags {
+            "Queue"="Transparent"
             "RenderType"="Transparent"
             "IgnoreProjector"="True"
             "PreviewType"="Plane"
@@ -16,7 +18,7 @@ Shader "NowUI/Text Renderer RGBA"
         Cull Off
         Lighting Off
         ZWrite Off
-        ZTest Off
+        ZTest [_ZTest]
         Blend SrcAlpha OneMinusSrcAlpha
 
         Pass
@@ -65,7 +67,7 @@ Shader "NowUI/Text Renderer RGBA"
                 return o;
             }
 
-            fixed4 frag(v2f i) : SV_Target
+            float4 frag(v2f i) : SV_Target
             {
                 float2 pos = i.rect.xy + i.rawUV * i.rect.zw;
                 float4 mask = i.mask;
@@ -75,7 +77,7 @@ Shader "NowUI/Text Renderer RGBA"
                     min(-pos.y - mask.y, (mask.y + mask.w) + pos.y)
                 ));
 
-                fixed4 col = tex2D(_MainTex, i.uv) * i.color;
+                float4 col = tex2D(_MainTex, i.uv) * i.color;
                 col.rgb = col.a > 0 ? saturate(col.rgb / col.a) : col.rgb;
                 clip(col.a - 0.01);
                 return col;

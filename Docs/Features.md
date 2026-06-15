@@ -46,11 +46,11 @@ animation, see [Lottie](Lottie.md).
 NowUI keeps input separate from rendering through `INowInputProvider`.
 Providers normalize their source into the current NowUI surface coordinates, so
 controls can use the same `NowInput.Interact(...)` calls in screen rendering,
-IMGUI, UGUI, RenderTexture, SRP overlays, and tests.
+IMGUI, UGUI, world-space meshes, RenderTexture, SRP overlays, and tests.
 
 ```csharp
 var rect = new Vector4(20, 20, 160, 44);
-var state = NowInput.Interact("save-button", rect);
+var state = NowInput.Interact(100, rect);
 
 Now.Rectangle(rect)
     .SetColor(state.hovered ? Color.white : Color.gray)
@@ -67,16 +67,16 @@ the default, and the same API can target right click, middle click, and common
 mouse navigation buttons.
 
 ```csharp
-var context = NowInput.Interact("row-menu", rowRect, NowPointerButton.Secondary);
+var context = NowInput.Interact(row.id, rowRect, NowPointerButton.Secondary);
 
 if (context.clicked)
     OpenContextMenu();
 ```
 
-Control id strings are hashed with a stable internal hash; pass an integer id
-when you already have stable ids. `NowInput.current.navigation` carries
-keyboard/gamepad navigation as a `Vector2`, while `submit*` and `cancel*` fields
-track action buttons.
+Explicit ids use `NowId`, which accepts strings or non-zero integers. Prefer
+integer ids when you already have stable data ids. `NowInput.current.navigation`
+carries keyboard/gamepad navigation as a `Vector2`, while `submit*` and
+`cancel*` fields track action buttons.
 
 The built-in render paths set up input where they already own a surface:
 
@@ -93,11 +93,12 @@ The built-in render paths set up input where they already own a surface:
   first two joystick buttons.
 - `NowGUI.Auto(...)` and `NowGUILayout.Auto(...)` use IMGUI events.
 - `NowGraphic` uses a `RectTransform` mouse provider.
+- `NowWorldGraphic` uses a ray-to-surface provider for world-space meshes.
 - `NowPipelineGraphic.BuildDrawList(...)` maps screen mouse input into the
   camera pixel rect.
 
-For RenderTexture previews, world-space quads, remote input, or tests, scope a
-custom provider around the draw code.
+For RenderTexture previews, remote input, or tests, scope a custom provider
+around the draw code.
 
 ```csharp
 using (NowInput.Begin(myInputProvider, new Vector2(target.width, target.height)))
@@ -175,6 +176,31 @@ Now.Triangle(
         new Vector2(168, 48))
     .SetColor(new Color(0.92f, 0.24f, 0.58f, 1f))
     .Draw();
+```
+
+## Effects
+
+`NowEffects.Modifier(...)` captures ordinary draw calls in a scope and appends a
+deformed version of that geometry. Mesh capture is the default; call
+`SetRenderToTexture()` when the scoped content should flatten into a texture
+first. See [Effects](Effects.md) for subdivision, custom deformers, snapshots,
+and GC notes.
+
+```csharp
+using (NowEffects.Modifier(NowDeformers.Wave(Time.time, 6f, 48f))
+    .SetSubdivision(4)
+    .Begin())
+{
+    Now.Rectangle(new NowRect(24, 24, 220, 96))
+        .SetColor(new Color(0.1f, 0.55f, 1f, 1f))
+        .SetRadius(10f)
+        .Draw();
+
+    Now.Text(new NowRect(42, 52, 180, 26))
+        .SetFontSize(18f)
+        .SetColor(Color.white)
+        .Draw("Deformed draw calls");
+}
 ```
 
 ## Text
@@ -360,6 +386,39 @@ command buffer's current render target.
 `NowRenderer.Draw(commandBuffer, drawList)` does the same for an external
 draw list. `PopulateCommandBuffer(...)` sets an explicit target first.
 
+## World Space
+
+Use `NowWorldGraphic` when NowUI should live on a world-space mesh: nameplates
+over characters, item hover labels, and diegetic panels. It captures the same
+draw calls into a `MeshFilter`/`MeshRenderer`, ray-maps pointer input from a
+camera into surface coordinates, and can either face the camera or stay fixed
+in the scene.
+
+```csharp
+public sealed class Nameplate : NowWorldGraphic
+{
+    protected override void DrawNowUI(NowRect rect)
+    {
+        var hover = NowInput.Interact(NowControls.GetControlId("plate"), rect);
+
+        Now.Rectangle(rect)
+            .SetColor(hover.hovered ? Color.white : new Color(0f, 0f, 0f, 0.75f))
+            .SetRadius(12)
+            .Draw();
+
+        Now.Text(new NowRect(16, 14, rect.width - 32, 28))
+            .SetFontSize(20)
+            .SetColor(Color.white)
+            .Draw("Player");
+    }
+}
+```
+
+Set **Depth Mode** to `AlwaysVisible` for readable billboards or
+`SceneOccluded` for panels that should hide behind world geometry. Assign a
+`NowWorldDeformer` to bend the captured mesh after layout, for effects like
+curved labels or wrapped text. See [WorldSpace](WorldSpace.md).
+
 ## Font Compilation
 
 Editor font assets are created from `.ttf` files as source-only `NowFont`
@@ -421,6 +480,8 @@ Current example scripts live under `Assets/NowUI/Example`.
 - `NowGraphicExample.cs`: demonstrates UGUI mesh capture.
 - `NowRenderTextureExample.cs`: renders NowUI into a `RenderTexture` and
   applies it to a scene `Renderer`.
+- `NowWorldGraphicExample.cs`: renders a ray-interactive world-space label
+  directly through a `MeshRenderer`.
 - `NowPipelineOverlayExample.cs`: demonstrates an SRP overlay source for URP
   and HDRP wrappers.
 - `MailClientMockup.cs`: demonstrates a larger immediate-mode layout with

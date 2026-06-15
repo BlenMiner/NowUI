@@ -32,6 +32,8 @@ namespace NowUI
         static int _openId;
         static Vector2 _position;
         static int _activeId;
+        static NowRect _popupRect;
+        static int _popupPendingId;
         static readonly List<string> _items = new List<string>(8);
 
         /// <summary>True while any context menu is open.</summary>
@@ -103,8 +105,7 @@ namespace NowUI
                 return;
             }
 
-            var theme = NowTheme.themeAsset;
-            var textStyle = theme.ResolveText(NowTextStyle.Body);
+            var textStyle = NowTheme.themeAsset.ResolveText(NowTextStyle.Body);
             float width = MinWidth;
 
             for (int i = 0; i < _items.Count; ++i)
@@ -112,61 +113,73 @@ namespace NowUI
 
             var popupRect = new NowRect(_position.x, _position.y, width, _items.Count * ItemHeight + 8f);
             int pendingId = NowInput.GetId(id, "ctx-pending");
+            _popupRect = popupRect;
+            _popupPendingId = pendingId;
 
             NowControlState.RequestRepaint();
             NowOverlay.Block(new NowRect(-100000f, -100000f, 200000f, 200000f));
+            NowOverlay.Defer(popupRect, id, DrawDeferred);
+        }
 
-            NowOverlay.Defer(popupRect, () =>
+        static void DrawDeferred(int id)
+        {
+            if (_openId != id)
+                return;
+
+            var theme = NowTheme.themeAsset;
+            var popupRect = _popupRect;
+            int pendingId = _popupPendingId;
+
+            var background = theme.Rectangle(popupRect, NowRectangleStyle.Surface);
+            background.radius = new Vector4(6f, 6f, 6f, 6f);
+            background.outline = 1f;
+            background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
+            background.Draw();
+
+            for (int i = 0; i < _items.Count; ++i)
             {
-                var background = theme.Rectangle(popupRect, NowRectangleStyle.Surface);
-                background.radius = new Vector4(6f, 6f, 6f, 6f);
-                background.outline = 1f;
-                background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
-                background.Draw();
+                var itemRect = new NowRect(
+                    popupRect.x + 4f,
+                    popupRect.y + 4f + i * ItemHeight,
+                    popupRect.width - 8f,
+                    ItemHeight);
+                var interaction = NowInput.Interact(NowInput.CombineId(pendingId, i + 1), itemRect);
 
-                for (int i = 0; i < _items.Count; ++i)
+                if (interaction.hovered)
                 {
-                    var itemRect = new NowRect(
-                        popupRect.x + 4f,
-                        popupRect.y + 4f + i * ItemHeight,
-                        popupRect.width - 8f,
-                        ItemHeight);
-                    var interaction = NowInput.Interact(NowInput.CombineId(pendingId, i + 1), itemRect);
-
-                    if (interaction.hovered)
-                    {
-                        var highlight = theme.Rectangle(itemRect, NowRectangleStyle.Muted);
-                        highlight.radius = new Vector4(4f, 4f, 4f, 4f);
-                        highlight.color = NowControls.StateTint(highlight.color, 1f, interaction.held);
-                        highlight.Draw();
-                    }
-
-                    NowControls.DrawLeftLabel(theme, itemRect.Inset(PaddingX * 0.7f, 0f, 4f, 0f), _items[i], NowTextStyle.Body);
-
-                    if (interaction.clicked)
-                    {
-                        NowControlState.Get<int>(pendingId) = i + 1;
-                        Close();
-                    }
+                    var highlight = theme.Rectangle(itemRect, NowRectangleStyle.Muted);
+                    highlight.radius = new Vector4(4f, 4f, 4f, 4f);
+                    highlight.color = NowControls.StateTint(highlight.color, 1f, interaction.held);
+                    highlight.Draw();
                 }
 
-                var snapshot = NowInput.current;
-                bool pressed = snapshot.primaryPressed ||
-                    (snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0;
+                NowControls.DrawLeftLabel(theme, itemRect.Inset(PaddingX * 0.7f, 0f, 4f, 0f), _items[i], NowTextStyle.Body);
 
-                if ((pressed && !popupRect.Contains(snapshot.pointerPosition)) ||
-                    snapshot.cancelPressed ||
-                    snapshot.scrollDelta != Vector2.zero)
+                if (interaction.clicked)
                 {
+                    NowControlState.Get<int>(pendingId) = i + 1;
                     Close();
                 }
-            });
+            }
+
+            var snapshot = NowInput.current;
+            bool pressed = snapshot.primaryPressed ||
+                (snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0;
+
+            if ((pressed && !popupRect.Contains(snapshot.pointerPosition)) ||
+                snapshot.cancelPressed ||
+                snapshot.scrollDelta != Vector2.zero)
+            {
+                Close();
+            }
         }
 
         public static void Reset()
         {
             _openId = 0;
             _activeId = 0;
+            _popupRect = default;
+            _popupPendingId = 0;
             _items.Clear();
         }
 

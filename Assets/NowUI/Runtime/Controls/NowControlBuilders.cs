@@ -11,7 +11,7 @@ namespace NowUI
     {
         readonly string _label;
         readonly int _site;
-        string _id;
+        NowId _id;
         NowLayoutOptions _options;
         NowRectangleStyle _rectPreset;
         NowTextStyle _textPreset;
@@ -19,15 +19,15 @@ namespace NowUI
         readonly NowRect _rect;
         readonly bool _hasRect;
 
-        int ResolveControlId() => _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+        const int AreaKeySeed = 0x4e424172;
 
-        int areaKey => _id != null ? NowInput.GetId(_id) : _site;
+        int ResolveControlId() => NowControls.GetControlId(_id, _site);
 
         internal NowButton(string label, int site)
         {
             _label = label ?? string.Empty;
             _site = site;
-            _id = null;
+            _id = default;
             _options = default;
             _rectPreset = NowRectangleStyle.Accent;
             _textPreset = NowTextStyle.Button;
@@ -51,7 +51,7 @@ namespace NowUI
         public NowButton SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
-        public NowButton SetId(string id) { _id = id; return this; }
+        public NowButton SetId(NowId id) { _id = id; return this; }
 
         public NowButton SetStyle(NowRectangleStyle style) { _rectPreset = style; return this; }
 
@@ -80,6 +80,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             int id = ResolveControlId();
+            int areaKey = NowInput.CombineId(id, AreaKeySeed);
 
             Vector4 padding = theme.GetSpacing(NowSpacingToken.Md, new Vector4(12f, 12f, 12f, 12f));
             NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
@@ -199,22 +200,22 @@ namespace NowUI
     {
         readonly string _label;
         readonly int _site;
-        string _id;
+        NowId _id;
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
         NowTextStyle _textPreset;
         NowLayoutAlign _alignItems;
 
-        int ResolveControlId() => _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+        const int AreaKeySeed = 0x4e434172;
 
-        int areaKey => _id != null ? NowInput.GetId(_id) : _site;
+        int ResolveControlId() => NowControls.GetControlId(_id, _site);
 
         internal NowCheckbox(string label, int site)
         {
             _label = label ?? string.Empty;
             _site = site;
-            _id = null;
+            _id = default;
             _options = default;
             _rect = default;
             _hasRect = false;
@@ -231,7 +232,7 @@ namespace NowUI
         public NowCheckbox SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
-        public NowCheckbox SetId(string id) { _id = id; return this; }
+        public NowCheckbox SetId(NowId id) { _id = id; return this; }
 
         public NowCheckbox SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
@@ -255,6 +256,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             int id = ResolveControlId();
+            int areaKey = NowInput.CombineId(id, AreaKeySeed);
 
             const float Box = 18f;
             const float Gap = 8f;
@@ -363,7 +365,7 @@ namespace NowUI
     {
         readonly string _label;
         readonly int _site;
-        string _id;
+        NowId _id;
         readonly bool _isOn;
         NowLayoutOptions _options;
         readonly NowRect _rect;
@@ -371,15 +373,15 @@ namespace NowUI
         NowTextStyle _textPreset;
         NowLayoutAlign _alignItems;
 
-        int ResolveControlId() => _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+        const int AreaKeySeed = 0x4e524172;
 
-        int areaKey => _id != null ? NowInput.GetId(_id) : _site;
+        int ResolveControlId() => NowControls.GetControlId(_id, _site);
 
         internal NowRadio(string label, bool isOn, int site)
         {
             _label = label ?? string.Empty;
             _site = site;
-            _id = null;
+            _id = default;
             _isOn = isOn;
             _options = default;
             _rect = default;
@@ -397,7 +399,7 @@ namespace NowUI
         public NowRadio SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
-        public NowRadio SetId(string id) { _id = id; return this; }
+        public NowRadio SetId(NowId id) { _id = id; return this; }
 
         public NowRadio SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
@@ -420,6 +422,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             int id = ResolveControlId();
+            int areaKey = NowInput.CombineId(id, AreaKeySeed);
 
             const float Circle = 18f;
             const float Gap = 8f;
@@ -528,7 +531,7 @@ namespace NowUI
         readonly NowRect _rect;
         readonly bool _hasRect;
         readonly int _site;
-        string _id;
+        NowId _id;
 
         internal NowSlider(float min, float max, int site)
         {
@@ -538,7 +541,7 @@ namespace NowUI
             _rect = default;
             _hasRect = false;
             _site = site;
-            _id = null;
+            _id = default;
         }
 
         internal NowSlider(NowRect rect, float min, float max, int site) : this(min, max, site)
@@ -554,12 +557,12 @@ namespace NowUI
         public NowSlider SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
-        public NowSlider SetId(string id) { _id = id; return this; }
+        public NowSlider SetId(NowId id) { _id = id; return this; }
 
         public bool Draw(ref float value)
         {
             var theme = NowTheme.themeAsset;
-            int id = _id != null ? NowControls.GetControlId(_id) : NowControls.GetControlId(_site);
+            int id = NowControls.GetControlId(_id, _site);
 
             const float Height = 20f;
             const float Knob = 16f;

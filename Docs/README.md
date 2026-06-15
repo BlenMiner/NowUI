@@ -13,6 +13,10 @@ it.
   strokes, arrow heads, clipping, and performance notes.
 - [Shapes](Shapes.md): filled or outlined circles, ellipses, triangles, and
   reusable array/list-backed polygons.
+- [Effects](Effects.md): scoped mesh and texture-backed visual modifiers,
+  deformers, subdivision, snapshots, and performance notes.
+- [World Space](WorldSpace.md): direct-mesh nameplates, hover tooltips,
+  diegetic panels, ray-mapped input, depth modes, and surface deformers.
 - [Controls](Controls.md): buttons, checkboxes, radios, sliders, text fields,
   dropdowns, scroll views — and the toolkit for building custom controls.
 - [Custom Controls](CustomControls.md): the how-to guide — restyling through

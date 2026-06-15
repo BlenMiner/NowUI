@@ -45,6 +45,44 @@ namespace NowUI
             return new ControlIdScope(true);
         }
 
+        public static ControlIdScope IdScope(NowId id)
+        {
+            if (!id.hasValue)
+                return new ControlIdScope(false);
+
+            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
+            int resolved = id.ResolveStableId(1);
+
+            if (seed != 0)
+                resolved = NowInput.CombineId(seed, resolved);
+
+            _idStack.Add(resolved != 0 ? resolved : 1);
+            return new ControlIdScope(true);
+        }
+
+        /// <summary>
+        /// Disambiguates repeated panels or hosts using an existing stable integer
+        /// id, such as a component instance id, without allocating a string.
+        /// </summary>
+        public static ControlIdScope IdScope(int id)
+        {
+            if (id == 0)
+                throw new ArgumentException("Control id 0 is reserved.", nameof(id));
+
+            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
+
+            if (seed != 0)
+            {
+                unchecked
+                {
+                    id = (seed * 397) ^ id;
+                }
+            }
+
+            _idStack.Add(id != 0 ? id : 1);
+            return new ControlIdScope(true);
+        }
+
         internal static void PopIdScope()
         {
             if (_idStack.Count > 0)
@@ -90,6 +128,11 @@ namespace NowUI
         {
             int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
             return Salt(NowInput.GetId(seed, id));
+        }
+
+        public static int GetControlId(NowId id, int fallbackIdentity)
+        {
+            return id.ResolveControlId(fallbackIdentity);
         }
 
         /// <summary>

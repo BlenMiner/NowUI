@@ -350,6 +350,77 @@ namespace NowUI.Internal
             _tris.count += 6;
         }
 
+        internal void EnsureRawCapacity(int vertexCount, int indexCount)
+        {
+            if (vertexCount > 0)
+            {
+                _mask.EnsureCapacity(vertexCount);
+                _rect.EnsureCapacity(vertexCount);
+                _radius.EnsureCapacity(vertexCount);
+                _color.EnsureCapacity(vertexCount);
+                _outlineColor.EnsureCapacity(vertexCount);
+                _extra.EnsureCapacity(vertexCount);
+                _verts.EnsureCapacity(vertexCount);
+                _uvs.EnsureCapacity(vertexCount);
+                _rawuv.EnsureCapacity(vertexCount);
+            }
+
+            if (indexCount > 0)
+                _tris.EnsureCapacity(indexCount);
+        }
+
+        internal int AddRawVertex(
+            Vector3 vertex,
+            Vector2 uv,
+            Vector4 rect,
+            Vector4 radius,
+            Vector4 color,
+            Vector4 outlineColor,
+            Vector4 extra,
+            Vector4 mask,
+            Vector4 rawUv)
+        {
+            EnsureRawCapacity(1, 0);
+            return AddRawVertexUnchecked(vertex, uv, rect, radius, color, outlineColor, extra, mask, rawUv);
+        }
+
+        internal int AddRawVertexUnchecked(
+            Vector3 vertex,
+            Vector2 uv,
+            Vector4 rect,
+            Vector4 radius,
+            Vector4 color,
+            Vector4 outlineColor,
+            Vector4 extra,
+            Vector4 mask,
+            Vector4 rawUv)
+        {
+            int index = _verts.count;
+            _verts.array[_verts.count++] = vertex;
+            _uvs.array[_uvs.count++] = uv;
+            _rect.array[_rect.count++] = rect;
+            _radius.array[_radius.count++] = radius;
+            _color.array[_color.count++] = color;
+            _outlineColor.array[_outlineColor.count++] = outlineColor;
+            _extra.array[_extra.count++] = extra;
+            _mask.array[_mask.count++] = mask;
+            _rawuv.array[_rawuv.count++] = rawUv;
+            return index;
+        }
+
+        internal void AddRawTriangle(int a, int b, int c)
+        {
+            EnsureRawCapacity(0, 3);
+            AddRawTriangleUnchecked(a, b, c);
+        }
+
+        internal void AddRawTriangleUnchecked(int a, int b, int c)
+        {
+            _tris.array[_tris.count++] = a;
+            _tris.array[_tris.count++] = b;
+            _tris.array[_tris.count++] = c;
+        }
+
         public void AddTextGlyph(
             NowFontAtlasInfo.Glyph glyph,
             float x,

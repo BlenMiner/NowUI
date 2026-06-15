@@ -1694,11 +1694,11 @@ namespace NowUI.Docking
     {
         readonly NowDockSpace _space;
         readonly NowRect _rect;
-        readonly string _id;
+        readonly NowId _id;
         readonly int _site;
         NowDockSpace.Style _style;
 
-        internal NowDockSpaceBuilder(NowDockSpace space, NowRect rect, string id, int site)
+        internal NowDockSpaceBuilder(NowDockSpace space, NowRect rect, NowId id, int site)
         {
             _space = space;
             _rect = rect;
@@ -1743,9 +1743,7 @@ namespace NowUI.Docking
             if (_space == null)
                 throw new InvalidOperationException("NowDock.Space requires a NowDockSpace instance.");
 
-            int id = _id != null
-                ? NowControls.GetControlId(_id)
-                : NowControls.GetControlId(_site);
+            int id = NowControls.GetControlId(_id, _site);
 
             _space.Draw(_rect, id, _style);
         }
@@ -1756,7 +1754,7 @@ namespace NowUI.Docking
         public static NowDockSpaceBuilder Space(
             NowDockSpace space,
             NowRect rect,
-            string id = null,
+            NowId id = default,
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {

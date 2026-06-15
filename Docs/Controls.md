@@ -154,10 +154,13 @@ for (int i = 0; i < rows.Count; ++i)
 
 Draw-order salting means state follows the *position* in the loop, not the
 item. When looped items can reorder, appear, or vanish — or when one logical
-control draws from several code paths — anchor identity to your data instead:
+control draws from several code paths — anchor identity to your data instead.
+`NowId` is the preferred explicit identity type: it can hold a string or a
+non-zero integer, and integer ids avoid per-frame string hashing for
+data-backed controls.
 
 ```csharp
-NowLayout.Button("Delete").SetId($"delete-{item.id}").Draw();
+NowLayout.Button("Delete").SetId(item.id).Draw();
 
 for (int i = 0; i < rows.Count; ++i)
     using (NowControls.IdScope(rows[i].id))
@@ -165,11 +168,12 @@ for (int i = 0; i < rows.Count; ++i)
             Delete(rows[i]);
 ```
 
-`TextField`, `Dropdown`, and `ScrollView` keep their optional explicit string
-id as the first parameter (`TextField("player-name")`) for the same purpose;
-omit it and the call site is the id. Custom controls get site identity by
-declaring the caller-info parameters themselves and passing them through
-`NowControls.SiteId(file, line)` into `NowControls.GetControlId(int)`.
+`TextField`, `Dropdown`, and `ScrollView` keep their optional explicit id as
+the first parameter (`TextField(player.id)` or `TextField("player-name")`) for
+the same purpose; omit it and the call site is the id. Custom controls get site
+identity by declaring the caller-info parameters themselves and passing them
+through `NowControls.SiteId(file, line)` into
+`NowControls.GetControlId(NowId id, int fallbackIdentity)`.
 
 ## Compile-time misuse warnings
 
@@ -328,7 +332,7 @@ The toolkit pieces:
 
 | Primitive | Purpose |
 | --- | --- |
-| `NowControls.SiteId(file, line)` + `GetControlId(id)` | Call-site identity with id-scope seeding and loop salting |
+| `NowControls.SiteId(file, line)` + `GetControlId(NowId id, fallback)` | Call-site identity with optional explicit `NowId`, id-scope seeding and loop salting |
 | `NowControls.Interact(id, rect, out focused, out submitted)` | Pointer interaction + focus registration + click-to-focus + submit |
 | `NowInput.Interact(rect)` | Id-less interaction: identity from the call site |
 | `NowInput.CombineId(a, b)` | Mint sub-element ids (rows, links, items) without strings |
