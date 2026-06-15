@@ -292,12 +292,15 @@ namespace NowUI
         static int _inputResolverVersion;
         static readonly List<NowWorldGraphic> _instances = new List<NowWorldGraphic>(16);
         static readonly RaycastHit[] _sceneOcclusionHits = new RaycastHit[16];
+        static readonly Plane[] _inputFrustumPlanes = new Plane[6];
+        static readonly Plane[] _rebuildFrustumPlanes = new Plane[6];
         static InputRayResolution _inputRayResolution;
 
         [SerializeField] Camera _targetCamera;
         [SerializeField] NowWorldFacingMode _facingMode = NowWorldFacingMode.FaceCamera;
         [SerializeField] NowWorldDepthMode _depthMode = NowWorldDepthMode.AlwaysVisible;
         [SerializeField] NowWorldAutoSizeAxes _layoutAutoSizeAxes;
+        [SerializeField] bool _frustumCullRebuilds;
         [SerializeField] Vector2 _size = new Vector2(220f, 72f);
         [SerializeField] Vector2 _pivot = new Vector2(0.5f, 0.5f);
         [SerializeField, Min(0.0001f)] float _pixelsPerUnit = 100f;
@@ -506,6 +509,12 @@ namespace NowUI
                 _inputProvider?.ResetPosition();
                 InvalidateInputResolution();
             }
+        }
+
+        public bool frustumCullRebuilds
+        {
+            get => _frustumCullRebuilds;
+            set => _frustumCullRebuilds = value;
         }
 
         public bool rebuildEveryFrame
@@ -797,12 +806,23 @@ namespace NowUI
         {
             ApplyFacing();
 
-            if (_dirty ||
-                _rebuildEveryFrame ||
-                (_autoRebuildOnInteraction && (_wantsInteractionRepaint || HasInteractionInputChanged())))
+            bool needsRebuild = _dirty || _rebuildEveryFrame || _wantsInteractionRepaint;
+
+            if (!needsRebuild && _autoRebuildOnInteraction)
             {
-                RebuildNowUI();
+                if (!IsVisibleForRebuild())
+                    return;
+
+                needsRebuild = HasInteractionInputChanged();
             }
+
+            if (!needsRebuild)
+                return;
+
+            if (!IsVisibleForRebuild())
+                return;
+
+            RebuildNowUI();
         }
 
     #if UNITY_EDITOR
@@ -1030,6 +1050,7 @@ namespace NowUI
                 sceneBlockDistance = float.PositiveInfinity
             };
 
+            GeometryUtility.CalculateFrustumPlanes(cmr, _inputFrustumPlanes);
             resolution.sceneBlockDistance = FindSceneBlockDistance(cmr, resolution.ray);
 
             for (int i = _instances.Count - 1; i >= 0; --i)
@@ -1047,6 +1068,12 @@ namespace NowUI
                     continue;
 
                 if (other.ResolveCamera() != cmr)
+                    continue;
+
+                if (!IsLayerVisible(cmr, other.gameObject.layer))
+                    continue;
+
+                if (!other.IsInsideFrustum(_inputFrustumPlanes))
                     continue;
 
                 if (!other.TryRayToSurface(resolution.ray, out var surfacePosition, out float distance))
@@ -1101,6 +1128,60 @@ namespace NowUI
             }
 
             return nearest;
+        }
+
+        bool IsVisibleForRebuild()
+        {
+            if (!_frustumCullRebuilds)
+                return true;
+
+            var cmr = ResolveCamera();
+
+            if (!cmr)
+                return true;
+
+            if (!IsLayerVisible(cmr, gameObject.layer))
+                return false;
+
+            GeometryUtility.CalculateFrustumPlanes(cmr, _rebuildFrustumPlanes);
+            return IsInsideFrustum(_rebuildFrustumPlanes);
+        }
+
+        static bool IsLayerVisible(Camera cmr, int layer)
+        {
+            return (cmr.cullingMask & (1 << layer)) != 0;
+        }
+
+        bool IsInsideFrustum(Plane[] planes)
+        {
+            return GeometryUtility.TestPlanesAABB(planes, CalculateCullingBounds());
+        }
+
+        Bounds CalculateCullingBounds()
+        {
+            var bounds = CalculateWorldBounds();
+
+            if (_meshRenderer && _meshRenderer.enabled)
+            {
+                var rendererBounds = _meshRenderer.bounds;
+
+                if (rendererBounds.size.sqrMagnitude > 0f)
+                    bounds.Encapsulate(rendererBounds);
+            }
+
+            return bounds;
+        }
+
+        Bounds CalculateWorldBounds()
+        {
+            var currentSize = SanitizeSize(_size);
+            var bounds = new Bounds(transform.TransformPoint(UIToLocal(Vector2.zero)), Vector3.zero);
+
+            bounds.Encapsulate(transform.TransformPoint(UIToLocal(new Vector2(currentSize.x, 0f))));
+            bounds.Encapsulate(transform.TransformPoint(UIToLocal(new Vector2(0f, currentSize.y))));
+            bounds.Encapsulate(transform.TransformPoint(UIToLocal(currentSize)));
+            bounds.Expand(0.001f);
+            return bounds;
         }
 
         static bool IsSceneBlocked(float sceneBlockDistance, float surfaceDistance)
