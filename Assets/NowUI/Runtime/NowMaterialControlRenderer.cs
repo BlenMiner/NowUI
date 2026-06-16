@@ -60,13 +60,17 @@ namespace NowUI
                 ApplyFocus(context.themeAsset, ref rectangle, field: false);
 
             rectangle.Draw();
+
+            bool rippleEnabled = context.themeAsset.controlStyles.rippleDuration > 0f &&
+                context.themeAsset.controlStyles.rippleOpacity > 0f;
             DrawStateLayer(
                 context.themeAsset,
                 context.rect,
                 rectangle.radius,
                 ButtonStateLayerColor(context.themeAsset, context.rectangleStyle),
                 context.hoverT,
-                context.interaction.held);
+                context.interaction.held && !rippleEnabled);
+            DrawButtonRipple(context, rectangle.radius);
 
             if (!string.IsNullOrEmpty(context.label))
                 DrawButtonLabel(context);
@@ -343,6 +347,57 @@ namespace NowUI
                 .SetRadius(radius)
                 .SetColor(color)
                 .Draw();
+        }
+
+        static void DrawButtonRipple(in NowButtonRenderContext context, Vector4 radius)
+        {
+            var styles = context.themeAsset.controlStyles;
+            if (styles.rippleDuration <= 0f || styles.rippleOpacity <= 0f)
+                return;
+
+            bool trigger = context.interaction.pressed || context.submitted;
+            Vector2 origin = context.interaction.pressed && context.interaction.hasPointer
+                ? context.interaction.pointerPosition
+                : context.rect.center;
+            var ripple = NowControlState.PressAnimation(
+                NowInput.GetId(context.interaction.id, "button-ripple"),
+                trigger,
+                origin,
+                styles.rippleDuration);
+
+            if (!ripple.active)
+                return;
+
+            float eased = EaseOutCubic(ripple.progress);
+            float maxRadius = MaxDistanceToCorner(context.rect, ripple.origin);
+            float rippleRadius = Mathf.Lerp(Mathf.Min(context.rect.width, context.rect.height) * 0.18f, maxRadius, eased);
+            float fade = 1f - Mathf.SmoothStep(0.65f, 1f, ripple.progress);
+            Color color = ButtonStateLayerColor(context.themeAsset, context.rectangleStyle);
+            color.a *= styles.rippleOpacity * fade;
+
+            Now.Ripple(context.rect)
+                .SetRadius(radius)
+                .SetOrigin(ripple.origin)
+                .SetCircleRadius(rippleRadius)
+                .SetColor(color)
+                .Draw();
+        }
+
+        static float EaseOutCubic(float value)
+        {
+            value = 1f - Mathf.Clamp01(value);
+            return 1f - value * value * value;
+        }
+
+        static float MaxDistanceToCorner(NowRect rect, Vector2 point)
+        {
+            float left = Mathf.Abs(point.x - rect.x);
+            float right = Mathf.Abs(point.x - rect.xMax);
+            float top = Mathf.Abs(point.y - rect.y);
+            float bottom = Mathf.Abs(point.y - rect.yMax);
+            float dx = Mathf.Max(left, right);
+            float dy = Mathf.Max(top, bottom);
+            return Mathf.Sqrt(dx * dx + dy * dy);
         }
 
         static Color ButtonStateLayerColor(NowThemeAsset themeAsset, NowRectangleStyle rectangleStyle)

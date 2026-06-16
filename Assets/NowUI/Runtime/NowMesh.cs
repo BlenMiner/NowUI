@@ -8,6 +8,7 @@ namespace NowUI.Internal
         Text,
         TexturedRectangle,
         CustomRectangle,
+        Ripple,
         Sdf,
         Glass
     }
@@ -781,7 +782,8 @@ namespace NowUI.Internal
             bool isRectangleLike =
                 kind == NowMeshKind.Rectangle ||
                 kind == NowMeshKind.TexturedRectangle ||
-                kind == NowMeshKind.CustomRectangle;
+                kind == NowMeshKind.CustomRectangle ||
+                kind == NowMeshKind.Ripple;
             int count = _verts.count;
 
             destination.EnsureCapacity(count);

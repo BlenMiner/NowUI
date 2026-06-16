@@ -182,7 +182,7 @@ public class NowDocsExample : NowGraphic
 
         theme.Rectangle(bounds, NowRectangleStyle.Surface).Draw();
 
-        var menuRect = new NowRect(bounds.x + 12, bounds.y + 12, 180, bounds.height - 24);
+        var menuRect = new NowRect(bounds.x + 12, bounds.y + 12, 250, bounds.height - 24);
         var contentRect = new NowRect(menuRect.xMax + 12, bounds.y + 12, bounds.xMax - menuRect.xMax - 24, bounds.height - 24);
 
         var menuTitleRect = new NowRect(menuRect.x, menuRect.y, menuRect.width, 24f);
@@ -195,15 +195,21 @@ public class NowDocsExample : NowGraphic
         }
 
         using (NowLayout.Area(menuListRect))
-        using (NowLayout.ScrollView("docs-menu").Begin())
         {
-            for (int i = 0; i < Pages.Length; ++i)
+            using (NowLayout.ScrollView("docs-menu").Begin())
             {
-                bool selected = i == _selected;
-                var style = selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted;
+                using (NowLayout.Vertical(spacing: 4f, padding: 2f))
+                {
+                    for (int i = 0; i < Pages.Length; ++i)
+                    {
+                        bool selected = i == _selected;
+                        var style = selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted;
 
-                if (NowLayout.Button(Pages[i].title).SetId($"doc-{i}").SetStyle(style).SetTextStyle(NowTextStyle.Body).SetStretchWidth().Draw())
-                    _selected = i;
+                        if (NowLayout.Button(Pages[i].title).SetId($"doc-{i}").SetStyle(style)
+                            .SetTextStyle(NowTextStyle.Body).SetStretchWidth().Draw())
+                            _selected = i;
+                    }
+                }
             }
         }
 

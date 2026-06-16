@@ -10,11 +10,26 @@ at any size and never allocate textures.
 Rename a Lottie JSON file to use the `.lottie` extension and drop it in the
 project; `NowLottieImporter` turns it into a `NowLottieAsset`. Both plain
 Lottie JSON and real dotLottie archives are accepted. Assets can also be
-created at runtime:
+created at runtime from JSON, bytes, or an http/https URL:
 
 ```csharp
 var asset = ScriptableObject.CreateInstance<NowLottieAsset>();
 asset.SetSource(lottieJson); // throws on invalid documents
+
+yield return NowLottieAsset.LoadFromUrl(
+    "https://example.com/spinner.lottie",
+    loaded => spinner = loaded,
+    Debug.LogError);
+```
+
+For immediate layout, pass an http/https URL directly. NowUI downloads it on
+the first draw and reuses the cached asset afterwards:
+
+```csharp
+NowLayout.Lottie("https://example.com/spinner.lottie")
+    .SetHeight(32)
+    .SetTime(Time.time)
+    .Draw();
 ```
 
 ## Drawing
@@ -66,7 +81,9 @@ using (NowLayout.Horizontal())
 ## UGUI
 
 `NowLottieGraphic` renders an animation through a `CanvasRenderer`; add it to
-a `RectTransform` like any other graphic.
+a `RectTransform` like any other graphic. Assign either an imported Animation
+asset or an Animation Url. At runtime, a non-empty URL downloads a transient
+`NowLottieAsset` and supports both plain Lottie JSON and dotLottie archives.
 
 ## Performance notes
 

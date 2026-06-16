@@ -12,6 +12,9 @@ namespace NowUI
     {
         [SerializeField] NowLottieAsset _animation;
 
+        [SerializeField, Tooltip("Optional http/https Lottie or dotLottie URL. At runtime this downloads into a transient NowLottieAsset and takes priority over Animation.")]
+        string _animationUrl;
+
         [SerializeField] bool _playOnEnable = true;
 
         [SerializeField] bool _loop = true;
@@ -29,17 +32,37 @@ namespace NowUI
 
         int _lastFrameIndex = int.MinValue;
 
+        string _activeUrl;
+
         // 'new' because the obsolete Component.animation property still exists.
         public new NowLottieAsset animation
         {
             get => _animation;
             set
             {
-                if (_animation == value)
+                SetAnimation(value, false);
+            }
+        }
+
+        /// <summary>Optional http/https Lottie or dotLottie URL loaded at runtime.</summary>
+        public string animationUrl
+        {
+            get => _animationUrl;
+            set
+            {
+                if (_animationUrl == value)
                     return;
 
-                _animation = value;
-                _time = 0f;
+                _animationUrl = value;
+
+                if (Application.isPlaying)
+                {
+                    if (string.IsNullOrWhiteSpace(_animationUrl))
+                        ClearUrlAnimation();
+                    else if (isActiveAndEnabled)
+                        UpdateAnimationUrl();
+                }
+
                 MarkDirty();
             }
         }
@@ -131,6 +154,9 @@ namespace NowUI
                 _time = 0f;
                 _playing = true;
             }
+
+            if (Application.isPlaying)
+                UpdateAnimationUrl();
         }
 
         /// <summary>
@@ -141,6 +167,9 @@ namespace NowUI
         protected override void LateUpdate()
         {
             base.LateUpdate();
+
+            if (Application.isPlaying)
+                UpdateAnimationUrl();
 
             if (!_playing || !Application.isPlaying || _animation == null)
                 return;
@@ -180,6 +209,49 @@ namespace NowUI
                 .SetPreserveAspect(_preserveAspect)
                 .SetPlaybackFrameRate(_playbackFrameRate)
                 .Draw();
+        }
+
+        void UpdateAnimationUrl()
+        {
+            if (string.IsNullOrWhiteSpace(_animationUrl))
+                return;
+
+            var state = NowLottieCache.GetState(_animationUrl, out var asset, out _);
+
+            if (state == NowLottieCacheState.Loaded && asset != null)
+            {
+                SetAnimation(asset, true);
+                return;
+            }
+
+            if (state == NowLottieCacheState.Loading)
+            {
+                NowControlState.RequestRepaint();
+                MarkDirty();
+            }
+        }
+
+        void ClearUrlAnimation()
+        {
+            if (_activeUrl == null)
+                return;
+
+            _activeUrl = null;
+            SetAnimation(null, true);
+        }
+
+        void SetAnimation(NowLottieAsset value, bool fromUrl)
+        {
+            string nextActiveUrl = fromUrl ? _animationUrl : null;
+
+            if (_animation == value && _activeUrl == nextActiveUrl)
+                return;
+
+            _animation = value;
+            _activeUrl = nextActiveUrl;
+            _time = 0f;
+            _lastFrameIndex = int.MinValue;
+            MarkDirty();
         }
     }
 }

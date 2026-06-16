@@ -253,8 +253,7 @@ MonoBehaviour:
   _rebuildEveryFrame: 0
   _autoRebuildOnInteraction: 1
   _acceptNavigation: 0
-  _glassBackdropMode: 4
-  _glassDepthMode: 1
+  _glassBackdropMode: 1
   _glassBlurQuality: 5
   _deformer: {fileID: 0}
   _title: Player
@@ -585,8 +584,7 @@ MonoBehaviour:
   _rebuildEveryFrame: 0
   _autoRebuildOnInteraction: 1
   _acceptNavigation: 0
-  _glassBackdropMode: 4
-  _glassDepthMode: 1
+  _glassBackdropMode: 1
   _glassBlurQuality: 5
   _deformer: {fileID: 0}
   _title: Player

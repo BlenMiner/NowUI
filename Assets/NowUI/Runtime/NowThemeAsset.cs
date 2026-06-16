@@ -730,6 +730,8 @@ namespace NowUI
         [SerializeField] float _pressedBrightness;
         [SerializeField] float _hoverStateOpacity;
         [SerializeField] float _pressedStateOpacity;
+        [SerializeField] float _rippleDuration;
+        [SerializeField] float _rippleOpacity;
         [SerializeField] float _toggleSize;
         [SerializeField] float _toggleGap;
         [SerializeField] float _toggleStateLayerSize;
@@ -784,6 +786,8 @@ namespace NowUI
                     _pressedBrightness = 0.86f,
                     _hoverStateOpacity = 0.08f,
                     _pressedStateOpacity = 0.12f,
+                    _rippleDuration = 0f,
+                    _rippleOpacity = 0f,
                     _toggleSize = 18f,
                     _toggleGap = 8f,
                     _toggleStateLayerSize = 0f,
@@ -837,6 +841,8 @@ namespace NowUI
         public float pressedBrightness => _pressedBrightness;
         public float hoverStateOpacity => _hoverStateOpacity;
         public float pressedStateOpacity => _pressedStateOpacity;
+        public float rippleDuration => _rippleDuration;
+        public float rippleOpacity => _rippleOpacity;
         public float toggleSize => _toggleSize;
         public float toggleGap => _toggleGap;
         public float toggleStateLayerSize => _toggleStateLayerSize;
@@ -896,9 +902,15 @@ namespace NowUI
         public readonly NowTextStyle textStyle;
         public readonly NowInteraction interaction;
         public readonly bool focused;
+        public readonly bool submitted;
         public readonly float hoverT;
 
         public NowButtonRenderContext(NowThemeAsset themeAsset, NowRect rect, string label, NowRectangleStyle rectangleStyle, NowTextStyle textStyle, NowInteraction interaction, bool focused, float hoverT)
+            : this(themeAsset, rect, label, rectangleStyle, textStyle, interaction, focused, false, hoverT)
+        {
+        }
+
+        public NowButtonRenderContext(NowThemeAsset themeAsset, NowRect rect, string label, NowRectangleStyle rectangleStyle, NowTextStyle textStyle, NowInteraction interaction, bool focused, bool submitted, float hoverT)
         {
             this.themeAsset = themeAsset;
             this.rect = rect;
@@ -907,6 +919,7 @@ namespace NowUI
             this.textStyle = textStyle;
             this.interaction = interaction;
             this.focused = focused;
+            this.submitted = submitted;
             this.hoverT = hoverT;
         }
     }

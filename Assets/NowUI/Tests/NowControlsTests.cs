@@ -121,6 +121,42 @@ public class NowControlsTests
     }
 
     [Test]
+    public void PressAnimationStartsOnTriggerAndRequestsRepaint()
+    {
+        var origin = new Vector2(12f, 18f);
+
+        NowControlState.BeginRepaintTracking();
+        var animation = NowControlState.PressAnimation(707, true, origin, 1f);
+        bool repaint = NowControlState.EndRepaintTracking();
+
+        Assert.IsTrue(animation.active);
+        Assert.AreEqual(origin, animation.origin);
+        Assert.LessOrEqual(animation.progress, 0.05f);
+        Assert.IsTrue(repaint);
+    }
+
+    [Test]
+    public void PressAnimationDoesNotStartDuringPassiveMeasurePass()
+    {
+        var animation = new NowPressAnimation();
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(40f, 40f), true, true, false);
+        NowControlState.BeginRepaintTracking();
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowInput.BeginPassive();
+            animation = NowControlState.PressAnimation(808, true, new Vector2(8f, 9f), 1f);
+            NowInput.EndPassive();
+        }
+
+        bool repaint = NowControlState.EndRepaintTracking();
+
+        Assert.IsFalse(animation.active);
+        Assert.IsFalse(repaint);
+    }
+
+    [Test]
     public void ButtonClicksOnPressAndReleaseInside()
     {
         Vector2 inside = new Vector2(60, 36);

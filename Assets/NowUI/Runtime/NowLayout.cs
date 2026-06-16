@@ -519,6 +519,8 @@ namespace NowUI
 
         NowRect _rect;
 
+        string _url;
+
         bool _reserved;
 
         internal NowLottieBuilder(NowLottie style, NowLayoutOptions options)
@@ -526,6 +528,16 @@ namespace NowUI
             _style = style;
             _options = options;
             _rect = default;
+            _url = null;
+            _reserved = false;
+        }
+
+        internal NowLottieBuilder(NowLottie style, NowLayoutOptions options, string url)
+        {
+            _style = style;
+            _options = options;
+            _rect = default;
+            _url = url;
             _reserved = false;
         }
 
@@ -667,13 +679,15 @@ namespace NowUI
         /// <summary>Content size before allocation: the native animation size, aspect-adjusted by fixed options.</summary>
         public Vector2 Measure()
         {
-            return NowLayout.LottieAutoSize(_style, _options);
+            var style = ResolveStyle();
+            return NowLayout.LottieAutoSize(style, _options);
         }
 
         /// <summary>Allocates the layout rect without drawing and stores it in <see cref="rect"/>.</summary>
         [NowConsumer]
         public NowLottieBuilder Reserve()
         {
+            _style = ResolveStyle();
             _rect = NowLayout.ReserveLottie(_style, _options);
             _reserved = true;
             return this;
@@ -683,6 +697,7 @@ namespace NowUI
         [NowConsumer]
         public NowLottie Draw(NowRect rect)
         {
+            _style = ResolveStyle();
             return NowLayout.DrawLottieAt(_style, rect);
         }
 
@@ -693,9 +708,25 @@ namespace NowUI
         [NowConsumer]
         public NowLottie Draw()
         {
+            _style = ResolveStyle();
+
             return _reserved
                 ? NowLayout.DrawLottieAt(_style, _rect)
                 : NowLayout.DrawLottieAt(_style, NowLayout.ReserveLottie(_style, _options));
+        }
+
+        NowLottie ResolveStyle()
+        {
+            if (string.IsNullOrEmpty(_url))
+                return _style;
+
+            var state = NowLottieCache.GetState(_url, out var asset, out _);
+            _style.asset = asset;
+
+            if (state == NowLottieCacheState.Loading)
+                NowControlState.RequestRepaint();
+
+            return _style;
         }
     }
 
@@ -1239,13 +1270,13 @@ namespace NowUI
 
         /// <summary>
         /// Style template used by <see cref="Label(string)"/> overloads that take no
-        /// explicit style. Defaults to the active <see cref="Now.font"/> at a 16px font size.
+        /// explicit style. Defaults to the active theme's body text at a 16px font size.
         /// </summary>
         public static NowText labelStyle
         {
             get => _hasLabelStyle
                 ? _labelStyle
-                : new NowText(default, Now.font).SetFontSize(DefaultLabelFontSize);
+                : NowTheme.themeAsset.ResolveText(NowTextStyle.Body).SetFontSize(DefaultLabelFontSize);
             set
             {
                 _labelStyle = value;
@@ -1302,6 +1333,22 @@ namespace NowUI
         public static NowLottieBuilder Lottie(NowLottieAsset asset, NowLayoutOptions options)
         {
             return new NowLottieBuilder(Now.Lottie(default, asset), options);
+        }
+
+        /// <summary>
+        /// Starts a Lottie builder backed by an http/https URL. The URL is downloaded
+        /// once through <see cref="NowLottieCache"/> and reused on subsequent draws.
+        /// </summary>
+        public static NowLottieBuilder Lottie(ReadOnlySpan<char> url)
+        {
+            return Lottie(url, default);
+        }
+
+        public static NowLottieBuilder Lottie(ReadOnlySpan<char> url, NowLayoutOptions options)
+        {
+            string key = url.ToString();
+            var asset = NowLottieCache.GetAsset(key);
+            return new NowLottieBuilder(Now.Lottie(default, asset), options, key);
         }
 
         /// <summary>Allocates layout space for an animation without drawing it.</summary>

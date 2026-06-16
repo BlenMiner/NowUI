@@ -163,7 +163,7 @@ namespace NowUI
 
             return camera != null &&
                 _states.TryGetValue(camera, out var state) &&
-                state.lastUsedFrame == Time.frameCount &&
+                IsActiveFrame(state.lastUsedFrame, Time.frameCount) &&
                 HasActiveRequest(state, Time.frameCount);
         }
 
@@ -173,8 +173,8 @@ namespace NowUI
 
             return camera != null &&
                 _states.TryGetValue(camera, out var state) &&
-                (state.lastSceneDepthFrame == Time.frameCount ||
-                 (state.lastUsedFrame == Time.frameCount && HasSceneDepthRequest(state, Time.frameCount)));
+                (IsActiveFrame(state.lastSceneDepthFrame, Time.frameCount) ||
+                 (IsActiveFrame(state.lastUsedFrame, Time.frameCount) && HasSceneDepthRequest(state, Time.frameCount)));
         }
 
         public static void RequestSceneDepth(Camera camera)
@@ -207,7 +207,7 @@ namespace NowUI
             if (commandBuffer == null ||
                 camera == null ||
                 !_states.TryGetValue(camera, out var state) ||
-                state.lastUsedFrame != Time.frameCount)
+                !IsActiveFrame(state.lastUsedFrame, Time.frameCount))
             {
                 return false;
             }
@@ -222,7 +222,7 @@ namespace NowUI
             {
                 var request = state.requests[i];
 
-                if (request.lastUsedFrame != frame ||
+                if (!IsActiveFrame(request.lastUsedFrame, frame) ||
                     request.requester == null ||
                     request.mode == NowWorldGlassBackdropMode.TintOnly)
                 {
@@ -392,7 +392,7 @@ namespace NowUI
             {
                 var request = state.requests[i];
 
-                if (request.lastUsedFrame == frame &&
+                if (IsActiveFrame(request.lastUsedFrame, frame) &&
                     request.requester != null &&
                     request.mode != NowWorldGlassBackdropMode.TintOnly)
                 {
@@ -409,7 +409,7 @@ namespace NowUI
             {
                 var request = state.requests[i];
 
-                if (request.lastUsedFrame == frame &&
+                if (IsActiveFrame(request.lastUsedFrame, frame) &&
                     request.requester != null &&
                     request.requiresSceneDepth &&
                     request.mode != NowWorldGlassBackdropMode.TintOnly)
@@ -419,6 +419,12 @@ namespace NowUI
             }
 
             return false;
+        }
+
+        static bool IsActiveFrame(int lastUsedFrame, int frame)
+        {
+            return lastUsedFrame == frame ||
+                (!Application.isPlaying && lastUsedFrame >= frame - 1);
         }
 
         static bool IncludesWorld(NowWorldGlassBackdropMode mode)
@@ -499,7 +505,7 @@ namespace NowUI
                 return;
 
             if (!_states.TryGetValue(camera, out var state) ||
-                state.lastUsedFrame != Time.frameCount ||
+                !IsActiveFrame(state.lastUsedFrame, Time.frameCount) ||
                 !HasActiveRequest(state, Time.frameCount))
             {
                 RemoveBuiltInBuffer(camera);
@@ -630,11 +636,13 @@ namespace NowUI
 
             foreach (var pair in _states)
             {
+                bool hasLiveEditModeRequest = HasLiveEditModeRequest(pair.Value);
                 CleanupStaleRequests(pair.Value, frame);
                 CleanupStaleSharedBackdrops(pair.Value, frame);
 
                 if (pair.Key == null ||
-                    (pair.Value.lastUsedFrame < frame - 1 &&
+                    (!hasLiveEditModeRequest &&
+                     pair.Value.lastUsedFrame < frame - 1 &&
                      pair.Value.lastSceneDepthFrame < frame - 1))
                 {
                     _staleCameras.Add(pair.Key);
@@ -689,6 +697,9 @@ namespace NowUI
                 if (request.requester != null && request.lastUsedFrame >= frame - 1)
                     continue;
 
+                if (IsLiveEditModeRequester(request.requester))
+                    continue;
+
                 ReleaseRequest(request);
                 state.requests.RemoveAt(i);
             }
@@ -697,6 +708,9 @@ namespace NowUI
         static void CleanupStaleSharedBackdrops(CameraState state, int frame)
         {
             if (state == null)
+                return;
+
+            if (HasLiveEditModeRequest(state))
                 return;
 
             for (int i = state.sharedBackdrops.Count - 1; i >= 0; --i)
@@ -709,6 +723,28 @@ namespace NowUI
                 ReleaseSharedTexture(shared);
                 state.sharedBackdrops.RemoveAt(i);
             }
+        }
+
+        static bool HasLiveEditModeRequest(CameraState state)
+        {
+            if (Application.isPlaying || state == null)
+                return false;
+
+            for (int i = 0; i < state.requests.Count; ++i)
+            {
+                if (IsLiveEditModeRequester(state.requests[i].requester))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool IsLiveEditModeRequester(NowWorldGraphic requester)
+        {
+            return !Application.isPlaying &&
+                requester != null &&
+                requester.isActiveAndEnabled &&
+                requester.gameObject.activeInHierarchy;
         }
 
         static void ReleaseRequest(RequestState request)

@@ -476,6 +476,30 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void DefaultLabelStyleUsesActiveThemeTextColor()
+    {
+        NowLayout.Reset();
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+
+        try
+        {
+            using (NowTheme.Scope(theme))
+            {
+                var text = NowLayout.labelStyle;
+                Color themeText = theme.GetColor(NowColorToken.Text, Color.black);
+
+                Assert.AreEqual(16f, text.fontSize, 0.001f);
+                Assert.AreEqual((Vector4)themeText, text.color);
+            }
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(theme);
+            NowLayout.Reset();
+        }
+    }
+
+    [Test]
     public void LabelFontSizeOverloadOverridesDefaultStyle()
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
@@ -575,7 +599,7 @@ public class NowLayoutTests
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
-        NowLayout.Lottie(null).Draw();
+        NowLayout.Lottie((NowLottieAsset)null).Draw();
         Vector4 below = NowLayout.Rect(50, 30);
 
         NowLayout.EndArea();
@@ -611,11 +635,38 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void LottieUrlUsesCachedAssetForLayout()
+    {
+        var asset = ScriptableObject.CreateInstance<NowLottieAsset>();
+
+        try
+        {
+            asset.SetSource("{\"v\":\"5.5.7\",\"fr\":30,\"ip\":0,\"op\":60,\"w\":200,\"h\":100,\"layers\":[]}");
+            NowLottieCache.SetAsset("https://example.com/spinner.json", asset);
+
+            NowLayout.Area(new Vector4(0, 0, 400, 300));
+
+            var native = NowLayout.Lottie("https://example.com/spinner.json").Reserve();
+            var fixedHeight = NowLayout.Lottie("https://example.com/spinner.json").SetHeight(25).Reserve();
+
+            NowLayout.EndArea();
+
+            AssertRect(new Vector4(0, 0, 200, 100), native.rect);
+            Assert.AreEqual(50f, fixedHeight.width, 0.001f, "width should follow the downloaded animation's aspect ratio");
+        }
+        finally
+        {
+            NowLottieCache.Reset();
+            UnityEngine.Object.DestroyImmediate(asset);
+        }
+    }
+
+    [Test]
     public void LottieReserveThenDrawConsumesNoExtraSpace()
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
-        var lottie = NowLayout.Lottie(null).SetLayoutSize(60, 40).Reserve();
+        var lottie = NowLayout.Lottie((NowLottieAsset)null).SetLayoutSize(60, 40).Reserve();
         lottie.Draw();
         Vector4 below = NowLayout.Rect(10, 10);
 

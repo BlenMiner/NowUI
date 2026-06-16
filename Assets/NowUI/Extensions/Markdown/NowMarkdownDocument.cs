@@ -444,10 +444,10 @@ namespace NowUI.Markdown
                 case Role.Body:
                     return themeAsset.GetColor(NowColorToken.Text, Color.black);
                 case Role.Code:
-                    return themeAsset.GetColor(NowColorToken.Text, Color.black);
+                    return ReadableOnCodePanel(themeAsset, themeAsset.GetColor(NowColorToken.Text, Color.black));
                 case Role.CodePanel:
                 case Role.TableHeaderFill:
-                    return themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
+                    return CodePanelColor(themeAsset);
                 case Role.Link:
                 {
                     Vector4 accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
@@ -462,14 +462,15 @@ namespace NowUI.Markdown
                     return accent;
                 }
                 case Role.Muted:
-                case Role.SyntaxComment:
                     return themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
                 case Role.SyntaxKeyword:
-                    return themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+                    return ReadableOnCodePanel(themeAsset, themeAsset.GetColor(NowColorToken.Accent, Color.blue));
                 case Role.SyntaxString:
-                    return new Vector4(0.16f, 0.52f, 0.26f, 1f);
+                    return ReadableOnCodePanel(themeAsset, new Color(0.16f, 0.52f, 0.26f, 1f));
                 case Role.SyntaxNumber:
-                    return new Vector4(0.55f, 0.27f, 0.68f, 1f);
+                    return ReadableOnCodePanel(themeAsset, new Color(0.55f, 0.27f, 0.68f, 1f));
+                case Role.SyntaxComment:
+                    return ReadableOnCodePanel(themeAsset, themeAsset.GetColor(NowColorToken.TextMuted, Color.gray));
                 case Role.Rule:
                 case Role.TableLine:
                 case Role.CheckBox:
@@ -481,6 +482,100 @@ namespace NowUI.Markdown
                 default:
                     return themeAsset.GetColor(NowColorToken.Text, Color.black);
             }
+        }
+
+        static Color CodePanelColor(NowThemeAsset themeAsset)
+        {
+            Color panel = themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
+            Color text = themeAsset.GetColor(NowColorToken.Text, Color.black);
+
+            if (ContrastRatio(text, panel) >= 4.5f)
+                return panel;
+
+            Color surface = themeAsset.GetColor(NowColorToken.Surface, Color.white);
+            Color background = themeAsset.GetColor(NowColorToken.Background, surface);
+            Color best = ContrastRatio(text, surface) > ContrastRatio(text, panel) ? surface : panel;
+
+            if (ContrastRatio(text, background) > ContrastRatio(text, best))
+                best = background;
+
+            return best;
+        }
+
+        static Color ReadableOnCodePanel(NowThemeAsset themeAsset, Color color)
+        {
+            Color panel = CodePanelColor(themeAsset);
+            Color text = themeAsset.GetColor(NowColorToken.Text, Color.black);
+            return EnsureContrast(color, panel, text, 4.5f);
+        }
+
+        static Color EnsureContrast(Color color, Color background, Color fallback, float minimumRatio)
+        {
+            float alpha = color.a;
+            color.a = 1f;
+            background.a = 1f;
+            fallback.a = 1f;
+
+            if (ContrastRatio(color, background) >= minimumRatio)
+            {
+                color.a = alpha;
+                return color;
+            }
+
+            if (ContrastRatio(fallback, background) < minimumRatio)
+                fallback = BestContrastColor(background);
+
+            for (int i = 1; i <= 16; ++i)
+            {
+                Color candidate = Color.Lerp(color, fallback, i / 16f);
+                candidate.a = 1f;
+
+                if (ContrastRatio(candidate, background) >= minimumRatio)
+                {
+                    candidate.a = alpha;
+                    return candidate;
+                }
+            }
+
+            fallback.a = alpha;
+            return fallback;
+        }
+
+        static Color BestContrastColor(Color background)
+        {
+            return ContrastRatio(Color.black, background) >= ContrastRatio(Color.white, background)
+                ? Color.black
+                : Color.white;
+        }
+
+        static float ContrastRatio(Color a, Color b)
+        {
+            float la = RelativeLuminance(a);
+            float lb = RelativeLuminance(b);
+
+            if (la < lb)
+            {
+                float swap = la;
+                la = lb;
+                lb = swap;
+            }
+
+            return (la + 0.05f) / (lb + 0.05f);
+        }
+
+        static float RelativeLuminance(Color color)
+        {
+            return 0.2126f * SrgbToLinear(color.r) +
+                0.7152f * SrgbToLinear(color.g) +
+                0.0722f * SrgbToLinear(color.b);
+        }
+
+        static float SrgbToLinear(float value)
+        {
+            value = Mathf.Clamp01(value);
+            return value <= 0.03928f
+                ? value / 12.92f
+                : Mathf.Pow((value + 0.055f) / 1.055f, 2.4f);
         }
 
         void EnsureLayout(float width)

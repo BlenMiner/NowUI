@@ -27,6 +27,10 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   blends, reusable graph operands, distance-field morphs between graphs,
   per-shape colors, scene texture fills, explicit-rect and layout-flow builders,
   and UGUI capture support through the standard NowUI batcher.
+- Runtime Lottie URL loading via `NowLayout.Lottie(url)`,
+  `NowLottieCache`, `NowLottieAsset.LoadFromUrl(...)`,
+  `SetSourceFromUrl(...)`, byte-based source assignment, and the
+  `NowLottieGraphic` Animation Url field.
 
 ### Changed
 

@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using NowUI.Internal;
 using UnityEngine;
 using UnityEngine.Rendering;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace NowUI
 {
@@ -346,6 +349,9 @@ namespace NowUI
         [NonSerialized] NowGlassBlurQuality _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
         [NonSerialized] int _scopeId;
         [NonSerialized] InteractionInputState _lastInteractionInput;
+#if UNITY_EDITOR
+        [NonSerialized] bool _editorRebuildQueued;
+#endif
 
         struct InputRayResolution
         {
@@ -844,10 +850,13 @@ namespace NowUI
             _hasLastInteractionInput = false;
             EnsureRuntimeObjects();
             MarkDirty();
+            QueueEditorRebuild();
         }
 
         protected virtual void OnDisable()
         {
+            CancelEditorRebuild();
+
             if (_instances.Remove(this))
                 InvalidateInputResolution();
 
@@ -857,6 +866,8 @@ namespace NowUI
 
         protected virtual void OnDestroy()
         {
+            CancelEditorRebuild();
+
             if (_instances.Remove(this))
                 InvalidateInputResolution();
 
@@ -905,6 +916,7 @@ namespace NowUI
             MarkDirty();
             _inputProvider?.ResetPosition();
             InvalidateInputResolution();
+            QueueEditorRebuild();
         }
     #endif
 
@@ -1586,6 +1598,48 @@ namespace NowUI
         {
             return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value) ? value : 100f;
         }
+
+#if UNITY_EDITOR
+        void QueueEditorRebuild()
+        {
+            if (Application.isPlaying || _editorRebuildQueued)
+                return;
+
+            _editorRebuildQueued = true;
+            EditorApplication.delayCall += RunQueuedEditorRebuild;
+            EditorApplication.QueuePlayerLoopUpdate();
+        }
+
+        void CancelEditorRebuild()
+        {
+            if (!_editorRebuildQueued)
+                return;
+
+            EditorApplication.delayCall -= RunQueuedEditorRebuild;
+            _editorRebuildQueued = false;
+        }
+
+        void RunQueuedEditorRebuild()
+        {
+            _editorRebuildQueued = false;
+
+            if (!this || Application.isPlaying || !isActiveAndEnabled)
+                return;
+
+            RebuildNowUI();
+            RegisterGlassBackdropIfNeeded();
+            EditorApplication.QueuePlayerLoopUpdate();
+            SceneView.RepaintAll();
+        }
+#else
+        void QueueEditorRebuild()
+        {
+        }
+
+        void CancelEditorRebuild()
+        {
+        }
+#endif
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetForRuntimeLoad()

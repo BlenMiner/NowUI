@@ -1,7 +1,5 @@
 using System;
 using System.IO;
-using System.IO.Compression;
-using System.Text;
 using UnityEditor.AssetImporters;
 using UnityEngine;
 
@@ -17,11 +15,11 @@ namespace NowUI.Editor
     {
         public override void OnImportAsset(AssetImportContext ctx)
         {
-            string json;
+            byte[] bytes;
 
             try
             {
-                json = ExtractJson(File.ReadAllBytes(ctx.assetPath));
+                bytes = File.ReadAllBytes(ctx.assetPath);
             }
             catch (Exception exception)
             {
@@ -34,7 +32,7 @@ namespace NowUI.Editor
 
             try
             {
-                asset.SetSource(json);
+                asset.SetSource(bytes);
             }
             catch (Exception exception)
             {
@@ -45,45 +43,6 @@ namespace NowUI.Editor
 
             ctx.AddObjectToAsset("animation", asset);
             ctx.SetMainObject(asset);
-        }
-
-        static string ExtractJson(byte[] bytes)
-        {
-            bool isZip = bytes.Length > 2 && bytes[0] == 'P' && bytes[1] == 'K';
-
-            if (!isZip)
-            {
-                using var reader = new StreamReader(new MemoryStream(bytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-                return reader.ReadToEnd();
-            }
-
-            using var archive = new ZipArchive(new MemoryStream(bytes), ZipArchiveMode.Read);
-
-            ZipArchiveEntry best = null;
-
-            foreach (var entry in archive.Entries)
-            {
-                if (!entry.FullName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                bool isAnimation = entry.FullName.StartsWith("animations/", StringComparison.OrdinalIgnoreCase) ||
-                    entry.FullName.StartsWith("a/", StringComparison.OrdinalIgnoreCase);
-
-                if (isAnimation)
-                {
-                    best = entry;
-                    break;
-                }
-
-                if (best == null && !entry.FullName.EndsWith("manifest.json", StringComparison.OrdinalIgnoreCase))
-                    best = entry;
-            }
-
-            if (best == null)
-                throw new FormatException("dotLottie archive contains no animation JSON.");
-
-            using var entryReader = new StreamReader(best.Open(), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-            return entryReader.ReadToEnd();
         }
     }
 }

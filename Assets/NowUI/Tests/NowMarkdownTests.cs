@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using NowUI;
+using NowUI.Internal;
 using NowUI.Markdown;
 
 public class NowMarkdownTests
@@ -31,6 +33,36 @@ public class NowMarkdownTests
             if (node.type == NowMarkdownInlineType.SoftBreak)
                 builder.Append(' ');
         }
+    }
+
+    static float ContrastRatio(Color a, Color b)
+    {
+        float la = RelativeLuminance(a);
+        float lb = RelativeLuminance(b);
+
+        if (la < lb)
+        {
+            float swap = la;
+            la = lb;
+            lb = swap;
+        }
+
+        return (la + 0.05f) / (lb + 0.05f);
+    }
+
+    static float RelativeLuminance(Color color)
+    {
+        return 0.2126f * SrgbToLinear(color.r) +
+            0.7152f * SrgbToLinear(color.g) +
+            0.0722f * SrgbToLinear(color.b);
+    }
+
+    static float SrgbToLinear(float value)
+    {
+        value = Mathf.Clamp01(value);
+        return value <= 0.03928f
+            ? value / 12.92f
+            : Mathf.Pow((value + 0.055f) / 1.055f, 2.4f);
     }
 
     [Test]
@@ -871,6 +903,44 @@ public class NowMarkdownTests
         }
 
         Assert.IsTrue(_drawList.hasGeometry, "Markdown drew no geometry.");
+    }
+
+    [Test]
+    public void CodeSyntaxColorsRemainReadableInMaterialDarkTheme()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/MaterialDark.asset");
+        Assert.NotNull(theme);
+
+        var document = NowMarkdownDocument.Parse(
+            "```csharp\nstring name = \"value\";\nint count = 42;\n// muted comment\n```");
+        Color panel = theme.GetColor(NowColorToken.SurfaceMuted, Color.gray);
+        var colors = new List<Vector4>();
+
+        using (NowTheme.Scope(theme))
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            document.Draw(new NowRect(0, 0, 400f, 200f));
+
+        _drawList.mesh.GetUVs(3, colors);
+
+        for (int i = 0; i < _drawList.batches.Count; ++i)
+        {
+            if (_drawList.batches[i].kind != NowMeshKind.Text)
+                continue;
+
+            var indices = _drawList.mesh.GetIndices(i);
+
+            for (int j = 0; j < indices.Length; ++j)
+            {
+                Color color = colors[indices[j]];
+
+                if (color.a <= 0f)
+                    continue;
+
+                Assert.GreaterOrEqual(ContrastRatio(color, panel), 4.5f,
+                    $"Markdown code text color {color} is not readable over Material Dark code panel {panel}.");
+            }
+        }
     }
 
     [Test]

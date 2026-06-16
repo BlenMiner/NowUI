@@ -97,7 +97,7 @@ namespace NowUI
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
 
             renderer.DrawButton(new NowButtonRenderContext(
-                theme, rect, null, _rectPreset, _textPreset, interaction, focused, hoverT));
+                theme, rect, null, _rectPreset, _textPreset, interaction, focused, submitted, hoverT));
 
             // Content is clipped to the button: with deferred sizing the first
             // frames can be smaller than the content, and oversized children should
@@ -121,7 +121,7 @@ namespace NowUI
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
 
             renderer.DrawButton(new NowButtonRenderContext(
-                theme, rect, _label, _rectPreset, _textPreset, interaction, focused, hoverT));
+                theme, rect, _label, _rectPreset, _textPreset, interaction, focused, submitted, hoverT));
 
             return interaction.clicked || submitted;
         }

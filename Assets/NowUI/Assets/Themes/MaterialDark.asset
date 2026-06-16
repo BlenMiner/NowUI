@@ -201,6 +201,8 @@ MonoBehaviour:
     _pressedBrightness: 0.92
     _hoverStateOpacity: 0.08
     _pressedStateOpacity: 0.1
+    _rippleDuration: 0.45
+    _rippleOpacity: 0.16
     _toggleSize: 18
     _toggleGap: 12
     _toggleStateLayerSize: 40

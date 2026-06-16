@@ -184,6 +184,7 @@ namespace NowUI
             return kind == NowMeshKind.Rectangle ||
                 kind == NowMeshKind.TexturedRectangle ||
                 kind == NowMeshKind.CustomRectangle ||
+                kind == NowMeshKind.Ripple ||
                 kind == NowMeshKind.Text && subdivideText;
         }
 

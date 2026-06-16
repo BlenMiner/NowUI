@@ -4,6 +4,20 @@ using UnityEngine;
 
 namespace NowUI
 {
+    public readonly struct NowPressAnimation
+    {
+        public readonly bool active;
+        public readonly Vector2 origin;
+        public readonly float progress;
+
+        public NowPressAnimation(bool active, Vector2 origin, float progress)
+        {
+            this.active = active;
+            this.origin = origin;
+            this.progress = progress;
+        }
+    }
+
     /// <summary>
     /// Per-control ephemeral state for immediate-mode controls: callers own their
     /// values (ref parameters), this store owns everything transient — hover
@@ -190,6 +204,13 @@ namespace NowUI
             public float lastPulse;
         }
 
+        struct PressAnimationState
+        {
+            public Vector2 origin;
+            public float startTime;
+            public bool active;
+        }
+
         /// <summary>
         /// Key-repeat pulses: true on the initial press, then after
         /// <paramref name="delay"/> repeats every <paramref name="interval"/> while
@@ -222,6 +243,44 @@ namespace NowUI
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Tracks a press-triggered 0..1 animation for visual effects such as
+        /// Material ripples. Returns the active animation and requests repaints
+        /// until the effect has finished.
+        /// </summary>
+        public static NowPressAnimation PressAnimation(int id, bool triggered, Vector2 origin, float duration = 0.45f)
+        {
+            if (id == 0 || duration <= 0f)
+                return default;
+
+            ref var state = ref Get<PressAnimationState>(id);
+            float now = Time.realtimeSinceStartup;
+
+            if (!NowInput.isPassive && triggered)
+            {
+                state.origin = origin;
+                state.startTime = now;
+                state.active = true;
+                RequestRepaint();
+            }
+
+            if (!state.active)
+                return default;
+
+            float progress = Mathf.Clamp01((now - state.startTime) / duration);
+
+            if (progress < 1f)
+            {
+                RequestRepaint();
+            }
+            else
+            {
+                state.active = false;
+            }
+
+            return new NowPressAnimation(state.active, state.origin, progress);
         }
 
         /// <summary>Square-wave blink (caret-style); stateless.</summary>

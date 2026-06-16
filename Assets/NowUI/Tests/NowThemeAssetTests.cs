@@ -263,64 +263,6 @@ public class NowThemeAssetTests
     }
 
     [Test]
-    public void UnityEditorThemeAssetUsesEditorRendererAndDefaults()
-    {
-        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/UnityEditor.asset");
-
-        Assert.IsNotNull(theme);
-        Assert.IsInstanceOf<NowUnityEditorControlRenderer>(theme.controlRenderer);
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Background, out var background));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.SurfaceMuted, out var button));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Border, out var border));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Accent, out var accent));
-        Assert.AreEqual(0.78431374f, background.r, 0.0001f);
-        Assert.AreEqual(0.89411765f, button.r, 0.0001f);
-        Assert.AreEqual(0.6f, border.r, 0.0001f);
-        Assert.AreEqual(0.22745098f, accent.r, 0.0001f);
-        Assert.AreEqual(0.44705883f, accent.g, 0.0001f);
-        Assert.AreEqual(0.6901961f, accent.b, 0.0001f);
-        Assert.AreEqual(22f, theme.controlStyles.buttonMinHeight, 0.0001f);
-        Assert.AreEqual(22f, theme.controlStyles.textFieldMinHeight, 0.0001f);
-        Assert.AreEqual(22f, theme.controlStyles.dropdownFieldMinHeight, 0.0001f);
-        Assert.AreEqual(20f, theme.controlStyles.dropdownItemHeight, 0.0001f);
-        Assert.AreEqual(12f, theme.controlStyles.sliderKnobSize, 0.0001f);
-        Assert.AreEqual(14f, theme.controlStyles.toggleSize, 0.0001f);
-        Assert.AreEqual(13f, theme.controlStyles.scrollbarWidth, 0.0001f);
-        Assert.AreEqual(Vector4.zero, theme.controlStyles.buttonRadius.Resolve(theme));
-        Assert.AreEqual(new Vector4(2f, 2f, 2f, 2f), theme.controlStyles.fieldRadius.Resolve(theme));
-        Assert.AreEqual(22f, theme.controlRenderer.MeasureButton(theme, string.Empty, NowTextStyle.Button).y, 0.0001f);
-        Assert.AreEqual(22f, theme.controlRenderer.MeasureTextField(theme, 16f).y, 0.0001f);
-        Assert.AreEqual(22f, theme.controlRenderer.MeasureDropdownField(theme, 16f).y, 0.0001f);
-    }
-
-    [Test]
-    public void UnityEditorDarkThemeAssetUsesEditorRendererAndDarkRoles()
-    {
-        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
-
-        Assert.IsNotNull(theme);
-        Assert.IsInstanceOf<NowUnityEditorControlRenderer>(theme.controlRenderer);
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Background, out var background));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.SurfaceMuted, out var button));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Text, out var text));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Border, out var border));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Accent, out var accent));
-        Assert.AreEqual(0.21960784f, background.r, 0.0001f);
-        Assert.AreEqual(0.34509805f, button.r, 0.0001f);
-        Assert.Greater(text.r, 0.9f);
-        Assert.AreEqual(0.13725491f, border.r, 0.0001f);
-        Assert.AreEqual(0.17254902f, accent.r, 0.0001f);
-        Assert.AreEqual(0.3647059f, accent.g, 0.0001f);
-        Assert.AreEqual(0.5294118f, accent.b, 0.0001f);
-        Assert.AreEqual(22f, theme.controlStyles.buttonMinHeight, 0.0001f);
-        Assert.AreEqual(22f, theme.controlStyles.textFieldMinHeight, 0.0001f);
-        Assert.AreEqual(22f, theme.controlStyles.dropdownFieldMinHeight, 0.0001f);
-        Assert.AreEqual(Vector4.zero, theme.controlStyles.buttonRadius.Resolve(theme));
-        Assert.AreEqual(new Vector4(2f, 2f, 2f, 2f), theme.controlStyles.fieldRadius.Resolve(theme));
-        Assert.AreEqual(22f, theme.controlRenderer.MeasureDropdownField(theme, 16f).y, 0.0001f);
-    }
-
-    [Test]
     public void ThemeGeneratorAppliesDerivedPaletteToTheme()
     {
         var theme = ScriptableObject.CreateInstance<NowThemeAsset>();

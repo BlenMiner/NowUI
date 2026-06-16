@@ -45,6 +45,34 @@ public class NowRendererTests
     }
 
     [Test]
+    public void DrawListBuildCapturesRippleGeometry()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/RippleMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+                Now.Ripple(new NowRect(4, 6, 64, 32))
+                    .SetRadius(16f)
+                    .SetOrigin(new Vector2(36f, 22f))
+                    .SetCircleRadius(30f)
+                    .SetColor(new Color(1f, 1f, 1f, 0.2f))
+                    .Draw();
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(1, drawList.batchCount);
+            Assert.AreEqual(1, drawList.mesh.subMeshCount);
+            Assert.AreEqual(4, drawList.mesh.vertexCount);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
     public void DrawListClearRemovesGeometry()
     {
         var drawList = new NowDrawList();
