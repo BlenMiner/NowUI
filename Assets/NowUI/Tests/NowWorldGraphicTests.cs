@@ -90,6 +90,18 @@ public class NowWorldGraphicTests
         }
     }
 
+    sealed class GlassWorldGraphic : NowWorldGraphic
+    {
+        protected override bool useLayoutMeasurePass => false;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            Now.Glass(new NowRect(0, 0, rect.width, rect.height))
+                .SetBlurRadius(18f)
+                .Draw();
+        }
+    }
+
     sealed class FakeProvider : INowInputProvider
     {
         public NowInputSnapshot snapshot;
@@ -677,6 +689,103 @@ public class NowWorldGraphicTests
         finally
         {
             Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void WorldGlassMaterialFollowsBackdropMode()
+    {
+        var baseMaterial = Resources.Load<Material>("NowUI/GlassMaterial");
+        Assert.NotNull(baseMaterial);
+        var go = new GameObject("Now World Glass");
+
+        try
+        {
+            var graphic = go.AddComponent<GlassWorldGraphic>();
+            graphic.glassBackdropMode = NowWorldGlassBackdropMode.CameraBlurred;
+            graphic.RebuildNowUI();
+
+            var material = go.GetComponent<MeshRenderer>().sharedMaterial;
+
+            Assert.NotNull(material);
+            Assert.AreNotSame(baseMaterial, material);
+            Assert.AreEqual(0f, material.GetFloat("_NowGlassUseBackdrop"), 0.001f);
+            Assert.AreEqual(1f, material.GetFloat("_NowGlassUseSceneDepth"), 0.001f);
+
+            graphic.ApplyGlassBackdropTexture(Texture2D.whiteTexture);
+            material = go.GetComponent<MeshRenderer>().sharedMaterial;
+
+            Assert.NotNull(material);
+            Assert.AreEqual(1f, material.GetFloat("_NowGlassUseBackdrop"), 0.001f);
+
+            graphic.glassDepthMode = NowWorldGlassDepthMode.Disabled;
+            material = go.GetComponent<MeshRenderer>().sharedMaterial;
+
+            Assert.NotNull(material);
+            Assert.AreEqual(0f, material.GetFloat("_NowGlassUseSceneDepth"), 0.001f);
+
+            graphic.glassBackdropMode = NowWorldGlassBackdropMode.TintOnly;
+            material = go.GetComponent<MeshRenderer>().sharedMaterial;
+
+            Assert.NotNull(material);
+            Assert.AreEqual(0f, material.GetFloat("_NowGlassUseBackdrop"), 0.001f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void WorldGlassBackdropCollectsWorldGraphicsBehindRequester()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        Assert.NotNull(Resources.Load<Material>("NowUI/GlassMaterial"));
+        var cameraObject = new GameObject("Now World Glass Camera", typeof(Camera));
+        var backObject = new GameObject("Now World Backdrop Back");
+        var frontObject = new GameObject("Now World Backdrop Front");
+        var inFrontObject = new GameObject("Now World Backdrop In Front");
+        var contributors = new System.Collections.Generic.List<NowWorldGraphic>();
+
+        try
+        {
+            var camera = cameraObject.GetComponent<Camera>();
+            camera.transform.position = Vector3.zero;
+            camera.transform.rotation = Quaternion.identity;
+
+            var back = backObject.AddComponent<RectWorldGraphic>();
+            back.targetCamera = camera;
+            back.transform.position = new Vector3(0f, 0f, 4f);
+            back.RebuildNowUI();
+
+            var front = frontObject.AddComponent<GlassWorldGraphic>();
+            front.targetCamera = camera;
+            front.transform.position = new Vector3(0f, 0f, 3f);
+            front.RebuildNowUI();
+
+            var inFront = inFrontObject.AddComponent<RectWorldGraphic>();
+            inFront.targetCamera = camera;
+            inFront.transform.position = new Vector3(0f, 0f, 2f);
+            inFront.RebuildNowUI();
+
+            NowWorldGraphic.CollectBackdropContributors(camera, front, front.GetCameraDepth(camera), contributors);
+
+            Assert.Contains(back, contributors);
+            Assert.IsFalse(contributors.Contains(front));
+            Assert.IsFalse(contributors.Contains(inFront));
+
+            NowWorldGraphic.CollectBackdropContributors(camera, back, back.GetCameraDepth(camera), contributors);
+
+            Assert.IsFalse(contributors.Contains(back));
+            Assert.IsFalse(contributors.Contains(front));
+            Assert.IsFalse(contributors.Contains(inFront));
+        }
+        finally
+        {
+            Object.DestroyImmediate(cameraObject);
+            Object.DestroyImmediate(backObject);
+            Object.DestroyImmediate(frontObject);
+            Object.DestroyImmediate(inFrontObject);
         }
     }
 

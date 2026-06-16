@@ -142,7 +142,10 @@ namespace NowUI
         /// are salted by occurrence so they never share interaction state; the
         /// first occurrence keeps the stable id. Occurrence order follows draw
         /// order, so when looped controls appear, vanish, or reorder, prefer
-        /// <c>SetId</c> or an <see cref="IdScope"/> keyed by your data.
+        /// <c>SetId</c> or an <see>
+        ///     <cref>IdScope</cref>
+        /// </see>
+        /// keyed by your data.
         /// </summary>
         public static int GetControlId(int identity)
         {

@@ -128,6 +128,11 @@ namespace NowUI
             return _maskStack.Count > 0 ? mask.Intersect(_maskStack[_maskStack.Count - 1]) : mask;
         }
 
+        internal static bool IsInsideAmbientMask(Vector2 position)
+        {
+            return _maskStack.Count == 0 || _maskStack[_maskStack.Count - 1].Contains(position);
+        }
+
         static int _defaultMesh = -1;
 
         static StaticList<NowMesh> _meshes = new StaticList<NowMesh>(100);
@@ -136,12 +141,19 @@ namespace NowUI
 
         static bool _captureMesh;
 
+        static Mesh _legacyGlassReplayMesh;
+
+        static readonly List<NowMeshBatch> _legacyGlassReplayBatches = new List<NowMeshBatch>(16);
+
+        static CommandBuffer _legacyGlassCommandBuffer;
+
         sealed class MeshCaptureState
         {
             public StaticList<NowMesh> meshes;
             public int lastUsedMeshId;
             public bool captureMesh;
             public NowRect screenMask;
+            public readonly List<NowRect> maskStack = new List<NowRect>(4);
         }
 
         static readonly List<MeshCaptureState> _meshCaptureStack = new List<MeshCaptureState>(4);
@@ -210,13 +222,18 @@ namespace NowUI
 
         static int CreateMesh(Material mat, Material canvasMaterial, NowMeshKind kind)
         {
+            return CreateMesh(mat, canvasMaterial, kind, default);
+        }
+
+        static int CreateMesh(Material mat, Material canvasMaterial, NowMeshKind kind, Vector4 batchData)
+        {
             _meshes.EnsureCapacity(1);
             int id = _meshes.count;
 
             if (_meshes.array[id] == null)
-                _meshes.array[id] = new NowMesh(mat, canvasMaterial, kind);
+                _meshes.array[id] = new NowMesh(mat, canvasMaterial, kind, batchData);
             else
-                _meshes.array[id].SetMaterial(mat, canvasMaterial, kind);
+                _meshes.array[id].SetMaterial(mat, canvasMaterial, kind, batchData);
 
             _meshes.count = id + 1;
             return id;
@@ -240,7 +257,7 @@ namespace NowUI
             if (mesh.vertexCount + incomingVertices <= MAX_VERTICES_PER_MESH)
                 return mesh;
 
-            int id = CreateMesh(material, mesh.canvasMaterial, kind);
+            int id = CreateMesh(material, mesh.canvasMaterial, kind, mesh.batchData);
             _lastUsedMeshId = id;
             return _meshes.array[id];
         }
@@ -391,6 +408,16 @@ namespace NowUI
 
         static NowMesh UseMaterial(Material material, Material canvasMaterial, ref int cachedMeshId, NowMeshKind kind)
         {
+            return UseMaterial(material, canvasMaterial, ref cachedMeshId, kind, default);
+        }
+
+        static NowMesh UseMaterial(
+            Material material,
+            Material canvasMaterial,
+            ref int cachedMeshId,
+            NowMeshKind kind,
+            Vector4 batchData)
+        {
             if (material == null)
                 return null;
 
@@ -400,37 +427,31 @@ namespace NowUI
                     _lastUsedMeshId < _meshes.count &&
                     ReferenceEquals(_meshes.array[_lastUsedMeshId].material, material) &&
                     ReferenceEquals(_meshes.array[_lastUsedMeshId].canvasMaterial, canvasMaterial) &&
-                    _meshes.array[_lastUsedMeshId].kind == kind)
+                    _meshes.array[_lastUsedMeshId].kind == kind &&
+                    _meshes.array[_lastUsedMeshId].batchData == batchData)
                 {
                     return _meshes.array[_lastUsedMeshId];
                 }
 
-                int captureId = CreateMesh(material, canvasMaterial, kind);
+                int captureId = CreateMesh(material, canvasMaterial, kind, batchData);
                 _lastUsedMeshId = captureId;
                 return _meshes.array[captureId];
             }
 
-            int id = cachedMeshId;
-
-            if (id >= 0 &&
-                id < _meshes.count &&
-                ReferenceEquals(_meshes.array[id].material, material) &&
-                ReferenceEquals(_meshes.array[id].canvasMaterial, canvasMaterial) &&
-                _meshes.array[id].kind == kind)
+            if (_lastUsedMeshId >= 0 &&
+                _lastUsedMeshId < _meshes.count &&
+                ReferenceEquals(_meshes.array[_lastUsedMeshId].material, material) &&
+                ReferenceEquals(_meshes.array[_lastUsedMeshId].canvasMaterial, canvasMaterial) &&
+                _meshes.array[_lastUsedMeshId].kind == kind &&
+                _meshes.array[_lastUsedMeshId].batchData == batchData)
             {
-                if (!UseMesh(id))
-                    return null;
-
-                return _meshes.array[id];
+                return _meshes.array[_lastUsedMeshId];
             }
 
-            id = CreateMesh(material, canvasMaterial, kind);
-            cachedMeshId = id;
-
-            if (!UseMesh(id))
-                return null;
-
-            return _meshes.array[id];
+            int orderedId = CreateMesh(material, canvasMaterial, kind, batchData);
+            cachedMeshId = orderedId;
+            _lastUsedMeshId = orderedId;
+            return _meshes.array[orderedId];
         }
 
         internal static NowMesh UseEffectMaterial(Material material, ref int cachedMeshId, NowMeshKind kind)
@@ -549,6 +570,18 @@ namespace NowUI
                 return;
             }
 
+            if (mesh.kind == NowMeshKind.Glass)
+            {
+                NowGlassRenderer.DisableBackdropGlobal();
+                var quality = NowGlassSettings.Resolve((NowGlassBlurQuality)Mathf.RoundToInt(mesh.batchData.w));
+                NowGlassRenderer.RecordFallback(
+                    "Legacy",
+                    quality,
+                    NowGlassFallbackReason.LegacyImmediatePath,
+                    mesh.batchData.x,
+                    mesh.GetBounds(Vector2.zero));
+            }
+
             mesh.material.SetPass(0);
             Graphics.DrawMeshNow(mesh.unityMesh, drawMatrix);
             mesh.ClearVertices();
@@ -617,6 +650,8 @@ namespace NowUI
                 throw new ArgumentOutOfRangeException(nameof(uiScale), "uiScale must be a positive finite value.");
 
             _captureMesh = false;
+            _meshes.count = 0;
+            _lastUsedMeshId = -1;
             _fontStack.Clear();
             _maskStack.Clear();
             _uiScale = uiScale;
@@ -631,6 +666,8 @@ namespace NowUI
         public static void StartUI(NowRect screenMask)
         {
             _captureMesh = false;
+            _meshes.count = 0;
+            _lastUsedMeshId = -1;
 
             _fontStack.Clear();
             _maskStack.Clear();
@@ -673,6 +710,8 @@ namespace NowUI
             state.lastUsedMeshId = _lastUsedMeshId;
             state.captureMesh = _captureMesh;
             state.screenMask = Now.screenMask;
+            state.maskStack.Clear();
+            state.maskStack.AddRange(_maskStack);
             _meshCaptureStack.Add(state);
 
             Now.screenMask = screenMask;
@@ -763,6 +802,9 @@ namespace NowUI
             _lastUsedMeshId = state.lastUsedMeshId;
             _captureMesh = state.captureMesh;
             Now.screenMask = state.screenMask;
+            _maskStack.Clear();
+            _maskStack.AddRange(state.maskStack);
+            state.maskStack.Clear();
 
             state.meshes = default;
             _meshCaptureStatePool.Push(state);
@@ -809,6 +851,7 @@ namespace NowUI
             int pageStart = 0;
             int pageMeshes = 0;
             int pageVertices = 0;
+            bool hasGlass = false;
 
             for (int i = 0; i < _meshes.count; ++i)
             {
@@ -816,6 +859,8 @@ namespace NowUI
 
                 if (!mesh.hasVertices)
                     continue;
+
+                hasGlass |= mesh.kind == NowMeshKind.Glass;
 
                 bool pageFull = pageMeshes > 0 &&
                     (pageMeshes == MAX_MESHES_PER_CANVAS_PAGE ||
@@ -853,6 +898,21 @@ namespace NowUI
                     NowMeshLayout.Canvas,
                     pageIndex < _pageStarts.Count ? _pageStarts[pageIndex] : 0,
                     pageIndex < _pageCounts.Count ? _pageCounts[pageIndex] : 0);
+            }
+
+            if (hasGlass)
+            {
+                UploadCapturedMeshes(
+                    drawList.EnsureRenderReplayMesh(),
+                    drawList.renderReplayBatches,
+                    Vector2.zero,
+                    NowMeshLayout.Render,
+                    0,
+                    int.MaxValue);
+            }
+            else
+            {
+                drawList.ClearRenderReplay();
             }
 
             CancelMeshCapture();
@@ -900,7 +960,12 @@ namespace NowUI
                     break;
 
                 _capturedMeshIndices.Add(i);
-                batches.Add(new NowMeshBatch(mesh.material, mesh.canvasMaterial, mesh.kind));
+                batches.Add(new NowMeshBatch(
+                    mesh.material,
+                    mesh.canvasMaterial,
+                    mesh.kind,
+                    mesh.batchData,
+                    mesh.GetBounds(positionOffset)));
 
                 if (layout == NowMeshLayout.Canvas)
                 {
@@ -994,10 +1059,198 @@ namespace NowUI
 
             BeginDraw(out var drawMatrix);
 
+            bool hasGlass = false;
+
+            for (int i = 0; i < count; ++i)
+            {
+                if (meshArray[i].hasVertices && meshArray[i].kind == NowMeshKind.Glass)
+                {
+                    hasGlass = true;
+                    break;
+                }
+            }
+
+            if (hasGlass && FlushLegacyGlassReplay(drawMatrix))
+            {
+                ClearImmediateMeshes(count);
+                GL.PopMatrix();
+                return;
+            }
+
             for (int i = 0; i < count; ++i)
                 DrawMesh(meshArray[i], drawMatrix);
 
             GL.PopMatrix();
+        }
+
+        static bool FlushLegacyGlassReplay(Matrix4x4 drawMatrix)
+        {
+            var replayMesh = EnsureLegacyGlassReplayMesh();
+
+            if (replayMesh == null)
+                return false;
+
+            UploadCapturedMeshes(
+                replayMesh,
+                _legacyGlassReplayBatches,
+                Vector2.zero,
+                NowMeshLayout.Render,
+                0,
+                int.MaxValue);
+
+            if (replayMesh.vertexCount == 0 || _legacyGlassReplayBatches.Count == 0)
+                return false;
+
+            int targetWidth = Mathf.Max(1, Mathf.RoundToInt(UiUnitsToScreenPixels(screenMask.width)));
+            int targetHeight = Mathf.Max(1, Mathf.RoundToInt(UiUnitsToScreenPixels(screenMask.height)));
+
+            for (int i = 0; i < _legacyGlassReplayBatches.Count; ++i)
+            {
+                var batch = _legacyGlassReplayBatches[i];
+
+                if (batch.kind == NowMeshKind.Glass && NowGlassRenderer.CanDrawSelfReplay(batch))
+                {
+                    DrawLegacySelfReplayGlass(i, batch, drawMatrix, targetWidth, targetHeight);
+                    continue;
+                }
+
+                DrawLegacyReplayBatch(i, drawMatrix, batch.kind == NowMeshKind.Glass);
+            }
+
+            NowGlassRenderer.DisableBackdropGlobal();
+            return true;
+        }
+
+        static Mesh EnsureLegacyGlassReplayMesh()
+        {
+            if (_legacyGlassReplayMesh != null)
+                return _legacyGlassReplayMesh;
+
+            _legacyGlassReplayMesh = new Mesh
+            {
+                name = "Now Legacy Glass Replay",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            _legacyGlassReplayMesh.MarkDynamic();
+            return _legacyGlassReplayMesh;
+        }
+
+        static CommandBuffer EnsureLegacyGlassCommandBuffer()
+        {
+            return _legacyGlassCommandBuffer ??= new CommandBuffer
+            {
+                name = "Now Legacy Glass Backdrop"
+            };
+        }
+
+        static void DrawLegacySelfReplayGlass(
+            int batchIndex,
+            in NowMeshBatch batch,
+            Matrix4x4 drawMatrix,
+            int targetWidth,
+            int targetHeight)
+        {
+            var capture = NowGlassRenderer.GetCaptureRect(
+                batch.bounds,
+                new Vector2(screenMask.width, screenMask.height),
+                targetWidth,
+                targetHeight,
+                batch.data.x);
+            var source = RenderTexture.GetTemporary(capture.width, capture.height, 0, RenderTextureFormat.ARGB32);
+            var blurred = RenderTexture.GetTemporary(capture.width, capture.height, 0, RenderTextureFormat.ARGB32);
+            source.filterMode = FilterMode.Bilinear;
+            source.wrapMode = TextureWrapMode.Clamp;
+            blurred.filterMode = FilterMode.Bilinear;
+            blurred.wrapMode = TextureWrapMode.Clamp;
+
+            var previousActive = RenderTexture.active;
+
+            try
+            {
+                RenderTexture.active = source;
+                GL.PushMatrix();
+                try
+                {
+                    GL.LoadIdentity();
+                    GL.LoadProjectionMatrix(Matrix4x4.Ortho(0, capture.uiRect.width, -capture.uiRect.height, 0, -1, 100));
+                    GL.Clear(true, true, Color.clear);
+                    var replayMatrix = drawMatrix * Matrix4x4.Translate(new Vector3(-capture.uiRect.x, capture.uiRect.y, 0f));
+
+                    for (int i = 0; i < batchIndex; ++i)
+                        DrawLegacyReplayBatch(i, replayMatrix, false);
+                }
+                finally
+                {
+                    GL.PopMatrix();
+                }
+
+                var commandBuffer = EnsureLegacyGlassCommandBuffer();
+                commandBuffer.Clear();
+                NowGlassRenderer.CopyAndBlurBackdrop(
+                    commandBuffer,
+                    source,
+                    blurred,
+                    capture.width,
+                    capture.height,
+                    batch.data.x,
+                    NowGlassRenderer.GetBatchQuality(batch),
+                    "LegacySelfReplay",
+                    capture.uiRect,
+                    out _);
+                Graphics.ExecuteCommandBuffer(commandBuffer);
+
+                RenderTexture.active = previousActive;
+                NowGlassRenderer.EnableBackdropGlobal(blurred, capture.backdropUvTransform);
+                DrawLegacyReplayBatch(batchIndex, drawMatrix, false);
+                NowGlassRenderer.DisableBackdropGlobal();
+            }
+            finally
+            {
+                RenderTexture.active = previousActive;
+                RenderTexture.ReleaseTemporary(blurred);
+                RenderTexture.ReleaseTemporary(source);
+            }
+        }
+
+        static void DrawLegacyReplayBatch(int batchIndex, Matrix4x4 drawMatrix, bool recordGlassFallback)
+        {
+            if (_legacyGlassReplayMesh == null ||
+                batchIndex < 0 ||
+                batchIndex >= _legacyGlassReplayBatches.Count)
+            {
+                return;
+            }
+
+            var batch = _legacyGlassReplayBatches[batchIndex];
+
+            if (batch.material == null)
+                return;
+
+            if (batch.kind == NowMeshKind.Glass)
+            {
+                NowGlassRenderer.DisableBackdropGlobal();
+
+                if (recordGlassFallback)
+                {
+                    NowGlassRenderer.RecordFallback(
+                        "Legacy",
+                        NowGlassRenderer.GetBatchQuality(batch),
+                        NowGlassFallbackReason.MissingBlurMaterial,
+                        batch.data.x,
+                        batch.bounds);
+                }
+            }
+
+            batch.material.SetPass(0);
+            Graphics.DrawMeshNow(_legacyGlassReplayMesh, drawMatrix, batchIndex);
+        }
+
+        static void ClearImmediateMeshes(int count)
+        {
+            var safeCount = Mathf.Min(count, _meshes.count);
+
+            for (int i = 0; i < safeCount; ++i)
+                _meshes.array[i]?.ClearVertices();
         }
 
         static readonly Vector4 _defaultUV = new Vector4(0, 0, 1, 1);

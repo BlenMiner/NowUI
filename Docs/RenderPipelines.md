@@ -14,6 +14,20 @@ geometry, use `NowWorldGraphic` instead. It renders through a normal
 `MeshRenderer`, so it does not need a pipeline feature or custom pass; see
 [WorldSpace](WorldSpace.md).
 
+`Now.Glass(...)` uses true backdrop blur when the host renders NowUI into a
+known command-buffer or `RenderTexture` target. URP/HDRP overlays,
+`NowRenderer.Render(...)`, IMGUI, and UI Toolkit can blur content already drawn
+into that target. UGUI automatically uses replay-backed glass when a
+`NowGraphic` contains glass: it replays earlier NowUI batches into a blurred
+texture for the glass material, and can start that replay from
+`uguiBackdropSourceTexture` or a canvas camera `targetTexture`. World-space mesh
+rendering can copy/blur camera color and optionally replay other
+`NowWorldGraphic` meshes behind each requester through
+`NowWorldGraphic.glassBackdropMode`. Its `glassDepthMode` can request camera
+depth and clip glass where opaque scene geometry is in front of the pane.
+Legacy `Now.FlushUI()` rendering falls back to the same rounded tint/outline
+appearance without sampling the target behind it.
+
 ## Shared SRP Source
 
 `NowPipelineGraphic` is the shared source component for URP and HDRP. Attach a
@@ -173,7 +187,12 @@ Future pipeline targets should remain thin wrappers.
 
 ```csharp
 if (NowPipelineGraphic.BuildDrawList(camera, drawList))
-    NowRenderer.Draw(commandBuffer, drawList);
+    NowRenderer.Draw(
+        commandBuffer,
+        drawList,
+        BuiltinRenderTextureType.CameraTarget,
+        camera.pixelWidth,
+        camera.pixelHeight);
 ```
 
 The draw-list layer owns immediate-mode capture. Pipeline wrappers should only

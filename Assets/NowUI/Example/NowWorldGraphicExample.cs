@@ -9,9 +9,10 @@ public sealed class NowWorldGraphicExample : NowWorldGraphic
 
     protected override void DrawNowUI(NowRect rect)
     {
-        Now.Rectangle(rect)
-            .SetColor(Color.black, 0.5f)
+        Now.Glass(rect)
+            .SetTint(new Color(0, 0, 0, 0.5f))
             .SetRadius(10f)
+            .SetBlurRadius(44f)
             .Draw();
 
         using (NowLayout.Area(rect, padding: 10, spacing: 6))

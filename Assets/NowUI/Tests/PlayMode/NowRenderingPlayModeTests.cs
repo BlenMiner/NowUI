@@ -121,6 +121,39 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void GlassBlursPreviouslyRenderedRenderTextureContent()
+    {
+        using (_renderer.Begin(_target))
+        {
+            Now.Rectangle(new NowRect(0, 0, Side / 2f, Side))
+                .SetColor(Color.red)
+                .Draw();
+            Now.Rectangle(new NowRect(Side / 2f, 0, Side / 2f, Side))
+                .SetColor(Color.blue)
+                .Draw();
+            Now.Glass(new NowRect(48, 16, 32, 96))
+                .SetBlurRadius(24f)
+                .SetTint(new Color(1f, 1f, 1f, 0f))
+                .SetVibrancy(1f, 1f)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+
+        Color32 redOutside = pixels[(Side / 2) * Side + 32];
+        Color32 blueOutside = pixels[(Side / 2) * Side + 96];
+        Color32 blurredInside = pixels[(Side / 2) * Side + 56];
+
+        Assert.Greater(redOutside.r, 180, "Left background should stay red outside the glass pane.");
+        Assert.Less(redOutside.b, 60, "Left background should stay sharp outside the glass pane.");
+        Assert.Greater(blueOutside.b, 180, "Right background should stay blue outside the glass pane.");
+        Assert.Less(blueOutside.r, 60, "Right background should stay sharp outside the glass pane.");
+        Assert.Greater(blurredInside.r, 80, "Glass should retain red contribution from the backdrop.");
+        Assert.Greater(blurredInside.b, 25, "Glass should blur blue contribution across the boundary.");
+    }
+
+    [Test]
     public void TextRendersInkWithNativeCompiler()
     {
         AssertTextRendersInk(ResolveDefaultNowFont());

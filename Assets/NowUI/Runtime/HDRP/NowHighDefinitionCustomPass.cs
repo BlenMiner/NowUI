@@ -36,10 +36,22 @@ namespace NowUI
             var camera = ctx.hdCamera.camera;
             float scale = _scaleByDisplayDensity ? NowScreen.recommendedUIScale : _uiScale;
 
+            NowWorldGlassBackdrop.PopulateCommandBuffer(
+                ctx.cmd,
+                camera,
+                BuiltinRenderTextureType.CameraTarget,
+                camera.pixelWidth,
+                camera.pixelHeight);
+
             if (!NowPipelineGraphic.BuildDrawList(camera, _drawList, scale))
                 return;
 
-            NowRenderer.Draw(ctx.cmd, _drawList);
+            NowRenderer.Draw(
+                ctx.cmd,
+                _drawList,
+                BuiltinRenderTextureType.CameraTarget,
+                camera.pixelWidth,
+                camera.pixelHeight);
         }
 
         protected override void Cleanup()

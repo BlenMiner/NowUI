@@ -9,10 +9,17 @@ it.
 
 - [Feature Usage](Features.md): core drawing lifecycle, rectangles, text, UGUI,
   and font compilation examples.
+- [Public API](API.md): supported runtime/extension surfaces, compatibility
+  rules, and allocation expectations for public APIs.
 - [Lines](Lines.md): anti-aliased straight lines, cubic Beziers, dashed
   strokes, arrow heads, clipping, and performance notes.
 - [Shapes](Shapes.md): filled or outlined circles, ellipses, triangles, and
   reusable array/list-backed polygons.
+- [Glass](Glass.md): backdrop blur panes, draw order, builder options, host
+  support, and the replay-backed UGUI demo.
+- [Custom Materials](CustomMaterials.md): rectangle-level custom shader
+  materials, UGUI material variants, texture handling, shader inputs, and the
+  live frost material demo.
 - [Effects](Effects.md): scoped mesh and texture-backed visual modifiers,
   deformers, subdivision, snapshots, and performance notes.
 - [World Space](WorldSpace.md): direct-mesh nameplates, hover tooltips,
@@ -33,6 +40,8 @@ it.
   `OnGUI` without inheriting a NowUI-specific base class.
 - [Render Pipeline Integrations](RenderPipelines.md): Built-in, UGUI, URP, and
   HDRP integration patterns.
+- [Production Gates](Production.md): local/CI validation commands,
+  allocation-warmup rules, diagnostics storage, and Asset Store prep notes.
 - [Styles And Themes](StylesAndThemes.md): ScriptableObject themes, palette
   tokens, spacing/radius tokens, rectangle presets, text presets, and preview
   workflow.

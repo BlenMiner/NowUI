@@ -503,6 +503,7 @@ namespace NowUI
         {
             return _hasContext && _snapshot.hasPointer &&
                 rect.Contains(_snapshot.pointerPosition) &&
+                Now.IsInsideAmbientMask(_snapshot.pointerPosition) &&
                 !NowOverlay.IsPointerBlocked(_snapshot.pointerPosition);
         }
 
@@ -518,7 +519,9 @@ namespace NowUI
 
             Vector2 scroll = _snapshot.scrollDelta;
 
-            if (scroll == Vector2.zero || !rect.Contains(_snapshot.pointerPosition) ||
+            if (scroll == Vector2.zero ||
+                !rect.Contains(_snapshot.pointerPosition) ||
+                !Now.IsInsideAmbientMask(_snapshot.pointerPosition) ||
                 NowOverlay.IsPointerBlocked(_snapshot.pointerPosition))
             {
                 return default;
@@ -634,6 +637,7 @@ namespace NowUI
             var snapshot = _snapshot;
             bool hasPointer = _hasContext && snapshot.hasPointer;
             bool hovered = hasPointer && rect.Contains(snapshot.pointerPosition) &&
+                Now.IsInsideAmbientMask(snapshot.pointerPosition) &&
                 !NowOverlay.IsPointerBlocked(snapshot.pointerPosition);
 
             if (_passiveDepth > 0)

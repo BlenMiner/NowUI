@@ -1,0 +1,43 @@
+name: Unity Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  unity-tests:
+    name: ${{ matrix.testPlatform }}
+    runs-on:
+      - self-hosted
+      - Windows
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        testPlatform:
+          - EditMode
+          - PlayMode
+    env:
+      UNITY_EDITOR: 'C:\Program Files\Unity\Hub\Editor\6000.4.0f1\Editor\Unity.exe'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Unity tests
+        shell: pwsh
+        run: >
+          .\.github\scripts\Run-UnityTests.ps1
+          -UnityEditor "${env:UNITY_EDITOR}"
+          -ProjectPath "${env:GITHUB_WORKSPACE}"
+          -TestPlatform "${{ matrix.testPlatform }}"
+          -ArtifactsPath "${env:GITHUB_WORKSPACE}\artifacts\${{ matrix.testPlatform }}"
+
+      - name: Upload Unity test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-${{ matrix.testPlatform }}-artifacts
+          path: artifacts/${{ matrix.testPlatform }}

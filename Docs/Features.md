@@ -138,6 +138,45 @@ Now.Rectangle(new Vector4(24, 24, 180, 48))
 The rectangle API covers fill color, radius, padding, outline, outline color,
 blur, mask, position, textures, sprites, and custom materials.
 
+## Glass
+
+`Now.Glass(...)` draws a rounded translucent pane that samples and blurs what
+has already been rendered into the current target. Draw background content
+first, then the glass pane, then foreground labels or icons.
+
+```csharp
+Now.Rectangle(new NowRect(0, 0, 420, 220))
+    .SetTexture(wallpaper)
+    .Draw();
+
+Now.Glass(new NowRect(24, 24, 260, 96))
+    .SetBlurRadius(18)
+    .SetBlurQuality(NowGlassBlurQuality.Balanced)
+    .SetTint(new Color(1, 1, 1, 0.22f))
+    .SetRadius(18)
+    .SetOutline(1)
+    .SetOutlineColor(new Color(1, 1, 1, 0.35f))
+    .Draw();
+
+Now.Text(new NowRect(44, 44, 220, 40))
+    .SetColor(Color.white)
+    .Draw("Frosted panel");
+```
+
+Backdrop blur is available on command-buffer or RenderTexture-backed hosts:
+`NowRenderer.Render(...)`, `PopulateCommandBuffer(...)`, IMGUI, UI Toolkit,
+and pipeline overlays. UGUI automatically uses expensive replay-backed blur
+when a `NowGraphic` contains glass; it blurs NowUI content from the same
+graphic and can include camera content when `uguiBackdropSourceTexture` or the
+canvas camera's `targetTexture` supplies a source. World-space mesh rendering
+supports camera/world backdrop modes. `NowRenderer.Draw(commandBuffer,
+drawList)` and the legacy GL flush path fall back to replaying earlier NowUI
+batches into temporary textures, so glass still blurs NowUI when no readable
+screen target was provided. Use `SetBlurQuality(...)`, host `glassBlurQuality`,
+or `NowGlassSettings.defaultBlurQuality` to trade cost for quality; quality
+levels do not disable blur. See [Glass](Glass.md) for the full builder API and
+the docs-scene demo.
+
 Custom rectangle materials draw the same quad geometry as the built-in
 rectangle shader:
 
@@ -161,7 +200,8 @@ Now.Rectangle(panel)
 hosts keep the normal rectangle material. A custom material receives NowUI's
 rectangle vertex streams; for UGUI it should include Unity UI stencil and clip
 properties if it needs to work under `Mask`, `RectMask2D`, or material
-modifiers.
+modifiers. See [Custom Materials](CustomMaterials.md) for the full shader
+contract and the live docs-scene demo.
 
 ## Lines
 

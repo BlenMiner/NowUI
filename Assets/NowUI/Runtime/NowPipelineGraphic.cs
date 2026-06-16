@@ -24,6 +24,8 @@ namespace NowUI
 
         [SerializeField] int _order;
 
+        [SerializeField] NowGlassBlurQuality _glassBlurQuality = NowGlassBlurQuality.Auto;
+
         int _registrationIndex;
 
         public event Action<NowPipelineGraphic, Camera, Rect> rebuildNowUI;
@@ -56,6 +58,12 @@ namespace NowUI
         {
             get => _order;
             set => _order = value;
+        }
+
+        public NowGlassBlurQuality glassBlurQuality
+        {
+            get => _glassBlurQuality;
+            set => _glassBlurQuality = value;
         }
 
         public static bool HasGraphicsFor(Camera camera)
@@ -174,7 +182,8 @@ namespace NowUI
                 if (graphic == null || !graphic.CanRender(camera))
                     continue;
 
-                graphic.DrawNowUI(camera, rect);
+                using (NowGlassSettings.PushBlurQuality(graphic._glassBlurQuality))
+                    graphic.DrawNowUI(camera, rect);
             }
         }
 

@@ -20,6 +20,8 @@ public class NowPerformanceTests
 
     static int _overlayState;
 
+    static readonly NowGlassDiagnosticEntry[] _diagnosticScratch = new NowGlassDiagnosticEntry[4];
+
     sealed class PerfWorldGraphic : NowWorldGraphic
     {
         protected override bool useLayoutMeasurePass => false;
@@ -327,6 +329,52 @@ public class NowPerformanceTests
         {
             drawList.Dispose();
             NowOverlay.Reset();
+        }
+    }
+
+    [Test]
+    public void GlassDiagnosticsAreAllocationFreeAfterWarmup()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        Assert.NotNull(Resources.Load<Material>("NowUI/GlassMaterial"));
+        Assert.NotNull(Resources.Load<Material>("NowUI/GlassBlurMaterial"));
+
+        var previousDiagnostics = NowGlassSettings.diagnosticsEnabled;
+        int previousCapacity = NowGlassSettings.diagnosticEntryCapacity;
+        var drawList = new NowDrawList();
+        var commandBuffer = new UnityEngine.Rendering.CommandBuffer();
+
+        try
+        {
+            NowGlassSettings.ReserveDiagnostics(_diagnosticScratch.Length);
+            NowGlassSettings.diagnosticsEnabled = true;
+
+            void DrawFrame()
+            {
+                commandBuffer.Clear();
+
+                using (drawList.Begin(new Vector2(128, 64)))
+                {
+                    Now.Rectangle(new NowRect(0, 0, 128, 64))
+                        .SetColor(Color.red)
+                        .Draw();
+                    Now.Glass(new NowRect(16, 12, 64, 32))
+                        .SetBlurRadius(12f)
+                        .Draw();
+                }
+
+                NowRenderer.Draw(commandBuffer, drawList);
+                NowGlassSettings.CopyLastFrameDiagnosticsTo(_diagnosticScratch);
+            }
+
+            AssertNoAllocAfterWarmup(DrawFrame, "steady-state glass diagnostics must not allocate after storage warmup");
+        }
+        finally
+        {
+            commandBuffer.Release();
+            drawList.Dispose();
+            NowGlassSettings.diagnosticsEnabled = previousDiagnostics;
+            NowGlassSettings.ReserveDiagnostics(previousCapacity);
         }
     }
 }

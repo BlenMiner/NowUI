@@ -36,6 +36,8 @@ namespace NowUI
 
         float _uiScale = 1f;
 
+        NowGlassBlurQuality _glassBlurQuality = NowGlassBlurQuality.Auto;
+
         Color _clearColor = Color.clear;
 
         bool _wantsInteractionRepaint;
@@ -117,6 +119,20 @@ namespace NowUI
                     return;
 
                 _layoutMeasurePass = value;
+                MarkDirty();
+            }
+        }
+
+        [UxmlAttribute]
+        public NowGlassBlurQuality glassBlurQuality
+        {
+            get => _glassBlurQuality;
+            set
+            {
+                if (_glassBlurQuality == value)
+                    return;
+
+                _glassBlurQuality = value;
                 MarkDirty();
             }
         }
@@ -254,6 +270,7 @@ namespace NowUI
             float previousScale = Now.uiScale;
             bool tracking = false;
             bool contentTracking = false;
+            renderer.glassBlurQuality = _glassBlurQuality;
             var scope = renderer.Begin(size);
 
             try

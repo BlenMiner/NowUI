@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using NowUI.Internal;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -16,6 +17,12 @@ namespace NowUI
     {
         AlwaysVisible,
         SceneOccluded
+    }
+
+    public enum NowWorldGlassDepthMode
+    {
+        Disabled,
+        ClipForeground
     }
 
     [Flags]
@@ -286,7 +293,13 @@ namespace NowUI
     public class NowWorldGraphic : MonoBehaviour
     {
         static readonly int _zTestId = Shader.PropertyToID("_ZTest");
+        static readonly int _nowBackdropTexId = Shader.PropertyToID("_NowBackdropTex");
+        static readonly int _nowBackdropUvTransformId = Shader.PropertyToID("_NowBackdropUVTransform");
+        static readonly int _nowGlassUseBackdropId = Shader.PropertyToID("_NowGlassUseBackdrop");
+        static readonly int _nowGlassUseSceneDepthId = Shader.PropertyToID("_NowGlassUseSceneDepth");
+        static readonly int _nowGlassDepthEpsilonId = Shader.PropertyToID("_NowGlassDepthEpsilon");
         const float InputOcclusionEpsilon = 0.0001f;
+        const float GlassDepthEpsilon = 0.02f;
 
         static int _nextScopeId;
         static int _inputResolverVersion;
@@ -295,6 +308,7 @@ namespace NowUI
         static readonly Plane[] _inputFrustumPlanes = new Plane[6];
         static readonly Plane[] _rebuildFrustumPlanes = new Plane[6];
         static InputRayResolution _inputRayResolution;
+        static Camera _backdropSortCamera;
 
         [SerializeField] Camera _targetCamera;
         [SerializeField] NowWorldFacingMode _facingMode = NowWorldFacingMode.FaceCamera;
@@ -307,18 +321,26 @@ namespace NowUI
         [SerializeField] bool _rebuildEveryFrame;
         [SerializeField] bool _autoRebuildOnInteraction = true;
         [SerializeField] bool _acceptNavigation;
+        [SerializeField] NowWorldGlassBackdropMode _glassBackdropMode = NowWorldGlassBackdropMode.CameraAndWorldBlurred;
+        [SerializeField] NowWorldGlassDepthMode _glassDepthMode = NowWorldGlassDepthMode.ClipForeground;
+        [SerializeField] NowGlassBlurQuality _glassBlurQuality = NowGlassBlurQuality.Auto;
         [SerializeField] NowWorldDeformer _deformer;
 
         [NonSerialized] MeshFilter _meshFilter;
         [NonSerialized] MeshRenderer _meshRenderer;
         [NonSerialized] NowDrawList _drawList;
         [NonSerialized] NowWorldInputProvider _inputProvider;
+        [NonSerialized] MaterialPropertyBlock _glassPropertyBlock;
+        [NonSerialized] Texture _glassBackdropTexture;
         [NonSerialized] readonly List<Vector3> _vertices = new List<Vector3>(256);
         [NonSerialized] readonly Dictionary<Material, Material> _materials = new Dictionary<Material, Material>(8);
         [NonSerialized] Material[] _sharedMaterials = Array.Empty<Material>();
         [NonSerialized] bool _dirty = true;
         [NonSerialized] bool _wantsInteractionRepaint;
         [NonSerialized] bool _hasLastInteractionInput;
+        [NonSerialized] bool _hasGlassBatches;
+        [NonSerialized] float _maxGlassBlurRadius;
+        [NonSerialized] NowGlassBlurQuality _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
         [NonSerialized] int _scopeId;
         [NonSerialized] InteractionInputState _lastInteractionInput;
 
@@ -542,6 +564,49 @@ namespace NowUI
             }
         }
 
+        public NowWorldGlassBackdropMode glassBackdropMode
+        {
+            get => _glassBackdropMode;
+            set
+            {
+                if (_glassBackdropMode == value)
+                    return;
+
+                _glassBackdropMode = value;
+                ApplyRendererState();
+
+                if (_glassBackdropMode == NowWorldGlassBackdropMode.TintOnly)
+                    ApplyGlassBackdropTexture(null);
+            }
+        }
+
+        public NowWorldGlassDepthMode glassDepthMode
+        {
+            get => _glassDepthMode;
+            set
+            {
+                if (_glassDepthMode == value)
+                    return;
+
+                _glassDepthMode = value;
+                ApplyRendererState();
+                ApplyGlassBackdropTexture(_glassBackdropTexture);
+            }
+        }
+
+        public NowGlassBlurQuality glassBlurQuality
+        {
+            get => _glassBlurQuality;
+            set
+            {
+                if (_glassBlurQuality == value)
+                    return;
+
+                _glassBlurQuality = value;
+                MarkDirty();
+            }
+        }
+
         public NowWorldDeformer deformer
         {
             get => _deformer;
@@ -592,7 +657,7 @@ namespace NowUI
                     currentSize = ResolveLayoutAutoSize(currentSize);
 
                 var surface = new NowInputSurface(currentSize);
-                scope = _drawList.Begin(currentSize);
+                scope = _drawList.Begin(currentSize, _glassBlurQuality);
 
                 using (NowInput.Begin(GetInputProvider(), surface))
                 using (NowControls.IdScope(GetScopeId()))
@@ -669,8 +734,6 @@ namespace NowUI
 
             if (!cmr)
                 return false;
-
-            var ray = cmr.ScreenPointToRay(screenPosition);
 
             var resolution = ResolveInputRay(cmr, screenPosition);
 
@@ -805,6 +868,7 @@ namespace NowUI
         protected virtual void LateUpdate()
         {
             ApplyFacing();
+            RegisterGlassBackdropIfNeeded();
 
             bool needsRebuild = _dirty || _rebuildEveryFrame || _wantsInteractionRepaint;
 
@@ -823,6 +887,7 @@ namespace NowUI
                 return;
 
             RebuildNowUI();
+            RegisterGlassBackdropIfNeeded();
         }
 
     #if UNITY_EDITOR
@@ -895,24 +960,228 @@ namespace NowUI
 
             if (_drawList is not { hasGeometry: true })
             {
+                _hasGlassBatches = false;
+                _maxGlassBlurRadius = 0f;
+                _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
                 _meshRenderer.sharedMaterials = Array.Empty<Material>();
                 return;
             }
 
             var batches = _drawList.batches;
             int count = batches.Count;
+            _hasGlassBatches = false;
+            _maxGlassBlurRadius = 0f;
+            _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
 
             if (_sharedMaterials.Length != count)
                 _sharedMaterials = new Material[count];
 
             for (int i = 0; i < count; ++i)
-                _sharedMaterials[i] = GetMaterial(batches[i].material);
+            {
+                var batch = batches[i];
+
+                if (batch.kind == NowMeshKind.Glass)
+                {
+                    _hasGlassBatches = true;
+                    _maxGlassBlurRadius = Mathf.Max(_maxGlassBlurRadius, batch.data.x);
+                    _maxGlassBlurQuality = MaxQuality(_maxGlassBlurQuality, NowGlassRenderer.GetBatchQuality(batch));
+                }
+
+                _sharedMaterials[i] = GetMaterial(batch);
+            }
 
             _meshRenderer.sharedMaterials = _sharedMaterials;
         }
 
-        Material GetMaterial(Material source)
+        void RegisterGlassBackdropIfNeeded()
         {
+            if (!_hasGlassBatches)
+            {
+                ApplyGlassBackdropTexture(null);
+                return;
+            }
+
+            var cmr = ResolveCamera();
+
+            if (!cmr)
+            {
+                ApplyGlassBackdropTexture(null);
+                return;
+            }
+
+            if (_glassDepthMode == NowWorldGlassDepthMode.ClipForeground)
+                NowWorldGlassBackdrop.RequestSceneDepth(cmr);
+
+            if (_glassBackdropMode == NowWorldGlassBackdropMode.TintOnly)
+            {
+                ApplyGlassBackdropTexture(null);
+                return;
+            }
+
+            NowWorldGlassBackdrop.Register(
+                cmr,
+                this,
+                _glassBackdropMode,
+                _maxGlassBlurRadius,
+                _maxGlassBlurQuality,
+                _glassDepthMode == NowWorldGlassDepthMode.ClipForeground);
+        }
+
+        internal float GetCameraDepth(Camera camera)
+        {
+            if (camera == null)
+                return float.PositiveInfinity;
+
+            return Vector3.Dot(transform.position - camera.transform.position, camera.transform.forward);
+        }
+
+        internal static void CollectBackdropContributors(
+            Camera camera,
+            NowWorldGraphic requester,
+            float requesterDepth,
+            List<NowWorldGraphic> results)
+        {
+            results.Clear();
+
+            if (camera == null)
+                return;
+
+            GeometryUtility.CalculateFrustumPlanes(camera, _rebuildFrustumPlanes);
+
+            for (int i = _instances.Count - 1; i >= 0; --i)
+            {
+                var graphic = _instances[i];
+
+                if (!graphic)
+                {
+                    _instances.RemoveAt(i);
+                    InvalidateInputResolution();
+                    continue;
+                }
+
+                if (ReferenceEquals(graphic, requester))
+                    continue;
+
+                if (!graphic.enabled ||
+                    !graphic.gameObject.activeInHierarchy ||
+                    !graphic._meshRenderer ||
+                    !graphic._meshRenderer.enabled ||
+                    graphic._drawList is not { hasGeometry: true })
+                {
+                    continue;
+                }
+
+                if (graphic.ResolveCamera() != camera)
+                    continue;
+
+                if (!IsLayerVisible(camera, graphic.gameObject.layer))
+                    continue;
+
+                if (!graphic.IsInsideFrustum(_rebuildFrustumPlanes))
+                    continue;
+
+                if (graphic.GetCameraDepth(camera) <= requesterDepth + InputOcclusionEpsilon)
+                    continue;
+
+                results.Add(graphic);
+            }
+
+            _backdropSortCamera = camera;
+            results.Sort(CompareBackdropContributorDepth);
+            _backdropSortCamera = null;
+        }
+
+        internal void DrawBackdropContribution(CommandBuffer commandBuffer)
+        {
+            if (commandBuffer == null ||
+                !_meshRenderer ||
+                _drawList is not { hasGeometry: true })
+            {
+                return;
+            }
+
+            var batches = _drawList.batches;
+            int count = Mathf.Min(batches.Count, _sharedMaterials.Length);
+
+            for (int i = 0; i < count; ++i)
+            {
+                if (batches[i].kind == NowMeshKind.Glass || !_sharedMaterials[i])
+                    continue;
+
+                commandBuffer.DrawRenderer(_meshRenderer, _sharedMaterials[i], i, 0);
+            }
+        }
+
+        internal void ApplyGlassBackdropTexture(Texture texture)
+        {
+            _glassBackdropTexture = texture;
+            bool useBackdrop = texture != null && _glassBackdropMode != NowWorldGlassBackdropMode.TintOnly;
+            var fallback = texture != null ? texture : Texture2D.blackTexture;
+
+            if (_meshRenderer)
+                _meshRenderer.SetPropertyBlock(null);
+
+            if (_drawList is not { hasGeometry: true } || _sharedMaterials == null)
+                return;
+
+            var batches = _drawList.batches;
+            int count = Mathf.Min(batches.Count, _sharedMaterials.Length);
+
+            for (int i = 0; i < count; ++i)
+            {
+                if (batches[i].kind != NowMeshKind.Glass)
+                    continue;
+
+                var material = _sharedMaterials[i];
+                bool batchUsesBackdrop = useBackdrop;
+
+                if (!material)
+                    continue;
+
+                material.SetTexture(_nowBackdropTexId, fallback);
+                material.SetVector(_nowBackdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
+                material.SetFloat(_nowGlassUseBackdropId, batchUsesBackdrop ? 1f : 0f);
+                ApplyGlassDepthProperties(material);
+            }
+        }
+
+        static NowGlassBlurQuality MaxQuality(NowGlassBlurQuality lhs, NowGlassBlurQuality rhs)
+        {
+            return QualityRank(rhs) > QualityRank(lhs) ? rhs : lhs;
+        }
+
+        static int QualityRank(NowGlassBlurQuality quality)
+        {
+            return quality switch
+            {
+                NowGlassBlurQuality.Fast => 1,
+                NowGlassBlurQuality.Balanced => 2,
+                NowGlassBlurQuality.High => 3,
+                NowGlassBlurQuality.Ultra => 4,
+                _ => 2
+            };
+        }
+
+        static int CompareBackdropContributorDepth(NowWorldGraphic lhs, NowWorldGraphic rhs)
+        {
+            if (ReferenceEquals(lhs, rhs))
+                return 0;
+
+            if (!lhs)
+                return 1;
+
+            if (!rhs)
+                return -1;
+
+            float lhsDepth = lhs.GetCameraDepth(_backdropSortCamera);
+            float rhsDepth = rhs.GetCameraDepth(_backdropSortCamera);
+            return rhsDepth.CompareTo(lhsDepth);
+        }
+
+        Material GetMaterial(NowMeshBatch batch)
+        {
+            var source = batch.material;
+
             if (!source)
                 return null;
 
@@ -931,7 +1200,42 @@ namespace NowUI
             }
 
             ApplyDepthMode(material);
+            ApplyGlassBackdropMode(material, batch);
             return material;
+        }
+
+        void ApplyGlassBackdropMode(Material material, NowMeshBatch batch)
+        {
+            if (!material || batch.kind != NowMeshKind.Glass)
+                return;
+
+            bool useBackdrop = _glassBackdropTexture != null &&
+                _glassBackdropMode != NowWorldGlassBackdropMode.TintOnly;
+
+            material.SetTexture(_nowBackdropTexId, _glassBackdropTexture != null ? _glassBackdropTexture : Texture2D.blackTexture);
+            material.SetVector(_nowBackdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
+            material.SetFloat(_nowGlassUseBackdropId, useBackdrop ? 1f : 0f);
+            ApplyGlassDepthProperties(material);
+        }
+
+        void ApplyGlassDepthProperties(Material material)
+        {
+            if (!material)
+                return;
+
+            bool useSceneDepth = _glassDepthMode == NowWorldGlassDepthMode.ClipForeground;
+            material.SetFloat(_nowGlassUseSceneDepthId, useSceneDepth ? 1f : 0f);
+            material.SetFloat(_nowGlassDepthEpsilonId, GlassDepthEpsilon);
+        }
+
+        void ApplyGlassDepthProperties(MaterialPropertyBlock block)
+        {
+            if (block == null)
+                return;
+
+            bool useSceneDepth = _glassDepthMode == NowWorldGlassDepthMode.ClipForeground;
+            block.SetFloat(_nowGlassUseSceneDepthId, useSceneDepth ? 1f : 0f);
+            block.SetFloat(_nowGlassDepthEpsilonId, GlassDepthEpsilon);
         }
 
         void ApplyDepthMode(Material material)
@@ -1228,6 +1532,10 @@ namespace NowUI
 
         void ClearRendererState()
         {
+            _hasGlassBatches = false;
+            _maxGlassBlurRadius = 0f;
+            _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
+
             if (_meshRenderer != null)
                 _meshRenderer.sharedMaterials = Array.Empty<Material>();
 

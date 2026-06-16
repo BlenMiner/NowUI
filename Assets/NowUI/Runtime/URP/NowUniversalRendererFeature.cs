@@ -17,6 +17,8 @@ namespace NowUI
 
         NowUniversalRenderPass _pass;
 
+        NowUniversalWorldGlassPass _worldGlassPass;
+
         public float uiScale
         {
             get => _uiScale;
@@ -40,27 +42,73 @@ namespace NowUI
             {
                 renderPassEvent = _renderPassEvent
             };
+
+            _worldGlassPass = new NowUniversalWorldGlassPass
+            {
+                renderPassEvent = RenderPassEvent.BeforeRenderingTransparents
+            };
         }
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
             var camera = renderingData.cameraData.camera;
 
-            if (!NowPipelineGraphic.HasGraphicsFor(camera))
+            bool hasPipelineGraphics = NowPipelineGraphic.HasGraphicsFor(camera);
+            bool hasWorldGlass = NowWorldGlassBackdrop.HasRequest(camera);
+            bool needsWorldGlassDepth = NowWorldGlassBackdrop.RequiresSceneDepth(camera);
+
+            if (!hasPipelineGraphics && !hasWorldGlass && !needsWorldGlassDepth)
                 return;
 
             if (_pass == null)
                 Create();
 
-            _pass.renderPassEvent = _renderPassEvent;
-            _pass.uiScale = ResolveUIScale();
-            renderer.EnqueuePass(_pass);
+            if (hasWorldGlass || needsWorldGlassDepth)
+            {
+                _worldGlassPass.ConfigureInput(
+                    needsWorldGlassDepth ? ScriptableRenderPassInput.Depth : ScriptableRenderPassInput.None);
+                renderer.EnqueuePass(_worldGlassPass);
+            }
+
+            if (hasPipelineGraphics)
+            {
+                _pass.renderPassEvent = _renderPassEvent;
+                _pass.uiScale = ResolveUIScale();
+                renderer.EnqueuePass(_pass);
+            }
         }
 
         protected override void Dispose(bool disposing)
         {
             _pass?.Dispose();
             _pass = null;
+            _worldGlassPass = null;
+        }
+
+        sealed class NowUniversalWorldGlassPass : ScriptableRenderPass
+        {
+            public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+            {
+                var camera = renderingData.cameraData.camera;
+                var commandBuffer = CommandBufferPool.Get("Now URP World Glass");
+
+                try
+                {
+                    if (NowWorldGlassBackdrop.PopulateCommandBuffer(
+                        commandBuffer,
+                        camera,
+                        BuiltinRenderTextureType.CameraTarget,
+                        camera.pixelWidth,
+                        camera.pixelHeight))
+                    {
+                        context.ExecuteCommandBuffer(commandBuffer);
+                    }
+                }
+                finally
+                {
+                    CommandBufferPool.Release(commandBuffer);
+                }
+            }
         }
 
         sealed class NowUniversalRenderPass : ScriptableRenderPass
@@ -80,7 +128,12 @@ namespace NowUI
 
                 try
                 {
-                    NowRenderer.Draw(commandBuffer, _drawList);
+                    NowRenderer.Draw(
+                        commandBuffer,
+                        _drawList,
+                        BuiltinRenderTextureType.CameraTarget,
+                        camera.pixelWidth,
+                        camera.pixelHeight);
                     context.ExecuteCommandBuffer(commandBuffer);
                 }
                 finally

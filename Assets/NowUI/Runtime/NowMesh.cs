@@ -8,7 +8,8 @@ namespace NowUI.Internal
         Text,
         TexturedRectangle,
         CustomRectangle,
-        Sdf
+        Sdf,
+        Glass
     }
 
     internal struct NowMeshBatch
@@ -19,16 +20,32 @@ namespace NowUI.Internal
 
         public readonly NowMeshKind kind;
 
+        public readonly Vector4 data;
+
+        public readonly NowRect bounds;
+
         public NowMeshBatch(Material material, NowMeshKind kind)
-            : this(material, null, kind)
+            : this(material, null, kind, default)
         {
         }
 
         public NowMeshBatch(Material material, Material canvasMaterial, NowMeshKind kind)
+            : this(material, canvasMaterial, kind, default)
+        {
+        }
+
+        public NowMeshBatch(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 data)
+            : this(material, canvasMaterial, kind, data, default)
+        {
+        }
+
+        public NowMeshBatch(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 data, NowRect bounds)
         {
             this.material = material;
             this.canvasMaterial = canvasMaterial;
             this.kind = kind;
+            this.data = data;
+            this.bounds = bounds;
         }
     }
 
@@ -160,16 +177,24 @@ namespace NowUI.Internal
 
         public NowMeshKind kind;
 
+        public Vector4 batchData;
+
         public NowMesh(Material mat, NowMeshKind kind)
             : this(mat, null, kind)
         {
         }
 
         public NowMesh(Material mat, Material canvasMaterial, NowMeshKind kind)
+            : this(mat, canvasMaterial, kind, default)
+        {
+        }
+
+        public NowMesh(Material mat, Material canvasMaterial, NowMeshKind kind, Vector4 batchData)
         {
             material = mat;
             this.canvasMaterial = canvasMaterial;
             this.kind = kind;
+            this.batchData = batchData;
 
             _radius = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
             _rect = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
@@ -190,9 +215,15 @@ namespace NowUI.Internal
 
         public void SetMaterial(Material material, Material canvasMaterial, NowMeshKind kind)
         {
+            SetMaterial(material, canvasMaterial, kind, default);
+        }
+
+        public void SetMaterial(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 batchData)
+        {
             this.material = material;
             this.canvasMaterial = canvasMaterial;
             this.kind = kind;
+            this.batchData = batchData;
             ClearVertices();
         }
 
@@ -222,15 +253,19 @@ namespace NowUI.Internal
 
         public void AddRect(NowRectVertex vertexData, float extraX, float extraY)
         {
+            Vector4 extra = default;
+            extra.x = extraX;
+            extra.y = extraY;
+            AddRect(vertexData, extra);
+        }
+
+        public void AddRect(NowRectVertex vertexData, Vector4 extra)
+        {
             if (vertexData.IsOutsideMask(vertexData.position)) return;
 
             EnsureRectCapacity();
 
             int indexOffset = _verts.count;
-
-            Vector4 extra = default;
-            extra.x = extraX;
-            extra.y = extraY;
 
             var maskarr = _mask.array;
             var maskcount = _mask.count;
@@ -839,6 +874,33 @@ namespace NowUI.Internal
                 destination[destinationBase + i] = source[i] + vertexOffset;
 
             triangles.count += count;
+        }
+
+        public NowRect GetBounds(Vector2 positionOffset)
+        {
+            int count = _verts.count;
+
+            if (count == 0)
+                return default;
+
+            var vertices = _verts.array;
+            float minX = float.PositiveInfinity;
+            float maxX = float.NegativeInfinity;
+            float minY = float.PositiveInfinity;
+            float maxY = float.NegativeInfinity;
+
+            for (int i = 0; i < count; ++i)
+            {
+                var vertex = vertices[i];
+                float x = vertex.x + positionOffset.x;
+                float y = vertex.y + positionOffset.y;
+                minX = Mathf.Min(minX, x);
+                maxX = Mathf.Max(maxX, x);
+                minY = Mathf.Min(minY, y);
+                maxY = Mathf.Max(maxY, y);
+            }
+
+            return new NowRect(minX, -maxY, Mathf.Max(0f, maxX - minX), Mathf.Max(0f, maxY - minY));
         }
 
         public void UploadMesh()

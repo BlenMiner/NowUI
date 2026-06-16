@@ -37,6 +37,75 @@ public class NowInputTests
     }
 
     [Test]
+    public void InteractionIgnoresPointerOutsideAmbientMask()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(45, 20), true, true, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        using (Now.Mask(new NowRect(10, 10, 20, 30)))
+        {
+            var interaction = NowInput.Interact(1, _rect);
+
+            Assert.IsFalse(interaction.hovered);
+            Assert.IsFalse(interaction.pressed);
+            Assert.IsFalse(interaction.held);
+        }
+
+        Assert.AreEqual(0, NowInput.activeId);
+    }
+
+    [Test]
+    public void HoverUsesNestedAmbientMaskIntersection()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(32, 20), false, false, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        using (Now.Mask(new NowRect(10, 10, 40, 30)))
+        using (Now.Mask(new NowRect(10, 10, 20, 30)))
+        {
+            Assert.IsFalse(NowInput.IsHovered(_rect));
+        }
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(28, 20), false, false, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        using (Now.Mask(new NowRect(10, 10, 40, 30)))
+        using (Now.Mask(new NowRect(10, 10, 20, 30)))
+        {
+            Assert.IsTrue(NowInput.IsHovered(_rect));
+        }
+    }
+
+    [Test]
+    public void ScrollDeltaIgnoresPointerOutsideAmbientMask()
+    {
+        _provider.snapshot = new NowInputSnapshot(
+            true,
+            new Vector2(45, 20),
+            new Vector2(45, 20),
+            Vector2.zero,
+            NowPointerButtons.None,
+            NowPointerButtons.None,
+            NowPointerButtons.None,
+            new Vector2(0f, -1f),
+            Vector2.zero,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            1,
+            0.5f);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        using (Now.Mask(new NowRect(10, 10, 20, 30)))
+        {
+            Assert.AreEqual(Vector2.zero, NowInput.ConsumeScrollDelta(_rect));
+        }
+    }
+
+    [Test]
     public void InteractionClicksWhenPressedAndReleasedInsideRect()
     {
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);

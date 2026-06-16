@@ -7,6 +7,15 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `NowDrawList.Warmup(...)` and `NowRenderer.Warmup(...)` to run a
+  representative initialization frame and clear the result before measuring
+  allocation-sensitive steady-state rendering.
+- Glass diagnostics now support caller-owned, allocation-free entry reads via
+  `NowGlassSettings.TryGetLastFrameDiagnostic(...)`,
+  `CopyLastFrameDiagnosticsTo(...)`, and
+  `ReserveDiagnostics(maxPanesPerFrame)`.
+- UPM `Samples~` quick-start sample and Unity test CI workflow for edit-mode
+  and play-mode validation on a self-hosted Windows Unity runner.
 - World-space rendering: `NowWorldGraphic` hosts NowUI directly on a
   `MeshFilter`/`MeshRenderer` for billboards, nameplates, hover tooltips and
   diegetic panels, with ray-mapped pointer input, per-instance control id
@@ -18,6 +27,12 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   blends, reusable graph operands, distance-field morphs between graphs,
   per-shape colors, scene texture fills, explicit-rect and layout-flow builders,
   and UGUI capture support through the standard NowUI batcher.
+
+### Changed
+
+- Breaking: `NowGlassFrameDiagnostics` no longer exposes an allocated
+  `entries` array. Use the new indexed/copy APIs on `NowGlassSettings`
+  instead; aggregate frame totals remain on `lastFrameDiagnostics`.
 
 ## [0.1.0] - 2026-06-11
 

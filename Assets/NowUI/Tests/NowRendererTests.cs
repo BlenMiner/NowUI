@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 using NowUI;
+using NowUI.Internal;
 
 public class NowRendererTests
 {
@@ -88,6 +89,210 @@ public class NowRendererTests
         finally
         {
             renderer.Dispose();
+        }
+    }
+
+    [Test]
+    public void DrawListWarmupClearsCapturedGeometry()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            drawList.Warmup(new Vector2(128, 64), () =>
+            {
+                Now.Rectangle(new NowRect(4, 6, 32, 20))
+                    .SetColor(Color.white)
+                    .Draw();
+            });
+
+            Assert.IsFalse(drawList.hasGeometry);
+            Assert.AreEqual(0, drawList.batchCount);
+            Assert.AreEqual(0, drawList.mesh.vertexCount);
+            Assert.AreEqual(new Vector2(128, 64), drawList.size);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void RendererWarmupRejectsMissingDrawCallback()
+    {
+        var renderer = new NowRenderer();
+
+        try
+        {
+            Assert.Throws<ArgumentNullException>(() => renderer.Warmup(new Vector2(128, 64), null));
+        }
+        finally
+        {
+            renderer.Dispose();
+        }
+    }
+
+    [Test]
+    public void DrawListBuildCapturesGlassGeometryAndBatchData()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/GlassMaterial"));
+        Assert.NotNull(Resources.Load<Material>("NowUI/GlassMaterialUGUI"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+                Now.Glass(new NowRect(4, 6, 32, 20))
+                    .SetBlurRadius(12f)
+                    .SetVibrancy(1.25f, 0.9f)
+                    .SetTint(new Color(1f, 1f, 1f, 0.2f))
+                    .Draw();
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(1, drawList.batchCount);
+            Assert.AreEqual(1, drawList.mesh.subMeshCount);
+            Assert.AreEqual(4, drawList.mesh.vertexCount);
+            Assert.AreEqual(NowMeshKind.Glass, drawList.batches[0].kind);
+            Assert.AreEqual(12f, drawList.batches[0].data.x, 0.0001f);
+            Assert.AreEqual(1.25f, drawList.batches[0].data.y, 0.0001f);
+            Assert.AreEqual(0.9f, drawList.batches[0].data.z, 0.0001f);
+            Assert.AreEqual((float)NowGlassBlurQuality.Balanced, drawList.batches[0].data.w, 0.0001f);
+            Assert.AreEqual(new NowRect(4, 6, 32, 20), drawList.batches[0].bounds);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void GlassPreservesDrawOrderAndSplitsDifferentBlurSettings()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        Assert.NotNull(Resources.Load<Material>("NowUI/GlassMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            {
+                Now.Rectangle(new NowRect(0, 0, 16, 16)).Draw();
+                Now.Glass(new NowRect(16, 0, 16, 16)).SetBlurRadius(6f).Draw();
+                Now.Glass(new NowRect(32, 0, 16, 16)).SetBlurRadius(18f).Draw();
+                Now.Rectangle(new NowRect(48, 0, 16, 16)).Draw();
+            }
+
+            Assert.AreEqual(4, drawList.batchCount);
+            Assert.AreEqual(NowMeshKind.Rectangle, drawList.batches[0].kind);
+            Assert.AreEqual(NowMeshKind.Glass, drawList.batches[1].kind);
+            Assert.AreEqual(NowMeshKind.Glass, drawList.batches[2].kind);
+            Assert.AreEqual(NowMeshKind.Rectangle, drawList.batches[3].kind);
+            Assert.AreEqual(6f, drawList.batches[1].data.x, 0.0001f);
+            Assert.AreEqual(18f, drawList.batches[2].data.x, 0.0001f);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void GlassQualityCanUseHostDefaultAndPerPaneOverride()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/GlassMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64), NowGlassBlurQuality.High))
+            {
+                Now.Glass(new NowRect(0, 0, 16, 16)).Draw();
+                Now.Glass(new NowRect(16, 0, 16, 16)).SetBlurQuality(NowGlassBlurQuality.Fast).Draw();
+            }
+
+            Assert.AreEqual(2, drawList.batchCount);
+            Assert.AreEqual((float)NowGlassBlurQuality.High, drawList.batches[0].data.w, 0.0001f);
+            Assert.AreEqual((float)NowGlassBlurQuality.Fast, drawList.batches[1].data.w, 0.0001f);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void RemovedTintOnlyQualityValueResolvesToBlurredDefault()
+    {
+        var oldTintOnlyValue = (NowGlassBlurQuality)1;
+        Assert.AreEqual(NowGlassBlurQuality.Balanced, NowGlassSettings.Resolve(oldTintOnlyValue));
+
+        var plan = NowGlassRenderer.GetBlurPlan(18f, 256, 128, oldTintOnlyValue);
+        Assert.AreEqual(NowGlassBlurQuality.Balanced, plan.quality);
+        Assert.Greater(plan.iterations, 0);
+    }
+
+    [Test]
+    public void GlassBlurPlanUsesHigherQualitySettingsForUiRadii()
+    {
+        var medium = NowGlassRenderer.GetBlurPlan(18f, 512, 256);
+        Assert.AreEqual(1, medium.downsample);
+        Assert.AreEqual(512, medium.width);
+        Assert.AreEqual(256, medium.height);
+        Assert.GreaterOrEqual(medium.iterations, 4);
+
+        var large = NowGlassRenderer.GetBlurPlan(36f, 512, 256);
+        Assert.AreEqual(2, large.downsample);
+        Assert.AreEqual(256, large.width);
+        Assert.AreEqual(128, large.height);
+        Assert.GreaterOrEqual(large.iterations, medium.iterations);
+
+        var fast = NowGlassRenderer.GetBlurPlan(18f, 512, 256, NowGlassBlurQuality.Fast);
+        var ultra = NowGlassRenderer.GetBlurPlan(18f, 512, 256, NowGlassBlurQuality.Ultra);
+        Assert.LessOrEqual(fast.iterations, medium.iterations);
+        Assert.Greater(ultra.iterations, medium.iterations);
+
+        var tiny = NowGlassRenderer.GetBlurPlan(3f, 512, 256, NowGlassBlurQuality.Balanced);
+        Assert.AreEqual(1, tiny.downsample);
+        Assert.GreaterOrEqual(tiny.iterations, 2);
+    }
+
+    [Test]
+    public void NestedDrawListCaptureRestoresAmbientMask()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var outer = new NowDrawList();
+        var inner = new NowDrawList();
+
+        try
+        {
+            using (outer.Begin(new Vector2(100, 100)))
+            using (Now.Mask(new NowRect(0, 0, 20, 20)))
+            {
+                using (inner.Begin(new Vector2(100, 100)))
+                {
+                    Now.Rectangle(new NowRect(50, 50, 10, 10))
+                        .SetColor(Color.white)
+                        .Draw();
+                }
+
+                Now.Rectangle(new NowRect(50, 50, 10, 10))
+                    .SetColor(Color.white)
+                    .Draw();
+            }
+
+            Assert.IsTrue(inner.hasGeometry, "Inner capture should render without inheriting the outer mask.");
+            Assert.IsFalse(outer.hasGeometry, "Outer mask should be restored after nested capture.");
+        }
+        finally
+        {
+            inner.Dispose();
+            outer.Dispose();
         }
     }
 
@@ -470,6 +675,44 @@ public class NowRendererTests
     }
 
     [Test]
+    public void RendererDrawWithoutTargetUsesSelfReplayForGlass()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        Assert.NotNull(Resources.Load<Material>("NowUI/GlassMaterial"));
+        Assert.NotNull(Resources.Load<Material>("NowUI/GlassBlurMaterial"));
+
+        var previousDiagnostics = NowGlassSettings.diagnosticsEnabled;
+        NowGlassSettings.diagnosticsEnabled = true;
+        var drawList = new NowDrawList();
+        var commandBuffer = new UnityEngine.Rendering.CommandBuffer();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            {
+                Now.Rectangle(new NowRect(0, 0, 128, 64))
+                    .SetColor(Color.red)
+                    .Draw();
+                Now.Glass(new NowRect(16, 12, 64, 32))
+                    .SetBlurRadius(12f)
+                    .Draw();
+            }
+
+            NowRenderer.Draw(commandBuffer, drawList);
+
+            var diagnostics = NowGlassSettings.lastFrameDiagnostics;
+            Assert.IsTrue(DiagnosticsContainHost("NowRendererSelfReplay"));
+            Assert.IsFalse(DiagnosticsContainFallback(NowGlassFallbackReason.MissingTargetContext));
+        }
+        finally
+        {
+            commandBuffer.Release();
+            drawList.Dispose();
+            NowGlassSettings.diagnosticsEnabled = previousDiagnostics;
+        }
+    }
+
+    [Test]
     public void PipelineGraphicBuildsDrawListForTargetCamera()
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
@@ -607,8 +850,232 @@ public class NowRendererTests
     public void UguiMaterialsExposeRectMaskSoftnessProperties()
     {
         AssertUguiMaskProperties(Resources.Load<Material>("NowUI/UIMaterialUGUI"));
+        AssertUguiMaskProperties(Resources.Load<Material>("NowUI/GlassMaterialUGUI"));
         AssertUguiMaskProperties(Resources.Load<Material>("NowUI/TxtMaterialUGUI"));
         AssertUguiMaskProperties(Resources.Load<Material>("NowUI/TxtMaterialRGBAUGUI"));
+    }
+
+    [Test]
+    public void GraphicUsesReplayBackedGlassMaterialAutomatically()
+    {
+        var canvasMaterial = Resources.Load<Material>("NowUI/GlassMaterialUGUI");
+        Assert.NotNull(canvasMaterial);
+
+        var graphicObject = new GameObject("Now Test Glass Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+
+        try
+        {
+            var rectTransform = graphicObject.GetComponent<RectTransform>();
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 64f);
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 32f);
+
+            var graphic = graphicObject.AddComponent<GlassGraphic>();
+            graphic.Rebuild(CanvasUpdate.PreRender);
+
+            var glassMaterial = graphic.canvasRenderer.GetMaterial(0);
+            Assert.NotNull(glassMaterial);
+            Assert.AreNotSame(canvasMaterial, glassMaterial);
+            Assert.IsTrue(glassMaterial.HasProperty("_NowGlassUseBackdrop"));
+            Assert.AreEqual(1f, glassMaterial.GetFloat("_NowGlassUseBackdrop"), 0.0001f);
+            Assert.NotNull(glassMaterial.GetTexture("_NowUGUIBackdropTex"));
+
+            Assert.AreEqual(1, graphic.uguiGlassDebugTextureCount);
+            Assert.IsTrue(graphic.TryGetUGUIGlassDebugInfo(0, out var info));
+            Assert.AreEqual(0, info.batchIndex);
+            Assert.AreEqual(0, info.replayBatchCount);
+            Assert.Greater(info.width, 0);
+            Assert.Greater(info.height, 0);
+            Assert.Less(info.width, 64);
+            Assert.AreEqual(NowGlassBlurQuality.Balanced, info.blurQuality);
+            Assert.AreEqual(NowGlassFallbackReason.None, info.fallbackReason);
+            Assert.IsTrue(info.hasSourceTexture);
+            Assert.IsTrue(info.hasBlurredTexture);
+            Assert.NotNull(graphic.GetUGUIGlassDebugSourceTexture(0));
+            Assert.NotNull(graphic.GetUGUIGlassDebugBlurredTexture(0));
+        }
+        finally
+        {
+            Object.DestroyImmediate(graphicObject);
+        }
+    }
+
+    [Test]
+    public void GraphicGlassDiagnosticsReportsUGUIReplay()
+    {
+        var previous = NowGlassSettings.diagnosticsEnabled;
+        NowGlassSettings.diagnosticsEnabled = true;
+
+        var graphicObject = new GameObject("Now Test Glass Diagnostics Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+
+        try
+        {
+            var rectTransform = graphicObject.GetComponent<RectTransform>();
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 64f);
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 32f);
+
+            var graphic = graphicObject.AddComponent<GlassGraphic>();
+            graphic.Rebuild(CanvasUpdate.PreRender);
+
+            var diagnostics = NowGlassSettings.lastFrameDiagnostics;
+            Assert.GreaterOrEqual(diagnostics.paneCount, 1);
+            Assert.Greater(diagnostics.blurredPixels, 0);
+            Assert.IsTrue(DiagnosticsContainHost("UGUI"));
+        }
+        finally
+        {
+            NowGlassSettings.diagnosticsEnabled = previous;
+            Object.DestroyImmediate(graphicObject);
+        }
+    }
+
+    [Test]
+    public void GlassDiagnosticsUseBoundedNonAllocEntryStorage()
+    {
+        var previous = NowGlassSettings.diagnosticsEnabled;
+        int previousCapacity = NowGlassSettings.diagnosticEntryCapacity;
+        NowGlassSettings.ReserveDiagnostics(1);
+        NowGlassSettings.diagnosticsEnabled = true;
+
+        var drawList = new NowDrawList();
+        var commandBuffer = new UnityEngine.Rendering.CommandBuffer();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            {
+                Now.Glass(new NowRect(8, 8, 32, 24))
+                    .SetBlurRadius(8f)
+                    .Draw();
+                Now.Glass(new NowRect(48, 8, 32, 24))
+                    .SetBlurRadius(16f)
+                    .Draw();
+            }
+
+            NowRenderer.Draw(commandBuffer, drawList);
+
+            var diagnostics = NowGlassSettings.lastFrameDiagnostics;
+            Assert.GreaterOrEqual(diagnostics.paneCount, 2);
+            Assert.AreEqual(1, diagnostics.entryCount);
+            Assert.AreEqual(diagnostics.paneCount - diagnostics.entryCount, diagnostics.droppedEntryCount);
+            Assert.IsTrue(NowGlassSettings.TryGetLastFrameDiagnostic(0, out var entry));
+            Assert.AreEqual("NowRendererSelfReplay", entry.host);
+            Assert.IsFalse(NowGlassSettings.TryGetLastFrameDiagnostic(1, out _));
+
+            var copied = new NowGlassDiagnosticEntry[2];
+            Assert.AreEqual(1, NowGlassSettings.CopyLastFrameDiagnosticsTo(copied));
+            Assert.AreEqual(entry.host, copied[0].host);
+        }
+        finally
+        {
+            commandBuffer.Release();
+            drawList.Dispose();
+            NowGlassSettings.diagnosticsEnabled = previous;
+            NowGlassSettings.ReserveDiagnostics(previousCapacity);
+        }
+    }
+
+    [Test]
+    public void CanvasDrawListAutomaticallyRetainsRenderReplayForUGUIGlass()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        Assert.NotNull(Resources.Load<Material>("NowUI/GlassMaterial"));
+
+        var drawList = new NowDrawList(NowMeshLayout.Canvas, "Now Test Canvas Replay");
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            {
+                Now.Rectangle(new NowRect(0, 0, 128, 64))
+                    .SetColor(Color.red)
+                    .Draw();
+                Now.Glass(new NowRect(16, 12, 64, 32))
+                    .SetBlurRadius(12f)
+                    .Draw();
+                Now.Rectangle(new NowRect(24, 20, 16, 16))
+                    .SetColor(Color.blue)
+                    .Draw();
+            }
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.IsTrue(drawList.hasRenderReplay);
+            Assert.AreEqual(drawList.batchCount, drawList.renderReplayBatches.Count);
+            Assert.AreEqual(drawList.mesh.vertexCount, drawList.renderReplayMesh.vertexCount);
+            Assert.AreEqual(NowMeshKind.Glass, drawList.renderReplayBatches[1].kind);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void CanvasDrawListSkipsRenderReplayWithoutGlass()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList(NowMeshLayout.Canvas, "Now Test Canvas No Replay");
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            {
+                Now.Rectangle(new NowRect(0, 0, 128, 64))
+                    .SetColor(Color.red)
+                    .Draw();
+                Now.Rectangle(new NowRect(24, 20, 16, 16))
+                    .SetColor(Color.blue)
+                    .Draw();
+            }
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.IsFalse(drawList.hasRenderReplay);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void GraphicCanUseReplayBackedGlassMaterial()
+    {
+        var canvasMaterial = Resources.Load<Material>("NowUI/GlassMaterialUGUI");
+        Assert.NotNull(canvasMaterial);
+
+        var graphicObject = new GameObject("Now Test Replay Glass Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+
+        try
+        {
+            var rectTransform = graphicObject.GetComponent<RectTransform>();
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 96f);
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 64f);
+
+            var graphic = graphicObject.AddComponent<ReplayGlassGraphic>();
+            graphic.Rebuild(CanvasUpdate.PreRender);
+
+            var glassMaterial = graphic.canvasRenderer.GetMaterial(1);
+            Assert.NotNull(glassMaterial);
+            Assert.AreNotSame(canvasMaterial, glassMaterial);
+            Assert.IsTrue(glassMaterial.HasProperty("_NowGlassUseBackdrop"));
+            Assert.AreEqual(1f, glassMaterial.GetFloat("_NowGlassUseBackdrop"), 0.0001f);
+            Assert.NotNull(glassMaterial.GetTexture("_NowUGUIBackdropTex"));
+
+            Assert.AreEqual(1, graphic.uguiGlassDebugTextureCount);
+            Assert.IsTrue(graphic.TryGetUGUIGlassDebugInfo(0, out var info));
+            Assert.AreEqual(1, info.batchIndex);
+            Assert.AreEqual(1, info.replayBatchCount);
+            Assert.Greater(info.width, 0);
+            Assert.Greater(info.height, 0);
+            Assert.IsTrue(info.hasSourceTexture);
+            Assert.IsTrue(info.hasBlurredTexture);
+            Assert.NotNull(graphic.GetUGUIGlassDebugSourceTexture(0));
+            Assert.NotNull(graphic.GetUGUIGlassDebugBlurredTexture(0));
+        }
+        finally
+        {
+            Object.DestroyImmediate(graphicObject);
+        }
     }
 
     [Test]
@@ -653,6 +1120,38 @@ public class NowRendererTests
         Assert.IsTrue(material.HasProperty("_UseUIAlphaClip"));
     }
 
+    static bool DiagnosticsContainHost(string host)
+    {
+        var diagnostics = NowGlassSettings.lastFrameDiagnostics;
+
+        for (int i = 0; i < diagnostics.entryCount; ++i)
+        {
+            if (NowGlassSettings.TryGetLastFrameDiagnostic(i, out var entry) &&
+                entry.host == host)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    static bool DiagnosticsContainFallback(NowGlassFallbackReason fallback)
+    {
+        var diagnostics = NowGlassSettings.lastFrameDiagnostics;
+
+        for (int i = 0; i < diagnostics.entryCount; ++i)
+        {
+            if (NowGlassSettings.TryGetLastFrameDiagnostic(i, out var entry) &&
+                entry.fallbackReason == fallback)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     sealed class TestPipelineGraphic : NowPipelineGraphic
     {
         public int drawCount;
@@ -689,6 +1188,36 @@ public class NowRendererTests
         {
             Now.Rectangle(new Vector4(2, 2, 12, 8))
                 .SetMaterial(materialOverride, canvasMaterialOverride)
+                .Draw();
+        }
+    }
+
+    sealed class GlassGraphic : NowGraphic
+    {
+        protected override bool useLayoutMeasurePass => false;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            Now.Glass(new NowRect(2, 2, 12, 8))
+                .SetBlurRadius(10f)
+                .Draw();
+        }
+    }
+
+    sealed class ReplayGlassGraphic : NowGraphic
+    {
+        protected override bool useLayoutMeasurePass => false;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            Now.Rectangle(new NowRect(0, 0, rect.width, rect.height))
+                .SetColor(Color.red)
+                .Draw();
+            Now.Glass(new NowRect(8, 8, 44, 32))
+                .SetBlurRadius(12f)
+                .Draw();
+            Now.Rectangle(new NowRect(56, 8, 24, 24))
+                .SetColor(Color.blue)
                 .Draw();
         }
     }

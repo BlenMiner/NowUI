@@ -84,7 +84,12 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
 ## Features
 
 - **Rectangles** — rounded corners (per-corner radii), outlines, blur,
-  padding, masks, textures, sprites, and custom materials. [Docs/Features.md](Docs/Features.md)
+  padding, masks, textures, sprites, and custom materials.
+  [Docs/Features.md](Docs/Features.md), [Docs/CustomMaterials.md](Docs/CustomMaterials.md)
+- **Glass** — rounded backdrop panes that blur previously rendered target
+  content on command-buffer and RenderTexture-backed hosts, plus automatic UGUI
+  replay blur for NowUI content, with tint, outline, and radius controls.
+  [Docs/Glass.md](Docs/Glass.md)
 - **Lines** — anti-aliased straight lines, cubic Beziers, dashed strokes,
   rounded caps, masks, and arrow heads. [Docs/Lines.md](Docs/Lines.md)
 - **Shapes** — filled or outlined circles, ellipses, triangles, and reusable
@@ -130,6 +135,10 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
   capsules with union/subtract/intersect operations, smooth blends, colors, and
   texture fills. [Docs/SDF.md](Docs/SDF.md)
 
+API compatibility and allocation rules are tracked in
+[Docs/API.md](Docs/API.md); release and Asset Store validation gates are in
+[Docs/Production.md](Docs/Production.md).
+
 ## Platform support
 
 Native plugins (the `nowui-msdf` font compiler and `nowui-vg` Lottie
@@ -173,6 +182,7 @@ changes its bundled toolchain.
 - `Assets/NowUI/Example` — sample scripts, including `MailClientMockup`, a
   Gmail-like inbox drawn entirely with immediate NowUI calls, and
   `NowWorldGraphicExample`, a direct-mesh world-space label
+- `Assets/NowUI/Samples~` — customer-importable UPM samples
 - `Docs` — feature guides
 
 ## Notes
@@ -185,6 +195,10 @@ changes its bundled toolchain.
 - The hot path is allocation-free once buffers, glyphs, effect textures, and
   world-space material batches are warm. First use, new ids, new material
   batches, and capacity growth may allocate.
+- For strict frame budgets, call `NowDrawList.Warmup(...)` or
+  `NowRenderer.Warmup(...)` with a representative frame during initialization,
+  reserve opt-in diagnostic storage with
+  `NowGlassSettings.ReserveDiagnostics(...)`, then measure the real frame.
 - Emoji sequence shaping (ZWJ families, skin tones, flags) needs a future
   HarfBuzz shaping layer; single-glyph emoji render today.
 

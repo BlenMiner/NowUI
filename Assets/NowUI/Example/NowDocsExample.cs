@@ -30,6 +30,8 @@ public class NowDocsExample : NowGraphic
         DockingDemo,
         LinesDemo,
         ShapesDemo,
+        CustomMaterialsDemo,
+        GlassDemo,
         EffectsDemo,
     }
 
@@ -48,6 +50,8 @@ public class NowDocsExample : NowGraphic
         new Page { title = "Controls", file = "Controls.md" },
         new Page { title = "Lines", file = "Lines.md" },
         new Page { title = "Shapes", file = "Shapes.md" },
+        new Page { title = "Glass", file = "Glass.md" },
+        new Page { title = "Custom materials", file = "CustomMaterials.md" },
         new Page { title = "Effects", file = "Effects.md" },
         new Page { title = "Custom controls", file = "CustomControls.md" },
         new Page { title = "Styles & themes", file = "StylesAndThemes.md" },
@@ -65,11 +69,19 @@ public class NowDocsExample : NowGraphic
         new Page { title = "Docking demo", kind = PageKind.DockingDemo },
         new Page { title = "Lines demo", kind = PageKind.LinesDemo },
         new Page { title = "Shapes demo", kind = PageKind.ShapesDemo },
+        new Page { title = "Custom material demo", kind = PageKind.CustomMaterialsDemo },
+        new Page { title = "Glass demo", kind = PageKind.GlassDemo },
         new Page { title = "Effects demo", kind = PageKind.EffectsDemo },
         new Page { title = "Live demo", kind = PageKind.ControlsDemo },
         new Page { title = "Lottie demo", kind = PageKind.LottieDemo },
         new Page { title = "Editor demo", kind = PageKind.CodeEditorDemo },
     };
+
+    static readonly int FrostTintId = Shader.PropertyToID("_FrostTint");
+    static readonly int FrostEdgeId = Shader.PropertyToID("_FrostEdge");
+    static readonly int FrostAmountId = Shader.PropertyToID("_FrostAmount");
+    static readonly int FrostNoiseScaleId = Shader.PropertyToID("_NoiseScale");
+    static readonly int FrostTimeScaleId = Shader.PropertyToID("_TimeScale");
 
     [SerializeField] NowThemeAsset _themeAsset;
     [SerializeField] NowFontAsset _font;
@@ -93,13 +105,27 @@ public class NowDocsExample : NowGraphic
     bool _effectsDemoWave = true;
     float _effectsDemoProgress = 0.55f;
     float _effectsDemoSubdivision = 4f;
+    bool _customMaterialAnimate = true;
+    float _customMaterialFrost = 0.72f;
+    float _customMaterialRadius = 28f;
+    bool _glassDemoAnimate = true;
+    float _glassDemoBlur = 8f;
+    float _glassDemoTint = 0.06f;
+    float _glassDemoRadius = 28f;
+    float _glassDemoOutline = 1.5f;
+    float _glassDemoSaturation = 1.15f;
+    bool _glassDemoDebug = true;
+    int _glassDemoQuality = 0;
     int _richTextLinkClicks;
     string _richTextLastLink = "none";
     NowRichTextParser _richTextDemoParser;
     readonly NowRichTextSpan[] _richTextDemoSpans = new NowRichTextSpan[3];
     Texture2D _sdfDemoTexture;
+    Texture2D _customMaterialTexture;
+    Material _customMaterialCanvas;
     readonly NowSdfGraph _sdfDemoIdle = NowSdf.Graph();
     readonly NowSdfGraph _sdfDemoActive = NowSdf.Graph();
+    static readonly string[] GlassQualityLabels = { "Auto", "Fast", "Balanced", "High", "Ultra" };
     readonly NowSdfGraph _sdfDemoGlow = NowSdf.Graph();
     readonly NowSdfGraph _sdfDemoStreaks = NowSdf.Graph();
     readonly NowSdfGraph _sdfDemoOrbit = NowSdf.Graph();
@@ -217,6 +243,14 @@ public class NowDocsExample : NowGraphic
 
                 case PageKind.ShapesDemo:
                     DrawShapesDemo(theme);
+                    break;
+
+                case PageKind.CustomMaterialsDemo:
+                    DrawCustomMaterialsDemo(theme);
+                    break;
+
+                case PageKind.GlassDemo:
+                    DrawGlassDemo(theme);
                     break;
 
                 case PageKind.EffectsDemo:
@@ -630,6 +664,26 @@ public class NowDocsExample : NowGraphic
             _sdfDemoTexture = null;
         }
 
+        if (_customMaterialTexture != null)
+        {
+            if (Application.isPlaying)
+                Destroy(_customMaterialTexture);
+            else
+                DestroyImmediate(_customMaterialTexture);
+
+            _customMaterialTexture = null;
+        }
+
+        if (_customMaterialCanvas != null)
+        {
+            if (Application.isPlaying)
+                Destroy(_customMaterialCanvas);
+            else
+                DestroyImmediate(_customMaterialCanvas);
+
+            _customMaterialCanvas = null;
+        }
+
         base.OnDestroy();
     }
 
@@ -867,6 +921,472 @@ public class NowDocsExample : NowGraphic
             .Draw("Circles, ellipses, triangles, and reusable-buffer polygons.");
 
         NowControlState.RequestRepaint();
+    }
+
+    void DrawCustomMaterialsDemo(NowThemeAsset themeAsset)
+    {
+        NowMarkdown.Document("# Custom material demo\n\nThis page is rendered by `Assets/Scenes/DocsScene.unity`. The large panel below is an ordinary `Now.Rectangle` using a generated noise texture and a custom UGUI material via `SetCanvasMaterial(...)`.").Draw();
+
+        using (NowLayout.Horizontal(spacing: 12f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Checkbox("Animate").Draw(ref _customMaterialAnimate);
+
+            NowLayout.Label("Frost").SetWidth(42f).Draw();
+            NowLayout.Slider(0f, 1f).SetWidth(140f).Draw(ref _customMaterialFrost);
+
+            NowLayout.Label("Radius").SetWidth(48f).Draw();
+            NowLayout.Slider(0f, 44f).SetWidth(150f).Draw(ref _customMaterialRadius);
+        }
+
+        var panel = NowLayout.Rect(height: 330f, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+
+        var area = panel.Inset(24f, 20f);
+        var mat = GetCustomMaterialCanvas(themeAsset);
+        var texture = GetCustomMaterialTexture();
+        float frost = Mathf.Clamp01(_customMaterialFrost);
+        float radius = Mathf.Clamp(_customMaterialRadius, 0f, 44f);
+
+        DrawCustomMaterialBackdrop(area, themeAsset);
+
+        var glass = new NowRect(area.x + area.width * 0.12f, area.y + 58f, area.width * 0.76f, 170f);
+        var highlight = glass.Inset(20f, 18f, 20f, glass.height * 0.56f);
+
+        Now.Rectangle(glass)
+            .SetTexture(texture)
+            .SetColor(new Color(1f, 1f, 1f, 0.92f))
+            .SetRadius(radius)
+            .SetOutline(1.5f)
+            .SetOutlineColor(new Color(1f, 1f, 1f, 0.52f))
+            .SetCanvasMaterial(mat)
+            .Draw();
+
+        Now.Rectangle(highlight)
+            .SetColor(new Color(1f, 1f, 1f, 0.18f + frost * 0.12f))
+            .SetRadius(Mathf.Max(6f, radius * 0.45f))
+            .Draw();
+
+        Now.Text(new NowRect(glass.x + 28f, glass.y + 44f, glass.width - 56f, 40f))
+            .SetFontSize(28f)
+            .SetBold()
+            .SetColor(new Color(0.04f, 0.08f, 0.12f, 0.84f))
+            .Draw("Frost material");
+
+        Now.Text(new NowRect(glass.x + 30f, glass.y + 94f, glass.width - 60f, 44f))
+            .SetFontSize(13f)
+            .SetColor(new Color(0.04f, 0.08f, 0.12f, 0.68f))
+            .Draw("Same rectangle geometry, custom shader pass, UGUI material override.");
+
+        var codeRect = new NowRect(area.x + 16f, area.yMax - 48f, area.width - 32f, 28f);
+        Now.Rectangle(codeRect)
+            .SetColor(new Color(0f, 0f, 0f, 0.22f))
+            .SetRadius(7f)
+            .Draw();
+
+        Now.Text(codeRect.Inset(10f, 6f))
+            .SetFontSize(12f)
+            .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+            .Draw("Now.Rectangle(rect).SetTexture(noise).SetCanvasMaterial(frostUGUIMaterial).Draw();");
+
+        if (_customMaterialAnimate)
+            NowControlState.RequestRepaint();
+    }
+
+    void DrawCustomMaterialBackdrop(NowRect area, NowThemeAsset themeAsset)
+    {
+        Color accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+        Color muted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+        Color text = themeAsset.GetColor(NowColorToken.Text, Color.white);
+
+        for (int i = 0; i < 6; ++i)
+        {
+            float t = i / 5f;
+            float x = Mathf.Lerp(area.x + 12f, area.xMax - 180f, t);
+            float y = area.y + 38f + Mathf.Sin(t * Mathf.PI * 2f + Time.time * 0.25f) * 10f;
+
+            Now.Rectangle(new NowRect(x, y, 132f, 26f))
+                .SetColor(new Color(accent.r, accent.g, accent.b, 0.08f + t * 0.08f))
+                .SetRadius(13f)
+                .Draw();
+        }
+
+        for (int i = 0; i < 4; ++i)
+        {
+            float x = area.x + 30f + i * 118f;
+            Now.Line(new Vector2(x, area.y + 42f), new Vector2(x + 84f, area.yMax - 72f))
+                .SetWidth(2f)
+                .SetDash(10f, 8f, Time.time * 20f)
+                .SetColor(new Color(muted.r, muted.g, muted.b, 0.22f))
+                .Draw();
+        }
+
+        Now.Circle(new Vector2(area.xMax - 88f, area.y + 74f), 36f)
+            .SetColor(new Color(0.05f, 0.86f, 0.67f, 0.38f))
+            .Draw();
+
+        Now.Triangle(
+                new Vector2(area.x + 70f, area.yMax - 76f),
+                new Vector2(area.x + 158f, area.yMax - 62f),
+                new Vector2(area.x + 102f, area.yMax - 144f))
+            .SetColor(new Color(1f, 0.72f, 0.16f, 0.34f))
+            .Draw();
+
+        Now.Text(new NowRect(area.x + 18f, area.y + 10f, area.width - 36f, 24f))
+            .SetFontSize(12f)
+            .SetColor(new Color(text.r, text.g, text.b, 0.72f))
+            .Draw("The shader runs on the foreground rectangle; everything behind it is normal NowUI.");
+    }
+
+    Material GetCustomMaterialCanvas(NowThemeAsset themeAsset)
+    {
+        if (_customMaterialCanvas == null)
+        {
+            var shader = Shader.Find("NowUI/Examples/Frost Rectangle UGUI");
+            var fallback = Resources.Load<Material>("NowUI/UIMaterialUGUI");
+
+            _customMaterialCanvas = shader != null
+                ? new Material(shader)
+                : fallback != null ? new Material(fallback) : null;
+
+            if (_customMaterialCanvas != null)
+            {
+                _customMaterialCanvas.name = "Now Docs Frost Rectangle UGUI";
+                _customMaterialCanvas.hideFlags = HideFlags.HideAndDontSave;
+            }
+        }
+
+        if (_customMaterialCanvas == null)
+            return null;
+
+        Color accent = themeAsset.GetColor(NowColorToken.Accent, new Color(0.13f, 0.48f, 0.92f, 1f));
+        _customMaterialCanvas.SetColor(FrostTintId, Color.Lerp(new Color(0.78f, 0.96f, 1f, 0.84f), accent, 0.18f));
+        _customMaterialCanvas.SetColor(FrostEdgeId, new Color(1f, 1f, 1f, 0.95f));
+        _customMaterialCanvas.SetFloat(FrostAmountId, Mathf.Clamp01(_customMaterialFrost));
+        _customMaterialCanvas.SetFloat(FrostNoiseScaleId, 2.8f);
+        _customMaterialCanvas.SetFloat(FrostTimeScaleId, _customMaterialAnimate ? 1f : 0f);
+        return _customMaterialCanvas;
+    }
+
+    Texture2D GetCustomMaterialTexture()
+    {
+        if (_customMaterialTexture != null)
+            return _customMaterialTexture;
+
+        const int Size = 96;
+        _customMaterialTexture = new Texture2D(Size, Size, TextureFormat.RGBA32, false)
+        {
+            name = "Now Docs Frost Noise",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Repeat,
+            hideFlags = HideFlags.HideAndDontSave
+        };
+
+        for (int y = 0; y < Size; ++y)
+        {
+            for (int x = 0; x < Size; ++x)
+            {
+                float nx = x / (float)Size;
+                float ny = y / (float)Size;
+                float grain = Mathf.PerlinNoise(nx * 9.5f, ny * 9.5f);
+                float veins = Mathf.PerlinNoise(nx * 25f + 17.4f, ny * 11f + 3.2f);
+                float frost = Mathf.Clamp01(grain * 0.72f + veins * 0.28f);
+                _customMaterialTexture.SetPixel(x, y, new Color(frost, grain, veins, 1f));
+            }
+        }
+
+        _customMaterialTexture.Apply(false, true);
+        return _customMaterialTexture;
+    }
+
+    void DrawGlassDemo(NowThemeAsset themeAsset)
+    {
+        NowGlassSettings.diagnosticsEnabled = _glassDemoDebug;
+        NowMarkdown.Document("# Glass demo\n\nThis page is rendered by the UGUI docs browser. UGUI glass automatically uses the expensive backdrop path when a `Now.Glass` batch is present: it replays the NowUI batches behind each glass pane into a texture, blurs that texture, then keeps the foreground labels as sharp UGUI geometry.").Draw();
+
+        using (NowLayout.Horizontal(spacing: 12f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Checkbox("Animate").Draw(ref _glassDemoAnimate);
+
+            NowLayout.Label("Blur").SetWidth(34f).Draw();
+            NowLayout.Slider(0f, 36f).SetWidth(120f).Draw(ref _glassDemoBlur);
+
+            NowLayout.Label("Tint").SetWidth(34f).Draw();
+            NowLayout.Slider(0f, 0.5f).SetWidth(120f).Draw(ref _glassDemoTint);
+
+            NowLayout.Label("Quality").SetWidth(54f).Draw();
+            NowLayout.Dropdown(GlassQualityLabels).SetWidth(118f).Draw(ref _glassDemoQuality);
+        }
+
+        using (NowLayout.Horizontal(spacing: 12f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Label("Radius").SetWidth(48f).Draw();
+            NowLayout.Slider(0f, 44f).SetWidth(120f).Draw(ref _glassDemoRadius);
+
+            NowLayout.Label("Outline").SetWidth(50f).Draw();
+            NowLayout.Slider(0f, 4f).SetWidth(110f).Draw(ref _glassDemoOutline);
+
+            NowLayout.Label("Sat").SetWidth(28f).Draw();
+            NowLayout.Slider(0.5f, 1.8f).SetWidth(120f).Draw(ref _glassDemoSaturation);
+
+            NowLayout.Checkbox("Debug RTs").Draw(ref _glassDemoDebug);
+        }
+
+        float debugHeight = _glassDemoDebug ? 214f : 0f;
+        var panel = NowLayout.Rect(height: 360f + debugHeight, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+
+        var preview = panel.Inset(22f, 20f, 22f, 54f + debugHeight);
+        DrawGlassDemoScene(preview, themeAsset);
+
+        if (_glassDemoDebug)
+        {
+            var debugRect = new NowRect(panel.x + 22f, preview.yMax + 12f, panel.width - 44f, debugHeight - 20f);
+            DrawGlassDemoDebug(debugRect, themeAsset);
+        }
+
+        var codeRect = new NowRect(panel.x + 30f, panel.yMax - 42f, panel.width - 60f, 26f);
+        Now.Rectangle(codeRect)
+            .SetColor(new Color(0f, 0f, 0f, 0.20f))
+            .SetRadius(7f)
+            .Draw();
+
+        Now.Text(codeRect.Inset(10f, 5f))
+            .SetFontSize(12f)
+            .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+            .Draw("Now.Glass(rect).SetBlurRadius(blur).SetBlurQuality(quality).SetTint(tint).SetVibrancy(saturation, 1).Draw();");
+
+        if (_glassDemoAnimate || _glassDemoDebug)
+            NowControlState.RequestRepaint();
+    }
+
+    void DrawGlassDemoScene(NowRect rect, NowThemeAsset themeAsset)
+    {
+        Color accent = themeAsset.GetColor(NowColorToken.Accent, new Color(0.12f, 0.48f, 0.95f, 1f));
+        Color text = themeAsset.GetColor(NowColorToken.Text, Color.white);
+        Color muted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+        float time = _glassDemoAnimate ? Time.time : 0f;
+        var glassWidth = Mathf.Max(1f, Mathf.Min(420f, rect.width - 48f));
+        var glass = new NowRect(rect.x + (rect.width - glassWidth) * 0.5f, rect.y + 54f, glassWidth, 178f);
+
+        using (Now.Mask(rect))
+        {
+            Now.Rectangle(rect)
+                .SetColor(new Color(0.035f, 0.045f, 0.065f, 1f))
+                .SetRadius(12f)
+                .Draw();
+
+            DrawGlassDemoBackdrop(rect, glass, accent, muted, time);
+        }
+
+        Now.Glass(glass)
+            .SetBlurRadius(_glassDemoBlur)
+            .SetBlurQuality(GetGlassDemoQuality())
+            .SetTint(new Color(1f, 1f, 1f, Mathf.Clamp01(_glassDemoTint)))
+            .SetVibrancy(_glassDemoSaturation, 1f)
+            .SetRadius(Mathf.Clamp(_glassDemoRadius, 0f, 44f))
+            .SetOutline(_glassDemoOutline)
+            .SetOutlineColor(new Color(1f, 1f, 1f, 0.42f))
+            .Draw();
+
+        Now.Rectangle(new NowRect(glass.x + 24f, glass.y + 26f, 76f, 76f))
+            .SetColor(new Color(1f, 1f, 1f, 0.28f))
+            .SetRadius(22f)
+            .Draw();
+
+        Now.Circle(new Vector2(glass.x + 62f, glass.y + 64f), 21f)
+            .SetColor(new Color(accent.r, accent.g, accent.b, 0.72f))
+            .Draw();
+
+        Now.Text(new NowRect(glass.x + 124f, glass.y + 34f, glass.width - 152f, 44f))
+            .SetFontSize(30f)
+            .SetBold()
+            .SetColor(text)
+            .Draw("Glass panel");
+
+        Now.Text(new NowRect(glass.x + 126f, glass.y + 86f, glass.width - 154f, 54f))
+            .SetFontSize(13f)
+            .SetColor(new Color(text.r, text.g, text.b, 0.78f))
+            .Draw("Backdrop replay is blurred behind this pane.");
+
+        var meter = new NowRect(glass.x + 126f, glass.yMax - 42f, glass.width - 170f, 8f);
+        Now.Rectangle(meter)
+            .SetColor(new Color(1f, 1f, 1f, 0.20f))
+            .SetRadius(4f)
+            .Draw();
+        Now.Rectangle(new NowRect(meter.x, meter.y, meter.width * Mathf.InverseLerp(0f, 36f, _glassDemoBlur), meter.height))
+            .SetColor(new Color(accent.r, accent.g, accent.b, 0.80f))
+            .SetRadius(4f)
+            .Draw();
+    }
+
+    NowGlassBlurQuality GetGlassDemoQuality()
+    {
+        return Mathf.Clamp(_glassDemoQuality, 0, GlassQualityLabels.Length - 1) switch
+        {
+            1 => NowGlassBlurQuality.Fast,
+            2 => NowGlassBlurQuality.Balanced,
+            3 => NowGlassBlurQuality.High,
+            4 => NowGlassBlurQuality.Ultra,
+            _ => NowGlassBlurQuality.Auto
+        };
+    }
+
+    void DrawGlassDemoDebug(NowRect rect, NowThemeAsset themeAsset)
+    {
+        Color text = themeAsset.GetColor(NowColorToken.Text, Color.white);
+        Color muted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+        Color accent = themeAsset.GetColor(NowColorToken.Accent, new Color(0.12f, 0.48f, 0.95f, 1f));
+
+        Now.Rectangle(rect)
+            .SetColor(new Color(0f, 0f, 0f, 0.22f))
+            .SetRadius(8f)
+            .Draw();
+
+        int count = uguiGlassDebugTextureCount;
+        Now.Text(new NowRect(rect.x + 12f, rect.y + 9f, rect.width - 24f, 20f))
+            .SetFontSize(12f)
+            .SetBold()
+            .SetColor(text)
+            .Draw($"UGUI glass debug: {count} backdrop set(s), previous build");
+
+        if (count == 0 || !TryGetUGUIGlassDebugInfo(0, out var info))
+        {
+            Now.Text(new NowRect(rect.x + 12f, rect.y + 38f, rect.width - 24f, rect.height - 46f))
+                .SetFontSize(12f)
+                .SetColor(muted)
+                .Draw("No UGUI glass textures have been built yet. Keep Debug RTs enabled for one repaint; this panel should populate automatically.");
+            return;
+        }
+
+        float previewGap = 10f;
+        float previewW = Mathf.Min(260f, (rect.width - 340f) * 0.5f);
+        previewW = Mathf.Max(120f, previewW);
+        float previewH = Mathf.Max(72f, rect.height - 50f);
+        var sourceRect = new NowRect(rect.x + 12f, rect.y + 34f, previewW, previewH);
+        var blurredRect = new NowRect(sourceRect.xMax + previewGap, sourceRect.y, previewW, previewH);
+        var infoRect = new NowRect(blurredRect.xMax + 16f, sourceRect.y, rect.xMax - blurredRect.xMax - 28f, previewH);
+
+        DrawGlassDebugTexturePreview(sourceRect, "Baked source", GetUGUIGlassDebugSourceTexture(0), text, muted);
+        DrawGlassDebugTexturePreview(blurredRect, "Blurred sample", GetUGUIGlassDebugBlurredTexture(0), text, muted);
+
+        var frameDiagnostics = NowGlassSettings.lastFrameDiagnostics;
+        string details =
+            $"RT {info.width}x{info.height} | glass batch {info.batchIndex} | prefix batches {info.replayBatchCount}\n" +
+            $"quality {info.blurQuality} | fallback {info.fallbackReason} | frame {info.frame}\n" +
+            $"blur {info.blurRadius:0.##} px | ds x{info.blurDownsample} | passes {info.blurIterations} | step {info.blurStep:0.##}\n" +
+            $"crop {info.captureRect.x:0.#},{info.captureRect.y:0.#} {info.captureRect.width:0.#}x{info.captureRect.height:0.#} | external source {(info.hasExternalSource ? "yes" : "no")}\n" +
+            $"frame totals panes {frameDiagnostics.paneCount} | copied px {frameDiagnostics.copiedPixels} | blurred px {frameDiagnostics.blurredPixels} | passes {frameDiagnostics.blurPasses}\n" +
+            "Source should show sharp backdrop content. Blurred should show the same content softened. If both are gray, replay/blur is wrong; if these look right but the pane is wrong, composite binding is wrong.";
+
+        Now.Rectangle(infoRect)
+            .SetColor(new Color(accent.r, accent.g, accent.b, 0.08f))
+            .SetRadius(6f)
+            .Draw();
+
+        Now.Text(infoRect.Inset(10f, 8f))
+            .SetFontSize(11f)
+            .SetColor(new Color(text.r, text.g, text.b, 0.84f))
+            .Draw(details);
+    }
+
+    static void DrawGlassDebugTexturePreview(NowRect rect, string label, Texture texture, Color text, Color muted)
+    {
+        Now.Rectangle(rect)
+            .SetColor(new Color(0f, 0f, 0f, 0.34f))
+            .SetRadius(6f)
+            .Draw();
+
+        var imageRect = rect.Inset(6f, 22f, 6f, 6f);
+
+        if (texture != null)
+        {
+            Now.Rectangle(imageRect)
+                .SetTexture(texture)
+                .SetColor(Color.white)
+                .SetRadius(4f)
+                .Draw();
+        }
+        else
+        {
+            Now.Rectangle(imageRect)
+                .SetColor(new Color(0.35f, 0.05f, 0.05f, 0.9f))
+                .SetRadius(4f)
+                .Draw();
+
+            Now.Text(imageRect.Inset(8f, 8f))
+                .SetFontSize(11f)
+                .SetColor(text)
+                .Draw("null texture");
+        }
+
+        Now.Text(new NowRect(rect.x + 8f, rect.y + 5f, rect.width - 16f, 16f))
+            .SetFontSize(11f)
+            .SetBold()
+            .SetColor(texture != null ? text : muted)
+            .Draw(label);
+    }
+
+    static void DrawGlassDemoBackdrop(NowRect rect, NowRect glass, Color accent, Color muted, float time)
+    {
+        Color warm = new Color(1f, 0.66f, 0.18f, 1f);
+        Color teal = new Color(0.04f, 0.84f, 0.68f, 1f);
+        Color pink = new Color(0.95f, 0.22f, 0.62f, 1f);
+
+        for (int i = 0; i < 13; ++i)
+        {
+            float x = rect.x - 60f + i * 62f + Mathf.Sin(time * 0.55f + i * 0.6f) * 16f;
+            Color color = i % 3 == 0 ? accent : i % 3 == 1 ? warm : teal;
+
+            Now.Rectangle(new NowRect(x, rect.y + 24f, 28f, rect.height - 48f))
+                .SetColor(new Color(color.r, color.g, color.b, 0.86f))
+                .SetRadius(14f)
+                .Draw();
+        }
+
+        for (int i = 0; i < 6; ++i)
+        {
+            float y = rect.y + 42f + i * 44f;
+            Now.Line(new Vector2(rect.x + 18f, y), new Vector2(rect.xMax - 18f, y + Mathf.Sin(time + i) * 10f))
+                .SetWidth(2f)
+                .SetDash(16f, 12f, time * 24f + i * 7f)
+                .SetColor(new Color(muted.r, muted.g, muted.b, 0.55f))
+                .Draw();
+        }
+
+        Now.Circle(new Vector2(glass.x + 88f, glass.y + 92f), 86f)
+            .SetColor(new Color(teal.r, teal.g, teal.b, 0.92f))
+            .Draw();
+
+        Now.Circle(new Vector2(glass.xMax - 74f, glass.y + 88f), 94f)
+            .SetColor(new Color(warm.r, warm.g, warm.b, 0.90f))
+            .Draw();
+
+        Now.Rectangle(new NowRect(glass.x + 44f, glass.y + 74f, glass.width - 88f, 42f))
+            .SetColor(new Color(1f, 1f, 1f, 0.82f))
+            .SetRadius(21f)
+            .Draw();
+
+        Now.Text(new NowRect(glass.x + 60f, glass.y + 78f, glass.width - 120f, 38f))
+            .SetFontSize(28f)
+            .SetBold()
+            .SetColor(new Color(0.04f, 0.05f, 0.07f, 0.92f))
+            .Draw("BEHIND GLASS");
+
+        Now.Text(new NowRect(rect.x + 32f, rect.y + 26f, 250f, 30f))
+            .SetFontSize(14f)
+            .SetColor(new Color(1f, 1f, 1f, 0.78f))
+            .Draw("Sharp backdrop content");
+
+        Now.Circle(new Vector2(rect.xMax - 92f, rect.y + 82f), 42f)
+            .SetColor(new Color(pink.r, pink.g, pink.b, 0.80f))
+            .Draw();
+
+        Now.Triangle(
+                new Vector2(rect.x + 64f, rect.yMax - 62f),
+                new Vector2(rect.x + 166f, rect.yMax - 48f),
+                new Vector2(rect.x + 110f, rect.yMax - 146f))
+            .SetColor(new Color(warm.r, warm.g, warm.b, 0.78f))
+            .Draw();
     }
 
     void DrawEffectsDemo(NowThemeAsset themeAsset)

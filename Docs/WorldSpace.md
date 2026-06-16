@@ -40,6 +40,7 @@ The component owns:
 - `Pivot`: Unity-style pivot; `(0.5, 0.5)` centers the mesh.
 - `Facing Mode`: fixed panel, full billboard, or yaw-only billboard.
 - `Depth Mode`: always-readable labels or scene-occluded panels.
+- `Glass Backdrop Mode`: how `Now.Glass(...)` samples the camera backdrop.
 - `Accept Navigation`: whether this surface consumes keyboard/gamepad submit,
   cancel, and navigation input.
 
@@ -62,6 +63,43 @@ new material batch.
 need to stay readable. `SceneOccluded` sets the cloned NowUI materials to
 `ZTest LessEqual`, so world panels can be hidden by nearer scene geometry.
 The source package materials are never mutated.
+
+## Glass Backdrops
+
+`NowWorldGraphic` can draw `Now.Glass(...)` panes by sampling a camera backdrop
+captured before transparent rendering:
+
+- `TintOnly`: no camera capture; glass renders as its rounded tint/outline.
+- `CameraColor`: copies the camera color and samples it without blur.
+- `CameraBlurred`: copies and blurs the camera color.
+- `CameraAndWorldColor`: copies camera color, then draws eligible
+  `NowWorldGraphic` meshes behind each glass requester into that requester's
+  copy.
+- `CameraAndWorldBlurred`: draws the same world contributors and blurs the
+  result. This is the default and only runs when the world graphic contains a
+  glass batch.
+
+Built-in render pipeline cameras get an automatic `BeforeForwardAlpha` command
+buffer. In URP, add `NowUniversalRendererFeature`; it enqueues a
+pre-transparent world-glass pass when needed. In HDRP, use
+`NowHighDefinitionCustomPass` at an injection point before the transparent
+world UI draws.
+
+The world-contributor modes build a separate backdrop for each glass requester,
+including other `NowWorldGraphic` meshes behind that requester. Glass submeshes
+from those contributors are skipped to avoid recursive backdrop sampling. Other
+transparent scene objects rendered after the backdrop capture are not included.
+
+`NowWorldGraphic.glassDepthMode` controls foreground scene rejection for glass:
+
+- `ClipForeground` (default): requests a camera depth texture and clips glass
+  pixels where opaque scene geometry is closer than the pane. This keeps
+  foreground cubes/walls sharp instead of blurring them into the pane.
+- `Disabled`: ignores scene depth and samples/tints the full captured backdrop.
+
+Depth clipping can only reject pixels the camera depth texture knows about.
+It does not reconstruct hidden background behind an occluding object, and it
+does not reject transparent objects that do not write depth.
 
 ## Deforming Surfaces
 

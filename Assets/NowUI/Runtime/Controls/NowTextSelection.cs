@@ -98,7 +98,10 @@ namespace NowUI
 
             var snapshot = NowInput.current;
 
-            if (!NowInput.isPassive && snapshot.hasPointer && bounds.Contains(snapshot.pointerPosition) &&
+            if (!NowInput.isPassive &&
+                snapshot.hasPointer &&
+                bounds.Contains(snapshot.pointerPosition) &&
+                Now.IsInsideAmbientMask(snapshot.pointerPosition) &&
                 (snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0)
             {
                 NowFocus.Focus(id);

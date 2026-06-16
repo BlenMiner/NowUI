@@ -23,6 +23,13 @@
     "vector-graphics",
     "docking"
   ],
+  "samples": [
+    {
+      "displayName": "Quick Start",
+      "description": "Small built-in and RenderTexture examples, including explicit warmup and glass diagnostics storage.",
+      "path": "Samples~/QuickStart"
+    }
+  ],
   "author": {
     "name": "BlenMiner",
     "url": "https://github.com/BlenMiner"

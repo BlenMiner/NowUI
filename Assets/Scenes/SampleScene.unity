@@ -155,7 +155,7 @@ Camera:
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 1
-  m_BackGroundColor: {r: 1, g: 1, b: 1, a: 0}
+  m_BackGroundColor: {r: 1, g: 1, b: 1, a: 1}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -253,6 +253,9 @@ MonoBehaviour:
   _rebuildEveryFrame: 0
   _autoRebuildOnInteraction: 1
   _acceptNavigation: 0
+  _glassBackdropMode: 4
+  _glassDepthMode: 1
+  _glassBlurQuality: 0
   _deformer: {fileID: 0}
   _title: Player
   _detail: Hover for details
@@ -534,8 +537,8 @@ Transform:
   m_GameObject: {fileID: 310572110}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -0.56, z: 1.01}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0.77, y: -0.56, z: 1.41}
+  m_LocalScale: {x: 1, y: 3.17, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -582,6 +585,9 @@ MonoBehaviour:
   _rebuildEveryFrame: 0
   _autoRebuildOnInteraction: 1
   _acceptNavigation: 0
+  _glassBackdropMode: 4
+  _glassDepthMode: 1
+  _glassBlurQuality: 0
   _deformer: {fileID: 0}
   _title: Player
   _detail: Hover for details
@@ -653,8 +659,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 653625560}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: -0.17630266, z: -0, w: 0.984336}
-  m_LocalPosition: {x: -1.46, y: 0, z: 1.175}
+  m_LocalRotation: {x: -0.04202963, y: 0.021509971, z: 0.000905066, w: 0.99888444}
+  m_LocalPosition: {x: 0.24, y: 0.47, z: 2.8}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -832,6 +838,8 @@ MonoBehaviour:
   _autoRebuildOnInteraction: 1
   _respectUGUIRaycast: 1
   _driveLayoutSize: 1
+  _uguiBackdropSourceTexture: {fileID: 0}
+  _glassBlurQuality: 0
   _font: {fileID: 11400000, guid: d9b4fc19191445a4f851b19fd4cf730f, type: 2}
   _lottie: {fileID: 7868935432812623880, guid: 3fc211d4e815f3b49b550a4b8bc75850, type: 3}
 --- !u!1 &2070718855

@@ -74,7 +74,12 @@ namespace NowUI
         /// </summary>
         public static void Register(int id, NowRect rect)
         {
-            if (id == 0 || NowInput.isPassive)
+            if (id == 0 || NowInput.isPassive || rect.isEmpty)
+                return;
+
+            rect = Now.ApplyAmbientMask(rect);
+
+            if (rect.isEmpty)
                 return;
 
             BeginFrameIfNeeded();

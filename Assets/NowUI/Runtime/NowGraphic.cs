@@ -7,6 +7,81 @@ using UnityEngine.UI;
 
 namespace NowUI
 {
+    public readonly struct NowUGUIGlassDebugInfo
+    {
+        public readonly int batchIndex;
+
+        public readonly int replayBatchCount;
+
+        public readonly int width;
+
+        public readonly int height;
+
+        public readonly int buildId;
+
+        public readonly int frame;
+
+        public readonly float blurRadius;
+
+        public readonly int blurDownsample;
+
+        public readonly int blurIterations;
+
+        public readonly float blurStep;
+
+        public readonly NowGlassBlurQuality blurQuality;
+
+        public readonly NowGlassFallbackReason fallbackReason;
+
+        public readonly NowRect captureRect;
+
+        public readonly bool hasExternalSource;
+
+        public readonly bool hasSourceTexture;
+
+        public readonly bool hasBlurredTexture;
+
+        public readonly string materialName;
+
+        internal NowUGUIGlassDebugInfo(
+            int batchIndex,
+            int replayBatchCount,
+            int width,
+            int height,
+            int buildId,
+            int frame,
+            float blurRadius,
+            int blurDownsample,
+            int blurIterations,
+            float blurStep,
+            NowGlassBlurQuality blurQuality,
+            NowGlassFallbackReason fallbackReason,
+            NowRect captureRect,
+            bool hasExternalSource,
+            bool hasSourceTexture,
+            bool hasBlurredTexture,
+            string materialName)
+        {
+            this.batchIndex = batchIndex;
+            this.replayBatchCount = replayBatchCount;
+            this.width = width;
+            this.height = height;
+            this.buildId = buildId;
+            this.frame = frame;
+            this.blurRadius = blurRadius;
+            this.blurDownsample = blurDownsample;
+            this.blurIterations = blurIterations;
+            this.blurStep = blurStep;
+            this.blurQuality = blurQuality;
+            this.fallbackReason = fallbackReason;
+            this.captureRect = captureRect;
+            this.hasExternalSource = hasExternalSource;
+            this.hasSourceTexture = hasSourceTexture;
+            this.hasBlurredTexture = hasBlurredTexture;
+            this.materialName = materialName;
+        }
+    }
+
     [AddComponentMenu("NowUI/Now Graphic")]
     [ExecuteAlways]
     [RequireComponent(typeof(CanvasRenderer))]
@@ -15,6 +90,14 @@ namespace NowUI
         static readonly int _mainTexProp = Shader.PropertyToID("_MainTex");
 
         static readonly int _nowCanvasLayoutProp = Shader.PropertyToID("_NowCanvasLayout");
+
+        static readonly int _nowUGUIBackdropTexProp = Shader.PropertyToID("_NowUGUIBackdropTex");
+
+        static readonly int _nowUGUIBackdropSizeProp = Shader.PropertyToID("_NowUGUIBackdropSize");
+
+        static readonly int _nowUGUIBackdropOriginProp = Shader.PropertyToID("_NowUGUIBackdropOrigin");
+
+        static readonly int _nowGlassUseBackdropProp = Shader.PropertyToID("_NowGlassUseBackdrop");
 
         [Header("NowUI")]
         [SerializeField] bool _rebuildEveryFrame;
@@ -27,6 +110,12 @@ namespace NowUI
 
         [SerializeField, Tooltip("Report the measured NowLayout content extent as this graphic's preferred size, so UGUI LayoutGroups and ContentSizeFitters size it like any other layout element. Settles one rebuild late, like all NowLayout measurement.")]
         bool _driveLayoutSize = true;
+
+        [SerializeField, HideInInspector]
+        Texture _uguiBackdropSourceTexture;
+
+        [SerializeField, HideInInspector]
+        NowGlassBlurQuality _glassBlurQuality = NowGlassBlurQuality.Auto;
 
         [NonSerialized] Vector2 _preferredSize;
 
@@ -48,7 +137,13 @@ namespace NowUI
 
         [NonSerialized] readonly Dictionary<Material, Material> _textMaterials = new Dictionary<Material, Material>();
 
+        [NonSerialized] readonly List<UguiGlassBackdropEntry> _uguiGlassBackdrops = new List<UguiGlassBackdropEntry>(2);
+
         [NonSerialized] NowDrawList _drawList;
+
+        [NonSerialized] CommandBuffer _uguiGlassCommandBuffer;
+
+        [NonSerialized] int _uguiGlassBackdropBuildId;
 
         [NonSerialized] Material _rectangleMaterial;
 
@@ -154,6 +249,47 @@ namespace NowUI
             }
         }
 
+        sealed class UguiGlassBackdropEntry
+        {
+            public int batchIndex = -1;
+
+            public int replayBatchCount;
+
+            public RenderTexture source;
+
+            public RenderTexture blurred;
+
+            public Material material;
+
+            public Material sourceMaterial;
+
+            public int width;
+
+            public int height;
+
+            public int lastUsedFrame = -1;
+
+            public int lastUpdatedFrame = -1;
+
+            public float blurRadius;
+
+            public int blurDownsample;
+
+            public int blurIterations;
+
+            public float blurStep;
+
+            public NowGlassBlurQuality blurQuality;
+
+            public NowGlassFallbackReason fallbackReason;
+
+            public NowRect captureRect;
+
+            public bool hasExternalSource;
+
+            public string materialName;
+        }
+
         public event Action<NowGraphic, NowRect> rebuildNowUI;
 
         public bool autoRebuildOnInteraction
@@ -175,9 +311,91 @@ namespace NowUI
             }
         }
 
+        public Texture uguiBackdropSourceTexture
+        {
+            get => _uguiBackdropSourceTexture;
+            set
+            {
+                if (_uguiBackdropSourceTexture == value)
+                    return;
+
+                _uguiBackdropSourceTexture = value;
+                SetVerticesDirty();
+            }
+        }
+
+        public NowGlassBlurQuality glassBlurQuality
+        {
+            get => _glassBlurQuality;
+            set
+            {
+                if (_glassBlurQuality == value)
+                    return;
+
+                _glassBlurQuality = value;
+                SetVerticesDirty();
+            }
+        }
+
         protected virtual void DrawNowUI(NowRect rect)
         {
             rebuildNowUI?.Invoke(this, rect);
+        }
+
+        protected virtual Texture GetUGUIBackdropSourceTexture()
+        {
+            if (_uguiBackdropSourceTexture != null)
+                return _uguiBackdropSourceTexture;
+
+            var targetCanvas = canvas;
+            var targetCamera = targetCanvas != null ? targetCanvas.worldCamera : null;
+            return targetCamera != null ? targetCamera.targetTexture : null;
+        }
+
+        public int uguiGlassDebugTextureCount => _uguiGlassBackdrops.Count;
+
+        public Texture GetUGUIGlassDebugSourceTexture(int index)
+        {
+            return index >= 0 && index < _uguiGlassBackdrops.Count
+                ? _uguiGlassBackdrops[index].source
+                : null;
+        }
+
+        public Texture GetUGUIGlassDebugBlurredTexture(int index)
+        {
+            return index >= 0 && index < _uguiGlassBackdrops.Count
+                ? _uguiGlassBackdrops[index].blurred
+                : null;
+        }
+
+        public bool TryGetUGUIGlassDebugInfo(int index, out NowUGUIGlassDebugInfo info)
+        {
+            if (index < 0 || index >= _uguiGlassBackdrops.Count)
+            {
+                info = default;
+                return false;
+            }
+
+            var entry = _uguiGlassBackdrops[index];
+            info = new NowUGUIGlassDebugInfo(
+                entry.batchIndex,
+                entry.replayBatchCount,
+                entry.width,
+                entry.height,
+                entry.lastUsedFrame,
+                entry.lastUpdatedFrame,
+                entry.blurRadius,
+                entry.blurDownsample,
+                entry.blurIterations,
+                entry.blurStep,
+                entry.blurQuality,
+                entry.fallbackReason,
+                entry.captureRect,
+                entry.hasExternalSource,
+                entry.source != null,
+                entry.blurred != null,
+                entry.materialName);
+            return true;
         }
 
         /// <summary>
@@ -220,6 +438,7 @@ namespace NowUI
             if (rect.width <= 0 || rect.height <= 0)
             {
                 _drawList.Clear();
+                ReleaseUGUIGlassBackdrops();
                 ApplyCanvasPages();
                 return;
             }
@@ -229,7 +448,7 @@ namespace NowUI
             float previousUIScale = Now.uiScale;
 
             Now.SetUIScale(GetCanvasScaleFactor());
-            var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset);
+            var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset, false, _glassBlurQuality);
             bool colorMultiplierActive = false;
             NowControlState.BeginRepaintTracking();
             _wantsInteractionRepaint = false;
@@ -426,6 +645,7 @@ namespace NowUI
         {
             _hasLastInteractionInput = false;
             ReleaseStencilMaterials();
+            ReleaseUGUIGlassBackdrops();
             ClearCanvasRenderer(canvasRenderer);
             ClearExtraCanvasRenderers();
             base.OnDisable();
@@ -440,6 +660,13 @@ namespace NowUI
         protected override void OnDestroy()
         {
             ReleaseStencilMaterials();
+            ReleaseUGUIGlassBackdrops();
+
+            if (_uguiGlassCommandBuffer != null)
+            {
+                _uguiGlassCommandBuffer.Release();
+                _uguiGlassCommandBuffer = null;
+            }
 
             if (_drawList != null)
             {
@@ -565,13 +792,19 @@ namespace NowUI
             {
                 ClearCanvasRenderer(canvasRenderer);
                 ClearExtraCanvasRenderers();
+                ReleaseUGUIGlassBackdrops();
                 return;
             }
+
+            UpdateUGUIGlassBackdrops();
 
             _materialModifiers.Clear();
             GetComponents(_materialModifiers);
 
-            ApplyCanvasPage(canvasRenderer, _drawList.GetCanvasMesh(0), _drawList.GetCanvasBatches(0));
+            int batchOffset = 0;
+            var firstPageBatches = _drawList.GetCanvasBatches(0);
+            ApplyCanvasPage(canvasRenderer, _drawList.GetCanvasMesh(0), firstPageBatches, batchOffset);
+            batchOffset += firstPageBatches?.Count ?? 0;
 
             int extraPageCount = Mathf.Max(0, _drawList.canvasPageCount - 1);
             EnsureExtraCanvasRendererCount(extraPageCount);
@@ -596,13 +829,15 @@ namespace NowUI
                 if (!crenderer.gameObject.activeSelf)
                     crenderer.gameObject.SetActive(true);
 
-                ApplyCanvasPage(crenderer, _drawList.GetCanvasMesh(i + 1), _drawList.GetCanvasBatches(i + 1));
+                var batches = _drawList.GetCanvasBatches(i + 1);
+                ApplyCanvasPage(crenderer, _drawList.GetCanvasMesh(i + 1), batches, batchOffset);
+                batchOffset += batches?.Count ?? 0;
             }
 
             _materialModifiers.Clear();
         }
 
-        void ApplyCanvasPage(CanvasRenderer crenderer, Mesh mesh, List<NowMeshBatch> batches)
+        void ApplyCanvasPage(CanvasRenderer crenderer, Mesh mesh, List<NowMeshBatch> batches, int batchOffset)
         {
             if (crenderer == null)
                 return;
@@ -617,7 +852,7 @@ namespace NowUI
             crenderer.materialCount = batches.Count;
 
             for (int i = 0; i < batches.Count; ++i)
-                crenderer.SetMaterial(GetCanvasMaterialForRendering(batches[i]), i);
+                crenderer.SetMaterial(GetCanvasMaterialForRendering(batches[i], batchOffset + i), i);
 
             if (crenderer != canvasRenderer)
                 ApplyRendererMaskState(crenderer);
@@ -719,6 +954,307 @@ namespace NowUI
                 crenderer.DisableRectClipping();
         }
 
+        void UpdateUGUIGlassBackdrops()
+        {
+            if (_drawList == null ||
+                !_drawList.hasRenderReplay ||
+                _drawList.renderReplayMesh == null ||
+                _drawList.renderReplayBatches == null ||
+                _drawList.renderReplayBatches.Count == 0)
+            {
+                ReleaseUGUIGlassBackdrops();
+                return;
+            }
+
+            var replayBatches = _drawList.renderReplayBatches;
+            bool hasGlass = false;
+
+            for (int i = 0; i < replayBatches.Count; ++i)
+            {
+                if (replayBatches[i].kind == NowMeshKind.Glass)
+                {
+                    hasGlass = true;
+                    break;
+                }
+            }
+
+            if (!hasGlass)
+            {
+                ReleaseUGUIGlassBackdrops();
+                return;
+            }
+
+            float scale = GetCanvasScaleFactor();
+            int fullWidth = Mathf.Max(1, Mathf.CeilToInt(_drawList.size.x * scale));
+            int fullHeight = Mathf.Max(1, Mathf.CeilToInt(_drawList.size.y * scale));
+            int buildId = ++_uguiGlassBackdropBuildId;
+            Texture sourceTexture = GetUGUIBackdropSourceTexture();
+
+            if (_uguiGlassCommandBuffer == null)
+            {
+                _uguiGlassCommandBuffer = new CommandBuffer
+                {
+                    name = "Now UGUI Glass Backdrop"
+                };
+            }
+
+            for (int i = 0; i < replayBatches.Count; ++i)
+            {
+                var batch = replayBatches[i];
+
+                if (batch.kind != NowMeshKind.Glass)
+                    continue;
+
+                var baseMaterial = GetCanvasMaterial(batch);
+
+                if (baseMaterial == null)
+                    continue;
+
+                var quality = NowGlassRenderer.GetBatchQuality(batch);
+
+                var capture = NowGlassRenderer.GetCaptureRect(
+                    batch.bounds,
+                    _drawList.size,
+                    fullWidth,
+                    fullHeight,
+                    batch.data.x);
+                var entry = GetUGUIGlassBackdropEntry(i);
+                entry.lastUsedFrame = buildId;
+                entry.lastUpdatedFrame = Time.frameCount;
+                entry.replayBatchCount = i;
+                entry.blurRadius = Mathf.Max(0f, batch.data.x) * scale;
+                entry.blurQuality = quality;
+                entry.captureRect = capture.uiRect;
+                var blurPlan = NowGlassRenderer.GetBlurPlan(entry.blurRadius, capture.width, capture.height, quality);
+                entry.blurDownsample = blurPlan.downsample;
+                entry.blurIterations = blurPlan.iterations;
+                entry.blurStep = blurPlan.step;
+                entry.fallbackReason = capture.isCropped ? NowGlassFallbackReason.None : NowGlassFallbackReason.FullTargetCapture;
+                entry.hasExternalSource = sourceTexture != null;
+                entry.materialName = baseMaterial.name;
+                EnsureUGUIGlassTextures(entry, capture.width, capture.height);
+                EnsureUGUIGlassMaterial(entry, baseMaterial);
+
+                _uguiGlassCommandBuffer.Clear();
+                _uguiGlassCommandBuffer.SetRenderTarget(entry.source);
+
+                if (sourceTexture != null)
+                {
+                    NowGlassRenderer.CopyBackdropRegion(
+                        _uguiGlassCommandBuffer,
+                        sourceTexture,
+                        entry.source,
+                        Mathf.Max(1, sourceTexture.width),
+                        Mathf.Max(1, sourceTexture.height),
+                        capture.sourceScaleOffset);
+                }
+                else
+                {
+                    _uguiGlassCommandBuffer.ClearRenderTarget(true, true, Color.clear);
+                }
+
+                NowRenderer.DrawRangeTransformed(
+                    _uguiGlassCommandBuffer,
+                    _drawList.renderReplayMesh,
+                    replayBatches,
+                    new Vector2(capture.uiRect.width, capture.uiRect.height),
+                    entry.source,
+                    0,
+                    i,
+                    Matrix4x4.Translate(new Vector3(-capture.uiRect.x, capture.uiRect.y, 0f)));
+
+                bool blurred = NowGlassRenderer.CopyAndBlurBackdrop(
+                    _uguiGlassCommandBuffer,
+                    entry.source,
+                    entry.blurred,
+                    entry.width,
+                    entry.height,
+                    entry.blurRadius,
+                    quality,
+                    "UGUI",
+                    entry.captureRect,
+                    out blurPlan);
+                if (!blurred)
+                    entry.fallbackReason = NowGlassFallbackReason.MissingBlurMaterial;
+
+                entry.blurDownsample = blurPlan.downsample;
+                entry.blurIterations = blurPlan.iterations;
+                entry.blurStep = blurPlan.step;
+
+                Graphics.ExecuteCommandBuffer(_uguiGlassCommandBuffer);
+
+                entry.material.CopyPropertiesFromMaterial(baseMaterial);
+                entry.material.mainTexture = entry.blurred;
+                entry.material.SetTexture(_mainTexProp, entry.blurred);
+                entry.material.SetTexture(_nowUGUIBackdropTexProp, entry.blurred);
+                entry.material.SetVector(_nowUGUIBackdropSizeProp, new Vector4(entry.captureRect.width, entry.captureRect.height, 0f, 0f));
+                entry.material.SetVector(_nowUGUIBackdropOriginProp, new Vector4(entry.captureRect.x, entry.captureRect.y, 0f, 0f));
+                entry.material.SetFloat(_nowGlassUseBackdropProp, 1f);
+            }
+
+            for (int i = _uguiGlassBackdrops.Count - 1; i >= 0; --i)
+            {
+                if (_uguiGlassBackdrops[i].lastUsedFrame != buildId)
+                {
+                    ReleaseUGUIGlassBackdrop(_uguiGlassBackdrops[i]);
+                    _uguiGlassBackdrops.RemoveAt(i);
+                }
+            }
+        }
+
+        UguiGlassBackdropEntry GetUGUIGlassBackdropEntry(int batchIndex)
+        {
+            for (int i = 0; i < _uguiGlassBackdrops.Count; ++i)
+            {
+                if (_uguiGlassBackdrops[i].batchIndex == batchIndex)
+                    return _uguiGlassBackdrops[i];
+            }
+
+            var entry = new UguiGlassBackdropEntry
+            {
+                batchIndex = batchIndex
+            };
+            _uguiGlassBackdrops.Add(entry);
+            return entry;
+        }
+
+        void EnsureUGUIGlassTextures(UguiGlassBackdropEntry entry, int width, int height)
+        {
+            if (entry.source != null &&
+                entry.blurred != null &&
+                entry.width == width &&
+                entry.height == height)
+            {
+                return;
+            }
+
+            ReleaseUGUIGlassTextures(entry);
+
+            entry.width = width;
+            entry.height = height;
+            entry.source = CreateUGUIGlassTexture(width, height, $"Now UGUI Glass Source {entry.batchIndex}");
+            entry.blurred = CreateUGUIGlassTexture(width, height, $"Now UGUI Glass Blur {entry.batchIndex}");
+        }
+
+        static RenderTexture CreateUGUIGlassTexture(int width, int height, string name)
+        {
+            var descriptor = new RenderTextureDescriptor(
+                Mathf.Max(1, width),
+                Mathf.Max(1, height),
+                RenderTextureFormat.ARGB32,
+                0)
+            {
+                msaaSamples = 1,
+                useMipMap = false,
+                autoGenerateMips = false
+            };
+            var texture = new RenderTexture(descriptor)
+            {
+                name = name,
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+            };
+
+            texture.Create();
+            return texture;
+        }
+
+        void EnsureUGUIGlassMaterial(UguiGlassBackdropEntry entry, Material baseMaterial)
+        {
+            if (entry.material != null && entry.sourceMaterial == baseMaterial)
+                return;
+
+            ReleaseUGUIGlassMaterial(entry);
+            entry.sourceMaterial = baseMaterial;
+            entry.material = new Material(baseMaterial)
+            {
+                name = $"{baseMaterial.name} Backdrop",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+        }
+
+        Material GetUGUIGlassBackdropMaterial(int batchIndex)
+        {
+            for (int i = 0; i < _uguiGlassBackdrops.Count; ++i)
+            {
+                var entry = _uguiGlassBackdrops[i];
+
+                if (entry.batchIndex == batchIndex)
+                    return entry.material;
+            }
+
+            return null;
+        }
+
+        void ReleaseUGUIGlassBackdrops()
+        {
+            for (int i = 0; i < _uguiGlassBackdrops.Count; ++i)
+                ReleaseUGUIGlassBackdrop(_uguiGlassBackdrops[i]);
+
+            _uguiGlassBackdrops.Clear();
+        }
+
+        void ReleaseUGUIGlassBackdrop(UguiGlassBackdropEntry entry)
+        {
+            if (entry == null)
+                return;
+
+            ReleaseUGUIGlassTextures(entry);
+            ReleaseUGUIGlassMaterial(entry);
+            entry.sourceMaterial = null;
+            entry.batchIndex = -1;
+            entry.replayBatchCount = 0;
+            entry.lastUsedFrame = -1;
+            entry.lastUpdatedFrame = -1;
+            entry.blurRadius = 0f;
+            entry.blurDownsample = 0;
+            entry.blurIterations = 0;
+            entry.blurStep = 0f;
+            entry.hasExternalSource = false;
+            entry.materialName = null;
+        }
+
+        void ReleaseUGUIGlassTextures(UguiGlassBackdropEntry entry)
+        {
+            if (entry.source != null)
+            {
+                entry.source.Release();
+                DestroyNowObject(entry.source);
+                entry.source = null;
+            }
+
+            if (entry.blurred != null)
+            {
+                entry.blurred.Release();
+                DestroyNowObject(entry.blurred);
+                entry.blurred = null;
+            }
+
+            entry.width = 0;
+            entry.height = 0;
+        }
+
+        void ReleaseUGUIGlassMaterial(UguiGlassBackdropEntry entry)
+        {
+            if (entry.material == null)
+                return;
+
+            DestroyNowObject(entry.material);
+            entry.material = null;
+        }
+
+        static void DestroyNowObject(UnityEngine.Object target)
+        {
+            if (target == null)
+                return;
+
+            if (Application.isPlaying)
+                Destroy(target);
+            else
+                DestroyImmediate(target);
+        }
+
         void DestroyExtraCanvasRenderers()
         {
             for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
@@ -751,6 +1287,9 @@ namespace NowUI
 
                 return _rectangleMaterial != null ? _rectangleMaterial : batch.material;
             }
+
+            if (batch.kind == NowMeshKind.Glass)
+                return batch.canvasMaterial != null ? batch.canvasMaterial : batch.material;
 
             if (batch.kind == NowMeshKind.TexturedRectangle)
             {
@@ -846,9 +1385,11 @@ namespace NowUI
             return canvasMaterial;
         }
 
-        Material GetCanvasMaterialForRendering(NowMeshBatch batch)
+        Material GetCanvasMaterialForRendering(NowMeshBatch batch, int batchIndex)
         {
-            var currentMaterial = GetCanvasMaterial(batch);
+            var currentMaterial = batch.kind == NowMeshKind.Glass
+                ? GetUGUIGlassBackdropMaterial(batchIndex) ?? GetCanvasMaterial(batch)
+                : GetCanvasMaterial(batch);
 
             if (currentMaterial == null)
                 return null;
