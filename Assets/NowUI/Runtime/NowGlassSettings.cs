@@ -18,8 +18,6 @@ namespace NowUI
         None,
         MissingTargetContext,
         MissingBlurMaterial,
-        UnsupportedHost,
-        MissingReadableSource,
         LegacyImmediatePath,
         FullTargetCapture
     }

@@ -107,25 +107,25 @@ namespace NowUI
 
         public Vector2 size
         {
-            get => _graphic != null ? _graphic.size : _size;
+            get => _graphic ? _graphic.size : _size;
             set => _size = SanitizeSize(value);
         }
 
         public Vector2 pivot
         {
-            get => _graphic != null ? _graphic.pivot : _pivot;
+            get => _graphic ? _graphic.pivot : _pivot;
             set => _pivot = value;
         }
 
         public float pixelsPerUnit
         {
-            get => _graphic != null ? _graphic.pixelsPerUnit : _pixelsPerUnit;
+            get => _graphic ? _graphic.pixelsPerUnit : _pixelsPerUnit;
             set => _pixelsPerUnit = SanitizePixelsPerUnit(value);
         }
 
         public bool acceptNavigation
         {
-            get => _graphic != null ? _graphic.acceptNavigation : _acceptNavigation;
+            get => _graphic ? _graphic.acceptNavigation : _acceptNavigation;
             set => _acceptNavigation = value;
         }
 
@@ -176,27 +176,27 @@ namespace NowUI
                 _previousPosition = position;
                 _hasPreviousPosition = true;
             }
-            else if (_hasPreviousPosition &&
-                     input.pointerButtonsReleased != NowPointerButtons.None)
+            else switch (_hasPreviousPosition)
             {
-                position = _previousPosition;
-                previous = _previousPosition;
-                hasPointer = true;
-                _hasPreviousPosition = false;
-            }
-            else if (_hasPreviousPosition &&
-                     input.pointerButtonsDown != NowPointerButtons.None &&
-                     input.pointerButtonsPressed == NowPointerButtons.None)
-            {
-                position = _previousPosition;
-                previous = _previousPosition;
-                hasPointer = true;
-            }
-            else
-            {
-                _hasPreviousPosition = false;
-                previous = default;
-                position = default;
+                case true when
+                    input.pointerButtonsReleased != NowPointerButtons.None:
+                    position = _previousPosition;
+                    previous = _previousPosition;
+                    hasPointer = true;
+                    _hasPreviousPosition = false;
+                    break;
+                case true when
+                    input.pointerButtonsDown != NowPointerButtons.None &&
+                    input.pointerButtonsPressed == NowPointerButtons.None:
+                    position = _previousPosition;
+                    previous = _previousPosition;
+                    hasPointer = true;
+                    break;
+                default:
+                    _hasPreviousPosition = false;
+                    previous = default;
+                    position = default;
+                    break;
             }
 
             snapshot = CreateSnapshot(hasPointer, position, previous, delta, input);
@@ -205,7 +205,7 @@ namespace NowUI
 
         public bool TryScreenPointToSurface(Vector2 screenPosition, out Vector2 surfacePosition)
         {
-            if (_graphic != null)
+            if (_graphic)
                 return _graphic.TryScreenPointToSurface(screenPosition, out surfacePosition);
 
             surfacePosition = default;
@@ -213,7 +213,7 @@ namespace NowUI
             var targetTransform = _transform;
             var targetCamera = ResolveCamera();
 
-            if (targetTransform == null || targetCamera == null)
+            if (!targetTransform || !targetCamera)
                 return false;
 
             var ray = targetCamera.ScreenPointToRay(screenPosition);
@@ -270,7 +270,7 @@ namespace NowUI
 
         Camera ResolveCamera()
         {
-            if (_camera != null)
+            if (_camera)
                 return _camera;
 
             return Camera.main;
@@ -330,7 +330,6 @@ namespace NowUI
         [NonSerialized] MeshRenderer _meshRenderer;
         [NonSerialized] NowDrawList _drawList;
         [NonSerialized] NowWorldInputProvider _inputProvider;
-        [NonSerialized] MaterialPropertyBlock _glassPropertyBlock;
         [NonSerialized] Texture _glassBackdropTexture;
         [NonSerialized] readonly List<Vector3> _vertices = new List<Vector3>(256);
         [NonSerialized] readonly Dictionary<Material, Material> _materials = new Dictionary<Material, Material>(8);
@@ -743,7 +742,7 @@ namespace NowUI
                 return true;
             }
 
-            if (resolution.owner != null)
+            if (resolution.owner)
                 return false;
 
             if (!TryRayToSurface(resolution.ray, out surfacePosition, out float distance))
@@ -1029,7 +1028,7 @@ namespace NowUI
 
         internal float GetCameraDepth(Camera camera)
         {
-            if (camera == null)
+            if (!camera)
                 return float.PositiveInfinity;
 
             return Vector3.Dot(transform.position - camera.transform.position, camera.transform.forward);
@@ -1115,8 +1114,8 @@ namespace NowUI
         internal void ApplyGlassBackdropTexture(Texture texture)
         {
             _glassBackdropTexture = texture;
-            bool useBackdrop = texture != null && _glassBackdropMode != NowWorldGlassBackdropMode.TintOnly;
-            var fallback = texture != null ? texture : Texture2D.blackTexture;
+            bool useBackdrop = texture && _glassBackdropMode != NowWorldGlassBackdropMode.TintOnly;
+            var fallback = texture ? texture : Texture2D.blackTexture;
 
             if (_meshRenderer)
                 _meshRenderer.SetPropertyBlock(null);
@@ -1209,10 +1208,10 @@ namespace NowUI
             if (!material || batch.kind != NowMeshKind.Glass)
                 return;
 
-            bool useBackdrop = _glassBackdropTexture != null &&
+            bool useBackdrop = _glassBackdropTexture &&
                 _glassBackdropMode != NowWorldGlassBackdropMode.TintOnly;
 
-            material.SetTexture(_nowBackdropTexId, _glassBackdropTexture != null ? _glassBackdropTexture : Texture2D.blackTexture);
+            material.SetTexture(_nowBackdropTexId, _glassBackdropTexture ? _glassBackdropTexture : Texture2D.blackTexture);
             material.SetVector(_nowBackdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
             material.SetFloat(_nowGlassUseBackdropId, useBackdrop ? 1f : 0f);
             ApplyGlassDepthProperties(material);
@@ -1226,16 +1225,6 @@ namespace NowUI
             bool useSceneDepth = _glassDepthMode == NowWorldGlassDepthMode.ClipForeground;
             material.SetFloat(_nowGlassUseSceneDepthId, useSceneDepth ? 1f : 0f);
             material.SetFloat(_nowGlassDepthEpsilonId, GlassDepthEpsilon);
-        }
-
-        void ApplyGlassDepthProperties(MaterialPropertyBlock block)
-        {
-            if (block == null)
-                return;
-
-            bool useSceneDepth = _glassDepthMode == NowWorldGlassDepthMode.ClipForeground;
-            block.SetFloat(_nowGlassUseSceneDepthId, useSceneDepth ? 1f : 0f);
-            block.SetFloat(_nowGlassDepthEpsilonId, GlassDepthEpsilon);
         }
 
         void ApplyDepthMode(Material material)
