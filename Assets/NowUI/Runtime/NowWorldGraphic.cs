@@ -614,13 +614,6 @@ namespace NowUI
             }
         }
 
-        [Obsolete("World glass foreground protection is automatic. Setting this property has no effect.")]
-        public NowWorldGlassDepthMode glassDepthMode
-        {
-            get => NowWorldGlassDepthMode.ClipForeground;
-            set { }
-        }
-
         public NowGlassBlurQuality glassBlurQuality
         {
             get => _glassBlurQuality;
