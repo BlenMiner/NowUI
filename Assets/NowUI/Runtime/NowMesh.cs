@@ -29,17 +29,7 @@ namespace NowUI.Internal
         {
         }
 
-        public NowMeshBatch(Material material, Material canvasMaterial, NowMeshKind kind)
-            : this(material, canvasMaterial, kind, default)
-        {
-        }
-
-        public NowMeshBatch(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 data)
-            : this(material, canvasMaterial, kind, data, default)
-        {
-        }
-
-        public NowMeshBatch(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 data, NowRect bounds)
+        public NowMeshBatch(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 data, NowRect bounds = default)
         {
             this.material = material;
             this.canvasMaterial = canvasMaterial;
@@ -184,12 +174,7 @@ namespace NowUI.Internal
         {
         }
 
-        public NowMesh(Material mat, Material canvasMaterial, NowMeshKind kind)
-            : this(mat, canvasMaterial, kind, default)
-        {
-        }
-
-        public NowMesh(Material mat, Material canvasMaterial, NowMeshKind kind, Vector4 batchData)
+        public NowMesh(Material mat, Material canvasMaterial, NowMeshKind kind, Vector4 batchData = default)
         {
             material = mat;
             this.canvasMaterial = canvasMaterial;
@@ -213,12 +198,7 @@ namespace NowUI.Internal
             SetMaterial(material, null, kind);
         }
 
-        public void SetMaterial(Material material, Material canvasMaterial, NowMeshKind kind)
-        {
-            SetMaterial(material, canvasMaterial, kind, default);
-        }
-
-        public void SetMaterial(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 batchData)
+        public void SetMaterial(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 batchData = default)
         {
             this.material = material;
             this.canvasMaterial = canvasMaterial;
@@ -572,11 +552,11 @@ namespace NowUI.Internal
             _extra.count += 4;
 
             var vertexArray = _verts.array;
-            int vertexCount = _verts.count;
-            vertexArray[vertexCount] = new Vector3(position.x, position.y, 0f);
-            vertexArray[vertexCount + 1] = new Vector3(position.x, position.y + position.w, 0f);
-            vertexArray[vertexCount + 2] = new Vector3(position.x + position.z, position.y + position.w, 0f);
-            vertexArray[vertexCount + 3] = new Vector3(position.x + position.z, position.y, 0f);
+            int vcount = _verts.count;
+            vertexArray[vcount] = new Vector3(position.x, position.y, 0f);
+            vertexArray[vcount + 1] = new Vector3(position.x, position.y + position.w, 0f);
+            vertexArray[vcount + 2] = new Vector3(position.x + position.z, position.y + position.w, 0f);
+            vertexArray[vcount + 3] = new Vector3(position.x + position.z, position.y, 0f);
             _verts.count += 4;
 
             var uvArray = _uvs.array;
@@ -617,10 +597,10 @@ namespace NowUI.Internal
         /// </summary>
         public void AddGeometry(NowLottieDrawBuffer buffer, Vector2 positionOffset, float positionScale, Vector4 tint, Vector4 mask)
         {
-            int vertexCount = buffer.positions.count;
+            int vcount = buffer.positions.count;
             int indexCount = buffer.indices.count;
 
-            if (vertexCount == 0 || indexCount == 0)
+            if (vcount == 0 || indexCount == 0)
                 return;
 
             const float PADDING = 2f;
@@ -638,15 +618,15 @@ namespace NowUI.Internal
             if (cullProbe.IsOutsideMask(rect))
                 return;
 
-            _mask.EnsureCapacity(vertexCount);
-            _rect.EnsureCapacity(vertexCount);
-            _radius.EnsureCapacity(vertexCount);
-            _color.EnsureCapacity(vertexCount);
-            _outlineColor.EnsureCapacity(vertexCount);
-            _extra.EnsureCapacity(vertexCount);
-            _verts.EnsureCapacity(vertexCount);
-            _uvs.EnsureCapacity(vertexCount);
-            _rawuv.EnsureCapacity(vertexCount);
+            _mask.EnsureCapacity(vcount);
+            _rect.EnsureCapacity(vcount);
+            _radius.EnsureCapacity(vcount);
+            _color.EnsureCapacity(vcount);
+            _outlineColor.EnsureCapacity(vcount);
+            _extra.EnsureCapacity(vcount);
+            _verts.EnsureCapacity(vcount);
+            _uvs.EnsureCapacity(vcount);
+            _rawuv.EnsureCapacity(vcount);
             _tris.EnsureCapacity(indexCount);
 
             int indexOffset = _verts.count;
@@ -674,15 +654,15 @@ namespace NowUI.Internal
                     _tris.count,
                     indexOffset);
 
-                _verts.count += vertexCount;
-                _uvs.count += vertexCount;
-                _rawuv.count += vertexCount;
-                _rect.count += vertexCount;
-                _radius.count += vertexCount;
-                _color.count += vertexCount;
-                _outlineColor.count += vertexCount;
-                _extra.count += vertexCount;
-                _mask.count += vertexCount;
+                _verts.count += vcount;
+                _uvs.count += vcount;
+                _rawuv.count += vcount;
+                _rect.count += vcount;
+                _radius.count += vcount;
+                _color.count += vcount;
+                _outlineColor.count += vcount;
+                _extra.count += vcount;
+                _mask.count += vcount;
                 _tris.count += indexCount;
                 return;
             }
@@ -690,7 +670,7 @@ namespace NowUI.Internal
             float inverseWidth = 1f / width;
             float inverseHeight = 1f / height;
 
-            for (int i = 0; i < vertexCount; ++i)
+            for (int i = 0; i < vcount; ++i)
             {
                 var position = buffer.positions.array[i];
                 position.x = position.x * positionScale + positionOffset.x;
