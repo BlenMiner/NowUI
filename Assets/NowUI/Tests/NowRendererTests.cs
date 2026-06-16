@@ -819,6 +819,43 @@ public class NowRendererTests
     }
 
     [Test]
+    public void GraphicLayoutInputMeasuresPreferredSizeBeforeGeometryRebuild()
+    {
+        var graphicObject = new GameObject("Now Test Layout Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+
+        try
+        {
+            var rectTransform = graphicObject.GetComponent<RectTransform>();
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 64f);
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 32f);
+
+            var graphic = graphicObject.AddComponent<LayoutSizeGraphic>();
+
+            graphic.CalculateLayoutInputHorizontal();
+            graphic.CalculateLayoutInputVertical();
+
+            Assert.AreEqual(120f, graphic.preferredWidth, 0.001f);
+            Assert.AreEqual(35f, graphic.preferredHeight, 0.001f);
+            Assert.AreEqual(new Vector2(120f, 35f), graphic.measuredContentSize);
+            Assert.AreEqual(1, graphic.drawCount, "horizontal and vertical layout queries with the same rect should share the cached measurement");
+            Assert.IsFalse(NowLayout.isMeasurePass);
+            Assert.IsFalse(NowInput.isPassive);
+
+            graphic.childWidth = 180f;
+            graphic.SetVerticesDirty();
+            graphic.CalculateLayoutInputHorizontal();
+
+            Assert.AreEqual(180f, graphic.preferredWidth, 0.001f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(graphicObject);
+            NowLayout.Reset();
+            NowInput.Reset();
+        }
+    }
+
+    [Test]
     public void GraphicUsesStencilMaterialWhenUnderUnityMask()
     {
         var material = Resources.Load<Material>("NowUI/UIMaterialUGUI");
@@ -1173,6 +1210,21 @@ public class NowRendererTests
             Now.Rectangle(new Vector4(2, 2, 12, 8))
                 .SetColor(Color.white)
                 .Draw();
+        }
+    }
+
+    sealed class LayoutSizeGraphic : NowGraphic
+    {
+        public float childWidth = 120f;
+
+        public int drawCount;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            ++drawCount;
+
+            using (NowLayout.Area(new NowRect(0f, 0f, rect.width, rect.height)))
+                NowLayout.Rect(childWidth, 35f);
         }
     }
 

@@ -102,6 +102,10 @@ namespace NowUI
 
         public Vector2 navigation;
 
+        public readonly bool focusPreviousPressed;
+
+        public readonly bool focusNextPressed;
+
         public readonly bool submitDown;
 
         public readonly bool submitPressed;
@@ -274,6 +278,49 @@ namespace NowUI
             bool cancelReleased,
             int frame,
             float time)
+            : this(
+                hasPointer,
+                pointerPosition,
+                previousPointerPosition,
+                pointerDelta,
+                pointerButtonsDown,
+                pointerButtonsPressed,
+                pointerButtonsReleased,
+                scrollDelta,
+                navigation,
+                false,
+                false,
+                submitDown,
+                submitPressed,
+                submitReleased,
+                cancelDown,
+                cancelPressed,
+                cancelReleased,
+                frame,
+                time)
+        {
+        }
+
+        public NowInputSnapshot(
+            bool hasPointer,
+            Vector2 pointerPosition,
+            Vector2 previousPointerPosition,
+            Vector2 pointerDelta,
+            NowPointerButtons pointerButtonsDown,
+            NowPointerButtons pointerButtonsPressed,
+            NowPointerButtons pointerButtonsReleased,
+            Vector2 scrollDelta,
+            Vector2 navigation,
+            bool focusPreviousPressed,
+            bool focusNextPressed,
+            bool submitDown,
+            bool submitPressed,
+            bool submitReleased,
+            bool cancelDown,
+            bool cancelPressed,
+            bool cancelReleased,
+            int frame,
+            float time)
         {
             this.hasPointer = hasPointer;
             this.pointerPosition = pointerPosition;
@@ -287,6 +334,8 @@ namespace NowUI
             primaryReleased = IsSet(pointerButtonsReleased, NowPointerButton.Primary);
             this.scrollDelta = scrollDelta;
             this.navigation = navigation;
+            this.focusPreviousPressed = focusPreviousPressed;
+            this.focusNextPressed = focusNextPressed;
             this.submitDown = submitDown;
             this.submitPressed = submitPressed;
             this.submitReleased = submitReleased;
@@ -939,6 +988,10 @@ namespace NowUI
 
         Vector2 _navigation;
 
+        bool _focusPreviousPressed;
+
+        bool _focusNextPressed;
+
         bool _submitDown;
 
         bool _submitPressed;
@@ -985,6 +1038,8 @@ namespace NowUI
                 _pointerButtonsReleased,
                 _scrollDelta,
                 _navigation,
+                _focusPreviousPressed,
+                _focusNextPressed,
                 _submitDown,
                 _submitPressed,
                 _submitReleased,
@@ -1013,6 +1068,8 @@ namespace NowUI
                 _pointerButtonsReleased = NowPointerButtons.None;
                 _scrollDelta = default;
                 _navigation = default;
+                _focusPreviousPressed = false;
+                _focusNextPressed = false;
                 _submitDown = false;
                 _submitPressed = false;
                 _submitReleased = false;
@@ -1048,6 +1105,8 @@ namespace NowUI
             _pointerButtonsReleased = mouseInput.pointerButtonsReleased;
             _scrollDelta = mouseInput.scrollDelta;
             _navigation = mouseInput.navigation;
+            _focusPreviousPressed = mouseInput.focusPreviousPressed;
+            _focusNextPressed = mouseInput.focusNextPressed;
             _submitDown = mouseInput.submitDown;
             _submitPressed = mouseInput.submitPressed;
             _submitReleased = mouseInput.submitReleased;
@@ -1304,6 +1363,8 @@ namespace NowUI
                 mouseInput.pointerButtonsReleased,
                 mouseInput.scrollDelta,
                 mouseInput.navigation,
+                mouseInput.focusPreviousPressed,
+                mouseInput.focusNextPressed,
                 mouseInput.submitDown,
                 mouseInput.submitPressed,
                 mouseInput.submitReleased,
@@ -1326,6 +1387,8 @@ namespace NowUI
                 NowPointerButtons.None,
                 default,
                 input.navigation,
+                input.focusPreviousPressed,
+                input.focusNextPressed,
                 input.submitDown,
                 input.submitPressed,
                 input.submitReleased,
@@ -1352,6 +1415,10 @@ namespace NowUI
         public Vector2 scrollDelta;
 
         public Vector2 navigation;
+
+        public bool focusPreviousPressed;
+
+        public bool focusNextPressed;
 
         public bool submitDown;
 
@@ -1408,6 +1475,8 @@ namespace NowUI
                     pointerButtonsReleased = released,
                     scrollDelta = Input.mouseScrollDelta,
                     navigation = navigation,
+                    focusPreviousPressed = WasLegacyFocusPreviousPressed(),
+                    focusNextPressed = WasLegacyFocusNextPressed(),
                     submitDown = IsLegacySubmitDown(),
                     submitPressed = WasLegacySubmitPressed(),
                     submitReleased = WasLegacySubmitReleased(),
@@ -1464,6 +1533,19 @@ namespace NowUI
                 y += 1f;
 
             return Vector2.ClampMagnitude(new Vector2(x, y), 1f);
+        }
+
+        static bool WasLegacyFocusPreviousPressed()
+        {
+            return Input.GetKeyDown(KeyCode.Tab) &&
+                (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift));
+        }
+
+        static bool WasLegacyFocusNextPressed()
+        {
+            return Input.GetKeyDown(KeyCode.Tab) &&
+                !Input.GetKey(KeyCode.LeftShift) &&
+                !Input.GetKey(KeyCode.RightShift);
         }
 
         static bool IsLegacySubmitDown()
@@ -1565,6 +1647,8 @@ namespace NowUI
             if (keyboard != null)
             {
                 input.navigation += ReadKeyboardNavigation(keyboard);
+                input.focusPreviousPressed |= keyboard.tabKey.wasPressedThisFrame && keyboard.shiftKey.isPressed;
+                input.focusNextPressed |= keyboard.tabKey.wasPressedThisFrame && !keyboard.shiftKey.isPressed;
                 MergeButton(keyboard.enterKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
                 MergeButton(keyboard.numpadEnterKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
                 MergeButton(keyboard.spaceKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);

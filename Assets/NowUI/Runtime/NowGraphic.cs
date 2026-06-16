@@ -108,7 +108,7 @@ namespace NowUI
         [SerializeField, Tooltip("Withhold pointer input when UGUI elements draw above this graphic, so they occlude NowUI controls the same way this graphic's Raycast Target occludes UGUI beneath it.")]
         bool _respectUGUIRaycast = true;
 
-        [SerializeField, Tooltip("Report the measured NowLayout content extent as this graphic's preferred size, so UGUI LayoutGroups and ContentSizeFitters size it like any other layout element. Settles one rebuild late, like all NowLayout measurement.")]
+        [SerializeField, Tooltip("Report the measured NowLayout content extent as this graphic's preferred size, so UGUI LayoutGroups and ContentSizeFitters size it like any other layout element. Layout queries run a passive NowLayout measure pass before geometry rebuilds.")]
         bool _driveLayoutSize = true;
 
         [SerializeField, HideInInspector]
@@ -120,6 +120,14 @@ namespace NowUI
         [NonSerialized] Vector2 _preferredSize;
 
         [NonSerialized] bool _layoutSizeDirty;
+
+        [NonSerialized] bool _measuringLayoutInput;
+
+        [NonSerialized] bool _hasLayoutInputMeasurement;
+
+        [NonSerialized] int _layoutInputMeasurementFrame;
+
+        [NonSerialized] Vector2 _layoutInputMeasurementSize;
 
         [NonSerialized] bool _wantsInteractionRepaint;
 
@@ -177,6 +185,10 @@ namespace NowUI
 
             public Vector2 navigation;
 
+            public bool focusPreviousPressed;
+
+            public bool focusNextPressed;
+
             public bool submitDown;
 
             public bool submitPressed;
@@ -206,6 +218,8 @@ namespace NowUI
                     pointerButtonsReleased = snapshot.pointerButtonsReleased,
                     scrollDelta = snapshot.scrollDelta,
                     navigation = snapshot.navigation,
+                    focusPreviousPressed = snapshot.focusPreviousPressed,
+                    focusNextPressed = snapshot.focusNextPressed,
                     submitDown = snapshot.submitDown,
                     submitPressed = snapshot.submitPressed,
                     submitReleased = snapshot.submitReleased,
@@ -245,7 +259,8 @@ namespace NowUI
                 if (submitDown != previous.submitDown || cancelDown != previous.cancelDown)
                     return true;
 
-                return submitPressed || submitReleased || cancelPressed || cancelReleased;
+                return focusPreviousPressed || focusNextPressed ||
+                    submitPressed || submitReleased || cancelPressed || cancelReleased;
             }
         }
 
@@ -411,6 +426,15 @@ namespace NowUI
         public void MarkDirty()
         {
             SetVerticesDirty();
+        }
+
+        public override void SetVerticesDirty()
+        {
+            _hasLayoutInputMeasurement = false;
+            base.SetVerticesDirty();
+
+            if (_driveLayoutSize)
+                SetLayoutDirty();
         }
 
         /// <summary>Number of canvas renderer pages currently in use (diagnostics).</summary>
@@ -717,13 +741,21 @@ namespace NowUI
         /// <summary>
         /// When true (the default), the measured NowLayout content extent is
         /// reported as this graphic's preferred size, so LayoutGroups and
-        /// ContentSizeFitters size it like any other layout element. The
-        /// measurement settles one rebuild late, like all NowLayout sizing.
+        /// ContentSizeFitters size it like any other layout element. Unity layout
+        /// queries run a passive NowLayout measure pass before geometry rebuilds.
         /// </summary>
         public bool driveLayoutSize
         {
             get => _driveLayoutSize;
-            set => _driveLayoutSize = value;
+            set
+            {
+                if (_driveLayoutSize == value)
+                    return;
+
+                _driveLayoutSize = value;
+                _hasLayoutInputMeasurement = false;
+                SetLayoutDirty();
+            }
         }
 
         /// <summary>The last measured content extent (origin + content of the root layout areas).</summary>
@@ -731,10 +763,12 @@ namespace NowUI
 
         public virtual void CalculateLayoutInputHorizontal()
         {
+            RefreshPreferredLayoutSize();
         }
 
         public virtual void CalculateLayoutInputVertical()
         {
+            RefreshPreferredLayoutSize();
         }
 
         public virtual float minWidth => -1f;
@@ -750,6 +784,78 @@ namespace NowUI
         public virtual float flexibleHeight => -1f;
 
         public virtual int layoutPriority => 0;
+
+        void RefreshPreferredLayoutSize()
+        {
+            if (!_driveLayoutSize || _measuringLayoutInput || !IsActive())
+                return;
+
+            var rect = rectTransform.rect;
+            var size = new Vector2(Mathf.Max(0f, rect.width), Mathf.Max(0f, rect.height));
+            int frame = Time.frameCount;
+
+            if (_hasLayoutInputMeasurement &&
+                _layoutInputMeasurementFrame == frame &&
+                (_layoutInputMeasurementSize - size).sqrMagnitude <= 0.25f)
+            {
+                return;
+            }
+
+            float previousUIScale = Now.uiScale;
+            bool colorMultiplierActive = false;
+            bool contentTracking = false;
+            int layoutCounter = 0;
+            _measuringLayoutInput = true;
+
+            try
+            {
+                Now.SetUIScale(GetCanvasScaleFactor());
+                Now.BeginColorMultiplier(color);
+                colorMultiplierActive = true;
+
+                using (NowInput.Begin(GetInputProvider(), new NowInputSurface(size)))
+                {
+                    layoutCounter = NowLayout.BeginMeasurePass();
+
+                    try
+                    {
+                        NowLayout.BeginContentTracking();
+                        contentTracking = true;
+
+                        DrawNowUI(new NowRect(0f, 0f, size.x, size.y));
+
+                        Vector2 measured = NowLayout.EndContentTracking();
+                        contentTracking = false;
+
+                        if ((_preferredSize - measured).sqrMagnitude > 0.25f)
+                            _preferredSize = measured;
+                    }
+                    finally
+                    {
+                        if (contentTracking)
+                            NowLayout.EndContentTracking();
+
+                        NowLayout.EndMeasurePass(layoutCounter);
+                    }
+                }
+
+                _layoutInputMeasurementFrame = frame;
+                _layoutInputMeasurementSize = size;
+                _hasLayoutInputMeasurement = true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex, this);
+            }
+            finally
+            {
+                if (colorMultiplierActive)
+                    Now.EndColorMultiplier();
+
+                Now.SetUIScale(previousUIScale);
+                _measuringLayoutInput = false;
+            }
+        }
 
         protected virtual INowInputProvider GetInputProvider()
         {

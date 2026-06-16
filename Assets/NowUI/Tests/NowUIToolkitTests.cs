@@ -52,6 +52,26 @@ public class NowUIToolkitTests
     }
 
     [Test]
+    public void UIToolkitInputProviderReportsTabFocusPulses()
+    {
+        var provider = new NowUIToolkitInputProvider();
+
+        Assert.IsTrue(provider.KeyDown(KeyCode.Tab));
+        Assert.IsTrue(provider.TryGetSnapshot(Surface, out var next));
+        Assert.IsTrue(next.focusNextPressed);
+        Assert.IsFalse(next.focusPreviousPressed);
+
+        Assert.IsTrue(provider.TryGetSnapshot(Surface, out var idle));
+        Assert.IsFalse(idle.focusNextPressed);
+        Assert.IsFalse(idle.focusPreviousPressed);
+
+        Assert.IsTrue(provider.KeyDown(KeyCode.Tab, shift: true));
+        Assert.IsTrue(provider.TryGetSnapshot(Surface, out var previous));
+        Assert.IsTrue(previous.focusPreviousPressed);
+        Assert.IsFalse(previous.focusNextPressed);
+    }
+
+    [Test]
     public void UIToolkitInputProviderTreatsSubmitNavigationAsPulse()
     {
         var provider = new NowUIToolkitInputProvider();

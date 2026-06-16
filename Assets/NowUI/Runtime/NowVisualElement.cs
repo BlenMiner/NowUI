@@ -486,7 +486,7 @@ namespace NowUI
 
         void OnKeyDown(KeyDownEvent evt)
         {
-            if (_inputProvider.KeyDown(evt.keyCode))
+            if (_inputProvider.KeyDown(evt.keyCode, evt.shiftKey))
                 MarkInteractionDirty(evt);
         }
 
@@ -529,6 +529,10 @@ namespace NowUI
 
         bool _navigationTransient;
 
+        bool _focusPreviousPressed;
+
+        bool _focusNextPressed;
+
         bool _submitDown;
 
         bool _submitPressed;
@@ -563,6 +567,8 @@ namespace NowUI
                 _pointerButtonsReleased,
                 _scrollDelta,
                 _navigation,
+                _focusPreviousPressed,
+                _focusNextPressed,
                 _submitDown,
                 _submitPressed,
                 _submitReleased,
@@ -654,6 +660,11 @@ namespace NowUI
 
         public bool KeyDown(KeyCode keyCode)
         {
+            return KeyDown(keyCode, false);
+        }
+
+        public bool KeyDown(KeyCode keyCode, bool shift)
+        {
             switch (keyCode)
             {
                 case KeyCode.LeftArrow:
@@ -685,6 +696,12 @@ namespace NowUI
                 case KeyCode.Escape:
                     _cancelDown = true;
                     _cancelPressed = true;
+                    return true;
+                case KeyCode.Tab:
+                    if (shift)
+                        _focusPreviousPressed = true;
+                    else
+                        _focusNextPressed = true;
                     return true;
                 default:
                     return false;
@@ -741,6 +758,8 @@ namespace NowUI
             _scrollDelta = default;
             _navigation = default;
             _navigationTransient = false;
+            _focusPreviousPressed = false;
+            _focusNextPressed = false;
             _submitDown = false;
             _submitPressed = false;
             _submitReleased = false;
@@ -759,6 +778,8 @@ namespace NowUI
             _pointerButtonsPressed = NowPointerButtons.None;
             _pointerButtonsReleased = NowPointerButtons.None;
             _scrollDelta = default;
+            _focusPreviousPressed = false;
+            _focusNextPressed = false;
             _submitPressed = false;
             _cancelPressed = false;
 

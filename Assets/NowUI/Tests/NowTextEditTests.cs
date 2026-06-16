@@ -126,6 +126,20 @@ public class NowTextEditTests
     }
 
     [Test]
+    public void SelectWordExcludesQuotesAndPunctuation()
+    {
+        const string Text = "\"hello\", next";
+        var state = default(NowTextEditState);
+
+        NowTextEdit.SelectWord(ref state, Text, 3);
+        Assert.AreEqual("hello", NowTextEdit.GetSelection(Text, state));
+
+        NowTextEdit.SelectWord(ref state, Text, 6);
+        Assert.AreEqual("hello", NowTextEdit.GetSelection(Text, state),
+            "A hit on the trailing edge of the word must not pull in the quote or comma.");
+    }
+
+    [Test]
     public void HomeEndAndSelectAll()
     {
         const string Text = "hello";

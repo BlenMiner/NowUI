@@ -135,6 +135,37 @@ namespace NowUI
             return id.ResolveControlId(fallbackIdentity);
         }
 
+        internal static int ResolveNavigationTargetId(NowId id)
+        {
+            if (!id.hasValue)
+                return 0;
+
+            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
+            int resolved;
+
+            if (id.isString)
+            {
+                resolved = NowInput.GetId(seed, id.stringValue);
+            }
+            else
+            {
+                resolved = id.intValue;
+
+                if (seed != 0)
+                {
+                    unchecked
+                    {
+                        resolved = (seed * 397) ^ resolved;
+                    }
+                }
+
+                if (resolved == 0)
+                    resolved = 1;
+            }
+
+            return resolved;
+        }
+
         /// <summary>
         /// Derives a control id from a precomputed identity hash (usually a
         /// <see cref="SiteId"/>) within the active id scope. Repeated draws of the
@@ -221,8 +252,16 @@ namespace NowUI
         /// </summary>
         public static NowInteraction Interact(int id, NowRect rect, out bool focused, out bool submitted)
         {
+            return Interact(id, rect, default, out focused, out submitted);
+        }
+
+        /// <summary>
+        /// The standard interaction bundle with explicit focus navigation targets.
+        /// </summary>
+        public static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation, out bool focused, out bool submitted)
+        {
             var interaction = NowInput.Interact(id, rect);
-            NowFocus.Register(id, rect);
+            NowFocus.Register(id, rect, navigation);
 
             if (interaction.pressed)
                 NowFocus.Focus(id);
@@ -252,7 +291,13 @@ namespace NowUI
         /// <summary>Hover/press tint applied on top of a preset color.</summary>
         public static Vector4 StateTint(Vector4 color, float hoverT, bool held)
         {
-            float brightness = held ? 0.86f : Mathf.Lerp(1f, 1.10f, hoverT);
+            return StateTint(NowTheme.themeAsset, color, hoverT, held);
+        }
+
+        public static Vector4 StateTint(NowThemeAsset themeAsset, Vector4 color, float hoverT, bool held)
+        {
+            var styles = themeAsset != null ? themeAsset.controlStyles : NowControlStyleSet.Default;
+            float brightness = held ? styles.pressedBrightness : Mathf.Lerp(1f, styles.hoverBrightness, hoverT);
             color.x *= brightness;
             color.y *= brightness;
             color.z *= brightness;
@@ -275,6 +320,16 @@ namespace NowUI
 
         internal static void DrawCenteredLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle, NowRect mask)
         {
+            DrawCenteredLabel(activeThemeAsset, rect, label, textStyle, mask, default, false);
+        }
+
+        internal static void DrawCenteredLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle, NowRect mask, Color color)
+        {
+            DrawCenteredLabel(activeThemeAsset, rect, label, textStyle, mask, color, true);
+        }
+
+        static void DrawCenteredLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle, NowRect mask, Color color, bool overrideColor)
+        {
             var text = activeThemeAsset.Text(default, textStyle);
             Vector2 size = text.Measure(label);
 
@@ -283,6 +338,10 @@ namespace NowUI
                 rect.y + (rect.height - size.y) * 0.5f,
                 size.x + 1f,
                 size.y + 1f);
+
+            if (overrideColor)
+                text = text.SetColor(color);
+
             text.SetMask(mask).Draw(label);
         }
 
@@ -293,6 +352,16 @@ namespace NowUI
         /// </summary>
         internal static void DrawLeftLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle)
         {
+            DrawLeftLabel(activeThemeAsset, rect, label, textStyle, default, false);
+        }
+
+        internal static void DrawLeftLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle, Color color)
+        {
+            DrawLeftLabel(activeThemeAsset, rect, label, textStyle, color, true);
+        }
+
+        static void DrawLeftLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle, Color color, bool overrideColor)
+        {
             var text = activeThemeAsset.Text(default, textStyle);
             Vector2 size = text.Measure(label);
 
@@ -301,6 +370,9 @@ namespace NowUI
                 rect.y + (rect.height - size.y) * 0.5f,
                 size.x + 1f,
                 size.y + 1f);
+
+            if (overrideColor)
+                text = text.SetColor(color);
 
             text.SetMask(rect.Outset(0f, 4f)).Draw(label);
         }

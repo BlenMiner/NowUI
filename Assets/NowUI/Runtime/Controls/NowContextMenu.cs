@@ -25,10 +25,6 @@ namespace NowUI
     /// </summary>
     public static class NowContextMenu
     {
-        const float ItemHeight = 26f;
-        const float PaddingX = 14f;
-        const float MinWidth = 120f;
-
         static int _openId;
         static Vector2 _position;
         static int _activeId;
@@ -105,13 +101,15 @@ namespace NowUI
                 return;
             }
 
-            var textStyle = NowTheme.themeAsset.ResolveText(NowTextStyle.Body);
-            float width = MinWidth;
+            var theme = NowTheme.themeAsset;
+            var styles = theme.controlStyles;
+            var textStyle = theme.ResolveText(NowTextStyle.Body);
+            float width = styles.contextMenuMinWidth;
 
             for (int i = 0; i < _items.Count; ++i)
-                width = Mathf.Max(width, textStyle.Measure(_items[i]).x + PaddingX * 2f);
+                width = Mathf.Max(width, textStyle.Measure(_items[i]).x + styles.contextMenuPaddingX * 2f);
 
-            var popupRect = new NowRect(_position.x, _position.y, width, _items.Count * ItemHeight + 8f);
+            var popupRect = new NowRect(_position.x, _position.y, width, _items.Count * styles.contextMenuItemHeight + styles.popupPadding * 2f);
             int pendingId = NowInput.GetId(id, "ctx-pending");
             _popupRect = popupRect;
             _popupPendingId = pendingId;
@@ -130,30 +128,23 @@ namespace NowUI
             var popupRect = _popupRect;
             int pendingId = _popupPendingId;
 
-            var background = theme.Rectangle(popupRect, NowRectangleStyle.Surface);
-            background.radius = new Vector4(6f, 6f, 6f, 6f);
-            background.outline = 1f;
-            background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
-            background.Draw();
+            theme.controlRenderer.DrawPopupBackground(theme, popupRect, menu: true);
 
             for (int i = 0; i < _items.Count; ++i)
             {
                 var itemRect = new NowRect(
-                    popupRect.x + 4f,
-                    popupRect.y + 4f + i * ItemHeight,
-                    popupRect.width - 8f,
-                    ItemHeight);
+                    popupRect.x + theme.controlStyles.popupPadding,
+                    popupRect.y + theme.controlStyles.popupPadding + i * theme.controlStyles.contextMenuItemHeight,
+                    popupRect.width - theme.controlStyles.popupPadding * 2f,
+                    theme.controlStyles.contextMenuItemHeight);
                 var interaction = NowInput.Interact(NowInput.CombineId(pendingId, i + 1), itemRect);
 
-                if (interaction.hovered)
-                {
-                    var highlight = theme.Rectangle(itemRect, NowRectangleStyle.Muted);
-                    highlight.radius = new Vector4(4f, 4f, 4f, 4f);
-                    highlight.color = NowControls.StateTint(highlight.color, 1f, interaction.held);
-                    highlight.Draw();
-                }
-
-                NowControls.DrawLeftLabel(theme, itemRect.Inset(PaddingX * 0.7f, 0f, 4f, 0f), _items[i], NowTextStyle.Body);
+                theme.controlRenderer.DrawContextMenuItem(new NowPopupItemRenderContext(
+                    theme,
+                    itemRect,
+                    _items[i],
+                    false,
+                    interaction));
 
                 if (interaction.clicked)
                 {

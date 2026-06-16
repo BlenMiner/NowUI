@@ -24,6 +24,22 @@ namespace NowUI
         public int selectionMax => Mathf.Max(caret, anchor);
     }
 
+    internal enum NowTextSelectionGranularity : byte
+    {
+        Character,
+        Word,
+        Line
+    }
+
+    internal struct NowTextSelectionGesture
+    {
+        public NowTextSelectionGranularity granularity;
+
+        public int originStart;
+
+        public int originEnd;
+    }
+
     /// <summary>
     /// Pure single-line text editing logic — no rendering, no input polling, fully
     /// testable headless and reusable by custom editors. Indices are UTF-16;
@@ -88,6 +104,134 @@ namespace NowUI
                 index = PrevIndex(text, index);
 
             return index;
+        }
+
+        static bool IsWordCharacter(char c)
+        {
+            return char.IsLetterOrDigit(c) || c == '_';
+        }
+
+        static void WordBounds(string text, int index, out int start, out int end)
+        {
+            text ??= string.Empty;
+            int length = text.Length;
+            int caret = Mathf.Clamp(index, 0, length);
+            start = caret;
+            end = caret;
+
+            if (length == 0)
+                return;
+
+            int at;
+
+            if (caret < length && IsWordCharacter(text[caret]))
+            {
+                at = caret;
+            }
+            else if (caret > 0 && IsWordCharacter(text[caret - 1]))
+            {
+                at = PrevIndex(text, caret);
+            }
+            else if (caret < length)
+            {
+                at = caret;
+            }
+            else
+            {
+                at = PrevIndex(text, caret);
+            }
+
+            if (char.IsWhiteSpace(text[at]))
+            {
+                start = at;
+
+                while (start > 0 && char.IsWhiteSpace(text[start - 1]))
+                    start = PrevIndex(text, start);
+
+                end = at;
+
+                while (end < length && char.IsWhiteSpace(text[end]))
+                    end = NextIndex(text, end);
+
+                return;
+            }
+
+            if (IsWordCharacter(text[at]))
+            {
+                start = at;
+
+                while (start > 0 && IsWordCharacter(text[start - 1]))
+                    start = PrevIndex(text, start);
+
+                end = at;
+
+                while (end < length && IsWordCharacter(text[end]))
+                    end = NextIndex(text, end);
+
+                return;
+            }
+
+            start = at;
+            end = NextIndex(text, at);
+        }
+
+        internal static void SelectionBounds(string text, NowTextSelectionGranularity granularity, int index, out int start, out int end)
+        {
+            switch (granularity)
+            {
+                case NowTextSelectionGranularity.Word:
+                    WordBounds(text, index, out start, out end);
+                    return;
+                case NowTextSelectionGranularity.Line:
+                    NowTextMetrics.LineBounds(text, index, out start, out end);
+                    return;
+                default:
+                    text ??= string.Empty;
+                    start = Mathf.Clamp(index, 0, text.Length);
+                    end = start;
+                    return;
+            }
+        }
+
+        internal static void BeginSelectionGesture(
+            ref NowTextSelectionGesture gesture,
+            NowTextSelectionGranularity granularity,
+            in NowTextEditState state)
+        {
+            gesture.granularity = granularity;
+            gesture.originStart = state.selectionMin;
+            gesture.originEnd = state.selectionMax;
+        }
+
+        internal static void DragSelectionGesture(
+            ref NowTextEditState state,
+            string text,
+            in NowTextSelectionGesture gesture,
+            int index)
+        {
+            text ??= string.Empty;
+
+            if (gesture.granularity == NowTextSelectionGranularity.Character)
+            {
+                state.anchor = Mathf.Clamp(gesture.originStart, 0, text.Length);
+                state.caret = Mathf.Clamp(index, 0, text.Length);
+                return;
+            }
+
+            int originStart = Mathf.Clamp(Mathf.Min(gesture.originStart, gesture.originEnd), 0, text.Length);
+            int originEnd = Mathf.Clamp(Mathf.Max(gesture.originStart, gesture.originEnd), originStart, text.Length);
+            SelectionBounds(text, gesture.granularity, index, out int targetStart, out int targetEnd);
+
+            if (targetStart < originStart)
+            {
+                state.anchor = originEnd;
+                state.caret = targetStart;
+            }
+            else
+            {
+                state.anchor = originStart;
+                state.caret = targetEnd;
+            }
         }
 
         /// <summary>Inserts (replacing any selection); returns true when the text changed.</summary>
@@ -190,45 +334,11 @@ namespace NowUI
             state.caret = text?.Length ?? 0;
         }
 
-        /// <summary>Selects the word (or whitespace run) containing <paramref name="index"/>.</summary>
+        /// <summary>Selects the word, whitespace run or single punctuation mark containing <paramref name="index"/>.</summary>
         public static void SelectWord(ref NowTextEditState state, string text, int index)
         {
             text ??= string.Empty;
-            state.caret = Mathf.Clamp(index, 0, text.Length);
-            state.anchor = state.caret;
-
-            if (text.Length == 0)
-                return;
-
-            int at = Mathf.Min(state.caret, text.Length - 1);
-
-            if (char.IsWhiteSpace(text[at]))
-            {
-                int wsStart = at;
-
-                while (wsStart > 0 && char.IsWhiteSpace(text[wsStart - 1]))
-                    --wsStart;
-
-                int wsEnd = at;
-
-                while (wsEnd < text.Length && char.IsWhiteSpace(text[wsEnd]))
-                    ++wsEnd;
-
-                state.anchor = wsStart;
-                state.caret = wsEnd;
-                return;
-            }
-
-            int start = at;
-
-            while (start > 0 && !char.IsWhiteSpace(text[start - 1]))
-                start = PrevIndex(text, start);
-
-            int end = at;
-
-            while (end < text.Length && !char.IsWhiteSpace(text[end]))
-                end = NextIndex(text, end);
-
+            WordBounds(text, index, out int start, out int end);
             state.anchor = start;
             state.caret = end;
         }

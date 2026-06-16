@@ -52,11 +52,12 @@ namespace NowUI.CodeEditor
 
         const string IndentUnit = "    ";
 
-        readonly NowId _id;
+        NowId _id;
         readonly int _site;
         readonly NowCodeLanguage _language;
         readonly NowRect _rect;
         readonly bool _hasRect;
+        NowFocusNavigation _navigation;
         float _height;
         float _width;
         float _fontSize;
@@ -70,6 +71,7 @@ namespace NowUI.CodeEditor
             _site = site;
             _rect = default;
             _hasRect = false;
+            _navigation = default;
             _height = 240f;
             _width = 0f;
             _fontSize = 14f;
@@ -92,6 +94,10 @@ namespace NowUI.CodeEditor
         public NowCodeEditor SetLineNumbers(bool show) { _hideLineNumbers = !show; return this; }
 
         public NowCodeEditor SetStatusBar(bool show) { _hideStatusBar = !show; return this; }
+
+        public NowCodeEditor SetId(NowId id) { _id = id; return this; }
+
+        public NowCodeEditor SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
         sealed class EditorCache
         {
@@ -166,6 +172,7 @@ namespace NowUI.CodeEditor
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
             ref var editor = ref NowControlState.Get<EditorState>(NowInput.GetId(id, "editor"));
+            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(NowInput.GetId(id, "selection-gesture"));
 
             var cache = GetCache(id, _language);
 
@@ -218,7 +225,9 @@ namespace NowUI.CodeEditor
                 }
             }
 
-            var interaction = NowControls.Interact(id, rect, out bool focused, out _);
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
+            bool verticalMove = false;
+            bool revealCaret = false;
 
             if (focused && editor.hadFocus == 0)
             {
@@ -226,7 +235,10 @@ namespace NowUI.CodeEditor
                 NowTextInput.setImeEnabled?.Invoke(true);
 
                 if (!interaction.pressed)
+                {
                     NowTextEdit.MoveEnd(ref state, text, false);
+                    revealCaret = true;
+                }
             }
             else if (!focused && editor.hadFocus == 1)
             {
@@ -235,10 +247,11 @@ namespace NowUI.CodeEditor
 
             editor.hadFocus = focused ? (byte)1 : (byte)0;
 
-            bool verticalMove = false;
-
             if (interaction.pressed)
             {
+                revealCaret = true;
+                NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
+
                 bool onStatusBar = statusHeight > 0f && interaction.pointerPosition.y >= rect.yMax - statusHeight - 1f;
                 bool onGutter = !onStatusBar && interaction.pointerPosition.x < textRect.x - 2f;
 
@@ -248,6 +261,7 @@ namespace NowUI.CodeEditor
                     {
                         state.caret = Mathf.Clamp(cache.diagnostics[0].start, 0, text.Length);
                         state.anchor = state.caret;
+                        NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
                     }
                 }
                 else
@@ -259,22 +273,27 @@ namespace NowUI.CodeEditor
                     if (onGutter || streak >= 3)
                     {
                         NowTextEdit.SelectLine(ref state, text, hit);
+                        NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Line, in state);
                     }
                     else if (streak == 2)
                     {
                         NowTextEdit.SelectWord(ref state, text, hit);
+                        NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Word, in state);
                     }
                     else
                     {
                         state.caret = hit;
                         state.anchor = hit;
+                        NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
                     }
                 }
             }
             else if (interaction.dragging)
             {
-                state.caret = HitTest(text, cache, font, _fontSize, textStyle.fontStyle,
+                revealCaret = true;
+                int hit = HitTest(text, cache, font, _fontSize, textStyle.fontStyle,
                     interaction.pointerPosition, textRect, lineHeight, editor.scrollX, editor.scrollY);
+                NowTextEdit.DragSelectionGesture(ref state, text, in gesture, hit);
                 NowControlState.RequestRepaint();
             }
 
@@ -288,11 +307,15 @@ namespace NowUI.CodeEditor
 
                 if (!string.IsNullOrEmpty(frame.characters))
                 {
+                    revealCaret = true;
                     cache.undo.Push(text, in state, typing: true);
 
                     for (int i = 0; i < frame.characters.Length; ++i)
                         HandleCharacter(frame.characters[i], ref text, ref state, _language);
                 }
+
+                if (composition != null)
+                    revealCaret = true;
 
                 // While composing the IME owns the editing keys.
                 if (composition == null)
@@ -301,13 +324,22 @@ namespace NowUI.CodeEditor
                         NowFocus.Clear();
 
                     if (frame.undoPressed)
+                    {
+                        revealCaret = true;
                         cache.undo.Undo(ref text, ref state);
+                    }
 
                     if (frame.redoPressed)
+                    {
+                        revealCaret = true;
                         cache.undo.Redo(ref text, ref state);
+                    }
 
                     if (frame.selectAllPressed)
+                    {
+                        revealCaret = true;
                         NowTextEdit.SelectAll(ref state, text);
+                    }
 
                     // Copy/cut with no selection act on the whole line, like an IDE.
                     if (frame.copyPressed)
@@ -317,6 +349,7 @@ namespace NowUI.CodeEditor
 
                     if (frame.cutPressed)
                     {
+                        revealCaret = true;
                         cache.undo.Push(text, in state, typing: false);
 
                         if (state.hasSelection)
@@ -332,12 +365,14 @@ namespace NowUI.CodeEditor
 
                     if (frame.duplicatePressed)
                     {
+                        revealCaret = true;
                         cache.undo.Push(text, in state, typing: false);
                         DuplicateLines(ref text, ref state);
                     }
 
                     if (frame.pastePressed)
                     {
+                        revealCaret = true;
                         string buffer = NowClipboard.Paste();
 
                         if (!string.IsNullOrEmpty(buffer))
@@ -349,12 +384,15 @@ namespace NowUI.CodeEditor
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "enter"), frame.enterHeld))
                     {
+                        revealCaret = true;
                         cache.undo.Push(text, in state, typing: true);
                         InsertNewlineWithIndent(ref text, ref state, _language);
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "tab"), frame.tabHeld))
                     {
+                        revealCaret = true;
+
                         if (!ReferenceEquals(cache.text, text))
                             Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
 
@@ -364,6 +402,7 @@ namespace NowUI.CodeEditor
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "bs"), frame.backspaceHeld))
                     {
+                        revealCaret = true;
                         cache.undo.Push(text, in state, typing: true);
 
                         if (!PairBackspace(ref text, ref state, _language) &&
@@ -375,33 +414,44 @@ namespace NowUI.CodeEditor
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "del"), frame.deleteHeld))
                     {
+                        revealCaret = true;
                         cache.undo.Push(text, in state, typing: true);
                         NowTextEdit.Delete(ref text, ref state, frame.command);
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "left"), frame.leftHeld))
+                    {
+                        revealCaret = true;
                         NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.command);
+                    }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "right"), frame.rightHeld))
+                    {
+                        revealCaret = true;
                         NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.command);
+                    }
 
                     if (!ReferenceEquals(cache.text, text))
                         Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "up"), frame.upHeld))
                     {
+                        revealCaret = true;
                         MoveVertical(ref state, ref editor, text, cache, font, _fontSize, textStyle.fontStyle, -1, frame.shift);
                         verticalMove = true;
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "down"), frame.downHeld))
                     {
+                        revealCaret = true;
                         MoveVertical(ref state, ref editor, text, cache, font, _fontSize, textStyle.fontStyle, 1, frame.shift);
                         verticalMove = true;
                     }
 
                     if (frame.homePressed)
                     {
+                        revealCaret = true;
+
                         if (frame.command)
                         {
                             NowTextEdit.MoveHome(ref state, frame.shift);
@@ -414,6 +464,8 @@ namespace NowUI.CodeEditor
 
                     if (frame.endPressed)
                     {
+                        revealCaret = true;
+
                         if (frame.command)
                         {
                             NowTextEdit.MoveEnd(ref state, text, frame.shift);
@@ -444,7 +496,9 @@ namespace NowUI.CodeEditor
             if (composition != null)
                 caretX += Advance(composition, font, _fontSize, textStyle.fontStyle);
 
-            if (state.caret != editor.lastCaret || result.changed || interaction.pressed)
+            revealCaret |= state.caret != editor.lastCaret || result.changed;
+
+            if (revealCaret)
             {
                 editor.lastCaret = state.caret;
                 editor.blinkAnchor = Time.realtimeSinceStartup;
@@ -461,8 +515,7 @@ namespace NowUI.CodeEditor
             editor.scrollX = Mathf.Clamp(editor.scrollX, 0f, maxScrollX);
 
             Vector2 pendingWheel = NowInput.current.scrollDelta;
-            bool canWheelScroll = WouldWheelMove(editor.scrollX, editor.scrollY, maxScrollX, maxScrollY, pendingWheel,
-                lineHeight, focused, caretLine, caretX, textRect);
+            bool canWheelScroll = WouldWheelMove(editor.scrollX, editor.scrollY, maxScrollX, maxScrollY, pendingWheel, lineHeight);
 
             if (interaction.hovered && canWheelScroll)
             {
@@ -476,7 +529,7 @@ namespace NowUI.CodeEditor
                 }
             }
 
-            if (focused)
+            if (focused && revealCaret)
             {
                 float caretTop = caretLine * lineHeight;
 
@@ -512,33 +565,13 @@ namespace NowUI.CodeEditor
         }
 
         static bool WouldWheelMove(float scrollX, float scrollY, float maxScrollX, float maxScrollY, Vector2 wheel,
-            float lineHeight, bool focused, int caretLine, float caretX, NowRect textRect)
+            float lineHeight)
         {
             if (wheel == Vector2.zero)
                 return false;
 
             float nextY = Mathf.Clamp(scrollY - wheel.y * lineHeight * 2f, 0f, maxScrollY);
             float nextX = Mathf.Clamp(scrollX + wheel.x * lineHeight * 2f, 0f, maxScrollX);
-
-            if (focused)
-            {
-                float caretTop = caretLine * lineHeight;
-
-                if (caretTop < nextY)
-                    nextY = caretTop;
-
-                if (caretTop + lineHeight > nextY + textRect.height)
-                    nextY = caretTop + lineHeight - textRect.height;
-
-                if (caretX < nextX)
-                    nextX = Mathf.Max(0f, caretX - 24f);
-
-                if (caretX > nextX + textRect.width - 8f)
-                    nextX = caretX - textRect.width + 24f;
-
-                nextY = Mathf.Clamp(nextY, 0f, maxScrollY);
-                nextX = Mathf.Clamp(nextX, 0f, maxScrollX);
-            }
 
             return !Mathf.Approximately(nextY, scrollY) || !Mathf.Approximately(nextX, scrollX);
         }

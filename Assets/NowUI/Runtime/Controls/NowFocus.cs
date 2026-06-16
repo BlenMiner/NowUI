@@ -5,21 +5,219 @@ using UnityEngine.EventSystems;
 namespace NowUI
 {
     /// <summary>
+    /// Optional per-control focus links. Set only the directions you need; any
+    /// unset or currently unregistered target falls back to the default resolver.
+    /// </summary>
+    public struct NowFocusNavigation
+    {
+        const byte LeftMask = 1 << 0;
+        const byte RightMask = 1 << 1;
+        const byte UpMask = 1 << 2;
+        const byte DownMask = 1 << 3;
+        const byte PreviousMask = 1 << 4;
+        const byte NextMask = 1 << 5;
+
+        NowId _left;
+        NowId _right;
+        NowId _up;
+        NowId _down;
+        NowId _previous;
+        NowId _next;
+        byte _mask;
+
+        public static NowFocusNavigation None => default;
+
+        public static NowFocusNavigation Left(NowId id) => default(NowFocusNavigation).SetLeft(id);
+
+        public static NowFocusNavigation Right(NowId id) => default(NowFocusNavigation).SetRight(id);
+
+        public static NowFocusNavigation Up(NowId id) => default(NowFocusNavigation).SetUp(id);
+
+        public static NowFocusNavigation Down(NowId id) => default(NowFocusNavigation).SetDown(id);
+
+        public static NowFocusNavigation Previous(NowId id) => default(NowFocusNavigation).SetPrevious(id);
+
+        public static NowFocusNavigation Next(NowId id) => default(NowFocusNavigation).SetNext(id);
+
+        public NowFocusNavigation SetLeft(NowId id) { _left = id; SetMask(LeftMask, id.hasValue); return this; }
+
+        public NowFocusNavigation SetRight(NowId id) { _right = id; SetMask(RightMask, id.hasValue); return this; }
+
+        public NowFocusNavigation SetUp(NowId id) { _up = id; SetMask(UpMask, id.hasValue); return this; }
+
+        public NowFocusNavigation SetDown(NowId id) { _down = id; SetMask(DownMask, id.hasValue); return this; }
+
+        public NowFocusNavigation SetPrevious(NowId id) { _previous = id; SetMask(PreviousMask, id.hasValue); return this; }
+
+        public NowFocusNavigation SetNext(NowId id) { _next = id; SetMask(NextMask, id.hasValue); return this; }
+
+        void SetMask(byte mask, bool enabled)
+        {
+            if (enabled)
+                _mask |= mask;
+            else
+                _mask &= (byte)~mask;
+        }
+
+        internal ResolvedFocusNavigation Resolve()
+        {
+            var resolved = default(ResolvedFocusNavigation);
+
+            if ((_mask & LeftMask) != 0)
+                resolved.SetLeft(NowControls.ResolveNavigationTargetId(_left));
+
+            if ((_mask & RightMask) != 0)
+                resolved.SetRight(NowControls.ResolveNavigationTargetId(_right));
+
+            if ((_mask & UpMask) != 0)
+                resolved.SetUp(NowControls.ResolveNavigationTargetId(_up));
+
+            if ((_mask & DownMask) != 0)
+                resolved.SetDown(NowControls.ResolveNavigationTargetId(_down));
+
+            if ((_mask & PreviousMask) != 0)
+                resolved.SetPrevious(NowControls.ResolveNavigationTargetId(_previous));
+
+            if ((_mask & NextMask) != 0)
+                resolved.SetNext(NowControls.ResolveNavigationTargetId(_next));
+
+            return resolved;
+        }
+    }
+
+    internal struct ResolvedFocusNavigation
+    {
+        const byte LeftMask = 1 << 0;
+        const byte RightMask = 1 << 1;
+        const byte UpMask = 1 << 2;
+        const byte DownMask = 1 << 3;
+        const byte PreviousMask = 1 << 4;
+        const byte NextMask = 1 << 5;
+
+        int _left;
+        int _right;
+        int _up;
+        int _down;
+        int _previous;
+        int _next;
+        byte _mask;
+
+        public void SetLeft(int id) { _left = id; SetMask(LeftMask, id != 0); }
+
+        public void SetRight(int id) { _right = id; SetMask(RightMask, id != 0); }
+
+        public void SetUp(int id) { _up = id; SetMask(UpMask, id != 0); }
+
+        public void SetDown(int id) { _down = id; SetMask(DownMask, id != 0); }
+
+        public void SetPrevious(int id) { _previous = id; SetMask(PreviousMask, id != 0); }
+
+        public void SetNext(int id) { _next = id; SetMask(NextMask, id != 0); }
+
+        void SetMask(byte mask, bool enabled)
+        {
+            if (enabled)
+                _mask |= mask;
+            else
+                _mask &= (byte)~mask;
+        }
+
+        public bool TryGetDirectional(Vector2 direction, out int id)
+        {
+            if (direction.x < -0.5f && (_mask & LeftMask) != 0)
+            {
+                id = _left;
+                return true;
+            }
+
+            if (direction.x > 0.5f && (_mask & RightMask) != 0)
+            {
+                id = _right;
+                return true;
+            }
+
+            if (direction.y < -0.5f && (_mask & UpMask) != 0)
+            {
+                id = _up;
+                return true;
+            }
+
+            if (direction.y > 0.5f && (_mask & DownMask) != 0)
+            {
+                id = _down;
+                return true;
+            }
+
+            id = 0;
+            return false;
+        }
+
+        public bool TryGetOrder(int step, out int id)
+        {
+            if (step < 0 && (_mask & PreviousMask) != 0)
+            {
+                id = _previous;
+                return true;
+            }
+
+            if (step > 0 && (_mask & NextMask) != 0)
+            {
+                id = _next;
+                return true;
+            }
+
+            id = 0;
+            return false;
+        }
+    }
+
+    internal struct NowFocusScrollRegionScope : System.IDisposable
+    {
+        bool _active;
+
+        internal NowFocusScrollRegionScope(bool active)
+        {
+            _active = active;
+        }
+
+        public void Dispose()
+        {
+            if (!_active)
+                return;
+
+            _active = false;
+            NowFocus.PopScrollRegion();
+        }
+    }
+
+    /// <summary>
     /// Keyboard/gamepad focus for immediate-mode controls. Focusable controls
     /// register their rect every frame as they draw; navigation resolves spatially
     /// against the previous frame's registry (immediate mode has no widget tree).
     /// Pointer interaction focuses controls explicitly (<see cref="Focus"/>), the
-    /// navigation vector moves focus directionally, cancel clears it, and
+    /// navigation vector moves focus directionally, Tab cycles by draw order,
+    /// cancel clears it, and
     /// <see cref="SubmitPressed"/> lets the focused control activate from
     /// keyboard/gamepad submit.
     /// </summary>
     public static class NowFocus
     {
+        const float NavigationThreshold = 0.55f;
+
+        const float NavigationRepeatDelay = 0.4f;
+
+        const float NavigationRepeatInterval = 0.12f;
+
         struct Focusable
         {
             public int id;
             public Rect rect;
+            public Rect visibleRect;
+            public int scrollRegionId;
+            public ResolvedFocusNavigation navigation;
         }
+
+        static readonly List<int> _scrollRegionStack = new List<int>(4);
 
         static readonly List<Focusable> _current = new List<Focusable>(32);
 
@@ -27,11 +225,17 @@ namespace NowUI
 
         static int _focusedId;
 
+        static int _focusRevision;
+
         static int _registryFrame = -1;
 
         static int _navigationLockFrame = -1;
 
         static Vector2 _lastNavigation;
+
+        static Vector2 _repeatDirection;
+
+        static float _nextNavigationRepeatTime;
 
         /// <summary>
         /// Keeps NowUI focus and Unity's EventSystem selection mutually exclusive
@@ -44,6 +248,8 @@ namespace NowUI
         /// <summary>The focused control id, or 0 when nothing has focus.</summary>
         public static int focusedId => _focusedId;
 
+        internal static int focusRevision => _focusRevision;
+
         public static bool IsFocused(int id)
         {
             return id != 0 && _focusedId == id;
@@ -51,7 +257,7 @@ namespace NowUI
 
         public static void Focus(int id)
         {
-            _focusedId = id;
+            SetFocused(id);
 
             if (respectEventSystem && id != 0)
             {
@@ -64,7 +270,23 @@ namespace NowUI
 
         public static void Clear()
         {
-            _focusedId = 0;
+            SetFocused(0);
+        }
+
+        static void SetFocused(int id)
+        {
+            if (_focusedId == id)
+                return;
+
+            _focusedId = id;
+
+            unchecked
+            {
+                ++_focusRevision;
+
+                if (_focusRevision == 0)
+                    _focusRevision = 1;
+            }
         }
 
         /// <summary>
@@ -74,16 +296,84 @@ namespace NowUI
         /// </summary>
         public static void Register(int id, NowRect rect)
         {
+            Register(id, rect, default);
+        }
+
+        /// <summary>
+        /// Adds a control to this frame's focus registry with optional explicit
+        /// directional/Tab navigation targets.
+        /// </summary>
+        public static void Register(int id, NowRect rect, NowFocusNavigation navigation)
+        {
             if (id == 0 || NowInput.isPassive || rect.isEmpty)
                 return;
 
-            rect = Now.ApplyAmbientMask(rect);
+            NowRect visibleRect = Now.ApplyAmbientMask(rect);
+            int scrollRegionId = CurrentScrollRegionId();
 
-            if (rect.isEmpty)
+            if (visibleRect.isEmpty && scrollRegionId == 0)
                 return;
 
             BeginFrameIfNeeded();
-            _current.Add(new Focusable { id = id, rect = (Rect)rect });
+            _current.Add(new Focusable
+            {
+                id = id,
+                rect = scrollRegionId != 0 ? (Rect)rect : (Rect)visibleRect,
+                visibleRect = (Rect)visibleRect,
+                scrollRegionId = scrollRegionId,
+                navigation = navigation.Resolve()
+            });
+        }
+
+        internal static NowFocusScrollRegionScope BeginScrollRegion(int id)
+        {
+            if (id == 0 || NowInput.isPassive)
+                return new NowFocusScrollRegionScope(false);
+
+            BeginFrameIfNeeded();
+            _scrollRegionStack.Add(id);
+            return new NowFocusScrollRegionScope(true);
+        }
+
+        internal static void PopScrollRegion()
+        {
+            if (_scrollRegionStack.Count > 0)
+                _scrollRegionStack.RemoveAt(_scrollRegionStack.Count - 1);
+        }
+
+        static int CurrentScrollRegionId()
+        {
+            return _scrollRegionStack.Count > 0 ? _scrollRegionStack[_scrollRegionStack.Count - 1] : 0;
+        }
+
+        internal static bool TryGetFocusedRectInScrollRegion(int scrollRegionId, out NowRect rect)
+        {
+            rect = default;
+
+            if (scrollRegionId == 0 || _focusedId == 0 || NowInput.isPassive)
+                return false;
+
+            BeginFrameIfNeeded();
+
+            if (TryGetFocusedRectInScrollRegion(_previous, scrollRegionId, out rect))
+                return true;
+
+            return TryGetFocusedRectInScrollRegion(_current, scrollRegionId, out rect);
+        }
+
+        static bool TryGetFocusedRectInScrollRegion(List<Focusable> focusables, int scrollRegionId, out NowRect rect)
+        {
+            for (int i = 0; i < focusables.Count; ++i)
+            {
+                if (focusables[i].id == _focusedId && focusables[i].scrollRegionId == scrollRegionId)
+                {
+                    rect = (NowRect)focusables[i].rect;
+                    return true;
+                }
+            }
+
+            rect = default;
+            return false;
         }
 
         /// <summary>
@@ -96,11 +386,11 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Suppresses spatial navigation while the focused control consumes
-        /// directional input itself — a text field's arrows move the caret and
-        /// WASD types characters, neither should move focus. Call every frame
-        /// from the focused control's draw; effective on the next frame swap,
-        /// like registration.
+        /// Suppresses focus navigation while the focused control consumes
+        /// keyboard/gamepad input itself — a text field's arrows move the caret
+        /// and WASD types characters, neither should move focus. Call every
+        /// frame from the focused control's draw; effective on the next frame
+        /// swap, like registration.
         /// </summary>
         public static void LockNavigation()
         {
@@ -151,7 +441,12 @@ namespace NowUI
             }
 
             if (snapshot.cancelPressed)
+            {
                 Clear();
+                _lastNavigation = snapshot.navigation;
+                ResetNavigationRepeat();
+                return;
+            }
 
             if (snapshot.primaryPressed && _focusedId != 0)
             {
@@ -159,7 +454,9 @@ namespace NowUI
 
                 for (int i = 0; i < _previous.Count; ++i)
                 {
-                    if (_previous[i].rect.Contains(snapshot.pointerPosition))
+                    if (_previous[i].visibleRect.width > 0f &&
+                        _previous[i].visibleRect.height > 0f &&
+                        _previous[i].visibleRect.Contains(snapshot.pointerPosition))
                     {
                         overControl = true;
                         break;
@@ -167,32 +464,125 @@ namespace NowUI
                 }
 
                 if (!overControl)
+                {
                     Clear();
+                    _lastNavigation = snapshot.navigation;
+                    ResetNavigationRepeat();
+                    return;
+                }
             }
 
             Vector2 navigation = snapshot.navigation;
-            const float Threshold = 0.55f;
-
-            Vector2 direction = default;
-
-            // Navigation y+ means "up"; focus rect space is y-down screen coords.
-            if (navigation.x > Threshold && _lastNavigation.x <= Threshold)
-                direction = new Vector2(1f, 0f);
-            else if (navigation.x < -Threshold && _lastNavigation.x >= -Threshold)
-                direction = new Vector2(-1f, 0f);
-            else if (navigation.y > Threshold && _lastNavigation.y <= Threshold)
-                direction = new Vector2(0f, -1f);
-            else if (navigation.y < -Threshold && _lastNavigation.y >= -Threshold)
-                direction = new Vector2(0f, 1f);
-
-            _lastNavigation = navigation;
-
             bool navigationLocked = _navigationLockFrame >= Time.frameCount - 1;
 
-            if (navigationLocked || direction == default || _previous.Count == 0)
+            if (navigationLocked)
+            {
+                _lastNavigation = navigation;
+                ResetNavigationRepeat();
+                return;
+            }
+
+            if (snapshot.focusPreviousPressed || snapshot.focusNextPressed)
+            {
+                MoveFocusInRegistrationOrder(snapshot.focusPreviousPressed ? -1 : 1);
+                _lastNavigation = navigation;
+                ResetNavigationRepeat();
+                return;
+            }
+
+            Vector2 direction = GetNavigationPulse(navigation, snapshot.time);
+
+            if (direction == default || _previous.Count == 0)
                 return;
 
             MoveFocus(direction);
+        }
+
+        static Vector2 GetNavigationPulse(Vector2 navigation, float time)
+        {
+            Vector2 direction = ResolveNavigationDirection(navigation);
+            Vector2 previousDirection = ResolveNavigationDirection(_lastNavigation);
+            _lastNavigation = navigation;
+
+            if (direction == default)
+            {
+                ResetNavigationRepeat();
+                return default;
+            }
+
+            NowControlState.RequestRepaint();
+
+            if (direction != previousDirection || direction != _repeatDirection)
+            {
+                _repeatDirection = direction;
+                _nextNavigationRepeatTime = time + NavigationRepeatDelay;
+                return direction;
+            }
+
+            if (time >= _nextNavigationRepeatTime)
+            {
+                _nextNavigationRepeatTime = time + NavigationRepeatInterval;
+                return direction;
+            }
+
+            return default;
+        }
+
+        static Vector2 ResolveNavigationDirection(Vector2 navigation)
+        {
+            float x = Mathf.Abs(navigation.x);
+            float y = Mathf.Abs(navigation.y);
+
+            if (x <= NavigationThreshold && y <= NavigationThreshold)
+                return default;
+
+            if (x >= y)
+                return new Vector2(Mathf.Sign(navigation.x), 0f);
+
+            // Navigation y+ means "up"; focus rect space is y-down screen coords.
+            return new Vector2(0f, -Mathf.Sign(navigation.y));
+        }
+
+        static void ResetNavigationRepeat()
+        {
+            _repeatDirection = default;
+            _nextNavigationRepeatTime = 0f;
+        }
+
+        static void MoveFocusInRegistrationOrder(int step)
+        {
+            if (_previous.Count == 0)
+                return;
+
+            int focusedIndex = -1;
+
+            for (int i = 0; i < _previous.Count; ++i)
+            {
+                if (_previous[i].id == _focusedId)
+                {
+                    focusedIndex = i;
+                    break;
+                }
+            }
+
+            if (focusedIndex < 0)
+            {
+                SetFocused(step >= 0 ? _previous[0].id : _previous[_previous.Count - 1].id);
+                return;
+            }
+
+            if (_previous[focusedIndex].navigation.TryGetOrder(step, out int targetId) &&
+                TryFocusRegistered(targetId))
+            {
+                return;
+            }
+
+            int next = (focusedIndex + step) % _previous.Count;
+
+            if (next < 0)
+                next += _previous.Count;
+
+            SetFocused(_previous[next].id);
         }
 
         static void MoveFocus(Vector2 direction)
@@ -210,7 +600,13 @@ namespace NowUI
 
             if (focusedIndex < 0)
             {
-                _focusedId = _previous[0].id;
+                SetFocused(FindEdgeFocus(direction));
+                return;
+            }
+
+            if (_previous[focusedIndex].navigation.TryGetDirectional(direction, out int targetId) &&
+                TryFocusRegistered(targetId))
+            {
                 return;
             }
 
@@ -240,17 +636,56 @@ namespace NowUI
             }
 
             if (bestId != 0)
-                _focusedId = bestId;
+                SetFocused(bestId);
+        }
+
+        static bool TryFocusRegistered(int id)
+        {
+            if (id == 0)
+                return false;
+
+            for (int i = 0; i < _previous.Count; ++i)
+            {
+                if (_previous[i].id == id)
+                {
+                    SetFocused(id);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static int FindEdgeFocus(Vector2 direction)
+        {
+            float bestScore = float.MaxValue;
+            int bestId = 0;
+
+            for (int i = 0; i < _previous.Count; ++i)
+            {
+                float score = Vector2.Dot(_previous[i].rect.center, direction);
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestId = _previous[i].id;
+                }
+            }
+
+            return bestId != 0 ? bestId : _previous[0].id;
         }
 
         public static void Reset()
         {
             _current.Clear();
             _previous.Clear();
+            _scrollRegionStack.Clear();
             _focusedId = 0;
+            _focusRevision = 0;
             _registryFrame = -1;
             _navigationLockFrame = -1;
             _lastNavigation = default;
+            ResetNavigationRepeat();
             respectEventSystem = true;
         }
 

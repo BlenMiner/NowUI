@@ -71,6 +71,55 @@ public class NowControlsTests
         return NowControlState.EndRepaintTracking();
     }
 
+    static NowInputSnapshot NavigationSnapshot(Vector2 navigation, bool previous = false, bool next = false, float time = 1f)
+    {
+        return new NowInputSnapshot(
+            false, default, default, default,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            default, navigation,
+            previous, next,
+            false, false, false, false, false, false,
+            1, time);
+    }
+
+    [Test]
+    public void TransitionDoesNotAdvanceDuringPassiveMeasurePass()
+    {
+        const int id = 909;
+
+        try
+        {
+            NowControlState.Transition(id, true, 100f);
+            System.Threading.Thread.Sleep(20);
+            float active = NowControlState.Transition(id, true, 100f);
+
+            Assert.Greater(active, 0f);
+
+            System.Threading.Thread.Sleep(20);
+            float passive = -1f;
+
+            using (NowInput.Begin(_provider, Surface))
+            {
+                NowLayout.Area(new NowRect(0f, 0f, 100f, 100f), () =>
+                {
+                    if (NowInput.isPassive)
+                        passive = NowControlState.Transition(id, false, 100f);
+                });
+            }
+
+            Assert.AreEqual(active, passive, 0.0001f);
+
+            System.Threading.Thread.Sleep(20);
+            float after = NowControlState.Transition(id, false, 100f);
+
+            Assert.Less(after, passive);
+        }
+        finally
+        {
+            NowLayout.Reset();
+        }
+    }
+
     [Test]
     public void ButtonClicksOnPressAndReleaseInside()
     {
@@ -521,6 +570,235 @@ public class NowControlsTests
             NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
             Vector2.zero, new Vector2(1f, 0f),
             false, false, false, false, false, false, 2, 2f);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(2, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void DirectionalNavigationWithoutFocusStartsAtOppositeEdge()
+    {
+        var left = new NowRect(10, 10, 80, 30);
+        var right = new NowRect(200, 10, 80, 30);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(2, right);
+            NowFocus.Register(1, left);
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.right);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(1, NowFocus.focusedId, "Right navigation should start at the left edge, not draw order.");
+    }
+
+    [Test]
+    public void TabNavigationCyclesByRegistrationOrder()
+    {
+        var first = new NowRect(10, 10, 80, 30);
+        var second = new NowRect(10, 50, 80, 30);
+        var third = new NowRect(10, 90, 80, 30);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, first);
+            NowFocus.Register(2, second);
+            NowFocus.Register(3, third);
+            NowFocus.Focus(1);
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.zero, next: true);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(2, NowFocus.focusedId);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, first);
+            NowFocus.Register(2, second);
+            NowFocus.Register(3, third);
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.zero, previous: true);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(1, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void HeldDirectionalNavigationRepeatsAfterDelay()
+    {
+        var first = new NowRect(10, 10, 80, 30);
+        var second = new NowRect(120, 10, 80, 30);
+        var third = new NowRect(230, 10, 80, 30);
+
+        _provider.snapshot = NavigationSnapshot(Vector2.right, time: 0f);
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, first);
+            NowFocus.Register(2, second);
+            NowFocus.Register(3, third);
+            NowFocus.Focus(1);
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.right, time: 0.2f);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(1, NowFocus.focusedId, "Held navigation should wait for the repeat delay.");
+
+        NowFocus.Reset();
+        _provider.snapshot = NavigationSnapshot(Vector2.right, time: 0f);
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, first);
+            NowFocus.Register(2, second);
+            NowFocus.Register(3, third);
+            NowFocus.Focus(1);
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.right, time: 0.5f);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(2, NowFocus.focusedId, "Held navigation should repeat after the delay.");
+    }
+
+    [Test]
+    public void ExplicitDirectionalNavigationOverridesSpatialChoice()
+    {
+        var first = new NowRect(10, 10, 80, 30);
+        var nearest = new NowRect(120, 10, 80, 30);
+        var explicitTarget = new NowRect(260, 10, 80, 30);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, first, NowFocusNavigation.Right(3));
+            NowFocus.Register(2, nearest);
+            NowFocus.Register(3, explicitTarget);
+            NowFocus.Focus(1);
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.right);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(3, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void ExplicitDirectionalNavigationFallsBackWhenTargetIsMissing()
+    {
+        var first = new NowRect(10, 10, 80, 30);
+        var nearest = new NowRect(120, 10, 80, 30);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, first, NowFocusNavigation.Right(99));
+            NowFocus.Register(2, nearest);
+            NowFocus.Focus(1);
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.right);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(2, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void ExplicitTabNavigationOverridesRegistrationOrder()
+    {
+        var first = new NowRect(10, 10, 80, 30);
+        var second = new NowRect(10, 50, 80, 30);
+        var explicitTarget = new NowRect(10, 90, 80, 30);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, first, NowFocusNavigation.Next(3));
+            NowFocus.Register(2, second);
+            NowFocus.Register(3, explicitTarget);
+            NowFocus.Focus(1);
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.zero, next: true);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(3, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void ButtonBuilderAppliesExplicitNavigation()
+    {
+        var first = new NowRect(10, 10, 80, 30);
+        var nearest = new NowRect(120, 10, 80, 30);
+        var explicitTarget = new NowRect(260, 10, 80, 30);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            Now.Button(first, "First").SetId(1).SetNavigation(NowFocusNavigation.Right(3)).Draw();
+            Now.Button(nearest, "Nearest").SetId(2).Draw();
+            Now.Button(explicitTarget, "Target").SetId(3).Draw();
+        }
+
+        NowFocus.Focus(1);
+        _provider.snapshot = NavigationSnapshot(Vector2.right);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(3, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void ScrollRegionKeepsCulledControlsNavigable()
+    {
+        var viewport = new NowRect(0, 0, 120, 40);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        using (Now.Mask(viewport))
+        using (NowFocus.BeginScrollRegion(500))
+        {
+            NowFocus.Register(1, new NowRect(0, 0, 100, 30));
+            NowFocus.Register(2, new NowRect(0, 50, 100, 30));
+            NowFocus.Focus(1);
+        }
+
+        _provider.snapshot = NavigationSnapshot(new Vector2(0f, -1f));
 
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();

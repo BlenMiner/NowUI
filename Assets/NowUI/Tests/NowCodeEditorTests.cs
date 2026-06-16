@@ -1,4 +1,6 @@
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using NowUI;
@@ -85,6 +87,22 @@ public class NowCodeEditorTests
         return result;
     }
 
+    void PointerFrame(ref string text, Vector2 pointer, bool down, bool pressed, bool released)
+    {
+        _pointer.snapshot = new NowInputSnapshot(pointer, down, pressed, released);
+        Frame(ref text);
+    }
+
+    static Vector2 EditorTextPoint(string textBefore, int line = 0)
+    {
+        var textStyle = NowTheme.themeAsset.Text(default, NowTextStyle.Body).SetFontSize(14f);
+        float lineHeight = textStyle.font.GetLineHeight(textStyle.fontStyle) * 14f;
+        float gutterWidth = textStyle.font.MeasureText("1", 14f).x + 18f;
+        return new Vector2(
+            EditorRect.x + gutterWidth + 6f + textStyle.font.MeasureText(textBefore, 14f).x + 1f,
+            EditorRect.y + 6f + lineHeight * (line + 0.5f));
+    }
+
     void NestedScrollFrame(ref string text)
     {
         _keyboard.frame = default;
@@ -104,6 +122,8 @@ public class NowCodeEditorTests
 
     static int OuterId => NowInput.GetId(0, "outer");
 
+    static int EditorStateId => NowInput.GetId(Id, "editor");
+
     void Focus()
     {
         NowFocus.Focus(Id);
@@ -112,6 +132,26 @@ public class NowCodeEditorTests
     ref NowTextEditState State()
     {
         return ref NowControlState.Get<NowTextEditState>(Id);
+    }
+
+    float EditorScrollY()
+    {
+        var editorType = typeof(NowCodeEditor).GetNestedType("EditorState", BindingFlags.NonPublic);
+        Assert.NotNull(editorType);
+
+        var storeDefinition = typeof(NowControlState).GetNestedType("Store`1", BindingFlags.NonPublic);
+        Assert.NotNull(storeDefinition);
+
+        var storeType = storeDefinition.MakeGenericType(editorType);
+        var entriesField = storeType.GetField("entries", BindingFlags.Static | BindingFlags.Public);
+        Assert.NotNull(entriesField);
+
+        var entries = (IDictionary)entriesField.GetValue(null);
+        Assert.IsTrue(entries.Contains(EditorStateId), "Editor state was not created.");
+
+        object entry = entries[EditorStateId];
+        object value = entry.GetType().GetField("value", BindingFlags.Instance | BindingFlags.Public).GetValue(entry);
+        return (float)editorType.GetField("scrollY", BindingFlags.Instance | BindingFlags.Public).GetValue(value);
     }
 
     static List<NowCodeToken> Tokenize(NowCodeLanguage language, string line, int state = 0)
@@ -290,6 +330,23 @@ public class NowCodeEditorTests
     }
 
     [Test]
+    public void DoubleClickDragExtendsByWholeWords()
+    {
+        string text = "hello world wide";
+        var insideWorld = EditorTextPoint("hello wo");
+        var insideWide = EditorTextPoint("hello world wi");
+
+        PointerFrame(ref text, insideWorld, down: true, pressed: true, released: false);
+        PointerFrame(ref text, insideWorld, down: false, pressed: false, released: true);
+        PointerFrame(ref text, insideWorld, down: true, pressed: true, released: false);
+        PointerFrame(ref text, insideWide, down: true, pressed: false, released: false);
+        PointerFrame(ref text, insideWide, down: false, pressed: false, released: true);
+
+        Assert.AreEqual("world wide", NowTextEdit.GetSelection(text, State()),
+            "Dragging after a double-click stays in word selection mode.");
+    }
+
+    [Test]
     public void TabIndentsAndShiftTabDedents()
     {
         string text = "a\nb";
@@ -433,6 +490,42 @@ public class NowCodeEditorTests
 
         Assert.IsFalse(result.changed);
         Assert.AreEqual("{}", text);
+    }
+
+    [Test]
+    public void FocusedWheelScrollCanHideCaretUntilCaretNavigation()
+    {
+        string text = LongJsonDocument();
+        var point = new Vector2(EditorRect.x + 80f, EditorRect.y + 22f);
+
+        Frame(ref text);
+
+        _pointer.snapshot = new NowInputSnapshot(
+            true, point, point, Vector2.zero,
+            true, true, false, Vector2.zero, 1, 0.1f);
+        Frame(ref text);
+
+        _pointer.snapshot = new NowInputSnapshot(
+            true, point, point, Vector2.zero,
+            false, false, true, Vector2.zero, 2, 0.2f);
+        Frame(ref text);
+
+        Assert.AreEqual(0f, EditorScrollY(), 0.001f, "Fixture must start with the caret-visible top line.");
+
+        _pointer.snapshot = new NowInputSnapshot(
+            true, point, point, Vector2.zero,
+            false, false, false, new Vector2(0f, -3f), 3, 0.3f);
+        Frame(ref text);
+
+        float scrolled = EditorScrollY();
+        Assert.Greater(scrolled, 0f, "Wheel scrolling a focused editor should not be cancelled by caret reveal.");
+
+        _pointer.snapshot = new NowInputSnapshot(
+            true, point, point, Vector2.zero,
+            false, false, false, Vector2.zero, 4, 0.4f);
+        Frame(ref text, new NowTextInputFrame { homePressed = true });
+
+        Assert.AreEqual(0f, EditorScrollY(), 0.001f, "Caret navigation should reveal the caret after free scrolling.");
     }
 
     [Test]

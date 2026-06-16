@@ -12,6 +12,7 @@ namespace NowUI
         readonly string _label;
         readonly int _site;
         NowId _id;
+        NowFocusNavigation _navigation;
         NowLayoutOptions _options;
         NowRectangleStyle _rectPreset;
         NowTextStyle _textPreset;
@@ -28,6 +29,7 @@ namespace NowUI
             _label = label ?? string.Empty;
             _site = site;
             _id = default;
+            _navigation = default;
             _options = default;
             _rectPreset = NowRectangleStyle.Accent;
             _textPreset = NowTextStyle.Button;
@@ -52,6 +54,9 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowButton SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
+        public NowButton SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
         public NowButton SetStyle(NowRectangleStyle style) { _rectPreset = style; return this; }
 
@@ -79,35 +84,27 @@ namespace NowUI
         public NowControlScope Begin()
         {
             var theme = NowTheme.themeAsset;
+            var renderer = theme.controlRenderer;
             int id = ResolveControlId();
             int areaKey = NowInput.CombineId(id, AreaKeySeed);
 
-            Vector4 padding = theme.GetSpacing(NowSpacingToken.Md, new Vector4(12f, 12f, 12f, 12f));
+            Vector4 padding = theme.controlStyles.buttonPadding;
             NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
-            var fallback = new Vector2(padding.x + padding.z + 40f, padding.y + padding.w + 20f);
-            var contentSize = cached.x > 0f ? cached : fallback;
+            var contentSize = renderer.MeasureButtonContent(theme, cached);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
-            var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
 
-            var rectangle = theme.Rectangle(rect, _rectPreset);
-            rectangle.color = NowControls.StateTint(rectangle.color, hoverT, interaction.held);
-
-            if (focused)
-            {
-                rectangle.outline = Mathf.Max(rectangle.outline, 2f);
-                rectangle.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
-            }
-
-            rectangle.Draw();
+            renderer.DrawButton(new NowButtonRenderContext(
+                theme, rect, null, _rectPreset, _textPreset, interaction, focused, hoverT));
 
             // Content is clipped to the button: with deferred sizing the first
             // frames can be smaller than the content, and oversized children should
             // never escape the control visually.
             var mask = Now.Mask(rect);
             var area = NowLayout.Area(areaKey, rect, new NowLayoutOptions().SetPadding(padding));
-            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f).SetAlignItems(_alignItems));
+            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(theme.controlStyles.buttonContentGap).SetAlignItems(_alignItems));
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
         }
@@ -115,30 +112,16 @@ namespace NowUI
         public bool Draw()
         {
             var theme = NowTheme.themeAsset;
+            var renderer = theme.controlRenderer;
             int id = ResolveControlId();
 
-            var text = theme.Text(default, _textPreset);
-            Vector2 labelSize = text.Measure(_label);
-            Vector4 padding = theme.GetSpacing(NowSpacingToken.Md, new Vector4(12f, 12f, 12f, 12f));
-            var contentSize = new Vector2(
-                labelSize.x + padding.x + padding.z,
-                labelSize.y + (padding.y + padding.w) * 0.5f);
-
+            Vector2 contentSize = renderer.MeasureButton(theme, _label, _textPreset);
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
-            var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
 
-            var rectangle = theme.Rectangle(rect, _rectPreset);
-            rectangle.color = NowControls.StateTint(rectangle.color, hoverT, interaction.held);
-
-            if (focused)
-            {
-                rectangle.outline = Mathf.Max(rectangle.outline, 2f);
-                rectangle.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
-            }
-
-            rectangle.Draw();
-            NowControls.DrawCenteredLabel(theme, rect, _label, _textPreset, rect);
+            renderer.DrawButton(new NowButtonRenderContext(
+                theme, rect, _label, _rectPreset, _textPreset, interaction, focused, hoverT));
 
             return interaction.clicked || submitted;
         }
@@ -201,6 +184,7 @@ namespace NowUI
         readonly string _label;
         readonly int _site;
         NowId _id;
+        NowFocusNavigation _navigation;
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -216,6 +200,7 @@ namespace NowUI
             _label = label ?? string.Empty;
             _site = site;
             _id = default;
+            _navigation = default;
             _options = default;
             _rect = default;
             _hasRect = false;
@@ -233,6 +218,9 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowCheckbox SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
+        public NowCheckbox SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
         public NowCheckbox SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
@@ -255,102 +243,55 @@ namespace NowUI
         public NowControlScope Begin(ref bool value)
         {
             var theme = NowTheme.themeAsset;
+            var renderer = theme.controlRenderer;
             int id = ResolveControlId();
             int areaKey = NowInput.CombineId(id, AreaKeySeed);
 
-            const float Box = 18f;
-            const float Gap = 8f;
-
             NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
-            var contentSize = new Vector2(
-                Box + Gap + Mathf.Max(cached.x, 40f),
-                Mathf.Max(Box, cached.y));
+            var contentSize = renderer.MeasureToggleContent(theme, cached);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
-            var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             bool clicked = interaction.clicked || submitted;
 
             if (clicked)
                 value = !value;
 
-            DrawCheckboxGlyph(theme, rect, id, value, focused, interaction);
+            float glyphSize = theme.controlStyles.toggleSize;
+            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
+            renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, glyphRect, value, interaction, focused, hoverT));
 
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(areaKey, new NowRect(rect.x + Box + Gap, rect.y, rect.width - Box - Gap, rect.height));
-            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f).SetAlignItems(_alignItems));
+            var area = NowLayout.Area(areaKey, renderer.ToggleContentRect(theme, rect, glyphSize));
+            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(theme.controlStyles.buttonContentGap).SetAlignItems(_alignItems));
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, clicked);
-        }
-
-        void DrawCheckboxGlyph(NowThemeAsset themeAsset, NowRect rect, int id, bool value, bool focused, in NowInteraction interaction)
-        {
-            const float Box = 18f;
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
-            var boxRect = new NowRect(rect.x, rect.y + (rect.height - Box) * 0.5f, Box, Box);
-
-            var frame = themeAsset.Rectangle(boxRect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
-            frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
-
-            if (focused)
-            {
-                frame.outline = Mathf.Max(frame.outline, 2f);
-                frame.outlineColor = themeAsset.GetColor(NowColorToken.Text, Color.black);
-            }
-
-            frame.Draw();
-
-            if (value)
-            {
-                float inset = Box * 0.3f;
-                Now.Rectangle(new NowRect(boxRect.x + inset, boxRect.y + inset, Box - inset * 2f, Box - inset * 2f))
-                    .SetColor(themeAsset.GetColor(NowColorToken.AccentText, Color.white))
-                    .SetRadius(2f)
-                    .Draw();
-            }
         }
 
         public bool Draw(ref bool value)
         {
             var theme = NowTheme.themeAsset;
+            var renderer = theme.controlRenderer;
             int id = ResolveControlId();
 
             var text = theme.Text(default, _textPreset);
             Vector2 labelSize = text.Measure(_label);
-            float box = Mathf.Max(18f, labelSize.y);
-            const float Gap = 8f;
-            var contentSize = new Vector2(box + Gap + labelSize.x, Mathf.Max(box, labelSize.y));
+            float box = renderer.ToggleGlyphSize(theme, labelSize.y);
+            var contentSize = renderer.MeasureToggle(theme, _label, _textPreset);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
-            var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             bool changed = interaction.clicked || submitted;
 
             if (changed)
                 value = !value;
 
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
-            var boxRect = new NowRect(rect.x, rect.y + (rect.height - box) * 0.5f, box, box);
+            var boxRect = renderer.ToggleGlyphRect(theme, rect, box);
 
-            var frame = theme.Rectangle(boxRect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
-            frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
-
-            if (focused)
-            {
-                frame.outline = Mathf.Max(frame.outline, 2f);
-                frame.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
-            }
-
-            frame.Draw();
-
-            if (value)
-            {
-                float inset = box * 0.3f;
-                Now.Rectangle(new NowRect(boxRect.x + inset, boxRect.y + inset, box - inset * 2f, box - inset * 2f))
-                    .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white))
-                    .SetRadius(2f)
-                    .Draw();
-            }
-
-            NowControls.DrawLeftLabel(theme, new NowRect(rect.x + box + Gap, rect.y, rect.width - box - Gap, rect.height), _label, _textPreset);
+            renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, boxRect, value, interaction, focused, hoverT));
+            NowControls.DrawLeftLabel(theme, renderer.ToggleContentRect(theme, rect, box), _label, _textPreset);
             return changed;
         }
     }
@@ -366,6 +307,7 @@ namespace NowUI
         readonly string _label;
         readonly int _site;
         NowId _id;
+        NowFocusNavigation _navigation;
         readonly bool _isOn;
         NowLayoutOptions _options;
         readonly NowRect _rect;
@@ -382,6 +324,7 @@ namespace NowUI
             _label = label ?? string.Empty;
             _site = site;
             _id = default;
+            _navigation = default;
             _isOn = isOn;
             _options = default;
             _rect = default;
@@ -400,6 +343,9 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowRadio SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
+        public NowRadio SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
         public NowRadio SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
@@ -421,98 +367,47 @@ namespace NowUI
         public NowControlScope Begin()
         {
             var theme = NowTheme.themeAsset;
+            var renderer = theme.controlRenderer;
             int id = ResolveControlId();
             int areaKey = NowInput.CombineId(id, AreaKeySeed);
 
-            const float Circle = 18f;
-            const float Gap = 8f;
-
             NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
-            var contentSize = new Vector2(
-                Circle + Gap + Mathf.Max(cached.x, 40f),
-                Mathf.Max(Circle, cached.y));
+            var contentSize = renderer.MeasureToggleContent(theme, cached);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
-            var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
 
-            DrawRadioGlyph(theme, rect, id, focused, interaction);
+            float glyphSize = theme.controlStyles.toggleSize;
+            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
+            renderer.DrawRadio(new NowToggleRenderContext(theme, rect, glyphRect, _isOn, interaction, focused, hoverT));
 
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(areaKey, new NowRect(rect.x + Circle + Gap, rect.y, rect.width - Circle - Gap, rect.height));
-            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(6f).SetAlignItems(_alignItems));
+            var area = NowLayout.Area(areaKey, renderer.ToggleContentRect(theme, rect, glyphSize));
+            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(theme.controlStyles.buttonContentGap).SetAlignItems(_alignItems));
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
-        }
-
-        void DrawRadioGlyph(NowThemeAsset themeAsset, NowRect rect, int id, bool focused, in NowInteraction interaction)
-        {
-            const float Circle = 18f;
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
-            var circleRect = new NowRect(rect.x, rect.y + (rect.height - Circle) * 0.5f, Circle, Circle);
-
-            var frame = themeAsset.Rectangle(circleRect, _isOn ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
-            frame.radius = new Vector4(Circle, Circle, Circle, Circle) * 0.5f;
-            frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
-
-            if (focused)
-            {
-                frame.outline = Mathf.Max(frame.outline, 2f);
-                frame.outlineColor = themeAsset.GetColor(NowColorToken.Text, Color.black);
-            }
-
-            frame.Draw();
-
-            if (_isOn)
-            {
-                float inset = Circle * 0.32f;
-                float dot = Circle - inset * 2f;
-                Now.Rectangle(new NowRect(circleRect.x + inset, circleRect.y + inset, dot, dot))
-                    .SetColor(themeAsset.GetColor(NowColorToken.AccentText, Color.white))
-                    .SetRadius(dot * 0.5f)
-                    .Draw();
-            }
         }
 
         public bool Draw()
         {
             var theme = NowTheme.themeAsset;
+            var renderer = theme.controlRenderer;
             int id = ResolveControlId();
 
             var text = theme.Text(default, _textPreset);
             Vector2 labelSize = text.Measure(_label);
-            float circle = Mathf.Max(18f, labelSize.y);
-            const float Gap = 8f;
-            var contentSize = new Vector2(circle + Gap + labelSize.x, Mathf.Max(circle, labelSize.y));
+            float circle = renderer.ToggleGlyphSize(theme, labelSize.y);
+            var contentSize = renderer.MeasureToggle(theme, _label, _textPreset);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
-            var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
 
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
-            var circleRect = new NowRect(rect.x, rect.y + (rect.height - circle) * 0.5f, circle, circle);
+            var circleRect = renderer.ToggleGlyphRect(theme, rect, circle);
 
-            var frame = theme.Rectangle(circleRect, _isOn ? NowRectangleStyle.Accent : NowRectangleStyle.Outline);
-            frame.radius = new Vector4(circle, circle, circle, circle) * 0.5f;
-            frame.color = NowControls.StateTint(frame.color, hoverT, interaction.held);
-
-            if (focused)
-            {
-                frame.outline = Mathf.Max(frame.outline, 2f);
-                frame.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
-            }
-
-            frame.Draw();
-
-            if (_isOn)
-            {
-                float inset = circle * 0.32f;
-                float dot = circle - inset * 2f;
-                Now.Rectangle(new NowRect(circleRect.x + inset, circleRect.y + inset, dot, dot))
-                    .SetColor(theme.GetColor(NowColorToken.AccentText, Color.white))
-                    .SetRadius(dot * 0.5f)
-                    .Draw();
-            }
-
-            NowControls.DrawLeftLabel(theme, new NowRect(rect.x + circle + Gap, rect.y, rect.width - circle - Gap, rect.height), _label, _textPreset);
+            renderer.DrawRadio(new NowToggleRenderContext(theme, rect, circleRect, _isOn, interaction, focused, hoverT));
+            NowControls.DrawLeftLabel(theme, renderer.ToggleContentRect(theme, rect, circle), _label, _textPreset);
             return interaction.clicked || submitted;
         }
     }
@@ -532,6 +427,7 @@ namespace NowUI
         readonly bool _hasRect;
         readonly int _site;
         NowId _id;
+        NowFocusNavigation _navigation;
 
         internal NowSlider(float min, float max, int site)
         {
@@ -542,6 +438,7 @@ namespace NowUI
             _hasRect = false;
             _site = site;
             _id = default;
+            _navigation = default;
         }
 
         internal NowSlider(NowRect rect, float min, float max, int site) : this(min, max, site)
@@ -559,24 +456,26 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowSlider SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
+        public NowSlider SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
+
         public bool Draw(ref float value)
         {
             var theme = NowTheme.themeAsset;
+            var renderer = theme.controlRenderer;
             int id = NowControls.GetControlId(_id, _site);
 
-            const float Height = 20f;
-            const float Knob = 16f;
-            const float Track = 6f;
+            float knobSize = theme.controlStyles.sliderKnobSize;
 
-            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, new Vector2(160f, Height));
-            var interaction = NowControls.Interact(id, rect, out bool focused, out _);
+            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureSlider(theme));
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
 
             float range = Mathf.Max(_max - _min, 0.0001f);
             float previous = value;
 
-            if (interaction.held && rect.width > Knob)
+            if (interaction.held && rect.width > knobSize)
             {
-                float t = Mathf.Clamp01((interaction.pointerPosition.x - rect.x - Knob * 0.5f) / (rect.width - Knob));
+                float t = Mathf.Clamp01((interaction.pointerPosition.x - rect.x - knobSize * 0.5f) / (rect.width - knobSize));
                 value = _min + t * range;
             }
 
@@ -585,35 +484,15 @@ namespace NowUI
                 float navX = NowInput.current.navigation.x;
 
                 if (NowControlState.Repeat(NowInput.GetId(id, "nav"), Mathf.Abs(navX) > 0.55f, 0.35f, 0.08f))
-                    value += Mathf.Sign(navX) * range * 0.05f;
+                    value += Mathf.Sign(navX) * range * theme.controlStyles.sliderNavigationStep;
             }
 
             value = Mathf.Clamp(value, _min, _max);
 
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             float normalized = (value - _min) / range;
-            float knobX = rect.x + normalized * (rect.width - Knob);
-            float trackY = rect.y + (rect.height - Track) * 0.5f;
-
-            var track = theme.Rectangle(new NowRect(rect.x, trackY, rect.width, Track), NowRectangleStyle.Muted);
-            track.radius = new Vector4(Track, Track, Track, Track) * 0.5f;
-            track.Draw();
-
-            var fill = theme.Rectangle(new NowRect(rect.x, trackY, knobX - rect.x + Knob * 0.5f, Track), NowRectangleStyle.Accent);
-            fill.radius = track.radius;
-            fill.Draw();
-
-            var knob = theme.Rectangle(new NowRect(knobX, rect.y + (rect.height - Knob) * 0.5f, Knob, Knob), NowRectangleStyle.Accent);
-            knob.radius = new Vector4(Knob, Knob, Knob, Knob) * 0.5f;
-            knob.color = NowControls.StateTint(knob.color, hoverT, interaction.held);
-
-            if (focused)
-            {
-                knob.outline = 2f;
-                knob.outlineColor = theme.GetColor(NowColorToken.Text, Color.black);
-            }
-
-            knob.Draw();
+            var metrics = renderer.CalculateSliderMetrics(theme, rect, normalized);
+            renderer.DrawSlider(new NowSliderRenderContext(theme, rect, metrics, interaction, focused, hoverT));
             return !Mathf.Approximately(previous, value);
         }
     }

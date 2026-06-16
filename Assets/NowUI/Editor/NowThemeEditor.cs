@@ -7,9 +7,25 @@ namespace NowUI.Editor
     [CustomEditor(typeof(NowThemeAsset))]
     public sealed class NowThemeEditor : UnityEditor.Editor
     {
-        const float InspectorPreviewHeight = 260f;
-
         static bool s_ShowGenerator = true;
+
+        static readonly NowColorToken[] PreviewPaletteTokens =
+        {
+            NowColorToken.Background,
+            NowColorToken.Surface,
+            NowColorToken.SurfaceMuted,
+            NowColorToken.Text,
+            NowColorToken.Border,
+            NowColorToken.Accent
+        };
+
+        static readonly NowRectangleStyle[] PreviewRectangleStyles =
+        {
+            NowRectangleStyle.Surface,
+            NowRectangleStyle.Muted,
+            NowRectangleStyle.Outline,
+            NowRectangleStyle.Accent
+        };
 
         SerializedProperty _generatorDark;
         SerializedProperty _generatorKeyColor;
@@ -42,12 +58,6 @@ namespace NowUI.Editor
                 Repaint();
                 SceneView.RepaintAll();
             }
-
-            EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField("Live Preview", EditorStyles.boldLabel);
-
-            Rect rect = GUILayoutUtility.GetRect(1f, InspectorPreviewHeight, GUILayout.ExpandWidth(true));
-            DrawPreview((NowThemeAsset)target, rect);
         }
 
         public override bool HasPreviewGUI()
@@ -132,18 +142,18 @@ namespace NowUI.Editor
             if (themeAsset == null || Event.current.type != EventType.Repaint)
                 return;
 
-            Color background = themeAsset.GetColor("background", new Color(0.18f, 0.18f, 0.18f, 1f));
+            Color background = themeAsset.GetColor(NowColorToken.Background, new Color(0.18f, 0.18f, 0.18f, 1f));
             EditorGUI.DrawRect(rect, background);
 
             float pad = Mathf.Clamp(rect.width * 0.05f, 14f, 28f);
             Rect panel = new Rect(rect.x + pad, rect.y + pad, rect.width - pad * 2f, rect.height - pad * 2f);
-            DrawStyledRect(themeAsset, panel, "surface");
+            DrawStyledRect(themeAsset, panel, NowRectangleStyle.Surface);
 
             Rect titleRect = new Rect(panel.x + 18f, panel.y + 14f, panel.width - 36f, 30f);
-            DrawText(themeAsset, titleRect, "Now Theme", "title");
+            DrawText(themeAsset, titleRect, "Now Theme", NowTextStyle.Title);
 
             Rect bodyRect = new Rect(panel.x + 18f, panel.y + 46f, panel.width - 36f, 22f);
-            DrawText(themeAsset, bodyRect, "Palette, spacing, radius, text, and rectangle presets", "muted");
+            DrawText(themeAsset, bodyRect, "Palette, spacing, radius, text, and rectangle presets", NowTextStyle.Muted);
 
             DrawPalette(themeAsset, new Rect(panel.x + 18f, panel.y + 82f, panel.width - 36f, 56f));
             DrawPresetRows(themeAsset, new Rect(panel.x + 18f, panel.y + 152f, panel.width - 36f, panel.height - 168f));
@@ -151,66 +161,59 @@ namespace NowUI.Editor
 
         static void DrawPalette(NowThemeAsset themeAsset, Rect rect)
         {
-            var palette = themeAsset.palette;
-            if (palette == null || palette.Count == 0)
-                return;
-
-            int count = Mathf.Min(6, palette.Count);
+            int count = PreviewPaletteTokens.Length;
             float gap = 8f;
             float width = (rect.width - gap * (count - 1)) / count;
 
             for (int i = 0; i < count; ++i)
             {
-                var token = palette[i];
+                NowColorToken token = PreviewPaletteTokens[i];
                 Rect swatch = new Rect(rect.x + i * (width + gap), rect.y, width, 34f);
-                EditorGUI.DrawRect(swatch, token.color);
+                EditorGUI.DrawRect(swatch, themeAsset.GetColor(token, Color.magenta));
                 DrawOutline(swatch, new Color(0f, 0f, 0f, 0.18f), 1);
 
                 Rect label = new Rect(swatch.x, swatch.yMax + 3f, swatch.width, 18f);
-                DrawLabel(label, token.id, themeAsset.GetColor("text-muted", Color.gray), 10, TextAnchor.MiddleCenter);
+                DrawLabel(label, token.ToString(), themeAsset.GetColor(NowColorToken.TextMuted, Color.gray), 10, TextAnchor.MiddleCenter);
             }
         }
 
         static void DrawPresetRows(NowThemeAsset themeAsset, Rect rect)
         {
-            var presets = themeAsset.rectanglePresets;
-            if (presets == null)
-                return;
-
             float x = rect.x;
             float y = rect.y;
             float gap = 8f;
             float height = 36f;
 
-            for (int i = 0; i < presets.Count && i < 4; ++i)
+            for (int i = 0; i < PreviewRectangleStyles.Length; ++i)
             {
+                NowRectangleStyle style = PreviewRectangleStyles[i];
                 float width = Mathf.Min(120f, (rect.width - gap * 3f) / 4f);
                 Rect item = new Rect(x, y, width, height);
-                DrawStyledRect(themeAsset, item, presets[i].id);
-                DrawLabel(item, presets[i].id, ResolveReadableTextColor(themeAsset, presets[i].id), 11, TextAnchor.MiddleCenter);
+                DrawStyledRect(themeAsset, item, style);
+                DrawLabel(item, style.ToString(), ResolveReadableTextColor(themeAsset, style), 11, TextAnchor.MiddleCenter);
                 x += width + gap;
             }
 
             Rect button = new Rect(rect.x, y + height + 14f, 104f, 30f);
-            DrawStyledRect(themeAsset, button, "accent");
-            DrawText(themeAsset, button, "Button", "button", TextAnchor.MiddleCenter);
+            DrawStyledRect(themeAsset, button, NowRectangleStyle.Accent);
+            DrawText(themeAsset, button, "Button", NowTextStyle.Button, TextAnchor.MiddleCenter);
 
             Rect caption = new Rect(button.xMax + 14f, button.y + 5f, rect.width - button.width - 14f, 22f);
-            DrawText(themeAsset, caption, "Code stays fluent: theme.Rectangle(rect, \"accent\")", "body");
+            DrawText(themeAsset, caption, "Code stays typed: theme.Rectangle(rect, NowRectangleStyle.Accent)", NowTextStyle.Body);
         }
 
-        static void DrawStyledRect(NowThemeAsset themeAsset, Rect rect, string presetId)
+        static void DrawStyledRect(NowThemeAsset themeAsset, Rect rect, NowRectangleStyle style)
         {
-            NowRectangle styled = themeAsset.Rectangle(new Vector4(rect.x, rect.y, rect.width, rect.height), presetId);
+            NowRectangle styled = themeAsset.Rectangle(new Vector4(rect.x, rect.y, rect.width, rect.height), style);
             EditorGUI.DrawRect(rect, styled.color);
 
             if (styled.outline > 0f && styled.outlineColor.w > 0f)
                 DrawOutline(rect, styled.outlineColor, Mathf.Max(1, Mathf.CeilToInt(styled.outline)));
         }
 
-        static void DrawText(NowThemeAsset themeAsset, Rect rect, string text, string presetId, TextAnchor alignment = TextAnchor.MiddleLeft)
+        static void DrawText(NowThemeAsset themeAsset, Rect rect, string text, NowTextStyle style, TextAnchor alignment = TextAnchor.MiddleLeft)
         {
-            NowText styled = themeAsset.Text(new Vector4(rect.x, rect.y, rect.width, rect.height), presetId);
+            NowText styled = themeAsset.Text(new Vector4(rect.x, rect.y, rect.width, rect.height), style);
             DrawLabel(rect, text, styled.color, Mathf.RoundToInt(styled.fontSize), alignment);
         }
 
@@ -230,14 +233,14 @@ namespace NowUI.Editor
             GUI.Label(rect, text, style);
         }
 
-        static Color ResolveReadableTextColor(NowThemeAsset themeAsset, string presetId)
+        static Color ResolveReadableTextColor(NowThemeAsset themeAsset, NowRectangleStyle style)
         {
-            NowRectangle styled = themeAsset.Rectangle(Vector4.zero, presetId);
+            NowRectangle styled = themeAsset.Rectangle(Vector4.zero, style);
             if (styled.color.w < 0.2f)
-                return themeAsset.GetColor("text", Color.black);
+                return themeAsset.GetColor(NowColorToken.Text, Color.black);
 
-            Color text = themeAsset.GetColor("text", Color.black);
-            Color accentText = themeAsset.GetColor("accent-text", Color.white);
+            Color text = themeAsset.GetColor(NowColorToken.Text, Color.black);
+            Color accentText = themeAsset.GetColor(NowColorToken.AccentText, Color.white);
 
             return ContrastRatio(styled.color, text) >= ContrastRatio(styled.color, accentText)
                 ? text
@@ -366,76 +369,130 @@ namespace NowUI.Editor
             if (serializedObject == null)
                 throw new ArgumentNullException(nameof(serializedObject));
 
-            SetColorToken(serializedObject, "background", palette.background);
-            SetColorToken(serializedObject, "surface", palette.surface);
-            SetColorToken(serializedObject, "surface-muted", palette.surfaceMuted);
-            SetColorToken(serializedObject, "text", palette.text);
-            SetColorToken(serializedObject, "text-muted", palette.textMuted);
-            SetColorToken(serializedObject, "border", palette.border);
-            SetColorToken(serializedObject, "accent", palette.accent);
-            SetColorToken(serializedObject, "accent-text", palette.accentText);
+            SetColorToken(serializedObject, NowColorToken.Background, palette.background);
+            SetColorToken(serializedObject, NowColorToken.Surface, palette.surface);
+            SetColorToken(serializedObject, NowColorToken.SurfaceMuted, palette.surfaceMuted);
+            SetColorToken(serializedObject, NowColorToken.Text, palette.text);
+            SetColorToken(serializedObject, NowColorToken.TextMuted, palette.textMuted);
+            SetColorToken(serializedObject, NowColorToken.Border, palette.border);
+            SetColorToken(serializedObject, NowColorToken.Accent, palette.accent);
+            SetColorToken(serializedObject, NowColorToken.AccentText, palette.accentText);
 
-            SetRectangleFillFallback(serializedObject, "surface", palette.surface);
-            SetRectangleFillFallback(serializedObject, "muted", palette.surfaceMuted);
-            SetRectangleOutlineFallback(serializedObject, "outline", palette.border);
-            SetRectangleFillFallback(serializedObject, "accent", palette.accent);
+            SetRectangleFillFallback(serializedObject, NowRectangleStyle.Surface, palette.surface);
+            SetRectangleFillFallback(serializedObject, NowRectangleStyle.Muted, palette.surfaceMuted);
+            SetRectangleOutlineFallback(serializedObject, NowRectangleStyle.Outline, palette.border);
+            SetRectangleFillFallback(serializedObject, NowRectangleStyle.Accent, palette.accent);
 
-            SetTextColorFallback(serializedObject, "title", palette.text);
-            SetTextColorFallback(serializedObject, "body", palette.text);
-            SetTextColorFallback(serializedObject, "muted", palette.textMuted);
-            SetTextColorFallback(serializedObject, "button", palette.accentText);
+            SetTextColorFallback(serializedObject, NowTextStyle.Title, palette.text);
+            SetTextColorFallback(serializedObject, NowTextStyle.Body, palette.text);
+            SetTextColorFallback(serializedObject, NowTextStyle.Muted, palette.textMuted);
+            SetTextColorFallback(serializedObject, NowTextStyle.Button, palette.accentText);
         }
 
-        static void SetColorToken(SerializedObject serializedObject, string id, Color color)
+        static void SetColorToken(SerializedObject serializedObject, NowColorToken token, Color color)
         {
-            var token = FindById(serializedObject.FindProperty("_palette"), id);
-            if (token == null)
+            var palette = serializedObject.FindProperty("_palette");
+            var property = palette?.FindPropertyRelative(ColorFieldName(token));
+            if (property == null)
                 return;
 
-            token.FindPropertyRelative("_color").colorValue = color;
+            property.colorValue = color;
         }
 
-        static void SetRectangleFillFallback(SerializedObject serializedObject, string id, Color color)
+        static void SetRectangleFillFallback(SerializedObject serializedObject, NowRectangleStyle style, Color color)
         {
-            var preset = FindById(serializedObject.FindProperty("_rectanglePresets"), id);
+            var preset = RectanglePresetProperty(serializedObject, style);
             if (preset == null)
                 return;
 
             preset.FindPropertyRelative("_fill").FindPropertyRelative("_fallback").colorValue = color;
         }
 
-        static void SetRectangleOutlineFallback(SerializedObject serializedObject, string id, Color color)
+        static void SetRectangleOutlineFallback(SerializedObject serializedObject, NowRectangleStyle style, Color color)
         {
-            var preset = FindById(serializedObject.FindProperty("_rectanglePresets"), id);
+            var preset = RectanglePresetProperty(serializedObject, style);
             if (preset == null)
                 return;
 
             preset.FindPropertyRelative("_outlineColor").FindPropertyRelative("_fallback").colorValue = color;
         }
 
-        static void SetTextColorFallback(SerializedObject serializedObject, string id, Color color)
+        static void SetTextColorFallback(SerializedObject serializedObject, NowTextStyle style, Color color)
         {
-            var preset = FindById(serializedObject.FindProperty("_textPresets"), id);
+            var preset = TextPresetProperty(serializedObject, style);
             if (preset == null)
                 return;
 
             preset.FindPropertyRelative("_color").FindPropertyRelative("_fallback").colorValue = color;
         }
 
-        static SerializedProperty FindById(SerializedProperty array, string id)
+        static SerializedProperty RectanglePresetProperty(SerializedObject serializedObject, NowRectangleStyle style)
         {
-            if (array == null || !array.isArray)
-                return null;
+            return serializedObject.FindProperty("_rectanglePresets")?.FindPropertyRelative(RectangleStyleFieldName(style));
+        }
 
-            for (int i = 0; i < array.arraySize; ++i)
+        static SerializedProperty TextPresetProperty(SerializedObject serializedObject, NowTextStyle style)
+        {
+            return serializedObject.FindProperty("_textPresets")?.FindPropertyRelative(TextStyleFieldName(style));
+        }
+
+        static string ColorFieldName(NowColorToken token)
+        {
+            switch (token)
             {
-                var element = array.GetArrayElementAtIndex(i);
-                var idProperty = element.FindPropertyRelative("_id");
-                if (idProperty != null && string.Equals(idProperty.stringValue, id, StringComparison.OrdinalIgnoreCase))
-                    return element;
+                case NowColorToken.Background:
+                    return "_background";
+                case NowColorToken.Surface:
+                    return "_surface";
+                case NowColorToken.SurfaceMuted:
+                    return "_surfaceMuted";
+                case NowColorToken.Text:
+                    return "_text";
+                case NowColorToken.TextMuted:
+                    return "_textMuted";
+                case NowColorToken.Border:
+                    return "_border";
+                case NowColorToken.Accent:
+                    return "_accent";
+                case NowColorToken.AccentText:
+                    return "_accentText";
+                default:
+                    return string.Empty;
             }
+        }
 
-            return null;
+        static string RectangleStyleFieldName(NowRectangleStyle style)
+        {
+            switch (style)
+            {
+                case NowRectangleStyle.Surface:
+                    return "_surface";
+                case NowRectangleStyle.Muted:
+                    return "_muted";
+                case NowRectangleStyle.Outline:
+                    return "_outline";
+                case NowRectangleStyle.Accent:
+                    return "_accent";
+                default:
+                    return string.Empty;
+            }
+        }
+
+        static string TextStyleFieldName(NowTextStyle style)
+        {
+            switch (style)
+            {
+                case NowTextStyle.Title:
+                    return "_title";
+                case NowTextStyle.Body:
+                    return "_body";
+                case NowTextStyle.Muted:
+                    return "_muted";
+                case NowTextStyle.Button:
+                    return "_button";
+                default:
+                    return string.Empty;
+            }
         }
 
         static Color Hsv(float hue, float saturation, float value)

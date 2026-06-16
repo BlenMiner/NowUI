@@ -14,15 +14,13 @@ namespace NowUI
     [NowBuilder]
     public struct NowDropdown
     {
-        readonly NowId _id;
+        NowId _id;
         readonly int _site;
         readonly IReadOnlyList<string> _options;
+        NowFocusNavigation _navigation;
         NowLayoutOptions _layoutOptions;
         readonly NowRect _rect;
         readonly bool _hasRect;
-
-        const float ItemHeight = 30f;
-        const float MaxPopupHeight = 240f;
 
         sealed class PopupState
         {
@@ -35,6 +33,7 @@ namespace NowUI
             public int itemSeed;
             public int scrollId;
             public bool scrolls;
+            public float itemHeight;
             public NowRect field;
             public NowRect popupRect;
             public NowRect itemArea;
@@ -47,6 +46,7 @@ namespace NowUI
             _id = id;
             _site = site;
             _options = options;
+            _navigation = default;
             _layoutOptions = default;
             _rect = default;
             _hasRect = false;
@@ -64,9 +64,16 @@ namespace NowUI
 
         public NowDropdown SetStretchWidth(float weight = 1f) { _layoutOptions = _layoutOptions.SetStretchWidth(weight); return this; }
 
+        /// <summary>Explicit control id, decoupling identity from the call site.</summary>
+        public NowDropdown SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
+        public NowDropdown SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
+
         public bool Draw(ref int selected)
         {
             var theme = NowTheme.themeAsset;
+            var renderer = theme.controlRenderer;
             int id = NowControls.GetControlId(_id, _site);
             int optionCount = _options?.Count ?? 0;
 
@@ -83,10 +90,13 @@ namespace NowUI
             pending = 0;
 
             var textStyle = theme.Text(default, NowTextStyle.Body);
-            float lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
-            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _layoutOptions, new Vector2(180f, lineHeight + 12f));
+            float lineHeight = textStyle.Measure("Ag").y;
+            if (lineHeight <= 0f)
+                lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
 
-            var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _layoutOptions, renderer.MeasureDropdownField(theme, lineHeight));
+
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             ref bool open = ref NowControlState.Get<bool>(id);
 
             if (interaction.clicked || submitted)
@@ -97,21 +107,8 @@ namespace NowUI
 
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
 
-            var box = theme.Rectangle(rect, NowRectangleStyle.Outline);
-            box.color = NowControls.StateTint(box.color, hoverT, interaction.held);
-
-            if (focused || open)
-            {
-                box.outline = 2f;
-                box.outlineColor = theme.GetColor(NowColorToken.Accent, Color.blue);
-            }
-
-            box.Draw();
-
             string current = selected >= 0 && selected < optionCount ? _options[selected] : string.Empty;
-            var inner = rect.Inset(10f, 0f, 24f, 0f);
-            NowControls.DrawLeftLabel(theme, inner, current, NowTextStyle.Body);
-            NowControls.DrawLeftLabel(theme, new NowRect(rect.xMax - 20f, rect.y, 16f, rect.height), open ? "^" : "v", NowTextStyle.Muted);
+            renderer.DrawDropdownField(new NowDropdownFieldRenderContext(theme, rect, current, open, interaction, focused, hoverT));
 
             if (!open)
                 return changed;
@@ -128,9 +125,10 @@ namespace NowUI
         /// </summary>
         static void DeferPopup(NowThemeAsset themeAsset, IReadOnlyList<string> options, int id, NowRect field, int selected, int optionCount)
         {
-            float contentHeight = optionCount * ItemHeight + 8f;
-            float popupHeight = Mathf.Min(contentHeight, MaxPopupHeight);
-            var popupRect = new NowRect(field.x, field.yMax + 4f, field.width, popupHeight);
+            var styles = themeAsset.controlStyles;
+            float contentHeight = optionCount * styles.dropdownItemHeight + styles.popupPadding * 2f;
+            float popupHeight = Mathf.Min(contentHeight, styles.dropdownMaxPopupHeight);
+            var popupRect = new NowRect(field.x, field.yMax + styles.dropdownPopupGap, field.width, popupHeight);
 
             if (!_popupStates.TryGetValue(id, out var state))
             {
@@ -146,10 +144,11 @@ namespace NowUI
             state.pendingId = NowInput.GetId(id, "pending");
             state.itemSeed = NowInput.GetId(id, "item");
             state.scrollId = NowInput.GetId(id, "popup-scroll");
-            state.scrolls = contentHeight > MaxPopupHeight;
+            state.scrolls = contentHeight > styles.dropdownMaxPopupHeight;
+            state.itemHeight = styles.dropdownItemHeight;
             state.field = field;
             state.popupRect = popupRect;
-            state.itemArea = popupRect.Inset(4f);
+            state.itemArea = popupRect.Inset(styles.popupPadding);
 
             NowOverlay.Defer(popupRect, id, DrawPopup);
         }
@@ -161,10 +160,7 @@ namespace NowUI
 
             var themeAsset = state.themeAsset;
             var popupRect = state.popupRect;
-            var background = themeAsset.Rectangle(popupRect, NowRectangleStyle.Surface);
-            background.outline = 1f;
-            background.outlineColor = themeAsset.GetColor(NowColorToken.Border, Color.gray);
-            background.Draw();
+            themeAsset.controlRenderer.DrawPopupBackground(themeAsset, popupRect, menu: false);
 
             if (state.scrolls)
             {
@@ -190,30 +186,20 @@ namespace NowUI
             for (int i = 0; i < state.optionCount; ++i)
             {
                 NowRect itemRect = state.scrolls
-                    ? NowLayout.Rect(new NowLayoutOptions().SetHeight(ItemHeight).SetStretchWidth())
+                    ? NowLayout.Rect(new NowLayoutOptions().SetHeight(state.itemHeight).SetStretchWidth())
                     : new NowRect(
                         state.itemArea.x,
-                        state.itemArea.y + i * ItemHeight,
+                        state.itemArea.y + i * state.itemHeight,
                         state.itemArea.width,
-                        ItemHeight);
+                        state.itemHeight);
 
                 var itemInteraction = NowInput.Interact(NowInput.CombineId(state.itemSeed, i + 1), itemRect);
-
-                if (itemInteraction.hovered || i == state.selected)
-                {
-                    var highlight = state.themeAsset.Rectangle(
-                        itemRect,
-                        i == state.selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
-
-                    if (itemInteraction.hovered && i != state.selected)
-                        highlight.color = NowControls.StateTint(highlight.color, 1f, itemInteraction.held);
-
-                    highlight.radius = new Vector4(4f, 4f, 4f, 4f);
-                    highlight.Draw();
-                }
-
-                NowTextStyle itemStyle = i == state.selected ? NowTextStyle.Button : NowTextStyle.Body;
-                NowControls.DrawLeftLabel(state.themeAsset, itemRect.Inset(8f, 0f, 4f, 0f), state.options[i], itemStyle);
+                state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
+                    state.themeAsset,
+                    itemRect,
+                    state.options[i],
+                    i == state.selected,
+                    itemInteraction));
 
                 if (itemInteraction.clicked)
                 {

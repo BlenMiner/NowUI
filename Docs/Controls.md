@@ -63,7 +63,9 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   on the next frame's Draw.
 - `ScrollView` scrolls with the wheel while hovered and with the scrollbar
   thumb; content height is the layout group's measured extent (one frame
-  late, like all layout measurement). Vertical only for now.
+  late, like all layout measurement). Focus navigation can move to clipped
+  children and scrolls the viewport to reveal the focused control. Vertical
+  only for now.
 
 ## Explicit rects
 
@@ -220,7 +222,10 @@ using (NowTheme.Scope(myTheme))
 Styles are enums — no magic strings:
 
 ```csharp
-NowLayout.Button("Cancel").SetStyle(NowRectangleStyle.Outline).Draw();
+NowLayout.Button("Cancel")
+    .SetStyle(NowRectangleStyle.Outline)
+    .SetTextStyle(NowTextStyle.Body)
+    .Draw();
 theme.Rectangle(rect, NowRectangleStyle.Accent).Draw();
 theme.GetColor(NowColorToken.Text, Color.black);
 theme.GetSpacing(NowSpacingToken.Md, fallback);
@@ -232,16 +237,33 @@ mean by editing the matching presets in your theme asset.
 
 For styling beyond the built-in set, compose your own control: the `.Draw()`
 separation means a `MyDangerButton()` function that pre-applies everything is
-a one-liner wrapper, and the string-id theme methods
-(`theme.Rectangle(rect, "danger")`) remain the low-level layer for custom
-preset names defined in theme assets.
+a one-liner wrapper. To change built-in control visuals globally, assign a
+custom `NowControlRenderer` on the active theme.
 
 ## Focus, keyboard and gamepad
 
 Focusable controls register with `NowFocus` every frame. Arrows, WASD, the
-d-pad or left stick move focus spatially; submit (enter/space/gamepad south)
-activates the focused control; cancel clears focus (and closes popups).
-Clicking a control focuses it. Focused controls draw a focus outline.
+d-pad or left stick move focus spatially, including held-input repeat after
+a short delay; when nothing is focused, directional navigation starts from
+the opposite edge of the control set. Tab and Shift+Tab cycle through controls
+in draw order. Submit (enter/space/gamepad south) activates the focused
+control; cancel clears focus (and closes popups). Clicking a control focuses
+it. Focused controls draw a focus outline.
+
+Override individual focus hops with `SetNavigation`. Targets should be stable
+control ids, usually from `SetId`; unset links keep using the default spatial
+or draw-order resolver, and links to controls that are not registered this frame
+fall back too.
+
+```csharp
+NowLayout.Button("Name")
+    .SetId("name")
+    .SetNavigation(NowFocusNavigation.Right("email").SetDown("save"))
+    .Draw();
+
+NowLayout.TextField("email").SetId("email").Draw(ref email);
+NowLayout.Button("Save").SetId("save").Draw();
+```
 
 NowUI focus and Unity's EventSystem stay mutually exclusive by default:
 selecting a UGUI control (clicking a classic Button, for example) clears
@@ -273,8 +295,9 @@ The graphic is also a UGUI layout element: with **Drive Layout Size** (on by
 default) it reports the measured extent of its root `NowLayout` areas as its
 preferred width/height, so it sits inside a `VerticalLayoutGroup` or under a
 `ContentSizeFitter` like any Image or Text — sized by its NowUI content. The
-measurement settles one rebuild late, like all NowLayout sizing; read it from
-code via `measuredContentSize`.
+layout system refreshes that preferred size through a passive measure pass
+before geometry rebuilds; read the last value from code via
+`measuredContentSize`.
 
 ---
 

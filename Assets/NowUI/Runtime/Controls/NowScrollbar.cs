@@ -85,18 +85,14 @@ namespace NowUI
             if (!metrics.visible)
                 return;
 
-            float radius = axis == NowScrollbarAxis.Vertical ? metrics.track.width * 0.5f : metrics.track.height * 0.5f;
             var interaction = NowInput.Interact(id, metrics.track.Outset(4f, 2f));
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
-
-            var track = themeAsset.Rectangle(metrics.track, NowRectangleStyle.Muted);
-            track.radius = new Vector4(radius, radius, radius, radius);
-            track.Draw();
-
-            var thumb = themeAsset.Rectangle(metrics.thumb, NowRectangleStyle.Accent);
-            thumb.radius = track.radius;
-            thumb.color = NowControls.StateTint(thumb.color, hoverT, interaction.held);
-            thumb.Draw();
+            themeAsset.controlRenderer.DrawScrollbar(new NowScrollbarRenderContext(
+                themeAsset,
+                axis,
+                metrics,
+                interaction.held,
+                hoverT));
         }
     }
 }

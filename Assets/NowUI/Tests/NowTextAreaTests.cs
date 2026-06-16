@@ -1,4 +1,6 @@
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using NowUI;
@@ -90,6 +92,8 @@ public class NowTextAreaTests
 
     static int Id => NowInput.GetId(0, "notes");
 
+    static int AreaStateId => NowInput.GetId(Id, "area");
+
     void Focus()
     {
         NowFocus.Focus(Id);
@@ -100,11 +104,57 @@ public class NowTextAreaTests
         return ref NowControlState.Get<NowTextEditState>(Id);
     }
 
+    float AreaScrollY()
+    {
+        var areaType = typeof(NowTextArea).GetNestedType("AreaState", BindingFlags.NonPublic);
+        Assert.NotNull(areaType);
+
+        var storeDefinition = typeof(NowControlState).GetNestedType("Store`1", BindingFlags.NonPublic);
+        Assert.NotNull(storeDefinition);
+
+        var storeType = storeDefinition.MakeGenericType(areaType);
+        var entriesField = storeType.GetField("entries", BindingFlags.Static | BindingFlags.Public);
+        Assert.NotNull(entriesField);
+
+        var entries = (IDictionary)entriesField.GetValue(null);
+        Assert.IsTrue(entries.Contains(AreaStateId), "TextArea state was not created.");
+
+        object entry = entries[AreaStateId];
+        object value = entry.GetType().GetField("value", BindingFlags.Instance | BindingFlags.Public).GetValue(entry);
+        return (float)areaType.GetField("scrollY", BindingFlags.Instance | BindingFlags.Public).GetValue(value);
+    }
+
+    void PointerFrame(ref string text, Vector2 pointer, bool down, bool pressed, bool released)
+    {
+        _pointer.snapshot = new NowInputSnapshot(pointer, down, pressed, released);
+        Frame(ref text);
+    }
+
+    Vector2 TextPoint(string textBefore, int line = 0)
+    {
+        var textStyle = NowTheme.themeAsset.Text(default, NowTextStyle.Body);
+        float lineHeight = textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize;
+        var inner = AreaRect.Inset(8f, 6f, 8f, 6f);
+        return new Vector2(
+            inner.x + textStyle.font.MeasureText(textBefore, textStyle.fontSize).x + 1f,
+            inner.y + lineHeight * (line + 0.5f));
+    }
+
     static List<NowTextAreaLine> Layout(string text, NowFontAsset font, float width, float fontSize = 16f)
     {
         var lines = new List<NowTextAreaLine>();
         NowTextArea.LayoutLines(text, font, fontSize, NowFontStyle.Regular, width, lines);
         return lines;
+    }
+
+    static string LongText()
+    {
+        var lines = new List<string>();
+
+        for (int i = 0; i < 30; ++i)
+            lines.Add($"line {i}");
+
+        return string.Join("\n", lines);
     }
 
     [Test]
@@ -196,6 +246,38 @@ public class NowTextAreaTests
         Assert.IsTrue(Frame(ref text, new NowTextInputFrame { enterHeld = true }));
         Assert.IsTrue(Frame(ref text, new NowTextInputFrame { characters = "c" }));
         Assert.AreEqual("ab\nc", text);
+    }
+
+    [Test]
+    public void FocusedWheelScrollCanHideCaretUntilCaretNavigation()
+    {
+        string text = LongText();
+        var point = TextPoint(string.Empty);
+
+        Frame(ref text);
+        PointerFrame(ref text, point, down: true, pressed: true, released: false);
+        PointerFrame(ref text, point, down: false, pressed: false, released: true);
+
+        Assert.AreEqual(0f, AreaScrollY(), 0.001f, "Fixture must start with the caret-visible top line.");
+
+        _pointer.snapshot = new NowInputSnapshot(
+            true, point, point, Vector2.zero,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            new Vector2(0f, -3f), Vector2.zero,
+            false, false, false, false, false, false, 2, 2f);
+        Frame(ref text);
+
+        float scrolled = AreaScrollY();
+        Assert.Greater(scrolled, 0f, "Wheel scrolling a focused text area should not be cancelled by caret reveal.");
+
+        _pointer.snapshot = new NowInputSnapshot(
+            true, point, point, Vector2.zero,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            false, false, false, false, false, false, 3, 3f);
+        Frame(ref text, new NowTextInputFrame { homePressed = true, command = true });
+
+        Assert.AreEqual(0f, AreaScrollY(), 0.001f, "Caret navigation should reveal the caret after free scrolling.");
     }
 
     [Test]
@@ -372,6 +454,23 @@ public class NowTextAreaTests
     }
 
     [Test]
+    public void DoubleClickDragExtendsByWholeWords()
+    {
+        string text = "hello world wide";
+        var insideWorld = TextPoint("hello wo");
+        var insideWide = TextPoint("hello world wi");
+
+        PointerFrame(ref text, insideWorld, down: true, pressed: true, released: false);
+        PointerFrame(ref text, insideWorld, down: false, pressed: false, released: true);
+        PointerFrame(ref text, insideWorld, down: true, pressed: true, released: false);
+        PointerFrame(ref text, insideWide, down: true, pressed: false, released: false);
+        PointerFrame(ref text, insideWide, down: false, pressed: false, released: true);
+
+        Assert.AreEqual("world wide", NowTextEdit.GetSelection(text, State()),
+            "Dragging after a double-click stays in word selection mode.");
+    }
+
+    [Test]
     public void TripleClickSelectsTheHardLine()
     {
         string text = "first line\nsecond";
@@ -391,6 +490,27 @@ public class NowTextAreaTests
 
         Assert.AreEqual(0, State().selectionMin);
         Assert.AreEqual(10, State().selectionMax, "Triple-click selects the full hard line without its newline.");
+    }
+
+    [Test]
+    public void TripleClickDragExtendsByWholeLines()
+    {
+        string text = "first line\nsecond";
+        var firstLine = TextPoint(string.Empty, 0);
+        var secondLine = TextPoint(string.Empty, 1);
+
+        for (int i = 0; i < 2; ++i)
+        {
+            PointerFrame(ref text, firstLine, down: true, pressed: true, released: false);
+            PointerFrame(ref text, firstLine, down: false, pressed: false, released: true);
+        }
+
+        PointerFrame(ref text, firstLine, down: true, pressed: true, released: false);
+        PointerFrame(ref text, secondLine, down: true, pressed: false, released: false);
+        PointerFrame(ref text, secondLine, down: false, pressed: false, released: true);
+
+        Assert.AreEqual(text, NowTextEdit.GetSelection(text, State()),
+            "Dragging after a triple-click stays in line selection mode.");
     }
 
     [Test]

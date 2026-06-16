@@ -99,6 +99,10 @@ namespace NowUI
         public static float Transition(int id, bool towardOne, float speed = 10f)
         {
             ref var state = ref Get<TransitionState>(id);
+
+            if (NowInput.isPassive)
+                return state.t;
+
             float now = Time.realtimeSinceStartup;
             float delta = state.lastTime > 0f ? Mathf.Min(now - state.lastTime, 0.1f) : 0f;
             state.lastTime = now;

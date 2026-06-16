@@ -132,6 +132,7 @@ namespace NowUI
 
             var interaction = NowInput.Interact(id, bounds);
             NowFocus.Register(id, bounds);
+            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(NowInput.GetId(id, "selection-gesture"));
 
             if (interaction.pressed)
             {
@@ -142,20 +143,24 @@ namespace NowUI
                 if (streak >= 3)
                 {
                     NowTextEdit.SelectLine(ref state, text, hit);
+                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Line, in state);
                 }
                 else if (streak == 2)
                 {
                     NowTextEdit.SelectWord(ref state, text, hit);
+                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Word, in state);
                 }
                 else
                 {
                     state.caret = hit;
                     state.anchor = hit;
+                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
                 }
             }
             else if (interaction.dragging)
             {
-                state.caret = HitTest(text, lines, font, fontSize, fontStyle, interaction.pointerPosition);
+                int hit = HitTest(text, lines, font, fontSize, fontStyle, interaction.pointerPosition);
+                NowTextEdit.DragSelectionGesture(ref state, text, in gesture, hit);
                 NowControlState.RequestRepaint();
             }
 

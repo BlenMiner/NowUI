@@ -37,6 +37,7 @@ public class NowTextSelectionTests
     FakeKeyboard _keyboard;
     NowDrawList _drawList;
     List<NowTextSelectionLine> _lines;
+    string _text;
     string _copied;
     System.Action<string> _previousCopy;
 
@@ -64,6 +65,7 @@ public class NowTextSelectionTests
         {
             new NowTextSelectionLine { rect = new NowRect(0, 0, 300, 20), start = 0, length = Text.Length }
         };
+        _text = Text;
 
         _copied = null;
         _previousCopy = NowClipboard.setText;
@@ -113,7 +115,7 @@ public class NowTextSelectionTests
                 NowFocus.ForceNewFrame();
 
             result = NowTextSelection.Draw(
-                42, Text, _lines, _font, Size, NowFontStyle.Regular, new Vector4(0f, 0f, 1f, 0.3f));
+                42, _text, _lines, _font, Size, NowFontStyle.Regular, new Vector4(0f, 0f, 1f, 0.3f));
         }
 
         return result;
@@ -160,6 +162,22 @@ public class NowTextSelectionTests
     }
 
     [Test]
+    public void DoubleClickDragExtendsByWholeWords()
+    {
+        var insideWorld = new Vector2(XAt("hello wo"), 10f);
+        var insideWide = new Vector2(XAt("hello world wi"), 10f);
+
+        Frame(insideWorld, down: true, pressed: true, released: false);
+        Frame(insideWorld, down: false, pressed: false, released: true);
+        Frame(insideWorld, down: true, pressed: true, released: false);
+        Frame(insideWide, down: true, pressed: false, released: false);
+        Frame(insideWide, down: false, pressed: false, released: true);
+        Frame(insideWide, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
+
+        Assert.AreEqual("world wide", _copied, "Dragging after a double-click stays in word selection mode.");
+    }
+
+    [Test]
     public void TripleClickSelectsTheLine()
     {
         var insideWorld = new Vector2(XAt("hello wo"), 10f);
@@ -172,6 +190,33 @@ public class NowTextSelectionTests
 
         Frame(insideWorld, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
         Assert.AreEqual(Text, _copied, "Triple-click selects the whole line.");
+    }
+
+    [Test]
+    public void TripleClickDragExtendsByWholeLines()
+    {
+        _text = "first line\nsecond line";
+        _lines = new List<NowTextSelectionLine>
+        {
+            new NowTextSelectionLine { rect = new NowRect(0, 0, 300, 20), start = 0, length = 10 },
+            new NowTextSelectionLine { rect = new NowRect(0, 20, 300, 20), start = 11, length = 11 }
+        };
+
+        var firstLine = new Vector2(8f, 10f);
+        var secondLine = new Vector2(8f, 30f);
+
+        for (int i = 0; i < 2; ++i)
+        {
+            Frame(firstLine, down: true, pressed: true, released: false);
+            Frame(firstLine, down: false, pressed: false, released: true);
+        }
+
+        Frame(firstLine, down: true, pressed: true, released: false);
+        Frame(secondLine, down: true, pressed: false, released: false);
+        Frame(secondLine, down: false, pressed: false, released: true);
+        Frame(secondLine, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
+
+        Assert.AreEqual(_text, _copied, "Dragging after a triple-click stays in line selection mode.");
     }
 
     [Test]

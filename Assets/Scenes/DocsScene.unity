@@ -162,7 +162,7 @@ Camera:
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 2
-  m_BackGroundColor: {r: 0.08, g: 0.09, b: 0.11, a: 0}
+  m_BackGroundColor: {r: 0, g: 0, b: 0, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -286,7 +286,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.CanvasScaler
-  m_UiScaleMode: 1
+  m_UiScaleMode: 0
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
   m_ReferenceResolution: {x: 800, y: 600}
@@ -384,7 +384,8 @@ MonoBehaviour:
   _respectUGUIRaycast: 1
   _driveLayoutSize: 0
   _uguiBackdropSourceTexture: {fileID: 0}
-  _themeAsset: {fileID: 11400000, guid: ff2b8683af2ba094bb2015088323548f, type: 2}
+  _glassBlurQuality: 0
+  _themeAsset: {fileID: 11400000, guid: c8ce4e3c2df64b6baec4381427476ca6, type: 2}
   _font: {fileID: 11400000, guid: d9b4fc19191445a4f851b19fd4cf730f, type: 2}
   _lotties:
   - {fileID: 7868935432812623880, guid: 3fc211d4e815f3b49b550a4b8bc75850, type: 3}

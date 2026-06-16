@@ -23,7 +23,10 @@ just different values for the same slots:
 
 ```csharp
 // One-off: built-ins take a style enum.
-NowLayout.Button("Cancel").SetStyle(NowRectangleStyle.Outline).Draw();
+NowLayout.Button("Cancel")
+    .SetStyle(NowRectangleStyle.Outline)
+    .SetTextStyle(NowTextStyle.Body)
+    .Draw();
 
 // A region: push a theme asset.
 using (NowTheme.Scope(darkTheme))
@@ -32,10 +35,8 @@ using (NowTheme.Scope(darkTheme))
 
 Editing the `Accent` preset in a theme asset restyles every button in one
 place. The enum styles (`Surface`, `Muted`, `Outline`, `Accent`) are the
-blessed set; theme assets can also define presets under custom string ids,
-which the string-keyed theme methods (`theme.Rectangle(rect, "danger")`)
-resolve — that is the intended home for app-specific styles like a danger
-red, not a new control.
+blessed set. For app-specific variants such as a danger action, wrap the
+built-in control or assign a custom `NowControlRenderer` on the theme.
 
 ## 2. Wrap: variants of existing controls
 
@@ -52,7 +53,8 @@ public static class MyControls
         [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
     {
         return NowLayout.Button(label, file, line)
-            .SetStyle(NowRectangleStyle.Outline);
+            .SetStyle(NowRectangleStyle.Outline)
+            .SetTextStyle(NowTextStyle.Body);
     }
 }
 

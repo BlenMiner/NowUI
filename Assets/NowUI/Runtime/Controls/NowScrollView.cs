@@ -4,14 +4,14 @@ using UnityEngine;
 namespace NowUI
 {
     /// <summary>
-    /// Vertical scroll container:
+    /// Scroll container:
     /// <code>
     /// using (NowLayout.ScrollView("inventory").Begin())
     ///     foreach (var item in items)
     ///         NowLayout.Button(item.name).Draw();
     /// </code>
     /// Content lays out in a vertical group clipped to the viewport; the wheel
-    /// scrolls while hovered and the scrollbar thumb drags. Content height is the
+    /// scrolls while hovered and scrollbar thumbs drag. Content size is the
     /// group's measured extent (one frame late, like all layout measurement).
     /// </summary>
     [NowBuilder]
@@ -66,25 +66,125 @@ namespace NowUI
             int areaKey = NowInput.CombineId(id, 0x4e535641);
 
             NowLayout.TryGetCachedContentSize(areaKey, out Vector2 content);
-            bool barVisible = content.y > viewport.height + 0.5f;
-            float maxScroll = Mathf.Max(0f, content.y - viewport.height);
+            var styles = NowTheme.themeAsset.controlStyles;
+            var scrollLayout = ResolveScrollLayout(viewport, content, styles.scrollbarWidth + styles.scrollbarPadding);
 
             ref Vector2 scroll = ref NowControlState.Get<Vector2>(id);
 
-            scroll.y = Mathf.Clamp(scroll.y, 0f, maxScroll);
+            scroll.x = Mathf.Clamp(scroll.x, 0f, scrollLayout.maxScrollX);
+            scroll.y = Mathf.Clamp(scroll.y, 0f, scrollLayout.maxScrollY);
+            EnsureFocusedControlVisible(id, scrollLayout.contentViewport, scrollLayout.maxScrollX, scrollLayout.maxScrollY, ref scroll);
 
-            const float BarWidth = 8f;
-            const float BarPad = 4f;
-            float contentWidth = viewport.width - (barVisible ? BarWidth + BarPad : 0f);
-
-            var mask = Now.Mask(viewport);
+            var mask = Now.Mask(scrollLayout.contentViewport);
             var layout = NowLayout.Area(areaKey, new NowRect(
-                viewport.x,
+                viewport.x - scroll.x,
                 viewport.y - scroll.y,
-                contentWidth,
-                Mathf.Max(content.y, viewport.height)));
+                scrollLayout.contentViewport.width,
+                Mathf.Max(content.y, scrollLayout.contentViewport.height)));
+            var focus = NowFocus.BeginScrollRegion(id);
 
-            return new NowScrollScope(layout, mask, viewport, id, maxScroll, barVisible);
+            return new NowScrollScope(layout, mask, focus, viewport, scrollLayout.contentViewport, id,
+                scrollLayout.maxScrollX, scrollLayout.maxScrollY,
+                scrollLayout.verticalBarVisible, scrollLayout.horizontalBarVisible);
+        }
+
+        struct ScrollLayout
+        {
+            public NowRect contentViewport;
+            public float maxScrollX;
+            public float maxScrollY;
+            public bool verticalBarVisible;
+            public bool horizontalBarVisible;
+        }
+
+        struct FocusRevealState
+        {
+            public int focusedId;
+            public int focusRevision;
+        }
+
+        static ScrollLayout ResolveScrollLayout(NowRect viewport, Vector2 content, float barReserve)
+        {
+            const float Epsilon = 0.5f;
+            barReserve = Mathf.Max(0f, barReserve);
+
+            bool vertical = content.y > viewport.height + Epsilon;
+            bool horizontal = content.x > viewport.width + Epsilon;
+
+            for (int i = 0; i < 4; ++i)
+            {
+                float availableWidth = Mathf.Max(0f, viewport.width - (vertical ? barReserve : 0f));
+                float availableHeight = Mathf.Max(0f, viewport.height - (horizontal ? barReserve : 0f));
+                bool nextVertical = content.y > availableHeight + Epsilon;
+                bool nextHorizontal = content.x > availableWidth + Epsilon;
+
+                if (nextVertical == vertical && nextHorizontal == horizontal)
+                    break;
+
+                vertical = nextVertical;
+                horizontal = nextHorizontal;
+            }
+
+            float contentWidth = Mathf.Max(0f, viewport.width - (vertical ? barReserve : 0f));
+            float contentHeight = Mathf.Max(0f, viewport.height - (horizontal ? barReserve : 0f));
+
+            return new ScrollLayout
+            {
+                contentViewport = new NowRect(viewport.x, viewport.y, contentWidth, contentHeight),
+                maxScrollX = Mathf.Max(0f, content.x - contentWidth),
+                maxScrollY = Mathf.Max(0f, content.y - contentHeight),
+                verticalBarVisible = vertical,
+                horizontalBarVisible = horizontal
+            };
+        }
+
+        static void EnsureFocusedControlVisible(int id, NowRect viewport, float maxScrollX, float maxScrollY, ref Vector2 scroll)
+        {
+            if ((maxScrollX <= 0f && maxScrollY <= 0f) || NowInput.isPassive ||
+                !NowFocus.TryGetFocusedRectInScrollRegion(id, out var focused))
+            {
+                return;
+            }
+
+            ref var reveal = ref NowControlState.Get<FocusRevealState>(NowInput.GetId(id, "focus-reveal"));
+            int focusedId = NowFocus.focusedId;
+            int focusRevision = NowFocus.focusRevision;
+
+            if (reveal.focusedId == focusedId && reveal.focusRevision == focusRevision)
+                return;
+
+            reveal.focusedId = focusedId;
+            reveal.focusRevision = focusRevision;
+
+            const float Padding = 4f;
+            float left = viewport.x + Padding;
+            float right = Mathf.Max(left, viewport.xMax - Padding);
+            float top = viewport.y + Padding;
+            float bottom = Mathf.Max(top, viewport.yMax - Padding);
+            Vector2 previous = scroll;
+
+            if (maxScrollX > 0f)
+            {
+                if (focused.x < left)
+                    scroll.x -= left - focused.x;
+                else if (focused.xMax > right)
+                    scroll.x += focused.xMax - right;
+
+                scroll.x = Mathf.Clamp(scroll.x, 0f, maxScrollX);
+            }
+
+            if (maxScrollY > 0f)
+            {
+                if (focused.y < top)
+                    scroll.y -= top - focused.y;
+                else if (focused.yMax > bottom)
+                    scroll.y += focused.yMax - bottom;
+
+                scroll.y = Mathf.Clamp(scroll.y, 0f, maxScrollY);
+            }
+
+            if (!Mathf.Approximately(previous.x, scroll.x) || !Mathf.Approximately(previous.y, scroll.y))
+                NowControlState.RequestRepaint();
         }
     }
 
@@ -93,20 +193,38 @@ namespace NowUI
     {
         NowLayoutScope _layout;
         NowMaskScope _mask;
+        NowFocusScrollRegionScope _focus;
         NowRect _viewport;
+        NowRect _contentViewport;
         readonly int _id;
-        readonly float _maxScroll;
-        readonly bool _barVisible;
+        readonly float _maxScrollX;
+        readonly float _maxScrollY;
+        readonly bool _verticalBarVisible;
+        readonly bool _horizontalBarVisible;
         bool _disposed;
 
-        internal NowScrollScope(NowLayoutScope layout, NowMaskScope mask, NowRect viewport, int id, float maxScroll, bool barVisible)
+        internal NowScrollScope(
+            NowLayoutScope layout,
+            NowMaskScope mask,
+            NowFocusScrollRegionScope focus,
+            NowRect viewport,
+            NowRect contentViewport,
+            int id,
+            float maxScrollX,
+            float maxScrollY,
+            bool verticalBarVisible,
+            bool horizontalBarVisible)
         {
             _layout = layout;
             _mask = mask;
+            _focus = focus;
             _viewport = viewport;
+            _contentViewport = contentViewport;
             _id = id;
-            _maxScroll = maxScroll;
-            _barVisible = barVisible;
+            _maxScrollX = maxScrollX;
+            _maxScrollY = maxScrollY;
+            _verticalBarVisible = verticalBarVisible;
+            _horizontalBarVisible = horizontalBarVisible;
             _disposed = false;
         }
 
@@ -119,74 +237,120 @@ namespace NowUI
                 return;
 
             _disposed = true;
+            _focus.Dispose();
             _layout.Dispose();
             _mask.Dispose();
 
             ref Vector2 scroll = ref NowControlState.Get<Vector2>(_id);
 
-            if (_maxScroll > 0f)
+            if (_maxScrollX > 0f || _maxScrollY > 0f)
             {
-                if (NowInput.current.scrollDelta.y != 0f)
-                {
-                    float wheel = NowInput.ConsumeScrollDelta(_viewport).y;
+                Vector2 pendingWheel = NowInput.current.scrollDelta;
 
-                    if (wheel != 0f)
+                if (WouldWheelMove(scroll, _maxScrollX, _maxScrollY, pendingWheel))
+                {
+                    Vector2 wheel = NowInput.ConsumeScrollDelta(_viewport);
+
+                    if (wheel != Vector2.zero)
                     {
-                        scroll.y -= wheel * 40f;
+                        float step = NowTheme.themeAsset.controlStyles.scrollWheelStep;
+                        scroll.x += wheel.x * step;
+                        scroll.y -= wheel.y * step;
                         NowControlState.RequestRepaint();
                     }
                 }
-
-                scroll.y = Mathf.Clamp(scroll.y, 0f, _maxScroll);
-            }
-            else
-            {
-                scroll.y = 0f;
             }
 
-            if (!_barVisible)
+            scroll.x = _maxScrollX > 0f ? Mathf.Clamp(scroll.x, 0f, _maxScrollX) : 0f;
+            scroll.y = _maxScrollY > 0f ? Mathf.Clamp(scroll.y, 0f, _maxScrollY) : 0f;
+
+            if (!_verticalBarVisible && !_horizontalBarVisible)
                 return;
 
             var theme = NowTheme.themeAsset;
-            const float BarWidth = 8f;
+            float barWidth = theme.controlStyles.scrollbarWidth;
 
-            var track = new NowRect(
-                _viewport.xMax - BarWidth - 2f,
-                _viewport.y + 2f,
-                BarWidth,
-                _viewport.height - 4f);
+            if (_verticalBarVisible)
+            {
+                var track = new NowRect(
+                    _viewport.xMax - barWidth - 2f,
+                    _contentViewport.y + 2f,
+                    barWidth,
+                    Mathf.Max(0f, _contentViewport.height - 4f));
 
-            int thumbId = NowInput.GetId(_id, "thumb");
+                DrawScrollbar(theme, NowScrollbarAxis.Vertical, track,
+                    _contentViewport.height, _contentViewport.height + _maxScrollY,
+                    ref scroll.y, "thumb");
+            }
+
+            if (_horizontalBarVisible)
+            {
+                var track = new NowRect(
+                    _contentViewport.x + 2f,
+                    _viewport.yMax - barWidth - 2f,
+                    Mathf.Max(0f, _contentViewport.width - 4f),
+                    barWidth);
+
+                DrawScrollbar(theme, NowScrollbarAxis.Horizontal, track,
+                    _contentViewport.width, _contentViewport.width + _maxScrollX,
+                    ref scroll.x, "hthumb");
+            }
+        }
+
+        void DrawScrollbar(
+            NowThemeAsset theme,
+            NowScrollbarAxis axis,
+            NowRect track,
+            float viewportSize,
+            float contentSize,
+            ref float value,
+            string key)
+        {
+            if (track.width <= 0f || track.height <= 0f || viewportSize <= 0f || contentSize <= 0f)
+                return;
+
+            int thumbId = NowInput.GetId(_id, key);
             var metrics = NowScrollbar.Calculate(
-                NowScrollbarAxis.Vertical,
+                axis,
                 track,
-                _viewport.height,
-                _viewport.height + _maxScroll,
-                scroll.y,
-                24f);
+                viewportSize,
+                contentSize,
+                value,
+                theme.controlStyles.scrollbarMinThumbSize);
 
             // The whole (slightly widened) track is the grab target: clicking
-            // anywhere on it jumps the thumb there and keeps dragging — an 8px
-            // thumb alone is a frustrating target.
-            bool dragging = NowScrollbar.Interact(thumbId, NowScrollbarAxis.Vertical, metrics, ref scroll.y);
+            // anywhere on it jumps the thumb there and keeps dragging.
+            bool dragging = NowScrollbar.Interact(thumbId, axis, metrics, ref value);
             metrics = NowScrollbar.Calculate(
-                NowScrollbarAxis.Vertical,
+                axis,
                 track,
-                _viewport.height,
-                _viewport.height + _maxScroll,
-                scroll.y,
-                24f);
+                viewportSize,
+                contentSize,
+                value,
+                theme.controlStyles.scrollbarMinThumbSize);
 
-            float hoverT = NowControlState.Transition(thumbId, NowInput.IsHovered(track.Outset(4f, 2f)));
+            NowRect hoverRect = axis == NowScrollbarAxis.Vertical
+                ? track.Outset(4f, 2f)
+                : track.Outset(2f, 4f);
+            float hoverT = NowControlState.Transition(thumbId, NowInput.IsHovered(hoverRect));
+            theme.controlRenderer.DrawScrollbar(new NowScrollbarRenderContext(
+                theme,
+                axis,
+                metrics,
+                dragging,
+                hoverT));
+        }
 
-            var trackRectangle = theme.Rectangle(track, NowRectangleStyle.Muted);
-            trackRectangle.radius = new Vector4(BarWidth, BarWidth, BarWidth, BarWidth) * 0.5f;
-            trackRectangle.Draw();
+        static bool WouldWheelMove(Vector2 scroll, float maxScrollX, float maxScrollY, Vector2 wheel)
+        {
+            if (wheel == Vector2.zero)
+                return false;
 
-            var thumb = theme.Rectangle(metrics.thumb, NowRectangleStyle.Accent);
-            thumb.radius = trackRectangle.radius;
-            thumb.color = NowControls.StateTint(thumb.color, hoverT, dragging);
-            thumb.Draw();
+            float step = NowTheme.themeAsset.controlStyles.scrollWheelStep;
+            float nextX = maxScrollX > 0f ? Mathf.Clamp(scroll.x + wheel.x * step, 0f, maxScrollX) : 0f;
+            float nextY = maxScrollY > 0f ? Mathf.Clamp(scroll.y - wheel.y * step, 0f, maxScrollY) : 0f;
+
+            return !Mathf.Approximately(nextX, scroll.x) || !Mathf.Approximately(nextY, scroll.y);
         }
     }
 }

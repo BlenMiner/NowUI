@@ -486,7 +486,7 @@ namespace NowUI.Markdown
         void EnsureLayout(float width)
         {
             var theme = NowTheme.themeAsset;
-            var probe = theme.Text(default(NowRect), (string)null);
+            var probe = theme.Text(default(NowRect));
             NowFontAsset font = probe.font;
 
             if (font == _layoutFont && Mathf.Abs(width - _layoutWidth) <= 0.5f &&

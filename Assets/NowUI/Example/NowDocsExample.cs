@@ -180,7 +180,7 @@ public class NowDocsExample : NowGraphic
         var theme = NowTheme.themeAsset;
         var bounds = new NowRect(0, 0, rect.width, rect.height);
 
-        theme.Rectangle(bounds, NowRectangleStyle.Surface).SetRadius(14).Draw();
+        theme.Rectangle(bounds, NowRectangleStyle.Surface).Draw();
 
         var menuRect = new NowRect(bounds.x + 12, bounds.y + 12, 180, bounds.height - 24);
         var contentRect = new NowRect(menuRect.xMax + 12, bounds.y + 12, bounds.xMax - menuRect.xMax - 24, bounds.height - 24);
@@ -201,9 +201,8 @@ public class NowDocsExample : NowGraphic
             {
                 bool selected = i == _selected;
                 var style = selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted;
-                var textStyle = selected ? NowTextStyle.Button : NowTextStyle.Body;
 
-                if (NowLayout.Button(Pages[i].title).SetId($"doc-{i}").SetStyle(style).SetTextStyle(textStyle).SetStretchWidth().SetHeight(30f).Draw())
+                if (NowLayout.Button(Pages[i].title).SetId($"doc-{i}").SetStyle(style).SetTextStyle(NowTextStyle.Body).SetStretchWidth().Draw())
                     _selected = i;
             }
         }
@@ -303,7 +302,7 @@ public class NowDocsExample : NowGraphic
         }
 
         var panel = NowLayout.Rect(height: 430f, stretchWidth: true);
-        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(8f).Draw();
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         SubmitDockDemoWindows();
 
@@ -616,7 +615,7 @@ public class NowDocsExample : NowGraphic
     NowRect ReserveSdfPanel(NowThemeAsset themeAsset, float height)
     {
         var panel = NowLayout.Rect(height: height, stretchWidth: true);
-        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
         return panel.Inset(14f, 14f);
     }
 
@@ -801,7 +800,7 @@ public class NowDocsExample : NowGraphic
         NowMarkdown.Document("# Lines demo\n\nStraight strokes, cubic Beziers, dash patterns, masks, and arrow heads are all immediate-mode draw calls.").Draw();
 
         var panel = NowLayout.Rect(height: 280f, stretchWidth: true);
-        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var area = panel.Inset(24f, 18f);
         Color muted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
@@ -859,7 +858,7 @@ public class NowDocsExample : NowGraphic
         NowMarkdown.Document("# Shapes demo\n\nCore shapes are filled or outlined geometry submitted through the same mesh batch as other NowUI draws.").Draw();
 
         var panel = NowLayout.Rect(height: 280f, stretchWidth: true);
-        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var area = panel.Inset(24f, 18f);
         Color accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
@@ -939,7 +938,7 @@ public class NowDocsExample : NowGraphic
         }
 
         var panel = NowLayout.Rect(height: 330f, stretchWidth: true);
-        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var area = panel.Inset(24f, 20f);
         var mat = GetCustomMaterialCanvas(themeAsset);
@@ -1133,7 +1132,7 @@ public class NowDocsExample : NowGraphic
 
         float debugHeight = _glassDemoDebug ? 214f : 0f;
         var panel = NowLayout.Rect(height: 360f + debugHeight, stretchWidth: true);
-        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var preview = panel.Inset(22f, 20f, 22f, 54f + debugHeight);
         DrawGlassDemoScene(preview, themeAsset);
@@ -1417,7 +1416,7 @@ public class NowDocsExample : NowGraphic
         }
 
         var panel = NowLayout.Rect(height: 360f, stretchWidth: true);
-        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(10f).Draw();
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         float progress = _effectsDemoAuto
             ? Mathf.PingPong(Time.time * 0.38f, 1f)
@@ -1657,7 +1656,8 @@ public static class GuideControls
         [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
     {
         return NowLayout.Button(label, file, line)
-            .SetStyle(NowRectangleStyle.Outline);
+            .SetStyle(NowRectangleStyle.Outline)
+            .SetTextStyle(NowTextStyle.Body);
     }
 
     public static bool RoundButton(

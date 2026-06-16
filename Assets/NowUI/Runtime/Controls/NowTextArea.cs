@@ -29,9 +29,10 @@ namespace NowUI
     [NowBuilder]
     public struct NowTextArea
     {
-        readonly NowId _id;
+        NowId _id;
         readonly int _site;
         string _placeholder;
+        NowFocusNavigation _navigation;
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -47,6 +48,7 @@ namespace NowUI
             _id = id;
             _site = site;
             _placeholder = null;
+            _navigation = default;
             _options = default;
             _rect = default;
             _hasRect = false;
@@ -70,6 +72,12 @@ namespace NowUI
         public NowTextArea SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
         public NowTextArea SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
+
+        /// <summary>Explicit control id, decoupling identity from the call site.</summary>
+        public NowTextArea SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
+        public NowTextArea SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
         /// <summary>Height bounds in visual lines; the area grows with content between them.</summary>
         public NowTextArea SetLines(int minLines, int maxLines)
@@ -98,6 +106,7 @@ namespace NowUI
             string original = text;
 
             var theme = NowTheme.themeAsset;
+            var renderer = theme.controlRenderer;
             int id = NowControls.GetControlId(_id, _site);
 
             var textStyle = theme.Text(default, _textPreset);
@@ -107,16 +116,18 @@ namespace NowUI
 
             ref int lastLineCount = ref NowControlState.Get<int>(NowInput.GetId(id, "lines"));
             int visualLines = Mathf.Clamp(Mathf.Max(lastLineCount, 1), _minLines, _maxLines);
-            float boxHeight = visualLines * lineHeight + 12f;
 
-            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, new Vector2(200f, boxHeight));
-            var inner = rect.Inset(8f, 6f, 8f, 6f);
+            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureTextArea(theme, lineHeight, visualLines));
+            var inner = renderer.TextAreaInnerRect(theme, rect);
 
-            var interaction = NowControls.Interact(id, rect, out bool focused, out _);
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
+            bool verticalMove = false;
+            bool revealCaret = false;
 
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
             ref var area = ref NowControlState.Get<AreaState>(NowInput.GetId(id, "area"));
+            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(NowInput.GetId(id, "selection-gesture"));
 
             if (fontAsset == null)
                 return false;
@@ -136,7 +147,10 @@ namespace NowUI
                 NowTextInput.setImeEnabled?.Invoke(true);
 
                 if (!interaction.pressed)
+                {
                     NowTextEdit.MoveEnd(ref state, text, false);
+                    revealCaret = true;
+                }
             }
             else if (!focused && area.hadFocus == 1)
             {
@@ -145,11 +159,12 @@ namespace NowUI
 
             area.hadFocus = focused ? (byte)1 : (byte)0;
 
-            bool verticalMove = false;
             string composition = null;
 
             if (interaction.pressed)
             {
+                revealCaret = true;
+
                 int hit = NowTextMetrics.HitTest(text, lines, fontAsset, fontSize, textStyle.fontStyle,
                     interaction.pointerPosition, inner, lineHeight, 0f, area.scrollY);
                 int streak = NowControlState.ClickStreak(id, true, interaction.pointerPosition);
@@ -157,21 +172,26 @@ namespace NowUI
                 if (streak >= 3)
                 {
                     NowTextEdit.SelectLine(ref state, text, hit);
+                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Line, in state);
                 }
                 else if (streak == 2)
                 {
                     NowTextEdit.SelectWord(ref state, text, hit);
+                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Word, in state);
                 }
                 else
                 {
                     state.caret = hit;
                     state.anchor = hit;
+                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
                 }
             }
             else if (interaction.dragging)
             {
-                state.caret = NowTextMetrics.HitTest(text, lines, fontAsset, fontSize, textStyle.fontStyle,
+                revealCaret = true;
+                int hit = NowTextMetrics.HitTest(text, lines, fontAsset, fontSize, textStyle.fontStyle,
                     interaction.pointerPosition, inner, lineHeight, 0f, area.scrollY);
+                NowTextEdit.DragSelectionGesture(ref state, text, in gesture, hit);
                 NowControlState.RequestRepaint();
             }
 
@@ -182,7 +202,13 @@ namespace NowUI
                 composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
 
                 if (!string.IsNullOrEmpty(frame.characters))
+                {
+                    revealCaret = true;
                     NowTextEdit.Insert(ref text, ref state, frame.characters);
+                }
+
+                if (composition != null)
+                    revealCaret = true;
 
                 // While composing the IME owns the editing keys.
                 if (composition == null)
@@ -191,19 +217,24 @@ namespace NowUI
                         NowFocus.Clear();
 
                     if (frame.selectAllPressed)
+                    {
+                        revealCaret = true;
                         NowTextEdit.SelectAll(ref state, text);
+                    }
 
                     if (frame.copyPressed && state.hasSelection)
                         NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
 
                     if (frame.cutPressed && state.hasSelection)
                     {
+                        revealCaret = true;
                         NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
                         NowTextEdit.DeleteSelection(ref text, ref state);
                     }
 
                     if (frame.pastePressed)
                     {
+                        revealCaret = true;
                         string buffer = NowClipboard.Paste();
 
                         if (!string.IsNullOrEmpty(buffer))
@@ -211,25 +242,41 @@ namespace NowUI
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "enter"), frame.enterHeld))
+                    {
+                        revealCaret = true;
                         NowTextEdit.Insert(ref text, ref state, "\n");
+                    }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "bs"), frame.backspaceHeld))
+                    {
+                        revealCaret = true;
                         NowTextEdit.Backspace(ref text, ref state, frame.command);
+                    }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "del"), frame.deleteHeld))
+                    {
+                        revealCaret = true;
                         NowTextEdit.Delete(ref text, ref state, frame.command);
+                    }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "left"), frame.leftHeld))
+                    {
+                        revealCaret = true;
                         NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.command);
+                    }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "right"), frame.rightHeld))
+                    {
+                        revealCaret = true;
                         NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.command);
+                    }
 
                     if (text != original)
                         LayoutLines(text, fontAsset, fontSize, textStyle.fontStyle, inner.width, lines);
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "up"), frame.upHeld))
                     {
+                        revealCaret = true;
                         MoveVertical(ref state, text, lines, fontAsset, fontSize,
                             textStyle.fontStyle, area.goalX, -1, frame.shift);
                         verticalMove = true;
@@ -237,6 +284,7 @@ namespace NowUI
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "down"), frame.downHeld))
                     {
+                        revealCaret = true;
                         MoveVertical(ref state, text, lines, fontAsset, fontSize,
                             textStyle.fontStyle, area.goalX, 1, frame.shift);
                         verticalMove = true;
@@ -244,6 +292,8 @@ namespace NowUI
 
                     if (frame.homePressed)
                     {
+                        revealCaret = true;
+
                         if (frame.command)
                         {
                             NowTextEdit.MoveHome(ref state, frame.shift);
@@ -260,6 +310,8 @@ namespace NowUI
 
                     if (frame.endPressed)
                     {
+                        revealCaret = true;
+
                         if (frame.command)
                         {
                             NowTextEdit.MoveEnd(ref state, text, frame.shift);
@@ -298,7 +350,9 @@ namespace NowUI
             float caretX = NowTextMetrics.Advance(display, fontAsset, fontSize, textStyle.fontStyle,
                 lines[caretLine].start, displayCaret - lines[caretLine].start);
 
-            if (state.caret != area.lastCaret || text != original || interaction.pressed)
+            revealCaret |= state.caret != area.lastCaret || text != original;
+
+            if (revealCaret)
             {
                 area.lastCaret = state.caret;
                 area.blinkAnchor = Time.realtimeSinceStartup;
@@ -310,7 +364,9 @@ namespace NowUI
             float contentHeight = lines.Count * lineHeight;
             float maxScroll = Mathf.Max(0f, contentHeight - inner.height);
 
-            if (interaction.hovered && maxScroll > 0f && NowInput.current.scrollDelta.y != 0f)
+            float pendingWheel = NowInput.current.scrollDelta.y;
+
+            if (interaction.hovered && maxScroll > 0f && WouldWheelMove(area.scrollY, maxScroll, pendingWheel, lineHeight))
             {
                 float wheel = NowInput.ConsumeScrollDelta(inner).y;
 
@@ -321,7 +377,7 @@ namespace NowUI
                 }
             }
 
-            if (focused)
+            if (focused && revealCaret)
             {
                 float caretTop = caretLine * lineHeight;
 
@@ -339,15 +395,7 @@ namespace NowUI
                     inner.x + caretX,
                     inner.y + caretLine * lineHeight - area.scrollY + lineHeight));
 
-            var box = theme.Rectangle(rect, NowRectangleStyle.Outline);
-
-            if (focused)
-            {
-                box.outline = 2f;
-                box.outlineColor = theme.GetColor(NowColorToken.Accent, Color.blue);
-            }
-
-            box.Draw();
+            renderer.DrawTextInputFrame(new NowControlFrameRenderContext(theme, rect, focused));
 
             using (Now.Mask(inner))
             {
@@ -355,7 +403,7 @@ namespace NowUI
                 int lastVisible = Mathf.Min(lines.Count - 1, Mathf.CeilToInt((area.scrollY + inner.height) / lineHeight));
 
                 if (focused && state.hasSelection && composition == null)
-                    DrawSelection(theme, text, lines, fontAsset, fontSize, textStyle.fontStyle,
+                    DrawSelection(theme, renderer, text, lines, fontAsset, fontSize, textStyle.fontStyle,
                         inner, lineHeight, area.scrollY, state, firstVisible, lastVisible);
 
                 if (display.Length == 0 && !focused && !string.IsNullOrEmpty(_placeholder))
@@ -382,13 +430,11 @@ namespace NowUI
 
                 if (focused && NowControlState.Blink(1f, area.blinkAnchor))
                 {
-                    Now.Rectangle(new NowRect(
+                    renderer.DrawCaret(theme, new NowRect(
                             inner.x + caretX,
                             inner.y + caretLine * lineHeight - area.scrollY,
-                            2f,
-                            lineHeight))
-                        .SetColor(theme.GetColor(NowColorToken.Text, Color.black))
-                        .Draw();
+                            theme.controlStyles.caretWidth,
+                            lineHeight));
                 }
             }
 
@@ -399,16 +445,31 @@ namespace NowUI
                 float travel = trackHeight - thumbHeight;
                 float normalized = maxScroll > 0f ? area.scrollY / maxScroll : 0f;
 
-                Now.Rectangle(new NowRect(rect.xMax - 5f, inner.y + travel * normalized, 3f, thumbHeight))
-                    .SetColor(theme.GetColor(NowColorToken.Border, Color.gray))
-                    .SetRadius(1.5f)
-                    .Draw();
+                var track = new NowRect(rect.xMax - 5f, inner.y, 3f, trackHeight);
+                var metrics = new NowScrollbarMetrics
+                {
+                    visible = true,
+                    maxValue = maxScroll,
+                    travel = travel,
+                    track = track,
+                    thumb = new NowRect(rect.xMax - 5f, inner.y + travel * normalized, 3f, thumbHeight)
+                };
+                renderer.DrawScrollbar(new NowScrollbarRenderContext(theme, NowScrollbarAxis.Vertical, metrics, false, 0f));
             }
 
             if (focused)
                 NowControlState.RequestRepaint();
 
             return text != original;
+        }
+
+        static bool WouldWheelMove(float scrollY, float maxScroll, float wheel, float lineHeight)
+        {
+            if (wheel == 0f)
+                return false;
+
+            float next = Mathf.Clamp(scrollY - wheel * lineHeight * 2f, 0f, maxScroll);
+            return !Mathf.Approximately(next, scrollY);
         }
 
         /// <summary>
@@ -469,12 +530,10 @@ namespace NowUI
                 state.anchor = state.caret;
         }
 
-        static void DrawSelection(NowThemeAsset themeAsset, string text, List<NowTextLine> lines, NowFontAsset font,
+        static void DrawSelection(NowThemeAsset themeAsset, NowControlRenderer renderer, string text, List<NowTextLine> lines, NowFontAsset font,
             float fontSize, NowFontStyle style, NowRect inner, float lineHeight, float scrollY,
             in NowTextEditState state, int firstVisible, int lastVisible)
         {
-            Color highlight = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
-            highlight.a = 0.3f;
             int selectionMin = state.selectionMin;
             int selectionMax = state.selectionMax;
 
@@ -494,13 +553,11 @@ namespace NowUI
                 if (selectionMax > lineEnd)
                     x1 += fontSize * 0.35f;
 
-                Now.Rectangle(new NowRect(
+                renderer.DrawSelection(themeAsset, new NowRect(
                         inner.x + x0,
                         inner.y + i * lineHeight - scrollY,
                         Mathf.Max(x1 - x0, 1f),
-                        lineHeight))
-                    .SetColor(highlight)
-                    .Draw();
+                        lineHeight));
             }
         }
 
@@ -508,7 +565,8 @@ namespace NowUI
             NowFontAsset font, float fontSize, NowFontStyle style, NowRect inner, float lineHeight, float scrollY,
             int from, int to, int firstVisible, int lastVisible)
         {
-            Color underline = themeAsset.GetColor(NowColorToken.Text, Color.black);
+            var renderer = themeAsset.controlRenderer;
+            float underlineHeight = themeAsset.controlStyles.compositionUnderlineHeight;
 
             for (int i = firstVisible; i <= lastVisible && i < lines.Count; ++i)
             {
@@ -523,13 +581,11 @@ namespace NowUI
                 float x0 = NowTextMetrics.Advance(display, font, fontSize, style, line.start, rangeFrom - line.start);
                 float x1 = NowTextMetrics.Advance(display, font, fontSize, style, line.start, rangeTo - line.start);
 
-                Now.Rectangle(new NowRect(
+                renderer.DrawCompositionUnderline(themeAsset, new NowRect(
                         inner.x + x0,
-                        inner.y + (i + 1) * lineHeight - scrollY - 1f,
+                        inner.y + (i + 1) * lineHeight - scrollY - underlineHeight,
                         Mathf.Max(x1 - x0, 1f),
-                        1f))
-                    .SetColor(underline)
-                    .Draw();
+                        underlineHeight));
             }
         }
 

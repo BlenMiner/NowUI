@@ -15,9 +15,10 @@ namespace NowUI
     [NowBuilder]
     public struct NowTextField
     {
-        readonly NowId _id;
+        NowId _id;
         readonly int _site;
         string _placeholder;
+        NowFocusNavigation _navigation;
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -31,6 +32,7 @@ namespace NowUI
             _id = id;
             _site = site;
             _placeholder = null;
+            _navigation = default;
             _options = default;
             _rect = default;
             _hasRect = false;
@@ -53,12 +55,19 @@ namespace NowUI
 
         public NowTextField SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
+        /// <summary>Explicit control id, decoupling identity from the call site.</summary>
+        public NowTextField SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
+        public NowTextField SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
+
         public bool Draw(ref string text)
         {
             text ??= string.Empty;
             string original = text;
 
             var theme = NowTheme.themeAsset;
+            var renderer = theme.controlRenderer;
             int id = NowControls.GetControlId(_id, _site);
 
             var textStyle = theme.Text(default, _textPreset);
@@ -66,10 +75,10 @@ namespace NowUI
             float fontSize = textStyle.fontSize;
             float lineHeight = fontAsset != null ? fontAsset.GetLineHeight() * fontSize : fontSize * 1.2f;
 
-            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, new Vector2(200f, lineHeight + 12f));
-            var inner = rect.Inset(8f, (rect.height - lineHeight) * 0.5f, 8f, (rect.height - lineHeight) * 0.5f);
+            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureTextField(theme, lineHeight));
+            var inner = renderer.TextFieldInnerRect(theme, rect, lineHeight);
 
-            var interaction = NowControls.Interact(id, rect, out bool focused, out _);
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
 
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
@@ -209,15 +218,7 @@ namespace NowUI
             if (focused && !NowInput.isPassive)
                 NowTextInput.setCompositionCursor?.Invoke(new Vector2(inner.x - state.scrollX + caretX, inner.yMax));
 
-            var box = theme.Rectangle(rect, NowRectangleStyle.Outline);
-
-            if (focused)
-            {
-                box.outline = 2f;
-                box.outlineColor = theme.GetColor(NowColorToken.Accent, Color.blue);
-            }
-
-            box.Draw();
+            renderer.DrawTextInputFrame(new NowControlFrameRenderContext(theme, rect, focused));
 
             using (Now.Mask(inner))
             {
@@ -227,12 +228,7 @@ namespace NowUI
                 {
                     float selectionMin = PrefixAdvance(fontAsset, resolvedFont, text, state.selectionMin, fontSize);
                     float selectionMax = PrefixAdvance(fontAsset, resolvedFont, text, state.selectionMax, fontSize);
-                    Color selectionColor = theme.GetColor(NowColorToken.Accent, Color.blue);
-                    selectionColor.a = 0.35f;
-
-                    Now.Rectangle(new NowRect(textX + selectionMin, inner.y, selectionMax - selectionMin, inner.height))
-                        .SetColor(selectionColor)
-                        .Draw();
+                    renderer.DrawSelection(theme, new NowRect(textX + selectionMin, inner.y, selectionMax - selectionMin, inner.height));
                 }
 
                 if (display.Length > 0)
@@ -250,16 +246,17 @@ namespace NowUI
                 {
                     float compositionX = PrefixAdvance(fontAsset, resolvedFont, display, state.caret, fontSize);
 
-                    Now.Rectangle(new NowRect(textX + compositionX, inner.yMax - 1f, Mathf.Max(caretX - compositionX, 1f), 1f))
-                        .SetColor(theme.GetColor(NowColorToken.Text, Color.black))
-                        .Draw();
+                    float underlineHeight = theme.controlStyles.compositionUnderlineHeight;
+                    renderer.DrawCompositionUnderline(theme, new NowRect(
+                        textX + compositionX,
+                        inner.yMax - underlineHeight,
+                        Mathf.Max(caretX - compositionX, 1f),
+                        underlineHeight));
                 }
 
                 if (focused && NowControlState.Blink(1f, blinkAnchor))
                 {
-                    Now.Rectangle(new NowRect(textX + caretX, inner.y, 2f, inner.height))
-                        .SetColor(theme.GetColor(NowColorToken.Text, Color.black))
-                        .Draw();
+                    renderer.DrawCaret(theme, new NowRect(textX + caretX, inner.y, theme.controlStyles.caretWidth, inner.height));
                 }
             }
 

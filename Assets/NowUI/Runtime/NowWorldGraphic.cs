@@ -258,6 +258,8 @@ namespace NowUI
                 input.pointerButtonsReleased,
                 input.scrollDelta,
                 navigation ? input.navigation : Vector2.zero,
+                navigation && input.focusPreviousPressed,
+                navigation && input.focusNextPressed,
                 navigation && input.submitDown,
                 navigation && input.submitPressed,
                 navigation && input.submitReleased,
@@ -368,6 +370,8 @@ namespace NowUI
             private NowPointerButtons pointerButtonsReleased;
             private Vector2 scrollDelta;
             private Vector2 navigation;
+            private bool focusPreviousPressed;
+            private bool focusNextPressed;
             private bool submitDown;
             private bool submitPressed;
             private bool submitReleased;
@@ -390,6 +394,8 @@ namespace NowUI
                     pointerButtonsReleased = snapshot.pointerButtonsReleased,
                     scrollDelta = snapshot.scrollDelta,
                     navigation = snapshot.navigation,
+                    focusPreviousPressed = snapshot.focusPreviousPressed,
+                    focusNextPressed = snapshot.focusNextPressed,
                     submitDown = snapshot.submitDown,
                     submitPressed = snapshot.submitPressed,
                     submitReleased = snapshot.submitReleased,
@@ -431,7 +437,8 @@ namespace NowUI
                 if (submitDown != previous.submitDown || cancelDown != previous.cancelDown)
                     return true;
 
-                return submitPressed || submitReleased || cancelPressed || cancelReleased;
+                return focusPreviousPressed || focusNextPressed ||
+                    submitPressed || submitReleased || cancelPressed || cancelReleased;
             }
         }
 

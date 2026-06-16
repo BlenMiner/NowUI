@@ -10,42 +10,42 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 04c5a0a2a8e8407792a9d8e3844255a0, type: 3}
-  m_Name: Night
+  m_Name: HeroUIDark
   m_EditorClassIdentifier: NowUI.Runtime::NowTheme
   _defaultRectangleStyle: 0
   _defaultTextStyle: 1
   _palette:
-    _background: {r: 0.08322116, g: 0.09395788, b: 0.12, a: 1}
-    _surface: {r: 0.11488462, g: 0.12805499, b: 0.16, a: 1}
-    _surfaceMuted: {r: 0.16470915, g: 0.18085001, b: 0.22, a: 1}
-    _text: {r: 0.92120004, g: 0.9383653, b: 0.98, a: 1}
-    _textMuted: {r: 0.60480005, g: 0.63842994, b: 0.72, a: 1}
-    _border: {r: 0.26184496, g: 0.2846605, b: 0.34, a: 1}
-    _accent: {r: 0.9602585, g: 0.5118933, b: 0.33626598, a: 1}
-    _accentText: {r: 0.052, g: 0.06601247, b: 0.1, a: 1}
+    _background: {r: 0.021722, g: 0.021695, b: 0.028367, a: 1}
+    _surface: {r: 0.094084, g: 0.094081, b: 0.105925, a: 1}
+    _surfaceMuted: {r: 0.152897, g: 0.152887, b: 0.16577, a: 1}
+    _text: {r: 0.988276, g: 0.988276, b: 0.988276, a: 1}
+    _textMuted: {r: 0.622613, g: 0.622562, b: 0.66336, a: 1}
+    _border: {r: 0.158629, g: 0.158622, b: 0.171576, a: 1}
+    _accent: {r: 0.2, g: 0.5568628, b: 0.96862745, a: 1}
+    _accentText: {r: 0.094084, g: 0.094081, b: 0.105925, a: 1}
   _spacings:
     _none: {x: 0, y: 0, z: 0, w: 0}
     _xs: {x: 4, y: 4, z: 4, w: 4}
     _sm: {x: 8, y: 8, z: 8, w: 8}
     _md: {x: 12, y: 12, z: 12, w: 12}
-    _lg: {x: 20, y: 20, z: 20, w: 20}
-    _panel: {x: 24, y: 20, z: 24, w: 20}
+    _lg: {x: 16, y: 16, z: 16, w: 16}
+    _panel: {x: 20, y: 20, z: 20, w: 20}
   _radii:
     _none: {x: 0, y: 0, z: 0, w: 0}
-    _sm: {x: 4, y: 4, z: 4, w: 4}
-    _md: {x: 8, y: 8, z: 8, w: 8}
-    _lg: {x: 14, y: 14, z: 14, w: 14}
+    _sm: {x: 8, y: 8, z: 8, w: 8}
+    _md: {x: 12, y: 12, z: 12, w: 12}
+    _lg: {x: 16, y: 16, z: 16, w: 16}
     _pill: {x: 999, y: 999, z: 999, w: 999}
   _rectanglePresets:
     _surface:
       _fill:
         _useToken: 1
         _token: 1
-        _fallback: {r: 0.11488462, g: 0.12805499, b: 0.16, a: 1}
+        _fallback: {r: 0.094084, g: 0.094081, b: 0.105925, a: 1}
       _radius:
         _useToken: 1
         _token: 2
-        _fallback: {x: 8, y: 8, z: 8, w: 8}
+        _fallback: {x: 12, y: 12, z: 12, w: 12}
       _padding:
         _useToken: 0
         _token: 0
@@ -60,11 +60,11 @@ MonoBehaviour:
       _fill:
         _useToken: 1
         _token: 2
-        _fallback: {r: 0.16470915, g: 0.18085001, b: 0.22, a: 1}
+        _fallback: {r: 0.152897, g: 0.152887, b: 0.16577, a: 1}
       _radius:
         _useToken: 1
         _token: 2
-        _fallback: {x: 8, y: 8, z: 8, w: 8}
+        _fallback: {x: 12, y: 12, z: 12, w: 12}
       _padding:
         _useToken: 0
         _token: 0
@@ -83,7 +83,7 @@ MonoBehaviour:
       _radius:
         _useToken: 1
         _token: 2
-        _fallback: {x: 8, y: 8, z: 8, w: 8}
+        _fallback: {x: 12, y: 12, z: 12, w: 12}
       _padding:
         _useToken: 0
         _token: 0
@@ -93,16 +93,16 @@ MonoBehaviour:
       _outlineColor:
         _useToken: 1
         _token: 5
-        _fallback: {r: 0.26184496, g: 0.2846605, b: 0.34, a: 1}
+        _fallback: {r: 0.158629, g: 0.158622, b: 0.171576, a: 1}
     _accent:
       _fill:
         _useToken: 1
         _token: 6
-        _fallback: {r: 0.9602585, g: 0.5118933, b: 0.33626598, a: 1}
+        _fallback: {r: 0.2, g: 0.5568628, b: 0.96862745, a: 1}
       _radius:
         _useToken: 1
         _token: 2
-        _fallback: {x: 8, y: 8, z: 8, w: 8}
+        _fallback: {x: 12, y: 12, z: 12, w: 12}
       _padding:
         _useToken: 0
         _token: 0
@@ -116,11 +116,11 @@ MonoBehaviour:
   _textPresets:
     _title:
       _font: {fileID: 0}
-      _fontSize: 28
+      _fontSize: 24
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.92120004, g: 0.9383653, b: 0.98, a: 1}
+        _fallback: {r: 0.988276, g: 0.988276, b: 0.988276, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
@@ -132,11 +132,11 @@ MonoBehaviour:
         _fallback: {x: 0, y: 0, z: 0, w: 0}
     _body:
       _font: {fileID: 0}
-      _fontSize: 16
+      _fontSize: 15
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.92120004, g: 0.9383653, b: 0.98, a: 1}
+        _fallback: {r: 0.988276, g: 0.988276, b: 0.988276, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
@@ -152,7 +152,7 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 4
-        _fallback: {r: 0.60480005, g: 0.63842994, b: 0.72, a: 1}
+        _fallback: {r: 0.622613, g: 0.622562, b: 0.66336, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
@@ -168,7 +168,7 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 7
-        _fallback: {r: 0.052, g: 0.06601247, b: 0.1, a: 1}
+        _fallback: {r: 0.094084, g: 0.094081, b: 0.105925, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
@@ -179,70 +179,70 @@ MonoBehaviour:
         _token: 0
         _fallback: {x: 0, y: 0, z: 0, w: 0}
   _controlStyles:
-    _buttonPadding: {x: 12, y: 12, z: 12, w: 12}
-    _buttonContentGap: 6
-    _buttonFallbackContentWidth: 40
+    _buttonPadding: {x: 16, y: 8, z: 16, w: 8}
+    _buttonContentGap: 8
+    _buttonFallbackContentWidth: 56
     _buttonFallbackContentHeight: 20
-    _buttonMinHeight: 0
+    _buttonMinHeight: 40
     _buttonRadius:
-      _useToken: 0
-      _token: 0
-      _fallback: {x: 0, y: 0, z: 0, w: 0}
+      _useToken: 1
+      _token: 2
+      _fallback: {x: 12, y: 12, z: 12, w: 12}
     _focusOutline: 2
     _focusColor:
       _useToken: 1
-      _token: 3
-      _fallback: {r: 0, g: 0, b: 0, a: 1}
+      _token: 6
+      _fallback: {r: 0.2, g: 0.5568628, b: 0.96862745, a: 1}
     _fieldFocusColor:
       _useToken: 1
       _token: 6
-      _fallback: {r: 0, g: 0, b: 1, a: 1}
-    _hoverBrightness: 1.1
-    _pressedBrightness: 0.86
+      _fallback: {r: 0.2, g: 0.5568628, b: 0.96862745, a: 1}
+    _hoverBrightness: 1.03
+    _pressedBrightness: 0.96
     _hoverStateOpacity: 0.08
     _pressedStateOpacity: 0.12
-    _toggleSize: 18
-    _toggleGap: 8
-    _toggleStateLayerSize: 0
+    _toggleSize: 20
+    _toggleGap: 10
+    _toggleStateLayerSize: 36
     _checkboxMarkInsetRatio: 0.3
-    _checkboxMarkRadius: 2
+    _checkboxMarkRadius: 6
     _radioDotInsetRatio: 0.32
-    _sliderHeight: 20
-    _sliderKnobSize: 16
-    _sliderTrackThickness: 6
+    _sliderHeight: 36
+    _sliderKnobSize: 18
+    _sliderTrackThickness: 4
     _sliderNavigationStep: 0.05
-    _sliderStateLayerSize: 0
-    _textFieldPadding: {x: 8, y: 6, z: 8, w: 6}
-    _textFieldMinHeight: 0
+    _sliderStateLayerSize: 36
+    _textFieldPadding: {x: 12, y: 8, z: 12, w: 8}
+    _textFieldMinHeight: 40
     _fieldRadius:
-      _useToken: 0
-      _token: 0
-      _fallback: {x: 0, y: 0, z: 0, w: 0}
-    _textAreaPadding: {x: 8, y: 6, z: 8, w: 6}
-    _selectionAlpha: 0.35
+      _useToken: 1
+      _token: 2
+      _fallback: {x: 12, y: 12, z: 12, w: 12}
+    _textAreaPadding: {x: 12, y: 10, z: 12, w: 10}
+    _selectionAlpha: 0.22
     _caretWidth: 2
     _compositionUnderlineHeight: 1
-    _dropdownFieldPadding: {x: 8, y: 6, z: 8, w: 6}
-    _dropdownFieldMinHeight: 0
-    _dropdownItemHeight: 30
-    _dropdownMaxPopupHeight: 240
-    _dropdownPopupGap: 4
-    _popupPadding: 4
-    _popupItemRadius: 4
+    _dropdownFieldPadding: {x: 12, y: 4, z: 12, w: 4}
+    _dropdownFieldMinHeight: 36
+    _dropdownItemHeight: 40
+    _dropdownMaxPopupHeight: 280
+    _dropdownPopupGap: 6
+    _popupPadding: 6
+    _popupItemRadius: 8
     _popupRadius:
-      _useToken: 0
-      _token: 0
-      _fallback: {x: 0, y: 0, z: 0, w: 0}
-    _contextMenuItemHeight: 26
-    _contextMenuPaddingX: 14
-    _contextMenuMinWidth: 120
-    _contextMenuRadius: 6
+      _useToken: 1
+      _token: 2
+      _fallback: {x: 12, y: 12, z: 12, w: 12}
+    _contextMenuItemHeight: 40
+    _contextMenuPaddingX: 12
+    _contextMenuMinWidth: 160
+    _contextMenuRadius: 12
     _scrollbarWidth: 8
-    _scrollbarPadding: 4
-    _scrollbarMinThumbSize: 24
-    _scrollWheelStep: 40
-  _controlRenderer: {fileID: 0}
+    _scrollbarPadding: 2
+    _scrollbarMinThumbSize: 32
+    _scrollWheelStep: 48
+  _controlRenderer: {fileID: 11400000, guid: 0af2e394bbef4a0d972e46bbfd398433, type: 2}
   _generatorDark: 1
-  _generatorKeyColor: {r: 0.28772497, g: 0.32406422, b: 0.4122058, a: 1}
-  _generatorAccentColor: {r: 0.9602585, g: 0.5118933, b: 0.33626598, a: 1}
-  _generatorSeed: 210486812
+  _generatorKeyColor: {r: 0.021722, g: 0.021695, b: 0.028367, a: 1}
+  _generatorAccentColor: {r: 0.2, g: 0.5568628, b: 0.96862745, a: 1}
+  _generatorSeed: 7071
