@@ -6,11 +6,9 @@ namespace NowUI
 {
     public enum NowWorldGlassBackdropMode
     {
-        TintOnly,
-        CameraColor,
-        CameraBlurred,
-        CameraAndWorldColor,
-        CameraAndWorldBlurred
+        TintOnly = 0,
+        Camera = 1,
+        CameraAndWorld = 4
     }
 
     public static class NowWorldGlassBackdrop
@@ -48,11 +46,15 @@ namespace NowUI
         {
             public RenderTexture texture;
 
+            public RenderTexture sharpTexture;
+
             public int width;
 
             public int height;
 
             public int lastUsedFrame = -1;
+
+            public int lastSharpUsedFrame = -1;
 
             public NowWorldGlassBackdropMode mode;
 
@@ -114,11 +116,13 @@ namespace NowUI
 
             EnsureCallbacks();
 
-            if (requiresSceneDepth)
-                RequestSceneDepth(camera);
+            mode = NormalizeMode(mode);
 
             if (mode == NowWorldGlassBackdropMode.TintOnly)
                 return;
+
+            if (requiresSceneDepth)
+                RequestSceneDepth(camera);
 
             if (!_states.TryGetValue(camera, out var state))
             {
@@ -226,24 +230,29 @@ namespace NowUI
                 }
 
                 bool includeWorld = IncludesWorld(request.mode);
-                bool blur = IsBlurred(request.mode);
+                bool blur = ShouldBlur(request);
                 var backdropSource = source;
 
-                if (!includeWorld && TryGetSharedBackdrop(state, commandBuffer, source, width, height, request, out var sharedBackdrop))
+                if (!includeWorld &&
+                    TryGetSharedBackdrop(state, commandBuffer, source, width, height, request, out var sharedBackdrop, out var sharedSharpBackdrop))
                 {
-                    request.requester.ApplyGlassBackdropTexture(sharedBackdrop);
+                    request.requester.ApplyGlassBackdropTexture(sharedBackdrop, sharedSharpBackdrop);
                     lastBackdrop = sharedBackdrop;
                     populated = true;
                     continue;
                 }
 
                 EnsureBackdropTexture(request, width, height);
+                bool needsSharpSource = request.requiresSceneDepth && blur;
 
-                if (includeWorld)
+                if (includeWorld || needsSharpSource)
                 {
                     EnsureSourceTexture(request, width, height);
                     commandBuffer.Blit(source, request.source);
-                    RenderWorldContributors(commandBuffer, camera, request);
+
+                    if (includeWorld)
+                        RenderWorldContributors(commandBuffer, camera, request);
+
                     backdropSource = request.source;
                 }
 
@@ -262,7 +271,9 @@ namespace NowUI
                         new NowRect(0f, 0f, width, height),
                         out _);
 
-                request.requester.ApplyGlassBackdropTexture(request.backdrop);
+                request.requester.ApplyGlassBackdropTexture(
+                    request.backdrop,
+                    needsSharpSource ? request.source : request.backdrop);
                 lastBackdrop = request.backdrop;
                 populated = true;
             }
@@ -282,19 +293,22 @@ namespace NowUI
             int width,
             int height,
             RequestState request,
-            out RenderTexture texture)
+            out RenderTexture texture,
+            out RenderTexture sharpTexture)
         {
             texture = null;
+            sharpTexture = null;
 
             if (state == null || commandBuffer == null || request == null)
                 return false;
 
             var shared = GetSharedBackdropState(state, request.mode, request.blurRadius, request.quality);
-            EnsureSharedTexture(shared, width, height);
+            bool needsSharpTexture = request.requiresSceneDepth && ShouldBlur(request);
+            EnsureSharedTexture(shared, width, height, needsSharpTexture);
 
             if (shared.lastUsedFrame != Time.frameCount)
             {
-                if (!IsBlurred(request.mode))
+                if (!ShouldBlur(request))
                 {
                     commandBuffer.Blit(source, shared.texture);
                 }
@@ -315,7 +329,14 @@ namespace NowUI
             }
 
             shared.lastUsedFrame = Time.frameCount;
+            if (needsSharpTexture && shared.lastSharpUsedFrame != Time.frameCount)
+            {
+                commandBuffer.Blit(source, shared.sharpTexture);
+                shared.lastSharpUsedFrame = Time.frameCount;
+            }
+
             texture = shared.texture;
+            sharpTexture = needsSharpTexture ? shared.sharpTexture : shared.texture;
             return texture != null;
         }
 
@@ -402,25 +423,29 @@ namespace NowUI
 
         static bool IncludesWorld(NowWorldGlassBackdropMode mode)
         {
-            return mode == NowWorldGlassBackdropMode.CameraAndWorldColor ||
-                mode == NowWorldGlassBackdropMode.CameraAndWorldBlurred;
+            return NormalizeMode(mode) == NowWorldGlassBackdropMode.CameraAndWorld;
         }
 
-        static bool IsBlurred(NowWorldGlassBackdropMode mode)
+        static bool ShouldBlur(RequestState request)
         {
-            return mode == NowWorldGlassBackdropMode.CameraBlurred ||
-                mode == NowWorldGlassBackdropMode.CameraAndWorldBlurred;
+            return request != null && request.blurRadius >= 0.25f;
         }
 
         static NowWorldGlassBackdropMode CombineModes(NowWorldGlassBackdropMode current, NowWorldGlassBackdropMode requested)
         {
             bool includeWorld = IncludesWorld(current) || IncludesWorld(requested);
-            bool blur = IsBlurred(current) || IsBlurred(requested);
+            return includeWorld ? NowWorldGlassBackdropMode.CameraAndWorld : NowWorldGlassBackdropMode.Camera;
+        }
 
-            if (includeWorld)
-                return blur ? NowWorldGlassBackdropMode.CameraAndWorldBlurred : NowWorldGlassBackdropMode.CameraAndWorldColor;
-
-            return blur ? NowWorldGlassBackdropMode.CameraBlurred : NowWorldGlassBackdropMode.CameraColor;
+        internal static NowWorldGlassBackdropMode NormalizeMode(NowWorldGlassBackdropMode mode)
+        {
+            return (int)mode switch
+            {
+                0 => NowWorldGlassBackdropMode.TintOnly,
+                1 or 2 => NowWorldGlassBackdropMode.Camera,
+                3 or 4 => NowWorldGlassBackdropMode.CameraAndWorld,
+                _ => NowWorldGlassBackdropMode.CameraAndWorld
+            };
         }
 
         static NowGlassBlurQuality MaxQuality(NowGlassBlurQuality lhs, NowGlassBlurQuality rhs)
@@ -534,7 +559,7 @@ namespace NowUI
             request.source.Create();
         }
 
-        static void EnsureSharedTexture(SharedBackdropState shared, int width, int height)
+        static void EnsureSharedTexture(SharedBackdropState shared, int width, int height, bool needsSharpTexture = false)
         {
             if (shared == null)
                 return;
@@ -543,6 +568,12 @@ namespace NowUI
                 shared.width == width &&
                 shared.height == height)
             {
+                if (needsSharpTexture && shared.sharpTexture == null)
+                {
+                    shared.sharpTexture = CreateTexture(width, height, "Now World Shared Glass Sharp Backdrop");
+                    shared.sharpTexture.Create();
+                }
+
                 return;
             }
 
@@ -551,6 +582,12 @@ namespace NowUI
             shared.height = height;
             shared.texture = CreateTexture(width, height, "Now World Shared Glass Backdrop");
             shared.texture.Create();
+
+            if (needsSharpTexture)
+            {
+                shared.sharpTexture = CreateTexture(width, height, "Now World Shared Glass Sharp Backdrop");
+                shared.sharpTexture.Create();
+            }
         }
 
         static RenderTexture CreateTexture(int width, int height, string name)
@@ -720,20 +757,30 @@ namespace NowUI
 
         static void ReleaseSharedTexture(SharedBackdropState shared)
         {
-            if (shared?.texture == null)
+            if (shared == null)
                 return;
 
-            shared.texture.Release();
-
-            if (Application.isPlaying)
-                Object.Destroy(shared.texture);
-            else
-                Object.DestroyImmediate(shared.texture);
-
-            shared.texture = null;
+            ReleaseTexture(ref shared.texture);
+            ReleaseTexture(ref shared.sharpTexture);
             shared.width = 0;
             shared.height = 0;
             shared.lastUsedFrame = -1;
+            shared.lastSharpUsedFrame = -1;
+        }
+
+        static void ReleaseTexture(ref RenderTexture texture)
+        {
+            if (texture == null)
+                return;
+
+            texture.Release();
+
+            if (Application.isPlaying)
+                Object.Destroy(texture);
+            else
+                Object.DestroyImmediate(texture);
+
+            texture = null;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

@@ -3,6 +3,7 @@ Shader "NowUI/UI Glass"
     Properties
     {
         _ZTest ("ZTest", Float) = 8
+        [HideInInspector] _NowGlassSharpBackdropTex ("Sharp Backdrop", 2D) = "black" {}
         [HideInInspector] _NowBackdropUVTransform ("Backdrop UV Transform", Vector) = (1, 1, 0, 0)
     }
     SubShader
@@ -56,6 +57,7 @@ Shader "NowUI/UI Glass"
             };
 
             sampler2D _NowBackdropTex;
+            sampler2D _NowGlassSharpBackdropTex;
             float _NowGlassUseBackdrop;
             float4 _NowBackdropUVTransform;
             UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);
@@ -116,18 +118,24 @@ Shader "NowUI/UI Glass"
                 float2 screenUV = i.screenPos.xy / i.screenPos.w;
 
                 UNITY_BRANCH
-                if (_NowGlassUseSceneDepth > 0.5)
-                {
-                    float sceneRawDepth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, screenUV);
-                    float sceneEyeDepth = LinearEyeDepth(sceneRawDepth);
-                    clip((sceneEyeDepth + _NowGlassDepthEpsilon) - i.eyeDepth);
-                }
-
-                UNITY_BRANCH
                 if (_NowGlassUseBackdrop > 0.5)
                 {
                     float2 backdropUV = screenUV * _NowBackdropUVTransform.xy + _NowBackdropUVTransform.zw;
-                    float4 backdrop = tex2D(_NowBackdropTex, saturate(backdropUV));
+                    float2 clampedBackdropUV = saturate(backdropUV);
+                    float4 backdrop = tex2D(_NowBackdropTex, clampedBackdropUV);
+
+                    UNITY_BRANCH
+                    if (_NowGlassUseSceneDepth > 0.5)
+                    {
+                        float sceneRawDepth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, screenUV);
+                        float sceneEyeDepth = LinearEyeDepth(sceneRawDepth);
+                        bool foregroundScene = sceneEyeDepth < i.eyeDepth - _NowGlassDepthEpsilon;
+
+                        UNITY_BRANCH
+                        if (foregroundScene)
+                            backdrop = tex2D(_NowGlassSharpBackdropTex, clampedBackdropUV);
+                    }
+
                     float luminance = dot(backdrop.rgb, float3(0.299, 0.587, 0.114));
                     backdrop.rgb = lerp(luminance.xxx, backdrop.rgb, saturation) * brightness;
                     fillRgb = lerp(backdrop.rgb, tint.rgb, tint.a);

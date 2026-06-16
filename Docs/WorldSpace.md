@@ -70,14 +70,14 @@ The source package materials are never mutated.
 captured before transparent rendering:
 
 - `TintOnly`: no camera capture; glass renders as its rounded tint/outline.
-- `CameraColor`: copies the camera color and samples it without blur.
-- `CameraBlurred`: copies and blurs the camera color.
-- `CameraAndWorldColor`: copies camera color, then draws eligible
+- `Camera`: copies the camera color and samples it.
+- `CameraAndWorld`: copies camera color, then draws eligible
   `NowWorldGraphic` meshes behind each glass requester into that requester's
   copy.
-- `CameraAndWorldBlurred`: draws the same world contributors and blurs the
-  result. This is the default and only runs when the world graphic contains a
-  glass batch.
+
+Blur is controlled by the blur radius requested by `Now.Glass(...)` batches.
+`CameraAndWorld` is the default and only runs when the world graphic contains a
+glass batch.
 
 Built-in render pipeline cameras get an automatic `BeforeForwardAlpha` command
 buffer. In URP, add `NowUniversalRendererFeature`; it enqueues a
@@ -90,16 +90,12 @@ including other `NowWorldGraphic` meshes behind that requester. Glass submeshes
 from those contributors are skipped to avoid recursive backdrop sampling. Other
 transparent scene objects rendered after the backdrop capture are not included.
 
-`NowWorldGraphic.glassDepthMode` controls foreground scene rejection for glass:
-
-- `ClipForeground` (default): requests a camera depth texture and clips glass
-  pixels where opaque scene geometry is closer than the pane. This keeps
-  foreground cubes/walls sharp instead of blurring them into the pane.
-- `Disabled`: ignores scene depth and samples/tints the full captured backdrop.
-
-Depth clipping can only reject pixels the camera depth texture knows about.
-It does not reconstruct hidden background behind an occluding object, and it
-does not reject transparent objects that do not write depth.
+Blurred world glass automatically requests a camera depth texture and samples a
+sharp backdrop where opaque scene geometry is closer than the pane. This keeps
+foreground cubes/walls sharp instead of blurring them into the pane. Depth can
+only protect pixels the camera depth texture knows about; it does not
+reconstruct hidden background behind an occluding object, and it does not detect
+transparent objects that do not write depth.
 
 ## Deforming Surfaces
 

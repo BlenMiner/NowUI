@@ -702,7 +702,7 @@ public class NowWorldGraphicTests
         try
         {
             var graphic = go.AddComponent<GlassWorldGraphic>();
-            graphic.glassBackdropMode = NowWorldGlassBackdropMode.CameraBlurred;
+            graphic.glassBackdropMode = NowWorldGlassBackdropMode.Camera;
             graphic.RebuildNowUI();
 
             var material = go.GetComponent<MeshRenderer>().sharedMaterial;
@@ -712,23 +712,48 @@ public class NowWorldGraphicTests
             Assert.AreEqual(0f, material.GetFloat("_NowGlassUseBackdrop"), 0.001f);
             Assert.AreEqual(1f, material.GetFloat("_NowGlassUseSceneDepth"), 0.001f);
 
-            graphic.ApplyGlassBackdropTexture(Texture2D.whiteTexture);
+            graphic.ApplyGlassBackdropTexture(Texture2D.whiteTexture, Texture2D.blackTexture);
             material = go.GetComponent<MeshRenderer>().sharedMaterial;
 
             Assert.NotNull(material);
             Assert.AreEqual(1f, material.GetFloat("_NowGlassUseBackdrop"), 0.001f);
-
-            graphic.glassDepthMode = NowWorldGlassDepthMode.Disabled;
-            material = go.GetComponent<MeshRenderer>().sharedMaterial;
-
-            Assert.NotNull(material);
-            Assert.AreEqual(0f, material.GetFloat("_NowGlassUseSceneDepth"), 0.001f);
+            Assert.AreSame(Texture2D.whiteTexture, material.GetTexture("_NowBackdropTex"));
+            Assert.AreSame(Texture2D.blackTexture, material.GetTexture("_NowGlassSharpBackdropTex"));
 
             graphic.glassBackdropMode = NowWorldGlassBackdropMode.TintOnly;
             material = go.GetComponent<MeshRenderer>().sharedMaterial;
 
             Assert.NotNull(material);
             Assert.AreEqual(0f, material.GetFloat("_NowGlassUseBackdrop"), 0.001f);
+            Assert.AreEqual(0f, material.GetFloat("_NowGlassUseSceneDepth"), 0.001f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void WorldGlassBackdropModeNormalizesLegacyValues()
+    {
+        Assert.AreEqual(
+            NowWorldGlassBackdropMode.Camera,
+            NowWorldGlassBackdrop.NormalizeMode((NowWorldGlassBackdropMode)2));
+        Assert.AreEqual(
+            NowWorldGlassBackdropMode.CameraAndWorld,
+            NowWorldGlassBackdrop.NormalizeMode((NowWorldGlassBackdropMode)3));
+        Assert.AreEqual(
+            NowWorldGlassBackdropMode.CameraAndWorld,
+            NowWorldGlassBackdrop.NormalizeMode((NowWorldGlassBackdropMode)4));
+
+        var go = new GameObject("Now World Glass Legacy Mode");
+
+        try
+        {
+            var graphic = go.AddComponent<GlassWorldGraphic>();
+            graphic.glassBackdropMode = (NowWorldGlassBackdropMode)3;
+
+            Assert.AreEqual(NowWorldGlassBackdropMode.CameraAndWorld, graphic.glassBackdropMode);
         }
         finally
         {

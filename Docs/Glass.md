@@ -55,7 +55,7 @@ host:
 | UI Toolkit (`NowVisualElement`) | True blur inside the cached UI Toolkit `RenderTexture`. |
 | UGUI (`NowGraphic`) | Replay-backed blur of earlier NowUI batches, with optional external/camera source. |
 | URP/HDRP pipeline overlays | True blur at the renderer feature/custom pass point. |
-| `NowWorldGraphic` | Camera/world capture according to `glassBackdropMode`, with scene-depth foreground clipping from `glassDepthMode`; explicit tint-only host mode available. |
+| `NowWorldGraphic` | Camera/world capture according to `glassBackdropMode`, with automatic foreground protection for blurred backdrops; explicit tint-only host mode available. |
 | Legacy `Now.StartUI()` / `Now.FlushUI()` | Replay-backed blur of earlier NowUI batches using temporary render textures. |
 
 ## Quality And Diagnostics
@@ -100,13 +100,13 @@ the replayed NowUI prefix unless you provide a source texture.
 World-space mesh rendering uses `NowWorldGraphic.glassBackdropMode`:
 
 - `TintOnly`: rounded tint/outline fallback.
-- `CameraColor`: sample copied camera color without blur.
-- `CameraBlurred`: sample blurred camera color.
-- `CameraAndWorldColor`: sample copied camera color plus eligible
+- `Camera`: sample copied camera color.
+- `CameraAndWorld`: sample copied camera color plus eligible
   `NowWorldGraphic` meshes behind each glass requester.
-- `CameraAndWorldBlurred`: blur that camera-plus-world backdrop. This is the
-  default and only requests the camera capture when a world graphic contains a
-  glass batch.
+
+Blur is controlled by the blur radius requested by `Now.Glass(...)` batches, not
+by the host backdrop mode. `CameraAndWorld` is the default and only requests the
+camera capture when a world graphic contains a glass batch.
 
 Built-in render pipeline cameras get an automatic `BeforeForwardAlpha` command
 buffer. URP requires `NowUniversalRendererFeature`; HDRP requires
@@ -117,12 +117,12 @@ skip glass submeshes from those contributors to avoid recursive sampling, and
 they do not include arbitrary transparent scene objects rendered after the
 capture.
 
-`NowWorldGraphic.glassDepthMode` defaults to `ClipForeground`. It requests a
-camera depth texture and clips glass pixels where opaque scene geometry is
-closer than the pane, so foreground scene objects remain sharp rather than
-being blurred into the glass. This is rejection, not reconstruction: the system
-cannot recover background color hidden behind an opaque foreground object, and
-transparent objects that do not write depth are not rejected.
+Blurred world glass automatically requests a camera depth texture and samples a
+sharp backdrop where opaque scene geometry is closer than the pane, so
+foreground scene objects do not smear into the blur. This is not
+reconstruction: the system cannot recover background color hidden behind an
+opaque foreground object, and transparent objects that do not write depth are
+not detected.
 
 The legacy `Now.StartUI()` / `Now.FlushUI()` GL path preserves frame draw order
 and replays earlier NowUI batches into temporary textures for glass panes. It

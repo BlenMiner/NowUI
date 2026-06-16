@@ -33,6 +33,11 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Breaking: `NowGlassFrameDiagnostics` no longer exposes an allocated
   `entries` array. Use the new indexed/copy APIs on `NowGlassSettings`
   instead; aggregate frame totals remain on `lastFrameDiagnostics`.
+- `NowWorldGraphic.glassBackdropMode` now uses three host choices:
+  `TintOnly`, `Camera`, and `CameraAndWorld`. Blur is controlled by the
+  `Now.Glass(...)` blur requests, and blurred world glass protects
+  foreground scene depth automatically. The old world glass depth-mode property
+  is obsolete and no longer changes rendering.
 
 ## [0.1.0] - 2026-06-11
 

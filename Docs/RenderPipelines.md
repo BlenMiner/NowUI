@@ -23,8 +23,9 @@ texture for the glass material, and can start that replay from
 `uguiBackdropSourceTexture` or a canvas camera `targetTexture`. World-space mesh
 rendering can copy/blur camera color and optionally replay other
 `NowWorldGraphic` meshes behind each requester through
-`NowWorldGraphic.glassBackdropMode`. Its `glassDepthMode` can request camera
-depth and clip glass where opaque scene geometry is in front of the pane.
+`NowWorldGraphic.glassBackdropMode`. Blurred world glass automatically requests
+camera depth and samples a sharp backdrop where opaque scene geometry is in
+front of the pane.
 Legacy `Now.FlushUI()` rendering falls back to the same rounded tint/outline
 appearance without sampling the target behind it.
 
