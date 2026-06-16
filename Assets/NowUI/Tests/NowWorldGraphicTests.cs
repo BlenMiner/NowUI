@@ -102,6 +102,18 @@ public class NowWorldGraphicTests
         }
     }
 
+    sealed class ScaleRecordingWorldGraphic : NowWorldGraphic
+    {
+        public float recordedScale;
+
+        protected override bool useLayoutMeasurePass => false;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            recordedScale = Now.uiScale;
+        }
+    }
+
     sealed class FakeProvider : INowInputProvider
     {
         public NowInputSnapshot snapshot;
@@ -201,6 +213,75 @@ public class NowWorldGraphicTests
         finally
         {
             Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void WorldGraphicUsesProjectedPixelsPerUiUnitForCapture()
+    {
+        var cameraObject = new GameObject("Now World Scale Camera");
+        var go = new GameObject("Now World Scale Graphic");
+        var target = new RenderTexture(400, 400, 0);
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.targetTexture = target;
+            cameraObject.transform.position = new Vector3(0f, 0f, -2f);
+
+            var graphic = go.AddComponent<ScaleRecordingWorldGraphic>();
+            graphic.targetCamera = camera;
+            graphic.size = new Vector2(100f, 50f);
+            graphic.pixelsPerUnit = 100f;
+
+            graphic.RebuildNowUI();
+
+            Assert.AreEqual(2f, graphic.recordedScale, 0.0001f);
+            Assert.AreEqual(1f, Now.uiScale, 0.0001f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+            Object.DestroyImmediate(cameraObject);
+            target.Release();
+            Object.DestroyImmediate(target);
+        }
+    }
+
+    [Test]
+    public void WorldGraphicAntiAliasSmoothingLowersCaptureScale()
+    {
+        var cameraObject = new GameObject("Now World Smooth Scale Camera");
+        var go = new GameObject("Now World Smooth Scale Graphic");
+        var target = new RenderTexture(400, 400, 0);
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.targetTexture = target;
+            cameraObject.transform.position = new Vector3(0f, 0f, -2f);
+
+            var graphic = go.AddComponent<ScaleRecordingWorldGraphic>();
+            graphic.targetCamera = camera;
+            graphic.size = new Vector2(100f, 50f);
+            graphic.pixelsPerUnit = 100f;
+            graphic.antiAliasSmoothing = 2f;
+
+            graphic.RebuildNowUI();
+
+            Assert.AreEqual(1f, graphic.recordedScale, 0.0001f);
+            Assert.AreEqual(1f, Now.uiScale, 0.0001f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+            Object.DestroyImmediate(cameraObject);
+            target.Release();
+            Object.DestroyImmediate(target);
         }
     }
 

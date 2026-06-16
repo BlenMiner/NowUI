@@ -37,6 +37,9 @@ The component owns:
 
 - `Size`: the NowUI surface size in UI units.
 - `Pixels Per Unit`: how many UI units map to one local Unity unit.
+- `Anti Alias Smoothing`: how softly baked vector edges are captured. `1`
+  matches the camera's projected pixel density; higher values soften Lottie,
+  shapes, and effect textures without changing world size.
 - `Pivot`: Unity-style pivot; `(0.5, 0.5)` centers the mesh.
 - `Facing Mode`: fixed panel, full billboard, or yaw-only billboard.
 - `Depth Mode`: always-readable labels or scene-occluded panels.

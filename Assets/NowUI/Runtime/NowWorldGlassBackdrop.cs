@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace NowUI
 {
@@ -48,6 +51,18 @@ namespace NowUI
 
             public RenderTexture sharpTexture;
 
+            public bool textureReady;
+
+            public bool sharpTextureReady;
+
+            public int textureReadyFrame = -1;
+
+            public int sharpTextureReadyFrame = -1;
+
+            public int texturePendingFrame = -1;
+
+            public int sharpTexturePendingFrame = -1;
+
             public int width;
 
             public int height;
@@ -70,6 +85,18 @@ namespace NowUI
             public RenderTexture backdrop;
 
             public RenderTexture source;
+
+            public bool backdropReady;
+
+            public bool sourceReady;
+
+            public int backdropReadyFrame = -1;
+
+            public int sourceReadyFrame = -1;
+
+            public int backdropPendingFrame = -1;
+
+            public int sourcePendingFrame = -1;
 
             public int width;
 
@@ -234,9 +261,20 @@ namespace NowUI
                 var backdropSource = source;
 
                 if (!includeWorld &&
-                    TryGetSharedBackdrop(state, commandBuffer, source, width, height, request, out var sharedBackdrop, out var sharedSharpBackdrop))
+                    TryGetSharedBackdrop(
+                        state,
+                        commandBuffer,
+                        source,
+                        width,
+                        height,
+                        request,
+                        out var sharedBackdrop,
+                        out var sharedSharpBackdrop,
+                        out bool sharedBackdropReady))
                 {
-                    request.requester.ApplyGlassBackdropTexture(sharedBackdrop, sharedSharpBackdrop);
+                    if (sharedBackdropReady)
+                        request.requester.ApplyGlassBackdropTexture(sharedBackdrop, sharedSharpBackdrop);
+
                     lastBackdrop = sharedBackdrop;
                     populated = true;
                     continue;
@@ -256,6 +294,10 @@ namespace NowUI
                     backdropSource = request.source;
                 }
 
+                bool requestBackdropReady =
+                    IsTextureReady(request.backdropReady, request.backdropReadyFrame, frame) &&
+                    (!needsSharpSource || IsTextureReady(request.sourceReady, request.sourceReadyFrame, frame));
+
                 if (!blur)
                     commandBuffer.Blit(backdropSource, request.backdrop);
                 else
@@ -271,9 +313,17 @@ namespace NowUI
                         new NowRect(0f, 0f, width, height),
                         out _);
 
-                request.requester.ApplyGlassBackdropTexture(
-                    request.backdrop,
-                    needsSharpSource ? request.source : request.backdrop);
+                if (requestBackdropReady)
+                {
+                    request.requester.ApplyGlassBackdropTexture(
+                        request.backdrop,
+                        needsSharpSource ? request.source : request.backdrop);
+                }
+
+                request.backdropPendingFrame = frame;
+                if (includeWorld || needsSharpSource)
+                    request.sourcePendingFrame = frame;
+
                 lastBackdrop = request.backdrop;
                 populated = true;
             }
@@ -294,10 +344,12 @@ namespace NowUI
             int height,
             RequestState request,
             out RenderTexture texture,
-            out RenderTexture sharpTexture)
+            out RenderTexture sharpTexture,
+            out bool textureReady)
         {
             texture = null;
             sharpTexture = null;
+            textureReady = false;
 
             if (state == null || commandBuffer == null || request == null)
                 return false;
@@ -305,6 +357,9 @@ namespace NowUI
             var shared = GetSharedBackdropState(state, request.mode, request.blurRadius, request.quality);
             bool needsSharpTexture = request.requiresSceneDepth && ShouldBlur(request);
             EnsureSharedTexture(shared, width, height, needsSharpTexture);
+            bool canApplyTexture =
+                IsTextureReady(shared.textureReady, shared.textureReadyFrame, Time.frameCount) &&
+                (!needsSharpTexture || IsTextureReady(shared.sharpTextureReady, shared.sharpTextureReadyFrame, Time.frameCount));
 
             if (shared.lastUsedFrame != Time.frameCount)
             {
@@ -337,6 +392,11 @@ namespace NowUI
 
             texture = shared.texture;
             sharpTexture = needsSharpTexture ? shared.sharpTexture : shared.texture;
+            textureReady = canApplyTexture;
+            shared.texturePendingFrame = Time.frameCount;
+            if (needsSharpTexture)
+                shared.sharpTexturePendingFrame = Time.frameCount;
+
             return texture != null;
         }
 
@@ -427,6 +487,12 @@ namespace NowUI
                 (!Application.isPlaying && lastUsedFrame >= frame - 1);
         }
 
+        static bool IsTextureReady(bool ready, int readyFrame, int frame)
+        {
+            return ready &&
+                (Application.isPlaying || readyFrame >= 0 && readyFrame < frame);
+        }
+
         static bool IncludesWorld(NowWorldGlassBackdropMode mode)
         {
             return NormalizeMode(mode) == NowWorldGlassBackdropMode.CameraAndWorld;
@@ -497,6 +563,11 @@ namespace NowUI
 
             _callbacksRegistered = true;
             Camera.onPreCull += OnCameraPreCull;
+            Camera.onPostRender += OnCameraPostRender;
+            RenderPipelineManager.endCameraRendering += OnEndCameraRendering;
+#if UNITY_EDITOR
+            EditorApplication.playModeStateChanged += OnEditorPlayModeStateChanged;
+#endif
         }
 
         static void OnCameraPreCull(Camera camera)
@@ -535,6 +606,120 @@ namespace NowUI
             CleanupStaleStates();
         }
 
+        static void OnCameraPostRender(Camera camera)
+        {
+            if (GraphicsSettings.currentRenderPipeline != null)
+                return;
+
+            MarkCameraCapturesReady(camera);
+        }
+
+        static void OnEndCameraRendering(ScriptableRenderContext context, Camera camera)
+        {
+            if (GraphicsSettings.currentRenderPipeline == null)
+                return;
+
+            MarkCameraCapturesReady(camera);
+        }
+
+        static void MarkCameraCapturesReady(Camera camera)
+        {
+            if (camera == null || !_states.TryGetValue(camera, out var state))
+                return;
+
+            int frame = Time.frameCount;
+
+            for (int i = 0; i < state.requests.Count; ++i)
+            {
+                var request = state.requests[i];
+
+                if (request == null || !IsActiveFrame(request.lastUsedFrame, frame))
+                    continue;
+
+                if (request.backdropPendingFrame == frame)
+                {
+                    request.backdropReady = true;
+                    request.backdropReadyFrame = frame;
+                    request.backdropPendingFrame = -1;
+                }
+
+                if (request.sourcePendingFrame == frame)
+                {
+                    request.sourceReady = true;
+                    request.sourceReadyFrame = frame;
+                    request.sourcePendingFrame = -1;
+                }
+            }
+
+            for (int i = 0; i < state.sharedBackdrops.Count; ++i)
+            {
+                var shared = state.sharedBackdrops[i];
+
+                if (shared == null)
+                    continue;
+
+                if (shared.texturePendingFrame == frame)
+                {
+                    shared.textureReady = true;
+                    shared.textureReadyFrame = frame;
+                    shared.texturePendingFrame = -1;
+                }
+
+                if (shared.sharpTexturePendingFrame == frame)
+                {
+                    shared.sharpTextureReady = true;
+                    shared.sharpTextureReadyFrame = frame;
+                    shared.sharpTexturePendingFrame = -1;
+                }
+            }
+
+            ApplyReadyTextures(state, frame);
+        }
+
+        static void ApplyReadyTextures(CameraState state, int frame)
+        {
+            if (state == null)
+                return;
+
+            for (int i = 0; i < state.requests.Count; ++i)
+            {
+                var request = state.requests[i];
+
+                if (request == null ||
+                    request.requester == null ||
+                    !IsActiveFrame(request.lastUsedFrame, frame) ||
+                    request.mode == NowWorldGlassBackdropMode.TintOnly)
+                {
+                    continue;
+                }
+
+                bool includeWorld = IncludesWorld(request.mode);
+                bool needsSharpTexture = request.requiresSceneDepth && ShouldBlur(request);
+
+                if (!includeWorld)
+                {
+                    var shared = GetSharedBackdropState(state, request.mode, request.blurRadius, request.quality);
+                    if (IsTextureReady(shared.textureReady, shared.textureReadyFrame, frame) &&
+                        (!needsSharpTexture || IsTextureReady(shared.sharpTextureReady, shared.sharpTextureReadyFrame, frame)))
+                    {
+                        request.requester.ApplyGlassBackdropTexture(
+                            shared.texture,
+                            needsSharpTexture ? shared.sharpTexture : shared.texture);
+                    }
+
+                    continue;
+                }
+
+                if (IsTextureReady(request.backdropReady, request.backdropReadyFrame, frame) &&
+                    (!needsSharpTexture || IsTextureReady(request.sourceReady, request.sourceReadyFrame, frame)))
+                {
+                    request.requester.ApplyGlassBackdropTexture(
+                        request.backdrop,
+                        needsSharpTexture ? request.source : request.backdrop);
+                }
+            }
+        }
+
         static void EnsureBackdropTexture(RequestState request, int width, int height)
         {
             if (request.backdrop != null &&
@@ -549,6 +734,9 @@ namespace NowUI
             request.height = height;
             request.backdrop = CreateTexture(width, height, "Now World Glass Backdrop");
             request.backdrop.Create();
+            request.backdropReady = false;
+            request.backdropReadyFrame = -1;
+            request.backdropPendingFrame = -1;
         }
 
         static void EnsureSourceTexture(RequestState request, int width, int height)
@@ -563,6 +751,9 @@ namespace NowUI
             ReleaseSourceTexture(request);
             request.source = CreateTexture(width, height, "Now World Glass Source");
             request.source.Create();
+            request.sourceReady = false;
+            request.sourceReadyFrame = -1;
+            request.sourcePendingFrame = -1;
         }
 
         static void EnsureSharedTexture(SharedBackdropState shared, int width, int height, bool needsSharpTexture = false)
@@ -578,6 +769,9 @@ namespace NowUI
                 {
                     shared.sharpTexture = CreateTexture(width, height, "Now World Shared Glass Sharp Backdrop");
                     shared.sharpTexture.Create();
+                    shared.sharpTextureReady = false;
+                    shared.sharpTextureReadyFrame = -1;
+                    shared.sharpTexturePendingFrame = -1;
                 }
 
                 return;
@@ -588,11 +782,17 @@ namespace NowUI
             shared.height = height;
             shared.texture = CreateTexture(width, height, "Now World Shared Glass Backdrop");
             shared.texture.Create();
+            shared.textureReady = false;
+            shared.textureReadyFrame = -1;
+            shared.texturePendingFrame = -1;
 
             if (needsSharpTexture)
             {
                 shared.sharpTexture = CreateTexture(width, height, "Now World Shared Glass Sharp Backdrop");
                 shared.sharpTexture.Create();
+                shared.sharpTextureReady = false;
+                shared.sharpTextureReadyFrame = -1;
+                shared.sharpTexturePendingFrame = -1;
             }
         }
 
@@ -772,6 +972,9 @@ namespace NowUI
                 Object.DestroyImmediate(request.backdrop);
 
             request.backdrop = null;
+            request.backdropReady = false;
+            request.backdropReadyFrame = -1;
+            request.backdropPendingFrame = -1;
             request.width = 0;
             request.height = 0;
         }
@@ -789,6 +992,9 @@ namespace NowUI
                 Object.DestroyImmediate(request.source);
 
             request.source = null;
+            request.sourceReady = false;
+            request.sourceReadyFrame = -1;
+            request.sourcePendingFrame = -1;
         }
 
         static void ReleaseSharedTexture(SharedBackdropState shared)
@@ -802,6 +1008,12 @@ namespace NowUI
             shared.height = 0;
             shared.lastUsedFrame = -1;
             shared.lastSharpUsedFrame = -1;
+            shared.textureReady = false;
+            shared.sharpTextureReady = false;
+            shared.textureReadyFrame = -1;
+            shared.sharpTextureReadyFrame = -1;
+            shared.texturePendingFrame = -1;
+            shared.sharpTexturePendingFrame = -1;
         }
 
         static void ReleaseTexture(ref RenderTexture texture)
@@ -819,13 +1031,10 @@ namespace NowUI
             texture = null;
         }
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetForRuntimeLoad()
+        public static void ResetEditorPreviewState()
         {
-            if (_callbacksRegistered)
-                Camera.onPreCull -= OnCameraPreCull;
-
-            _callbacksRegistered = false;
+            for (int i = 0; i < _staleCameras.Count; ++i)
+                _staleCameras[i] = null;
 
             foreach (var pair in _states)
             {
@@ -839,6 +1048,35 @@ namespace NowUI
             _staleCameras.Clear();
             _worldContributors.Clear();
             Shader.SetGlobalFloat(_useBackdropId, 0f);
+        }
+
+#if UNITY_EDITOR
+        static void OnEditorPlayModeStateChanged(PlayModeStateChange change)
+        {
+            if (change == PlayModeStateChange.ExitingPlayMode ||
+                change == PlayModeStateChange.EnteredEditMode)
+            {
+                ResetEditorPreviewState();
+            }
+        }
+#endif
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetForRuntimeLoad()
+        {
+            if (_callbacksRegistered)
+            {
+                Camera.onPreCull -= OnCameraPreCull;
+                Camera.onPostRender -= OnCameraPostRender;
+                RenderPipelineManager.endCameraRendering -= OnEndCameraRendering;
+#if UNITY_EDITOR
+                EditorApplication.playModeStateChanged -= OnEditorPlayModeStateChanged;
+#endif
+            }
+
+            _callbacksRegistered = false;
+
+            ResetEditorPreviewState();
         }
 
         public static void EndFrameCleanup()

@@ -247,10 +247,11 @@ MonoBehaviour:
   _depthMode: 1
   _layoutAutoSizeAxes: 3
   _frustumCullRebuilds: 0
-  _size: {x: 153.04602, y: 78.86}
+  _size: {x: 153.04602, y: 116.86}
   _pivot: {x: 0.5, y: 0.5}
   _pixelsPerUnit: 100
-  _rebuildEveryFrame: 0
+  _antiAliasSmoothing: 2
+  _rebuildEveryFrame: 1
   _autoRebuildOnInteraction: 1
   _acceptNavigation: 0
   _glassBackdropMode: 1
@@ -258,6 +259,7 @@ MonoBehaviour:
   _deformer: {fileID: 0}
   _title: Player
   _detail: Hover for details
+  _lottie: {fileID: 7868935432812623880, guid: 3fc211d4e815f3b49b550a4b8bc75850, type: 3}
 --- !u!23 &239086016
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -578,10 +580,11 @@ MonoBehaviour:
   _depthMode: 1
   _layoutAutoSizeAxes: 3
   _frustumCullRebuilds: 0
-  _size: {x: 153.04602, y: 78.86}
+  _size: {x: 153.04602, y: 116.86}
   _pivot: {x: 0.5, y: 0.5}
   _pixelsPerUnit: 100
-  _rebuildEveryFrame: 0
+  _antiAliasSmoothing: 2
+  _rebuildEveryFrame: 1
   _autoRebuildOnInteraction: 1
   _acceptNavigation: 0
   _glassBackdropMode: 1
@@ -589,6 +592,7 @@ MonoBehaviour:
   _deformer: {fileID: 0}
   _title: Player
   _detail: Hover for details
+  _lottie: {fileID: 7868935432812623880, guid: 8e2cbe0cac8263b4c84c2ec9913a4da1, type: 3}
 --- !u!23 &653625562
 MeshRenderer:
   m_ObjectHideFlags: 0

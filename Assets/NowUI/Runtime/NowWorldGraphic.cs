@@ -325,6 +325,7 @@ namespace NowUI
         [SerializeField] Vector2 _size = new Vector2(220f, 72f);
         [SerializeField] Vector2 _pivot = new Vector2(0.5f, 0.5f);
         [SerializeField, Min(0.0001f)] float _pixelsPerUnit = 100f;
+        [SerializeField, Min(0.0001f)] float _antiAliasSmoothing = 1f;
         [SerializeField] bool _rebuildEveryFrame;
         [SerializeField] bool _autoRebuildOnInteraction = true;
         [SerializeField] bool _acceptNavigation;
@@ -350,6 +351,8 @@ namespace NowUI
         [NonSerialized] int _scopeId;
         [NonSerialized] InteractionInputState _lastInteractionInput;
 #if UNITY_EDITOR
+        static bool _editorCallbacksRegistered;
+
         [NonSerialized] bool _editorRebuildQueued;
 #endif
 
@@ -498,6 +501,21 @@ namespace NowUI
                 MarkDirty();
                 _inputProvider?.ResetPosition();
                 InvalidateInputResolution();
+            }
+        }
+
+        public float antiAliasSmoothing
+        {
+            get => _antiAliasSmoothing;
+            set
+            {
+                float sanitized = SanitizeAntiAliasSmoothing(value);
+
+                if (Mathf.Approximately(_antiAliasSmoothing, sanitized))
+                    return;
+
+                _antiAliasSmoothing = sanitized;
+                MarkDirty();
             }
         }
 
@@ -658,12 +676,15 @@ namespace NowUI
 
             try
             {
-                Now.SetUIScale(1f);
+                Now.SetUIScale(ResolveScreenPixelsPerUIUnit(currentSize));
                 NowControlState.BeginRepaintTracking();
                 repaintTracking = true;
 
                 if (_layoutAutoSizeAxes != NowWorldAutoSizeAxes.None)
+                {
                     currentSize = ResolveLayoutAutoSize(currentSize);
+                    Now.SetUIScale(ResolveScreenPixelsPerUIUnit(currentSize));
+                }
 
                 var surface = new NowInputSurface(currentSize);
                 scope = _drawList.Begin(currentSize, _glassBlurQuality);
@@ -719,10 +740,7 @@ namespace NowUI
             var currentSize = SanitizeSize(_size);
             float ppu = SanitizePixelsPerUnit(_pixelsPerUnit);
 
-            return new Vector3(
-                (uiPosition.x - currentSize.x * _pivot.x) / ppu,
-                (currentSize.y * (1f - _pivot.y) - uiPosition.y) / ppu,
-                0f);
+            return UIToLocal(uiPosition, currentSize, ppu);
         }
 
         public Vector2 LocalToUI(Vector3 localPosition)
@@ -733,6 +751,84 @@ namespace NowUI
             return new Vector2(
                 localPosition.x * ppu + currentSize.x * _pivot.x,
                 currentSize.y * (1f - _pivot.y) - localPosition.y * ppu);
+        }
+
+        Vector3 UIToLocal(Vector2 uiPosition, Vector2 currentSize, float ppu)
+        {
+            return new Vector3(
+                (uiPosition.x - currentSize.x * _pivot.x) / ppu,
+                (currentSize.y * (1f - _pivot.y) - uiPosition.y) / ppu,
+                0f);
+        }
+
+        float ResolveScreenPixelsPerUIUnit(Vector2 currentSize)
+        {
+            var cmr = ResolveCamera();
+
+            if (!cmr)
+                return 1f;
+
+            currentSize = SanitizeSize(currentSize);
+            float ppu = SanitizePixelsPerUnit(_pixelsPerUnit);
+            var centerUi = new Vector2(currentSize.x * 0.5f, currentSize.y * 0.5f);
+            var centerWorld = transform.TransformPoint(UIToLocal(centerUi, currentSize, ppu));
+            float scale = 0f;
+            int sampleCount = 0;
+
+            if (TryMeasureScreenDistance(
+                    cmr,
+                    centerWorld,
+                    transform.TransformPoint(UIToLocal(centerUi + Vector2.right, currentSize, ppu)),
+                    out float xScale))
+            {
+                scale += xScale;
+                ++sampleCount;
+            }
+
+            if (TryMeasureScreenDistance(
+                    cmr,
+                    centerWorld,
+                    transform.TransformPoint(UIToLocal(centerUi + Vector2.up, currentSize, ppu)),
+                    out float yScale))
+            {
+                scale += yScale;
+                ++sampleCount;
+            }
+
+            return sampleCount > 0
+                ? SanitizeUIScale((scale / sampleCount) / SanitizeAntiAliasSmoothing(_antiAliasSmoothing))
+                : 1f;
+        }
+
+        static bool TryMeasureScreenDistance(Camera cmr, Vector3 fromWorld, Vector3 toWorld, out float distance)
+        {
+            distance = 0f;
+
+            var fromScreen = cmr.WorldToScreenPoint(fromWorld);
+            var toScreen = cmr.WorldToScreenPoint(toWorld);
+
+            if (fromScreen.z <= 0f || toScreen.z <= 0f)
+                return false;
+
+            if (!IsFinite(fromScreen) || !IsFinite(toScreen))
+                return false;
+
+            distance = Vector2.Distance(fromScreen, toScreen);
+            return distance > 0f && !float.IsNaN(distance) && !float.IsInfinity(distance);
+        }
+
+        static bool IsFinite(Vector3 value)
+        {
+            return !float.IsNaN(value.x) && !float.IsInfinity(value.x) &&
+                   !float.IsNaN(value.y) && !float.IsInfinity(value.y) &&
+                   !float.IsNaN(value.z) && !float.IsInfinity(value.z);
+        }
+
+        static float SanitizeUIScale(float value)
+        {
+            return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value)
+                ? Mathf.Max(0.0001f, value)
+                : 1f;
         }
 
         public bool TryScreenPointToSurface(Vector2 screenPosition, out Vector2 surfacePosition)
@@ -911,6 +1007,7 @@ namespace NowUI
         {
             _size = SanitizeSize(_size);
             _pixelsPerUnit = SanitizePixelsPerUnit(_pixelsPerUnit);
+            _antiAliasSmoothing = SanitizeAntiAliasSmoothing(_antiAliasSmoothing);
             _layoutAutoSizeAxes &= NowWorldAutoSizeAxes.Both;
             _glassBackdropMode = NowWorldGlassBackdrop.NormalizeMode(_glassBackdropMode);
             MarkDirty();
@@ -1599,12 +1696,18 @@ namespace NowUI
             return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value) ? value : 100f;
         }
 
+        static float SanitizeAntiAliasSmoothing(float value)
+        {
+            return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value) ? value : 1f;
+        }
+
 #if UNITY_EDITOR
         void QueueEditorRebuild()
         {
             if (Application.isPlaying || _editorRebuildQueued)
                 return;
 
+            EnsureEditorCallbacks();
             _editorRebuildQueued = true;
             EditorApplication.delayCall += RunQueuedEditorRebuild;
             EditorApplication.QueuePlayerLoopUpdate();
@@ -1631,6 +1734,41 @@ namespace NowUI
             EditorApplication.QueuePlayerLoopUpdate();
             SceneView.RepaintAll();
         }
+
+        static void EnsureEditorCallbacks()
+        {
+            if (_editorCallbacksRegistered)
+                return;
+
+            _editorCallbacksRegistered = true;
+            EditorApplication.playModeStateChanged += OnEditorPlayModeStateChanged;
+        }
+
+        static void OnEditorPlayModeStateChanged(PlayModeStateChange change)
+        {
+            if (change != PlayModeStateChange.EnteredEditMode)
+                return;
+
+            NowWorldGlassBackdrop.ResetEditorPreviewState();
+
+            for (int i = _instances.Count - 1; i >= 0; --i)
+            {
+                var graphic = _instances[i];
+
+                if (!graphic)
+                {
+                    _instances.RemoveAt(i);
+                    continue;
+                }
+
+                if (!graphic.isActiveAndEnabled)
+                    continue;
+
+                graphic.ApplyGlassBackdropTexture(null);
+                graphic.MarkDirty();
+                graphic.QueueEditorRebuild();
+            }
+        }
 #else
         void QueueEditorRebuild()
         {
@@ -1644,6 +1782,12 @@ namespace NowUI
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetForRuntimeLoad()
         {
+#if UNITY_EDITOR
+            if (_editorCallbacksRegistered)
+                EditorApplication.playModeStateChanged -= OnEditorPlayModeStateChanged;
+
+            _editorCallbacksRegistered = false;
+#endif
             _nextScopeId = 0;
             _inputResolverVersion = 0;
             _instances.Clear();
