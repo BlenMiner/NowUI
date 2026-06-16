@@ -798,12 +798,16 @@ namespace NowUI.Internal
         public void AppendCanvasVertices(ref StaticList<NowCanvasVertex> destination, Vector2 positionOffset)
         {
             bool isText = kind == NowMeshKind.Text;
+            bool isRectangleLike =
+                kind == NowMeshKind.Rectangle ||
+                kind == NowMeshKind.TexturedRectangle ||
+                kind == NowMeshKind.CustomRectangle;
             int count = _verts.count;
 
             destination.EnsureCapacity(count);
             int destinationBase = destination.count;
 
-            if (NowLottieNative.packCanvasAvailable)
+            if (NowLottieNative.packCanvasAvailable && !isRectangleLike)
             {
                 NowLottieNative.PackCanvas(
                     _verts.array,
@@ -833,7 +837,7 @@ namespace NowUI.Internal
                 var uv = _uvs.array[i];
                 var color = _color.array[i];
 
-                NowCanvasVertex vertex;
+                NowCanvasVertex vertex = default;
                 vertex.position = _verts.array[i];
                 vertex.position.x += positionOffset.x;
                 vertex.position.y += positionOffset.y;
@@ -846,14 +850,21 @@ namespace NowUI.Internal
                     var rawUv = _rawuv.array[i];
                     vertex.uv0 = new Vector4(uv.x, uv.y, rawUv.x, rawUv.y);
                 }
+                else if (isRectangleLike)
+                {
+                    var rawUv = _rawuv.array[i];
+                    var extra = _extra.array[i];
+                    vertex.uv0 = new Vector4(uv.x, uv.y, radius.w, rawUv.x);
+                    vertex.uv3 = new Vector4(extra.x, extra.y, rawUv.y, extra.w);
+                }
                 else
                 {
                     vertex.uv0 = new Vector4(uv.x, uv.y, radius.w, 0f);
+                    vertex.uv3 = _extra.array[i];
                 }
 
                 vertex.uv1 = _rect.array[i];
                 vertex.uv2 = _mask.array[i];
-                vertex.uv3 = _extra.array[i];
 
                 output[destinationBase + i] = vertex;
             }

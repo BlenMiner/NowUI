@@ -19,7 +19,7 @@ Shader "NowUI/UI Rectangle"
         Lighting Off
         ZWrite Off
         ZTest [_ZTest]
-        Blend SrcAlpha OneMinusSrcAlpha
+        Blend One OneMinusSrcAlpha
 
         Pass
         {
@@ -84,7 +84,6 @@ Shader "NowUI/UI Rectangle"
 
             fixed4 frag (v2f i) : SV_Target
             {
-                float2 uv = i.uv;
                 float4 rect = i.rect;
                 float4 mask = i.mask;
 
@@ -108,18 +107,19 @@ Shader "NowUI/UI Rectangle"
                 float blur = data.x;
                 float outline = data.y;
 
-                fixed4 col = tex2D(_MainTex, i.uv) * color;
+                half4 graphic = tex2D(_MainTex, i.uv) * color;
 
-                // For simplicity, convert UV to pixel coordinates
-                float2 position = (uv - 0.5) * size;
+                // Texture UVs can point into an atlas; the shape SDF must stay in
+                // full-quad space so sprites and custom UVs keep the same corners.
+                float2 position = (i.rawUV.xy - 0.5) * size;
                 float2 halfSize = size * 0.5;
 
                 // Signed distance field calculation
                 float dist = sdRoundedBox(position, halfSize, rad);
-                float delta = fwidth(dist);
+                float delta = max(fwidth(dist), 0.0001);
 
                 // Calculate the different masks based on the SDF
-                float graphicAlpha = 1 - smoothstep(-delta - blur, 0, dist);
+                float graphicAlpha = 1 - smoothstep(0, delta + max(blur, 0), dist);
 
                 // An outline thinner than one AA width would sit entirely inside
                 // the edge fade and render as a washed-out sliver; draw at least
@@ -127,20 +127,17 @@ Shader "NowUI/UI Rectangle"
                 float outlineWidth = max(outline, delta);
                 float outlineAlpha = outline == 0 ? 0 : smoothstep(-outlineWidth - delta, -outlineWidth, dist);
 
-                // Composite the outline OVER the fill weighted by alpha. A plain
-                // rgb lerp bleeds the fill's color into partially-covered pixels
-                // even when the fill is fully transparent — Color.clear is
-                // transparent BLACK, which showed up as dark fringes on the
-                // anti-aliased corners of outline-only rectangles.
-                float outlineCoverage = i.outlineColor.a * outlineAlpha;
-                float fillCoverage = col.a;
-                float coverage = outlineCoverage + fillCoverage * (1 - outlineCoverage);
+                // Premultiplied compositing avoids color leaking through partially
+                // transparent pixels while keeping the existing inside-outline
+                // behavior.
+                float outlineCoverage = i.outlineColor.a * outlineAlpha * graphicAlpha;
+                float fillCoverage = graphic.a * graphicAlpha;
 
-                if (coverage > 0.0001)
-                    col.rgb = (i.outlineColor.rgb * outlineCoverage + col.rgb * fillCoverage * (1 - outlineCoverage)) / coverage;
-
-                col.a = coverage * graphicAlpha;
-                clip(col.a - 0.01);
+                half4 col;
+                col.rgb = i.outlineColor.rgb * outlineCoverage
+                    + graphic.rgb * fillCoverage * (1 - outlineCoverage);
+                col.a = outlineCoverage + fillCoverage * (1 - outlineCoverage);
+                clip(col.a - 0.001);
 
                 return col;
             }

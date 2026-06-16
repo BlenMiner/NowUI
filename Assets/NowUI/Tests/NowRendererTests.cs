@@ -786,6 +786,46 @@ public class NowRendererTests
     }
 
     [Test]
+    public void GraphicRectangleCanvasMeshPacksTextureAndRawUvs()
+    {
+        var graphicObject = new GameObject("Now Test Textured Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+        var texture = new Texture2D(32, 32, TextureFormat.RGBA32, false);
+
+        try
+        {
+            var rectTransform = graphicObject.GetComponent<RectTransform>();
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 64f);
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 32f);
+
+            var graphic = graphicObject.AddComponent<TexturedCanvasGraphic>();
+            graphic.texture = texture;
+            graphic.Rebuild(CanvasUpdate.PreRender);
+
+            var mesh = graphic.canvasRenderer.GetMesh();
+            Assert.NotNull(mesh);
+            Assert.AreEqual(4, mesh.vertexCount);
+
+            var uv0 = new System.Collections.Generic.List<Vector4>();
+            var uv3 = new System.Collections.Generic.List<Vector4>();
+            mesh.GetUVs(0, uv0);
+            mesh.GetUVs(3, uv3);
+
+            Assert.AreEqual(4, uv0.Count);
+            Assert.AreEqual(4, uv3.Count);
+
+            Assert.AreEqual(new Vector4(0.25f, 0.5f, 4f, 0f), uv0[0]);
+            Assert.AreEqual(new Vector4(0.75f, 0.75f, 4f, 1f), uv0[2]);
+            Assert.AreEqual(0f, uv3[0].z);
+            Assert.AreEqual(1f, uv3[2].z);
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+            Object.DestroyImmediate(graphicObject);
+        }
+    }
+
+    [Test]
     public void GraphicDrawUsesCanvasScaleFactor()
     {
         var canvasObject = new GameObject("Now Test Canvas", typeof(RectTransform), typeof(Canvas));
@@ -1240,6 +1280,22 @@ public class NowRendererTests
         {
             Now.Rectangle(new Vector4(2, 2, 12, 8))
                 .SetMaterial(materialOverride, canvasMaterialOverride)
+                .Draw();
+        }
+    }
+
+    sealed class TexturedCanvasGraphic : NowGraphic
+    {
+        public Texture texture;
+
+        protected override bool useLayoutMeasurePass => false;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            Now.Rectangle(new NowRect(2, 2, 12, 8))
+                .SetTexture(texture)
+                .SetUV(new Vector4(0.25f, 0.5f, 0.5f, 0.25f))
+                .SetRadius(new Vector4(1f, 2f, 3f, 4f))
                 .Draw();
         }
     }

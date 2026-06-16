@@ -28,7 +28,7 @@ Shader "NowUI/UI Rectangle UGUI"
         Lighting Off
         ZWrite Off
         ZTest [unity_GUIZTestMode]
-        Blend SrcAlpha OneMinusSrcAlpha
+        Blend One OneMinusSrcAlpha
         ColorMask [_ColorMask]
 
         Stencil
@@ -116,7 +116,7 @@ Shader "NowUI/UI Rectangle UGUI"
             {
                 float4 rect = i.rect;
                 float4 mask = i.mask;
-                float2 rawUV = i.uv.xy;
+                float2 rawUV = float2(i.uv.w, i.extras.z);
                 float2 pos = rect.xy + rawUV * rect.zw;
 
                 clip(min(
@@ -127,13 +127,13 @@ Shader "NowUI/UI Rectangle UGUI"
                 float4 rad = float4(i.radiusXYZ, i.uv.z);
                 float blur = i.extras.x;
                 float outline = i.extras.y;
-                fixed4 col = tex2D(_MainTex, i.uv.xy) * i.color;
+                half4 graphic = tex2D(_MainTex, i.uv.xy) * i.color;
 
-                float2 position = (i.uv.xy - 0.5) * rect.zw;
+                float2 position = (rawUV - 0.5) * rect.zw;
                 float2 halfSize = rect.zw * 0.5;
                 float dist = sdRoundedBox(position, halfSize, rad);
-                float delta = fwidth(dist);
-                float graphicAlpha = 1 - smoothstep(-delta - blur, 0, dist);
+                float delta = max(fwidth(dist), 0.0001);
+                float graphicAlpha = 1 - smoothstep(0, delta + max(blur, 0), dist);
 
                 // An outline thinner than one AA width would sit entirely inside
                 // the edge fade and render as a washed-out sliver; draw at least
@@ -141,19 +141,16 @@ Shader "NowUI/UI Rectangle UGUI"
                 float outlineWidth = max(outline, delta);
                 float outlineAlpha = outline == 0 ? 0 : smoothstep(-outlineWidth - delta, -outlineWidth, dist);
 
-                // Composite the outline OVER the fill weighted by alpha. A plain
-                // rgb lerp bleeds the fill's color into partially-covered pixels
-                // even when the fill is fully transparent — Color.clear is
-                // transparent BLACK, which showed up as dark fringes on the
-                // anti-aliased corners of outline-only rectangles.
-                float outlineCoverage = i.outlineColor.a * outlineAlpha;
-                float fillCoverage = col.a;
-                float coverage = outlineCoverage + fillCoverage * (1 - outlineCoverage);
+                // Premultiplied compositing avoids color leaking through partially
+                // transparent pixels while keeping the existing inside-outline
+                // behavior.
+                float outlineCoverage = i.outlineColor.a * outlineAlpha * graphicAlpha;
+                float fillCoverage = graphic.a * graphicAlpha;
 
-                if (coverage > 0.0001)
-                    col.rgb = (i.outlineColor.rgb * outlineCoverage + col.rgb * fillCoverage * (1 - outlineCoverage)) / coverage;
-
-                col.a = coverage * graphicAlpha;
+                half4 col;
+                col.rgb = i.outlineColor.rgb * outlineCoverage
+                    + graphic.rgb * fillCoverage * (1 - outlineCoverage);
+                col.a = outlineCoverage + fillCoverage * (1 - outlineCoverage);
 
                 #ifdef UNITY_UI_CLIP_RECT
                 float2 uiMask = saturate((_ClipRect.zw - _ClipRect.xy - abs(i.uiMask.xy)) * i.uiMask.zw);
@@ -164,7 +161,7 @@ Shader "NowUI/UI Rectangle UGUI"
                 clip(col.a - 0.001);
                 #endif
 
-                clip(col.a - 0.01);
+                clip(col.a - 0.001);
                 return col;
             }
             ENDCG
