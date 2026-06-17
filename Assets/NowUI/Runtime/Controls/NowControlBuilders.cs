@@ -88,7 +88,7 @@ namespace NowUI
             int id = ResolveControlId();
             int areaKey = NowInput.CombineId(id, AreaKeySeed);
 
-            Vector4 padding = theme.controlStyles.buttonPadding;
+            Vector4 padding = NowControls.ScaleValue(theme.controlStyles.buttonPadding);
             NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
             var contentSize = renderer.MeasureButtonContent(theme, cached);
 
@@ -257,7 +257,7 @@ namespace NowUI
             if (clicked)
                 value = !value;
 
-            float glyphSize = theme.controlStyles.toggleSize;
+            float glyphSize = NowControls.ScaleValue(theme.controlStyles.toggleSize);
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
             renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, glyphRect, value, interaction, focused, hoverT));
@@ -275,7 +275,7 @@ namespace NowUI
             var renderer = theme.controlRenderer;
             int id = ResolveControlId();
 
-            var text = theme.Text(default, _textPreset);
+            var text = NowControls.Text(theme, _textPreset);
             Vector2 labelSize = text.Measure(_label);
             float box = renderer.ToggleGlyphSize(theme, labelSize.y);
             var contentSize = renderer.MeasureToggle(theme, _label, _textPreset);
@@ -377,7 +377,7 @@ namespace NowUI
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
 
-            float glyphSize = theme.controlStyles.toggleSize;
+            float glyphSize = NowControls.ScaleValue(theme.controlStyles.toggleSize);
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
             renderer.DrawRadio(new NowToggleRenderContext(theme, rect, glyphRect, _isOn, interaction, focused, hoverT));
@@ -395,7 +395,7 @@ namespace NowUI
             var renderer = theme.controlRenderer;
             int id = ResolveControlId();
 
-            var text = theme.Text(default, _textPreset);
+            var text = NowControls.Text(theme, _textPreset);
             Vector2 labelSize = text.Measure(_label);
             float circle = renderer.ToggleGlyphSize(theme, labelSize.y);
             var contentSize = renderer.MeasureToggle(theme, _label, _textPreset);
@@ -428,6 +428,7 @@ namespace NowUI
         readonly int _site;
         NowId _id;
         NowFocusNavigation _navigation;
+        float _step;
 
         internal NowSlider(float min, float max, int site)
         {
@@ -439,6 +440,7 @@ namespace NowUI
             _site = site;
             _id = default;
             _navigation = default;
+            _step = 0f;
         }
 
         internal NowSlider(NowRect rect, float min, float max, int site) : this(min, max, site)
@@ -453,6 +455,9 @@ namespace NowUI
 
         public NowSlider SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
+        /// <summary>Snap values to increments anchored at the slider minimum. Use 1 for integer sliders.</summary>
+        public NowSlider SetStep(float step) { _step = Mathf.Max(0f, step); return this; }
+
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowSlider SetId(NowId id) { _id = id; return this; }
 
@@ -465,7 +470,7 @@ namespace NowUI
             var renderer = theme.controlRenderer;
             int id = NowControls.GetControlId(_id, _site);
 
-            float knobSize = theme.controlStyles.sliderKnobSize;
+            float knobSize = NowControls.ScaleValue(theme.controlStyles.sliderKnobSize);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureSlider(theme));
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
@@ -489,11 +494,40 @@ namespace NowUI
 
             value = Mathf.Clamp(value, _min, _max);
 
+            if (_step > 0f)
+                value = Snap(value, _min, _max, _step);
+
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             float normalized = (value - _min) / range;
             var metrics = renderer.CalculateSliderMetrics(theme, rect, normalized);
             renderer.DrawSlider(new NowSliderRenderContext(theme, rect, metrics, interaction, focused, hoverT));
             return !Mathf.Approximately(previous, value);
+        }
+
+        public bool Draw(ref int value)
+        {
+            int previous = value;
+            float scalar = value;
+            var slider = this;
+
+            if (slider._step <= 0f)
+                slider._step = 1f;
+
+            slider.Draw(ref scalar);
+
+            int min = Mathf.CeilToInt(Mathf.Min(_min, _max));
+            int max = Mathf.FloorToInt(Mathf.Max(_min, _max));
+            value = Mathf.Clamp(Mathf.RoundToInt(scalar), min, max);
+            return previous != value;
+        }
+
+        static float Snap(float value, float min, float max, float step)
+        {
+            if (step <= 0f)
+                return Mathf.Clamp(value, min, max);
+
+            float snapped = min + Mathf.Round((value - min) / step) * step;
+            return Mathf.Clamp(snapped, min, max);
         }
     }
 }

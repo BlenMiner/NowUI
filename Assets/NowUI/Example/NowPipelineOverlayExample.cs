@@ -31,7 +31,7 @@ public sealed class NowPipelineOverlayExample : NowPipelineGraphic
 
         Now.Rectangle(Rect(panel.x, panel.y, 6, panel.w))
             .SetColor(Rgb(14, 165, 233))
-            .SetRadius(new Vector4(14, 0, 0, 14))
+            .SetRadius(NowCornerRadius.Left(14f))
             .Draw();
 
         DrawText("Now SRP Overlay", Rect(panel.x + 22, panel.y + 18, panel.z - 44, 30), 22, Color.white);

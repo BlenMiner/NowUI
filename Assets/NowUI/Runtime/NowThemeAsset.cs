@@ -1059,46 +1059,46 @@ namespace NowUI
 
         public virtual Vector2 MeasureButton(NowThemeAsset themeAsset, string label, NowTextStyle textStyle)
         {
-            var text = themeAsset.Text(default, textStyle);
+            var text = NowControls.Text(themeAsset, textStyle);
             Vector2 labelSize = text.Measure(label ?? string.Empty);
-            Vector4 padding = themeAsset.controlStyles.buttonPadding;
+            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.buttonPadding);
             return new Vector2(
                 labelSize.x + padding.x + padding.z,
-                Mathf.Max(themeAsset.controlStyles.buttonMinHeight, labelSize.y + (padding.y + padding.w) * 0.5f));
+                Mathf.Max(NowControls.ScaleValue(themeAsset.controlStyles.buttonMinHeight), labelSize.y + (padding.y + padding.w) * 0.5f));
         }
 
         public virtual Vector2 MeasureButtonContent(NowThemeAsset themeAsset, Vector2 cachedContentSize)
         {
-            Vector4 padding = themeAsset.controlStyles.buttonPadding;
+            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.buttonPadding);
             var contentSize = cachedContentSize.x > 0f
                 ? cachedContentSize
-                : new Vector2(themeAsset.controlStyles.buttonFallbackContentWidth, themeAsset.controlStyles.buttonFallbackContentHeight);
+                : NowControls.ScaleValue(new Vector2(themeAsset.controlStyles.buttonFallbackContentWidth, themeAsset.controlStyles.buttonFallbackContentHeight));
             return new Vector2(
                 contentSize.x + padding.x + padding.z,
-                Mathf.Max(themeAsset.controlStyles.buttonMinHeight, contentSize.y + padding.y + padding.w));
+                Mathf.Max(NowControls.ScaleValue(themeAsset.controlStyles.buttonMinHeight), contentSize.y + padding.y + padding.w));
         }
 
         public virtual Vector2 MeasureToggle(NowThemeAsset themeAsset, string label, NowTextStyle textStyle)
         {
-            var text = themeAsset.Text(default, textStyle);
+            var text = NowControls.Text(themeAsset, textStyle);
             Vector2 labelSize = text.Measure(label ?? string.Empty);
             float glyphSize = ToggleGlyphSize(themeAsset, labelSize.y);
             return new Vector2(
-                glyphSize + themeAsset.controlStyles.toggleGap + labelSize.x,
+                glyphSize + NowControls.ScaleValue(themeAsset.controlStyles.toggleGap) + labelSize.x,
                 Mathf.Max(glyphSize, labelSize.y));
         }
 
         public virtual Vector2 MeasureToggleContent(NowThemeAsset themeAsset, Vector2 cachedContentSize)
         {
-            float glyphSize = themeAsset.controlStyles.toggleSize;
+            float glyphSize = NowControls.ScaleValue(themeAsset.controlStyles.toggleSize);
             return new Vector2(
-                glyphSize + themeAsset.controlStyles.toggleGap + Mathf.Max(cachedContentSize.x, themeAsset.controlStyles.buttonFallbackContentWidth),
+                glyphSize + NowControls.ScaleValue(themeAsset.controlStyles.toggleGap) + Mathf.Max(cachedContentSize.x, NowControls.ScaleValue(themeAsset.controlStyles.buttonFallbackContentWidth)),
                 Mathf.Max(glyphSize, cachedContentSize.y));
         }
 
         public virtual float ToggleGlyphSize(NowThemeAsset themeAsset, float labelHeight)
         {
-            return Mathf.Max(themeAsset.controlStyles.toggleSize, labelHeight);
+            return Mathf.Max(NowControls.ScaleValue(themeAsset.controlStyles.toggleSize), labelHeight);
         }
 
         public virtual NowRect ToggleGlyphRect(NowThemeAsset themeAsset, NowRect rect, float glyphSize)
@@ -1108,19 +1108,19 @@ namespace NowUI
 
         public virtual NowRect ToggleContentRect(NowThemeAsset themeAsset, NowRect rect, float glyphSize)
         {
-            float offset = glyphSize + themeAsset.controlStyles.toggleGap;
+            float offset = glyphSize + NowControls.ScaleValue(themeAsset.controlStyles.toggleGap);
             return new NowRect(rect.x + offset, rect.y, rect.width - offset, rect.height);
         }
 
         public virtual Vector2 MeasureSlider(NowThemeAsset themeAsset)
         {
-            return new Vector2(160f, themeAsset.controlStyles.sliderHeight);
+            return NowControls.ScaleValue(new Vector2(160f, themeAsset.controlStyles.sliderHeight));
         }
 
         public virtual NowSliderVisualMetrics CalculateSliderMetrics(NowThemeAsset themeAsset, NowRect rect, float normalized)
         {
-            float knob = themeAsset.controlStyles.sliderKnobSize;
-            float trackThickness = themeAsset.controlStyles.sliderTrackThickness;
+            float knob = NowControls.ScaleValue(themeAsset.controlStyles.sliderKnobSize);
+            float trackThickness = NowControls.ScaleValue(themeAsset.controlStyles.sliderTrackThickness);
             float knobX = rect.x + normalized * (rect.width - knob);
             float trackY = rect.y + (rect.height - trackThickness) * 0.5f;
             var track = new NowRect(rect.x, trackY, rect.width, trackThickness);
@@ -1131,39 +1131,39 @@ namespace NowUI
 
         public virtual Vector2 MeasureTextField(NowThemeAsset themeAsset, float lineHeight)
         {
-            Vector4 padding = themeAsset.controlStyles.textFieldPadding;
-            return new Vector2(200f, Mathf.Max(themeAsset.controlStyles.textFieldMinHeight, lineHeight + padding.y + padding.w));
+            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.textFieldPadding);
+            return new Vector2(NowControls.ScaleValue(200f), Mathf.Max(NowControls.ScaleValue(themeAsset.controlStyles.textFieldMinHeight), lineHeight + padding.y + padding.w));
         }
 
         public virtual Vector2 MeasureDropdownField(NowThemeAsset themeAsset, float lineHeight)
         {
-            Vector4 padding = themeAsset.controlStyles.dropdownFieldPadding;
-            return new Vector2(200f, Mathf.Max(themeAsset.controlStyles.dropdownFieldMinHeight, lineHeight + padding.y + padding.w));
+            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.dropdownFieldPadding);
+            return new Vector2(NowControls.ScaleValue(200f), Mathf.Max(NowControls.ScaleValue(themeAsset.controlStyles.dropdownFieldMinHeight), lineHeight + padding.y + padding.w));
         }
 
         public virtual Vector2 MeasureTextArea(NowThemeAsset themeAsset, float lineHeight, int visualLines)
         {
-            Vector4 padding = themeAsset.controlStyles.textAreaPadding;
-            return new Vector2(200f, visualLines * lineHeight + padding.y + padding.w);
+            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.textAreaPadding);
+            return new Vector2(NowControls.ScaleValue(200f), visualLines * lineHeight + padding.y + padding.w);
         }
 
         public virtual NowRect TextFieldInnerRect(NowThemeAsset themeAsset, NowRect rect, float lineHeight)
         {
-            Vector4 padding = themeAsset.controlStyles.textFieldPadding;
+            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.textFieldPadding);
             float top = (rect.height - lineHeight) * 0.5f;
             return rect.Inset(padding.x, top, padding.z, top);
         }
 
         public virtual NowRect DropdownFieldInnerRect(NowThemeAsset themeAsset, NowRect rect, float lineHeight)
         {
-            Vector4 padding = themeAsset.controlStyles.dropdownFieldPadding;
+            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.dropdownFieldPadding);
             float top = (rect.height - lineHeight) * 0.5f;
-            return rect.Inset(padding.x, top, Mathf.Max(padding.z, 24f), top);
+            return rect.Inset(padding.x, top, Mathf.Max(padding.z, NowControls.ScaleValue(24f)), top);
         }
 
         public virtual NowRect TextAreaInnerRect(NowThemeAsset themeAsset, NowRect rect)
         {
-            Vector4 padding = themeAsset.controlStyles.textAreaPadding;
+            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.textAreaPadding);
             return rect.Inset(padding.x, padding.y, padding.z, padding.w);
         }
 
@@ -1275,7 +1275,9 @@ namespace NowUI
 
         public virtual void DrawTextInputFrame(in NowControlFrameRenderContext context)
         {
-            var box = context.themeAsset.Rectangle(context.rect, NowRectangleStyle.Outline);
+            var box = context.themeAsset.Rectangle(context.rect, NowRectangleStyle.Muted);
+            box.outline = NowControls.ScaleValue(1f);
+            box.outlineColor = context.themeAsset.GetColor(NowColorToken.Border, Color.gray);
 
             if (context.focused)
                 ApplyFocus(context.themeAsset, ref box, field: true);
@@ -1302,7 +1304,9 @@ namespace NowUI
 
         public virtual void DrawDropdownField(in NowDropdownFieldRenderContext context)
         {
-            var box = context.themeAsset.Rectangle(context.rect, NowRectangleStyle.Outline);
+            var box = context.themeAsset.Rectangle(context.rect, NowRectangleStyle.Muted);
+            box.outline = NowControls.ScaleValue(1f);
+            box.outlineColor = context.themeAsset.GetColor(NowColorToken.Border, Color.gray);
             box.color = NowControls.StateTint(context.themeAsset, box.color, context.hoverT, context.interaction.held);
 
             if (context.focused || context.open)
@@ -1321,7 +1325,7 @@ namespace NowUI
 
         protected static float LabelHeight(NowThemeAsset themeAsset)
         {
-            var text = themeAsset.Text(default, NowTextStyle.Body);
+            var text = NowControls.Text(themeAsset, NowTextStyle.Body);
             float height = text.Measure("Ag").y;
             if (height > 0f)
                 return height;
@@ -1337,10 +1341,10 @@ namespace NowUI
 
             if (menu)
                 background.radius = new Vector4(
-                    themeAsset.controlStyles.contextMenuRadius,
-                    themeAsset.controlStyles.contextMenuRadius,
-                    themeAsset.controlStyles.contextMenuRadius,
-                    themeAsset.controlStyles.contextMenuRadius);
+                    NowControls.ScaleValue(themeAsset.controlStyles.contextMenuRadius),
+                    NowControls.ScaleValue(themeAsset.controlStyles.contextMenuRadius),
+                    NowControls.ScaleValue(themeAsset.controlStyles.contextMenuRadius),
+                    NowControls.ScaleValue(themeAsset.controlStyles.contextMenuRadius));
 
             background.Draw();
         }
@@ -1356,7 +1360,7 @@ namespace NowUI
                 if (context.interaction.hovered && !context.selected)
                     highlight.color = NowControls.StateTint(context.themeAsset, highlight.color, 1f, context.interaction.held);
 
-                float radius = context.themeAsset.controlStyles.popupItemRadius;
+                float radius = NowControls.ScaleValue(context.themeAsset.controlStyles.popupItemRadius);
                 highlight.radius = new Vector4(radius, radius, radius, radius);
                 highlight.Draw();
             }
@@ -1364,7 +1368,7 @@ namespace NowUI
             Color textColor = context.selected
                 ? context.themeAsset.GetColor(NowColorToken.AccentText, Color.white)
                 : context.themeAsset.GetColor(NowColorToken.Text, Color.black);
-            NowControls.DrawLeftLabel(context.themeAsset, context.rect.Inset(8f, 0f, 4f, 0f), context.label, NowTextStyle.Body, textColor);
+            NowControls.DrawLeftLabel(context.themeAsset, context.rect.Inset(NowControls.ScaleValue(8f), 0f, NowControls.ScaleValue(4f), 0f), context.label, NowTextStyle.Body, textColor);
         }
 
         public virtual void DrawContextMenuItem(in NowPopupItemRenderContext context)
@@ -1372,14 +1376,14 @@ namespace NowUI
             if (context.interaction.hovered)
             {
                 var highlight = context.themeAsset.Rectangle(context.rect, NowRectangleStyle.Muted);
-                float radius = context.themeAsset.controlStyles.popupItemRadius;
+                float radius = NowControls.ScaleValue(context.themeAsset.controlStyles.popupItemRadius);
                 highlight.radius = new Vector4(radius, radius, radius, radius);
                 highlight.color = NowControls.StateTint(context.themeAsset, highlight.color, 1f, context.interaction.held);
                 highlight.Draw();
             }
 
-            float left = context.themeAsset.controlStyles.contextMenuPaddingX * 0.7f;
-            NowControls.DrawLeftLabel(context.themeAsset, context.rect.Inset(left, 0f, 4f, 0f), context.label, NowTextStyle.Body);
+            float left = NowControls.ScaleValue(context.themeAsset.controlStyles.contextMenuPaddingX * 0.7f);
+            NowControls.DrawLeftLabel(context.themeAsset, context.rect.Inset(left, 0f, NowControls.ScaleValue(4f), 0f), context.label, NowTextStyle.Body);
         }
 
         public virtual void DrawScrollbar(in NowScrollbarRenderContext context)
@@ -1403,7 +1407,7 @@ namespace NowUI
         static void ApplyFocus(NowThemeAsset themeAsset, ref NowRectangle rectangle, bool field)
         {
             var styles = themeAsset.controlStyles;
-            rectangle.outline = Mathf.Max(rectangle.outline, styles.focusOutline);
+            rectangle.outline = Mathf.Max(rectangle.outline, NowControls.ScaleValue(styles.focusOutline));
             rectangle.outlineColor = field
                 ? styles.fieldFocusColor.Resolve(themeAsset)
                 : styles.focusColor.Resolve(themeAsset);

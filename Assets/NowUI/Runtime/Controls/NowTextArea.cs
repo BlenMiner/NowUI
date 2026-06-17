@@ -109,7 +109,7 @@ namespace NowUI
             var renderer = theme.controlRenderer;
             int id = NowControls.GetControlId(_id, _site);
 
-            var textStyle = theme.Text(default, _textPreset);
+            var textStyle = NowControls.Text(theme, _textPreset);
             var fontAsset = textStyle.font;
             float fontSize = textStyle.fontSize;
             float lineHeight = fontAsset != null ? fontAsset.GetLineHeight(textStyle.fontStyle) * fontSize : fontSize * 1.2f;
@@ -408,7 +408,8 @@ namespace NowUI
 
                 if (display.Length == 0 && !focused && !string.IsNullOrEmpty(_placeholder))
                 {
-                    var placeholder = theme.Text(new NowRect(inner.x, inner.y, inner.width, lineHeight), NowTextStyle.Muted);
+                    var placeholder = NowControls.Text(theme, NowTextStyle.Muted);
+                    placeholder.rect = new NowRect(inner.x, inner.y, inner.width, lineHeight);
                     placeholder.SetFontSize(fontSize).Draw(_placeholder);
                 }
 
@@ -433,7 +434,7 @@ namespace NowUI
                     renderer.DrawCaret(theme, new NowRect(
                             inner.x + caretX,
                             inner.y + caretLine * lineHeight - area.scrollY,
-                            theme.controlStyles.caretWidth,
+                            NowControls.ScaleValue(theme.controlStyles.caretWidth),
                             lineHeight));
                 }
             }
@@ -441,11 +442,11 @@ namespace NowUI
             if (maxScroll > 0f)
             {
                 float trackHeight = inner.height;
-                float thumbHeight = Mathf.Max(18f, trackHeight * (inner.height / contentHeight));
+                float thumbHeight = Mathf.Max(NowControls.ScaleValue(18f), trackHeight * (inner.height / contentHeight));
                 float travel = trackHeight - thumbHeight;
                 float normalized = maxScroll > 0f ? area.scrollY / maxScroll : 0f;
 
-                var track = new NowRect(rect.xMax - 5f, inner.y, 3f, trackHeight);
+                var track = new NowRect(rect.xMax - NowControls.ScaleValue(5f), inner.y, NowControls.ScaleValue(3f), trackHeight);
                 var metrics = new NowScrollbarMetrics
                 {
                     visible = true,
@@ -566,7 +567,7 @@ namespace NowUI
             int from, int to, int firstVisible, int lastVisible)
         {
             var renderer = themeAsset.controlRenderer;
-            float underlineHeight = themeAsset.controlStyles.compositionUnderlineHeight;
+            float underlineHeight = NowControls.ScaleValue(themeAsset.controlStyles.compositionUnderlineHeight);
 
             for (int i = firstVisible; i <= lastVisible && i < lines.Count; ++i)
             {

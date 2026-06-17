@@ -1520,7 +1520,7 @@ public class NowDocsExample : NowGraphic
         var title = new NowRect(rect.x, rect.y, rect.width, 40f);
         Now.Rectangle(title)
             .SetColor(panel)
-            .SetRadius(new Vector4(10f, 10f, 0f, 0f))
+            .SetRadius(NowCornerRadius.Top(10f))
             .Draw();
 
         for (int i = 0; i < 3; ++i)

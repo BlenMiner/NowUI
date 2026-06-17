@@ -1,3 +1,4 @@
+using System.Globalization;
 using UnityEngine;
 
 namespace NowUI
@@ -23,9 +24,20 @@ namespace NowUI
         readonly NowRect _rect;
         readonly bool _hasRect;
         NowTextStyle _textPreset;
+        bool _hasNumberRange;
+        float _numberMin;
+        float _numberMax;
+        string _numberFormat;
 
         static TouchScreenKeyboard s_touchKeyboard;
         static int s_touchKeyboardId;
+
+        struct NumberEditState
+        {
+            public string text;
+
+            public bool editing;
+        }
 
         internal NowTextField(NowId id, int site)
         {
@@ -37,6 +49,10 @@ namespace NowUI
             _rect = default;
             _hasRect = false;
             _textPreset = NowTextStyle.Body;
+            _hasNumberRange = false;
+            _numberMin = 0f;
+            _numberMax = 0f;
+            _numberFormat = null;
         }
 
         internal NowTextField(NowRect rect, NowId id, int site) : this(id, site)
@@ -55,22 +71,148 @@ namespace NowUI
 
         public NowTextField SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
+        /// <summary>Clamp numeric Draw overloads to an inclusive range.</summary>
+        public NowTextField SetRange(float min, float max)
+        {
+            if (max < min)
+                (min, max) = (max, min);
+
+            _hasNumberRange = true;
+            _numberMin = min;
+            _numberMax = max;
+            return this;
+        }
+
+        /// <summary>Clamp integer Draw overloads to an inclusive range.</summary>
+        public NowTextField SetRange(int min, int max)
+        {
+            return SetRange((float)min, max);
+        }
+
+        /// <summary>Format used when numeric Draw overloads sync the field from the value.</summary>
+        public NowTextField SetFormat(string format) { _numberFormat = string.IsNullOrEmpty(format) ? null : format; return this; }
+
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowTextField SetId(NowId id) { _id = id; return this; }
 
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowTextField SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
+        /// <summary>
+        /// Numeric text field helper. The caller owns the float; the control keeps
+        /// an edit buffer only while focused so partial text can be typed naturally.
+        /// </summary>
+        public bool Draw(ref float value)
+        {
+            int id = NowControls.GetControlId(_id, _site);
+            return DrawFloat(ref value, id, _numberFormat ?? "G7");
+        }
+
+        /// <summary>Numeric text field helper with a one-off format override.</summary>
+        public bool Draw(ref float value, string format)
+        {
+            int id = NowControls.GetControlId(_id, _site);
+            return DrawFloat(ref value, id, string.IsNullOrEmpty(format) ? "G7" : format);
+        }
+
+        /// <summary>
+        /// Integer text field helper. Invalid partial text is kept while focused
+        /// and discarded on blur.
+        /// </summary>
+        public bool Draw(ref int value)
+        {
+            int id = NowControls.GetControlId(_id, _site);
+            return DrawInt(ref value, id);
+        }
+
         public bool Draw(ref string text)
+        {
+            int id = NowControls.GetControlId(_id, _site);
+            return DrawText(ref text, id);
+        }
+
+        bool DrawFloat(ref float value, int id, string format)
+        {
+            float previous = value;
+
+            if (_hasNumberRange)
+                value = Mathf.Clamp(value, _numberMin, _numberMax);
+
+            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.GetId(id, "number"));
+
+            if (!numberState.editing || numberState.text == null)
+                numberState.text = FormatFloat(value, format);
+
+            string text = numberState.text;
+            DrawText(ref text, id);
+
+            bool focused = NowFocus.IsFocused(id);
+
+            if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed))
+            {
+                if (_hasNumberRange)
+                    parsed = Mathf.Clamp(parsed, _numberMin, _numberMax);
+
+                value = parsed;
+                numberState.text = focused ? text : FormatFloat(value, format);
+            }
+            else
+            {
+                numberState.text = focused ? text : FormatFloat(value, format);
+            }
+
+            numberState.editing = focused;
+            return !Mathf.Approximately(previous, value);
+        }
+
+        bool DrawInt(ref int value, int id)
+        {
+            int previous = value;
+
+            if (_hasNumberRange)
+                value = Mathf.Clamp(value, Mathf.CeilToInt(_numberMin), Mathf.FloorToInt(_numberMax));
+
+            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.GetId(id, "number"));
+
+            if (!numberState.editing || numberState.text == null)
+                numberState.text = value.ToString(CultureInfo.InvariantCulture);
+
+            string text = numberState.text;
+            DrawText(ref text, id);
+
+            bool focused = NowFocus.IsFocused(id);
+
+            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            {
+                if (_hasNumberRange)
+                    parsed = Mathf.Clamp(parsed, Mathf.CeilToInt(_numberMin), Mathf.FloorToInt(_numberMax));
+
+                value = parsed;
+                numberState.text = focused ? text : value.ToString(CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                numberState.text = focused ? text : value.ToString(CultureInfo.InvariantCulture);
+            }
+
+            numberState.editing = focused;
+            return previous != value;
+        }
+
+        static string FormatFloat(float value, string format)
+        {
+            return value.ToString(string.IsNullOrEmpty(format) ? "G7" : format, CultureInfo.InvariantCulture);
+        }
+
+        bool DrawText(ref string text, int id)
         {
             text ??= string.Empty;
             string original = text;
 
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = NowControls.GetControlId(_id, _site);
 
-            var textStyle = theme.Text(default, _textPreset);
+            var textStyle = NowControls.Text(theme, _textPreset);
             var fontAsset = textStyle.font;
             float fontSize = textStyle.fontSize;
             float lineHeight = fontAsset != null ? fontAsset.GetLineHeight() * fontSize : fontSize * 1.2f;
@@ -238,7 +380,8 @@ namespace NowUI
                 }
                 else if (!focused && !string.IsNullOrEmpty(_placeholder))
                 {
-                    var placeholder = theme.Text(new NowRect(inner.x, inner.y, inner.width, inner.height), NowTextStyle.Muted);
+                    var placeholder = NowControls.Text(theme, NowTextStyle.Muted);
+                    placeholder.rect = new NowRect(inner.x, inner.y, inner.width, inner.height);
                     placeholder.SetFontSize(fontSize).Draw(_placeholder);
                 }
 
@@ -246,7 +389,7 @@ namespace NowUI
                 {
                     float compositionX = PrefixAdvance(fontAsset, resolvedFont, display, state.caret, fontSize);
 
-                    float underlineHeight = theme.controlStyles.compositionUnderlineHeight;
+                    float underlineHeight = NowControls.ScaleValue(theme.controlStyles.compositionUnderlineHeight);
                     renderer.DrawCompositionUnderline(theme, new NowRect(
                         textX + compositionX,
                         inner.yMax - underlineHeight,
@@ -256,7 +399,7 @@ namespace NowUI
 
                 if (focused && NowControlState.Blink(1f, blinkAnchor))
                 {
-                    renderer.DrawCaret(theme, new NowRect(textX + caretX, inner.y, theme.controlStyles.caretWidth, inner.height));
+                    renderer.DrawCaret(theme, new NowRect(textX + caretX, inner.y, NowControls.ScaleValue(theme.controlStyles.caretWidth), inner.height));
                 }
             }
 

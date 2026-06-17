@@ -22,7 +22,8 @@
     "layout",
     "lottie",
     "vector-graphics",
-    "docking"
+    "docking",
+    "node-graph"
   ],
   "samples": [
     {

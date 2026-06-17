@@ -1266,6 +1266,11 @@ namespace NowUI
             return color;
         }
 
+        static float RectangleVisualPadding(float blur, float outline)
+        {
+            return 2f + Mathf.Max(0f, blur) + Mathf.Max(0f, outline);
+        }
+
         /// <summary>Draws a rounded rectangle. The style constructor defaults the mask to
         /// the rect itself; that default mask is outset so the SDF edge, outline and blur
         /// fall off instead of clipping the anti-aliasing hard at the bounds. Explicit
@@ -1313,10 +1318,14 @@ namespace NowUI
             int rectWidth = Mathf.RoundToInt(position.x + position.width) - x0;
             int rectHeight = Mathf.RoundToInt(position.y + position.height) - y0;
 
+            if (rectWidth <= 0 || rectHeight <= 0)
+                return;
+
             var rectMask = rectangle.mask;
+            float visualPadding = RectangleVisualPadding(rectangle.blur, rectangle.outline);
 
             if (!rectMask.isEmpty && rectMask == rectangle.rect)
-                rectMask = rectMask.Outset(2f + rectangle.blur + rectangle.outline);
+                rectMask = rectMask.Outset(visualPadding);
 
             _tmpVertex.mask = ApplyAmbientMask(rectMask);
             _tmpVertex.radius = rectangle.radius;
@@ -1373,7 +1382,7 @@ namespace NowUI
             _tmpVertex.position.z = rectWidth;
             _tmpVertex.position.w = rectHeight;
 
-            mesh.AddRect(_tmpVertex, rectangle.blur, rectangle.outline);
+            mesh.AddRect(_tmpVertex, rectangle.blur, rectangle.outline, visualPadding);
         }
 
         /// <summary>

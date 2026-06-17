@@ -60,6 +60,18 @@ namespace NowUI
             return this;
         }
 
+        public NowGlass SetRadius(float topLeft, float topRight, float bottomRight, float bottomLeft)
+        {
+            radius = new NowCornerRadius(topLeft, topRight, bottomRight, bottomLeft).packed;
+            return this;
+        }
+
+        public NowGlass SetRadius(NowCornerRadius radius)
+        {
+            this.radius = radius.packed;
+            return this;
+        }
+
         public NowGlass SetRadius(Vector4 radius)
         {
             this.radius = radius;
@@ -206,9 +218,10 @@ namespace NowUI
                 return;
 
             var rectMask = glass.mask;
+            float visualPadding = RectangleVisualPadding(0f, glass.outline);
 
             if (!rectMask.isEmpty && rectMask == glass.rect)
-                rectMask = rectMask.Outset(2f + glass.outline);
+                rectMask = rectMask.Outset(visualPadding);
 
             _tmpVertex.mask = ApplyAmbientMask(rectMask);
             _tmpVertex.radius = glass.radius;
@@ -239,7 +252,7 @@ namespace NowUI
             extra.y = glass.outline;
             extra.z = key.data.y;
             extra.w = key.data.z;
-            mesh.AddRect(_tmpVertex, extra);
+            mesh.AddRect(_tmpVertex, extra, visualPadding);
         }
 
         static Material GetGlassMaterial()

@@ -37,6 +37,7 @@ namespace NowUI
             public NowRect field;
             public NowRect popupRect;
             public NowRect itemArea;
+            public float scale;
         }
 
         static readonly Dictionary<int, PopupState> _popupStates = new Dictionary<int, PopupState>(8);
@@ -89,7 +90,7 @@ namespace NowUI
 
             pending = 0;
 
-            var textStyle = theme.Text(default, NowTextStyle.Body);
+            var textStyle = NowControls.Text(theme, NowTextStyle.Body);
             float lineHeight = textStyle.Measure("Ag").y;
             if (lineHeight <= 0f)
                 lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
@@ -126,9 +127,11 @@ namespace NowUI
         static void DeferPopup(NowThemeAsset themeAsset, IReadOnlyList<string> options, int id, NowRect field, int selected, int optionCount)
         {
             var styles = themeAsset.controlStyles;
-            float contentHeight = optionCount * styles.dropdownItemHeight + styles.popupPadding * 2f;
-            float popupHeight = Mathf.Min(contentHeight, styles.dropdownMaxPopupHeight);
-            var popupRect = new NowRect(field.x, field.yMax + styles.dropdownPopupGap, field.width, popupHeight);
+            float itemHeight = NowControls.ScaleValue(styles.dropdownItemHeight);
+            float popupPadding = NowControls.ScaleValue(styles.popupPadding);
+            float contentHeight = optionCount * itemHeight + popupPadding * 2f;
+            float popupHeight = Mathf.Min(contentHeight, NowControls.ScaleValue(styles.dropdownMaxPopupHeight));
+            var popupRect = new NowRect(field.x, field.yMax + NowControls.ScaleValue(styles.dropdownPopupGap), field.width, popupHeight);
 
             if (!_popupStates.TryGetValue(id, out var state))
             {
@@ -144,11 +147,12 @@ namespace NowUI
             state.pendingId = NowInput.GetId(id, "pending");
             state.itemSeed = NowInput.GetId(id, "item");
             state.scrollId = NowInput.GetId(id, "popup-scroll");
-            state.scrolls = contentHeight > styles.dropdownMaxPopupHeight;
-            state.itemHeight = styles.dropdownItemHeight;
+            state.scrolls = contentHeight > NowControls.ScaleValue(styles.dropdownMaxPopupHeight);
+            state.itemHeight = itemHeight;
             state.field = field;
             state.popupRect = popupRect;
-            state.itemArea = popupRect.Inset(styles.popupPadding);
+            state.itemArea = popupRect.Inset(popupPadding);
+            state.scale = NowControls.controlScale;
 
             NowOverlay.Defer(popupRect, id, DrawPopup);
         }
@@ -160,24 +164,28 @@ namespace NowUI
 
             var themeAsset = state.themeAsset;
             var popupRect = state.popupRect;
-            themeAsset.controlRenderer.DrawPopupBackground(themeAsset, popupRect, menu: false);
 
-            if (state.scrolls)
+            using (NowControls.Scale(state.scale))
             {
-                using (new NowScrollView(state.itemArea, state.scrollId).Begin())
+                themeAsset.controlRenderer.DrawPopupBackground(themeAsset, popupRect, menu: false);
+
+                if (state.scrolls)
+                {
+                    using (new NowScrollView(state.itemArea, state.scrollId).Begin())
+                        DrawItems(state);
+                }
+                else
+                {
                     DrawItems(state);
-            }
-            else
-            {
-                DrawItems(state);
+                }
             }
 
             var snapshot = NowInput.current;
             bool pressedOutside = snapshot.primaryPressed &&
-                !popupRect.Contains(snapshot.pointerPosition) &&
+                !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
                 !state.field.Contains(snapshot.pointerPosition);
 
-            if (pressedOutside || snapshot.cancelPressed)
+            if (pressedOutside || (snapshot.cancelPressed && !NowOverlay.HasNestedOverlay(state.id)))
                 NowControlState.Get<bool>(state.id) = false;
         }
 

@@ -75,6 +75,9 @@ namespace NowUI
         Vector2 _previousPosition;
         NowInputSnapshot _snapshot;
         bool _rawInputAvailable;
+        NowPointerButtons _previousButtonsDown;
+        bool _pressAllowed = true;
+        bool _blockedWhenPointerOverUGUI = true;
 
         public NowWorldGraphic graphic
         {
@@ -132,6 +135,12 @@ namespace NowUI
             set => _acceptNavigation = value;
         }
 
+        public bool blockedWhenPointerOverUGUI
+        {
+            get => _blockedWhenPointerOverUGUI;
+            set => _blockedWhenPointerOverUGUI = value;
+        }
+
         public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
             int frame = Time.frameCount;
@@ -156,6 +165,19 @@ namespace NowUI
         internal bool TryGetSnapshot(NowInputSurface surface, NowMouseInput input, out NowInputSnapshot snapshot)
         {
             if (!input.hasPointer)
+            {
+                _hasPreviousPosition = false;
+                _previousButtonsDown = NowPointerButtons.None;
+                snapshot = CreateSnapshot(false, default, default, default, input);
+                return true;
+            }
+
+            bool buttonsWereDown = _previousButtonsDown != NowPointerButtons.None;
+            bool allowedNow = !blockedWhenPointerOverUGUI ||
+                !NowRaycastGate.IsPointerOverUGUI(input.screenPosition);
+            _previousButtonsDown = input.pointerButtonsDown;
+
+            if (!NowRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow))
             {
                 _hasPreviousPosition = false;
                 snapshot = CreateSnapshot(false, default, default, default, input);
@@ -239,6 +261,8 @@ namespace NowUI
             _lastFrame = -1;
             _hasPreviousPosition = false;
             _previousPosition = default;
+            _previousButtonsDown = NowPointerButtons.None;
+            _pressAllowed = true;
             _snapshot = default;
         }
 
@@ -328,6 +352,8 @@ namespace NowUI
         [SerializeField, Min(0.0001f)] float _antiAliasSmoothing = 1f;
         [SerializeField] bool _rebuildEveryFrame;
         [SerializeField] bool _autoRebuildOnInteraction = true;
+        [SerializeField, Tooltip("Withhold pointer input while the pointer is over raycastable UGUI, because screen-space UI draws in front of world-space NowUI.")]
+        bool _blockedWhenPointerOverUGUI = true;
         [SerializeField] bool _acceptNavigation;
         [SerializeField] NowWorldGlassBackdropMode _glassBackdropMode = NowWorldGlassBackdropMode.CameraAndWorld;
         [SerializeField] NowGlassBlurQuality _glassBlurQuality = NowGlassBlurQuality.Auto;
@@ -581,6 +607,19 @@ namespace NowUI
         {
             get => _autoRebuildOnInteraction;
             set => _autoRebuildOnInteraction = value;
+        }
+
+        public bool blockedWhenPointerOverUGUI
+        {
+            get => _blockedWhenPointerOverUGUI;
+            set
+            {
+                if (_blockedWhenPointerOverUGUI == value)
+                    return;
+
+                _blockedWhenPointerOverUGUI = value;
+                _inputProvider?.ResetPosition();
+            }
         }
 
         public bool acceptNavigation
@@ -864,6 +903,7 @@ namespace NowUI
             _inputProvider.graphic = this;
             _inputProvider.camera = ResolveCamera();
             _inputProvider.acceptNavigation = _acceptNavigation;
+            _inputProvider.blockedWhenPointerOverUGUI = _blockedWhenPointerOverUGUI;
             return _inputProvider;
         }
 

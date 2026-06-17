@@ -9,6 +9,7 @@
         "NowUI.Extensions.Markdown",
         "NowUI.Extensions.CodeEditor",
         "NowUI.Extensions.Docking",
+        "NowUI.Extensions.NodeGraph",
         "NowUI.Extensions.Sdf",
         "Unity.PerformanceTesting",
         "UnityEngine.UI"

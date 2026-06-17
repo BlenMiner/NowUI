@@ -234,15 +234,37 @@ namespace NowUI.Internal
 
         public void AddRect(NowRectVertex vertexData, float extraX, float extraY)
         {
+            AddRect(vertexData, extraX, extraY, 0f);
+        }
+
+        public void AddRect(NowRectVertex vertexData, float extraX, float extraY, float geometryPadding)
+        {
             Vector4 extra = default;
             extra.x = extraX;
             extra.y = extraY;
-            AddRect(vertexData, extra);
+            AddRect(vertexData, extra, geometryPadding);
         }
 
         public void AddRect(NowRectVertex vertexData, Vector4 extra)
         {
-            if (vertexData.IsOutsideMask(vertexData.position)) return;
+            AddRect(vertexData, extra, 0f);
+        }
+
+        public void AddRect(NowRectVertex vertexData, Vector4 extra, float geometryPadding)
+        {
+            var position = vertexData.position;
+            float padding = Mathf.Max(0f, geometryPadding);
+            Vector4 geometry = position;
+
+            if (padding > 0f)
+            {
+                geometry.x -= padding;
+                geometry.y -= padding;
+                geometry.z += padding * 2f;
+                geometry.w += padding * 2f;
+            }
+
+            if (vertexData.IsOutsideMask(geometry)) return;
 
             EnsureRectCapacity();
 
@@ -262,8 +284,6 @@ namespace NowUI.Internal
 
             var rarray = _rect.array;
             var rcount = _rect.count;
-
-            var position = vertexData.position;
 
             rarray[rcount] = position;
             rarray[rcount + 1] = position;
@@ -312,15 +332,15 @@ namespace NowUI.Internal
 
             _extra.count += 4;
 
-            _a.x = position.x;
-            _a.y = position.y;
+            _a.x = geometry.x;
+            _a.y = geometry.y;
             _a.z = 0;
 
             _b.x = _a.x;
-            _b.y = _a.y + position.w;
+            _b.y = _a.y + geometry.w;
             _b.z = 0;
 
-            _c.x = _a.x + position.z;
+            _c.x = _a.x + geometry.z;
             _c.y = _b.y;
             _c.z = 0;
 
@@ -341,24 +361,30 @@ namespace NowUI.Internal
             var ruvs = _uvs.array;
             var ruvsCount = _uvs.count;
 
-            var uv0 = _uv0;
-            var uv1 = _uv1;
-            var uv2 = _uv2;
-            var uv3 = _uv3;
+            float leftRaw = 0f;
+            float rightRaw = 1f;
+            float bottomRaw = 0f;
+            float topRaw = 1f;
+
+            if (padding > 0f && position.z > 0f && position.w > 0f)
+            {
+                leftRaw = -padding / position.z;
+                rightRaw = 1f + padding / position.z;
+                bottomRaw = -padding / position.w;
+                topRaw = 1f + padding / position.w;
+            }
 
             var uvwh = vertexData.uvwh;
 
-            uv0.x = uvwh.x + uv0.x * uvwh.z;
-            uv0.y = uvwh.y + uv0.y * uvwh.w;
+            var raw0 = new Vector2(leftRaw, bottomRaw);
+            var raw1 = new Vector2(leftRaw, topRaw);
+            var raw2 = new Vector2(rightRaw, topRaw);
+            var raw3 = new Vector2(rightRaw, bottomRaw);
 
-            uv1.x = uvwh.x + uv1.x * uvwh.z;
-            uv1.y = uvwh.y + uv1.y * uvwh.w;
-
-            uv2.x = uvwh.x + uv2.x * uvwh.z;
-            uv2.y = uvwh.y + uv2.y * uvwh.w;
-
-            uv3.x = uvwh.x + uv3.x * uvwh.z;
-            uv3.y = uvwh.y + uv3.y * uvwh.w;
+            var uv0 = new Vector2(uvwh.x + raw0.x * uvwh.z, uvwh.y + raw0.y * uvwh.w);
+            var uv1 = new Vector2(uvwh.x + raw1.x * uvwh.z, uvwh.y + raw1.y * uvwh.w);
+            var uv2 = new Vector2(uvwh.x + raw2.x * uvwh.z, uvwh.y + raw2.y * uvwh.w);
+            var uv3 = new Vector2(uvwh.x + raw3.x * uvwh.z, uvwh.y + raw3.y * uvwh.w);
 
             ruvs[ruvsCount] = uv0;
             ruvs[ruvsCount + 1] = uv1;
@@ -368,10 +394,10 @@ namespace NowUI.Internal
             var rawuvs = _rawuv.array;
             var rawuvsCount = _rawuv.count;
 
-            rawuvs[rawuvsCount] = _uv0;
-            rawuvs[rawuvsCount + 1] = _uv1;
-            rawuvs[rawuvsCount + 2] = _uv2;
-            rawuvs[rawuvsCount + 3] = _uv3;
+            rawuvs[rawuvsCount] = raw0;
+            rawuvs[rawuvsCount + 1] = raw1;
+            rawuvs[rawuvsCount + 2] = raw2;
+            rawuvs[rawuvsCount + 3] = raw3;
 
             _rawuv.count += 4;
             _uvs.count += 4;

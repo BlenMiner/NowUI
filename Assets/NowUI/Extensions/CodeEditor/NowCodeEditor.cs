@@ -596,7 +596,7 @@ namespace NowUI.CodeEditor
                 float gutterBottomLeft = statusHeight > 0f ? 0f : cornerRadius.z;
                 Now.Rectangle(new NowRect(rect.x, rect.y, gutterWidth, rect.height - statusHeight))
                     .SetColor(themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
-                    .SetRadius(Corners(cornerRadius.w, 0f, 0f, gutterBottomLeft))
+                    .SetRadius(cornerRadius.w, 0f, 0f, gutterBottomLeft)
                     .Draw();
 
                 using (Now.Mask(new NowRect(rect.x, textRect.y, gutterWidth, textRect.height)))
@@ -726,12 +726,6 @@ namespace NowUI.CodeEditor
 
             if (hovered)
                 DrawDiagnosticTooltip(id, themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, pointer);
-        }
-
-        static Vector4 Corners(float topLeft, float topRight, float bottomRight, float bottomLeft)
-        {
-            // The rounded-rect SDF packs corners as (BR, TR, BL, TL).
-            return new Vector4(bottomRight, topRight, bottomLeft, topLeft);
         }
 
         static void Scrollbars(EditorCache cache, NowRect rect, NowRect textRect, float statusHeight, float lineHeight,
@@ -902,7 +896,7 @@ namespace NowUI.CodeEditor
 
             Now.Rectangle(statusRect)
                 .SetColor(themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
-                .SetRadius(Corners(0f, 0f, cornerRadius.x, cornerRadius.z))
+                .SetRadius(0f, 0f, cornerRadius.x, cornerRadius.z)
                 .Draw();
 
             var line = cache.lines[caretLine];

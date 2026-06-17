@@ -8,6 +8,8 @@ public sealed class NowWorldGraphicExample : NowWorldGraphic
     [SerializeField] string _detail = "Hover for details";
     [SerializeField] NowLottieAsset _lottie;
 
+    AnimationCurve _animationCurve = AnimationCurve.Linear(0, 0, 1, 1);
+
     protected override void DrawNowUI(NowRect rect)
     {
         Now.Glass(rect)
@@ -23,6 +25,9 @@ public sealed class NowWorldGraphicExample : NowWorldGraphic
                 .SetWidth(32)
                 .SetTime(Time.time)
                 .Draw();
+
+            NowLayout.AnimationCurveField().Draw(ref _animationCurve);
+
             if (NowLayout.Button(_detail).Draw())
             {
                 Debug.Log("Clicked", this);

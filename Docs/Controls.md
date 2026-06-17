@@ -30,11 +30,20 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
 
     NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref volume);
 
+    NowLayout.FloatField("speed").SetRange(0f, 100f).Draw(ref speed);
+    NowLayout.IntField("lives").SetRange(0, 99).Draw(ref lives);
+    NowLayout.Vector3Field("spawn-position").Draw(ref spawnPosition);
+    NowLayout.ColorPicker("tint").SetShowAlpha(false).Draw(ref tint);
+    NowLayout.GradientField("ramp").Draw(ref ramp);
+    NowLayout.AnimationCurveField("falloff").SetTimeRange(0f, 1f).Draw(ref falloff);
+
     NowLayout.TextField("player-name").SetPlaceholder("Name...").Draw(ref playerName);
 
     NowLayout.TextArea("notes").SetPlaceholder("Notes...").SetLines(3, 8).Draw(ref notes);
 
     NowLayout.Dropdown("res", resolutionNames).Draw(ref resolutionIndex);
+    NowLayout.EnumDropdown<Quality>("quality").Draw(ref quality);
+    NowLayout.EnumFlags<RenderFlags>("render-flags").Draw(ref renderFlags);
 
     using (NowLayout.ScrollView("log").SetHeight(160).Begin())
         foreach (var line in logLines)
@@ -45,6 +54,24 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
 - `Button(...).Draw()` returns true on click or on submit while focused.
 - `Checkbox(...).Draw(ref value)` / `Slider(...).Draw(ref value)` mutate the
   ref and return true when it changed.
+- `FloatField` / `IntField` are typed text-field helpers with optional
+  `SetRange(...)`; `Slider(...).Draw(ref int)` snaps to whole numbers, and
+  `Slider(...).SetStep(step)` snaps floats to increments.
+- `Vector2Field`, `Vector3Field`, `Vector4Field`, `Vector2IntField` and
+  `Vector3IntField` draw component fields for Unity vector structs.
+- `ColorPicker` draws a compact swatch field and opens an overlay HSV picker
+  with shader-backed saturation/value, hue, optional alpha editing, editable
+  hex copy/paste, and Unity-style RGBA channel sliders. Selection applies on
+  the next frame's Draw, matching dropdown popup behavior.
+- `GradientField` edits Unity `Gradient` values with a texture-backed compact
+  gradient preview, Unity-style alpha handles above the ramp and color handles
+  below it, add-key-on-double-click, selected-key Location/Alpha/trash controls,
+  Delete-key removal, and the core color picker for selected color keys.
+- `AnimationCurveField` / `CurveField` edit Unity `AnimationCurve` values with a
+  compact curve preview, a Unity-style popup editor, draggable keys and tangent
+  handles, add-key-on-double-click, selected-key Time/Value fields, Smooth/Linear/
+  Step/Flat tangent commands, exact step preview, trash/Delete-key removal, and
+  optional `SetTimeRange(...)` / `SetValueRange(...)` bounds.
 - `Radio(label, isOn).Draw()` returns true when clicked; set your selection in
   response.
 - `TextField` supports click/drag selection (shaped-text cluster aware),
@@ -61,6 +88,8 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
 - `Dropdown` opens an overlay popup that blocks input underneath, scrolls when
   long, and closes on selection, outside click, or cancel. Selection applies
   on the next frame's Draw.
+- `EnumDropdown<TEnum>` wraps dropdown selection for enum values, and
+  `EnumFlags<TEnum>` draws checkboxes for single-bit flag values.
 - `ScrollView` scrolls with the wheel while hovered and with the scrollbar
   thumb; content height is the layout group's measured extent (one frame
   late, like all layout measurement). Focus navigation can move to clipped
@@ -78,7 +107,21 @@ if (Now.Button(new NowRect(20, 20, 120, 40), "Save").Draw())
 
 Now.Slider(new NowRect(20, 70, 200, 20), 0f, 1f).Draw(ref volume);
 Now.TextField(new NowRect(20, 100, 200, 30), "name").Draw(ref playerName);
+Now.ColorPicker(new NowRect(20, 140, 180, 30), "tint").Draw(ref tint);
+Now.GradientField(new NowRect(20, 180, 180, 30), "ramp").Draw(ref ramp);
+Now.AnimationCurveField(new NowRect(20, 220, 180, 34), "falloff").Draw(ref falloff);
 ```
+
+Use `NowCornerRadius` or the four-float `SetRadius(topLeft, topRight,
+bottomRight, bottomLeft)` overload when only some corners should be rounded:
+
+```csharp
+Now.Rectangle(headerRect).SetRadius(NowCornerRadius.Top(8f)).Draw();
+Now.Rectangle(sideRailRect).SetRadius(topLeft: 8f, topRight: 0f, bottomRight: 0f, bottomLeft: 8f).Draw();
+```
+
+The raw `Vector4` radius overload remains for compatibility, but it uses the
+renderer's packed order and should be avoided in new code when corners differ.
 
 ## Custom content inside controls
 
@@ -359,6 +402,7 @@ The toolkit pieces:
 | `NowControls.Interact(id, rect, out focused, out submitted)` | Pointer interaction + focus registration + click-to-focus + submit |
 | `NowInput.Interact(rect)` | Id-less interaction: identity from the call site |
 | `NowInput.CombineId(a, b)` | Mint sub-element ids (rows, links, items) without strings |
+| `using (NowControls.Scale(scale))` | Scale built-in control internals when a host already scales explicit rects, such as zoomable node content |
 | `NowControlState.Get<T>(id)` | Persistent ephemeral slot (struct), evicted when stale |
 | `NowControlState.Transition / Repeat / DetectDoubleClick / ClickStreak / Blink` | The standard timing behaviors |
 | `NowControlState.RequestRepaint()` | Tell retained hosts (UGUI) to render another frame |

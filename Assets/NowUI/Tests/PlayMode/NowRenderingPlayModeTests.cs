@@ -301,6 +301,73 @@ public class NowRenderingPlayModeTests
     }
 
     [UnityTest]
+    public IEnumerator ScreenSpaceUGUIOccludesWorldGraphicPointer()
+    {
+        var eventSystemObject = new GameObject("TestEventSystem", typeof(UnityEngine.EventSystems.EventSystem));
+        var canvasObject = new GameObject("Canvas", typeof(Canvas), typeof(UnityEngine.UI.GraphicRaycaster));
+        var blockerObject = new GameObject("Screen UI Blocker", typeof(UnityEngine.UI.Image));
+        var cameraObject = new GameObject("Now World Camera");
+        var panelObject = new GameObject("Now World Panel");
+
+        try
+        {
+            var canvas = canvasObject.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+            blockerObject.transform.SetParent(canvasObject.transform, false);
+            var blockerRect = blockerObject.GetComponent<RectTransform>();
+            blockerRect.anchorMin = Vector2.zero;
+            blockerRect.anchorMax = Vector2.zero;
+            blockerRect.pivot = Vector2.zero;
+            blockerRect.anchoredPosition = Vector2.zero;
+            blockerRect.sizeDelta = new Vector2(200, 200);
+
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.pixelRect = new Rect(0, 0, 200, 200);
+            cameraObject.transform.position = new Vector3(0, 0, -5);
+
+            var panel = panelObject.AddComponent<WorldPanelDriver>();
+            panel.facingMode = NowWorldFacingMode.None;
+            panel.targetCamera = camera;
+            panel.size = new Vector2(100f, 50f);
+            panel.pixelsPerUnit = 100f;
+            panel.pivot = new Vector2(0.5f, 0.5f);
+
+            yield return null;
+
+            var provider = panel.GetWorldInputProviderForTest();
+            var surface = new NowInputSurface(panel.size);
+            var press = new NowMouseInput
+            {
+                hasPointer = true,
+                screenPosition = new Vector2(100, 100),
+                pointerButtonsDown = NowPointerButtons.Primary,
+                pointerButtonsPressed = NowPointerButtons.Primary
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(surface, press, out var blockedSnapshot));
+            Assert.IsFalse(blockedSnapshot.hasPointer, "Screen-space UGUI must block world-space NowUI input beneath it.");
+
+            panel.blockedWhenPointerOverUGUI = false;
+            provider = panel.GetWorldInputProviderForTest();
+            provider.ResetPosition();
+
+            Assert.IsTrue(provider.TryGetSnapshot(surface, press, out var allowedSnapshot));
+            Assert.IsTrue(allowedSnapshot.hasPointer, "World-space NowUI can opt out of screen-space UGUI blocking.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(panelObject);
+            Object.DestroyImmediate(cameraObject);
+            Object.DestroyImmediate(blockerObject);
+            Object.DestroyImmediate(canvasObject);
+            Object.DestroyImmediate(eventSystemObject);
+        }
+    }
+
+    [UnityTest]
     public IEnumerator EventSystemSelectionSuspendsNowFocus()
     {
         var eventSystemObject = new GameObject("TestEventSystem", typeof(UnityEngine.EventSystems.EventSystem));
@@ -388,6 +455,11 @@ public class NowRenderingPlayModeTests
         public Color color = Color.red;
 
         protected override bool useLayoutMeasurePass => false;
+
+        public NowWorldInputProvider GetWorldInputProviderForTest()
+        {
+            return (NowWorldInputProvider)GetInputProvider();
+        }
 
         protected override void DrawNowUI(NowRect rect)
         {

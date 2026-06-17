@@ -2,6 +2,69 @@ using UnityEngine;
 
 namespace NowUI
 {
+    /// <summary>
+    /// Human-readable rounded-rectangle corner radii. Use this instead of
+    /// passing a raw Vector4 when corners differ; the renderer's packed order is
+    /// an implementation detail.
+    /// </summary>
+    public readonly struct NowCornerRadius
+    {
+        public readonly float topLeft;
+        public readonly float topRight;
+        public readonly float bottomRight;
+        public readonly float bottomLeft;
+
+        public NowCornerRadius(float all)
+            : this(all, all, all, all)
+        {
+        }
+
+        public NowCornerRadius(float topLeft, float topRight, float bottomRight, float bottomLeft)
+        {
+            this.topLeft = topLeft;
+            this.topRight = topRight;
+            this.bottomRight = bottomRight;
+            this.bottomLeft = bottomLeft;
+        }
+
+        public Vector4 packed => new Vector4(bottomRight, topRight, bottomLeft, topLeft);
+
+        public static NowCornerRadius All(float radius)
+        {
+            return new NowCornerRadius(radius);
+        }
+
+        public static NowCornerRadius Top(float radius)
+        {
+            return new NowCornerRadius(radius, radius, 0f, 0f);
+        }
+
+        public static NowCornerRadius Bottom(float radius)
+        {
+            return new NowCornerRadius(0f, 0f, radius, radius);
+        }
+
+        public static NowCornerRadius Left(float radius)
+        {
+            return new NowCornerRadius(radius, 0f, 0f, radius);
+        }
+
+        public static NowCornerRadius Right(float radius)
+        {
+            return new NowCornerRadius(0f, radius, radius, 0f);
+        }
+
+        public static NowCornerRadius FromPacked(Vector4 packed)
+        {
+            return new NowCornerRadius(packed.w, packed.y, packed.x, packed.z);
+        }
+
+        public static implicit operator Vector4(NowCornerRadius radius)
+        {
+            return radius.packed;
+        }
+    }
+
     [NowBuilder]
     public struct NowRectangle
     {
@@ -74,6 +137,18 @@ namespace NowUI
         public NowRectangle SetRadius(float allRadius)
         {
             radius = new Vector4(allRadius, allRadius, allRadius, allRadius);
+            return this;
+        }
+
+        public NowRectangle SetRadius(float topLeft, float topRight, float bottomRight, float bottomLeft)
+        {
+            radius = new NowCornerRadius(topLeft, topRight, bottomRight, bottomLeft).packed;
+            return this;
+        }
+
+        public NowRectangle SetRadius(NowCornerRadius radius)
+        {
+            this.radius = radius.packed;
             return this;
         }
 

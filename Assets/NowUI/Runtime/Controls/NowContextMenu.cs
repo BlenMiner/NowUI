@@ -27,6 +27,7 @@ namespace NowUI
     {
         static int _openId;
         static Vector2 _position;
+        static float _scale = 1f;
         static int _activeId;
         static NowRect _popupRect;
         static int _popupPendingId;
@@ -39,6 +40,7 @@ namespace NowUI
         {
             _openId = id;
             _position = position;
+            _scale = NowControls.controlScale;
             NowControlState.RequestRepaint();
         }
 
@@ -103,13 +105,22 @@ namespace NowUI
 
             var theme = NowTheme.themeAsset;
             var styles = theme.controlStyles;
-            var textStyle = theme.ResolveText(NowTextStyle.Body);
-            float width = styles.contextMenuMinWidth;
+            NowRect popupRect;
 
-            for (int i = 0; i < _items.Count; ++i)
-                width = Mathf.Max(width, textStyle.Measure(_items[i]).x + styles.contextMenuPaddingX * 2f);
+            using (NowControls.Scale(_scale))
+            {
+                var textStyle = NowControls.Text(theme, NowTextStyle.Body);
+                float width = NowControls.ScaleValue(styles.contextMenuMinWidth);
+                float paddingX = NowControls.ScaleValue(styles.contextMenuPaddingX);
+                float itemHeight = NowControls.ScaleValue(styles.contextMenuItemHeight);
+                float popupPadding = NowControls.ScaleValue(styles.popupPadding);
 
-            var popupRect = new NowRect(_position.x, _position.y, width, _items.Count * styles.contextMenuItemHeight + styles.popupPadding * 2f);
+                for (int i = 0; i < _items.Count; ++i)
+                    width = Mathf.Max(width, textStyle.Measure(_items[i]).x + paddingX * 2f);
+
+                popupRect = new NowRect(_position.x, _position.y, width, _items.Count * itemHeight + popupPadding * 2f);
+            }
+
             int pendingId = NowInput.GetId(id, "ctx-pending");
             _popupRect = popupRect;
             _popupPendingId = pendingId;
@@ -128,28 +139,34 @@ namespace NowUI
             var popupRect = _popupRect;
             int pendingId = _popupPendingId;
 
-            theme.controlRenderer.DrawPopupBackground(theme, popupRect, menu: true);
-
-            for (int i = 0; i < _items.Count; ++i)
+            using (NowControls.Scale(_scale))
             {
-                var itemRect = new NowRect(
-                    popupRect.x + theme.controlStyles.popupPadding,
-                    popupRect.y + theme.controlStyles.popupPadding + i * theme.controlStyles.contextMenuItemHeight,
-                    popupRect.width - theme.controlStyles.popupPadding * 2f,
-                    theme.controlStyles.contextMenuItemHeight);
-                var interaction = NowInput.Interact(NowInput.CombineId(pendingId, i + 1), itemRect);
+                float popupPadding = NowControls.ScaleValue(theme.controlStyles.popupPadding);
+                float itemHeight = NowControls.ScaleValue(theme.controlStyles.contextMenuItemHeight);
 
-                theme.controlRenderer.DrawContextMenuItem(new NowPopupItemRenderContext(
-                    theme,
-                    itemRect,
-                    _items[i],
-                    false,
-                    interaction));
+                theme.controlRenderer.DrawPopupBackground(theme, popupRect, menu: true);
 
-                if (interaction.clicked)
+                for (int i = 0; i < _items.Count; ++i)
                 {
-                    NowControlState.Get<int>(pendingId) = i + 1;
-                    Close();
+                    var itemRect = new NowRect(
+                        popupRect.x + popupPadding,
+                        popupRect.y + popupPadding + i * itemHeight,
+                        popupRect.width - popupPadding * 2f,
+                        itemHeight);
+                    var interaction = NowInput.Interact(NowInput.CombineId(pendingId, i + 1), itemRect);
+
+                    theme.controlRenderer.DrawContextMenuItem(new NowPopupItemRenderContext(
+                        theme,
+                        itemRect,
+                        _items[i],
+                        false,
+                        interaction));
+
+                    if (interaction.clicked)
+                    {
+                        NowControlState.Get<int>(pendingId) = i + 1;
+                        Close();
+                    }
                 }
             }
 
@@ -157,8 +174,8 @@ namespace NowUI
             bool pressed = snapshot.primaryPressed ||
                 (snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0;
 
-            if ((pressed && !popupRect.Contains(snapshot.pointerPosition)) ||
-                snapshot.cancelPressed ||
+            if ((pressed && !NowOverlay.IsPointerInsideOverlayTree(id, snapshot.pointerPosition)) ||
+                (snapshot.cancelPressed && !NowOverlay.HasNestedOverlay(id)) ||
                 snapshot.scrollDelta != Vector2.zero)
             {
                 Close();
@@ -171,6 +188,7 @@ namespace NowUI
             _activeId = 0;
             _popupRect = default;
             _popupPendingId = 0;
+            _scale = 1f;
             _items.Clear();
         }
 

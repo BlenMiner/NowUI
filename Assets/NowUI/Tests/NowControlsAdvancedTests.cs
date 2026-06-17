@@ -498,6 +498,42 @@ public class NowControlsAdvancedTests
     }
 
     [Test]
+    public void OverlayTracksNestedPopupTree()
+    {
+        const int parentId = 101;
+        const int childId = 202;
+        var parentRect = new NowRect(0, 0, 100, 100);
+        var childRect = new NowRect(120, 0, 80, 80);
+        var childPoint = new Vector2(140, 20);
+        bool parentSawChild = false;
+        bool parentHadChild = false;
+        bool childSawSelf = false;
+
+        void DrawParent(int id)
+        {
+            NowOverlay.Defer(childRect, childId, DrawChild);
+            parentSawChild = NowOverlay.IsPointerInsideOverlayTree(id, childPoint);
+            parentHadChild = NowOverlay.HasNestedOverlay(id);
+        }
+
+        void DrawChild(int id)
+        {
+            childSawSelf = NowOverlay.IsPointerInsideOverlayTree(id, childPoint);
+        }
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            NowOverlay.Defer(parentRect, parentId, DrawParent);
+        }
+
+        Assert.IsTrue(parentSawChild);
+        Assert.IsTrue(parentHadChild);
+        Assert.IsTrue(childSawSelf);
+        Assert.IsFalse(NowOverlay.IsPointerInsideOverlayTree(parentId, new Vector2(300, 300)));
+    }
+
+    [Test]
     public void ScrollViewClampsAndStoresScroll()
     {
         using (NowInput.Begin(_pointer, Surface))

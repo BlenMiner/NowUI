@@ -3,8 +3,12 @@ Shader "NowUI/UI Glass"
     Properties
     {
         _ZTest ("ZTest", Float) = 8
+        [HideInInspector] _NowBackdropTex ("Backdrop", 2D) = "black" {}
         [HideInInspector] _NowGlassSharpBackdropTex ("Sharp Backdrop", 2D) = "black" {}
         [HideInInspector] _NowBackdropUVTransform ("Backdrop UV Transform", Vector) = (1, 1, 0, 0)
+        [HideInInspector] _NowGlassUseBackdrop ("Use Backdrop", Float) = 0
+        [HideInInspector] _NowGlassUseSceneDepth ("Use Scene Depth", Float) = 0
+        [HideInInspector] _NowGlassDepthEpsilon ("Depth Epsilon", Float) = 0.02
     }
     SubShader
     {

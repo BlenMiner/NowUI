@@ -35,6 +35,18 @@ namespace NowUI
             return this;
         }
 
+        public NowRipple SetRadius(float topLeft, float topRight, float bottomRight, float bottomLeft)
+        {
+            radius = new NowCornerRadius(topLeft, topRight, bottomRight, bottomLeft).packed;
+            return this;
+        }
+
+        public NowRipple SetRadius(NowCornerRadius radius)
+        {
+            this.radius = radius.packed;
+            return this;
+        }
+
         public NowRipple SetRadius(Vector4 radius)
         {
             this.radius = radius;

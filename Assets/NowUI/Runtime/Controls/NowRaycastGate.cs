@@ -13,6 +13,8 @@ namespace NowUI
     {
         static PointerEventData s_pointerData;
 
+        static EventSystem s_eventSystem;
+
         static readonly List<RaycastResult> s_results = new List<RaycastResult>(16);
 
         /// <summary>
@@ -28,11 +30,7 @@ namespace NowUI
             if (eventSystem == null || host == null)
                 return true;
 
-            s_pointerData ??= new PointerEventData(eventSystem);
-            s_pointerData.position = screenPosition;
-
-            s_results.Clear();
-            eventSystem.RaycastAll(s_pointerData, s_results);
+            RaycastAll(eventSystem, screenPosition);
 
             if (s_results.Count == 0)
                 return true;
@@ -55,6 +53,24 @@ namespace NowUI
         }
 
         /// <summary>
+        /// True when <paramref name="screenPosition"/> is over any raycastable UI
+        /// element. Use this when input has already been sampled outside Unity's
+        /// EventSystem pointer module.
+        /// </summary>
+        public static bool IsPointerOverUGUI(Vector2 screenPosition)
+        {
+            var eventSystem = EventSystem.current;
+
+            if (eventSystem == null)
+                return false;
+
+            RaycastAll(eventSystem, screenPosition);
+            bool over = s_results.Count > 0;
+            s_results.Clear();
+            return over;
+        }
+
+        /// <summary>
         /// Press-latched visibility: the gate is evaluated while idle (including the
         /// frame a press begins), and that verdict is latched for as long as buttons
         /// stay down — so a press that starts on occluding UGUI stays blocked through
@@ -67,6 +83,20 @@ namespace NowUI
                 pressAllowed = allowedNow;
 
             return pressAllowed;
+        }
+
+        static void RaycastAll(EventSystem eventSystem, Vector2 screenPosition)
+        {
+            if (s_pointerData == null || s_eventSystem != eventSystem)
+            {
+                s_pointerData = new PointerEventData(eventSystem);
+                s_eventSystem = eventSystem;
+            }
+
+            s_pointerData.position = screenPosition;
+
+            s_results.Clear();
+            eventSystem.RaycastAll(s_pointerData, s_results);
         }
     }
 }

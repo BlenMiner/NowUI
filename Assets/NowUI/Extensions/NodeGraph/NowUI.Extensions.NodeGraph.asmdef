@@ -1,13 +1,8 @@
 {
-    "name": "NowUI.Examples",
-    "rootNamespace": "",
+    "name": "NowUI.Extensions.NodeGraph",
+    "rootNamespace": "NowUI.NodeGraph",
     "references": [
-        "GUID:f8d53a32dbb72f34987c15dba8a48aea",
-        "NowUI.Extensions.Markdown",
-        "NowUI.Extensions.CodeEditor",
-        "NowUI.Extensions.Docking",
-        "NowUI.Extensions.NodeGraph",
-        "NowUI.Extensions.Sdf"
+        "NowUI.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

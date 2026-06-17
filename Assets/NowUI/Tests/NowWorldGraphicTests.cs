@@ -180,10 +180,10 @@ public class NowWorldGraphicTests
             var vertices = mesh.vertices;
 
             Assert.AreEqual(4, vertices.Length);
-            Assert.AreEqual(new Vector3(-0.5f, -0.25f, 0f), vertices[0]);
-            Assert.AreEqual(new Vector3(-0.5f, 0.25f, 0f), vertices[1]);
-            Assert.AreEqual(new Vector3(0.5f, 0.25f, 0f), vertices[2]);
-            Assert.AreEqual(new Vector3(0.5f, -0.25f, 0f), vertices[3]);
+            Assert.AreEqual(new Vector3(-0.52f, -0.27f, 0f), vertices[0]);
+            Assert.AreEqual(new Vector3(-0.52f, 0.27f, 0f), vertices[1]);
+            Assert.AreEqual(new Vector3(0.52f, 0.27f, 0f), vertices[2]);
+            Assert.AreEqual(new Vector3(0.52f, -0.27f, 0f), vertices[3]);
         }
         finally
         {

@@ -45,6 +45,48 @@ public class NowRendererTests
     }
 
     [Test]
+    public void RectangleMeshIncludesVisualPaddingForEdgeEffects()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+                Now.Rectangle(new NowRect(4, 6, 32, 20))
+                    .SetBlur(3f)
+                    .SetOutline(5f)
+                    .SetColor(Color.white)
+                    .Draw();
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(new NowRect(-6, -4, 52, 40), drawList.batches[0].bounds);
+
+            var vertices = drawList.mesh.vertices;
+            Assert.AreEqual(new Vector3(-6f, -36f, 0f), vertices[0]);
+            Assert.AreEqual(new Vector3(-6f, 4f, 0f), vertices[1]);
+            Assert.AreEqual(new Vector3(46f, 4f, 0f), vertices[2]);
+            Assert.AreEqual(new Vector3(46f, -36f, 0f), vertices[3]);
+
+            var rects = new System.Collections.Generic.List<Vector4>();
+            var rawUvs = new System.Collections.Generic.List<Vector4>();
+            drawList.mesh.GetUVs(1, rects);
+            drawList.mesh.GetUVs(7, rawUvs);
+
+            Assert.AreEqual(new Vector4(4f, -26f, 32f, 20f), rects[0]);
+            Assert.AreEqual(-10f / 32f, rawUvs[0].x, 0.0001f);
+            Assert.AreEqual(-10f / 20f, rawUvs[0].y, 0.0001f);
+            Assert.AreEqual(1f + 10f / 32f, rawUvs[2].x, 0.0001f);
+            Assert.AreEqual(1f + 10f / 20f, rawUvs[2].y, 0.0001f);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
     public void DrawListBuildCapturesRippleGeometry()
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/RippleMaterial"));
@@ -188,7 +230,7 @@ public class NowRendererTests
             Assert.AreEqual(1.25f, drawList.batches[0].data.y, 0.0001f);
             Assert.AreEqual(0.9f, drawList.batches[0].data.z, 0.0001f);
             Assert.AreEqual((float)NowGlassBlurQuality.Balanced, drawList.batches[0].data.w, 0.0001f);
-            Assert.AreEqual(new NowRect(4, 6, 32, 20), drawList.batches[0].bounds);
+            Assert.AreEqual(new NowRect(2, 4, 36, 24), drawList.batches[0].bounds);
         }
         finally
         {
@@ -841,10 +883,16 @@ public class NowRendererTests
             Assert.AreEqual(4, uv0.Count);
             Assert.AreEqual(4, uv3.Count);
 
-            Assert.AreEqual(new Vector4(0.25f, 0.5f, 4f, 0f), uv0[0]);
-            Assert.AreEqual(new Vector4(0.75f, 0.75f, 4f, 1f), uv0[2]);
-            Assert.AreEqual(0f, uv3[0].z);
-            Assert.AreEqual(1f, uv3[2].z);
+            Assert.AreEqual(0.1666667f, uv0[0].x, 0.0001f);
+            Assert.AreEqual(0.4375f, uv0[0].y, 0.0001f);
+            Assert.AreEqual(4f, uv0[0].z, 0.0001f);
+            Assert.AreEqual(-0.1666667f, uv0[0].w, 0.0001f);
+            Assert.AreEqual(0.8333333f, uv0[2].x, 0.0001f);
+            Assert.AreEqual(0.8125f, uv0[2].y, 0.0001f);
+            Assert.AreEqual(4f, uv0[2].z, 0.0001f);
+            Assert.AreEqual(1.1666667f, uv0[2].w, 0.0001f);
+            Assert.AreEqual(-0.25f, uv3[0].z, 0.0001f);
+            Assert.AreEqual(1.25f, uv3[2].z, 0.0001f);
         }
         finally
         {
@@ -1323,7 +1371,7 @@ public class NowRendererTests
             Now.Rectangle(new NowRect(2, 2, 12, 8))
                 .SetTexture(texture)
                 .SetUV(new Vector4(0.25f, 0.5f, 0.5f, 0.25f))
-                .SetRadius(new Vector4(1f, 2f, 3f, 4f))
+                .SetRadius(4f, 2f, 1f, 3f)
                 .Draw();
         }
     }

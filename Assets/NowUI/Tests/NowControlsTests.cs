@@ -71,6 +71,19 @@ public class NowControlsTests
         return NowControlState.EndRepaintTracking();
     }
 
+    [Test]
+    public void CornerRadiusUsesNamedCornerOrder()
+    {
+        var radius = new NowCornerRadius(topLeft: 4f, topRight: 2f, bottomRight: 1f, bottomLeft: 3f);
+
+        Assert.AreEqual(4f, radius.topLeft);
+        Assert.AreEqual(2f, radius.topRight);
+        Assert.AreEqual(1f, radius.bottomRight);
+        Assert.AreEqual(3f, radius.bottomLeft);
+        Assert.AreEqual(new Vector4(1f, 2f, 3f, 4f), radius.packed);
+        Assert.AreEqual(new Vector4(0f, 5f, 0f, 5f), NowCornerRadius.Top(5f).packed);
+    }
+
     static NowInputSnapshot NavigationSnapshot(Vector2 navigation, bool previous = false, bool next = false, float time = 1f)
     {
         return new NowInputSnapshot(
