@@ -49,17 +49,25 @@ Effects are applied to the final composed scene field. They work on primitives,
 graphs, morphs, and SDF text together:
 
 ```csharp
-NowSdf.Scene(new NowRect(20, 20, 220, 140))
-    .SetColor(new Color(0.15f, 0.95f, 0.8f, 1f))
-    .SetOutline(4f, new Color(0.02f, 0.04f, 0.08f, 0.85f), 1f)
-    .SetShadow(new Vector2(8f, 10f), 16f, new Color(0f, 0f, 0f, 0.28f), 2f)
-    .SetGlow(24f, new Color(0.2f, 0.75f, 1f, 0.35f), 1.6f)
-    .SetEmboss(new Vector2(-0.6f, -0.8f), 0.35f, 7f)
-    .SetContours(14f, 1.5f, new Color(1f, 1f, 1f, 0.18f), Time.time * 12f)
-    .SetWarp(3f, 48f, 0.25f)
+var blob = NowSdf.Graph()
+    .SetColor(new Color(0.08f, 0.78f, 0.68f, 1f))
+    .Circle(new Vector2(74f, 76f), 42f)
+    .SetColor(new Color(0.24f, 0.45f, 1f, 1f))
     .SmoothUnion(18f)
-    .Circle(new Vector2(78, 72), 42)
-    .RoundedBox(new NowRect(76, 38, 104, 68), 20)
+    .Circle(new Vector2(116f, 66f), 36f)
+    .SetColor(new Color(1f, 0.58f, 0.18f, 1f))
+    .SmoothUnion(14f)
+    .Capsule(new NowRect(82f, 88f, 86f, 28f));
+
+NowSdf.Scene(new NowRect(20f, 20f, 220f, 170f))
+    .SetShadow(new Vector2(8f, 12f), 18f, new Color(0f, 0f, 0f, 0.28f), 2f)
+    .SetGlow(28f, new Color(0.08f, 0.72f, 1f, 0.32f), 1.4f)
+    .SetOutline(4f, new Color(0.02f, 0.04f, 0.09f, 0.82f), 1f)
+    .SetInnerShadow(new Vector2(-5f, -6f), 12f, new Color(0f, 0f, 0f, 0.22f))
+    .SetEmboss(new Vector2(-0.6f, -0.8f), 0.32f, 9f)
+    .SetContours(18f, 1.2f, new Color(1f, 1f, 1f, 0.16f), Time.time * 10f)
+    .SetWarp(2.5f, 52f, 0.18f)
+    .Graph(blob)
     .Draw();
 ```
 
