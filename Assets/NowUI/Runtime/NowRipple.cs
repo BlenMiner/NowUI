@@ -105,17 +105,37 @@ namespace NowUI
             if (material == null)
                 return;
 
-            var position = ripple.rect;
-            int x0 = Mathf.RoundToInt(position.x);
-            int y0 = Mathf.RoundToInt(position.y);
-            int rectWidth = Mathf.RoundToInt(position.x + position.width) - x0;
-            int rectHeight = Mathf.RoundToInt(position.y + position.height) - y0;
+            bool hasTransform = _transformStack.Count > 0;
+            var position = hasTransform ? ApplyTransformRect(ripple.rect) : ripple.rect;
+            float x0, y0, rectWidth, rectHeight;
+
+            if (hasTransform)
+            {
+                x0 = position.x;
+                y0 = position.y;
+                rectWidth = position.width;
+                rectHeight = position.height;
+            }
+            else
+            {
+                x0 = Mathf.RoundToInt(position.x);
+                y0 = Mathf.RoundToInt(position.y);
+                rectWidth = Mathf.RoundToInt(position.x + position.width) - x0;
+                rectHeight = Mathf.RoundToInt(position.y + position.height) - y0;
+            }
 
             if (rectWidth <= 0 || rectHeight <= 0)
                 return;
 
-            _tmpVertex.mask = ApplyAmbientMask(ripple.mask);
-            _tmpVertex.radius = ripple.radius;
+            var mask = ripple.mask;
+
+            if (hasTransform && !mask.isEmpty)
+                mask = ApplyTransformRect(mask);
+
+            float scalar = hasTransform ? ApplyTransformScalar(1f) : 1f;
+            Vector2 origin = hasTransform ? ApplyTransform(ripple.origin) : ripple.origin;
+            _tmpVertex.mask = ApplyAmbientMask(mask);
+            _tmpVertex.radius = ripple.radius * scalar;
             _tmpVertex.color = ApplyColorMultiplier(ripple.color);
             _tmpVertex.outlineColor = default;
             _tmpVertex.uvwh = _defaultUV;
@@ -130,7 +150,7 @@ namespace NowUI
             if (mesh == null)
                 return;
 
-            mesh.AddRect(_tmpVertex, new Vector4(ripple.origin.x, ripple.origin.y, 0f, ripple.circleRadius));
+            mesh.AddRect(_tmpVertex, new Vector4(origin.x, origin.y, 0f, ripple.circleRadius * scalar));
         }
 
         static Material GetRippleMaterial()

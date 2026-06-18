@@ -6,7 +6,7 @@ Shader "NowUI/UI Glass UGUI"
         [HideInInspector] _NowUGUIBackdropTex ("Backdrop", 2D) = "black" {}
         [HideInInspector] _NowUGUIBackdropSize ("Backdrop Size", Vector) = (1, 1, 0, 0)
         [HideInInspector] _NowUGUIBackdropOrigin ("Backdrop Origin", Vector) = (0, 0, 0, 0)
-        [HideInInspector] _NowGlassUseBackdrop ("Use Backdrop", Float) = 0
+        [HideInInspector] _NowUGUIGlassUseBackdrop ("Use UGUI Backdrop", Float) = 0
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
         _StencilOp ("Stencil Operation", Float) = 0
@@ -86,7 +86,7 @@ Shader "NowUI/UI Glass UGUI"
             sampler2D _NowUGUIBackdropTex;
             float4 _NowUGUIBackdropSize;
             float4 _NowUGUIBackdropOrigin;
-            float _NowGlassUseBackdrop;
+            float _NowUGUIGlassUseBackdrop;
 
             float sdRoundedBox(float2 p, float2 b, float4 r)
             {
@@ -144,7 +144,7 @@ Shader "NowUI/UI Glass UGUI"
                 float fillCoverage = i.color.a;
 
                 UNITY_BRANCH
-                if (_NowGlassUseBackdrop > 0.5)
+                if (_NowUGUIGlassUseBackdrop > 0.5)
                 {
                     float2 backdropPos = float2(pos.x, -pos.y) - _NowUGUIBackdropOrigin.xy;
                     float backdropY = 1.0 - backdropPos.y / max(_NowUGUIBackdropSize.y, 0.0001);

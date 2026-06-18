@@ -34,6 +34,7 @@ public class NowControlsTests
         NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
+        NowOverlay.Reset();
         _provider = new FakeProvider();
         _drawList = new NowDrawList();
     }
@@ -46,6 +47,7 @@ public class NowControlsTests
         NowFocus.Reset();
         NowControlState.Reset();
         NowControls.Reset();
+        NowOverlay.Reset();
     }
 
     bool DrawButtonFrame(Vector2 pointer, bool down, bool pressed, bool released)
@@ -687,6 +689,109 @@ public class NowControlsTests
             NowFocus.ForceNewFrame();
 
         Assert.AreEqual(1, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void OverlayNavigationIgnoresBaseLayerControls()
+    {
+        var baseRect = new NowRect(10, 10, 80, 30);
+        var popupRect = new NowRect(120, 10, 120, 80);
+        var popupFirst = new NowRect(130, 20, 100, 24);
+        var popupSecond = new NowRect(130, 50, 100, 24);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, baseRect);
+            NowFocus.Focus(1);
+            NowOverlay.DeferScreen(popupRect, 100, _ =>
+            {
+                NowFocus.Register(2, popupFirst);
+                NowFocus.Register(3, popupSecond);
+            });
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.zero, next: true);
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowOverlay.ForceNewFrame();
+            NowFocus.ForceNewFrame();
+        }
+
+        Assert.AreEqual(2, NowFocus.focusedId);
+        Assert.IsFalse(NowFocus.IsFocused(1), "Base focus must not be visible while an overlay layer is active.");
+    }
+
+    [Test]
+    public void OverlaySubmitIgnoresFocusedBaseLayerControl()
+    {
+        var baseRect = new NowRect(10, 10, 80, 30);
+        var popupRect = new NowRect(120, 10, 120, 80);
+        var popupItem = new NowRect(130, 20, 100, 24);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, baseRect);
+            NowFocus.Focus(1);
+            NowOverlay.DeferScreen(popupRect, 100, _ => NowFocus.Register(2, popupItem));
+        }
+
+        _provider.snapshot = new NowInputSnapshot(
+            true, default, default, default,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            focusPreviousPressed: false, focusNextPressed: false,
+            submitDown: true, submitPressed: true, submitReleased: false,
+            cancelDown: false, cancelPressed: false, cancelReleased: false,
+            frame: 2, time: 2f);
+
+        bool submitted;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowOverlay.ForceNewFrame();
+            NowFocus.ForceNewFrame();
+            submitted = NowFocus.SubmitPressed(1);
+        }
+
+        Assert.IsFalse(submitted);
+        Assert.IsFalse(NowFocus.IsFocused(1));
+    }
+
+    [Test]
+    public void NestedOverlayNavigationUsesTopmostLayer()
+    {
+        var parentRect = new NowRect(100, 20, 120, 80);
+        var parentItem = new NowRect(110, 30, 100, 24);
+        var childRect = new NowRect(230, 20, 100, 60);
+        var childItem = new NowRect(240, 30, 80, 24);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowOverlay.DeferScreen(parentRect, 100, _ =>
+            {
+                NowFocus.Register(2, parentItem);
+                NowFocus.Focus(2);
+                NowOverlay.DeferScreen(childRect, 200, __ => NowFocus.Register(3, childItem));
+            });
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.zero, next: true);
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowOverlay.ForceNewFrame();
+            NowFocus.ForceNewFrame();
+        }
+
+        Assert.AreEqual(3, NowFocus.focusedId);
+        Assert.IsFalse(NowFocus.IsFocused(2), "Parent overlay focus must yield to the nested overlay layer.");
     }
 
     [Test]

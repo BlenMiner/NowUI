@@ -88,7 +88,7 @@ namespace NowUI
             int id = ResolveControlId();
             int areaKey = NowInput.CombineId(id, AreaKeySeed);
 
-            Vector4 padding = NowControls.ScaleValue(theme.controlStyles.buttonPadding);
+            Vector4 padding = theme.controlStyles.buttonPadding;
             NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
             var contentSize = renderer.MeasureButtonContent(theme, cached);
 
@@ -257,7 +257,7 @@ namespace NowUI
             if (clicked)
                 value = !value;
 
-            float glyphSize = NowControls.ScaleValue(theme.controlStyles.toggleSize);
+            float glyphSize = theme.controlStyles.toggleSize;
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
             renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, glyphRect, value, interaction, focused, hoverT));
@@ -377,7 +377,7 @@ namespace NowUI
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
 
-            float glyphSize = NowControls.ScaleValue(theme.controlStyles.toggleSize);
+            float glyphSize = theme.controlStyles.toggleSize;
             float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
             var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
             renderer.DrawRadio(new NowToggleRenderContext(theme, rect, glyphRect, _isOn, interaction, focused, hoverT));
@@ -470,7 +470,7 @@ namespace NowUI
             var renderer = theme.controlRenderer;
             int id = NowControls.GetControlId(_id, _site);
 
-            float knobSize = NowControls.ScaleValue(theme.controlStyles.sliderKnobSize);
+            float knobSize = theme.controlStyles.sliderKnobSize;
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureSlider(theme));
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);

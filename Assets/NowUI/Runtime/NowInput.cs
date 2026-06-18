@@ -454,6 +454,8 @@ namespace NowUI
 
         static INowInputProvider _defaultProvider = NowScreenInputProvider.instance;
 
+        static INowInputProvider _currentProvider;
+
         static NowInputSurface _surface;
 
         static NowInputSnapshot _snapshot;
@@ -462,17 +464,23 @@ namespace NowUI
 
         static int _activeId;
 
+        static INowInputProvider _activeProvider;
+
         static NowPointerButton _activeButton;
 
         static int _dragId;
 
         static bool _activeDragged;
 
+        static bool _activeSeenThisFrame;
+
         static Vector2 _pressPosition;
 
         static float _dragThreshold = DefaultDragThreshold;
 
         static int _passiveDepth;
+
+        static int _scopeDepth;
 
         static bool _scrollConsumed;
 
@@ -515,8 +523,22 @@ namespace NowUI
 
         public static NowInputScope Begin(INowInputProvider provider, NowInputSurface surface)
         {
-            var scope = new NowInputScope(_surface, _snapshot, _hasContext);
-            Update(provider, surface);
+            bool topLevel = _scopeDepth == 0;
+
+            if (topLevel)
+                CompleteFrame();
+
+            var scope = new NowInputScope(_surface, _snapshot, _hasContext, topLevel);
+            ++_scopeDepth;
+            Update(provider, surface, topLevel);
+            return scope;
+        }
+
+        internal static NowInputScope BeginMeasurement(INowInputProvider provider, NowInputSurface surface)
+        {
+            var scope = new NowInputScope(_surface, _snapshot, _hasContext, false);
+            ++_scopeDepth;
+            Update(provider, surface, false);
             return scope;
         }
 
@@ -532,10 +554,22 @@ namespace NowUI
 
         public static void Update(INowInputProvider provider, NowInputSurface surface)
         {
+            if (_scopeDepth == 0)
+                CompleteFrame();
+
+            Update(provider, surface, _scopeDepth == 0);
+        }
+
+        static void Update(INowInputProvider provider, NowInputSurface surface, bool resetFrameTracking)
+        {
+            _currentProvider = provider;
             _surface = surface;
             _hasContext = true;
             NowControls.ResetControlIdOccurrences();
             _scrollConsumed = false;
+
+            if (resetFrameTracking)
+                _activeSeenThisFrame = false;
 
             if (provider != null && provider.TryGetSnapshot(surface, out _snapshot))
                 return;
@@ -550,6 +584,8 @@ namespace NowUI
 
         public static bool IsHovered(Rect rect)
         {
+            rect = Now.TransformScreenRect(rect);
+
             return _hasContext && _snapshot.hasPointer &&
                 rect.Contains(_snapshot.pointerPosition) &&
                 Now.IsInsideAmbientMask(_snapshot.pointerPosition) &&
@@ -565,6 +601,8 @@ namespace NowUI
         {
             if (_passiveDepth > 0 || _scrollConsumed || !_hasContext || !_snapshot.hasPointer)
                 return default;
+
+            rect = Now.TransformScreenRect(rect);
 
             Vector2 scroll = _snapshot.scrollDelta;
 
@@ -683,21 +721,26 @@ namespace NowUI
             if (id == 0)
                 throw new ArgumentException("Control id 0 is reserved.", nameof(id));
 
+            Rect localRect = rect;
+            Rect screenRect = Now.TransformScreenRect(rect);
+
             var snapshot = _snapshot;
             bool hasPointer = _hasContext && snapshot.hasPointer;
-            bool hovered = hasPointer && rect.Contains(snapshot.pointerPosition) &&
+            bool hovered = hasPointer && screenRect.Contains(snapshot.pointerPosition) &&
                 Now.IsInsideAmbientMask(snapshot.pointerPosition) &&
                 !NowOverlay.IsPointerBlocked(snapshot.pointerPosition);
+            Vector2 localPointerPosition = Now.InverseTransformScreenPoint(snapshot.pointerPosition);
+            Vector2 localPointerDelta = Now.InverseTransformScreenVector(snapshot.pointerDelta);
 
             if (_passiveDepth > 0)
             {
                 return new NowInteraction(
                     id,
-                    rect,
+                    localRect,
                     button,
                     hasPointer,
-                    snapshot.pointerPosition,
-                    snapshot.pointerDelta,
+                    localPointerPosition,
+                    localPointerDelta,
                     default,
                     hovered,
                     false,
@@ -718,6 +761,7 @@ namespace NowUI
             if (pressed)
             {
                 _activeId = id;
+                _activeProvider = _currentProvider;
                 _activeButton = button;
                 _dragId = 0;
                 _activeDragged = false;
@@ -725,6 +769,10 @@ namespace NowUI
             }
 
             bool active = _activeId == id && _activeButton == button;
+
+            if (_passiveDepth == 0 && active)
+                _activeSeenThisFrame = true;
+
             bool held = active && snapshot.IsPointerDown(button);
             bool released = active && snapshot.WasPointerReleased(button);
             bool dragging = false;
@@ -756,12 +804,12 @@ namespace NowUI
 
             var interaction = new NowInteraction(
                 id,
-                rect,
+                localRect,
                 button,
                 hasPointer,
-                snapshot.pointerPosition,
-                snapshot.pointerDelta,
-                dragDelta,
+                localPointerPosition,
+                localPointerDelta,
+                Now.InverseTransformScreenVector(dragDelta),
                 hovered,
                 pressed,
                 held,
@@ -836,14 +884,18 @@ namespace NowUI
             _surface = default;
             _snapshot = default;
             _hasContext = false;
+            _currentProvider = null;
             _activeId = 0;
+            _activeProvider = null;
             _activeButton = NowPointerButton.Primary;
             _dragId = 0;
             _activeDragged = false;
+            _activeSeenThisFrame = false;
             _pressPosition = default;
             _dragThreshold = DefaultDragThreshold;
             _defaultProvider = NowScreenInputProvider.instance;
             _passiveDepth = 0;
+            _scopeDepth = 0;
             _scrollConsumed = false;
         }
 
@@ -907,10 +959,48 @@ namespace NowUI
             _hasContext = hasContext;
         }
 
+        internal static void EndScope(NowInputSurface previousSurface, NowInputSnapshot previousSnapshot, bool previousHasContext, bool completeFrame)
+        {
+            if (completeFrame)
+                NowOverlay.Flush();
+
+            if (_scopeDepth > 0)
+                --_scopeDepth;
+
+            if (completeFrame)
+                EndFrame();
+
+            Restore(previousSurface, previousSnapshot, previousHasContext);
+        }
+
+        internal static void EndFrame()
+        {
+            CompleteFrame();
+        }
+
         internal static void ClearActiveIf(int id, NowPointerButton button = NowPointerButton.Primary)
         {
             if (_activeId == id && _activeButton == button)
                 ClearActive();
+        }
+
+        static void CompleteFrame()
+        {
+            if (_activeId == 0 || _activeSeenThisFrame)
+                return;
+
+            if (!ReferenceEquals(_currentProvider, _activeProvider))
+                return;
+
+            if (!_hasContext)
+                return;
+
+            if (!_snapshot.hasPointer ||
+                !_snapshot.IsPointerDown(_activeButton) ||
+                _snapshot.WasPointerReleased(_activeButton))
+            {
+                ClearActive();
+            }
         }
 
         static Rect ToRect(Vector4 rect)
@@ -921,9 +1011,11 @@ namespace NowUI
         static void ClearActive()
         {
             _activeId = 0;
+            _activeProvider = null;
             _activeButton = NowPointerButton.Primary;
             _dragId = 0;
             _activeDragged = false;
+            _activeSeenThisFrame = false;
             _pressPosition = default;
         }
     }
@@ -937,16 +1029,20 @@ namespace NowUI
 
         readonly bool _previousHasContext;
 
+        readonly bool _completeFrame;
+
         bool _disposed;
 
         internal NowInputScope(
             NowInputSurface previousSurface,
             NowInputSnapshot previousSnapshot,
-            bool previousHasContext)
+            bool previousHasContext,
+            bool completeFrame)
         {
             _previousSurface = previousSurface;
             _previousSnapshot = previousSnapshot;
             _previousHasContext = previousHasContext;
+            _completeFrame = completeFrame;
             _disposed = false;
         }
 
@@ -956,7 +1052,7 @@ namespace NowUI
                 return;
 
             _disposed = true;
-            NowInput.Restore(_previousSurface, _previousSnapshot, _previousHasContext);
+            NowInput.EndScope(_previousSurface, _previousSnapshot, _previousHasContext, _completeFrame);
         }
     }
 

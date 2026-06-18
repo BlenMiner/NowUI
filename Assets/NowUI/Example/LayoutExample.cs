@@ -38,14 +38,10 @@ public class LayoutExample : MonoBehaviour
 
     void OnPostRender()
     {
-        Now.StartUI();
-
-        using (NowInput.Begin(new Vector2(Screen.width, Screen.height)))
+        using (Now.StartUI())
         {
             DrawPanel();
         }
-
-        Now.FlushUI();
     }
 
     void DrawPanel()

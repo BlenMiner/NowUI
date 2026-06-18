@@ -78,6 +78,7 @@ public class NowValueControlsTests
         NowControlState.Reset();
         NowControls.Reset();
         NowOverlay.Reset();
+        NowContextMenu.Reset();
         NowTextInput.Reset();
         NowLayout.Reset();
 
@@ -93,6 +94,7 @@ public class NowValueControlsTests
         _drawList.Dispose();
         NowTextInput.Reset();
         NowOverlay.Reset();
+        NowContextMenu.Reset();
         NowInput.Reset();
         NowFocus.Reset();
         NowControlState.Reset();
@@ -160,6 +162,32 @@ public class NowValueControlsTests
         }
     }
 
+    bool DrawTransformedAnimationCurveFrame(ref AnimationCurve value, float scale, Vector2 origin)
+    {
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        using (Now.Transform(scale, origin))
+        {
+            bool changed = Now.AnimationCurveField(FieldRect, "curve-transform")
+                .SetTimeRange(0f, 1f)
+                .SetValueRange(0f, 1f)
+                .Draw(ref value);
+            NowOverlay.Flush();
+            return changed;
+        }
+    }
+
+    bool DrawAutoBoundsAnimationCurveFrame(ref AnimationCurve value)
+    {
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            bool changed = Now.AnimationCurveField(FieldRect, "curve-auto").Draw(ref value);
+            NowOverlay.Flush();
+            return changed;
+        }
+    }
+
     void OpenColorPicker()
     {
         using (NowInput.Begin(_pointer, Surface))
@@ -186,6 +214,13 @@ public class NowValueControlsTests
     static Vector2 CurvePoint(float time, float value)
     {
         return new Vector2(32f + Mathf.Clamp01(time) * 296f, 224f - Mathf.Clamp01(value) * 158f);
+    }
+
+    static Vector2 CurvePoint(float time, float value, float timeMin, float timeMax, float valueMin, float valueMax)
+    {
+        float x = Mathf.InverseLerp(timeMin, timeMax, time);
+        float y = Mathf.InverseLerp(valueMin, valueMax, value);
+        return new Vector2(32f + x * 296f, 224f - y * 158f);
     }
 
     [Test]
@@ -703,6 +738,7 @@ public class NowValueControlsTests
             new[]
             {
                 new GradientAlphaKey(0.5f, 0f),
+                new GradientAlphaKey(0.75f, 0.5f),
                 new GradientAlphaKey(1f, 1f)
             });
 
@@ -725,8 +761,9 @@ public class NowValueControlsTests
         Assert.IsTrue(DrawGradientFieldFrame(ref gradient));
 
         var keys = gradient.alphaKeys;
-        Assert.AreEqual(1, keys.Length);
-        Assert.AreEqual(1f, keys[0].time, 0.001f);
+        Assert.AreEqual(2, keys.Length);
+        Assert.AreEqual(0.5f, keys[0].time, 0.001f);
+        Assert.AreEqual(1f, keys[1].time, 0.001f);
     }
 
     [Test]
@@ -783,6 +820,70 @@ public class NowValueControlsTests
         Assert.Less(keys[0].time, 0.55f);
         Assert.Greater(keys[0].value, 0.45f);
         Assert.Less(keys[0].value, 0.55f);
+    }
+
+    [Test]
+    public void AnimationCurveFieldDragsKeyInsideTransform()
+    {
+        var curve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+        const float scale = 1.5f;
+        var origin = new Vector2(17f, 11f);
+
+        Vector2 ToScreen(Vector2 local)
+        {
+            return local * scale + origin;
+        }
+
+        OpenControl("curve-transform");
+
+        var start = ToScreen(CurvePoint(0f, 0f));
+        var end = ToScreen(CurvePoint(0.25f, 0.25f));
+
+        _pointer.snapshot = new NowInputSnapshot(start, true, true, false);
+        DrawTransformedAnimationCurveFrame(ref curve, scale, origin);
+
+        _pointer.snapshot = new NowInputSnapshot(end, end - start, true, false, false);
+        DrawTransformedAnimationCurveFrame(ref curve, scale, origin);
+
+        _pointer.snapshot = new NowInputSnapshot(end, false, false, true);
+        Assert.IsTrue(DrawTransformedAnimationCurveFrame(ref curve, scale, origin));
+
+        var keys = curve.keys;
+        Assert.AreEqual(2, keys.Length);
+        Assert.AreEqual(0.25f, keys[0].time, 0.05f);
+        Assert.AreEqual(0.25f, keys[0].value, 0.05f);
+    }
+
+    [Test]
+    public void AnimationCurveFieldKeepsAutoBoundsStableWhileDraggingKey()
+    {
+        var curve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+        OpenControl("curve-auto");
+
+        const float timeMin = 0f;
+        const float timeMax = 1f;
+        const float valueMin = -0.12f;
+        const float valueMax = 1.12f;
+        var start = CurvePoint(0f, 0f, timeMin, timeMax, valueMin, valueMax);
+        var first = CurvePoint(0.5f, 0.5f, timeMin, timeMax, valueMin, valueMax);
+        var second = CurvePoint(0.6f, 0.6f, timeMin, timeMax, valueMin, valueMax);
+
+        _pointer.snapshot = new NowInputSnapshot(start, true, true, false);
+        DrawAutoBoundsAnimationCurveFrame(ref curve);
+
+        _pointer.snapshot = new NowInputSnapshot(first, first - start, true, false, false);
+        DrawAutoBoundsAnimationCurveFrame(ref curve);
+
+        _pointer.snapshot = new NowInputSnapshot(second, second - first, true, false, false);
+        DrawAutoBoundsAnimationCurveFrame(ref curve);
+
+        _pointer.snapshot = new NowInputSnapshot(second, false, false, true);
+        Assert.IsTrue(DrawAutoBoundsAnimationCurveFrame(ref curve));
+
+        var keys = curve.keys;
+        Assert.AreEqual(2, keys.Length);
+        Assert.That(keys[0].time, Is.InRange(0.55f, 0.65f));
+        Assert.That(keys[0].value, Is.InRange(0.55f, 0.65f));
     }
 
     [Test]
@@ -864,6 +965,61 @@ public class NowValueControlsTests
 
         var keys = curve.keys;
         Assert.AreEqual(2, keys.Length);
+        Assert.Greater(keys[0].outTangent, 2f);
+        Assert.IsTrue((keys[0].weightedMode & WeightedMode.Out) != 0);
+    }
+
+    [Test]
+    public void AnimationCurveFieldDraggingTangentVerticalCreatesStepTangent()
+    {
+        var curve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+        OpenControl("curve");
+
+        var outHandle = new Vector2(131f, 171f);
+        _pointer.snapshot = new NowInputSnapshot(outHandle, true, true, false);
+        DrawAnimationCurveFrame(ref curve);
+
+        var verticalHandle = new Vector2(32f, 100f);
+        _pointer.snapshot = new NowInputSnapshot(verticalHandle, verticalHandle - outHandle, true, false, false);
+        DrawAnimationCurveFrame(ref curve);
+
+        _pointer.snapshot = new NowInputSnapshot(verticalHandle, false, false, true);
+        Assert.IsTrue(DrawAnimationCurveFrame(ref curve));
+        Assert.AreEqual(0, NowInput.activeId);
+
+        var keys = curve.keys;
+        Assert.AreEqual(2, keys.Length);
+        Assert.IsTrue(float.IsPositiveInfinity(keys[0].outTangent));
+        Assert.IsFalse((keys[0].weightedMode & WeightedMode.Out) != 0);
+    }
+
+    [Test]
+    public void AnimationCurveFieldDraggingStepTangentAwayRestoresWeightedTangent()
+    {
+        var curve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+        var keys = curve.keys;
+        keys[0].outTangent = float.PositiveInfinity;
+        keys[0].outWeight = 1f / 3f;
+        keys[0].weightedMode = WeightedMode.None;
+        curve.keys = keys;
+        OpenControl("curve");
+
+        var stepHandle = new Vector2(32f, 188f);
+        _pointer.snapshot = new NowInputSnapshot(stepHandle, true, true, false);
+        DrawAnimationCurveFrame(ref curve);
+
+        var movedHandle = new Vector2(131f, 100f);
+        _pointer.snapshot = new NowInputSnapshot(movedHandle, movedHandle - stepHandle, true, false, false);
+        DrawAnimationCurveFrame(ref curve);
+
+        _pointer.snapshot = new NowInputSnapshot(movedHandle, false, false, true);
+        Assert.IsTrue(DrawAnimationCurveFrame(ref curve));
+        Assert.AreEqual(0, NowInput.activeId);
+
+        keys = curve.keys;
+        Assert.AreEqual(2, keys.Length);
+        Assert.IsFalse(float.IsNaN(keys[0].outTangent));
+        Assert.IsFalse(float.IsInfinity(keys[0].outTangent));
         Assert.Greater(keys[0].outTangent, 2f);
         Assert.IsTrue((keys[0].weightedMode & WeightedMode.Out) != 0);
     }

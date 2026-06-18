@@ -102,8 +102,8 @@ namespace NowUI
                 uiScale = 1f;
 
             var size = new Vector2(camera.pixelWidth / uiScale, camera.pixelHeight / uiScale);
+            var frame = NowFrame.Begin(uiScale);
             var scope = drawList.Begin(size);
-            Now.SetUIScale(uiScale);
 
             try
             {
@@ -112,8 +112,12 @@ namespace NowUI
 
                 using (NowInput.Begin(NowInput.defaultProvider, surface))
                 {
-                    DrawAll(camera, new Rect(0, 0, size.x, size.y));
-                    NowOverlay.Flush();
+                    var content = new FrameContent(camera);
+                    NowFrame.DrawContent(
+                        ref content,
+                        new NowRect(0f, 0f, size.x, size.y),
+                        measurePass: false,
+                        trackContent: false);
                 }
 
                 scope.Dispose();
@@ -125,7 +129,7 @@ namespace NowUI
             }
             finally
             {
-                Now.SetUIScale(1f);
+                frame.Dispose();
             }
 
             return drawList.hasGeometry;
@@ -169,6 +173,21 @@ namespace NowUI
         protected virtual void DrawNowUI(Camera camera, Rect rect)
         {
             rebuildNowUI?.Invoke(this, camera, rect);
+        }
+
+        struct FrameContent : INowFrameContent
+        {
+            readonly Camera _camera;
+
+            public FrameContent(Camera camera)
+            {
+                _camera = camera;
+            }
+
+            public void Draw(NowRect rect)
+            {
+                DrawAll(_camera, rect);
+            }
         }
 
         static void DrawAll(Camera camera, Rect rect)

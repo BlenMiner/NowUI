@@ -407,13 +407,13 @@ public class NowRenderingPlayModeTests
 
         void OnPostRender()
         {
-            Now.StartUI(new NowRect(0, 0, Side, Side));
+            using (Now.StartUI(new NowRect(0, 0, Side, Side)))
+            {
+                Now.Rectangle(new NowRect(32, 32, 64, 64))
+                    .SetColor(Color.green)
+                    .Draw();
+            }
 
-            Now.Rectangle(new NowRect(32, 32, 64, 64))
-                .SetColor(Color.green)
-                .Draw();
-
-            Now.FlushUI();
             drew = true;
         }
     }

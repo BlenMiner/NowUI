@@ -85,30 +85,28 @@ public class ManagedFontCompare : MonoBehaviour
 
     void OnPostRender()
     {
-        Now.StartUI();
-
-        float columnWidth = Now.screenMask.width * 0.5f - 24f;
-
-        Now.Rectangle(new NowRect(8, 8, Now.screenMask.width - 16, Now.screenMask.height - 16))
-            .SetColor(new Color(0.09f, 0.1f, 0.12f, 1f))
-            .SetRadius(10)
-            .Draw();
-
-        if (_error != null)
+        using (Now.StartUI())
         {
-            Now.Text(new NowRect(24, 24, Now.screenMask.width - 48, 40))
-                .SetFontSize(20)
-                .SetColor(new Color(1f, 0.5f, 0.4f, 1f))
-                .Draw(_error);
+            float columnWidth = Now.screenMask.width * 0.5f - 24f;
 
-            Now.FlushUI();
-            return;
+            Now.Rectangle(new NowRect(8, 8, Now.screenMask.width - 16, Now.screenMask.height - 16))
+                .SetColor(new Color(0.09f, 0.1f, 0.12f, 1f))
+                .SetRadius(10)
+                .Draw();
+
+            if (_error != null)
+            {
+                Now.Text(new NowRect(24, 24, Now.screenMask.width - 48, 40))
+                    .SetFontSize(20)
+                    .SetColor(new Color(1f, 0.5f, 0.4f, 1f))
+                    .Draw(_error);
+
+                return;
+            }
+
+            DrawColumn(_nativeFont, "native compiled (plugin)", 16f, columnWidth);
+            DrawColumn(_managedFont, "managed compiled (Burst fallback)", 32f + columnWidth, columnWidth);
         }
-
-        DrawColumn(_nativeFont, "native compiled (plugin)", 16f, columnWidth);
-        DrawColumn(_managedFont, "managed compiled (Burst fallback)", 32f + columnWidth, columnWidth);
-
-        Now.FlushUI();
     }
 
     static void DrawColumn(NowFont font, string title, float x, float width)

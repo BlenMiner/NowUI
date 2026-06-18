@@ -20,14 +20,6 @@ namespace NowUI
     public static class NowControls
     {
         static readonly List<int> _idStack = new List<int>(8);
-        static readonly List<float> _scaleStack = new List<float>(8);
-
-        /// <summary>
-        /// Ambient control scale for controls drawn in transformed surfaces such as
-        /// zoomable graph nodes. Explicit rects are still caller-owned; this scales
-        /// control internals like text, padding, outlines, carets, and popup rows.
-        /// </summary>
-        public static float controlScale => _scaleStack.Count > 0 ? _scaleStack[^1] : 1f;
 
         /// <summary>The active theme, provided by <see cref="NowTheme"/>.</summary>
         public static NowThemeAsset themeAsset => NowTheme.themeAsset;
@@ -38,51 +30,9 @@ namespace NowUI
             return NowTheme.Scope(value);
         }
 
-        /// <summary>
-        /// Scales built-in control internals within the scope. Use this when a host
-        /// already scales explicit rects but controls need matching text/padding
-        /// metrics.
-        /// </summary>
-        public static ControlScaleScope Scale(float scale)
-        {
-            if (float.IsNaN(scale) || float.IsInfinity(scale))
-                scale = 1f;
-
-            _scaleStack.Add(Mathf.Max(0.001f, scale));
-            return new ControlScaleScope(true);
-        }
-
-        internal static void PopScale()
-        {
-            if (_scaleStack.Count > 0)
-                _scaleStack.RemoveAt(_scaleStack.Count - 1);
-        }
-
-        internal static float ScaleValue(float value)
-        {
-            return value * controlScale;
-        }
-
-        internal static Vector2 ScaleValue(Vector2 value)
-        {
-            return value * controlScale;
-        }
-
-        internal static Vector4 ScaleValue(Vector4 value)
-        {
-            float scale = controlScale;
-            return new Vector4(value.x * scale, value.y * scale, value.z * scale, value.w * scale);
-        }
-
         internal static NowText Text(NowThemeAsset activeThemeAsset, NowTextStyle textStyle)
         {
-            var text = activeThemeAsset.Text(default, textStyle);
-            float scale = controlScale;
-
-            if (!Mathf.Approximately(scale, 1f))
-                text = text.SetFontSize(text.fontSize * scale);
-
-            return text;
+            return activeThemeAsset.Text(default, textStyle);
         }
 
         /// <summary>
@@ -290,7 +240,6 @@ namespace NowUI
         {
             NowTheme.Reset();
             _idStack.Clear();
-            _scaleStack.Clear();
             _labelOccurrences.Clear();
             _passiveOccurrences.Clear();
         }
@@ -388,7 +337,7 @@ namespace NowUI
         {
             var text = Text(activeThemeAsset, textStyle);
             Vector2 size = text.Measure(label);
-            float pad = ScaleValue(1f);
+            float pad = 1f;
 
             text.rect = new NowRect(
                 rect.x + (rect.width - size.x) * 0.5f,
@@ -421,7 +370,7 @@ namespace NowUI
         {
             var text = Text(activeThemeAsset, textStyle);
             Vector2 size = text.Measure(label);
-            float pad = ScaleValue(1f);
+            float pad = 1f;
 
             text.rect = new NowRect(
                 rect.x,
@@ -432,26 +381,7 @@ namespace NowUI
             if (overrideColor)
                 text = text.SetColor(color);
 
-            text.SetMask(rect.Outset(0f, ScaleValue(4f))).Draw(label);
-        }
-    }
-
-    public struct ControlScaleScope : IDisposable
-    {
-        bool _active;
-
-        internal ControlScaleScope(bool active)
-        {
-            _active = active;
-        }
-
-        public void Dispose()
-        {
-            if (!_active)
-                return;
-
-            _active = false;
-            NowControls.PopScale();
+            text.SetMask(rect.Outset(0f, 4f)).Draw(label);
         }
     }
 

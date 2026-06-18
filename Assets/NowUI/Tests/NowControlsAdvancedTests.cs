@@ -473,6 +473,64 @@ public class NowControlsAdvancedTests
     }
 
     [Test]
+    public void NestedTransformsComposeForInput()
+    {
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(27f, 14f), false, false, false);
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (Now.Transform(2f, new Vector2(10f, 5f)))
+        using (Now.Transform(3f, new Vector2(4f, 1f)))
+        {
+            Assert.AreEqual(6f, Now.currentTransform.scale.x, 0.0001f);
+            Assert.AreEqual(18f, Now.currentTransform.origin.x, 0.0001f);
+            Assert.AreEqual(7f, Now.currentTransform.origin.y, 0.0001f);
+            Assert.IsTrue(NowInput.IsHovered(new NowRect(1f, 1f, 2f, 2f)));
+        }
+
+        Assert.AreEqual(1f, Now.currentTransform.scale.x, 0.0001f);
+    }
+
+    [Test]
+    public void OverlayDeferredDrawRestoresCapturedTransform()
+    {
+        const int overlayId = 404;
+        bool ran = false;
+        bool hovered = false;
+        bool insideTree = false;
+        Vector2 seenScale = default;
+        Vector2 localPointer = default;
+        Vector2 pointer = new Vector2(25f, 20f);
+        _pointer.snapshot = new NowInputSnapshot(pointer, false, false, false);
+
+        void DrawOverlay(int id)
+        {
+            ran = true;
+            seenScale = Now.currentTransform.scale;
+            var interaction = NowInput.Interact(409, new NowRect(5f, 5f, 10f, 10f));
+            hovered = interaction.hovered;
+            localPointer = interaction.pointerPosition;
+            insideTree = NowOverlay.IsPointerInsideOverlayTree(id, pointer);
+            Now.Rectangle(new NowRect(5f, 5f, 10f, 10f)).SetColor(Color.red).Draw();
+        }
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            using (Now.Transform(2f, new Vector2(10f, 5f)))
+                NowOverlay.Defer(new NowRect(5f, 5f, 10f, 10f), overlayId, DrawOverlay);
+
+            Assert.IsFalse(ran, "Deferred draws must not run inline.");
+        }
+
+        Assert.IsTrue(ran);
+        Assert.AreEqual(2f, seenScale.x, 0.0001f);
+        Assert.AreEqual(2f, seenScale.y, 0.0001f);
+        Assert.IsTrue(hovered);
+        Assert.AreEqual(new Vector2(7.5f, 7.5f), localPointer);
+        Assert.IsTrue(insideTree);
+    }
+
+    [Test]
     public void OverlayBlocksPointerUnderneathNextFrame()
     {
         var blocked = new NowRect(0, 0, 100, 100);
@@ -842,5 +900,69 @@ public class NowControlsAdvancedTests
 
         Assert.IsTrue(changed);
         Assert.AreEqual(2, selected, "Pending selection 3 maps to index 2.");
+    }
+
+    [Test]
+    public void DropdownPopupSelectsItemInsideTransform()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        var options = new List<string> { "Low", "Medium", "High" };
+        int selected = 0;
+        var rect = new NowRect(20, 20, 160, 30);
+        var transformOrigin = new Vector2(10f, 5f);
+        const float scale = 2f;
+
+        Vector2 ToScreen(Vector2 local)
+        {
+            return local * scale + transformOrigin;
+        }
+
+        bool DrawFrame()
+        {
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            using (Now.Transform(scale, transformOrigin))
+            {
+                return Now.Dropdown(rect, "quality-transform", options).Draw(ref selected);
+            }
+        }
+
+        try
+        {
+            _pointer.snapshot = new NowInputSnapshot(ToScreen(new Vector2(30f, 30f)), true, true, false);
+            DrawFrame();
+
+            _pointer.snapshot = new NowInputSnapshot(ToScreen(new Vector2(30f, 30f)), false, false, true);
+            DrawFrame();
+
+            Assert.Greater(renderer.popupBackgrounds, 0, "Opened dropdown must draw its popup through the captured transform.");
+
+            var styles = theme.controlStyles;
+            var secondItem = new Vector2(
+                rect.x + 16f,
+                rect.yMax + styles.dropdownPopupGap + styles.popupPadding + styles.dropdownItemHeight * 1.5f);
+            var secondItemScreen = ToScreen(secondItem);
+
+            _pointer.snapshot = new NowInputSnapshot(secondItemScreen, true, true, false);
+            DrawFrame();
+
+            _pointer.snapshot = new NowInputSnapshot(secondItemScreen, false, false, true);
+            DrawFrame();
+
+            _pointer.snapshot = default;
+            bool changed = DrawFrame();
+
+            Assert.IsTrue(changed);
+            Assert.AreEqual(1, selected);
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
     }
 }

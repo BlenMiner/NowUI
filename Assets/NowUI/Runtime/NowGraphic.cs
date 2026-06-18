@@ -97,7 +97,7 @@ namespace NowUI
 
         static readonly int _nowUGUIBackdropOriginProp = Shader.PropertyToID("_NowUGUIBackdropOrigin");
 
-        static readonly int _nowGlassUseBackdropProp = Shader.PropertyToID("_NowGlassUseBackdrop");
+        static readonly int _nowGlassUseBackdropProp = Shader.PropertyToID("_NowUGUIGlassUseBackdrop");
 
         [Header("NowUI")]
         [SerializeField] bool _rebuildEveryFrame;
@@ -423,6 +423,21 @@ namespace NowUI
         /// </summary>
         protected virtual bool useLayoutMeasurePass => true;
 
+        struct FrameContent : INowFrameContent
+        {
+            readonly NowGraphic _owner;
+
+            public FrameContent(NowGraphic owner)
+            {
+                _owner = owner;
+            }
+
+            public void Draw(NowRect rect)
+            {
+                _owner.DrawNowUI(rect);
+            }
+        }
+
         public void MarkDirty()
         {
             SetVerticesDirty();
@@ -468,13 +483,10 @@ namespace NowUI
             }
 
             var positionOffset = new Vector2(rect.xMin, rect.yMax);
-            var drawRect = new Rect(0, 0, rect.width, rect.height);
-            float previousUIScale = Now.uiScale;
-
-            Now.SetUIScale(GetCanvasScaleFactor());
+            var drawRect = new NowRect(0, 0, rect.width, rect.height);
+            var frame = NowFrame.Begin(GetCanvasScaleFactor(), trackRepaint: true);
             var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset, false, _glassBlurQuality);
             bool colorMultiplierActive = false;
-            NowControlState.BeginRepaintTracking();
             _wantsInteractionRepaint = false;
 
             try
@@ -488,44 +500,23 @@ namespace NowUI
                 {
                     StoreLastInteractionInput(NowInput.current, inputSurface.size);
 
-                    if (useLayoutMeasurePass)
-                    {
-                        using (NowProfiler.MeasurePass.Auto())
-                        {
-                            int layoutCounter = NowLayout.BeginMeasurePass();
-
-                            try
-                            {
-                                DrawNowUI(drawRect);
-                            }
-                            finally
-                            {
-                                NowLayout.EndMeasurePass(layoutCounter);
-                            }
-                        }
-                    }
-
-                    Vector2 measured;
-
-                    using (NowProfiler.Draw.Auto())
-                    {
-                        NowLayout.BeginContentTracking();
-                        DrawNowUI(drawRect);
-                        measured = NowLayout.EndContentTracking();
-                    }
+                    var content = new FrameContent(this);
+                    Vector2 measured = NowFrame.DrawContent(
+                        ref content,
+                        drawRect,
+                        useLayoutMeasurePass,
+                        trackContent: true);
 
                     if (_driveLayoutSize && (measured - _preferredSize).sqrMagnitude > 0.25f)
                     {
                         _preferredSize = measured;
                         _layoutSizeDirty = true;
                     }
-
-                    NowOverlay.Flush();
                 }
 
                 Now.EndColorMultiplier();
                 colorMultiplierActive = false;
-                _wantsInteractionRepaint = NowControlState.EndRepaintTracking();
+                _wantsInteractionRepaint = frame.EndRepaintTracking();
 
                 scope.Dispose();
             }
@@ -534,14 +525,13 @@ namespace NowUI
                 if (colorMultiplierActive)
                     Now.EndColorMultiplier();
 
-                NowLayout.EndContentTracking();
                 scope.Cancel();
                 _drawList.Clear();
                 Debug.LogException(ex, this);
             }
             finally
             {
-                Now.SetUIScale(previousUIScale);
+                frame.Dispose();
             }
 
             ApplyCanvasPages();
@@ -801,42 +791,24 @@ namespace NowUI
                 return;
             }
 
-            float previousUIScale = Now.uiScale;
+            var frameScope = NowFrame.Begin(GetCanvasScaleFactor());
             bool colorMultiplierActive = false;
-            bool contentTracking = false;
-            int layoutCounter = 0;
             _measuringLayoutInput = true;
 
             try
             {
-                Now.SetUIScale(GetCanvasScaleFactor());
                 Now.BeginColorMultiplier(color);
                 colorMultiplierActive = true;
 
-                using (NowInput.Begin(GetInputProvider(), new NowInputSurface(size)))
+                using (NowInput.BeginMeasurement(GetInputProvider(), new NowInputSurface(size)))
                 {
-                    layoutCounter = NowLayout.BeginMeasurePass();
+                    var content = new FrameContent(this);
+                    Vector2 measured = NowFrame.MeasureContent(
+                        ref content,
+                        new NowRect(0f, 0f, size.x, size.y));
 
-                    try
-                    {
-                        NowLayout.BeginContentTracking();
-                        contentTracking = true;
-
-                        DrawNowUI(new NowRect(0f, 0f, size.x, size.y));
-
-                        Vector2 measured = NowLayout.EndContentTracking();
-                        contentTracking = false;
-
-                        if ((_preferredSize - measured).sqrMagnitude > 0.25f)
-                            _preferredSize = measured;
-                    }
-                    finally
-                    {
-                        if (contentTracking)
-                            NowLayout.EndContentTracking();
-
-                        NowLayout.EndMeasurePass(layoutCounter);
-                    }
+                    if ((_preferredSize - measured).sqrMagnitude > 0.25f)
+                        _preferredSize = measured;
                 }
 
                 _layoutInputMeasurementFrame = frame;
@@ -852,7 +824,7 @@ namespace NowUI
                 if (colorMultiplierActive)
                     Now.EndColorMultiplier();
 
-                Now.SetUIScale(previousUIScale);
+                frameScope.Dispose();
                 _measuringLayoutInput = false;
             }
         }

@@ -302,7 +302,6 @@ namespace NowUI
             public string hexText;
             public Color hexTextValue;
             public byte hexTextAlpha;
-            public float scale;
         }
 
         struct PendingColor
@@ -332,6 +331,7 @@ namespace NowUI
         const int GreenSeed = 0x43475231;
         const int BlueSeed = 0x43424c31;
         const int AlphaChannelSeed = 0x43414331;
+        const int ChannelValueHitSeed = 0x43564831;
 
         static Material _saturationValueMaterial;
         static Material _hueMaterial;
@@ -455,7 +455,7 @@ namespace NowUI
 
         static Vector2 MeasureField(NowColorPickerSettings settings)
         {
-            return NowControls.ScaleValue(new Vector2(168f, Mathf.Max(24f, settings.fieldHeight)));
+            return new Vector2(168f, Mathf.Max(24f, settings.fieldHeight));
         }
 
         static void DrawField(
@@ -470,22 +470,22 @@ namespace NowUI
         {
             theme.controlRenderer.DrawTextInputFrame(new NowControlFrameRenderContext(theme, rect, focused || open));
 
-            float padding = NowControls.ScaleValue(4f);
+            float padding = 4f;
             var inner = rect.Inset(padding);
-            float swatchSize = Mathf.Min(inner.height, NowControls.ScaleValue(22f));
+            float swatchSize = Mathf.Min(inner.height, 22f);
             var swatch = new NowRect(inner.x, inner.y + (inner.height - swatchSize) * 0.5f, swatchSize, swatchSize);
-            DrawChecker(swatch, NowControls.ScaleValue(4f), theme);
+            DrawChecker(swatch, 4f, theme);
             Now.Rectangle(swatch)
                 .SetColor(value)
-                .SetRadius(NowControls.ScaleValue(3f))
-                .SetOutline(NowControls.ScaleValue(1f))
+                .SetRadius(3f)
+                .SetOutline(1f)
                 .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
                 .Draw();
 
-            float labelX = swatch.xMax + NowControls.ScaleValue(7f);
-            float labelRight = rect.xMax - NowControls.ScaleValue(20f);
+            float labelX = swatch.xMax + 7f;
+            float labelRight = rect.xMax - 20f;
 
-            if (labelRight - labelX > NowControls.ScaleValue(42f))
+            if (labelRight - labelX > 42f)
             {
                 NowControls.DrawLeftLabel(
                     theme,
@@ -496,7 +496,7 @@ namespace NowUI
 
             DropdownArrowDraw.Draw(
                 theme,
-                new NowRect(rect.xMax - NowControls.ScaleValue(18f), rect.y, NowControls.ScaleValue(14f), rect.height),
+                new NowRect(rect.xMax - 18f, rect.y, 14f, rect.height),
                 open);
         }
 
@@ -521,8 +521,7 @@ namespace NowUI
             state.id = id;
             state.pendingId = pendingId;
             state.value = value;
-            state.fieldRect = field;
-            state.scale = NowControls.controlScale;
+            state.fieldRect = Now.TransformScreenRect(field);
             ApplyEditorLayout(state, popupRect, settings);
 
             NowOverlay.Defer(popupRect, id, DrawPopup);
@@ -531,22 +530,22 @@ namespace NowUI
         internal static float CalculateEditorWidth(NowColorPickerSettings settings)
         {
             return Mathf.Max(
-                NowControls.ScaleValue(settings.popupWidth),
-                NowControls.ScaleValue(settings.popupPadding * 2f + settings.saturationValueSize + settings.popupGap + settings.stripWidth));
+                settings.popupWidth,
+                settings.popupPadding * 2f + settings.saturationValueSize + settings.popupGap + settings.stripWidth);
         }
 
         internal static float CalculateEditorHeight(NowColorPickerSettings settings)
         {
-            float alphaHeight = settings.showAlpha ? NowControls.ScaleValue(settings.stripWidth) : 0f;
+            float alphaHeight = settings.showAlpha ? settings.stripWidth : 0f;
             int channelCount = settings.showAlpha ? 4 : 3;
-            float channelsHeight = channelCount * NowControls.ScaleValue(settings.channelSliderHeight) + (channelCount - 1) * NowControls.ScaleValue(settings.channelSpacing);
+            float channelsHeight = channelCount * settings.channelSliderHeight + (channelCount - 1) * settings.channelSpacing;
 
-            return NowControls.ScaleValue(settings.popupPadding * 2f) +
-                NowControls.ScaleValue(settings.saturationValueSize) +
-                (settings.showAlpha ? NowControls.ScaleValue(settings.popupGap) + alphaHeight : 0f) +
-                NowControls.ScaleValue(settings.controlGap) +
-                NowControls.ScaleValue(settings.hexRowHeight) +
-                NowControls.ScaleValue(settings.channelSpacing) +
+            return settings.popupPadding * 2f +
+                settings.saturationValueSize +
+                (settings.showAlpha ? settings.popupGap + alphaHeight : 0f) +
+                settings.controlGap +
+                settings.hexRowHeight +
+                settings.channelSpacing +
                 channelsHeight;
         }
 
@@ -554,17 +553,17 @@ namespace NowUI
         {
             return new NowRect(
                 field.x,
-                field.yMax + NowControls.ScaleValue(theme.controlStyles.dropdownPopupGap),
+                field.yMax + theme.controlStyles.dropdownPopupGap,
                 CalculateEditorWidth(settings),
                 CalculateEditorHeight(settings));
         }
 
         static void ApplyEditorLayout(PopupState state, NowRect editorRect, NowColorPickerSettings settings)
         {
-            float padding = NowControls.ScaleValue(settings.popupPadding);
-            float gap = NowControls.ScaleValue(settings.popupGap);
-            float sv = NowControls.ScaleValue(settings.saturationValueSize);
-            float strip = NowControls.ScaleValue(settings.stripWidth);
+            float padding = settings.popupPadding;
+            float gap = settings.popupGap;
+            float sv = settings.saturationValueSize;
+            float strip = settings.stripWidth;
             float alphaHeight = settings.showAlpha ? strip : 0f;
             float contentWidth = editorRect.width - padding * 2f;
             var svRect = new NowRect(editorRect.x + padding, editorRect.y + padding, sv, sv);
@@ -572,19 +571,19 @@ namespace NowUI
             var alphaRect = settings.showAlpha
                 ? new NowRect(svRect.x, svRect.yMax + gap, sv, alphaHeight)
                 : default;
-            float controlGap = NowControls.ScaleValue(settings.controlGap);
-            float hexRowHeight = NowControls.ScaleValue(settings.hexRowHeight);
-            float hexButtonGap = NowControls.ScaleValue(settings.hexButtonGap);
-            float channelSpacing = NowControls.ScaleValue(settings.channelSpacing);
+            float controlGap = settings.controlGap;
+            float hexRowHeight = settings.hexRowHeight;
+            float hexButtonGap = settings.hexButtonGap;
+            float channelSpacing = settings.channelSpacing;
             float controlsY = settings.showAlpha ? alphaRect.yMax + controlGap : svRect.yMax + controlGap;
-            float minHexWidth = NowControls.ScaleValue(settings.showAlpha ? 92f : 76f);
-            float fullButtonWidth = NowControls.ScaleValue(settings.hexButtonWidth);
-            float compactButtonWidth = NowControls.ScaleValue(34f);
+            float minHexWidth = settings.showAlpha ? 92f : 76f;
+            float fullButtonWidth = settings.hexButtonWidth;
+            float compactButtonWidth = 34f;
             bool compactButtons = contentWidth < minHexWidth + fullButtonWidth * 2f + hexButtonGap * 2f;
             float hexButtonWidth = compactButtons ? compactButtonWidth : fullButtonWidth;
             var copyRect = new NowRect(editorRect.xMax - padding - hexButtonWidth * 2f - hexButtonGap, controlsY, hexButtonWidth, hexRowHeight);
             var pasteRect = new NowRect(copyRect.xMax + hexButtonGap, controlsY, hexButtonWidth, hexRowHeight);
-            float hexWidth = Mathf.Max(NowControls.ScaleValue(1f), copyRect.x - editorRect.x - padding - hexButtonGap);
+            float hexWidth = Mathf.Max(1f, copyRect.x - editorRect.x - padding - hexButtonGap);
 
             if (hexWidth < minHexWidth)
             {
@@ -592,7 +591,7 @@ namespace NowUI
                 compactButtons = true;
                 copyRect = new NowRect(editorRect.xMax - padding - hexButtonWidth * 2f - hexButtonGap, controlsY, hexButtonWidth, hexRowHeight);
                 pasteRect = new NowRect(copyRect.xMax + hexButtonGap, controlsY, hexButtonWidth, hexRowHeight);
-                hexWidth = Mathf.Max(NowControls.ScaleValue(1f), copyRect.x - editorRect.x - padding - hexButtonGap);
+                hexWidth = Mathf.Max(1f, copyRect.x - editorRect.x - padding - hexButtonGap);
             }
 
             var hexRect = new NowRect(editorRect.x + padding, controlsY, hexWidth, hexRowHeight);
@@ -612,7 +611,7 @@ namespace NowUI
         static float CalculateChannelsHeight(NowColorPickerSettings settings)
         {
             int channelCount = settings.showAlpha ? 4 : 3;
-            return channelCount * NowControls.ScaleValue(settings.channelSliderHeight) + (channelCount - 1) * NowControls.ScaleValue(settings.channelSpacing);
+            return channelCount * settings.channelSliderHeight + (channelCount - 1) * settings.channelSpacing;
         }
 
         internal static bool DrawInlineEditor(
@@ -635,14 +634,12 @@ namespace NowUI
             state.pendingId = 0;
             state.value = value;
             state.fieldRect = rect;
-            state.scale = NowControls.controlScale;
             ApplyEditorLayout(state, rect, settings);
 
             bool changed;
             Color edited;
 
-            using (NowControls.Scale(state.scale))
-                changed = DrawEditorContent(state, Clamp01(value), out edited);
+            changed = DrawEditorContent(state, Clamp01(value), out edited);
 
             if (changed)
                 next = edited;
@@ -661,11 +658,8 @@ namespace NowUI
             bool changed;
             Color next;
 
-            using (NowControls.Scale(state.scale))
-            {
-                theme.controlRenderer.DrawPopupBackground(theme, state.popupRect, menu: false);
-                changed = DrawEditorContent(state, value, out next);
-            }
+            theme.controlRenderer.DrawPopupBackground(theme, state.popupRect, menu: false);
+            changed = DrawEditorContent(state, value, out next);
 
             if (changed)
             {
@@ -936,8 +930,8 @@ namespace NowUI
         {
             bool changed = false;
             float y = state.channelsRect.y;
-            float sliderHeight = NowControls.ScaleValue(settings.channelSliderHeight);
-            float spacing = NowControls.ScaleValue(settings.channelSpacing);
+            float sliderHeight = settings.channelSliderHeight;
+            float spacing = settings.channelSpacing;
             changed |= DrawChannelRow(theme, state.id, new NowRect(state.channelsRect.x, y, state.channelsRect.width, sliderHeight), "R", RedSeed, ref next.r);
             y += sliderHeight + spacing;
             changed |= DrawChannelRow(theme, state.id, new NowRect(state.channelsRect.x, y, state.channelsRect.width, sliderHeight), "G", GreenSeed, ref next.g);
@@ -955,22 +949,36 @@ namespace NowUI
 
         static bool DrawChannelRow(NowThemeAsset theme, int id, NowRect rect, string label, int seed, ref float value)
         {
-            float labelWidth = NowControls.ScaleValue(16f);
-            float valueWidth = NowControls.ScaleValue(34f);
-            float gap = NowControls.ScaleValue(6f);
+            float labelWidth = 16f;
+            float valueWidth = 34f;
+            float gap = 6f;
             var labelRect = new NowRect(rect.x, rect.y, labelWidth, rect.height);
             var valueRect = new NowRect(rect.xMax - valueWidth, rect.y, valueWidth, rect.height);
             var sliderRect = new NowRect(labelRect.xMax + gap, rect.y, Mathf.Max(1f, valueRect.x - labelRect.xMax - gap * 2f), rect.height);
 
             NowControls.DrawLeftLabel(theme, labelRect, label, NowTextStyle.Muted);
             bool changed = Now.Slider(sliderRect, 0f, 1f).SetId(NowInput.CombineId(id, seed)).Draw(ref value);
+            var valueHitRect = new NowRect(sliderRect.xMax, rect.y, Mathf.Max(1f, rect.xMax - sliderRect.xMax), rect.height);
+            var valueInteraction = NowInput.Interact(NowInput.CombineId(NowInput.CombineId(id, ChannelValueHitSeed), seed), valueHitRect);
+
+            if (valueInteraction.held)
+            {
+                float previous = value;
+                float knobSize = theme.controlStyles.sliderKnobSize;
+                float t = sliderRect.width > knobSize
+                    ? Mathf.Clamp01((valueInteraction.pointerPosition.x - sliderRect.x - knobSize * 0.5f) / (sliderRect.width - knobSize))
+                    : Mathf.Clamp01((valueInteraction.pointerPosition.x - sliderRect.x) / Mathf.Max(1f, sliderRect.width));
+                value = t;
+                changed |= !Mathf.Approximately(previous, value);
+            }
+
             NowControls.DrawLeftLabel(theme, valueRect, Mathf.RoundToInt(Mathf.Clamp01(value) * 255f).ToString(), NowTextStyle.Muted);
             return changed;
         }
 
         static void DrawChecker(NowRect rect, float cellSize, NowThemeAsset theme)
         {
-            cellSize = Mathf.Max(NowControls.ScaleValue(2f), cellSize);
+            cellSize = Mathf.Max(2f, cellSize);
             Color a = theme.GetColor(NowColorToken.Surface, Color.white);
             Color b = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.8f, 0.8f, 0.8f, 1f));
             int columns = Mathf.CeilToInt(rect.width / cellSize);
@@ -997,20 +1005,20 @@ namespace NowUI
         {
             float x = rect.x + Mathf.Clamp01(saturation) * rect.width;
             float y = rect.y + (1f - Mathf.Clamp01(brightness)) * rect.height;
-            float size = NowControls.ScaleValue(10f);
+            float size = 10f;
             DrawHandle(new NowRect(x - size * 0.5f, y - size * 0.5f, size, size), size * 0.5f);
         }
 
         static void DrawHueHandle(NowRect rect, float hue)
         {
             float y = rect.y + Mathf.Clamp01(hue) * rect.height;
-            DrawHandle(new NowRect(rect.x - NowControls.ScaleValue(3f), y - NowControls.ScaleValue(2f), rect.width + NowControls.ScaleValue(6f), NowControls.ScaleValue(4f)), NowControls.ScaleValue(2f));
+            DrawHandle(new NowRect(rect.x - 3f, y - 2f, rect.width + 6f, 4f), 2f);
         }
 
         static void DrawAlphaHandle(NowRect rect, float alpha)
         {
             float x = rect.x + Mathf.Clamp01(alpha) * rect.width;
-            DrawHandle(new NowRect(x - NowControls.ScaleValue(2f), rect.y - NowControls.ScaleValue(3f), NowControls.ScaleValue(4f), rect.height + NowControls.ScaleValue(6f)), NowControls.ScaleValue(2f));
+            DrawHandle(new NowRect(x - 2f, rect.y - 3f, 4f, rect.height + 6f), 2f);
         }
 
         static void DrawHandle(NowRect rect, float radius)
@@ -1018,13 +1026,13 @@ namespace NowUI
             Now.Rectangle(rect)
                 .SetColor(new Color(0f, 0f, 0f, 0.15f))
                 .SetRadius(radius)
-                .SetOutline(NowControls.ScaleValue(3f))
+                .SetOutline(3f)
                 .SetOutlineColor(new Color(0f, 0f, 0f, 0.55f))
                 .Draw();
             Now.Rectangle(rect)
                 .SetColor(Color.clear)
                 .SetRadius(radius)
-                .SetOutline(NowControls.ScaleValue(1.5f))
+                .SetOutline(1.5f)
                 .SetOutlineColor(Color.white)
                 .Draw();
         }
@@ -1167,7 +1175,6 @@ namespace NowUI
             public GradientColorKey[] colorKeys;
             public GradientAlphaKey[] alphaKeys;
             public GradientMode mode;
-            public float scale;
         }
 
         struct PendingGradient
@@ -1297,7 +1304,7 @@ namespace NowUI
 
         static Vector2 MeasureField(NowGradientFieldSettings settings)
         {
-            return NowControls.ScaleValue(new Vector2(190f, Mathf.Max(24f, settings.fieldHeight)));
+            return new Vector2(190f, Mathf.Max(24f, settings.fieldHeight));
         }
 
         static void DrawField(
@@ -1314,11 +1321,11 @@ namespace NowUI
         {
             theme.controlRenderer.DrawTextInputFrame(new NowControlFrameRenderContext(theme, rect, focused || open));
 
-            var strip = rect.Inset(NowControls.ScaleValue(5f), NowControls.ScaleValue(7f), NowControls.ScaleValue(22f), NowControls.ScaleValue(7f));
+            var strip = rect.Inset(5f, 7f, 22f, 7f);
             DrawGradientStrip(strip, NowInput.CombineId(id, StripSeed), colorKeys, alphaKeys, mode, 24, theme);
             DropdownArrowDraw.Draw(
                 theme,
-                new NowRect(rect.xMax - NowControls.ScaleValue(18f), rect.y, NowControls.ScaleValue(14f), rect.height),
+                new NowRect(rect.xMax - 18f, rect.y, 14f, rect.height),
                 open);
         }
 
@@ -1330,27 +1337,27 @@ namespace NowUI
             Gradient value,
             NowGradientFieldSettings settings)
         {
-            float padding = NowControls.ScaleValue(settings.popupPadding);
+            float padding = settings.popupPadding;
             var colorPickerSettings = NowColorPickerSettings.Default;
             colorPickerSettings.showAlpha = false;
             float colorPickerWidth = NowColorPicker.CalculateEditorWidth(colorPickerSettings);
-            float popupWidth = Mathf.Max(NowControls.ScaleValue(settings.popupWidth), field.width, colorPickerWidth + padding * 2f);
+            float popupWidth = Mathf.Max(settings.popupWidth, field.width, colorPickerWidth + padding * 2f);
             colorPickerSettings.popupWidth = popupWidth - padding * 2f;
             int selectedKindId = NowInput.GetId(id, "gradient-selected-kind");
-            float stripHeight = NowControls.ScaleValue(settings.stripHeight);
-            float markerLaneHeight = NowControls.ScaleValue(settings.alphaStripHeight);
-            float keyEditorHeight = NowControls.ScaleValue(settings.keyEditorHeight);
-            float popupGap = NowControls.ScaleValue(settings.popupGap);
-            float labelWidth = NowControls.ScaleValue(settings.rampLabelWidth);
-            float pickerHeight = Mathf.Max(NowControls.ScaleValue(settings.colorPickerHeight), NowColorPicker.CalculateEditorHeight(colorPickerSettings));
+            float stripHeight = settings.stripHeight;
+            float markerLaneHeight = settings.alphaStripHeight;
+            float keyEditorHeight = settings.keyEditorHeight;
+            float popupGap = settings.popupGap;
+            float labelWidth = settings.rampLabelWidth;
+            float pickerHeight = Mathf.Max(settings.colorPickerHeight, NowColorPicker.CalculateEditorHeight(colorPickerSettings));
             float rampBlockHeight = markerLaneHeight + stripHeight + markerLaneHeight;
             float popupHeight = padding * 2f + rampBlockHeight + popupGap + keyEditorHeight + popupGap + pickerHeight;
 
-            var popupRect = new NowRect(field.x, field.yMax + NowControls.ScaleValue(theme.controlStyles.dropdownPopupGap), popupWidth, popupHeight);
+            var popupRect = new NowRect(field.x, field.yMax + theme.controlStyles.dropdownPopupGap, popupWidth, popupHeight);
             float contentX = popupRect.x + padding;
             float contentWidth = popupWidth - padding * 2f;
             float trackX = contentX + labelWidth + popupGap;
-            float trackWidth = Mathf.Max(NowControls.ScaleValue(80f), contentWidth - labelWidth - popupGap);
+            float trackWidth = Mathf.Max(80f, contentWidth - labelWidth - popupGap);
             var alphaLabelRect = new NowRect(contentX, popupRect.y + padding, labelWidth, markerLaneHeight);
             var alphaRect = new NowRect(trackX, popupRect.y + padding, trackWidth, markerLaneHeight);
             var gradientRect = new NowRect(alphaRect.x, alphaRect.yMax, alphaRect.width, stripHeight);
@@ -1373,7 +1380,7 @@ namespace NowUI
             state.selectedKindId = selectedKindId;
             state.draggedColorId = NowInput.GetId(id, "gradient-dragged-color");
             state.draggedAlphaId = NowInput.GetId(id, "gradient-dragged-alpha");
-            state.fieldRect = field;
+            state.fieldRect = Now.TransformScreenRect(field);
             state.popupRect = popupRect;
             state.gradientRect = gradientRect;
             state.alphaRect = alphaRect;
@@ -1385,7 +1392,6 @@ namespace NowUI
             state.colorKeys = Clone(value.colorKeys);
             state.alphaKeys = Clone(value.alphaKeys);
             state.mode = value.mode;
-            state.scale = NowControls.controlScale;
 
             NowOverlay.Defer(popupRect, id, DrawPopup);
         }
@@ -1395,32 +1401,30 @@ namespace NowUI
             if (!_popupStates.TryGetValue(stateId, out var state))
                 return;
 
-            using (NowControls.Scale(state.scale))
-            {
-                var theme = state.themeAsset;
-                var settings = state.settings;
-                Normalize(ref state.colorKeys, ref state.alphaKeys);
-                theme.controlRenderer.DrawPopupBackground(theme, state.popupRect, menu: false);
-                DrawAlphaStrip(
-                    state.alphaRect,
-                    NowInput.CombineId(state.id, AlphaStripSeed),
-                    state.alphaKeys,
-                    settings.previewSegments,
-                    theme);
-                DrawGradientStrip(
-                    state.gradientRect,
-                    NowInput.CombineId(state.id, StripSeed),
-                    state.colorKeys,
-                    state.alphaKeys,
-                    state.mode,
-                    settings.previewSegments,
-                    theme);
-                int selectedColor = Mathf.Clamp(NowControlState.Get<int>(state.selectedColorId), 0, state.colorKeys.Length - 1);
-                int selectedAlpha = Mathf.Clamp(NowControlState.Get<int>(state.selectedAlphaId), 0, state.alphaKeys.Length - 1);
-                int selectedKind = Mathf.Clamp(NowControlState.Get<int>(state.selectedKindId), SelectedKindColor, SelectedKindAlpha);
-                bool changed = false;
-                ref int draggedColor = ref NowControlState.Get<int>(state.draggedColorId);
-                ref int draggedAlpha = ref NowControlState.Get<int>(state.draggedAlphaId);
+            var theme = state.themeAsset;
+            var settings = state.settings;
+            Normalize(ref state.colorKeys, ref state.alphaKeys);
+            theme.controlRenderer.DrawPopupBackground(theme, state.popupRect, menu: false);
+            DrawAlphaStrip(
+                state.alphaRect,
+                NowInput.CombineId(state.id, AlphaStripSeed),
+                state.alphaKeys,
+                settings.previewSegments,
+                theme);
+            DrawGradientStrip(
+                state.gradientRect,
+                NowInput.CombineId(state.id, StripSeed),
+                state.colorKeys,
+                state.alphaKeys,
+                state.mode,
+                settings.previewSegments,
+                theme);
+            int selectedColor = Mathf.Clamp(NowControlState.Get<int>(state.selectedColorId), 0, state.colorKeys.Length - 1);
+            int selectedAlpha = Mathf.Clamp(NowControlState.Get<int>(state.selectedAlphaId), 0, state.alphaKeys.Length - 1);
+            int selectedKind = Mathf.Clamp(NowControlState.Get<int>(state.selectedKindId), SelectedKindColor, SelectedKindAlpha);
+            bool changed = false;
+            ref int draggedColor = ref NowControlState.Get<int>(state.draggedColorId);
+            ref int draggedAlpha = ref NowControlState.Get<int>(state.draggedAlphaId);
 
                 DrawRampLabels(state, selectedKind);
 
@@ -1435,6 +1439,8 @@ namespace NowUI
                         selectedKind = SelectedKindColor;
                         draggedColor = i + 1;
                         draggedAlpha = 0;
+                        NowControlState.Get<int>(state.selectedColorId) = selectedColor;
+                        NowControlState.Get<int>(state.selectedKindId) = selectedKind;
                     }
 
                     if (interaction.dragging)
@@ -1476,6 +1482,8 @@ namespace NowUI
                         selectedKind = SelectedKindAlpha;
                         draggedAlpha = i + 1;
                         draggedColor = 0;
+                        NowControlState.Get<int>(state.selectedAlphaId) = selectedAlpha;
+                        NowControlState.Get<int>(state.selectedKindId) = selectedKind;
                     }
 
                     if (interaction.dragging)
@@ -1513,10 +1521,6 @@ namespace NowUI
                 selectedColor = Mathf.Clamp(selectedColor, 0, state.colorKeys.Length - 1);
                 selectedAlpha = Mathf.Clamp(selectedAlpha, 0, state.alphaKeys.Length - 1);
 
-                NowControlState.Get<int>(state.selectedColorId) = selectedColor;
-                NowControlState.Get<int>(state.selectedAlphaId) = selectedAlpha;
-                NowControlState.Get<int>(state.selectedKindId) = selectedKind;
-
                 if (selectedKind == SelectedKindColor && selectedColor >= 0 && selectedColor < state.colorKeys.Length)
                 {
                     Color color = state.colorKeys[selectedColor].color;
@@ -1534,6 +1538,13 @@ namespace NowUI
                     }
                 }
 
+                selectedColor = Mathf.Clamp(selectedColor, 0, state.colorKeys.Length - 1);
+                selectedAlpha = Mathf.Clamp(selectedAlpha, 0, state.alphaKeys.Length - 1);
+
+                NowControlState.Get<int>(state.selectedColorId) = selectedColor;
+                NowControlState.Get<int>(state.selectedAlphaId) = selectedAlpha;
+                NowControlState.Get<int>(state.selectedKindId) = selectedKind;
+
                 for (int i = 0; i < state.alphaKeys.Length; ++i)
                 {
                     var color = new Color(1f, 1f, 1f, state.alphaKeys[i].alpha);
@@ -1545,7 +1556,6 @@ namespace NowUI
 
                 if (changed)
                     SetPending(state.pendingId, state.colorKeys, state.alphaKeys, state.mode);
-            }
 
             var snapshot = NowInput.current;
             bool pressedOutside = snapshot.primaryPressed &&
@@ -1579,8 +1589,8 @@ namespace NowUI
 
             Now.Rectangle(rect)
                 .SetColor(background)
-                .SetRadius(NowControls.ScaleValue(3f))
-                .SetOutline(NowControls.ScaleValue(selected ? 1f : 0f))
+                .SetRadius(3f)
+                .SetOutline(selected ? 1f : 0f)
                 .SetOutlineColor(theme.GetColor(NowColorToken.Accent, Color.blue))
                 .Draw();
 
@@ -1602,7 +1612,7 @@ namespace NowUI
 
             if (selectedKind == SelectedKindAlpha)
             {
-                if (state.alphaKeys == null || state.alphaKeys.Length <= 1)
+                if (state.alphaKeys == null || state.alphaKeys.Length <= 2)
                     return false;
 
                 DeleteAlphaKey(ref state.alphaKeys, selectedAlpha);
@@ -1622,7 +1632,7 @@ namespace NowUI
         {
             int focused = NowFocus.focusedId;
 
-            if (focused == 0)
+            if (focused == 0 || !NowFocus.IsFocused(focused))
                 return false;
 
             if (selectedKind == SelectedKindAlpha)
@@ -1643,21 +1653,21 @@ namespace NowUI
             var rect = state.keyEditorRect;
             DrawKeyEditorBackground(theme, rect);
 
-            float rowHeight = Mathf.Min(NowControls.ScaleValue(24f), rect.height);
+            float rowHeight = Mathf.Min(24f, rect.height);
             float y = rect.y + (rect.height - rowHeight) * 0.5f;
-            float gap = NowControls.ScaleValue(6f);
-            float majorGap = NowControls.ScaleValue(10f);
-            float outerPadding = NowControls.ScaleValue(8f);
-            float contentWidth = Mathf.Max(NowControls.ScaleValue(1f), rect.width - outerPadding * 2f);
+            float gap = 6f;
+            float majorGap = 10f;
+            float outerPadding = 8f;
+            float contentWidth = Mathf.Max(1f, rect.width - outerPadding * 2f);
             float deleteWidth = Mathf.Min(
-                NowControls.ScaleValue(state.settings.keyEditorButtonWidth),
-                Mathf.Max(NowControls.ScaleValue(44f), contentWidth * 0.25f));
-            float labelWidth = contentWidth < NowControls.ScaleValue(190f)
-                ? NowControls.ScaleValue(26f)
-                : NowControls.ScaleValue(state.settings.keyEditorLabelWidth);
+                state.settings.keyEditorButtonWidth,
+                Mathf.Max(44f, contentWidth * 0.25f));
+            float labelWidth = contentWidth < 190f
+                ? 26f
+                : state.settings.keyEditorLabelWidth;
             float fieldWidth = Mathf.Min(
-                NowControls.ScaleValue(state.settings.keyEditorFieldWidth),
-                Mathf.Max(NowControls.ScaleValue(42f), contentWidth - labelWidth - gap - majorGap - deleteWidth));
+                state.settings.keyEditorFieldWidth,
+                Mathf.Max(42f, contentWidth - labelWidth - gap - majorGap - deleteWidth));
 
             selected = Mathf.Clamp(selected, 0, state.colorKeys.Length - 1);
             var key = state.colorKeys[selected];
@@ -1667,7 +1677,7 @@ namespace NowUI
             var labelRect = new NowRect(rect.x + outerPadding, y, labelWidth, rowHeight);
             var timeRect = new NowRect(labelRect.xMax + gap, y, fieldWidth, rowHeight);
             var deleteRect = new NowRect(rect.xMax - outerPadding - deleteWidth, y, deleteWidth, rowHeight);
-            NowControls.DrawLeftLabel(theme, labelRect, contentWidth < NowControls.ScaleValue(190f) ? "Loc" : "Location", NowTextStyle.Muted);
+            NowControls.DrawLeftLabel(theme, labelRect, contentWidth < 190f ? "Loc" : "Location", NowTextStyle.Muted);
 
             if (Now.FloatField(timeRect, NowInput.CombineId(state.id, ColorTimeFieldSeed))
                     .SetRange(0f, 1f)
@@ -1710,22 +1720,22 @@ namespace NowUI
             var rect = state.keyEditorRect;
             DrawKeyEditorBackground(theme, rect);
 
-            float rowHeight = Mathf.Min(NowControls.ScaleValue(24f), rect.height);
-            float gap = NowControls.ScaleValue(6f);
-            float outerPadding = NowControls.ScaleValue(8f);
-            bool hasLocationRow = rect.height >= NowControls.ScaleValue(50f);
+            float rowHeight = Mathf.Min(24f, rect.height);
+            float gap = 6f;
+            float outerPadding = 8f;
+            bool hasLocationRow = rect.height >= 50f;
             float rowsHeight = hasLocationRow ? rowHeight * 2f + gap : rowHeight;
             float y = rect.y + Mathf.Max(0f, (rect.height - rowsHeight) * 0.5f);
             float locationY = hasLocationRow ? y + rowHeight + gap : y;
-            float majorGap = NowControls.ScaleValue(10f);
-            float contentWidth = Mathf.Max(NowControls.ScaleValue(1f), rect.width - outerPadding * 2f);
-            float labelWidth = contentWidth < NowControls.ScaleValue(210f) ? NowControls.ScaleValue(26f) : NowControls.ScaleValue(state.settings.keyEditorLabelWidth);
+            float majorGap = 10f;
+            float contentWidth = Mathf.Max(1f, rect.width - outerPadding * 2f);
+            float labelWidth = contentWidth < 210f ? 26f : state.settings.keyEditorLabelWidth;
             float deleteWidth = Mathf.Min(
-                NowControls.ScaleValue(state.settings.keyEditorButtonWidth),
-                Mathf.Max(NowControls.ScaleValue(44f), contentWidth * 0.2f));
+                state.settings.keyEditorButtonWidth,
+                Mathf.Max(44f, contentWidth * 0.2f));
             float valueWidth = Mathf.Min(
-                NowControls.ScaleValue(state.settings.keyEditorFieldWidth),
-                Mathf.Max(NowControls.ScaleValue(42f), contentWidth * 0.24f));
+                state.settings.keyEditorFieldWidth,
+                Mathf.Max(42f, contentWidth * 0.24f));
 
             selected = Mathf.Clamp(selected, 0, state.alphaKeys.Length - 1);
             var key = state.alphaKeys[selected];
@@ -1738,10 +1748,10 @@ namespace NowUI
             var alphaSliderRect = new NowRect(
                 alphaLabelRect.xMax + gap,
                 y,
-                Mathf.Max(NowControls.ScaleValue(1f), alphaValueRect.x - alphaLabelRect.xMax - gap * 2f),
+                Mathf.Max(1f, alphaValueRect.x - alphaLabelRect.xMax - gap * 2f),
                 rowHeight);
 
-            NowControls.DrawLeftLabel(theme, alphaLabelRect, contentWidth < NowControls.ScaleValue(210f) ? "A" : "Alpha", NowTextStyle.Muted);
+            NowControls.DrawLeftLabel(theme, alphaLabelRect, contentWidth < 210f ? "A" : "Alpha", NowTextStyle.Muted);
 
             if (Now.Slider(alphaSliderRect, 0f, 1f)
                     .SetId(NowInput.CombineId(state.id, AlphaValueSliderSeed))
@@ -1764,10 +1774,10 @@ namespace NowUI
                     locationY,
                     Mathf.Min(
                         valueWidth,
-                        Mathf.Max(NowControls.ScaleValue(42f), deleteRect.x - locationLabelRect.xMax - gap - majorGap)),
+                        Mathf.Max(42f, deleteRect.x - locationLabelRect.xMax - gap - majorGap)),
                     rowHeight);
 
-                NowControls.DrawLeftLabel(theme, locationLabelRect, contentWidth < NowControls.ScaleValue(210f) ? "Loc" : "Location", NowTextStyle.Muted);
+                NowControls.DrawLeftLabel(theme, locationLabelRect, contentWidth < 210f ? "Loc" : "Location", NowTextStyle.Muted);
 
                 if (Now.FloatField(timeRect, NowInput.CombineId(state.id, AlphaTimeFieldSeed))
                         .SetRange(0f, 1f)
@@ -1785,7 +1795,7 @@ namespace NowUI
                 selected = IndexOfNearestAlphaKey(state.alphaKeys, key.time);
             }
 
-            if (state.alphaKeys.Length > 1)
+            if (state.alphaKeys.Length > 2)
             {
                 if (Now.Button(deleteRect, DeleteGlyph)
                         .SetId(NowInput.CombineId(state.id, DeleteAlphaSeed))
@@ -1809,7 +1819,7 @@ namespace NowUI
         {
             Now.Rectangle(rect)
                 .SetColor(theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.9f, 0.9f, 0.9f, 1f)))
-                .SetRadius(NowControls.ScaleValue(4f))
+                .SetRadius(4f)
                 .Draw();
         }
 
@@ -1817,13 +1827,13 @@ namespace NowUI
         {
             Now.Rectangle(rect)
                 .SetColor(Color.clear)
-                .SetOutline(NowControls.ScaleValue(1f))
+                .SetOutline(1f)
                 .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
-                .SetRadius(NowControls.ScaleValue(4f))
+                .SetRadius(4f)
                 .Draw();
             NowControls.DrawLeftLabel(
                 theme,
-                new NowRect(rect.x + NowControls.ScaleValue(6f), rect.y, Mathf.Max(1f, rect.width - NowControls.ScaleValue(12f)), rect.height),
+                new NowRect(rect.x + 6f, rect.y, Mathf.Max(1f, rect.width - 12f), rect.height),
                 DeleteGlyph,
                 NowTextStyle.Muted);
         }
@@ -1846,7 +1856,7 @@ namespace NowUI
             int segments,
             NowThemeAsset theme)
         {
-            DrawChecker(rect, NowControls.ScaleValue(6f), theme);
+            DrawChecker(rect, 6f, theme);
 
             if (DrawGradientTexture(rect, textureId, colorKeys, alphaKeys, mode, alphaOnly: false))
             {
@@ -1872,7 +1882,7 @@ namespace NowUI
 
         static void DrawAlphaStrip(NowRect rect, int textureId, GradientAlphaKey[] alphaKeys, int segments, NowThemeAsset theme)
         {
-            DrawChecker(rect, NowControls.ScaleValue(6f), theme);
+            DrawChecker(rect, 6f, theme);
 
             if (DrawGradientTexture(rect, textureId, null, alphaKeys, GradientMode.Blend, alphaOnly: true))
             {
@@ -1901,9 +1911,9 @@ namespace NowUI
         {
             Now.Rectangle(rect)
                 .SetColor(Color.clear)
-                .SetOutline(NowControls.ScaleValue(1f))
+                .SetOutline(1f)
                 .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
-                .SetRadius(NowControls.ScaleValue(3f))
+                .SetRadius(3f)
                 .Draw();
         }
 
@@ -1922,7 +1932,7 @@ namespace NowUI
 
             Now.Rectangle(rect)
                 .SetTexture(texture)
-                .SetRadius(NowControls.ScaleValue(3f))
+                .SetRadius(3f)
                 .Draw();
             return true;
         }
@@ -2060,7 +2070,7 @@ namespace NowUI
 
         static void DrawChecker(NowRect rect, float cellSize, NowThemeAsset theme)
         {
-            cellSize = Mathf.Max(NowControls.ScaleValue(2f), cellSize);
+            cellSize = Mathf.Max(2f, cellSize);
             Color a = theme.GetColor(NowColorToken.Surface, Color.white);
             Color b = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.8f, 0.8f, 0.8f, 1f));
             int columns = Mathf.CeilToInt(rect.width / cellSize);
@@ -2089,17 +2099,17 @@ namespace NowUI
             {
                 Color halo = theme.GetColor(NowColorToken.Accent, Color.blue);
                 halo.a *= 0.18f;
-                Now.Rectangle(rect.Outset(NowControls.ScaleValue(3f)))
+                Now.Rectangle(rect.Outset(3f))
                     .SetColor(halo)
-                    .SetRadius(NowControls.ScaleValue(5f))
+                    .SetRadius(5f)
                     .Draw();
             }
 
-            DrawChecker(rect, NowControls.ScaleValue(4f), theme);
+            DrawChecker(rect, 4f, theme);
             Now.Rectangle(rect)
                 .SetColor(color)
-                .SetRadius(NowControls.ScaleValue(3f))
-                .SetOutline(NowControls.ScaleValue(selected ? 2f : 1f))
+                .SetRadius(3f)
+                .SetOutline(selected ? 2f : 1f)
                 .SetOutlineColor(selected ? theme.GetColor(NowColorToken.Accent, Color.blue) : theme.GetColor(NowColorToken.Border, Color.gray))
                 .Draw();
         }
@@ -2107,13 +2117,13 @@ namespace NowUI
         static NowRect ColorMarkerRect(NowRect strip, float time)
         {
             float x = strip.x + Mathf.Clamp01(time) * strip.width;
-            return new NowRect(x - NowControls.ScaleValue(5f), strip.yMax + NowControls.ScaleValue(3f), NowControls.ScaleValue(10f), NowControls.ScaleValue(12f));
+            return new NowRect(x - 5f, strip.yMax + 3f, 10f, 12f);
         }
 
         static NowRect AlphaMarkerRect(NowRect lane, float time)
         {
-            float width = NowControls.ScaleValue(10f);
-            float height = Mathf.Min(NowControls.ScaleValue(12f), Mathf.Max(NowControls.ScaleValue(6f), lane.height - NowControls.ScaleValue(2f)));
+            float width = 10f;
+            float height = Mathf.Min(12f, Mathf.Max(6f, lane.height - 2f));
             float x = lane.x + Mathf.Clamp01(time) * lane.width;
             float y = lane.y + (lane.height - height) * 0.5f;
             return new NowRect(x - width * 0.5f, y, width, height);
@@ -2249,7 +2259,7 @@ namespace NowUI
 
         static void DeleteAlphaKey(ref GradientAlphaKey[] keys, int index)
         {
-            if (keys == null || keys.Length <= 1)
+            if (keys == null || keys.Length <= 2)
                 return;
 
             index = Mathf.Clamp(index, 0, keys.Length - 1);
@@ -2422,7 +2432,6 @@ namespace NowUI
             public WrapMode preWrapMode;
             public WrapMode postWrapMode;
             public CurveBounds bounds;
-            public float scale;
         }
 
         struct PendingCurve
@@ -2463,6 +2472,8 @@ namespace NowUI
         const int FlatTangentSeed = 0x4143464c;
         const int TangentContextSeed = 0x41434354;
         const int DeleteShortcutSeed = 0x41434453;
+        const float VerticalTangentPixelThreshold = 2f;
+        const float StepTangentHandlePixels = 36f;
         const string DeleteGlyph = "🗑";
 
         internal NowAnimationCurveField(NowId id, int site)
@@ -2577,7 +2588,7 @@ namespace NowUI
 
         static Vector2 MeasureField(NowAnimationCurveFieldSettings settings)
         {
-            return NowControls.ScaleValue(new Vector2(190f, Mathf.Max(32f, settings.fieldHeight)));
+            return new Vector2(190f, Mathf.Max(32f, settings.fieldHeight));
         }
 
         static void DrawField(
@@ -2594,11 +2605,11 @@ namespace NowUI
         {
             theme.controlRenderer.DrawTextInputFrame(new NowControlFrameRenderContext(theme, rect, focused || open));
 
-            var plot = rect.Inset(NowControls.ScaleValue(7f), NowControls.ScaleValue(6f), NowControls.ScaleValue(22f), NowControls.ScaleValue(6f));
+            var plot = rect.Inset(7f, 6f, 22f, 6f);
             DrawCurve(plot, keys, preWrapMode, postWrapMode, ResolveBounds(keys, settings), settings, theme);
             DropdownArrowDraw.Draw(
                 theme,
-                new NowRect(rect.xMax - NowControls.ScaleValue(18f), rect.y, NowControls.ScaleValue(14f), rect.height),
+                new NowRect(rect.xMax - 18f, rect.y, 14f, rect.height),
                 open);
         }
 
@@ -2610,16 +2621,17 @@ namespace NowUI
             AnimationCurve value,
             NowAnimationCurveFieldSettings settings)
         {
-            float padding = NowControls.ScaleValue(settings.popupPadding);
-            float popupWidth = Mathf.Max(NowControls.ScaleValue(settings.popupWidth), field.width);
+            NowRect fieldScreen = Now.TransformScreenRect(field);
+            float padding = settings.popupPadding;
+            float popupWidth = Mathf.Max(settings.popupWidth, field.width);
             float popupHeight = Mathf.Max(
-                NowControls.ScaleValue(settings.popupHeight),
-                padding * 2f + NowControls.ScaleValue(settings.inspectorHeight + settings.inspectorGap + 56f));
-            var popupRect = new NowRect(field.x, field.yMax + NowControls.ScaleValue(theme.controlStyles.dropdownPopupGap), popupWidth, popupHeight);
+                settings.popupHeight,
+                padding * 2f + settings.inspectorHeight + settings.inspectorGap + 56f);
+            var popupRect = new NowRect(field.x, field.yMax + theme.controlStyles.dropdownPopupGap, popupWidth, popupHeight);
             var contentRect = popupRect.Inset(padding);
-            float inspectorHeight = Mathf.Min(NowControls.ScaleValue(settings.inspectorHeight), Mathf.Max(NowControls.ScaleValue(24f), contentRect.height * 0.4f));
-            float inspectorGap = Mathf.Min(NowControls.ScaleValue(settings.inspectorGap), Mathf.Max(0f, contentRect.height - inspectorHeight - NowControls.ScaleValue(40f)));
-            float plotHeight = Mathf.Max(NowControls.ScaleValue(40f), contentRect.height - inspectorHeight - inspectorGap);
+            float inspectorHeight = Mathf.Min(settings.inspectorHeight, Mathf.Max(24f, contentRect.height * 0.4f));
+            float inspectorGap = Mathf.Min(settings.inspectorGap, Mathf.Max(0f, contentRect.height - inspectorHeight - 40f));
+            float plotHeight = Mathf.Max(40f, contentRect.height - inspectorHeight - inspectorGap);
             var plotRect = new NowRect(contentRect.x, contentRect.y, contentRect.width, plotHeight);
             var inspectorRect = new NowRect(contentRect.x, plotRect.yMax + inspectorGap, contentRect.width, inspectorHeight);
 
@@ -2635,15 +2647,16 @@ namespace NowUI
             state.pendingId = pendingId;
             state.selectedKeyId = NowInput.GetId(id, "curve-selected-key");
             state.draggedKeyId = NowInput.GetId(id, "curve-dragged-key");
-            state.fieldRect = field;
+            state.fieldRect = fieldScreen;
             state.popupRect = popupRect;
             state.plotRect = plotRect;
             state.inspectorRect = inspectorRect;
             state.keys = Clone(value.keys);
             state.preWrapMode = value.preWrapMode;
             state.postWrapMode = value.postWrapMode;
-            state.bounds = ResolveBounds(state.keys, settings);
-            state.scale = NowControls.controlScale;
+
+            if (NowControlState.Get<int>(state.draggedKeyId) == 0 || !NowInput.IsPointerDown(NowPointerButton.Primary))
+                state.bounds = ResolveBounds(state.keys, settings);
 
             NowOverlay.Defer(popupRect, id, DrawPopup);
         }
@@ -2653,16 +2666,17 @@ namespace NowUI
             if (!_popupStates.TryGetValue(stateId, out var state))
                 return;
 
-            using (NowControls.Scale(state.scale))
-            {
             Normalize(ref state.keys);
-            state.bounds = ResolveBounds(state.keys, state.settings);
             var theme = state.themeAsset;
             theme.controlRenderer.DrawPopupBackground(theme, state.popupRect, menu: false);
 
             int selected = Mathf.Clamp(NowControlState.Get<int>(state.selectedKeyId), 0, state.keys.Length - 1);
             bool changed = false;
             ref int draggedKey = ref NowControlState.Get<int>(state.draggedKeyId);
+            bool keyDragActive = draggedKey != 0 && NowInput.IsPointerDown(NowPointerButton.Primary);
+
+            if (!keyDragActive)
+                state.bounds = ResolveBounds(state.keys, state.settings);
 
             for (int i = 0; i < state.keys.Length; ++i)
             {
@@ -2693,6 +2707,7 @@ namespace NowUI
                     draggedKey = 0;
             }
 
+            keyDragActive = draggedKey != 0 && NowInput.IsPointerDown(NowPointerButton.Primary);
             selected = Mathf.Clamp(selected, 0, state.keys.Length - 1);
             changed |= InteractSelectedTangents(state, selected);
             changed |= DrawTangentContextMenu(state, ref selected);
@@ -2711,7 +2726,9 @@ namespace NowUI
             selected = Mathf.Clamp(selected, 0, state.keys.Length - 1);
             changed |= DrawKeyInspector(state, ref selected);
             changed |= HandleDeleteShortcut(state, ref selected);
-            state.bounds = ResolveBounds(state.keys, state.settings);
+
+            if (!keyDragActive)
+                state.bounds = ResolveBounds(state.keys, state.settings);
 
             DrawGrid(state.plotRect, state.bounds, theme);
             DrawCurve(state.plotRect, state.keys, state.preWrapMode, state.postWrapMode, state.bounds, state.settings, theme);
@@ -2725,8 +2742,6 @@ namespace NowUI
 
             if (changed)
                 SetPending(state.pendingId, state.keys, state.preWrapMode, state.postWrapMode);
-            }
-
             var snapshot = NowInput.current;
             bool pressedOutside = snapshot.primaryPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
@@ -2746,26 +2761,26 @@ namespace NowUI
 
             Now.Rectangle(rect)
                 .SetColor(theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.9f, 0.9f, 0.9f, 1f)))
-                .SetRadius(NowControls.ScaleValue(4f))
+                .SetRadius(4f)
                 .Draw();
 
-            float rowHeight = Mathf.Min(NowControls.ScaleValue(24f), rect.height);
-            float gap = NowControls.ScaleValue(6f);
-            float majorGap = NowControls.ScaleValue(10f);
-            float outerPadding = NowControls.ScaleValue(8f);
-            bool hasTangentRow = rect.height >= NowControls.ScaleValue(54f);
+            float rowHeight = Mathf.Min(24f, rect.height);
+            float gap = 6f;
+            float majorGap = 10f;
+            float outerPadding = 8f;
+            bool hasTangentRow = rect.height >= 54f;
             float rowsHeight = hasTangentRow ? rowHeight * 2f + gap : rowHeight;
             float y = rect.y + Mathf.Max(0f, (rect.height - rowsHeight) * 0.5f);
             float tangentY = y + rowHeight + gap;
-            float contentWidth = Mathf.Max(NowControls.ScaleValue(1f), rect.width - outerPadding * 2f);
-            float deleteWidth = Mathf.Min(NowControls.ScaleValue(state.settings.inspectorButtonWidth), Mathf.Max(NowControls.ScaleValue(48f), contentWidth * 0.24f));
-            float numericWidth = Mathf.Max(NowControls.ScaleValue(1f), contentWidth - deleteWidth - majorGap);
-            float labelWidth = numericWidth < NowControls.ScaleValue(170f) ? NowControls.ScaleValue(18f) : NowControls.ScaleValue(state.settings.inspectorLabelWidth);
+            float contentWidth = Mathf.Max(1f, rect.width - outerPadding * 2f);
+            float deleteWidth = Mathf.Min(state.settings.inspectorButtonWidth, Mathf.Max(48f, contentWidth * 0.24f));
+            float numericWidth = Mathf.Max(1f, contentWidth - deleteWidth - majorGap);
+            float labelWidth = numericWidth < 170f ? 18f : state.settings.inspectorLabelWidth;
             float fieldWidth = Mathf.Min(
-                NowControls.ScaleValue(state.settings.inspectorFieldWidth),
-                Mathf.Max(NowControls.ScaleValue(30f), (numericWidth - labelWidth * 2f - gap * 2f - majorGap) * 0.5f));
-            string timeLabel = numericWidth < NowControls.ScaleValue(170f) ? "T" : "Time";
-            string valueLabel = numericWidth < NowControls.ScaleValue(170f) ? "V" : "Value";
+                state.settings.inspectorFieldWidth,
+                Mathf.Max(30f, (numericWidth - labelWidth * 2f - gap * 2f - majorGap) * 0.5f));
+            string timeLabel = numericWidth < 170f ? "T" : "Time";
+            string valueLabel = numericWidth < 170f ? "V" : "Value";
 
             float x = rect.x + outerPadding;
             var timeLabelRect = new NowRect(x, y, labelWidth, rowHeight);
@@ -2830,9 +2845,9 @@ namespace NowUI
             {
                 Now.Rectangle(deleteRect)
                     .SetColor(Color.clear)
-                    .SetOutline(NowControls.ScaleValue(1f))
+                    .SetOutline(1f)
                     .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
-                    .SetRadius(NowControls.ScaleValue(4f))
+                    .SetRadius(4f)
                     .Draw();
                 NowControls.DrawCenteredLabel(theme, deleteRect, DeleteGlyph, NowTextStyle.Muted, deleteRect);
             }
@@ -2861,8 +2876,9 @@ namespace NowUI
         static bool IsCurveTextInputFocused(PopupState state)
         {
             int focused = NowFocus.focusedId;
-            return focused == NowInput.CombineId(state.id, TimeFieldSeed) ||
-                focused == NowInput.CombineId(state.id, ValueFieldSeed);
+            return (focused == NowInput.CombineId(state.id, TimeFieldSeed) ||
+                focused == NowInput.CombineId(state.id, ValueFieldSeed)) &&
+                NowFocus.IsFocused(focused);
         }
 
         static bool DeleteKeyPressed(int id)
@@ -2878,14 +2894,14 @@ namespace NowUI
         {
             selected = Mathf.Clamp(selected, 0, state.keys.Length - 1);
 
-            float gap = NowControls.ScaleValue(6f);
-            float width = Mathf.Max(NowControls.ScaleValue(1f), (rect.width - gap * 3f) * 0.25f);
+            float gap = 6f;
+            float width = Mathf.Max(1f, (rect.width - gap * 3f) * 0.25f);
             bool changed = false;
 
             var smoothRect = new NowRect(rect.x, rect.y, width, rect.height);
             var linearRect = new NowRect(smoothRect.xMax + gap, rect.y, width, rect.height);
             var stepRect = new NowRect(linearRect.xMax + gap, rect.y, width, rect.height);
-            var flatRect = new NowRect(stepRect.xMax + gap, rect.y, Mathf.Max(NowControls.ScaleValue(1f), rect.xMax - stepRect.xMax - gap), rect.height);
+            var flatRect = new NowRect(stepRect.xMax + gap, rect.y, Mathf.Max(1f, rect.xMax - stepRect.xMax - gap), rect.height);
 
             if (Now.Button(smoothRect, "Smooth")
                     .SetId(NowInput.CombineId(state.id, SmoothTangentSeed))
@@ -2956,7 +2972,9 @@ namespace NowUI
             var key = state.keys[selected];
             float pointerTime = PointerTime(state.plotRect, state.bounds, interaction.pointerPosition);
             float pointerValue = PointerValue(state.plotRect, state.bounds, interaction.pointerPosition);
-            ApplyDraggedTangent(ref key, state.keys, selected, side, pointerTime, pointerValue);
+            float verticalThreshold = (state.bounds.timeMax - state.bounds.timeMin) *
+                VerticalTangentPixelThreshold / Mathf.Max(1f, state.plotRect.width);
+            ApplyDraggedTangent(ref key, state.keys, selected, side, pointerTime, pointerValue, verticalThreshold);
             state.keys[selected] = key;
             return true;
         }
@@ -2965,11 +2983,12 @@ namespace NowUI
         {
             var snapshot = NowInput.current;
             int menuId = NowInput.CombineId(state.id, TangentContextSeed);
+            Vector2 localPointer = Now.InverseTransformScreenPoint(snapshot.pointerPosition);
 
             if ((snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0 &&
-                state.plotRect.Contains(snapshot.pointerPosition))
+                state.plotRect.Contains(localPointer))
             {
-                selected = HitKey(state.plotRect, state.bounds, state.keys, snapshot.pointerPosition, selected);
+                selected = HitKey(state.plotRect, state.bounds, state.keys, localPointer, selected);
                 NowContextMenu.Open(menuId, snapshot.pointerPosition);
             }
 
@@ -3027,7 +3046,7 @@ namespace NowUI
         {
             Now.Rectangle(rect)
                 .SetColor(theme.GetColor(NowColorToken.Surface, Color.white))
-                .SetRadius(NowControls.ScaleValue(4f))
+                .SetRadius(4f)
                 .Draw();
 
             Color grid = theme.GetColor(NowColorToken.Border, Color.gray);
@@ -3037,8 +3056,8 @@ namespace NowUI
             {
                 float x = rect.x + rect.width * i / 6f;
                 float y = rect.y + rect.height * i / 6f;
-                Now.Line(new Vector2(x, rect.y), new Vector2(x, rect.yMax)).SetColor(grid).SetWidth(NowControls.ScaleValue(1f)).Draw();
-                Now.Line(new Vector2(rect.x, y), new Vector2(rect.xMax, y)).SetColor(grid).SetWidth(NowControls.ScaleValue(1f)).Draw();
+                Now.Line(new Vector2(x, rect.y), new Vector2(x, rect.yMax)).SetColor(grid).SetWidth(1f).Draw();
+                Now.Line(new Vector2(rect.x, y), new Vector2(rect.xMax, y)).SetColor(grid).SetWidth(1f).Draw();
             }
 
             Color axis = theme.GetColor(NowColorToken.TextMuted, Color.gray);
@@ -3047,18 +3066,18 @@ namespace NowUI
             if (bounds.timeMin < 0f && bounds.timeMax > 0f)
             {
                 float x = CurvePoint(rect, bounds, 0f, bounds.valueMin).x;
-                Now.Line(new Vector2(x, rect.y), new Vector2(x, rect.yMax)).SetColor(axis).SetWidth(NowControls.ScaleValue(1f)).Draw();
+                Now.Line(new Vector2(x, rect.y), new Vector2(x, rect.yMax)).SetColor(axis).SetWidth(1f).Draw();
             }
 
             if (bounds.valueMin < 0f && bounds.valueMax > 0f)
             {
                 float y = CurvePoint(rect, bounds, bounds.timeMin, 0f).y;
-                Now.Line(new Vector2(rect.x, y), new Vector2(rect.xMax, y)).SetColor(axis).SetWidth(NowControls.ScaleValue(1f)).Draw();
+                Now.Line(new Vector2(rect.x, y), new Vector2(rect.xMax, y)).SetColor(axis).SetWidth(1f).Draw();
             }
 
             Now.Rectangle(rect)
                 .SetColor(Color.clear)
-                .SetOutline(NowControls.ScaleValue(1f))
+                .SetOutline(1f)
                 .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
                 .Draw();
         }
@@ -3071,11 +3090,11 @@ namespace NowUI
 
             Now.Line(new Vector2(point.x, plot.y), new Vector2(point.x, plot.yMax))
                 .SetColor(guide)
-                .SetWidth(NowControls.ScaleValue(1f))
+                .SetWidth(1f)
                 .Draw();
             Now.Line(new Vector2(plot.x, point.y), new Vector2(plot.xMax, point.y))
                 .SetColor(guide)
-                .SetWidth(NowControls.ScaleValue(1f))
+                .SetWidth(1f)
                 .Draw();
         }
 
@@ -3103,16 +3122,16 @@ namespace NowUI
 
             Now.Line(keyPoint, handle)
                 .SetColor(handleColor)
-                .SetWidth(NowControls.ScaleValue(1f))
+                .SetWidth(1f)
                 .Draw();
 
-            float size = NowControls.ScaleValue(8f);
+            float size = 8f;
             var rect = new NowRect(handle.x - size * 0.5f, handle.y - size * 0.5f, size, size);
 
             Now.Rectangle(rect)
                 .SetColor(theme.GetColor(NowColorToken.Surface, Color.white))
                 .SetRadius(size * 0.5f)
-                .SetOutline(NowControls.ScaleValue(1.5f))
+                .SetOutline(1.5f)
                 .SetOutlineColor(color)
                 .Draw();
         }
@@ -3141,7 +3160,7 @@ namespace NowUI
                 var point = CurvePoint(rect, bounds, keys[0].time, keys[0].value);
                 Now.Line(new Vector2(rect.x, point.y), new Vector2(rect.xMax, point.y))
                     .SetColor(color)
-                    .SetWidth(NowControls.ScaleValue(2f))
+                    .SetWidth(2f)
                     .SetCap(NowLineCap.Round)
                     .Draw();
                 return;
@@ -3167,6 +3186,8 @@ namespace NowUI
 
                 if (IsStepSegment(left, right))
                     DrawStepCurveSegment(rect, bounds, left, right, start, end, color);
+                else if (CanDrawUnweightedBezier(left, right) && start <= left.time + 0.0001f && end >= right.time - 0.0001f)
+                    DrawCurveSegmentBezier(rect, bounds, left, right, color);
                 else
                     DrawSampledCurveRange(rect, bounds, start, end, SegmentSampleCount(samples, start, end, bounds), color);
             }
@@ -3181,19 +3202,16 @@ namespace NowUI
                 return;
 
             samples = Mathf.Clamp(samples, 2, 128);
-            Vector2 previous = default;
+            Span<Vector2> points = stackalloc Vector2[samples];
 
             for (int i = 0; i < samples; ++i)
             {
                 float t = samples <= 1 ? 0f : i / (samples - 1f);
                 float time = Mathf.Lerp(start, end, t);
-                var point = CurvePoint(rect, bounds, time, PreviewCurve.Evaluate(time));
-
-                if (i > 0)
-                    DrawCurveLine(previous, point, color);
-
-                previous = point;
+                points[i] = CurvePoint(rect, bounds, time, PreviewCurve.Evaluate(time));
             }
+
+            DrawCurvePolyline(points, color);
         }
 
         static int SegmentSampleCount(int totalSamples, float start, float end, CurveBounds bounds)
@@ -3208,6 +3226,12 @@ namespace NowUI
             return !IsFinite(left.outTangent) || !IsFinite(right.inTangent);
         }
 
+        static bool CanDrawUnweightedBezier(Keyframe left, Keyframe right)
+        {
+            return !HasWeightedMode(left.weightedMode, WeightedMode.Out) &&
+                !HasWeightedMode(right.weightedMode, WeightedMode.In);
+        }
+
         static void DrawStepCurveSegment(NowRect rect, CurveBounds bounds, Keyframe left, Keyframe right, float start, float end, Color color)
         {
             float leftValue = left.value;
@@ -3215,21 +3239,50 @@ namespace NowUI
             var startPoint = CurvePoint(rect, bounds, start, leftValue);
             float cornerTime = right.time <= end + 0.0001f ? right.time : end;
             var corner = CurvePoint(rect, bounds, cornerTime, leftValue);
+            Span<Vector2> points = stackalloc Vector2[3];
+            int count = 0;
 
-            DrawCurveLine(startPoint, corner, color);
+            points[count++] = startPoint;
+            points[count++] = corner;
 
             if (right.time <= end + 0.0001f)
             {
                 var endPoint = CurvePoint(rect, bounds, right.time, rightValue);
-                DrawCurveLine(corner, endPoint, color);
+                points[count++] = endPoint;
             }
+
+            DrawCurvePolyline(points.Slice(0, count), color);
+        }
+
+        static void DrawCurvePolyline(ReadOnlySpan<Vector2> points, Color color)
+        {
+            Now.DrawPolyline(points, 2f, NowLineCap.Round, color);
         }
 
         static void DrawCurveLine(Vector2 a, Vector2 b, Color color)
         {
             Now.Line(a, b)
                 .SetColor(color)
-                .SetWidth(NowControls.ScaleValue(2f))
+                .SetWidth(2f)
+                .SetCap(NowLineCap.Round)
+                .Draw();
+        }
+
+        static void DrawCurveSegmentBezier(NowRect rect, CurveBounds bounds, Keyframe left, Keyframe right, Color color)
+        {
+            float dt = right.time - left.time;
+
+            if (dt <= 0f)
+                return;
+
+            var p0 = CurvePoint(rect, bounds, left.time, left.value);
+            var p1 = CurvePoint(rect, bounds, left.time + dt / 3f, left.value + dt / 3f * left.outTangent);
+            var p2 = CurvePoint(rect, bounds, right.time - dt / 3f, right.value - dt / 3f * right.inTangent);
+            var p3 = CurvePoint(rect, bounds, right.time, right.value);
+
+            Now.Bezier(p0, p1, p2, p3)
+                .SetColor(color)
+                .SetWidth(2f)
                 .SetCap(NowLineCap.Round)
                 .Draw();
         }
@@ -3239,7 +3292,7 @@ namespace NowUI
             Now.Rectangle(rect)
                 .SetColor(theme.GetColor(NowColorToken.Surface, Color.white))
                 .SetRadius(rect.width * 0.5f)
-                .SetOutline(NowControls.ScaleValue(selected ? 2f : 1f))
+                .SetOutline(selected ? 2f : 1f)
                 .SetOutlineColor(selected ? theme.GetColor(NowColorToken.Accent, Color.blue) : theme.GetColor(NowColorToken.Border, Color.gray))
                 .Draw();
         }
@@ -3247,7 +3300,7 @@ namespace NowUI
         static NowRect KeyMarkerRect(NowRect plot, CurveBounds bounds, Keyframe key)
         {
             var point = CurvePoint(plot, bounds, key.time, key.value);
-            float size = NowControls.ScaleValue(10f);
+            float size = 10f;
             return new NowRect(point.x - size * 0.5f, point.y - size * 0.5f, size, size);
         }
 
@@ -3258,7 +3311,7 @@ namespace NowUI
             if (!TryTangentHandlePoint(plot, bounds, keys, selected, side, out var point))
                 return false;
 
-            float size = NowControls.ScaleValue(14f);
+            float size = 14f;
             rect = new NowRect(point.x - size * 0.5f, point.y - size * 0.5f, size, size);
             return true;
         }
@@ -3279,7 +3332,10 @@ namespace NowUI
             float tangent = side == TangentSide.In ? key.inTangent : key.outTangent;
 
             if (!IsFinite(tangent))
-                return false;
+            {
+                point = StepTangentHandlePoint(plot, bounds, keys, selected, neighbor, side);
+                return true;
+            }
 
             float span = Mathf.Abs(keys[neighbor].time - key.time);
 
@@ -3298,6 +3354,24 @@ namespace NowUI
             float value = side == TangentSide.In ? key.value - tangent * dt : key.value + tangent * dt;
             point = CurvePoint(plot, bounds, time, value);
             return true;
+        }
+
+        static Vector2 StepTangentHandlePoint(
+            NowRect plot,
+            CurveBounds bounds,
+            Keyframe[] keys,
+            int selected,
+            int neighbor,
+            TangentSide side)
+        {
+            var key = keys[selected];
+            float valueDirection = keys[neighbor].value - key.value;
+
+            if (Mathf.Abs(valueDirection) <= 0.0001f)
+                valueDirection = side == TangentSide.Out ? 1f : -1f;
+
+            var keyPoint = CurvePoint(plot, bounds, key.time, key.value);
+            return new Vector2(keyPoint.x, keyPoint.y - Mathf.Sign(valueDirection) * StepTangentHandlePixels);
         }
 
         static Vector2 CurvePoint(NowRect plot, CurveBounds bounds, float time, float value)
@@ -3325,7 +3399,8 @@ namespace NowUI
             int selected,
             TangentSide side,
             float pointerTime,
-            float pointerValue)
+            float pointerValue,
+            float verticalThreshold)
         {
             int neighbor = side == TangentSide.In ? selected - 1 : selected + 1;
 
@@ -3337,16 +3412,38 @@ namespace NowUI
             if (span <= 0.0001f)
                 return;
 
+            verticalThreshold = Mathf.Clamp(verticalThreshold, 0.0001f, span * 0.05f);
+
             if (side == TangentSide.In)
             {
-                float dt = Mathf.Clamp(key.time - pointerTime, 0.0001f, span);
+                float rawDt = key.time - pointerTime;
+
+                if (rawDt <= verticalThreshold)
+                {
+                    key.inTangent = float.PositiveInfinity;
+                    key.inWeight = 1f / 3f;
+                    key.weightedMode = RemoveWeightedMode(key.weightedMode, WeightedMode.In);
+                    return;
+                }
+
+                float dt = Mathf.Clamp(rawDt, verticalThreshold, span);
                 key.inTangent = (key.value - pointerValue) / dt;
                 key.inWeight = Mathf.Clamp(dt / span, 0.01f, 1f);
                 key.weightedMode = AddWeightedMode(key.weightedMode, WeightedMode.In);
             }
             else
             {
-                float dt = Mathf.Clamp(pointerTime - key.time, 0.0001f, span);
+                float rawDt = pointerTime - key.time;
+
+                if (rawDt <= verticalThreshold)
+                {
+                    key.outTangent = float.PositiveInfinity;
+                    key.outWeight = 1f / 3f;
+                    key.weightedMode = RemoveWeightedMode(key.weightedMode, WeightedMode.Out);
+                    return;
+                }
+
+                float dt = Mathf.Clamp(rawDt, verticalThreshold, span);
                 key.outTangent = (pointerValue - key.value) / dt;
                 key.outWeight = Mathf.Clamp(dt / span, 0.01f, 1f);
                 key.weightedMode = AddWeightedMode(key.weightedMode, WeightedMode.Out);
@@ -3465,6 +3562,11 @@ namespace NowUI
         static WeightedMode AddWeightedMode(WeightedMode mode, WeightedMode flag)
         {
             return (WeightedMode)((int)mode | (int)flag);
+        }
+
+        static WeightedMode RemoveWeightedMode(WeightedMode mode, WeightedMode flag)
+        {
+            return (WeightedMode)((int)mode & ~(int)flag);
         }
 
         static bool IsFinite(float value)

@@ -165,6 +165,201 @@ public class NowInputTests
     }
 
     [Test]
+    public void ActiveCaptureClearsWhenMissingControlReleases()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+            NowInput.Interact(1, _rect);
+
+        Assert.AreEqual(1, NowInput.activeId);
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, false, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            var other = NowInput.Interact(2, new Rect(60, 10, 30, 30));
+            Assert.IsFalse(other.pressed);
+        }
+
+        Assert.AreEqual(1, NowInput.activeId);
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, true);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+        }
+
+        Assert.AreEqual(0, NowInput.activeId);
+    }
+
+    [Test]
+    public void ActiveCaptureClearsWhenRemovedBeforeRelease()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+            NowInput.Interact(1, _rect);
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, true);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+        }
+
+        Assert.AreEqual(0, NowInput.activeId);
+    }
+
+    [Test]
+    public void PassiveInteractionDoesNotKeepStaleActiveCaptureAlive()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+            NowInput.Interact(1, _rect);
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, true);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            NowInput.BeginPassive();
+            try
+            {
+                NowInput.Interact(1, _rect);
+            }
+            finally
+            {
+                NowInput.EndPassive();
+            }
+        }
+
+        Assert.AreEqual(0, NowInput.activeId);
+    }
+
+    [Test]
+    public void ActiveCaptureSurvivesWhenControlIsDrawnWhileHeld()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+            NowInput.Interact(1, _rect);
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(20, 20), new Vector2(2, 0), true, false, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            var held = NowInput.Interact(1, _rect);
+            Assert.IsTrue(held.active);
+            Assert.IsTrue(held.held);
+        }
+
+        Assert.AreEqual(1, NowInput.activeId);
+    }
+
+    [Test]
+    public void EndFrameClearsStaleActiveCaptureForDirectUpdateFlow()
+    {
+        var surface = new NowInputSurface(new Vector2(100, 100));
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
+        NowInput.Update(_provider, surface);
+        NowInput.Interact(1, _rect);
+
+        Assert.AreEqual(1, NowInput.activeId);
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, true);
+        NowInput.Update(_provider, surface);
+        NowInput.EndFrame();
+
+        Assert.AreEqual(0, NowInput.activeId);
+    }
+
+    [Test]
+    public void StartUIScopeClearsStaleActiveCaptureWhenDisposed()
+    {
+        NowInput.defaultProvider = _provider;
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
+
+        using (Now.StartUI(new NowRect(0, 0, 100, 100)))
+            NowInput.Interact(1, _rect);
+
+        Assert.AreEqual(1, NowInput.activeId);
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, true);
+
+        using (Now.StartUI(new NowRect(0, 0, 100, 100)))
+        {
+        }
+
+        Assert.AreEqual(0, NowInput.activeId);
+    }
+
+    [Test]
+    public void TopLevelInputScopeFlushesOverlayBeforeRestoringPreviousContext()
+    {
+        var outer = new MockInputProvider
+        {
+            snapshot = new NowInputSnapshot(new Vector2(4f, 4f), false, false, false)
+        };
+        var inner = new MockInputProvider
+        {
+            snapshot = new NowInputSnapshot(new Vector2(42f, 24f), false, false, false)
+        };
+        Vector2 overlayPointer = default;
+        bool ran = false;
+
+        NowInput.defaultProvider = outer;
+
+        using (Now.StartUI(new NowRect(0, 0, 100, 100)))
+        using (NowInput.Begin(inner, new Vector2(100, 100)))
+        {
+            NowOverlay.DeferScreen(new NowRect(0, 0, 10, 10), () =>
+            {
+                ran = true;
+                overlayPointer = NowInput.current.pointerPosition;
+            });
+        }
+
+        Assert.IsTrue(ran);
+        Assert.AreEqual(new Vector2(42f, 24f), overlayPointer);
+    }
+
+    [Test]
+    public void TransformedInteractionReportsLocalPointerCoordinates()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(46, 45), true, true, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        using (Now.Transform(2f, new Vector2(10f, 5f)))
+        {
+            var press = NowInput.Interact(1, _rect);
+
+            Assert.IsTrue(press.pressed);
+            Assert.AreEqual(new Vector2(18f, 20f), press.pointerPosition);
+            Assert.AreEqual(_rect, press.rect);
+        }
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(56, 45), new Vector2(10, 0), true, false, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        using (Now.Transform(2f, new Vector2(10f, 5f)))
+        {
+            var drag = NowInput.Interact(1, _rect);
+
+            Assert.IsTrue(drag.dragStarted);
+            Assert.IsTrue(drag.dragging);
+            Assert.AreEqual(new Vector2(23f, 20f), drag.pointerPosition);
+            Assert.AreEqual(new Vector2(5f, 0f), drag.pointerDelta);
+            Assert.AreEqual(new Vector2(5f, 0f), drag.dragDelta);
+        }
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(56, 45), Vector2.zero, false, false, true);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        using (Now.Transform(2f, new Vector2(10f, 5f)))
+            NowInput.Interact(1, _rect);
+    }
+
+    [Test]
     public void InteractionCanUseSecondaryPointerButton()
     {
         _provider.snapshot = new NowInputSnapshot(

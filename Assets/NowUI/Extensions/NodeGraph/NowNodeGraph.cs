@@ -68,7 +68,7 @@ namespace NowUI.NodeGraph
 
         public float Scale(float value)
         {
-            return value * Mathf.Max(zoom, 0.001f);
+            return value;
         }
 
         public NowRect Row(int index, float height = 20f, float gap = 4f)
@@ -1677,15 +1677,15 @@ namespace NowUI.NodeGraph
             if (string.IsNullOrEmpty(label))
                 return;
 
-            float scaledFontSize = 11.5f * NowControls.controlScale;
+            float fontSize = 11.5f;
             var textStyle = NowTheme.themeAsset.Text(default, NowTextStyle.Muted)
-                .SetFontSize(scaledFontSize);
+                .SetFontSize(fontSize);
 
             if (textStyle.font == null)
                 return;
 
             Vector2 size = textStyle.Measure(label);
-            float labelLane = style.portLabelLaneWidth * context.zoom;
+            float labelLane = style.portLabelLaneWidth;
             NowRect labelRect;
 
             if (context.direction == NowNodePortDirection.Input)
@@ -1749,9 +1749,8 @@ namespace NowUI.NodeGraph
             if (string.IsNullOrEmpty(value))
                 return;
 
-            float scaledFontSize = fontSize * NowControls.controlScale;
             var text = NowTheme.themeAsset.Text(rect, style)
-                .SetFontSize(scaledFontSize)
+                .SetFontSize(fontSize)
                 .SetColor(color)
                 .SetMask(rect);
 
@@ -2082,12 +2081,17 @@ namespace NowUI.NodeGraph
                     renderer.DrawGrid(new NowNodeGraphGridContext(_rect, state.pan, state.zoom, style));
 
                 HandleInteractions(id, ref state, style, history, contextMenu, ref result);
-                DrawLinks(state, style, renderer);
 
-                if (state.linkActive != 0)
-                    DrawPendingLink(state, style, renderer);
+                // Apply transform for graph content (links and nodes)
+                using (Now.Transform(scale: state.zoom, origin: _rect.position + state.pan))
+                {
+                    DrawLinks(state, style, renderer);
 
-                DrawNodes(id, ref state, style, schema, renderer, ref result);
+                    if (state.linkActive != 0)
+                        DrawPendingLink(state, style, renderer);
+
+                    DrawNodes(id, ref state, style, schema, renderer, ref result);
+                }
 
                 if (state.selectionActive != 0)
                     renderer.DrawSelection(new NowNodeGraphSelectionContext(_rect, SelectionScreenRect(state), style));
@@ -2500,8 +2504,8 @@ namespace NowUI.NodeGraph
             {
                 var link = _graph.links[i];
 
-                if (!TryGetPortPosition(link.outputNodeId, link.outputPortId, NowNodePortDirection.Output, state, style, out var from) ||
-                    !TryGetPortPosition(link.inputNodeId, link.inputPortId, NowNodePortDirection.Input, state, style, out var to))
+                if (!TryGetPortGraphPosition(link.outputNodeId, link.outputPortId, NowNodePortDirection.Output, state, style, out var from) ||
+                    !TryGetPortGraphPosition(link.inputNodeId, link.inputPortId, NowNodePortDirection.Input, state, style, out var to))
                 {
                     continue;
                 }
@@ -2523,11 +2527,14 @@ namespace NowUI.NodeGraph
             if (!TryGetPort(state.linkNodeIndex, state.linkDirection, state.linkPortIndex, out var node, out var port))
                 return;
 
-            Vector2 anchor = PortScreenPosition(node, state.linkDirection, state.linkPortIndex, _rect, state, style);
-            Vector2 pointer = NowInput.current.hasPointer ? NowInput.current.pointerPosition : anchor;
+            Vector2 anchor = PortGraphPosition(node, state.linkDirection, state.linkPortIndex, style);
+            Vector2 pointer = NowInput.current.hasPointer
+                ? ScreenToGraph(NowInput.current.pointerPosition, _rect, state)
+                : anchor;
             Color color = style.connection;
 
-            if (FindPortAt(pointer, state, style, out var target) &&
+            if (NowInput.current.hasPointer &&
+                FindPortAt(NowInput.current.pointerPosition, state, style, out var target) &&
                 TryGetPort(target.nodeIndex, target.direction, target.portIndex, out var targetNode, out var targetPort))
             {
                 color = _graph.TryCreateLink(node.id, port.id, targetNode.id, targetPort.id, out _)
@@ -2596,27 +2603,26 @@ namespace NowUI.NodeGraph
             bool selected,
             ref NowNodeGraphResult result)
         {
-            var rect = NodeScreenRect(node, _rect, state, style);
-            var titleRect = NodeTitleScreenRect(node, _rect, state, style);
-            var contentRect = NodeContentScreenRect(node, rect, titleRect, state, style);
+            // Compute rects in graph (local) space
+            var nodeSize = ResolveNodeSize(node, style);
+            var rect = new NowRect(node.position, nodeSize);
+            var titleRect = new NowRect(rect.x, rect.y, rect.width, style.titleHeight);
+            var contentRect = NodeContentGraphRect(node, rect, titleRect, style);
 
-            using (NowControls.Scale(state.zoom))
-            {
-                renderer.DrawNode(new NowNodeGraphNodeContext(
-                    _graph,
-                    node,
-                    nodeIndex,
-                    rect,
-                    titleRect,
-                    contentRect,
-                    selected,
-                    state.zoom,
-                    style));
+            renderer.DrawNode(new NowNodeGraphNodeContext(
+                _graph,
+                node,
+                nodeIndex,
+                rect,
+                titleRect,
+                contentRect,
+                selected,
+                state.zoom,
+                style));
 
-                DrawNodeContent(node, rect, contentRect, ref state, style, schema, selected, ref result);
-                DrawPortList(canvasId, nodeIndex, node, NowNodePortDirection.Input, state, style, renderer);
-                DrawPortList(canvasId, nodeIndex, node, NowNodePortDirection.Output, state, style, renderer);
-            }
+            DrawNodeContent(node, rect, contentRect, ref state, style, schema, selected, ref result);
+            DrawPortList(canvasId, nodeIndex, node, NowNodePortDirection.Input, state, style, renderer);
+            DrawPortList(canvasId, nodeIndex, node, NowNodePortDirection.Output, state, style, renderer);
         }
 
         void DrawNodeContent(
@@ -2672,7 +2678,8 @@ namespace NowUI.NodeGraph
             INowNodeGraphRenderer renderer)
         {
             var ports = direction == NowNodePortDirection.Input ? node.inputs : node.outputs;
-            var nodeRect = NodeScreenRect(node, _rect, state, style);
+            var nodeSize = ResolveNodeSize(node, style);
+            var nodeRect = new NowRect(node.position, nodeSize);
 
             for (int i = 0; i < ports.Count; ++i)
             {
@@ -2681,10 +2688,10 @@ namespace NowUI.NodeGraph
                 if (port == null)
                     continue;
 
-                Vector2 center = PortScreenPosition(node, direction, i, _rect, state, style);
+                Vector2 center = PortGraphPosition(node, direction, i, style);
                 int portId = PortControlId(canvasId, nodeIndex, node, direction, i, port);
                 float hover = NowControlState.Transition(portId, NowInput.IsHovered(new NowRect(center.x - 9f, center.y - 9f, 18f, 18f)));
-                float radius = Mathf.Max(3.5f, style.portRadius * state.zoom + hover * 1.5f);
+                float radius = Mathf.Max(3.5f, style.portRadius + hover * 1.5f);
                 Color color = PortColor(port, direction, style);
                 bool compatible = IsCompatibleDropTarget(nodeIndex, direction, i, state);
 
@@ -2752,6 +2759,35 @@ namespace NowUI.NodeGraph
                 if (ports[i] != null && ports[i].id == portId)
                 {
                     position = PortScreenPosition(node, direction, i, _rect, state, style);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool TryGetPortGraphPosition(
+            string nodeId,
+            string portId,
+            NowNodePortDirection direction,
+            CanvasState state,
+            NowNodeGraphStyle style,
+            out Vector2 position)
+        {
+            position = default;
+            int nodeIndex = _graph.IndexOfNode(nodeId);
+
+            if (nodeIndex < 0)
+                return false;
+
+            var node = _graph.nodes[nodeIndex];
+            var ports = direction == NowNodePortDirection.Input ? node.inputs : node.outputs;
+
+            for (int i = 0; i < ports.Count; ++i)
+            {
+                if (ports[i] != null && ports[i].id == portId)
+                {
+                    position = PortGraphPosition(node, direction, i, style);
                     return true;
                 }
             }
@@ -2885,6 +2921,28 @@ namespace NowUI.NodeGraph
                 Mathf.Max(0f, nodeRect.yMax - top - bottom));
         }
 
+        NowRect NodeContentGraphRect(
+            NowNode node,
+            NowRect nodeRect,
+            NowRect titleRect,
+            NowNodeGraphStyle style)
+        {
+            float padding = style.contentPadding;
+            float labelLane = style.portLabelLaneWidth;
+            bool hasInputs = node.inputs != null && node.inputs.Count > 0;
+            bool hasOutputs = node.outputs != null && node.outputs.Count > 0;
+            float left = hasInputs ? labelLane : padding;
+            float right = hasOutputs ? labelLane : padding;
+            float top = titleRect.yMax + padding * 0.5f;
+            float bottom = padding;
+
+            return new NowRect(
+                nodeRect.x + left,
+                top,
+                Mathf.Max(0f, nodeRect.width - left - right),
+                Mathf.Max(0f, nodeRect.yMax - top - bottom));
+        }
+
         Vector2 ResolveNodeSize(NowNode node, NowNodeGraphStyle style)
         {
             Vector2 size = node.size;
@@ -2912,6 +2970,14 @@ namespace NowUI.NodeGraph
             float x = direction == NowNodePortDirection.Input ? node.position.x : node.position.x + size.x;
             float y = node.position.y + style.titleHeight + 8f + index * style.portRowHeight + style.portRowHeight * 0.5f;
             return GraphToScreen(new Vector2(x, y), viewport, state);
+        }
+
+        Vector2 PortGraphPosition(NowNode node, NowNodePortDirection direction, int index, NowNodeGraphStyle style)
+        {
+            Vector2 size = ResolveNodeSize(node, style);
+            float x = direction == NowNodePortDirection.Input ? node.position.x : node.position.x + size.x;
+            float y = node.position.y + style.titleHeight + 8f + index * style.portRowHeight + style.portRowHeight * 0.5f;
+            return new Vector2(x, y);
         }
 
         static Vector2 GraphToScreen(Vector2 point, NowRect viewport, CanvasState state)

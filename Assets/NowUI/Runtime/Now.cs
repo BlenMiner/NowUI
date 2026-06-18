@@ -8,8 +8,8 @@ using UnityEngine.Rendering;
 namespace NowUI
 {
     /// <summary>
-    /// NowUI's immediate-mode entry point: frame lifecycle (<see cref="StartUI()"/> /
-    /// <see cref="FlushUI"/>) and the drawing factories (<see cref="Rectangle(NowRect)"/>,
+    /// NowUI's immediate-mode entry point: frame lifecycle (<see cref="StartUI()"/>)
+    /// and the drawing factories (<see cref="Rectangle(NowRect)"/>,
     /// <see cref="Text(NowRect)"/>, <see cref="Lottie"/>).
     /// </summary>
     public static partial class Now
@@ -102,6 +102,9 @@ namespace NowUI
         /// </summary>
         public static NowMaskScope Mask(NowRect mask)
         {
+            if (_transformStack.Count > 0)
+                mask = ApplyTransformRect(mask);
+
             if (_maskStack.Count > 0)
                 mask = mask.Intersect(_maskStack[_maskStack.Count - 1]);
 
@@ -133,6 +136,214 @@ namespace NowUI
             return _maskStack.Count == 0 || _maskStack[_maskStack.Count - 1].Contains(position);
         }
 
+        #region Transform System
+
+        /// <summary>
+        /// Represents an effective 2D transform with scale and translation.
+        /// Used by the transform stack to automatically transform drawing and input rects.
+        /// </summary>
+        public readonly struct NowTransform
+        {
+            /// <summary>Translation offset (pan position).</summary>
+            public readonly Vector2 origin;
+
+            /// <summary>Scale factors for X and Y axes.</summary>
+            public readonly Vector2 scale;
+
+            /// <summary>Combined transform matrix (T * S).</summary>
+            public readonly Matrix4x4 matrix;
+
+            /// <summary>Identity transform (no scale and no translation).</summary>
+            public static readonly NowTransform identity = new NowTransform(Vector2.one, Vector2.zero);
+
+            public NowTransform(Vector2 scale, Vector2 origin)
+            {
+                this.scale = scale;
+                this.origin = origin;
+                this.matrix = CalculateMatrix(scale, origin);
+            }
+
+            static Matrix4x4 CalculateMatrix(Vector2 scale, Vector2 origin)
+            {
+                var matrix = Matrix4x4.identity;
+                matrix.m00 = scale.x;
+                matrix.m11 = scale.y;
+                matrix.m03 = origin.x;
+                matrix.m13 = origin.y;
+                return matrix;
+            }
+
+            internal static NowTransform Compose(NowTransform parent, NowTransform local)
+            {
+                return new NowTransform(
+                    new Vector2(parent.scale.x * local.scale.x, parent.scale.y * local.scale.y),
+                    new Vector2(
+                        local.origin.x * parent.scale.x + parent.origin.x,
+                        local.origin.y * parent.scale.y + parent.origin.y));
+            }
+        }
+
+        internal readonly struct NowTransformSnapshot
+        {
+            public readonly bool active;
+            public readonly NowTransform transform;
+
+            public NowTransformSnapshot(bool active, NowTransform transform)
+            {
+                this.active = active;
+                this.transform = transform;
+            }
+        }
+
+        static readonly List<NowTransform> _transformStack = new List<NowTransform>(4);
+
+        /// <summary>
+        /// The active transform from the transform stack, or identity if none.
+        /// </summary>
+        public static NowTransform currentTransform =>
+            _transformStack.Count > 0 ? _transformStack[_transformStack.Count - 1] : NowTransform.identity;
+
+        /// <summary>
+        /// Pushes a transform scope. All drawing inside the scope is transformed
+        /// by the given scale and origin (translation). Nested transforms compose
+        /// with the active parent transform.
+        /// <code>
+        /// using (Now.Transform(scale: 0.5f, origin: new Vector2(100, 100)))
+        /// {
+        ///     // Everything drawn here is automatically scaled by 0.5x
+        ///     // and translated by (100, 100)
+        ///     Now.Rectangle(rect).Draw();
+        ///     Now.Label("Text", 13f);  // Font size also scaled
+        /// }
+        /// </code>
+        /// </summary>
+        public static NowTransformScope Transform(Vector2 scale, Vector2 origin = default)
+        {
+            var local = new NowTransform(scale, origin);
+            var effective = _transformStack.Count > 0
+                ? NowTransform.Compose(_transformStack[_transformStack.Count - 1], local)
+                : local;
+            _transformStack.Add(effective);
+            return new NowTransformScope(true);
+        }
+
+        /// <summary>
+        /// Pushes a transform scope with uniform scale.
+        /// </summary>
+        public static NowTransformScope Transform(float scale, Vector2 origin = default)
+        {
+            return Transform(new Vector2(scale, scale), origin);
+        }
+
+        internal static NowTransformSnapshot CaptureTransform()
+        {
+            return _transformStack.Count > 0
+                ? new NowTransformSnapshot(true, _transformStack[_transformStack.Count - 1])
+                : default;
+        }
+
+        internal static NowTransformScope ApplyTransformSnapshot(NowTransformSnapshot snapshot)
+        {
+            if (!snapshot.active)
+                return default;
+
+            _transformStack.Add(snapshot.transform);
+            return new NowTransformScope(true);
+        }
+
+        internal static void PopTransform()
+        {
+            if (_transformStack.Count > 0)
+                _transformStack.RemoveAt(_transformStack.Count - 1);
+        }
+
+        /// <summary>
+        /// Applies current transform to a position. Returns the transformed position.
+        /// </summary>
+        static Vector2 ApplyTransform(Vector2 position)
+        {
+            if (_transformStack.Count == 0)
+                return position;
+
+            var transform = _transformStack[_transformStack.Count - 1];
+            return new Vector2(
+                position.x * transform.scale.x + transform.origin.x,
+                position.y * transform.scale.y + transform.origin.y);
+        }
+
+        /// <summary>
+        /// Applies current transform to a size. Returns the scaled size (no translation).
+        /// </summary>
+        static Vector2 ApplyTransformSize(Vector2 size)
+        {
+            if (_transformStack.Count == 0)
+                return size;
+
+            var transform = _transformStack[_transformStack.Count - 1];
+            return new Vector2(size.x * Mathf.Abs(transform.scale.x), size.y * Mathf.Abs(transform.scale.y));
+        }
+
+        /// <summary>
+        /// Applies current transform to a scalar value (like radius, outline width).
+        /// Returns the scaled value using the larger scale component.
+        /// </summary>
+        static float ApplyTransformScalar(float value)
+        {
+            if (_transformStack.Count == 0)
+                return value;
+
+            var transform = _transformStack[_transformStack.Count - 1];
+            return value * Mathf.Max(Mathf.Abs(transform.scale.x), Mathf.Abs(transform.scale.y));
+        }
+
+        /// <summary>
+        /// Applies current transform to a rect. Returns a new transformed rect.
+        /// </summary>
+        static NowRect ApplyTransformRect(NowRect rect)
+        {
+            if (_transformStack.Count == 0)
+                return rect;
+
+            Vector2 a = ApplyTransform(rect.position);
+            Vector2 b = ApplyTransform(new Vector2(rect.xMax, rect.yMax));
+            float xMin = Mathf.Min(a.x, b.x);
+            float yMin = Mathf.Min(a.y, b.y);
+            float xMax = Mathf.Max(a.x, b.x);
+            float yMax = Mathf.Max(a.y, b.y);
+            return new NowRect(xMin, yMin, xMax - xMin, yMax - yMin);
+        }
+
+        public static bool hasTransform => _transformStack.Count > 0;
+
+        public static NowRect TransformScreenRect(NowRect rect)
+        {
+            return _transformStack.Count > 0 ? ApplyTransformRect(rect) : rect;
+        }
+
+        internal static Vector2 InverseTransformScreenPoint(Vector2 position)
+        {
+            if (_transformStack.Count == 0)
+                return position;
+
+            var transform = _transformStack[_transformStack.Count - 1];
+            return new Vector2(
+                Mathf.Approximately(transform.scale.x, 0f) ? 0f : (position.x - transform.origin.x) / transform.scale.x,
+                Mathf.Approximately(transform.scale.y, 0f) ? 0f : (position.y - transform.origin.y) / transform.scale.y);
+        }
+
+        internal static Vector2 InverseTransformScreenVector(Vector2 vector)
+        {
+            if (_transformStack.Count == 0)
+                return vector;
+
+            var transform = _transformStack[_transformStack.Count - 1];
+            return new Vector2(
+                Mathf.Approximately(transform.scale.x, 0f) ? 0f : vector.x / transform.scale.x,
+                Mathf.Approximately(transform.scale.y, 0f) ? 0f : vector.y / transform.scale.y);
+        }
+
+        #endregion
+
         static int _defaultMesh = -1;
 
         static StaticList<NowMesh> _meshes = new StaticList<NowMesh>(100);
@@ -154,6 +365,7 @@ namespace NowUI
             public bool captureMesh;
             public NowRect screenMask;
             public readonly List<NowRect> maskStack = new List<NowRect>(4);
+            public readonly List<NowTransform> transformStack = new List<NowTransform>(4);
         }
 
         static readonly List<MeshCaptureState> _meshCaptureStack = new List<MeshCaptureState>(4);
@@ -633,9 +845,9 @@ namespace NowUI
             _lastUsedMeshId = _defaultMesh;
         }
 
-        public static void StartUI()
+        public static NowUIScreenScope StartUI()
         {
-            StartUI(1f);
+            return StartUI(1f);
         }
 
         /// <summary>
@@ -643,8 +855,10 @@ namespace NowUI
         /// <paramref name="uiScale"/> pixels per unit. The projection stretches the
         /// scaled-down logical size across the full viewport and pointer input is
         /// converted into the same units, so drawing code never deals with pixels.
+        /// Dispose the returned scope to submit rendering and finalize input for
+        /// the frame.
         /// </summary>
-        public static void StartUI(float uiScale)
+        public static NowUIScreenScope StartUI(float uiScale)
         {
             if (uiScale <= 0f || float.IsNaN(uiScale) || float.IsInfinity(uiScale))
                 throw new ArgumentOutOfRangeException(nameof(uiScale), "uiScale must be a positive finite value.");
@@ -654,6 +868,7 @@ namespace NowUI
             _lastUsedMeshId = -1;
             _fontStack.Clear();
             _maskStack.Clear();
+            _transformStack.Clear();
             _uiScale = uiScale;
 
             screenMask = new NowRect(0f, 0f, Screen.width / uiScale, Screen.height / uiScale);
@@ -661,9 +876,15 @@ namespace NowUI
                 new Vector2(screenMask.width, screenMask.height),
                 new Rect(0f, 0f, Screen.width, Screen.height)));
             Initialize();
+            return new NowUIScreenScope(true);
         }
 
-        public static void StartUI(NowRect screenMask)
+        /// <summary>
+        /// Starts a frame using an explicit screen-space mask as the logical UI
+        /// surface. Dispose the returned scope to submit rendering and finalize
+        /// input for the frame.
+        /// </summary>
+        public static NowUIScreenScope StartUI(NowRect screenMask)
         {
             _captureMesh = false;
             _meshes.count = 0;
@@ -671,11 +892,13 @@ namespace NowUI
 
             _fontStack.Clear();
             _maskStack.Clear();
+            _transformStack.Clear();
 
             _uiScale = 1f;
             Now.screenMask = screenMask;
             NowInput.Update(NowInputSurface.FromScreenMask(screenMask));
             Initialize();
+            return new NowUIScreenScope(true);
         }
 
         internal static void SetUIScale(float uiScale)
@@ -700,7 +923,7 @@ namespace NowUI
             BeginMeshCapture(screenMask, false);
         }
 
-        internal static void BeginMeshCapture(Vector4 screenMask, bool inheritMasks)
+        internal static void BeginMeshCapture(Vector4 screenMask, bool inheritContext)
         {
             MeshCaptureState state = _meshCaptureStatePool.Count > 0
                 ? _meshCaptureStatePool.Pop()
@@ -712,12 +935,22 @@ namespace NowUI
             state.screenMask = Now.screenMask;
             state.maskStack.Clear();
             state.maskStack.AddRange(_maskStack);
+            state.transformStack.Clear();
+            state.transformStack.AddRange(_transformStack);
             _meshCaptureStack.Add(state);
 
             Now.screenMask = screenMask;
-            if (!inheritMasks)
+            if (!inheritContext)
+            {
                 _maskStack.Clear();
+                _transformStack.Clear();
+            }
             Initialize();
+            if (inheritContext)
+            {
+                _maskStack.AddRange(state.maskStack);
+                _transformStack.AddRange(state.transformStack);
+            }
             _captureMesh = true;
             _meshes = RentCaptureMeshes();
             _lastUsedMeshId = -1;
@@ -804,7 +1037,10 @@ namespace NowUI
             Now.screenMask = state.screenMask;
             _maskStack.Clear();
             _maskStack.AddRange(state.maskStack);
+            _transformStack.Clear();
+            _transformStack.AddRange(state.transformStack);
             state.maskStack.Clear();
+            state.transformStack.Clear();
 
             state.meshes = default;
             _meshCaptureStatePool.Push(state);
@@ -1032,55 +1268,62 @@ namespace NowUI
             target.RecalculateBounds();
         }
 
-        public static void FlushUI()
+        internal static void FinishUIScreenFrame()
         {
             if (_captureMesh)
                 return;
 
-            using var profile = NowProfiler.FlushUI.Auto();
-            NowOverlay.Flush();
-
-            var meshArray = _meshes.array;
-            int count = _meshes.count;
-
-            bool hasVertices = false;
-
-            for (int i = 0; i < count; ++i)
+            using var profile = NowProfiler.ScreenFrameEnd.Auto();
+            try
             {
-                if (!meshArray[i].hasVertices)
-                    continue;
+                NowOverlay.Flush();
 
-                hasVertices = true;
-                break;
-            }
+                var meshArray = _meshes.array;
+                int count = _meshes.count;
 
-            if (!hasVertices)
-                return;
+                bool hasVertices = false;
 
-            BeginDraw(out var drawMatrix);
-
-            bool hasGlass = false;
-
-            for (int i = 0; i < count; ++i)
-            {
-                if (meshArray[i].hasVertices && meshArray[i].kind == NowMeshKind.Glass)
+                for (int i = 0; i < count; ++i)
                 {
-                    hasGlass = true;
+                    if (!meshArray[i].hasVertices)
+                        continue;
+
+                    hasVertices = true;
                     break;
                 }
-            }
 
-            if (hasGlass && FlushLegacyGlassReplay(drawMatrix))
-            {
-                ClearImmediateMeshes(count);
+                if (!hasVertices)
+                    return;
+
+                BeginDraw(out var drawMatrix);
+
+                bool hasGlass = false;
+
+                for (int i = 0; i < count; ++i)
+                {
+                    if (meshArray[i].hasVertices && meshArray[i].kind == NowMeshKind.Glass)
+                    {
+                        hasGlass = true;
+                        break;
+                    }
+                }
+
+                if (hasGlass && FlushLegacyGlassReplay(drawMatrix))
+                {
+                    ClearImmediateMeshes(count);
+                    GL.PopMatrix();
+                    return;
+                }
+
+                for (int i = 0; i < count; ++i)
+                    DrawMesh(meshArray[i], drawMatrix);
+
                 GL.PopMatrix();
-                return;
             }
-
-            for (int i = 0; i < count; ++i)
-                DrawMesh(meshArray[i], drawMatrix);
-
-            GL.PopMatrix();
+            finally
+            {
+                NowInput.EndFrame();
+            }
         }
 
         static bool FlushLegacyGlassReplay(Matrix4x4 drawMatrix)
@@ -1313,10 +1556,24 @@ namespace NowUI
             // independently shifted fractional-position rects by up to a pixel, so
             // nested glyphs (a radio dot inside its circle) came out visibly
             // off-center depending on where layout placed the control.
-            int x0 = Mathf.RoundToInt(position.x);
-            int y0 = Mathf.RoundToInt(position.y);
-            int rectWidth = Mathf.RoundToInt(position.x + position.width) - x0;
-            int rectHeight = Mathf.RoundToInt(position.y + position.height) - y0;
+            // Skip pixel snapping when transform is active for smooth zooming.
+            bool hasTransform = _transformStack.Count > 0;
+            float x0, y0, rectWidth, rectHeight;
+
+            if (hasTransform)
+            {
+                x0 = position.x;
+                y0 = position.y;
+                rectWidth = position.width;
+                rectHeight = position.height;
+            }
+            else
+            {
+                x0 = Mathf.RoundToInt(position.x);
+                y0 = Mathf.RoundToInt(position.y);
+                rectWidth = Mathf.RoundToInt(position.x + position.width) - x0;
+                rectHeight = Mathf.RoundToInt(position.y + position.height) - y0;
+            }
 
             if (rectWidth <= 0 || rectHeight <= 0)
                 return;
@@ -1324,11 +1581,28 @@ namespace NowUI
             var rectMask = rectangle.mask;
             float visualPadding = RectangleVisualPadding(rectangle.blur, rectangle.outline);
 
+            float blur = rectangle.blur;
+            float outline = rectangle.outline;
+            Vector4 radius = rectangle.radius;
+            float geometryPadding = visualPadding;
+
+            if (hasTransform)
+            {
+                float s = ApplyTransformScalar(1f);
+                blur *= s;
+                outline *= s;
+                radius *= s;
+                geometryPadding = RectangleVisualPadding(blur, outline);
+            }
+
             if (!rectMask.isEmpty && rectMask == rectangle.rect)
                 rectMask = rectMask.Outset(visualPadding);
 
+            if (hasTransform)
+                rectMask = ApplyTransformRect(rectMask);
+
             _tmpVertex.mask = ApplyAmbientMask(rectMask);
-            _tmpVertex.radius = rectangle.radius;
+            _tmpVertex.radius = radius;
             _tmpVertex.color = ApplyColorMultiplier(rectangle.color);
             _tmpVertex.outlineColor = ApplyColorMultiplier(rectangle.outlineColor);
             _tmpVertex.uvwh = rectangle.uvRect;
@@ -1347,7 +1621,7 @@ namespace NowUI
 
                 if (rectangle.sliced)
                 {
-                    DrawSliced(rectangle, mesh, x0, y0, rectWidth, rectHeight);
+                    DrawSliced(rectangle, mesh, x0, y0, rectWidth, rectHeight, hasTransform);
                     return;
                 }
             }
@@ -1363,7 +1637,7 @@ namespace NowUI
 
                 if (rectangle.sliced)
                 {
-                    DrawSliced(rectangle, mesh, x0, y0, rectWidth, rectHeight);
+                    DrawSliced(rectangle, mesh, x0, y0, rectWidth, rectHeight, hasTransform);
                     return;
                 }
             }
@@ -1377,12 +1651,25 @@ namespace NowUI
                 mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, 4);
             }
 
-            _tmpVertex.position.x = x0;
-            _tmpVertex.position.y = -y0 - rectHeight;
-            _tmpVertex.position.z = rectWidth;
-            _tmpVertex.position.w = rectHeight;
+            // Apply transform to position and scale to size
+            if (hasTransform)
+            {
+                Vector2 transformedPos = ApplyTransform(new Vector2(x0, y0));
+                Vector2 scaledSize = ApplyTransformSize(new Vector2(rectWidth, rectHeight));
+                _tmpVertex.position.x = transformedPos.x;
+                _tmpVertex.position.y = -transformedPos.y - scaledSize.y;
+                _tmpVertex.position.z = scaledSize.x;
+                _tmpVertex.position.w = scaledSize.y;
+            }
+            else
+            {
+                _tmpVertex.position.x = x0;
+                _tmpVertex.position.y = -y0 - rectHeight;
+                _tmpVertex.position.z = rectWidth;
+                _tmpVertex.position.w = rectHeight;
+            }
 
-            mesh.AddRect(_tmpVertex, rectangle.blur, rectangle.outline, visualPadding);
+            mesh.AddRect(_tmpVertex, blur, outline, geometryPadding);
         }
 
         /// <summary>
@@ -1395,10 +1682,26 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || material == null || rect.width <= 0f || rect.height <= 0f)
                 return;
 
-            int x0 = Mathf.RoundToInt(rect.x);
-            int y0 = Mathf.RoundToInt(rect.y);
-            int rectWidth = Mathf.RoundToInt(rect.x + rect.width) - x0;
-            int rectHeight = Mathf.RoundToInt(rect.y + rect.height) - y0;
+            bool hasTransform = _transformStack.Count > 0;
+
+            float x0, y0, rectWidth, rectHeight;
+
+            if (hasTransform)
+            {
+                // When transform is active, use float positions for smooth scaling
+                x0 = rect.x;
+                y0 = rect.y;
+                rectWidth = rect.width;
+                rectHeight = rect.height;
+            }
+            else
+            {
+                // Use pixel rounding for crisp edges when no transform
+                x0 = Mathf.RoundToInt(rect.x);
+                y0 = Mathf.RoundToInt(rect.y);
+                rectWidth = Mathf.RoundToInt(rect.x + rect.width) - x0;
+                rectHeight = Mathf.RoundToInt(rect.y + rect.height) - y0;
+            }
 
             if (rectWidth <= 0 || rectHeight <= 0)
                 return;
@@ -1406,15 +1709,33 @@ namespace NowUI
             if (!mask.isEmpty && mask == rect)
                 mask = mask.Outset(2f);
 
+            if (hasTransform && !mask.isEmpty)
+                mask = ApplyTransformRect(mask);
+
             _tmpVertex.mask = ApplyAmbientMask(mask);
             _tmpVertex.radius = default;
             _tmpVertex.color = ApplyColorMultiplier(color);
             _tmpVertex.outlineColor = default;
             _tmpVertex.uvwh = _defaultUV;
-            _tmpVertex.position.x = x0;
-            _tmpVertex.position.y = -y0 - rectHeight;
-            _tmpVertex.position.z = rectWidth;
-            _tmpVertex.position.w = rectHeight;
+
+            Vector2 size = new Vector2(rectWidth, rectHeight);
+            Vector2 position;
+
+            if (hasTransform)
+            {
+                Vector2 top = ApplyTransform(new Vector2(x0, y0));
+                size = ApplyTransformSize(size);
+                position = new Vector2(top.x, -top.y - size.y);
+            }
+            else
+            {
+                position = new Vector2(x0, -y0 - rectHeight);
+            }
+
+            _tmpVertex.position.x = position.x;
+            _tmpVertex.position.y = position.y;
+            _tmpVertex.position.z = size.x;
+            _tmpVertex.position.w = size.y;
 
             var mesh = UseSdfMaterial(material);
 
@@ -1431,7 +1752,7 @@ namespace NowUI
         /// center stretched. Cell edges share rounded coordinates so slices never
         /// seam. Radius, outline and blur do not apply.
         /// </summary>
-        static void DrawSliced(NowRectangle rectangle, NowMesh mesh, int x0, int y0, int rectWidth, int rectHeight)
+        static void DrawSliced(NowRectangle rectangle, NowMesh mesh, float x0, float y0, float rectWidth, float rectHeight, bool hasTransform)
         {
             Vector4 border = rectangle.spriteBorder;
             float sourceWidth = Mathf.Max(rectangle.spritePixelSize.x, 1f);
@@ -1442,10 +1763,23 @@ namespace NowUI
                 rectWidth / Mathf.Max(border.x + border.z, 1f),
                 rectHeight / Mathf.Max(border.y + border.w, 1f));
 
-            int xLeft = x0 + Mathf.RoundToInt(border.x * scale);
-            int xRight = x0 + rectWidth - Mathf.RoundToInt(border.z * scale);
-            int yTop = y0 + Mathf.RoundToInt(border.w * scale);
-            int yBottom = y0 + rectHeight - Mathf.RoundToInt(border.y * scale);
+            // When transform is active, use float positions for smooth scaling
+            float xLeft, xRight, yTop, yBottom;
+
+            if (hasTransform)
+            {
+                xLeft = x0 + border.x * scale;
+                xRight = x0 + rectWidth - border.z * scale;
+                yTop = y0 + border.w * scale;
+                yBottom = y0 + rectHeight - border.y * scale;
+            }
+            else
+            {
+                xLeft = x0 + Mathf.RoundToInt(border.x * scale);
+                xRight = x0 + rectWidth - Mathf.RoundToInt(border.z * scale);
+                yTop = y0 + Mathf.RoundToInt(border.w * scale);
+                yBottom = y0 + rectHeight - Mathf.RoundToInt(border.y * scale);
+            }
 
             Vector4 uv = rectangle.uvRect;
             float uLeft = uv.z * (border.x / sourceWidth);
@@ -1453,33 +1787,48 @@ namespace NowUI
             float vBottom = uv.w * (border.y / sourceHeight);
             float vTop = uv.w * (border.w / sourceHeight);
 
-            Span<int> xs = stackalloc int[4] { x0, xLeft, xRight, x0 + rectWidth };
-            Span<int> ys = stackalloc int[4] { y0, yTop, yBottom, y0 + rectHeight };
+            _tmpVertex.radius = default;
+
+            // Define 9-slice grid positions
+            Span<float> xs = stackalloc float[4] { x0, xLeft, xRight, x0 + rectWidth };
+            Span<float> ys = stackalloc float[4] { y0, yTop, yBottom, y0 + rectHeight };
             Span<float> us = stackalloc float[4] { uv.x, uv.x + uLeft, uv.x + uv.z - uRight, uv.x + uv.z };
             Span<float> vs = stackalloc float[4] { uv.y + uv.w, uv.y + uv.w - vTop, uv.y + vBottom, uv.y };
 
-            _tmpVertex.radius = default;
-
             for (int row = 0; row < 3; ++row)
             {
-                int cellY = ys[row];
-                int cellHeight = ys[row + 1] - cellY;
+                float cellY = ys[row];
+                float cellHeight = ys[row + 1] - cellY;
 
                 if (cellHeight <= 0)
                     continue;
 
                 for (int col = 0; col < 3; ++col)
                 {
-                    int cellX = xs[col];
-                    int cellWidth = xs[col + 1] - cellX;
+                    float cellX = xs[col];
+                    float cellWidth = xs[col + 1] - cellX;
 
                     if (cellWidth <= 0)
                         continue;
 
-                    _tmpVertex.position.x = cellX;
-                    _tmpVertex.position.y = -cellY - cellHeight;
-                    _tmpVertex.position.z = cellWidth;
-                    _tmpVertex.position.w = cellHeight;
+                    // Apply transform to each cell
+                    if (hasTransform)
+                    {
+                        Vector2 transformedPos = ApplyTransform(new Vector2(cellX, cellY));
+                        Vector2 scaledSize = ApplyTransformSize(new Vector2(cellWidth, cellHeight));
+                        _tmpVertex.position.x = transformedPos.x;
+                        _tmpVertex.position.y = -transformedPos.y - scaledSize.y;
+                        _tmpVertex.position.z = scaledSize.x;
+                        _tmpVertex.position.w = scaledSize.y;
+                    }
+                    else
+                    {
+                        _tmpVertex.position.x = Mathf.RoundToInt(cellX);
+                        _tmpVertex.position.y = -Mathf.RoundToInt(cellY + cellHeight);
+                        _tmpVertex.position.z = Mathf.RoundToInt(cellWidth);
+                        _tmpVertex.position.w = Mathf.RoundToInt(cellHeight);
+                    }
+
                     _tmpVertex.uvwh = new Vector4(
                         us[col],
                         vs[row + 1],
@@ -1505,9 +1854,17 @@ namespace NowUI
             if (!style.mask.isEmpty && style.mask == style.rect)
                 style.mask = style.mask.Outset(4f);
 
+            // Transform only the mask to screen-space when transform is active
+            // (rect transformation is handled by DrawStringCodepoints)
+            bool hasTransform = _transformStack.Count > 0;
+            if (hasTransform && !style.mask.isEmpty)
+                style.mask = ApplyTransformRect(style.mask);
+
             style.mask = ApplyAmbientMask(style.mask);
 
-            if (style.mask.isEmpty || !style.mask.Overlaps(style.rect.Outset(8f)))
+            NowRect overlapRect = hasTransform ? ApplyTransformRect(style.rect) : style.rect;
+
+            if (style.mask.isEmpty || !style.mask.Overlaps(overlapRect.Outset(8f)))
                 return;
 
             if (textShaping && TryDrawShapedString(style, value))
@@ -1534,9 +1891,17 @@ namespace NowUI
             if (!style.mask.isEmpty && style.mask == style.rect)
                 style.mask = style.mask.Outset(4f);
 
+            // Transform only the mask to screen-space when transform is active
+            // (rect transformation is handled by DrawStringCodepoints)
+            bool hasTransform = _transformStack.Count > 0;
+            if (hasTransform && !style.mask.isEmpty)
+                style.mask = ApplyTransformRect(style.mask);
+
             style.mask = ApplyAmbientMask(style.mask);
 
-            if (style.mask.isEmpty || !style.mask.Overlaps(style.rect.Outset(8f)))
+            NowRect overlapRect = hasTransform ? ApplyTransformRect(style.rect) : style.rect;
+
+            if (style.mask.isEmpty || !style.mask.Overlaps(overlapRect.Outset(8f)))
                 return;
 
             DrawStringCodepoints(style, value);
@@ -1555,18 +1920,26 @@ namespace NowUI
 
         static void DrawStringCodepoints(NowText style, ReadOnlySpan<char> value)
         {
+            bool hasTransform = _transformStack.Count > 0;
+
             var fontSize = style.fontSize;
             var fontAsset = style.font;
             var color = ApplyColorMultiplier(style.color);
             var outlineColor = ApplyColorMultiplier(style.outlineColor);
-            float outline = style.outline * fontSize;
             NowMesh mesh = null;
             NowFont pixelRangeFont = null;
             Material pixelRangeMaterial = null;
             float pixelRange = 0f;
 
+            // Scale font size by transform for consistent text size
+            float textScale = hasTransform ? ApplyTransformScalar(1f) : 1f;
+            float scaledFontSize = fontSize * textScale;
+            float scaledBaseline = fontAsset.GetAscender(style.fontStyle) * scaledFontSize;
+            float scaledOutline = style.outline * scaledFontSize;
+
+            // Use original font size for layout calculations when transform is active
             float lineHeight = fontAsset.GetLineHeight(style.fontStyle) * fontSize;
-            float baseline = fontAsset.GetAscender(style.fontStyle) * fontSize;
+
             float leftPos = style.rect.x;
 
             const int TAB_SPACES = 4;
@@ -1616,22 +1989,34 @@ namespace NowUI
                             if (!ReferenceEquals(pixelRangeFont, resolvedFont) ||
                                 !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
                             {
-                                pixelRange = resolvedFont.GetScreenPixelRange(glyph.unicode, fontSize);
+                                pixelRange = resolvedFont.GetScreenPixelRange(glyph.unicode, fontSize) * textScale;
                                 pixelRangeFont = resolvedFont;
                                 pixelRangeMaterial = glyphMaterial;
                             }
 
                             mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
+
+                            // Transform position before drawing glyph
+                            float glyphX = style.rect.x;
+                            float glyphY = style.rect.y;
+
+                            if (hasTransform)
+                            {
+                                Vector2 transformedPos = ApplyTransform(new Vector2(glyphX, glyphY));
+                                glyphX = transformedPos.x;
+                                glyphY = transformedPos.y;
+                            }
+
                             mesh.AddTextGlyph(
                                 glyph,
-                                style.rect.x,
-                                style.rect.y,
-                                fontSize,
-                                baseline,
+                                glyphX,
+                                glyphY,
+                                scaledFontSize,
+                                scaledBaseline,
                                 style.mask,
                                 color,
                                 outlineColor,
-                                outline,
+                                scaledOutline,
                                 pixelRange);
                         }
 
@@ -1873,6 +2258,12 @@ namespace NowUI
             ref Material pixelRangeMaterial,
             ref float pixelRange)
         {
+            bool hasTransform = _transformStack.Count > 0;
+            float textScale = hasTransform ? ApplyTransformScalar(1f) : 1f;
+            float scaledFontSize = fontSize * textScale;
+            float scaledBaseline = baseline * textScale;
+            float scaledOutline = outline * textScale;
+
             for (int g = 0; g < run.Length; ++g)
             {
                 var shaped = run[g];
@@ -1899,23 +2290,33 @@ namespace NowUI
                     if (!ReferenceEquals(pixelRangeFont, font) ||
                         !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
                     {
-                        pixelRange = font.GetScreenPixelRange(glyph.unicode, fontSize);
+                        pixelRange = font.GetScreenPixelRange(glyph.unicode, fontSize) * textScale;
                         pixelRangeFont = font;
                         pixelRangeMaterial = glyphMaterial;
                     }
 
                     mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
 
+                    float glyphX = style.rect.x + shaped.xOffset * fontSize;
+                    float glyphY = style.rect.y - shaped.yOffset * fontSize;
+
+                    if (hasTransform)
+                    {
+                        Vector2 transformedPos = ApplyTransform(new Vector2(glyphX, glyphY));
+                        glyphX = transformedPos.x;
+                        glyphY = transformedPos.y;
+                    }
+
                     mesh.AddTextGlyph(
                         glyph,
-                        style.rect.x + shaped.xOffset * fontSize,
-                        style.rect.y - shaped.yOffset * fontSize,
-                        fontSize,
-                        baseline,
+                        glyphX,
+                        glyphY,
+                        scaledFontSize,
+                        scaledBaseline,
                         style.mask,
                         color,
                         outlineColor,
-                        outline,
+                        scaledOutline,
                         pixelRange);
                 }
 
@@ -1933,9 +2334,16 @@ namespace NowUI
             if (!style.mask.isEmpty && style.mask == style.rect)
                 style.mask = style.mask.Outset(4f);
 
+            // Transform only the mask to screen-space when transform is active
+            bool hasTransform = _transformStack.Count > 0;
+            if (hasTransform && !style.mask.isEmpty)
+                style.mask = ApplyTransformRect(style.mask);
+
             style.mask = ApplyAmbientMask(style.mask);
 
-            if (style.mask.isEmpty || !style.mask.Overlaps(style.rect.Outset(8f)))
+            NowRect overlapRect = hasTransform ? ApplyTransformRect(style.rect) : style.rect;
+
+            if (style.mask.isEmpty || !style.mask.Overlaps(overlapRect.Outset(8f)))
                 return;
 
             if (!style.font.TryResolveFont(style.fontStyle, out var resolvedFont))
@@ -1974,18 +2382,33 @@ namespace NowUI
         /// </summary>
         static void DrawCharacter(NowText style, NowFontAtlasInfo.Glyph glyph, NowFont font, NowMesh mesh, float baseline)
         {
+            bool hasTransform = _transformStack.Count > 0;
             var fontSize = style.fontSize;
+            float textScale = hasTransform ? ApplyTransformScalar(1f) : 1f;
+            float scaledFontSize = fontSize * textScale;
+            float scaledBaseline = baseline * textScale;
+
+            float glyphX = style.rect.x;
+            float glyphY = style.rect.y;
+
+            if (hasTransform)
+            {
+                Vector2 transformedPos = ApplyTransform(new Vector2(glyphX, glyphY));
+                glyphX = transformedPos.x;
+                glyphY = transformedPos.y;
+            }
+
             mesh.AddTextGlyph(
                 glyph,
-                style.rect.x,
-                style.rect.y,
-                fontSize,
-                baseline,
+                glyphX,
+                glyphY,
+                scaledFontSize,
+                scaledBaseline,
                 style.mask,
                 ApplyColorMultiplier(style.color),
                 ApplyColorMultiplier(style.outlineColor),
-                style.outline * fontSize,
-                font.GetScreenPixelRange(glyph.unicode, fontSize));
+                style.outline * scaledFontSize,
+                font.GetScreenPixelRange(glyph.unicode, fontSize) * textScale);
         }
 
         internal static void DrawLottie(NowLottie lottie)
@@ -2006,10 +2429,16 @@ namespace NowUI
             if (composition == null)
                 return;
 
+            bool hasTransform = _transformStack.Count > 0;
+            NowRect drawRect = hasTransform ? ApplyTransformRect(lottie.rect) : lottie.rect;
             var lottieMask = !lottie.mask.isEmpty && lottie.mask == lottie.rect ? lottie.mask.Outset(2f) : lottie.mask;
+
+            if (hasTransform && !lottieMask.isEmpty)
+                lottieMask = ApplyTransformRect(lottieMask);
+
             lottieMask = ApplyAmbientMask(lottieMask);
 
-            if (lottieMask.isEmpty || !lottieMask.Overlaps(lottie.rect))
+            if (lottieMask.isEmpty || !lottieMask.Overlaps(drawRect))
                 return;
 
             var mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
@@ -2029,7 +2458,7 @@ namespace NowUI
 
             float renderScale = Mathf.Max(_uiScale, 0.0001f);
             float maxSize = NowLottieRenderer.maxRenderSize;
-            float maxDimension = Mathf.Max(lottie.rect.width, lottie.rect.height) * renderScale;
+            float maxDimension = Mathf.Max(drawRect.width, drawRect.height) * renderScale;
 
             if (maxSize > 0f && maxDimension > maxSize)
                 renderScale *= maxSize / maxDimension;
@@ -2037,12 +2466,12 @@ namespace NowUI
             var buffer = NowLottieRenderer.RenderCached(
                 composition,
                 frame,
-                lottie.rect.width * renderScale,
-                lottie.rect.height * renderScale,
+                drawRect.width * renderScale,
+                drawRect.height * renderScale,
                 lottie.preserveAspect);
 
             mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, buffer.positions.count);
-            mesh.AddGeometry(buffer, new Vector2(lottie.rect.x, lottie.rect.y), 1f / renderScale, tint, lottieMask);
+            mesh.AddGeometry(buffer, new Vector2(drawRect.x, drawRect.y), 1f / renderScale, tint, lottieMask);
         }
 
         public static NowRectangle Rectangle(NowRectangle rect)
@@ -2068,6 +2497,31 @@ namespace NowUI
         public static NowLottie Lottie(NowRect position, NowLottieAsset asset)
         {
             return new NowLottie(position, asset);
+        }
+    }
+
+    /// <summary>
+    /// Disposable handle returned by <see cref="Now.StartUI()"/>; disposing
+    /// finalizes overlays, screen rendering, and input capture even when the
+    /// frame exits early.
+    /// </summary>
+    [NowScope]
+    public struct NowUIScreenScope : IDisposable
+    {
+        bool _active;
+
+        internal NowUIScreenScope(bool active)
+        {
+            _active = active;
+        }
+
+        public void Dispose()
+        {
+            if (!_active)
+                return;
+
+            _active = false;
+            Now.FinishUIScreenFrame();
         }
     }
 
@@ -2116,6 +2570,30 @@ namespace NowUI
 
             _active = false;
             Now.PopFont();
+        }
+    }
+
+    /// <summary>
+    /// Disposable handle returned by <see cref="Now.Transform(float)"/>;
+    /// disposing restores the previously active transform.
+    /// </summary>
+    [NowScope]
+    public struct NowTransformScope : IDisposable
+    {
+        bool _active;
+
+        internal NowTransformScope(bool active)
+        {
+            _active = active;
+        }
+
+        public void Dispose()
+        {
+            if (!_active)
+                return;
+
+            _active = false;
+            Now.PopTransform();
         }
     }
 }

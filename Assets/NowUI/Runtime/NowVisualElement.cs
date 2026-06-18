@@ -217,6 +217,21 @@ namespace NowUI
             rebuildNowUI?.Invoke(this, rect);
         }
 
+        struct FrameContent : INowFrameContent
+        {
+            readonly NowVisualElement _owner;
+
+            public FrameContent(NowVisualElement owner)
+            {
+                _owner = owner;
+            }
+
+            public void Draw(NowRect rect)
+            {
+                _owner.DrawNowUI(rect);
+            }
+        }
+
         void OnAttachToPanel(AttachToPanelEvent evt)
         {
             _disposed = false;
@@ -267,63 +282,29 @@ namespace NowUI
             var renderer = GetRenderer();
             var size = new Vector2(rect.width, rect.height);
             var nowRect = new NowRect(0f, 0f, size.x, size.y);
-            float previousScale = Now.uiScale;
-            bool tracking = false;
-            bool contentTracking = false;
             renderer.glassBlurQuality = _glassBlurQuality;
+            var frame = NowFrame.Begin(GetEffectiveUIScale(pixelsPerPoint), trackRepaint: true);
             var scope = renderer.Begin(size);
 
             try
             {
-                Now.SetUIScale(GetEffectiveUIScale(pixelsPerPoint));
-                NowControlState.BeginRepaintTracking();
-                tracking = true;
-
                 using (NowInput.Begin(_inputProvider, new NowInputSurface(size)))
                 {
-                    if (_layoutMeasurePass)
-                    {
-                        using (NowProfiler.MeasurePass.Auto())
-                        {
-                            int layoutCounter = NowLayout.BeginMeasurePass();
-
-                            try
-                            {
-                                DrawNowUI(nowRect);
-                            }
-                            finally
-                            {
-                                NowLayout.EndMeasurePass(layoutCounter);
-                            }
-                        }
-                    }
-
-                    using (NowProfiler.Draw.Auto())
-                    {
-                        NowLayout.BeginContentTracking();
-                        contentTracking = true;
-                        DrawNowUI(nowRect);
-                        _measuredContentSize = NowLayout.EndContentTracking();
-                        contentTracking = false;
-                    }
-
-                    NowOverlay.Flush();
+                    var content = new FrameContent(this);
+                    _measuredContentSize = NowFrame.DrawContent(
+                        ref content,
+                        nowRect,
+                        _layoutMeasurePass,
+                        trackContent: true);
                 }
 
-                _wantsInteractionRepaint = NowControlState.EndRepaintTracking();
-                tracking = false;
+                _wantsInteractionRepaint = frame.EndRepaintTracking();
 
                 scope.Dispose();
                 renderer.Render(target, true, _clearColor);
             }
             catch (Exception ex)
             {
-                if (contentTracking)
-                    NowLayout.EndContentTracking();
-
-                if (tracking)
-                    NowControlState.EndRepaintTracking();
-
                 _wantsInteractionRepaint = false;
                 scope.Cancel();
                 renderer.Clear();
@@ -331,7 +312,7 @@ namespace NowUI
             }
             finally
             {
-                Now.SetUIScale(previousScale);
+                frame.Dispose();
             }
         }
 

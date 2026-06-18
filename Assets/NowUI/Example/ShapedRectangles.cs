@@ -16,31 +16,30 @@ public class ShapedRectangles : MonoBehaviour
     private void OnPostRender()
     {
         int count = Mathf.Max(1, Mathf.RoundToInt((Mathf.Sin(Time.time * 0.5f) + 1) * 100));
-        Now.StartUI();
-
-        float sizeX = (float)Screen.width / count;
-        float sizeY = (float)Screen.height / count;
-
-        var style = Now.Rectangle((Vector4)default)
-            .SetOutlineColor(outline)
-            .SetBlur(_blur)
-            .SetRadius(_radius)
-            .SetPadding(_padding)
-            .SetOutline(_outline);
-
-        for (int x = 0; x < count; ++x)
+        using (Now.StartUI())
         {
-            for (int y = 0; y < count; ++y)
+            float sizeX = (float)Screen.width / count;
+            float sizeY = (float)Screen.height / count;
+
+            var style = Now.Rectangle((Vector4)default)
+                .SetOutlineColor(outline)
+                .SetBlur(_blur)
+                .SetRadius(_radius)
+                .SetPadding(_padding)
+                .SetOutline(_outline);
+
+            for (int x = 0; x < count; ++x)
             {
-                var rect = new Vector4(sizeX * x, sizeY * y, sizeX, sizeY);
-                if ((x + y) % 2 == 0)
+                for (int y = 0; y < count; ++y)
                 {
-                    style.SetPosition(rect)
-                        .Draw();
+                    var rect = new Vector4(sizeX * x, sizeY * y, sizeX, sizeY);
+                    if ((x + y) % 2 == 0)
+                    {
+                        style.SetPosition(rect)
+                            .Draw();
+                    }
                 }
             }
         }
-
-        Now.FlushUI();
     }
 }

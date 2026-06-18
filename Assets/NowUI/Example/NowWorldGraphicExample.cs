@@ -26,7 +26,10 @@ public sealed class NowWorldGraphicExample : NowWorldGraphic
                 .SetTime(Time.time)
                 .Draw();
 
-            NowLayout.AnimationCurveField().Draw(ref _animationCurve);
+            NowLayout.AnimationCurveField()
+                .SetTimeRange(0f, 1f)
+                .SetValueRange(0f, 1f)
+                .Draw(ref _animationCurve);
 
             if (NowLayout.Button(_detail).Draw())
             {

@@ -50,9 +50,7 @@ public sealed class NowNodeGraphExample : MonoBehaviour
         if (!_initialized)
             BuildGraph();
 
-        Now.StartUI();
-
-        using (NowInput.Begin(new Vector2(Screen.width, Screen.height)))
+        using (Now.StartUI())
         {
             var rect = new NowRect(24f, 24f, Screen.width - 48f, Screen.height - 48f);
             NowNodes.Canvas(_graph, rect, 8101)
@@ -61,8 +59,6 @@ public sealed class NowNodeGraphExample : MonoBehaviour
                 .SetContextMenu(_menu)
                 .Draw();
         }
-
-        Now.FlushUI();
     }
 
     void OnDestroy()
@@ -223,10 +219,8 @@ public sealed class NowNodeGraphExample : MonoBehaviour
 
     static void DrawNodeCaption(NowRect rect, string text, float zoom)
     {
-        float scale = Mathf.Max(zoom, 0.001f);
-
-        Now.Text(rect.Inset(8f * scale, 6f * scale))
-            .SetFontSize(Mathf.Max(6f, 11f * scale))
+        Now.Text(rect.Inset(8f, 6f))
+            .SetFontSize(11f)
             .SetColor(Color.white)
             .Draw(text);
     }

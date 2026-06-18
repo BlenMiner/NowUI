@@ -480,7 +480,7 @@ public class NowNodeGraphTests
     }
 
     [Test]
-    public void ContentRowsScaleWithCanvasZoom()
+    public void ContentRowsStayInGraphSpaceWithCanvasZoom()
     {
         float seenZoom = 0f;
         float seenHeight = 0f;
@@ -491,7 +491,7 @@ public class NowNodeGraphTests
             .Render(ctx =>
             {
                 seenZoom = ctx.zoom;
-                seenControlScale = NowControls.controlScale;
+                seenControlScale = Now.currentTransform.scale.x;
                 seenHeight = ctx.Row(0, 20f).height;
             });
 
@@ -502,7 +502,7 @@ public class NowNodeGraphTests
         Assert.AreEqual(1f, seenZoom, 0.0001f);
         Assert.AreEqual(seenZoom, seenControlScale, 0.0001f);
         Assert.AreEqual(20f, seenHeight, 0.0001f);
-        Assert.AreEqual(1f, NowControls.controlScale, 0.0001f);
+        Assert.AreEqual(1f, Now.currentTransform.scale.x, 0.0001f);
 
         _pointer.snapshot = new NowInputSnapshot(
             true,
@@ -528,8 +528,8 @@ public class NowNodeGraphTests
 
         Assert.Greater(seenZoom, 1f);
         Assert.AreEqual(seenZoom, seenControlScale, 0.0001f);
-        Assert.AreEqual(20f * seenZoom, seenHeight, 0.0001f);
-        Assert.AreEqual(1f, NowControls.controlScale, 0.0001f);
+        Assert.AreEqual(20f, seenHeight, 0.0001f);
+        Assert.AreEqual(1f, Now.currentTransform.scale.x, 0.0001f);
     }
 
     [Test]

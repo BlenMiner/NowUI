@@ -9,46 +9,46 @@ namespace NowUI
         {
             var text = NowControls.Text(themeAsset, textStyle);
             Vector2 labelSize = text.Measure(label ?? string.Empty);
-            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.buttonPadding);
+            Vector4 padding = themeAsset.controlStyles.buttonPadding;
             return new Vector2(
                 labelSize.x + padding.x + padding.z,
-                Mathf.Max(NowControls.ScaleValue(themeAsset.controlStyles.buttonMinHeight), labelSize.y + padding.y + padding.w));
+                Mathf.Max(themeAsset.controlStyles.buttonMinHeight, labelSize.y + padding.y + padding.w));
         }
 
         public override Vector2 MeasureButtonContent(NowThemeAsset themeAsset, Vector2 cachedContentSize)
         {
-            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.buttonPadding);
-            Vector2 fallback = NowControls.ScaleValue(new Vector2(themeAsset.controlStyles.buttonFallbackContentWidth, themeAsset.controlStyles.buttonFallbackContentHeight));
+            Vector4 padding = themeAsset.controlStyles.buttonPadding;
+            Vector2 fallback = new Vector2(themeAsset.controlStyles.buttonFallbackContentWidth, themeAsset.controlStyles.buttonFallbackContentHeight);
             Vector2 contentSize = cachedContentSize.x > 0f ? cachedContentSize : fallback;
             return new Vector2(
                 contentSize.x + padding.x + padding.z,
-                Mathf.Max(NowControls.ScaleValue(themeAsset.controlStyles.buttonMinHeight), contentSize.y + padding.y + padding.w));
+                Mathf.Max(themeAsset.controlStyles.buttonMinHeight, contentSize.y + padding.y + padding.w));
         }
 
         public override Vector2 MeasureTextField(NowThemeAsset themeAsset, float lineHeight)
         {
-            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.textFieldPadding);
-            return new Vector2(NowControls.ScaleValue(220f), Mathf.Max(NowControls.ScaleValue(themeAsset.controlStyles.textFieldMinHeight), lineHeight + padding.y + padding.w));
+            Vector4 padding = themeAsset.controlStyles.textFieldPadding;
+            return new Vector2(220f, Mathf.Max(themeAsset.controlStyles.textFieldMinHeight, lineHeight + padding.y + padding.w));
         }
 
         public override Vector2 MeasureDropdownField(NowThemeAsset themeAsset, float lineHeight)
         {
-            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.dropdownFieldPadding);
-            return new Vector2(NowControls.ScaleValue(220f), Mathf.Max(NowControls.ScaleValue(themeAsset.controlStyles.dropdownFieldMinHeight), lineHeight + padding.y + padding.w));
+            Vector4 padding = themeAsset.controlStyles.dropdownFieldPadding;
+            return new Vector2(220f, Mathf.Max(themeAsset.controlStyles.dropdownFieldMinHeight, lineHeight + padding.y + padding.w));
         }
 
         public override NowRect TextFieldInnerRect(NowThemeAsset themeAsset, NowRect rect, float lineHeight)
         {
-            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.textFieldPadding);
+            Vector4 padding = themeAsset.controlStyles.textFieldPadding;
             float top = (rect.height - lineHeight) * 0.5f;
             return rect.Inset(padding.x, top, padding.z, top);
         }
 
         public override NowRect DropdownFieldInnerRect(NowThemeAsset themeAsset, NowRect rect, float lineHeight)
         {
-            Vector4 padding = NowControls.ScaleValue(themeAsset.controlStyles.dropdownFieldPadding);
+            Vector4 padding = themeAsset.controlStyles.dropdownFieldPadding;
             float top = (rect.height - lineHeight) * 0.5f;
-            return rect.Inset(padding.x, top, Mathf.Max(padding.z, NowControls.ScaleValue(32f)), top);
+            return rect.Inset(padding.x, top, Mathf.Max(padding.z, 32f), top);
         }
 
         public override void DrawButton(in NowButtonRenderContext context)
@@ -103,7 +103,7 @@ namespace NowUI
             var frame = Now.Rectangle(context.glyphRect)
                 .SetRadius(radius)
                 .SetColor(context.themeAsset.GetColor(NowColorToken.Surface, Color.white))
-                .SetOutline(NowControls.ScaleValue(2f))
+                .SetOutline(2f)
                 .SetOutlineColor(context.value ? accent : context.themeAsset.GetColor(NowColorToken.Border, Color.gray));
 
             frame.Draw();
@@ -159,7 +159,7 @@ namespace NowUI
             var box = Now.Rectangle(context.rect)
                 .SetRadius(radius)
                 .SetColor(context.themeAsset.GetColor(NowColorToken.SurfaceMuted, Color.white))
-                .SetOutline(context.focused ? NowControls.ScaleValue(1f) : 0f)
+                .SetOutline(context.focused ? 1f : 0f)
                 .SetOutlineColor(context.focused
                     ? context.themeAsset.GetColor(NowColorToken.Accent, Color.blue)
                     : context.themeAsset.GetColor(NowColorToken.Border, Color.gray));
@@ -175,7 +175,7 @@ namespace NowUI
 
             NowRect inner = DropdownFieldInnerRect(context.themeAsset, context.rect, LabelHeight(context.themeAsset));
             NowControls.DrawLeftLabel(context.themeAsset, inner, context.current, NowTextStyle.Body);
-            DrawChevron(context.themeAsset, new NowRect(context.rect.xMax - NowControls.ScaleValue(24f), context.rect.y, NowControls.ScaleValue(16f), context.rect.height), context.open);
+            DrawChevron(context.themeAsset, new NowRect(context.rect.xMax - 24f, context.rect.y, 16f, context.rect.height), context.open);
         }
 
         public override void DrawPopupBackground(NowThemeAsset themeAsset, NowRect rect, bool menu)
@@ -186,7 +186,7 @@ namespace NowUI
             Now.Rectangle(rect)
                 .SetRadius(radius)
                 .SetColor(themeAsset.GetColor(NowColorToken.Surface, Color.white))
-                .SetOutline(NowControls.ScaleValue(1f))
+                .SetOutline(1f)
                 .SetOutlineColor(themeAsset.GetColor(NowColorToken.Border, Color.gray))
                 .Draw();
         }
@@ -201,7 +201,7 @@ namespace NowUI
                 color.a = context.selected ? 0.14f : 1f;
 
                 Now.Rectangle(context.rect)
-                    .SetRadius(NowControls.ScaleValue(context.themeAsset.controlStyles.popupItemRadius))
+                    .SetRadius(context.themeAsset.controlStyles.popupItemRadius)
                     .SetColor(color)
                     .Draw();
             }
@@ -221,7 +221,7 @@ namespace NowUI
                     color = Mix(color, context.themeAsset.GetColor(NowColorToken.Text, Color.black), 0.04f);
 
                 Now.Rectangle(context.rect)
-                    .SetRadius(NowControls.ScaleValue(context.themeAsset.controlStyles.popupItemRadius))
+                    .SetRadius(context.themeAsset.controlStyles.popupItemRadius)
                     .SetColor(color)
                     .Draw();
             }
@@ -254,9 +254,9 @@ namespace NowUI
                 return Circle(rect);
 
             if (radius == default)
-                return NowControls.ScaleValue(new Vector4(fallback, fallback, fallback, fallback));
+                return new Vector4(fallback, fallback, fallback, fallback);
 
-            return NowControls.ScaleValue(radius);
+            return radius;
         }
 
         static NowRectangle ButtonRectangle(NowThemeAsset themeAsset, NowRect rect, NowRectangleStyle rectangleStyle)
@@ -334,12 +334,13 @@ namespace NowUI
                 ? styles.fieldFocusColor.Resolve(themeAsset)
                 : styles.focusColor.Resolve(themeAsset);
             color.a = 0.82f;
-            float scale = NowControls.controlScale;
+            Vector2 transformScale = Now.currentTransform.scale;
+            float scale = Mathf.Max(Mathf.Abs(transformScale.x), Mathf.Abs(transformScale.y));
 
             Now.Rectangle(rect.Outset(2f * scale))
                 .SetRadius(radius + new Vector4(2f * scale, 2f * scale, 2f * scale, 2f * scale))
                 .SetColor(Color.clear)
-                .SetOutline(NowControls.ScaleValue(styles.focusOutline))
+                .SetOutline(styles.focusOutline)
                 .SetOutlineColor(color)
                 .Draw();
         }
@@ -389,8 +390,8 @@ namespace NowUI
 
         static void DrawItemLabel(NowThemeAsset themeAsset, NowRect rect, string label, Color color)
         {
-            float left = NowControls.ScaleValue(themeAsset.controlStyles.contextMenuPaddingX);
-            NowControls.DrawLeftLabel(themeAsset, rect.Inset(left, 0f, NowControls.ScaleValue(8f), 0f), label, NowTextStyle.Body, color);
+            float left = themeAsset.controlStyles.contextMenuPaddingX;
+            NowControls.DrawLeftLabel(themeAsset, rect.Inset(left, 0f, 8f, 0f), label, NowTextStyle.Body, color);
         }
 
         static void DrawCenteredButtonLabel(in NowButtonRenderContext context, NowRect rect)
@@ -398,7 +399,7 @@ namespace NowUI
             var text = NowControls.Text(context.themeAsset, context.textStyle)
                 .SetColor(ButtonTextColor(context.themeAsset, context.rectangleStyle));
             Vector2 size = text.Measure(context.label);
-            float pad = NowControls.ScaleValue(1f);
+            float pad = 1f;
 
             text.rect = new NowRect(
                 rect.x + (rect.width - size.x) * 0.5f,
@@ -433,8 +434,8 @@ namespace NowUI
             Vector2 mid = new Vector2(cx, up ? cy - h * 0.5f : cy + h * 0.5f);
             Vector2 right = new Vector2(cx + w, up ? cy + h * 0.5f : cy - h * 0.5f);
 
-            Now.Line(left, mid).SetColor(color).SetWidth(NowControls.ScaleValue(1.6f)).SetCap(NowLineCap.Round).Draw();
-            Now.Line(mid, right).SetColor(color).SetWidth(NowControls.ScaleValue(1.6f)).SetCap(NowLineCap.Round).Draw();
+            Now.Line(left, mid).SetColor(color).SetWidth(1.6f).SetCap(NowLineCap.Round).Draw();
+            Now.Line(mid, right).SetColor(color).SetWidth(1.6f).SetCap(NowLineCap.Round).Draw();
         }
     }
 }

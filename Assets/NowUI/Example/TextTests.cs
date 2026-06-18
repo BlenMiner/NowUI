@@ -50,18 +50,17 @@ public class TextTests : MonoBehaviour
 
     private void OnPostRender()
     {
-        Now.StartUI();
+        using (Now.StartUI())
+        {
+            Vector4 pos = new Vector4(0, 0, 200, 200);
 
-        Vector4 pos = new Vector4(0, 0, 200, 200);
-
-        for (int x = 0; x < 10; ++x)
-            for (int y = 0; y < 5; ++y)
-            {
-                pos.x = 10 + (pos.z + 10) * x;
-                pos.y = 10 + (pos.w + 10) * y;
-                DrawTextBox(pos, _text);
-            }
-
-        Now.FlushUI();
+            for (int x = 0; x < 10; ++x)
+                for (int y = 0; y < 5; ++y)
+                {
+                    pos.x = 10 + (pos.z + 10) * x;
+                    pos.y = 10 + (pos.w + 10) * y;
+                    DrawTextBox(pos, _text);
+                }
+        }
     }
 }

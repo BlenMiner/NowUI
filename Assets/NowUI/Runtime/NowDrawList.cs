@@ -89,15 +89,15 @@ namespace NowUI
             return Begin(size, positionOffset, false);
         }
 
-        internal NowDrawScope Begin(Vector2 size, Vector2 positionOffset, bool inheritMasks)
+        internal NowDrawScope Begin(Vector2 size, Vector2 positionOffset, bool inheritContext)
         {
-            return Begin(size, positionOffset, inheritMasks, NowGlassBlurQuality.Auto);
+            return Begin(size, positionOffset, inheritContext, NowGlassBlurQuality.Auto);
         }
 
         internal NowDrawScope Begin(
             Vector2 size,
             Vector2 positionOffset,
-            bool inheritMasks,
+            bool inheritContext,
             NowGlassBlurQuality glassBlurQuality)
         {
             ThrowIfDisposed();
@@ -113,7 +113,7 @@ namespace NowUI
             }
 
             var mask = new Vector4(0, 0, size.x, size.y);
-            Now.BeginMeshCapture(mask, inheritMasks);
+            Now.BeginMeshCapture(mask, inheritContext);
             return new NowDrawScope(this, positionOffset, true, glassQualityScope);
         }
 

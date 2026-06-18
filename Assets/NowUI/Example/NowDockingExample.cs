@@ -30,9 +30,7 @@ public sealed class NowDockingExample : MonoBehaviour
 
     void OnPostRender()
     {
-        Now.StartUI();
-
-        using (NowInput.Begin(new Vector2(Screen.width, Screen.height)))
+        using (Now.StartUI())
         {
             SubmitWindows();
 
@@ -47,8 +45,6 @@ public sealed class NowDockingExample : MonoBehaviour
                 .SetMinPaneSize(140f)
                 .Draw();
         }
-
-        Now.FlushUI();
     }
 
     void SubmitWindows()

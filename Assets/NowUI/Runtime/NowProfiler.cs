@@ -53,6 +53,6 @@ namespace NowUI
         public static readonly ProfilerMarker WorldRebuild = new ProfilerMarker("Now.World.Rebuild");
 
         /// <summary>The screen path's end-of-frame GL submission.</summary>
-        public static readonly ProfilerMarker FlushUI = new ProfilerMarker("Now.FlushUI");
+        public static readonly ProfilerMarker ScreenFrameEnd = new ProfilerMarker("Now.ScreenFrame.End");
     }
 }

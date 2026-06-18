@@ -389,7 +389,7 @@ namespace NowUI
                 {
                     float compositionX = PrefixAdvance(fontAsset, resolvedFont, display, state.caret, fontSize);
 
-                    float underlineHeight = NowControls.ScaleValue(theme.controlStyles.compositionUnderlineHeight);
+                    float underlineHeight = theme.controlStyles.compositionUnderlineHeight;
                     renderer.DrawCompositionUnderline(theme, new NowRect(
                         textX + compositionX,
                         inner.yMax - underlineHeight,
@@ -399,7 +399,7 @@ namespace NowUI
 
                 if (focused && NowControlState.Blink(1f, blinkAnchor))
                 {
-                    renderer.DrawCaret(theme, new NowRect(textX + caretX, inner.y, NowControls.ScaleValue(theme.controlStyles.caretWidth), inner.height));
+                    renderer.DrawCaret(theme, new NowRect(textX + caretX, inner.y, theme.controlStyles.caretWidth, inner.height));
                 }
             }
 

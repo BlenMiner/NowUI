@@ -1,3 +1,4 @@
+using System;
 using NowUI.Internal;
 using UnityEngine;
 
@@ -179,6 +180,41 @@ namespace NowUI
 
         static StaticList<Vector2> _lineStrokeNormals = new StaticList<Vector2>(64);
 
+        static Material _bezierMaterial;
+
+        static int _bezierMesh = -1;
+
+        static StaticList<Vector2> _bezierPoints = new StaticList<Vector2>(128);
+
+        static StaticList<float> _bezierT = new StaticList<float>(128);
+
+        static StaticList<Vector2> _bezierNormals = new StaticList<Vector2>(128);
+
+        static Material GetBezierMaterial()
+        {
+            if (_bezierMaterial != null)
+                return _bezierMaterial;
+
+            var template = Resources.Load<Material>("NowUI/BezierMaterial");
+
+            if (template != null)
+                _bezierMaterial = new Material(template);
+            else
+            {
+                var shader = Shader.Find("NowUI/UI Bezier");
+
+                if (shader == null)
+                    return null;
+
+                _bezierMaterial = new Material(shader);
+            }
+
+            _bezierMaterial.name = "NowUI Bezier";
+            _bezierMaterial.hideFlags = HideFlags.HideAndDontSave;
+
+            return _bezierMaterial;
+        }
+
         public static NowLine Line(Vector2 from, Vector2 to)
         {
             return new NowLine(from, to);
@@ -199,6 +235,8 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || _defaultMaterial == null || line.width <= 0f)
                 return;
 
+            bool hasTransform = _transformStack.Count > 0;
+
             var color = ApplyColorMultiplier(line.color);
 
             if (color.w <= 0.0005f)
@@ -206,12 +244,46 @@ namespace NowUI
 
             _linePoints.Clear();
 
+            // Transform line positions if transform is active
+            Vector2 from = hasTransform ? ApplyTransform(line.from) : line.from;
+            Vector2 to = hasTransform ? ApplyTransform(line.to) : line.to;
+            Vector2 control1 = hasTransform ? ApplyTransform(line.control1) : line.control1;
+            Vector2 control2 = hasTransform ? ApplyTransform(line.control2) : line.control2;
+
+            // Scale width by transform
+            float scaledWidth = hasTransform ? ApplyTransformScalar(line.width) : line.width;
+
+            // Solid cubic Beziers use a dedicated shader that AA's against the true
+            // curve. It's immediate-mode only, so skip it during canvas/capture builds.
+            bool solidCubic = line.cubic
+                && !_captureMesh
+                && !(line.dashLength > LineEpsilon && line.dashGap > LineEpsilon)
+                && line.arrows == NowLineArrow.None;
+
+            if (solidCubic && GetBezierMaterial() != null)
+            {
+                var bezierMask = line.mask;
+
+                if (hasTransform && !bezierMask.isEmpty)
+                    bezierMask = ApplyTransformRect(bezierMask);
+
+                bezierMask = ApplyAmbientMask(bezierMask);
+
+                if (!bezierMask.isEmpty)
+                    DrawBezierStroke(from, control1, control2, to, scaledWidth, color, bezierMask, line.cap);
+
+                return;
+            }
+
+            // Scale tolerance by transform for consistent flattening
+            float tolerance = ScreenPixelsToUiUnits(LineFlattenTolerance);
+
             if (line.cubic)
-                FlattenLineCubic(line.from, line.control1, line.control2, line.to, ScreenPixelsToUiUnits(LineFlattenTolerance), ref _linePoints);
+                FlattenLineCubic(from, control1, control2, to, tolerance, ref _linePoints);
             else
             {
-                AddLinePoint(ref _linePoints, line.from);
-                AddLinePoint(ref _linePoints, line.to);
+                AddLinePoint(ref _linePoints, from);
+                AddLinePoint(ref _linePoints, to);
             }
 
             if (_linePoints.count < 2)
@@ -222,7 +294,7 @@ namespace NowUI
             if (line.dashLength > LineEpsilon && line.dashGap > LineEpsilon)
                 EmitDashedLine(ref _linePoints, line, color, _lineBuffer);
             else
-                EmitLineStroke(ref _linePoints, false, line.width, line.cap, color, _lineBuffer);
+                EmitLineStroke(ref _linePoints, false, scaledWidth, line.cap, color, _lineBuffer);
 
             if ((line.arrows & NowLineArrow.Start) != 0)
                 EmitLineArrow(ref _linePoints, false, line, color, _lineBuffer);
@@ -233,7 +305,12 @@ namespace NowUI
             if (_lineBuffer.positions.count == 0 || _lineBuffer.indices.count == 0)
                 return;
 
-            var mask = ApplyAmbientMask(line.mask);
+            var mask = line.mask;
+
+            if (hasTransform && !mask.isEmpty)
+                mask = ApplyTransformRect(mask);
+
+            mask = ApplyAmbientMask(mask);
 
             if (mask.isEmpty)
                 return;
@@ -245,6 +322,223 @@ namespace NowUI
 
             mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, _lineBuffer.positions.count);
             mesh.AddGeometry(_lineBuffer, Vector2.zero, 1f, Vector4.one, mask);
+        }
+
+        internal static void DrawPolyline(ReadOnlySpan<Vector2> points, float width, NowLineCap cap, Vector4 color, NowRect mask = default)
+        {
+            if (_suppressDrawDepth > 0 || _defaultMaterial == null || width <= 0f || points.Length < 2)
+                return;
+
+            bool hasTransform = _transformStack.Count > 0;
+
+            color = ApplyColorMultiplier(color);
+
+            if (color.w <= 0.0005f)
+                return;
+
+            _linePoints.Clear();
+
+            for (int i = 0; i < points.Length; ++i)
+            {
+                Vector2 point = hasTransform ? ApplyTransform(points[i]) : points[i];
+                AddLinePointIfDistinct(ref _linePoints, point);
+            }
+
+            if (_linePoints.count < 2)
+                return;
+
+            _lineBuffer.Clear();
+            float scaledWidth = hasTransform ? ApplyTransformScalar(width) : width;
+            EmitLineStroke(ref _linePoints, false, scaledWidth, cap, color, _lineBuffer);
+
+            if (_lineBuffer.positions.count == 0 || _lineBuffer.indices.count == 0)
+                return;
+
+            if (hasTransform && !mask.isEmpty)
+                mask = ApplyTransformRect(mask);
+
+            mask = ApplyAmbientMask(mask);
+
+            if (mask.isEmpty)
+                return;
+
+            var mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
+
+            if (mesh == null)
+                return;
+
+            mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, _lineBuffer.positions.count);
+            mesh.AddGeometry(_lineBuffer, Vector2.zero, 1f, Vector4.one, mask);
+        }
+
+        static void AddBezierPoint(Vector2 pos, float t)
+        {
+            _bezierPoints.EnsureCapacity(1);
+            _bezierT.EnsureCapacity(1);
+            _bezierPoints.array[_bezierPoints.count++] = pos;
+            _bezierT.array[_bezierT.count++] = t;
+        }
+
+        static void FlattenCubicT(
+            Vector2 p0,
+            Vector2 p1,
+            Vector2 p2,
+            Vector2 p3,
+            float t0,
+            float t1,
+            float tolerance,
+            int depth)
+        {
+            if (depth >= 18 || IsLineCubicFlat(p0, p1, p2, p3, tolerance))
+            {
+                AddBezierPoint(p3, t1);
+                return;
+            }
+
+            Vector2 p01 = (p0 + p1) * 0.5f;
+            Vector2 p12 = (p1 + p2) * 0.5f;
+            Vector2 p23 = (p2 + p3) * 0.5f;
+            Vector2 p012 = (p01 + p12) * 0.5f;
+            Vector2 p123 = (p12 + p23) * 0.5f;
+            Vector2 mid = (p012 + p123) * 0.5f;
+            float tm = (t0 + t1) * 0.5f;
+
+            FlattenCubicT(p0, p01, p012, mid, t0, tm, tolerance, depth + 1);
+            FlattenCubicT(mid, p123, p23, p3, tm, t1, tolerance, depth + 1);
+        }
+
+        static int AddBezierVertex(
+            NowMesh mesh,
+            Vector2 uiPos,
+            float t,
+            Vector4 cp01,
+            Vector4 cp23,
+            Vector4 color,
+            float halfWidth,
+            float aaWidth,
+            Vector4 mask)
+        {
+            return mesh.AddRawVertexUnchecked(
+                new Vector3(uiPos.x, -uiPos.y, 0f),
+                Vector2.zero,
+                cp01,
+                cp23,
+                color,
+                Vector4.zero,
+                new Vector4(halfWidth, aaWidth, t, 0f),
+                mask,
+                new Vector4(uiPos.x, uiPos.y, 0f, 0f));
+        }
+
+        static void DrawBezierStroke(
+            Vector2 p0,
+            Vector2 p1,
+            Vector2 p2,
+            Vector2 p3,
+            float width,
+            Vector4 color,
+            NowRect mask,
+            NowLineCap cap)
+        {
+            float halfWidth = width * 0.5f;
+
+            if (halfWidth <= 0f)
+                return;
+
+            float aaWidth = ScreenPixelsToUiUnits(LineAaWidth);
+            float flattenTolerance = ScreenPixelsToUiUnits(1f);
+            float extend = halfWidth + aaWidth + ScreenPixelsToUiUnits(2f);
+            bool roundCap = cap == NowLineCap.Round;
+
+            _bezierPoints.Clear();
+            _bezierT.Clear();
+            AddBezierPoint(p0, 0f);
+            FlattenCubicT(p0, p1, p2, p3, 0f, 1f, flattenTolerance, 0);
+
+            int count = _bezierPoints.count;
+
+            if (count < 2)
+                return;
+
+            _bezierNormals.Clear();
+            _bezierNormals.EnsureCapacity(count);
+
+            for (int i = 0; i < count; ++i)
+            {
+                Vector2 cur = _bezierPoints.array[i];
+                Vector2 prev = i > 0 ? _bezierPoints.array[i - 1] : cur;
+                Vector2 next = i < count - 1 ? _bezierPoints.array[i + 1] : cur;
+
+                Vector2 inDir = NormalizeLineVector(cur - prev);
+                Vector2 outDir = NormalizeLineVector(next - cur);
+
+                if (inDir == Vector2.zero)
+                    inDir = outDir;
+
+                if (outDir == Vector2.zero)
+                    outDir = inDir;
+
+                Vector2 inNormal = new Vector2(inDir.y, -inDir.x);
+                Vector2 outNormal = new Vector2(outDir.y, -outDir.x);
+                Vector2 average = NormalizeLineVector(inNormal + outNormal);
+
+                if (average == Vector2.zero)
+                    average = inNormal;
+
+                float miter = Vector2.Dot(average, outNormal);
+                float scale = 1f / Mathf.Max(0.35f, Mathf.Abs(miter));
+                _bezierNormals.array[_bezierNormals.count++] = average * scale;
+            }
+
+            var material = GetBezierMaterial();
+
+            if (material == null)
+                return;
+
+            int segmentCount = count - 1;
+            var mesh = UseMaterial(material, ref _bezierMesh, NowMeshKind.Bezier);
+
+            if (mesh == null)
+                return;
+
+            mesh = EnsureMeshCapacity(mesh, material, NowMeshKind.Bezier, segmentCount * 4);
+            mesh.EnsureRawCapacity(segmentCount * 4, segmentCount * 6);
+
+            var maskVec = new Vector4(mask.x, mask.y, mask.width, mask.height);
+            var cp01 = new Vector4(p0.x, p0.y, p1.x, p1.y);
+            var cp23 = new Vector4(p2.x, p2.y, p3.x, p3.y);
+
+            for (int i = 0; i < segmentCount; ++i)
+            {
+                Vector2 a = _bezierPoints.array[i];
+                Vector2 b = _bezierPoints.array[i + 1];
+                Vector2 na = _bezierNormals.array[i] * extend;
+                Vector2 nb = _bezierNormals.array[i + 1] * extend;
+                float ta = _bezierT.array[i];
+                float tb = _bezierT.array[i + 1];
+
+                Vector2 aPos = a;
+                Vector2 bPos = b;
+
+                if (roundCap)
+                {
+                    Vector2 segDir = NormalizeLineVector(b - a);
+
+                    if (i == 0)
+                        aPos = a - segDir * extend;
+
+                    if (i == segmentCount - 1)
+                        bPos = b + segDir * extend;
+                }
+
+                int v0 = AddBezierVertex(mesh, aPos + na, ta, cp01, cp23, color, halfWidth, aaWidth, maskVec);
+                int v1 = AddBezierVertex(mesh, bPos + nb, tb, cp01, cp23, color, halfWidth, aaWidth, maskVec);
+                int v2 = AddBezierVertex(mesh, bPos - nb, tb, cp01, cp23, color, halfWidth, aaWidth, maskVec);
+                int v3 = AddBezierVertex(mesh, aPos - na, ta, cp01, cp23, color, halfWidth, aaWidth, maskVec);
+
+                mesh.AddRawTriangleUnchecked(v0, v1, v2);
+                mesh.AddRawTriangleUnchecked(v0, v2, v3);
+            }
         }
 
         static void FlattenLineCubic(
@@ -304,17 +598,21 @@ namespace NowUI
             Vector4 color,
             NowLottieDrawBuffer buffer)
         {
-            float dash = Mathf.Max(line.dashLength, 0f);
-            float gap = Mathf.Max(line.dashGap, 0f);
+            bool hasTransform = _transformStack.Count > 0;
+            float scaledWidth = hasTransform ? ApplyTransformScalar(line.width) : line.width;
+            float scalar = hasTransform ? ApplyTransformScalar(1f) : 1f;
+
+            float dash = Mathf.Max(line.dashLength * scalar, 0f);
+            float gap = Mathf.Max(line.dashGap * scalar, 0f);
             float pattern = dash + gap;
 
             if (dash <= LineEpsilon || gap <= LineEpsilon || pattern <= LineEpsilon)
             {
-                EmitLineStroke(ref points, false, line.width, line.cap, color, buffer);
+                EmitLineStroke(ref points, false, scaledWidth, line.cap, color, buffer);
                 return;
             }
 
-            float phase = Mathf.Repeat(line.dashOffset, pattern);
+            float phase = Mathf.Repeat(line.dashOffset * scalar, pattern);
             bool drawing = phase < dash;
             float remaining = drawing ? dash - phase : pattern - phase;
 
@@ -355,7 +653,7 @@ namespace NowUI
                     if (remaining - step <= LineEpsilon)
                     {
                         if (drawing && _lineDashPoints.count >= 2)
-                            EmitLineStroke(ref _lineDashPoints, false, line.width, line.cap, color, buffer);
+                            EmitLineStroke(ref _lineDashPoints, false, scaledWidth, line.cap, color, buffer);
 
                         _lineDashPoints.Clear();
                         drawing = !drawing;
@@ -369,7 +667,7 @@ namespace NowUI
             }
 
             if (drawing && _lineDashPoints.count >= 2)
-                EmitLineStroke(ref _lineDashPoints, false, line.width, line.cap, color, buffer);
+                EmitLineStroke(ref _lineDashPoints, false, scaledWidth, line.cap, color, buffer);
 
             _lineDashPoints.Clear();
         }
@@ -384,12 +682,23 @@ namespace NowUI
             if (!TryGetLineTangent(ref points, atEnd, out var tip, out var direction))
                 return;
 
+            bool hasTransform = _transformStack.Count > 0;
+            float scaledWidth = hasTransform ? ApplyTransformScalar(line.width) : line.width;
+
             float length = line.arrowLength > LineEpsilon
                 ? line.arrowLength
                 : Mathf.Max(line.width * 4f, 10f);
             float width = line.arrowWidth > LineEpsilon
                 ? line.arrowWidth
                 : Mathf.Max(line.width * 3f, length * 0.6f);
+
+            // Scale arrow dimensions by transform
+            if (hasTransform)
+            {
+                float avgScale = (Mathf.Abs(currentTransform.scale.x) + Mathf.Abs(currentTransform.scale.y)) * 0.5f;
+                length *= avgScale;
+                width *= avgScale;
+            }
 
             Vector2 normal = new Vector2(direction.y, -direction.x);
             Vector2 baseCenter = tip - direction * length;
@@ -399,12 +708,12 @@ namespace NowUI
             _lineDashPoints.Clear();
             AddLinePoint(ref _lineDashPoints, sideA);
             AddLinePoint(ref _lineDashPoints, tip);
-            EmitLineStroke(ref _lineDashPoints, false, line.width, NowLineCap.Round, color, buffer);
+            EmitLineStroke(ref _lineDashPoints, false, scaledWidth, NowLineCap.Round, color, buffer);
 
             _lineDashPoints.Clear();
             AddLinePoint(ref _lineDashPoints, tip);
             AddLinePoint(ref _lineDashPoints, sideB);
-            EmitLineStroke(ref _lineDashPoints, false, line.width, NowLineCap.Round, color, buffer);
+            EmitLineStroke(ref _lineDashPoints, false, scaledWidth, NowLineCap.Round, color, buffer);
 
             _lineDashPoints.Clear();
         }

@@ -46,6 +46,37 @@ public class NowWorldGraphicTests
         }
     }
 
+    sealed class CurveWorldGraphic : NowWorldGraphic
+    {
+        const string CurveId = "world-curve";
+
+        public INowInputProvider provider;
+        public AnimationCurve curve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+        public bool hovered;
+        public bool open;
+        public int controlId;
+
+        protected override INowInputProvider GetInputProvider()
+        {
+            return provider;
+        }
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            var field = new NowRect(10f, 70f, 190f, 34f);
+            controlId = NowControls.ResolveNavigationTargetId(CurveId);
+
+            hovered = NowInput.IsHovered(field);
+
+            Now.AnimationCurveField(field, CurveId)
+                .SetTimeRange(0f, 1f)
+                .SetValueRange(0f, 1f)
+                .Draw(ref curve);
+
+            open = NowControlState.Get<bool>(controlId);
+        }
+    }
+
     sealed class LayoutWorldGraphic : NowWorldGraphic
     {
         public bool stretchItems;
@@ -156,6 +187,8 @@ public class NowWorldGraphicTests
         NowControlState.Reset();
         NowControls.Reset();
         NowLayout.Reset();
+        NowOverlay.Reset();
+        NowContextMenu.Reset();
     }
 
     [Test]
@@ -747,6 +780,83 @@ public class NowWorldGraphicTests
     }
 
     [Test]
+    public void WorldGraphicInputIgnoresOuterTransformStack()
+    {
+        var provider = new FakeProvider();
+        var go = new GameObject("Now World Transform Input");
+
+        try
+        {
+            var graphic = go.AddComponent<ClickWorldGraphic>();
+            graphic.provider = provider;
+            graphic.size = new Vector2(100f, 50f);
+
+            provider.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), true, true, false);
+
+            using (Now.Transform(2f, new Vector2(100f, 100f)))
+                graphic.RebuildNowUI();
+
+            provider.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), false, false, true);
+
+            using (Now.Transform(2f, new Vector2(100f, 100f)))
+                graphic.RebuildNowUI();
+
+            Assert.IsTrue(graphic.clicked, "A retained world graphic capture must not inherit an unrelated transform stack for hit testing.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void WorldGraphicAnimationCurveFieldClickAddsPopupGeometry()
+    {
+        var provider = new FakeProvider();
+        var go = new GameObject("Now World Curve Popup");
+
+        try
+        {
+            var graphic = go.AddComponent<CurveWorldGraphic>();
+            graphic.provider = provider;
+            graphic.size = new Vector2(210f, 154f);
+            graphic.layoutAutoSizeAxes = NowWorldAutoSizeAxes.Both;
+
+            provider.snapshot = default;
+            graphic.RebuildNowUI();
+
+            var mesh = go.GetComponent<MeshFilter>().sharedMesh;
+            int closedVertexCount = mesh.vertexCount;
+            var closedBounds = mesh.bounds;
+            var fieldPoint = new Vector2(32f, 88f);
+
+            provider.snapshot = new NowInputSnapshot(fieldPoint, true, true, false);
+            graphic.RebuildNowUI();
+            Assert.AreNotEqual(0, NowInput.activeId, "Pressing the curve field must capture active pointer input.");
+            int pressedId = NowInput.activeId;
+            Assert.AreEqual(graphic.controlId, pressedId, "The curve field press must capture the same id used by its open state.");
+            Assert.IsFalse(NowInput.hasContext, "World graphic input should restore the previous input context after rebuilding.");
+
+            provider.snapshot = new NowInputSnapshot(fieldPoint, false, false, true);
+            Assert.AreEqual(pressedId, NowInput.activeId, "The active id must survive until the release frame begins.");
+            graphic.RebuildNowUI();
+            Assert.AreEqual(pressedId, graphic.controlId, "The curve field id must stay stable between press and release.");
+            Assert.AreEqual(0, NowInput.activeId, $"Releasing the curve field should clear active pointer input captured by id {pressedId}.");
+            Assert.IsTrue(graphic.hovered, "Releasing over the curve field should still hover it.");
+            Assert.IsTrue(graphic.open, "Clicking the curve field should toggle its popup open state.");
+
+            mesh = go.GetComponent<MeshFilter>().sharedMesh;
+
+            Assert.Greater(mesh.vertexCount, closedVertexCount, "Opening the curve popup must add deferred overlay geometry to the world mesh.");
+            Assert.Greater(mesh.bounds.size.y, closedBounds.size.y, "The world mesh bounds must include popup geometry outside the base panel.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
     public void DepthModeUsesMaterialClone()
     {
         var baseMaterial = Resources.Load<Material>("NowUI/UIMaterial");
@@ -790,23 +900,25 @@ public class NowWorldGraphicTests
 
             Assert.NotNull(material);
             Assert.AreNotSame(baseMaterial, material);
-            Assert.AreEqual(0f, material.GetFloat("_NowGlassUseBackdrop"), 0.001f);
-            Assert.AreEqual(1f, material.GetFloat("_NowGlassUseSceneDepth"), 0.001f);
+            Assert.AreEqual(1f, material.GetFloat("_NowMaterialGlassMode"), 0.001f);
+            Assert.AreEqual(0f, material.GetFloat("_NowMaterialGlassUseBackdrop"), 0.001f);
+            Assert.AreEqual(1f, material.GetFloat("_NowMaterialGlassUseSceneDepth"), 0.001f);
 
             graphic.ApplyGlassBackdropTexture(Texture2D.whiteTexture, Texture2D.blackTexture);
             material = go.GetComponent<MeshRenderer>().sharedMaterial;
 
             Assert.NotNull(material);
-            Assert.AreEqual(1f, material.GetFloat("_NowGlassUseBackdrop"), 0.001f);
-            Assert.AreSame(Texture2D.whiteTexture, material.GetTexture("_NowBackdropTex"));
-            Assert.AreSame(Texture2D.blackTexture, material.GetTexture("_NowGlassSharpBackdropTex"));
+            Assert.AreEqual(1f, material.GetFloat("_NowMaterialGlassUseBackdrop"), 0.001f);
+            Assert.AreSame(Texture2D.whiteTexture, material.GetTexture("_NowMaterialBackdropTex"));
+            Assert.AreSame(Texture2D.blackTexture, material.GetTexture("_NowMaterialGlassSharpBackdropTex"));
 
             graphic.glassBackdropMode = NowWorldGlassBackdropMode.TintOnly;
             material = go.GetComponent<MeshRenderer>().sharedMaterial;
 
             Assert.NotNull(material);
-            Assert.AreEqual(0f, material.GetFloat("_NowGlassUseBackdrop"), 0.001f);
-            Assert.AreEqual(0f, material.GetFloat("_NowGlassUseSceneDepth"), 0.001f);
+            Assert.AreEqual(1f, material.GetFloat("_NowMaterialGlassMode"), 0.001f);
+            Assert.AreEqual(0f, material.GetFloat("_NowMaterialGlassUseBackdrop"), 0.001f);
+            Assert.AreEqual(0f, material.GetFloat("_NowMaterialGlassUseSceneDepth"), 0.001f);
         }
         finally
         {

@@ -322,12 +322,13 @@ namespace NowUI
     public class NowWorldGraphic : MonoBehaviour
     {
         static readonly int _zTestId = Shader.PropertyToID("_ZTest");
-        static readonly int _nowBackdropTexId = Shader.PropertyToID("_NowBackdropTex");
-        static readonly int _nowBackdropUvTransformId = Shader.PropertyToID("_NowBackdropUVTransform");
-        static readonly int _nowGlassSharpBackdropTexId = Shader.PropertyToID("_NowGlassSharpBackdropTex");
-        static readonly int _nowGlassUseBackdropId = Shader.PropertyToID("_NowGlassUseBackdrop");
-        static readonly int _nowGlassUseSceneDepthId = Shader.PropertyToID("_NowGlassUseSceneDepth");
-        static readonly int _nowGlassDepthEpsilonId = Shader.PropertyToID("_NowGlassDepthEpsilon");
+        static readonly int _nowMaterialGlassModeId = Shader.PropertyToID("_NowMaterialGlassMode");
+        static readonly int _nowBackdropTexId = Shader.PropertyToID("_NowMaterialBackdropTex");
+        static readonly int _nowBackdropUvTransformId = Shader.PropertyToID("_NowMaterialBackdropUVTransform");
+        static readonly int _nowGlassSharpBackdropTexId = Shader.PropertyToID("_NowMaterialGlassSharpBackdropTex");
+        static readonly int _nowGlassUseBackdropId = Shader.PropertyToID("_NowMaterialGlassUseBackdrop");
+        static readonly int _nowGlassUseSceneDepthId = Shader.PropertyToID("_NowMaterialGlassUseSceneDepth");
+        static readonly int _nowGlassDepthEpsilonId = Shader.PropertyToID("_NowMaterialGlassDepthEpsilon");
         const float InputOcclusionEpsilon = 0.0001f;
         const float GlassDepthEpsilon = 0.02f;
         const float GlassSceneDepthBlurThreshold = 0.25f;
@@ -681,6 +682,21 @@ namespace NowUI
 
         protected virtual bool useLayoutMeasurePass => true;
 
+        struct FrameContent : INowFrameContent
+        {
+            readonly NowWorldGraphic _owner;
+
+            public FrameContent(NowWorldGraphic owner)
+            {
+                _owner = owner;
+            }
+
+            public void Draw(NowRect rect)
+            {
+                _owner.DrawNowUI(rect);
+            }
+        }
+
         public Mesh mesh => _drawList?.mesh;
 
         public int batchCount => _drawList?.batchCount ?? 0;
@@ -702,16 +718,12 @@ namespace NowUI
             var currentSize = SanitizeSize(_size);
             _size = currentSize;
             _pixelsPerUnit = SanitizePixelsPerUnit(_pixelsPerUnit);
-            float previousScale = Now.uiScale;
             NowDrawScope scope = default;
-            bool repaintTracking = false;
+            var frame = NowFrame.Begin(ResolveScreenPixelsPerUIUnit(currentSize), trackRepaint: true);
+            _wantsInteractionRepaint = false;
 
             try
             {
-                Now.SetUIScale(ResolveScreenPixelsPerUIUnit(currentSize));
-                NowControlState.BeginRepaintTracking();
-                repaintTracking = true;
-
                 if (_layoutAutoSizeAxes != NowWorldAutoSizeAxes.None)
                 {
                     currentSize = ResolveLayoutAutoSize(currentSize);
@@ -726,26 +738,15 @@ namespace NowUI
                 {
                     StoreLastInteractionInput(NowInput.current, currentSize);
 
-                    if (useLayoutMeasurePass)
-                    {
-                        int layoutCounter = NowLayout.BeginMeasurePass();
-
-                        try
-                        {
-                            DrawNowUI(new NowRect(0f, 0f, currentSize.x, currentSize.y));
-                        }
-                        finally
-                        {
-                            NowLayout.EndMeasurePass(layoutCounter);
-                        }
-                    }
-
-                    DrawNowUI(new NowRect(0f, 0f, currentSize.x, currentSize.y));
-                    NowOverlay.Flush();
+                    var content = new FrameContent(this);
+                    NowFrame.DrawContent(
+                        ref content,
+                        new NowRect(0f, 0f, currentSize.x, currentSize.y),
+                        useLayoutMeasurePass,
+                        trackContent: false);
                 }
 
-                _wantsInteractionRepaint = NowControlState.EndRepaintTracking();
-                repaintTracking = false;
+                _wantsInteractionRepaint = frame.EndRepaintTracking();
                 scope.Dispose();
                 ApplyWorldTransform();
                 ApplyRendererState();
@@ -753,9 +754,6 @@ namespace NowUI
             }
             catch (Exception ex)
             {
-                if (repaintTracking)
-                    NowControlState.EndRepaintTracking();
-
                 scope.Cancel();
                 _drawList.Clear();
                 ApplyRendererState();
@@ -763,7 +761,7 @@ namespace NowUI
             }
             finally
             {
-                Now.SetUIScale(previousScale);
+                frame.Dispose();
             }
         }
 
@@ -916,7 +914,7 @@ namespace NowUI
         {
             Vector2 measured;
 
-            using (NowInput.Begin(GetInputProvider(), new NowInputSurface(availableSize)))
+            using (NowInput.BeginMeasurement(GetInputProvider(), new NowInputSurface(availableSize)))
             using (NowControls.IdScope(GetScopeId()))
             {
                 measured = MeasureLayoutContent(availableSize);
@@ -944,26 +942,10 @@ namespace NowUI
 
         Vector2 MeasureLayoutContent(Vector2 availableSize)
         {
-            int layoutCounter = NowLayout.BeginMeasurePass();
-            bool tracking = false;
-
-            try
-            {
-                NowLayout.BeginContentTracking();
-                tracking = true;
-
-                DrawNowUI(new NowRect(0f, 0f, availableSize.x, availableSize.y));
-
-                tracking = false;
-                return NowLayout.EndContentTracking();
-            }
-            finally
-            {
-                if (tracking)
-                    NowLayout.EndContentTracking();
-
-                NowLayout.EndMeasurePass(layoutCounter);
-            }
+            var content = new FrameContent(this);
+            return NowFrame.MeasureContent(
+                ref content,
+                new NowRect(0f, 0f, availableSize.x, availableSize.y));
         }
 
         protected virtual void OnEnable()
@@ -1296,6 +1278,7 @@ namespace NowUI
                 if (!material)
                     continue;
 
+                material.SetFloat(_nowMaterialGlassModeId, 1f);
                 material.SetTexture(_nowBackdropTexId, fallback);
                 material.SetTexture(_nowGlassSharpBackdropTexId, sharpFallback);
                 material.SetVector(_nowBackdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
@@ -1371,6 +1354,7 @@ namespace NowUI
             bool useBackdrop = _glassBackdropTexture &&
                 glassBackdropMode != NowWorldGlassBackdropMode.TintOnly;
 
+            material.SetFloat(_nowMaterialGlassModeId, 1f);
             material.SetTexture(_nowBackdropTexId, _glassBackdropTexture ? _glassBackdropTexture : Texture2D.blackTexture);
             material.SetTexture(
                 _nowGlassSharpBackdropTexId,

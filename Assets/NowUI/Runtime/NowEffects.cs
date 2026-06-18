@@ -235,7 +235,7 @@ namespace NowUI
             try
             {
                 captureProfile = NowProfiler.EffectsCapture.Auto();
-                var drawScope = entry.capture.Begin(CaptureSize(), Vector2.zero, inheritMasks: true);
+                var drawScope = entry.capture.Begin(CaptureSize(), Vector2.zero, inheritContext: true);
                 return new NowModifierScope<TDeformer>(
                     id,
                     entry,
@@ -273,7 +273,7 @@ namespace NowUI
             try
             {
                 captureProfile = NowProfiler.EffectsCapture.Auto();
-                var drawScope = entry.capture.Begin(CaptureSize(), Vector2.zero, inheritMasks: true);
+                var drawScope = entry.capture.Begin(CaptureSize(), Vector2.zero, inheritContext: true);
                 return new NowSnapshotScope(id, entry, temporary, rect, drawScope, captureProfile);
             }
             catch
@@ -324,7 +324,7 @@ namespace NowUI
                     var target = entry.GetTarget(textureRect);
                     Now.RenderDrawListToTexture(entry.capture, textureRect, target, entry.commandBuffer);
 
-                    using (entry.surface.Begin(CaptureSize(), Vector2.zero, inheritMasks: true))
+                    using (entry.surface.Begin(CaptureSize(), Vector2.zero, inheritContext: true))
                     {
                         Now.Rectangle(textureRect)
                             .SetTexture(target)

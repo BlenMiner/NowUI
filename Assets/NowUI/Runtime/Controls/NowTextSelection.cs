@@ -164,9 +164,10 @@ namespace NowUI
                 NowControlState.RequestRepaint();
             }
 
+            bool ownsFocus = NowFocus.focusedId == id;
             bool focused = NowFocus.IsFocused(id);
 
-            if (!focused && !interaction.held && state.hasSelection)
+            if (!ownsFocus && !interaction.held && state.hasSelection)
                 state.anchor = state.caret;
 
             if (focused && !NowInput.isPassive)

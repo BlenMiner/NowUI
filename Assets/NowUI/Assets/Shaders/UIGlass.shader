@@ -3,12 +3,13 @@ Shader "NowUI/UI Glass"
     Properties
     {
         _ZTest ("ZTest", Float) = 8
-        [HideInInspector] _NowBackdropTex ("Backdrop", 2D) = "black" {}
-        [HideInInspector] _NowGlassSharpBackdropTex ("Sharp Backdrop", 2D) = "black" {}
-        [HideInInspector] _NowBackdropUVTransform ("Backdrop UV Transform", Vector) = (1, 1, 0, 0)
-        [HideInInspector] _NowGlassUseBackdrop ("Use Backdrop", Float) = 0
-        [HideInInspector] _NowGlassUseSceneDepth ("Use Scene Depth", Float) = 0
-        [HideInInspector] _NowGlassDepthEpsilon ("Depth Epsilon", Float) = 0.02
+        [HideInInspector] _NowMaterialGlassMode ("Material Glass Mode", Float) = 0
+        [HideInInspector] _NowMaterialBackdropTex ("Material Backdrop", 2D) = "black" {}
+        [HideInInspector] _NowMaterialGlassSharpBackdropTex ("Material Sharp Backdrop", 2D) = "black" {}
+        [HideInInspector] _NowMaterialBackdropUVTransform ("Material Backdrop UV Transform", Vector) = (1, 1, 0, 0)
+        [HideInInspector] _NowMaterialGlassUseBackdrop ("Material Use Backdrop", Float) = 0
+        [HideInInspector] _NowMaterialGlassUseSceneDepth ("Material Use Scene Depth", Float) = 0
+        [HideInInspector] _NowMaterialGlassDepthEpsilon ("Material Depth Epsilon", Float) = 0.02
     }
     SubShader
     {
@@ -67,6 +68,13 @@ Shader "NowUI/UI Glass"
             UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);
             float _NowGlassUseSceneDepth;
             float _NowGlassDepthEpsilon;
+            float _NowMaterialGlassMode;
+            sampler2D _NowMaterialBackdropTex;
+            sampler2D _NowMaterialGlassSharpBackdropTex;
+            float4 _NowMaterialBackdropUVTransform;
+            float _NowMaterialGlassUseBackdrop;
+            float _NowMaterialGlassUseSceneDepth;
+            float _NowMaterialGlassDepthEpsilon;
 
             float sdRoundedBox(float2 p, float2 b, float4 r)
             {
@@ -120,24 +128,41 @@ Shader "NowUI/UI Glass"
                 float3 fillRgb = tint.rgb;
                 float fillCoverage = tint.a;
                 float2 screenUV = i.screenPos.xy / i.screenPos.w;
+                bool useMaterialBackdrop = _NowMaterialGlassMode > 0.5;
+                bool useBackdrop = useMaterialBackdrop
+                    ? _NowMaterialGlassUseBackdrop > 0.5
+                    : _NowGlassUseBackdrop > 0.5;
 
                 UNITY_BRANCH
-                if (_NowGlassUseBackdrop > 0.5)
+                if (useBackdrop)
                 {
-                    float2 backdropUV = screenUV * _NowBackdropUVTransform.xy + _NowBackdropUVTransform.zw;
+                    float4 uvTransform = useMaterialBackdrop
+                        ? _NowMaterialBackdropUVTransform
+                        : _NowBackdropUVTransform;
+                    float2 backdropUV = screenUV * uvTransform.xy + uvTransform.zw;
                     float2 clampedBackdropUV = saturate(backdropUV);
-                    float4 backdrop = tex2D(_NowBackdropTex, clampedBackdropUV);
+                    float4 backdrop = useMaterialBackdrop
+                        ? tex2D(_NowMaterialBackdropTex, clampedBackdropUV)
+                        : tex2D(_NowBackdropTex, clampedBackdropUV);
+                    float useSceneDepth = useMaterialBackdrop
+                        ? _NowMaterialGlassUseSceneDepth
+                        : _NowGlassUseSceneDepth;
+                    float depthEpsilon = useMaterialBackdrop
+                        ? _NowMaterialGlassDepthEpsilon
+                        : _NowGlassDepthEpsilon;
 
                     UNITY_BRANCH
-                    if (_NowGlassUseSceneDepth > 0.5)
+                    if (useSceneDepth > 0.5)
                     {
                         float sceneRawDepth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, screenUV);
                         float sceneEyeDepth = LinearEyeDepth(sceneRawDepth);
-                        bool foregroundScene = sceneEyeDepth < i.eyeDepth - _NowGlassDepthEpsilon;
+                        bool foregroundScene = sceneEyeDepth < i.eyeDepth - depthEpsilon;
 
                         UNITY_BRANCH
                         if (foregroundScene)
-                            backdrop = tex2D(_NowGlassSharpBackdropTex, clampedBackdropUV);
+                            backdrop = useMaterialBackdrop
+                                ? tex2D(_NowMaterialGlassSharpBackdropTex, clampedBackdropUV)
+                                : tex2D(_NowGlassSharpBackdropTex, clampedBackdropUV);
                     }
 
                     float luminance = dot(backdrop.rgb, float3(0.299, 0.587, 0.114));

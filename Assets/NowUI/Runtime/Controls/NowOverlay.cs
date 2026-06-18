@@ -24,6 +24,7 @@ namespace NowUI
             public DrawCallback drawWithState;
             public int state;
             public int overlayId;
+            public Now.NowTransformSnapshot transform;
         }
 
         struct OverlayBlock
@@ -58,12 +59,49 @@ namespace NowUI
             }
         }
 
+        internal static int currentFocusLayerId => CurrentOverlayId();
+
+        internal static int activeFocusLayerId
+        {
+            get
+            {
+                BeginFrameIfNeeded();
+
+                int current = FindTopOverlayId(_blocksCurrent);
+                int previous = FindTopOverlayId(_blocksPrevious);
+
+                if (current != 0 && previous != 0 && current != previous &&
+                    OverlayIdBelongsToTree(previous, current, _blocksPrevious))
+                {
+                    return previous;
+                }
+
+                if (current != 0)
+                    return current;
+
+                return previous;
+            }
+        }
+
         /// <summary>
         /// Queues a draw callback for the end of the frame and blocks pointer
         /// interaction inside <paramref name="blockRect"/> for everything that is
         /// not itself overlay content. Ignored during layout measure passes.
         /// </summary>
         public static void Defer(NowRect blockRect, Action draw)
+        {
+            if (draw == null || NowInput.isPassive)
+                return;
+
+            BeginFrameIfNeeded();
+            _deferred.Add(new DeferredDraw { draw = draw, transform = Now.CaptureTransform() });
+            _blocksCurrent.Add(new OverlayBlock { rect = Now.TransformScreenRect(blockRect), parentId = CurrentOverlayId() });
+        }
+
+        /// <summary>
+        /// Queues an overlay whose geometry is already in screen space.
+        /// </summary>
+        public static void DeferScreen(NowRect blockRect, Action draw)
         {
             if (draw == null || NowInput.isPassive)
                 return;
@@ -84,6 +122,25 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
+            _deferred.Add(new DeferredDraw
+            {
+                drawWithState = draw,
+                state = state,
+                overlayId = state,
+                transform = Now.CaptureTransform()
+            });
+            _blocksCurrent.Add(new OverlayBlock { rect = Now.TransformScreenRect(blockRect), id = state, parentId = CurrentOverlayId() });
+        }
+
+        /// <summary>
+        /// Queues a non-capturing screen-space overlay callback.
+        /// </summary>
+        public static void DeferScreen(NowRect blockRect, int state, DrawCallback draw)
+        {
+            if (draw == null || NowInput.isPassive)
+                return;
+
+            BeginFrameIfNeeded();
             _deferred.Add(new DeferredDraw { drawWithState = draw, state = state, overlayId = state });
             _blocksCurrent.Add(new OverlayBlock { rect = blockRect, id = state, parentId = CurrentOverlayId() });
         }
@@ -93,6 +150,18 @@ namespace NowUI
         /// for overlays that manage their own draw order (modal scrims).
         /// </summary>
         public static void Block(NowRect blockRect)
+        {
+            if (NowInput.isPassive)
+                return;
+
+            BeginFrameIfNeeded();
+            _blocksCurrent.Add(new OverlayBlock { rect = Now.TransformScreenRect(blockRect), parentId = CurrentOverlayId() });
+        }
+
+        /// <summary>
+        /// Blocks pointer interaction inside a screen-space rect.
+        /// </summary>
+        public static void BlockScreen(NowRect blockRect)
         {
             if (NowInput.isPassive)
                 return;
@@ -207,6 +276,20 @@ namespace NowUI
             return false;
         }
 
+        static bool OverlayIdBelongsToTree(int id, int rootId, List<OverlayBlock> blocks)
+        {
+            if (id == 0 || rootId == 0)
+                return false;
+
+            for (int i = blocks.Count - 1; i >= 0; --i)
+            {
+                if (blocks[i].id == id)
+                    return BlockBelongsToTree(blocks[i], rootId, blocks);
+            }
+
+            return false;
+        }
+
         static int FindParentId(int id, List<OverlayBlock> blocks)
         {
             for (int i = blocks.Count - 1; i >= 0; --i)
@@ -224,6 +307,17 @@ namespace NowUI
             {
                 if (_drawingStack[i] != 0)
                     return _drawingStack[i];
+            }
+
+            return 0;
+        }
+
+        static int FindTopOverlayId(List<OverlayBlock> blocks)
+        {
+            for (int i = blocks.Count - 1; i >= 0; --i)
+            {
+                if (blocks[i].id != 0)
+                    return blocks[i].id;
             }
 
             return 0;
@@ -254,7 +348,8 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Runs the deferred callbacks. Called by <see cref="Now.FlushUI"/> and at
+        /// Runs the deferred callbacks. Called when a <see cref="Now.StartUI()"/>
+        /// scope is disposed and at
         /// the end of UGUI mesh capture; safe to call when nothing is queued.
         /// </summary>
         internal static void Flush()
@@ -276,10 +371,13 @@ namespace NowUI
 
                     try
                     {
-                        if (deferred.drawWithState != null)
-                            deferred.drawWithState(deferred.state);
-                        else
-                            deferred.draw?.Invoke();
+                        using (Now.ApplyTransformSnapshot(deferred.transform))
+                        {
+                            if (deferred.drawWithState != null)
+                                deferred.drawWithState(deferred.state);
+                            else
+                                deferred.draw?.Invoke();
+                        }
                     }
                     finally
                     {

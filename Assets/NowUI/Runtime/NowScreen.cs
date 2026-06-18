@@ -6,8 +6,10 @@ namespace NowUI
     /// Display-density and safe-area helpers for sizing UI on phones and tablets.
     /// Pair with <see cref="Now.StartUI(float)"/>:
     /// <code>
-    /// Now.StartUI(NowScreen.recommendedUIScale);
-    /// NowRect safe = NowScreen.safeArea;
+    /// using (Now.StartUI(NowScreen.recommendedUIScale))
+    /// {
+    ///     NowRect safe = NowScreen.safeArea;
+    /// }
     /// </code>
     /// </summary>
     public static class NowScreen

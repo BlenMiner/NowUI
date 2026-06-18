@@ -18,15 +18,10 @@ namespace NowUI.Internal
     {
         const float FLATTEN_TOLERANCE = 0.2f;
 
-        const float AA_WIDTH = 0.75f;
+        const float AA_WIDTH = 1.25f;
 
         const float CIRCLE_TANGENT = 0.5519151f;
 
-        /// <summary>
-        /// Mesh subdivision step for per-vertex gradient evaluation. Scales with the
-        /// gradient's extent: the piecewise-linear color error is relative to the
-        /// gradient length, so large gradients don't need a fine absolute grid.
-        /// </summary>
         static float GradientSpan(in NowLottiePaint paint)
         {
             if (!paint.isGradient)

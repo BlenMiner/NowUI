@@ -268,8 +268,14 @@ namespace NowUI
 
         internal static void DrawCircle(NowCircle circle)
         {
-            float rx = Mathf.Abs(circle.radius.x);
-            float ry = Mathf.Abs(circle.radius.y);
+            bool hasTransform = _transformStack.Count > 0;
+
+            Vector2 center = hasTransform ? ApplyTransform(circle.center) : circle.center;
+            Vector2 radius = hasTransform ? ApplyTransformSize(circle.radius) : circle.radius;
+            float scaledOutline = hasTransform ? ApplyTransformScalar(circle.outline) : circle.outline;
+
+            float rx = Mathf.Abs(radius.x);
+            float ry = Mathf.Abs(radius.y);
 
             if (rx <= ShapeEpsilon || ry <= ShapeEpsilon)
                 return;
@@ -286,20 +292,23 @@ namespace NowUI
             {
                 float angle = (Mathf.PI * 2f * i) / segments;
                 AddShapePoint(new Vector2(
-                    circle.center.x + Mathf.Cos(angle) * rx,
-                    circle.center.y + Mathf.Sin(angle) * ry));
+                    center.x + Mathf.Cos(angle) * rx,
+                    center.y + Mathf.Sin(angle) * ry));
             }
 
-            DrawShapePoints(circle.mask, circle.fill, circle.color, circle.outline, circle.outlineColor);
+            DrawShapePoints(circle.mask, hasTransform, circle.fill, circle.color, scaledOutline, circle.outlineColor);
         }
 
         internal static void DrawTriangle(NowTriangle triangle)
         {
+            bool hasTransform = _transformStack.Count > 0;
+            float scaledOutline = hasTransform ? ApplyTransformScalar(triangle.outline) : triangle.outline;
+
             _shapePoints.Clear();
-            AddShapePoint(triangle.a);
-            AddShapePoint(triangle.b);
-            AddShapePoint(triangle.c);
-            DrawShapePoints(triangle.mask, triangle.fill, triangle.color, triangle.outline, triangle.outlineColor);
+            AddShapePoint(hasTransform ? ApplyTransform(triangle.a) : triangle.a);
+            AddShapePoint(hasTransform ? ApplyTransform(triangle.b) : triangle.b);
+            AddShapePoint(hasTransform ? ApplyTransform(triangle.c) : triangle.c);
+            DrawShapePoints(triangle.mask, hasTransform, triangle.fill, triangle.color, scaledOutline, triangle.outlineColor);
         }
 
         internal static void DrawPolygon(NowPolygon polygon)
@@ -316,25 +325,35 @@ namespace NowUI
             if (count < 3)
                 return;
 
+            bool hasTransform = _transformStack.Count > 0;
+            float scaledOutline = hasTransform ? ApplyTransformScalar(polygon.outline) : polygon.outline;
+
             _shapePoints.Clear();
             _shapePoints.EnsureCapacity(count);
 
             if (polygon.pointList != null)
             {
                 for (int i = 0; i < count; ++i)
-                    AddShapePoint(polygon.pointList[start + i]);
+                {
+                    Vector2 point = polygon.pointList[start + i];
+                    AddShapePoint(hasTransform ? ApplyTransform(point) : point);
+                }
             }
             else
             {
                 for (int i = 0; i < count; ++i)
-                    AddShapePoint(polygon.points[start + i]);
+                {
+                    Vector2 point = polygon.points[start + i];
+                    AddShapePoint(hasTransform ? ApplyTransform(point) : point);
+                }
             }
 
-            DrawShapePoints(polygon.mask, polygon.fill, polygon.color, polygon.outline, polygon.outlineColor);
+            DrawShapePoints(polygon.mask, hasTransform, polygon.fill, polygon.color, scaledOutline, polygon.outlineColor);
         }
 
         static void DrawShapePoints(
             NowRect mask,
+            bool maskNeedsTransform,
             bool fill,
             Vector4 fillColor,
             float outline,
@@ -372,6 +391,9 @@ namespace NowUI
 
             if (_shapeBuffer.positions.count == 0 || _shapeBuffer.indices.count == 0)
                 return;
+
+            if (maskNeedsTransform && !mask.isEmpty)
+                mask = ApplyTransformRect(mask);
 
             var resolvedMask = ApplyAmbientMask(mask);
 

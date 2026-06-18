@@ -1028,8 +1028,8 @@ public class NowRendererTests
             var glassMaterial = graphic.canvasRenderer.GetMaterial(0);
             Assert.NotNull(glassMaterial);
             Assert.AreNotSame(canvasMaterial, glassMaterial);
-            Assert.IsTrue(glassMaterial.HasProperty("_NowGlassUseBackdrop"));
-            Assert.AreEqual(1f, glassMaterial.GetFloat("_NowGlassUseBackdrop"), 0.0001f);
+            Assert.IsTrue(glassMaterial.HasProperty("_NowUGUIGlassUseBackdrop"));
+            Assert.AreEqual(1f, glassMaterial.GetFloat("_NowUGUIGlassUseBackdrop"), 0.0001f);
             Assert.NotNull(glassMaterial.GetTexture("_NowUGUIBackdropTex"));
 
             Assert.AreEqual(1, graphic.uguiGlassDebugTextureCount);
@@ -1210,8 +1210,8 @@ public class NowRendererTests
             var glassMaterial = graphic.canvasRenderer.GetMaterial(1);
             Assert.NotNull(glassMaterial);
             Assert.AreNotSame(canvasMaterial, glassMaterial);
-            Assert.IsTrue(glassMaterial.HasProperty("_NowGlassUseBackdrop"));
-            Assert.AreEqual(1f, glassMaterial.GetFloat("_NowGlassUseBackdrop"), 0.0001f);
+            Assert.IsTrue(glassMaterial.HasProperty("_NowUGUIGlassUseBackdrop"));
+            Assert.AreEqual(1f, glassMaterial.GetFloat("_NowUGUIGlassUseBackdrop"), 0.0001f);
             Assert.NotNull(glassMaterial.GetTexture("_NowUGUIBackdropTex"));
 
             Assert.AreEqual(1, graphic.uguiGlassDebugTextureCount);

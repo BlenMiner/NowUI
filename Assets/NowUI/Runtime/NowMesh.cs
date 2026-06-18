@@ -10,7 +10,8 @@ namespace NowUI.Internal
         CustomRectangle,
         Ripple,
         Sdf,
-        Glass
+        Glass,
+        Bezier
     }
 
     internal struct NowMeshBatch

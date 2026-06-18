@@ -355,22 +355,21 @@ public class MailClientMockup : MonoBehaviour
             listWidth = width;
         }
 
-        Now.StartUI();
-
-        DrawRect(Rect(0, 0, width, height), Rgb(241, 245, 249));
-        DrawTopBar(width);
-        DrawSidebar(0, contentY, sidebarWidth, contentHeight, compact);
-        DrawMessageList(listX, contentY, listWidth, contentHeight, showReader);
-
-        if (showReader)
+        using (Now.StartUI())
         {
-            DrawReader(listX + listWidth, contentY, width - listX - listWidth, contentHeight);
-        }
-        else if (height > 520f)
-        {
-            DrawMobileReaderHint(listX, height - 78f, listWidth);
-        }
+            DrawRect(Rect(0, 0, width, height), Rgb(241, 245, 249));
+            DrawTopBar(width);
+            DrawSidebar(0, contentY, sidebarWidth, contentHeight, compact);
+            DrawMessageList(listX, contentY, listWidth, contentHeight, showReader);
 
-        Now.FlushUI();
+            if (showReader)
+            {
+                DrawReader(listX + listWidth, contentY, width - listX - listWidth, contentHeight);
+            }
+            else if (height > 520f)
+            {
+                DrawMobileReaderHint(listX, height - 78f, listWidth);
+            }
+        }
     }
 }

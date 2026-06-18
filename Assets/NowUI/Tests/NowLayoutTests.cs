@@ -29,6 +29,31 @@ public class NowLayoutTests
         Assert.AreEqual(expected.w, actual.w, tolerance, "height");
     }
 
+    struct FrameProbeContent : INowFrameContent
+    {
+        public int measureCalls;
+        public int drawCalls;
+        public bool firstWasMeasure;
+        public bool lastWasMeasure;
+
+        public void Draw(NowRect rect)
+        {
+            if (measureCalls == 0 && drawCalls == 0)
+                firstWasMeasure = NowLayout.isMeasurePass;
+
+            if (NowLayout.isMeasurePass)
+                ++measureCalls;
+            else
+                ++drawCalls;
+
+            lastWasMeasure = NowLayout.isMeasurePass;
+
+            NowLayout.Area(rect);
+            NowLayout.Rect(40f, 20f);
+            NowLayout.EndArea();
+        }
+    }
+
     [Test]
     public void VerticalAreaStacksRectsDownward()
     {
@@ -57,6 +82,51 @@ public class NowLayoutTests
 
         Assert.AreEqual(110f, size.x, 0.01f, "extent = area origin + widest content");
         Assert.AreEqual(80f, size.y, 0.01f, "extent = area origin + stacked content height");
+    }
+
+    [Test]
+    public void FrameDrawContentRunsMeasureThenTrackedDrawPass()
+    {
+        var content = new FrameProbeContent();
+
+        Vector2 measured = NowFrame.DrawContent(
+            ref content,
+            new NowRect(10f, 10f, 100f, 100f),
+            measurePass: true,
+            trackContent: true,
+            flushOverlays: false);
+
+        Assert.AreEqual(1, content.measureCalls);
+        Assert.AreEqual(1, content.drawCalls);
+        Assert.IsTrue(content.firstWasMeasure);
+        Assert.IsFalse(content.lastWasMeasure);
+        Assert.IsFalse(NowLayout.isMeasurePass);
+        Assert.AreEqual(50f, measured.x, 0.001f);
+        Assert.AreEqual(30f, measured.y, 0.001f);
+    }
+
+    [Test]
+    public void FrameScopeRestoresScaleAndReportsTrackedRepaint()
+    {
+        float previousScale = Now.uiScale;
+        var scope = NowFrame.Begin(2f, trackRepaint: true);
+
+        try
+        {
+            Assert.AreEqual(2f, Now.uiScale, 0.001f);
+
+            NowControlState.RequestRepaint();
+
+            Assert.IsTrue(scope.EndRepaintTracking());
+        }
+        finally
+        {
+            scope.Dispose();
+            NowControlState.Reset();
+            Now.SetUIScale(previousScale);
+        }
+
+        Assert.AreEqual(previousScale, Now.uiScale, 0.001f);
     }
 
     [Test]

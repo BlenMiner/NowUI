@@ -209,22 +209,44 @@ namespace NowUI
             if (material == null)
                 return;
 
-            int x0 = Mathf.RoundToInt(glass.rect.x);
-            int y0 = Mathf.RoundToInt(glass.rect.y);
-            int rectWidth = Mathf.RoundToInt(glass.rect.x + glass.rect.width) - x0;
-            int rectHeight = Mathf.RoundToInt(glass.rect.y + glass.rect.height) - y0;
+            bool hasTransform = _transformStack.Count > 0;
+            var rect = hasTransform ? ApplyTransformRect(glass.rect) : glass.rect;
+            float x0, y0, rectWidth, rectHeight;
+
+            if (hasTransform)
+            {
+                x0 = rect.x;
+                y0 = rect.y;
+                rectWidth = rect.width;
+                rectHeight = rect.height;
+            }
+            else
+            {
+                x0 = Mathf.RoundToInt(rect.x);
+                y0 = Mathf.RoundToInt(rect.y);
+                rectWidth = Mathf.RoundToInt(rect.x + rect.width) - x0;
+                rectHeight = Mathf.RoundToInt(rect.y + rect.height) - y0;
+            }
 
             if (rectWidth <= 0 || rectHeight <= 0)
                 return;
 
             var rectMask = glass.mask;
             float visualPadding = RectangleVisualPadding(0f, glass.outline);
+            float scalar = hasTransform ? ApplyTransformScalar(1f) : 1f;
+            Vector4 radius = glass.radius * scalar;
+            float outline = glass.outline * scalar;
+            float blurRadius = glass.blurRadius * scalar;
+            float geometryPadding = RectangleVisualPadding(0f, outline);
 
             if (!rectMask.isEmpty && rectMask == glass.rect)
                 rectMask = rectMask.Outset(visualPadding);
 
+            if (hasTransform && !rectMask.isEmpty)
+                rectMask = ApplyTransformRect(rectMask);
+
             _tmpVertex.mask = ApplyAmbientMask(rectMask);
-            _tmpVertex.radius = glass.radius;
+            _tmpVertex.radius = radius;
             _tmpVertex.color = ApplyColorMultiplier(glass.tint);
             _tmpVertex.outlineColor = ApplyColorMultiplier(glass.outlineColor);
             _tmpVertex.uvwh = _defaultUV;
@@ -234,7 +256,7 @@ namespace NowUI
             _tmpVertex.position.w = rectHeight;
 
             var key = new GlassBatchKey(
-                Mathf.Max(0f, glass.blurRadius),
+                Mathf.Max(0f, blurRadius),
                 Mathf.Max(0f, glass.saturation),
                 Mathf.Max(0f, glass.brightness),
                 glass.blurQuality == NowGlassBlurQuality.Auto
@@ -249,10 +271,10 @@ namespace NowUI
 
             Vector4 extra = default;
             extra.x = key.data.x;
-            extra.y = glass.outline;
+            extra.y = outline;
             extra.z = key.data.y;
             extra.w = key.data.z;
-            mesh.AddRect(_tmpVertex, extra, visualPadding);
+            mesh.AddRect(_tmpVertex, extra, geometryPadding);
         }
 
         static Material GetGlassMaterial()

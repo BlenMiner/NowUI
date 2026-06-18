@@ -49,13 +49,24 @@ namespace NowUI
             int pixelHeight = Mathf.Max(1, Mathf.CeilToInt(rect.height * pixelsPerPoint));
 
             RenderTexture target = entry.GetTarget(pixelWidth, pixelHeight);
-            return NowGUIScope.Render(
-                rect,
-                entry,
-                target,
-                entry.renderer.Begin(new Vector2(rect.width, rect.height)),
-                clearColor,
-                inputScope);
+            var frameScope = NowFrame.Begin(pixelsPerPoint);
+
+            try
+            {
+                return NowGUIScope.Render(
+                    rect,
+                    entry,
+                    target,
+                    entry.renderer.Begin(new Vector2(rect.width, rect.height)),
+                    clearColor,
+                    inputScope,
+                    frameScope);
+            }
+            catch
+            {
+                frameScope.Dispose();
+                throw;
+            }
         }
 
         public static void DisposeAll()
@@ -183,11 +194,15 @@ namespace NowUI
 
         NowInputScope _inputScope;
 
+        NowFrameScope _frameScope;
+
         bool _renders;
 
         bool _suppresses;
 
         bool _hasInputScope;
+
+        bool _hasFrameScope;
 
         bool _disposed;
 
@@ -197,9 +212,10 @@ namespace NowUI
             RenderTexture target,
             NowDrawScope drawScope,
             Color clearColor,
-            NowInputScope inputScope)
+            NowInputScope inputScope,
+            NowFrameScope frameScope)
         {
-            return new NowGUIScope(rect, entry, target, drawScope, clearColor, true, false, inputScope, true);
+            return new NowGUIScope(rect, entry, target, drawScope, clearColor, true, false, inputScope, true, frameScope, true);
         }
 
         internal static NowGUIScope Suppress(Rect rect)
@@ -223,7 +239,9 @@ namespace NowUI
             bool renders,
             bool suppresses = false,
             NowInputScope inputScope = default,
-            bool hasInputScope = false)
+            bool hasInputScope = false,
+            NowFrameScope frameScope = default,
+            bool hasFrameScope = false)
         {
             _rect = rect;
             _entry = entry;
@@ -231,9 +249,11 @@ namespace NowUI
             _drawScope = drawScope;
             _clearColor = clearColor;
             _inputScope = inputScope;
+            _frameScope = frameScope;
             _renders = renders;
             _suppresses = suppresses;
             _hasInputScope = hasInputScope;
+            _hasFrameScope = hasFrameScope;
             _disposed = false;
         }
 
@@ -265,8 +285,15 @@ namespace NowUI
                 return;
             }
 
-            NowGUI.CompleteScope(_entry, _target, _rect, _drawScope, _clearColor);
-            DisposeInputScope();
+            try
+            {
+                NowGUI.CompleteScope(_entry, _target, _rect, _drawScope, _clearColor);
+            }
+            finally
+            {
+                DisposeInputScope();
+                DisposeFrameScope();
+            }
         }
 
         void DisposeInputScope()
@@ -276,6 +303,15 @@ namespace NowUI
 
             _inputScope.Dispose();
             _hasInputScope = false;
+        }
+
+        void DisposeFrameScope()
+        {
+            if (!_hasFrameScope)
+                return;
+
+            _frameScope.Dispose();
+            _hasFrameScope = false;
         }
     }
 

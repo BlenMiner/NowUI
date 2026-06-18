@@ -214,6 +214,7 @@ namespace NowUI
             public Rect rect;
             public Rect visibleRect;
             public int scrollRegionId;
+            public int overlayLayerId;
             public ResolvedFocusNavigation navigation;
         }
 
@@ -252,7 +253,7 @@ namespace NowUI
 
         public static bool IsFocused(int id)
         {
-            return id != 0 && _focusedId == id;
+            return id != 0 && _focusedId == id && IsFocusedInActiveLayer(id);
         }
 
         public static void Focus(int id)
@@ -321,6 +322,7 @@ namespace NowUI
                 rect = scrollRegionId != 0 ? (Rect)rect : (Rect)visibleRect,
                 visibleRect = (Rect)visibleRect,
                 scrollRegionId = scrollRegionId,
+                overlayLayerId = NowOverlay.currentFocusLayerId,
                 navigation = navigation.Resolve()
             });
         }
@@ -354,18 +356,21 @@ namespace NowUI
                 return false;
 
             BeginFrameIfNeeded();
+            int activeLayerId = NowOverlay.activeFocusLayerId;
 
-            if (TryGetFocusedRectInScrollRegion(_previous, scrollRegionId, out rect))
+            if (TryGetFocusedRectInScrollRegion(_previous, scrollRegionId, activeLayerId, out rect))
                 return true;
 
-            return TryGetFocusedRectInScrollRegion(_current, scrollRegionId, out rect);
+            return TryGetFocusedRectInScrollRegion(_current, scrollRegionId, activeLayerId, out rect);
         }
 
-        static bool TryGetFocusedRectInScrollRegion(List<Focusable> focusables, int scrollRegionId, out NowRect rect)
+        static bool TryGetFocusedRectInScrollRegion(List<Focusable> focusables, int scrollRegionId, int activeLayerId, out NowRect rect)
         {
             for (int i = 0; i < focusables.Count; ++i)
             {
-                if (focusables[i].id == _focusedId && focusables[i].scrollRegionId == scrollRegionId)
+                if (focusables[i].id == _focusedId &&
+                    focusables[i].scrollRegionId == scrollRegionId &&
+                    IsFocusableInLayer(focusables[i], activeLayerId))
                 {
                     rect = (NowRect)focusables[i].rect;
                     return true;
@@ -427,6 +432,7 @@ namespace NowUI
         static void ProcessNavigation()
         {
             var snapshot = NowInput.current;
+            int activeLayerId = NowOverlay.activeFocusLayerId;
 
             if (respectEventSystem)
             {
@@ -454,7 +460,8 @@ namespace NowUI
 
                 for (int i = 0; i < _previous.Count; ++i)
                 {
-                    if (_previous[i].visibleRect.width > 0f &&
+                    if (IsFocusableInLayer(_previous[i], activeLayerId) &&
+                        _previous[i].visibleRect.width > 0f &&
                         _previous[i].visibleRect.height > 0f &&
                         _previous[i].visibleRect.Contains(snapshot.pointerPosition))
                     {
@@ -484,7 +491,7 @@ namespace NowUI
 
             if (snapshot.focusPreviousPressed || snapshot.focusNextPressed)
             {
-                MoveFocusInRegistrationOrder(snapshot.focusPreviousPressed ? -1 : 1);
+                MoveFocusInRegistrationOrder(snapshot.focusPreviousPressed ? -1 : 1, activeLayerId);
                 _lastNavigation = navigation;
                 ResetNavigationRepeat();
                 return;
@@ -492,10 +499,10 @@ namespace NowUI
 
             Vector2 direction = GetNavigationPulse(navigation, snapshot.time);
 
-            if (direction == default || _previous.Count == 0)
+            if (direction == default || !HasFocusableInLayer(activeLayerId))
                 return;
 
-            MoveFocus(direction);
+            MoveFocus(direction, activeLayerId);
         }
 
         static Vector2 GetNavigationPulse(Vector2 navigation, float time)
@@ -549,15 +556,22 @@ namespace NowUI
             _nextNavigationRepeatTime = 0f;
         }
 
-        static void MoveFocusInRegistrationOrder(int step)
+        static void MoveFocusInRegistrationOrder(int step, int activeLayerId)
         {
-            if (_previous.Count == 0)
+            if (!HasFocusableInLayer(activeLayerId))
                 return;
 
             int focusedIndex = -1;
+            int fallbackIndex = -1;
 
             for (int i = 0; i < _previous.Count; ++i)
             {
+                if (!IsFocusableInLayer(_previous[i], activeLayerId))
+                    continue;
+
+                if (fallbackIndex < 0 || step < 0)
+                    fallbackIndex = i;
+
                 if (_previous[i].id == _focusedId)
                 {
                     focusedIndex = i;
@@ -567,31 +581,30 @@ namespace NowUI
 
             if (focusedIndex < 0)
             {
-                SetFocused(step >= 0 ? _previous[0].id : _previous[_previous.Count - 1].id);
+                SetFocused(_previous[fallbackIndex].id);
                 return;
             }
 
             if (_previous[focusedIndex].navigation.TryGetOrder(step, out int targetId) &&
-                TryFocusRegistered(targetId))
+                TryFocusRegistered(targetId, activeLayerId))
             {
                 return;
             }
 
-            int next = (focusedIndex + step) % _previous.Count;
+            int next = FindNextFocusableIndex(focusedIndex, step, activeLayerId);
 
-            if (next < 0)
-                next += _previous.Count;
-
-            SetFocused(_previous[next].id);
+            if (next >= 0)
+                SetFocused(_previous[next].id);
         }
 
-        static void MoveFocus(Vector2 direction)
+        static void MoveFocus(Vector2 direction, int activeLayerId)
         {
             int focusedIndex = -1;
 
             for (int i = 0; i < _previous.Count; ++i)
             {
-                if (_previous[i].id == _focusedId)
+                if (IsFocusableInLayer(_previous[i], activeLayerId) &&
+                    _previous[i].id == _focusedId)
                 {
                     focusedIndex = i;
                     break;
@@ -600,12 +613,12 @@ namespace NowUI
 
             if (focusedIndex < 0)
             {
-                SetFocused(FindEdgeFocus(direction));
+                SetFocused(FindEdgeFocus(direction, activeLayerId));
                 return;
             }
 
             if (_previous[focusedIndex].navigation.TryGetDirectional(direction, out int targetId) &&
-                TryFocusRegistered(targetId))
+                TryFocusRegistered(targetId, activeLayerId))
             {
                 return;
             }
@@ -616,7 +629,7 @@ namespace NowUI
 
             for (int i = 0; i < _previous.Count; ++i)
             {
-                if (i == focusedIndex)
+                if (i == focusedIndex || !IsFocusableInLayer(_previous[i], activeLayerId))
                     continue;
 
                 Vector2 toCandidate = _previous[i].rect.center - origin;
@@ -639,14 +652,14 @@ namespace NowUI
                 SetFocused(bestId);
         }
 
-        static bool TryFocusRegistered(int id)
+        static bool TryFocusRegistered(int id, int activeLayerId)
         {
             if (id == 0)
                 return false;
 
             for (int i = 0; i < _previous.Count; ++i)
             {
-                if (_previous[i].id == id)
+                if (_previous[i].id == id && IsFocusableInLayer(_previous[i], activeLayerId))
                 {
                     SetFocused(id);
                     return true;
@@ -656,13 +669,20 @@ namespace NowUI
             return false;
         }
 
-        static int FindEdgeFocus(Vector2 direction)
+        static int FindEdgeFocus(Vector2 direction, int activeLayerId)
         {
             float bestScore = float.MaxValue;
             int bestId = 0;
+            int fallbackId = 0;
 
             for (int i = 0; i < _previous.Count; ++i)
             {
+                if (!IsFocusableInLayer(_previous[i], activeLayerId))
+                    continue;
+
+                if (fallbackId == 0)
+                    fallbackId = _previous[i].id;
+
                 float score = Vector2.Dot(_previous[i].rect.center, direction);
 
                 if (score < bestScore)
@@ -672,7 +692,63 @@ namespace NowUI
                 }
             }
 
-            return bestId != 0 ? bestId : _previous[0].id;
+            return bestId != 0 ? bestId : fallbackId;
+        }
+
+        static bool IsFocusedInActiveLayer(int id)
+        {
+            int activeLayerId = NowOverlay.activeFocusLayerId;
+
+            if (activeLayerId == 0)
+                return true;
+
+            return ContainsFocusableInLayer(_current, id, activeLayerId) ||
+                ContainsFocusableInLayer(_previous, id, activeLayerId);
+        }
+
+        static bool ContainsFocusableInLayer(List<Focusable> focusables, int id, int activeLayerId)
+        {
+            for (int i = 0; i < focusables.Count; ++i)
+            {
+                if (focusables[i].id == id && IsFocusableInLayer(focusables[i], activeLayerId))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool HasFocusableInLayer(int activeLayerId)
+        {
+            for (int i = 0; i < _previous.Count; ++i)
+            {
+                if (IsFocusableInLayer(_previous[i], activeLayerId))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static int FindNextFocusableIndex(int focusedIndex, int step, int activeLayerId)
+        {
+            int count = _previous.Count;
+
+            for (int offset = 1; offset <= count; ++offset)
+            {
+                int next = (focusedIndex + offset * step) % count;
+
+                if (next < 0)
+                    next += count;
+
+                if (IsFocusableInLayer(_previous[next], activeLayerId))
+                    return next;
+            }
+
+            return -1;
+        }
+
+        static bool IsFocusableInLayer(Focusable focusable, int activeLayerId)
+        {
+            return focusable.overlayLayerId == activeLayerId;
         }
 
         public static void Reset()
