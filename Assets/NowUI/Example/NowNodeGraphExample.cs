@@ -108,7 +108,7 @@ public sealed class NowNodeGraphExample : MonoBehaviour
             {
                 var preview = new NowRect(ctx.bodyRect.x, ctx.bodyRect.y + ctx.Scale(4f), ctx.bodyRect.width, ctx.Scale(54f));
                 ctx.Texture(_previewTexture, preview, 4f);
-                DrawNodeCaption(preview, "Checker Preview", ctx.zoom);
+                DrawNodeCaption(preview, "Checker Preview");
             });
 
         _schema.Node(TintColor, "Tint Color")
@@ -216,8 +216,8 @@ public sealed class NowNodeGraphExample : MonoBehaviour
         });
         _previewTexture.Apply();
     }
+    static void DrawNodeCaption(NowRect rect, string text)
 
-    static void DrawNodeCaption(NowRect rect, string text, float zoom)
     {
         Now.Text(rect.Inset(8f, 6f))
             .SetFontSize(11f)
