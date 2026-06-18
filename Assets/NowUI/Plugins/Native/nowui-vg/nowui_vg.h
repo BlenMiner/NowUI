@@ -121,6 +121,39 @@ NOWUI_VG_EXPORT void nowui_vg_blit_mesh(
     int dst_index_base,
     int index_offset);
 
+/* Bulk-emits one prepared shaped text run into the NowMesh streams. Glyph stride is
+ * 12 floats: plane l/b/r/t, atlas l/b/r/t, xAdvance, xOffset, yOffset, visible.
+ * Destinations match nowui_vg_blit_mesh. out_counts receives vertex/index counts;
+ * out_bounds receives minX,minY,maxX,maxY when vertices were emitted. */
+NOWUI_VG_EXPORT void nowui_vg_blit_text_run(
+    const float *glyphs,
+    int start,
+    int end,
+    float x,
+    float y,
+    float font_size,
+    float baseline,
+    const float *mask4,
+    const float *color4,
+    const float *outline4,
+    float outline,
+    float pixel_range,
+    float *dst_verts,
+    float *dst_uvs,
+    float *dst_rawuv,
+    float *dst_rect,
+    float *dst_radius,
+    float *dst_color,
+    float *dst_outline,
+    float *dst_extra,
+    float *dst_mask,
+    int dst_vertex_base,
+    int *dst_indices,
+    int dst_index_base,
+    float *out_pen_x,
+    int *out_counts,
+    float *out_bounds);
+
 /* Packs NowMesh streams into the UGUI canvas vertex layout (position offset, uv0
  * packing, color conversion, radius->normal). Strides: src verts 3, uvs 2,
  * radius/rawuv/colors 4; dst vertices/normals 3, uv0/colors 4. */
@@ -156,6 +189,26 @@ NOWUI_VG_EXPORT void nowui_vg_pack_canvas(
     const float *src_outline,
     int vertex_count,
     int is_text,
+    float offset_x,
+    float offset_y,
+    float *dst,
+    int dst_vertex_base);
+
+/* Packs NowMesh streams into the interleaved render vertex layout consumed by
+ * Mesh.SetVertexBufferData. Output stride is 33 floats per vertex:
+ * position(3), uv0(2), rect/radius/color/outline/extra/mask/rawUv(4 each).
+ * Writing starts at dst + dst_vertex_base * 33. */
+NOWUI_VG_EXPORT void nowui_vg_pack_render(
+    const float *src_verts,
+    const float *src_uvs,
+    const float *src_radius,
+    const float *src_rawuv,
+    const float *src_colors,
+    const float *src_rect,
+    const float *src_mask,
+    const float *src_extra,
+    const float *src_outline,
+    int vertex_count,
     float offset_x,
     float offset_y,
     float *dst,

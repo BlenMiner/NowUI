@@ -8,7 +8,7 @@
 namespace {
 
 constexpr float EPSILON = 0.0001f;
-constexpr int VERSION = 3;
+constexpr int VERSION = 5;
 
 struct Vec2 {
     float x, y;
@@ -1654,6 +1654,203 @@ NOWUI_VG_EXPORT void nowui_vg_blit_mesh(
         dst_indices[dst_index_base + i] = src_indices[i] + index_offset;
 }
 
+NOWUI_VG_EXPORT void nowui_vg_blit_text_run(
+    const float *glyphs,
+    int start,
+    int end,
+    float x,
+    float y,
+    float font_size,
+    float baseline,
+    const float *mask4,
+    const float *color4,
+    const float *outline4,
+    float outline,
+    float pixel_range,
+    float *dst_verts,
+    float *dst_uvs,
+    float *dst_rawuv,
+    float *dst_rect,
+    float *dst_radius,
+    float *dst_color,
+    float *dst_outline,
+    float *dst_extra,
+    float *dst_mask,
+    int dst_vertex_base,
+    int *dst_indices,
+    int dst_index_base,
+    float *out_pen_x,
+    int *out_counts,
+    float *out_bounds)
+{
+    constexpr int GLYPH_STRIDE = 12;
+    float penX = x;
+    int emittedVertices = 0;
+    int emittedIndices = 0;
+    bool hasBounds = false;
+    float boundsMinX = 0.f;
+    float boundsMinY = 0.f;
+    float boundsMaxX = 0.f;
+    float boundsMaxY = 0.f;
+
+    const float maskX = mask4[0];
+    const float maskY = mask4[1];
+    const float maskW = mask4[2];
+    const float maskH = mask4[3];
+    const float extra4[4] = {outline, pixel_range, 0.f, 0.f};
+
+    for (int i = start; i < end; ++i) {
+        const float *glyph = glyphs + static_cast<size_t>(i) * GLYPH_STRIDE;
+        const float xAdvance = glyph[8] * font_size;
+
+        if (glyph[11] <= 0.5f) {
+            penX += xAdvance;
+            continue;
+        }
+
+        const float left = glyph[0] * font_size;
+        const float bottom = glyph[1] * font_size;
+        const float right = glyph[2] * font_size;
+        const float top = glyph[3] * font_size;
+        const float width = right - left;
+        const float height = top - bottom;
+
+        if (width <= 0.f || height <= 0.f) {
+            penX += xAdvance;
+            continue;
+        }
+
+        const float px = penX + glyph[9] * font_size + left;
+        const float py = y - glyph[10] * font_size - bottom + baseline - height;
+        const float rectX = px;
+        const float rectY = -(py + height);
+
+        if (rectX + width < maskX ||
+            rectX >= maskX + maskW ||
+            -rectY < maskY ||
+            -rectY - height >= maskY + maskH) {
+            penX += xAdvance;
+            continue;
+        }
+
+        const float minX = rectX;
+        const float minY = rectY;
+        const float maxX = rectX + width;
+        const float maxY = rectY + height;
+
+        if (!hasBounds) {
+            hasBounds = true;
+            boundsMinX = minX;
+            boundsMinY = minY;
+            boundsMaxX = maxX;
+            boundsMaxY = maxY;
+        } else {
+            boundsMinX = std::min(boundsMinX, minX);
+            boundsMinY = std::min(boundsMinY, minY);
+            boundsMaxX = std::max(boundsMaxX, maxX);
+            boundsMaxY = std::max(boundsMaxY, maxY);
+        }
+
+        const int vertexIndex = dst_vertex_base + emittedVertices;
+        const int base3 = vertexIndex * 3;
+        const int base2 = vertexIndex * 2;
+        const int base4 = vertexIndex * 4;
+
+        dst_verts[base3 + 0] = rectX;
+        dst_verts[base3 + 1] = rectY;
+        dst_verts[base3 + 2] = 0.f;
+        dst_verts[base3 + 3] = rectX;
+        dst_verts[base3 + 4] = rectY + height;
+        dst_verts[base3 + 5] = 0.f;
+        dst_verts[base3 + 6] = rectX + width;
+        dst_verts[base3 + 7] = rectY + height;
+        dst_verts[base3 + 8] = 0.f;
+        dst_verts[base3 + 9] = rectX + width;
+        dst_verts[base3 + 10] = rectY;
+        dst_verts[base3 + 11] = 0.f;
+
+        dst_uvs[base2 + 0] = glyph[4];
+        dst_uvs[base2 + 1] = glyph[5];
+        dst_uvs[base2 + 2] = glyph[4];
+        dst_uvs[base2 + 3] = glyph[7];
+        dst_uvs[base2 + 4] = glyph[6];
+        dst_uvs[base2 + 5] = glyph[7];
+        dst_uvs[base2 + 6] = glyph[6];
+        dst_uvs[base2 + 7] = glyph[5];
+
+        dst_rawuv[base4 + 0] = 0.f;
+        dst_rawuv[base4 + 1] = 0.f;
+        dst_rawuv[base4 + 2] = 0.f;
+        dst_rawuv[base4 + 3] = 0.f;
+        dst_rawuv[base4 + 4] = 0.f;
+        dst_rawuv[base4 + 5] = 1.f;
+        dst_rawuv[base4 + 6] = 0.f;
+        dst_rawuv[base4 + 7] = 0.f;
+        dst_rawuv[base4 + 8] = 1.f;
+        dst_rawuv[base4 + 9] = 1.f;
+        dst_rawuv[base4 + 10] = 0.f;
+        dst_rawuv[base4 + 11] = 0.f;
+        dst_rawuv[base4 + 12] = 1.f;
+        dst_rawuv[base4 + 13] = 0.f;
+        dst_rawuv[base4 + 14] = 0.f;
+        dst_rawuv[base4 + 15] = 0.f;
+
+        for (int v = 0; v < 4; ++v) {
+            const int offset = base4 + v * 4;
+
+            dst_rect[offset + 0] = rectX;
+            dst_rect[offset + 1] = rectY;
+            dst_rect[offset + 2] = width;
+            dst_rect[offset + 3] = height;
+
+            dst_radius[offset + 0] = 0.f;
+            dst_radius[offset + 1] = 0.f;
+            dst_radius[offset + 2] = 0.f;
+            dst_radius[offset + 3] = 0.f;
+
+            dst_color[offset + 0] = color4[0];
+            dst_color[offset + 1] = color4[1];
+            dst_color[offset + 2] = color4[2];
+            dst_color[offset + 3] = color4[3];
+
+            dst_outline[offset + 0] = outline4[0];
+            dst_outline[offset + 1] = outline4[1];
+            dst_outline[offset + 2] = outline4[2];
+            dst_outline[offset + 3] = outline4[3];
+
+            dst_extra[offset + 0] = extra4[0];
+            dst_extra[offset + 1] = extra4[1];
+            dst_extra[offset + 2] = extra4[2];
+            dst_extra[offset + 3] = extra4[3];
+
+            dst_mask[offset + 0] = mask4[0];
+            dst_mask[offset + 1] = mask4[1];
+            dst_mask[offset + 2] = mask4[2];
+            dst_mask[offset + 3] = mask4[3];
+        }
+
+        const int indexOffset = dst_index_base + emittedIndices;
+        dst_indices[indexOffset + 0] = vertexIndex;
+        dst_indices[indexOffset + 1] = vertexIndex + 1;
+        dst_indices[indexOffset + 2] = vertexIndex + 2;
+        dst_indices[indexOffset + 3] = vertexIndex;
+        dst_indices[indexOffset + 4] = vertexIndex + 2;
+        dst_indices[indexOffset + 5] = vertexIndex + 3;
+
+        emittedVertices += 4;
+        emittedIndices += 6;
+        penX += xAdvance;
+    }
+
+    out_pen_x[0] = penX;
+    out_counts[0] = emittedVertices;
+    out_counts[1] = emittedIndices;
+    out_bounds[0] = hasBounds ? boundsMinX : 0.f;
+    out_bounds[1] = hasBounds ? boundsMinY : 0.f;
+    out_bounds[2] = hasBounds ? boundsMaxX : 0.f;
+    out_bounds[3] = hasBounds ? boundsMaxY : 0.f;
+}
+
 NOWUI_VG_EXPORT void nowui_vg_pack_ugui(
     const float *src_verts,
     const float *src_uvs,
@@ -1779,6 +1976,79 @@ NOWUI_VG_EXPORT void nowui_vg_pack_canvas(
         out[29] = extra[3];
 
         out += 30;
+    }
+}
+
+NOWUI_VG_EXPORT void nowui_vg_pack_render(
+    const float *src_verts,
+    const float *src_uvs,
+    const float *src_radius,
+    const float *src_rawuv,
+    const float *src_colors,
+    const float *src_rect,
+    const float *src_mask,
+    const float *src_extra,
+    const float *src_outline,
+    int vertex_count,
+    float offset_x,
+    float offset_y,
+    float *dst,
+    int dst_vertex_base)
+{
+    float *out = dst + static_cast<size_t>(dst_vertex_base) * 33;
+
+    for (int i = 0; i < vertex_count; ++i) {
+        const float *radius = src_radius + i * 4;
+        const float *color = src_colors + i * 4;
+        const float *rect = src_rect + i * 4;
+        const float *mask = src_mask + i * 4;
+        const float *extra = src_extra + i * 4;
+        const float *outline = src_outline + i * 4;
+        const float *rawuv = src_rawuv + i * 4;
+
+        out[0] = src_verts[i * 3 + 0] + offset_x;
+        out[1] = src_verts[i * 3 + 1] + offset_y;
+        out[2] = src_verts[i * 3 + 2];
+
+        out[3] = src_uvs[i * 2 + 0];
+        out[4] = src_uvs[i * 2 + 1];
+
+        out[5] = rect[0];
+        out[6] = rect[1];
+        out[7] = rect[2];
+        out[8] = rect[3];
+
+        out[9] = radius[0];
+        out[10] = radius[1];
+        out[11] = radius[2];
+        out[12] = radius[3];
+
+        out[13] = color[0];
+        out[14] = color[1];
+        out[15] = color[2];
+        out[16] = color[3];
+
+        out[17] = outline[0];
+        out[18] = outline[1];
+        out[19] = outline[2];
+        out[20] = outline[3];
+
+        out[21] = extra[0];
+        out[22] = extra[1];
+        out[23] = extra[2];
+        out[24] = extra[3];
+
+        out[25] = mask[0];
+        out[26] = mask[1];
+        out[27] = mask[2];
+        out[28] = mask[3];
+
+        out[29] = rawuv[0];
+        out[30] = rawuv[1];
+        out[31] = rawuv[2];
+        out[32] = rawuv[3];
+
+        out += 33;
     }
 }
 

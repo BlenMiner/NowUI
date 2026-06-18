@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace NowUI.Internal
 {
@@ -102,6 +103,32 @@ namespace NowUI.Internal
         public Vector4 uv3;
     }
 
+    /// <summary>
+    /// Interleaved render vertex matching the non-UGUI shader inputs. Field order
+    /// must match <see cref="NowMesh.RenderVertexLayout"/>.
+    /// </summary>
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct NowRenderVertex
+    {
+        public Vector3 position;
+
+        public Vector2 uv0;
+
+        public Vector4 rect;
+
+        public Vector4 radius;
+
+        public Vector4 color;
+
+        public Vector4 outlineColor;
+
+        public Vector4 extra;
+
+        public Vector4 mask;
+
+        public Vector4 rawUv;
+    }
+
     public struct NowRectVertex
     {
         public Vector4 mask;
@@ -137,6 +164,33 @@ namespace NowUI.Internal
 
         public const int INITIAL_INDEX_CAPACITY = INITIAL_RECT_CAPACITY * INDICES_PER_RECT;
 
+        internal const MeshUpdateFlags VertexStreamUploadFlags = MeshUpdateFlags.DontRecalculateBounds;
+
+        internal static readonly VertexAttributeDescriptor[] RenderVertexLayout =
+        {
+            new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord0, VertexAttributeFormat.Float32, 2),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord1, VertexAttributeFormat.Float32, 4),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord2, VertexAttributeFormat.Float32, 4),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord3, VertexAttributeFormat.Float32, 4),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord4, VertexAttributeFormat.Float32, 4),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord5, VertexAttributeFormat.Float32, 4),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord6, VertexAttributeFormat.Float32, 4),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord7, VertexAttributeFormat.Float32, 4),
+        };
+
+        internal static readonly VertexAttributeDescriptor[] CanvasVertexLayout =
+        {
+            new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
+            new VertexAttributeDescriptor(VertexAttribute.Normal, VertexAttributeFormat.Float32, 3),
+            new VertexAttributeDescriptor(VertexAttribute.Tangent, VertexAttributeFormat.Float32, 4),
+            new VertexAttributeDescriptor(VertexAttribute.Color, VertexAttributeFormat.Float32, 4),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord0, VertexAttributeFormat.Float32, 4),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord1, VertexAttributeFormat.Float32, 4),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord2, VertexAttributeFormat.Float32, 4),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord3, VertexAttributeFormat.Float32, 4),
+        };
+
         public Mesh unityMesh {get; private set;}
 
         public bool hasVertices => _verts.count > 0;
@@ -162,6 +216,18 @@ namespace NowUI.Internal
         StaticList<Vector2> _uvs;
 
         StaticList<int> _tris;
+
+        StaticList<NowRenderVertex> _renderVertices;
+
+        bool _hasBounds;
+
+        float _boundsMinX;
+
+        float _boundsMinY;
+
+        float _boundsMaxX;
+
+        float _boundsMaxY;
 
         public Material material;
 
@@ -193,6 +259,7 @@ namespace NowUI.Internal
             _tris = new StaticList<int>(INITIAL_INDEX_CAPACITY);
             _mask = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
             _rawuv = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
+            _renderVertices = new StaticList<NowRenderVertex>(INITIAL_VERTEX_CAPACITY);
         }
 
         public void SetMaterial(Material material, NowMeshKind kind)
@@ -218,6 +285,43 @@ namespace NowUI.Internal
         static readonly Vector2 _uv3 = new Vector2(1, 0);
 
         Vector3 _a, _b, _c, _d;
+
+        void ClearBounds()
+        {
+            _hasBounds = false;
+            _boundsMinX = 0f;
+            _boundsMinY = 0f;
+            _boundsMaxX = 0f;
+            _boundsMaxY = 0f;
+        }
+
+        void EncapsulateBounds(float minX, float minY, float maxX, float maxY)
+        {
+            if (!_hasBounds)
+            {
+                _hasBounds = true;
+                _boundsMinX = minX;
+                _boundsMinY = minY;
+                _boundsMaxX = maxX;
+                _boundsMaxY = maxY;
+                return;
+            }
+
+            _boundsMinX = Mathf.Min(_boundsMinX, minX);
+            _boundsMinY = Mathf.Min(_boundsMinY, minY);
+            _boundsMaxX = Mathf.Max(_boundsMaxX, maxX);
+            _boundsMaxY = Mathf.Max(_boundsMaxY, maxY);
+        }
+
+        void EncapsulateVertex(Vector3 vertex)
+        {
+            EncapsulateBounds(vertex.x, vertex.y, vertex.x, vertex.y);
+        }
+
+        void EncapsulateRect(Vector4 rect)
+        {
+            EncapsulateBounds(rect.x, rect.y, rect.x + rect.z, rect.y + rect.w);
+        }
 
         void EnsureRectCapacity()
         {
@@ -268,6 +372,7 @@ namespace NowUI.Internal
             if (vertexData.IsOutsideMask(geometry)) return;
 
             EnsureRectCapacity();
+            EncapsulateRect(geometry);
 
             int indexOffset = _verts.count;
 
@@ -463,6 +568,7 @@ namespace NowUI.Internal
         {
             int index = _verts.count;
             _verts.array[_verts.count++] = vertex;
+            EncapsulateVertex(vertex);
             _uvs.array[_uvs.count++] = uv;
             _rect.array[_rect.count++] = rect;
             _radius.array[_radius.count++] = radius;
@@ -499,6 +605,56 @@ namespace NowUI.Internal
             float outline,
             float pixelRange)
         {
+            ReserveTextGlyphs(1);
+            AddTextGlyphReserved(glyph, x, y, fontSize, baseline, mask, color, outlineColor, outline, pixelRange);
+        }
+
+        internal void ReserveTextGlyphs(int glyphCount)
+        {
+            if (glyphCount <= 0)
+                return;
+
+            int vertexCount = glyphCount * VERTICES_PER_RECT;
+            int indexCount = glyphCount * INDICES_PER_RECT;
+            _mask.EnsureCapacity(vertexCount);
+            _rect.EnsureCapacity(vertexCount);
+            _radius.EnsureCapacity(vertexCount);
+            _color.EnsureCapacity(vertexCount);
+            _outlineColor.EnsureCapacity(vertexCount);
+            _extra.EnsureCapacity(vertexCount);
+            _verts.EnsureCapacity(vertexCount);
+            _uvs.EnsureCapacity(vertexCount);
+            _rawuv.EnsureCapacity(vertexCount);
+            _tris.EnsureCapacity(indexCount);
+        }
+
+        bool HasTextGlyphCapacity()
+        {
+            return
+                _mask.count + VERTICES_PER_RECT <= _mask.array.Length &&
+                _rect.count + VERTICES_PER_RECT <= _rect.array.Length &&
+                _radius.count + VERTICES_PER_RECT <= _radius.array.Length &&
+                _color.count + VERTICES_PER_RECT <= _color.array.Length &&
+                _outlineColor.count + VERTICES_PER_RECT <= _outlineColor.array.Length &&
+                _extra.count + VERTICES_PER_RECT <= _extra.array.Length &&
+                _verts.count + VERTICES_PER_RECT <= _verts.array.Length &&
+                _uvs.count + VERTICES_PER_RECT <= _uvs.array.Length &&
+                _rawuv.count + VERTICES_PER_RECT <= _rawuv.array.Length &&
+                _tris.count + INDICES_PER_RECT <= _tris.array.Length;
+        }
+
+        internal void AddTextGlyphReserved(
+            NowFontAtlasInfo.Glyph glyph,
+            float x,
+            float y,
+            float fontSize,
+            float baseline,
+            Vector4 mask,
+            Vector4 color,
+            Vector4 outlineColor,
+            float outline,
+            float pixelRange)
+        {
             var planeBounds = glyph.planeBounds;
             float left = planeBounds.left * fontSize;
             float right = planeBounds.right * fontSize;
@@ -523,7 +679,10 @@ namespace NowUI.Internal
                 return;
             }
 
-            EnsureRectCapacity();
+            EncapsulateRect(position);
+
+            if (!HasTextGlyphCapacity())
+                ReserveTextGlyphs(1);
 
             int indexOffset = _verts.count;
             var atlasBounds = glyph.atlasBounds;
@@ -614,6 +773,508 @@ namespace NowUI.Internal
             _tris.count += 6;
         }
 
+        internal float AddShapedTextRunReserved(
+            NowFont.PreparedShapedRun run,
+            int start,
+            int end,
+            float x,
+            float y,
+            float fontSize,
+            float baseline,
+            Vector4 mask,
+            Vector4 color,
+            Vector4 outlineColor,
+            float outline,
+            float pixelRange)
+        {
+            if (run == null || start >= end)
+                return x;
+
+            ReserveTextGlyphs(end - start);
+
+            if (NowLottieNative.textBlitAvailable)
+            {
+                int vertexBase = _verts.count;
+                int indexBase = _tris.count;
+
+                NowLottieNative.BlitTextRun(
+                    run.textGlyphs,
+                    start,
+                    end,
+                    x,
+                    y,
+                    fontSize,
+                    baseline,
+                    mask,
+                    color,
+                    outlineColor,
+                    outline,
+                    pixelRange,
+                    _verts.array,
+                    _uvs.array,
+                    _rawuv.array,
+                    _rect.array,
+                    _radius.array,
+                    _color.array,
+                    _outlineColor.array,
+                    _extra.array,
+                    _mask.array,
+                    vertexBase,
+                    _tris.array,
+                    indexBase,
+                    out float nativePenX,
+                    out int emittedVertices,
+                    out int emittedIndices,
+                    out var bounds);
+
+                _mask.count += emittedVertices;
+                _rect.count += emittedVertices;
+                _radius.count += emittedVertices;
+                _color.count += emittedVertices;
+                _outlineColor.count += emittedVertices;
+                _extra.count += emittedVertices;
+                _verts.count += emittedVertices;
+                _uvs.count += emittedVertices;
+                _rawuv.count += emittedVertices;
+                _tris.count += emittedIndices;
+
+                if (emittedVertices > 0)
+                    EncapsulateBounds(bounds.x, bounds.y, bounds.z, bounds.w);
+
+                return nativePenX;
+            }
+
+            var glyphs = run.glyphs;
+
+            var maskArray = _mask.array;
+            var rectArray = _rect.array;
+            var radiusArray = _radius.array;
+            var colorArray = _color.array;
+            var outlineArray = _outlineColor.array;
+            var extraArray = _extra.array;
+            var vertexArray = _verts.array;
+            var uvArray = _uvs.array;
+            var rawUvArray = _rawuv.array;
+            var triArray = _tris.array;
+
+            int maskCount = _mask.count;
+            int rectCount = _rect.count;
+            int radiusCount = _radius.count;
+            int colorCount = _color.count;
+            int outlineCount = _outlineColor.count;
+            int extraCount = _extra.count;
+            int vertexCount = _verts.count;
+            int uvCount = _uvs.count;
+            int rawUvCount = _rawuv.count;
+            int triCount = _tris.count;
+
+            Vector4 extra = default;
+            extra.x = outline;
+            extra.y = pixelRange;
+
+            bool hasBounds = false;
+            float boundsMinX = 0f;
+            float boundsMinY = 0f;
+            float boundsMaxX = 0f;
+            float boundsMaxY = 0f;
+            float penX = x;
+
+            for (int i = start; i < end; ++i)
+            {
+                var shaped = glyphs[i];
+
+                if (!shaped.visible)
+                {
+                    penX += shaped.xAdvance * fontSize;
+                    continue;
+                }
+
+                var glyph = shaped.glyph;
+                var planeBounds = glyph.planeBounds;
+                float left = planeBounds.left * fontSize;
+                float right = planeBounds.right * fontSize;
+                float bottom = planeBounds.bottom * fontSize;
+                float top = planeBounds.top * fontSize;
+
+                float width = right - left;
+                float height = top - bottom;
+
+                if (width <= 0f || height <= 0f)
+                {
+                    penX += shaped.xAdvance * fontSize;
+                    continue;
+                }
+
+                float px = penX + shaped.xOffset * fontSize + left;
+                float py = y - shaped.yOffset * fontSize - bottom + baseline - height;
+                Vector4 position = new Vector4(px, -(py + height), width, height);
+
+                if (position.x + position.z < mask.x ||
+                    position.x >= mask.x + mask.z ||
+                    -position.y < mask.y ||
+                    -position.y - position.w >= mask.y + mask.w)
+                {
+                    penX += shaped.xAdvance * fontSize;
+                    continue;
+                }
+
+                float minX = position.x;
+                float minY = position.y;
+                float maxX = position.x + position.z;
+                float maxY = position.y + position.w;
+
+                if (!hasBounds)
+                {
+                    hasBounds = true;
+                    boundsMinX = minX;
+                    boundsMinY = minY;
+                    boundsMaxX = maxX;
+                    boundsMaxY = maxY;
+                }
+                else
+                {
+                    boundsMinX = Mathf.Min(boundsMinX, minX);
+                    boundsMinY = Mathf.Min(boundsMinY, minY);
+                    boundsMaxX = Mathf.Max(boundsMaxX, maxX);
+                    boundsMaxY = Mathf.Max(boundsMaxY, maxY);
+                }
+
+                int indexOffset = vertexCount;
+                var atlasBounds = glyph.atlasBounds;
+
+                maskArray[maskCount] = mask;
+                maskArray[maskCount + 1] = mask;
+                maskArray[maskCount + 2] = mask;
+                maskArray[maskCount + 3] = mask;
+                maskCount += 4;
+
+                rectArray[rectCount] = position;
+                rectArray[rectCount + 1] = position;
+                rectArray[rectCount + 2] = position;
+                rectArray[rectCount + 3] = position;
+                rectCount += 4;
+
+                radiusArray[radiusCount] = default;
+                radiusArray[radiusCount + 1] = default;
+                radiusArray[radiusCount + 2] = default;
+                radiusArray[radiusCount + 3] = default;
+                radiusCount += 4;
+
+                colorArray[colorCount] = color;
+                colorArray[colorCount + 1] = color;
+                colorArray[colorCount + 2] = color;
+                colorArray[colorCount + 3] = color;
+                colorCount += 4;
+
+                outlineArray[outlineCount] = outlineColor;
+                outlineArray[outlineCount + 1] = outlineColor;
+                outlineArray[outlineCount + 2] = outlineColor;
+                outlineArray[outlineCount + 3] = outlineColor;
+                outlineCount += 4;
+
+                extraArray[extraCount] = extra;
+                extraArray[extraCount + 1] = extra;
+                extraArray[extraCount + 2] = extra;
+                extraArray[extraCount + 3] = extra;
+                extraCount += 4;
+
+                vertexArray[vertexCount] = new Vector3(position.x, position.y, 0f);
+                vertexArray[vertexCount + 1] = new Vector3(position.x, position.y + position.w, 0f);
+                vertexArray[vertexCount + 2] = new Vector3(position.x + position.z, position.y + position.w, 0f);
+                vertexArray[vertexCount + 3] = new Vector3(position.x + position.z, position.y, 0f);
+                vertexCount += 4;
+
+                uvArray[uvCount] = new Vector2(atlasBounds.left, atlasBounds.bottom);
+                uvArray[uvCount + 1] = new Vector2(atlasBounds.left, atlasBounds.top);
+                uvArray[uvCount + 2] = new Vector2(atlasBounds.right, atlasBounds.top);
+                uvArray[uvCount + 3] = new Vector2(atlasBounds.right, atlasBounds.bottom);
+                uvCount += 4;
+
+                rawUvArray[rawUvCount] = _uv0;
+                rawUvArray[rawUvCount + 1] = _uv1;
+                rawUvArray[rawUvCount + 2] = _uv2;
+                rawUvArray[rawUvCount + 3] = _uv3;
+                rawUvCount += 4;
+
+                triArray[triCount] = indexOffset;
+                triArray[triCount + 1] = indexOffset + 1;
+                triArray[triCount + 2] = indexOffset + 2;
+                triArray[triCount + 3] = indexOffset;
+                triArray[triCount + 4] = indexOffset + 2;
+                triArray[triCount + 5] = indexOffset + 3;
+                triCount += 6;
+
+                penX += shaped.xAdvance * fontSize;
+            }
+
+            _mask.count = maskCount;
+            _rect.count = rectCount;
+            _radius.count = radiusCount;
+            _color.count = colorCount;
+            _outlineColor.count = outlineCount;
+            _extra.count = extraCount;
+            _verts.count = vertexCount;
+            _uvs.count = uvCount;
+            _rawuv.count = rawUvCount;
+            _tris.count = triCount;
+
+            if (hasBounds)
+                EncapsulateBounds(boundsMinX, boundsMinY, boundsMaxX, boundsMaxY);
+
+            return penX;
+        }
+
+        internal float AddCodepointTextRunReserved(
+            NowFont.PreparedCodepointRun run,
+            int start,
+            int end,
+            float x,
+            float y,
+            float fontSize,
+            float baseline,
+            Vector4 mask,
+            Vector4 color,
+            Vector4 outlineColor,
+            float outline,
+            float pixelRange)
+        {
+            if (run == null || start >= end)
+                return x;
+
+            ReserveTextGlyphs(end - start);
+
+            if (NowLottieNative.textBlitAvailable)
+            {
+                int vertexBase = _verts.count;
+                int indexBase = _tris.count;
+
+                NowLottieNative.BlitTextRun(
+                    run.textGlyphs,
+                    start,
+                    end,
+                    x,
+                    y,
+                    fontSize,
+                    baseline,
+                    mask,
+                    color,
+                    outlineColor,
+                    outline,
+                    pixelRange,
+                    _verts.array,
+                    _uvs.array,
+                    _rawuv.array,
+                    _rect.array,
+                    _radius.array,
+                    _color.array,
+                    _outlineColor.array,
+                    _extra.array,
+                    _mask.array,
+                    vertexBase,
+                    _tris.array,
+                    indexBase,
+                    out float nativePenX,
+                    out int emittedVertices,
+                    out int emittedIndices,
+                    out var bounds);
+
+                _mask.count += emittedVertices;
+                _rect.count += emittedVertices;
+                _radius.count += emittedVertices;
+                _color.count += emittedVertices;
+                _outlineColor.count += emittedVertices;
+                _extra.count += emittedVertices;
+                _verts.count += emittedVertices;
+                _uvs.count += emittedVertices;
+                _rawuv.count += emittedVertices;
+                _tris.count += emittedIndices;
+
+                if (emittedVertices > 0)
+                    EncapsulateBounds(bounds.x, bounds.y, bounds.z, bounds.w);
+
+                return nativePenX;
+            }
+
+            var glyphs = run.glyphs;
+
+            var maskArray = _mask.array;
+            var rectArray = _rect.array;
+            var radiusArray = _radius.array;
+            var colorArray = _color.array;
+            var outlineArray = _outlineColor.array;
+            var extraArray = _extra.array;
+            var vertexArray = _verts.array;
+            var uvArray = _uvs.array;
+            var rawUvArray = _rawuv.array;
+            var triArray = _tris.array;
+
+            int maskCount = _mask.count;
+            int rectCount = _rect.count;
+            int radiusCount = _radius.count;
+            int colorCount = _color.count;
+            int outlineCount = _outlineColor.count;
+            int extraCount = _extra.count;
+            int vertexCount = _verts.count;
+            int uvCount = _uvs.count;
+            int rawUvCount = _rawuv.count;
+            int triCount = _tris.count;
+
+            Vector4 extra = default;
+            extra.x = outline;
+            extra.y = pixelRange;
+
+            bool hasBounds = false;
+            float boundsMinX = 0f;
+            float boundsMinY = 0f;
+            float boundsMaxX = 0f;
+            float boundsMaxY = 0f;
+            float penX = x;
+
+            for (int i = start; i < end; ++i)
+            {
+                var prepared = glyphs[i];
+
+                if (!prepared.visible)
+                {
+                    penX += prepared.advance * fontSize;
+                    continue;
+                }
+
+                var glyph = prepared.glyph;
+                var planeBounds = glyph.planeBounds;
+                float left = planeBounds.left * fontSize;
+                float right = planeBounds.right * fontSize;
+                float bottom = planeBounds.bottom * fontSize;
+                float top = planeBounds.top * fontSize;
+
+                float width = right - left;
+                float height = top - bottom;
+
+                if (width <= 0f || height <= 0f)
+                {
+                    penX += prepared.advance * fontSize;
+                    continue;
+                }
+
+                float px = penX + left;
+                float py = y - bottom + baseline - height;
+                Vector4 position = new Vector4(px, -(py + height), width, height);
+
+                if (position.x + position.z < mask.x ||
+                    position.x >= mask.x + mask.z ||
+                    -position.y < mask.y ||
+                    -position.y - position.w >= mask.y + mask.w)
+                {
+                    penX += prepared.advance * fontSize;
+                    continue;
+                }
+
+                float minX = position.x;
+                float minY = position.y;
+                float maxX = position.x + position.z;
+                float maxY = position.y + position.w;
+
+                if (!hasBounds)
+                {
+                    hasBounds = true;
+                    boundsMinX = minX;
+                    boundsMinY = minY;
+                    boundsMaxX = maxX;
+                    boundsMaxY = maxY;
+                }
+                else
+                {
+                    boundsMinX = Mathf.Min(boundsMinX, minX);
+                    boundsMinY = Mathf.Min(boundsMinY, minY);
+                    boundsMaxX = Mathf.Max(boundsMaxX, maxX);
+                    boundsMaxY = Mathf.Max(boundsMaxY, maxY);
+                }
+
+                int indexOffset = vertexCount;
+                var atlasBounds = glyph.atlasBounds;
+
+                maskArray[maskCount] = mask;
+                maskArray[maskCount + 1] = mask;
+                maskArray[maskCount + 2] = mask;
+                maskArray[maskCount + 3] = mask;
+                maskCount += 4;
+
+                rectArray[rectCount] = position;
+                rectArray[rectCount + 1] = position;
+                rectArray[rectCount + 2] = position;
+                rectArray[rectCount + 3] = position;
+                rectCount += 4;
+
+                radiusArray[radiusCount] = default;
+                radiusArray[radiusCount + 1] = default;
+                radiusArray[radiusCount + 2] = default;
+                radiusArray[radiusCount + 3] = default;
+                radiusCount += 4;
+
+                colorArray[colorCount] = color;
+                colorArray[colorCount + 1] = color;
+                colorArray[colorCount + 2] = color;
+                colorArray[colorCount + 3] = color;
+                colorCount += 4;
+
+                outlineArray[outlineCount] = outlineColor;
+                outlineArray[outlineCount + 1] = outlineColor;
+                outlineArray[outlineCount + 2] = outlineColor;
+                outlineArray[outlineCount + 3] = outlineColor;
+                outlineCount += 4;
+
+                extraArray[extraCount] = extra;
+                extraArray[extraCount + 1] = extra;
+                extraArray[extraCount + 2] = extra;
+                extraArray[extraCount + 3] = extra;
+                extraCount += 4;
+
+                vertexArray[vertexCount] = new Vector3(position.x, position.y, 0f);
+                vertexArray[vertexCount + 1] = new Vector3(position.x, position.y + position.w, 0f);
+                vertexArray[vertexCount + 2] = new Vector3(position.x + position.z, position.y + position.w, 0f);
+                vertexArray[vertexCount + 3] = new Vector3(position.x + position.z, position.y, 0f);
+                vertexCount += 4;
+
+                uvArray[uvCount] = new Vector2(atlasBounds.left, atlasBounds.bottom);
+                uvArray[uvCount + 1] = new Vector2(atlasBounds.left, atlasBounds.top);
+                uvArray[uvCount + 2] = new Vector2(atlasBounds.right, atlasBounds.top);
+                uvArray[uvCount + 3] = new Vector2(atlasBounds.right, atlasBounds.bottom);
+                uvCount += 4;
+
+                rawUvArray[rawUvCount] = _uv0;
+                rawUvArray[rawUvCount + 1] = _uv1;
+                rawUvArray[rawUvCount + 2] = _uv2;
+                rawUvArray[rawUvCount + 3] = _uv3;
+                rawUvCount += 4;
+
+                triArray[triCount] = indexOffset;
+                triArray[triCount + 1] = indexOffset + 1;
+                triArray[triCount + 2] = indexOffset + 2;
+                triArray[triCount + 3] = indexOffset;
+                triArray[triCount + 4] = indexOffset + 2;
+                triArray[triCount + 5] = indexOffset + 3;
+                triCount += 6;
+
+                penX += prepared.advance * fontSize;
+            }
+
+            _mask.count = maskCount;
+            _rect.count = rectCount;
+            _radius.count = radiusCount;
+            _color.count = colorCount;
+            _outlineColor.count = outlineCount;
+            _extra.count = extraCount;
+            _verts.count = vertexCount;
+            _uvs.count = uvCount;
+            _rawuv.count = rawUvCount;
+            _tris.count = triCount;
+
+            if (hasBounds)
+                EncapsulateBounds(boundsMinX, boundsMinY, boundsMaxX, boundsMaxY);
+
+            return penX;
+        }
+
         /// <summary>
         /// Appends arbitrary tessellated triangles (positions in UI space, y down).
         /// The shared rect is the padded bounds of the geometry; UVs are derived from
@@ -645,6 +1306,8 @@ namespace NowUI.Internal
 
             if (cullProbe.IsOutsideMask(rect))
                 return;
+
+            EncapsulateRect(rect);
 
             _mask.EnsureCapacity(vcount);
             _rect.EnsureCapacity(vcount);
@@ -741,6 +1404,8 @@ namespace NowUI.Internal
             _extra.Clear();
             _mask.Clear();
             _rawuv.Clear();
+            _renderVertices.Clear();
+            ClearBounds();
         }
 
         public void AppendVertices(
@@ -797,6 +1462,34 @@ namespace NowUI.Internal
             masks.count += count;
             System.Array.Copy(_rawuv.array, 0, rawUvs.array, rawUvs.count, count);
             rawUvs.count += count;
+        }
+
+        public bool TryAppendNativeRenderVertices(ref StaticList<NowRenderVertex> destination, Vector2 positionOffset)
+        {
+            if (!NowLottieNative.packRenderAvailable)
+                return false;
+
+            int count = _verts.count;
+            destination.EnsureCapacity(count);
+            int destinationBase = destination.count;
+
+            NowLottieNative.PackRender(
+                _verts.array,
+                _uvs.array,
+                _radius.array,
+                _rawuv.array,
+                _color.array,
+                _rect.array,
+                _mask.array,
+                _extra.array,
+                _outlineColor.array,
+                count,
+                positionOffset,
+                destination.array,
+                destinationBase);
+
+            destination.count += count;
+            return true;
         }
 
         /// <summary>
@@ -898,29 +1591,27 @@ namespace NowUI.Internal
 
         public NowRect GetBounds(Vector2 positionOffset)
         {
-            int count = _verts.count;
-
-            if (count == 0)
+            if (!_hasBounds)
                 return default;
 
-            var vertices = _verts.array;
-            float minX = float.PositiveInfinity;
-            float maxX = float.NegativeInfinity;
-            float minY = float.PositiveInfinity;
-            float maxY = float.NegativeInfinity;
-
-            for (int i = 0; i < count; ++i)
-            {
-                var vertex = vertices[i];
-                float x = vertex.x + positionOffset.x;
-                float y = vertex.y + positionOffset.y;
-                minX = Mathf.Min(minX, x);
-                maxX = Mathf.Max(maxX, x);
-                minY = Mathf.Min(minY, y);
-                maxY = Mathf.Max(maxY, y);
-            }
+            float minX = _boundsMinX + positionOffset.x;
+            float minY = _boundsMinY + positionOffset.y;
+            float maxX = _boundsMaxX + positionOffset.x;
+            float maxY = _boundsMaxY + positionOffset.y;
 
             return new NowRect(minX, -maxY, Mathf.Max(0f, maxX - minX), Mathf.Max(0f, maxY - minY));
+        }
+
+        internal static Bounds ToUnityBounds(NowRect rect)
+        {
+            if (rect.isEmpty)
+                return new Bounds(Vector3.zero, Vector3.zero);
+
+            float yMax = -rect.y;
+            float yMin = yMax - rect.height;
+            return new Bounds(
+                new Vector3(rect.x + rect.width * 0.5f, (yMin + yMax) * 0.5f, 0f),
+                new Vector3(rect.width, rect.height, 0f));
         }
 
         public void UploadMesh()
@@ -936,16 +1627,33 @@ namespace NowUI.Internal
 
             unityMesh.Clear(true);
 
-            unityMesh.SetVertices(_verts.array, 0, _verts.count);
-            unityMesh.SetUVs(0, _uvs.array, 0, _uvs.count);
-            unityMesh.SetUVs(1, _rect.array, 0, _rect.count);
-            unityMesh.SetUVs(2, _radius.array, 0, _radius.count);
-            unityMesh.SetUVs(3, _color.array, 0, _color.count);
-            unityMesh.SetUVs(4, _outlineColor.array, 0, _outlineColor.count);
-            unityMesh.SetUVs(5, _extra.array, 0, _extra.count);
-            unityMesh.SetUVs(6, _mask.array, 0, _mask.count);
-            unityMesh.SetUVs(7, _rawuv.array, 0, _rawuv.count);
-            unityMesh.SetTriangles(_tris.array, 0, _tris.count, 0);
+            _renderVertices.Clear();
+            if (TryAppendNativeRenderVertices(ref _renderVertices, Vector2.zero))
+            {
+                unityMesh.SetVertexBufferParams(_renderVertices.count, RenderVertexLayout);
+                unityMesh.SetVertexBufferData(
+                    _renderVertices.array,
+                    0,
+                    0,
+                    _renderVertices.count,
+                    0,
+                    MeshUpdateFlags.DontRecalculateBounds);
+            }
+            else
+            {
+                unityMesh.SetVertices(_verts.array, 0, _verts.count, VertexStreamUploadFlags);
+                unityMesh.SetUVs(0, _uvs.array, 0, _uvs.count, VertexStreamUploadFlags);
+                unityMesh.SetUVs(1, _rect.array, 0, _rect.count, VertexStreamUploadFlags);
+                unityMesh.SetUVs(2, _radius.array, 0, _radius.count, VertexStreamUploadFlags);
+                unityMesh.SetUVs(3, _color.array, 0, _color.count, VertexStreamUploadFlags);
+                unityMesh.SetUVs(4, _outlineColor.array, 0, _outlineColor.count, VertexStreamUploadFlags);
+                unityMesh.SetUVs(5, _extra.array, 0, _extra.count, VertexStreamUploadFlags);
+                unityMesh.SetUVs(6, _mask.array, 0, _mask.count, VertexStreamUploadFlags);
+                unityMesh.SetUVs(7, _rawuv.array, 0, _rawuv.count, VertexStreamUploadFlags);
+            }
+
+            unityMesh.SetTriangles(_tris.array, 0, _tris.count, 0, false);
+            unityMesh.bounds = ToUnityBounds(GetBounds(Vector2.zero));
         }
     }
 }

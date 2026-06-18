@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using NowUI.Internal;
+using System.Reflection;
 using UnityEngine;
 using NowUI;
 
@@ -160,6 +161,49 @@ public class Simple
         {
             Object.DestroyImmediate(font.atlas);
             Object.DestroyImmediate(font);
+        }
+    }
+
+    [Test]
+    public void FontMeasureFallsBackWhenPreparedPrimaryFontMissesGlyph()
+    {
+        var primary = ScriptableObject.CreateInstance<NowFont>();
+        var fallback = ScriptableObject.CreateInstance<NowFont>();
+        primary.atlas = new Texture2D(100, 100);
+        fallback.atlas = new Texture2D(100, 100);
+        primary.atlasInfo = new NowFontAtlasInfo
+        {
+            metrics = new NowFontAtlasInfo.Metrics { lineHeight = 1f },
+            glyphs = new[]
+            {
+                new NowFontAtlasInfo.Glyph { unicode = 'A', advance = 1 }
+            }
+        };
+        fallback.atlasInfo = new NowFontAtlasInfo
+        {
+            metrics = new NowFontAtlasInfo.Metrics { lineHeight = 1f },
+            glyphs = new[]
+            {
+                new NowFontAtlasInfo.Glyph { unicode = 'B', advance = 2 }
+            }
+        };
+
+        try
+        {
+            typeof(NowFontAsset)
+                .GetField("_fallbacks", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(primary, new NowFontAsset[] { fallback });
+
+            Vector2 measured = primary.MeasureText("AB", 10);
+
+            Assert.AreEqual(30, measured.x, 0.0001f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(primary.atlas);
+            Object.DestroyImmediate(fallback.atlas);
+            Object.DestroyImmediate(primary);
+            Object.DestroyImmediate(fallback);
         }
     }
 

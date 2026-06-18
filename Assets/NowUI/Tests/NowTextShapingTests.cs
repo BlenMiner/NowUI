@@ -151,6 +151,36 @@ public class NowTextShapingTests
         AssertDrawsGeometry("A\uE321B", shaping: true);
     }
 
+    [Test]
+    public void MultilineShapedDrawReservesContinuationSegments()
+    {
+        if (!ShapingAvailable())
+            Assert.Ignore("Shaping unavailable on this machine.");
+
+        Now.textShaping = true;
+        string firstLine = new string('A', 600);
+        string text = firstLine + "\nB";
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(30000, 128)))
+            {
+                Now.Text(new NowRect(4, 4, 29900, 96), _fontAsset)
+                    .SetFontSize(32)
+                    .SetColor(Color.white)
+                    .Draw(text);
+            }
+
+            Assert.IsTrue(drawList.hasGeometry);
+        }
+        finally
+        {
+            drawList.Dispose();
+            Now.textShaping = true;
+        }
+    }
+
     void AssertDrawsGeometry(string text, bool shaping)
     {
         Now.textShaping = shaping;

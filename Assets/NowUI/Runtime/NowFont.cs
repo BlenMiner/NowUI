@@ -406,6 +406,13 @@ namespace NowUI
             if (Now.textShaping && TryMeasureShapedText(value, fontSize, style, tabSpaces, out var shapedSize))
                 return shapedSize;
 
+            if (TryResolveFont(style, out var preparedFont) &&
+                preparedFont != null &&
+                preparedFont.TryGetPreparedCodepointRun(value, fontSize, style, tabSpaces, out var preparedRun))
+            {
+                return preparedFont.MeasurePreparedCodepointRun(preparedRun, fontSize, style);
+            }
+
             float lineWidth = 0;
             float maxWidth = 0;
             int lineCount = 1;
@@ -636,6 +643,13 @@ namespace NowUI
 
             if (Now.textShaping && TryMeasureShapedTextBounds(value, fontSize, style, tabSpaces, out var shapedBounds))
                 return shapedBounds;
+
+            if (TryResolveFont(style, out var preparedFont) &&
+                preparedFont != null &&
+                preparedFont.TryGetPreparedCodepointRun(value, fontSize, style, tabSpaces, out var preparedRun))
+            {
+                return preparedFont.MeasurePreparedCodepointRunBounds(preparedRun, fontSize, style);
+            }
 
             float cursorX = 0;
             float lineY = 0;
@@ -1007,6 +1021,8 @@ namespace NowUI
         public void ClearDynamicCache()
         {
             ResetDynamicSession();
+            ClearPreparedShapeCache();
+            ClearPreparedCodepointCache();
             _dynamicSessionFailed = false;
 
             if (_dynamicPages != null)
@@ -1629,6 +1645,8 @@ namespace NowUI
             if (_dynamicPages == null || index < 0 || index >= _dynamicPages.Count)
                 return;
 
+            ClearPreparedShapeCache();
+            ClearPreparedCodepointCache();
             var page = _dynamicPages[index];
             RemoveDynamicGlyphMappings(page);
             _dynamicPages.RemoveAt(index);
@@ -1684,6 +1702,7 @@ namespace NowUI
             _denseGlyphTable = null;
             _sparseGlyphTable = null;
             _glyphTableOffset = 0;
+            ClearPreparedCodepointCache();
         }
 
         void BuildGlyphCache()
@@ -2910,7 +2929,430 @@ namespace NowUI
         [NonSerialized]
         List<int> _shapedMissingScratch;
 
+        [NonSerialized]
+        Dictionary<PreparedShapeKey, PreparedShapedRun> _preparedShapeCache;
+
+        [NonSerialized]
+        Dictionary<PreparedCodepointRunKey, PreparedCodepointRun> _preparedCodepointCache;
+
         const int SHAPE_CACHE_LIMIT = 512;
+
+        internal readonly struct PreparedCodepointGlyph
+        {
+            public readonly int codepoint;
+
+            public readonly float advance;
+
+            public readonly NowFontAtlasInfo.Glyph glyph;
+
+            public readonly Material material;
+
+            public readonly bool visible;
+
+            public readonly bool lineBreak;
+
+            public readonly PreparedTextGlyph textGlyph;
+
+            public PreparedCodepointGlyph(
+                int codepoint,
+                float advance,
+                in NowFontAtlasInfo.Glyph glyph,
+                Material material,
+                bool visible,
+                bool lineBreak)
+            {
+                this.codepoint = codepoint;
+                this.advance = advance;
+                this.glyph = glyph;
+                this.material = material;
+                this.visible = visible;
+                this.lineBreak = lineBreak;
+                textGlyph = new PreparedTextGlyph(glyph, advance, visible);
+            }
+        }
+
+        internal sealed class PreparedCodepointRun
+        {
+            public readonly PreparedCodepointGlyph[] glyphs;
+
+            public readonly PreparedTextGlyph[] textGlyphs;
+
+            public int length => glyphs.Length;
+
+            public PreparedCodepointRun(PreparedCodepointGlyph[] glyphs)
+            {
+                this.glyphs = glyphs;
+                textGlyphs = new PreparedTextGlyph[glyphs.Length];
+
+                for (int i = 0; i < glyphs.Length; ++i)
+                    textGlyphs[i] = glyphs[i].textGlyph;
+            }
+        }
+
+        internal readonly struct PreparedShapedGlyph
+        {
+            public readonly uint glyphIndex;
+
+            public readonly int encodedKey;
+
+            public readonly float xAdvance;
+
+            public readonly float xOffset;
+
+            public readonly float yOffset;
+
+            public readonly NowFontAtlasInfo.Glyph glyph;
+
+            public readonly Material material;
+
+            public readonly bool visible;
+
+            public readonly PreparedTextGlyph textGlyph;
+
+            public PreparedShapedGlyph(
+                in NowTextShaper.ShapedGlyph shaped,
+                NowFontAtlasInfo.Glyph glyph,
+                Material material)
+            {
+                glyphIndex = shaped.glyphIndex;
+                encodedKey = EncodeGlyphIndexKey((int)shaped.glyphIndex);
+                xAdvance = shaped.xAdvance;
+                xOffset = shaped.xOffset;
+                yOffset = shaped.yOffset;
+                this.glyph = glyph;
+                this.material = material;
+                visible = !Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right);
+                textGlyph = new PreparedTextGlyph(shaped, glyph, visible);
+            }
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal readonly struct PreparedTextGlyph
+        {
+            public readonly float planeLeft;
+
+            public readonly float planeBottom;
+
+            public readonly float planeRight;
+
+            public readonly float planeTop;
+
+            public readonly float atlasLeft;
+
+            public readonly float atlasBottom;
+
+            public readonly float atlasRight;
+
+            public readonly float atlasTop;
+
+            public readonly float xAdvance;
+
+            public readonly float xOffset;
+
+            public readonly float yOffset;
+
+            public readonly float visible;
+
+            public PreparedTextGlyph(
+                in NowTextShaper.ShapedGlyph shaped,
+                in NowFontAtlasInfo.Glyph glyph,
+                bool visible)
+            {
+                planeLeft = glyph.planeBounds.left;
+                planeBottom = glyph.planeBounds.bottom;
+                planeRight = glyph.planeBounds.right;
+                planeTop = glyph.planeBounds.top;
+                atlasLeft = glyph.atlasBounds.left;
+                atlasBottom = glyph.atlasBounds.bottom;
+                atlasRight = glyph.atlasBounds.right;
+                atlasTop = glyph.atlasBounds.top;
+                xAdvance = shaped.xAdvance;
+                xOffset = shaped.xOffset;
+                yOffset = shaped.yOffset;
+                this.visible = visible ? 1f : 0f;
+            }
+
+            public PreparedTextGlyph(
+                in NowFontAtlasInfo.Glyph glyph,
+                float advance,
+                bool visible)
+            {
+                planeLeft = glyph.planeBounds.left;
+                planeBottom = glyph.planeBounds.bottom;
+                planeRight = glyph.planeBounds.right;
+                planeTop = glyph.planeBounds.top;
+                atlasLeft = glyph.atlasBounds.left;
+                atlasBottom = glyph.atlasBounds.bottom;
+                atlasRight = glyph.atlasBounds.right;
+                atlasTop = glyph.atlasBounds.top;
+                xAdvance = advance;
+                xOffset = 0f;
+                yOffset = 0f;
+                this.visible = visible ? 1f : 0f;
+            }
+        }
+
+        internal sealed class PreparedShapedRun
+        {
+            public readonly PreparedShapedGlyph[] glyphs;
+
+            public readonly PreparedTextGlyph[] textGlyphs;
+
+            public int length => glyphs.Length;
+
+            public PreparedShapedRun(PreparedShapedGlyph[] glyphs)
+            {
+                this.glyphs = glyphs;
+                textGlyphs = new PreparedTextGlyph[glyphs.Length];
+
+                for (int i = 0; i < glyphs.Length; ++i)
+                    textGlyphs[i] = glyphs[i].textGlyph;
+            }
+        }
+
+        readonly struct PreparedShapeKey : IEquatable<PreparedShapeKey>
+        {
+            readonly string _segment;
+
+            readonly int _atlasSize;
+
+            public PreparedShapeKey(string segment, int atlasSize)
+            {
+                _segment = segment;
+                _atlasSize = atlasSize;
+            }
+
+            public bool Equals(PreparedShapeKey other)
+            {
+                return _atlasSize == other._atlasSize && string.Equals(_segment, other._segment, StringComparison.Ordinal);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is PreparedShapeKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((_segment != null ? _segment.GetHashCode() : 0) * 397) ^ _atlasSize;
+                }
+            }
+        }
+
+        readonly struct PreparedCodepointRunKey : IEquatable<PreparedCodepointRunKey>
+        {
+            readonly string _value;
+
+            readonly int _atlasSize;
+
+            readonly NowFontStyle _style;
+
+            readonly int _tabSpaces;
+
+            public PreparedCodepointRunKey(string value, int atlasSize, NowFontStyle style, int tabSpaces)
+            {
+                _value = value;
+                _atlasSize = atlasSize;
+                _style = style;
+                _tabSpaces = tabSpaces;
+            }
+
+            public bool Equals(PreparedCodepointRunKey other)
+            {
+                return _atlasSize == other._atlasSize &&
+                    _style == other._style &&
+                    _tabSpaces == other._tabSpaces &&
+                    string.Equals(_value, other._value, StringComparison.Ordinal);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is PreparedCodepointRunKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = _value != null ? _value.GetHashCode() : 0;
+                    hash = (hash * 397) ^ _atlasSize;
+                    hash = (hash * 397) ^ (int)_style;
+                    hash = (hash * 397) ^ _tabSpaces;
+                    return hash;
+                }
+            }
+        }
+
+        void ClearPreparedShapeCache()
+        {
+            _preparedShapeCache?.Clear();
+        }
+
+        void ClearPreparedCodepointCache()
+        {
+            _preparedCodepointCache?.Clear();
+        }
+
+        internal bool TryGetPreparedCodepointRun(
+            string value,
+            float fontSize,
+            NowFontStyle style,
+            int tabSpaces,
+            out PreparedCodepointRun run)
+        {
+            run = null;
+
+            if (string.IsNullOrEmpty(value) || fontSize <= 0)
+                return false;
+
+            int atlasSize = GetDynamicGlyphSize(fontSize);
+            var key = new PreparedCodepointRunKey(value, atlasSize, style, tabSpaces);
+            _preparedCodepointCache ??= new Dictionary<PreparedCodepointRunKey, PreparedCodepointRun>(64);
+
+            if (_preparedCodepointCache.TryGetValue(key, out run))
+                return run != null;
+
+            EnsureGlyphs(value, fontSize);
+
+            float tabAdvance = 0f;
+            bool hasTabAdvance = false;
+            var prepared = new List<PreparedCodepointGlyph>(value.Length);
+
+            for (int i = 0; i < value.Length; ++i)
+            {
+                int codepoint = ReadCodepoint(value, ref i);
+
+                if (codepoint == '\n')
+                {
+                    prepared.Add(new PreparedCodepointGlyph(codepoint, 0f, default, null, false, true));
+                    continue;
+                }
+
+                if (codepoint == '\t')
+                {
+                    if (!hasTabAdvance)
+                    {
+                        tabAdvance = GetGlyph(' ', fontSize, out var space, out _)
+                            ? space.advance * tabSpaces
+                            : 0f;
+                        hasTabAdvance = true;
+                    }
+
+                    prepared.Add(new PreparedCodepointGlyph(codepoint, tabAdvance, default, null, false, false));
+                    continue;
+                }
+
+                if (!GetGlyph(codepoint, fontSize, out var glyph, out var glyphMaterial))
+                {
+                    _preparedCodepointCache[key] = null;
+                    prepared.Clear();
+                    return false;
+                }
+
+                bool visible = !Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right);
+                prepared.Add(new PreparedCodepointGlyph(codepoint, glyph.advance, glyph, glyphMaterial, visible, false));
+            }
+
+            if (_preparedCodepointCache.Count >= SHAPE_CACHE_LIMIT)
+                _preparedCodepointCache.Clear();
+
+            run = new PreparedCodepointRun(prepared.ToArray());
+            _preparedCodepointCache[key] = run;
+            return true;
+        }
+
+        internal Vector2 MeasurePreparedCodepointRun(PreparedCodepointRun run, float fontSize, NowFontStyle style)
+        {
+            if (run == null || run.length == 0)
+                return default;
+
+            float lineWidth = 0f;
+            float maxWidth = 0f;
+            int lineCount = 1;
+            var glyphs = run.glyphs;
+
+            for (int i = 0; i < run.length; ++i)
+            {
+                var prepared = glyphs[i];
+
+                if (prepared.lineBreak)
+                {
+                    if (lineWidth > maxWidth)
+                        maxWidth = lineWidth;
+
+                    lineWidth = 0f;
+                    ++lineCount;
+                    continue;
+                }
+
+                lineWidth += prepared.advance * fontSize;
+            }
+
+            if (lineWidth > maxWidth)
+                maxWidth = lineWidth;
+
+            return new Vector2(maxWidth, GetLineHeight(style) * fontSize * lineCount);
+        }
+
+        internal Vector4 MeasurePreparedCodepointRunBounds(PreparedCodepointRun run, float fontSize, NowFontStyle style)
+        {
+            if (run == null || run.length == 0)
+                return default;
+
+            float cursorX = 0f;
+            float lineY = 0f;
+            float lineHeight = GetLineHeight(style) * fontSize;
+            float baseline = GetAscender(style) * fontSize;
+            float minX = 0f;
+            float minY = 0f;
+            float maxX = 0f;
+            float maxY = 0f;
+            bool hasBounds = false;
+            var glyphs = run.glyphs;
+
+            for (int i = 0; i < run.length; ++i)
+            {
+                var prepared = glyphs[i];
+
+                if (prepared.lineBreak)
+                {
+                    cursorX = 0f;
+                    lineY += lineHeight;
+                    continue;
+                }
+
+                if (prepared.visible)
+                {
+                    var glyph = prepared.glyph;
+                    float glyphLeft = cursorX + glyph.planeBounds.left * fontSize;
+                    float glyphRight = cursorX + glyph.planeBounds.right * fontSize;
+                    float glyphTop = lineY + baseline - glyph.planeBounds.top * fontSize;
+                    float glyphBottom = lineY + baseline - glyph.planeBounds.bottom * fontSize;
+
+                    if (!hasBounds)
+                    {
+                        minX = glyphLeft;
+                        minY = glyphTop;
+                        maxX = glyphRight;
+                        maxY = glyphBottom;
+                        hasBounds = true;
+                    }
+                    else
+                    {
+                        if (glyphLeft < minX) minX = glyphLeft;
+                        if (glyphTop < minY) minY = glyphTop;
+                        if (glyphRight > maxX) maxX = glyphRight;
+                        if (glyphBottom > maxY) maxY = glyphBottom;
+                    }
+                }
+
+                cursorX += prepared.advance * fontSize;
+            }
+
+            return hasBounds ? new Vector4(minX, minY, maxX - minX, maxY - minY) : default;
+        }
 
         /// <summary>Glyph indices map into the negative key space so codepoint and
         /// shaped records share pages, materials and miss tracking without collisions.</summary>
@@ -3021,6 +3463,43 @@ namespace NowUI
                     return false;
             }
 
+            return true;
+        }
+
+        internal bool TryGetPreparedShapedRun(string segment, float fontSize, out PreparedShapedRun run)
+        {
+            run = null;
+
+            if (!TryGetShapedRun(segment, out var shapedRun))
+                return false;
+
+            int atlasSize = GetDynamicGlyphSize(fontSize);
+            var key = new PreparedShapeKey(segment, atlasSize);
+            _preparedShapeCache ??= new Dictionary<PreparedShapeKey, PreparedShapedRun>(64);
+
+            if (_preparedShapeCache.TryGetValue(key, out run))
+                return run != null;
+
+            if (!EnsureShapedGlyphs(shapedRun, fontSize))
+                return false;
+
+            var prepared = new PreparedShapedGlyph[shapedRun.Length];
+
+            for (int i = 0; i < shapedRun.Length; ++i)
+            {
+                var shaped = shapedRun[i];
+
+                if (!TryGetShapedGlyph((int)shaped.glyphIndex, fontSize, out var glyph, out var glyphMaterial))
+                    return false;
+
+                prepared[i] = new PreparedShapedGlyph(shaped, glyph, glyphMaterial);
+            }
+
+            if (_preparedShapeCache.Count >= SHAPE_CACHE_LIMIT)
+                _preparedShapeCache.Clear();
+
+            run = new PreparedShapedRun(prepared);
+            _preparedShapeCache[key] = run;
             return true;
         }
 

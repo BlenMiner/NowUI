@@ -408,22 +408,11 @@ namespace NowUI
 
         static StaticList<Vector4> _rawUvs = new StaticList<Vector4>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
+        static StaticList<NowRenderVertex> _renderVertices = new StaticList<NowRenderVertex>(NowMesh.INITIAL_VERTEX_CAPACITY);
+
         static StaticList<NowCanvasVertex> _canvasVertices = new StaticList<NowCanvasVertex>(NowMesh.INITIAL_VERTEX_CAPACITY);
 
         static StaticList<int> _triangles = new StaticList<int>(NowMesh.INITIAL_INDEX_CAPACITY);
-
-        /// <summary>Must match the field order of <see cref="NowCanvasVertex"/>.</summary>
-        static readonly VertexAttributeDescriptor[] _canvasVertexLayout =
-        {
-            new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
-            new VertexAttributeDescriptor(VertexAttribute.Normal, VertexAttributeFormat.Float32, 3),
-            new VertexAttributeDescriptor(VertexAttribute.Tangent, VertexAttributeFormat.Float32, 4),
-            new VertexAttributeDescriptor(VertexAttribute.Color, VertexAttributeFormat.Float32, 4),
-            new VertexAttributeDescriptor(VertexAttribute.TexCoord0, VertexAttributeFormat.Float32, 4),
-            new VertexAttributeDescriptor(VertexAttribute.TexCoord1, VertexAttributeFormat.Float32, 4),
-            new VertexAttributeDescriptor(VertexAttribute.TexCoord2, VertexAttributeFormat.Float32, 4),
-            new VertexAttributeDescriptor(VertexAttribute.TexCoord3, VertexAttributeFormat.Float32, 4),
-        };
 
         static readonly List<int> _capturedMeshIndices = new List<int>(8);
 
@@ -472,6 +461,15 @@ namespace NowUI
             int id = CreateMesh(material, mesh.canvasMaterial, kind, mesh.batchData);
             _lastUsedMeshId = id;
             return _meshes.array[id];
+        }
+
+        static void ReserveTextGlyphs(NowMesh mesh, int remainingGlyphs)
+        {
+            if (mesh == null || remainingGlyphs <= 0)
+                return;
+
+            int pageRoom = Mathf.Max(1, (MAX_VERTICES_PER_MESH - mesh.vertexCount) / 4);
+            mesh.ReserveTextGlyphs(Mathf.Min(remainingGlyphs, pageRoom));
         }
 
         sealed class TextureMaterialEntry
@@ -1166,21 +1164,36 @@ namespace NowUI
                 return;
 
             using var profile = NowProfiler.MeshUpload.Auto();
-            _vertices.Clear();
-            _meshUvs.Clear();
-            _uvs.Clear();
-            _rects.Clear();
-            _radii.Clear();
-            _colors.Clear();
-            _outlineColors.Clear();
-            _extras.Clear();
-            _masks.Clear();
-            _rawUvs.Clear();
-            _canvasVertices.Clear();
+            bool useNativeRenderPacking = layout == NowMeshLayout.Render && NowLottieNative.packRenderAvailable;
+
+            if (layout == NowMeshLayout.Canvas)
+            {
+                _canvasVertices.Clear();
+            }
+            else if (useNativeRenderPacking)
+            {
+                _renderVertices.Clear();
+            }
+            else
+            {
+                _vertices.Clear();
+                _meshUvs.Clear();
+                _uvs.Clear();
+                _rects.Clear();
+                _radii.Clear();
+                _colors.Clear();
+                _outlineColors.Clear();
+                _extras.Clear();
+                _masks.Clear();
+                _rawUvs.Clear();
+            }
+
             batches.Clear();
 
             int activeIndex = 0;
             _capturedMeshIndices.Clear();
+            NowRect combinedBounds = default;
+            bool hasBounds = false;
 
             for (int i = 0; i < _meshes.count; ++i)
             {
@@ -1195,17 +1208,30 @@ namespace NowUI
                 if (_capturedMeshIndices.Count >= activeLimit)
                     break;
 
+                var bounds = mesh.GetBounds(positionOffset);
+                if (!bounds.isEmpty)
+                {
+                    combinedBounds = hasBounds ? combinedBounds.Union(bounds) : bounds;
+                    hasBounds = true;
+                }
+
                 _capturedMeshIndices.Add(i);
                 batches.Add(new NowMeshBatch(
                     mesh.material,
                     mesh.canvasMaterial,
                     mesh.kind,
                     mesh.batchData,
-                    mesh.GetBounds(positionOffset)));
+                    bounds));
 
                 if (layout == NowMeshLayout.Canvas)
                 {
                     mesh.AppendCanvasVertices(ref _canvasVertices, positionOffset);
+                    continue;
+                }
+
+                if (useNativeRenderPacking)
+                {
+                    mesh.TryAppendNativeRenderVertices(ref _renderVertices, positionOffset);
                     continue;
                 }
 
@@ -1224,7 +1250,9 @@ namespace NowUI
 
             target.Clear();
 
-            int vertexCount = layout == NowMeshLayout.Canvas ? _canvasVertices.count : _vertices.count;
+            int vertexCount = layout == NowMeshLayout.Canvas
+                ? _canvasVertices.count
+                : useNativeRenderPacking ? _renderVertices.count : _vertices.count;
 
             if (vertexCount == 0)
             {
@@ -1235,20 +1263,28 @@ namespace NowUI
 
             if (layout == NowMeshLayout.Canvas)
             {
-                target.SetVertexBufferParams(vertexCount, _canvasVertexLayout);
+                target.SetVertexBufferParams(vertexCount, NowMesh.CanvasVertexLayout);
                 target.SetVertexBufferData(_canvasVertices.array, 0, 0, vertexCount, 0, MeshUpdateFlags.DontRecalculateBounds);
             }
             else
             {
-                target.SetVertices(_vertices.array, 0, vertexCount);
-                target.SetUVs(0, _meshUvs.array, 0, vertexCount);
-                target.SetUVs(1, _rects.array, 0, vertexCount);
-                target.SetUVs(2, _radii.array, 0, vertexCount);
-                target.SetUVs(3, _colors.array, 0, vertexCount);
-                target.SetUVs(4, _outlineColors.array, 0, vertexCount);
-                target.SetUVs(5, _extras.array, 0, vertexCount);
-                target.SetUVs(6, _masks.array, 0, vertexCount);
-                target.SetUVs(7, _rawUvs.array, 0, vertexCount);
+                if (useNativeRenderPacking)
+                {
+                    target.SetVertexBufferParams(vertexCount, NowMesh.RenderVertexLayout);
+                    target.SetVertexBufferData(_renderVertices.array, 0, 0, vertexCount, 0, MeshUpdateFlags.DontRecalculateBounds);
+                }
+                else
+                {
+                    target.SetVertices(_vertices.array, 0, vertexCount, NowMesh.VertexStreamUploadFlags);
+                    target.SetUVs(0, _meshUvs.array, 0, vertexCount, NowMesh.VertexStreamUploadFlags);
+                    target.SetUVs(1, _rects.array, 0, vertexCount, NowMesh.VertexStreamUploadFlags);
+                    target.SetUVs(2, _radii.array, 0, vertexCount, NowMesh.VertexStreamUploadFlags);
+                    target.SetUVs(3, _colors.array, 0, vertexCount, NowMesh.VertexStreamUploadFlags);
+                    target.SetUVs(4, _outlineColors.array, 0, vertexCount, NowMesh.VertexStreamUploadFlags);
+                    target.SetUVs(5, _extras.array, 0, vertexCount, NowMesh.VertexStreamUploadFlags);
+                    target.SetUVs(6, _masks.array, 0, vertexCount, NowMesh.VertexStreamUploadFlags);
+                    target.SetUVs(7, _rawUvs.array, 0, vertexCount, NowMesh.VertexStreamUploadFlags);
+                }
             }
 
             target.subMeshCount = batches.Count;
@@ -1265,7 +1301,7 @@ namespace NowUI
                 vertexOffset += mesh.vertexCount;
             }
 
-            target.RecalculateBounds();
+            target.bounds = hasBounds ? NowMesh.ToUnityBounds(combinedBounds) : new Bounds(Vector3.zero, Vector3.zero);
         }
 
         internal static void FinishUIScreenFrame()
@@ -1870,6 +1906,14 @@ namespace NowUI
             if (textShaping && TryDrawShapedString(style, value))
                 return;
 
+            if (style.font.TryResolveFont(style.fontStyle, out var preparedFont) &&
+                preparedFont != null &&
+                preparedFont.TryGetPreparedCodepointRun(value, style.fontSize, style.fontStyle, 4, out var preparedRun))
+            {
+                DrawPreparedCodepointRun(style, preparedFont, preparedRun);
+                return;
+            }
+
             if (ShouldEnsureGlyphsBeforeCodepointDraw(style.font))
                 style.font.EnsureGlyphs(value, style.fontSize, style.fontStyle);
 
@@ -1984,6 +2028,8 @@ namespace NowUI
 
                                 if (mesh == null)
                                     return;
+
+                                ReserveTextGlyphs(mesh, value.Length - i);
                             }
 
                             if (!ReferenceEquals(pixelRangeFont, resolvedFont) ||
@@ -1994,7 +2040,10 @@ namespace NowUI
                                 pixelRangeMaterial = glyphMaterial;
                             }
 
+                            var previousMesh = mesh;
                             mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
+                            if (!ReferenceEquals(mesh, previousMesh))
+                                ReserveTextGlyphs(mesh, value.Length - i);
 
                             // Transform position before drawing glyph
                             float glyphX = style.rect.x;
@@ -2007,7 +2056,7 @@ namespace NowUI
                                 glyphY = transformedPos.y;
                             }
 
-                            mesh.AddTextGlyph(
+                            mesh.AddTextGlyphReserved(
                                 glyph,
                                 glyphX,
                                 glyphY,
@@ -2076,6 +2125,218 @@ namespace NowUI
             }
         }
 
+        static void DrawPreparedCodepointRun(NowText style, NowFont font, NowFont.PreparedCodepointRun run)
+        {
+            bool hasTransform = _transformStack.Count > 0;
+            var fontSize = style.fontSize;
+            var color = ApplyColorMultiplier(style.color);
+            var outlineColor = ApplyColorMultiplier(style.outlineColor);
+            NowMesh mesh = null;
+            NowFont pixelRangeFont = null;
+            Material pixelRangeMaterial = null;
+            float pixelRange = 0f;
+            float textScale = hasTransform ? ApplyTransformScalar(1f) : 1f;
+            float scaledFontSize = fontSize * textScale;
+            float scaledBaseline = style.font.GetAscender(style.fontStyle) * scaledFontSize;
+            float scaledOutline = style.outline * scaledFontSize;
+            float lineHeight = style.font.GetLineHeight(style.fontStyle) * fontSize;
+            float leftPos = style.rect.x;
+
+            if (!hasTransform)
+            {
+                DrawPreparedCodepointRunUntransformed(
+                    ref style,
+                    font,
+                    run,
+                    fontSize,
+                    scaledBaseline,
+                    color,
+                    outlineColor,
+                    scaledOutline,
+                    lineHeight,
+                    leftPos,
+                    ref mesh,
+                    ref pixelRangeFont,
+                    ref pixelRangeMaterial,
+                    ref pixelRange);
+                return;
+            }
+
+            var glyphs = run.glyphs;
+            bool reservedCurrentMesh = false;
+
+            for (int i = 0; i < run.length; ++i)
+            {
+                var prepared = glyphs[i];
+
+                if (prepared.lineBreak)
+                {
+                    style.rect.x = leftPos;
+                    style.rect.y += lineHeight;
+                    reservedCurrentMesh = false;
+                    continue;
+                }
+
+                if (prepared.visible)
+                {
+                    var glyphMaterial = prepared.material;
+                    bool sameMaterial = mesh != null && ReferenceEquals(mesh.material, glyphMaterial);
+
+                    if (!sameMaterial)
+                    {
+                        int materialId = font.GetMaterialId(prepared.codepoint, fontSize);
+                        mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
+                        font.SetMaterialId(prepared.codepoint, fontSize, materialId);
+
+                        if (mesh == null)
+                            return;
+
+                        ReserveTextGlyphs(mesh, run.length - i);
+                        reservedCurrentMesh = true;
+                    }
+                    else if (!reservedCurrentMesh)
+                    {
+                        ReserveTextGlyphs(mesh, run.length - i);
+                        reservedCurrentMesh = true;
+                    }
+
+                    if (!ReferenceEquals(pixelRangeFont, font) ||
+                        !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
+                    {
+                        pixelRange = font.GetScreenPixelRange(prepared.glyph.unicode, fontSize) * textScale;
+                        pixelRangeFont = font;
+                        pixelRangeMaterial = glyphMaterial;
+                    }
+
+                    var previousMesh = mesh;
+                    mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
+                    if (!ReferenceEquals(mesh, previousMesh))
+                        ReserveTextGlyphs(mesh, run.length - i);
+
+                    float glyphX = style.rect.x;
+                    float glyphY = style.rect.y;
+                    Vector2 transformedPos = ApplyTransform(new Vector2(glyphX, glyphY));
+
+                    mesh.AddTextGlyphReserved(
+                        prepared.glyph,
+                        transformedPos.x,
+                        transformedPos.y,
+                        scaledFontSize,
+                        scaledBaseline,
+                        style.mask,
+                        color,
+                        outlineColor,
+                        scaledOutline,
+                        pixelRange);
+                }
+
+                style.rect.x += prepared.advance * fontSize;
+            }
+        }
+
+        static void DrawPreparedCodepointRunUntransformed(
+            ref NowText style,
+            NowFont font,
+            NowFont.PreparedCodepointRun run,
+            float fontSize,
+            float baseline,
+            Vector4 color,
+            Vector4 outlineColor,
+            float outline,
+            float lineHeight,
+            float leftPos,
+            ref NowMesh mesh,
+            ref NowFont pixelRangeFont,
+            ref Material pixelRangeMaterial,
+            ref float pixelRange)
+        {
+            int i = 0;
+            float penX = style.rect.x;
+            var glyphs = run.glyphs;
+
+            while (i < run.length)
+            {
+                var prepared = glyphs[i];
+
+                if (prepared.lineBreak)
+                {
+                    penX = leftPos;
+                    style.rect.y += lineHeight;
+                    ++i;
+                    continue;
+                }
+
+                if (!prepared.visible)
+                {
+                    penX += prepared.advance * fontSize;
+                    ++i;
+                    continue;
+                }
+
+                var glyphMaterial = prepared.material;
+                int materialId = font.GetMaterialId(prepared.codepoint, fontSize);
+                mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
+                font.SetMaterialId(prepared.codepoint, fontSize, materialId);
+
+                if (mesh == null)
+                    return;
+
+                if (!ReferenceEquals(pixelRangeFont, font) ||
+                    !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
+                {
+                    pixelRange = font.GetScreenPixelRange(prepared.glyph.unicode, fontSize);
+                    pixelRangeFont = font;
+                    pixelRangeMaterial = glyphMaterial;
+                }
+
+                mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
+
+                if (mesh == null)
+                    return;
+
+                int pageRoom = _captureMesh
+                    ? Mathf.Max(1, (MAX_VERTICES_PER_MESH - mesh.vertexCount) / 4)
+                    : run.length - i;
+                int end = i + 1;
+                int visibleGlyphs = 1;
+
+                while (end < run.length && visibleGlyphs < pageRoom)
+                {
+                    var next = glyphs[end];
+
+                    if (next.lineBreak)
+                        break;
+
+                    if (next.visible)
+                    {
+                        if (!ReferenceEquals(next.material, glyphMaterial))
+                            break;
+
+                        ++visibleGlyphs;
+                    }
+
+                    ++end;
+                }
+
+                penX = mesh.AddCodepointTextRunReserved(
+                    run,
+                    i,
+                    end,
+                    penX,
+                    style.rect.y,
+                    fontSize,
+                    baseline,
+                    style.mask,
+                    color,
+                    outlineColor,
+                    outline,
+                    pixelRange);
+                i = end;
+            }
+
+            style.rect.x = penX;
+        }
+
         /// <summary>
         /// Draws the text through HarfBuzz-shaped runs (ligatures, kerning, complex
         /// scripts). Returns false — drawing nothing — when any segment cannot be
@@ -2114,8 +2375,7 @@ namespace NowUI
                         ? value
                         : value.Substring(segmentStart, i - segmentStart);
 
-                    if (!font.TryGetShapedRun(segment, out var segmentRun) ||
-                        !font.EnsureShapedGlyphs(segmentRun, fontSize))
+                    if (!font.TryGetPreparedShapedRun(segment, fontSize, out _))
                     {
                         return false;
                     }
@@ -2164,7 +2424,7 @@ namespace NowUI
                     string segment = segmentStart == 0 && i == value.Length
                         ? value
                         : value.Substring(segmentStart, i - segmentStart);
-                    font.TryGetShapedRun(segment, out var run);
+                    font.TryGetPreparedShapedRun(segment, fontSize, out var run);
 
                     if (!AppendShapedRun(
                         ref style,
@@ -2215,7 +2475,7 @@ namespace NowUI
 
         static bool TryDrawSingleShapedLine(NowText style, NowFont font, string value, float fontSize)
         {
-            if (!font.TryGetShapedRun(value, out var run) || !font.EnsureShapedGlyphs(run, fontSize))
+            if (!font.TryGetPreparedShapedRun(value, fontSize, out var run))
                 return false;
 
             float baseline = style.font.GetAscender(style.fontStyle) * fontSize;
@@ -2247,7 +2507,7 @@ namespace NowUI
         static bool AppendShapedRun(
             ref NowText style,
             NowFont font,
-            NowTextShaper.ShapedGlyph[] run,
+            NowFont.PreparedShapedRun run,
             float fontSize,
             float baseline,
             Vector4 color,
@@ -2259,32 +2519,59 @@ namespace NowUI
             ref float pixelRange)
         {
             bool hasTransform = _transformStack.Count > 0;
+
+            if (!hasTransform)
+            {
+                return AppendShapedRunUntransformed(
+                    ref style,
+                    font,
+                    run,
+                    fontSize,
+                    baseline,
+                    color,
+                    outlineColor,
+                    outline,
+                    ref mesh,
+                    ref pixelRangeFont,
+                    ref pixelRangeMaterial,
+                    ref pixelRange);
+            }
+
             float textScale = hasTransform ? ApplyTransformScalar(1f) : 1f;
             float scaledFontSize = fontSize * textScale;
             float scaledBaseline = baseline * textScale;
             float scaledOutline = outline * textScale;
+            bool reservedCurrentMesh = false;
 
-            for (int g = 0; g < run.Length; ++g)
+            var glyphs = run.glyphs;
+
+            for (int g = 0; g < run.length; ++g)
             {
-                var shaped = run[g];
+                var shaped = glyphs[g];
 
-                if (!font.TryGetShapedGlyph((int)shaped.glyphIndex, fontSize, out var glyph, out var glyphMaterial))
-                {
-                    style.rect.x += shaped.xAdvance * fontSize;
-                    continue;
-                }
+                var glyph = shaped.glyph;
+                var glyphMaterial = shaped.material;
 
-                if (!Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right))
+                if (shaped.visible)
                 {
-                    if (mesh == null || !ReferenceEquals(mesh.material, glyphMaterial))
+                    bool sameMaterial = mesh != null && ReferenceEquals(mesh.material, glyphMaterial);
+
+                    if (!sameMaterial)
                     {
-                        int encoded = NowFont.EncodeGlyphIndexKey((int)shaped.glyphIndex);
-                        int materialId = font.GetMaterialId(encoded, fontSize);
+                        int materialId = font.GetMaterialId(shaped.encodedKey, fontSize);
                         mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
-                        font.SetMaterialId(encoded, fontSize, materialId);
+                        font.SetMaterialId(shaped.encodedKey, fontSize, materialId);
 
                         if (mesh == null)
                             return false;
+
+                        ReserveTextGlyphs(mesh, run.length - g);
+                        reservedCurrentMesh = true;
+                    }
+                    else if (!reservedCurrentMesh)
+                    {
+                        ReserveTextGlyphs(mesh, run.length - g);
+                        reservedCurrentMesh = true;
                     }
 
                     if (!ReferenceEquals(pixelRangeFont, font) ||
@@ -2295,7 +2582,10 @@ namespace NowUI
                         pixelRangeMaterial = glyphMaterial;
                     }
 
+                    var previousMesh = mesh;
                     mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
+                    if (!ReferenceEquals(mesh, previousMesh))
+                        ReserveTextGlyphs(mesh, run.length - g);
 
                     float glyphX = style.rect.x + shaped.xOffset * fontSize;
                     float glyphY = style.rect.y - shaped.yOffset * fontSize;
@@ -2307,7 +2597,7 @@ namespace NowUI
                         glyphY = transformedPos.y;
                     }
 
-                    mesh.AddTextGlyph(
+                    mesh.AddTextGlyphReserved(
                         glyph,
                         glyphX,
                         glyphY,
@@ -2323,6 +2613,98 @@ namespace NowUI
                 style.rect.x += shaped.xAdvance * fontSize;
             }
 
+            return true;
+        }
+
+        static bool AppendShapedRunUntransformed(
+            ref NowText style,
+            NowFont font,
+            NowFont.PreparedShapedRun run,
+            float fontSize,
+            float baseline,
+            Vector4 color,
+            Vector4 outlineColor,
+            float outline,
+            ref NowMesh mesh,
+            ref NowFont pixelRangeFont,
+            ref Material pixelRangeMaterial,
+            ref float pixelRange)
+        {
+            int g = 0;
+            float penX = style.rect.x;
+            var glyphs = run.glyphs;
+
+            while (g < run.length)
+            {
+                var shaped = glyphs[g];
+
+                if (!shaped.visible)
+                {
+                    penX += shaped.xAdvance * fontSize;
+                    ++g;
+                    continue;
+                }
+
+                var glyph = shaped.glyph;
+                var glyphMaterial = shaped.material;
+                int materialId = font.GetMaterialId(shaped.encodedKey, fontSize);
+                mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
+                font.SetMaterialId(shaped.encodedKey, fontSize, materialId);
+
+                if (mesh == null)
+                    return false;
+
+                if (!ReferenceEquals(pixelRangeFont, font) ||
+                    !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
+                {
+                    pixelRange = font.GetScreenPixelRange(glyph.unicode, fontSize);
+                    pixelRangeFont = font;
+                    pixelRangeMaterial = glyphMaterial;
+                }
+
+                mesh = EnsureMeshCapacity(mesh, glyphMaterial, NowMeshKind.Text, 4);
+
+                if (mesh == null)
+                    return false;
+
+                int pageRoom = _captureMesh
+                    ? Mathf.Max(1, (MAX_VERTICES_PER_MESH - mesh.vertexCount) / 4)
+                    : run.length - g;
+                int end = g + 1;
+                int visibleGlyphs = 1;
+
+                while (end < run.length && visibleGlyphs < pageRoom)
+                {
+                    var next = glyphs[end];
+
+                    if (next.visible)
+                    {
+                        if (!ReferenceEquals(next.material, glyphMaterial))
+                            break;
+
+                        ++visibleGlyphs;
+                    }
+
+                    ++end;
+                }
+
+                penX = mesh.AddShapedTextRunReserved(
+                    run,
+                    g,
+                    end,
+                    penX,
+                    style.rect.y,
+                    fontSize,
+                    baseline,
+                    style.mask,
+                    color,
+                    outlineColor,
+                    outline,
+                    pixelRange);
+                g = end;
+            }
+
+            style.rect.x = penX;
             return true;
         }
 

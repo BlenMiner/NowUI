@@ -37,6 +37,10 @@ namespace NowUI.Internal
 
         public static bool packCanvasAvailable => false;
 
+        public static bool packRenderAvailable => false;
+
+        public static bool textBlitAvailable => false;
+
         public static void PackCanvas(
             Vector3[] srcVerts,
             Vector2[] srcUvs,
@@ -52,6 +56,57 @@ namespace NowUI.Internal
             Vector2 positionOffset,
             NowCanvasVertex[] destination,
             int destinationBase) { }
+
+        public static void PackRender(
+            Vector3[] srcVerts,
+            Vector2[] srcUvs,
+            Vector4[] srcRadius,
+            Vector4[] srcRawUv,
+            Vector4[] srcColors,
+            Vector4[] srcRect,
+            Vector4[] srcMask,
+            Vector4[] srcExtra,
+            Vector4[] srcOutline,
+            int vertexCount,
+            Vector2 positionOffset,
+            NowRenderVertex[] destination,
+            int destinationBase) { }
+
+        internal static void BlitTextRun(
+            NowFont.PreparedTextGlyph[] glyphs,
+            int start,
+            int end,
+            float x,
+            float y,
+            float fontSize,
+            float baseline,
+            Vector4 mask,
+            Vector4 color,
+            Vector4 outlineColor,
+            float outline,
+            float pixelRange,
+            Vector3[] dstVerts,
+            Vector2[] dstUvs,
+            Vector4[] dstRawUv,
+            Vector4[] dstRect,
+            Vector4[] dstRadius,
+            Vector4[] dstColor,
+            Vector4[] dstOutline,
+            Vector4[] dstExtra,
+            Vector4[] dstMask,
+            int dstVertexBase,
+            int[] dstIndices,
+            int dstIndexBase,
+            out float penX,
+            out int vertexCount,
+            out int indexCount,
+            out Vector4 bounds)
+        {
+            penX = x;
+            vertexCount = 0;
+            indexCount = 0;
+            bounds = default;
+        }
 
         public static void BlitMesh(
             NowLottieDrawBuffer buffer,
@@ -155,6 +210,12 @@ namespace NowUI.Internal
         /// <summary>The interleaved canvas vertex pack was added in version 3.</summary>
         public static bool packCanvasAvailable => !forceManagedCopy && available && _version >= 3;
 
+        /// <summary>The interleaved render vertex pack was added in version 4.</summary>
+        public static bool packRenderAvailable => !forceManagedCopy && available && _version >= 4;
+
+        /// <summary>The prepared shaped text run blitter was added in version 5.</summary>
+        public static bool textBlitAvailable => !forceManagedCopy && available && _version >= 5;
+
         public static unsafe void PackCanvas(
             Vector3[] srcVerts,
             Vector2[] srcUvs,
@@ -199,6 +260,135 @@ namespace NowUI.Internal
                     (float*)output,
                     destinationBase);
             }
+        }
+
+        public static unsafe void PackRender(
+            Vector3[] srcVerts,
+            Vector2[] srcUvs,
+            Vector4[] srcRadius,
+            Vector4[] srcRawUv,
+            Vector4[] srcColors,
+            Vector4[] srcRect,
+            Vector4[] srcMask,
+            Vector4[] srcExtra,
+            Vector4[] srcOutline,
+            int vertexCount,
+            Vector2 positionOffset,
+            NowRenderVertex[] destination,
+            int destinationBase)
+        {
+            fixed (Vector3* verts = srcVerts)
+            fixed (Vector2* uvs = srcUvs)
+            fixed (Vector4* radius = srcRadius)
+            fixed (Vector4* rawUv = srcRawUv)
+            fixed (Vector4* colors = srcColors)
+            fixed (Vector4* rect = srcRect)
+            fixed (Vector4* mask = srcMask)
+            fixed (Vector4* extra = srcExtra)
+            fixed (Vector4* outline = srcOutline)
+            fixed (NowRenderVertex* output = destination)
+            {
+                nowui_vg_pack_render(
+                    (float*)verts,
+                    (float*)uvs,
+                    (float*)radius,
+                    (float*)rawUv,
+                    (float*)colors,
+                    (float*)rect,
+                    (float*)mask,
+                    (float*)extra,
+                    (float*)outline,
+                    vertexCount,
+                    positionOffset.x,
+                    positionOffset.y,
+                    (float*)output,
+                    destinationBase);
+            }
+        }
+
+        internal static unsafe void BlitTextRun(
+            NowFont.PreparedTextGlyph[] glyphs,
+            int start,
+            int end,
+            float x,
+            float y,
+            float fontSize,
+            float baseline,
+            Vector4 mask,
+            Vector4 color,
+            Vector4 outlineColor,
+            float outline,
+            float pixelRange,
+            Vector3[] dstVerts,
+            Vector2[] dstUvs,
+            Vector4[] dstRawUv,
+            Vector4[] dstRect,
+            Vector4[] dstRadius,
+            Vector4[] dstColor,
+            Vector4[] dstOutline,
+            Vector4[] dstExtra,
+            Vector4[] dstMask,
+            int dstVertexBase,
+            int[] dstIndices,
+            int dstIndexBase,
+            out float penX,
+            out int vertexCount,
+            out int indexCount,
+            out Vector4 bounds)
+        {
+            float* mask4 = stackalloc float[4] { mask.x, mask.y, mask.z, mask.w };
+            float* color4 = stackalloc float[4] { color.x, color.y, color.z, color.w };
+            float* outline4 = stackalloc float[4] { outlineColor.x, outlineColor.y, outlineColor.z, outlineColor.w };
+            float* outPenX = stackalloc float[1];
+            int* outCounts = stackalloc int[2];
+            float* outBounds = stackalloc float[4];
+
+            fixed (NowFont.PreparedTextGlyph* srcGlyphs = glyphs)
+            fixed (Vector3* verts = dstVerts)
+            fixed (Vector2* uvs = dstUvs)
+            fixed (Vector4* rawUv = dstRawUv)
+            fixed (Vector4* rect = dstRect)
+            fixed (Vector4* radius = dstRadius)
+            fixed (Vector4* dstColorPtr = dstColor)
+            fixed (Vector4* dstOutlinePtr = dstOutline)
+            fixed (Vector4* extra = dstExtra)
+            fixed (Vector4* masks = dstMask)
+            fixed (int* indices = dstIndices)
+            {
+                nowui_vg_blit_text_run(
+                    (float*)srcGlyphs,
+                    start,
+                    end,
+                    x,
+                    y,
+                    fontSize,
+                    baseline,
+                    mask4,
+                    color4,
+                    outline4,
+                    outline,
+                    pixelRange,
+                    (float*)verts,
+                    (float*)uvs,
+                    (float*)rawUv,
+                    (float*)rect,
+                    (float*)radius,
+                    (float*)dstColorPtr,
+                    (float*)dstOutlinePtr,
+                    (float*)extra,
+                    (float*)masks,
+                    dstVertexBase,
+                    indices,
+                    dstIndexBase,
+                    outPenX,
+                    outCounts,
+                    outBounds);
+            }
+
+            penX = outPenX[0];
+            vertexCount = outCounts[0];
+            indexCount = outCounts[1];
+            bounds = new Vector4(outBounds[0], outBounds[1], outBounds[2], outBounds[3]);
         }
 
         /// <summary>
@@ -503,6 +693,36 @@ namespace NowUI.Internal
             int indexOffset);
 
         [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
+        static extern unsafe void nowui_vg_blit_text_run(
+            float* glyphs,
+            int start,
+            int end,
+            float x,
+            float y,
+            float fontSize,
+            float baseline,
+            float* mask4,
+            float* color4,
+            float* outline4,
+            float outline,
+            float pixelRange,
+            float* dstVerts,
+            float* dstUvs,
+            float* dstRawUv,
+            float* dstRect,
+            float* dstRadius,
+            float* dstColor,
+            float* dstOutline,
+            float* dstExtra,
+            float* dstMask,
+            int dstVertexBase,
+            int* dstIndices,
+            int dstIndexBase,
+            float* outPenX,
+            int* outCounts,
+            float* outBounds);
+
+        [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
         static extern unsafe void nowui_vg_pack_canvas(
             float* srcVerts,
             float* srcUvs,
@@ -515,6 +735,23 @@ namespace NowUI.Internal
             float* srcOutline,
             int vertexCount,
             int isText,
+            float offsetX,
+            float offsetY,
+            float* dst,
+            int dstVertexBase);
+
+        [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
+        static extern unsafe void nowui_vg_pack_render(
+            float* srcVerts,
+            float* srcUvs,
+            float* srcRadius,
+            float* srcRawUv,
+            float* srcColors,
+            float* srcRect,
+            float* srcMask,
+            float* srcExtra,
+            float* srcOutline,
+            int vertexCount,
             float offsetX,
             float offsetY,
             float* dst,
