@@ -65,7 +65,8 @@ NowSdf.Scene(new NowRect(20f, 20f, 220f, 170f))
     .SetOutline(4f, new Color(0.02f, 0.04f, 0.09f, 0.82f), 1f)
     .SetInnerShadow(new Vector2(-5f, -6f), 12f, new Color(0f, 0f, 0f, 0.22f))
     .SetEmboss(new Vector2(-0.6f, -0.8f), 0.32f, 9f)
-    .SetContours(18f, 1.2f, new Color(1f, 1f, 1f, 0.16f), Time.time * 10f)
+    .SetContours(18f, 1.2f, new Color(1f, 1f, 1f, 0.16f), Time.time * 10f, bandCount: 2)
+    .SetContourMask(new Vector2(116f, 76f), 72f, 18f)
     .SetWarp(2.5f, 52f, 0.18f)
     .Graph(blob)
     .Draw();
@@ -78,13 +79,21 @@ Available scene effects:
 - `SetInnerShadow(offset, softness, color, spread = 0)` darkens inside edges.
 - `SetGlow(radius, color, power = 1)` draws an outside halo.
 - `SetEmboss(lightDirection, strength = 0.35, size = 6)` lights the edge band.
-- `SetContours(spacing, width, color, offset = 0)` draws distance rings.
+- `SetContours(spacing, width, color, offset = 0, bandCount = 0)` draws
+  distance rings. `bandCount` limits the rings to the nearest edge bands;
+  `0` keeps the old repeating contour field.
+- `SetContourMask(center, radius, softness = 0)` reveals contours around a
+  scene-local point, which works well for pointer-focused field inspection.
 - `SetWarp(amplitude, scale, speed = 0, seed = 0)` bends the distance domain
   before the scene is evaluated.
 
 Outlines, shadows, and glows can only render inside the scene quad and mask. If
 an effect should extend beyond a shape, give the scene rect enough empty space
 around the drawn primitives.
+
+Scene effects measure against a locally normalized field distance, so stroke,
+shadow, emboss, and contour sizes stay close to scene-pixel units even through
+smooth blends, morphs, and warped organic fields.
 
 ## Reusable Graphs
 

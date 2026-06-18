@@ -746,15 +746,21 @@ namespace NowUI.Sdf
             return this;
         }
 
-        public NowSdfBuilder SetContours(float spacing, float width, Color color, float offset = 0f)
+        public NowSdfBuilder SetContours(float spacing, float width, Color color, float offset = 0f, int bandCount = 0)
         {
-            _cache.SetContours(spacing, width, color, offset);
+            _cache.SetContours(spacing, width, color, offset, bandCount);
             return this;
         }
 
-        public NowSdfBuilder SetContours(float spacing, float width, Vector4 color, float offset = 0f)
+        public NowSdfBuilder SetContours(float spacing, float width, Vector4 color, float offset = 0f, int bandCount = 0)
         {
-            _cache.SetContours(spacing, width, color, offset);
+            _cache.SetContours(spacing, width, color, offset, bandCount);
+            return this;
+        }
+
+        public NowSdfBuilder SetContourMask(Vector2 center, float radius, float softness = 0f)
+        {
+            _cache.SetContourMask(center, radius, softness);
             return this;
         }
 
@@ -988,6 +994,7 @@ namespace NowUI.Sdf
         static readonly int _embossProp = Shader.PropertyToID("_SdfEmboss");
         static readonly int _contourProp = Shader.PropertyToID("_SdfContour");
         static readonly int _contourColorProp = Shader.PropertyToID("_SdfContourColor");
+        static readonly int _contourMaskProp = Shader.PropertyToID("_SdfContourMask");
         static readonly int _warpProp = Shader.PropertyToID("_SdfWarp");
 
         readonly Vector4[] _data0 = new Vector4[NowSdf.MaxShapes];
@@ -1022,6 +1029,7 @@ namespace NowUI.Sdf
         Vector4 _emboss;
         Vector4 _contour;
         Vector4 _contourColor;
+        Vector4 _contourMask;
         Vector4 _warp;
         Texture _texture;
         NowRect _bounds;
@@ -1055,6 +1063,7 @@ namespace NowUI.Sdf
             _emboss = default;
             _contour = default;
             _contourColor = default;
+            _contourMask = default;
             _warp = default;
             _texture = null;
             _bounds = default;
@@ -1146,10 +1155,19 @@ namespace NowUI.Sdf
             _emboss = new Vector4(lightDirection.x, lightDirection.y, Mathf.Max(0.0001f, size), Mathf.Max(0f, strength));
         }
 
-        public void SetContours(float spacing, float width, Vector4 color, float offset)
+        public void SetContours(float spacing, float width, Vector4 color, float offset, int bandCount)
         {
-            _contour = new Vector4(Mathf.Max(0.0001f, spacing), Mathf.Max(0f, width), offset, 0f);
+            _contour = new Vector4(
+                Mathf.Max(0.0001f, spacing),
+                Mathf.Max(0f, width),
+                offset,
+                Mathf.Max(0, bandCount));
             _contourColor = color;
+        }
+
+        public void SetContourMask(Vector2 center, float radius, float softness)
+        {
+            _contourMask = new Vector4(center.x, center.y, Mathf.Max(0f, radius), Mathf.Max(0f, softness));
         }
 
         public void SetWarp(float amplitude, float scale, float speed, float seed)
@@ -1426,6 +1444,7 @@ namespace NowUI.Sdf
             material.SetVector(_embossProp, _emboss);
             material.SetVector(_contourProp, _contour);
             material.SetVector(_contourColorProp, _contourColor);
+            material.SetVector(_contourMaskProp, _contourMask);
             material.SetVector(_warpProp, _warp);
         }
 

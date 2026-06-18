@@ -558,7 +558,8 @@ public class NowDocsExample : NowGraphic
             .SetOutline(3.5f, new Color(0.02f, 0.035f, 0.08f, 0.82f), 1f)
             .SetInnerShadow(new Vector2(-4f - steerX * 4f, -5f - steerY * 3f), 12f, new Color(0f, 0f, 0f, 0.20f))
             .SetEmboss(new Vector2(0.35f - steerX, 0.22f - steerY), 0.30f + hoverT * 0.08f, 9f)
-            .SetContours(18f - hoverT * 5f, 1.1f, new Color(1f, 1f, 1f, 0.10f + hoverT * 0.08f), Time.time * (6f + hoverT * 8f))
+            .SetContours(18f - hoverT * 5f, 1.1f, new Color(1f, 1f, 1f, 0.10f + hoverT * 0.08f), Time.time * (6f + hoverT * 8f), 2)
+            .SetContourMask(cursor, h * (0.24f + hoverT * 0.10f), h * 0.08f)
             .SetWarp(1.0f + hoverT * 2.2f, Mathf.Lerp(72f, 48f, hoverT), 0.12f + hoverT * 0.15f, 4.7f)
             .Morph(idle, active, morphT)
             .Draw();

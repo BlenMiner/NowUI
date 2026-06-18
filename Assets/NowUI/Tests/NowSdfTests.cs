@@ -81,7 +81,8 @@ public class NowSdfTests
                 .SetShadow(new Vector2(6f, 8f), 12f, new Color(0f, 0f, 0f, 0.35f), 2f)
                 .SetInnerShadow(new Vector2(-3f, -4f), 7f, new Color(0f, 0f, 0f, 0.28f), 1f)
                 .SetEmboss(new Vector2(-1f, -1f), 0.4f, 5f)
-                .SetContours(10f, 1.5f, new Color(1f, 1f, 1f, 0.2f), 3f)
+                .SetContours(10f, 1.5f, new Color(1f, 1f, 1f, 0.2f), 3f, 2)
+                .SetContourMask(new Vector2(48f, 36f), 22f, 6f)
                 .SetWarp(3f, 42f, 0.6f, 9f)
                 .RoundedBox(new NowRect(16, 18, 88, 54), 18)
                 .Draw();
@@ -92,7 +93,8 @@ public class NowSdfTests
         Assert.AreEqual(new Vector4(18f, 2f, 0f, 0f), material.GetVector("_SdfGlow"));
         Assert.AreEqual(new Vector4(6f, 8f, 12f, 2f), material.GetVector("_SdfShadow"));
         Assert.AreEqual(new Vector4(-3f, -4f, 7f, 1f), material.GetVector("_SdfInnerShadow"));
-        Assert.AreEqual(new Vector4(10f, 1.5f, 3f, 0f), material.GetVector("_SdfContour"));
+        Assert.AreEqual(new Vector4(10f, 1.5f, 3f, 2f), material.GetVector("_SdfContour"));
+        Assert.AreEqual(new Vector4(48f, 36f, 22f, 6f), material.GetVector("_SdfContourMask"));
         Assert.AreEqual(new Vector4(3f, 42f, 0.6f, 9f), material.GetVector("_SdfWarp"));
 
         var emboss = material.GetVector("_SdfEmboss");

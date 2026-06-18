@@ -18,6 +18,7 @@ Shader "NowUI/SDF Scene"
         _SdfEmboss ("Emboss", Vector) = (0, 0, 1, 0)
         _SdfContour ("Contour", Vector) = (1, 0, 0, 0)
         _SdfContourColor ("Contour Color", Color) = (0, 0, 0, 0)
+        _SdfContourMask ("Contour Mask", Vector) = (0, 0, 0, 0)
         _SdfWarp ("Warp", Vector) = (0, 1, 0, 0)
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
@@ -115,6 +116,7 @@ Shader "NowUI/SDF Scene"
             float4 _SdfEmboss;
             float4 _SdfContour;
             float4 _SdfContourColor;
+            float4 _SdfContourMask;
             float4 _SdfWarp;
             float4 _ClipRect;
             float _UIMaskSoftnessX;
@@ -539,6 +541,13 @@ Shader "NowUI/SDF Scene"
                 return float4(rgb, a);
             }
 
+            float fieldMetric(float dist, float2 scenePos)
+            {
+                float scenePixel = max(max(length(ddx(scenePos)), length(ddy(scenePos))), 0.0001);
+                float fieldPixel = length(float2(ddx(dist), ddy(dist)));
+                return clamp(fieldPixel / scenePixel, 0.35, 3.0);
+            }
+
             v2f vert(appdata v)
             {
                 v2f o;
@@ -579,6 +588,10 @@ Shader "NowUI/SDF Scene"
 
                 float pixelWidth = max(fwidth(dist), 0.0001);
                 float edge = pixelWidth * max(0.5 + _SdfFeather * 0.5, 0.5);
+                float metric = fieldMetric(dist, scenePosBase);
+                float effectDist = dist / metric;
+                float effectPixelWidth = max(pixelWidth / metric, 0.0001);
+                float effectEdge = effectPixelWidth * max(0.5 + _SdfFeather * 0.5, 0.5);
                 float coverage = smoothstep(edge, -edge, dist);
                 float4 col = 0.0;
 
@@ -586,8 +599,11 @@ Shader "NowUI/SDF Scene"
                 {
                     float shadowDist;
                     evalSceneDistance(warpScenePos(scenePosBase - _SdfShadow.xy), shadowDist);
-                    shadowDist -= _SdfShadow.w;
-                    float shadowAlpha = smoothstep(max(_SdfShadow.z, pixelWidth) + edge, -edge, shadowDist) * (1.0 - coverage);
+                    float shadowMetric = fieldMetric(shadowDist, scenePosBase);
+                    float shadowPixelWidth = max(fwidth(shadowDist) / shadowMetric, 0.0001);
+                    float shadowEdge = shadowPixelWidth * max(0.5 + _SdfFeather * 0.5, 0.5);
+                    float shadowEffectDist = shadowDist / shadowMetric - _SdfShadow.w;
+                    float shadowAlpha = smoothstep(max(_SdfShadow.z, shadowPixelWidth) + shadowEdge, -shadowEdge, shadowEffectDist) * (1.0 - coverage);
                     float4 shadowColor = effectColor(_SdfShadowColor, i.tint);
                     shadowColor.a *= shadowAlpha;
                     col = alphaOver(col, shadowColor);
@@ -595,7 +611,7 @@ Shader "NowUI/SDF Scene"
 
                 if (_SdfGlowColor.a > 0.0 && _SdfGlow.x > 0.0)
                 {
-                    float glowT = saturate(1.0 - max(dist, 0.0) / max(_SdfGlow.x, 0.0001));
+                    float glowT = saturate(1.0 - max(effectDist, 0.0) / max(_SdfGlow.x, 0.0001));
                     float glowAlpha = pow(glowT, max(_SdfGlow.y, 0.0001)) * (1.0 - coverage);
                     float4 glowColor = effectColor(_SdfGlowColor, i.tint);
                     glowColor.a *= glowAlpha;
@@ -604,7 +620,7 @@ Shader "NowUI/SDF Scene"
 
                 if (_SdfOutlineColor.a > 0.0 && _SdfOutline.x > 0.0)
                 {
-                    float outlineAlpha = smoothstep(_SdfOutline.x + _SdfOutline.y + edge, _SdfOutline.x - edge, dist) * (1.0 - coverage);
+                    float outlineAlpha = smoothstep(_SdfOutline.x + _SdfOutline.y + effectEdge, _SdfOutline.x - effectEdge, effectDist) * (1.0 - coverage);
                     float4 outlineColor = effectColor(_SdfOutlineColor, i.tint);
                     outlineColor.a *= outlineAlpha;
                     col = alphaOver(col, outlineColor);
@@ -617,7 +633,7 @@ Shader "NowUI/SDF Scene"
                     float2 grad = float2(ddx(dist), ddy(dist));
                     float2 normal2 = normalize(grad + 0.0001);
                     float2 light = normalize(_SdfEmboss.xy + 0.0001);
-                    float band = 1.0 - smoothstep(0.0, max(_SdfEmboss.z, pixelWidth), abs(dist));
+                    float band = 1.0 - smoothstep(0.0, max(_SdfEmboss.z, effectPixelWidth), abs(effectDist));
                     float shade = dot(normal2, light) * _SdfEmboss.w * band;
                     fillColor.rgb = saturate(fillColor.rgb + shade);
                 }
@@ -629,8 +645,11 @@ Shader "NowUI/SDF Scene"
                 {
                     float innerDist;
                     evalSceneDistance(warpScenePos(scenePosBase - _SdfInnerShadow.xy), innerDist);
-                    innerDist += _SdfInnerShadow.w;
-                    float innerShape = smoothstep(max(_SdfInnerShadow.z, pixelWidth) + edge, -edge, innerDist);
+                    float innerMetric = fieldMetric(innerDist, scenePosBase);
+                    float innerPixelWidth = max(fwidth(innerDist) / innerMetric, 0.0001);
+                    float innerEdge = innerPixelWidth * max(0.5 + _SdfFeather * 0.5, 0.5);
+                    float innerEffectDist = innerDist / innerMetric + _SdfInnerShadow.w;
+                    float innerShape = smoothstep(max(_SdfInnerShadow.z, innerPixelWidth) + innerEdge, -innerEdge, innerEffectDist);
                     float innerAlpha = coverage * (1.0 - innerShape);
                     float4 innerShadowColor = effectColor(_SdfInnerShadowColor, i.tint);
                     innerShadowColor.a *= innerAlpha;
@@ -641,8 +660,20 @@ Shader "NowUI/SDF Scene"
                 {
                     float spacing = max(_SdfContour.x, 0.0001);
                     float halfWidth = _SdfContour.y * 0.5;
-                    float nearest = abs(frac((dist + _SdfContour.z) / spacing + 0.5) - 0.5) * spacing;
-                    float contourAlpha = smoothstep(halfWidth + edge, halfWidth - edge, nearest);
+                    float contourDistance = effectDist + _SdfContour.z;
+                    float nearest = abs(frac(contourDistance / spacing + 0.5) - 0.5) * spacing;
+                    float contourAlpha = smoothstep(halfWidth + effectEdge, halfWidth - effectEdge, nearest);
+                    if (_SdfContour.w > 0.0)
+                    {
+                        float bandIndex = floor(abs(contourDistance / spacing) + 0.5);
+                        contourAlpha *= 1.0 - step(_SdfContour.w, bandIndex);
+                    }
+                    if (_SdfContourMask.z > 0.0)
+                    {
+                        float maskDist = length(scenePosBase - _SdfContourMask.xy);
+                        float maskSoftness = max(_SdfContourMask.w, edge);
+                        contourAlpha *= smoothstep(_SdfContourMask.z + maskSoftness, _SdfContourMask.z - edge, maskDist);
+                    }
                     float4 contourColor = effectColor(_SdfContourColor, i.tint);
                     contourColor.a *= contourAlpha;
                     col = alphaOver(col, contourColor);
