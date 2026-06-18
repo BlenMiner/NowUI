@@ -73,10 +73,48 @@ namespace NowUI
             if (draw == null)
                 throw new ArgumentNullException(nameof(draw));
 
-            using (Begin(size))
-                draw();
+            try
+            {
+                using (Begin(size))
+                    draw();
+            }
+            finally
+            {
+                ClearGeometry();
+            }
+        }
 
-            ClearGeometry();
+        /// <summary>
+        /// Runs a representative input-aware draw once to load materials, create
+        /// control state, and grow internal buffers, then clears the resulting
+        /// geometry. Use this when the warmed frame contains interactive controls.
+        /// </summary>
+        public void Warmup(Vector2 size, INowInputProvider inputProvider, Action draw)
+        {
+            Warmup(new NowInputSurface(size), inputProvider, draw);
+        }
+
+        /// <summary>
+        /// Runs a representative input-aware draw once against an explicit surface,
+        /// then clears the resulting geometry.
+        /// </summary>
+        public void Warmup(NowInputSurface inputSurface, INowInputProvider inputProvider, Action draw)
+        {
+            ThrowIfDisposed();
+
+            if (draw == null)
+                throw new ArgumentNullException(nameof(draw));
+
+            try
+            {
+                using (NowInput.Begin(inputProvider, inputSurface))
+                using (Begin(inputSurface.size))
+                    draw();
+            }
+            finally
+            {
+                ClearGeometry();
+            }
         }
 
         internal NowDrawScope Begin(Vector2 size, NowGlassBlurQuality glassBlurQuality)
@@ -335,8 +373,14 @@ namespace NowUI
             _drawList = null;
             _disposed = true;
 
-            drawList?.EndScope(_positionOffset, _capturesMesh);
-            _glassQualityScope.Dispose();
+            try
+            {
+                drawList?.EndScope(_positionOffset, _capturesMesh);
+            }
+            finally
+            {
+                _glassQualityScope.Dispose();
+            }
         }
 
         internal void Cancel()
@@ -348,8 +392,14 @@ namespace NowUI
             _drawList = null;
             _disposed = true;
 
-            drawList?.CancelScope(_capturesMesh);
-            _glassQualityScope.Dispose();
+            try
+            {
+                drawList?.CancelScope(_capturesMesh);
+            }
+            finally
+            {
+                _glassQualityScope.Dispose();
+            }
         }
     }
 }

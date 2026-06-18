@@ -10,6 +10,9 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `NowDrawList.Warmup(...)` and `NowRenderer.Warmup(...)` to run a
   representative initialization frame and clear the result before measuring
   allocation-sensitive steady-state rendering.
+- Input-aware `NowDrawList.Warmup(...)` / `NowRenderer.Warmup(...)` overloads
+  and `NowControlState.Warmup<T>(id)` for prewarming interactive, known-id
+  control state outside measured frames.
 - Glass diagnostics now support caller-owned, allocation-free entry reads via
   `NowGlassSettings.TryGetLastFrameDiagnostic(...)`,
   `CopyLastFrameDiagnosticsTo(...)`, and

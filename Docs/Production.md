@@ -41,6 +41,12 @@ Normal frame paths must allocate no managed memory after explicit warmup:
 
 - Use `NowDrawList.Warmup(...)` or `NowRenderer.Warmup(...)` with a
   representative frame before measuring steady state.
+- Use the input-aware warmup overloads when the representative frame includes
+  controls that depend on `NowInput`; they install the same provider/surface
+  shape the measured frame will use.
+- For data-backed controls with known stable ids, call
+  `NowControlState.Warmup<T>(id)` during initialization to create the slot
+  outside the first interactive frame.
 - Warm dynamic font glyphs, Lottie geometry, effect render textures, material
   batches, world-space material instances, and any user-owned buffers.
 - When glass diagnostics are enabled, call

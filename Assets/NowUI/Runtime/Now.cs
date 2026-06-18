@@ -808,8 +808,15 @@ namespace NowUI
                 return;
 
             BeginDraw(out var drawMatrix);
-            DrawMesh(mesh, drawMatrix);
-            GL.PopMatrix();
+
+            try
+            {
+                DrawMesh(mesh, drawMatrix);
+            }
+            finally
+            {
+                GL.PopMatrix();
+            }
         }
 
         static bool UseMesh(int meshId)
@@ -1333,28 +1340,32 @@ namespace NowUI
 
                 BeginDraw(out var drawMatrix);
 
-                bool hasGlass = false;
-
-                for (int i = 0; i < count; ++i)
+                try
                 {
-                    if (meshArray[i].hasVertices && meshArray[i].kind == NowMeshKind.Glass)
+                    bool hasGlass = false;
+
+                    for (int i = 0; i < count; ++i)
                     {
-                        hasGlass = true;
-                        break;
+                        if (meshArray[i].hasVertices && meshArray[i].kind == NowMeshKind.Glass)
+                        {
+                            hasGlass = true;
+                            break;
+                        }
                     }
-                }
 
-                if (hasGlass && FlushLegacyGlassReplay(drawMatrix))
+                    if (hasGlass && FlushLegacyGlassReplay(drawMatrix))
+                    {
+                        ClearImmediateMeshes(count);
+                        return;
+                    }
+
+                    for (int i = 0; i < count; ++i)
+                        DrawMesh(meshArray[i], drawMatrix);
+                }
+                finally
                 {
-                    ClearImmediateMeshes(count);
                     GL.PopMatrix();
-                    return;
                 }
-
-                for (int i = 0; i < count; ++i)
-                    DrawMesh(meshArray[i], drawMatrix);
-
-                GL.PopMatrix();
             }
             finally
             {

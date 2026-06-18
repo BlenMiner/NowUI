@@ -16,7 +16,8 @@ extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
   labels, controls, Lottie reservations, and content rect caching.
 - `NowInput`, `NowFocus`, `NowControls`, `NowControlState`, and control
   builders: immediate interaction, navigation, focus, and reusable control
-  state.
+  state, including `NowControlState.Warmup<T>(id)` for known-id first-frame
+  allocation control.
 - `NowText`, `NowFontAsset`, `NowFont`, `NowTextWrap`,
   `NowTextSelection`, `NowTextEdit`, `NowTextArea`, and rich-text types:
   text rendering, shaping, editing, wrapping, selection, and parser hooks.
@@ -38,6 +39,9 @@ extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
   ownership reason to switch.
 - APIs used inside a frame must avoid hidden managed allocation after warmup.
 - Debug and diagnostics APIs must use caller-owned buffers or indexed access.
+- Warmup APIs may allocate while preparing state, but must clear captured
+  geometry before returning so the next measured frame starts from a clean draw
+  list.
 - String IDs are allowed for convenience, but examples should prefer stable
   integer or data-backed `NowId` values in repeated/dynamic UI.
 - Breaking changes are allowed before the next tagged release only when they

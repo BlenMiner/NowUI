@@ -20,6 +20,70 @@ public class NowRendererTests
     }
 
     [Test]
+    public void DrawListWarmupCanUseInputProviderAndClearsGeometry()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var provider = new FakeProvider
+        {
+            snapshot = new NowInputSnapshot(new Vector2(24f, 18f), false, false, false)
+        };
+        var drawList = new NowDrawList();
+        bool sawInputContext = false;
+        Vector2 pointer = default;
+
+        try
+        {
+            drawList.Warmup(new Vector2(128, 64), provider, () =>
+            {
+                sawInputContext = NowInput.hasContext;
+                pointer = NowInput.current.pointerPosition;
+
+                Now.Rectangle(new NowRect(4, 6, 32, 20))
+                    .SetColor(Color.white)
+                    .Draw();
+            });
+
+            Assert.IsTrue(sawInputContext);
+            Assert.AreEqual(new Vector2(24f, 18f), pointer);
+            Assert.IsFalse(drawList.hasGeometry);
+            Assert.IsFalse(NowInput.hasContext);
+        }
+        finally
+        {
+            drawList.Dispose();
+            NowInput.Reset();
+        }
+    }
+
+    [Test]
+    public void DrawListWarmupClearsGeometryWhenDrawThrows()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.Throws<System.InvalidOperationException>(() =>
+                drawList.Warmup(new Vector2(128, 64), () =>
+                {
+                    Now.Rectangle(new NowRect(4, 6, 32, 20))
+                        .SetColor(Color.white)
+                        .Draw();
+
+                    throw new System.InvalidOperationException("warmup failed");
+                }));
+
+            Assert.IsFalse(drawList.hasGeometry);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
     public void DrawListBuildCapturesRectangleGeometry()
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));

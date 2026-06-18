@@ -172,6 +172,20 @@ public class NowControlsTests
     }
 
     [Test]
+    public void ControlStateWarmupCreatesSlotWithoutOverwritingExistingValue()
+    {
+        const int id = 7171;
+
+        NowControlState.Warmup(id, 42);
+        Assert.AreEqual(42, NowControlState.Get<int>(id));
+
+        NowControlState.Get<int>(id) = 99;
+        NowControlState.Warmup(id, 42);
+
+        Assert.AreEqual(99, NowControlState.Get<int>(id));
+    }
+
+    [Test]
     public void ButtonClicksOnPressAndReleaseInside()
     {
         Vector2 inside = new Vector2(60, 36);

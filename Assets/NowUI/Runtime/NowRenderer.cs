@@ -50,6 +50,41 @@ namespace NowUI
             Warmup(new Vector2(target.width, target.height), draw);
         }
 
+        /// <summary>
+        /// Runs a representative input-aware draw once to load materials, create
+        /// control state, and grow internal buffers, then clears the resulting
+        /// geometry. Use this when the warmed frame contains interactive controls.
+        /// </summary>
+        public void Warmup(Vector2 size, INowInputProvider inputProvider, Action draw)
+        {
+            ThrowIfDisposed();
+            _drawList.Warmup(size, inputProvider, draw);
+        }
+
+        /// <summary>
+        /// Runs a representative input-aware draw once against an explicit surface,
+        /// then clears the resulting geometry.
+        /// </summary>
+        public void Warmup(NowInputSurface inputSurface, INowInputProvider inputProvider, Action draw)
+        {
+            ThrowIfDisposed();
+            _drawList.Warmup(inputSurface, inputProvider, draw);
+        }
+
+        /// <summary>
+        /// Runs a representative input-aware draw once using the target dimensions
+        /// as the logical surface, then clears the resulting geometry.
+        /// </summary>
+        public void Warmup(RenderTexture target, INowInputProvider inputProvider, Action draw)
+        {
+            ThrowIfDisposed();
+
+            if (target == null)
+                throw new ArgumentNullException(nameof(target));
+
+            Warmup(new Vector2(target.width, target.height), inputProvider, draw);
+        }
+
         public NowDrawScope Begin(Vector2 size)
         {
             ThrowIfDisposed();

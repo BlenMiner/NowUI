@@ -198,8 +198,10 @@ changes its bundled toolchain.
   batches, and capacity growth may allocate.
 - For strict frame budgets, call `NowDrawList.Warmup(...)` or
   `NowRenderer.Warmup(...)` with a representative frame during initialization,
-  reserve opt-in diagnostic storage with
-  `NowGlassSettings.ReserveDiagnostics(...)`, then measure the real frame.
+  use the input-aware overload when controls read pointer/focus state, prewarm
+  known control-state ids with `NowControlState.Warmup<T>(id)`, reserve opt-in
+  diagnostic storage with `NowGlassSettings.ReserveDiagnostics(...)`, then
+  measure the real frame.
 - Emoji sequence shaping (ZWJ families, skin tones, flags) needs a future
   HarfBuzz shaping layer; single-glyph emoji render today.
 

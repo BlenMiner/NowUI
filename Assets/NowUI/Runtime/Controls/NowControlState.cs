@@ -48,7 +48,11 @@ namespace NowUI
 
             static Store()
             {
-                s_resets.Add(() => entries.Clear());
+                s_resets.Add(() =>
+                {
+                    entries.Clear();
+                    lastSweep = 0f;
+                });
             }
         }
 
@@ -76,6 +80,38 @@ namespace NowUI
 
             entry.lastTouch = now;
             return ref entry.value;
+        }
+
+        /// <summary>
+        /// Creates this control-state slot outside a measured frame. Use during
+        /// scene/widget initialization for known stable ids so the first interactive
+        /// frame does not allocate the slot.
+        /// </summary>
+        public static void Warmup<T>(int id) where T : struct
+        {
+            Warmup(id, default(T));
+        }
+
+        /// <summary>
+        /// Creates this control-state slot with an initial value if it is missing.
+        /// Existing slots are left untouched.
+        /// </summary>
+        public static void Warmup<T>(int id, T initialValue) where T : struct
+        {
+            var entries = Store<T>.entries;
+            float now = Time.realtimeSinceStartup;
+
+            if (!entries.TryGetValue(id, out var entry))
+            {
+                Sweep<T>(now);
+                entry = new Entry<T>
+                {
+                    value = initialValue
+                };
+                entries.Add(id, entry);
+            }
+
+            entry.lastTouch = now;
         }
 
         static void Sweep<T>(float now)
@@ -325,6 +361,7 @@ namespace NowUI
             for (int i = 0; i < s_resets.Count; ++i)
                 s_resets[i]();
 
+            s_sweepScratch.Clear();
             s_repaintRequested = false;
         }
 
