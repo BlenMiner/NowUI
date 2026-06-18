@@ -692,6 +692,78 @@ namespace NowUI.Sdf
             return this;
         }
 
+        public NowSdfBuilder SetOutline(float width, Color color, float softness = 0f)
+        {
+            _cache.SetOutline(width, color, softness);
+            return this;
+        }
+
+        public NowSdfBuilder SetOutline(float width, Vector4 color, float softness = 0f)
+        {
+            _cache.SetOutline(width, color, softness);
+            return this;
+        }
+
+        public NowSdfBuilder SetGlow(float radius, Color color, float power = 1f)
+        {
+            _cache.SetGlow(radius, color, power);
+            return this;
+        }
+
+        public NowSdfBuilder SetGlow(float radius, Vector4 color, float power = 1f)
+        {
+            _cache.SetGlow(radius, color, power);
+            return this;
+        }
+
+        public NowSdfBuilder SetShadow(Vector2 offset, float softness, Color color, float spread = 0f)
+        {
+            _cache.SetShadow(offset, softness, color, spread);
+            return this;
+        }
+
+        public NowSdfBuilder SetShadow(Vector2 offset, float softness, Vector4 color, float spread = 0f)
+        {
+            _cache.SetShadow(offset, softness, color, spread);
+            return this;
+        }
+
+        public NowSdfBuilder SetInnerShadow(Vector2 offset, float softness, Color color, float spread = 0f)
+        {
+            _cache.SetInnerShadow(offset, softness, color, spread);
+            return this;
+        }
+
+        public NowSdfBuilder SetInnerShadow(Vector2 offset, float softness, Vector4 color, float spread = 0f)
+        {
+            _cache.SetInnerShadow(offset, softness, color, spread);
+            return this;
+        }
+
+        public NowSdfBuilder SetEmboss(Vector2 lightDirection, float strength = 0.35f, float size = 6f)
+        {
+            _cache.SetEmboss(lightDirection, strength, size);
+            return this;
+        }
+
+        public NowSdfBuilder SetContours(float spacing, float width, Color color, float offset = 0f)
+        {
+            _cache.SetContours(spacing, width, color, offset);
+            return this;
+        }
+
+        public NowSdfBuilder SetContours(float spacing, float width, Vector4 color, float offset = 0f)
+        {
+            _cache.SetContours(spacing, width, color, offset);
+            return this;
+        }
+
+        public NowSdfBuilder SetWarp(float amplitude, float scale, float speed = 0f, float seed = 0f)
+        {
+            _cache.SetWarp(amplitude, scale, speed, seed);
+            return this;
+        }
+
         public NowSdfBuilder SetOperation(NowSdfOperation operation, float smoothing = 0f)
         {
             _cache.SetOperation(operation, smoothing);
@@ -905,6 +977,18 @@ namespace NowUI.Sdf
         static readonly int _uvsProp = Shader.PropertyToID("_SdfUvs");
         static readonly int _layerData0Prop = Shader.PropertyToID("_SdfLayerData0");
         static readonly int _layerData1Prop = Shader.PropertyToID("_SdfLayerData1");
+        static readonly int _outlineProp = Shader.PropertyToID("_SdfOutline");
+        static readonly int _outlineColorProp = Shader.PropertyToID("_SdfOutlineColor");
+        static readonly int _glowProp = Shader.PropertyToID("_SdfGlow");
+        static readonly int _glowColorProp = Shader.PropertyToID("_SdfGlowColor");
+        static readonly int _shadowProp = Shader.PropertyToID("_SdfShadow");
+        static readonly int _shadowColorProp = Shader.PropertyToID("_SdfShadowColor");
+        static readonly int _innerShadowProp = Shader.PropertyToID("_SdfInnerShadow");
+        static readonly int _innerShadowColorProp = Shader.PropertyToID("_SdfInnerShadowColor");
+        static readonly int _embossProp = Shader.PropertyToID("_SdfEmboss");
+        static readonly int _contourProp = Shader.PropertyToID("_SdfContour");
+        static readonly int _contourColorProp = Shader.PropertyToID("_SdfContourColor");
+        static readonly int _warpProp = Shader.PropertyToID("_SdfWarp");
 
         readonly Vector4[] _data0 = new Vector4[NowSdf.MaxShapes];
         readonly Vector4[] _data1 = new Vector4[NowSdf.MaxShapes];
@@ -927,6 +1011,18 @@ namespace NowUI.Sdf
         NowSdfOperation _activeLayerOperation;
         float _activeLayerSmoothing;
         float _feather;
+        Vector4 _outline;
+        Vector4 _outlineColor;
+        Vector4 _glow;
+        Vector4 _glowColor;
+        Vector4 _shadow;
+        Vector4 _shadowColor;
+        Vector4 _innerShadow;
+        Vector4 _innerShadowColor;
+        Vector4 _emboss;
+        Vector4 _contour;
+        Vector4 _contourColor;
+        Vector4 _warp;
         Texture _texture;
         NowRect _bounds;
         bool _hasBounds;
@@ -948,6 +1044,18 @@ namespace NowUI.Sdf
             _activeLayerOperation = NowSdfOperation.Union;
             _activeLayerSmoothing = 0f;
             _feather = 0f;
+            _outline = default;
+            _outlineColor = default;
+            _glow = default;
+            _glowColor = default;
+            _shadow = default;
+            _shadowColor = default;
+            _innerShadow = default;
+            _innerShadowColor = default;
+            _emboss = default;
+            _contour = default;
+            _contourColor = default;
+            _warp = default;
             _texture = null;
             _bounds = default;
             _hasBounds = false;
@@ -1003,6 +1111,50 @@ namespace NowUI.Sdf
         public void SetFeather(float feather)
         {
             _feather = Mathf.Max(0f, feather);
+        }
+
+        public void SetOutline(float width, Vector4 color, float softness)
+        {
+            _outline = new Vector4(Mathf.Max(0f, width), Mathf.Max(0f, softness), 0f, 0f);
+            _outlineColor = color;
+        }
+
+        public void SetGlow(float radius, Vector4 color, float power)
+        {
+            _glow = new Vector4(Mathf.Max(0f, radius), Mathf.Max(0.0001f, power), 0f, 0f);
+            _glowColor = color;
+        }
+
+        public void SetShadow(Vector2 offset, float softness, Vector4 color, float spread)
+        {
+            _shadow = new Vector4(offset.x, offset.y, Mathf.Max(0f, softness), Mathf.Max(0f, spread));
+            _shadowColor = color;
+        }
+
+        public void SetInnerShadow(Vector2 offset, float softness, Vector4 color, float spread)
+        {
+            _innerShadow = new Vector4(offset.x, offset.y, Mathf.Max(0f, softness), Mathf.Max(0f, spread));
+            _innerShadowColor = color;
+        }
+
+        public void SetEmboss(Vector2 lightDirection, float strength, float size)
+        {
+            if (lightDirection.sqrMagnitude <= 0.0001f)
+                lightDirection = new Vector2(-0.55f, -0.8f);
+
+            lightDirection.Normalize();
+            _emboss = new Vector4(lightDirection.x, lightDirection.y, Mathf.Max(0.0001f, size), Mathf.Max(0f, strength));
+        }
+
+        public void SetContours(float spacing, float width, Vector4 color, float offset)
+        {
+            _contour = new Vector4(Mathf.Max(0.0001f, spacing), Mathf.Max(0f, width), offset, 0f);
+            _contourColor = color;
+        }
+
+        public void SetWarp(float amplitude, float scale, float speed, float seed)
+        {
+            _warp = new Vector4(Mathf.Max(0f, amplitude), Mathf.Max(0.0001f, scale), speed, seed);
         }
 
         public void SetOperation(NowSdfOperation operation, float smoothing)
@@ -1263,6 +1415,18 @@ namespace NowUI.Sdf
             material.SetVectorArray(_uvsProp, _uvs);
             material.SetVectorArray(_layerData0Prop, _layerData0);
             material.SetVectorArray(_layerData1Prop, _layerData1);
+            material.SetVector(_outlineProp, _outline);
+            material.SetVector(_outlineColorProp, _outlineColor);
+            material.SetVector(_glowProp, _glow);
+            material.SetVector(_glowColorProp, _glowColor);
+            material.SetVector(_shadowProp, _shadow);
+            material.SetVector(_shadowColorProp, _shadowColor);
+            material.SetVector(_innerShadowProp, _innerShadow);
+            material.SetVector(_innerShadowColorProp, _innerShadowColor);
+            material.SetVector(_embossProp, _emboss);
+            material.SetVector(_contourProp, _contour);
+            material.SetVector(_contourColorProp, _contourColor);
+            material.SetVector(_warpProp, _warp);
         }
 
         int GetGraphId(NowSdfGraph graph, ref int shapeCount)

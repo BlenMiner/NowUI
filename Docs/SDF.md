@@ -43,6 +43,41 @@ Edges are anti-aliased in screen space. `SetFeather(0)` gives the crisp default
 one-pixel ramp; `SetFeather(1)` widens that transition by roughly one extra
 screen pixel, independent of Canvas Scaler changes.
 
+## Effects
+
+Effects are applied to the final composed scene field. They work on primitives,
+graphs, morphs, and SDF text together:
+
+```csharp
+NowSdf.Scene(new NowRect(20, 20, 220, 140))
+    .SetColor(new Color(0.15f, 0.95f, 0.8f, 1f))
+    .SetOutline(4f, new Color(0.02f, 0.04f, 0.08f, 0.85f), 1f)
+    .SetShadow(new Vector2(8f, 10f), 16f, new Color(0f, 0f, 0f, 0.28f), 2f)
+    .SetGlow(24f, new Color(0.2f, 0.75f, 1f, 0.35f), 1.6f)
+    .SetEmboss(new Vector2(-0.6f, -0.8f), 0.35f, 7f)
+    .SetContours(14f, 1.5f, new Color(1f, 1f, 1f, 0.18f), Time.time * 12f)
+    .SetWarp(3f, 48f, 0.25f)
+    .SmoothUnion(18f)
+    .Circle(new Vector2(78, 72), 42)
+    .RoundedBox(new NowRect(76, 38, 104, 68), 20)
+    .Draw();
+```
+
+Available scene effects:
+
+- `SetOutline(width, color, softness = 0)` draws an outer stroke.
+- `SetShadow(offset, softness, color, spread = 0)` draws a soft drop shadow.
+- `SetInnerShadow(offset, softness, color, spread = 0)` darkens inside edges.
+- `SetGlow(radius, color, power = 1)` draws an outside halo.
+- `SetEmboss(lightDirection, strength = 0.35, size = 6)` lights the edge band.
+- `SetContours(spacing, width, color, offset = 0)` draws distance rings.
+- `SetWarp(amplitude, scale, speed = 0, seed = 0)` bends the distance domain
+  before the scene is evaluated.
+
+Outlines, shadows, and glows can only render inside the scene quad and mask. If
+an effect should extend beyond a shape, give the scene rect enough empty space
+around the drawn primitives.
+
 ## Reusable Graphs
 
 Use `NowSdf.Graph()` when a shape set should be reused or combined as one

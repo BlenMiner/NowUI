@@ -133,7 +133,8 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
   [Docs/Docking.md](Docs/Docking.md)
 - **SDF Shapes** — composable SDF circles, boxes, rounded boxes, ellipses and
   capsules with union/subtract/intersect operations, smooth blends, colors, and
-  texture fills. [Docs/SDF.md](Docs/SDF.md)
+  texture fills, plus scene-level outlines, shadows, glow, embossing, contours,
+  and warp. [Docs/SDF.md](Docs/SDF.md)
 
 API compatibility and allocation rules are tracked in
 [Docs/API.md](Docs/API.md); release and Asset Store validation gates are in

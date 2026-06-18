@@ -7,6 +7,18 @@ Shader "NowUI/SDF Scene"
         _SdfShapeCount ("Shape Count", Float) = 0
         _SdfLayerCount ("Layer Count", Float) = 0
         _SdfFeather ("Feather", Float) = 0
+        _SdfOutline ("Outline", Vector) = (0, 0, 0, 0)
+        _SdfOutlineColor ("Outline Color", Color) = (0, 0, 0, 0)
+        _SdfGlow ("Glow", Vector) = (0, 1, 0, 0)
+        _SdfGlowColor ("Glow Color", Color) = (0, 0, 0, 0)
+        _SdfShadow ("Shadow", Vector) = (0, 0, 0, 0)
+        _SdfShadowColor ("Shadow Color", Color) = (0, 0, 0, 0)
+        _SdfInnerShadow ("Inner Shadow", Vector) = (0, 0, 0, 0)
+        _SdfInnerShadowColor ("Inner Shadow Color", Color) = (0, 0, 0, 0)
+        _SdfEmboss ("Emboss", Vector) = (0, 0, 1, 0)
+        _SdfContour ("Contour", Vector) = (1, 0, 0, 0)
+        _SdfContourColor ("Contour Color", Color) = (0, 0, 0, 0)
+        _SdfWarp ("Warp", Vector) = (0, 1, 0, 0)
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
         _StencilOp ("Stencil Operation", Float) = 0
@@ -92,6 +104,18 @@ Shader "NowUI/SDF Scene"
             float _SdfShapeCount;
             float _SdfLayerCount;
             float _SdfFeather;
+            float4 _SdfOutline;
+            float4 _SdfOutlineColor;
+            float4 _SdfGlow;
+            float4 _SdfGlowColor;
+            float4 _SdfShadow;
+            float4 _SdfShadowColor;
+            float4 _SdfInnerShadow;
+            float4 _SdfInnerShadowColor;
+            float4 _SdfEmboss;
+            float4 _SdfContour;
+            float4 _SdfContourColor;
+            float4 _SdfWarp;
             float4 _ClipRect;
             float _UIMaskSoftnessX;
             float _UIMaskSoftnessY;
@@ -271,6 +295,48 @@ Shader "NowUI/SDF Scene"
                 }
             }
 
+            void combineDistance(inout float dist, float shapeDist, float operation, float smoothing)
+            {
+                if (operation < 0.5)
+                {
+                    dist = min(dist, shapeDist);
+                    return;
+                }
+
+                if (operation < 1.5)
+                {
+                    dist = max(dist, -shapeDist);
+                    return;
+                }
+
+                if (operation < 2.5)
+                {
+                    dist = max(dist, shapeDist);
+                    return;
+                }
+
+                smoothing = max(smoothing, 0.0001);
+
+                if (operation < 3.5)
+                {
+                    float h = saturate(0.5 + 0.5 * (shapeDist - dist) / smoothing);
+                    dist = lerp(shapeDist, dist, h) - smoothing * h * (1.0 - h);
+                    return;
+                }
+
+                if (operation < 4.5)
+                {
+                    float h = saturate(0.5 - 0.5 * (shapeDist + dist) / smoothing);
+                    dist = lerp(dist, -shapeDist, h) + smoothing * h * (1.0 - h);
+                    return;
+                }
+
+                {
+                    float h = saturate(0.5 - 0.5 * (shapeDist - dist) / smoothing);
+                    dist = lerp(shapeDist, dist, h) + smoothing * h * (1.0 - h);
+                }
+            }
+
             void evalGraph(float graphId, float2 scenePos, float4 tint, out float dist, out float4 fill)
             {
                 int count = min((int)_SdfShapeCount, NOW_SDF_MAX_SHAPES);
@@ -327,6 +393,152 @@ Shader "NowUI/SDF Scene"
                 fill = lerp(aFill, bFill, t);
             }
 
+            void evalGraphDistance(float graphId, float2 scenePos, out float dist)
+            {
+                int count = min((int)_SdfShapeCount, NOW_SDF_MAX_SHAPES);
+                bool found = false;
+                dist = 100000.0;
+
+                for (int n = 0; n < NOW_SDF_MAX_SHAPES; ++n)
+                {
+                    if (n >= count)
+                        break;
+
+                    if (abs(_SdfShapeMeta[n].x - graphId) > 0.5)
+                        continue;
+
+                    float4 data0 = _SdfData0[n];
+                    float shapeDist = shapeDistance(n, data0.x, _SdfData1[n], _SdfData2[n], scenePos);
+
+                    if (!found)
+                    {
+                        dist = shapeDist;
+                        found = true;
+                    }
+                    else
+                    {
+                        combineDistance(dist, shapeDist, data0.y, data0.z);
+                    }
+                }
+            }
+
+            void evalLayerDistance(int index, float2 scenePos, out float dist)
+            {
+                float4 layer0 = _SdfLayerData0[index];
+                float4 layer1 = _SdfLayerData1[index];
+
+                if (layer0.w < 0.5)
+                {
+                    evalGraphDistance(layer0.x, scenePos, dist);
+                    return;
+                }
+
+                float aDist;
+                float bDist;
+                evalGraphDistance(layer0.x, scenePos, aDist);
+                evalGraphDistance(layer1.x, scenePos, bDist);
+                dist = lerp(aDist, bDist, saturate(layer1.y));
+            }
+
+            void evalScene(float2 scenePos, float4 tint, out float dist, out float4 fill)
+            {
+                int layerCount = min((int)_SdfLayerCount, NOW_SDF_MAX_LAYERS);
+                bool found = false;
+                dist = 100000.0;
+                fill = 0.0;
+
+                for (int layer = 0; layer < NOW_SDF_MAX_LAYERS; ++layer)
+                {
+                    if (layer >= layerCount)
+                        break;
+
+                    float layerDist;
+                    float4 layerFill;
+                    evalLayer(layer, scenePos, tint, layerDist, layerFill);
+
+                    if (!found)
+                    {
+                        dist = layerDist;
+                        fill = layerFill;
+                        found = true;
+                    }
+                    else
+                    {
+                        combine(dist, fill, layerDist, layerFill, _SdfLayerData0[layer].y, _SdfLayerData0[layer].z);
+                    }
+                }
+            }
+
+            void evalSceneDistance(float2 scenePos, out float dist)
+            {
+                int layerCount = min((int)_SdfLayerCount, NOW_SDF_MAX_LAYERS);
+                bool found = false;
+                dist = 100000.0;
+
+                for (int layer = 0; layer < NOW_SDF_MAX_LAYERS; ++layer)
+                {
+                    if (layer >= layerCount)
+                        break;
+
+                    float layerDist;
+                    evalLayerDistance(layer, scenePos, layerDist);
+
+                    if (!found)
+                    {
+                        dist = layerDist;
+                        found = true;
+                    }
+                    else
+                    {
+                        combineDistance(dist, layerDist, _SdfLayerData0[layer].y, _SdfLayerData0[layer].z);
+                    }
+                }
+            }
+
+            float hash21(float2 p)
+            {
+                p = frac(p * float2(123.34, 456.21));
+                p += dot(p, p + 45.32);
+                return frac(p.x * p.y);
+            }
+
+            float noise21(float2 p)
+            {
+                float2 i = floor(p);
+                float2 f = frac(p);
+                f = f * f * (3.0 - 2.0 * f);
+
+                float a = hash21(i);
+                float b = hash21(i + float2(1.0, 0.0));
+                float c = hash21(i + float2(0.0, 1.0));
+                float d = hash21(i + float2(1.0, 1.0));
+                return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
+            }
+
+            float2 warpScenePos(float2 scenePos)
+            {
+                if (_SdfWarp.x <= 0.0)
+                    return scenePos;
+
+                float scale = max(_SdfWarp.y, 0.0001);
+                float t = _Time.y * _SdfWarp.z + _SdfWarp.w;
+                float2 p = scenePos / scale;
+                float2 n = float2(noise21(p + t), noise21(p + t + 37.23)) * 2.0 - 1.0;
+                return scenePos + n * _SdfWarp.x;
+            }
+
+            float4 effectColor(float4 color, float4 tint)
+            {
+                return color * tint;
+            }
+
+            float4 alphaOver(float4 baseColor, float4 topColor)
+            {
+                float a = topColor.a + baseColor.a * (1.0 - topColor.a);
+                float3 rgb = (topColor.rgb * topColor.a + baseColor.rgb * baseColor.a * (1.0 - topColor.a)) / max(a, 0.0001);
+                return float4(rgb, a);
+            }
+
             v2f vert(appdata v)
             {
                 v2f o;
@@ -351,7 +563,8 @@ Shader "NowUI/SDF Scene"
             fixed4 frag(v2f i) : SV_Target
             {
                 float2 quadPos = i.rawUV * i.rect.zw;
-                float2 scenePos = float2(quadPos.x, i.rect.w - quadPos.y);
+                float2 scenePosBase = float2(quadPos.x, i.rect.w - quadPos.y);
+                float2 scenePos = warpScenePos(scenePosBase);
                 float2 meshPos = i.rect.xy + quadPos;
                 float4 mask = i.mask;
 
@@ -360,37 +573,80 @@ Shader "NowUI/SDF Scene"
                     min(-meshPos.y - mask.y, (mask.y + mask.w) + meshPos.y)
                 ));
 
-                int layerCount = min((int)_SdfLayerCount, NOW_SDF_MAX_LAYERS);
                 float dist = 100000.0;
                 float4 fill = 0.0;
-                bool found = false;
-
-                for (int layer = 0; layer < NOW_SDF_MAX_LAYERS; ++layer)
-                {
-                    if (layer >= layerCount)
-                        break;
-
-                    float layerDist;
-                    float4 layerFill;
-                    evalLayer(layer, scenePos, i.tint, layerDist, layerFill);
-
-                    if (!found)
-                    {
-                        dist = layerDist;
-                        fill = layerFill;
-                        found = true;
-                    }
-                    else
-                    {
-                        combine(dist, fill, layerDist, layerFill, _SdfLayerData0[layer].y, _SdfLayerData0[layer].z);
-                    }
-                }
+                evalScene(scenePos, i.tint, dist, fill);
 
                 float pixelWidth = max(fwidth(dist), 0.0001);
                 float edge = pixelWidth * max(0.5 + _SdfFeather * 0.5, 0.5);
                 float coverage = smoothstep(edge, -edge, dist);
-                fixed4 col = fill;
-                col.a *= coverage;
+                float4 col = 0.0;
+
+                if (_SdfShadowColor.a > 0.0)
+                {
+                    float shadowDist;
+                    evalSceneDistance(warpScenePos(scenePosBase - _SdfShadow.xy), shadowDist);
+                    shadowDist -= _SdfShadow.w;
+                    float shadowAlpha = smoothstep(max(_SdfShadow.z, pixelWidth) + edge, -edge, shadowDist) * (1.0 - coverage);
+                    float4 shadowColor = effectColor(_SdfShadowColor, i.tint);
+                    shadowColor.a *= shadowAlpha;
+                    col = alphaOver(col, shadowColor);
+                }
+
+                if (_SdfGlowColor.a > 0.0 && _SdfGlow.x > 0.0)
+                {
+                    float glowT = saturate(1.0 - max(dist, 0.0) / max(_SdfGlow.x, 0.0001));
+                    float glowAlpha = pow(glowT, max(_SdfGlow.y, 0.0001)) * (1.0 - coverage);
+                    float4 glowColor = effectColor(_SdfGlowColor, i.tint);
+                    glowColor.a *= glowAlpha;
+                    col = alphaOver(col, glowColor);
+                }
+
+                if (_SdfOutlineColor.a > 0.0 && _SdfOutline.x > 0.0)
+                {
+                    float outlineAlpha = smoothstep(_SdfOutline.x + _SdfOutline.y + edge, _SdfOutline.x - edge, dist) * (1.0 - coverage);
+                    float4 outlineColor = effectColor(_SdfOutlineColor, i.tint);
+                    outlineColor.a *= outlineAlpha;
+                    col = alphaOver(col, outlineColor);
+                }
+
+                float4 fillColor = fill;
+
+                if (_SdfEmboss.w > 0.0)
+                {
+                    float2 grad = float2(ddx(dist), ddy(dist));
+                    float2 normal2 = normalize(grad + 0.0001);
+                    float2 light = normalize(_SdfEmboss.xy + 0.0001);
+                    float band = 1.0 - smoothstep(0.0, max(_SdfEmboss.z, pixelWidth), abs(dist));
+                    float shade = dot(normal2, light) * _SdfEmboss.w * band;
+                    fillColor.rgb = saturate(fillColor.rgb + shade);
+                }
+
+                fillColor.a *= coverage;
+                col = alphaOver(col, fillColor);
+
+                if (_SdfInnerShadowColor.a > 0.0)
+                {
+                    float innerDist;
+                    evalSceneDistance(warpScenePos(scenePosBase - _SdfInnerShadow.xy), innerDist);
+                    innerDist += _SdfInnerShadow.w;
+                    float innerShape = smoothstep(max(_SdfInnerShadow.z, pixelWidth) + edge, -edge, innerDist);
+                    float innerAlpha = coverage * (1.0 - innerShape);
+                    float4 innerShadowColor = effectColor(_SdfInnerShadowColor, i.tint);
+                    innerShadowColor.a *= innerAlpha;
+                    col = alphaOver(col, innerShadowColor);
+                }
+
+                if (_SdfContourColor.a > 0.0 && _SdfContour.x > 0.0 && _SdfContour.y > 0.0)
+                {
+                    float spacing = max(_SdfContour.x, 0.0001);
+                    float halfWidth = _SdfContour.y * 0.5;
+                    float nearest = abs(frac((dist + _SdfContour.z) / spacing + 0.5) - 0.5) * spacing;
+                    float contourAlpha = smoothstep(halfWidth + edge, halfWidth - edge, nearest);
+                    float4 contourColor = effectColor(_SdfContourColor, i.tint);
+                    contourColor.a *= contourAlpha;
+                    col = alphaOver(col, contourColor);
+                }
 
                 #ifdef UNITY_UI_CLIP_RECT
                 float2 uiMask = saturate((_ClipRect.zw - _ClipRect.xy - abs(i.uiMask.xy)) * i.uiMask.zw);

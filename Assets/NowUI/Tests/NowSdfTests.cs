@@ -70,6 +70,38 @@ public class NowSdfTests
     }
 
     [Test]
+    public void SdfSceneUploadsEffectSettings()
+    {
+        using (_drawList.Begin(new Vector2(120, 90)))
+        {
+            NowSdf.Scene(new NowRect(0, 0, 120, 90))
+                .SetColor(Color.white)
+                .SetOutline(4f, new Color(0f, 0f, 0f, 0.75f), 1.5f)
+                .SetGlow(18f, new Color(0.2f, 0.7f, 1f, 0.45f), 2f)
+                .SetShadow(new Vector2(6f, 8f), 12f, new Color(0f, 0f, 0f, 0.35f), 2f)
+                .SetInnerShadow(new Vector2(-3f, -4f), 7f, new Color(0f, 0f, 0f, 0.28f), 1f)
+                .SetEmboss(new Vector2(-1f, -1f), 0.4f, 5f)
+                .SetContours(10f, 1.5f, new Color(1f, 1f, 1f, 0.2f), 3f)
+                .SetWarp(3f, 42f, 0.6f, 9f)
+                .RoundedBox(new NowRect(16, 18, 88, 54), 18)
+                .Draw();
+        }
+
+        var material = _drawList.batches[0].material;
+        Assert.AreEqual(new Vector4(4f, 1.5f, 0f, 0f), material.GetVector("_SdfOutline"));
+        Assert.AreEqual(new Vector4(18f, 2f, 0f, 0f), material.GetVector("_SdfGlow"));
+        Assert.AreEqual(new Vector4(6f, 8f, 12f, 2f), material.GetVector("_SdfShadow"));
+        Assert.AreEqual(new Vector4(-3f, -4f, 7f, 1f), material.GetVector("_SdfInnerShadow"));
+        Assert.AreEqual(new Vector4(10f, 1.5f, 3f, 0f), material.GetVector("_SdfContour"));
+        Assert.AreEqual(new Vector4(3f, 42f, 0.6f, 9f), material.GetVector("_SdfWarp"));
+
+        var emboss = material.GetVector("_SdfEmboss");
+        Assert.AreEqual(5f, emboss.z, 0.0001f);
+        Assert.AreEqual(0.4f, emboss.w, 0.0001f);
+        Assert.AreEqual(1f, new Vector2(emboss.x, emboss.y).magnitude, 0.0001f);
+    }
+
+    [Test]
     public void SdfSceneCanUseTextAsOperationOperand()
     {
         var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
