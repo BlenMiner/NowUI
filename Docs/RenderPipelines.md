@@ -2,7 +2,7 @@
 
 NowUI supports three non-retained output paths.
 
-- Built-in Render Pipeline: call `Now.StartUI()` and `Now.FlushUI()` from
+- Built-in Render Pipeline: wrap drawing in `using (Now.StartUI())` from
   camera callbacks such as `OnPostRender`.
 - UGUI: derive from `NowGraphic` and render into `CanvasRenderer`.
 - UI Toolkit: place `NowVisualElement` in UXML/UI Builder and render into a
@@ -26,8 +26,8 @@ rendering can copy/blur camera color and optionally replay other
 `NowWorldGraphic.glassBackdropMode`. Blurred world glass automatically requests
 camera depth and samples a sharp backdrop where opaque scene geometry is in
 front of the pane.
-Legacy `Now.FlushUI()` rendering falls back to the same rounded tint/outline
-appearance without sampling the target behind it.
+Built-in `Now.StartUI()` screen rendering falls back to the same rounded
+tint/outline appearance without sampling the target behind it.
 
 ## Shared SRP Source
 

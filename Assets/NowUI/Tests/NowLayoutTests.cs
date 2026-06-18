@@ -132,9 +132,7 @@ public class NowLayoutTests
     [Test]
     public void SpacingAndPaddingOffsetChildren()
     {
-        NowLayout.Area(
-            new Vector4(0, 0, 300, 400),
-            new NowLayoutOptions().SetSpacing(5).SetPadding(10));
+        NowLayout.Area(new Vector4(0, 0, 300, 400), spacing: 5, padding: 10);
 
         Vector4 first = NowLayout.Rect(100, 20);
         Vector4 second = NowLayout.Rect(100, 20);
@@ -146,10 +144,36 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void VectorPaddingOverloadsOffsetChildren()
+    {
+        NowLayout.Area(new Vector4(0, 0, 300, 400), new Vector4(4, 6, 8, 10), spacing: 5);
+
+        Vector4 areaFirst = NowLayout.Rect(100, 20);
+        Vector4 areaSecond = NowLayout.Rect(100, 20);
+
+        NowLayout.EndArea();
+
+        AssertRect(new Vector4(4, 6, 100, 20), areaFirst);
+        AssertRect(new Vector4(4, 31, 100, 20), areaSecond);
+
+        NowLayout.Area(new Vector4(0, 0, 300, 400));
+        NowLayout.Horizontal(new Vector4(3, 4, 5, 6), spacing: 7);
+
+        Vector4 rowFirst = NowLayout.Rect(10, 8);
+        Vector4 rowSecond = NowLayout.Rect(20, 8);
+
+        NowLayout.EndHorizontal();
+        NowLayout.EndArea();
+
+        AssertRect(new Vector4(3, 4, 10, 8), rowFirst);
+        AssertRect(new Vector4(20, 4, 20, 8), rowSecond);
+    }
+
+    [Test]
     public void HorizontalGroupPlacesRectsAlongX()
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
-        NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(8));
+        NowLayout.Horizontal(spacing: 8);
 
         Vector4 first = NowLayout.Rect(60, 30);
         Vector4 second = NowLayout.Rect(40, 30);
@@ -225,12 +249,10 @@ public class NowLayoutTests
     public void AlignItemsAlignsChildrenWithPerChildOverride()
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
-        NowLayout.Horizontal(new NowLayoutOptions().SetHeight(100).SetAlignItems(NowLayoutAlign.Center));
+        NowLayout.Horizontal(height: 100, alignItems: NowLayoutAlign.Center);
 
         Vector4 inherited = NowLayout.Rect(50, 20);
-        Vector4 overridden = NowLayout.Rect(new NowLayoutOptions()
-            .SetWidth(50).SetHeight(20)
-            .SetAlign(NowLayoutAlign.End));
+        Vector4 overridden = NowLayout.Rect(50, 20, align: NowLayoutAlign.End);
 
         NowLayout.EndHorizontal();
         NowLayout.EndArea();
@@ -389,8 +411,8 @@ public class NowLayoutTests
     [Test]
     public void NestedGroupsComposePaddingAndPosition()
     {
-        NowLayout.Area(new Vector4(0, 0, 400, 300), new NowLayoutOptions().SetPadding(10));
-        NowLayout.Vertical(new NowLayoutOptions().SetPadding(5).SetHeight(100));
+        NowLayout.Area(new Vector4(0, 0, 400, 300), padding: 10);
+        NowLayout.Vertical(padding: 5, height: 100);
 
         Vector4 inner = NowLayout.Rect(50, 20);
 

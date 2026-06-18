@@ -63,17 +63,16 @@ public sealed class ThemedOverlay : MonoBehaviour
 
     void OnPostRender()
     {
-        Now.StartUI();
+        using (Now.StartUI())
+        {
+            Vector4 panel = new Vector4(24, 24, 360, 180);
 
-        Vector4 panel = new Vector4(24, 24, 360, 180);
+            theme.Rectangle(panel, NowRectangleStyle.Surface)
+                .Draw();
 
-        theme.Rectangle(panel, NowRectangleStyle.Surface)
-            .Draw();
-
-        theme.Text(theme.Inset(panel, NowSpacingToken.Panel), font, NowTextStyle.Title)
-            .Draw("Theme Preview");
-
-        Now.FlushUI();
+            theme.Text(theme.Inset(panel, NowSpacingToken.Panel), font, NowTextStyle.Title)
+                .Draw("Theme Preview");
+        }
     }
 }
 ```

@@ -35,21 +35,20 @@ NowLayout.Lottie("https://example.com/spinner.lottie")
 ## Drawing
 
 `Now.Lottie` follows the same fluent builder pattern as rectangles and text.
-Use it between `Now.StartUI()` and `Now.FlushUI()`, or inside any capture path
-(UGUI, SRP, RenderTexture).
+Use it inside a `Now.StartUI()` scope, or inside any capture path (UGUI, SRP,
+RenderTexture).
 
 ```csharp
 [SerializeField] NowLottieAsset spinner;
 
 void OnPostRender()
 {
-    Now.StartUI();
-
-    Now.Lottie(new NowRect(20, 20, 96, 96), spinner)
-        .SetTime(Time.time)
-        .Draw();
-
-    Now.FlushUI();
+    using (Now.StartUI())
+    {
+        Now.Lottie(new NowRect(20, 20, 96, 96), spinner)
+            .SetTime(Time.time)
+            .Draw();
+    }
 }
 ```
 

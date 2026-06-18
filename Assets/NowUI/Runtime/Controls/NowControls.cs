@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace NowUI
@@ -255,6 +256,86 @@ namespace NowUI
         /// registration, click-to-focus, and submit activation — the same sequence
         /// every built-in control runs first.
         /// </summary>
+        public static NowInteraction Interact(
+            NowRect rect,
+            out bool focused,
+            out bool submitted,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            return Interact(GetControlId(SiteId(file, line)), rect, out focused, out submitted);
+        }
+
+        /// <summary>
+        /// The standard interaction bundle with call-site identity and explicit
+        /// focus navigation targets.
+        /// </summary>
+        public static NowInteraction Interact(
+            NowRect rect,
+            NowFocusNavigation navigation,
+            out bool focused,
+            out bool submitted,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            return Interact(GetControlId(SiteId(file, line)), rect, navigation, out focused, out submitted);
+        }
+
+        /// <summary>
+        /// The standard interaction bundle with optional explicit identity. When
+        /// <paramref name="id"/> is default, identity falls back to the call site.
+        /// </summary>
+        public static NowInteraction Interact(
+            NowId id,
+            NowRect rect,
+            out bool focused,
+            out bool submitted,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            return Interact(GetControlId(id, SiteId(file, line)), rect, out focused, out submitted);
+        }
+
+        /// <summary>
+        /// The standard interaction bundle with optional explicit identity and
+        /// explicit focus navigation targets.
+        /// </summary>
+        public static NowInteraction Interact(
+            NowId id,
+            NowRect rect,
+            NowFocusNavigation navigation,
+            out bool focused,
+            out bool submitted,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            return Interact(GetControlId(id, SiteId(file, line)), rect, navigation, out focused, out submitted);
+        }
+
+        /// <summary>
+        /// The standard interaction bundle for builders that already captured a
+        /// fallback call-site identity in their factory.
+        /// </summary>
+        public static NowInteraction Interact(NowId id, int fallbackIdentity, NowRect rect, out bool focused, out bool submitted)
+        {
+            return Interact(GetControlId(id, fallbackIdentity), rect, out focused, out submitted);
+        }
+
+        /// <summary>
+        /// The standard interaction bundle for builders with a captured fallback
+        /// identity and explicit focus navigation targets.
+        /// </summary>
+        public static NowInteraction Interact(
+            NowId id,
+            int fallbackIdentity,
+            NowRect rect,
+            NowFocusNavigation navigation,
+            out bool focused,
+            out bool submitted)
+        {
+            return Interact(GetControlId(id, fallbackIdentity), rect, navigation, out focused, out submitted);
+        }
+
         public static NowInteraction Interact(int id, NowRect rect, out bool focused, out bool submitted)
         {
             return Interact(id, rect, default, out focused, out submitted);
@@ -276,7 +357,7 @@ namespace NowUI
 
             if (!NowInput.isPassive)
             {
-                ref var repaint = ref NowControlState.Get<InteractionRepaintState>(NowInput.GetId(id, "interaction"));
+                ref var repaint = ref NowControlState.Get<InteractionRepaintState>(id, "interaction");
 
                 if (repaint.hovered != interaction.hovered ||
                     repaint.held != interaction.held ||

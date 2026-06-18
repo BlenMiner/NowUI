@@ -73,6 +73,16 @@ public class NowControlsTests
         return NowControlState.EndRepaintTracking();
     }
 
+    static NowInteraction DrawCallSiteInteraction(out bool focused, out bool submitted)
+    {
+        return NowControls.Interact(ButtonRect, out focused, out submitted);
+    }
+
+    static NowInteraction DrawBuilderFallbackInteraction(NowId id, int fallbackIdentity, out bool focused, out bool submitted)
+    {
+        return NowControls.Interact(id, fallbackIdentity, ButtonRect, out focused, out submitted);
+    }
+
     [Test]
     public void CornerRadiusUsesNamedCornerOrder()
     {
@@ -271,6 +281,51 @@ public class NowControlsTests
             activated = Now.Button(ButtonRect, "Save").SetId("Save").Draw();
 
         Assert.IsTrue(activated, "Submit on a focused button must activate it.");
+    }
+
+    [Test]
+    public void IdlessControlInteractUsesCallSiteIdentityAcrossFrames()
+    {
+        var inside = new Vector2(60, 36);
+        NowInteraction interaction = default;
+        bool focused = false;
+        bool submitted = false;
+
+        void Frame(bool down, bool pressed, bool released)
+        {
+            _provider.snapshot = new NowInputSnapshot(inside, down, pressed, released);
+
+            using (NowInput.Begin(_provider, Surface))
+                interaction = DrawCallSiteInteraction(out focused, out submitted);
+        }
+
+        Frame(down: true, pressed: true, released: false);
+        int id = interaction.id;
+
+        Assert.IsTrue(focused);
+        Assert.IsFalse(submitted);
+        Assert.AreEqual(id, NowFocus.focusedId);
+
+        Frame(down: false, pressed: false, released: true);
+
+        Assert.AreEqual(id, interaction.id);
+        Assert.IsTrue(interaction.clicked);
+        Assert.IsTrue(focused);
+    }
+
+    [Test]
+    public void ControlInteractCanResolveOptionalBuilderIdentity()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(60, 36), false, false, false);
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            var fallback = DrawBuilderFallbackInteraction(default, 7001, out _, out _);
+            var explicitId = DrawBuilderFallbackInteraction(7002, 7001, out _, out _);
+
+            Assert.AreEqual(7001, fallback.id);
+            Assert.AreEqual(7002, explicitId.id);
+        }
     }
 
     [Test]
@@ -1005,12 +1060,33 @@ public class NowControlsTests
     }
 
     [Test]
+    public void ControlStateNamedSlotsUseDerivedIds()
+    {
+        NowControlState.Warmup(7, "slot", 12);
+        Assert.AreEqual(12, NowControlState.Get<int>(7, "slot"));
+
+        NowControlState.Get<int>(7, "slot") = 34;
+
+        Assert.AreEqual(34, NowControlState.Get<int>(NowInput.GetId(7, "slot")));
+        Assert.AreEqual(0, NowControlState.Get<int>(7, "other"));
+    }
+
+    [Test]
     public void RepeatPulsesOnInitialPress()
     {
         Assert.IsTrue(NowControlState.Repeat(1, held: true));
         Assert.IsFalse(NowControlState.Repeat(1, held: true), "No pulse before the repeat delay.");
         Assert.IsFalse(NowControlState.Repeat(1, held: false));
         Assert.IsTrue(NowControlState.Repeat(1, held: true), "Releasing resets the initial pulse.");
+    }
+
+    [Test]
+    public void RepeatNamedKeysUseSeparateSlots()
+    {
+        Assert.IsTrue(NowControlState.Repeat(7, "left", held: true));
+        Assert.IsTrue(NowControlState.Repeat(7, "right", held: true));
+        Assert.IsFalse(NowControlState.Repeat(7, "left", held: true));
+        Assert.IsFalse(NowControlState.Repeat(7, "right", held: true));
     }
 
     [Test]

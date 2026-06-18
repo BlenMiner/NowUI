@@ -12,13 +12,12 @@ Raw pixels make UI microscopic on phone screens. Pass a scale to
 ```csharp
 void OnPostRender()
 {
-    Now.StartUI(NowScreen.recommendedUIScale);
-
-    // 1 unit is now roughly 1/160 inch; a 44-unit button is finger-sized
-    // on every screen. Now.screenMask reflects the logical size.
-    Now.Rectangle(new NowRect(20, 20, 220, 44)).SetRadius(8).Draw();
-
-    Now.FlushUI();
+    using (Now.StartUI(NowScreen.recommendedUIScale))
+    {
+        // 1 unit is now roughly 1/160 inch; a 44-unit button is finger-sized
+        // on every screen. Now.screenMask reflects the logical size.
+        Now.Rectangle(new NowRect(20, 20, 220, 44)).SetRadius(8).Draw();
+    }
 }
 ```
 

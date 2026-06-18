@@ -30,22 +30,27 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
 
     NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref volume);
 
-    NowLayout.FloatField("speed").SetRange(0f, 100f).Draw(ref speed);
-    NowLayout.IntField("lives").SetRange(0, 99).Draw(ref lives);
-    NowLayout.Vector3Field("spawn-position").Draw(ref spawnPosition);
-    NowLayout.ColorPicker("tint").SetShowAlpha(false).Draw(ref tint);
-    NowLayout.GradientField("ramp").Draw(ref ramp);
-    NowLayout.AnimationCurveField("falloff").SetTimeRange(0f, 1f).Draw(ref falloff);
+    NowLayout.FloatField().SetRange(0f, 100f).Draw(ref speed);
+    NowLayout.IntField().SetRange(0, 99).Draw(ref lives);
+    NowLayout.Vector3Field().Draw(ref spawnPosition);
+    NowLayout.ColorPicker().SetShowAlpha(false).Draw(ref tint);
+    NowLayout.GradientField().Draw(ref ramp);
+    NowLayout.AnimationCurveField().SetTimeRange(0f, 1f).Draw(ref falloff);
+    if (NowLayout.OpenFileField().SetExtensions("json", "txt").Draw(ref loadPath))
+        Load(loadPath);
+    if (NowLayout.SaveFileField().SetFilter("Json", "json").Draw(ref savePath))
+        Save(savePath);
+    NowLayout.DirectoryField().Draw(ref outputDirectory);
 
-    NowLayout.TextField("player-name").SetPlaceholder("Name...").Draw(ref playerName);
+    NowLayout.TextField().SetPlaceholder("Name...").Draw(ref playerName);
 
-    NowLayout.TextArea("notes").SetPlaceholder("Notes...").SetLines(3, 8).Draw(ref notes);
+    NowLayout.TextArea().SetPlaceholder("Notes...").SetLines(3, 8).Draw(ref notes);
 
-    NowLayout.Dropdown("res", resolutionNames).Draw(ref resolutionIndex);
-    NowLayout.EnumDropdown<Quality>("quality").Draw(ref quality);
-    NowLayout.EnumFlags<RenderFlags>("render-flags").Draw(ref renderFlags);
+    NowLayout.Dropdown(resolutionNames).Draw(ref resolutionIndex);
+    NowLayout.EnumDropdown<Quality>().Draw(ref quality);
+    NowLayout.EnumFlags<RenderFlags>().Draw(ref renderFlags);
 
-    using (NowLayout.ScrollView("log").SetHeight(160).Begin())
+    using (NowLayout.ScrollView().SetHeight(160).Begin())
         foreach (var line in logLines)
             NowLayout.Label(line).Draw();
 }
@@ -90,6 +95,13 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   on the next frame's Draw.
 - `EnumDropdown<TEnum>` wraps dropdown selection for enum values, and
   `EnumFlags<TEnum>` draws checkboxes for single-bit flag values.
+- `OpenFileField`, `SaveFileField`, `DirectoryField`, and the generic
+  `FilePicker(mode)` open built-in overlay file popups. Use `SetExtensions(...)`,
+  `SetFilter(name, ...)` or `SetFilters(...)` for file filters,
+  `SetStartDirectory(...)` for the initial folder, `SetDefaultExtension(...)`
+  for save paths, and `SetPopupSize(...)` for larger browsers. They return true
+  when the selected path changes; loading and saving the file contents remains
+  caller-owned.
 - `ScrollView` scrolls with the wheel while hovered and with the scrollbar
   thumb; content height is the layout group's measured extent (one frame
   late, like all layout measurement). Focus navigation can move to clipped
@@ -106,10 +118,11 @@ if (Now.Button(new NowRect(20, 20, 120, 40), "Save").Draw())
     Save();
 
 Now.Slider(new NowRect(20, 70, 200, 20), 0f, 1f).Draw(ref volume);
-Now.TextField(new NowRect(20, 100, 200, 30), "name").Draw(ref playerName);
-Now.ColorPicker(new NowRect(20, 140, 180, 30), "tint").Draw(ref tint);
-Now.GradientField(new NowRect(20, 180, 180, 30), "ramp").Draw(ref ramp);
-Now.AnimationCurveField(new NowRect(20, 220, 180, 34), "falloff").Draw(ref falloff);
+Now.TextField(new NowRect(20, 100, 200, 30)).Draw(ref playerName);
+Now.ColorPicker(new NowRect(20, 140, 180, 30)).Draw(ref tint);
+Now.GradientField(new NowRect(20, 180, 180, 30)).Draw(ref ramp);
+Now.AnimationCurveField(new NowRect(20, 220, 180, 34)).Draw(ref falloff);
+Now.OpenFileField(new NowRect(20, 264, 260, 30)).SetFilter("Text", "txt", "md").Draw(ref loadPath);
 ```
 
 Use `NowCornerRadius` or the four-float `SetRadius(topLeft, topRight,
@@ -160,7 +173,7 @@ label passed anyway is ignored visually.
 Checkbox toggles its ref value at `Begin`, so the updated value is also
 readable inside; `clicked` doubles as "changed this frame". In layout flow
 the control sizes to the previous frame's content, like all scope-form
-layout; the explicit-rect forms (`Now.Button(rect, "id").Begin()`) are exact
+layout; the explicit-rect forms (`Now.Button(rect).Begin()`) are exact
 immediately. ScrollView's `Begin()` is the same idea applied to a viewport.
 
 Children of different heights top-align by default. `SetAlignItems` on the
@@ -168,7 +181,7 @@ control sets the row's cross-axis default (flexbox `align-items`), and a
 child's own `SetAlign` still overrides it:
 
 ```csharp
-using (var save = NowLayout.Button("save-btn").SetAlignItems(NowLayoutAlign.Center).Begin())
+using (var save = NowLayout.Button().SetAlignItems(NowLayoutAlign.Center).Begin())
 {
     NowLayout.Lottie(bigIcon).SetTime(Time.time).SetHeight(64).Draw();   // tallest, defines the row
     NowLayout.Lottie(spinner).SetTime(Time.time).SetHeight(18).Draw();   // vertically centered
@@ -217,8 +230,9 @@ for (int i = 0; i < rows.Count; ++i)
 the first parameter (`TextField(player.id)` or `TextField("player-name")`) for
 the same purpose; omit it and the call site is the id. Custom controls get site
 identity by declaring the caller-info parameters themselves and passing them
-through `NowControls.SiteId(file, line)` into
-`NowControls.GetControlId(NowId id, int fallbackIdentity)`.
+through `NowControls.Interact(...)`. Builder-style custom controls can store
+`NowControls.SiteId(file, line)` in the factory and pass that fallback identity
+to `NowControls.Interact(id, fallbackIdentity, rect, ...)`.
 
 ## Compile-time misuse warnings
 
@@ -352,28 +366,30 @@ shapes, full builds — is [CustomControls.md](CustomControls.md). The anatomy
 of a control:
 
 ```csharp
-public static bool MyToggleSwitch(string label, ref bool value)
+public static bool MyToggleSwitch(
+    ref bool value,
+    [CallerFilePath] string file = "",
+    [CallerLineNumber] int line = 0)
 {
     var theme = NowTheme.themeAsset;
-    int id = NowControls.GetControlId(label);
 
     // 1. Reserve space (layout) or take a rect parameter (free-form).
     NowRect rect = NowLayout.Rect(52f, 28f);
 
     // 2. The standard interaction bundle: pointer + focus + submit.
-    var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+    var interaction = NowControls.Interact(rect, out bool focused, out bool submitted, file, line);
 
     if (interaction.clicked || submitted)
         value = !value;
 
     // 3. Ephemeral state: animations, timers — keyed by the control id.
-    float t = NowControlState.Transition(id, value, speed: 12f);
+    float t = NowControlState.Transition(interaction, value, speed: 12f);
 
     // 4. Draw with theme styles.
     var track = theme.Rectangle(rect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
     track.radius = new Vector4(rect.height, rect.height, rect.height, rect.height) * 0.5f;
     track.color = NowControls.StateTint(track.color, NowControlState.Transition(
-        NowInput.GetId(id, "hover"), interaction.hovered), interaction.held);
+        interaction, "hover", interaction.hovered), interaction.held);
 
     if (focused)
     {
@@ -398,13 +414,14 @@ The toolkit pieces:
 
 | Primitive | Purpose |
 | --- | --- |
-| `NowControls.SiteId(file, line)` + `GetControlId(NowId id, fallback)` | Call-site identity with optional explicit `NowId`, id-scope seeding and loop salting |
-| `NowControls.Interact(id, rect, out focused, out submitted)` | Pointer interaction + focus registration + click-to-focus + submit |
+| `NowControls.Interact(rect, out focused, out submitted, file, line)` | Call-site identity + pointer interaction + focus registration + click-to-focus + submit |
+| `NowControls.Interact(id, fallback, rect, out focused, out submitted)` | Builder-style identity with optional explicit `NowId` |
 | `NowInput.Interact(rect)` | Id-less interaction: identity from the call site |
+| `interaction.GetId("slot")` / `interaction.State<T>("slot")` | Sub-state keys derived from the resolved control id |
 | `NowInput.CombineId(a, b)` | Mint sub-element ids (rows, links, items) without strings |
 | `using (NowControls.Scale(scale))` | Scale built-in control internals when a host already scales explicit rects, such as zoomable node content |
-| `NowControlState.Get<T>(id)` | Persistent ephemeral slot (struct), evicted when stale |
-| `NowControlState.Transition / Repeat / DetectDoubleClick / ClickStreak / Blink` | The standard timing behaviors |
+| `NowControlState.Get<T>(id)` / `Get<T>(id, "slot")` | Persistent ephemeral slot (struct), evicted when stale |
+| `NowControlState.Transition / Repeat / DetectDoubleClick / ClickStreak / Blink` | The standard timing behaviors; common animation/repeat helpers also accept `NowInteraction` |
 | `NowControlState.RequestRepaint()` | Tell retained hosts (UGUI) to render another frame |
 | `NowFocus.IsFocused / Focus / Clear / LockNavigation` | Focus queries, explicit control, nav suppression while editing |
 | `Now.Mask(rect)` | Ambient clipping scope (what ScrollView uses) |
@@ -441,3 +458,5 @@ Conventions that keep custom controls consistent:
   the caret point.
 - Dropdown popups are pointer-driven; focus navigation inside the popup is
   not yet wired.
+- File picker popups are built-in NowUI controls, not native OS dialogs, and
+  currently use emoji placeholders for file/folder/action icons.

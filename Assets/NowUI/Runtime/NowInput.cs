@@ -446,6 +446,30 @@ namespace NowUI
             this.dragStarted = dragStarted;
             this.dragEnded = dragEnded;
         }
+
+        /// <summary>Derives a stable sub-id from this interaction's resolved control id.</summary>
+        public int GetId(string key)
+        {
+            return NowInput.GetId(id, key);
+        }
+
+        /// <summary>Derives a stable numeric sub-id from this interaction's resolved control id.</summary>
+        public int GetId(int key)
+        {
+            return NowInput.CombineId(id, key);
+        }
+
+        /// <summary>Returns a persistent control-state slot keyed under this interaction.</summary>
+        public ref T State<T>(string key) where T : struct
+        {
+            return ref NowControlState.Get<T>(GetId(key));
+        }
+
+        /// <summary>Returns a persistent control-state slot keyed under this interaction.</summary>
+        public ref T State<T>(int key) where T : struct
+        {
+            return ref NowControlState.Get<T>(GetId(key));
+        }
     }
 
     public static class NowInput
@@ -473,6 +497,8 @@ namespace NowUI
         static bool _activeDragged;
 
         static bool _activeSeenThisFrame;
+
+        static int _activeLastSeenFrame = -1;
 
         static Vector2 _pressPosition;
 
@@ -572,7 +598,12 @@ namespace NowUI
                 _activeSeenThisFrame = false;
 
             if (provider != null && provider.TryGetSnapshot(surface, out _snapshot))
+            {
+                if (resetFrameTracking)
+                    ClearStaleActiveFromMissingProvider();
+
                 return;
+            }
 
             _snapshot = default;
         }
@@ -647,8 +678,13 @@ namespace NowUI
             }
         }
 
+        static int CallerControlId(string file, int line)
+        {
+            return NowControls.GetControlId(NowControls.SiteId(file, line));
+        }
+
         /// <summary>
-        /// Interaction with no id at all: identity comes from the call site, and
+        /// Interaction with no explicit id: identity comes from the call site, and
         /// repeated calls from one site (a loop over sub-elements) are salted by
         /// per-frame occurrence — draw-order stable, like control identity. Use
         /// an explicit id instead when looped items can reorder mid-press.
@@ -658,7 +694,46 @@ namespace NowUI
             [System.Runtime.CompilerServices.CallerFilePath] string file = "",
             [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
         {
-            return Interact(NowControls.GetControlId(NowControls.SiteId(file, line)), rect);
+            return Interact(CallerControlId(file, line), rect);
+        }
+
+        /// <summary>
+        /// Interaction with no explicit id and a non-primary pointer button.
+        /// Identity comes from the call site; use an explicit id for reordered
+        /// loop data or when several call sites represent one logical target.
+        /// </summary>
+        public static NowInteraction Interact(
+            NowRect rect,
+            NowPointerButton button,
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            return Interact(CallerControlId(file, line), rect, button);
+        }
+
+        /// <summary>
+        /// Interaction with no explicit id for callers that already use Unity
+        /// <see cref="Rect"/> values. Identity comes from the call site.
+        /// </summary>
+        public static NowInteraction Interact(
+            Rect rect,
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            return Interact(CallerControlId(file, line), rect);
+        }
+
+        /// <summary>
+        /// Interaction with no explicit id for Unity <see cref="Rect"/> values and
+        /// a non-primary pointer button. Identity comes from the call site.
+        /// </summary>
+        public static NowInteraction Interact(
+            Rect rect,
+            NowPointerButton button,
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            return Interact(CallerControlId(file, line), rect, button);
         }
 
         public static NowInteraction Interact(string id, NowRect rect)
@@ -771,7 +846,10 @@ namespace NowUI
             bool active = _activeId == id && _activeButton == button;
 
             if (_passiveDepth == 0 && active)
+            {
                 _activeSeenThisFrame = true;
+                _activeLastSeenFrame = snapshot.frame;
+            }
 
             bool held = active && snapshot.IsPointerDown(button);
             bool released = active && snapshot.WasPointerReleased(button);
@@ -891,6 +969,7 @@ namespace NowUI
             _dragId = 0;
             _activeDragged = false;
             _activeSeenThisFrame = false;
+            _activeLastSeenFrame = -1;
             _pressPosition = default;
             _dragThreshold = DefaultDragThreshold;
             _defaultProvider = NowScreenInputProvider.instance;
@@ -1016,7 +1095,23 @@ namespace NowUI
             _dragId = 0;
             _activeDragged = false;
             _activeSeenThisFrame = false;
+            _activeLastSeenFrame = -1;
             _pressPosition = default;
+        }
+
+        static void ClearStaleActiveFromMissingProvider()
+        {
+            if (_activeId == 0 ||
+                ReferenceEquals(_currentProvider, _activeProvider) ||
+                _activeLastSeenFrame < 0)
+            {
+                return;
+            }
+
+            // Let another provider draw earlier in the next frame; clear only
+            // after the capture owner has missed a whole input frame.
+            if (_snapshot.frame > _activeLastSeenFrame + 1)
+                ClearActive();
         }
     }
 

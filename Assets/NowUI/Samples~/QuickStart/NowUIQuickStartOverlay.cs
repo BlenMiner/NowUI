@@ -13,9 +13,7 @@ public sealed class NowUIQuickStartOverlay : MonoBehaviour
                 NowLayout.Label("NowUI", 28f).Draw();
 
                 var buttonRect = NowLayout.Rect(width: 180f, height: 44f);
-                bool clicked = Now.Button(buttonRect, "Sample Button")
-                    .SetId(1001)
-                    .Draw();
+                bool clicked = Now.Button(buttonRect, "Sample Button").Draw();
 
                 NowLayout.Label(clicked ? "Clicked" : "Ready", 16f).Draw();
             }

@@ -90,7 +90,7 @@ public class NowTextAreaTests
         return changed;
     }
 
-    static int Id => NowInput.GetId(0, "notes");
+    static int Id => NowInput.GetId("notes");
 
     static int AreaStateId => NowInput.GetId(Id, "area");
 

@@ -5,7 +5,7 @@ namespace NowUI
 {
     /// <summary>
     /// Dropdown selector:
-    /// <code>NowLayout.Dropdown("quality", qualityNames).Draw(ref qualityIndex);</code>
+    /// <code>NowLayout.Dropdown(qualityNames).Draw(ref qualityIndex);</code>
     /// The popup draws through <see cref="NowOverlay"/> — above everything, with
     /// the controls underneath pointer-blocked — and closes on selection, on a
     /// click outside, or on cancel. Long lists scroll. Selection from the popup
@@ -21,6 +21,7 @@ namespace NowUI
         NowLayoutOptions _layoutOptions;
         readonly NowRect _rect;
         readonly bool _hasRect;
+        bool _fitToView;
 
         sealed class PopupState
         {
@@ -50,6 +51,7 @@ namespace NowUI
             _layoutOptions = default;
             _rect = default;
             _hasRect = false;
+            _fitToView = true;
         }
 
         internal NowDropdown(NowRect rect, NowId id, IReadOnlyList<string> options, int site) : this(id, options, site)
@@ -70,6 +72,9 @@ namespace NowUI
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowDropdown SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
+        /// <summary>When true (default), moves the popup to stay inside the visible surface or world camera view.</summary>
+        public NowDropdown SetFitToView(bool fitToView = true) { _fitToView = fitToView; return this; }
+
         public bool Draw(ref int selected)
         {
             var theme = NowTheme.themeAsset;
@@ -77,7 +82,7 @@ namespace NowUI
             int id = NowControls.GetControlId(_id, _site);
             int optionCount = _options?.Count ?? 0;
 
-            ref int pending = ref NowControlState.Get<int>(NowInput.GetId(id, "pending"));
+            ref int pending = ref NowControlState.Get<int>(id, "pending");
             bool changed = false;
 
             if (pending > 0 && pending - 1 < optionCount)
@@ -105,7 +110,7 @@ namespace NowUI
             if (open && optionCount == 0)
                 open = false;
 
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
 
             string current = selected >= 0 && selected < optionCount ? _options[selected] : string.Empty;
             renderer.DrawDropdownField(new NowDropdownFieldRenderContext(theme, rect, current, open, interaction, focused, hoverT));
@@ -114,7 +119,7 @@ namespace NowUI
                 return changed;
 
             NowControlState.RequestRepaint();
-            DeferPopup(theme, _options, id, rect, selected, optionCount);
+            DeferPopup(theme, _options, id, rect, selected, optionCount, _fitToView);
             return changed;
         }
 
@@ -123,7 +128,14 @@ namespace NowUI
         /// the popup is open — captured locals in Draw would otherwise allocate at
         /// method entry on every frame, even with the popup closed.
         /// </summary>
-        static void DeferPopup(NowThemeAsset themeAsset, IReadOnlyList<string> options, int id, NowRect field, int selected, int optionCount)
+        static void DeferPopup(
+            NowThemeAsset themeAsset,
+            IReadOnlyList<string> options,
+            int id,
+            NowRect field,
+            int selected,
+            int optionCount,
+            bool fitToView)
         {
             var styles = themeAsset.controlStyles;
             float itemHeight = styles.dropdownItemHeight;
@@ -131,6 +143,9 @@ namespace NowUI
             float contentHeight = optionCount * itemHeight + popupPadding * 2f;
             float popupHeight = Mathf.Min(contentHeight, styles.dropdownMaxPopupHeight);
             var popupRect = new NowRect(field.x, field.yMax + styles.dropdownPopupGap, field.width, popupHeight);
+
+            if (fitToView)
+                popupRect = NowOverlay.FitToView(popupRect);
 
             if (!_popupStates.TryGetValue(id, out var state))
             {
@@ -189,7 +204,7 @@ namespace NowUI
             for (int i = 0; i < state.optionCount; ++i)
             {
                 NowRect itemRect = state.scrolls
-                    ? NowLayout.Rect(new NowLayoutOptions().SetHeight(state.itemHeight).SetStretchWidth())
+                    ? NowLayout.Rect(height: state.itemHeight, stretchWidth: true)
                     : new NowRect(
                         state.itemArea.x,
                         state.itemArea.y + i * state.itemHeight,

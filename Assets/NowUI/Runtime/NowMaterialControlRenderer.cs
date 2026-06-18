@@ -360,7 +360,8 @@ namespace NowUI
                 ? context.interaction.pointerPosition
                 : context.rect.center;
             var ripple = NowControlState.PressAnimation(
-                NowInput.GetId(context.interaction.id, "button-ripple"),
+                context.interaction,
+                "button-ripple",
                 trigger,
                 origin,
                 styles.rippleDuration);

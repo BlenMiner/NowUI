@@ -114,7 +114,7 @@ namespace NowUI
             float fontSize = textStyle.fontSize;
             float lineHeight = fontAsset != null ? fontAsset.GetLineHeight(textStyle.fontStyle) * fontSize : fontSize * 1.2f;
 
-            ref int lastLineCount = ref NowControlState.Get<int>(NowInput.GetId(id, "lines"));
+            ref int lastLineCount = ref NowControlState.Get<int>(id, "lines");
             int visualLines = Mathf.Clamp(Mathf.Max(lastLineCount, 1), _minLines, _maxLines);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureTextArea(theme, lineHeight, visualLines));
@@ -126,8 +126,8 @@ namespace NowUI
 
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
-            ref var area = ref NowControlState.Get<AreaState>(NowInput.GetId(id, "area"));
-            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(NowInput.GetId(id, "selection-gesture"));
+            ref var area = ref NowControlState.Get<AreaState>(id, "area");
+            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(id, "selection-gesture");
 
             if (fontAsset == null)
                 return false;
@@ -241,31 +241,31 @@ namespace NowUI
                             NowTextEdit.Insert(ref text, ref state, buffer.Replace("\r\n", "\n").Replace('\r', '\n'));
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "enter"), frame.enterHeld))
+                    if (NowControlState.Repeat(id, "enter", frame.enterHeld))
                     {
                         revealCaret = true;
                         NowTextEdit.Insert(ref text, ref state, "\n");
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "bs"), frame.backspaceHeld))
+                    if (NowControlState.Repeat(id, "bs", frame.backspaceHeld))
                     {
                         revealCaret = true;
                         NowTextEdit.Backspace(ref text, ref state, frame.command);
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "del"), frame.deleteHeld))
+                    if (NowControlState.Repeat(id, "del", frame.deleteHeld))
                     {
                         revealCaret = true;
                         NowTextEdit.Delete(ref text, ref state, frame.command);
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "left"), frame.leftHeld))
+                    if (NowControlState.Repeat(id, "left", frame.leftHeld))
                     {
                         revealCaret = true;
                         NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.command);
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "right"), frame.rightHeld))
+                    if (NowControlState.Repeat(id, "right", frame.rightHeld))
                     {
                         revealCaret = true;
                         NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.command);
@@ -274,7 +274,7 @@ namespace NowUI
                     if (text != original)
                         LayoutLines(text, fontAsset, fontSize, textStyle.fontStyle, inner.width, lines);
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "up"), frame.upHeld))
+                    if (NowControlState.Repeat(id, "up", frame.upHeld))
                     {
                         revealCaret = true;
                         MoveVertical(ref state, text, lines, fontAsset, fontSize,
@@ -282,7 +282,7 @@ namespace NowUI
                         verticalMove = true;
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "down"), frame.downHeld))
+                    if (NowControlState.Repeat(id, "down", frame.downHeld))
                     {
                         revealCaret = true;
                         MoveVertical(ref state, text, lines, fontAsset, fontSize,

@@ -39,9 +39,6 @@ public sealed class NowNodeGraphExample : MonoBehaviour
 
     void Awake()
     {
-        if (_font != null)
-            Now.defaultFont = _font;
-
         BuildGraph();
     }
 
@@ -52,19 +49,44 @@ public sealed class NowNodeGraphExample : MonoBehaviour
 
         using (Now.StartUI())
         {
-            var rect = new NowRect(24f, 24f, Screen.width - 48f, Screen.height - 48f);
-            NowNodes.Canvas(_graph, rect, 8101)
-                .SetSchema(_schema)
-                .SetHistory(_history)
-                .SetContextMenu(_menu)
-                .Draw();
+            if (_font != null)
+            {
+                using (Now.Font(_font))
+                    DrawGraphUI();
+            }
+            else
+            {
+                DrawGraphUI();
+            }
         }
+    }
+
+    void OnDisable()
+    {
+        NowInput.Reset();
+        NowFocus.Reset();
+        NowOverlay.Reset();
+        NowContextMenu.Reset();
+        NowControlState.Reset();
+    }
+
+    void DrawGraphUI()
+    {
+        var rect = new NowRect(24f, 24f, Screen.width - 48f, Screen.height - 48f);
+        NowNodes.Canvas(_graph, rect, 8101)
+            .SetSchema(_schema)
+            .SetHistory(_history)
+            .SetContextMenu(_menu)
+            .Draw();
     }
 
     void OnDestroy()
     {
         if (_previewTexture != null)
+        {
             Destroy(_previewTexture);
+            _previewTexture = null;
+        }
     }
 
     void BuildGraph()
@@ -120,7 +142,7 @@ public sealed class NowNodeGraphExample : MonoBehaviour
 
                 using (NowControls.IdScope(ctx.node.id))
                 {
-                    if (Now.ColorPicker(picker, "color").SetShowAlpha(false).Draw(ref _tint))
+                    if (Now.ColorPicker(picker).SetShowAlpha(false).Draw(ref _tint))
                         ctx.MarkChanged();
                 }
             });
@@ -136,7 +158,7 @@ public sealed class NowNodeGraphExample : MonoBehaviour
 
                 using (NowControls.IdScope(ctx.node.id))
                 {
-                    if (Now.GradientField(field, "gradient").SetPopupWidth(300f).Draw(ref _gradient))
+                    if (Now.GradientField(field).SetPopupWidth(300f).Draw(ref _gradient))
                         ctx.MarkChanged();
                 }
             });
@@ -158,7 +180,7 @@ public sealed class NowNodeGraphExample : MonoBehaviour
 
                 using (NowControls.IdScope(ctx.node.id))
                 {
-                    if (Now.AnimationCurveField(field, "curve")
+                    if (Now.AnimationCurveField(field)
                             .SetTimeRange(0f, 1f)
                             .SetValueRange(0f, 1f)
                             .SetPopupSize(320f, 220f)

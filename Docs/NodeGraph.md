@@ -44,9 +44,7 @@ public sealed class ShaderGraphPanel : MonoBehaviour
 
     void OnPostRender()
     {
-        Now.StartUI();
-
-        using (NowInput.Begin(new Vector2(Screen.width, Screen.height)))
+        using (Now.StartUI())
         {
             NowNodes.Canvas(_graph, new NowRect(24, 24, Screen.width - 48, Screen.height - 48))
                 .SetSchema(_schema)
@@ -54,8 +52,6 @@ public sealed class ShaderGraphPanel : MonoBehaviour
                 .SetContextMenu(_menu)
                 .Draw();
         }
-
-        Now.FlushUI();
     }
 }
 ```

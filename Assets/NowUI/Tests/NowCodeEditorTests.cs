@@ -118,9 +118,9 @@ public class NowCodeEditorTests
         }
     }
 
-    static int Id => NowInput.GetId(0, "code");
+    static int Id => NowInput.GetId("code");
 
-    static int OuterId => NowInput.GetId(0, "outer");
+    static int OuterId => NowInput.GetId("outer");
 
     static int EditorStateId => NowInput.GetId(Id, "editor");
 

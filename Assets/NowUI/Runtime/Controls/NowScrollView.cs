@@ -6,7 +6,7 @@ namespace NowUI
     /// <summary>
     /// Scroll container:
     /// <code>
-    /// using (NowLayout.ScrollView("inventory").Begin())
+    /// using (NowLayout.ScrollView().Begin())
     ///     foreach (var item in items)
     ///         NowLayout.Button(item.name).Draw();
     /// </code>
@@ -146,7 +146,7 @@ namespace NowUI
                 return;
             }
 
-            ref var reveal = ref NowControlState.Get<FocusRevealState>(NowInput.GetId(id, "focus-reveal"));
+            ref var reveal = ref NowControlState.Get<FocusRevealState>(id, "focus-reveal");
             int focusedId = NowFocus.focusedId;
             int focusRevision = NowFocus.focusRevision;
 

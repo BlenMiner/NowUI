@@ -94,7 +94,7 @@ namespace NowUI
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
 
             renderer.DrawButton(new NowButtonRenderContext(
                 theme, rect, null, _rectPreset, _textPreset, interaction, focused, submitted, hoverT));
@@ -103,8 +103,8 @@ namespace NowUI
             // frames can be smaller than the content, and oversized children should
             // never escape the control visually.
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(areaKey, rect, new NowLayoutOptions().SetPadding(padding));
-            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(theme.controlStyles.buttonContentGap).SetAlignItems(_alignItems));
+            var area = NowLayout.Area(areaKey, rect, padding);
+            var row = NowLayout.Horizontal(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
         }
@@ -118,7 +118,7 @@ namespace NowUI
             Vector2 contentSize = renderer.MeasureButton(theme, _label, _textPreset);
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
 
             renderer.DrawButton(new NowButtonRenderContext(
                 theme, rect, _label, _rectPreset, _textPreset, interaction, focused, submitted, hoverT));
@@ -258,13 +258,13 @@ namespace NowUI
                 value = !value;
 
             float glyphSize = theme.controlStyles.toggleSize;
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
             renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, glyphRect, value, interaction, focused, hoverT));
 
             var mask = Now.Mask(rect);
             var area = NowLayout.Area(areaKey, renderer.ToggleContentRect(theme, rect, glyphSize));
-            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(theme.controlStyles.buttonContentGap).SetAlignItems(_alignItems));
+            var row = NowLayout.Horizontal(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, clicked);
         }
@@ -287,7 +287,7 @@ namespace NowUI
             if (changed)
                 value = !value;
 
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var boxRect = renderer.ToggleGlyphRect(theme, rect, box);
 
             renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, boxRect, value, interaction, focused, hoverT));
@@ -378,13 +378,13 @@ namespace NowUI
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
 
             float glyphSize = theme.controlStyles.toggleSize;
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
             renderer.DrawRadio(new NowToggleRenderContext(theme, rect, glyphRect, _isOn, interaction, focused, hoverT));
 
             var mask = Now.Mask(rect);
             var area = NowLayout.Area(areaKey, renderer.ToggleContentRect(theme, rect, glyphSize));
-            var row = NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(theme.controlStyles.buttonContentGap).SetAlignItems(_alignItems));
+            var row = NowLayout.Horizontal(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
         }
@@ -403,7 +403,7 @@ namespace NowUI
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
 
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var circleRect = renderer.ToggleGlyphRect(theme, rect, circle);
 
             renderer.DrawRadio(new NowToggleRenderContext(theme, rect, circleRect, _isOn, interaction, focused, hoverT));
@@ -488,7 +488,7 @@ namespace NowUI
             {
                 float navX = NowInput.current.navigation.x;
 
-                if (NowControlState.Repeat(NowInput.GetId(id, "nav"), Mathf.Abs(navX) > 0.55f, 0.35f, 0.08f))
+                if (NowControlState.Repeat(id, "nav", Mathf.Abs(navX) > 0.55f, 0.35f, 0.08f))
                     value += Mathf.Sign(navX) * range * theme.controlStyles.sliderNavigationStep;
             }
 
@@ -497,7 +497,7 @@ namespace NowUI
             if (_step > 0f)
                 value = Snap(value, _min, _max, _step);
 
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             float normalized = (value - _min) / range;
             var metrics = renderer.CalculateSliderMetrics(theme, rect, normalized);
             renderer.DrawSlider(new NowSliderRenderContext(theme, rect, metrics, interaction, focused, hoverT));

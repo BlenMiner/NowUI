@@ -463,7 +463,7 @@ namespace NowUI.Internal
         {
             if (depth >= 18 || IsFlat(p0, c1, c2, p1, tolerance))
             {
-                output.Add(p1);
+                AddFlattenedPoint(p1, output);
                 return;
             }
 
@@ -476,6 +476,15 @@ namespace NowUI.Internal
 
             FlattenCubic(p0, p01, p012, mid, tolerance, output, depth + 1);
             FlattenCubic(mid, p123, p23, p1, tolerance, output, depth + 1);
+        }
+
+        static void AddFlattenedPoint(Vector2 point, List<Vector2> output)
+        {
+            if (output.Count == 0 ||
+                (point - output[output.Count - 1]).sqrMagnitude > EPSILON * EPSILON)
+            {
+                output.Add(point);
+            }
         }
 
         static bool IsFlat(Vector2 p0, Vector2 c1, Vector2 c2, Vector2 p1, float tolerance)

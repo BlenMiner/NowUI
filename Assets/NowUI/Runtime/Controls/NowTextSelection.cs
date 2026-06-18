@@ -132,7 +132,7 @@ namespace NowUI
 
             var interaction = NowInput.Interact(id, bounds);
             NowFocus.Register(id, bounds);
-            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(NowInput.GetId(id, "selection-gesture"));
+            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(id, "selection-gesture");
 
             if (interaction.pressed)
             {

@@ -17,8 +17,7 @@ public sealed class Nameplate : NowWorldGraphic
 
     protected override void DrawNowUI(NowRect rect)
     {
-        int id = NowControls.GetControlId(1);
-        var hover = NowInput.Interact(id, rect);
+        var hover = NowInput.Interact(rect);
 
         Now.Rectangle(rect)
             .SetColor(hover.hovered ? new Color(0.08f, 0.12f, 0.18f, 0.94f) : new Color(0.04f, 0.06f, 0.09f, 0.84f))

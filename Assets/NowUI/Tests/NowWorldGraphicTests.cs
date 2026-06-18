@@ -857,6 +857,59 @@ public class NowWorldGraphicTests
     }
 
     [Test]
+    public void WorldPopupFitMovesRectIntoCameraViewOnSamePlane()
+    {
+        var cameraObject = new GameObject("Now World Popup Fit Camera");
+        var graphicObject = new GameObject("Now World Popup Fit Graphic");
+
+        try
+        {
+            var cmr = cameraObject.AddComponent<Camera>();
+            cmr.orthographic = true;
+            cmr.orthographicSize = 1f;
+            cmr.pixelRect = new Rect(0f, 0f, 200f, 200f);
+            cameraObject.transform.position = new Vector3(0f, 0f, -10f);
+
+            var graphic = graphicObject.AddComponent<RectWorldGraphic>();
+            graphic.targetCamera = cmr;
+            graphic.facingMode = NowWorldFacingMode.None;
+            graphic.size = new Vector2(200f, 200f);
+            graphic.pixelsPerUnit = 100f;
+            graphic.pivot = new Vector2(0.5f, 0.5f);
+
+            var original = new NowRect(170f, 80f, 80f, 40f);
+            var fitted = ((INowPopupFitProvider)graphic).FitPopupRectToView(original);
+            var screenBounds = ProjectWorldPopup(cmr, graphic, fitted);
+            Rect view = cmr.pixelRect;
+
+            Assert.Less(fitted.x, original.x, "The popup should move left along the UI plane.");
+            Assert.GreaterOrEqual(screenBounds.xMin, view.xMin);
+            Assert.GreaterOrEqual(screenBounds.yMin, view.yMin);
+            Assert.LessOrEqual(screenBounds.xMax, view.xMax);
+            Assert.LessOrEqual(screenBounds.yMax, view.yMax);
+        }
+        finally
+        {
+            Object.DestroyImmediate(graphicObject);
+            Object.DestroyImmediate(cameraObject);
+        }
+    }
+
+    static Rect ProjectWorldPopup(Camera cmr, NowWorldGraphic graphic, NowRect rect)
+    {
+        Vector3 a = cmr.WorldToScreenPoint(graphic.transform.TransformPoint(graphic.UIToLocal(new Vector2(rect.x, rect.y))));
+        Vector3 b = cmr.WorldToScreenPoint(graphic.transform.TransformPoint(graphic.UIToLocal(new Vector2(rect.xMax, rect.y))));
+        Vector3 c = cmr.WorldToScreenPoint(graphic.transform.TransformPoint(graphic.UIToLocal(new Vector2(rect.xMax, rect.yMax))));
+        Vector3 d = cmr.WorldToScreenPoint(graphic.transform.TransformPoint(graphic.UIToLocal(new Vector2(rect.x, rect.yMax))));
+        float minX = Mathf.Min(a.x, b.x, c.x, d.x);
+        float minY = Mathf.Min(a.y, b.y, c.y, d.y);
+        float maxX = Mathf.Max(a.x, b.x, c.x, d.x);
+        float maxY = Mathf.Max(a.y, b.y, c.y, d.y);
+
+        return Rect.MinMaxRect(minX, minY, maxX, maxY);
+    }
+
+    [Test]
     public void DepthModeUsesMaterialClone()
     {
         var baseMaterial = Resources.Load<Material>("NowUI/UIMaterial");

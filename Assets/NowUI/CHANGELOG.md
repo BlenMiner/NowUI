@@ -34,6 +34,26 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `NowLottieCache`, `NowLottieAsset.LoadFromUrl(...)`,
   `SetSourceFromUrl(...)`, byte-based source assignment, and the
   `NowLottieGraphic` Animation Url field.
+- Id-less `NowInput.Interact(...)` overload coverage now matches common
+  free-form usage: Unity `Rect` callers and non-primary pointer buttons can
+  use call-site identity without minting throwaway numeric ids.
+- `NowControls.Interact(...)` can now resolve call-site identity directly, or
+  combine an optional `NowId` with a captured fallback identity, so custom
+  controls do not need a separate `SiteId` / `GetControlId` step before
+  running the standard pointer/focus/submit bundle.
+- `NowLayout.Area(...)`, `Horizontal(...)`, and `Vertical(...)` now accept
+  `Vector4` padding overloads for per-side padding without constructing a
+  `NowLayoutOptions` value.
+- `NowInteraction` now exposes `GetId(...)` and `State<T>(...)` helpers for
+  deriving per-control sub-state keys without spelling out
+  `NowInput.GetId(interaction.id, ...)`.
+- `NowControlState.Repeat(id, key, ...)` now handles named repeat timers
+  without manually deriving sub-ids.
+- `NowControlState.Transition(...)`, `Repeat(...)`, and `PressAnimation(...)`
+  now accept `NowInteraction` directly for common custom-control animation
+  state.
+- `NowControlState.Get<T>(id, key)` and `Warmup<T>(id, key, ...)` now cover
+  named sub-state slots without manually deriving ids first.
 
 ### Changed
 
@@ -45,6 +65,8 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Now.Glass(...)` blur requests, and blurred world glass protects
   foreground scene depth automatically. The old world glass depth-mode property
   is obsolete and no longer changes rendering.
+- Context menus now fit themselves inside the active NowUI surface when opened
+  near the right or bottom edge.
 
 ## [0.1.0] - 2026-06-11
 

@@ -433,16 +433,15 @@ public class NowDocsExample : NowGraphic
         if (panel.isEmpty)
             return;
 
-        int id = NowControls.GetControlId("docs-sdf-playground");
-        var interaction = NowControls.Interact(id, panel, out bool focused, out bool submitted);
+        var interaction = NowControls.Interact("docs-sdf-playground", panel, out bool focused, out bool submitted);
 
         if (interaction.clicked || submitted)
             _sdfDemoLocked = !_sdfDemoLocked;
 
         var scene = panel.Inset(18f, 16f, 18f, 40f);
-        float hoverT = NowControlState.Transition(NowInput.GetId(id, "hover"), interaction.hovered || focused, 8f);
-        float pressT = NowControlState.Transition(NowInput.GetId(id, "press"), interaction.held, 18f);
-        float lockT = NowControlState.Transition(NowInput.GetId(id, "lock"), _sdfDemoLocked, 7f);
+        float hoverT = NowControlState.Transition(interaction, "hover", interaction.hovered || focused, 8f);
+        float pressT = NowControlState.Transition(interaction, "press", interaction.held, 18f);
+        float lockT = NowControlState.Transition(interaction, "lock", _sdfDemoLocked, 7f);
         float autoX = Mathf.SmoothStep(0f, 1f, Mathf.PingPong(Time.time * 0.18f, 1f));
         float autoY = Mathf.Sin(Time.time * 0.7f) * 0.5f + 0.5f;
         float w = scene.width;
@@ -497,9 +496,7 @@ public class NowDocsExample : NowGraphic
             .SetColor(new Color(1f, 0.60f, 0.18f, 1f))
             .UseColor()
             .SmoothUnion(h * 0.06f)
-            .Capsule(new NowRect(w * 0.37f, h * 0.58f, w * 0.30f, h * 0.12f))
-            .SmoothSubtract(4f)
-            .Text(idlePosition, idleText, sdfFont, textSize, NowFontStyle.Bold);
+            .Capsule(new NowRect(w * 0.37f, h * 0.58f, w * 0.30f, h * 0.12f));
 
         var active = _sdfDemoActive.Clear()
             .SetColor(Color.Lerp(new Color(0.22f, 0.42f, 1f, 1f), new Color(0.88f, 0.18f, 0.54f, 1f), lockT))
@@ -514,9 +511,7 @@ public class NowDocsExample : NowGraphic
             .SmoothUnion(h * 0.05f)
             .Capsule(new NowRect(w * 0.32f, h * 0.61f, w * 0.38f, h * 0.09f))
             .SmoothSubtract(h * 0.035f)
-            .Circle(cursor, h * (0.15f + pressT * 0.03f))
-            .SmoothSubtract(4f)
-            .Text(activePosition, activeText, sdfFont, textSize, NowFontStyle.Bold);
+            .Circle(cursor, h * (0.15f + pressT * 0.03f));
 
         var streaks = _sdfDemoStreaks.Clear()
             .SetColor(new Color(1f, 1f, 1f, 0.22f + hoverT * 0.12f))
@@ -540,11 +535,11 @@ public class NowDocsExample : NowGraphic
             .Circle(new Vector2(w * (0.78f + Mathf.Cos(Time.time * 1.2f) * 0.025f), h * 0.25f), h * 0.035f);
 
         var textIdle = _sdfDemoTextIdle.Clear()
-            .SetColor(new Color(1f, 1f, 1f, 0.22f))
-            .Text(idlePosition + new Vector2(1.5f, -1.5f), idleText, sdfFont, textSize, NowFontStyle.Bold);
+            .SetColor(new Color(1f, 1f, 1f, 0.76f))
+            .Text(idlePosition + new Vector2(1f, -1f), idleText, sdfFont, textSize, NowFontStyle.Bold);
         var textActive = _sdfDemoTextActive.Clear()
-            .SetColor(new Color(1f, 0.9f, 0.65f, 0.24f))
-            .Text(activePosition + new Vector2(1.5f, -1.5f), activeText, sdfFont, textSize, NowFontStyle.Bold);
+            .SetColor(new Color(1f, 0.92f, 0.72f, 0.82f))
+            .Text(activePosition + new Vector2(1f, -1f), activeText, sdfFont, textSize, NowFontStyle.Bold);
 
         NowSdf.Scene(scene, "docs-sdf-playground-aura")
             .SetFeather(2.5f)
@@ -553,12 +548,12 @@ public class NowDocsExample : NowGraphic
             .Draw();
 
         NowSdf.Scene(scene, "docs-sdf-playground-main")
-            .SetShadow(new Vector2(8f, 12f), 20f, new Color(0f, 0f, 0f, 0.30f), 2f)
-            .SetGlow(24f + hoverT * 14f, Color.Lerp(new Color(0.05f, 0.62f, 1f, 0.28f), new Color(1f, 0.34f, 0.72f, 0.32f), lockT), 1.35f)
-            .SetOutline(3.5f, new Color(0.02f, 0.035f, 0.08f, 0.82f), 1f)
-            .SetInnerShadow(new Vector2(-4f - steerX * 4f, -5f - steerY * 3f), 12f, new Color(0f, 0f, 0f, 0.20f))
-            .SetEmboss(new Vector2(0.35f - steerX, 0.22f - steerY), 0.30f + hoverT * 0.08f, 9f)
-            .SetContours(18f - hoverT * 5f, 1.1f, new Color(1f, 1f, 1f, 0.10f + hoverT * 0.08f), Time.time * (6f + hoverT * 8f), 2)
+            .SetShadow(new Vector2(6f, 9f), 16f, new Color(0f, 0f, 0f, 0.18f), 1f)
+            .SetGlow(18f + hoverT * 10f, Color.Lerp(new Color(0.05f, 0.62f, 1f, 0.18f), new Color(1f, 0.34f, 0.72f, 0.22f), lockT), 1.5f)
+            .SetOutline(1.6f, new Color(0.02f, 0.035f, 0.08f, 0.38f), 0.8f)
+            .SetInnerShadow(new Vector2(-3f - steerX * 3f, -4f - steerY * 2f), 9f, new Color(0f, 0f, 0f, 0.10f))
+            .SetEmboss(new Vector2(0.35f - steerX, 0.22f - steerY), 0.12f + hoverT * 0.04f, 8f)
+            .SetContours(18f - hoverT * 5f, 0.8f, new Color(1f, 1f, 1f, 0.04f + hoverT * 0.04f), Time.time * (4f + hoverT * 6f), 2)
             .SetContourMask(cursor, h * (0.24f + hoverT * 0.10f), h * 0.08f)
             .SetWarp(1.0f + hoverT * 2.2f, Mathf.Lerp(72f, 48f, hoverT), 0.12f + hoverT * 0.15f, 4.7f)
             .Morph(idle, active, morphT)
@@ -571,6 +566,8 @@ public class NowDocsExample : NowGraphic
             .Draw();
 
         NowSdf.Scene(scene, "docs-sdf-playground-text-sheen")
+            .SetShadow(new Vector2(2f, 3f), 7f, new Color(0f, 0f, 0f, 0.28f), 1f)
+            .SetGlow(7f, new Color(1f, 1f, 1f, 0.12f), 1.4f)
             .Morph(textIdle, textActive, textMorphT)
             .Draw();
 
@@ -1664,17 +1661,16 @@ public static class GuideControls
         [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
     {
         var theme = NowTheme.themeAsset;
-        int id = NowControls.GetControlId(NowControls.SiteId(file, line));
 
         NowRect rect = NowLayout.Rect(44f, 44f);
-        var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+        var interaction = NowControls.Interact(rect, out bool focused, out bool submitted, file, line);
 
         float radius = rect.width * 0.5f;
         bool inCircle = (interaction.pointerPosition - rect.center).sqrMagnitude <= radius * radius;
         bool clicked = (interaction.clicked && inCircle) || submitted;
 
         float hoverT = NowControlState.Transition(
-            NowInput.GetId(id, "hover"), interaction.hovered && inCircle);
+            interaction, "hover", interaction.hovered && inCircle);
 
         var circle = theme.Rectangle(rect, NowRectangleStyle.Accent);
         circle.radius = Vector4.one * radius;
@@ -1702,7 +1698,7 @@ public static class GuideControls
         ref int value, int max = 5,
         [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
     {
-        return DrawRating(NowControls.GetControlId(NowControls.SiteId(file, line)), ref value, max);
+        return DrawRating(default, NowControls.SiteId(file, line), ref value, max);
     }
 
     public static MyRating Rating(
@@ -1711,14 +1707,14 @@ public static class GuideControls
         return new MyRating(NowControls.SiteId(file, line));
     }
 
-    internal static bool DrawRating(int id, ref int value, int max)
+    internal static bool DrawRating(NowId id, int fallbackIdentity, ref int value, int max)
     {
         const float Dot = 18f, Gap = 6f;
 
         var theme = NowTheme.themeAsset;
 
         NowRect rect = NowLayout.Rect(max * Dot + (max - 1) * Gap, Dot);
-        var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+        var interaction = NowControls.Interact(id, fallbackIdentity, rect, out bool focused, out bool submitted);
 
         int hoveredIndex = interaction.hovered
             ? Mathf.Clamp(Mathf.FloorToInt((interaction.pointerPosition.x - rect.x) / (Dot + Gap)), 0, max - 1)
@@ -1781,7 +1777,6 @@ public struct MyRating
 
     public bool Draw(ref int value)
     {
-        int id = NowControls.GetControlId(_id, _site);
-        return GuideControls.DrawRating(id, ref value, _max);
+        return GuideControls.DrawRating(_id, _site, ref value, _max);
     }
 }

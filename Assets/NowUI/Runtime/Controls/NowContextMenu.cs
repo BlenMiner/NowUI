@@ -27,6 +27,7 @@ namespace NowUI
     {
         static int _openId;
         static Vector2 _position;
+        static bool _fitToView = true;
         static int _activeId;
         static NowRect _popupRect;
         static int _popupPendingId;
@@ -35,10 +36,11 @@ namespace NowUI
         /// <summary>True while any context menu is open.</summary>
         public static bool isOpen => _openId != 0;
 
-        public static void Open(int id, Vector2 position)
+        public static void Open(int id, Vector2 position, bool fitToView = true)
         {
             _openId = id;
             _position = position;
+            _fitToView = fitToView;
             NowControlState.RequestRepaint();
         }
 
@@ -58,7 +60,7 @@ namespace NowUI
                 return false;
 
             if (_openId != id &&
-                NowControlState.Get<int>(NowInput.GetId(id, "ctx-pending")) == 0)
+                NowControlState.Get<int>(id, "ctx-pending") == 0)
             {
                 return false;
             }
@@ -73,7 +75,7 @@ namespace NowUI
         {
             _items.Add(label);
             int index = _items.Count;
-            ref int pending = ref NowControlState.Get<int>(NowInput.GetId(_activeId, "ctx-pending"));
+            ref int pending = ref NowControlState.Get<int>(_activeId, "ctx-pending");
 
             if (pending == index)
             {
@@ -114,7 +116,14 @@ namespace NowUI
             for (int i = 0; i < _items.Count; ++i)
                 width = Mathf.Max(width, textStyle.Measure(_items[i]).x + paddingX * 2f);
 
-            popupRect = new NowRect(_position.x, _position.y, width, _items.Count * itemHeight + popupPadding * 2f);
+            popupRect = new NowRect(
+                _position.x,
+                _position.y,
+                width,
+                _items.Count * itemHeight + popupPadding * 2f);
+
+            if (_fitToView)
+                popupRect = NowOverlay.FitScreenToView(popupRect);
 
             int pendingId = NowInput.GetId(id, "ctx-pending");
             _popupRect = popupRect;
@@ -177,6 +186,7 @@ namespace NowUI
         public static void Reset()
         {
             _openId = 0;
+            _fitToView = true;
             _activeId = 0;
             _popupRect = default;
             _popupPendingId = 0;

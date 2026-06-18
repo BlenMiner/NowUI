@@ -257,6 +257,56 @@ public class NowInputTests
     }
 
     [Test]
+    public void ActiveCaptureSurvivesDifferentProviderEarlierInNextFrame()
+    {
+        var otherProvider = new MockInputProvider();
+        _provider.snapshot = SnapshotAt(20, NowPointerButtons.Primary, NowPointerButtons.Primary, NowPointerButtons.None);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+            NowInput.Interact(1, _rect);
+
+        otherProvider.snapshot = SnapshotAt(21, NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.Primary);
+
+        using (NowInput.Begin(otherProvider, new Vector2(100, 100)))
+            Assert.AreEqual(1, NowInput.activeId);
+
+        _provider.snapshot = SnapshotAt(21, NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.Primary);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            var release = NowInput.Interact(1, _rect);
+            Assert.IsTrue(release.clicked);
+        }
+
+        Assert.AreEqual(0, NowInput.activeId);
+    }
+
+    [Test]
+    public void ActiveCaptureClearsAfterOwningProviderMissesFullFrame()
+    {
+        var nextSceneProvider = new MockInputProvider();
+        _provider.snapshot = SnapshotAt(30, NowPointerButtons.Primary, NowPointerButtons.Primary, NowPointerButtons.None);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+            NowInput.Interact(1, _rect);
+
+        nextSceneProvider.snapshot = SnapshotAt(31, NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None);
+
+        using (NowInput.Begin(nextSceneProvider, new Vector2(100, 100)))
+            Assert.AreEqual(1, NowInput.activeId);
+
+        nextSceneProvider.snapshot = SnapshotAt(32, NowPointerButtons.Primary, NowPointerButtons.Primary, NowPointerButtons.None);
+
+        using (NowInput.Begin(nextSceneProvider, new Vector2(100, 100)))
+        {
+            var press = NowInput.Interact(2, _rect);
+            Assert.IsTrue(press.pressed);
+        }
+
+        Assert.AreEqual(2, NowInput.activeId);
+    }
+
+    [Test]
     public void EndFrameClearsStaleActiveCaptureForDirectUpdateFlow()
     {
         var surface = new NowInputSurface(new Vector2(100, 100));
@@ -395,6 +445,81 @@ public class NowInputTests
     }
 
     [Test]
+    public void IdlessRectInteractionClicksAcrossFramesFromOneSite()
+    {
+        Vector2 inside = new Vector2(18, 20);
+        bool clicked = false;
+
+        void Frame(bool down, bool pressed, bool released)
+        {
+            _provider.snapshot = new NowInputSnapshot(inside, down, pressed, released);
+
+            using (NowInput.Begin(_provider, new Vector2(100, 100)))
+                clicked = NowInput.Interact(_rect).clicked;
+        }
+
+        Frame(down: true, pressed: true, released: false);
+        Assert.IsFalse(clicked);
+
+        Frame(down: false, pressed: false, released: true);
+        Assert.IsTrue(clicked);
+    }
+
+    [Test]
+    public void IdlessInteractionCanUseSecondaryPointerButton()
+    {
+        var rect = new NowRect(10, 10, 40, 30);
+        var inside = new Vector2(18, 20);
+        NowInteraction interaction = default;
+
+        void Frame(NowPointerButtons down, NowPointerButtons pressed, NowPointerButtons released)
+        {
+            _provider.snapshot = new NowInputSnapshot(inside, down, pressed, released);
+
+            using (NowInput.Begin(_provider, new Vector2(100, 100)))
+                interaction = NowInput.Interact(rect, NowPointerButton.Secondary);
+        }
+
+        Frame(NowPointerButtons.Secondary, NowPointerButtons.Secondary, NowPointerButtons.None);
+        Assert.IsTrue(interaction.pressed);
+        Assert.IsTrue(interaction.held);
+        Assert.AreEqual(NowPointerButton.Secondary, interaction.button);
+
+        Frame(NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.Secondary);
+        Assert.IsTrue(interaction.released);
+        Assert.IsTrue(interaction.clicked);
+    }
+
+    [Test]
+    public void InteractionDerivesSubIdsAndStateSlots()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            var interaction = NowInput.Interact(17, _rect);
+
+            Assert.AreEqual(NowInput.GetId(interaction.id, "hover"), interaction.GetId("hover"));
+            Assert.AreEqual(NowInput.CombineId(interaction.id, 3), interaction.GetId(3));
+
+            ref int stringSlot = ref interaction.State<int>("hover");
+            ref int numericSlot = ref interaction.State<int>(3);
+
+            stringSlot = 23;
+            numericSlot = 42;
+
+            Assert.AreEqual(23, NowControlState.Get<int>(interaction.GetId("hover")));
+            Assert.AreEqual(42, NowControlState.Get<int>(interaction.GetId(3)));
+
+            Assert.GreaterOrEqual(NowControlState.Transition(interaction, "fade", true), 0f);
+            Assert.IsTrue(NowControlState.Repeat(interaction, "nav", held: true));
+            Assert.IsFalse(NowControlState.Repeat(interaction, "nav", held: true));
+            Assert.IsTrue(NowControlState.PressAnimation(
+                interaction, "press", true, new Vector2(12f, 14f), 1f).active);
+        }
+    }
+
+    [Test]
     public void SnapshotCanCarryNavigationWithoutPointer()
     {
         _provider.snapshot = new NowInputSnapshot(
@@ -451,6 +576,34 @@ public class NowInputTests
         }
 
         Assert.IsFalse(NowInput.hasContext);
+    }
+
+    static NowInputSnapshot SnapshotAt(
+        int frame,
+        NowPointerButtons down,
+        NowPointerButtons pressed,
+        NowPointerButtons released)
+    {
+        var position = new Vector2(18f, 20f);
+
+        return new NowInputSnapshot(
+            true,
+            position,
+            position,
+            Vector2.zero,
+            down,
+            pressed,
+            released,
+            Vector2.zero,
+            Vector2.zero,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            frame,
+            frame / 60f);
     }
 
     sealed class MockInputProvider : INowInputProvider

@@ -8,7 +8,7 @@
 namespace {
 
 constexpr float EPSILON = 0.0001f;
-constexpr int VERSION = 5;
+constexpr int VERSION = 6;
 
 struct Vec2 {
     float x, y;
@@ -304,7 +304,8 @@ bool isFlat(Vec2 p0, Vec2 c1, Vec2 c2, Vec2 p1, float tolerance)
 void flattenCubic(Vec2 p0, Vec2 c1, Vec2 c2, Vec2 p1, float tolerance, std::vector<Vec2> &output, int depth)
 {
     if (depth >= 18 || isFlat(p0, c1, c2, p1, tolerance)) {
-        output.push_back(p1);
+        if (output.empty() || lengthSq(p1 - output.back()) > EPSILON * EPSILON)
+            output.push_back(p1);
         return;
     }
 

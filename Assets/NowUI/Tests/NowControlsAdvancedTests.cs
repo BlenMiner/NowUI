@@ -66,6 +66,8 @@ public class NowControlsAdvancedTests
         public int scrollbars;
         public int verticalScrollbars;
         public int horizontalScrollbars;
+        public NowRect lastPopupRect;
+        public NowRect lastMenuPopupRect;
 
         public override void DrawButton(in NowButtonRenderContext context)
         {
@@ -106,6 +108,11 @@ public class NowControlsAdvancedTests
         public override void DrawPopupBackground(NowThemeAsset themeAsset, NowRect rect, bool menu)
         {
             ++popupBackgrounds;
+            lastPopupRect = rect;
+
+            if (menu)
+                lastMenuPopupRect = rect;
+
             base.DrawPopupBackground(themeAsset, rect, menu);
         }
 
@@ -298,6 +305,109 @@ public class NowControlsAdvancedTests
         {
             Now.defaultFont = previousFont;
             Object.DestroyImmediate(font);
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void ContextMenuFitsInsideInputSurface()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        var previousFont = Now.defaultFont;
+        var font = ScriptableObject.CreateInstance<NowFont>();
+
+        try
+        {
+            SetRenderer(theme, renderer);
+            Now.defaultFont = font;
+            var bottomRight = new Vector2(Surface.x - 2f, Surface.y - 2f);
+            _pointer.snapshot = new NowInputSnapshot(
+                bottomRight,
+                NowPointerButtons.Secondary,
+                NowPointerButtons.Secondary,
+                NowPointerButtons.None);
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                NowContextMenu.Open(7002, bottomRight);
+
+                if (NowContextMenu.Begin(7002))
+                {
+                    NowContextMenu.Item("Copy");
+                    NowContextMenu.Item("Select All");
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+
+            Assert.GreaterOrEqual(renderer.contextMenuItems, 2);
+            Assert.GreaterOrEqual(renderer.lastMenuPopupRect.x, 0f);
+            Assert.GreaterOrEqual(renderer.lastMenuPopupRect.y, 0f);
+            Assert.LessOrEqual(renderer.lastMenuPopupRect.xMax, Surface.x);
+            Assert.LessOrEqual(renderer.lastMenuPopupRect.yMax, Surface.y);
+        }
+        finally
+        {
+            Now.defaultFont = previousFont;
+            Object.DestroyImmediate(font);
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void OverlayFitToViewAccountsForCurrentTransform()
+    {
+        using (NowInput.Begin(_pointer, Surface))
+        using (Now.Transform(2f, new Vector2(10f, 5f)))
+        {
+            var rect = new NowRect(240f, 110f, 80f, 40f);
+            var fitted = NowOverlay.FitToView(rect);
+            var screen = Now.TransformScreenRect(fitted);
+
+            Assert.GreaterOrEqual(screen.x, 0f);
+            Assert.GreaterOrEqual(screen.y, 0f);
+            Assert.LessOrEqual(screen.xMax, Surface.x);
+            Assert.LessOrEqual(screen.yMax, Surface.y);
+        }
+    }
+
+    [Test]
+    public void DropdownPopupFitsInsideInputSurfaceByDefault()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        var options = new List<string> { "Low", "Medium", "High" };
+        int selected = 0;
+        var rect = new NowRect(Surface.x - 84f, Surface.y - 26f, 96f, 24f);
+        int id = NowControls.ResolveNavigationTargetId("quality-fit");
+        NowControlState.Get<bool>(id) = true;
+
+        try
+        {
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                Now.Dropdown(rect, "quality-fit", options).Draw(ref selected);
+                NowOverlay.Flush();
+            }
+
+            Assert.Greater(renderer.popupBackgrounds, 0);
+            Assert.GreaterOrEqual(renderer.lastPopupRect.x, 0f);
+            Assert.GreaterOrEqual(renderer.lastPopupRect.y, 0f);
+            Assert.LessOrEqual(renderer.lastPopupRect.xMax, Surface.x);
+            Assert.LessOrEqual(renderer.lastPopupRect.yMax, Surface.y);
+        }
+        finally
+        {
             Object.DestroyImmediate(renderer);
             Object.DestroyImmediate(theme);
         }
@@ -599,7 +709,7 @@ public class NowControlsAdvancedTests
         using (Now.ScrollView(new NowRect(0, 0, 200, 100), "list").Begin())
         {
             for (int i = 0; i < 10; ++i)
-                NowLayout.Rect(new NowLayoutOptions().SetSize(180, 30));
+                NowLayout.Rect(180, 30);
         }
 
         _pointer.snapshot = new NowInputSnapshot(
@@ -613,7 +723,7 @@ public class NowControlsAdvancedTests
         using (Now.ScrollView(new NowRect(0, 0, 200, 100), "list").Begin())
         {
             for (int i = 0; i < 10; ++i)
-                NowLayout.Rect(new NowLayoutOptions().SetSize(180, 30));
+                NowLayout.Rect(180, 30);
         }
 
         int scrollId;
@@ -645,7 +755,7 @@ public class NowControlsAdvancedTests
                 using (_drawList.Begin(Surface))
                 using (Now.ScrollView(new NowRect(0, 0, 200, 100), "wide").Begin())
                 {
-                    NowLayout.Rect(new NowLayoutOptions().SetSize(260f, 40f));
+                    NowLayout.Rect(260f, 40f);
                 }
             }
 
@@ -685,7 +795,7 @@ public class NowControlsAdvancedTests
                 using (_drawList.Begin(Surface))
                 using (Now.ScrollView(new NowRect(0, 0, 200, 100), "coupled").Begin())
                 {
-                    NowLayout.Rect(new NowLayoutOptions().SetSize(195f, 130f));
+                    NowLayout.Rect(195f, 130f);
                 }
             }
 
@@ -719,7 +829,7 @@ public class NowControlsAdvancedTests
                 using (_drawList.Begin(Surface))
                 using (Now.ScrollView(new NowRect(0, 0, 200, 100), "wheel-wide").Begin())
                 {
-                    NowLayout.Rect(new NowLayoutOptions().SetSize(260f, 40f));
+                    NowLayout.Rect(260f, 40f);
                 }
             }
 
@@ -889,7 +999,7 @@ public class NowControlsAdvancedTests
 
         Assert.IsTrue(NowControlState.Get<bool>(dropdownId), "Click must open the dropdown.");
 
-        NowControlState.Get<int>(NowInput.GetId(dropdownId, "pending")) = 3;
+        NowControlState.Get<int>(dropdownId, "pending") = 3;
 
         _pointer.snapshot = default;
         bool changed;
@@ -927,7 +1037,9 @@ public class NowControlsAdvancedTests
             using (_drawList.Begin(Surface))
             using (Now.Transform(scale, transformOrigin))
             {
-                return Now.Dropdown(rect, "quality-transform", options).Draw(ref selected);
+                return Now.Dropdown(rect, "quality-transform", options)
+                    .SetFitToView(false)
+                    .Draw(ref selected);
             }
         }
 

@@ -142,9 +142,9 @@ Shader "NowUI/SDF Scene"
                 float radius;
 
                 if (p.x < 0.0)
-                    radius = p.y < 0.0 ? r.x : r.w;
+                    radius = p.y < 0.0 ? r.z : r.w;
                 else
-                    radius = p.y < 0.0 ? r.y : r.z;
+                    radius = p.y < 0.0 ? r.x : r.y;
 
                 radius = min(radius, min(b.x, b.y));
                 float2 q = abs(p) - b + radius;
@@ -541,13 +541,6 @@ Shader "NowUI/SDF Scene"
                 return float4(rgb, a);
             }
 
-            float fieldMetric(float dist, float2 scenePos)
-            {
-                float scenePixel = max(max(length(ddx(scenePos)), length(ddy(scenePos))), 0.0001);
-                float fieldPixel = length(float2(ddx(dist), ddy(dist)));
-                return clamp(fieldPixel / scenePixel, 0.35, 3.0);
-            }
-
             v2f vert(appdata v)
             {
                 v2f o;
@@ -588,10 +581,9 @@ Shader "NowUI/SDF Scene"
 
                 float pixelWidth = max(fwidth(dist), 0.0001);
                 float edge = pixelWidth * max(0.5 + _SdfFeather * 0.5, 0.5);
-                float metric = fieldMetric(dist, scenePosBase);
-                float effectDist = dist / metric;
-                float effectPixelWidth = max(pixelWidth / metric, 0.0001);
-                float effectEdge = effectPixelWidth * max(0.5 + _SdfFeather * 0.5, 0.5);
+                float effectDist = dist;
+                float effectPixelWidth = pixelWidth;
+                float effectEdge = edge;
                 float coverage = smoothstep(edge, -edge, dist);
                 float4 col = 0.0;
 
@@ -599,10 +591,9 @@ Shader "NowUI/SDF Scene"
                 {
                     float shadowDist;
                     evalSceneDistance(warpScenePos(scenePosBase - _SdfShadow.xy), shadowDist);
-                    float shadowMetric = fieldMetric(shadowDist, scenePosBase);
-                    float shadowPixelWidth = max(fwidth(shadowDist) / shadowMetric, 0.0001);
+                    float shadowPixelWidth = max(fwidth(shadowDist), 0.0001);
                     float shadowEdge = shadowPixelWidth * max(0.5 + _SdfFeather * 0.5, 0.5);
-                    float shadowEffectDist = shadowDist / shadowMetric - _SdfShadow.w;
+                    float shadowEffectDist = shadowDist - _SdfShadow.w;
                     float shadowAlpha = smoothstep(max(_SdfShadow.z, shadowPixelWidth) + shadowEdge, -shadowEdge, shadowEffectDist) * (1.0 - coverage);
                     float4 shadowColor = effectColor(_SdfShadowColor, i.tint);
                     shadowColor.a *= shadowAlpha;
@@ -645,10 +636,9 @@ Shader "NowUI/SDF Scene"
                 {
                     float innerDist;
                     evalSceneDistance(warpScenePos(scenePosBase - _SdfInnerShadow.xy), innerDist);
-                    float innerMetric = fieldMetric(innerDist, scenePosBase);
-                    float innerPixelWidth = max(fwidth(innerDist) / innerMetric, 0.0001);
+                    float innerPixelWidth = max(fwidth(innerDist), 0.0001);
                     float innerEdge = innerPixelWidth * max(0.5 + _SdfFeather * 0.5, 0.5);
-                    float innerEffectDist = innerDist / innerMetric + _SdfInnerShadow.w;
+                    float innerEffectDist = innerDist + _SdfInnerShadow.w;
                     float innerShape = smoothstep(max(_SdfInnerShadow.z, innerPixelWidth) + innerEdge, -innerEdge, innerEffectDist);
                     float innerAlpha = coverage * (1.0 - innerShape);
                     float4 innerShadowColor = effectColor(_SdfInnerShadowColor, i.tint);

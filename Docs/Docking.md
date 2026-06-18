@@ -12,9 +12,7 @@ readonly NowDockSpace _dock = new NowDockSpace();
 
 void OnPostRender()
 {
-    Now.StartUI();
-
-    using (NowInput.Begin(new Vector2(Screen.width, Screen.height)))
+    using (Now.StartUI())
     {
         _dock.Window("Scene", DrawScene, id: "Scene");
         _dock.Window("Hierarchy", DrawHierarchy, id: "Hierarchy");
@@ -24,8 +22,6 @@ void OnPostRender()
             .SetMinPaneSize(140)
             .Draw();
     }
-
-    Now.FlushUI();
 }
 ```
 

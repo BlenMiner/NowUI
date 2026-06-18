@@ -127,7 +127,7 @@ Most effects should use `SetRenderToTexture()` on `Modifier`. Use
 captured texture handle.
 
 ```csharp
-var snapshot = NowEffects.Snapshot(sourceRect).SetId(42).Begin();
+var snapshot = NowEffects.Snapshot(sourceRect).Begin();
 
 using (snapshot)
 {

@@ -139,9 +139,13 @@ public class LayoutExample : MonoBehaviour
         }
     }
 
-    bool Button(string id, string label, NowLayoutOptions options, Color background)
+    bool Button(
+        NowId id,
+        string label,
+        NowLayoutOptions options,
+        Color background)
     {
-        Vector4 rect = NowLayout.Rect(options);
+        NowRect rect = NowLayout.Rect(options);
         var interaction = NowInput.Interact(id, rect);
 
         if (interaction.hovered)
@@ -156,9 +160,11 @@ public class LayoutExample : MonoBehaviour
         return interaction.clicked;
     }
 
-    bool Toggle(string id, bool value)
+    bool Toggle(
+        NowId id,
+        bool value)
     {
-        Vector4 rect = NowLayout.Rect(
+        NowRect rect = NowLayout.Rect(
             NowLayout.Size(44, 24).SetAlign(NowLayoutAlign.Center));
 
         var interaction = NowInput.Interact(id, rect);
@@ -173,7 +179,7 @@ public class LayoutExample : MonoBehaviour
             .SetRadius(12)
             .Draw();
 
-        float knobX = value ? rect.x + rect.z - 22f : rect.x + 2f;
+        float knobX = value ? rect.xMax - 22f : rect.x + 2f;
 
         Now.Rectangle(new Vector4(knobX, rect.y + 2f, 20f, 20f))
             .SetColor(Color.white)

@@ -6,26 +6,25 @@ elements without computing rects by hand.
 
 ## Basics
 
-Open an area over a rect, then nest groups. Scopes follow the same
-`using`-disposes-the-group pattern as the rest of NowUI:
+Open a screen draw pass, then open an area over a rect and nest groups. Scopes
+follow the same `using`-disposes-the-group pattern as the rest of NowUI:
 
 ```csharp
-Now.StartUI();
-
-using (NowLayout.Area(NowScreen.safeArea))
-using (NowLayout.Vertical(padding: 16, spacing: 8))
+using (Now.StartUI())
 {
-    NowLayout.Label("Settings", 24).Draw();
-
-    using (NowLayout.Horizontal())
+    using (NowLayout.Area(NowScreen.safeArea))
+    using (NowLayout.Vertical(padding: 16, spacing: 8))
     {
-        NowLayout.Label("Volume").Draw();
-        NowLayout.FlexibleSpace();
-        NowLayout.Label("80%").Draw();
+        NowLayout.Label("Settings", 24).Draw();
+
+        using (NowLayout.Horizontal())
+        {
+            NowLayout.Label("Volume").Draw();
+            NowLayout.FlexibleSpace();
+            NowLayout.Label("80%").Draw();
+        }
     }
 }
-
-Now.FlushUI();
 ```
 
 `NowLayout.Rect(...)` reserves space and returns the resolved rect, which is
@@ -33,7 +32,7 @@ the bridge to free-form drawing and interaction:
 
 ```csharp
 NowRect rect = NowLayout.Rect(160, 44);
-var state = NowInput.Interact(100, rect);
+var state = NowInput.Interact(rect);
 
 Now.Rectangle(rect)
     .SetColor(state.hovered ? Color.white : Color.gray)
@@ -50,6 +49,7 @@ options struct needed for the everyday cases:
 using (NowLayout.Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center)) { ... }
 using (NowLayout.Vertical(spacing: 10, stretchWidth: true)) { ... }
 using (NowLayout.Area(rect, padding: 16, spacing: 8)) { ... }
+using (NowLayout.Area(rect, new Vector4(12, 8, 12, 16))) { ... } // left, top, right, bottom
 NowLayout.Area(rect, DrawContent, padding: 16);           // callback form too
 NowRect bar = NowLayout.Rect(height: 22, stretchWidth: true);
 ```

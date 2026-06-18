@@ -173,6 +173,41 @@ public class NowLottieBurstTessellatorTests
     }
 
     [Test]
+    public void FlattenPackedContoursDropsConsecutiveDuplicatePoints()
+    {
+        var set = new NowLottieContourSet();
+
+        AppendContour(set, true,
+            (new Vector2(0f, 0f), Vector2.zero, Vector2.zero),
+            (new Vector2(0f, 0f), Vector2.zero, Vector2.zero),
+            (new Vector2(20f, 0f), Vector2.zero, Vector2.zero),
+            (new Vector2(20f, 20f), Vector2.zero, Vector2.zero));
+
+        var polylines = new List<NowLottiePolyline>();
+
+        try
+        {
+            NowLottieTessellator.FlattenPackedContours(set, Tolerance, polylines);
+
+            Assert.AreEqual(1, polylines.Count);
+            Assert.AreEqual(3, polylines[0].points.Count);
+
+            for (int i = 1; i < polylines[0].points.Count; ++i)
+                Assert.Greater((polylines[0].points[i] - polylines[0].points[i - 1]).sqrMagnitude, 0f);
+        }
+        finally
+        {
+            NowLottiePolylinePool.ReleaseAll(polylines);
+        }
+
+        var paint = NowLottiePaint.Solid(new Vector4(0.1f, 0.1f, 0.1f, 1f));
+
+        AssertBuffersIdentical(
+            ScalarFill(set, null, false, false, paint, 0f),
+            BurstFill(set, null, false, false, paint, 0f));
+    }
+
+    [Test]
     public void FillMatchesScalarForCompoundPath()
     {
         var set = new NowLottieContourSet();

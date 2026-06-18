@@ -319,7 +319,7 @@ namespace NowUI
     [AddComponentMenu("NowUI/Now World Graphic")]
     [ExecuteAlways]
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
-    public class NowWorldGraphic : MonoBehaviour
+    public class NowWorldGraphic : MonoBehaviour, INowPopupFitProvider
     {
         static readonly int _zTestId = Shader.PropertyToID("_ZTest");
         static readonly int _nowMaterialGlassModeId = Shader.PropertyToID("_NowMaterialGlassMode");
@@ -733,6 +733,7 @@ namespace NowUI
                 var surface = new NowInputSurface(currentSize);
                 scope = _drawList.Begin(currentSize, _glassBlurQuality);
 
+                using (NowPopupPlacement.FitProvider(this))
                 using (NowInput.Begin(GetInputProvider(), surface))
                 using (NowControls.IdScope(GetScopeId()))
                 {
@@ -781,6 +782,146 @@ namespace NowUI
             return new Vector2(
                 localPosition.x * ppu + currentSize.x * _pivot.x,
                 currentSize.y * (1f - _pivot.y) - localPosition.y * ppu);
+        }
+
+        NowRect INowPopupFitProvider.FitPopupRectToView(NowRect rect)
+        {
+            return FitPopupRectToCameraView(rect);
+        }
+
+        NowRect FitPopupRectToCameraView(NowRect rect)
+        {
+            var cmr = ResolveCamera();
+
+            if (!cmr || rect.isEmpty)
+                return rect;
+
+            Rect bounds = cmr.pixelRect;
+
+            if (bounds.width <= 1f || bounds.height <= 1f)
+                return rect;
+
+            var fitted = rect;
+
+            for (int i = 0; i < 6; ++i)
+            {
+                if (!TryProjectPopupScreenBounds(cmr, fitted, out var screenBounds))
+                    return fitted;
+
+                Vector2 screenDelta = CalculateScreenFitDelta(screenBounds, bounds);
+
+                if (screenDelta.sqrMagnitude <= 0.01f)
+                    return fitted;
+
+                if (!TryScreenDeltaToUIDelta(cmr, fitted.center, screenDelta, out var uiDelta))
+                    return fitted;
+
+                if (!IsFinite(uiDelta) || uiDelta.sqrMagnitude <= 0.0001f)
+                    return fitted;
+
+                fitted = fitted.Offset(uiDelta);
+            }
+
+            return fitted;
+        }
+
+        bool TryProjectPopupScreenBounds(Camera cmr, NowRect rect, out Rect bounds)
+        {
+            bounds = default;
+            float minX = float.PositiveInfinity;
+            float minY = float.PositiveInfinity;
+            float maxX = float.NegativeInfinity;
+            float maxY = float.NegativeInfinity;
+
+            if (!TryProjectPopupCorner(cmr, new Vector2(rect.x, rect.y), ref minX, ref minY, ref maxX, ref maxY) ||
+                !TryProjectPopupCorner(cmr, new Vector2(rect.xMax, rect.y), ref minX, ref minY, ref maxX, ref maxY) ||
+                !TryProjectPopupCorner(cmr, new Vector2(rect.xMax, rect.yMax), ref minX, ref minY, ref maxX, ref maxY) ||
+                !TryProjectPopupCorner(cmr, new Vector2(rect.x, rect.yMax), ref minX, ref minY, ref maxX, ref maxY))
+            {
+                return false;
+            }
+
+            bounds = Rect.MinMaxRect(minX, minY, maxX, maxY);
+            return true;
+        }
+
+        bool TryProjectPopupCorner(
+            Camera cmr,
+            Vector2 uiPosition,
+            ref float minX,
+            ref float minY,
+            ref float maxX,
+            ref float maxY)
+        {
+            Vector3 screen = cmr.WorldToScreenPoint(transform.TransformPoint(UIToLocal(uiPosition)));
+
+            if (screen.z <= 0.0001f || !IsFinite(screen))
+                return false;
+
+            minX = Mathf.Min(minX, screen.x);
+            minY = Mathf.Min(minY, screen.y);
+            maxX = Mathf.Max(maxX, screen.x);
+            maxY = Mathf.Max(maxY, screen.y);
+            return true;
+        }
+
+        static Vector2 CalculateScreenFitDelta(Rect rect, Rect bounds)
+        {
+            const float margin = 1f;
+
+            float minX = bounds.xMin + margin;
+            float maxX = bounds.xMax - margin;
+            float minY = bounds.yMin + margin;
+            float maxY = bounds.yMax - margin;
+            float targetWidth = Mathf.Max(0f, maxX - minX);
+            float targetHeight = Mathf.Max(0f, maxY - minY);
+            float dx = 0f;
+            float dy = 0f;
+
+            if (rect.width <= targetWidth)
+            {
+                if (rect.xMin < minX)
+                    dx = minX - rect.xMin;
+                else if (rect.xMax > maxX)
+                    dx = maxX - rect.xMax;
+            }
+            else
+            {
+                dx = bounds.center.x - rect.center.x;
+            }
+
+            if (rect.height <= targetHeight)
+            {
+                if (rect.yMin < minY)
+                    dy = minY - rect.yMin;
+                else if (rect.yMax > maxY)
+                    dy = maxY - rect.yMax;
+            }
+            else
+            {
+                dy = bounds.center.y - rect.center.y;
+            }
+
+            return new Vector2(dx, dy);
+        }
+
+        bool TryScreenDeltaToUIDelta(Camera cmr, Vector2 uiPosition, Vector2 screenDelta, out Vector2 uiDelta)
+        {
+            uiDelta = default;
+            Vector3 centerScreen = cmr.WorldToScreenPoint(transform.TransformPoint(UIToLocal(uiPosition)));
+
+            if (centerScreen.z <= 0.0001f || !IsFinite(centerScreen))
+                return false;
+
+            var targetScreen = new Vector3(centerScreen.x + screenDelta.x, centerScreen.y + screenDelta.y, centerScreen.z);
+            var plane = new Plane(transform.forward, transform.position);
+            var ray = cmr.ScreenPointToRay(targetScreen);
+
+            if (!plane.Raycast(ray, out float distance) || distance < 0f)
+                return false;
+
+            uiDelta = LocalToUI(transform.InverseTransformPoint(ray.GetPoint(distance))) - uiPosition;
+            return true;
         }
 
         Vector3 UIToLocal(Vector2 uiPosition, Vector2 currentSize, float ppu)
@@ -852,6 +993,12 @@ namespace NowUI
             return !float.IsNaN(value.x) && !float.IsInfinity(value.x) &&
                    !float.IsNaN(value.y) && !float.IsInfinity(value.y) &&
                    !float.IsNaN(value.z) && !float.IsInfinity(value.z);
+        }
+
+        static bool IsFinite(Vector2 value)
+        {
+            return !float.IsNaN(value.x) && !float.IsInfinity(value.x) &&
+                   !float.IsNaN(value.y) && !float.IsInfinity(value.y);
         }
 
         static float SanitizeUIScale(float value)

@@ -41,23 +41,18 @@ public class OverlayExample : MonoBehaviour
 {
     void OnPostRender()
     {
-        Now.StartUI(NowScreen.recommendedUIScale);
-
-        using (NowLayout.Area(NowScreen.safeArea))
-        using (NowLayout.Vertical(new NowLayoutOptions().SetPadding(16).SetSpacing(8)))
+        using (Now.StartUI(NowScreen.recommendedUIScale))
         {
-            NowLayout.Label("Hello Now-UI", 32).Draw();
+            using (NowLayout.Area(NowScreen.safeArea))
+            using (NowLayout.Vertical(padding: 16, spacing: 8))
+            {
+                NowLayout.Label("Hello Now-UI", 32).Draw();
 
-            NowRect button = NowLayout.Rect(NowLayout.Size(160, 44));
-            var state = NowInput.Interact(100, button);
+                bool clicked = NowLayout.Button("Sample Button").Draw();
 
-            Now.Rectangle(button)
-                .SetColor(state.hovered ? Color.white : Color.gray)
-                .SetRadius(8)
-                .Draw();
+                NowLayout.Label(clicked ? "Clicked" : "Ready", 16).Draw();
+            }
         }
-
-        Now.FlushUI();
     }
 }
 ```
@@ -188,11 +183,15 @@ changes its bundled toolchain.
 
 ## Notes
 
-- Call `Now.StartUI()` before drawing and `Now.FlushUI()` after. Draw order is
-  preserved; switching materials flushes the active mesh.
-- Prefer stable non-zero integer ids (`SetId(item.id)`, `IdScope(item.id)`,
-  `NowInput.Interact(100, rect)`) for data-backed controls; strings remain
-  convenient for one-off named controls.
+- Wrap screen drawing in `using (Now.StartUI(...))`. Disposing that scope
+  submits rendering and finalizes input for the frame, so early returns and
+  exceptions do not leave the frame half-open. Draw order is preserved;
+  switching materials flushes the active mesh.
+- Use id-less controls and interactions for one-off UI
+  (`NowLayout.Button("Save")`, `NowInput.Interact(rect)`). Prefer stable
+  non-zero integer ids (`SetId(item.id)`, `IdScope(item.id)`,
+  `NowInput.Interact(item.id, rect)`) for data-backed controls that can appear,
+  disappear, or reorder; strings remain convenient for one-off named controls.
 - The hot path is allocation-free once buffers, glyphs, effect textures, and
   world-space material batches are warm. First use, new ids, new material
   batches, and capacity growth may allocate.

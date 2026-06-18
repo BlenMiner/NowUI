@@ -128,7 +128,9 @@ public class NowValueControlsTests
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
         {
-            bool changed = Now.GradientField(FieldRect, "gradient").Draw(ref value);
+            bool changed = Now.GradientField(FieldRect, "gradient")
+                .SetFitToView(false)
+                .Draw(ref value);
             NowOverlay.Flush();
             return changed;
         }
@@ -171,6 +173,7 @@ public class NowValueControlsTests
             bool changed = Now.AnimationCurveField(FieldRect, "curve-transform")
                 .SetTimeRange(0f, 1f)
                 .SetValueRange(0f, 1f)
+                .SetFitToView(false)
                 .Draw(ref value);
             NowOverlay.Flush();
             return changed;
@@ -1108,7 +1111,7 @@ public class NowValueControlsTests
         using (NowInput.Begin(_pointer, Surface))
             id = NowControls.GetControlId("quality");
 
-        NowControlState.Get<int>(NowInput.GetId(id, "pending")) = 3;
+        NowControlState.Get<int>(id, "pending") = 3;
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))

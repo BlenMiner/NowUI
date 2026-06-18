@@ -33,6 +33,8 @@ namespace NowUI.Internal
 #if NOWUI_VG_DISABLE_NATIVE
         public static bool available => false;
 
+        public static bool tessellationAvailable => false;
+
         public static bool blitAvailable => false;
 
         public static bool packCanvasAvailable => false;
@@ -203,6 +205,9 @@ namespace NowUI.Internal
                 return _available;
             }
         }
+
+        /// <summary>Lottie tessellation duplicate-point cleanup was added in version 6.</summary>
+        public static bool tessellationAvailable => available && _version >= 6;
 
         /// <summary>The bulk vertex copy entry points were added in version 2.</summary>
         public static bool blitAvailable => !forceManagedCopy && available && _version >= 2;

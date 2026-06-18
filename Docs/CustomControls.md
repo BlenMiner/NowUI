@@ -91,10 +91,9 @@ public static bool RoundButton(
     [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
 {
     var theme = NowTheme.themeAsset;
-    int id = NowControls.GetControlId(NowControls.SiteId(file, line));
 
     NowRect rect = NowLayout.Rect(44f, 44f);
-    var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+    var interaction = NowControls.Interact(rect, out bool focused, out bool submitted, file, line);
 
     // Round shape: reject pointer events that land in the rect's corners.
     float radius = rect.width * 0.5f;
@@ -102,7 +101,7 @@ public static bool RoundButton(
     bool clicked = (interaction.clicked && inCircle) || submitted;
 
     float hoverT = NowControlState.Transition(
-        NowInput.GetId(id, "hover"), interaction.hovered && inCircle);
+        interaction, "hover", interaction.hovered && inCircle);
 
     var circle = theme.Rectangle(rect, NowRectangleStyle.Accent);
     circle.radius = Vector4.one * radius;
@@ -133,9 +132,9 @@ generalizes to any shape you can hit-test against a point.
 
 ## 4. Build: a new control from scratch
 
-The anatomy is always the same four steps — identity, space, interaction,
-draw — with ephemeral state in `NowControlState` slots where needed. A
-rating control, complete:
+The anatomy is always the same three steps — space, interaction, draw — with
+identity carried by `NowControls.Interact` and ephemeral state in
+`NowControlState` slots where needed. A rating control, complete:
 
 ```csharp
 public static bool Rating(
@@ -145,10 +144,9 @@ public static bool Rating(
     const float Dot = 18f, Gap = 6f;
 
     var theme = NowTheme.themeAsset;
-    int id = NowControls.GetControlId(NowControls.SiteId(file, line));
 
     NowRect rect = NowLayout.Rect(max * Dot + (max - 1) * Gap, Dot);
-    var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
+    var interaction = NowControls.Interact(rect, out bool focused, out bool submitted, file, line);
 
     int hoveredIndex = interaction.hovered
         ? Mathf.Clamp(Mathf.FloorToInt((interaction.pointerPosition.x - rect.x) / (Dot + Gap)), 0, max - 1)
@@ -222,7 +220,8 @@ public struct MyRating
 
     public bool Draw(ref int value)
     {
-        int id = NowControls.GetControlId(_id, _site);
+        NowRect rect = NowLayout.Rect(_max * 18f + (_max - 1) * 6f, 18f);
+        var interaction = NowControls.Interact(_id, _site, rect, out bool focused, out bool submitted);
         // ... body as above, using _max ...
         return false;
     }
@@ -253,11 +252,14 @@ and constructor that carry a `NowRect` and skip `NowLayout.Rect` — compare
 
 - Real values live with the caller (`ref int value`); only ephemera —
   animation phase, scroll offsets, blink anchors — go in
-  `NowControlState.Get<T>(id)` slots, which are evicted when stale.
-  Sub-key extra slots off your id: `NowInput.GetId(id, "hover")`.
+  `NowControlState.Get<T>(id)` or `NowControlState.Get<T>(id, "slot")`
+  slots, which are evicted when stale.
+  Sub-key extra slots off your interaction id with `interaction.GetId("hover")`
+  or `interaction.State<T>("hover")`.
 - The timing helpers cover the standard behaviors so you never hand-roll
   them: `Transition` (animated 0..1), `Repeat` (key repeat), `Blink`
   (caret), `DetectDoubleClick`, `ClickStreak` (double = 2, triple = 3).
+  Common animation/repeat helpers also accept `NowInteraction` directly.
 - Call `NowControlState.RequestRepaint()` whenever the control will look
   different next frame for reasons input can't predict (running animations,
   timers). `Transition` and `Repeat` already do.
@@ -293,12 +295,12 @@ and they are the reference for the conventions above.
 
 ## Checklist
 
-- [ ] Identity from the call site (`[CallerFilePath]`/`[CallerLineNumber]` →
-      `SiteId` → `GetControlId`), with a `SetId(NowId)` escape hatch.
 - [ ] Space from `NowLayout.Rect(options)` (flow) or a rect parameter
       (free-form) — ideally both, as twin factories.
-- [ ] `NowControls.Interact` for pointer + focus + submit; draw a visible
-      focus state when `focused` is true.
+- [ ] `NowControls.Interact` for call-site identity, pointer + focus + submit;
+      draw a visible focus state when `focused` is true.
+- [ ] `SetId(NowId)` escape hatch when a control can draw from loops over
+      reorderable data or from several code paths.
 - [ ] Caller owns real values; `NowControlState` holds only ephemera.
 - [ ] Colors and metrics from the theme, not constants.
 - [ ] `RequestRepaint()` for anything time-driven.

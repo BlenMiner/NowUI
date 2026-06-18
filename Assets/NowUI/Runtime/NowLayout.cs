@@ -892,6 +892,15 @@ namespace NowUI
             return Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
         }
 
+        public static NowLayoutScope Area(
+            NowRect rect,
+            Vector4 padding,
+            float spacing = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+        {
+            return Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
+        }
+
         public static NowLayoutScope Area(NowRect rect, NowLayoutOptions options)
         {
             return Area(default(NowId), rect, options);
@@ -902,6 +911,16 @@ namespace NowUI
             NowRect rect,
             float spacing = 0f,
             float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+        {
+            return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
+        }
+
+        public static NowLayoutScope Area(
+            NowId id,
+            NowRect rect,
+            Vector4 padding,
+            float spacing = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
             return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
@@ -919,6 +938,17 @@ namespace NowUI
             NowRect rect,
             float spacing = 0f,
             float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+        {
+            return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
+        }
+
+        /// <summary>Area keyed by a precomputed identity hash (e.g. <see cref="NowControls.SiteId"/>).</summary>
+        public static NowLayoutScope Area(
+            int id,
+            NowRect rect,
+            Vector4 padding,
+            float spacing = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
             return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
@@ -967,6 +997,16 @@ namespace NowUI
             Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
         }
 
+        public static void Area(
+            NowRect rect,
+            Action ui,
+            Vector4 padding,
+            float spacing = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+        {
+            Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
+        }
+
         public static void Area(NowRect rect, NowLayoutOptions options, Action ui)
         {
             Area(default(NowId), rect, options, ui);
@@ -978,6 +1018,17 @@ namespace NowUI
             Action ui,
             float spacing = 0f,
             float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+        {
+            Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
+        }
+
+        public static void Area(
+            NowId id,
+            NowRect rect,
+            Action ui,
+            Vector4 padding,
+            float spacing = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
             Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
@@ -1106,6 +1157,18 @@ namespace NowUI
             return BeginGroup(true, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
+        public static NowLayoutScope Horizontal(
+            Vector4 padding,
+            float spacing = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            float width = 0f,
+            float height = 0f,
+            bool stretchWidth = false,
+            bool stretchHeight = false)
+        {
+            return BeginGroup(true, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+        }
+
         public static NowLayoutScope Horizontal(NowLayoutOptions options)
         {
             return BeginGroup(true, default, options);
@@ -1115,6 +1178,19 @@ namespace NowUI
             NowId id,
             float spacing = 0f,
             float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            float width = 0f,
+            float height = 0f,
+            bool stretchWidth = false,
+            bool stretchHeight = false)
+        {
+            return BeginGroup(true, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+        }
+
+        public static NowLayoutScope Horizontal(
+            NowId id,
+            Vector4 padding,
+            float spacing = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start,
             float width = 0f,
             float height = 0f,
@@ -1159,6 +1235,14 @@ namespace NowUI
             return options;
         }
 
+        static NowLayoutOptions GroupOptions(
+            float spacing, Vector4 padding, NowLayoutAlign alignItems,
+            float width, float height, bool stretchWidth, bool stretchHeight)
+        {
+            return GroupOptions(spacing, 0f, alignItems, width, height, stretchWidth, stretchHeight)
+                .SetPadding(padding);
+        }
+
         public static void EndHorizontal()
         {
             EndGroup(true);
@@ -1181,6 +1265,18 @@ namespace NowUI
             return BeginGroup(false, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
+        public static NowLayoutScope Vertical(
+            Vector4 padding,
+            float spacing = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            float width = 0f,
+            float height = 0f,
+            bool stretchWidth = false,
+            bool stretchHeight = false)
+        {
+            return BeginGroup(false, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+        }
+
         public static NowLayoutScope Vertical(NowLayoutOptions options)
         {
             return BeginGroup(false, default, options);
@@ -1190,6 +1286,19 @@ namespace NowUI
             NowId id,
             float spacing = 0f,
             float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            float width = 0f,
+            float height = 0f,
+            bool stretchWidth = false,
+            bool stretchHeight = false)
+        {
+            return BeginGroup(false, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+        }
+
+        public static NowLayoutScope Vertical(
+            NowId id,
+            Vector4 padding,
+            float spacing = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start,
             float width = 0f,
             float height = 0f,

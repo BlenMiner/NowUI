@@ -83,6 +83,14 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Returns a persistent slot for a named sub-state under this control id.
+        /// </summary>
+        public static ref T Get<T>(int id, string key) where T : struct
+        {
+            return ref Get<T>(NowInput.GetId(id, key));
+        }
+
+        /// <summary>
         /// Creates this control-state slot outside a measured frame. Use during
         /// scene/widget initialization for known stable ids so the first interactive
         /// frame does not allocate the slot.
@@ -90,6 +98,14 @@ namespace NowUI
         public static void Warmup<T>(int id) where T : struct
         {
             Warmup(id, default(T));
+        }
+
+        /// <summary>
+        /// Creates a named sub-state slot outside a measured frame.
+        /// </summary>
+        public static void Warmup<T>(int id, string key) where T : struct
+        {
+            Warmup(NowInput.GetId(id, key), default(T));
         }
 
         /// <summary>
@@ -112,6 +128,15 @@ namespace NowUI
             }
 
             entry.lastTouch = now;
+        }
+
+        /// <summary>
+        /// Creates a named sub-state slot with an initial value if it is missing.
+        /// Existing slots are left untouched.
+        /// </summary>
+        public static void Warmup<T>(int id, string key, T initialValue) where T : struct
+        {
+            Warmup(NowInput.GetId(id, key), initialValue);
         }
 
         static void Sweep<T>(float now)
@@ -164,6 +189,22 @@ namespace NowUI
                 RequestRepaint();
 
             return state.t;
+        }
+
+        /// <summary>
+        /// Moves a stored 0..1 value under this interaction's control id.
+        /// </summary>
+        public static float Transition(NowInteraction interaction, bool towardOne, float speed = 10f)
+        {
+            return Transition(interaction.id, towardOne, speed);
+        }
+
+        /// <summary>
+        /// Moves a stored 0..1 value under a named sub-state of this interaction.
+        /// </summary>
+        public static float Transition(NowInteraction interaction, string key, bool towardOne, float speed = 10f)
+        {
+            return Transition(interaction.GetId(key), towardOne, speed);
         }
 
         struct DoubleClickState
@@ -282,6 +323,30 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Key-repeat pulses for a named sub-state under <paramref name="id"/>.
+        /// </summary>
+        public static bool Repeat(int id, string key, bool held, float delay = 0.4f, float interval = 0.05f)
+        {
+            return Repeat(NowInput.GetId(id, key), held, delay, interval);
+        }
+
+        /// <summary>
+        /// Key-repeat pulses under this interaction's control id.
+        /// </summary>
+        public static bool Repeat(NowInteraction interaction, bool held, float delay = 0.4f, float interval = 0.05f)
+        {
+            return Repeat(interaction.id, held, delay, interval);
+        }
+
+        /// <summary>
+        /// Key-repeat pulses for a named sub-state under this interaction.
+        /// </summary>
+        public static bool Repeat(NowInteraction interaction, string key, bool held, float delay = 0.4f, float interval = 0.05f)
+        {
+            return Repeat(interaction.GetId(key), held, delay, interval);
+        }
+
+        /// <summary>
         /// Tracks a press-triggered 0..1 animation for visual effects such as
         /// Material ripples. Returns the active animation and requests repaints
         /// until the effect has finished.
@@ -317,6 +382,19 @@ namespace NowUI
             }
 
             return new NowPressAnimation(state.active, state.origin, progress);
+        }
+
+        /// <summary>
+        /// Tracks a press-triggered animation under a named sub-state of this interaction.
+        /// </summary>
+        public static NowPressAnimation PressAnimation(
+            NowInteraction interaction,
+            string key,
+            bool triggered,
+            Vector2 origin,
+            float duration = 0.45f)
+        {
+            return PressAnimation(interaction.GetId(key), triggered, origin, duration);
         }
 
         /// <summary>Square-wave blink (caret-style); stateless.</summary>

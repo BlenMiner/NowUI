@@ -6,7 +6,7 @@ namespace NowUI
     /// <summary>
     /// Single-line text field. <see cref="Draw(ref string)"/> edits the caller's
     /// string in place and returns true when it changed:
-    /// <code>NowLayout.TextField("name").SetPlaceholder("Name...").Draw(ref playerName);</code>
+    /// <code>NowLayout.TextField().SetPlaceholder("Name...").Draw(ref playerName);</code>
     /// Click to place the caret (shaped-text cluster aware), drag to select,
     /// standard keyboard editing with key repeat, copy/cut/paste/select-all,
     /// double-click selects all. IME composition renders inline at the caret
@@ -138,7 +138,7 @@ namespace NowUI
             if (_hasNumberRange)
                 value = Mathf.Clamp(value, _numberMin, _numberMax);
 
-            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.GetId(id, "number"));
+            ref var numberState = ref NowControlState.Get<NumberEditState>(id, "number");
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatFloat(value, format);
@@ -172,7 +172,7 @@ namespace NowUI
             if (_hasNumberRange)
                 value = Mathf.Clamp(value, Mathf.CeilToInt(_numberMin), Mathf.FloorToInt(_numberMax));
 
-            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.GetId(id, "number"));
+            ref var numberState = ref NowControlState.Get<NumberEditState>(id, "number");
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = value.ToString(CultureInfo.InvariantCulture);
@@ -226,7 +226,7 @@ namespace NowUI
             NowTextEdit.Clamp(ref state, text);
 
             // Focus gained without a click (tab/gamepad/programmatic): caret to end.
-            ref byte hadFocus = ref NowControlState.Get<byte>(NowInput.GetId(id, "hadfocus"));
+            ref byte hadFocus = ref NowControlState.Get<byte>(id, "hadfocus");
 
             if (focused && hadFocus == 0)
             {
@@ -302,16 +302,16 @@ namespace NowUI
                             NowTextEdit.Insert(ref text, ref state, buffer.Replace("\n", " ").Replace("\r", string.Empty));
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "bs"), frame.backspaceHeld))
+                    if (NowControlState.Repeat(id, "bs", frame.backspaceHeld))
                         NowTextEdit.Backspace(ref text, ref state, frame.command);
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "del"), frame.deleteHeld))
+                    if (NowControlState.Repeat(id, "del", frame.deleteHeld))
                         NowTextEdit.Delete(ref text, ref state, frame.command);
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "left"), frame.leftHeld))
+                    if (NowControlState.Repeat(id, "left", frame.leftHeld))
                         NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.command);
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "right"), frame.rightHeld))
+                    if (NowControlState.Repeat(id, "right", frame.rightHeld))
                         NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.command);
 
                     if (frame.homePressed)
@@ -328,8 +328,8 @@ namespace NowUI
                 CloseTouchKeyboard();
             }
 
-            ref float blinkAnchor = ref NowControlState.Get<float>(NowInput.GetId(id, "blink"));
-            ref int lastCaret = ref NowControlState.Get<int>(NowInput.GetId(id, "lastcaret"));
+            ref float blinkAnchor = ref NowControlState.Get<float>(id, "blink");
+            ref int lastCaret = ref NowControlState.Get<int>(id, "lastcaret");
 
             if (state.caret != lastCaret || text != original || interaction.pressed)
             {

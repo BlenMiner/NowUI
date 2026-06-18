@@ -86,7 +86,7 @@ namespace NowUI
                 return;
 
             var interaction = NowInput.Interact(id, metrics.track.Outset(4f, 2f));
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             themeAsset.controlRenderer.DrawScrollbar(new NowScrollbarRenderContext(
                 themeAsset,
                 axis,

@@ -223,9 +223,7 @@ namespace NowUI
 
             if (_hasRect)
             {
-                var options = new NowLayoutOptions().SetSpacing(_spacing);
-
-                using (NowLayout.Area(NowInput.CombineId(id, 0x4e464172), _rect, options))
+                using (NowLayout.Area(NowInput.CombineId(id, 0x4e464172), _rect, spacing: _spacing))
                     DrawFlags(id, ref bits);
             }
             else
@@ -393,6 +391,12 @@ namespace NowUI
             return this;
         }
 
+        public NowColorPicker SetFitToView(bool fitToView = true)
+        {
+            _settings.fitToView = fitToView;
+            return this;
+        }
+
         public bool Draw(ref Vector4 value)
         {
             var color = new Color(value.x, value.y, value.z, value.w);
@@ -433,7 +437,7 @@ namespace NowUI
             if (interaction.clicked || submitted)
                 open = !open;
 
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             string label = FieldLabel(id, value, _settings.showAlpha);
             DrawField(theme, rect, value, label, open, focused, interaction.held, hoverT);
 
@@ -509,6 +513,9 @@ namespace NowUI
             NowColorPickerSettings settings)
         {
             var popupRect = CalculatePopupRect(theme, field, settings);
+
+            if (settings.fitToView)
+                popupRect = NowOverlay.FitToView(popupRect);
 
             if (!_popupStates.TryGetValue(id, out var state))
             {
@@ -1258,6 +1265,12 @@ namespace NowUI
             return this;
         }
 
+        public NowGradientField SetFitToView(bool fitToView = true)
+        {
+            _settings.fitToView = fitToView;
+            return this;
+        }
+
         public bool Draw(ref Gradient value)
         {
             if (value == null)
@@ -1283,7 +1296,7 @@ namespace NowUI
             if (interaction.clicked || submitted)
                 open = !open;
 
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             DrawField(id, theme, rect, value.colorKeys, value.alphaKeys, value.mode, open, focused, interaction.held, hoverT);
 
             if (open)
@@ -1354,6 +1367,10 @@ namespace NowUI
             float popupHeight = padding * 2f + rampBlockHeight + popupGap + keyEditorHeight + popupGap + pickerHeight;
 
             var popupRect = new NowRect(field.x, field.yMax + theme.controlStyles.dropdownPopupGap, popupWidth, popupHeight);
+
+            if (settings.fitToView)
+                popupRect = NowOverlay.FitToView(popupRect);
+
             float contentX = popupRect.x + padding;
             float contentWidth = popupWidth - padding * 2f;
             float trackX = contentX + labelWidth + popupGap;
@@ -2520,6 +2537,12 @@ namespace NowUI
             return this;
         }
 
+        public NowAnimationCurveField SetFitToView(bool fitToView = true)
+        {
+            _settings.fitToView = fitToView;
+            return this;
+        }
+
         public NowAnimationCurveField SetTimeRange(float min, float max)
         {
             if (max < min)
@@ -2567,7 +2590,7 @@ namespace NowUI
             if (interaction.clicked || submitted)
                 open = !open;
 
-            float hoverT = NowControlState.Transition(id, interaction.hovered || interaction.held);
+            float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             DrawField(theme, rect, value.keys, value.preWrapMode, value.postWrapMode, _settings, open, focused, interaction.held, hoverT);
 
             if (open)
@@ -2628,6 +2651,10 @@ namespace NowUI
                 settings.popupHeight,
                 padding * 2f + settings.inspectorHeight + settings.inspectorGap + 56f);
             var popupRect = new NowRect(field.x, field.yMax + theme.controlStyles.dropdownPopupGap, popupWidth, popupHeight);
+
+            if (settings.fitToView)
+                popupRect = NowOverlay.FitToView(popupRect);
+
             var contentRect = popupRect.Inset(padding);
             float inspectorHeight = Mathf.Min(settings.inspectorHeight, Mathf.Max(24f, contentRect.height * 0.4f));
             float inspectorGap = Mathf.Min(settings.inspectorGap, Mathf.Max(0f, contentRect.height - inspectorHeight - 40f));
@@ -3875,6 +3902,7 @@ namespace NowUI
         public NowLayoutOptions options;
         public NowId idOverride;
         public bool showAlpha;
+        public bool fitToView;
         public float fieldHeight;
         public float popupWidth;
         public float popupPadding;
@@ -3894,6 +3922,7 @@ namespace NowUI
         public static NowColorPickerSettings Default => new NowColorPickerSettings
         {
             showAlpha = true,
+            fitToView = true,
             fieldHeight = 30f,
             popupWidth = 212f,
             popupPadding = 10f,
@@ -3916,6 +3945,7 @@ namespace NowUI
     {
         public NowLayoutOptions options;
         public NowId idOverride;
+        public bool fitToView;
         public float fieldHeight;
         public float popupWidth;
         public float popupPadding;
@@ -3933,6 +3963,7 @@ namespace NowUI
         public static NowGradientFieldSettings Default => new NowGradientFieldSettings
         {
             fieldHeight = 30f,
+            fitToView = true,
             popupWidth = 320f,
             popupPadding = 10f,
             popupGap = 8f,
@@ -3952,6 +3983,7 @@ namespace NowUI
     {
         public NowLayoutOptions options;
         public NowId idOverride;
+        public bool fitToView;
         public float fieldHeight;
         public float popupWidth;
         public float popupHeight;
@@ -3972,6 +4004,7 @@ namespace NowUI
         public static NowAnimationCurveFieldSettings Default => new NowAnimationCurveFieldSettings
         {
             fieldHeight = 34f,
+            fitToView = true,
             popupWidth = 320f,
             popupHeight = 258f,
             popupPadding = 12f,
@@ -4091,10 +4124,10 @@ namespace NowUI
             if (hasRect)
             {
                 var area = NowLayout.Area(NowInput.CombineId(id, 0x4e564172), rect);
-                var row = NowLayout.Horizontal(new NowLayoutOptions()
-                    .SetStretchWidth()
-                    .SetSpacing(settings.spacing)
-                    .SetAlignItems(NowLayoutAlign.Center));
+                var row = NowLayout.Horizontal(
+                    spacing: settings.spacing,
+                    alignItems: NowLayoutAlign.Center,
+                    stretchWidth: true);
                 return new NowVectorFieldScope(area, row, true);
             }
 

@@ -5,6 +5,112 @@ using UnityEngine;
 namespace NowUI
 {
     /// <summary>
+    /// Host hook used by popup placement to fit surface-space popup rects to a
+    /// visible view. Screen-space hosts use the input surface fallback; world
+    /// hosts can keep popups on their UI plane while fitting the active camera.
+    /// </summary>
+    public interface INowPopupFitProvider
+    {
+        /// <summary>Returns a rect moved into view, preserving its size whenever possible.</summary>
+        NowRect FitPopupRectToView(NowRect rect);
+    }
+
+    internal static class NowPopupPlacement
+    {
+        static readonly List<INowPopupFitProvider> _fitProviders = new List<INowPopupFitProvider>(2);
+
+        public static NowPopupFitScope FitProvider(INowPopupFitProvider provider)
+        {
+            if (provider == null)
+                return default;
+
+            _fitProviders.Add(provider);
+            return new NowPopupFitScope(true);
+        }
+
+        public static NowRect FitToView(NowRect rect)
+        {
+            if (rect.isEmpty)
+                return rect;
+
+            var transformed = Now.TransformScreenRect(rect);
+            var fitted = _fitProviders.Count > 0
+                ? _fitProviders[_fitProviders.Count - 1].FitPopupRectToView(transformed)
+                : FitToSurface(transformed);
+
+            Vector2 delta = fitted.position - transformed.position;
+
+            if (delta.sqrMagnitude <= 0.0001f)
+                return rect;
+
+            return rect.Offset(Now.InverseTransformScreenVector(delta));
+        }
+
+        public static NowRect FitScreenToView(NowRect rect)
+        {
+            if (rect.isEmpty)
+                return rect;
+
+            return _fitProviders.Count > 0
+                ? _fitProviders[_fitProviders.Count - 1].FitPopupRectToView(rect)
+                : FitToSurface(rect);
+        }
+
+        internal static void PopFitProvider()
+        {
+            if (_fitProviders.Count > 0)
+                _fitProviders.RemoveAt(_fitProviders.Count - 1);
+        }
+
+        public static NowRect FitToSurface(NowRect rect)
+        {
+            Vector2 size = NowInput.surface.size;
+
+            if (size.x <= 0f || size.y <= 0f)
+                return rect;
+
+            float x = rect.width < size.x
+                ? Mathf.Clamp(rect.x, 0f, size.x - rect.width)
+                : 0f;
+            float y = rect.height < size.y
+                ? Mathf.Clamp(rect.y, 0f, size.y - rect.height)
+                : 0f;
+
+            return new NowRect(x, y, rect.width, rect.height);
+        }
+
+        public static void Reset()
+        {
+            _fitProviders.Clear();
+        }
+    }
+
+    [NowScope]
+    public struct NowPopupFitScope : IDisposable
+    {
+        readonly bool _active;
+
+        bool _disposed;
+
+        internal NowPopupFitScope(bool active)
+        {
+            _active = active;
+            _disposed = false;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+
+            if (_active)
+                NowPopupPlacement.PopFitProvider();
+        }
+    }
+
+    /// <summary>
     /// Deferred top-layer drawing for popups, dropdowns and tooltips. Deferred
     /// callbacks run after everything else in the frame, so they draw above all
     /// regular content, and their rect blocks pointer interaction for the controls
@@ -81,6 +187,26 @@ namespace NowUI
 
                 return previous;
             }
+        }
+
+        /// <summary>
+        /// Moves an authored popup rect just enough to fit the active visible area.
+        /// Screen-space hosts fit to the current input surface; world-space hosts
+        /// can provide a camera/FOV-aware fit while keeping the rect on the same
+        /// UI plane.
+        /// </summary>
+        public static NowRect FitToView(NowRect rect)
+        {
+            return NowPopupPlacement.FitToView(rect);
+        }
+
+        /// <summary>
+        /// Moves a popup rect that is already in surface coordinates to fit the
+        /// active visible area.
+        /// </summary>
+        public static NowRect FitScreenToView(NowRect rect)
+        {
+            return NowPopupPlacement.FitScreenToView(rect);
         }
 
         /// <summary>
@@ -401,6 +527,7 @@ namespace NowUI
             _drawingStack.Clear();
             _registryFrame = -1;
             _overlayDepth = 0;
+            NowPopupPlacement.Reset();
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

@@ -243,7 +243,7 @@ namespace NowUI.Internal
 
                 if (frame.depth >= 18 || IsFlat(frame.p0, frame.c1, frame.c2, frame.p1, tolerance))
                 {
-                    output.Add(frame.p1);
+                    AddFlattenedPoint(frame.p1, output);
                     continue;
                 }
 
@@ -256,6 +256,15 @@ namespace NowUI.Internal
 
                 stack[top++] = new CubicFrame { p0 = mid, c1 = p123, c2 = p23, p1 = frame.p1, depth = frame.depth + 1 };
                 stack[top++] = new CubicFrame { p0 = frame.p0, c1 = p01, c2 = p012, p1 = mid, depth = frame.depth + 1 };
+            }
+        }
+
+        static void AddFlattenedPoint(Vector2 point, NativeList<Vector2> output)
+        {
+            if (output.Length == 0 ||
+                (point - output[output.Length - 1]).sqrMagnitude > EPSILON * EPSILON)
+            {
+                output.Add(point);
             }
         }
 

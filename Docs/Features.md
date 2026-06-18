@@ -1,8 +1,8 @@
 # Feature Usage
 
 NowUI is an immediate-mode renderer for Unity. The current public surface is
-small: start a draw pass, configure lightweight value structs, draw rectangles,
-lines, shapes and text, then flush.
+small: open a draw pass scope, configure lightweight value structs, draw
+rectangles, lines, shapes and text, then let the scope flush the frame.
 
 ## Draw Lifecycle
 
@@ -17,19 +17,18 @@ public sealed class OverlayExample : MonoBehaviour
 
     void OnPostRender()
     {
-        Now.StartUI();
+        using (Now.StartUI())
+        {
+            Now.Rectangle(new Vector4(20, 20, 260, 80))
+                .SetColor(new Color(0f, 0f, 0f, 0.8f))
+                .SetRadius(10)
+                .Draw();
 
-        Now.Rectangle(new Vector4(20, 20, 260, 80))
-            .SetColor(new Color(0f, 0f, 0f, 0.8f))
-            .SetRadius(10)
-            .Draw();
-
-        Now.Text(new Vector4(36, 26, 220, 64), font)
-            .SetFontSize(32)
-            .SetColor(Color.white)
-            .Draw("Hello NowUI");
-
-        Now.FlushUI();
+            Now.Text(new Vector4(36, 26, 220, 64), font)
+                .SetFontSize(32)
+                .SetColor(Color.white)
+                .Draw("Hello NowUI");
+        }
     }
 }
 ```
@@ -49,8 +48,8 @@ controls can use the same `NowInput.Interact(...)` calls in screen rendering,
 IMGUI, UGUI, world-space meshes, RenderTexture, SRP overlays, and tests.
 
 ```csharp
-var rect = new Vector4(20, 20, 160, 44);
-var state = NowInput.Interact(100, rect);
+var rect = new NowRect(20, 20, 160, 44);
+var state = NowInput.Interact(rect);
 
 Now.Rectangle(rect)
     .SetColor(state.hovered ? Color.white : Color.gray)
@@ -67,16 +66,18 @@ the default, and the same API can target right click, middle click, and common
 mouse navigation buttons.
 
 ```csharp
-var context = NowInput.Interact(row.id, rowRect, NowPointerButton.Secondary);
+var context = NowInput.Interact(panelRect, NowPointerButton.Secondary);
 
 if (context.clicked)
     OpenContextMenu();
 ```
 
+Call-site identity is enough for one-off controls and fixed draw-order loops.
 Explicit ids use `NowId`, which accepts strings or non-zero integers. Prefer
-integer ids when you already have stable data ids. `NowInput.current.navigation`
-carries keyboard/gamepad navigation as a `Vector2`, while `submit*` and
-`cancel*` fields track action buttons.
+integer ids when you already have stable data ids and the items can appear,
+disappear, or reorder. `NowInput.current.navigation` carries keyboard/gamepad
+navigation as a `Vector2`, while `submit*` and `cancel*` fields track action
+buttons.
 
 The built-in render paths set up input where they already own a surface:
 
@@ -104,7 +105,7 @@ around the draw code.
 using (NowInput.Begin(myInputProvider, new Vector2(target.width, target.height)))
 using (renderer.Begin(target))
 {
-    var state = NowInput.Interact(42, new Rect(8, 8, 120, 32));
+    var state = NowInput.Interact(new Rect(8, 8, 120, 32));
 }
 ```
 
@@ -302,7 +303,8 @@ supplementary-plane glyphs when the font atlas contains those glyphs.
 ## UGUI Rendering
 
 Use `NowGraphic` when NowUI should render into a UGUI `CanvasRenderer`.
-Override `DrawNowUI(NowRect rect)` and do not call `StartUI()` or `FlushUI()`.
+Override `DrawNowUI(NowRect rect)` and do not call `StartUI()`; the host opens
+and finalizes the draw pass for you.
 
 ```csharp
 using UnityEngine;
@@ -464,7 +466,7 @@ public sealed class Nameplate : NowWorldGraphic
 {
     protected override void DrawNowUI(NowRect rect)
     {
-        var hover = NowInput.Interact(NowControls.GetControlId("plate"), rect);
+        var hover = NowInput.Interact(rect);
 
         Now.Rectangle(rect)
             .SetColor(hover.hovered ? Color.white : new Color(0f, 0f, 0f, 0.75f))

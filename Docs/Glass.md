@@ -56,7 +56,7 @@ host:
 | UGUI (`NowGraphic`) | Replay-backed blur of earlier NowUI batches, with optional external/camera source. |
 | URP/HDRP pipeline overlays | True blur at the renderer feature/custom pass point. |
 | `NowWorldGraphic` | Camera/world capture according to `glassBackdropMode`, with automatic foreground protection for blurred backdrops; explicit tint-only host mode available. |
-| Legacy `Now.StartUI()` / `Now.FlushUI()` | Replay-backed blur of earlier NowUI batches using temporary render textures. |
+| Built-in `Now.StartUI()` screen path | Replay-backed blur of earlier NowUI batches using temporary render textures. |
 
 ## Quality And Diagnostics
 
@@ -124,9 +124,9 @@ reconstruction: the system cannot recover background color hidden behind an
 opaque foreground object, and transparent objects that do not write depth are
 not detected.
 
-The legacy `Now.StartUI()` / `Now.FlushUI()` GL path preserves frame draw order
-and replays earlier NowUI batches into temporary textures for glass panes. It
-still cannot blur arbitrary scene or native UI content already on the screen.
+The built-in `Now.StartUI()` GL path preserves frame draw order and replays
+earlier NowUI batches into temporary textures for glass panes. It still cannot
+blur arbitrary scene or native UI content already on the screen.
 
 ## Docs Scene Demo
 

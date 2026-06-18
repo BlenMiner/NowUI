@@ -222,7 +222,7 @@ namespace NowUI.Internal
 
             frame = Mathf.Clamp(frame, composition.inPoint, Mathf.Max(composition.inPoint, composition.outPoint - 0.0001f));
 
-            _useNative = NowLottieNative.available;
+            _useNative = NowLottieNative.tessellationAvailable;
 
             if (_useNative)
                 NowLottieNative.Begin(FLATTEN_TOLERANCE, AA_WIDTH);
