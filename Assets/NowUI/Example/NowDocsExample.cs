@@ -10,7 +10,7 @@ using NowUI.Markdown;
 using NowUI.Sdf;
 
 /// <summary>
-/// Browses the repository's Docs/ folder: a side menu of pages, the selected
+/// Browses the repository's Docs/ folder: a tree menu of pages, the selected
 /// page rendered through the markdown extension, and live demo pages for
 /// extension/runtime examples. Relative .md links navigate between
 /// pages; external links open in the browser.
@@ -18,6 +18,47 @@ using NowUI.Sdf;
 [AddComponentMenu("NowUI/Examples/Now Docs Browser")]
 public class NowDocsExample : NowGraphic
 {
+    enum PageId
+    {
+        Overview,
+        Features,
+        Api,
+        Production,
+        Layout,
+        Controls,
+        FilePickerDemo,
+        ViewStackDemo,
+        CustomControls,
+        CustomControlsDemo,
+        StylesThemes,
+        Mobile,
+        EditorGui,
+        RichText,
+        RichTextDemo,
+        Markdown,
+        CodeEditor,
+        CodeEditorDemo,
+        Lottie,
+        LottieDemo,
+        Lines,
+        LinesDemo,
+        Shapes,
+        ShapesDemo,
+        Glass,
+        GlassDemo,
+        CustomMaterials,
+        CustomMaterialsDemo,
+        Effects,
+        EffectsDemo,
+        WorldSpace,
+        RenderPipelines,
+        Docking,
+        DockingDemo,
+        NodeGraph,
+        Sdf,
+        SdfDemo,
+    }
+
     enum PageKind
     {
         [UsedImplicitly]
@@ -33,49 +74,127 @@ public class NowDocsExample : NowGraphic
         CustomMaterialsDemo,
         GlassDemo,
         EffectsDemo,
+        ViewStackDemo,
+        FilePickerDemo,
     }
 
     struct Page
     {
         public string title;
         public string file;
+        public string icon;
         public PageKind kind;
+    }
+
+    struct NavEntry
+    {
+        public string title;
+        public string icon;
+        public int pageIndex;
+        public int depth;
+        public bool section;
     }
 
     static readonly Page[] Pages =
     {
-        new Page { title = "Overview", file = "README.md" },
-        new Page { title = "Features", file = "Features.md" },
-        new Page { title = "Layout", file = "Layout.md" },
-        new Page { title = "Controls", file = "Controls.md" },
-        new Page { title = "Lines", file = "Lines.md" },
-        new Page { title = "Shapes", file = "Shapes.md" },
-        new Page { title = "Glass", file = "Glass.md" },
-        new Page { title = "Custom materials", file = "CustomMaterials.md" },
-        new Page { title = "Effects", file = "Effects.md" },
-        new Page { title = "Custom controls", file = "CustomControls.md" },
-        new Page { title = "Styles & themes", file = "StylesAndThemes.md" },
-        new Page { title = "Markdown", file = "Markdown.md" },
-        new Page { title = "Lottie", file = "Lottie.md" },
-        new Page { title = "Mobile", file = "Mobile.md" },
-        new Page { title = "Render pipelines", file = "RenderPipelines.md" },
-        new Page { title = "IMGUI", file = "EditorGUI.md" },
-        new Page { title = "Code editor", file = "CodeEditor.md" },
-        new Page { title = "Docking", file = "Docking.md" },
-        new Page { title = "Rich text", file = "RichText.md" },
-        new Page { title = "SDF shapes", file = "SDF.md" },
-        new Page { title = "Rich text demo", kind = PageKind.RichTextDemo },
-        new Page { title = "SDF demo", kind = PageKind.SdfDemo },
-        new Page { title = "Docking demo", kind = PageKind.DockingDemo },
-        new Page { title = "Lines demo", kind = PageKind.LinesDemo },
-        new Page { title = "Shapes demo", kind = PageKind.ShapesDemo },
-        new Page { title = "Custom material demo", kind = PageKind.CustomMaterialsDemo },
-        new Page { title = "Glass demo", kind = PageKind.GlassDemo },
-        new Page { title = "Effects demo", kind = PageKind.EffectsDemo },
-        new Page { title = "Live demo", kind = PageKind.ControlsDemo },
-        new Page { title = "Lottie demo", kind = PageKind.LottieDemo },
-        new Page { title = "Editor demo", kind = PageKind.CodeEditorDemo },
+        new Page { title = "Overview", file = "README.md", icon = "🏠" },
+        new Page { title = "Features", file = "Features.md", icon = "✨" },
+        new Page { title = "Public API", file = "API.md", icon = "🧩" },
+        new Page { title = "Production gates", file = "Production.md", icon = "🚢" },
+        new Page { title = "Layout", file = "Layout.md", icon = "📐" },
+        new Page { title = "Controls", file = "Controls.md", icon = "🎛️" },
+        new Page { title = "File picker demo", icon = "📁", kind = PageKind.FilePickerDemo },
+        new Page { title = "View stack demo", icon = "🧭", kind = PageKind.ViewStackDemo },
+        new Page { title = "Custom controls", file = "CustomControls.md", icon = "🧰" },
+        new Page { title = "Live controls demo", icon = "🧪", kind = PageKind.ControlsDemo },
+        new Page { title = "Styles & themes", file = "StylesAndThemes.md", icon = "🎨" },
+        new Page { title = "Mobile", file = "Mobile.md", icon = "📱" },
+        new Page { title = "IMGUI", file = "EditorGUI.md", icon = "🖥️" },
+        new Page { title = "Rich text", file = "RichText.md", icon = "🔤" },
+        new Page { title = "Rich text demo", icon = "🧪", kind = PageKind.RichTextDemo },
+        new Page { title = "Markdown", file = "Markdown.md", icon = "📝" },
+        new Page { title = "Code editor", file = "CodeEditor.md", icon = "👩‍💻" },
+        new Page { title = "Editor demo", icon = "🧪", kind = PageKind.CodeEditorDemo },
+        new Page { title = "Lottie", file = "Lottie.md", icon = "🎞️" },
+        new Page { title = "Lottie demo", icon = "🧪", kind = PageKind.LottieDemo },
+        new Page { title = "Lines", file = "Lines.md", icon = "➖" },
+        new Page { title = "Lines demo", icon = "🧪", kind = PageKind.LinesDemo },
+        new Page { title = "Shapes", file = "Shapes.md", icon = "🔺" },
+        new Page { title = "Shapes demo", icon = "🧪", kind = PageKind.ShapesDemo },
+        new Page { title = "Glass", file = "Glass.md", icon = "🧊" },
+        new Page { title = "Glass demo", icon = "🧪", kind = PageKind.GlassDemo },
+        new Page { title = "Custom materials", file = "CustomMaterials.md", icon = "🖼️" },
+        new Page { title = "Custom material demo", icon = "🧪", kind = PageKind.CustomMaterialsDemo },
+        new Page { title = "Effects", file = "Effects.md", icon = "🌊" },
+        new Page { title = "Effects demo", icon = "🧪", kind = PageKind.EffectsDemo },
+        new Page { title = "World space", file = "WorldSpace.md", icon = "🌍" },
+        new Page { title = "Render pipelines", file = "RenderPipelines.md", icon = "🎛️" },
+        new Page { title = "Docking", file = "Docking.md", icon = "🧲" },
+        new Page { title = "Docking demo", icon = "🧪", kind = PageKind.DockingDemo },
+        new Page { title = "Node graph", file = "NodeGraph.md", icon = "🕸️" },
+        new Page { title = "SDF shapes", file = "SDF.md", icon = "⚫" },
+        new Page { title = "SDF demo", icon = "🧪", kind = PageKind.SdfDemo },
     };
+
+    static readonly NavEntry[] Navigation =
+    {
+        Section("Start", "🚀"),
+        Link(PageId.Overview),
+        Link(PageId.Features),
+        Link(PageId.Api),
+        Link(PageId.Production),
+
+        Section("Core UI", "🧱"),
+        Link(PageId.Layout),
+        Link(PageId.Controls),
+        Link(PageId.FilePickerDemo, 1),
+        Link(PageId.ViewStackDemo, 1),
+        Link(PageId.CustomControls),
+        Link(PageId.CustomControlsDemo, 1),
+        Link(PageId.StylesThemes),
+        Link(PageId.Mobile),
+        Link(PageId.EditorGui),
+
+        Section("Text & Content", "✏️"),
+        Link(PageId.RichText),
+        Link(PageId.RichTextDemo, 1),
+        Link(PageId.Markdown),
+        Link(PageId.CodeEditor),
+        Link(PageId.CodeEditorDemo, 1),
+        Link(PageId.Lottie),
+        Link(PageId.LottieDemo, 1),
+
+        Section("Rendering", "🎬"),
+        Link(PageId.Lines),
+        Link(PageId.LinesDemo, 1),
+        Link(PageId.Shapes),
+        Link(PageId.ShapesDemo, 1),
+        Link(PageId.Glass),
+        Link(PageId.GlassDemo, 1),
+        Link(PageId.CustomMaterials),
+        Link(PageId.CustomMaterialsDemo, 1),
+        Link(PageId.Effects),
+        Link(PageId.EffectsDemo, 1),
+        Link(PageId.WorldSpace),
+        Link(PageId.RenderPipelines),
+
+        Section("Extensions", "🧩"),
+        Link(PageId.Docking),
+        Link(PageId.DockingDemo, 1),
+        Link(PageId.NodeGraph),
+        Link(PageId.Sdf),
+        Link(PageId.SdfDemo, 1),
+    };
+
+    static NavEntry Section(string title, string icon)
+    {
+        return new NavEntry { title = title, icon = icon, pageIndex = -1, section = true };
+    }
+
+    static NavEntry Link(PageId page, int depth = 0)
+    {
+        return new NavEntry { pageIndex = (int)page, depth = depth };
+    }
 
     static readonly int FrostTintId = Shader.PropertyToID("_FrostTint");
     static readonly int FrostEdgeId = Shader.PropertyToID("_FrostEdge");
@@ -88,6 +207,7 @@ public class NowDocsExample : NowGraphic
     [SerializeField] NowLottieAsset[] _lotties;
 
     int _selected;
+    string _docsSearch = "";
     int _rating = 3;
     int _builderRating = 2;
     int _clicks;
@@ -120,6 +240,19 @@ public class NowDocsExample : NowGraphic
     string _richTextLastLink = "none";
     NowRichTextParser _richTextDemoParser;
     readonly NowRichTextSpan[] _richTextDemoSpans = new NowRichTextSpan[3];
+    readonly NowViewStack _viewStackDemo = new NowViewStack();
+    DocsViewStackHomeView _viewStackHomeView;
+    DocsViewStackDetailsView _viewStackDetailsView;
+    DocsViewStackPopupView _viewStackPopupView;
+    int _viewStackDemoOpens;
+    int _viewStackDemoConfirms;
+    float _viewStackDemoProgress = 0.64f;
+    bool _viewStackDemoSync = true;
+    string _filePickerOpenPath = "";
+    string _filePickerSavePath = "";
+    string _filePickerDirectoryPath = "";
+    bool _filePickerShowHidden;
+    int _filePickerChanges;
     Texture2D _sdfDemoTexture;
     Texture2D _customMaterialTexture;
     Material _customMaterialCanvas;
@@ -169,6 +302,195 @@ public class NowDocsExample : NowGraphic
         Application.OpenURL(link);
     }
 
+    void DrawDocsSidebarHeader(NowThemeAsset theme, NowRect rect)
+    {
+        using (NowLayout.Area(610001, rect, spacing: 6f, padding: 0f, alignItems: NowLayoutAlign.Start))
+        {
+            using (NowLayout.Horizontal(height: 24f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+            {
+                NowLayout.Label("📚")
+                    .SetWidth(22f)
+                    .SetFontSize(18f)
+                    .SetColor(Color.white)
+                    .Draw();
+
+                NowLayout.Label("NowUI Docs")
+                    .SetFontSize(18f)
+                    .SetBold()
+                    .SetColor(theme.GetColor(NowColorToken.Text, Color.white))
+                    .Draw();
+            }
+
+            NowLayout.TextField("docs-search")
+                .SetPlaceholder("Search docs...")
+                .SetStretchWidth()
+                .Draw(ref _docsSearch);
+        }
+    }
+
+    void DrawDocsNavigation(NowThemeAsset theme, NowRect rect)
+    {
+        using (NowLayout.Area(rect))
+        using (NowLayout.ScrollView("docs-menu").Begin())
+        using (NowLayout.Vertical(spacing: 3f, padding: 2f))
+        {
+            bool drewAny = false;
+
+            for (int i = 0; i < Navigation.Length; ++i)
+            {
+                var entry = Navigation[i];
+
+                if (entry.section)
+                {
+                    if (!SectionHasVisiblePage(i))
+                        continue;
+
+                    if (drewAny)
+                        NowLayout.Space(8f);
+
+                    DrawDocsNavSection(theme, entry);
+                    drewAny = true;
+                    continue;
+                }
+
+                if (!PageMatchesSearch(entry.pageIndex))
+                    continue;
+
+                DrawDocsNavPage(entry);
+                drewAny = true;
+            }
+
+            if (!drewAny)
+            {
+                NowLayout.Label("No matching pages")
+                    .SetFontSize(12f)
+                    .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+                    .Draw();
+            }
+        }
+    }
+
+    void DrawDocsNavSection(NowThemeAsset theme, NavEntry entry)
+    {
+        using (NowLayout.Horizontal(height: 22f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 5f))
+        {
+            NowLayout.Label(entry.icon)
+                .SetFontSize(10f)
+                .SetColor(Color.white)
+                .Draw();
+
+            NowLayout.Label(entry.title.ToUpperInvariant())
+                .SetFontSize(10f)
+                .SetBold()
+                .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+                .Draw();
+        }
+    }
+
+    void DrawDocsNavPage(NavEntry entry)
+    {
+        int pageIndex = Mathf.Clamp(entry.pageIndex, 0, Pages.Length - 1);
+        var page = Pages[pageIndex];
+        bool selected = pageIndex == _selected;
+        var theme = NowTheme.themeAsset;
+        Color text = theme.GetColor(NowColorToken.Text, Color.white);
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+        Color accent = theme.GetColor(NowColorToken.Accent, new Color(0.10f, 0.45f, 0.95f, 1f));
+        Color accentText = theme.GetColor(NowColorToken.AccentText, Color.white);
+        NowRect rect = NowLayout.Rect(height: 28f, stretchWidth: true);
+        NowRect row = rect.Inset(1f, 0f);
+        int id = NowControls.GetControlId($"doc-{pageIndex}");
+        var interaction = NowControls.Interact(id, row, out bool focused, out bool submitted);
+
+        if (interaction.clicked || submitted)
+            _selected = pageIndex;
+
+        if (selected)
+        {
+            Now.Rectangle(row)
+                .SetColor(accent)
+                .SetRadius(6f)
+                .Draw();
+        }
+        else if (interaction.hovered || focused)
+        {
+            Now.Rectangle(row)
+                .SetColor(new Color(accent.r, accent.g, accent.b, 0.08f))
+                .SetRadius(6f)
+                .Draw();
+        }
+
+        float indent = 8f + entry.depth * 18f;
+        float badgeX = row.x + indent;
+        float centerY = row.y + row.height * 0.5f;
+
+        if (entry.depth > 0)
+        {
+            Color branch = new Color(muted.r, muted.g, muted.b, selected ? 0.38f : 0.26f);
+            float lineX = row.x + indent - 11f;
+            Now.Line(new Vector2(lineX, row.y + 4f), new Vector2(lineX, row.yMax - 4f))
+                .SetColor(branch)
+                .SetWidth(1f)
+                .Draw();
+            Now.Line(new Vector2(lineX, centerY), new Vector2(badgeX - 4f, centerY))
+                .SetColor(branch)
+                .SetWidth(1f)
+                .Draw();
+        }
+
+        var badgeRect = new NowRect(badgeX, row.y + 3f, 24f, 22f);
+
+        Now.Text(badgeRect)
+            .SetFontSize(14f)
+            .SetColor(Color.white)
+            .Draw(page.icon);
+
+        Now.Text(new NowRect(badgeRect.xMax + 8f, row.y + 5f, row.xMax - badgeRect.xMax - 14f, row.height - 8f))
+            .SetFontSize(12f)
+            .SetColor(selected ? accentText : text)
+            .Draw(page.title);
+    }
+
+    bool SectionHasVisiblePage(int sectionIndex)
+    {
+        if (string.IsNullOrWhiteSpace(_docsSearch))
+            return true;
+
+        for (int i = sectionIndex + 1; i < Navigation.Length; ++i)
+        {
+            var entry = Navigation[i];
+
+            if (entry.section)
+                return false;
+
+            if (PageMatchesSearch(entry.pageIndex))
+                return true;
+        }
+
+        return false;
+    }
+
+    bool PageMatchesSearch(int pageIndex)
+    {
+        if (string.IsNullOrWhiteSpace(_docsSearch))
+            return true;
+
+        if (pageIndex < 0 || pageIndex >= Pages.Length)
+            return false;
+
+        string query = _docsSearch.Trim();
+        var page = Pages[pageIndex];
+
+        return ContainsSearch(page.title, query) ||
+            ContainsSearch(page.file, query);
+    }
+
+    static bool ContainsSearch(string value, string query)
+    {
+        return !string.IsNullOrEmpty(value) &&
+            value.IndexOf(query, System.StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
     protected override void DrawNowUI(NowRect rect)
     {
         if (!_font)
@@ -182,36 +504,14 @@ public class NowDocsExample : NowGraphic
 
         theme.Rectangle(bounds, NowRectangleStyle.Surface).Draw();
 
-        var menuRect = new NowRect(bounds.x + 12, bounds.y + 12, 250, bounds.height - 24);
+        var menuRect = new NowRect(bounds.x + 12, bounds.y + 12, 292, bounds.height - 24);
         var contentRect = new NowRect(menuRect.xMax + 12, bounds.y + 12, bounds.xMax - menuRect.xMax - 24, bounds.height - 24);
 
-        var menuTitleRect = new NowRect(menuRect.x, menuRect.y, menuRect.width, 24f);
-        var menuListRect = new NowRect(menuRect.x, menuTitleRect.yMax + 8f, menuRect.width, menuRect.yMax - menuTitleRect.yMax - 8f);
+        var menuTitleRect = new NowRect(menuRect.x, menuRect.y, menuRect.width, 68f);
+        var menuListRect = new NowRect(menuRect.x, menuTitleRect.yMax + 10f, menuRect.width, menuRect.yMax - menuTitleRect.yMax - 10f);
 
-        using (NowLayout.Area(menuTitleRect))
-        {
-            NowLayout.Label("Now Docs").SetFontSize(13)
-                .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
-        }
-
-        using (NowLayout.Area(menuListRect))
-        {
-            using (NowLayout.ScrollView("docs-menu").Begin())
-            {
-                using (NowLayout.Vertical(spacing: 4f, padding: 2f))
-                {
-                    for (int i = 0; i < Pages.Length; ++i)
-                    {
-                        bool selected = i == _selected;
-                        var style = selected ? NowRectangleStyle.Accent : NowRectangleStyle.Muted;
-
-                        if (NowLayout.Button(Pages[i].title).SetId($"doc-{i}").SetStyle(style)
-                            .SetTextStyle(NowTextStyle.Body).SetStretchWidth().Draw())
-                            _selected = i;
-                    }
-                }
-            }
-        }
+        DrawDocsSidebarHeader(theme, menuTitleRect);
+        DrawDocsNavigation(theme, menuListRect);
 
         using (NowLayout.Area(contentRect))
         using (NowLayout.ScrollView($"docs-scroll-{_selected}").Begin())
@@ -260,6 +560,14 @@ public class NowDocsExample : NowGraphic
 
                 case PageKind.EffectsDemo:
                     DrawEffectsDemo(theme);
+                    break;
+
+                case PageKind.ViewStackDemo:
+                    DrawViewStackDemo(theme);
+                    break;
+
+                case PageKind.FilePickerDemo:
+                    DrawFilePickerDemo(theme);
                     break;
 
                 default:
@@ -1552,6 +1860,535 @@ public class NowDocsExample : NowGraphic
             .SetDash(12f, 8f, Time.time * 28f)
             .SetColor(accent)
             .Draw();
+    }
+
+    void DrawFilePickerDemo(NowThemeAsset themeAsset)
+    {
+        NowMarkdown.Document("# File picker demo\n\nFile picker fields are built-in overlay controls." +
+            " The field owns the browser UI and returns the selected path; your code still owns the" +
+            " file read, write, import, or export operation.").Draw();
+
+        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        {
+            if (NowLayout.Button("Clear paths").SetWidth(104f).Draw())
+            {
+                _filePickerOpenPath = "";
+                _filePickerSavePath = "";
+                _filePickerDirectoryPath = "";
+            }
+
+            NowLayout.Checkbox("Show hidden").Draw(ref _filePickerShowHidden);
+            NowLayout.FlexibleSpace();
+            NowLayout.Label($"Committed selections: {_filePickerChanges}")
+                .SetFontSize(12f)
+                .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+                .Draw();
+        }
+
+        var panel = NowLayout.Rect(height: 430f, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
+
+        var body = panel.Inset(16f);
+        string docsDirectory = FilePickerDemoDirectory("Docs");
+        string assetsDirectory = FilePickerDemoDirectory("Assets");
+        string saveDirectory = FilePickerDemoDirectory("Library");
+
+        using (NowLayout.Area(650101, body, spacing: 10f, padding: 0f, alignItems: NowLayoutAlign.Start))
+        {
+            NowLayout.Label("Overlay fields")
+                .SetFontSize(18f)
+                .SetBold()
+                .Draw();
+
+            NowLayout.Label("Open, save, and directory modes share one builder. Filters and start directories are configured per field.")
+                .SetFontSize(12f)
+                .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+                .SetStretchWidth()
+                .Draw();
+
+            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+            {
+                NowLayout.Label("Open").SetWidth(74f).Draw();
+
+                if (NowLayout.OpenFileField("docs-file-picker-open")
+                    .SetTitle("Open project document")
+                    .SetStartDirectory(docsDirectory)
+                    .SetFilters(
+                        new NowFileFilter("Markdown", "md"),
+                        new NowFileFilter("Text", "txt", "json"),
+                        new NowFileFilter("All files", "*"))
+                    .SetShowHidden(_filePickerShowHidden)
+                    .SetPopupSize(780f, 480f)
+                    .SetStretchWidth()
+                    .Draw(ref _filePickerOpenPath))
+                {
+                    ++_filePickerChanges;
+                }
+            }
+
+            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+            {
+                NowLayout.Label("Save").SetWidth(74f).Draw();
+
+                if (NowLayout.SaveFileField("docs-file-picker-save")
+                    .SetTitle("Save settings")
+                    .SetStartDirectory(saveDirectory)
+                    .SetDefaultFileName("settings")
+                    .SetDefaultExtension("json")
+                    .SetFilter("Json", "json")
+                    .SetShowHidden(_filePickerShowHidden)
+                    .SetPopupSize(780f, 480f)
+                    .SetStretchWidth()
+                    .Draw(ref _filePickerSavePath))
+                {
+                    ++_filePickerChanges;
+                }
+            }
+
+            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+            {
+                NowLayout.Label("Folder").SetWidth(74f).Draw();
+
+                if (NowLayout.DirectoryField("docs-file-picker-directory")
+                    .SetTitle("Choose output directory")
+                    .SetStartDirectory(assetsDirectory)
+                    .SetShowHidden(_filePickerShowHidden)
+                    .SetPopupSize(780f, 480f)
+                    .SetStretchWidth()
+                    .Draw(ref _filePickerDirectoryPath))
+                {
+                    ++_filePickerChanges;
+                }
+            }
+
+            var summary = NowLayout.Rect(height: 150f, stretchWidth: true);
+            DrawFilePickerSummary(summary, themeAsset);
+        }
+    }
+
+    void DrawFilePickerSummary(NowRect rect, NowThemeAsset themeAsset)
+    {
+        float gap = 10f;
+        float rowHeight = (rect.height - gap * 2f) / 3f;
+
+        DrawFilePickerSummaryRow(
+            new NowRect(rect.x, rect.y, rect.width, rowHeight),
+            "Open file",
+            _filePickerOpenPath,
+            themeAsset.GetColor(NowColorToken.Accent, Color.blue));
+        DrawFilePickerSummaryRow(
+            new NowRect(rect.x, rect.y + rowHeight + gap, rect.width, rowHeight),
+            "Save path",
+            _filePickerSavePath,
+            new Color(0.08f, 0.72f, 0.50f, 1f));
+        DrawFilePickerSummaryRow(
+            new NowRect(rect.x, rect.y + (rowHeight + gap) * 2f, rect.width, rowHeight),
+            "Directory",
+            _filePickerDirectoryPath,
+            new Color(0.92f, 0.58f, 0.16f, 1f));
+    }
+
+    static void DrawFilePickerSummaryRow(NowRect rect, string label, string path, Color accent)
+    {
+        var theme = NowTheme.themeAsset;
+        Color text = theme.GetColor(NowColorToken.Text, Color.white);
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+
+        Now.Rectangle(rect)
+            .SetColor(new Color(accent.r, accent.g, accent.b, 0.10f))
+            .SetOutline(1f)
+            .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.36f))
+            .SetRadius(7f)
+            .Draw();
+
+        Now.Text(new NowRect(rect.x + 12f, rect.y + 8f, 92f, rect.height - 16f))
+            .SetFontSize(11f)
+            .SetColor(muted)
+            .Draw(label);
+
+        Now.Text(new NowRect(rect.x + 108f, rect.y + 8f, rect.width - 120f, rect.height - 16f))
+            .SetFontSize(12f)
+            .SetColor(string.IsNullOrEmpty(path) ? muted : text)
+            .Draw(string.IsNullOrEmpty(path) ? "No selection" : ShortPath(path, 76));
+    }
+
+    static string FilePickerDemoDirectory(string projectRelative)
+    {
+        try
+        {
+            string path = Path.GetFullPath(Path.Combine(Application.dataPath, "..", projectRelative));
+
+            if (Directory.Exists(path))
+                return path;
+        }
+        catch (System.Exception exception) when (
+            exception is IOException ||
+            exception is System.UnauthorizedAccessException ||
+            exception is System.ArgumentException ||
+            exception is System.NotSupportedException)
+        {
+        }
+
+        return Application.dataPath;
+    }
+
+    static string ShortPath(string path, int maxLength)
+    {
+        if (string.IsNullOrEmpty(path) || path.Length <= maxLength)
+            return path;
+
+        int keep = Mathf.Max(8, (maxLength - 3) / 2);
+        int tail = Mathf.Max(8, maxLength - 3 - keep);
+        return path.Substring(0, keep) + "..." + path.Substring(path.Length - tail, tail);
+    }
+
+    DocsViewStackHomeView ViewStackHomeView => _viewStackHomeView ??= new DocsViewStackHomeView(this);
+
+    DocsViewStackDetailsView ViewStackDetailsView => _viewStackDetailsView ??= new DocsViewStackDetailsView(this);
+
+    DocsViewStackPopupView ViewStackPopupView => _viewStackPopupView ??= new DocsViewStackPopupView(this);
+
+    void DrawViewStackDemo(NowThemeAsset themeAsset)
+    {
+        NowMarkdown.Document("# View stack demo\n\nA `NowViewStack` keeps larger navigation flows retained" +
+            " while each view still draws immediate-mode UI. The panel below owns one stack, pushes a" +
+            " full-screen detail view, and opens a modal popup on top.").Draw();
+
+        EnsureViewStackDemoHome();
+
+        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        {
+            if (NowLayout.Button("Reset").SetWidth(86f).Draw())
+                ResetViewStackDemo();
+
+            if (NowLayout.Button("Open details").SetWidth(128f).Draw())
+                OpenViewStackDetails(_viewStackDemo);
+
+            NowLayout.FlexibleSpace();
+            NowLayout.Label($"Stack entries: {_viewStackDemo.count}")
+                .SetFontSize(12f)
+                .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+                .Draw();
+        }
+
+        var panel = NowLayout.Rect(height: 430f, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
+
+        var surface = panel.Inset(12f);
+        EnsureViewStackDemoHome();
+        _viewStackDemo.Draw(surface);
+    }
+
+    void EnsureViewStackDemoHome()
+    {
+        if (_viewStackDemo.ContainsKey("docs-view-stack-home"))
+            return;
+
+        _viewStackDemo.Push("docs-view-stack-home", ViewStackHomeView,
+            NowViewOptions.FullScreen(NowViewTransitionPreset.None, 0f)
+                .SetCloseOnCancel(false));
+    }
+
+    void ResetViewStackDemo()
+    {
+        _viewStackDemo.Clear();
+        _viewStackDemoProgress = 0.64f;
+        _viewStackDemoSync = true;
+    }
+
+    void OpenViewStackDetails(NowViewStack stack)
+    {
+        ++_viewStackDemoOpens;
+
+        stack.PushOrReplace("docs-view-stack-details", ViewStackDetailsView,
+            NowViewOptions.FullScreen(NowViewTransitionPreset.SlideFromRight, 0.18f));
+    }
+
+    void OpenViewStackPopup(NowViewContext context)
+    {
+        var popup = CenterRect(context.rect, 360f, 190f);
+
+        context.stack.Push("docs-view-stack-popup", ViewStackPopupView,
+            NowViewOptions.Popup(popup, NowViewTransitionPreset.ScaleFade, 0.14f)
+                .SetScrim(new Color(0f, 0f, 0f, 0.34f)));
+    }
+
+    void DrawViewStackHome(NowViewContext context)
+    {
+        var theme = NowTheme.themeAsset;
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+
+        DrawViewStackChrome(context.rect, "Home", "Push a screen or popup from the active view.");
+
+        var body = context.rect.Inset(22f, 66f, 22f, 22f);
+
+        using (NowLayout.Area(640101, body, spacing: 10f, padding: 0f, alignItems: NowLayoutAlign.Start))
+        {
+            NowLayout.Label("Only the top stack entry receives live input. Covered views keep drawing passively for transitions and background context.")
+                .SetStretchWidth()
+                .SetColor(muted)
+                .SetFontSize(12f)
+                .Draw();
+
+            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            {
+                if (NowLayout.Button("Open details").SetWidth(128f).Draw())
+                    OpenViewStackDetails(context.stack);
+
+                if (NowLayout.Button("Open popup").SetWidth(120f).Draw())
+                    OpenViewStackPopup(context);
+
+                NowLayout.FlexibleSpace();
+                NowLayout.Label(context.isTop ? "top view" : "passive")
+                    .SetFontSize(12f)
+                    .SetColor(muted)
+                    .Draw();
+            }
+
+            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            {
+                NowLayout.Checkbox("Sync enabled").Draw(ref _viewStackDemoSync);
+                NowLayout.Label("Progress").SetWidth(58f).SetColor(muted).SetFontSize(12f).Draw();
+                NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _viewStackDemoProgress);
+            }
+
+            var metrics = NowLayout.Rect(height: 78f, stretchWidth: true);
+            DrawViewStackMetrics(metrics, theme);
+        }
+    }
+
+    void DrawViewStackDetails(NowViewContext context)
+    {
+        var theme = NowTheme.themeAsset;
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+
+        DrawViewStackChrome(context.rect, "Details", "Full-screen entry with a slide transition.");
+
+        var body = context.rect.Inset(22f, 66f, 22f, 22f);
+
+        using (NowLayout.Area(640102, body, spacing: 10f, padding: 0f, alignItems: NowLayoutAlign.Start))
+        {
+            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            {
+                if (NowLayout.Button("Back").SetWidth(86f).SetStyle(NowRectangleStyle.Surface).Draw())
+                    context.Close();
+
+                if (NowLayout.Button("Confirm").SetWidth(108f).Draw())
+                    OpenViewStackPopup(context);
+
+                NowLayout.FlexibleSpace();
+                NowLayout.Label($"visibleT {context.visibleT:0.00}")
+                    .SetFontSize(12f)
+                    .SetColor(muted)
+                    .Draw();
+            }
+
+            NowLayout.Label("This view was pushed with a stable key. The toolbar can call PushOrReplace with the same key without duplicating it.")
+                .SetStretchWidth()
+                .SetColor(muted)
+                .SetFontSize(12f)
+                .Draw();
+
+            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            {
+                NowLayout.Label("Shared progress").SetWidth(112f).SetColor(muted).SetFontSize(12f).Draw();
+                NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _viewStackDemoProgress);
+            }
+
+            NowLayout.Checkbox("Sync enabled").Draw(ref _viewStackDemoSync);
+
+            var details = NowLayout.Rect(height: 86f, stretchWidth: true);
+            DrawViewStackDetailCard(details, theme);
+        }
+    }
+
+    void DrawViewStackPopup(NowViewContext context)
+    {
+        var theme = NowTheme.themeAsset;
+        Color text = theme.GetColor(NowColorToken.Text, Color.white);
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+
+        theme.Rectangle(context.rect, NowRectangleStyle.Surface).Draw();
+
+        using (NowLayout.Area(640103, context.rect, spacing: 10f, padding: 18f, alignItems: NowLayoutAlign.Start))
+        {
+            NowLayout.Label("Modal popup").SetFontSize(18f).SetBold().SetColor(text).Draw();
+            NowLayout.Label("Popups use the same INowView contract. Outside click or cancel closes this one automatically.")
+                .SetStretchWidth()
+                .SetHeight(48f)
+                .SetFontSize(12f)
+                .SetColor(muted)
+                .Draw();
+
+            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            {
+                NowLayout.FlexibleSpace();
+
+                if (NowLayout.Button("Cancel").SetWidth(92f).SetStyle(NowRectangleStyle.Surface).Draw())
+                    context.Close();
+
+                if (NowLayout.Button("Confirm").SetWidth(104f).Draw())
+                {
+                    ++_viewStackDemoConfirms;
+                    context.Close();
+                }
+            }
+        }
+    }
+
+    static void DrawViewStackChrome(NowRect rect, string title, string subtitle)
+    {
+        var theme = NowTheme.themeAsset;
+        Color surface = theme.GetColor(NowColorToken.Surface, new Color(0.12f, 0.14f, 0.18f, 1f));
+        Color panel = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.16f, 0.18f, 0.23f, 1f));
+        Color text = theme.GetColor(NowColorToken.Text, Color.white);
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+
+        Now.Rectangle(rect).SetColor(surface).SetRadius(8f).Draw();
+        Now.Rectangle(new NowRect(rect.x, rect.y, rect.width, 52f))
+            .SetColor(panel)
+            .SetRadius(NowCornerRadius.Top(8f))
+            .Draw();
+
+        Now.Text(new NowRect(rect.x + 18f, rect.y + 10f, rect.width - 36f, 22f))
+            .SetFontSize(17f)
+            .SetBold()
+            .SetColor(text)
+            .Draw(title);
+
+        Now.Text(new NowRect(rect.x + 18f, rect.y + 31f, rect.width - 36f, 16f))
+            .SetFontSize(11f)
+            .SetColor(muted)
+            .Draw(subtitle);
+    }
+
+    void DrawViewStackMetrics(NowRect rect, NowThemeAsset theme)
+    {
+        float gap = 10f;
+        float width = Mathf.Max(1f, (rect.width - gap * 2f) / 3f);
+
+        DrawViewStackMetric(
+            new NowRect(rect.x, rect.y, width, rect.height),
+            "Pushes",
+            _viewStackDemoOpens.ToString(),
+            theme.GetColor(NowColorToken.Accent, Color.blue));
+        DrawViewStackMetric(
+            new NowRect(rect.x + width + gap, rect.y, width, rect.height),
+            "Confirmations",
+            _viewStackDemoConfirms.ToString(),
+            new Color(0.08f, 0.72f, 0.50f, 1f));
+        DrawViewStackMetric(
+            new NowRect(rect.x + (width + gap) * 2f, rect.y, width, rect.height),
+            "Progress",
+            $"{Mathf.RoundToInt(_viewStackDemoProgress * 100f)}%",
+            new Color(0.92f, 0.58f, 0.16f, 1f));
+    }
+
+    static void DrawViewStackMetric(NowRect rect, string label, string value, Color accent)
+    {
+        var theme = NowTheme.themeAsset;
+        Color text = theme.GetColor(NowColorToken.Text, Color.white);
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+
+        Now.Rectangle(rect)
+            .SetColor(new Color(accent.r, accent.g, accent.b, 0.13f))
+            .SetOutline(1f)
+            .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.46f))
+            .SetRadius(8f)
+            .Draw();
+
+        Now.Text(new NowRect(rect.x + 12f, rect.y + 10f, rect.width - 24f, 18f))
+            .SetFontSize(11f)
+            .SetColor(muted)
+            .Draw(label);
+
+        Now.Text(new NowRect(rect.x + 12f, rect.y + 34f, rect.width - 24f, 30f))
+            .SetFontSize(22f)
+            .SetBold()
+            .SetColor(text)
+            .Draw(value);
+    }
+
+    void DrawViewStackDetailCard(NowRect rect, NowThemeAsset theme)
+    {
+        Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+        Color text = theme.GetColor(NowColorToken.Text, Color.white);
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+
+        Now.Rectangle(rect)
+            .SetColor(new Color(accent.r, accent.g, accent.b, 0.10f))
+            .SetOutline(1f)
+            .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.42f))
+            .SetRadius(8f)
+            .Draw();
+
+        Now.Text(new NowRect(rect.x + 14f, rect.y + 12f, rect.width - 28f, 20f))
+            .SetFontSize(15f)
+            .SetBold()
+            .SetColor(text)
+            .Draw(_viewStackDemoSync ? "Synchronized settings" : "Local changes paused");
+
+        Now.Text(new NowRect(rect.x + 14f, rect.y + 40f, rect.width - 28f, 32f))
+            .SetFontSize(12f)
+            .SetColor(muted)
+            .Draw($"Progress is shared with the home view: {Mathf.RoundToInt(_viewStackDemoProgress * 100f)}%");
+    }
+
+    static NowRect CenterRect(NowRect surface, float width, float height)
+    {
+        width = Mathf.Min(width, Mathf.Max(1f, surface.width - 24f));
+        height = Mathf.Min(height, Mathf.Max(1f, surface.height - 24f));
+
+        return new NowRect(
+            surface.x + (surface.width - width) * 0.5f,
+            surface.y + (surface.height - height) * 0.5f,
+            width,
+            height);
+    }
+
+    sealed class DocsViewStackHomeView : INowView
+    {
+        readonly NowDocsExample _owner;
+
+        public DocsViewStackHomeView(NowDocsExample owner)
+        {
+            _owner = owner;
+        }
+
+        public void Draw(NowViewContext context)
+        {
+            _owner.DrawViewStackHome(context);
+        }
+    }
+
+    sealed class DocsViewStackDetailsView : INowView
+    {
+        readonly NowDocsExample _owner;
+
+        public DocsViewStackDetailsView(NowDocsExample owner)
+        {
+            _owner = owner;
+        }
+
+        public void Draw(NowViewContext context)
+        {
+            _owner.DrawViewStackDetails(context);
+        }
+    }
+
+    sealed class DocsViewStackPopupView : INowView
+    {
+        readonly NowDocsExample _owner;
+
+        public DocsViewStackPopupView(NowDocsExample owner)
+        {
+            _owner = owner;
+        }
+
+        public void Draw(NowViewContext context)
+        {
+            _owner.DrawViewStackPopup(context);
+        }
     }
 
     void DrawLottieDemo(NowThemeAsset themeAsset)

@@ -31,7 +31,7 @@ Shader "NowUI/UI Glass UGUI"
         Lighting Off
         ZWrite Off
         ZTest [unity_GUIZTestMode]
-        Blend SrcAlpha OneMinusSrcAlpha
+        Blend SrcAlpha OneMinusSrcAlpha, One OneMinusSrcAlpha
         ColorMask [_ColorMask]
 
         Stencil

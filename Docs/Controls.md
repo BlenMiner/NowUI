@@ -108,6 +108,161 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   children and scrolls the viewport to reveal the focused control. Vertical
   only for now.
 
+## File picker fields
+
+File picker fields are ordinary controls with overlay popups. They only return
+paths; opening, saving, importing, and validation beyond the selected mode stay
+in your code. The popup includes an address bar, a folder tree for upstream and
+local navigation, and a details list with extension-aware file icons.
+
+```csharp
+string loadPath = "";
+string savePath = "";
+string outputDirectory = "";
+
+using (NowLayout.Area(NowScreen.safeArea, padding: 16f, spacing: 8f))
+{
+    if (NowLayout.OpenFileField("load-config")
+        .SetTitle("Open config")
+        .SetStartDirectory(Application.dataPath)
+        .SetFilters(
+            new NowFileFilter("Config", "json", "yaml", "yml"),
+            new NowFileFilter("All files", "*"))
+        .SetPopupSize(780f, 480f)
+        .Draw(ref loadPath))
+    {
+        LoadConfig(loadPath);
+    }
+
+    if (NowLayout.SaveFileField("save-config")
+        .SetTitle("Save config")
+        .SetStartDirectory(Application.persistentDataPath)
+        .SetDefaultFileName("settings")
+        .SetDefaultExtension("json")
+        .SetFilter("Json", "json")
+        .Draw(ref savePath))
+    {
+        SaveConfig(savePath);
+    }
+
+    if (NowLayout.DirectoryField("output-dir")
+        .SetTitle("Choose output directory")
+        .SetStartDirectory(Application.dataPath)
+        .Draw(ref outputDirectory))
+    {
+        SetOutputDirectory(outputDirectory);
+    }
+}
+```
+
+- `SetExtensions(...)` is the quick form for one unnamed filter; use
+  `SetFilter(name, ...)` for one named filter and `SetFilters(...)` for a
+  popup filter dropdown.
+- Save fields append `SetDefaultExtension(...)` when the selected file name
+  has no extension. If no default extension is set, the first concrete filter
+  extension is used.
+- `SetShowHidden(true)` includes hidden filesystem entries. The default keeps
+  them out of the browser list.
+- `SetFitToView(false)` disables popup fitting when a host wants exact
+  placement.
+- Selection is delivered on the next `Draw(ref path)` after the popup commits,
+  matching dropdown popup behavior.
+- Open `Assets/Scenes/DocsScene.unity` and select **File picker demo** for a
+  runnable example.
+
+## View stacks and dialogs
+
+`NowViewStack` is the retained navigation layer for screens, sheets, and modal
+popups that are larger than a single dropdown/context menu. Own one stack per
+surface, push `INowView` instances in response to controls, and call
+`stack.Draw(surface)` every frame from the host that owns the surface. Covered
+views still draw, but passively, so they keep their visual state while only the
+top view receives live input.
+
+```csharp
+public sealed class SettingsPanel : NowGraphic
+{
+    readonly NowViewStack _views = new NowViewStack();
+    readonly SettingsHomeView _home = new SettingsHomeView();
+
+    protected override void DrawNowUI(NowRect rect)
+    {
+        var surface = new NowRect(0, 0, rect.width, rect.height);
+
+        if (!_views.ContainsKey("home"))
+        {
+            _views.Push("home", _home,
+                NowViewOptions.FullScreen(NowViewTransitionPreset.None, 0f)
+                    .SetCloseOnCancel(false));
+        }
+
+        _views.Draw(surface);
+    }
+}
+
+sealed class SettingsHomeView : INowView
+{
+    public void Draw(NowViewContext context)
+    {
+        using (NowLayout.Area(context.rect, padding: 16f, spacing: 8f))
+        {
+            NowLayout.Label("Settings").SetFontSize(20f).Draw();
+
+            if (NowLayout.Button("Details").Draw())
+            {
+                context.stack.Push("details", new DetailsView(),
+                    NowViewOptions.FullScreen(NowViewTransitionPreset.SlideFromRight));
+            }
+
+            if (NowLayout.Button("Confirm").Draw())
+            {
+                var popup = new NowRect(
+                    context.rect.center.x - 190f,
+                    context.rect.center.y - 95f,
+                    380f,
+                    190f);
+
+                context.stack.Push(NowViews.Confirm(
+                        "Discard changes?",
+                        "The dialog is just another INowView.",
+                        onConfirm: () => { }),
+                    NowViewOptions.Popup(popup)
+                        .SetScrim(new Color(0f, 0f, 0f, 0.38f)));
+            }
+        }
+    }
+}
+
+sealed class DetailsView : INowView
+{
+    public void Draw(NowViewContext context)
+    {
+        using (NowLayout.Area(context.rect, padding: 16f, spacing: 8f))
+        {
+            if (NowLayout.Button("Back").Draw())
+                context.Close();
+
+            NowLayout.Label("Nested screen").Draw();
+        }
+    }
+}
+```
+
+- `Push(view, options)` adds a view; `Push(key, view, options)` prevents
+  duplicate keyed views; `PushOrReplace(key, view, options)` updates a known
+  slot.
+- `Pop()`, `Pop(handle)`, `PopKey(key)`, `PopTo(...)`, and `Clear(...)` close
+  views. The `NowViewContext` passed to each view also exposes `Close()`.
+- `NowViewOptions.FullScreen(...)` fills the stack surface. `Popup(rect, ...)`
+  keeps the view in a fitted rect, blocks input underneath when modal, and
+  closes on outside click by default.
+- Transitions are built in (`Fade`, `ScaleFade`, `SlideFromBottom`,
+  `SlideFromRight`) and can be replaced with a custom transition delegate.
+- `NowViews.MessageBox(...)` and `NowViews.Confirm(...)` are ready-made dialog
+  views you can push on any stack.
+- Open `Assets/Scenes/DocsScene.unity` and select **View stack demo** for a
+  runnable example.
+
 ## Explicit rects
 
 Every control has a `Now.*` twin taking a rect, for HUDs and free-form

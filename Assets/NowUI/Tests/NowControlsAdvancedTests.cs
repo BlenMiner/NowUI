@@ -219,6 +219,30 @@ public class NowControlsAdvancedTests
         NowFocus.Focus(NowControls.GetControlId("name"));
     }
 
+    ref NowTextEditState FieldState()
+    {
+        return ref NowControlState.Get<NowTextEditState>(NowControls.GetControlId("name"));
+    }
+
+    static Vector2 TextFieldPoint(string textBefore)
+    {
+        var theme = NowTheme.themeAsset;
+        var textStyle = theme.Text(default, NowTextStyle.Body);
+        float lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize : textStyle.fontSize * 1.2f;
+        var inner = theme.controlRenderer.TextFieldInnerRect(theme, FieldRect, lineHeight);
+        float x = inner.x + (textStyle.font != null ? textStyle.font.MeasureText(textBefore, textStyle.fontSize, textStyle.fontStyle).x : 0f) + 1f;
+        return new Vector2(x, inner.y + inner.height * 0.5f);
+    }
+
+    void PointerFrame(ref string text, Vector2 point, bool down, bool pressed, bool released)
+    {
+        _pointer.snapshot = new NowInputSnapshot(point, down, pressed, released);
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            Now.TextField(FieldRect, "name").Draw(ref text);
+    }
+
     [Test]
     public void TextFieldTypesCharactersWhileFocused()
     {
@@ -500,6 +524,38 @@ public class NowControlsAdvancedTests
             NowClipboard.setText = previousSet;
             NowClipboard.getText = previousGet;
         }
+    }
+
+    [Test]
+    public void TextFieldDoubleClickDragExtendsByWholeWords()
+    {
+        string text = "hello world wide";
+        Vector2 insideWorld = TextFieldPoint("hello wo");
+        Vector2 insideWide = TextFieldPoint("hello world wi");
+
+        PointerFrame(ref text, insideWorld, down: true, pressed: true, released: false);
+        PointerFrame(ref text, insideWorld, down: false, pressed: false, released: true);
+        PointerFrame(ref text, insideWorld, down: true, pressed: true, released: false);
+        PointerFrame(ref text, insideWide, down: true, pressed: false, released: false);
+        PointerFrame(ref text, insideWide, down: false, pressed: false, released: true);
+
+        Assert.AreEqual("world wide", NowTextEdit.GetSelection(text, FieldState()),
+            "Dragging after a double-click stays in word selection mode.");
+    }
+
+    [Test]
+    public void TextFieldTripleClickSelectsLine()
+    {
+        string text = "hello world";
+        Vector2 click = TextFieldPoint("hello");
+
+        for (int i = 0; i < 3; ++i)
+        {
+            PointerFrame(ref text, click, down: true, pressed: true, released: false);
+            PointerFrame(ref text, click, down: false, pressed: false, released: true);
+        }
+
+        Assert.AreEqual(text, NowTextEdit.GetSelection(text, FieldState()));
     }
 
     [Test]

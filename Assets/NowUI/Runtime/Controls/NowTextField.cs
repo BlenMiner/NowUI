@@ -9,7 +9,7 @@ namespace NowUI
     /// <code>NowLayout.TextField().SetPlaceholder("Name...").Draw(ref playerName);</code>
     /// Click to place the caret (shaped-text cluster aware), drag to select,
     /// standard keyboard editing with key repeat, copy/cut/paste/select-all,
-    /// double-click selects all. IME composition renders inline at the caret
+    /// double-click selects a word, triple-click selects the line. IME composition renders inline at the caret
     /// (underlined) and owns the editing keys until committed. Mobile opens
     /// the on-screen keyboard while focused.
     /// </summary>
@@ -224,6 +224,7 @@ namespace NowUI
 
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
+            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(id, "selection-gesture");
 
             // Focus gained without a click (tab/gamepad/programmatic): caret to end.
             ref byte hadFocus = ref NowControlState.Get<byte>(id, "hadfocus");
@@ -249,20 +250,30 @@ namespace NowUI
             if (interaction.pressed)
             {
                 int hit = HitTest(fontAsset, resolvedFont, text, interaction.pointerPosition.x - inner.x + state.scrollX, fontSize);
+                int streak = NowControlState.ClickStreak(id, true, interaction.pointerPosition);
 
-                if (NowControlState.DetectDoubleClick(id, true))
+                if (streak >= 3)
                 {
-                    NowTextEdit.SelectAll(ref state, text);
+                    NowTextEdit.SelectLine(ref state, text, hit);
+                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Line, in state);
+                }
+                else if (streak == 2)
+                {
+                    NowTextEdit.SelectWord(ref state, text, hit);
+                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Word, in state);
                 }
                 else
                 {
                     state.caret = hit;
                     state.anchor = hit;
+                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
                 }
             }
             else if (interaction.dragging)
             {
-                state.caret = HitTest(fontAsset, resolvedFont, text, interaction.pointerPosition.x - inner.x + state.scrollX, fontSize);
+                int hit = HitTest(fontAsset, resolvedFont, text, interaction.pointerPosition.x - inner.x + state.scrollX, fontSize);
+                NowTextEdit.DragSelectionGesture(ref state, text, in gesture, hit);
+                NowControlState.RequestRepaint();
             }
 
             string composition = null;

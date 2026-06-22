@@ -247,9 +247,9 @@ MonoBehaviour:
   _depthMode: 1
   _layoutAutoSizeAxes: 3
   _frustumCullRebuilds: 0
-  _size: {x: 210, y: 154.136}
+  _size: {x: 210, y: 156.86}
   _pivot: {x: 0.5, y: 0.5}
-  _pixelsPerUnit: 431.8
+  _pixelsPerUnit: 159.4
   _antiAliasSmoothing: 1
   _rebuildEveryFrame: 1
   _autoRebuildOnInteraction: 1
@@ -329,8 +329,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 239086014}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.11790789, y: 0.20785645, z: 0.0252477, w: 0.9706988}
-  m_LocalPosition: {x: 0.93, y: 0.56, z: 0.412}
+  m_LocalRotation: {x: -0.10791503, y: 0.27476656, z: 0.031050868, w: 0.9549312}
+  m_LocalPosition: {x: 1.3, y: 0.56, z: 0.412}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -581,9 +581,9 @@ MonoBehaviour:
   _depthMode: 1
   _layoutAutoSizeAxes: 3
   _frustumCullRebuilds: 0
-  _size: {x: 210, y: 154.136}
+  _size: {x: 210, y: 156.86}
   _pivot: {x: 0.5, y: 0.5}
-  _pixelsPerUnit: 200
+  _pixelsPerUnit: 159.4
   _antiAliasSmoothing: 1
   _rebuildEveryFrame: 1
   _autoRebuildOnInteraction: 1
@@ -663,8 +663,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 653625560}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: 0, y: 0.031716764, z: 0, w: 0.99949694}
+  m_LocalPosition: {x: 0.27, y: 0, z: 2.59}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

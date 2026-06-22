@@ -24,7 +24,7 @@ Shader "NowUI/UI Glass"
         Lighting Off
         ZWrite Off
         ZTest [_ZTest]
-        Blend SrcAlpha OneMinusSrcAlpha
+        Blend SrcAlpha OneMinusSrcAlpha, One OneMinusSrcAlpha
 
         Pass
         {

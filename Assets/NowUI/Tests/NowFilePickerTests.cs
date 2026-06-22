@@ -60,6 +60,21 @@ public class NowFilePickerTests
     }
 
     [Test]
+    public void BuildSavePathRejectsInvalidFileName()
+    {
+        string path = NowFilePickerUtility.BuildSavePath(
+            Path.GetTempPath(),
+            "bad\0name.json",
+            new NowFileFilter[0],
+            0,
+            null,
+            out string error);
+
+        Assert.IsNull(path);
+        Assert.AreEqual("Invalid file name", error);
+    }
+
+    [Test]
     public void BuildOpenPathRequiresExistingFilteredFile()
     {
         string directory = Path.Combine(Path.GetTempPath(), "NowFilePickerTests");
@@ -87,5 +102,19 @@ public class NowFilePickerTests
             if (Directory.Exists(directory))
                 Directory.Delete(directory);
         }
+    }
+
+    [Test]
+    public void BuildOpenPathRejectsInvalidFileName()
+    {
+        string path = NowFilePickerUtility.BuildOpenPath(
+            Path.GetTempPath(),
+            "bad\0name.json",
+            new NowFileFilter[0],
+            0,
+            out string error);
+
+        Assert.IsNull(path);
+        Assert.AreEqual("Invalid file name", error);
     }
 }

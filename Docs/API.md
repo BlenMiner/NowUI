@@ -14,10 +14,11 @@ extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
   and world-space meshes.
 - `NowLayout`: layout areas, horizontal/vertical groups, content measurement,
   labels, controls, Lottie reservations, and content rect caching.
-- `NowInput`, `NowFocus`, `NowControls`, `NowControlState`, and control
-  builders: immediate interaction, navigation, focus, and reusable control
-  state, including `NowControlState.Warmup<T>(id)` for known-id first-frame
-  allocation control.
+- `NowInput`, `NowFocus`, `NowControls`, `NowControlState`,
+  `NowFilePicker`, `NowViewStack`, `INowView`, `NowViews`, and control
+  builders: immediate interaction, navigation, focus, reusable control state,
+  file picker overlays, retained view navigation, and dialogs, including
+  `NowControlState.Warmup<T>(id)` for known-id first-frame allocation control.
 - `NowText`, `NowFontAsset`, `NowFont`, `NowTextWrap`,
   `NowTextSelection`, `NowTextEdit`, `NowTextArea`, and rich-text types:
   text rendering, shaping, editing, wrapping, selection, and parser hooks.

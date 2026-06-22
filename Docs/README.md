@@ -25,7 +25,8 @@ it.
 - [World Space](WorldSpace.md): direct-mesh nameplates, hover tooltips,
   diegetic panels, ray-mapped input, depth modes, and surface deformers.
 - [Controls](Controls.md): buttons, checkboxes, radios, sliders, text fields,
-  dropdowns, scroll views — and the toolkit for building custom controls.
+  dropdowns, file pickers, scroll views, view stacks/dialogs, and the toolkit
+  for building custom controls.
 - [Custom Controls](CustomControls.md): the how-to guide — restyling through
   themes, wrapping variants, custom shapes on standard interaction, and
   building new controls from scratch (with a live demo in the docs browser

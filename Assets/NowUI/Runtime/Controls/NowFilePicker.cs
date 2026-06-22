@@ -40,8 +40,20 @@ namespace NowUI
         sealed class BrowserEntry
         {
             public string path;
-            public string label;
+            public string name;
+            public string icon;
+            public string type;
             public bool directory;
+            public bool parent;
+        }
+
+        sealed class FolderTreeEntry
+        {
+            public string path;
+            public string name;
+            public int depth;
+            public bool current;
+            public bool ancestor;
         }
 
         sealed class PopupState
@@ -52,21 +64,27 @@ namespace NowUI
             public NowFileFilter[] filters = Array.Empty<NowFileFilter>();
             public readonly List<string> filterLabels = new List<string>(4);
             public readonly List<BrowserEntry> entries = new List<BrowserEntry>(32);
+            public readonly List<FolderTreeEntry> treeEntries = new List<FolderTreeEntry>(32);
             public int id;
             public int areaId;
             public int pathFieldId;
             public int fileNameFieldId;
             public int filterId;
             public int scrollId;
+            public int treeScrollId;
             public int entrySeed;
+            public int treeSeed;
             public int selectButtonId;
             public int cancelButtonId;
             public int goButtonId;
+            public int upButtonId;
             public int filterIndex;
             public string currentDirectory;
+            public string selectedDirectory;
             public string directoryText;
             public string fileName;
             public string error;
+            public bool actionError;
             public string pendingPath;
             public bool hasPendingPath;
             public NowRect fieldRect;
@@ -80,10 +98,13 @@ namespace NowUI
         const int FileNameSeed = 0x4e464146;
         const int FilterSeed = 0x4e46414c;
         const int ScrollSeed = 0x4e464153;
+        const int TreeScrollSeed = 0x4e464154;
         const int EntrySeed = 0x4e464145;
+        const int TreeSeed = 0x4e464152;
         const int SelectSeed = 0x4e46414f;
         const int CancelSeed = 0x4e464143;
         const int GoSeed = 0x4e464147;
+        const int UpSeed = 0x4e464155;
 
         internal NowFilePicker(NowFileDialogMode mode, NowId id, int site)
         {
@@ -278,15 +299,20 @@ namespace NowUI
             state.fileNameFieldId = NowInput.CombineId(id, FileNameSeed);
             state.filterId = NowInput.CombineId(id, FilterSeed);
             state.scrollId = NowInput.CombineId(id, ScrollSeed);
+            state.treeScrollId = NowInput.CombineId(id, TreeScrollSeed);
             state.entrySeed = NowInput.CombineId(id, EntrySeed);
+            state.treeSeed = NowInput.CombineId(id, TreeSeed);
             state.selectButtonId = NowInput.CombineId(id, SelectSeed);
             state.cancelButtonId = NowInput.CombineId(id, CancelSeed);
             state.goButtonId = NowInput.CombineId(id, GoSeed);
+            state.upButtonId = NowInput.CombineId(id, UpSeed);
             state.currentDirectory = ResolveInitialDirectory(value, settings);
+            state.selectedDirectory = null;
             state.directoryText = state.currentDirectory;
             state.fileName = ResolveInitialFileName(value, settings, mode);
-            state.error = null;
+            ClearError(state);
             state.entries.Clear();
+            state.treeEntries.Clear();
         }
 
         static void RebuildFilterLabels(PopupState state)
@@ -417,7 +443,7 @@ namespace NowUI
             string icon = FieldIcon(mode);
             float iconWidth = Mathf.Min(24f, inner.width);
 
-            NowControls.DrawLeftLabel(theme, new NowRect(inner.x, rect.y, iconWidth, rect.height), icon, NowTextStyle.Body);
+            NowControls.DrawLeftLabel(theme, new NowRect(inner.x, rect.y, iconWidth, rect.height), icon, NowTextStyle.Body, Color.white);
 
             string display = string.IsNullOrEmpty(path)
                 ? Placeholder(mode, settings)
@@ -503,65 +529,110 @@ namespace NowUI
             float spacing = state.settings.popupSpacing;
             bool hasFilter = state.mode != NowFileDialogMode.Directory && state.filters.Length > 1;
             bool hasFileName = state.mode != NowFileDialogMode.Directory;
-            float listHeight = state.popupRect.height - padding * 2f - 28f - 30f - 34f - spacing * 3f;
+            const float titleHeight = 30f;
+            const float addressHeight = 32f;
+            const float headerHeight = 24f;
+            const float fileNameHeight = 30f;
+            const float filterHeight = 30f;
+            const float footerHeight = 34f;
+            float fixedHeight = titleHeight + addressHeight + footerHeight;
+            int fixedRows = 3;
 
             if (hasFileName)
-                listHeight -= 30f + spacing;
+            {
+                fixedHeight += fileNameHeight;
+                ++fixedRows;
+            }
 
-            if (listHeight < 72f)
-                listHeight = 72f;
+            if (hasFilter)
+            {
+                fixedHeight += filterHeight;
+                ++fixedRows;
+            }
+
+            float browserHeight = state.popupRect.height - padding * 2f - fixedHeight - spacing * fixedRows;
+
+            if (browserHeight < headerHeight + 96f)
+                browserHeight = headerHeight + 96f;
 
             using (NowLayout.Area(state.areaId, state.popupRect, spacing: spacing, padding: padding, alignItems: NowLayoutAlign.Start))
             {
-                using (NowLayout.Horizontal(height: 28f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+                using (NowLayout.Horizontal(height: titleHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
                 {
                     NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Title), Title(state.mode, state.settings))
                         .SetStretchWidth()
                         .Draw();
-
-                    if (hasFilter)
-                    {
-                        int filter = state.filterIndex;
-
-                        if (NowLayout.Dropdown(state.filterId, state.filterLabels).SetWidth(170f).Draw(ref filter))
-                            state.filterIndex = Mathf.Clamp(filter, 0, state.filters.Length - 1);
-                    }
                 }
 
-                using (NowLayout.Horizontal(height: 30f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+                using (NowLayout.Horizontal(height: addressHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
                 {
-                    NowLayout.TextField(state.pathFieldId)
-                        .SetStretchWidth()
-                        .SetPlaceholder("Directory...")
-                        .Draw(ref state.directoryText);
+                    string parent = ParentDirectory(state.currentDirectory);
 
-                    if (NowLayout.Button("➡").SetId(state.goButtonId).SetStyle(NowRectangleStyle.Surface).SetWidth(38f).Draw())
+                    if (!string.IsNullOrEmpty(parent))
+                    {
+                        if (NowLayout.Button("Up").SetId(state.upButtonId).SetStyle(NowRectangleStyle.Outline).SetWidth(48f).Draw())
+                            NavigateTo(state, parent);
+                    }
+                    else
+                    {
+                        NowLayout.Label("").SetWidth(48f).Draw();
+                    }
+
+                    if (NowLayout.TextField(state.pathFieldId)
+                        .SetStretchWidth()
+                        .SetPlaceholder("Address")
+                        .Draw(ref state.directoryText))
+                    {
+                        state.selectedDirectory = null;
+                        ClearError(state);
+                    }
+
+                    if (NowLayout.Button("Go").SetId(state.goButtonId).SetStyle(NowRectangleStyle.Outline).SetWidth(44f).Draw())
                         NavigateTo(state, state.directoryText);
                 }
 
+                NowRect browserRect = NowLayout.Rect(height: browserHeight, stretchWidth: true);
+                DrawBrowser(state, browserRect, headerHeight);
+
                 if (hasFileName)
                 {
-                    using (NowLayout.Horizontal(height: 30f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+                    using (NowLayout.Horizontal(height: fileNameHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
                     {
-                        NowLayout.Label("Name").SetWidth(48f).Draw();
-                        NowLayout.TextField(state.fileNameFieldId)
+                        NowLayout.Label("File name:").SetWidth(78f).Draw();
+                        if (NowLayout.TextField(state.fileNameFieldId)
                             .SetStretchWidth()
                             .SetPlaceholder("File name...")
-                            .Draw(ref state.fileName);
+                            .Draw(ref state.fileName))
+                        {
+                            state.selectedDirectory = null;
+                            ClearError(state);
+                        }
                     }
                 }
 
-                NowRect listRect = NowLayout.Rect(height: listHeight, stretchWidth: true);
+                if (hasFilter)
+                {
+                    using (NowLayout.Horizontal(height: filterHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+                    {
+                        NowLayout.Label("File type:").SetWidth(78f).Draw();
+                        int filter = state.filterIndex;
 
-                using (Now.ScrollView(listRect, state.scrollId).Begin())
-                    DrawEntries(state);
+                        if (NowLayout.Dropdown(state.filterId, state.filterLabels).SetStretchWidth().Draw(ref filter))
+                        {
+                            state.filterIndex = Mathf.Clamp(filter, 0, state.filters.Length - 1);
+                            state.selectedDirectory = null;
+                            ClearError(state);
+                        }
+                    }
+                }
 
-                using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+                using (NowLayout.Horizontal(height: footerHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
                 {
                     if (!string.IsNullOrEmpty(state.error))
                     {
-                        NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Muted), state.error)
+                        NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Body), "! " + state.error)
                             .SetStretchWidth()
+                            .SetColor(new Color(0.86f, 0.24f, 0.24f))
                             .Draw();
                     }
                     else
@@ -572,7 +643,7 @@ namespace NowUI
                     if (NowLayout.Button(ActionLabel(state.mode)).SetId(state.selectButtonId).SetStyle(NowRectangleStyle.Accent).Draw())
                         CommitAction(state);
 
-                    if (NowLayout.Button("❌").SetId(state.cancelButtonId).SetStyle(NowRectangleStyle.Surface).SetWidth(40f).Draw())
+                    if (NowLayout.Button("Cancel").SetId(state.cancelButtonId).SetStyle(NowRectangleStyle.Surface).SetWidth(78f).Draw())
                         NowControlState.Get<bool>(state.id) = false;
                 }
             }
@@ -599,59 +670,393 @@ namespace NowUI
             switch (mode)
             {
                 case NowFileDialogMode.SaveFile:
-                    return "💾 Save";
+                    return "Save";
                 case NowFileDialogMode.Directory:
-                    return "✅ Select";
+                    return "Select Folder";
                 default:
-                    return "📂 Open";
+                    return "Open";
             }
+        }
+
+        static void DrawBrowser(PopupState state, NowRect rect, float headerHeight)
+        {
+            bool showTree = rect.width >= 560f;
+            float treeWidth = showTree ? Mathf.Clamp(rect.width * 0.30f, 168f, 220f) : 0f;
+            float gap = showTree ? 8f : 0f;
+            float listX = rect.x;
+            float listWidth = rect.width;
+
+            if (showTree)
+            {
+                var treeRect = new NowRect(rect.x, rect.y, treeWidth, rect.height);
+                DrawFolderTree(state, treeRect, headerHeight);
+                listX = treeRect.xMax + gap;
+                listWidth = Mathf.Max(0f, rect.xMax - listX);
+            }
+
+            var headerRect = new NowRect(listX, rect.y, listWidth, headerHeight);
+            var listRect = new NowRect(listX, rect.y + headerHeight, listWidth, Mathf.Max(0f, rect.height - headerHeight));
+
+            DrawListHeader(state.themeAsset, headerRect);
+            DrawListFrame(state.themeAsset, listRect);
+
+            using (Now.ScrollView(listRect.Inset(1f), state.scrollId).Begin())
+                DrawEntries(state);
+        }
+
+        static void DrawFolderTree(PopupState state, NowRect rect, float headerHeight)
+        {
+            var theme = state.themeAsset;
+            Color surface = theme.GetColor(NowColorToken.Surface, Color.white);
+            Color surfaceMuted = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.94f, 0.95f, 0.97f, 1f));
+            Color border = theme.GetColor(NowColorToken.Border, new Color(0.78f, 0.80f, 0.84f, 1f));
+            Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+
+            Now.Rectangle(rect)
+                .SetRadius(4f)
+                .SetColor(surface)
+                .SetOutline(1f)
+                .SetOutlineColor(border)
+                .Draw();
+
+            var headerRect = new NowRect(rect.x, rect.y, rect.width, headerHeight);
+            Now.Rectangle(headerRect)
+                .SetRadius(4f, 4f, 0f, 0f)
+                .SetColor(surfaceMuted)
+                .Draw();
+
+            NowControls.DrawLeftLabel(theme, headerRect.Inset(8f, 0f), "Folders", NowTextStyle.Muted, muted);
+
+            var contentRect = new NowRect(rect.x, rect.y + headerHeight, rect.width, Mathf.Max(0f, rect.height - headerHeight));
+            BuildFolderTree(state);
+
+            using (Now.ScrollView(contentRect.Inset(1f), state.treeScrollId).Begin())
+                DrawFolderTreeEntries(state);
+        }
+
+        static void DrawFolderTreeEntries(PopupState state)
+        {
+            if (state.treeEntries.Count == 0)
+            {
+                NowLayout.Space(8f);
+                NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Muted), "No folders")
+                    .SetStretchWidth()
+                    .Draw();
+                return;
+            }
+
+            for (int i = 0; i < state.treeEntries.Count; ++i)
+            {
+                NowRect row = NowLayout.Rect(height: 26f, stretchWidth: true);
+                DrawFolderTreeRow(state, row, state.treeEntries[i], i);
+            }
+        }
+
+        static void DrawFolderTreeRow(PopupState state, NowRect row, FolderTreeEntry entry, int index)
+        {
+            var theme = state.themeAsset;
+            int id = NowInput.CombineId(state.treeSeed, index + 1);
+            var interaction = NowInput.Interact(id, row);
+            bool selected = entry.current || PathEquals(state.selectedDirectory, entry.path);
+            NowRect visual = row.Inset(2f, 1f);
+
+            if (selected)
+            {
+                Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+                Now.Rectangle(visual)
+                    .SetRadius(3f)
+                    .SetColor(new Color(accent.r, accent.g, accent.b, entry.current ? 0.20f : 0.12f))
+                    .SetOutline(1f)
+                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, entry.current ? 0.52f : 0.34f))
+                    .Draw();
+            }
+            else if (interaction.hovered || interaction.held)
+            {
+                Color mutedSurface = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.92f, 0.93f, 0.95f, 1f));
+                mutedSurface = NowControls.StateTint(theme, mutedSurface, 1f, interaction.held);
+                Now.Rectangle(visual)
+                    .SetRadius(3f)
+                    .SetColor(mutedSurface)
+                    .Draw();
+            }
+
+            float indent = Mathf.Min(Mathf.Max(0, entry.depth) * 14f, 56f);
+            var iconRect = new NowRect(row.x + 7f + indent, row.y, 20f, row.height);
+            var nameRect = new NowRect(iconRect.xMax + 4f, row.y, Mathf.Max(0f, row.xMax - iconRect.xMax - 10f), row.height);
+            Color text = entry.ancestor && !entry.current
+                ? theme.GetColor(NowColorToken.TextMuted, Color.gray)
+                : theme.GetColor(NowColorToken.Text, Color.black);
+
+            NowControls.DrawLeftLabel(theme, iconRect, entry.current ? "📂" : "📁", NowTextStyle.Body, Color.white);
+            NowControls.DrawLeftLabel(theme, nameRect, entry.name, NowTextStyle.Body, text);
+
+            if (interaction.clicked && !PathEquals(state.currentDirectory, entry.path))
+                NavigateTo(state, entry.path);
+        }
+
+        static void DrawListHeader(NowThemeAsset theme, NowRect rect)
+        {
+            Color surfaceMuted = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.94f, 0.95f, 0.97f, 1f));
+            Color border = theme.GetColor(NowColorToken.Border, new Color(0.78f, 0.80f, 0.84f, 1f));
+            Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+            float typeWidth = TypeColumnWidth(rect);
+
+            Now.Rectangle(rect)
+                .SetRadius(4f, 4f, 0f, 0f)
+                .SetColor(surfaceMuted)
+                .SetOutline(1f)
+                .SetOutlineColor(border)
+                .Draw();
+
+            var nameRect = new NowRect(rect.x + 34f, rect.y, Mathf.Max(0f, rect.width - typeWidth - 42f), rect.height);
+            var typeRect = new NowRect(rect.xMax - typeWidth - 8f, rect.y, typeWidth, rect.height);
+
+            NowControls.DrawLeftLabel(theme, nameRect, "Name", NowTextStyle.Muted, muted);
+            NowControls.DrawLeftLabel(theme, typeRect, "Type", NowTextStyle.Muted, muted);
+        }
+
+        static void DrawListFrame(NowThemeAsset theme, NowRect rect)
+        {
+            Color surface = theme.GetColor(NowColorToken.Surface, Color.white);
+            Color border = theme.GetColor(NowColorToken.Border, new Color(0.78f, 0.80f, 0.84f, 1f));
+
+            Now.Rectangle(rect)
+                .SetRadius(0f, 0f, 4f, 4f)
+                .SetColor(surface)
+                .SetOutline(1f)
+                .SetOutlineColor(border)
+                .Draw();
+        }
+
+        static float TypeColumnWidth(NowRect rect)
+        {
+            return rect.width >= 430f ? 118f : 92f;
         }
 
         static void DrawEntries(PopupState state)
         {
-            string parent = ParentDirectory(state.currentDirectory);
-
-            if (!string.IsNullOrEmpty(parent) &&
-                NowLayout.Button("⬆ ..").SetId(NowInput.CombineId(state.entrySeed, 1)).SetStyle(NowRectangleStyle.Surface).SetStretchWidth().Draw())
-            {
-                NavigateTo(state, parent);
-            }
-
             if (state.entries.Count == 0)
             {
-                NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Muted), "No matching items").Draw();
+                NowLayout.Space(8f);
+                NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Muted), "No matching items")
+                    .SetStretchWidth()
+                    .Draw();
                 return;
             }
 
             for (int i = 0; i < state.entries.Count; ++i)
             {
                 var entry = state.entries[i];
+                NowRect row = NowLayout.Rect(height: 28f, stretchWidth: true);
+                DrawEntryRow(state, row, entry, i);
+            }
+        }
 
-                if (!NowLayout.Button(entry.label)
-                    .SetId(NowInput.CombineId(state.entrySeed, i + 2))
-                    .SetStyle(NowRectangleStyle.Surface)
-                    .SetStretchWidth()
-                    .Draw())
-                {
-                    continue;
-                }
+        static void DrawEntryRow(PopupState state, NowRect row, BrowserEntry entry, int index)
+        {
+            var theme = state.themeAsset;
+            int id = NowInput.CombineId(state.entrySeed, index + 1);
+            var interaction = NowInput.Interact(id, row);
+            bool selected = IsSelectedEntry(state, entry);
+            NowRect visual = row.Inset(2f, 1f);
 
-                if (entry.directory)
+            if (selected)
+            {
+                Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+                Now.Rectangle(visual)
+                    .SetRadius(3f)
+                    .SetColor(new Color(accent.r, accent.g, accent.b, 0.18f))
+                    .SetOutline(1f)
+                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.48f))
+                    .Draw();
+            }
+            else if (interaction.hovered || interaction.held)
+            {
+                Color mutedSurface = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.92f, 0.93f, 0.95f, 1f));
+                mutedSurface = NowControls.StateTint(theme, mutedSurface, 1f, interaction.held);
+                Now.Rectangle(visual)
+                    .SetRadius(3f)
+                    .SetColor(mutedSurface)
+                    .Draw();
+            }
+
+            float typeWidth = TypeColumnWidth(row);
+            var iconRect = new NowRect(row.x + 9f, row.y, 22f, row.height);
+            var nameRect = new NowRect(iconRect.xMax + 6f, row.y, Mathf.Max(0f, row.width - typeWidth - 46f), row.height);
+            var typeRect = new NowRect(row.xMax - typeWidth - 8f, row.y, typeWidth, row.height);
+            Color text = theme.GetColor(NowColorToken.Text, Color.black);
+            Color muted = selected
+                ? text
+                : theme.GetColor(NowColorToken.TextMuted, Color.gray);
+
+            NowControls.DrawLeftLabel(theme, iconRect, string.IsNullOrEmpty(entry.icon) ? "📄" : entry.icon, NowTextStyle.Body, Color.white);
+            NowControls.DrawLeftLabel(theme, nameRect, entry.name, NowTextStyle.Body, text);
+            NowControls.DrawLeftLabel(theme, typeRect, entry.type, NowTextStyle.Muted, muted);
+
+            if (!interaction.clicked)
+                return;
+
+            int streak = NowControlState.ClickStreak(id, true, interaction.pointerPosition);
+
+            if (entry.directory)
+            {
+                if (entry.parent || streak >= 2)
                 {
                     NavigateTo(state, entry.path);
-                    continue;
+                    return;
                 }
 
-                if (state.mode != NowFileDialogMode.Directory)
+                state.selectedDirectory = entry.path;
+
+                if (state.mode == NowFileDialogMode.OpenFile)
+                    state.fileName = string.Empty;
+
+                ClearError(state);
+                NowControlState.RequestRepaint();
+                return;
+            }
+
+            if (state.mode != NowFileDialogMode.Directory)
+            {
+                state.fileName = Path.GetFileName(entry.path);
+                state.selectedDirectory = null;
+                ClearError(state);
+
+                if ((state.mode == NowFileDialogMode.OpenFile || state.mode == NowFileDialogMode.SaveFile) && streak >= 2)
                 {
-                    state.fileName = Path.GetFileName(entry.path);
-                    state.error = null;
+                    CommitAction(state);
+                    return;
                 }
-                else
+
+                NowControlState.RequestRepaint();
+            }
+        }
+
+        static bool IsSelectedEntry(PopupState state, BrowserEntry entry)
+        {
+            if (entry.directory)
+                return !string.IsNullOrEmpty(state.selectedDirectory) &&
+                    string.Equals(state.selectedDirectory, entry.path, StringComparison.CurrentCultureIgnoreCase);
+
+            if (state.mode == NowFileDialogMode.Directory || string.IsNullOrEmpty(state.fileName))
+                return false;
+
+            return string.Equals(state.fileName, entry.name, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        static void BuildFolderTree(PopupState state)
+        {
+            state.treeEntries.Clear();
+
+            string current = NowFilePickerUtility.TryGetFullPath(state.currentDirectory);
+
+            if (string.IsNullOrEmpty(current) || !Directory.Exists(current))
+                return;
+
+            var chain = new List<string>(8);
+            BuildDirectoryChain(current, chain);
+            int currentDepth = Mathf.Max(0, chain.Count - 1);
+
+            for (int i = 0; i < chain.Count - 1; ++i)
+                AddFolderTreeEntry(state, chain[i], i, current: false, ancestor: true);
+
+            bool addedCurrent = false;
+            string parent = ParentDirectory(current);
+
+            if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
+            {
+                try
                 {
-                    Commit(state, entry.path);
+                    var siblings = Directory.GetDirectories(parent);
+                    Array.Sort(siblings, StringComparer.CurrentCultureIgnoreCase);
+
+                    for (int i = 0; i < siblings.Length; ++i)
+                    {
+                        if (!state.settings.showHidden && NowFilePickerUtility.IsHidden(siblings[i]) && !PathEquals(siblings[i], current))
+                            continue;
+
+                        bool isCurrent = PathEquals(siblings[i], current);
+                        AddFolderTreeEntry(state, siblings[i], currentDepth, isCurrent, ancestor: false);
+                        addedCurrent |= isCurrent;
+                    }
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException)
+                {
+                    addedCurrent = false;
                 }
             }
+
+            if (!addedCurrent)
+                AddFolderTreeEntry(state, current, currentDepth, current: true, ancestor: false);
+
+            try
+            {
+                var children = Directory.GetDirectories(current);
+                Array.Sort(children, StringComparer.CurrentCultureIgnoreCase);
+
+                for (int i = 0; i < children.Length; ++i)
+                {
+                    if (!state.settings.showHidden && NowFilePickerUtility.IsHidden(children[i]))
+                        continue;
+
+                    AddFolderTreeEntry(state, children[i], currentDepth + 1, current: false, ancestor: false);
+                }
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException)
+            {
+                // The main list owns user-visible directory errors; keep the tree best-effort.
+            }
+        }
+
+        static void BuildDirectoryChain(string directory, List<string> chain)
+        {
+            chain.Clear();
+            string current = NowFilePickerUtility.TryGetFullPath(directory);
+
+            if (string.IsNullOrEmpty(current))
+                return;
+
+            var reversed = new List<string>(8);
+
+            while (!string.IsNullOrEmpty(current))
+            {
+                reversed.Add(current);
+                string parent = ParentDirectory(current);
+
+                if (string.IsNullOrEmpty(parent) || PathEquals(parent, current))
+                    break;
+
+                current = parent;
+            }
+
+            for (int i = reversed.Count - 1; i >= 0; --i)
+                chain.Add(reversed[i]);
+        }
+
+        static void AddFolderTreeEntry(PopupState state, string path, int depth, bool current, bool ancestor)
+        {
+            if (string.IsNullOrEmpty(path))
+                return;
+
+            for (int i = 0; i < state.treeEntries.Count; ++i)
+            {
+                if (PathEquals(state.treeEntries[i].path, path))
+                {
+                    if (current)
+                        state.treeEntries[i].current = true;
+
+                    return;
+                }
+            }
+
+            state.treeEntries.Add(new FolderTreeEntry
+            {
+                path = path,
+                name = NowFilePickerUtility.DisplayName(path),
+                depth = Mathf.Max(0, depth),
+                current = current,
+                ancestor = ancestor
+            });
         }
 
         static void RefreshEntries(PopupState state)
@@ -666,6 +1071,21 @@ namespace NowUI
 
             try
             {
+                string parent = ParentDirectory(state.currentDirectory);
+
+                if (!string.IsNullOrEmpty(parent))
+                {
+                    state.entries.Add(new BrowserEntry
+                    {
+                        path = parent,
+                        name = "...",
+                        icon = "📁",
+                        type = "Folder",
+                        directory = true,
+                        parent = true
+                    });
+                }
+
                 var directories = Directory.GetDirectories(state.currentDirectory);
                 Array.Sort(directories, StringComparer.CurrentCultureIgnoreCase);
 
@@ -677,13 +1097,20 @@ namespace NowUI
                     state.entries.Add(new BrowserEntry
                     {
                         path = directories[i],
-                        label = "📁 " + NowFilePickerUtility.DisplayName(directories[i]),
+                        name = NowFilePickerUtility.DisplayName(directories[i]),
+                        icon = "📁",
+                        type = "Folder",
                         directory = true
                     });
                 }
 
                 if (state.mode == NowFileDialogMode.Directory)
+                {
+                    if (!state.actionError)
+                        state.error = null;
+
                     return;
+                }
 
                 var files = Directory.GetFiles(state.currentDirectory);
                 Array.Sort(files, StringComparer.CurrentCultureIgnoreCase);
@@ -700,17 +1127,166 @@ namespace NowUI
                     state.entries.Add(new BrowserEntry
                     {
                         path = files[i],
-                        label = "📄 " + Path.GetFileName(files[i]),
+                        name = Path.GetFileName(files[i]),
+                        icon = FileIcon(files[i]),
+                        type = FileTypeLabel(files[i]),
                         directory = false
                     });
                 }
 
-                state.error = null;
+                if (!state.actionError)
+                    state.error = null;
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException)
             {
                 state.error = ex.Message;
+                state.actionError = false;
             }
+        }
+
+        static string FileTypeLabel(string path)
+        {
+            string extension = null;
+
+            try
+            {
+                extension = Path.GetExtension(path);
+            }
+            catch (ArgumentException)
+            {
+                extension = null;
+            }
+
+            if (string.IsNullOrEmpty(extension))
+                return "File";
+
+            return extension.TrimStart('.').ToUpperInvariant() + " File";
+        }
+
+        static string FileIcon(string path)
+        {
+            string extension = null;
+
+            try
+            {
+                extension = NowFilePickerUtility.NormalizeExtension(Path.GetExtension(path));
+            }
+            catch (ArgumentException)
+            {
+                extension = null;
+            }
+
+            switch (extension)
+            {
+                case "png":
+                case "jpg":
+                case "jpeg":
+                case "gif":
+                case "bmp":
+                case "webp":
+                case "tga":
+                case "psd":
+                case "svg":
+                    return "🖼️";
+                case "mp3":
+                case "wav":
+                case "ogg":
+                case "flac":
+                case "m4a":
+                case "aiff":
+                    return "🎵";
+                case "mp4":
+                case "mov":
+                case "avi":
+                case "mkv":
+                case "webm":
+                    return "🎞️";
+                case "zip":
+                case "rar":
+                case "7z":
+                case "tar":
+                case "gz":
+                case "unitypackage":
+                    return "📦";
+                case "cs":
+                case "shader":
+                case "hlsl":
+                case "cginc":
+                case "js":
+                case "ts":
+                case "html":
+                case "css":
+                case "py":
+                case "java":
+                case "cpp":
+                case "h":
+                    return "💻";
+                case "json":
+                case "yaml":
+                case "yml":
+                case "xml":
+                case "md":
+                case "txt":
+                case "log":
+                case "csv":
+                case "ini":
+                    return "📝";
+                case "pdf":
+                    return "📕";
+                case "ttf":
+                case "otf":
+                case "woff":
+                case "woff2":
+                    return "🔤";
+                case "unity":
+                case "prefab":
+                case "asset":
+                case "mat":
+                case "controller":
+                case "anim":
+                    return "🎮";
+                default:
+                    return "📄";
+            }
+        }
+
+        static bool PathEquals(string left, string right)
+        {
+            if (string.IsNullOrEmpty(left) || string.IsNullOrEmpty(right))
+                return false;
+
+            string normalizedLeft = NormalizePathForCompare(left);
+            string normalizedRight = NormalizePathForCompare(right);
+
+            return string.Equals(normalizedLeft, normalizedRight, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        static string NormalizePathForCompare(string path)
+        {
+            string full = NowFilePickerUtility.TryGetFullPath(path) ?? path;
+            string root = null;
+
+            try
+            {
+                root = Path.GetPathRoot(full);
+            }
+            catch (ArgumentException)
+            {
+                root = null;
+            }
+
+            if (!string.IsNullOrEmpty(root))
+            {
+                string trimmedFull = full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string trimmedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                if (string.Equals(trimmedFull, trimmedRoot, StringComparison.CurrentCultureIgnoreCase))
+                    return root;
+
+                full = trimmedFull;
+            }
+
+            return full;
         }
 
         static string ParentDirectory(string directory)
@@ -720,7 +1296,19 @@ namespace NowUI
 
             try
             {
-                var parent = Directory.GetParent(directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                string full = Path.GetFullPath(directory);
+                string root = Path.GetPathRoot(full);
+
+                if (!string.IsNullOrEmpty(root))
+                {
+                    string trimmedFull = full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    string trimmedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                    if (string.Equals(trimmedFull, trimmedRoot, StringComparison.CurrentCultureIgnoreCase))
+                        return null;
+                }
+
+                var parent = Directory.GetParent(full);
                 return parent?.FullName;
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException)
@@ -735,18 +1323,34 @@ namespace NowUI
 
             if (string.IsNullOrEmpty(full) || !Directory.Exists(full))
             {
-                state.error = "Directory not found";
+                SetError(state, "Directory not found", focusFileName: false);
                 return;
             }
 
             state.currentDirectory = full;
+            state.selectedDirectory = null;
             state.directoryText = full;
-            state.error = null;
+            if (state.mode == NowFileDialogMode.OpenFile)
+                state.fileName = string.Empty;
+
+            ClearError(state);
             NowControlState.RequestRepaint();
         }
 
         static void CommitAction(PopupState state)
         {
+            if (!string.IsNullOrEmpty(state.selectedDirectory))
+            {
+                if (state.mode == NowFileDialogMode.Directory)
+                {
+                    Commit(state, state.selectedDirectory);
+                    return;
+                }
+
+                NavigateTo(state, state.selectedDirectory);
+                return;
+            }
+
             if (state.mode == NowFileDialogMode.Directory)
             {
                 Commit(state, state.currentDirectory);
@@ -764,7 +1368,7 @@ namespace NowUI
 
                 if (string.IsNullOrEmpty(openPath))
                 {
-                    state.error = openError;
+                    SetError(state, openError, focusFileName: true);
                     return;
                 }
 
@@ -782,11 +1386,32 @@ namespace NowUI
 
             if (string.IsNullOrEmpty(path))
             {
-                state.error = error;
+                SetError(state, error, focusFileName: true);
                 return;
             }
 
             Commit(state, path);
+        }
+
+        static void SetError(PopupState state, string error, bool focusFileName)
+        {
+            state.error = string.IsNullOrWhiteSpace(error) ? "Invalid selection" : error;
+            state.actionError = true;
+
+            if (focusFileName && state.fileNameFieldId != 0)
+            {
+                NowFocus.Focus(state.fileNameFieldId);
+                ref var edit = ref NowControlState.Get<NowTextEditState>(state.fileNameFieldId);
+                NowTextEdit.SelectAll(ref edit, state.fileName ?? string.Empty);
+            }
+
+            NowControlState.RequestRepaint();
+        }
+
+        static void ClearError(PopupState state)
+        {
+            state.error = null;
+            state.actionError = false;
         }
 
         static void Commit(PopupState state, string path)
@@ -794,7 +1419,7 @@ namespace NowUI
             string next = path ?? string.Empty;
             state.pendingPath = next;
             state.hasPendingPath = true;
-            state.error = null;
+            ClearError(state);
             NowControlState.Get<bool>(state.id) = false;
         }
 
@@ -841,8 +1466,8 @@ namespace NowUI
                 filters = Array.Empty<NowFileFilter>(),
                 fitToView = true,
                 fieldHeight = 30f,
-                popupWidth = 420f,
-                popupHeight = 360f,
+                popupWidth = 760f,
+                popupHeight = 460f,
                 popupPadding = 10f,
                 popupSpacing = 6f
             };
@@ -1039,6 +1664,12 @@ namespace NowUI
             }
 
             string candidate = fileName.Trim();
+
+            if (HasInvalidFileName(candidate))
+            {
+                error = "Invalid file name";
+                return null;
+            }
 
             try
             {

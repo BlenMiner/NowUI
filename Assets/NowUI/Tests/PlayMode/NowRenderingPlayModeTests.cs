@@ -64,6 +64,18 @@ public class NowRenderingPlayModeTests
         return count;
     }
 
+    static void AssertTargetOpaque(Color32[] pixels, string message)
+    {
+        for (int y = 0; y < Side; ++y)
+        {
+            for (int x = 0; x < Side; ++x)
+            {
+                var pixel = pixels[y * Side + x];
+                Assert.GreaterOrEqual(pixel.a, 250, $"{message} at {x},{y}.");
+            }
+        }
+    }
+
     static NowFont ResolveDefaultNowFont()
     {
         var fallback = Now.defaultFont;
@@ -121,6 +133,58 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void RectangleZeroOutlineDoesNotCutAlphaFromOpaqueBackdrop()
+    {
+        using (_renderer.Begin(_target))
+        {
+            Now.Rectangle(new NowRect(0, 0, Side, Side))
+                .SetColor(new Color(0.18f, 0.2f, 0.24f, 1f))
+                .Draw();
+            Now.Rectangle(new NowRect(32, 24, 64, 80))
+                .SetRadius(18f)
+                .SetColor(new Color(0.12f, 0.66f, 0.95f, 0.36f))
+                .SetOutline(0f)
+                .SetOutlineColor(Color.black)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        AssertTargetOpaque(ReadPixels(_target), "Zero-outline rectangle reduced target alpha");
+    }
+
+    [Test]
+    public void RectangleOutlineVariantsStayOpaqueAndVisible()
+    {
+        using (_renderer.Begin(_target))
+        {
+            Now.Rectangle(new NowRect(0, 0, Side, Side))
+                .SetColor(new Color(0.18f, 0.2f, 0.24f, 1f))
+                .Draw();
+            Now.Rectangle(new NowRect(24, 24, 80, 80))
+                .SetRadius(18f)
+                .SetColor(new Color(1f, 1f, 1f, 0f))
+                .SetOutline(4f)
+                .SetOutlineColor(Color.green)
+                .Draw();
+            Now.Rectangle(new NowRect(44, 44, 40, 40))
+                .SetRadius(10f)
+                .SetColor(new Color(1f, 0.26f, 0.32f, 0.34f))
+                .SetOutline(1f)
+                .SetOutlineColor(Color.white)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+
+        AssertTargetOpaque(pixels, "Outlined rectangle variant reduced target alpha");
+        Assert.Greater(
+            CountPixels(pixels, p => p.g > 160 && p.r < 80 && p.b < 120),
+            120,
+            "Outline-only rectangle did not render a visible green outline.");
+    }
+
+    [Test]
     public void GlassBlursPreviouslyRenderedRenderTextureContent()
     {
         using (_renderer.Begin(_target))
@@ -151,6 +215,68 @@ public class NowRenderingPlayModeTests
         Assert.Less(blueOutside.r, 60, "Right background should stay sharp outside the glass pane.");
         Assert.Greater(blurredInside.r, 80, "Glass should retain red contribution from the backdrop.");
         Assert.Greater(blurredInside.b, 25, "Glass should blur blue contribution across the boundary.");
+    }
+
+    [Test]
+    public void GlassZeroOutlineDoesNotCutAlphaFromOpaqueBackdrop()
+    {
+        using (_renderer.Begin(_target))
+        {
+            Now.Rectangle(new NowRect(0, 0, Side / 2f, Side))
+                .SetColor(Color.red)
+                .Draw();
+            Now.Rectangle(new NowRect(Side / 2f, 0, Side / 2f, Side))
+                .SetColor(Color.blue)
+                .Draw();
+            Now.Glass(new NowRect(32, 24, 64, 80))
+                .SetRadius(18f)
+                .SetBlurRadius(16f)
+                .SetTint(new Color(1f, 1f, 1f, 0.15f))
+                .SetOutline(0f)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+
+        for (int y = 24; y < 104; ++y)
+        {
+            for (int x = 32; x < 96; ++x)
+            {
+                var pixel = pixels[y * Side + x];
+                Assert.GreaterOrEqual(pixel.a, 250, $"Glass edge reduced target alpha at {x},{y}.");
+            }
+        }
+    }
+
+    [Test]
+    public void GlassOutlineVariantsDoNotCutAlphaFromOpaqueBackdrop()
+    {
+        using (_renderer.Begin(_target))
+        {
+            Now.Rectangle(new NowRect(0, 0, Side / 2f, Side))
+                .SetColor(Color.red)
+                .Draw();
+            Now.Rectangle(new NowRect(Side / 2f, 0, Side / 2f, Side))
+                .SetColor(Color.blue)
+                .Draw();
+            Now.Glass(new NowRect(32, 24, 64, 80))
+                .SetRadius(18f)
+                .SetBlurRadius(16f)
+                .SetTint(new Color(1f, 1f, 1f, 0f))
+                .SetOutline(3f)
+                .SetOutlineColor(new Color(1f, 0.74f, 0.24f, 0.9f))
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+
+        AssertTargetOpaque(pixels, "Outlined glass variant reduced target alpha");
+        Assert.Greater(
+            CountPixels(pixels, p => p.r > 180 && p.g > 120 && p.b < 120),
+            100,
+            "Glass outline variant did not render a visible warm outline.");
     }
 
     [Test]

@@ -1,0 +1,21 @@
+{
+  "name": "NowUI.Editor.Harness",
+  "rootNamespace": "NowUI.Editor",
+  "references": [
+    "NowUI.Runtime",
+    "NowUI.Extensions.Markdown",
+    "NowUI.Extensions.Docking",
+    "NowUI.Extensions.NodeGraph"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
