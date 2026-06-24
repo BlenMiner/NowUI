@@ -31,7 +31,22 @@ namespace NowUI
         static int _activeId;
         static NowRect _popupRect;
         static int _popupPendingId;
-        static readonly List<string> _items = new List<string>(8);
+        static readonly List<Entry> _items = new List<Entry>(8);
+
+        enum EntryKind
+        {
+            Item,
+            Label,
+            Separator
+        }
+
+        struct Entry
+        {
+            public EntryKind kind;
+            public string label;
+            public bool enabled;
+            public bool selected;
+        }
 
         /// <summary>True while any context menu is open.</summary>
         public static bool isOpen => _openId != 0;
@@ -73,17 +88,54 @@ namespace NowUI
         /// <summary>Adds an item; true when it was clicked (the frame after the click).</summary>
         public static bool Item(string label)
         {
-            _items.Add(label);
+            return Item(label, true, false);
+        }
+
+        /// <summary>Adds an item; true when it was clicked (the frame after the click).</summary>
+        public static bool Item(string label, bool enabled, bool selected = false)
+        {
+            _items.Add(new Entry
+            {
+                kind = EntryKind.Item,
+                label = label ?? string.Empty,
+                enabled = enabled,
+                selected = selected
+            });
+
             int index = _items.Count;
             ref int pending = ref NowControlState.Get<int>(_activeId, "ctx-pending");
 
             if (pending == index)
             {
                 pending = 0;
-                return true;
+                return enabled;
             }
 
             return false;
+        }
+
+        /// <summary>Adds a non-interactive label row.</summary>
+        public static void Label(string label)
+        {
+            _items.Add(new Entry
+            {
+                kind = EntryKind.Label,
+                label = label ?? string.Empty,
+                enabled = false,
+                selected = false
+            });
+        }
+
+        /// <summary>Adds a separator row.</summary>
+        public static void Separator()
+        {
+            _items.Add(new Entry
+            {
+                kind = EntryKind.Separator,
+                label = string.Empty,
+                enabled = false,
+                selected = false
+            });
         }
 
         public static void End()
@@ -113,14 +165,23 @@ namespace NowUI
             float itemHeight = styles.contextMenuItemHeight;
             float popupPadding = styles.popupPadding;
 
+            float height = popupPadding * 2f;
+
             for (int i = 0; i < _items.Count; ++i)
-                width = Mathf.Max(width, textStyle.Measure(_items[i]).x + paddingX * 2f);
+            {
+                var item = _items[i];
+
+                if (item.kind != EntryKind.Separator)
+                    width = Mathf.Max(width, textStyle.Measure(item.label).x + paddingX * 2f);
+
+                height += EntryHeight(item, itemHeight);
+            }
 
             popupRect = new NowRect(
                 _position.x,
                 _position.y,
                 width,
-                _items.Count * itemHeight + popupPadding * 2f);
+                height);
 
             if (_fitToView)
                 popupRect = NowOverlay.FitScreenToView(popupRect);
@@ -148,27 +209,20 @@ namespace NowUI
 
             theme.controlRenderer.DrawPopupBackground(theme, popupRect, menu: true);
 
+            float y = popupRect.y + popupPadding;
+
             for (int i = 0; i < _items.Count; ++i)
             {
+                var item = _items[i];
+                float height = EntryHeight(item, itemHeight);
                 var itemRect = new NowRect(
                     popupRect.x + popupPadding,
-                    popupRect.y + popupPadding + i * itemHeight,
+                    y,
                     popupRect.width - popupPadding * 2f,
-                    itemHeight);
-                var interaction = NowInput.Interact(NowInput.CombineId(pendingId, i + 1), itemRect);
+                    height);
 
-                theme.controlRenderer.DrawContextMenuItem(new NowPopupItemRenderContext(
-                    theme,
-                    itemRect,
-                    _items[i],
-                    false,
-                    interaction));
-
-                if (interaction.clicked)
-                {
-                    NowControlState.Get<int>(pendingId) = i + 1;
-                    Close();
-                }
+                DrawEntry(theme, pendingId, i, item, itemRect);
+                y += height;
             }
 
             var snapshot = NowInput.current;
@@ -181,6 +235,86 @@ namespace NowUI
             {
                 Close();
             }
+        }
+
+        static void DrawEntry(NowThemeAsset theme, int pendingId, int index, Entry item, NowRect itemRect)
+        {
+            if (item.kind == EntryKind.Separator)
+            {
+                Color border = theme.GetColor(NowColorToken.Border, Color.gray);
+                border.a *= 0.72f;
+
+                Now.Rectangle(new NowRect(
+                        itemRect.x + theme.controlStyles.contextMenuPaddingX * 0.5f,
+                        itemRect.y + itemRect.height * 0.5f,
+                        Mathf.Max(0f, itemRect.width - theme.controlStyles.contextMenuPaddingX),
+                        1f))
+                    .SetColor(border)
+                    .Draw();
+
+                return;
+            }
+
+            if (item.kind == EntryKind.Label)
+            {
+                NowControls.DrawLeftLabel(
+                    theme,
+                    itemRect.Inset(theme.controlStyles.contextMenuPaddingX * 0.7f, 0f, 4f, 0f),
+                    item.label,
+                    NowTextStyle.Muted);
+
+                return;
+            }
+
+            var interaction = item.enabled
+                ? NowInput.Interact(NowInput.CombineId(pendingId, index + 1), itemRect)
+                : default;
+
+            if (item.selected)
+            {
+                var accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+
+                Now.Rectangle(new NowRect(itemRect.x + 3f, itemRect.y + 5f, 3f, Mathf.Max(0f, itemRect.height - 10f)))
+                    .SetColor(accent)
+                    .SetRadius(2f)
+                    .Draw();
+            }
+
+            if (item.enabled)
+            {
+                theme.controlRenderer.DrawContextMenuItem(new NowPopupItemRenderContext(
+                    theme,
+                    itemRect,
+                    item.label,
+                    item.selected,
+                    interaction));
+            }
+            else
+            {
+                Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+                muted.a *= 0.62f;
+
+                NowControls.DrawLeftLabel(
+                    theme,
+                    itemRect.Inset(theme.controlStyles.contextMenuPaddingX * 0.7f, 0f, 4f, 0f),
+                    item.label,
+                    NowTextStyle.Body,
+                    muted);
+            }
+
+            if (interaction.clicked && item.enabled)
+            {
+                NowControlState.Get<int>(pendingId) = index + 1;
+                Close();
+            }
+        }
+
+        static float EntryHeight(Entry item, float itemHeight)
+        {
+            if (item.kind == EntryKind.Separator)
+                return Mathf.Max(6f, itemHeight * 0.35f);
+
+            return itemHeight;
         }
 
         public static void Reset()

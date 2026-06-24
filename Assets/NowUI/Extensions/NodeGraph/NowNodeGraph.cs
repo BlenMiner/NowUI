@@ -1287,7 +1287,14 @@ namespace NowUI.NodeGraph
         public bool undo;
         public bool redo;
         public bool dragSelected;
+        public bool focused;
+        public bool hovered;
+        public bool hasPointer;
+        public Vector2 pointerPosition;
+        public Vector2 pointerGraphPosition;
         public bool contextMenuOpened;
+        public Vector2 contextMenuPosition;
+        public Vector2 contextMenuGraphPosition;
         public string selectedNodeId;
         public NowNodeLink createdLink;
         public NowNodeLink removedLink;
@@ -1777,7 +1784,7 @@ namespace NowUI.NodeGraph
 
             if (undoRedo && history != null)
             {
-                if (NowContextMenu.Item(undoLabel) && history.Undo(graph))
+                if (NowContextMenu.Item(undoLabel, history.canUndo) && history.Undo(graph))
                 {
                     result.changed = true;
                     result.undo = true;
@@ -1785,7 +1792,7 @@ namespace NowUI.NodeGraph
                     changed = true;
                 }
 
-                if (NowContextMenu.Item(redoLabel) && history.Redo(graph))
+                if (NowContextMenu.Item(redoLabel, history.canRedo) && history.Redo(graph))
                 {
                     result.changed = true;
                     result.redo = true;
@@ -1794,7 +1801,7 @@ namespace NowUI.NodeGraph
                 }
             }
 
-            if (deleteSelection && NowContextMenu.Item(deleteSelectionLabel))
+            if (deleteSelection && NowContextMenu.Item(deleteSelectionLabel, graph.SelectedNodeCount() > 0))
             {
                 if (graph.SelectedNodeCount() > 0)
                 {
@@ -1810,6 +1817,9 @@ namespace NowUI.NodeGraph
                     }
                 }
             }
+
+            if (drawCustomItems != null && (undoRedo || deleteSelection))
+                NowContextMenu.Separator();
 
             if (drawCustomItems != null && drawCustomItems(graph, history))
             {
@@ -2069,6 +2079,11 @@ namespace NowUI.NodeGraph
 
             int focusId = NowInput.GetId(id, "focus");
             RegisterCanvasFocus(focusId);
+            result.focused = NowFocus.IsFocused(focusId);
+            result.hovered = NowInput.IsHovered(_rect);
+            result.hasPointer = NowInput.current.hasPointer;
+            result.pointerPosition = NowInput.current.pointerPosition;
+            result.pointerGraphPosition = ScreenToGraph(result.pointerPosition, _rect, state);
             HandleKeyboardShortcuts(focusId, history, ref result);
             HandleCanvasNavigation(id, ref state, style, ref result);
 
@@ -2205,13 +2220,15 @@ namespace NowUI.NodeGraph
             NowNodeGraphContextMenu contextMenu,
             ref NowNodeGraphResult result)
         {
+            int pointerNodeIndex = -1;
+            bool pointerOverPort = false;
             bool pointerOverNodeOrPort = false;
 
             if (NowInput.current.hasPointer)
             {
-                pointerOverNodeOrPort =
-                    FindPortAt(NowInput.current.pointerPosition, state, style, out _) ||
-                    FindNodeAt(NowInput.current.pointerPosition, state, style) >= 0;
+                pointerOverPort = FindPortAt(NowInput.current.pointerPosition, state, style, out _);
+                pointerNodeIndex = FindNodeAt(NowInput.current.pointerPosition, state, style);
+                pointerOverNodeOrPort = pointerOverPort || pointerNodeIndex >= 0;
             }
 
             for (int n = _graph.nodes.Count - 1; n >= 0; --n)
@@ -2227,8 +2244,8 @@ namespace NowUI.NodeGraph
                 var titleRect = NodeTitleScreenRect(node, _rect, state, style);
                 var nodeInteraction = NowInput.Interact(NodeControlId(id, n, node), titleRect);
 
-                if (nodeInteraction.pressed && !_graph.IsNodeSelected(node.id))
-                    SelectNode(node.id, ref result);
+                if (nodeInteraction.pressed)
+                    SelectNodeFromPointer(node.id, ref result);
 
                 if (nodeInteraction.dragging)
                 {
@@ -2285,8 +2302,17 @@ namespace NowUI.NodeGraph
 
                 if (menuInteraction.clicked && state.linkActive == 0)
                 {
+                    if (!pointerOverPort && pointerNodeIndex >= 0)
+                    {
+                        var node = _graph.nodes[pointerNodeIndex];
+                        if (node != null && !_graph.IsNodeSelected(node.id))
+                            SelectNode(node.id, ref result);
+                    }
+
                     NowContextMenu.Open(menuId, menuInteraction.pointerPosition);
                     result.contextMenuOpened = true;
+                    result.contextMenuPosition = menuInteraction.pointerPosition;
+                    result.contextMenuGraphPosition = ScreenToGraph(menuInteraction.pointerPosition, _rect, state);
                     NowControlState.RequestRepaint();
                 }
             }
@@ -2422,6 +2448,36 @@ namespace NowUI.NodeGraph
             string previous = _graph.selectedNodeId;
             int previousCount = _graph.SelectedNodeCount();
             _graph.SelectNode(nodeId);
+
+            if (previous != _graph.selectedNodeId || previousCount != _graph.SelectedNodeCount())
+            {
+                result.changed = true;
+                result.selectionChanged = true;
+                NowControlState.RequestRepaint();
+            }
+        }
+
+        void SelectNodeFromPointer(string nodeId, ref NowNodeGraphResult result)
+        {
+            var frame = NowTextInput.current;
+            bool toggle = frame.command;
+            bool additive = frame.shift;
+
+            if (!toggle && !additive)
+            {
+                if (!_graph.IsNodeSelected(nodeId))
+                    SelectNode(nodeId, ref result);
+
+                return;
+            }
+
+            string previous = _graph.selectedNodeId;
+            int previousCount = _graph.SelectedNodeCount();
+
+            if (toggle && _graph.IsNodeSelected(nodeId))
+                _graph.SetNodeSelected(nodeId, false);
+            else
+                _graph.AddNodeToSelection(nodeId);
 
             if (previous != _graph.selectedNodeId || previousCount != _graph.SelectedNodeCount())
             {
