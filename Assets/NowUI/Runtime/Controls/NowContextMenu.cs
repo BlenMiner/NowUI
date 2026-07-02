@@ -370,7 +370,7 @@ namespace NowUI
         {
             if (entry.kind == EntryKind.Separator)
             {
-                Color border = theme.GetColor(NowColorToken.Border, Color.gray);
+                Color border = theme.GetColor(NowColorToken.Border);
                 border.a *= 0.72f;
 
                 Now.Rectangle(new NowRect(
@@ -403,7 +403,7 @@ namespace NowUI
 
             if (entry.selected)
             {
-                var accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+                var accent = theme.GetColor(NowColorToken.Accent);
 
                 Now.Rectangle(new NowRect(itemRect.x + 3f, itemRect.y + 5f, 3f, Mathf.Max(0f, itemRect.height - 10f)))
                     .SetColor(accent)
@@ -423,7 +423,7 @@ namespace NowUI
             }
             else
             {
-                Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+                Color muted = theme.GetColor(NowColorToken.TextMuted);
                 muted.a *= 0.62f;
 
                 NowControls.DrawLeftLabel(

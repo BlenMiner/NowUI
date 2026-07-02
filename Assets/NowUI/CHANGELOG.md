@@ -7,6 +7,29 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Full visual redesign of the default theme.** New slate-neutral light and
+  dark palettes (WCAG-contrast checked), a typographic scale
+  (`Display`/`Heading`/`Subheading`/`BodyStrong`/`Label`/`Caption` join the
+  existing text styles, with per-preset font weight), retuned spacing/radius
+  scales, and a two-layer elevation shadow system
+  (`NowElevationToken.Raised/Overlay/Modal`). The default control renderer
+  absorbs the former HeroUI polish: soft shadows, line-drawn chevrons and
+  check marks, offset focus rings, pressed scale, and token-driven
+  hover/pressed states that stay visible on dark surfaces.
+- `NowColorToken` grows from 8 to 27 roles: surface/accent state variants,
+  `SurfaceElevated`, `BorderStrong`, `FocusRing`, `Success`/`Warning`/`Danger`
+  triads, `Shadow` and `Scrim`. Themes authored against the old 8 colors keep
+  working — missing roles derive automatically on load, and
+  `NowThemeAsset.MigrateDerivedRoles()`/`RegenerateDerivedRoles()` bake them.
+  Color lookups now hit a flat cache instead of a switch.
+- `NowRectangleStyle` gains `Elevated`, `AccentSoft`, `Danger`, `Ghost`.
+- Built-in themes are now `Default`/`DefaultDark` and
+  `Material`/`MaterialDark`, cross-linked as light/dark counterparts;
+  `NowTheme.preferDark = systemDarkMode` switches the whole UI. The theme
+  generator writes the full extended role set.
+- Wheel scrolling a text area now works over its padding, not just the inner
+  text rect.
+
 - Input internals reorganized into `Runtime/Input/`: providers
   (`NowScreenInputProvider`, `NowIMGUIInputProvider`,
   `NowRectTransformInputProvider`, `NowWorldInputProvider`,
@@ -22,6 +45,11 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- `NowControls.StateTint` (brightness-multiplier hover/press states —
+  invisible on dark surfaces). Use `NowControls.StateColor` or the explicit
+  `SurfaceHover`/`AccentHover`/`*Pressed` tokens.
+- `NowHeroUIControlRenderer` and the `White`/`Dark`/`Night`/`HeroUI`/
+  `HeroUIDark` theme assets: the HeroUI look is now the built-in default.
 - Legacy Input Manager fallback. The Input System package has always been a
   hard dependency of NowUI; the dead `ENABLE_LEGACY_INPUT_MANAGER` code path
   (used only when the Input System reported zero devices) is gone. Projects

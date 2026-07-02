@@ -483,7 +483,7 @@ namespace NowUI
                 .SetColor(value)
                 .SetRadius(3f)
                 .SetOutline(1f)
-                .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(theme.GetColor(NowColorToken.Border))
                 .Draw();
 
             float labelX = swatch.xMax + 7f;
@@ -986,8 +986,8 @@ namespace NowUI
         static void DrawChecker(NowRect rect, float cellSize, NowThemeAsset theme)
         {
             cellSize = Mathf.Max(2f, cellSize);
-            Color a = theme.GetColor(NowColorToken.Surface, Color.white);
-            Color b = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.8f, 0.8f, 0.8f, 1f));
+            Color a = theme.GetColor(NowColorToken.Surface);
+            Color b = theme.GetColor(NowColorToken.SurfaceMuted);
             int columns = Mathf.CeilToInt(rect.width / cellSize);
             int rows = Mathf.CeilToInt(rect.height / cellSize);
 
@@ -1599,16 +1599,16 @@ namespace NowUI
 
         static void DrawRampLabel(NowThemeAsset theme, NowRect rect, string label, bool selected)
         {
-            var background = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.9f, 0.9f, 0.9f, 1f));
+            var background = theme.GetColor(NowColorToken.SurfaceMuted);
 
             if (selected)
-                background = Color.Lerp(background, theme.GetColor(NowColorToken.Accent, Color.blue), 0.16f);
+                background = Color.Lerp(background, theme.GetColor(NowColorToken.Accent), 0.16f);
 
             Now.Rectangle(rect)
                 .SetColor(background)
                 .SetRadius(3f)
                 .SetOutline(selected ? 1f : 0f)
-                .SetOutlineColor(theme.GetColor(NowColorToken.Accent, Color.blue))
+                .SetOutlineColor(theme.GetColor(NowColorToken.Accent))
                 .Draw();
 
             NowControls.DrawCenteredLabel(
@@ -1835,7 +1835,7 @@ namespace NowUI
         static void DrawKeyEditorBackground(NowThemeAsset theme, NowRect rect)
         {
             Now.Rectangle(rect)
-                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.9f, 0.9f, 0.9f, 1f)))
+                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted))
                 .SetRadius(4f)
                 .Draw();
         }
@@ -1845,7 +1845,7 @@ namespace NowUI
             Now.Rectangle(rect)
                 .SetColor(Color.clear)
                 .SetOutline(1f)
-                .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(theme.GetColor(NowColorToken.Border))
                 .SetRadius(4f)
                 .Draw();
             NowControls.DrawLeftLabel(
@@ -1929,7 +1929,7 @@ namespace NowUI
             Now.Rectangle(rect)
                 .SetColor(Color.clear)
                 .SetOutline(1f)
-                .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(theme.GetColor(NowColorToken.Border))
                 .SetRadius(3f)
                 .Draw();
         }
@@ -2088,8 +2088,8 @@ namespace NowUI
         static void DrawChecker(NowRect rect, float cellSize, NowThemeAsset theme)
         {
             cellSize = Mathf.Max(2f, cellSize);
-            Color a = theme.GetColor(NowColorToken.Surface, Color.white);
-            Color b = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.8f, 0.8f, 0.8f, 1f));
+            Color a = theme.GetColor(NowColorToken.Surface);
+            Color b = theme.GetColor(NowColorToken.SurfaceMuted);
             int columns = Mathf.CeilToInt(rect.width / cellSize);
             int rows = Mathf.CeilToInt(rect.height / cellSize);
 
@@ -2114,7 +2114,7 @@ namespace NowUI
         {
             if (selected)
             {
-                Color halo = theme.GetColor(NowColorToken.Accent, Color.blue);
+                Color halo = theme.GetColor(NowColorToken.Accent);
                 halo.a *= 0.18f;
                 Now.Rectangle(rect.Outset(3f))
                     .SetColor(halo)
@@ -2127,7 +2127,7 @@ namespace NowUI
                 .SetColor(color)
                 .SetRadius(3f)
                 .SetOutline(selected ? 2f : 1f)
-                .SetOutlineColor(selected ? theme.GetColor(NowColorToken.Accent, Color.blue) : theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(selected ? theme.GetColor(NowColorToken.Accent) : theme.GetColor(NowColorToken.Border))
                 .Draw();
         }
 
@@ -2787,7 +2787,7 @@ namespace NowUI
             var rect = state.inspectorRect;
 
             Now.Rectangle(rect)
-                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.9f, 0.9f, 0.9f, 1f)))
+                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted))
                 .SetRadius(4f)
                 .Draw();
 
@@ -2873,7 +2873,7 @@ namespace NowUI
                 Now.Rectangle(deleteRect)
                     .SetColor(Color.clear)
                     .SetOutline(1f)
-                    .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
+                    .SetOutlineColor(theme.GetColor(NowColorToken.Border))
                     .SetRadius(4f)
                     .Draw();
                 NowControls.DrawCenteredLabel(theme, deleteRect, DeleteGlyph, NowTextStyle.Muted, deleteRect);
@@ -3072,11 +3072,11 @@ namespace NowUI
         static void DrawGrid(NowRect rect, CurveBounds bounds, NowThemeAsset theme)
         {
             Now.Rectangle(rect)
-                .SetColor(theme.GetColor(NowColorToken.Surface, Color.white))
+                .SetColor(theme.GetColor(NowColorToken.Surface))
                 .SetRadius(4f)
                 .Draw();
 
-            Color grid = theme.GetColor(NowColorToken.Border, Color.gray);
+            Color grid = theme.GetColor(NowColorToken.Border);
             grid.a *= 0.38f;
 
             for (int i = 1; i < 6; ++i)
@@ -3087,7 +3087,7 @@ namespace NowUI
                 Now.Line(new Vector2(rect.x, y), new Vector2(rect.xMax, y)).SetColor(grid).SetWidth(1f).Draw();
             }
 
-            Color axis = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+            Color axis = theme.GetColor(NowColorToken.TextMuted);
             axis.a *= 0.55f;
 
             if (bounds.timeMin < 0f && bounds.timeMax > 0f)
@@ -3105,14 +3105,14 @@ namespace NowUI
             Now.Rectangle(rect)
                 .SetColor(Color.clear)
                 .SetOutline(1f)
-                .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(theme.GetColor(NowColorToken.Border))
                 .Draw();
         }
 
         static void DrawSelectedKeyGuides(NowRect plot, CurveBounds bounds, Keyframe key, NowThemeAsset theme)
         {
             var point = CurvePoint(plot, bounds, key.time, key.value);
-            Color guide = theme.GetColor(NowColorToken.Accent, Color.blue);
+            Color guide = theme.GetColor(NowColorToken.Accent);
             guide.a *= 0.32f;
 
             Now.Line(new Vector2(point.x, plot.y), new Vector2(point.x, plot.yMax))
@@ -3143,7 +3143,7 @@ namespace NowUI
                 return;
 
             var keyPoint = CurvePoint(plot, bounds, keys[selected].time, keys[selected].value);
-            Color color = theme.GetColor(NowColorToken.Accent, Color.blue);
+            Color color = theme.GetColor(NowColorToken.Accent);
             Color handleColor = color;
             handleColor.a = Mathf.Clamp01(handleColor.a * 0.92f);
 
@@ -3156,7 +3156,7 @@ namespace NowUI
             var rect = new NowRect(handle.x - size * 0.5f, handle.y - size * 0.5f, size, size);
 
             Now.Rectangle(rect)
-                .SetColor(theme.GetColor(NowColorToken.Surface, Color.white))
+                .SetColor(theme.GetColor(NowColorToken.Surface))
                 .SetRadius(size * 0.5f)
                 .SetOutline(1.5f)
                 .SetOutlineColor(color)
@@ -3176,7 +3176,7 @@ namespace NowUI
             PreviewCurve.keys = keys;
             PreviewCurve.preWrapMode = preWrapMode;
             PreviewCurve.postWrapMode = postWrapMode;
-            Color color = theme.GetColor(NowColorToken.Accent, Color.blue);
+            Color color = theme.GetColor(NowColorToken.Accent);
             int samples = Mathf.Clamp(settings.samples, 8, 128);
 
             if (keys == null || keys.Length == 0)
@@ -3317,10 +3317,10 @@ namespace NowUI
         static void DrawKey(NowRect rect, bool selected, NowThemeAsset theme)
         {
             Now.Rectangle(rect)
-                .SetColor(theme.GetColor(NowColorToken.Surface, Color.white))
+                .SetColor(theme.GetColor(NowColorToken.Surface))
                 .SetRadius(rect.width * 0.5f)
                 .SetOutline(selected ? 2f : 1f)
-                .SetOutlineColor(selected ? theme.GetColor(NowColorToken.Accent, Color.blue) : theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(selected ? theme.GetColor(NowColorToken.Accent) : theme.GetColor(NowColorToken.Border))
                 .Draw();
         }
 
@@ -4343,7 +4343,7 @@ namespace NowUI
             float halfSize = size * 0.5f;
             Vector2 center = new Vector2(rect.x + rect.width * 0.5f, rect.y + rect.height * 0.5f);
             float offset = halfSize * 0.35f;
-            Color color = theme.GetColor(NowColorToken.TextMuted, new Color(0.6f, 0.6f, 0.6f, 1f));
+            Color color = theme.GetColor(NowColorToken.TextMuted);
 
             Vector2 a, b, c;
             if (open)

@@ -368,7 +368,7 @@ namespace NowUI
 
             if (interaction.hovered && maxScroll > 0f && WouldWheelMove(area.scrollY, maxScroll, pendingWheel, lineHeight))
             {
-                float wheel = NowInput.ConsumeScrollDelta(inner).y;
+                float wheel = NowInput.ConsumeScrollDelta(rect).y;
 
                 if (wheel != 0f)
                 {

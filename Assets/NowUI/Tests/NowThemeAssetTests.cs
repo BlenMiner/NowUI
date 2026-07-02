@@ -14,9 +14,9 @@ public class NowThemeAssetTests
         try
         {
             Assert.IsTrue(theme.TryGetColor(NowColorToken.Accent, out var accent));
-            Assert.AreEqual(0.102f, accent.r, 0.0001f);
-            Assert.AreEqual(0.451f, accent.g, 0.0001f);
-            Assert.AreEqual(0.910f, accent.b, 0.0001f);
+            Assert.AreEqual(0.145f, accent.r, 0.0001f);
+            Assert.AreEqual(0.388f, accent.g, 0.0001f);
+            Assert.AreEqual(0.922f, accent.b, 0.0001f);
         }
         finally
         {
@@ -90,10 +90,10 @@ public class NowThemeAssetTests
             NowRectangle rectangle = theme.Rectangle(new Vector4(4, 8, 100, 40), NowRectangleStyle.Accent);
 
             Assert.AreEqual(new NowRect(4, 8, 100, 40), rectangle.rect);
-            Assert.AreEqual(0.102f, rectangle.color.x, 0.0001f);
-            Assert.AreEqual(0.451f, rectangle.color.y, 0.0001f);
-            Assert.AreEqual(0.910f, rectangle.color.z, 0.0001f);
-            Assert.AreEqual(new Vector4(8, 8, 8, 8), rectangle.radius);
+            Assert.AreEqual(0.145f, rectangle.color.x, 0.0001f);
+            Assert.AreEqual(0.388f, rectangle.color.y, 0.0001f);
+            Assert.AreEqual(0.922f, rectangle.color.z, 0.0001f);
+            Assert.AreEqual(new Vector4(10, 10, 10, 10), rectangle.radius);
         }
         finally
         {
@@ -112,8 +112,9 @@ public class NowThemeAssetTests
             NowText text = theme.Text(new Vector4(0, 0, 100, 24), font, NowTextStyle.Button);
 
             Assert.AreSame(font, text.font);
-            Assert.AreEqual(14, text.fontSize, 0.0001f);
+            Assert.AreEqual(15, text.fontSize, 0.0001f);
             Assert.AreEqual(Color.white, (Color)text.color);
+            Assert.AreEqual(NowFontStyle.Bold, text.fontStyle);
         }
         finally
         {
@@ -125,7 +126,7 @@ public class NowThemeAssetTests
     [Test]
     public void DarkThemeAssetProvidesBuiltInTokens()
     {
-        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/Dark.asset");
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/DefaultDark.asset");
 
         Assert.IsNotNull(theme);
         Assert.IsTrue(theme.TryGetColor(NowColorToken.Background, out var background));
@@ -204,62 +205,142 @@ public class NowThemeAssetTests
     }
 
     [Test]
-    public void HeroUIThemeAssetUsesHeroUIRendererAndDefaults()
+    public void DefaultThemeAssetMatchesCodeDefaultsAndLinksDarkCounterpart()
     {
-        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/HeroUI.asset");
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/Default.asset");
 
         Assert.IsNotNull(theme);
-        Assert.IsInstanceOf<NowHeroUIControlRenderer>(theme.controlRenderer);
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Background, out var background));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Text, out var text));
+        Assert.IsFalse(theme.isDark);
+        Assert.IsNotNull(theme.counterpart);
+        Assert.IsTrue(theme.counterpart.isDark);
+        Assert.AreSame(theme, theme.counterpart.counterpart);
         Assert.IsTrue(theme.TryGetColor(NowColorToken.Accent, out var accent));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.AccentText, out var accentText));
-        Assert.AreEqual(0.960849f, background.r, 0.0001f);
-        Assert.AreEqual(0.094084f, text.r, 0.0001f);
-        Assert.AreEqual(0f, accent.r, 0.0001f);
-        Assert.AreEqual(0.43529412f, accent.g, 0.0001f);
-        Assert.AreEqual(0.93333334f, accent.b, 0.0001f);
-        Assert.Greater(accentText.r, 0.98f);
-        Assert.AreEqual(40f, theme.controlStyles.buttonMinHeight, 0.0001f);
-        Assert.AreEqual(40f, theme.controlStyles.textFieldMinHeight, 0.0001f);
-        Assert.AreEqual(36f, theme.controlStyles.dropdownFieldMinHeight, 0.0001f);
-        Assert.AreEqual(40f, theme.controlStyles.dropdownItemHeight, 0.0001f);
-        Assert.AreEqual(18f, theme.controlStyles.sliderKnobSize, 0.0001f);
-        Assert.AreEqual(36f, theme.controlStyles.toggleStateLayerSize, 0.0001f);
-        Assert.AreEqual(36f, theme.controlStyles.sliderStateLayerSize, 0.0001f);
-        Assert.AreEqual(new Vector4(12f, 12f, 12f, 12f), theme.controlStyles.buttonRadius.Resolve(theme));
-        Assert.AreEqual(new Vector4(12f, 12f, 12f, 12f), theme.controlStyles.fieldRadius.Resolve(theme));
-        Assert.AreEqual(new Vector4(12f, 12f, 12f, 12f), theme.controlStyles.popupRadius.Resolve(theme));
-        Assert.AreEqual(40f, theme.controlRenderer.MeasureButton(theme, string.Empty, NowTextStyle.Button).y, 0.0001f);
-        Assert.AreEqual(40f, theme.controlRenderer.MeasureTextField(theme, 20f).y, 0.0001f);
-        Assert.AreEqual(36f, theme.controlRenderer.MeasureDropdownField(theme, 20f).y, 0.0001f);
+        Assert.AreEqual(0.145f, accent.r, 0.0001f);
+        Assert.AreEqual(0.388f, accent.g, 0.0001f);
+        Assert.AreEqual(0.922f, accent.b, 0.0001f);
     }
 
     [Test]
-    public void HeroUIDarkThemeAssetUsesHeroUIRendererAndDarkRoles()
+    public void EveryColorTokenResolvesInBothDefaultPalettes()
     {
-        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/HeroUIDark.asset");
+        foreach (var palette in new[] { NowThemeColorSet.DefaultLight, NowThemeColorSet.DefaultDark })
+        {
+            for (int i = 0; i < NowThemeColorSet.TokenCount; ++i)
+            {
+                Assert.IsTrue(palette.TryGet((NowColorToken)i, out var color), ((NowColorToken)i).ToString());
+                Assert.Greater(color.a, 0f, ((NowColorToken)i).ToString());
+            }
+        }
+    }
 
-        Assert.IsNotNull(theme);
-        Assert.IsInstanceOf<NowHeroUIControlRenderer>(theme.controlRenderer);
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Background, out var background));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Text, out var text));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.Accent, out var accent));
-        Assert.IsTrue(theme.TryGetColor(NowColorToken.AccentText, out var accentText));
-        Assert.Less(background.r, 0.05f);
-        Assert.Less(background.g, 0.05f);
-        Assert.Less(background.b, 0.05f);
-        Assert.Greater(text.r, 0.98f);
-        Assert.AreEqual(0.2f, accent.r, 0.0001f);
-        Assert.AreEqual(0.5568628f, accent.g, 0.0001f);
-        Assert.AreEqual(0.96862745f, accent.b, 0.0001f);
-        Assert.Less(accentText.r, 0.1f);
-        Assert.AreEqual(40f, theme.controlStyles.buttonMinHeight, 0.0001f);
-        Assert.AreEqual(40f, theme.controlStyles.textFieldMinHeight, 0.0001f);
-        Assert.AreEqual(36f, theme.controlStyles.dropdownFieldMinHeight, 0.0001f);
-        Assert.AreEqual(new Vector4(12f, 12f, 12f, 12f), theme.controlStyles.buttonRadius.Resolve(theme));
-        Assert.AreEqual(new Vector4(12f, 12f, 12f, 12f), theme.controlStyles.fieldRadius.Resolve(theme));
-        Assert.AreEqual(36f, theme.controlRenderer.MeasureDropdownField(theme, 20f).y, 0.0001f);
+    [Test]
+    public void DefaultPalettesMeetContrastMinimums()
+    {
+        AssertContrast(NowThemeColorSet.DefaultLight, dark: false);
+        AssertContrast(NowThemeColorSet.DefaultDark, dark: true);
+    }
+
+    static void AssertContrast(NowThemeColorSet palette, bool dark)
+    {
+        string mode = dark ? "dark" : "light";
+        Assert.GreaterOrEqual(ContrastRatio(palette.text, palette.background), 7f, $"{mode}: Text on Background");
+        Assert.GreaterOrEqual(ContrastRatio(palette.textMuted, palette.surface), 4.5f, $"{mode}: TextMuted on Surface");
+        Assert.GreaterOrEqual(ContrastRatio(palette.accentText, palette.accent), 4.5f, $"{mode}: AccentText on Accent");
+        Assert.GreaterOrEqual(ContrastRatio(palette.successText, palette.success), 4.5f, $"{mode}: SuccessText on Success");
+        Assert.GreaterOrEqual(ContrastRatio(palette.warningText, palette.warning), 4.5f, $"{mode}: WarningText on Warning");
+        Assert.GreaterOrEqual(ContrastRatio(palette.dangerText, palette.danger), 4.5f, $"{mode}: DangerText on Danger");
+    }
+
+    static float ContrastRatio(Color a, Color b)
+    {
+        float lighter = Mathf.Max(RelativeLuminance(a), RelativeLuminance(b));
+        float darker = Mathf.Min(RelativeLuminance(a), RelativeLuminance(b));
+        return (lighter + 0.05f) / (darker + 0.05f);
+    }
+
+    static float RelativeLuminance(Color color)
+    {
+        return LinearChannel(color.r) * 0.2126f + LinearChannel(color.g) * 0.7152f + LinearChannel(color.b) * 0.0722f;
+    }
+
+    static float LinearChannel(float value)
+    {
+        return value <= 0.03928f ? value / 12.92f : Mathf.Pow((value + 0.055f) / 1.055f, 2.4f);
+    }
+
+    [Test]
+    public void LegacyPaletteDerivesExtendedRoles()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+
+        try
+        {
+            var serialized = new SerializedObject(theme);
+            var palette = serialized.FindProperty("_palette");
+
+            foreach (string field in new[]
+            {
+                "_surfaceElevated", "_surfaceHover", "_surfacePressed", "_accentHover", "_accentPressed",
+                "_accentMuted", "_borderStrong", "_focusRing", "_success", "_successText", "_successMuted",
+                "_warning", "_warningText", "_warningMuted", "_danger", "_dangerText", "_dangerMuted",
+                "_shadow", "_scrim"
+            })
+            {
+                palette.FindPropertyRelative(field).colorValue = default;
+            }
+
+            serialized.ApplyModifiedProperties();
+            theme.MigrateDerivedRoles();
+
+            for (int i = 0; i < NowThemeColorSet.TokenCount; ++i)
+            {
+                Assert.IsTrue(theme.TryGetColor((NowColorToken)i, out var color), ((NowColorToken)i).ToString());
+                Assert.Greater(color.a, 0f, ((NowColorToken)i).ToString());
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void PreferDarkSwapsToLinkedCounterpart()
+    {
+        var light = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var dark = ScriptableObject.CreateInstance<NowThemeAsset>();
+
+        try
+        {
+            dark.ResetToDefaults(dark: true);
+            light.SetCounterpart(dark);
+            dark.SetCounterpart(light);
+
+            using (NowTheme.Scope(light))
+            {
+                Assert.AreSame(light, NowTheme.themeAsset);
+                NowTheme.preferDark = true;
+                Assert.AreSame(dark, NowTheme.themeAsset);
+                NowTheme.preferDark = false;
+                Assert.AreSame(light, NowTheme.themeAsset);
+                NowTheme.preferDark = null;
+                Assert.AreSame(light, NowTheme.themeAsset);
+            }
+
+            using (NowTheme.Scope(dark))
+            {
+                Assert.AreSame(dark, NowTheme.themeAsset, "Unset preferDark must respect an explicitly scoped dark theme.");
+                NowTheme.preferDark = false;
+                Assert.AreSame(light, NowTheme.themeAsset);
+                NowTheme.preferDark = null;
+            }
+        }
+        finally
+        {
+            NowTheme.Reset();
+            Object.DestroyImmediate(light);
+            Object.DestroyImmediate(dark);
+        }
     }
 
     [Test]
@@ -311,7 +392,7 @@ public class NowThemeAssetTests
     }
 
     [Test]
-    public void DefaultControlStylesPreserveLegacyMetrics()
+    public void DefaultControlStylesMatchRedesignMetrics()
     {
         var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
 
@@ -319,22 +400,24 @@ public class NowThemeAssetTests
         {
             var styles = theme.controlStyles;
 
-            Assert.AreEqual(new Vector4(12f, 12f, 12f, 12f), styles.buttonPadding);
+            Assert.AreEqual(new Vector4(14f, 10f, 14f, 10f), styles.buttonPadding);
             Assert.AreEqual(18f, styles.toggleSize, 0.0001f);
             Assert.AreEqual(8f, styles.toggleGap, 0.0001f);
             Assert.AreEqual(20f, styles.sliderHeight, 0.0001f);
-            Assert.AreEqual(16f, styles.sliderKnobSize, 0.0001f);
+            Assert.AreEqual(18f, styles.sliderKnobSize, 0.0001f);
             Assert.AreEqual(6f, styles.sliderTrackThickness, 0.0001f);
-            Assert.AreEqual(0f, styles.dropdownFieldMinHeight, 0.0001f);
-            Assert.AreEqual(30f, styles.dropdownItemHeight, 0.0001f);
-            Assert.AreEqual(26f, styles.contextMenuItemHeight, 0.0001f);
+            Assert.AreEqual(36f, styles.dropdownFieldMinHeight, 0.0001f);
+            Assert.AreEqual(32f, styles.dropdownItemHeight, 0.0001f);
+            Assert.AreEqual(28f, styles.contextMenuItemHeight, 0.0001f);
             Assert.AreEqual(8f, styles.scrollbarWidth, 0.0001f);
+            Assert.AreEqual(44f, styles.controlMinTouchTarget, 0.0001f);
+            Assert.AreEqual(0.45f, styles.disabledOpacity, 0.0001f);
 
             var renderer = theme.controlRenderer;
-            Assert.AreEqual(new Vector2(24f, 12f), renderer.MeasureButton(theme, string.Empty, NowTextStyle.Button));
+            Assert.AreEqual(new Vector2(28f, 36f), renderer.MeasureButton(theme, string.Empty, NowTextStyle.Button));
             Assert.AreEqual(new Vector2(26f, 18f), renderer.MeasureToggle(theme, string.Empty, NowTextStyle.Body));
             Assert.AreEqual(new Vector2(160f, 20f), renderer.MeasureSlider(theme));
-            Assert.AreEqual(new Vector2(200f, 32f), renderer.MeasureTextField(theme, 20f));
+            Assert.AreEqual(new Vector2(200f, 36f), renderer.MeasureTextField(theme, 20f));
         }
         finally
         {

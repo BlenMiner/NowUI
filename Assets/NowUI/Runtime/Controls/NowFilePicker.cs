@@ -441,7 +441,7 @@ namespace NowUI
 
             if (hoverT > 0f || held)
             {
-                Color overlay = theme.GetColor(NowColorToken.Accent, Color.blue);
+                Color overlay = theme.GetColor(NowColorToken.Accent);
                 overlay.a = Mathf.Lerp(0f, held ? 0.14f : 0.08f, hoverT);
                 Now.Rectangle(rect.Inset(1f)).SetRadius(4f).SetColor(overlay).Draw();
             }
@@ -714,10 +714,10 @@ namespace NowUI
         static void DrawFolderTree(PopupState state, NowRect rect, float headerHeight)
         {
             var theme = state.themeAsset;
-            Color surface = theme.GetColor(NowColorToken.Surface, Color.white);
-            Color surfaceMuted = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.94f, 0.95f, 0.97f, 1f));
-            Color border = theme.GetColor(NowColorToken.Border, new Color(0.78f, 0.80f, 0.84f, 1f));
-            Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+            Color surface = theme.GetColor(NowColorToken.Surface);
+            Color surfaceMuted = theme.GetColor(NowColorToken.SurfaceMuted);
+            Color border = theme.GetColor(NowColorToken.Border);
+            Color muted = theme.GetColor(NowColorToken.TextMuted);
 
             Now.Rectangle(rect)
                 .SetRadius(4f)
@@ -777,7 +777,7 @@ namespace NowUI
 
             if (selected)
             {
-                Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+                Color accent = theme.GetColor(NowColorToken.Accent);
                 Now.Rectangle(visual)
                     .SetRadius(3f)
                     .SetColor(new Color(accent.r, accent.g, accent.b, entry.current ? 0.20f : 0.12f))
@@ -787,7 +787,7 @@ namespace NowUI
             }
             else if (focused)
             {
-                Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+                Color accent = theme.GetColor(NowColorToken.Accent);
                 Now.Rectangle(visual)
                     .SetRadius(3f)
                     .SetColor(new Color(accent.r, accent.g, accent.b, 0.07f))
@@ -797,22 +797,22 @@ namespace NowUI
             }
             else if (interaction.hovered || interaction.held)
             {
-                Color mutedSurface = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.92f, 0.93f, 0.95f, 1f));
-                mutedSurface = NowControls.StateTint(theme, mutedSurface, 1f, interaction.held);
+                Color mutedSurface = theme.GetColor(NowColorToken.SurfaceMuted);
+                mutedSurface = NowControls.StateColor(theme, mutedSurface, 1f, interaction.held);
                 Now.Rectangle(visual)
                     .SetRadius(3f)
                     .SetColor(mutedSurface)
                     .Draw();
             }
 
-            Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+            Color muted = theme.GetColor(NowColorToken.TextMuted);
             float indent = Mathf.Min(Mathf.Max(0, entry.depth) * 14f, 84f);
             var toggleRect = new NowRect(row.x + 5f + indent, row.y, 16f, row.height);
             var iconRect = new NowRect(toggleRect.xMax + 2f, row.y, 20f, row.height);
             var nameRect = new NowRect(iconRect.xMax + 4f, row.y, Mathf.Max(0f, row.xMax - iconRect.xMax - 10f), row.height);
             Color text = entry.ancestor && !entry.current
                 ? muted
-                : theme.GetColor(NowColorToken.Text, Color.black);
+                : theme.GetColor(NowColorToken.Text);
 
             if (entry.hasChildren)
                 NowControls.DrawLeftLabel(theme, toggleRect, entry.expanded ? "▾" : "▸", NowTextStyle.Muted, muted);
@@ -833,9 +833,9 @@ namespace NowUI
 
         static void DrawListHeader(NowThemeAsset theme, NowRect rect)
         {
-            Color surfaceMuted = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.94f, 0.95f, 0.97f, 1f));
-            Color border = theme.GetColor(NowColorToken.Border, new Color(0.78f, 0.80f, 0.84f, 1f));
-            Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+            Color surfaceMuted = theme.GetColor(NowColorToken.SurfaceMuted);
+            Color border = theme.GetColor(NowColorToken.Border);
+            Color muted = theme.GetColor(NowColorToken.TextMuted);
             float typeWidth = TypeColumnWidth(rect);
 
             Now.Rectangle(rect)
@@ -854,8 +854,8 @@ namespace NowUI
 
         static void DrawListFrame(NowThemeAsset theme, NowRect rect)
         {
-            Color surface = theme.GetColor(NowColorToken.Surface, Color.white);
-            Color border = theme.GetColor(NowColorToken.Border, new Color(0.78f, 0.80f, 0.84f, 1f));
+            Color surface = theme.GetColor(NowColorToken.Surface);
+            Color border = theme.GetColor(NowColorToken.Border);
 
             Now.Rectangle(rect)
                 .SetRadius(0f, 0f, 4f, 4f)
@@ -899,7 +899,7 @@ namespace NowUI
 
             if (selected)
             {
-                Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+                Color accent = theme.GetColor(NowColorToken.Accent);
                 Now.Rectangle(visual)
                     .SetRadius(3f)
                     .SetColor(new Color(accent.r, accent.g, accent.b, 0.18f))
@@ -909,8 +909,8 @@ namespace NowUI
             }
             else if (interaction.hovered || interaction.held)
             {
-                Color mutedSurface = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.92f, 0.93f, 0.95f, 1f));
-                mutedSurface = NowControls.StateTint(theme, mutedSurface, 1f, interaction.held);
+                Color mutedSurface = theme.GetColor(NowColorToken.SurfaceMuted);
+                mutedSurface = NowControls.StateColor(theme, mutedSurface, 1f, interaction.held);
                 Now.Rectangle(visual)
                     .SetRadius(3f)
                     .SetColor(mutedSurface)
@@ -921,10 +921,10 @@ namespace NowUI
             var iconRect = new NowRect(row.x + 9f, row.y, 22f, row.height);
             var nameRect = new NowRect(iconRect.xMax + 6f, row.y, Mathf.Max(0f, row.width - typeWidth - 46f), row.height);
             var typeRect = new NowRect(row.xMax - typeWidth - 8f, row.y, typeWidth, row.height);
-            Color text = theme.GetColor(NowColorToken.Text, Color.black);
+            Color text = theme.GetColor(NowColorToken.Text);
             Color muted = selected
                 ? text
-                : theme.GetColor(NowColorToken.TextMuted, Color.gray);
+                : theme.GetColor(NowColorToken.TextMuted);
 
             NowControls.DrawLeftLabel(theme, iconRect, string.IsNullOrEmpty(entry.icon) ? "📄" : entry.icon, NowTextStyle.Body, Color.white);
             NowControls.DrawLeftLabel(theme, nameRect, entry.name, NowTextStyle.Body, text);

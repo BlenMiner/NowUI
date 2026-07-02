@@ -393,13 +393,10 @@ public class NowControlsAdvancedTests
     {
         string[] paths =
         {
-            "Assets/NowUI/Assets/Themes/White.asset",
-            "Assets/NowUI/Assets/Themes/Night.asset",
-            "Assets/NowUI/Assets/Themes/Dark.asset",
+            "Assets/NowUI/Assets/Themes/Default.asset",
+            "Assets/NowUI/Assets/Themes/DefaultDark.asset",
             "Assets/NowUI/Assets/Themes/Material.asset",
-            "Assets/NowUI/Assets/Themes/MaterialDark.asset",
-            "Assets/NowUI/Assets/Themes/HeroUI.asset",
-            "Assets/NowUI/Assets/Themes/HeroUIDark.asset"
+            "Assets/NowUI/Assets/Themes/MaterialDark.asset"
         };
 
         foreach (string path in paths)

@@ -379,19 +379,30 @@ namespace NowUI
             return interaction;
         }
 
-        /// <summary>Hover/press tint applied on top of a preset color.</summary>
-        public static Vector4 StateTint(Vector4 color, float hoverT, bool held)
+        /// <summary>
+        /// Hover/press state applied on top of a resolved color: mixes toward
+        /// white on dark colors and toward black on light ones, so feedback stays
+        /// visible in both light and dark themes. Amounts come from the theme's
+        /// hover/pressed state opacities.
+        /// </summary>
+        public static Vector4 StateColor(Vector4 color, float hoverT, bool held)
         {
-            return StateTint(NowTheme.themeAsset, color, hoverT, held);
+            return StateColor(NowTheme.themeAsset, color, hoverT, held);
         }
 
-        public static Vector4 StateTint(NowThemeAsset themeAsset, Vector4 color, float hoverT, bool held)
+        public static Vector4 StateColor(NowThemeAsset themeAsset, Vector4 color, float hoverT, bool held)
         {
             var styles = themeAsset != null ? themeAsset.controlStyles : NowControlStyleSet.Default;
-            float brightness = held ? styles.pressedBrightness : Mathf.Lerp(1f, styles.hoverBrightness, hoverT);
-            color.x *= brightness;
-            color.y *= brightness;
-            color.z *= brightness;
+            float amount = held ? styles.pressedStateOpacity : styles.hoverStateOpacity * Mathf.Clamp01(hoverT);
+
+            if (amount <= 0f)
+                return color;
+
+            float luminance = color.x * 0.2126f + color.y * 0.7152f + color.z * 0.0722f;
+            float overlay = luminance < 0.5f ? 1f : 0f;
+            color.x = Mathf.LerpUnclamped(color.x, overlay, amount);
+            color.y = Mathf.LerpUnclamped(color.y, overlay, amount);
+            color.z = Mathf.LerpUnclamped(color.z, overlay, amount);
             return color;
         }
 

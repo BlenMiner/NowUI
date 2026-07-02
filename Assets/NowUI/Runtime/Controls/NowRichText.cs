@@ -256,7 +256,7 @@ namespace NowUI
                 NowContextMenu.End();
             }
 
-            Color highlight = NowTheme.themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            Color highlight = NowTheme.themeAsset.GetColor(NowColorToken.Accent);
             highlight.a = 0.25f;
 
             return NowTextSelection.DrawHighlights(
@@ -272,7 +272,7 @@ namespace NowUI
         NowRichTextDocument PrepareDocument(ref State state)
         {
             var baseStyle = new NowRichTextStyle(_style.fontSize, _style.fontStyle).SetColor(_style.color);
-            Vector4 accentColor = NowTheme.themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            Vector4 accentColor = NowTheme.themeAsset.GetColor(NowColorToken.Accent);
 
             if (state.document == null)
                 state.document = new NowRichTextDocument();

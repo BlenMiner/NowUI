@@ -2641,7 +2641,7 @@ public static class GuideControls
 
         var circle = theme.Rectangle(rect, NowRectangleStyle.Accent);
         circle.radius = Vector4.one * radius;
-        circle.color = NowControls.StateTint(circle.color, hoverT, interaction.held && inCircle);
+        circle.color = NowControls.StateColor(circle.color, hoverT, interaction.held && inCircle);
 
         if (focused)
         {

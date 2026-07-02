@@ -414,7 +414,7 @@ namespace NowUI.Markdown
             background.outlineColor = themeAsset.GetColor(NowColorToken.Border, Color.gray);
 
             if (interaction.hovered)
-                background.color = NowControls.StateTint(background.color, 1f, interaction.held);
+                background.color = NowControls.StateColor(background.color, 1f, interaction.held);
 
             background.Draw();
 

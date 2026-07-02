@@ -48,7 +48,7 @@ namespace NowUI
         {
             Vector4 padding = themeAsset.controlStyles.dropdownFieldPadding;
             float top = (rect.height - lineHeight) * 0.5f;
-            return rect.Inset(padding.x, top, Mathf.Max(padding.z, 32f), top);
+            return rect.Inset(padding.x, top, Mathf.Max(padding.z, themeAsset.controlStyles.dropdownArrowInset), top);
         }
 
         public override void DrawButton(in NowButtonRenderContext context)
@@ -73,7 +73,7 @@ namespace NowUI
             DrawButtonRipple(context, rectangle.radius);
 
             if (!string.IsNullOrEmpty(context.label))
-                DrawButtonLabel(context);
+                DrawButtonLabel(context, context.rect);
         }
 
         protected override Color ResolveDefaultButtonTextColor(NowThemeAsset themeAsset, NowRectangleStyle rectangleStyle)
@@ -215,7 +215,8 @@ namespace NowUI
 
             NowRect inner = DropdownFieldInnerRect(context.themeAsset, context.rect, LabelHeight(context.themeAsset));
             NowControls.DrawLeftLabel(context.themeAsset, inner, context.current, NowTextStyle.Body);
-            DrawChevron(context.themeAsset, new NowRect(context.rect.xMax - 24f, context.rect.y, 16f, context.rect.height), context.open);
+            float chevron = context.themeAsset.controlStyles.fieldChevronSize;
+            DrawChevron(context.themeAsset, new NowRect(context.rect.xMax - chevron - 8f, context.rect.y, chevron, context.rect.height), context.open);
         }
 
         public override void DrawPopupBackground(NowThemeAsset themeAsset, NowRect rect, bool menu)
