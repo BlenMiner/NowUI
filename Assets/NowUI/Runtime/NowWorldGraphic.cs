@@ -61,261 +61,6 @@ namespace NowUI
         }
     }
 
-    public sealed class NowWorldInputProvider : INowInputProvider
-    {
-        NowWorldGraphic _graphic;
-        Transform _transform;
-        Camera _camera;
-        Vector2 _size = new Vector2(200f, 80f);
-        Vector2 _pivot = new Vector2(0.5f, 0.5f);
-        float _pixelsPerUnit = 100f;
-        bool _acceptNavigation;
-        int _lastFrame = -1;
-        bool _hasPreviousPosition;
-        Vector2 _previousPosition;
-        NowInputSnapshot _snapshot;
-        bool _rawInputAvailable;
-        NowPointerButtons _previousButtonsDown;
-        bool _pressAllowed = true;
-        bool _blockedWhenPointerOverUGUI = true;
-
-        public NowWorldGraphic graphic
-        {
-            get => _graphic;
-            set
-            {
-                if (_graphic == value)
-                    return;
-
-                _graphic = value;
-                ResetPosition();
-            }
-        }
-
-        public Transform transform
-        {
-            get => _transform;
-            set
-            {
-                if (_transform == value)
-                    return;
-
-                _transform = value;
-                ResetPosition();
-            }
-        }
-
-        public Camera camera
-        {
-            get => _camera;
-            set => _camera = value;
-        }
-
-        public Vector2 size
-        {
-            get => _graphic ? _graphic.size : _size;
-            set => _size = SanitizeSize(value);
-        }
-
-        public Vector2 pivot
-        {
-            get => _graphic ? _graphic.pivot : _pivot;
-            set => _pivot = value;
-        }
-
-        public float pixelsPerUnit
-        {
-            get => _graphic ? _graphic.pixelsPerUnit : _pixelsPerUnit;
-            set => _pixelsPerUnit = SanitizePixelsPerUnit(value);
-        }
-
-        public bool acceptNavigation
-        {
-            get => _graphic ? _graphic.acceptNavigation : _acceptNavigation;
-            set => _acceptNavigation = value;
-        }
-
-        public bool blockedWhenPointerOverUGUI
-        {
-            get => _blockedWhenPointerOverUGUI;
-            set => _blockedWhenPointerOverUGUI = value;
-        }
-
-        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
-        {
-            int frame = Time.frameCount;
-
-            if (_lastFrame != frame)
-            {
-                _lastFrame = frame;
-
-                if (NowMouseInput.TryGet(out var input))
-                    _rawInputAvailable = TryGetSnapshot(surface, input, out _snapshot);
-                else
-                {
-                    _snapshot = default;
-                    _rawInputAvailable = false;
-                }
-            }
-
-            snapshot = _snapshot;
-            return _rawInputAvailable;
-        }
-
-        internal bool TryGetSnapshot(NowInputSurface surface, NowMouseInput input, out NowInputSnapshot snapshot)
-        {
-            if (!input.hasPointer)
-            {
-                _hasPreviousPosition = false;
-                _previousButtonsDown = NowPointerButtons.None;
-                snapshot = CreateSnapshot(false, default, default, default, input);
-                return true;
-            }
-
-            bool buttonsWereDown = _previousButtonsDown != NowPointerButtons.None;
-            bool allowedNow = !blockedWhenPointerOverUGUI ||
-                !NowRaycastGate.IsPointerOverUGUI(input.screenPosition);
-            _previousButtonsDown = input.pointerButtonsDown;
-
-            if (!NowRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow))
-            {
-                _hasPreviousPosition = false;
-                snapshot = CreateSnapshot(false, default, default, default, input);
-                return true;
-            }
-
-            bool hit = TryScreenPointToSurface(input.screenPosition, out var position);
-            bool inside = hit &&
-                          position is { x: >= 0f, y: >= 0f } &&
-                          position.x <= surface.size.x &&
-                          position.y <= surface.size.y;
-            bool hasPointer = hit && (inside ||
-                input.pointerButtonsDown != NowPointerButtons.None ||
-                input.pointerButtonsReleased != NowPointerButtons.None);
-
-            var previous = _hasPreviousPosition ? _previousPosition : position;
-            var delta = hit ? position - previous : default;
-
-            if (hit)
-            {
-                _previousPosition = position;
-                _hasPreviousPosition = true;
-            }
-            else switch (_hasPreviousPosition)
-            {
-                case true when
-                    input.pointerButtonsReleased != NowPointerButtons.None:
-                    position = _previousPosition;
-                    previous = _previousPosition;
-                    hasPointer = true;
-                    _hasPreviousPosition = false;
-                    break;
-                case true when
-                    input.pointerButtonsDown != NowPointerButtons.None &&
-                    input.pointerButtonsPressed == NowPointerButtons.None:
-                    position = _previousPosition;
-                    previous = _previousPosition;
-                    hasPointer = true;
-                    break;
-                default:
-                    _hasPreviousPosition = false;
-                    previous = default;
-                    position = default;
-                    break;
-            }
-
-            snapshot = CreateSnapshot(hasPointer, position, previous, delta, input);
-            return true;
-        }
-
-        public bool TryScreenPointToSurface(Vector2 screenPosition, out Vector2 surfacePosition)
-        {
-            if (_graphic)
-                return _graphic.TryScreenPointToSurface(screenPosition, out surfacePosition);
-
-            surfacePosition = default;
-
-            var targetTransform = _transform;
-            var targetCamera = ResolveCamera();
-
-            if (!targetTransform || !targetCamera)
-                return false;
-
-            var ray = targetCamera.ScreenPointToRay(screenPosition);
-            var plane = new Plane(targetTransform.forward, targetTransform.position);
-
-            if (!plane.Raycast(ray, out float distance))
-                return false;
-
-            var local = targetTransform.InverseTransformPoint(ray.GetPoint(distance));
-            float ppu = SanitizePixelsPerUnit(_pixelsPerUnit);
-            var targetSize = SanitizeSize(_size);
-            surfacePosition = new Vector2(
-                local.x * ppu + targetSize.x * _pivot.x,
-                targetSize.y * (1f - _pivot.y) - local.y * ppu);
-            return true;
-        }
-
-        public void ResetPosition()
-        {
-            _lastFrame = -1;
-            _hasPreviousPosition = false;
-            _previousPosition = default;
-            _previousButtonsDown = NowPointerButtons.None;
-            _pressAllowed = true;
-            _snapshot = default;
-        }
-
-        NowInputSnapshot CreateSnapshot(
-            bool hasPointer,
-            Vector2 position,
-            Vector2 previous,
-            Vector2 delta,
-            NowMouseInput input)
-        {
-            bool navigation = acceptNavigation;
-
-            return new NowInputSnapshot(
-                hasPointer,
-                position,
-                previous,
-                delta,
-                input.pointerButtonsDown,
-                input.pointerButtonsPressed,
-                input.pointerButtonsReleased,
-                input.scrollDelta,
-                navigation ? input.navigation : Vector2.zero,
-                navigation && input.focusPreviousPressed,
-                navigation && input.focusNextPressed,
-                navigation && input.submitDown,
-                navigation && input.submitPressed,
-                navigation && input.submitReleased,
-                navigation && input.cancelDown,
-                navigation && input.cancelPressed,
-                navigation && input.cancelReleased,
-                Time.frameCount,
-                Time.realtimeSinceStartup);
-        }
-
-        Camera ResolveCamera()
-        {
-            if (_camera)
-                return _camera;
-
-            return Camera.main;
-        }
-
-        static Vector2 SanitizeSize(Vector2 value)
-        {
-            return new Vector2(Mathf.Max(1f, value.x), Mathf.Max(1f, value.y));
-        }
-
-        static float SanitizePixelsPerUnit(float value)
-        {
-            return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value) ? value : 100f;
-        }
-    }
-
     [AddComponentMenu("NowUI/Now World Graphic")]
     [ExecuteAlways]
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
@@ -370,13 +115,11 @@ namespace NowUI
         [NonSerialized] readonly Dictionary<Material, Material> _materials = new Dictionary<Material, Material>(8);
         [NonSerialized] Material[] _sharedMaterials = Array.Empty<Material>();
         [NonSerialized] bool _dirty = true;
-        [NonSerialized] bool _wantsInteractionRepaint;
-        [NonSerialized] bool _hasLastInteractionInput;
+        [NonSerialized] NowInteractionRepaintTracker _repaintTracker;
         [NonSerialized] bool _hasGlassBatches;
         [NonSerialized] float _maxGlassBlurRadius;
         [NonSerialized] NowGlassBlurQuality _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
         [NonSerialized] int _scopeId;
-        [NonSerialized] InteractionInputState _lastInteractionInput;
 #if UNITY_EDITOR
         static bool _editorCallbacksRegistered;
 
@@ -395,89 +138,6 @@ namespace NowUI
             public Vector2 ownerSurfacePosition;
             public float ownerDistance;
             public float sceneBlockDistance;
-        }
-
-        struct InteractionInputState
-        {
-            const float PositionEpsilonSqr = 0.25f;
-
-            private bool pointerInside;
-            private Vector2 pointerPosition;
-            private NowPointerButtons pointerButtonsDown;
-            private NowPointerButtons pointerButtonsPressed;
-            private NowPointerButtons pointerButtonsReleased;
-            private Vector2 scrollDelta;
-            private Vector2 navigation;
-            private bool focusPreviousPressed;
-            private bool focusNextPressed;
-            private bool submitDown;
-            private bool submitPressed;
-            private bool submitReleased;
-            private bool cancelDown;
-            private bool cancelPressed;
-            private bool cancelReleased;
-
-            public static InteractionInputState FromSnapshot(NowInputSnapshot snapshot, Vector2 size)
-            {
-                bool inside = snapshot is { hasPointer: true, pointerPosition: { x: >= 0f, y: >= 0f } } &&
-                              snapshot.pointerPosition.x <= size.x &&
-                              snapshot.pointerPosition.y <= size.y;
-
-                return new InteractionInputState
-                {
-                    pointerInside = inside,
-                    pointerPosition = snapshot.pointerPosition,
-                    pointerButtonsDown = snapshot.pointerButtonsDown,
-                    pointerButtonsPressed = snapshot.pointerButtonsPressed,
-                    pointerButtonsReleased = snapshot.pointerButtonsReleased,
-                    scrollDelta = snapshot.scrollDelta,
-                    navigation = snapshot.navigation,
-                    focusPreviousPressed = snapshot.focusPreviousPressed,
-                    focusNextPressed = snapshot.focusNextPressed,
-                    submitDown = snapshot.submitDown,
-                    submitPressed = snapshot.submitPressed,
-                    submitReleased = snapshot.submitReleased,
-                    cancelDown = snapshot.cancelDown,
-                    cancelPressed = snapshot.cancelPressed,
-                    cancelReleased = snapshot.cancelReleased
-                };
-            }
-
-            public bool HasChangedSince(in InteractionInputState previous)
-            {
-                bool pointerRelevant =
-                    pointerInside ||
-                    previous.pointerInside ||
-                    pointerButtonsDown != NowPointerButtons.None ||
-                    previous.pointerButtonsDown != NowPointerButtons.None;
-
-                if (pointerInside != previous.pointerInside)
-                    return true;
-
-                if (pointerRelevant && (pointerPosition - previous.pointerPosition).sqrMagnitude > PositionEpsilonSqr)
-                    return true;
-
-                if (pointerButtonsDown != previous.pointerButtonsDown)
-                    return true;
-
-                if (pointerButtonsPressed != NowPointerButtons.None ||
-                    pointerButtonsReleased != NowPointerButtons.None)
-                {
-                    return true;
-                }
-
-                if (pointerRelevant && scrollDelta != Vector2.zero)
-                    return true;
-
-                if ((navigation - previous.navigation).sqrMagnitude > PositionEpsilonSqr)
-                    return true;
-
-                if (submitDown != previous.submitDown || cancelDown != previous.cancelDown)
-                    return true;
-
-                return focusPreviousPressed || focusNextPressed ||
-                    submitPressed || submitReleased || cancelPressed || cancelReleased;
-            }
         }
 
         public event Action<NowWorldGraphic, NowRect> rebuildNowUI;
@@ -720,7 +380,7 @@ namespace NowUI
             _pixelsPerUnit = SanitizePixelsPerUnit(_pixelsPerUnit);
             NowDrawScope scope = default;
             var frame = NowFrame.Begin(ResolveScreenPixelsPerUIUnit(currentSize), trackRepaint: true);
-            _wantsInteractionRepaint = false;
+            _repaintTracker.SetWantsRepaint(false);
 
             try
             {
@@ -737,7 +397,7 @@ namespace NowUI
                 using (NowInput.Begin(GetInputProvider(), surface))
                 using (NowControls.IdScope(GetScopeId()))
                 {
-                    StoreLastInteractionInput(NowInput.current, currentSize);
+                    _repaintTracker.StoreFrameInput(NowInput.current, currentSize);
 
                     var content = new FrameContent(this);
                     NowFrame.DrawContent(
@@ -747,7 +407,7 @@ namespace NowUI
                         trackContent: false);
                 }
 
-                _wantsInteractionRepaint = frame.EndRepaintTracking();
+                _repaintTracker.SetWantsRepaint(frame.EndRepaintTracking());
                 scope.Dispose();
                 ApplyWorldTransform();
                 ApplyRendererState();
@@ -1105,7 +765,7 @@ namespace NowUI
                 InvalidateInputResolution();
             }
 
-            _hasLastInteractionInput = false;
+            _repaintTracker.Reset();
             EnsureRuntimeObjects();
             MarkDirty();
             QueueEditorRebuild();
@@ -1118,7 +778,7 @@ namespace NowUI
             if (_instances.Remove(this))
                 InvalidateInputResolution();
 
-            _hasLastInteractionInput = false;
+            _repaintTracker.Reset();
             ClearRendererState();
         }
 
@@ -1144,7 +804,7 @@ namespace NowUI
             ApplyFacing();
             RegisterGlassBackdropIfNeeded();
 
-            bool needsRebuild = _dirty || _rebuildEveryFrame || _wantsInteractionRepaint;
+            bool needsRebuild = _dirty || _rebuildEveryFrame || _repaintTracker.wantsRepaint;
 
             if (!needsRebuild && _autoRebuildOnInteraction)
             {
@@ -1542,28 +1202,8 @@ namespace NowUI
 
         bool HasInteractionInputChanged()
         {
-            var provider = GetInputProvider();
-            var currentSize = SanitizeSize(_size);
-
-            if (!provider.TryGetSnapshot(new NowInputSurface(currentSize), out var snapshot))
-                snapshot = default;
-
-            var current = InteractionInputState.FromSnapshot(snapshot, currentSize);
-
-            if (!_hasLastInteractionInput)
-            {
-                _lastInteractionInput = current;
-                _hasLastInteractionInput = true;
-                return false;
-            }
-
-            return current.HasChangedSince(_lastInteractionInput);
-        }
-
-        void StoreLastInteractionInput(NowInputSnapshot snapshot, Vector2 currentSize)
-        {
-            _lastInteractionInput = InteractionInputState.FromSnapshot(snapshot, currentSize);
-            _hasLastInteractionInput = true;
+            var surface = new NowInputSurface(SanitizeSize(_size));
+            return _repaintTracker.HasInputChanged(GetInputProvider(), surface);
         }
 
         void ApplyFacing()
@@ -1868,22 +1508,13 @@ namespace NowUI
 #if UNITY_EDITOR
         void QueueEditorRebuild()
         {
-            if (Application.isPlaying || _editorRebuildQueued)
-                return;
-
-            EnsureEditorCallbacks();
-            _editorRebuildQueued = true;
-            EditorApplication.delayCall += RunQueuedEditorRebuild;
-            EditorApplication.QueuePlayerLoopUpdate();
+            if (NowEditorRebuildQueue.Queue(ref _editorRebuildQueued, RunQueuedEditorRebuild))
+                EnsureEditorCallbacks();
         }
 
         void CancelEditorRebuild()
         {
-            if (!_editorRebuildQueued)
-                return;
-
-            EditorApplication.delayCall -= RunQueuedEditorRebuild;
-            _editorRebuildQueued = false;
+            NowEditorRebuildQueue.Cancel(ref _editorRebuildQueued, RunQueuedEditorRebuild);
         }
 
         void RunQueuedEditorRebuild()

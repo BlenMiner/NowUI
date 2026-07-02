@@ -15,6 +15,11 @@ namespace NowUI
     /// rects (<c>Now.Button(rect, "Save").Draw()</c>) — mirroring how
     /// <c>NowLayout.Label</c> and <c>Now.Text</c> already split.
     ///
+    /// Control API conventions (custom controls should follow them too):
+    /// action controls return <c>bool</c> from <c>Draw()</c> — true on click or
+    /// submit-while-focused; value controls take <c>Draw(ref value)</c>, mutate
+    /// the caller-owned ref and return true when it changed this frame.
+    ///
     /// Everything here is public so custom controls are first-class, not
     /// second-class.
     /// </summary>

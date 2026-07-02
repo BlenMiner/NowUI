@@ -1,0 +1,786 @@
+using System;
+using UnityEngine;
+
+namespace NowUI
+{
+    public interface INowInputProvider
+    {
+        bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot);
+    }
+
+
+    public readonly struct NowInteraction
+    {
+        public readonly int id;
+
+        public readonly Rect rect;
+
+        public readonly NowPointerButton button;
+
+        public readonly bool hasPointer;
+
+        public readonly Vector2 pointerPosition;
+
+        public readonly Vector2 pointerDelta;
+
+        public readonly Vector2 dragDelta;
+
+        public readonly bool hovered;
+
+        public readonly bool pressed;
+
+        public readonly bool held;
+
+        public readonly bool released;
+
+        public readonly bool clicked;
+
+        public readonly bool active;
+
+        public readonly bool dragging;
+
+        public readonly bool dragStarted;
+
+        public readonly bool dragEnded;
+
+        internal NowInteraction(
+            int id,
+            Rect rect,
+            NowPointerButton button,
+            bool hasPointer,
+            Vector2 pointerPosition,
+            Vector2 pointerDelta,
+            Vector2 dragDelta,
+            bool hovered,
+            bool pressed,
+            bool held,
+            bool released,
+            bool clicked,
+            bool active,
+            bool dragging,
+            bool dragStarted,
+            bool dragEnded)
+        {
+            this.id = id;
+            this.rect = rect;
+            this.button = button;
+            this.hasPointer = hasPointer;
+            this.pointerPosition = pointerPosition;
+            this.pointerDelta = pointerDelta;
+            this.dragDelta = dragDelta;
+            this.hovered = hovered;
+            this.pressed = pressed;
+            this.held = held;
+            this.released = released;
+            this.clicked = clicked;
+            this.active = active;
+            this.dragging = dragging;
+            this.dragStarted = dragStarted;
+            this.dragEnded = dragEnded;
+        }
+
+        /// <summary>Derives a stable sub-id from this interaction's resolved control id.</summary>
+        public int GetId(string key)
+        {
+            return NowInput.GetId(id, key);
+        }
+
+        /// <summary>Derives a stable numeric sub-id from this interaction's resolved control id.</summary>
+        public int GetId(int key)
+        {
+            return NowInput.CombineId(id, key);
+        }
+
+        /// <summary>Returns a persistent control-state slot keyed under this interaction.</summary>
+        public ref T State<T>(string key) where T : struct
+        {
+            return ref NowControlState.Get<T>(GetId(key));
+        }
+
+        /// <summary>Returns a persistent control-state slot keyed under this interaction.</summary>
+        public ref T State<T>(int key) where T : struct
+        {
+            return ref NowControlState.Get<T>(GetId(key));
+        }
+    }
+
+    public static class NowInput
+    {
+        const float DefaultDragThreshold = 4f;
+
+        static INowInputProvider _defaultProvider = NowScreenInputProvider.instance;
+
+        static INowInputProvider _currentProvider;
+
+        static NowInputSurface _surface;
+
+        static NowInputSnapshot _snapshot;
+
+        static bool _hasContext;
+
+        static int _activeId;
+
+        static INowInputProvider _activeProvider;
+
+        static NowPointerButton _activeButton;
+
+        static int _dragId;
+
+        static bool _activeDragged;
+
+        static bool _activeSeenThisFrame;
+
+        static int _activeLastSeenFrame = -1;
+
+        static Vector2 _pressPosition;
+
+        static float _dragThreshold = DefaultDragThreshold;
+
+        static int _passiveDepth;
+
+        static int _scopeDepth;
+
+        static bool _scrollConsumed;
+
+        public static INowInputProvider defaultProvider
+        {
+            get => _defaultProvider;
+            set => _defaultProvider = value;
+        }
+
+        public static NowInputSurface surface => _surface;
+
+        public static NowInputSnapshot current => _snapshot;
+
+        public static bool hasContext => _hasContext;
+
+        public static int activeId => _activeId;
+
+        public static NowPointerButton activeButton => _activeButton;
+
+        public static float dragThreshold
+        {
+            get => _dragThreshold;
+            set => _dragThreshold = Mathf.Max(0f, value);
+        }
+
+        public static NowInputScope Begin(Vector2 size)
+        {
+            return Begin(_defaultProvider, new NowInputSurface(size));
+        }
+
+        public static NowInputScope Begin(Vector2 size, Rect screenRect)
+        {
+            return Begin(_defaultProvider, new NowInputSurface(size, screenRect));
+        }
+
+        public static NowInputScope Begin(INowInputProvider provider, Vector2 size)
+        {
+            return Begin(provider, new NowInputSurface(size));
+        }
+
+        public static NowInputScope Begin(INowInputProvider provider, NowInputSurface surface)
+        {
+            bool topLevel = _scopeDepth == 0;
+
+            if (topLevel)
+                CompleteFrame();
+
+            var scope = new NowInputScope(_surface, _snapshot, _hasContext, topLevel);
+            ++_scopeDepth;
+            Update(provider, surface, topLevel);
+            return scope;
+        }
+
+        internal static NowInputScope BeginMeasurement(INowInputProvider provider, NowInputSurface surface)
+        {
+            var scope = new NowInputScope(_surface, _snapshot, _hasContext, false);
+            ++_scopeDepth;
+            Update(provider, surface, false);
+            return scope;
+        }
+
+        public static void Update(Vector2 size)
+        {
+            Update(_defaultProvider, new NowInputSurface(size));
+        }
+
+        public static void Update(NowInputSurface surface)
+        {
+            Update(_defaultProvider, surface);
+        }
+
+        public static void Update(INowInputProvider provider, NowInputSurface surface)
+        {
+            if (_scopeDepth == 0)
+                CompleteFrame();
+
+            Update(provider, surface, _scopeDepth == 0);
+        }
+
+        static void Update(INowInputProvider provider, NowInputSurface surface, bool resetFrameTracking)
+        {
+            _currentProvider = provider;
+            _surface = surface;
+            _hasContext = true;
+            NowControls.ResetControlIdOccurrences();
+            _scrollConsumed = false;
+
+            if (resetFrameTracking)
+                _activeSeenThisFrame = false;
+
+            if (provider != null && provider.TryGetSnapshot(surface, out _snapshot))
+            {
+                if (resetFrameTracking)
+                    ClearStaleActiveFromMissingProvider();
+
+                return;
+            }
+
+            _snapshot = default;
+        }
+
+        public static bool IsHovered(NowRect rect)
+        {
+            return IsHovered((Rect)rect);
+        }
+
+        public static bool IsHovered(Rect rect)
+        {
+            rect = Now.TransformScreenRect(rect);
+
+            return _hasContext && _snapshot.hasPointer &&
+                rect.Contains(_snapshot.pointerPosition) &&
+                Now.IsInsideAmbientMask(_snapshot.pointerPosition) &&
+                !NowOverlay.IsPointerBlocked(_snapshot.pointerPosition);
+        }
+
+        public static Vector2 ConsumeScrollDelta(NowRect rect)
+        {
+            return ConsumeScrollDelta((Rect)rect);
+        }
+
+        public static Vector2 ConsumeScrollDelta(Rect rect)
+        {
+            if (_passiveDepth > 0 || _scrollConsumed || !_hasContext || !_snapshot.hasPointer)
+                return default;
+
+            rect = Now.TransformScreenRect(rect);
+
+            Vector2 scroll = _snapshot.scrollDelta;
+
+            if (scroll == Vector2.zero ||
+                !rect.Contains(_snapshot.pointerPosition) ||
+                !Now.IsInsideAmbientMask(_snapshot.pointerPosition) ||
+                NowOverlay.IsPointerBlocked(_snapshot.pointerPosition))
+            {
+                return default;
+            }
+
+            _scrollConsumed = true;
+            return scroll;
+        }
+
+        public static bool IsPointerDown(NowPointerButton button)
+        {
+            return _hasContext && _snapshot.IsPointerDown(button);
+        }
+
+        public static bool WasPointerPressed(NowPointerButton button)
+        {
+            return _hasContext && _snapshot.WasPointerPressed(button);
+        }
+
+        public static bool WasPointerReleased(NowPointerButton button)
+        {
+            return _hasContext && _snapshot.WasPointerReleased(button);
+        }
+
+        /// <summary>
+        /// Combines two ids into one (a parent control id and a sub-element
+        /// index, for example) — the blessed way to mint ids for interactive
+        /// sub-regions without strings. Never returns 0.
+        /// </summary>
+        public static int CombineId(int a, int b)
+        {
+            unchecked
+            {
+                int id = (a * 397) ^ b;
+                return id != 0 ? id : 1;
+            }
+        }
+
+        static int CallerControlId(string file, int line)
+        {
+            return NowControls.GetControlId(NowControls.SiteId(file, line));
+        }
+
+        /// <summary>
+        /// Interaction with no explicit id: identity comes from the call site, and
+        /// repeated calls from one site (a loop over sub-elements) are salted by
+        /// per-frame occurrence — draw-order stable, like control identity. Use
+        /// an explicit id instead when looped items can reorder mid-press.
+        /// </summary>
+        public static NowInteraction Interact(
+            NowRect rect,
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            return Interact(CallerControlId(file, line), rect);
+        }
+
+        /// <summary>
+        /// Interaction with no explicit id and a non-primary pointer button.
+        /// Identity comes from the call site; use an explicit id for reordered
+        /// loop data or when several call sites represent one logical target.
+        /// </summary>
+        public static NowInteraction Interact(
+            NowRect rect,
+            NowPointerButton button,
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            return Interact(CallerControlId(file, line), rect, button);
+        }
+
+        /// <summary>
+        /// Interaction with no explicit id for callers that already use Unity
+        /// <see cref="Rect"/> values. Identity comes from the call site.
+        /// </summary>
+        public static NowInteraction Interact(
+            Rect rect,
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            return Interact(CallerControlId(file, line), rect);
+        }
+
+        /// <summary>
+        /// Interaction with no explicit id for Unity <see cref="Rect"/> values and
+        /// a non-primary pointer button. Identity comes from the call site.
+        /// </summary>
+        public static NowInteraction Interact(
+            Rect rect,
+            NowPointerButton button,
+            [System.Runtime.CompilerServices.CallerFilePath] string file = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            return Interact(CallerControlId(file, line), rect, button);
+        }
+
+        public static NowInteraction Interact(string id, NowRect rect)
+        {
+            return Interact(id, rect, NowPointerButton.Primary);
+        }
+
+        public static NowInteraction Interact(NowId id, NowRect rect)
+        {
+            return Interact(id, rect, NowPointerButton.Primary);
+        }
+
+        public static NowInteraction Interact(string id, NowRect rect, NowPointerButton button)
+        {
+            return Interact(GetId(id), (Rect)rect, button);
+        }
+
+        public static NowInteraction Interact(NowId id, NowRect rect, NowPointerButton button)
+        {
+            return Interact(RequireExplicitId(id, nameof(id)), (Rect)rect, button);
+        }
+
+        public static NowInteraction Interact(string id, Rect rect)
+        {
+            return Interact(id, rect, NowPointerButton.Primary);
+        }
+
+        public static NowInteraction Interact(NowId id, Rect rect)
+        {
+            return Interact(id, rect, NowPointerButton.Primary);
+        }
+
+        public static NowInteraction Interact(string id, Rect rect, NowPointerButton button)
+        {
+            return Interact(GetId(id), rect, button);
+        }
+
+        public static NowInteraction Interact(NowId id, Rect rect, NowPointerButton button)
+        {
+            return Interact(RequireExplicitId(id, nameof(id)), rect, button);
+        }
+
+        public static NowInteraction Interact(int id, NowRect rect)
+        {
+            return Interact(id, rect, NowPointerButton.Primary);
+        }
+
+        public static NowInteraction Interact(int id, NowRect rect, NowPointerButton button)
+        {
+            return Interact(id, (Rect)rect, button);
+        }
+
+        public static NowInteraction Interact(int id, Rect rect)
+        {
+            return Interact(id, rect, NowPointerButton.Primary);
+        }
+
+        public static NowInteraction Interact(int id, Rect rect, NowPointerButton button)
+        {
+            if (id == 0)
+                throw new ArgumentException("Control id 0 is reserved.", nameof(id));
+
+            Rect localRect = rect;
+            Rect screenRect = Now.TransformScreenRect(rect);
+
+            var snapshot = _snapshot;
+            bool hasPointer = _hasContext && snapshot.hasPointer;
+            bool hovered = hasPointer && screenRect.Contains(snapshot.pointerPosition) &&
+                Now.IsInsideAmbientMask(snapshot.pointerPosition) &&
+                !NowOverlay.IsPointerBlocked(snapshot.pointerPosition);
+            Vector2 localPointerPosition = Now.InverseTransformScreenPoint(snapshot.pointerPosition);
+            Vector2 localPointerDelta = Now.InverseTransformScreenVector(snapshot.pointerDelta);
+
+            if (_passiveDepth > 0)
+            {
+                return new NowInteraction(
+                    id,
+                    localRect,
+                    button,
+                    hasPointer,
+                    localPointerPosition,
+                    localPointerDelta,
+                    default,
+                    hovered,
+                    false,
+                    false,
+                    false,
+                    false,
+                    _activeId == id && _activeButton == button,
+                    false,
+                    false,
+                    false);
+            }
+
+            bool pressed =
+                hovered &&
+                snapshot.WasPointerPressed(button) &&
+                (_activeId == 0 || (_activeId == id && _activeButton == button));
+
+            if (pressed)
+            {
+                _activeId = id;
+                _activeProvider = _currentProvider;
+                _activeButton = button;
+                _dragId = 0;
+                _activeDragged = false;
+                _pressPosition = snapshot.pointerPosition;
+            }
+
+            bool active = _activeId == id && _activeButton == button;
+
+            if (_passiveDepth == 0 && active)
+            {
+                _activeSeenThisFrame = true;
+                _activeLastSeenFrame = snapshot.frame;
+            }
+
+            bool held = active && snapshot.IsPointerDown(button);
+            bool released = active && snapshot.WasPointerReleased(button);
+            bool dragging = false;
+            bool dragStarted = false;
+            bool dragEnded = false;
+            Vector2 dragDelta = default;
+
+            if (held)
+            {
+                Vector2 dragOffset = snapshot.pointerPosition - _pressPosition;
+
+                if (_dragId == id || dragOffset.sqrMagnitude >= _dragThreshold * _dragThreshold)
+                {
+                    dragStarted = _dragId != id;
+                    _dragId = id;
+                    _activeDragged = true;
+                    dragging = true;
+                    dragDelta = snapshot.pointerDelta;
+                }
+            }
+
+            if (released && _dragId == id)
+            {
+                dragEnded = true;
+                dragDelta = snapshot.pointerDelta;
+            }
+
+            bool clicked = released && hovered && !_activeDragged;
+
+            var interaction = new NowInteraction(
+                id,
+                localRect,
+                button,
+                hasPointer,
+                localPointerPosition,
+                localPointerDelta,
+                Now.InverseTransformScreenVector(dragDelta),
+                hovered,
+                pressed,
+                held,
+                released,
+                clicked,
+                active,
+                dragging,
+                dragStarted,
+                dragEnded);
+
+            if (released)
+                ClearActive();
+
+            return interaction;
+        }
+
+        public static int GetId(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                throw new ArgumentException("Control id strings cannot be null or empty.", nameof(value));
+
+            unchecked
+            {
+                const int offset = unchecked((int)2166136261u);
+                const int prime = 16777619;
+                int hash = offset;
+
+                for (int i = 0; i < value.Length; ++i)
+                {
+                    hash ^= value[i];
+                    hash *= prime;
+                }
+
+                return hash != 0 ? hash : 1;
+            }
+        }
+
+        public static int GetId(int seed, string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                throw new ArgumentException("Control id strings cannot be null or empty.", nameof(value));
+
+            unchecked
+            {
+                int hash = seed != 0 ? seed : unchecked((int)2166136261u);
+
+                for (int i = 0; i < value.Length; ++i)
+                {
+                    hash ^= value[i];
+                    hash *= 16777619;
+                }
+
+                return hash != 0 ? hash : 1;
+            }
+        }
+
+        public static int GetId(NowId id, int fallback)
+        {
+            return id.ResolveStableId(fallback);
+        }
+
+        static int RequireExplicitId(NowId id, string paramName)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("This API requires an explicit NowId.", paramName);
+
+            return id.ResolveStableId(0);
+        }
+
+        public static void Reset()
+        {
+            _surface = default;
+            _snapshot = default;
+            _hasContext = false;
+            _currentProvider = null;
+            _activeId = 0;
+            _activeProvider = null;
+            _activeButton = NowPointerButton.Primary;
+            _dragId = 0;
+            _activeDragged = false;
+            _activeSeenThisFrame = false;
+            _activeLastSeenFrame = -1;
+            _pressPosition = default;
+            _dragThreshold = DefaultDragThreshold;
+            _defaultProvider = NowScreenInputProvider.instance;
+            _passiveDepth = 0;
+            _scopeDepth = 0;
+            _scrollConsumed = false;
+            NowRaycastGate.InvalidateCache();
+        }
+
+        /// <summary>
+        /// True during layout measure passes, when interactions are inert.
+        /// Custom controls that read input outside <see cref="Interact"/> (raw
+        /// snapshots, right-click checks) should stand down while this is set,
+        /// or the measure pass double-processes their input.
+        /// </summary>
+        public static bool isPassive => _passiveDepth > 0;
+
+        /// <summary>Enters passive mode (e.g. a layout measure pass): pure reads like hover
+        /// still report so styling stays consistent, but press/drag state never transitions —
+        /// the same control will interact for real later this frame.</summary>
+        internal static void BeginPassive()
+        {
+            if (_passiveDepth == 0)
+                NowControls.ResetPassiveControlIdOccurrences();
+
+            ++_passiveDepth;
+        }
+
+        internal static void EndPassive()
+        {
+            if (_passiveDepth > 0)
+                --_passiveDepth;
+        }
+
+        internal static bool TryScreenToSurface(Vector2 topLeftScreenPosition, NowInputSurface surface, out Vector2 position)
+        {
+            Rect screenRect = surface.screenRect;
+
+            if (screenRect.width <= 0f || screenRect.height <= 0f || surface.size.x <= 0f || surface.size.y <= 0f)
+            {
+                position = default;
+                return false;
+            }
+
+            position = new Vector2(
+                (topLeftScreenPosition.x - screenRect.x) * surface.size.x / screenRect.width,
+                (topLeftScreenPosition.y - screenRect.y) * surface.size.y / screenRect.height);
+            return true;
+        }
+
+        internal static Vector2 ScaleScreenDelta(Vector2 topLeftScreenDelta, NowInputSurface surface)
+        {
+            Rect screenRect = surface.screenRect;
+
+            if (screenRect.width <= 0f || screenRect.height <= 0f)
+                return default;
+
+            return new Vector2(
+                topLeftScreenDelta.x * surface.size.x / screenRect.width,
+                topLeftScreenDelta.y * surface.size.y / screenRect.height);
+        }
+
+        internal static void Restore(NowInputSurface surface, NowInputSnapshot snapshot, bool hasContext)
+        {
+            _surface = surface;
+            _snapshot = snapshot;
+            _hasContext = hasContext;
+        }
+
+        internal static void EndScope(NowInputSurface previousSurface, NowInputSnapshot previousSnapshot, bool previousHasContext, bool completeFrame)
+        {
+            if (completeFrame)
+                NowOverlay.Flush();
+
+            if (_scopeDepth > 0)
+                --_scopeDepth;
+
+            if (completeFrame)
+                EndFrame();
+
+            Restore(previousSurface, previousSnapshot, previousHasContext);
+        }
+
+        internal static void EndFrame()
+        {
+            CompleteFrame();
+        }
+
+        internal static void ClearActiveIf(int id, NowPointerButton button = NowPointerButton.Primary)
+        {
+            if (_activeId == id && _activeButton == button)
+                ClearActive();
+        }
+
+        static void CompleteFrame()
+        {
+            if (_activeId == 0 || _activeSeenThisFrame)
+                return;
+
+            if (!ReferenceEquals(_currentProvider, _activeProvider))
+                return;
+
+            if (!_hasContext)
+                return;
+
+            if (!_snapshot.hasPointer ||
+                !_snapshot.IsPointerDown(_activeButton) ||
+                _snapshot.WasPointerReleased(_activeButton))
+            {
+                ClearActive();
+            }
+        }
+
+        static Rect ToRect(Vector4 rect)
+        {
+            return new Rect(rect.x, rect.y, rect.z, rect.w);
+        }
+
+        static void ClearActive()
+        {
+            _activeId = 0;
+            _activeProvider = null;
+            _activeButton = NowPointerButton.Primary;
+            _dragId = 0;
+            _activeDragged = false;
+            _activeSeenThisFrame = false;
+            _activeLastSeenFrame = -1;
+            _pressPosition = default;
+        }
+
+        static void ClearStaleActiveFromMissingProvider()
+        {
+            if (_activeId == 0 ||
+                ReferenceEquals(_currentProvider, _activeProvider) ||
+                _activeLastSeenFrame < 0)
+            {
+                return;
+            }
+
+            // Let another provider draw earlier in the next frame; clear only
+            // after the capture owner has missed a whole input frame.
+            if (_snapshot.frame > _activeLastSeenFrame + 1)
+                ClearActive();
+        }
+    }
+
+    [NowScope]
+    public struct NowInputScope : IDisposable
+    {
+        readonly NowInputSurface _previousSurface;
+
+        readonly NowInputSnapshot _previousSnapshot;
+
+        readonly bool _previousHasContext;
+
+        readonly bool _completeFrame;
+
+        bool _disposed;
+
+        internal NowInputScope(
+            NowInputSurface previousSurface,
+            NowInputSnapshot previousSnapshot,
+            bool previousHasContext,
+            bool completeFrame)
+        {
+            _previousSurface = previousSurface;
+            _previousSnapshot = previousSnapshot;
+            _previousHasContext = previousHasContext;
+            _completeFrame = completeFrame;
+            _disposed = false;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            NowInput.EndScope(_previousSurface, _previousSnapshot, _previousHasContext, _completeFrame);
+        }
+    }
+}

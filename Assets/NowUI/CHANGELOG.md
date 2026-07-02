@@ -5,6 +5,29 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Input internals reorganized into `Runtime/Input/`: providers
+  (`NowScreenInputProvider`, `NowIMGUIInputProvider`,
+  `NowRectTransformInputProvider`, `NowWorldInputProvider`,
+  `NowUIToolkitInputProvider`) are now standalone files instead of being
+  embedded in `NowInput.cs`/`NowWorldGraphic.cs`/`NowVisualElement.cs`.
+  Namespaces and type names are unchanged.
+- `NowGraphic` and `NowWorldGraphic` share one interaction-repaint watcher
+  (`NowInteractionRepaintTracker`) instead of duplicating input-change
+  tracking per host.
+- UGUI raycast-gate queries are cached per frame and pointer position: many
+  NowUI hosts in a scene now cost one `EventSystem.RaycastAll` per frame
+  instead of one per host.
+
+### Removed
+
+- Legacy Input Manager fallback. The Input System package has always been a
+  hard dependency of NowUI; the dead `ENABLE_LEGACY_INPUT_MANAGER` code path
+  (used only when the Input System reported zero devices) is gone. Projects
+  with Active Input Handling set to "Both" and no Input System devices must
+  switch to the Input System.
+
 ### Added
 
 - `NowDrawList.Warmup(...)` and `NowRenderer.Warmup(...)` to run a

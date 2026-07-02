@@ -129,11 +129,7 @@ namespace NowUI
 
         [NonSerialized] Vector2 _layoutInputMeasurementSize;
 
-        [NonSerialized] bool _wantsInteractionRepaint;
-
-        [NonSerialized] bool _hasLastInteractionInput;
-
-        [NonSerialized] InteractionInputState _lastInteractionInput;
+        [NonSerialized] NowInteractionRepaintTracker _repaintTracker;
 
         [NonSerialized] readonly List<CanvasRenderer> _extraCanvasRenderers = new List<CanvasRenderer>(2);
 
@@ -166,103 +162,6 @@ namespace NowUI
         Vector2 _clipSoftness;
 
         bool _validClipRect;
-
-        struct InteractionInputState
-        {
-            const float PositionEpsilonSqr = 0.25f;
-
-            public bool pointerInside;
-
-            public Vector2 pointerPosition;
-
-            public NowPointerButtons pointerButtonsDown;
-
-            public NowPointerButtons pointerButtonsPressed;
-
-            public NowPointerButtons pointerButtonsReleased;
-
-            public Vector2 scrollDelta;
-
-            public Vector2 navigation;
-
-            public bool focusPreviousPressed;
-
-            public bool focusNextPressed;
-
-            public bool submitDown;
-
-            public bool submitPressed;
-
-            public bool submitReleased;
-
-            public bool cancelDown;
-
-            public bool cancelPressed;
-
-            public bool cancelReleased;
-
-            public static InteractionInputState FromSnapshot(NowInputSnapshot snapshot, Vector2 size)
-            {
-                bool inside = snapshot.hasPointer &&
-                    snapshot.pointerPosition.x >= 0f &&
-                    snapshot.pointerPosition.y >= 0f &&
-                    snapshot.pointerPosition.x <= size.x &&
-                    snapshot.pointerPosition.y <= size.y;
-
-                return new InteractionInputState
-                {
-                    pointerInside = inside,
-                    pointerPosition = snapshot.pointerPosition,
-                    pointerButtonsDown = snapshot.pointerButtonsDown,
-                    pointerButtonsPressed = snapshot.pointerButtonsPressed,
-                    pointerButtonsReleased = snapshot.pointerButtonsReleased,
-                    scrollDelta = snapshot.scrollDelta,
-                    navigation = snapshot.navigation,
-                    focusPreviousPressed = snapshot.focusPreviousPressed,
-                    focusNextPressed = snapshot.focusNextPressed,
-                    submitDown = snapshot.submitDown,
-                    submitPressed = snapshot.submitPressed,
-                    submitReleased = snapshot.submitReleased,
-                    cancelDown = snapshot.cancelDown,
-                    cancelPressed = snapshot.cancelPressed,
-                    cancelReleased = snapshot.cancelReleased
-                };
-            }
-
-            public bool HasChangedSince(in InteractionInputState previous)
-            {
-                bool pointerRelevant =
-                    pointerInside ||
-                    previous.pointerInside ||
-                    pointerButtonsDown != NowPointerButtons.None ||
-                    previous.pointerButtonsDown != NowPointerButtons.None;
-
-                if (pointerInside != previous.pointerInside)
-                    return true;
-
-                if (pointerRelevant && (pointerPosition - previous.pointerPosition).sqrMagnitude > PositionEpsilonSqr)
-                    return true;
-
-                if (pointerButtonsDown != previous.pointerButtonsDown)
-                    return true;
-
-                if (pointerButtonsPressed != NowPointerButtons.None ||
-                    pointerButtonsReleased != NowPointerButtons.None)
-                    return true;
-
-                if (pointerRelevant && scrollDelta != Vector2.zero)
-                    return true;
-
-                if ((navigation - previous.navigation).sqrMagnitude > PositionEpsilonSqr)
-                    return true;
-
-                if (submitDown != previous.submitDown || cancelDown != previous.cancelDown)
-                    return true;
-
-                return focusPreviousPressed || focusNextPressed ||
-                    submitPressed || submitReleased || cancelPressed || cancelReleased;
-            }
-        }
 
         sealed class UguiGlassBackdropEntry
         {
@@ -487,7 +386,7 @@ namespace NowUI
             var frame = NowFrame.Begin(GetCanvasScaleFactor(), trackRepaint: true);
             var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset, false, _glassBlurQuality);
             bool colorMultiplierActive = false;
-            _wantsInteractionRepaint = false;
+            _repaintTracker.SetWantsRepaint(false);
 
             try
             {
@@ -499,7 +398,7 @@ namespace NowUI
                 using (NowOverlay.Host(this, rectTransform, GetEventCamera()))
                 using (NowInput.Begin(GetInputProvider(), inputSurface))
                 {
-                    StoreLastInteractionInput(NowInput.current, inputSurface.size);
+                    _repaintTracker.StoreFrameInput(NowInput.current, inputSurface.size);
 
                     var content = new FrameContent(this);
                     Vector2 measured = NowFrame.DrawContent(
@@ -517,7 +416,7 @@ namespace NowUI
 
                 Now.EndColorMultiplier();
                 colorMultiplierActive = false;
-                _wantsInteractionRepaint = frame.EndRepaintTracking();
+                _repaintTracker.SetWantsRepaint(frame.EndRepaintTracking());
 
                 scope.Dispose();
             }
@@ -606,7 +505,7 @@ namespace NowUI
             }
 
             if (_rebuildEveryFrame ||
-                (_autoRebuildOnInteraction && (_wantsInteractionRepaint || HasInteractionInputChanged())))
+                (_autoRebuildOnInteraction && ShouldRepaintForInteraction()))
             {
                 SetVerticesDirty();
             }
@@ -617,48 +516,30 @@ namespace NowUI
         /// button, scroll or navigation input changes, while idle hover stays
         /// retained.
         /// </summary>
-        bool HasInteractionInputChanged()
+        bool ShouldRepaintForInteraction()
         {
+            if (_repaintTracker.wantsRepaint)
+                return true;
+
             var rect = rectTransform.rect;
 
             if (rect.width <= 0f || rect.height <= 0f)
                 return false;
 
-            var provider = GetInputProvider();
-            var size = new Vector2(rect.width, rect.height);
-            var surface = new NowInputSurface(size);
-
-            if (!provider.TryGetSnapshot(surface, out var snapshot))
-                snapshot = default;
-
-            var current = InteractionInputState.FromSnapshot(snapshot, size);
-
-            if (!_hasLastInteractionInput)
-            {
-                _lastInteractionInput = current;
-                _hasLastInteractionInput = true;
-                return false;
-            }
-
-            return current.HasChangedSince(_lastInteractionInput);
-        }
-
-        void StoreLastInteractionInput(NowInputSnapshot snapshot, Vector2 size)
-        {
-            _lastInteractionInput = InteractionInputState.FromSnapshot(snapshot, size);
-            _hasLastInteractionInput = true;
+            var surface = new NowInputSurface(new Vector2(rect.width, rect.height));
+            return _repaintTracker.HasInputChanged(GetInputProvider(), surface);
         }
 
         protected override void OnEnable()
         {
             base.OnEnable();
-            _hasLastInteractionInput = false;
+            _repaintTracker.Reset();
             EnsureCanvasChannels();
         }
 
         protected override void OnDisable()
         {
-            _hasLastInteractionInput = false;
+            _repaintTracker.Reset();
             ReleaseStencilMaterials();
             ReleaseUGUIGlassBackdrops();
             ClearCanvasRenderer(canvasRenderer);

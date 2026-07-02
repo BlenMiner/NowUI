@@ -11,6 +11,23 @@ layout group (like `NowLayout.Label`), `Now.*` takes an explicit rect (like
 `Now.Text`), `NowTheme` owns the ambient theme, and `NowControls` is the
 shared toolkit for id scopes and interaction plumbing.
 
+## API conventions
+
+Every control follows the same three rules, so one control teaches all of
+them:
+
+- **Dual factories.** Each control exists both as `Now.X(rect, ...)` for
+  explicit placement and `NowLayout.X(...)` for layout flow, with identical
+  configuration methods. Identity comes from the call site; use `SetId` when
+  looped items can reorder.
+- **Actions return `bool` from `Draw()`.** Controls that trigger something
+  (`Button`) return true on click or on submit while focused.
+- **Values are caller-owned, passed by ref.** Controls that edit a value
+  (`Checkbox`, `Slider`, `TextField`, `Dropdown`, ...) take `Draw(ref value)`,
+  mutate the ref, and return true when the value changed this frame. NowUI
+  never stores your data — state you can't see stays limited to ephemeral
+  interaction details (caret position, open popups, hover fades).
+
 ## Using the built-in controls
 
 Layout-flowing controls reserve space sized from their themed content; values

@@ -18,6 +18,12 @@ namespace NowUI
 
         static readonly List<RaycastResult> s_results = new List<RaycastResult>(16);
 
+        static int s_cachedFrame = -1;
+
+        static Vector2 s_cachedPosition;
+
+        static bool s_hasCachedResults;
+
         /// <summary>
         /// True when the topmost EventSystem raycast hit at
         /// <paramref name="screenPosition"/> is <paramref name="host"/> or one of
@@ -49,10 +55,8 @@ namespace NowUI
                 return true;
 
             var topResult = s_results[0];
-            bool allowed = IsHostOrChild(host, topResult) ||
+            return IsHostOrChild(host, topResult) ||
                 (allowHostOwnedOverlay && !IsRaycastResultAboveHost(host, topResult, screenPosition));
-            s_results.Clear();
-            return allowed;
         }
 
         /// <summary>
@@ -78,9 +82,18 @@ namespace NowUI
                 return false;
 
             RaycastAll(eventSystem, screenPosition);
-            bool over = s_results.Count > 0;
+            return s_results.Count > 0;
+        }
+
+        /// <summary>
+        /// Drops the shared same-frame raycast cache. Call after mutating the UGUI
+        /// hierarchy mid-frame (tests, dynamic canvas edits) so the next gate query
+        /// re-raycasts instead of reusing stale results.
+        /// </summary>
+        public static void InvalidateCache()
+        {
+            s_hasCachedResults = false;
             s_results.Clear();
-            return over;
         }
 
         /// <summary>
@@ -137,18 +150,36 @@ namespace NowUI
             return false;
         }
 
+        /// <summary>
+        /// Raycasts through the EventSystem at most once per (frame, position):
+        /// every host provider queries the same pointer sample each frame, so the
+        /// results are shared instead of re-raycasting per host.
+        /// </summary>
         static void RaycastAll(EventSystem eventSystem, Vector2 screenPosition)
         {
             if (s_pointerData == null || s_eventSystem != eventSystem)
             {
                 s_pointerData = new PointerEventData(eventSystem);
                 s_eventSystem = eventSystem;
+                s_hasCachedResults = false;
+            }
+
+            int frame = Time.frameCount;
+
+            if (s_hasCachedResults &&
+                s_cachedFrame == frame &&
+                (s_cachedPosition - screenPosition).sqrMagnitude <= 0.0001f)
+            {
+                return;
             }
 
             s_pointerData.position = screenPosition;
 
             s_results.Clear();
             eventSystem.RaycastAll(s_pointerData, s_results);
+            s_cachedFrame = frame;
+            s_cachedPosition = screenPosition;
+            s_hasCachedResults = true;
         }
 
         static bool IsHostOrChild(Component host, RaycastResult result)
