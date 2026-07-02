@@ -305,6 +305,26 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Queues an overlay that draws above everything but never blocks the
+        /// pointer — tooltips and other purely informational layers that must not
+        /// steal hover or clicks from the controls beneath them.
+        /// </summary>
+        public static void DeferPassive(int state, DrawCallback draw)
+        {
+            if (draw == null || NowInput.isPassive)
+                return;
+
+            BeginFrameIfNeeded();
+            _deferred.Add(new DeferredDraw
+            {
+                drawWithState = draw,
+                state = state,
+                overlayId = state,
+                transform = Now.CaptureTransform()
+            });
+        }
+
+        /// <summary>
         /// Blocks pointer interaction inside the rect without deferring a draw —
         /// for overlays that manage their own draw order (modal scrims).
         /// </summary>

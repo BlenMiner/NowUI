@@ -58,6 +58,18 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Ten new controls**, all following the standard dual `Now.*`/`NowLayout.*`
+  factories, caller-owned values, theme tokens, focus/keyboard navigation, and
+  zero steady-state allocations: `Switch`, `ProgressBar` (determinate +
+  caller-timed indeterminate), `Badge`, `Chip` (selectable/removable),
+  `NowTooltip.For(...)` (hover/long-press, passive overlay), numeric text field
+  spinner buttons (`SetSpinner`), `TabBar`/`TabView`, `SplitView` (draggable
+  focusable divider), `TreeView` (caller-owned expansion/selection state),
+  `ComboBox` (searchable dropdown), `DatePicker` (calendar popup, range
+  clamping, caller-passed today), and `TimePicker` (12/24h).
+- `NowOverlay.DeferPassive` for overlays that draw on top without blocking the
+  pointer.
+
 - `NowDrawList.Warmup(...)` and `NowRenderer.Warmup(...)` to run a
   representative initialization frame and clear the result before measuring
   allocation-sensitive steady-state rendering.

@@ -1328,6 +1328,35 @@ namespace NowUI
         [SerializeField] float _scrollbarPadding;
         [SerializeField] float _scrollbarMinThumbSize;
         [SerializeField] float _scrollWheelStep;
+        [SerializeField] float _switchWidth;
+        [SerializeField] float _switchHeight;
+        [SerializeField] float _switchKnobInset;
+        [SerializeField] float _progressBarHeight;
+        [SerializeField] float _progressBarSweepRatio;
+        [SerializeField] float _progressBarPeriod;
+        [SerializeField] float _badgeMinSize;
+        [SerializeField] float _badgePaddingX;
+        [SerializeField] float _chipHeight;
+        [SerializeField] float _chipPaddingX;
+        [SerializeField] float _chipRemoveSize;
+        [SerializeField] float _tooltipDelay;
+        [SerializeField] float _tooltipLongPressDelay;
+        [SerializeField] float _tooltipPadding;
+        [SerializeField] float _tooltipMaxWidth;
+        [SerializeField] float _tooltipGap;
+        [SerializeField] float _spinnerButtonWidth;
+        [SerializeField] float _tabHeight;
+        [SerializeField] float _tabPaddingX;
+        [SerializeField] float _tabIndicatorThickness;
+        [SerializeField] float _tabSpacing;
+        [SerializeField] float _splitterThickness;
+        [SerializeField] float _splitterHitOutset;
+        [SerializeField] float _treeRowHeight;
+        [SerializeField] float _treeIndentWidth;
+        [SerializeField] float _treeDisclosureSize;
+        [SerializeField] float _calendarCellSize;
+        [SerializeField] float _calendarHeaderHeight;
+        [SerializeField] float _calendarPadding;
 
         public static NowControlStyleSet Default
         {
@@ -1388,7 +1417,36 @@ namespace NowUI
                     _scrollbarWidth = 8f,
                     _scrollbarPadding = 4f,
                     _scrollbarMinThumbSize = 24f,
-                    _scrollWheelStep = 40f
+                    _scrollWheelStep = 40f,
+                    _switchWidth = 44f,
+                    _switchHeight = 24f,
+                    _switchKnobInset = 3f,
+                    _progressBarHeight = 8f,
+                    _progressBarSweepRatio = 0.3f,
+                    _progressBarPeriod = 1.2f,
+                    _badgeMinSize = 20f,
+                    _badgePaddingX = 8f,
+                    _chipHeight = 28f,
+                    _chipPaddingX = 12f,
+                    _chipRemoveSize = 16f,
+                    _tooltipDelay = 0.55f,
+                    _tooltipLongPressDelay = 0.45f,
+                    _tooltipPadding = 8f,
+                    _tooltipMaxWidth = 280f,
+                    _tooltipGap = 6f,
+                    _spinnerButtonWidth = 20f,
+                    _tabHeight = 40f,
+                    _tabPaddingX = 16f,
+                    _tabIndicatorThickness = 2f,
+                    _tabSpacing = 0f,
+                    _splitterThickness = 4f,
+                    _splitterHitOutset = 10f,
+                    _treeRowHeight = 32f,
+                    _treeIndentWidth = 18f,
+                    _treeDisclosureSize = 14f,
+                    _calendarCellSize = 40f,
+                    _calendarHeaderHeight = 36f,
+                    _calendarPadding = 8f
                 };
 
                 return style;
@@ -1449,6 +1507,35 @@ namespace NowUI
         public float scrollbarPadding => _scrollbarPadding;
         public float scrollbarMinThumbSize => _scrollbarMinThumbSize;
         public float scrollWheelStep => _scrollWheelStep;
+        public float switchWidth => _switchWidth <= 0f ? 44f : _switchWidth;
+        public float switchHeight => _switchHeight <= 0f ? 24f : _switchHeight;
+        public float switchKnobInset => _switchKnobInset <= 0f ? 3f : _switchKnobInset;
+        public float progressBarHeight => _progressBarHeight <= 0f ? 8f : _progressBarHeight;
+        public float progressBarSweepRatio => _progressBarSweepRatio <= 0f ? 0.3f : _progressBarSweepRatio;
+        public float progressBarPeriod => _progressBarPeriod <= 0f ? 1.2f : _progressBarPeriod;
+        public float badgeMinSize => _badgeMinSize <= 0f ? 20f : _badgeMinSize;
+        public float badgePaddingX => _badgePaddingX <= 0f ? 8f : _badgePaddingX;
+        public float chipHeight => _chipHeight <= 0f ? 28f : _chipHeight;
+        public float chipPaddingX => _chipPaddingX <= 0f ? 12f : _chipPaddingX;
+        public float chipRemoveSize => _chipRemoveSize <= 0f ? 16f : _chipRemoveSize;
+        public float tooltipDelay => _tooltipDelay <= 0f ? 0.55f : _tooltipDelay;
+        public float tooltipLongPressDelay => _tooltipLongPressDelay <= 0f ? 0.45f : _tooltipLongPressDelay;
+        public float tooltipPadding => _tooltipPadding <= 0f ? 8f : _tooltipPadding;
+        public float tooltipMaxWidth => _tooltipMaxWidth <= 0f ? 280f : _tooltipMaxWidth;
+        public float tooltipGap => _tooltipGap <= 0f ? 6f : _tooltipGap;
+        public float spinnerButtonWidth => _spinnerButtonWidth <= 0f ? 20f : _spinnerButtonWidth;
+        public float tabHeight => _tabHeight <= 0f ? 40f : _tabHeight;
+        public float tabPaddingX => _tabPaddingX <= 0f ? 16f : _tabPaddingX;
+        public float tabIndicatorThickness => _tabIndicatorThickness <= 0f ? 2f : _tabIndicatorThickness;
+        public float tabSpacing => _tabSpacing;
+        public float splitterThickness => _splitterThickness <= 0f ? 4f : _splitterThickness;
+        public float splitterHitOutset => _splitterHitOutset <= 0f ? 10f : _splitterHitOutset;
+        public float treeRowHeight => _treeRowHeight <= 0f ? 32f : _treeRowHeight;
+        public float treeIndentWidth => _treeIndentWidth <= 0f ? 18f : _treeIndentWidth;
+        public float treeDisclosureSize => _treeDisclosureSize <= 0f ? 14f : _treeDisclosureSize;
+        public float calendarCellSize => _calendarCellSize <= 0f ? 40f : _calendarCellSize;
+        public float calendarHeaderHeight => _calendarHeaderHeight <= 0f ? 36f : _calendarHeaderHeight;
+        public float calendarPadding => _calendarPadding <= 0f ? 8f : _calendarPadding;
     }
 
     public readonly struct NowSliderVisualMetrics
@@ -1618,7 +1705,7 @@ namespace NowUI
         }
     }
 
-    public class NowControlRenderer : ScriptableObject
+    public partial class NowControlRenderer : ScriptableObject
     {
         static NowControlRenderer _defaultRenderer;
 

@@ -65,6 +65,56 @@ namespace NowUI
         {
             return new NowScrollView(rect, id, NowControls.SiteId(file, line));
         }
+
+        public static NowSwitch Switch(NowRect rect, string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowSwitch(rect, label, NowControls.SiteId(file, line));
+        }
+
+        public static NowProgressBar ProgressBar(NowRect rect, float value01 = 0f, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowProgressBar(rect, value01, NowControls.SiteId(file, line));
+        }
+
+        public static NowBadge Badge(NowRect rect, string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowBadge(rect, label, NowControls.SiteId(file, line));
+        }
+
+        public static NowChip Chip(NowRect rect, string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowChip(rect, label, NowControls.SiteId(file, line));
+        }
+
+        public static NowTabBar TabBar(NowRect rect, IReadOnlyList<string> labels, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTabBar(rect, labels, NowControls.SiteId(file, line));
+        }
+
+        public static NowTabView TabView(NowRect rect, IReadOnlyList<string> labels, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTabView(rect, labels, NowControls.SiteId(file, line));
+        }
+
+        public static NowSplitView SplitView(NowRect rect, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowSplitView(rect, NowControls.SiteId(file, line));
+        }
+
+        public static NowComboBox ComboBox(NowRect rect, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowComboBox(rect, default, options, NowControls.SiteId(file, line));
+        }
+
+        public static NowDatePicker DatePicker(NowRect rect, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowDatePicker(rect, default, NowControls.SiteId(file, line));
+        }
+
+        public static NowTimePicker TimePicker(NowRect rect, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTimePicker(rect, default, NowControls.SiteId(file, line));
+        }
     }
 
     /// <summary>
@@ -133,6 +183,61 @@ namespace NowUI
         public static NowScrollView ScrollView(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowScrollView(id, NowControls.SiteId(file, line));
+        }
+
+        public static NowSwitch Switch(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowSwitch(label, NowControls.SiteId(file, line));
+        }
+
+        public static NowProgressBar ProgressBar(float value01 = 0f, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowProgressBar(value01, NowControls.SiteId(file, line));
+        }
+
+        public static NowBadge Badge(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowBadge(label, NowControls.SiteId(file, line));
+        }
+
+        public static NowChip Chip(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowChip(label, NowControls.SiteId(file, line));
+        }
+
+        public static NowTabBar TabBar(IReadOnlyList<string> labels, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTabBar(labels, NowControls.SiteId(file, line));
+        }
+
+        public static NowTabView TabView(IReadOnlyList<string> labels, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTabView(labels, NowControls.SiteId(file, line));
+        }
+
+        public static NowSplitView SplitView(NowSplitAxis axis = NowSplitAxis.Horizontal, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowSplitView(NowControls.SiteId(file, line)).SetAxis(axis);
+        }
+
+        public static NowTreeView TreeView(NowTreeViewState state, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTreeView(state, NowControls.SiteId(file, line));
+        }
+
+        public static NowComboBox ComboBox(IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowComboBox(default, options, NowControls.SiteId(file, line));
+        }
+
+        public static NowDatePicker DatePicker([CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowDatePicker(default(NowId), NowControls.SiteId(file, line));
+        }
+
+        public static NowTimePicker TimePicker([CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTimePicker(default(NowId), NowControls.SiteId(file, line));
         }
     }
 }

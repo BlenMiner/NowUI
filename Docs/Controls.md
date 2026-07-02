@@ -70,9 +70,49 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
     using (NowLayout.ScrollView().SetHeight(160).Begin())
         foreach (var line in logLines)
             NowLayout.Label(line).Draw();
+
+    NowLayout.Switch("Notifications").Draw(ref notifications);
+
+    NowLayout.ProgressBar(downloadProgress).SetStretchWidth().Draw();
+    NowLayout.ProgressBar().SetIndeterminate().SetTime(Time.time).Draw();
+
+    NowLayout.Badge("3").SetStyle(NowRectangleStyle.Danger).Draw();
+    if (NowLayout.Chip("Filter: Active").SetSelected(filtered).Draw()) filtered = !filtered;
+
+    NowLayout.FloatField().SetRange(0f, 10f).SetSpinner(0.5f).Draw(ref spacingValue);
+
+    NowLayout.TabBar(pageNames).Draw(ref page);
+
+    NowLayout.ComboBox(countryNames).Draw(ref countryIndex);
+
+    NowLayout.DatePicker().SetToday(DateTime.Today).Draw(ref dueDate);
+    NowLayout.TimePicker().Set24Hour(false).Draw(ref alarmTime);
 }
 ```
 
+- `Switch(...).Draw(ref value)` is the toggle-switch twin of `Checkbox` — same
+  contract, sliding-knob visual.
+- `ProgressBar(value01)` draws a determinate fill; `SetIndeterminate().SetTime(t)`
+  sweeps, with the phase derived entirely from the caller-passed time (no
+  hidden clock).
+- `Badge(text)` is a non-interactive pill; `Chip(text)` is selectable and
+  optionally removable via `SetRemovable().Draw(out bool removed)`.
+- `SetSpinner(step)` on numeric text fields adds increment/decrement buttons
+  with press-and-hold repeat; up/down navigation steps while focused.
+- `TabBar(labels).Draw(ref index)` is a caller-owned tab strip;
+  `TabView(labels).Begin(ref index)` adds a masked page area below the bar.
+- `SplitView(rect).Begin(ref ratio)` gives two panes with a draggable,
+  focusable divider (`BeginFirst()`/`BeginSecond()` open each pane).
+- `TreeView(state).Begin()` renders collapsible rows; expansion and selection
+  live in a caller-owned `NowTreeViewState`.
+- `ComboBox(options).Draw(ref index)` is a searchable dropdown: open it and
+  type to filter, up/down highlight, submit commits.
+- `DatePicker().Draw(ref DateTime)` opens a calendar popup (only the date
+  component changes; pass `SetToday(DateTime.Today)` for the today ring —
+  caller-passed by design). `TimePicker().Draw(ref TimeSpan)` edits time with
+  spinner fields and optional AM/PM chips.
+- `NowTooltip.For(rect, "help text")` attaches a hover/long-press tooltip to
+  any rect; it renders as a passive overlay that never blocks the pointer.
 - `Button(...).Draw()` returns true on click or on submit while focused.
 - `Checkbox(...).Draw(ref value)` / `Slider(...).Draw(ref value)` mutate the
   ref and return true when it changed.

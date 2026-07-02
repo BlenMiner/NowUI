@@ -28,6 +28,12 @@ namespace NowUI
         float _numberMin;
         float _numberMax;
         string _numberFormat;
+        bool _spinner;
+        float _spinnerStep;
+        int _spinnerTicks;
+
+        const int SpinnerUpSeed = 0x4e545355;
+        const int SpinnerDownSeed = 0x4e545344;
 
         static TouchScreenKeyboard s_touchKeyboard;
         static int s_touchKeyboardId;
@@ -53,6 +59,9 @@ namespace NowUI
             _numberMin = 0f;
             _numberMax = 0f;
             _numberFormat = null;
+            _spinner = false;
+            _spinnerStep = 1f;
+            _spinnerTicks = 0;
         }
 
         internal NowTextField(NowRect rect, NowId id, int site) : this(id, site)
@@ -91,6 +100,18 @@ namespace NowUI
 
         /// <summary>Format used when numeric Draw overloads sync the field from the value.</summary>
         public NowTextField SetFormat(string format) { _numberFormat = string.IsNullOrEmpty(format) ? null : format; return this; }
+
+        /// <summary>
+        /// Adds increment/decrement buttons to the numeric Draw overloads:
+        /// click steps once, press-and-hold repeats, and up/down navigation steps
+        /// while the field is focused.
+        /// </summary>
+        public NowTextField SetSpinner(float step = 1f)
+        {
+            _spinner = true;
+            _spinnerStep = Mathf.Max(0.0001f, step);
+            return this;
+        }
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowTextField SetId(NowId id) { _id = id; return this; }
@@ -161,6 +182,16 @@ namespace NowUI
                 numberState.text = focused ? text : FormatFloat(value, format);
             }
 
+            if (_spinner && _spinnerTicks != 0)
+            {
+                value += _spinnerTicks * _spinnerStep;
+
+                if (_hasNumberRange)
+                    value = Mathf.Clamp(value, _numberMin, _numberMax);
+
+                numberState.text = FormatFloat(value, format);
+            }
+
             numberState.editing = focused;
             return !Mathf.Approximately(previous, value);
         }
@@ -195,6 +226,16 @@ namespace NowUI
                 numberState.text = focused ? text : value.ToString(CultureInfo.InvariantCulture);
             }
 
+            if (_spinner && _spinnerTicks != 0)
+            {
+                value += _spinnerTicks * Mathf.Max(1, Mathf.RoundToInt(_spinnerStep));
+
+                if (_hasNumberRange)
+                    value = Mathf.Clamp(value, Mathf.CeilToInt(_numberMin), Mathf.FloorToInt(_numberMax));
+
+                numberState.text = value.ToString(CultureInfo.InvariantCulture);
+            }
+
             numberState.editing = focused;
             return previous != value;
         }
@@ -219,6 +260,23 @@ namespace NowUI
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureTextField(theme, lineHeight));
             var inner = renderer.TextFieldInnerRect(theme, rect, lineHeight);
+
+            NowInteraction spinnerUp = default;
+            NowInteraction spinnerDown = default;
+            NowRect spinnerUpRect = default;
+            NowRect spinnerDownRect = default;
+
+            if (_spinner)
+            {
+                inner = new NowRect(inner.x, inner.y, Mathf.Max(0f, inner.width - theme.controlStyles.spinnerButtonWidth), inner.height);
+
+                float buttonWidth = theme.controlStyles.spinnerButtonWidth;
+                float half = rect.height * 0.5f;
+                spinnerUpRect = new NowRect(rect.xMax - buttonWidth - 1f, rect.y + 1f, buttonWidth, half - 1f);
+                spinnerDownRect = new NowRect(rect.xMax - buttonWidth - 1f, rect.y + half, buttonWidth, half - 1f);
+                spinnerUp = NowInput.Interact(NowInput.CombineId(id, SpinnerUpSeed), spinnerUpRect);
+                spinnerDown = NowInput.Interact(NowInput.CombineId(id, SpinnerDownSeed), spinnerDownRect);
+            }
 
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
 
@@ -412,6 +470,30 @@ namespace NowUI
                 {
                     renderer.DrawCaret(theme, new NowRect(textX + caretX, inner.y, theme.controlStyles.caretWidth, inner.height));
                 }
+            }
+
+            if (_spinner)
+            {
+                int ticks = 0;
+
+                if (NowControlState.Repeat(id, "spin-up", spinnerUp.held, 0.35f, 0.06f))
+                    ++ticks;
+
+                if (NowControlState.Repeat(id, "spin-down", spinnerDown.held, 0.35f, 0.06f))
+                    --ticks;
+
+                if (focused && !NowInput.isPassive)
+                {
+                    float navY = NowInput.current.navigation.y;
+
+                    if (NowControlState.Repeat(id, "spin-nav", Mathf.Abs(navY) > 0.55f, 0.35f, 0.08f))
+                        ticks += navY > 0f ? 1 : -1;
+                }
+
+                _spinnerTicks = ticks;
+                renderer.DrawSpinnerButtons(new NowSpinnerRenderContext(
+                    theme, rect, spinnerUpRect, spinnerDownRect,
+                    spinnerUp.hovered, spinnerUp.held, spinnerDown.hovered, spinnerDown.held, focused));
             }
 
             if (focused && !NowInput.isPassive)
