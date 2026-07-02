@@ -85,6 +85,8 @@ namespace NowUI.Editor
             return new[]
             {
                 new NowHarnessScenario { name = "controls", width = 960, height = 540, includeInGoldens = true, draw = DrawControls },
+                new NowHarnessScenario { name = "controls-dark", width = 960, height = 540, includeInGoldens = true, draw = DrawControlsDark },
+                new NowHarnessScenario { name = "elevation", width = 840, height = 420, includeInGoldens = true, draw = DrawElevation },
                 new NowHarnessScenario { name = "text-layout", width = 960, height = 540, includeInGoldens = true, draw = DrawTextLayout },
                 new NowHarnessScenario { name = "glass", width = 640, height = 360, includeInGoldens = true, draw = DrawGlass },
                 new NowHarnessScenario { name = "shader-variants", width = 840, height = 420, includeInGoldens = true, draw = DrawShaderVariants },
@@ -218,7 +220,10 @@ namespace NowUI.Editor
         static void DrawScenarioFrame(NowHarnessScenario scenario)
         {
             Now.defaultFont = Resources.Load<NowFontAsset>("NowUI/NotoSans");
-            var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/MaterialDark.asset");
+            string themePath = scenario.name == "controls-dark"
+                ? "Assets/NowUI/Assets/Themes/DefaultDark.asset"
+                : "Assets/NowUI/Assets/Themes/Default.asset";
+            var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
 
             if (theme != null)
             {
@@ -228,6 +233,36 @@ namespace NowUI.Editor
             else
             {
                 scenario.draw(new NowRect(0, 0, scenario.width, scenario.height));
+            }
+        }
+
+        static void DrawControlsDark(NowRect rect)
+        {
+            DrawControls(rect);
+        }
+
+        static void DrawElevation(NowRect rect)
+        {
+            DrawSurface(rect);
+            HeaderBlock(rect, "Elevation", "Raised, overlay, and modal shadow presets over the themed background.");
+
+            var theme = NowControls.themeAsset;
+            var levels = new[] { NowElevationToken.Raised, NowElevationToken.Overlay, NowElevationToken.Modal };
+            float cardWidth = 200f;
+            float cardHeight = 140f;
+            float gap = 48f;
+            float x = rect.x + 60f;
+            float y = rect.y + 150f;
+
+            for (int i = 0; i < levels.Length; ++i)
+            {
+                var cardRect = new NowRect(x + i * (cardWidth + gap), y, cardWidth, cardHeight);
+                theme.Rectangle(cardRect, NowRectangleStyle.Elevated).DrawElevated(theme, levels[i]);
+                Now.Text(cardRect.Inset(16f, 16f, 16f, 16f))
+                    .SetFontSize(15f)
+                    .SetBold()
+                    .SetColor(theme.GetColor(NowColorToken.Text))
+                    .Draw(levels[i].ToString());
             }
         }
 
@@ -555,7 +590,7 @@ namespace NowUI.Editor
         static void DrawSurface(NowRect rect)
         {
             Now.Rectangle(rect)
-                .SetColor(new Color(0.075f, 0.082f, 0.095f, 1f))
+                .SetColor(NowTheme.themeAsset.GetColor(NowColorToken.Background))
                 .Draw();
         }
 
