@@ -63,6 +63,7 @@ namespace NowUI
         static bool _highlightMovedByKeyboard;
         static int _pendingHighlightMenuOverlay;
         static Vector2 _lastPointerPosition;
+        static Vector2 _previousPointerPosition;
         static bool _pointerMoved;
         static bool _navLeftPulse;
         static bool _navRightPulse;
@@ -404,8 +405,10 @@ namespace NowUI
         static void UpdateTreeInput(Menu root)
         {
             var snapshot = NowInput.current;
-            _pointerMoved = snapshot.pointerPosition != _lastPointerPosition;
-            _lastPointerPosition = snapshot.pointerPosition;
+            Vector2 pointer = snapshot.pointerPosition;
+            _previousPointerPosition = _lastPointerPosition;
+            _pointerMoved = pointer != _lastPointerPosition;
+            _lastPointerPosition = pointer;
             _navLeftPulse = NavPulse(root, NavLeftSeed, snapshot.navigation.x < -NavThreshold);
             _navRightPulse = NavPulse(root, NavRightSeed, snapshot.navigation.x > NavThreshold);
             _navUpPulse = NavPulse(root, NavUpSeed, snapshot.navigation.y > NavThreshold);
@@ -618,6 +621,8 @@ namespace NowUI
             float visibleBottom = menu.popupRect.yMax - popupPadding;
             float y = visibleTop - scroll;
 
+            UpdateHoverPathBeforeDraw(menu, scroll, occluded, popupPadding, itemHeight, visibleTop, visibleBottom);
+
             for (int i = 0; i < menu.entries.Count; ++i)
             {
                 var entry = menu.entries[i];
@@ -649,7 +654,7 @@ namespace NowUI
 
                         if (child.entries.Count > 0)
                         {
-                            child.popupRect = PlaceSubmenu(child, itemRect, popupPadding);
+                            child.popupRect = PlaceSubmenu(menu, child, itemRect, popupPadding);
                             NowOverlay.DeferScreen(child.popupRect, child.overlayId, DrawDeferred);
                         }
                     }
@@ -657,6 +662,58 @@ namespace NowUI
 
                 y += height;
             }
+        }
+
+        /// <summary>
+        /// Resolves hover-driven path changes before this menu queues any child
+        /// overlays. Without this pre-pass, hovering a sibling submenu after an
+        /// earlier row was already visited can leave the old child queued for
+        /// one more frame, which feels sticky when moving back through submenu
+        /// rows.
+        /// </summary>
+        static void UpdateHoverPathBeforeDraw(
+            Menu menu,
+            float scroll,
+            bool occluded,
+            float popupPadding,
+            float itemHeight,
+            float visibleTop,
+            float visibleBottom)
+        {
+            if (occluded)
+                return;
+
+            float y = visibleTop - scroll;
+
+            for (int i = 0; i < menu.entries.Count; ++i)
+            {
+                var entry = menu.entries[i];
+                float height = EntryHeight(entry, itemHeight);
+                var itemRect = new NowRect(
+                    menu.popupRect.x + popupPadding,
+                    y,
+                    menu.popupRect.width - popupPadding * 2f,
+                    height);
+
+                bool visible = !menu.scrolls || (itemRect.yMax > visibleTop - 0.5f && itemRect.y < visibleBottom + 0.5f);
+
+                if (visible && entry.enabled && IsEntryHovered(itemRect))
+                {
+                    UpdateOpenPathFromHover(menu.depth, entry.kind == EntryKind.Submenu ? entry.pathId : 0);
+                    return;
+                }
+
+                y += height;
+            }
+        }
+
+        static bool IsEntryHovered(NowRect itemRect)
+        {
+            var snapshot = NowInput.current;
+            return snapshot.hasPointer &&
+                itemRect.Contains(snapshot.pointerPosition) &&
+                Now.IsInsideAmbientMask(snapshot.pointerPosition) &&
+                !NowOverlay.IsPointerBlocked(snapshot.pointerPosition);
         }
 
         /// <summary>
@@ -915,25 +972,62 @@ namespace NowUI
             return -1;
         }
 
-        static NowRect PlaceSubmenu(Menu child, NowRect parentItemRect, float popupPadding)
+        static NowRect PlaceSubmenu(Menu parent, Menu child, NowRect parentItemRect, float popupPadding)
         {
             child.contentHeight = child.height;
             child.scrolls = false;
 
-            var rect = new NowRect(
-                parentItemRect.xMax + SubmenuGap,
-                parentItemRect.y - popupPadding,
-                child.width,
-                child.height);
+            var right = SubmenuCandidate(parentItemRect, child, popupPadding, true);
+            var left = SubmenuCandidate(parentItemRect, child, popupPadding, false);
+            var rect = right;
 
             if (_fitToView)
             {
+                bool preferRight = PreferSubmenuRight(parent);
+                var preferred = preferRight ? right : left;
+                var alternate = preferRight ? left : right;
+
+                rect = SubmenuFitsHorizontally(preferred)
+                    ? preferred
+                    : SubmenuFitsHorizontally(alternate)
+                        ? alternate
+                        : preferred;
+
                 rect = NowOverlay.ClampScreenToView(rect);
                 child.height = rect.height;
                 child.scrolls = child.height < child.contentHeight - 0.5f;
             }
 
             return rect;
+        }
+
+        static NowRect SubmenuCandidate(NowRect parentItemRect, Menu child, float popupPadding, bool right)
+        {
+            float x = right
+                ? parentItemRect.xMax + SubmenuGap
+                : parentItemRect.x - SubmenuGap - child.width;
+
+            return new NowRect(
+                x,
+                parentItemRect.y - popupPadding,
+                child.width,
+                child.height);
+        }
+
+        static bool PreferSubmenuRight(Menu parent)
+        {
+            if (parent.parentMenu < 0 || parent.parentMenu >= _menuCount)
+                return true;
+
+            var ancestor = _menus[parent.parentMenu];
+            return parent.popupRect.center.x >= ancestor.popupRect.center.x;
+        }
+
+        static bool SubmenuFitsHorizontally(NowRect rect)
+        {
+            var clamped = NowOverlay.ClampScreenToView(rect);
+            return Mathf.Abs(clamped.x - rect.x) < 0.5f &&
+                Mathf.Abs(clamped.width - rect.width) < 0.5f;
         }
 
         static void MeasureMenu(Menu menu, NowThemeAsset theme)
@@ -1009,12 +1103,14 @@ namespace NowUI
 
         /// <summary>
         /// Applies hovered rows to the open-submenu path. Opening into an empty
-        /// depth is immediate; switching away from an open submenu (to close it
-        /// or open a sibling) waits for a short hover-intent delay so diagonal
-        /// pointer paths across neighbouring rows do not snap submenus shut.
-        /// New intents only start while the pointer is actually moving, so a
-        /// resting pointer never overrides keyboard-opened submenus. Timing
-        /// comes from the input snapshot's caller-supplied time.
+        /// depth is immediate; moving onto another visible submenu row is also
+        /// immediate unless the pointer is heading toward the currently-open
+        /// child menu. Plain item rows and stationary sibling-submenu hovers
+        /// still wait for a short hover-intent delay, so diagonal pointer paths
+        /// into submenus do not snap them shut. New intents only start while the
+        /// pointer is actually moving, so a resting pointer never overrides
+        /// keyboard-opened submenus. Timing comes from the input snapshot's
+        /// caller-supplied time.
         /// </summary>
         static void UpdateOpenPathFromHover(int depth, int desiredPathId)
         {
@@ -1030,7 +1126,10 @@ namespace NowUI
                 return;
             }
 
-            if (_openPath.Count <= depth && desiredPathId != 0)
+            bool hasOpenPathAtDepth = _openPath.Count > depth;
+
+            if (desiredPathId != 0 &&
+                (!hasOpenPathAtDepth || (_pointerMoved && !PointerMovingTowardOpenChild(depth))))
             {
                 SetOpenPath(depth, desiredPathId);
                 ResetSubmenuScroll(desiredPathId);
@@ -1061,6 +1160,75 @@ namespace NowUI
             }
 
             NowControlState.RequestRepaint();
+        }
+
+        static bool PointerMovingTowardOpenChild(int depth)
+        {
+            if (!_pointerMoved || _openPath.Count <= depth)
+                return false;
+
+            var child = FindOpenChildMenu(depth);
+
+            if (child == null || child.popupRect.isEmpty)
+                return false;
+
+            Vector2 current = NowInput.current.pointerPosition;
+            Vector2 previous = _previousPointerPosition;
+            bool childToRight = child.popupRect.center.x >= previous.x;
+
+            if (childToRight)
+            {
+                if (current.x <= previous.x)
+                    return false;
+
+                return PointInTriangle(
+                    current,
+                    previous,
+                    new Vector2(child.popupRect.x, child.popupRect.y - 4f),
+                    new Vector2(child.popupRect.x, child.popupRect.yMax + 4f));
+            }
+
+            if (current.x >= previous.x)
+                return false;
+
+            return PointInTriangle(
+                current,
+                previous,
+                new Vector2(child.popupRect.xMax, child.popupRect.y - 4f),
+                new Vector2(child.popupRect.xMax, child.popupRect.yMax + 4f));
+        }
+
+        static Menu FindOpenChildMenu(int depth)
+        {
+            if (_openPath.Count <= depth)
+                return null;
+
+            int pathId = _openPath[depth];
+
+            for (int i = 0; i < _menuCount; ++i)
+            {
+                var menu = _menus[i];
+
+                if (menu.depth == depth + 1 && menu.pathId == pathId)
+                    return menu;
+            }
+
+            return null;
+        }
+
+        static bool PointInTriangle(Vector2 point, Vector2 a, Vector2 b, Vector2 c)
+        {
+            float ab = Cross(point, a, b);
+            float bc = Cross(point, b, c);
+            float ca = Cross(point, c, a);
+            bool hasNegative = ab < 0f || bc < 0f || ca < 0f;
+            bool hasPositive = ab > 0f || bc > 0f || ca > 0f;
+            return !(hasNegative && hasPositive);
+        }
+
+        static float Cross(Vector2 point, Vector2 a, Vector2 b)
+        {
+            return (point.x - b.x) * (a.y - b.y) - (a.x - b.x) * (point.y - b.y);
         }
 
         static void ResetSubmenuScroll(int pathId)
@@ -1113,6 +1281,7 @@ namespace NowUI
             ClearHoverIntent();
             ClearHighlight();
             _lastPointerPosition = default;
+            _previousPointerPosition = default;
             _pointerMoved = false;
             _navLeftPulse = false;
             _navRightPulse = false;

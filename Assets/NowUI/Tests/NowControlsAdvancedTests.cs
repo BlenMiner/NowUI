@@ -53,6 +53,61 @@ public class NowControlsAdvancedTests
         }
     }
 
+    sealed class RecordedContextMenuItem
+    {
+        public string label;
+        public NowRect rect;
+        public bool selected;
+        public bool hasSubmenu;
+        public bool submenuOpen;
+
+        public RecordedContextMenuItem(string label, NowRect rect, bool selected, bool hasSubmenu)
+        {
+            this.label = label;
+            this.rect = rect;
+            this.selected = selected;
+            this.hasSubmenu = hasSubmenu;
+            submenuOpen = false;
+        }
+    }
+
+    readonly struct ContextMenuFrame
+    {
+        public readonly int popupCount;
+        public readonly List<string> labels;
+        public readonly List<NowRect> popupRects;
+        public readonly List<RecordedContextMenuItem> items;
+
+        public ContextMenuFrame(
+            int popupCount,
+            List<string> labels,
+            List<NowRect> popupRects,
+            List<RecordedContextMenuItem> items)
+        {
+            this.popupCount = popupCount;
+            this.labels = labels;
+            this.popupRects = popupRects;
+            this.items = items;
+        }
+
+        public bool ContainsLabel(string label)
+        {
+            return labels.Contains(label);
+        }
+
+        public RecordedContextMenuItem Item(string label)
+        {
+            for (int i = 0; i < items.Count; ++i)
+            {
+                if (items[i].label == label)
+                    return items[i];
+            }
+
+            Assert.Fail($"Expected context menu item '{label}' to be drawn.");
+            return default;
+        }
+    }
+
     sealed class RecordingRenderer : NowControlRenderer
     {
         public int buttons;
@@ -64,6 +119,9 @@ public class NowControlsAdvancedTests
         public int popupBackgrounds;
         public int popupItems;
         public int contextMenuItems;
+        public readonly List<string> contextMenuLabels = new List<string>();
+        public readonly List<NowRect> menuPopupRects = new List<NowRect>();
+        public readonly List<RecordedContextMenuItem> contextMenuItemRecords = new List<RecordedContextMenuItem>();
         public int scrollbars;
         public int verticalScrollbars;
         public int horizontalScrollbars;
@@ -112,7 +170,10 @@ public class NowControlsAdvancedTests
             lastPopupRect = rect;
 
             if (menu)
+            {
                 lastMenuPopupRect = rect;
+                menuPopupRects.Add(rect);
+            }
 
             base.DrawPopupBackground(themeAsset, rect, menu);
         }
@@ -126,7 +187,29 @@ public class NowControlsAdvancedTests
         public override void DrawContextMenuItem(in NowPopupItemRenderContext context)
         {
             ++contextMenuItems;
+            contextMenuLabels.Add(context.label);
+            contextMenuItemRecords.Add(new RecordedContextMenuItem(
+                context.label,
+                context.rect,
+                context.selected,
+                context.hasSubmenu));
             base.DrawContextMenuItem(context);
+        }
+
+        public override void DrawContextMenuSubmenuIndicator(NowThemeAsset themeAsset, NowRect rect, bool enabled, bool open)
+        {
+            for (int i = contextMenuItemRecords.Count - 1; i >= 0; --i)
+            {
+                var item = contextMenuItemRecords[i];
+
+                if (item.hasSubmenu && RectsMatch(item.rect, rect))
+                {
+                    item.submenuOpen = open;
+                    break;
+                }
+            }
+
+            base.DrawContextMenuSubmenuIndicator(themeAsset, rect, enabled, open);
         }
 
         public override void DrawScrollbar(in NowScrollbarRenderContext context)
@@ -147,6 +230,137 @@ public class NowControlsAdvancedTests
         typeof(NowThemeAsset)
             .GetField("_controlRenderer", BindingFlags.Instance | BindingFlags.NonPublic)
             .SetValue(theme, renderer);
+    }
+
+    static bool RectsMatch(NowRect a, NowRect b)
+    {
+        return Mathf.Abs(a.x - b.x) < 0.01f &&
+            Mathf.Abs(a.y - b.y) < 0.01f &&
+            Mathf.Abs(a.width - b.width) < 0.01f &&
+            Mathf.Abs(a.height - b.height) < 0.01f;
+    }
+
+    static NowInputSnapshot PointerSnapshot(Vector2 pointer, float time)
+    {
+        return new NowInputSnapshot(
+            true, pointer, pointer, Vector2.zero,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            false, false, false, false, false, false, false, false,
+            1, time);
+    }
+
+    ContextMenuFrame DrawSiblingSubmenuFrame(
+        NowThemeAsset theme,
+        RecordingRenderer renderer,
+        int menuId,
+        Vector2 anchor,
+        Vector2 pointer,
+        float time,
+        bool open = false,
+        bool tallFirstSubmenu = false)
+    {
+        NowOverlay.ForceNewFrame();
+        _pointer.snapshot = PointerSnapshot(pointer, time);
+
+        int popupBefore = renderer.popupBackgrounds;
+        int labelBefore = renderer.contextMenuLabels.Count;
+        int rectBefore = renderer.menuPopupRects.Count;
+        int itemBefore = renderer.contextMenuItemRecords.Count;
+
+        using (NowTheme.Scope(theme))
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            if (open)
+                NowContextMenu.Open(menuId, anchor);
+
+            if (NowContextMenu.Begin(menuId))
+            {
+                if (NowContextMenu.BeginSubmenu("First"))
+                {
+                    NowContextMenu.Item("First Child A");
+
+                    if (tallFirstSubmenu)
+                    {
+                        NowContextMenu.Item("First Child B");
+                        NowContextMenu.Item("First Child C");
+                        NowContextMenu.Item("First Child D");
+                    }
+
+                    NowContextMenu.EndSubmenu();
+                }
+
+                if (NowContextMenu.BeginSubmenu("Second"))
+                {
+                    NowContextMenu.Item("Second Child");
+                    NowContextMenu.EndSubmenu();
+                }
+
+                NowContextMenu.End();
+            }
+
+            NowOverlay.Flush();
+        }
+
+        return new ContextMenuFrame(
+            renderer.popupBackgrounds - popupBefore,
+            renderer.contextMenuLabels.GetRange(labelBefore, renderer.contextMenuLabels.Count - labelBefore),
+            renderer.menuPopupRects.GetRange(rectBefore, renderer.menuPopupRects.Count - rectBefore),
+            renderer.contextMenuItemRecords.GetRange(itemBefore, renderer.contextMenuItemRecords.Count - itemBefore));
+    }
+
+    ContextMenuFrame DrawNestedSubmenuFrame(
+        NowThemeAsset theme,
+        RecordingRenderer renderer,
+        int menuId,
+        Vector2 anchor,
+        Vector2 pointer,
+        float time,
+        bool open = false)
+    {
+        NowOverlay.ForceNewFrame();
+        _pointer.snapshot = PointerSnapshot(pointer, time);
+
+        int popupBefore = renderer.popupBackgrounds;
+        int labelBefore = renderer.contextMenuLabels.Count;
+        int rectBefore = renderer.menuPopupRects.Count;
+        int itemBefore = renderer.contextMenuItemRecords.Count;
+
+        using (NowTheme.Scope(theme))
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            if (open)
+                NowContextMenu.Open(menuId, anchor);
+
+            if (NowContextMenu.Begin(menuId))
+            {
+                if (NowContextMenu.BeginSubmenu("Level 1"))
+                {
+                    if (NowContextMenu.BeginSubmenu("Level 2"))
+                    {
+                        NowContextMenu.Item("Deep Action");
+                        NowContextMenu.Item("Deep Settings");
+                        NowContextMenu.EndSubmenu();
+                    }
+
+                    NowContextMenu.Item("Level 1 Action");
+                    NowContextMenu.EndSubmenu();
+                }
+
+                NowContextMenu.Item("Root Action");
+                NowContextMenu.End();
+            }
+
+            NowOverlay.Flush();
+        }
+
+        return new ContextMenuFrame(
+            renderer.popupBackgrounds - popupBefore,
+            renderer.contextMenuLabels.GetRange(labelBefore, renderer.contextMenuLabels.Count - labelBefore),
+            renderer.menuPopupRects.GetRange(rectBefore, renderer.menuPopupRects.Count - rectBefore),
+            renderer.contextMenuItemRecords.GetRange(itemBefore, renderer.contextMenuItemRecords.Count - itemBefore));
     }
 
     static readonly Vector2 Surface = new Vector2(512, 256);
@@ -480,12 +694,7 @@ public class NowControlsAdvancedTests
 
         int DrawFrame(Vector2 pointer, float time, bool open = false)
         {
-            _pointer.snapshot = new NowInputSnapshot(
-                true, pointer, pointer, Vector2.zero,
-                NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
-                Vector2.zero, Vector2.zero,
-                false, false, false, false, false, false, false, false,
-                1, time);
+            _pointer.snapshot = PointerSnapshot(pointer, time);
 
             int before = renderer.popupBackgrounds;
 
@@ -526,6 +735,213 @@ public class NowControlsAdvancedTests
             Assert.AreEqual(2, DrawFrame(lastRow, 1.1f), "Briefly crossing a sibling row must not snap the submenu shut.");
             DrawFrame(lastRow, 1.4f);
             Assert.AreEqual(1, DrawFrame(lastRow, 1.45f), "Dwelling on a sibling row past the hover-intent delay closes the submenu.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void ContextMenuHoverSwitchesBetweenSiblingSubmenus()
+    {
+        const int menuId = 7311;
+        var anchor = new Vector2(20f, 20f);
+
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        try
+        {
+            var styles = theme.controlStyles;
+            float rowX = anchor.x + styles.popupPadding + 12f;
+            var firstRow = new Vector2(rowX, anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+            var secondRow = new Vector2(rowX, anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 1.5f);
+
+            DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, firstRow, 1.0f, open: true);
+
+            var firstOpen = DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, firstRow, 1.05f);
+            Assert.AreEqual(2, firstOpen.popupCount, "Hovering the first submenu row must open its child menu.");
+            Assert.AreEqual(2, firstOpen.popupRects.Count);
+            Assert.IsTrue(firstOpen.ContainsLabel("First Child A"));
+            Assert.IsFalse(firstOpen.ContainsLabel("Second Child"));
+            Assert.IsTrue(firstOpen.Item("First").submenuOpen);
+            Assert.IsFalse(firstOpen.Item("Second").submenuOpen);
+            Assert.Greater(firstOpen.popupRects[1].xMax, firstOpen.popupRects[0].xMax, "The child menu should extend beyond the root menu.");
+
+            var switchingToSecond = DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, secondRow, 1.1f);
+            Assert.AreEqual(1, switchingToSecond.popupCount, "Switching sibling submenu rows must not leave the old child queued for one more frame.");
+            Assert.IsFalse(switchingToSecond.ContainsLabel("First Child A"));
+            Assert.IsFalse(switchingToSecond.ContainsLabel("Second Child"));
+            Assert.IsFalse(switchingToSecond.Item("First").submenuOpen);
+            Assert.IsTrue(switchingToSecond.Item("Second").submenuOpen);
+
+            var secondOpen = DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, secondRow, 1.15f);
+            Assert.AreEqual(2, secondOpen.popupCount, "The newly-hovered submenu should draw on the next declaration frame.");
+            Assert.IsFalse(secondOpen.ContainsLabel("First Child A"));
+            Assert.IsTrue(secondOpen.ContainsLabel("Second Child"));
+            Assert.IsFalse(secondOpen.Item("First").submenuOpen);
+            Assert.IsTrue(secondOpen.Item("Second").submenuOpen);
+
+            var switchingToFirst = DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, firstRow, 1.2f);
+            Assert.AreEqual(1, switchingToFirst.popupCount, "Hovering back over a previous submenu row must retire the current child immediately.");
+            Assert.IsFalse(switchingToFirst.ContainsLabel("First Child A"));
+            Assert.IsFalse(switchingToFirst.ContainsLabel("Second Child"));
+            Assert.IsTrue(switchingToFirst.Item("First").submenuOpen);
+            Assert.IsFalse(switchingToFirst.Item("Second").submenuOpen);
+
+            var firstOpenAgain = DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, firstRow, 1.25f);
+            Assert.AreEqual(2, firstOpenAgain.popupCount);
+            Assert.IsTrue(firstOpenAgain.ContainsLabel("First Child A"));
+            Assert.IsFalse(firstOpenAgain.ContainsLabel("Second Child"));
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void ContextMenuKeepsSubmenuOpenWhenAimingThroughSiblingSubmenuRow()
+    {
+        const int menuId = 7312;
+        var anchor = new Vector2(20f, 20f);
+
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        try
+        {
+            var styles = theme.controlStyles;
+            float rowX = anchor.x + styles.popupPadding + 12f;
+            float aimingX = anchor.x + styles.popupPadding + 70f;
+            var firstRow = new Vector2(rowX, anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+            var secondRowAim = new Vector2(aimingX, anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 1.5f);
+
+            DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, firstRow, 1.0f, open: true, tallFirstSubmenu: true);
+            var firstOpen = DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, firstRow, 1.05f, tallFirstSubmenu: true);
+            Assert.AreEqual(2, firstOpen.popupCount, "Hovering the first submenu row must open its child menu.");
+            Assert.IsTrue(firstOpen.ContainsLabel("First Child A"));
+            Assert.IsFalse(firstOpen.ContainsLabel("Second Child"));
+            Assert.IsTrue(firstOpen.Item("First").submenuOpen);
+            Assert.IsFalse(firstOpen.Item("Second").submenuOpen);
+
+            var aimingAcrossSecond = DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, secondRowAim, 1.1f, tallFirstSubmenu: true);
+            Assert.AreEqual(2, aimingAcrossSecond.popupCount, "Moving diagonally toward the open child through a sibling submenu row must keep the current child open.");
+            Assert.IsTrue(aimingAcrossSecond.ContainsLabel("First Child A"));
+            Assert.IsFalse(aimingAcrossSecond.ContainsLabel("Second Child"));
+            Assert.IsTrue(aimingAcrossSecond.Item("First").submenuOpen);
+            Assert.IsFalse(aimingAcrossSecond.Item("Second").submenuOpen);
+
+            var beforeIntentDelay = DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, secondRowAim, 1.15f, tallFirstSubmenu: true);
+            Assert.AreEqual(2, beforeIntentDelay.popupCount, "Stopping briefly on the sibling row should still honor the diagonal hover-intent delay.");
+            Assert.IsTrue(beforeIntentDelay.ContainsLabel("First Child A"));
+            Assert.IsFalse(beforeIntentDelay.ContainsLabel("Second Child"));
+
+            var afterIntentDelay = DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, secondRowAim, 1.31f, tallFirstSubmenu: true);
+            Assert.AreEqual(1, afterIntentDelay.popupCount, "Dwelling on the sibling submenu row past hover intent switches the selected row without drawing a stale child.");
+            Assert.IsFalse(afterIntentDelay.ContainsLabel("First Child A"));
+            Assert.IsFalse(afterIntentDelay.ContainsLabel("Second Child"));
+            Assert.IsFalse(afterIntentDelay.Item("First").submenuOpen);
+            Assert.IsTrue(afterIntentDelay.Item("Second").submenuOpen);
+
+            var secondOpen = DrawSiblingSubmenuFrame(theme, renderer, menuId, anchor, secondRowAim, 1.36f, tallFirstSubmenu: true);
+            Assert.AreEqual(2, secondOpen.popupCount);
+            Assert.IsFalse(secondOpen.ContainsLabel("First Child A"));
+            Assert.IsTrue(secondOpen.ContainsLabel("Second Child"));
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void ContextMenuSubmenuFlipsLeftNearRightEdge()
+    {
+        const int menuId = 7313;
+        var anchor = new Vector2(320f, 40f);
+
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        try
+        {
+            var styles = theme.controlStyles;
+            var rootRow = new Vector2(
+                anchor.x + styles.popupPadding + 12f,
+                anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+
+            DrawNestedSubmenuFrame(theme, renderer, menuId, anchor, rootRow, 1.0f, open: true);
+            var frame = DrawNestedSubmenuFrame(theme, renderer, menuId, anchor, rootRow, 1.05f);
+
+            Assert.AreEqual(2, frame.popupCount, "The first submenu should be open.");
+            Assert.AreEqual(2, frame.popupRects.Count);
+
+            var root = frame.popupRects[0];
+            var child = frame.popupRects[1];
+            Assert.Less(child.center.x, root.center.x, "A submenu that cannot fit on the right should open to the left when there is room.");
+            Assert.GreaterOrEqual(child.x, 0f);
+            Assert.LessOrEqual(child.xMax, Surface.x);
+            Assert.IsTrue(frame.ContainsLabel("Level 1 Action"));
+            Assert.IsTrue(frame.Item("Level 1").submenuOpen);
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void ContextMenuNestedSubmenuPingPongsBackRightWhenLeftCannotFit()
+    {
+        const int menuId = 7314;
+        var anchor = new Vector2(250f, 40f);
+
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        try
+        {
+            var styles = theme.controlStyles;
+            var rootRow = new Vector2(
+                anchor.x + styles.popupPadding + 12f,
+                anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+
+            DrawNestedSubmenuFrame(theme, renderer, menuId, anchor, rootRow, 1.0f, open: true);
+            var level1Frame = DrawNestedSubmenuFrame(theme, renderer, menuId, anchor, rootRow, 1.05f);
+
+            Assert.AreEqual(2, level1Frame.popupRects.Count);
+            var root = level1Frame.popupRects[0];
+            var level1 = level1Frame.popupRects[1];
+            Assert.Less(level1.center.x, root.center.x, "The first submenu should flip left from the root.");
+
+            var level2Row = new Vector2(
+                level1.x + styles.popupPadding + 12f,
+                level1.y + styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+
+            DrawNestedSubmenuFrame(theme, renderer, menuId, anchor, level2Row, 1.1f);
+            var pingPong = DrawNestedSubmenuFrame(theme, renderer, menuId, anchor, level2Row, 1.15f);
+
+            Assert.AreEqual(3, pingPong.popupCount, "The nested submenu should be open after its declaration frame.");
+            Assert.AreEqual(3, pingPong.popupRects.Count);
+
+            root = pingPong.popupRects[0];
+            level1 = pingPong.popupRects[1];
+            var level2 = pingPong.popupRects[2];
+            Assert.Less(level1.center.x, root.center.x, "The first submenu should remain left of the root.");
+            Assert.Greater(level2.center.x, level1.center.x, "The deeper submenu should flip back right once the left side no longer fits.");
+            Assert.LessOrEqual(level2.xMax, Surface.x);
+            Assert.IsTrue(pingPong.ContainsLabel("Deep Action"));
+            Assert.IsTrue(pingPong.Item("Level 2").submenuOpen);
         }
         finally
         {
@@ -1005,14 +1421,17 @@ public class NowControlsAdvancedTests
     }
 
     /// <summary>
-    /// A submenu clamped over its parent (menu opened near the screen edge)
-    /// must own the pointer where they overlap: the covered parent rows must
-    /// neither retarget the open path on dwell nor steal the press.
+    /// A submenu clamped over its parent after neither side can fully fit must
+    /// own the pointer where they overlap: the covered parent rows must neither
+    /// retarget the open path on dwell nor steal the press.
     /// </summary>
     [Test]
     public void SubmenuOverlappingItsParentOwnsThePointer()
     {
         const int menuId = 7307;
+        const string wideA = "Wide Submenu Item A Extended";
+        const string wideB = "Wide Submenu Item B Extended";
+        const string wideC = "Wide Submenu Item C Extended";
         string clicked = null;
 
         var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
@@ -1023,7 +1442,7 @@ public class NowControlsAdvancedTests
         float itemHeight = styles.contextMenuItemHeight;
         float pad = styles.popupPadding;
         float menuWidth = Mathf.Max(160f, styles.contextMenuMinWidth);
-        var anchor = new Vector2(Surface.x - menuWidth - 12f, 20f);
+        var anchor = new Vector2(200f, 20f);
 
         int DrawFrame(Vector2 pointer, float time, bool open = false, bool down = false, bool pressed = false, bool released = false)
         {
@@ -1050,12 +1469,12 @@ public class NowControlsAdvancedTests
                 {
                     if (NowContextMenu.BeginSubmenu("More"))
                     {
-                        NowContextMenu.Item("A");
+                        NowContextMenu.Item(wideA);
 
-                        if (NowContextMenu.Item("B"))
+                        if (NowContextMenu.Item(wideB))
                             clicked = "B";
 
-                        NowContextMenu.Item("C");
+                        NowContextMenu.Item(wideC);
                         NowContextMenu.EndSubmenu();
                     }
 
@@ -1074,15 +1493,18 @@ public class NowControlsAdvancedTests
         try
         {
             var submenuRow = new Vector2(anchor.x + pad + 10f, anchor.y + pad + itemHeight * 0.5f);
-            float childX = Surface.x - menuWidth;
-            var probe = new Vector2(childX + 10f, anchor.y + pad + itemHeight * 1.5f);
-
-            Assert.Greater(probe.x, anchor.x + pad, "The probe must sit over the parent's covered row.");
-            Assert.Less(probe.x, anchor.x + menuWidth - pad, "The probe must sit over the parent's covered row.");
 
             DrawFrame(submenuRow, 1.0f, open: true);
             Assert.AreEqual(2, DrawFrame(submenuRow, 1.05f), "Hovering the submenu row must open its child menu.");
             Assert.LessOrEqual(renderer.lastMenuPopupRect.xMax, Surface.x, "The submenu must clamp into the view.");
+
+            var child = renderer.lastMenuPopupRect;
+            var probe = new Vector2(
+                Mathf.Clamp(anchor.x + menuWidth * 0.5f, child.x + 10f, child.xMax - 10f),
+                anchor.y + pad + itemHeight * 1.5f);
+
+            Assert.Greater(probe.x, anchor.x + pad, "The probe must sit over the parent's covered row.");
+            Assert.Less(probe.x, anchor.x + menuWidth - pad, "The probe must sit over the parent's covered row.");
             Assert.IsTrue(renderer.lastMenuPopupRect.Contains(probe), "The probe must sit inside the clamped submenu.");
 
             DrawFrame(probe, 1.1f);

@@ -17,6 +17,8 @@ namespace NowUI.Editor
         public int width;
         public int height;
         public bool includeInGoldens;
+        public Func<INowInputProvider> createInputProvider;
+        public int warmupFrames;
         public Action<NowRect> draw;
     }
 
@@ -78,6 +80,82 @@ namespace NowUI.Editor
             }
         }
 
+        sealed class StaticPointerInputProvider : INowInputProvider
+        {
+            readonly Vector2 _pointer;
+            int _frame;
+
+            public StaticPointerInputProvider(Vector2 pointer)
+            {
+                _pointer = pointer;
+            }
+
+            public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
+            {
+                ++_frame;
+                snapshot = new NowInputSnapshot(
+                    true,
+                    _pointer,
+                    _pointer,
+                    Vector2.zero,
+                    NowPointerButtons.None,
+                    NowPointerButtons.None,
+                    NowPointerButtons.None,
+                    default,
+                    default,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    _frame,
+                    _frame * 0.05f);
+                return true;
+            }
+        }
+
+        sealed class SequencePointerInputProvider : INowInputProvider
+        {
+            readonly Vector2[] _points;
+            int _frame;
+
+            public SequencePointerInputProvider(Vector2[] points)
+            {
+                _points = points ?? Array.Empty<Vector2>();
+            }
+
+            public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
+            {
+                int index = _points.Length > 0 ? Mathf.Min(_frame, _points.Length - 1) : 0;
+                int previousIndex = _points.Length > 0 ? Mathf.Max(0, index - 1) : 0;
+                Vector2 pointer = _points.Length > 0 ? _points[index] : Vector2.zero;
+                Vector2 previous = _points.Length > 0 ? _points[previousIndex] : pointer;
+                Vector2 delta = pointer - previous;
+
+                ++_frame;
+                snapshot = new NowInputSnapshot(
+                    _points.Length > 0,
+                    pointer,
+                    previous,
+                    delta,
+                    NowPointerButtons.None,
+                    NowPointerButtons.None,
+                    NowPointerButtons.None,
+                    default,
+                    default,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    _frame,
+                    _frame * 0.05f);
+                return true;
+            }
+        }
+
         public static IReadOnlyList<NowHarnessScenario> All()
         {
             EnsureSharedState();
@@ -88,6 +166,9 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "controls-dark", width = 960, height = 540, includeInGoldens = true, draw = DrawControlsDark },
                 new NowHarnessScenario { name = "elevation", width = 840, height = 420, includeInGoldens = true, draw = DrawElevation },
                 new NowHarnessScenario { name = "context-menu", width = 640, height = 420, includeInGoldens = true, draw = DrawContextMenu },
+                new NowHarnessScenario { name = "context-submenus", width = 720, height = 420, includeInGoldens = true, createInputProvider = () => new StaticPointerInputProvider(new Vector2(80f, 136f)), draw = DrawContextSubmenus },
+                new NowHarnessScenario { name = "context-edge-submenu", width = 520, height = 300, includeInGoldens = true, createInputProvider = () => new StaticPointerInputProvider(new Vector2(336f, 134f)), draw = DrawContextEdgeSubmenu },
+                new NowHarnessScenario { name = "context-ping-pong-submenus", width = 512, height = 320, includeInGoldens = true, warmupFrames = 3, createInputProvider = () => new SequencePointerInputProvider(new[] { new Vector2(266f, 134f), new Vector2(266f, 134f), new Vector2(128f, 162f), new Vector2(128f, 162f) }), draw = DrawContextPingPongSubmenus },
                 new NowHarnessScenario { name = "text-layout", width = 960, height = 540, includeInGoldens = true, draw = DrawTextLayout },
                 new NowHarnessScenario { name = "glass", width = 640, height = 360, includeInGoldens = true, draw = DrawGlass },
                 new NowHarnessScenario { name = "shader-variants", width = 840, height = 420, includeInGoldens = true, draw = DrawShaderVariants },
@@ -114,9 +195,13 @@ namespace NowUI.Editor
             try
             {
                 var surface = new NowInputSurface(new Vector2(scenario.width, scenario.height));
-                renderer.Warmup(surface, Input, () => DrawScenarioFrame(scenario));
+                var inputProvider = scenario.createInputProvider != null ? scenario.createInputProvider() : Input;
+                int warmupFrames = Mathf.Max(1, scenario.warmupFrames);
 
-                using (NowInput.Begin(Input, surface))
+                for (int i = 0; i < warmupFrames; ++i)
+                    renderer.Warmup(surface, inputProvider, () => DrawScenarioFrame(scenario));
+
+                using (NowInput.Begin(inputProvider, surface))
                 using (renderer.Begin(target))
                 {
                     DrawScenarioFrame(scenario);
@@ -292,6 +377,113 @@ namespace NowUI.Editor
 
                 NowContextMenu.End();
                 NowControlState.Get<float>(menuId, "ctx-scroll") = 180f;
+            }
+        }
+
+        static void DrawContextSubmenus(NowRect rect)
+        {
+            DrawSurface(rect);
+            HeaderBlock(rect, "Context Submenus", "Sibling submenu hover state with the active child drawn beside the root.");
+
+            int menuId = NowInput.GetId("harness-context-submenus");
+            var anchor = new Vector2(64f, 118f);
+
+            if (!NowContextMenu.isOpen)
+                NowContextMenu.Open(menuId, anchor);
+
+            if (NowContextMenu.Begin(menuId))
+            {
+                if (NowContextMenu.BeginSubmenu("Arrange"))
+                {
+                    NowContextMenu.Item("Bring Forward");
+                    NowContextMenu.Item("Send Backward");
+                    NowContextMenu.Separator();
+                    NowContextMenu.Item("Align Left");
+                    NowContextMenu.Item("Align Center");
+                    NowContextMenu.EndSubmenu();
+                }
+
+                if (NowContextMenu.BeginSubmenu("Export"))
+                {
+                    NowContextMenu.Item("PNG");
+                    NowContextMenu.Item("SVG");
+                    NowContextMenu.Item("Copy JSON");
+                    NowContextMenu.EndSubmenu();
+                }
+
+                NowContextMenu.Separator();
+                NowContextMenu.Item("Duplicate");
+                NowContextMenu.Item("Rename");
+                NowContextMenu.Item("Delete", enabled: false);
+                NowContextMenu.End();
+            }
+        }
+
+        static void DrawContextEdgeSubmenu(NowRect rect)
+        {
+            DrawSurface(rect);
+            HeaderBlock(rect, "Edge Submenu", "Right-edge submenu clamping in a constrained surface.");
+
+            int menuId = NowInput.GetId("harness-context-edge-submenu");
+            var anchor = new Vector2(320f, 116f);
+
+            if (!NowContextMenu.isOpen)
+                NowContextMenu.Open(menuId, anchor);
+
+            if (NowContextMenu.Begin(menuId))
+            {
+                if (NowContextMenu.BeginSubmenu("More Actions"))
+                {
+                    NowContextMenu.Item("Open Details");
+                    NowContextMenu.Item("Pin");
+                    NowContextMenu.Item("Duplicate");
+                    NowContextMenu.Separator();
+                    NowContextMenu.Item("Move Up");
+                    NowContextMenu.Item("Move Down");
+                    NowContextMenu.Item("Archive");
+                    NowContextMenu.EndSubmenu();
+                }
+
+                NowContextMenu.Item("Edit");
+                NowContextMenu.Item("Copy");
+                NowContextMenu.Item("Delete", enabled: false);
+                NowContextMenu.End();
+            }
+        }
+
+        static void DrawContextPingPongSubmenus(NowRect rect)
+        {
+            DrawSurface(rect);
+            HeaderBlock(rect, "Ping Pong Submenus", "Submenus flip left, then back right, when space runs out.");
+
+            int menuId = NowInput.GetId("harness-context-ping-pong-submenus");
+            var anchor = new Vector2(250f, 116f);
+
+            if (!NowContextMenu.isOpen)
+                NowContextMenu.Open(menuId, anchor);
+
+            if (NowContextMenu.Begin(menuId))
+            {
+                if (NowContextMenu.BeginSubmenu("Level 1"))
+                {
+                    NowContextMenu.Item("Level 1 Action");
+
+                    if (NowContextMenu.BeginSubmenu("Level 2"))
+                    {
+                        NowContextMenu.Item("Deep Action");
+                        NowContextMenu.Item("Deep Settings");
+                        NowContextMenu.EndSubmenu();
+                    }
+
+                    NowContextMenu.Separator();
+                    NowContextMenu.Item("Inspect Chain");
+                    NowContextMenu.EndSubmenu();
+                }
+
+                NowContextMenu.Item("Root Action");
+                NowContextMenu.Item("Rename Chain");
+                NowContextMenu.Item("Delete Chain", enabled: false);
+                NowContextMenu.End();
             }
         }
 
