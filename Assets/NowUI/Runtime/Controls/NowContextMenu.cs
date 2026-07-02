@@ -505,13 +505,14 @@ namespace NowUI
         {
             Color surface = theme.GetColor(NowColorToken.SurfaceElevated);
             Color chevron = theme.GetColor(NowColorToken.TextMuted);
+            float radius = Mathf.Max(0f, theme.controlStyles.contextMenuRadius - 1f);
 
             if (scroll > 0f)
             {
                 var strip = new NowRect(menu.popupRect.x + 1f, menu.popupRect.y + 1f, menu.popupRect.width - 2f, ScrollStripHeight);
                 Now.Rectangle(strip)
                     .SetColor(surface)
-                    .SetRadius(new Vector4(theme.controlStyles.contextMenuRadius, theme.controlStyles.contextMenuRadius, 0f, 0f))
+                    .SetRadius(NowCornerRadius.Top(radius))
                     .Draw();
                 DrawStripChevron(strip, chevron, up: true);
             }
@@ -521,7 +522,7 @@ namespace NowUI
                 var strip = new NowRect(menu.popupRect.x + 1f, menu.popupRect.yMax - ScrollStripHeight - 1f, menu.popupRect.width - 2f, ScrollStripHeight);
                 Now.Rectangle(strip)
                     .SetColor(surface)
-                    .SetRadius(new Vector4(0f, 0f, theme.controlStyles.contextMenuRadius, theme.controlStyles.contextMenuRadius))
+                    .SetRadius(NowCornerRadius.Bottom(radius))
                     .Draw();
                 DrawStripChevron(strip, chevron, up: false);
             }
