@@ -450,6 +450,52 @@ namespace NowUI
             return FitPopupRectToCameraView(rect);
         }
 
+        NowRect INowPopupFitProvider.GetPopupViewBounds()
+        {
+            return GetCameraViewBoundsOnSurface();
+        }
+
+        /// <summary>
+        /// Projects the camera's pixel rect corners onto this surface's UI plane
+        /// and returns their bounding rect in surface coordinates, so oversized
+        /// popups can clamp to what the camera can actually show. Falls back to
+        /// an unbounded rect when the plane is edge-on.
+        /// </summary>
+        NowRect GetCameraViewBoundsOnSurface()
+        {
+            var unbounded = new NowRect(-100000f, -100000f, 200000f, 200000f);
+            var cmr = ResolveCamera();
+
+            if (!cmr)
+                return unbounded;
+
+            Rect pixels = cmr.pixelRect;
+            float minX = float.PositiveInfinity;
+            float minY = float.PositiveInfinity;
+            float maxX = float.NegativeInfinity;
+            float maxY = float.NegativeInfinity;
+
+            for (int i = 0; i < 4; ++i)
+            {
+                var corner = new Vector2(
+                    i % 2 == 0 ? pixels.xMin : pixels.xMax,
+                    i < 2 ? pixels.yMin : pixels.yMax);
+
+                if (!TryRayToSurface(cmr.ScreenPointToRay(corner), out var surfacePoint, out _))
+                    return unbounded;
+
+                minX = Mathf.Min(minX, surfacePoint.x);
+                minY = Mathf.Min(minY, surfacePoint.y);
+                maxX = Mathf.Max(maxX, surfacePoint.x);
+                maxY = Mathf.Max(maxY, surfacePoint.y);
+            }
+
+            if (maxX <= minX || maxY <= minY)
+                return unbounded;
+
+            return new NowRect(minX, minY, maxX - minX, maxY - minY);
+        }
+
         NowRect FitPopupRectToCameraView(NowRect rect)
         {
             var cmr = ResolveCamera();

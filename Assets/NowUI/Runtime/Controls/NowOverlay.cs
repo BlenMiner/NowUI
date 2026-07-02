@@ -13,6 +13,13 @@ namespace NowUI
     {
         /// <summary>Returns a rect moved into view, preserving its size whenever possible.</summary>
         NowRect FitPopupRectToView(NowRect rect);
+
+        /// <summary>
+        /// The visible view expressed in popup surface coordinates — what
+        /// oversized popups clamp their height against. Return a huge rect to
+        /// opt out of clamping.
+        /// </summary>
+        NowRect GetPopupViewBounds();
     }
 
     internal static class NowPopupPlacement
@@ -60,6 +67,25 @@ namespace NowUI
         {
             if (_fitProviders.Count > 0)
                 _fitProviders.RemoveAt(_fitProviders.Count - 1);
+        }
+
+        /// <summary>
+        /// The visible view for popups, in surface coordinates: the fit
+        /// provider's bounds when one is active (world hosts return their
+        /// camera view projected onto the UI plane), the input surface
+        /// otherwise.
+        /// </summary>
+        public static NowRect GetViewBounds()
+        {
+            if (_fitProviders.Count > 0)
+                return _fitProviders[_fitProviders.Count - 1].GetPopupViewBounds();
+
+            Vector2 size = NowInput.surface.size;
+
+            if (size.x <= 0f || size.y <= 0f)
+                return new NowRect(-100000f, -100000f, 200000f, 200000f);
+
+            return new NowRect(0f, 0f, size.x, size.y);
         }
 
         public static NowRect FitToSurface(NowRect rect)
@@ -262,6 +288,12 @@ namespace NowUI
         public static NowRect FitScreenToView(NowRect rect)
         {
             return NowPopupPlacement.FitScreenToView(rect);
+        }
+
+        /// <summary>The visible view for popups, in surface coordinates.</summary>
+        public static NowRect GetViewBounds()
+        {
+            return NowPopupPlacement.GetViewBounds();
         }
 
         /// <summary>

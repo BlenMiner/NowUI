@@ -113,6 +113,10 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   spinner fields and optional AM/PM chips.
 - `NowTooltip.For(rect, "help text")` attaches a hover/long-press tooltip to
   any rect; it renders as a passive overlay that never blocks the pointer.
+- Context menus taller than the view clamp their height and scroll (mouse
+  wheel, or the top/bottom hover strips) so every option stays reachable;
+  submenus clamp and scroll independently. Scrolling over an open menu
+  scrolls it; scrolling elsewhere closes it.
 - `Button(...).Draw()` returns true on click or on submit while focused.
 - `Checkbox(...).Draw(ref value)` / `Slider(...).Draw(ref value)` mutate the
   ref and return true when it changed.

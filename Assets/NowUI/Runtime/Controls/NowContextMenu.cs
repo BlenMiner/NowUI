@@ -25,12 +25,17 @@ namespace NowUI
     /// </code>
     /// One root menu is open at a time and it is modal: everything beneath is
     /// pointer-blocked so the anchor position stays meaningful, and it closes
-    /// on selection, press outside, cancel, or an attempted scroll.
+    /// on selection, press outside, cancel, or a scroll outside the menu.
+    /// Menus taller than the visible view clamp their height and scroll (mouse
+    /// wheel, or hovering the top/bottom edge strips) so every option stays
+    /// reachable; submenus clamp and scroll independently.
     /// </summary>
     public static class NowContextMenu
     {
         const float MinimumMenuWidth = 160f;
         const float SubmenuGap = 2f;
+        const float ViewMargin = 8f;
+        const float ScrollStripHeight = 16f;
 
         const float HoverIntentDelay = 0.18f;
 
@@ -78,6 +83,8 @@ namespace NowUI
             public int itemSeed;
             public float width;
             public float height;
+            public float contentHeight;
+            public bool scrolls;
             public NowRect popupRect;
             public readonly List<Entry> entries = new List<Entry>(8);
 
@@ -91,6 +98,8 @@ namespace NowUI
                 itemSeed = NowInput.GetId(overlayId, "ctx-item");
                 width = 0f;
                 height = 0f;
+                contentHeight = 0f;
+                scrolls = false;
                 popupRect = default;
                 entries.Clear();
             }
@@ -107,6 +116,7 @@ namespace NowUI
             _openPath.Clear();
             _pendingOpenPath.Clear();
             ClearHoverIntent();
+            NowControlState.Get<float>(id, "ctx-scroll") = 0f;
             NowControlState.RequestRepaint();
         }
 
@@ -298,6 +308,7 @@ namespace NowUI
             for (int i = 0; i < _menuCount; ++i)
                 MeasureMenu(_menus[i], theme);
 
+            ClampMenuHeight(root, theme);
             root.popupRect = new NowRect(_position.x, _position.y, root.width, root.height);
 
             if (_fitToView)
@@ -324,10 +335,11 @@ namespace NowUI
             var snapshot = NowInput.current;
             bool pressed = snapshot.primaryPressed ||
                 (snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0;
+            bool pointerInsideTree = NowOverlay.IsPointerInsideOverlayTree(menu.rootId, snapshot.pointerPosition);
 
-            if ((pressed && !NowOverlay.IsPointerInsideOverlayTree(menu.rootId, snapshot.pointerPosition)) ||
+            if ((pressed && !pointerInsideTree) ||
                 snapshot.cancelPressed ||
-                snapshot.scrollDelta != Vector2.zero)
+                (snapshot.scrollDelta != Vector2.zero && !pointerInsideTree))
             {
                 Close();
             }
@@ -336,11 +348,51 @@ namespace NowUI
         static void DrawMenu(NowThemeAsset theme, Menu menu)
         {
             float popupPadding = theme.controlStyles.popupPadding;
-            float itemHeight = theme.controlStyles.contextMenuItemHeight;
 
             theme.controlRenderer.DrawPopupBackground(theme, menu.popupRect, menu: true);
 
-            float y = menu.popupRect.y + popupPadding;
+            if (!menu.scrolls)
+            {
+                DrawMenuEntries(theme, menu, 0f);
+                return;
+            }
+
+            float maxScroll = Mathf.Max(0f, menu.contentHeight - menu.popupRect.height);
+            ref float scroll = ref NowControlState.Get<float>(menu.overlayId, "ctx-scroll");
+
+            if (!PointerInsideOpenChild(menu))
+            {
+                Vector2 wheel = NowInput.ConsumeScrollDelta(menu.popupRect);
+
+                if (wheel.y != 0f)
+                {
+                    scroll -= wheel.y * theme.controlStyles.scrollWheelStep;
+                    NowControlState.RequestRepaint();
+                }
+            }
+
+            UpdateScrollStrips(theme, menu, ref scroll, maxScroll);
+            scroll = Mathf.Clamp(scroll, 0f, maxScroll);
+
+            var itemArea = new NowRect(
+                menu.popupRect.x,
+                menu.popupRect.y + popupPadding,
+                menu.popupRect.width,
+                Mathf.Max(0f, menu.popupRect.height - popupPadding * 2f));
+
+            using (Now.Mask(itemArea))
+                DrawMenuEntries(theme, menu, scroll);
+
+            DrawScrollStrips(theme, menu, scroll, maxScroll);
+        }
+
+        static void DrawMenuEntries(NowThemeAsset theme, Menu menu, float scroll)
+        {
+            float popupPadding = theme.controlStyles.popupPadding;
+            float itemHeight = theme.controlStyles.contextMenuItemHeight;
+            float visibleTop = menu.popupRect.y + popupPadding;
+            float visibleBottom = menu.popupRect.yMax - popupPadding;
+            float y = visibleTop - scroll;
 
             for (int i = 0; i < menu.entries.Count; ++i)
             {
@@ -352,7 +404,10 @@ namespace NowUI
                     menu.popupRect.width - popupPadding * 2f,
                     height);
 
-                DrawEntry(theme, menu, entry, itemRect);
+                bool visible = !menu.scrolls || (itemRect.yMax > visibleTop - 0.5f && itemRect.y < visibleBottom + 0.5f);
+
+                if (visible)
+                    DrawEntry(theme, menu, entry, itemRect);
 
                 if (entry.kind == EntryKind.Submenu &&
                     entry.enabled &&
@@ -360,17 +415,140 @@ namespace NowUI
                     entry.childMenu >= 0 &&
                     entry.childMenu < _menuCount)
                 {
-                    var child = _menus[entry.childMenu];
-
-                    if (child.entries.Count > 0)
+                    if (!visible)
                     {
-                        child.popupRect = PlaceSubmenu(child, itemRect, popupPadding);
-                        NowOverlay.DeferScreen(child.popupRect, child.overlayId, DrawDeferred);
+                        SetOpenPath(menu.depth, 0);
+                    }
+                    else
+                    {
+                        var child = _menus[entry.childMenu];
+
+                        if (child.entries.Count > 0)
+                        {
+                            child.popupRect = PlaceSubmenu(child, itemRect, popupPadding);
+                            NowOverlay.DeferScreen(child.popupRect, child.overlayId, DrawDeferred);
+                        }
                     }
                 }
 
                 y += height;
             }
+        }
+
+        /// <summary>
+        /// True when the pointer sits over an open child menu of this menu, so
+        /// the parent leaves the wheel to the child where they overlap.
+        /// </summary>
+        static bool PointerInsideOpenChild(Menu menu)
+        {
+            var pointer = NowInput.current.pointerPosition;
+
+            for (int i = 0; i < menu.entries.Count; ++i)
+            {
+                var entry = menu.entries[i];
+
+                if (entry.kind != EntryKind.Submenu ||
+                    !IsPathOpen(menu.depth, entry.pathId) ||
+                    entry.childMenu < 0 ||
+                    entry.childMenu >= _menuCount)
+                {
+                    continue;
+                }
+
+                if (_menus[entry.childMenu].popupRect.Contains(pointer))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// OS-style scroll strips: hovering the top/bottom edge of an oversized
+        /// menu scrolls it, so every option is reachable without a wheel.
+        /// </summary>
+        static void UpdateScrollStrips(NowThemeAsset theme, Menu menu, ref float scroll, float maxScroll)
+        {
+            if (scroll > 0f)
+            {
+                var topStrip = new NowRect(menu.popupRect.x, menu.popupRect.y, menu.popupRect.width, ScrollStripHeight);
+
+                if (NowInput.IsHovered(topStrip) &&
+                    NowControlState.Repeat(menu.overlayId, "ctx-scroll-up", true, 0.05f, 0.02f))
+                {
+                    scroll -= 9f;
+                    NowControlState.RequestRepaint();
+                }
+            }
+
+            if (scroll < maxScroll)
+            {
+                var bottomStrip = new NowRect(menu.popupRect.x, menu.popupRect.yMax - ScrollStripHeight, menu.popupRect.width, ScrollStripHeight);
+
+                if (NowInput.IsHovered(bottomStrip) &&
+                    NowControlState.Repeat(menu.overlayId, "ctx-scroll-down", true, 0.05f, 0.02f))
+                {
+                    scroll += 9f;
+                    NowControlState.RequestRepaint();
+                }
+            }
+        }
+
+        static void DrawScrollStrips(NowThemeAsset theme, Menu menu, float scroll, float maxScroll)
+        {
+            Color surface = theme.GetColor(NowColorToken.SurfaceElevated);
+            Color chevron = theme.GetColor(NowColorToken.TextMuted);
+
+            if (scroll > 0f)
+            {
+                var strip = new NowRect(menu.popupRect.x + 1f, menu.popupRect.y + 1f, menu.popupRect.width - 2f, ScrollStripHeight);
+                Now.Rectangle(strip)
+                    .SetColor(surface)
+                    .SetRadius(new Vector4(theme.controlStyles.contextMenuRadius, theme.controlStyles.contextMenuRadius, 0f, 0f))
+                    .Draw();
+                DrawStripChevron(strip, chevron, up: true);
+            }
+
+            if (scroll < maxScroll)
+            {
+                var strip = new NowRect(menu.popupRect.x + 1f, menu.popupRect.yMax - ScrollStripHeight - 1f, menu.popupRect.width - 2f, ScrollStripHeight);
+                Now.Rectangle(strip)
+                    .SetColor(surface)
+                    .SetRadius(new Vector4(0f, 0f, theme.controlStyles.contextMenuRadius, theme.controlStyles.contextMenuRadius))
+                    .Draw();
+                DrawStripChevron(strip, chevron, up: false);
+            }
+        }
+
+        static void DrawStripChevron(NowRect strip, Color color, bool up)
+        {
+            Vector2 center = strip.center;
+            float w = 5f;
+            float h = 3f;
+            var a = new Vector2(center.x - w, up ? center.y + h * 0.5f : center.y - h * 0.5f);
+            var mid = new Vector2(center.x, up ? center.y - h * 0.5f : center.y + h * 0.5f);
+            var b = new Vector2(center.x + w, up ? center.y + h * 0.5f : center.y - h * 0.5f);
+
+            Now.Line(a, mid).SetColor(color).SetWidth(1.4f).SetCap(NowLineCap.Round).Draw();
+            Now.Line(mid, b).SetColor(color).SetWidth(1.4f).SetCap(NowLineCap.Round).Draw();
+        }
+
+        static void ClampMenuHeight(Menu menu, NowThemeAsset theme)
+        {
+            menu.contentHeight = menu.height;
+            menu.scrolls = false;
+
+            var view = NowOverlay.GetViewBounds();
+            float maxHeight = view.height - ViewMargin * 2f;
+            float minHeight = theme.controlStyles.contextMenuItemHeight * 2f + theme.controlStyles.popupPadding * 2f;
+
+            if (maxHeight < minHeight)
+                maxHeight = minHeight;
+
+            if (menu.height <= maxHeight)
+                return;
+
+            menu.height = maxHeight;
+            menu.scrolls = true;
         }
 
         static void DrawEntry(NowThemeAsset theme, Menu menu, Entry entry, NowRect itemRect)
@@ -457,6 +635,8 @@ namespace NowUI
 
         static NowRect PlaceSubmenu(Menu child, NowRect parentItemRect, float popupPadding)
         {
+            ClampMenuHeight(child, NowTheme.themeAsset);
+
             var rect = new NowRect(
                 parentItemRect.xMax + SubmenuGap,
                 parentItemRect.y - popupPadding,
@@ -564,6 +744,7 @@ namespace NowUI
             if (_openPath.Count <= depth && desiredPathId != 0)
             {
                 SetOpenPath(depth, desiredPathId);
+                ResetSubmenuScroll(desiredPathId);
                 ClearHoverIntent();
                 return;
             }
@@ -582,11 +763,20 @@ namespace NowUI
             if (time - _hoverIntentStart >= HoverIntentDelay)
             {
                 SetOpenPath(depth, desiredPathId);
+                ResetSubmenuScroll(desiredPathId);
                 ClearHoverIntent();
                 return;
             }
 
             NowControlState.RequestRepaint();
+        }
+
+        static void ResetSubmenuScroll(int pathId)
+        {
+            if (pathId == 0 || _openId == 0)
+                return;
+
+            NowControlState.Get<float>(NowInput.CombineId(_openId, pathId), "ctx-scroll") = 0f;
         }
 
         static void ClearHoverIntent()

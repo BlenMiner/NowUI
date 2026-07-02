@@ -668,6 +668,214 @@ public class NowControlsAdvancedTests
         Assert.AreEqual(0, s_nestedPopupClicks, "The popup beneath the nested menu must not receive the click.");
     }
 
+    static NowInputSnapshot MenuPointer(Vector2 position, Vector2 scroll = default, bool down = false, bool pressed = false, bool released = false)
+    {
+        return new NowInputSnapshot(
+            true, position, position, Vector2.zero,
+            NowInputSnapshot.ToButtonMask(down, NowPointerButton.Primary),
+            NowInputSnapshot.ToButtonMask(pressed, NowPointerButton.Primary),
+            NowInputSnapshot.ToButtonMask(released, NowPointerButton.Primary),
+            scroll, Vector2.zero,
+            false, false, false, false, false, false, false, false,
+            1, 1f);
+    }
+
+    [Test]
+    public void TallContextMenuClampsToViewAndScrollsToReachEveryItem()
+    {
+        const int menuId = 7301;
+        const int itemCount = 30;
+        var anchor = new Vector2(20f, 10f);
+        int clickedIndex = -1;
+
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        void DrawFrame(NowInputSnapshot snapshot, bool open = false)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                if (open)
+                    NowContextMenu.Open(menuId, anchor, fitToView: true);
+
+                if (NowContextMenu.Begin(menuId))
+                {
+                    for (int i = 0; i < itemCount; ++i)
+                    {
+                        if (NowContextMenu.Item("Menu Item"))
+                            clickedIndex = i;
+                    }
+
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+        }
+
+        try
+        {
+            var styles = theme.controlStyles;
+            float contentHeight = styles.popupPadding * 2f + itemCount * styles.contextMenuItemHeight;
+
+            DrawFrame(MenuPointer(anchor), open: true);
+
+            Assert.Greater(contentHeight, Surface.y, "The fixture must be taller than the view to exercise clamping.");
+            Assert.LessOrEqual(renderer.lastMenuPopupRect.height, Surface.y, "An oversized menu must clamp to the view height.");
+
+            var insideMenu = new Vector2(
+                renderer.lastMenuPopupRect.x + 20f,
+                renderer.lastMenuPopupRect.y + renderer.lastMenuPopupRect.height * 0.5f);
+
+            for (int i = 0; i < 8; ++i)
+                DrawFrame(MenuPointer(insideMenu, scroll: new Vector2(0f, -3f)));
+
+            Assert.IsTrue(NowContextMenu.isOpen, "Scrolling inside the menu must not close it.");
+
+            var lastItemPoint = new Vector2(
+                renderer.lastMenuPopupRect.x + 20f,
+                renderer.lastMenuPopupRect.yMax - styles.popupPadding - styles.contextMenuItemHeight * 0.5f);
+
+            DrawFrame(MenuPointer(lastItemPoint));
+            DrawFrame(MenuPointer(lastItemPoint, down: true, pressed: true));
+            DrawFrame(MenuPointer(lastItemPoint, released: true));
+            DrawFrame(MenuPointer(lastItemPoint));
+
+            Assert.AreEqual(itemCount - 1, clickedIndex, "After scrolling to the bottom, the last item must be clickable.");
+            Assert.IsFalse(NowContextMenu.isOpen);
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void ScrollingOutsideAContextMenuClosesIt()
+    {
+        const int menuId = 7302;
+        var anchor = new Vector2(20f, 10f);
+
+        void DrawFrame(NowInputSnapshot snapshot, bool open = false)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                if (open)
+                    NowContextMenu.Open(menuId, anchor);
+
+                if (NowContextMenu.Begin(menuId))
+                {
+                    NowContextMenu.Item("First");
+                    NowContextMenu.Item("Second");
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+        }
+
+        DrawFrame(MenuPointer(anchor), open: true);
+        Assert.IsTrue(NowContextMenu.isOpen);
+
+        DrawFrame(MenuPointer(new Vector2(420f, 220f), scroll: new Vector2(0f, -3f)));
+
+        Assert.IsFalse(NowContextMenu.isOpen, "Scrolling away from the menu must close it.");
+    }
+
+    [Test]
+    public void SubmenuAtTheBottomOfAScrolledMenuOpensAndDelivers()
+    {
+        const int menuId = 7303;
+        const int itemCount = 20;
+        var anchor = new Vector2(20f, 10f);
+        bool nestedClicked = false;
+
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        void DrawFrame(NowInputSnapshot snapshot, bool open = false)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                if (open)
+                    NowContextMenu.Open(menuId, anchor);
+
+                if (NowContextMenu.Begin(menuId))
+                {
+                    for (int i = 0; i < itemCount; ++i)
+                        NowContextMenu.Item("Filler Item");
+
+                    if (NowContextMenu.BeginSubmenu("More"))
+                    {
+                        if (NowContextMenu.Item("Nested Action"))
+                            nestedClicked = true;
+
+                        NowContextMenu.EndSubmenu();
+                    }
+
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+        }
+
+        try
+        {
+            var styles = theme.controlStyles;
+
+            DrawFrame(MenuPointer(anchor), open: true);
+
+            var menuRect = renderer.lastMenuPopupRect;
+            var insideMenu = new Vector2(menuRect.x + 20f, menuRect.y + menuRect.height * 0.5f);
+
+            for (int i = 0; i < 10; ++i)
+                DrawFrame(MenuPointer(insideMenu, scroll: new Vector2(0f, -3f)));
+
+            Assert.IsTrue(NowContextMenu.isOpen, "Scrolling to the bottom must not close the menu.");
+
+            var submenuRowPoint = new Vector2(
+                menuRect.x + 20f,
+                menuRect.yMax - styles.popupPadding - styles.contextMenuItemHeight * 0.5f);
+
+            DrawFrame(MenuPointer(submenuRowPoint));
+            DrawFrame(MenuPointer(submenuRowPoint));
+
+            var nestedPoint = new Vector2(
+                menuRect.x + menuRect.width + 14f,
+                submenuRowPoint.y);
+
+            DrawFrame(MenuPointer(nestedPoint));
+            DrawFrame(MenuPointer(nestedPoint, down: true, pressed: true));
+            DrawFrame(MenuPointer(nestedPoint, released: true));
+            DrawFrame(MenuPointer(nestedPoint));
+
+            Assert.IsTrue(nestedClicked, "The nested item of a submenu opened from a scrolled row must deliver its click.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
     [Test]
     public void OverlayFitToViewAccountsForCurrentTransform()
     {

@@ -82,6 +82,19 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Scrollable context menus.** Menus taller than the visible view clamp
+  their height and scroll — mouse wheel, or OS-style top/bottom hover strips —
+  so every option stays reachable instead of overflowing the viewport.
+  Submenus clamp and scroll independently, anchor to their scrolled row, and
+  close when their row scrolls out of view. Scrolling over an open menu
+  scrolls it; scrolling elsewhere still closes it. World-space hosts clamp
+  against the camera view projected onto the UI plane
+  (`INowPopupFitProvider.GetPopupViewBounds`, `NowOverlay.GetViewBounds`).
+- Menu Lab pages for hands-on edge-case testing: a "Menus" tab in the control
+  gallery example (60-item playground menu, 80-item submenu, deep nesting,
+  screen-corner and 100-item menus) and a right-click stress menu on the
+  world graphic example (40 overflow options, 50-item submenu, deep chain).
+
 - **Central pointer-ownership arbitration** (`NowPointerArbiter`): every input
   surface (screen path, canvas graphics, world graphics, UI Toolkit hosts)
   registers a per-frame claim — layering tier, depth, whether it has content

@@ -12,7 +12,7 @@ public class NowControlGalleryExample : MonoBehaviour
     [SerializeField] NowFontAsset _font;
     [SerializeField] NowThemeAsset _theme;
 
-    static readonly string[] _tabPages = { "Inputs", "Pickers", "Data" };
+    static readonly string[] _tabPages = { "Inputs", "Pickers", "Data", "Menus" };
     static readonly string[] _qualityOptions = { "Low", "Medium", "High", "Ultra" };
     static readonly string[] _countries =
     {
@@ -86,8 +86,11 @@ public class NowControlGalleryExample : MonoBehaviour
                         case 1:
                             DrawPickersPage();
                             break;
-                        default:
+                        case 2:
                             DrawDataPage();
+                            break;
+                        default:
+                            DrawMenusPage();
                             break;
                     }
                 }
@@ -161,6 +164,108 @@ public class NowControlGalleryExample : MonoBehaviour
             NowLayout.Chip("Removable").SetRemovable().Draw(out _);
             NowLayout.Badge("12").SetStyle(NowRectangleStyle.Danger).Draw();
             NowLayout.Badge("OK").SetStyle(NowRectangleStyle.Accent).Draw();
+        }
+    }
+
+    string _menuLabResult = "Right-click the playground, or use the buttons.";
+
+    /// <summary>
+    /// Menu edge-case lab: menus taller than the screen (clamp + scroll),
+    /// long submenus, deep nesting, and a menu opened near the screen edge.
+    /// Things to verify: every option reachable via wheel or the top/bottom
+    /// hover strips, submenus survive diagonal pointer paths, scrolling over a
+    /// menu never closes it, scrolling elsewhere does.
+    /// </summary>
+    void DrawMenusPage()
+    {
+        NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), _menuLabResult).Draw();
+
+        var playground = NowLayout.Rect(stretchWidth: true, height: 120f);
+        NowTheme.themeAsset.Rectangle(playground, NowRectangleStyle.Muted).Draw();
+        NowTheme.themeAsset.Text(playground.Inset(16f, 50f, 16f, 16f), NowTextStyle.Muted)
+            .Draw("Right-click playground (60-item menu + submenus)");
+
+        var playgroundInteraction = NowInput.Interact(playground, NowPointerButton.Secondary);
+
+        if (playgroundInteraction.clicked)
+            NowContextMenu.Open(NowInput.GetId("gallery-menu-lab"), playgroundInteraction.pointerPosition);
+
+        if (NowContextMenu.Begin(NowInput.GetId("gallery-menu-lab")))
+        {
+            NowContextMenu.Label("Menu Lab");
+            NowContextMenu.Separator();
+
+            if (NowContextMenu.BeginSubmenu("Long Submenu (80)"))
+            {
+                for (int i = 0; i < 80; ++i)
+                {
+                    if (NowContextMenu.Item($"Deep Cut {i + 1}"))
+                        _menuLabResult = $"Picked: Deep Cut {i + 1}";
+                }
+
+                NowContextMenu.EndSubmenu();
+            }
+
+            if (NowContextMenu.BeginSubmenu("Nesting"))
+            {
+                if (NowContextMenu.BeginSubmenu("Deeper"))
+                {
+                    if (NowContextMenu.BeginSubmenu("Deeper Still"))
+                    {
+                        if (NowContextMenu.Item("The Bottom"))
+                            _menuLabResult = "Picked: The Bottom";
+
+                        NowContextMenu.EndSubmenu();
+                    }
+
+                    NowContextMenu.EndSubmenu();
+                }
+
+                NowContextMenu.EndSubmenu();
+            }
+
+            NowContextMenu.Separator();
+
+            for (int i = 0; i < 60; ++i)
+            {
+                if (NowContextMenu.Item($"Option {i + 1}"))
+                    _menuLabResult = $"Picked: Option {i + 1}";
+            }
+
+            NowContextMenu.End();
+        }
+
+        using (NowLayout.Horizontal(spacing: 8f))
+        {
+            var cornerButton = NowLayout.Button("Open at screen corner").Draw();
+
+            if (cornerButton)
+                NowContextMenu.Open(NowInput.GetId("gallery-corner-menu"), new Vector2(Screen.width / Now.uiScale - 30f, Screen.height / Now.uiScale - 30f));
+
+            if (NowLayout.Button("Open tall menu here").Draw())
+                NowContextMenu.Open(NowInput.GetId("gallery-tall-menu"), NowInput.current.pointerPosition);
+        }
+
+        if (NowContextMenu.Begin(NowInput.GetId("gallery-corner-menu")))
+        {
+            for (int i = 0; i < 25; ++i)
+            {
+                if (NowContextMenu.Item($"Corner Case {i + 1}"))
+                    _menuLabResult = $"Picked: Corner Case {i + 1}";
+            }
+
+            NowContextMenu.End();
+        }
+
+        if (NowContextMenu.Begin(NowInput.GetId("gallery-tall-menu")))
+        {
+            for (int i = 0; i < 100; ++i)
+            {
+                if (NowContextMenu.Item($"Tall Option {i + 1}"))
+                    _menuLabResult = $"Picked: Tall Option {i + 1}";
+            }
+
+            NowContextMenu.End();
         }
     }
 
