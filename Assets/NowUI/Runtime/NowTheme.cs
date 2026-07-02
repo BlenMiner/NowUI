@@ -71,9 +71,28 @@ namespace NowUI
                 _defaultThemeAsset = ScriptableObject.CreateInstance<NowThemeAsset>();
                 _defaultThemeAsset.name = "Now Default Theme";
                 _defaultThemeAsset.hideFlags = HideFlags.HideAndDontSave;
+                _defaultThemeAsset.ResetToDefaults(dark: false);
             }
 
             return _defaultThemeAsset;
+        }
+
+        /// <summary>
+        /// The innermost scoped theme, unresolved; null when no scope is active.
+        /// Deferred overlay draws capture this at declare time so popups render
+        /// with the theme that was ambient where they were opened, not whatever
+        /// happens to be active when the overlay queue flushes.
+        /// </summary>
+        internal static NowThemeAsset currentScopeTheme => _themeStack.Count > 0 ? _themeStack[^1] : null;
+
+        /// <summary>Pushes a scope when the value is non-null; otherwise a no-op scope.</summary>
+        internal static ThemeScope ScopeOrDefault(NowThemeAsset value)
+        {
+            if (value == null)
+                return default;
+
+            _themeStack.Add(value);
+            return new ThemeScope(true);
         }
 
         /// <summary>Pushes a contextual theme; dispose the scope to restore the previous one.</summary>

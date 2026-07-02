@@ -87,6 +87,7 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "controls", width = 960, height = 540, includeInGoldens = true, draw = DrawControls },
                 new NowHarnessScenario { name = "controls-dark", width = 960, height = 540, includeInGoldens = true, draw = DrawControlsDark },
                 new NowHarnessScenario { name = "elevation", width = 840, height = 420, includeInGoldens = true, draw = DrawElevation },
+                new NowHarnessScenario { name = "context-menu", width = 640, height = 420, includeInGoldens = true, draw = DrawContextMenu },
                 new NowHarnessScenario { name = "text-layout", width = 960, height = 540, includeInGoldens = true, draw = DrawTextLayout },
                 new NowHarnessScenario { name = "glass", width = 640, height = 360, includeInGoldens = true, draw = DrawGlass },
                 new NowHarnessScenario { name = "shader-variants", width = 840, height = 420, includeInGoldens = true, draw = DrawShaderVariants },
@@ -263,6 +264,34 @@ namespace NowUI.Editor
                     .SetBold()
                     .SetColor(theme.GetColor(NowColorToken.Text))
                     .Draw(levels[i].ToString());
+            }
+        }
+
+        /// <summary>
+        /// A context menu taller than the view: it clamps, scrolls to the middle,
+        /// and shows both hover scroll strips so the strip corners are pinned
+        /// against the popup's rounded silhouette.
+        /// </summary>
+        static void DrawContextMenu(NowRect rect)
+        {
+            DrawSurface(rect);
+            HeaderBlock(rect, "Context Menu", "Clamped tall menu, scrolled, with edge scroll strips.");
+
+            int menuId = NowInput.GetId("harness-context-menu");
+
+            if (!NowContextMenu.isOpen)
+                NowContextMenu.Open(menuId, new Vector2(64f, 48f));
+
+            if (NowContextMenu.Begin(menuId))
+            {
+                NowContextMenu.Label("Harness Menu");
+                NowContextMenu.Separator();
+
+                for (int i = 0; i < 40; ++i)
+                    NowContextMenu.Item($"Overflow Option {i + 1}");
+
+                NowContextMenu.End();
+                NowControlState.Get<float>(menuId, "ctx-scroll") = 180f;
             }
         }
 

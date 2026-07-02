@@ -49,6 +49,25 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Per-corner radii now round the corners they name. `NowCornerRadius.packed`
+  was vertically flipped against the shader's corner decode, so
+  `NowCornerRadius.Top(...)` rounded the bottom corners (node title bars,
+  file picker headers, and the context menu scroll strips all drew mirrored).
+  Code that unpacked a packed radius `Vector4` by component must switch to
+  the new order: `x`=topRight, `y`=bottomRight, `z`=topLeft, `w`=bottomLeft.
+- Deferred overlay draws (context menus, dropdown popups, tooltips, dialogs)
+  now capture the ambient theme scope at declare time and re-apply it when
+  the overlay queue flushes. Previously popups rendered with whatever theme
+  was active at end-of-frame — outside every `NowTheme.Scope`, so scoped
+  themes never styled them.
+- The built-in fallback light theme (used when no theme asset is scoped or
+  assigned) is now fully initialized; it previously shipped blank style
+  constants, leaving popups square-cornered and unpadded.
+- Context menu scroll strips are drawn as the popup's own rounded shape
+  clipped to the edge band, so they follow the menu's rounded silhouette
+  exactly instead of overpainting the corners with a square rect (a plain
+  strip rect cannot round correctly once the corner radius exceeds half the
+  strip height).
 - A context menu now belongs to the input surface that opened it: two
   surfaces sharing a menu id no longer both draw the menu (and the wrong one
   can no longer consume the item click).

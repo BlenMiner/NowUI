@@ -1500,7 +1500,7 @@ namespace NowUI
         public float contextMenuItemHeight => _contextMenuItemHeight;
         public float contextMenuPaddingX => _contextMenuPaddingX;
         public float contextMenuMinWidth => _contextMenuMinWidth;
-        public float contextMenuRadius => _contextMenuRadius;
+        public float contextMenuRadius => _contextMenuRadius <= 0f ? 10f : _contextMenuRadius;
         public float submenuIndicatorInset => _submenuIndicatorInset <= 0f ? 18f : _submenuIndicatorInset;
         public float submenuIndicatorSize => _submenuIndicatorSize <= 0f ? 14f : _submenuIndicatorSize;
         public float scrollbarWidth => _scrollbarWidth;

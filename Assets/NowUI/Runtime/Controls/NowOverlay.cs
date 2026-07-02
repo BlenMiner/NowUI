@@ -166,6 +166,7 @@ namespace NowUI
             public int state;
             public int overlayId;
             public Now.NowTransformSnapshot transform;
+            public NowThemeAsset theme;
         }
 
         struct OverlayBlock
@@ -319,7 +320,7 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _deferred.Add(new DeferredDraw { draw = draw, transform = Now.CaptureTransform() });
+            _deferred.Add(new DeferredDraw { draw = draw, transform = Now.CaptureTransform(), theme = NowTheme.currentScopeTheme });
             AddBlock(Now.TransformScreenRect(blockRect), 0);
         }
 
@@ -332,7 +333,7 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _deferred.Add(new DeferredDraw { draw = draw });
+            _deferred.Add(new DeferredDraw { draw = draw, theme = NowTheme.currentScopeTheme });
             AddBlock(blockRect, 0);
         }
 
@@ -352,7 +353,8 @@ namespace NowUI
                 drawWithState = draw,
                 state = state,
                 overlayId = state,
-                transform = Now.CaptureTransform()
+                transform = Now.CaptureTransform(),
+                theme = NowTheme.currentScopeTheme
             });
             AddBlock(Now.TransformScreenRect(blockRect), state);
         }
@@ -366,7 +368,7 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _deferred.Add(new DeferredDraw { drawWithState = draw, state = state, overlayId = state });
+            _deferred.Add(new DeferredDraw { drawWithState = draw, state = state, overlayId = state, theme = NowTheme.currentScopeTheme });
             AddBlock(blockRect, state);
         }
 
@@ -386,7 +388,8 @@ namespace NowUI
                 drawWithState = draw,
                 state = state,
                 overlayId = state,
-                transform = Now.CaptureTransform()
+                transform = Now.CaptureTransform(),
+                theme = NowTheme.currentScopeTheme
             });
         }
 
@@ -818,6 +821,7 @@ namespace NowUI
                     try
                     {
                         using (Now.ApplyTransformSnapshot(deferred.transform))
+                        using (NowTheme.ScopeOrDefault(deferred.theme))
                         {
                             if (deferred.drawWithState != null)
                                 deferred.drawWithState(deferred.state);

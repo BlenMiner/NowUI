@@ -92,8 +92,8 @@ public class NowControlsTests
         Assert.AreEqual(2f, radius.topRight);
         Assert.AreEqual(1f, radius.bottomRight);
         Assert.AreEqual(3f, radius.bottomLeft);
-        Assert.AreEqual(new Vector4(1f, 2f, 3f, 4f), radius.packed);
-        Assert.AreEqual(new Vector4(0f, 5f, 0f, 5f), NowCornerRadius.Top(5f).packed);
+        Assert.AreEqual(new Vector4(2f, 1f, 4f, 3f), radius.packed);
+        Assert.AreEqual(new Vector4(5f, 0f, 5f, 0f), NowCornerRadius.Top(5f).packed);
     }
 
     static NowInputSnapshot NavigationSnapshot(Vector2 navigation, bool previous = false, bool next = false, float time = 1f)

@@ -593,10 +593,10 @@ namespace NowUI.CodeEditor
 
             if (gutterWidth > 0f)
             {
-                float gutterBottomLeft = statusHeight > 0f ? 0f : cornerRadius.z;
+                float gutterBottomLeft = statusHeight > 0f ? 0f : cornerRadius.w;
                 Now.Rectangle(new NowRect(rect.x, rect.y, gutterWidth, rect.height - statusHeight))
                     .SetColor(themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
-                    .SetRadius(cornerRadius.w, 0f, 0f, gutterBottomLeft)
+                    .SetRadius(cornerRadius.z, 0f, 0f, gutterBottomLeft)
                     .Draw();
 
                 using (Now.Mask(new NowRect(rect.x, textRect.y, gutterWidth, textRect.height)))
@@ -896,7 +896,7 @@ namespace NowUI.CodeEditor
 
             Now.Rectangle(statusRect)
                 .SetColor(themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
-                .SetRadius(0f, 0f, cornerRadius.x, cornerRadius.z)
+                .SetRadius(0f, 0f, cornerRadius.y, cornerRadius.w)
                 .Draw();
 
             var line = cache.lines[caretLine];

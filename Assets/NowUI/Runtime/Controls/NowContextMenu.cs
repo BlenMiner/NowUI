@@ -128,7 +128,7 @@ namespace NowUI
         }
 
         /// <summary>
-        /// True while the menu with this id is open — declare items, then call
+        /// True while the menu with this id is open â€” declare items, then call
         /// <see cref="End"/>. Also true for one frame after an item was clicked
         /// (the menu has closed by then) so the clicked item can deliver.
         /// </summary>
@@ -501,29 +501,46 @@ namespace NowUI
             }
         }
 
+        /// <summary>
+        /// Each strip is the popup's own rounded shape clipped to the edge band,
+        /// so its silhouette matches the popup outline exactly — a plain strip
+        /// rect cannot round correctly when the corner radius exceeds the band's
+        /// half height.
+        /// </summary>
         static void DrawScrollStrips(NowThemeAsset theme, Menu menu, float scroll, float maxScroll)
         {
             Color surface = theme.GetColor(NowColorToken.SurfaceElevated);
             Color chevron = theme.GetColor(NowColorToken.TextMuted);
             float radius = Mathf.Max(0f, theme.controlStyles.contextMenuRadius - 1f);
+            var inner = new NowRect(menu.popupRect.x + 1f, menu.popupRect.y + 1f, menu.popupRect.width - 2f, menu.popupRect.height - 2f);
 
             if (scroll > 0f)
             {
-                var strip = new NowRect(menu.popupRect.x + 1f, menu.popupRect.y + 1f, menu.popupRect.width - 2f, ScrollStripHeight);
-                Now.Rectangle(strip)
-                    .SetColor(surface)
-                    .SetRadius(NowCornerRadius.Top(radius))
-                    .Draw();
+                var strip = new NowRect(inner.x, inner.y, inner.width, ScrollStripHeight);
+
+                using (Now.Mask(strip))
+                {
+                    Now.Rectangle(inner)
+                        .SetColor(surface)
+                        .SetRadius(radius)
+                        .Draw();
+                }
+
                 DrawStripChevron(strip, chevron, up: true);
             }
 
             if (scroll < maxScroll)
             {
-                var strip = new NowRect(menu.popupRect.x + 1f, menu.popupRect.yMax - ScrollStripHeight - 1f, menu.popupRect.width - 2f, ScrollStripHeight);
-                Now.Rectangle(strip)
-                    .SetColor(surface)
-                    .SetRadius(NowCornerRadius.Bottom(radius))
-                    .Draw();
+                var strip = new NowRect(inner.x, inner.yMax - ScrollStripHeight, inner.width, ScrollStripHeight);
+
+                using (Now.Mask(strip))
+                {
+                    Now.Rectangle(inner)
+                        .SetColor(surface)
+                        .SetRadius(radius)
+                        .Draw();
+                }
+
                 DrawStripChevron(strip, chevron, up: false);
             }
         }
