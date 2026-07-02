@@ -49,6 +49,13 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Context menus opened from inside another popup (the animation curve
+  editor's tangent menu, dropdowns in dialogs) now win the pointer over the
+  popup content beneath them: modal blocks apply between overlay layers, with
+  only the modal's own overlay subtree exempt. Previously all overlay content
+  bypassed pointer blocks, so the popup underneath kept claiming presses —
+  menu items would highlight but clicks fell through (e.g. double-click added
+  a curve key instead of picking a tangent option).
 - Context menu submenus no longer snap shut when the pointer crosses a
   sibling row diagonally on its way into the submenu: switching away from an
   open submenu now waits for a short hover-intent delay (timed from the input

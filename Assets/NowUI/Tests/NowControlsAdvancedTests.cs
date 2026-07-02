@@ -594,6 +594,80 @@ public class NowControlsAdvancedTests
         }
     }
 
+    static int s_nestedPopupClicks;
+    static bool s_nestedMenuDelivered;
+    const int NestedPopupOverlayId = 8242;
+    const int NestedMenuId = 8123;
+    static readonly NowRect NestedPopupRect = new NowRect(40f, 40f, 220f, 160f);
+
+    static void DrawNestedPopupOverlay(int state)
+    {
+        var interaction = NowInput.Interact(NowInput.CombineId(NestedPopupOverlayId, 1), NestedPopupRect);
+
+        if (interaction.clicked)
+            ++s_nestedPopupClicks;
+
+        var context = NowInput.Interact(NowInput.CombineId(NestedPopupOverlayId, 2), NestedPopupRect, NowPointerButton.Secondary);
+
+        if (context.clicked)
+            NowContextMenu.Open(NestedMenuId, context.pointerPosition, fitToView: false);
+
+        if (NowContextMenu.Begin(NestedMenuId))
+        {
+            if (NowContextMenu.Item("Smooth Tangents"))
+                s_nestedMenuDelivered = true;
+
+            NowContextMenu.End();
+        }
+    }
+
+    /// <summary>
+    /// A context menu opened from inside another overlay popup (the animation
+    /// curve editor's tangent menu) must win the pointer over the popup content
+    /// beneath it, even where the two overlap.
+    /// </summary>
+    [Test]
+    public void ContextMenuOpenedInsideOverlayWinsOverThePopupBeneath()
+    {
+        s_nestedPopupClicks = 0;
+        s_nestedMenuDelivered = false;
+
+        void DrawFrame(NowInputSnapshot snapshot)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                NowOverlay.Defer(NestedPopupRect, NestedPopupOverlayId, DrawNestedPopupOverlay);
+                NowOverlay.Flush();
+            }
+        }
+
+        var styles = NowTheme.themeAsset.controlStyles;
+        var anchor = new Vector2(100f, 60f);
+        var itemPoint = new Vector2(
+            anchor.x + styles.popupPadding + 10f,
+            anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+
+        Assert.IsTrue(NestedPopupRect.Contains(itemPoint), "The probe point must overlap the popup beneath the menu.");
+
+        DrawFrame(new NowInputSnapshot(anchor, false, false, false));
+        DrawFrame(new NowInputSnapshot(anchor, NowPointerButtons.Secondary, NowPointerButtons.Secondary, NowPointerButtons.None));
+        DrawFrame(new NowInputSnapshot(anchor, NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.Secondary));
+
+        Assert.IsTrue(NowContextMenu.isOpen, "Right-click inside the popup must open the nested context menu.");
+
+        DrawFrame(new NowInputSnapshot(itemPoint, false, false, false));
+        DrawFrame(new NowInputSnapshot(itemPoint, true, true, false));
+        DrawFrame(new NowInputSnapshot(itemPoint, false, false, true));
+        DrawFrame(new NowInputSnapshot(itemPoint, false, false, false));
+
+        Assert.IsTrue(s_nestedMenuDelivered, "The nested context menu item must receive the click.");
+        Assert.AreEqual(0, s_nestedPopupClicks, "The popup beneath the nested menu must not receive the click.");
+    }
+
     [Test]
     public void OverlayFitToViewAccountsForCurrentTransform()
     {

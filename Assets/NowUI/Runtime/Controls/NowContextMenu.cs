@@ -304,7 +304,7 @@ namespace NowUI
                 root.popupRect = NowOverlay.FitScreenToView(root.popupRect);
 
             NowControlState.RequestRepaint();
-            NowOverlay.BlockAllSurfaces();
+            NowOverlay.BlockAllSurfaces(root.overlayId);
             NowOverlay.DeferScreen(root.popupRect, root.overlayId, DrawDeferred);
         }
 

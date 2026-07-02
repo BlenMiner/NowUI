@@ -139,6 +139,7 @@ namespace NowUI
             public int id;
             public int parentId;
             public bool modal;
+            public int modalInteractiveRootId;
             public Component host;
             public RectTransform hostRectTransform;
             public Camera hostCamera;
@@ -371,11 +372,15 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Blocks base-content pointer interaction on every NowUI surface, not
-        /// just the registering host's — the modal guarantee for context menus
-        /// and modal dialogs. Overlay content itself stays interactive.
+        /// Blocks pointer interaction on every NowUI surface, not just the
+        /// registering host's — the modal guarantee for context menus and modal
+        /// dialogs. Base content is blocked everywhere; other overlay content is
+        /// blocked too, except the overlay subtree rooted at
+        /// <paramref name="interactiveRootId"/> (the modal's own popups), so a
+        /// context menu opened from inside another popup wins the pointer over
+        /// the popup beneath it.
         /// </summary>
-        public static void BlockAllSurfaces()
+        public static void BlockAllSurfaces(int interactiveRootId = 0)
         {
             if (NowInput.isPassive)
                 return;
@@ -390,6 +395,7 @@ namespace NowUI
                 id = 0,
                 parentId = CurrentOverlayId(),
                 modal = true,
+                modalInteractiveRootId = interactiveRootId,
                 host = host.host,
                 hostRectTransform = host.rectTransform,
                 hostCamera = host.camera
@@ -404,10 +410,10 @@ namespace NowUI
         /// </summary>
         public static bool IsPointerBlocked(Vector2 pointerPosition)
         {
-            if (_overlayDepth > 0)
-                return false;
-
             BeginFrameIfNeeded();
+
+            if (_overlayDepth > 0)
+                return IsOverlayContentBlocked();
 
             var host = CurrentHostContext().host;
 
@@ -421,6 +427,39 @@ namespace NowUI
                 {
                     return true;
                 }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Overlay content is normally exempt from pointer blocks (it sits on
+        /// top), but a modal registered by a nested popup — a context menu
+        /// opened from inside another popup — must still occlude the overlay
+        /// layers beneath it. Only the modal's own overlay subtree stays
+        /// interactive.
+        /// </summary>
+        static bool IsOverlayContentBlocked()
+        {
+            int drawing = CurrentOverlayId();
+
+            for (int i = 0; i < _blocksPrevious.Count; ++i)
+            {
+                var block = _blocksPrevious[i];
+
+                if (!block.modal)
+                    continue;
+
+                if (block.modalInteractiveRootId != 0 &&
+                    drawing != 0 &&
+                    (drawing == block.modalInteractiveRootId ||
+                     OverlayIdBelongsToTree(drawing, block.modalInteractiveRootId, _blocksPrevious) ||
+                     OverlayIdBelongsToTree(drawing, block.modalInteractiveRootId, _blocksCurrent)))
+                {
+                    continue;
+                }
+
+                return true;
             }
 
             return false;
