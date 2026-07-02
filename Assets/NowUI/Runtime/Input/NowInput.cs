@@ -134,13 +134,17 @@ namespace NowUI
 
         static Vector2 _pressPosition;
 
-        static float _dragThreshold = DefaultDragThreshold;
+        static float _dragThresholdOverride = -1f;
+
+        static NowNavigationKeys _navigationKeys = NowNavigationKeys.All;
 
         static int _passiveDepth;
 
         static int _scopeDepth;
 
         static bool _scrollConsumed;
+
+        static int _cancelClaimFrame = int.MinValue;
 
         public static INowInputProvider defaultProvider
         {
@@ -161,10 +165,35 @@ namespace NowUI
 
         public static NowPointerButton activeButton => _activeButton;
 
+        /// <summary>
+        /// Distance in surface units a press may travel before it becomes a drag
+        /// and stops counting as a click. Defaults to 4 scaled by display density
+        /// (4 * Screen.dpi / 160, floored at 4) so taps on dense touch screens
+        /// stay clicks; setting an explicit value wins unscaled until
+        /// <see cref="Reset"/> restores the density-scaled default.
+        /// </summary>
         public static float dragThreshold
         {
-            get => _dragThreshold;
-            set => _dragThreshold = Mathf.Max(0f, value);
+            get => _dragThresholdOverride >= 0f ? _dragThresholdOverride : ScaledDefaultDragThreshold();
+            set => _dragThresholdOverride = Mathf.Max(0f, value);
+        }
+
+        /// <summary>
+        /// Which keyboard keys the built-in device input maps to UI navigation,
+        /// focus, and submit. Defaults to <see cref="NowNavigationKeys.All"/> so
+        /// arrows, WASD, Tab, Space, and Enter all drive the UI; games that use
+        /// WASD or Space for gameplay can mask those out.
+        /// </summary>
+        public static NowNavigationKeys navigationKeys
+        {
+            get => _navigationKeys;
+            set => _navigationKeys = value;
+        }
+
+        static float ScaledDefaultDragThreshold()
+        {
+            float dpi = Screen.dpi;
+            return dpi > 0f ? DefaultDragThreshold * Mathf.Max(1f, dpi / 160f) : DefaultDragThreshold;
         }
 
         public static NowInputScope Begin(Vector2 size)
@@ -189,7 +218,7 @@ namespace NowUI
             if (topLevel)
                 CompleteFrame();
 
-            var scope = new NowInputScope(_surface, _snapshot, _hasContext, topLevel);
+            var scope = new NowInputScope(_surface, _snapshot, _hasContext, _scrollConsumed, topLevel);
             ++_scopeDepth;
             Update(provider, surface, topLevel);
             return scope;
@@ -197,7 +226,7 @@ namespace NowUI
 
         internal static NowInputScope BeginMeasurement(INowInputProvider provider, NowInputSurface surface)
         {
-            var scope = new NowInputScope(_surface, _snapshot, _hasContext, false);
+            var scope = new NowInputScope(_surface, _snapshot, _hasContext, _scrollConsumed, false);
             ++_scopeDepth;
             Update(provider, surface, false);
             return scope;
@@ -227,10 +256,12 @@ namespace NowUI
             _surface = surface;
             _hasContext = true;
             NowControls.ResetControlIdOccurrences();
-            _scrollConsumed = false;
 
             if (resetFrameTracking)
+            {
+                _scrollConsumed = false;
                 _activeSeenThisFrame = false;
+            }
 
             if (provider != null && provider.TryGetSnapshot(surface, out _snapshot))
             {
@@ -258,6 +289,30 @@ namespace NowUI
                 !NowOverlay.IsPointerBlocked(_snapshot.pointerPosition);
         }
 
+        /// <summary>
+        /// True when a secondary-button press landed inside <paramref name="rect"/>
+        /// this frame and the pointer actually belongs to that rect — ambient masks
+        /// and overlay pointer blocks are respected and measure passes report false.
+        /// The blessed check for opening a context menu over a region; raw snapshot
+        /// checks leak right-clicks through open popups.
+        /// </summary>
+        public static bool WasRightClicked(NowRect rect)
+        {
+            return WasRightClicked((Rect)rect);
+        }
+
+        /// <summary>
+        /// True when a secondary-button press landed inside <paramref name="rect"/>
+        /// this frame, respecting ambient masks and overlay pointer blocks.
+        /// </summary>
+        public static bool WasRightClicked(Rect rect)
+        {
+            return _passiveDepth == 0 &&
+                _hasContext &&
+                _snapshot.WasPointerPressed(NowPointerButton.Secondary) &&
+                IsHovered(rect);
+        }
+
         public static Vector2 ConsumeScrollDelta(NowRect rect)
         {
             return ConsumeScrollDelta((Rect)rect);
@@ -283,6 +338,35 @@ namespace NowUI
             _scrollConsumed = true;
             return scroll;
         }
+
+        /// <summary>
+        /// Claims cancel presses for the calling control — a key-capture field
+        /// swallowing Escape, for example. Call every frame the claim should
+        /// hold, like <see cref="NowFocus.LockNavigation"/>: dismissal paths
+        /// that run later in the frame (popups, dialogs, menus) skip a claimed
+        /// cancel via <see cref="cancelConsumed"/>, and the focus swap — which
+        /// processes input before the claimant draws — honours the previous
+        /// frame's claim, one frame late like overlay pointer blocks.
+        /// </summary>
+        public static void ConsumeCancel()
+        {
+            if (_passiveDepth > 0 || !_hasContext)
+                return;
+
+            _cancelClaimFrame = _snapshot.frame;
+        }
+
+        /// <summary>True when a control claimed this frame's cancel press, so
+        /// cancel-driven dismissal consumers must stand down.</summary>
+        public static bool cancelConsumed => _hasContext && _cancelClaimFrame == _snapshot.frame;
+
+        /// <summary>
+        /// Cancel-claim check for consumers that process input at the frame
+        /// swap, before the claiming control has drawn this frame: honours the
+        /// previous frame's claim too.
+        /// </summary>
+        internal static bool cancelConsumedForFrameSwap =>
+            _hasContext && _cancelClaimFrame != int.MinValue && _cancelClaimFrame >= _snapshot.frame - 1;
 
         public static bool IsPointerDown(NowPointerButton button)
         {
@@ -499,8 +583,9 @@ namespace NowUI
             if (held)
             {
                 Vector2 dragOffset = snapshot.pointerPosition - _pressPosition;
+                float threshold = dragThreshold;
 
-                if (_dragId == id || dragOffset.sqrMagnitude >= _dragThreshold * _dragThreshold)
+                if (_dragId == id || dragOffset.sqrMagnitude >= threshold * threshold)
                 {
                     dragStarted = _dragId != id;
                     _dragId = id;
@@ -609,11 +694,13 @@ namespace NowUI
             _activeSeenThisFrame = false;
             _activeLastSeenFrame = -1;
             _pressPosition = default;
-            _dragThreshold = DefaultDragThreshold;
+            _dragThresholdOverride = -1f;
+            _navigationKeys = NowNavigationKeys.All;
             _defaultProvider = NowScreenInputProvider.instance;
             _passiveDepth = 0;
             _scopeDepth = 0;
             _scrollConsumed = false;
+            _cancelClaimFrame = int.MinValue;
             NowRaycastGate.InvalidateCache();
             NowPointerArbiter.Reset();
         }
@@ -678,7 +765,7 @@ namespace NowUI
             _hasContext = hasContext;
         }
 
-        internal static void EndScope(NowInputSurface previousSurface, NowInputSnapshot previousSnapshot, bool previousHasContext, bool completeFrame)
+        internal static void EndScope(NowInputSurface previousSurface, NowInputSnapshot previousSnapshot, bool previousHasContext, bool previousScrollConsumed, bool completeFrame)
         {
             if (completeFrame)
                 NowOverlay.Flush();
@@ -690,6 +777,7 @@ namespace NowUI
                 EndFrame();
 
             Restore(previousSurface, previousSnapshot, previousHasContext);
+            _scrollConsumed |= previousScrollConsumed;
         }
 
         internal static void EndFrame()
@@ -764,6 +852,8 @@ namespace NowUI
 
         readonly bool _previousHasContext;
 
+        readonly bool _previousScrollConsumed;
+
         readonly bool _completeFrame;
 
         bool _disposed;
@@ -772,11 +862,13 @@ namespace NowUI
             NowInputSurface previousSurface,
             NowInputSnapshot previousSnapshot,
             bool previousHasContext,
+            bool previousScrollConsumed,
             bool completeFrame)
         {
             _previousSurface = previousSurface;
             _previousSnapshot = previousSnapshot;
             _previousHasContext = previousHasContext;
+            _previousScrollConsumed = previousScrollConsumed;
             _completeFrame = completeFrame;
             _disposed = false;
         }
@@ -787,7 +879,7 @@ namespace NowUI
                 return;
 
             _disposed = true;
-            NowInput.EndScope(_previousSurface, _previousSnapshot, _previousHasContext, _completeFrame);
+            NowInput.EndScope(_previousSurface, _previousSnapshot, _previousHasContext, _previousScrollConsumed, _completeFrame);
         }
     }
 }

@@ -20,12 +20,14 @@ public class NowUIToolkitTests
         Assert.IsTrue(pressed.primaryPressed);
         Assert.IsFalse(pressed.primaryReleased);
 
+        provider.Invalidate();
         Assert.IsTrue(provider.TryGetSnapshot(Surface, out var held));
         Assert.IsTrue(held.primaryDown);
         Assert.IsFalse(held.primaryPressed);
         Assert.IsFalse(held.primaryReleased);
 
         provider.SetPointerUp(new Vector2(36f, 28f), 0, 0);
+        provider.Invalidate();
         Assert.IsTrue(provider.TryGetSnapshot(Surface, out var released));
 
         Assert.IsFalse(released.primaryDown);
@@ -43,10 +45,12 @@ public class NowUIToolkitTests
         Assert.IsTrue(provider.TryGetSnapshot(Surface, out var first));
         Assert.AreEqual(Vector2.right, first.navigation);
 
+        provider.Invalidate();
         Assert.IsTrue(provider.TryGetSnapshot(Surface, out var held));
         Assert.AreEqual(Vector2.right, held.navigation);
 
         Assert.IsTrue(provider.KeyUp(KeyCode.RightArrow));
+        provider.Invalidate();
         Assert.IsTrue(provider.TryGetSnapshot(Surface, out var released));
         Assert.AreEqual(Vector2.zero, released.navigation);
     }
@@ -61,11 +65,13 @@ public class NowUIToolkitTests
         Assert.IsTrue(next.focusNextPressed);
         Assert.IsFalse(next.focusPreviousPressed);
 
+        provider.Invalidate();
         Assert.IsTrue(provider.TryGetSnapshot(Surface, out var idle));
         Assert.IsFalse(idle.focusNextPressed);
         Assert.IsFalse(idle.focusPreviousPressed);
 
         Assert.IsTrue(provider.KeyDown(KeyCode.Tab, shift: true));
+        provider.Invalidate();
         Assert.IsTrue(provider.TryGetSnapshot(Surface, out var previous));
         Assert.IsTrue(previous.focusPreviousPressed);
         Assert.IsFalse(previous.focusNextPressed);
@@ -82,10 +88,46 @@ public class NowUIToolkitTests
         Assert.IsTrue(submit.submitPressed);
         Assert.IsTrue(submit.submitReleased);
 
+        provider.Invalidate();
         Assert.IsTrue(provider.TryGetSnapshot(Surface, out var idle));
         Assert.IsFalse(idle.submitDown);
         Assert.IsFalse(idle.submitPressed);
         Assert.IsFalse(idle.submitReleased);
+    }
+
+    [Test]
+    public void UIToolkitInputProviderKeepsTransientsForRepeatReadsWithinOneFrame()
+    {
+        var provider = new NowUIToolkitInputProvider();
+
+        provider.SetPointerDown(new Vector2(10f, 10f), 0, 1);
+        Assert.IsTrue(provider.TryGetSnapshot(Surface, out var first));
+        Assert.IsTrue(provider.TryGetSnapshot(Surface, out var second));
+
+        Assert.IsTrue(first.primaryPressed);
+        Assert.IsTrue(second.primaryPressed);
+        Assert.IsTrue(second.primaryDown);
+
+        provider.Invalidate();
+        Assert.IsTrue(provider.TryGetSnapshot(Surface, out var next));
+        Assert.IsFalse(next.primaryPressed);
+        Assert.IsTrue(next.primaryDown);
+    }
+
+    [Test]
+    public void UIToolkitInputProviderNormalizesWheelDeltaToNotches()
+    {
+        var provider = new NowUIToolkitInputProvider();
+
+        provider.AddScrollDelta(new Vector2(3f, 3f));
+        Assert.IsTrue(provider.TryGetSnapshot(Surface, out var snapshot));
+
+        Assert.AreEqual(1f, snapshot.scrollDelta.x, 0.0001f);
+        Assert.AreEqual(-1f, snapshot.scrollDelta.y, 0.0001f);
+
+        provider.Invalidate();
+        Assert.IsTrue(provider.TryGetSnapshot(Surface, out var cleared));
+        Assert.AreEqual(Vector2.zero, cleared.scrollDelta);
     }
 
     [Test]

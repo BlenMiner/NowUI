@@ -7,6 +7,49 @@ using UnityEngine;
 namespace NowUI.Markup
 {
     /// <summary>
+    /// Per-node render data resolved once from the immutable document and its
+    /// stylesheet, so steady-state drawing does not re-derive styles, ids, or
+    /// content strings.
+    /// </summary>
+    internal sealed class NowMarkupNodeCache
+    {
+        public NowMarkupStyleMap style;
+        public NowLayoutOptions options;
+        public string text;
+        public string nodeId;
+        public bool hasExplicitId;
+        public string controlKey;
+        public string richTextContent;
+        public string plainTextContent;
+        public List<NowMarkupNode> renderableChildren;
+        public List<string> dropdownOptions;
+        public string galleryKey;
+        public string galleryPrevId;
+        public string galleryNextId;
+        public int galleryLabelIndex;
+        public int galleryLabelCount;
+        public string galleryLabel;
+        public bool hasFontSize;
+        public float fontSize;
+        public bool hasTextColor;
+        public Color textColor;
+        public bool hasFontStyle;
+        public NowFontStyle fontStyle;
+        public bool selectable;
+        public bool hasBackground;
+        public bool hasFillColor;
+        public Color fillColor;
+        public bool hasSurfaceStyle;
+        public NowRectangleStyle surfaceStyle;
+        public bool hasRadius;
+        public float radius;
+        public bool hasControlRectStyle;
+        public NowRectangleStyle controlRectStyle;
+        public bool hasControlTextStyle;
+        public NowTextStyle controlTextStyle;
+    }
+
+    /// <summary>
     /// Parsed NowUI markup document. Parse once, draw every frame. Supply a
     /// persistent <see cref="NowMarkupState"/> when controls should keep values
     /// outside the document cache.
@@ -17,7 +60,7 @@ namespace NowUI.Markup
         readonly NowMarkupStyleSheet _styleSheet;
         readonly NowMarkupState _ownedState = new NowMarkupState();
         readonly List<NowMarkupEvent> _events = new List<NowMarkupEvent>(8);
-        readonly List<string> _optionsScratch = new List<string>(8);
+        int _eventsVersion;
 
         public NowMarkupNode root => _root;
 
@@ -32,15 +75,23 @@ namespace NowUI.Markup
             return new NowMarkupDocument(NowMarkupParser.Parse(source));
         }
 
-        /// <summary>Draws into the current NowLayout group.</summary>
+        /// <summary>
+        /// Draws into the current NowLayout group. The returned result borrows
+        /// the document's event buffer and stays valid only until this document
+        /// draws again; read it before the next draw.
+        /// </summary>
         public NowMarkupResult Draw(NowMarkupState state = null)
         {
             BeginFrame();
             RenderChildren(_root, state ?? _ownedState);
-            return new NowMarkupResult(_events);
+            return new NowMarkupResult(this, _events, _eventsVersion);
         }
 
-        /// <summary>Draws inside an explicit rect by opening a root layout area.</summary>
+        /// <summary>
+        /// Draws inside an explicit rect by opening a root layout area. The
+        /// returned result borrows the document's event buffer and stays valid
+        /// only until this document draws again; read it before the next draw.
+        /// </summary>
         public NowMarkupResult Draw(NowRect rect, NowMarkupState state = null)
         {
             BeginFrame();
@@ -48,12 +99,18 @@ namespace NowUI.Markup
             using (NowLayout.Area(rect))
                 RenderChildren(_root, state ?? _ownedState);
 
-            return new NowMarkupResult(_events);
+            return new NowMarkupResult(this, _events, _eventsVersion);
+        }
+
+        internal bool IsResultCurrent(int version)
+        {
+            return version == _eventsVersion;
         }
 
         void BeginFrame()
         {
             _events.Clear();
+            ++_eventsVersion;
         }
 
         void RenderChildren(NowMarkupNode node, NowMarkupState state)
@@ -69,7 +126,7 @@ namespace NowUI.Markup
 
             if (node.isText)
             {
-                string text = CleanText(node.text);
+                string text = Cache(node).text;
 
                 if (!string.IsNullOrEmpty(text))
                     NowLayout.RichText(text).ParseDefaultTags().Draw();
@@ -80,7 +137,7 @@ namespace NowUI.Markup
             if (node.name == "style")
                 return;
 
-            var style = _styleSheet.Resolve(node);
+            var cache = Cache(node);
 
             if (!ShouldRender(node, state))
                 return;
@@ -93,11 +150,11 @@ namespace NowUI.Markup
                 case "section":
                 case "panel":
                 case "card":
-                    RenderGroup(node, state, style, vertical: true);
+                    RenderGroup(node, state, cache, vertical: true);
                     break;
                 case "row":
                 case "hstack":
-                    RenderGroup(node, state, style, vertical: false);
+                    RenderGroup(node, state, cache, vertical: false);
                     break;
                 case "if":
                 case "show":
@@ -105,10 +162,10 @@ namespace NowUI.Markup
                     break;
                 case "scroll":
                 case "scrollview":
-                    RenderScroll(node, state, style);
+                    RenderScroll(node, state, cache);
                     break;
                 case "gallery":
-                    RenderGallery(node, state, style);
+                    RenderGallery(node, state, cache);
                     break;
                 case "slide":
                 case "item":
@@ -118,37 +175,37 @@ namespace NowUI.Markup
                 case "label":
                 case "p":
                 case "richtext":
-                    RenderText(node, style);
+                    RenderText(cache);
                     break;
                 case "button":
-                    RenderButton(node, state, style);
+                    RenderButton(node, state, cache);
                     break;
                 case "checkbox":
-                    RenderCheckbox(node, state, style);
+                    RenderCheckbox(node, state, cache);
                     break;
                 case "slider":
-                    RenderSlider(node, state, style);
+                    RenderSlider(node, state, cache);
                     break;
                 case "textfield":
                 case "input":
-                    RenderTextField(node, state, style);
+                    RenderTextField(node, state, cache);
                     break;
                 case "textarea":
-                    RenderTextArea(node, state, style);
+                    RenderTextArea(node, state, cache);
                     break;
                 case "dropdown":
                 case "select":
-                    RenderDropdown(node, state, style);
+                    RenderDropdown(node, state, cache);
                     break;
                 case "space":
-                    RenderSpace(node, style, flexible: false);
+                    RenderSpace(node, cache.style, flexible: false);
                     break;
                 case "flex":
                 case "flexspace":
-                    RenderSpace(node, style, flexible: true);
+                    RenderSpace(node, cache.style, flexible: true);
                     break;
                 case "br":
-                    NowLayout.Space(ReadFloat(node, style, "height", "size", 8f));
+                    NowLayout.Space(ReadFloat(node, cache.style, "height", "size", 8f));
                     break;
                 default:
                     RenderChildren(node, state);
@@ -156,38 +213,143 @@ namespace NowUI.Markup
             }
         }
 
-        void RenderGroup(NowMarkupNode node, NowMarkupState state, NowMarkupStyleMap style, bool vertical)
+        NowMarkupNodeCache Cache(NowMarkupNode node)
         {
-            var options = NowMarkupStyleHelpers.LayoutOptions(style);
-            NowLayoutScope scope = HasId(node)
-                ? (vertical ? NowLayout.Vertical(new NowId(NodeId(node)), options) : NowLayout.Horizontal(new NowId(NodeId(node)), options))
+            var cache = node.renderCache;
+
+            if (cache != null)
+                return cache;
+
+            cache = new NowMarkupNodeCache();
+
+            if (node.isText)
+            {
+                cache.text = CleanText(node.text);
+                node.renderCache = cache;
+                return cache;
+            }
+
+            var style = _styleSheet.Resolve(node);
+            cache.style = style;
+            cache.options = NowMarkupStyleHelpers.LayoutOptions(style);
+            cache.hasExplicitId = HasId(node);
+            string id = FirstAttribute(node, "id", "name");
+            cache.nodeId = !string.IsNullOrEmpty(id)
+                ? id
+                : "markup:" + node.name + ":" + node.sourceIndex.ToString(CultureInfo.InvariantCulture);
+            string key = FirstAttribute(node, "state", "bind", "value-key");
+            cache.controlKey = string.IsNullOrEmpty(key) ? cache.nodeId : key;
+            cache.richTextContent = node.TryAttribute("value", out var value)
+                ? value ?? string.Empty
+                : RichTextContent(node).Trim();
+            cache.plainTextContent = PlainTextContent(node).Trim();
+            cache.renderableChildren = CollectRenderableChildren(node);
+
+            if (node.name == "gallery")
+            {
+                string galleryKey = FirstAttribute(node, "index", "state");
+                cache.galleryKey = string.IsNullOrEmpty(galleryKey) ? cache.nodeId + ".index" : galleryKey;
+                cache.galleryPrevId = cache.nodeId + ".prev";
+                cache.galleryNextId = cache.nodeId + ".next";
+                cache.galleryLabelIndex = -1;
+                cache.galleryLabelCount = -1;
+            }
+
+            if (node.name == "dropdown" || node.name == "select")
+            {
+                cache.dropdownOptions = new List<string>(4);
+                BuildOptions(node, cache.dropdownOptions);
+            }
+
+            if (style.TryGetAny(out var sizeValue, "font-size", "size") &&
+                float.TryParse(TrimUnit(sizeValue), NumberStyles.Float, CultureInfo.InvariantCulture, out float fontSize))
+            {
+                cache.hasFontSize = true;
+                cache.fontSize = fontSize;
+            }
+
+            if (style.TryGet("color", out var colorValue) &&
+                NowMarkupStyleHelpers.TryParseColor(colorValue, out var textColor))
+            {
+                cache.hasTextColor = true;
+                cache.textColor = textColor;
+            }
+
+            if (style.TryGet("font-style", out var fontStyleValue) &&
+                NowMarkupStyleHelpers.TryParseFontStyle(fontStyleValue, out var fontStyle))
+            {
+                cache.hasFontStyle = true;
+                cache.fontStyle = fontStyle;
+            }
+
+            cache.selectable = style.TryGetBool("selectable", out bool selectable) && selectable;
+
+            bool hasFill = style.TryGetAny(out var fillValue, "background", "background-color", "bg");
+            bool hasSurface = style.TryGetAny(out var surfaceValue, "rect-style", "surface", "panel-style");
+            cache.hasBackground = hasFill || hasSurface;
+
+            if (hasSurface && NowMarkupStyleHelpers.TryParseRectangleStyle(surfaceValue, out var surfaceStyle))
+            {
+                cache.hasSurfaceStyle = true;
+                cache.surfaceStyle = surfaceStyle;
+            }
+
+            if (hasFill && NowMarkupStyleHelpers.TryParseColor(fillValue, out var fillColor))
+            {
+                cache.hasFillColor = true;
+                cache.fillColor = fillColor;
+            }
+
+            if (style.TryGetAny(out var radiusValue, "radius", "border-radius") &&
+                float.TryParse(TrimUnit(radiusValue), NumberStyles.Float, CultureInfo.InvariantCulture, out float radius))
+            {
+                cache.hasRadius = true;
+                cache.radius = radius;
+            }
+
+            if (style.TryGetAny(out var rectStyleValue, "variant", "rect-style", "style") &&
+                NowMarkupStyleHelpers.TryParseRectangleStyle(rectStyleValue, out var controlRectStyle))
+            {
+                cache.hasControlRectStyle = true;
+                cache.controlRectStyle = controlRectStyle;
+            }
+
+            if (style.TryGet("text-style", out var textStyleValue) &&
+                NowMarkupStyleHelpers.TryParseTextStyle(textStyleValue, out var controlTextStyle))
+            {
+                cache.hasControlTextStyle = true;
+                cache.controlTextStyle = controlTextStyle;
+            }
+
+            node.renderCache = cache;
+            return cache;
+        }
+
+        void RenderGroup(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache, bool vertical)
+        {
+            var options = cache.options;
+            NowLayoutScope scope = cache.hasExplicitId
+                ? (vertical ? NowLayout.Vertical(new NowId(cache.nodeId), options) : NowLayout.Horizontal(new NowId(cache.nodeId), options))
                 : (vertical ? NowLayout.Vertical(options) : NowLayout.Horizontal(options));
 
             using (scope)
             {
-                DrawBackground(node, style, scope.rect);
+                DrawBackground(cache, scope.rect);
                 RenderChildren(node, state);
             }
         }
 
-        void RenderScroll(NowMarkupNode node, NowMarkupState state, NowMarkupStyleMap style)
+        void RenderScroll(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
         {
-            var options = NowMarkupStyleHelpers.LayoutOptions(style);
-            string id = NodeId(node);
-
-            using (NowLayout.ScrollView(new NowId(id)).SetOptions(options).Begin())
+            using (NowLayout.ScrollView(new NowId(cache.nodeId)).SetOptions(cache.options).Begin())
                 RenderChildren(node, state);
         }
 
-        void RenderGallery(NowMarkupNode node, NowMarkupState state, NowMarkupStyleMap style)
+        void RenderGallery(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
         {
-            string id = NodeId(node);
-            string key = FirstAttribute(node, "index", "state");
-
-            if (string.IsNullOrEmpty(key))
-                key = id + ".index";
-
-            var slides = CollectRenderableChildren(node);
+            string id = cache.nodeId;
+            string key = cache.galleryKey;
+            var slides = cache.renderableChildren;
             int count = slides.Count;
 
             if (count == 0)
@@ -199,11 +361,9 @@ namespace NowUI.Markup
             if (index != previous)
                 state.SetInt(key, index);
 
-            var options = NowMarkupStyleHelpers.LayoutOptions(style);
-
-            using (var scope = NowLayout.Vertical(new NowId(id), options))
+            using (var scope = NowLayout.Vertical(new NowId(id), cache.options))
             {
-                DrawBackground(node, style, scope.rect);
+                DrawBackground(cache, scope.rect);
 
                 var slide = slides[index];
 
@@ -212,27 +372,27 @@ namespace NowUI.Markup
                 else
                     RenderNode(slide, state);
 
-                if (ReadBool(node, style, "controls", false))
+                if (ReadBool(node, cache.style, "controls", false))
                 {
                     using (NowLayout.Horizontal(spacing: 8f))
                     {
-                        if (NowLayout.Button("Prev").SetId(new NowId(id + ".prev")).SetStyle(NowRectangleStyle.Outline).Draw())
+                        if (NowLayout.Button("Prev").SetId(new NowId(cache.galleryPrevId)).SetStyle(NowRectangleStyle.Outline).Draw())
                         {
                             int next = state.StepInt(key, -1, count);
-                            Record(new NowMarkupEvent(NowMarkupEventKind.Click, id + ".prev"));
+                            Record(new NowMarkupEvent(NowMarkupEventKind.Click, cache.galleryPrevId));
                             Record(new NowMarkupEvent(NowMarkupEventKind.Change, id, key, next.ToString(CultureInfo.InvariantCulture)));
                         }
 
                         NowLayout.FlexibleSpace();
 
-                        NowLayout.Label($"{index + 1} / {count}").Draw();
+                        NowLayout.Label(GalleryLabel(cache, index, count)).Draw();
 
                         NowLayout.FlexibleSpace();
 
-                        if (NowLayout.Button("Next").SetId(new NowId(id + ".next")).SetStyle(NowRectangleStyle.Outline).Draw())
+                        if (NowLayout.Button("Next").SetId(new NowId(cache.galleryNextId)).SetStyle(NowRectangleStyle.Outline).Draw())
                         {
                             int next = state.StepInt(key, 1, count);
-                            Record(new NowMarkupEvent(NowMarkupEventKind.Click, id + ".next"));
+                            Record(new NowMarkupEvent(NowMarkupEventKind.Click, cache.galleryNextId));
                             Record(new NowMarkupEvent(NowMarkupEventKind.Change, id, key, next.ToString(CultureInfo.InvariantCulture)));
                         }
                     }
@@ -240,51 +400,56 @@ namespace NowUI.Markup
             }
         }
 
-        void RenderText(NowMarkupNode node, NowMarkupStyleMap style)
+        static string GalleryLabel(NowMarkupNodeCache cache, int index, int count)
         {
-            string value = node.TryAttribute("value", out var attrValue)
-                ? attrValue
-                : RichTextContent(node).Trim();
+            if (cache.galleryLabel == null || cache.galleryLabelIndex != index || cache.galleryLabelCount != count)
+            {
+                cache.galleryLabelIndex = index;
+                cache.galleryLabelCount = count;
+                cache.galleryLabel = (index + 1).ToString(CultureInfo.InvariantCulture) + " / " +
+                    count.ToString(CultureInfo.InvariantCulture);
+            }
+
+            return cache.galleryLabel;
+        }
+
+        void RenderText(NowMarkupNodeCache cache)
+        {
+            string value = cache.richTextContent;
 
             if (value.Length == 0)
                 return;
 
             var text = NowLayout.RichText(value)
-                .SetOptions(NowMarkupStyleHelpers.LayoutOptions(style))
+                .SetOptions(cache.options)
                 .ParseDefaultTags();
 
-            if (HasId(node))
-                text = text.SetId(new NowId(NodeId(node)));
+            if (cache.hasExplicitId)
+                text = text.SetId(new NowId(cache.nodeId));
 
-            ApplyTextStyle(ref text, style);
+            ApplyTextStyle(ref text, cache);
             text.Draw();
         }
 
-        void RenderButton(NowMarkupNode node, NowMarkupState state, NowMarkupStyleMap style)
+        void RenderButton(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
         {
-            string id = NodeId(node);
+            string id = cache.nodeId;
             string label = node.TryAttribute("text", out var text)
                 ? text
-                : PlainTextContent(node).Trim();
+                : cache.plainTextContent;
 
             if (string.IsNullOrEmpty(label))
                 label = id;
 
             var button = NowLayout.Button(label)
                 .SetId(new NowId(id))
-                .SetOptions(NowMarkupStyleHelpers.LayoutOptions(style));
+                .SetOptions(cache.options);
 
-            if (style.TryGetAny(out var rectStyle, "variant", "rect-style", "style") &&
-                NowMarkupStyleHelpers.TryParseRectangleStyle(rectStyle, out var parsedRectStyle))
-            {
-                button = button.SetStyle(parsedRectStyle);
-            }
+            if (cache.hasControlRectStyle)
+                button = button.SetStyle(cache.controlRectStyle);
 
-            if (style.TryGet("text-style", out var textStyle) &&
-                NowMarkupStyleHelpers.TryParseTextStyle(textStyle, out var parsedTextStyle))
-            {
-                button = button.SetTextStyle(parsedTextStyle);
-            }
+            if (cache.hasControlTextStyle)
+                button = button.SetTextStyle(cache.controlTextStyle);
 
             if (!button.Draw())
                 return;
@@ -293,25 +458,22 @@ namespace NowUI.Markup
             ExecuteActions(FirstAttribute(node, "on-click", "onclick", "action"), node, state, id);
         }
 
-        void RenderCheckbox(NowMarkupNode node, NowMarkupState state, NowMarkupStyleMap style)
+        void RenderCheckbox(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
         {
-            string id = NodeId(node);
-            string key = ControlKey(node, id);
+            string id = cache.nodeId;
+            string key = cache.controlKey;
             bool fallback = ReadAttributeBool(node, "checked", false);
             bool value = state.GetBool(key, fallback);
             string label = node.TryAttribute("text", out var text)
                 ? text
-                : PlainTextContent(node).Trim();
+                : cache.plainTextContent;
 
             var checkbox = NowLayout.Checkbox(label)
                 .SetId(new NowId(id))
-                .SetOptions(NowMarkupStyleHelpers.LayoutOptions(style));
+                .SetOptions(cache.options);
 
-            if (style.TryGet("text-style", out var textStyle) &&
-                NowMarkupStyleHelpers.TryParseTextStyle(textStyle, out var parsedTextStyle))
-            {
-                checkbox = checkbox.SetTextStyle(parsedTextStyle);
-            }
+            if (cache.hasControlTextStyle)
+                checkbox = checkbox.SetTextStyle(cache.controlTextStyle);
 
             if (!checkbox.Draw(ref value))
                 return;
@@ -321,19 +483,19 @@ namespace NowUI.Markup
             ExecuteActions(FirstAttribute(node, "on-change", "onchange"), node, state, id);
         }
 
-        void RenderSlider(NowMarkupNode node, NowMarkupState state, NowMarkupStyleMap style)
+        void RenderSlider(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
         {
-            string id = NodeId(node);
-            string key = ControlKey(node, id);
-            float min = ReadFloat(node, style, "min", "minimum", 0f);
-            float max = ReadFloat(node, style, "max", "maximum", 1f);
-            float value = state.GetFloat(key, ReadFloat(node, style, "value", "default", min));
+            string id = cache.nodeId;
+            string key = cache.controlKey;
+            float min = ReadFloat(node, cache.style, "min", "minimum", 0f);
+            float max = ReadFloat(node, cache.style, "max", "maximum", 1f);
+            float value = state.GetFloat(key, ReadFloat(node, cache.style, "value", "default", min));
 
             var slider = NowLayout.Slider(min, max)
                 .SetId(new NowId(id))
-                .SetOptions(NowMarkupStyleHelpers.LayoutOptions(style));
+                .SetOptions(cache.options);
 
-            if (TryReadFloat(node, style, "step", out float step))
+            if (TryReadFloat(node, cache.style, "step", out float step))
                 slider = slider.SetStep(step);
 
             if (!slider.Draw(ref value))
@@ -344,23 +506,20 @@ namespace NowUI.Markup
             ExecuteActions(FirstAttribute(node, "on-change", "onchange"), node, state, id);
         }
 
-        void RenderTextField(NowMarkupNode node, NowMarkupState state, NowMarkupStyleMap style)
+        void RenderTextField(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
         {
-            string id = NodeId(node);
-            string key = ControlKey(node, id);
+            string id = cache.nodeId;
+            string key = cache.controlKey;
             string value = state.GetString(key, node.Attribute("value"));
 
             var field = NowLayout.TextField(new NowId(id))
-                .SetOptions(NowMarkupStyleHelpers.LayoutOptions(style));
+                .SetOptions(cache.options);
 
             if (node.TryAttribute("placeholder", out var placeholder))
                 field = field.SetPlaceholder(placeholder);
 
-            if (style.TryGet("text-style", out var textStyle) &&
-                NowMarkupStyleHelpers.TryParseTextStyle(textStyle, out var parsedTextStyle))
-            {
-                field = field.SetTextStyle(parsedTextStyle);
-            }
+            if (cache.hasControlTextStyle)
+                field = field.SetTextStyle(cache.controlTextStyle);
 
             if (!field.Draw(ref value))
                 return;
@@ -370,14 +529,14 @@ namespace NowUI.Markup
             ExecuteActions(FirstAttribute(node, "on-change", "onchange"), node, state, id);
         }
 
-        void RenderTextArea(NowMarkupNode node, NowMarkupState state, NowMarkupStyleMap style)
+        void RenderTextArea(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
         {
-            string id = NodeId(node);
-            string key = ControlKey(node, id);
-            string value = state.GetString(key, node.Attribute("value", PlainTextContent(node).Trim()));
+            string id = cache.nodeId;
+            string key = cache.controlKey;
+            string value = state.GetString(key, node.Attribute("value", cache.plainTextContent));
 
             var area = NowLayout.TextArea(new NowId(id))
-                .SetOptions(NowMarkupStyleHelpers.LayoutOptions(style));
+                .SetOptions(cache.options);
 
             if (node.TryAttribute("placeholder", out var placeholder))
                 area = area.SetPlaceholder(placeholder);
@@ -386,11 +545,8 @@ namespace NowUI.Markup
             int maxLines = Mathf.Max(minLines, ReadInt(node, "max-lines", 8));
             area = area.SetLines(minLines, maxLines);
 
-            if (style.TryGet("text-style", out var textStyle) &&
-                NowMarkupStyleHelpers.TryParseTextStyle(textStyle, out var parsedTextStyle))
-            {
-                area = area.SetTextStyle(parsedTextStyle);
-            }
+            if (cache.hasControlTextStyle)
+                area = area.SetTextStyle(cache.controlTextStyle);
 
             if (!area.Draw(ref value))
                 return;
@@ -400,22 +556,22 @@ namespace NowUI.Markup
             ExecuteActions(FirstAttribute(node, "on-change", "onchange"), node, state, id);
         }
 
-        void RenderDropdown(NowMarkupNode node, NowMarkupState state, NowMarkupStyleMap style)
+        void RenderDropdown(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
         {
-            string id = NodeId(node);
-            string key = ControlKey(node, id);
-            BuildOptions(node, _optionsScratch);
+            string id = cache.nodeId;
+            string key = cache.controlKey;
+            var options = cache.dropdownOptions;
 
             int selected = state.GetInt(key, ReadInt(node, "selected", 0));
 
-            var dropdown = NowLayout.Dropdown(new NowId(id), _optionsScratch)
-                .SetOptions(NowMarkupStyleHelpers.LayoutOptions(style));
+            var dropdown = NowLayout.Dropdown(new NowId(id), options)
+                .SetOptions(cache.options);
 
             if (!dropdown.Draw(ref selected))
                 return;
 
             state.SetInt(key, selected);
-            string value = selected >= 0 && selected < _optionsScratch.Count ? _optionsScratch[selected] : string.Empty;
+            string value = selected >= 0 && selected < options.Count ? options[selected] : string.Empty;
             Record(new NowMarkupEvent(NowMarkupEventKind.Change, id, key, value));
             ExecuteActions(FirstAttribute(node, "on-change", "onchange"), node, state, id);
         }
@@ -431,57 +587,36 @@ namespace NowUI.Markup
             NowLayout.Space(ReadFloat(node, style, "size", "height", 8f));
         }
 
-        void DrawBackground(NowMarkupNode node, NowMarkupStyleMap style, NowRect rect)
+        static void DrawBackground(NowMarkupNodeCache cache, NowRect rect)
         {
-            if (rect.width <= 0f || rect.height <= 0f)
+            if (rect.width <= 0f || rect.height <= 0f || !cache.hasBackground)
                 return;
 
-            bool hasFill = style.TryGetAny(out var colorValue, "background", "background-color", "bg");
-            bool hasRectStyle = style.TryGetAny(out var rectStyleValue, "rect-style", "surface", "panel-style");
+            NowRectangle rectangle = cache.hasSurfaceStyle
+                ? NowTheme.themeAsset.Rectangle(rect, cache.surfaceStyle)
+                : Now.Rectangle(rect);
 
-            if (!hasFill && !hasRectStyle)
-                return;
+            if (cache.hasFillColor)
+                rectangle = rectangle.SetColor(cache.fillColor);
 
-            NowRectangle rectangle;
-
-            if (hasRectStyle && NowMarkupStyleHelpers.TryParseRectangleStyle(rectStyleValue, out var rectStyle))
-                rectangle = NowTheme.themeAsset.Rectangle(rect, rectStyle);
-            else
-                rectangle = Now.Rectangle(rect);
-
-            if (hasFill && NowMarkupStyleHelpers.TryParseColor(colorValue, out var color))
-                rectangle = rectangle.SetColor(color);
-
-            if (style.TryGetAny(out var radiusValue, "radius", "border-radius") &&
-                float.TryParse(TrimUnit(radiusValue), NumberStyles.Float, CultureInfo.InvariantCulture, out float radius))
-            {
-                rectangle = rectangle.SetRadius(radius);
-            }
+            if (cache.hasRadius)
+                rectangle = rectangle.SetRadius(cache.radius);
 
             rectangle.Draw();
         }
 
-        void ApplyTextStyle(ref NowRichText text, NowMarkupStyleMap style)
+        static void ApplyTextStyle(ref NowRichText text, NowMarkupNodeCache cache)
         {
-            if (style.TryGetAny(out var sizeValue, "font-size", "size") &&
-                float.TryParse(TrimUnit(sizeValue), NumberStyles.Float, CultureInfo.InvariantCulture, out float size))
-            {
-                text = text.SetFontSize(size);
-            }
+            if (cache.hasFontSize)
+                text = text.SetFontSize(cache.fontSize);
 
-            if (style.TryGet("color", out var colorValue) &&
-                NowMarkupStyleHelpers.TryParseColor(colorValue, out var color))
-            {
-                text = text.SetColor(color);
-            }
+            if (cache.hasTextColor)
+                text = text.SetColor(cache.textColor);
 
-            if (style.TryGet("font-style", out var fontStyleValue) &&
-                NowMarkupStyleHelpers.TryParseFontStyle(fontStyleValue, out var fontStyle))
-            {
-                text = text.SetFontStyle(fontStyle);
-            }
+            if (cache.hasFontStyle)
+                text = text.SetFontStyle(cache.fontStyle);
 
-            if (style.TryGetBool("selectable", out bool selectable) && selectable)
+            if (cache.selectable)
                 text = text.SetSelectable();
         }
 
@@ -674,36 +809,32 @@ namespace NowUI.Markup
             _events.Add(item);
         }
 
-        string NodeId(NowMarkupNode node)
-        {
-            string id = FirstAttribute(node, "id", "name");
-
-            if (!string.IsNullOrEmpty(id))
-                return id;
-
-            return "markup:" + node.name + ":" + node.sourceIndex.ToString(CultureInfo.InvariantCulture);
-        }
-
         static bool HasId(NowMarkupNode node)
         {
             return node.HasAttribute("id") || node.HasAttribute("name");
         }
 
-        static string ControlKey(NowMarkupNode node, string fallback)
+        static string FirstAttribute(NowMarkupNode node, string first, string second)
         {
-            string key = FirstAttribute(node, "state", "bind", "value-key");
-            return string.IsNullOrEmpty(key) ? fallback : key;
-        }
+            if (node.TryAttribute(first, out var value) && !string.IsNullOrWhiteSpace(value))
+                return value.Trim();
 
-        static string FirstAttribute(NowMarkupNode node, params string[] names)
-        {
-            for (int i = 0; i < names.Length; ++i)
-            {
-                if (node.TryAttribute(names[i], out var value) && !string.IsNullOrWhiteSpace(value))
-                    return value.Trim();
-            }
+            if (node.TryAttribute(second, out value) && !string.IsNullOrWhiteSpace(value))
+                return value.Trim();
 
             return string.Empty;
+        }
+
+        static string FirstAttribute(NowMarkupNode node, string first, string second, string third)
+        {
+            string value = FirstAttribute(node, first, second);
+
+            if (value.Length > 0)
+                return value;
+
+            return node.TryAttribute(third, out var raw) && !string.IsNullOrWhiteSpace(raw)
+                ? raw.Trim()
+                : string.Empty;
         }
 
         static bool ReadAttributeBool(NowMarkupNode node, string name, bool fallback)

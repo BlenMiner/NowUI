@@ -17,6 +17,9 @@ namespace NowUI.Markup
         public readonly Dictionary<string, string> attributes = new Dictionary<string, string>();
         public readonly List<NowMarkupNode> children = new List<NowMarkupNode>();
 
+        /// <summary>Per-node render data resolved once by the owning document.</summary>
+        internal NowMarkupNodeCache renderCache;
+
         public bool isText => type == NowMarkupNodeType.Text;
 
         public string Attribute(string key, string fallback = "")

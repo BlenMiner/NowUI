@@ -378,12 +378,12 @@ namespace NowUI
 
         public bool TryHit(Vector2 point, out NowRichTextHit hit)
         {
-            return NowRichTextFlow.TryHit(_text.ToString(), runs, lines, point, false, out hit);
+            return NowRichTextFlow.TryHit(text, runs, lines, point, false, out hit);
         }
 
         public int HitTextIndex(Vector2 point)
         {
-            return NowRichTextFlow.HitTextIndex(_text.ToString(), runs, lines, point);
+            return NowRichTextFlow.HitTextIndex(text, runs, lines, point);
         }
 
         public bool TryHitRun(Vector2 point, out int runIndex)
@@ -400,7 +400,7 @@ namespace NowUI
 
         public NowRect TextIndexRect(int textIndex)
         {
-            return NowRichTextFlow.TextIndexRect(_text.ToString(), runs, textIndex);
+            return NowRichTextFlow.TextIndexRect(text, runs, textIndex);
         }
     }
 

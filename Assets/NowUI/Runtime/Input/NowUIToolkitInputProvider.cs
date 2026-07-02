@@ -8,6 +8,10 @@ namespace NowUI
     /// </summary>
     public sealed class NowUIToolkitInputProvider : INowInputProvider
     {
+        int _lastFrame = -1;
+
+        NowInputSnapshot _snapshot;
+
         bool _hasPointer;
 
         Vector2 _pointerPosition;
@@ -52,6 +56,28 @@ namespace NowUI
 
         public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
+            if (_lastFrame != Time.frameCount)
+            {
+                _lastFrame = Time.frameCount;
+                _snapshot = BuildSnapshot();
+                ClearTransient(_snapshot);
+            }
+
+            snapshot = _snapshot;
+            return true;
+        }
+
+        /// <summary>
+        /// Forces the next read to rebuild the snapshot and consume buffered
+        /// events; used by tests and custom hosts where frameCount is static.
+        /// </summary>
+        public void Invalidate()
+        {
+            _lastFrame = -1;
+        }
+
+        NowInputSnapshot BuildSnapshot()
+        {
             NowPointerArbiter.Claim(
                 this,
                 NowPointerArbiter.TierCanvas,
@@ -62,7 +88,7 @@ namespace NowUI
             bool hasPointer = _hasPointer && NowPointerArbiter.IsOwner(this);
             Vector2 delta = hasPointer ? _pointerPosition - _previousPointerPosition : default;
 
-            snapshot = new NowInputSnapshot(
+            return new NowInputSnapshot(
                 hasPointer,
                 _pointerPosition,
                 _previousPointerPosition,
@@ -82,9 +108,6 @@ namespace NowUI
                 _cancelReleased,
                 Time.frameCount,
                 Time.realtimeSinceStartup);
-
-            ClearTransient(snapshot);
-            return true;
         }
 
         public void SetPointerPosition(Vector2 position)
@@ -138,9 +161,14 @@ namespace NowUI
             _hasPointer = false;
         }
 
+        /// <summary>
+        /// Accumulates scroll from a UI Toolkit <c>WheelEvent.delta</c>
+        /// (down-positive, roughly three units per wheel notch), normalizing it
+        /// to the canonical snapshot unit: notches with +y scrolling up.
+        /// </summary>
         public void AddScrollDelta(Vector2 delta)
         {
-            _scrollDelta += delta;
+            _scrollDelta += new Vector2(delta.x, -delta.y) / 3f;
         }
 
         public void SetNavigation(Vector2 navigation)
@@ -254,6 +282,8 @@ namespace NowUI
 
         public void Reset()
         {
+            _lastFrame = -1;
+            _snapshot = default;
             _hasPointer = false;
             _pointerPosition = default;
             _previousPointerPosition = default;

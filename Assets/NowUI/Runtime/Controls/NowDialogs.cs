@@ -170,8 +170,14 @@ namespace NowUI
                 }
             }
 
-            if (_closeOnCancel && NowInput.hasContext && NowInput.current.cancelPressed)
+            if (_closeOnCancel &&
+                NowInput.hasContext &&
+                NowInput.current.cancelPressed &&
+                !NowInput.cancelConsumed &&
+                !NowOverlay.HasNestedOverlay(NowOverlay.currentFocusLayerId))
+            {
                 Close(context, primary: !_hasSecondary);
+            }
         }
 
         void Close(NowViewContext context, bool primary)

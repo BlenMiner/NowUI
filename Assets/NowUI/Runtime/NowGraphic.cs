@@ -133,6 +133,12 @@ namespace NowUI
 
         [NonSerialized] readonly List<CanvasRenderer> _extraCanvasRenderers = new List<CanvasRenderer>(2);
 
+        [NonSerialized] bool _extraRendererStateValid;
+
+        [NonSerialized] Vector2 _extraRendererPivot;
+
+        [NonSerialized] bool _extraRendererCullTransparentMesh;
+
         [NonSerialized] readonly List<IMaterialModifier> _materialModifiers = new List<IMaterialModifier>(4);
 
         [NonSerialized] readonly List<Material> _stencilBaseMaterials = new List<Material>(4);
@@ -846,6 +852,9 @@ namespace NowUI
         {
             PruneDestroyedExtraCanvasRenderers();
 
+            Vector2 pivot = rectTransform.pivot;
+            bool cullTransparentMesh = canvasRenderer.cullTransparentMesh;
+
             while (_extraCanvasRenderers.Count < count)
             {
                 int pageIndex = _extraCanvasRenderers.Count + 1;
@@ -855,32 +864,46 @@ namespace NowUI
                 };
 
                 go.transform.SetParent(transform, false);
-                _extraCanvasRenderers.Add(go.GetComponent<CanvasRenderer>());
+                var crenderer = go.GetComponent<CanvasRenderer>();
+                ConfigureExtraCanvasRenderer(crenderer, _extraCanvasRenderers.Count, pivot, cullTransparentMesh);
+                _extraCanvasRenderers.Add(crenderer);
             }
+
+            if (_extraRendererStateValid &&
+                _extraRendererPivot == pivot &&
+                _extraRendererCullTransparentMesh == cullTransparentMesh)
+            {
+                return;
+            }
+
+            _extraRendererStateValid = true;
+            _extraRendererPivot = pivot;
+            _extraRendererCullTransparentMesh = cullTransparentMesh;
 
             for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
-            {
-                var crenderer = _extraCanvasRenderers[i];
+                ConfigureExtraCanvasRenderer(_extraCanvasRenderers[i], i, pivot, cullTransparentMesh);
+        }
 
-                if (crenderer == null)
-                    continue;
+        void ConfigureExtraCanvasRenderer(CanvasRenderer crenderer, int siblingIndex, Vector2 pivot, bool cullTransparentMesh)
+        {
+            if (crenderer == null)
+                return;
 
-                var childTransform = crenderer.transform as RectTransform;
+            var childTransform = crenderer.transform as RectTransform;
 
-                if (childTransform == null)
-                    continue;
+            if (childTransform == null)
+                return;
 
-                childTransform.SetSiblingIndex(i);
-                childTransform.anchorMin = Vector2.zero;
-                childTransform.anchorMax = Vector2.one;
-                childTransform.pivot = rectTransform.pivot;
-                childTransform.offsetMin = Vector2.zero;
-                childTransform.offsetMax = Vector2.zero;
-                childTransform.localScale = Vector3.one;
-                childTransform.localRotation = Quaternion.identity;
-                crenderer.cullTransparentMesh = canvasRenderer.cullTransparentMesh;
-                ApplyRendererMaskState(crenderer);
-            }
+            childTransform.SetSiblingIndex(siblingIndex);
+            childTransform.anchorMin = Vector2.zero;
+            childTransform.anchorMax = Vector2.one;
+            childTransform.pivot = pivot;
+            childTransform.offsetMin = Vector2.zero;
+            childTransform.offsetMax = Vector2.zero;
+            childTransform.localScale = Vector3.one;
+            childTransform.localRotation = Quaternion.identity;
+            crenderer.cullTransparentMesh = cullTransparentMesh;
+            ApplyRendererMaskState(crenderer);
         }
 
         void ApplyCullToExtraCanvasRenderers()
@@ -1200,7 +1223,14 @@ namespace NowUI
                     return null;
 
                 if (_textMaterials.TryGetValue(batch.material, out var texturedRect) && texturedRect != null)
+                {
+                    var sourceTexture = batch.material.mainTexture;
+
+                    if (!ReferenceEquals(texturedRect.mainTexture, sourceTexture))
+                        texturedRect.mainTexture = sourceTexture;
+
                     return texturedRect;
+                }
 
                 if (_rectangleMaterial == null)
                     _rectangleMaterial = Resources.Load<Material>("NowUI/UIMaterialUGUI");
@@ -1226,7 +1256,17 @@ namespace NowUI
                 return null;
 
             if (_textMaterials.TryGetValue(batch.material, out var textMaterial) && textMaterial != null)
+            {
+                if (batch.material.HasProperty(_mainTexProp))
+                {
+                    var sourceTexture = batch.material.mainTexture;
+
+                    if (!ReferenceEquals(textMaterial.mainTexture, sourceTexture))
+                        textMaterial.mainTexture = sourceTexture;
+                }
+
                 return textMaterial;
+            }
 
             Material textMaterialTemplate = GetTextMaterialTemplate(batch.material);
 

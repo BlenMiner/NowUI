@@ -63,6 +63,34 @@ namespace NowUI
                 : FitToSurface(rect);
         }
 
+        /// <summary>
+        /// Shrinks and moves an ambient-transform-space popup rect until it fits
+        /// the visible view, mapping the screen-space clamp back through the
+        /// active transform like <see cref="FitToView"/>.
+        /// </summary>
+        public static NowRect ClampLocalToView(NowRect rect)
+        {
+            if (rect.isEmpty)
+                return rect;
+
+            var transformed = Now.TransformScreenRect(rect);
+            var clamped = ClampToView(transformed);
+
+            Vector2 positionDelta = clamped.position - transformed.position;
+            var sizeDelta = new Vector2(clamped.width - transformed.width, clamped.height - transformed.height);
+
+            if (positionDelta.sqrMagnitude <= 0.0001f && sizeDelta.sqrMagnitude <= 0.0001f)
+                return rect;
+
+            Vector2 localPosition = rect.position + Now.InverseTransformScreenVector(positionDelta);
+            Vector2 localSizeDelta = Now.InverseTransformScreenVector(sizeDelta);
+            return new NowRect(
+                localPosition.x,
+                localPosition.y,
+                rect.width + localSizeDelta.x,
+                rect.height + localSizeDelta.y);
+        }
+
         internal static void PopFitProvider()
         {
             if (_fitProviders.Count > 0)
@@ -307,6 +335,16 @@ namespace NowUI
         public static NowRect ClampScreenToView(NowRect rect)
         {
             return NowPopupPlacement.ClampToView(rect);
+        }
+
+        /// <summary>
+        /// Shrinks and moves an ambient-transform-space popup rect until it
+        /// fits the visible view — the clamping counterpart of
+        /// <see cref="FitToView"/> for dropdown-family popups.
+        /// </summary>
+        public static NowRect ClampToView(NowRect rect)
+        {
+            return NowPopupPlacement.ClampLocalToView(rect);
         }
 
         /// <summary>

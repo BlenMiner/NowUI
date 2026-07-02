@@ -133,15 +133,19 @@ namespace NowUI
             }
 
             bool buttonsWereDown = _previousButtonsDown != NowPointerButtons.None;
-            bool allowedNow = !blockedWhenPointerOverUGUI || !NowRaycastGate.IsPointerOverUGUI();
+            bool allowedNow = !blockedWhenPointerOverUGUI ||
+                !mouseInput.hasPointer ||
+                !NowRaycastGate.IsPointerOverUGUI(mouseInput.screenPosition);
             bool pointerVisible = mouseInput.hasPointer &&
                 NowRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow);
 
             if (pointerVisible)
             {
                 var nextPosition = new Vector2(mouseInput.screenPosition.x, Screen.height - mouseInput.screenPosition.y);
-                _rawDelta = _hasRawPosition ? nextPosition - _rawPosition : Vector2.zero;
+                bool sameSource = _hasRawPosition && _pointerSource == mouseInput.pointerSource;
+                _rawDelta = sameSource ? nextPosition - _rawPosition : Vector2.zero;
                 _rawPosition = nextPosition;
+                _pointerSource = mouseInput.pointerSource;
                 _hasRawPosition = true;
             }
             else
@@ -170,6 +174,11 @@ namespace NowUI
         }
 
         Vector2 _rawDelta;
+
+        /// <summary>Which physical source produced <see cref="_rawPosition"/>;
+        /// deltas reset when the pointer hops devices (mouse to touch, or one
+        /// touch to another) so the jump never registers as movement.</summary>
+        int _pointerSource = NowMouseInput.MousePointerSource;
 
         NowPointerButtons _previousButtonsDown;
 

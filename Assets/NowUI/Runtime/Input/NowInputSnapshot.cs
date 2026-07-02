@@ -91,6 +91,7 @@ namespace NowUI
 
         public readonly NowPointerButtons pointerButtonsReleased;
 
+        /// <summary>Scroll movement in the canonical unit shared by every provider: wheel notches, one unit per notch, with +y meaning scroll up (wheel away from the user).</summary>
         public Vector2 scrollDelta;
 
         public Vector2 navigation;
@@ -338,6 +339,10 @@ namespace NowUI
             this.frame = frame;
             this.time = time;
         }
+
+        /// <summary>True when any pointer button was pressed this frame — the
+        /// outside-press dismissal check shared by every popup layer.</summary>
+        public bool anyPointerPressed => pointerButtonsPressed != NowPointerButtons.None;
 
         public bool IsPointerDown(NowPointerButton button)
         {

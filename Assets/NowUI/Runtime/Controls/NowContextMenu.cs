@@ -25,10 +25,12 @@ namespace NowUI
     /// </code>
     /// One root menu is open at a time and it is modal: everything beneath is
     /// pointer-blocked so the anchor position stays meaningful, and it closes
-    /// on selection, press outside, cancel, or a scroll outside the menu.
+    /// on selection, any press outside, cancel, or a scroll outside the menu.
+    /// Items are keyboard-reachable: arrows move the highlight, submit
+    /// activates, right/submit dives into a submenu and left backs out.
     /// Menus taller than the visible view clamp their height and scroll (mouse
-    /// wheel, or hovering the top/bottom edge strips) so every option stays
-    /// reachable; submenus clamp and scroll independently.
+    /// wheel, keyboard focus, or hovering the top/bottom edge strips) so every
+    /// option stays reachable; submenus clamp and scroll independently.
     /// </summary>
     public static class NowContextMenu
     {
@@ -37,6 +39,14 @@ namespace NowUI
         const float ScrollStripHeight = 16f;
 
         const float HoverIntentDelay = 0.18f;
+
+        const float NavThreshold = 0.55f;
+        const float NavRepeatDelay = 0.4f;
+        const float NavRepeatInterval = 0.12f;
+        const int NavLeftSeed = 0x43784e4c;
+        const int NavRightSeed = 0x43784e52;
+        const int NavUpSeed = 0x43784e55;
+        const int NavDownSeed = 0x43784e44;
 
         static int _openId;
         static object _openSurface;
@@ -48,6 +58,16 @@ namespace NowUI
         static int _hoverIntentDepth = -1;
         static int _hoverIntentPath;
         static float _hoverIntentStart;
+        static int _highlightMenuOverlay;
+        static int _highlightEntryIndex = -1;
+        static bool _highlightMovedByKeyboard;
+        static int _pendingHighlightMenuOverlay;
+        static Vector2 _lastPointerPosition;
+        static bool _pointerMoved;
+        static bool _navLeftPulse;
+        static bool _navRightPulse;
+        static bool _navUpPulse;
+        static bool _navDownPulse;
 
         static readonly List<Menu> _menus = new List<Menu>(4);
         static readonly List<int> _buildStack = new List<int>(4);
@@ -85,7 +105,15 @@ namespace NowUI
             public float height;
             public float contentHeight;
             public bool scrolls;
+
+            /// <summary>
+            /// Placed fresh each drawn frame (End for the root, PlaceSubmenu for
+            /// children) and deliberately NOT cleared on rebuild: ancestors read
+            /// last frame's rect for the occlusion test before this menu places
+            /// itself, one frame late like overlay pointer blocks.
+            /// </summary>
             public NowRect popupRect;
+
             public readonly List<Entry> entries = new List<Entry>(8);
 
             public void Reset(int rootId, int pathId, int overlayId, int parentMenu, int depth)
@@ -100,7 +128,6 @@ namespace NowUI
                 height = 0f;
                 contentHeight = 0f;
                 scrolls = false;
-                popupRect = default;
                 entries.Clear();
             }
         }
@@ -117,6 +144,7 @@ namespace NowUI
             _openPath.Clear();
             _pendingOpenPath.Clear();
             ClearHoverIntent();
+            ClearHighlight();
             NowControlState.Get<float>(id, "ctx-scroll") = 0f;
             NowControlState.RequestRepaint();
         }
@@ -125,10 +153,19 @@ namespace NowUI
         {
             _openId = 0;
             ClearHoverIntent();
+            ClearHighlight();
+        }
+
+        static void ClearHighlight()
+        {
+            _highlightMenuOverlay = 0;
+            _highlightEntryIndex = -1;
+            _highlightMovedByKeyboard = false;
+            _pendingHighlightMenuOverlay = 0;
         }
 
         /// <summary>
-        /// True while the menu with this id is open â€” declare items, then call
+        /// True while the menu with this id is open — declare items, then call
         /// <see cref="End"/>. Also true for one frame after an item was clicked
         /// (the menu has closed by then) so the clicked item can deliver.
         /// </summary>
@@ -334,6 +371,9 @@ namespace NowUI
             if (menu == null || _openId != menu.rootId)
                 return;
 
+            if (menu.parentMenu < 0)
+                UpdateTreeInput(menu);
+
             var theme = NowTheme.themeAsset;
             DrawMenu(theme, menu);
 
@@ -341,16 +381,58 @@ namespace NowUI
                 return;
 
             var snapshot = NowInput.current;
-            bool pressed = snapshot.primaryPressed ||
-                (snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0;
+            bool pressed = snapshot.anyPointerPressed;
             bool pointerInsideTree = NowOverlay.IsPointerInsideOverlayTree(menu.rootId, snapshot.pointerPosition);
 
             if ((pressed && !pointerInsideTree) ||
-                snapshot.cancelPressed ||
+                (snapshot.cancelPressed && !NowInput.cancelConsumed) ||
                 (snapshot.scrollDelta != Vector2.zero && !pointerInsideTree))
             {
                 Close();
             }
+        }
+
+        /// <summary>
+        /// Per-frame tree-wide input state, sampled once while the root draws:
+        /// whether the pointer actually moved (hover only retargets submenus and
+        /// the highlight on real movement, so it never fights the keyboard) and
+        /// the navigation pulses that drive the menu-local highlight. The menu
+        /// never takes <see cref="NowFocus"/> focus — stealing it would clear
+        /// selections and other focus-owned state the menu items act on — so
+        /// base focus navigation is locked while the menu is open instead.
+        /// </summary>
+        static void UpdateTreeInput(Menu root)
+        {
+            var snapshot = NowInput.current;
+            _pointerMoved = snapshot.pointerPosition != _lastPointerPosition;
+            _lastPointerPosition = snapshot.pointerPosition;
+            _navLeftPulse = NavPulse(root, NavLeftSeed, snapshot.navigation.x < -NavThreshold);
+            _navRightPulse = NavPulse(root, NavRightSeed, snapshot.navigation.x > NavThreshold);
+            _navUpPulse = NavPulse(root, NavUpSeed, snapshot.navigation.y > NavThreshold);
+            _navDownPulse = NavPulse(root, NavDownSeed, snapshot.navigation.y < -NavThreshold);
+            NowFocus.LockNavigation();
+
+            if (_highlightMenuOverlay == 0)
+                return;
+
+            var highlighted = FindMenu(_highlightMenuOverlay);
+
+            if (highlighted == null || highlighted.rootId != _openId || !IsMenuDrawn(highlighted))
+                ClearHighlight();
+        }
+
+        static bool NavPulse(Menu root, int seed, bool held)
+        {
+            return NowControlState.Repeat(
+                NowInput.CombineId(root.rootId, seed),
+                held,
+                NavRepeatDelay,
+                NavRepeatInterval);
+        }
+
+        static bool IsMenuDrawn(Menu menu)
+        {
+            return menu.parentMenu < 0 || IsPathOpen(menu.depth - 1, menu.pathId);
         }
 
         static void DrawMenu(NowThemeAsset theme, Menu menu)
@@ -359,16 +441,25 @@ namespace NowUI
 
             theme.controlRenderer.DrawPopupBackground(theme, menu.popupRect, menu: true);
 
+            if (_pendingHighlightMenuOverlay != 0 && _pendingHighlightMenuOverlay == menu.overlayId)
+            {
+                _pendingHighlightMenuOverlay = 0;
+                SetHighlight(menu, FindSelectableEntry(menu, -1, 1));
+            }
+
+            UpdateMenuHighlightFromKeyboard(menu);
+            bool occluded = PointerInsideDeeperMenu(menu);
+
             if (!menu.scrolls)
             {
-                DrawMenuEntries(theme, menu, 0f);
+                DrawMenuEntries(theme, menu, 0f, occluded);
                 return;
             }
 
             float maxScroll = Mathf.Max(0f, menu.contentHeight - menu.popupRect.height);
             ref float scroll = ref NowControlState.Get<float>(menu.overlayId, "ctx-scroll");
 
-            if (!PointerInsideOpenChild(menu))
+            if (!occluded)
             {
                 Vector2 wheel = NowInput.ConsumeScrollDelta(menu.popupRect);
 
@@ -379,22 +470,147 @@ namespace NowUI
                 }
             }
 
-            UpdateScrollStrips(theme, menu, ref scroll, maxScroll);
-            scroll = Mathf.Clamp(scroll, 0f, maxScroll);
-
             var itemArea = new NowRect(
                 menu.popupRect.x,
                 menu.popupRect.y + popupPadding,
                 menu.popupRect.width,
                 Mathf.Max(0f, menu.popupRect.height - popupPadding * 2f));
 
+            if (!occluded)
+                UpdateScrollStrips(theme, menu, ref scroll, maxScroll);
+
+            ScrollHighlightIntoView(theme, menu, itemArea, ref scroll);
+            scroll = Mathf.Clamp(scroll, 0f, maxScroll);
+
             using (Now.Mask(itemArea))
-                DrawMenuEntries(theme, menu, scroll);
+                DrawMenuEntries(theme, menu, scroll, occluded);
 
             DrawScrollStrips(theme, menu, scroll, maxScroll);
         }
 
-        static void DrawMenuEntries(NowThemeAsset theme, Menu menu, float scroll)
+        /// <summary>
+        /// Applies up/down pulses to this menu's highlight. A menu owns the
+        /// highlight after hover or keyboard placed it there; with no highlight
+        /// anywhere, the deepest open menu claims it on the first pulse — down
+        /// starts at the top row, up at the bottom row, and movement wraps.
+        /// </summary>
+        static void UpdateMenuHighlightFromKeyboard(Menu menu)
+        {
+            bool ownsHighlight = _highlightMenuOverlay == menu.overlayId && _highlightEntryIndex >= 0;
+
+            if (!_navUpPulse && !_navDownPulse)
+                return;
+
+            if (!ownsHighlight)
+            {
+                if (_highlightMenuOverlay != 0 || HasOpenChild(menu))
+                    return;
+
+                SetHighlight(menu, FindSelectableEntry(menu, _navDownPulse ? -1 : menu.entries.Count, _navDownPulse ? 1 : -1));
+                return;
+            }
+
+            SetHighlight(menu, FindSelectableEntry(menu, _highlightEntryIndex, _navDownPulse ? 1 : -1));
+        }
+
+        static void SetHighlight(Menu menu, int entryIndex)
+        {
+            if (entryIndex < 0)
+                return;
+
+            _highlightMenuOverlay = menu.overlayId;
+            _highlightEntryIndex = entryIndex;
+            _highlightMovedByKeyboard = true;
+            NowControlState.RequestRepaint();
+        }
+
+        /// <summary>
+        /// Next enabled item/submenu row from <paramref name="start"/> in
+        /// <paramref name="direction"/>, wrapping past the ends; -1 when the
+        /// menu has no selectable row.
+        /// </summary>
+        static int FindSelectableEntry(Menu menu, int start, int direction)
+        {
+            int count = menu.entries.Count;
+
+            for (int step = 1; step <= count; ++step)
+            {
+                int index = start + step * direction;
+
+                if (index >= count)
+                    index -= count;
+
+                if (index < 0)
+                    index += count;
+
+                if (index < 0 || index >= count)
+                    return -1;
+
+                var entry = menu.entries[index];
+
+                if (entry.enabled && (entry.kind == EntryKind.Item || entry.kind == EntryKind.Submenu))
+                    return index;
+            }
+
+            return -1;
+        }
+
+        static bool HasOpenChild(Menu menu)
+        {
+            for (int i = 0; i < menu.entries.Count; ++i)
+            {
+                var entry = menu.entries[i];
+
+                if (entry.kind == EntryKind.Submenu &&
+                    entry.enabled &&
+                    IsPathOpen(menu.depth, entry.pathId) &&
+                    entry.childMenu >= 0 &&
+                    entry.childMenu < _menuCount &&
+                    _menus[entry.childMenu].entries.Count > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Shifts a clamped menu's scroll just enough to reveal the highlighted
+        /// row after the keyboard moved it. Hover placement and free wheel
+        /// scrolling never trigger it.
+        /// </summary>
+        static void ScrollHighlightIntoView(NowThemeAsset theme, Menu menu, NowRect itemArea, ref float scroll)
+        {
+            if (!_highlightMovedByKeyboard ||
+                _highlightMenuOverlay != menu.overlayId ||
+                _highlightEntryIndex < 0 ||
+                _highlightEntryIndex >= menu.entries.Count)
+            {
+                return;
+            }
+
+            _highlightMovedByKeyboard = false;
+            float itemHeight = theme.controlStyles.contextMenuItemHeight;
+            float offset = 0f;
+
+            for (int i = 0; i < _highlightEntryIndex; ++i)
+                offset += EntryHeight(menu.entries[i], itemHeight);
+
+            float entryHeight = EntryHeight(menu.entries[_highlightEntryIndex], itemHeight);
+            float top = offset - scroll;
+
+            if (top < 0f)
+                scroll += top;
+            else if (top + entryHeight > itemArea.height)
+                scroll += top + entryHeight - itemArea.height;
+            else
+                return;
+
+            NowControlState.RequestRepaint();
+        }
+
+        static void DrawMenuEntries(NowThemeAsset theme, Menu menu, float scroll, bool occluded)
         {
             float popupPadding = theme.controlStyles.popupPadding;
             float itemHeight = theme.controlStyles.contextMenuItemHeight;
@@ -415,7 +631,7 @@ namespace NowUI
                 bool visible = !menu.scrolls || (itemRect.yMax > visibleTop - 0.5f && itemRect.y < visibleBottom + 0.5f);
 
                 if (visible)
-                    DrawEntry(theme, menu, entry, itemRect);
+                    DrawEntry(theme, menu, entry, itemRect, occluded);
 
                 if (entry.kind == EntryKind.Submenu &&
                     entry.enabled &&
@@ -444,27 +660,28 @@ namespace NowUI
         }
 
         /// <summary>
-        /// True when the pointer sits over an open child menu of this menu, so
-        /// the parent leaves the wheel to the child where they overlap.
+        /// True when the pointer sits inside a menu drawn above this one — open
+        /// menus form a single root-to-leaf chain, so every deeper drawn menu
+        /// overlaps on top. This menu's rows, wheel and scroll strips stand down
+        /// there: a clamped submenu can cover its ancestors, and hover or press
+        /// claims leaking to the rows beneath would retarget the open path or
+        /// deliver the wrong item.
         /// </summary>
-        static bool PointerInsideOpenChild(Menu menu)
+        static bool PointerInsideDeeperMenu(Menu menu)
         {
             var pointer = NowInput.current.pointerPosition;
 
-            for (int i = 0; i < menu.entries.Count; ++i)
+            for (int i = 0; i < _menuCount; ++i)
             {
-                var entry = menu.entries[i];
+                var other = _menus[i];
 
-                if (entry.kind != EntryKind.Submenu ||
-                    !IsPathOpen(menu.depth, entry.pathId) ||
-                    entry.childMenu < 0 ||
-                    entry.childMenu >= _menuCount)
+                if (other.depth > menu.depth &&
+                    other.rootId == menu.rootId &&
+                    IsMenuDrawn(other) &&
+                    other.popupRect.Contains(pointer))
                 {
-                    continue;
-                }
-
-                if (_menus[entry.childMenu].popupRect.Contains(pointer))
                     return true;
+                }
             }
 
             return false;
@@ -559,7 +776,7 @@ namespace NowUI
         }
 
 
-        static void DrawEntry(NowThemeAsset theme, Menu menu, Entry entry, NowRect itemRect)
+        static void DrawEntry(NowThemeAsset theme, Menu menu, Entry entry, NowRect itemRect, bool occluded)
         {
             if (entry.kind == EntryKind.Separator)
             {
@@ -588,21 +805,23 @@ namespace NowUI
                 return;
             }
 
-            var interaction = entry.enabled
+            var interaction = entry.enabled && !occluded
                 ? NowInput.Interact(NowInput.CombineId(menu.itemSeed, entry.localIndex + 1), itemRect)
                 : default;
-            bool submenuOpen = entry.kind == EntryKind.Submenu && IsPathOpen(menu.depth, entry.pathId);
-            bool selected = entry.selected || submenuOpen;
 
-            if (entry.selected)
+            if (entry.enabled && interaction.hovered && _pointerMoved &&
+                (_highlightMenuOverlay != menu.overlayId || _highlightEntryIndex != entry.localIndex))
             {
-                var accent = theme.GetColor(NowColorToken.Accent);
-
-                Now.Rectangle(new NowRect(itemRect.x + 3f, itemRect.y + 5f, 3f, Mathf.Max(0f, itemRect.height - 10f)))
-                    .SetColor(accent)
-                    .SetRadius(2f)
-                    .Draw();
+                _highlightMenuOverlay = menu.overlayId;
+                _highlightEntryIndex = entry.localIndex;
+                _highlightMovedByKeyboard = false;
+                NowControlState.RequestRepaint();
             }
+
+            bool highlighted = _highlightMenuOverlay == menu.overlayId && _highlightEntryIndex == entry.localIndex;
+            bool submitted = entry.enabled && highlighted && NowInput.current.submitPressed;
+            bool submenuOpen = entry.kind == EntryKind.Submenu && IsPathOpen(menu.depth, entry.pathId);
+            bool selected = entry.selected || submenuOpen || highlighted;
 
             if (entry.enabled)
             {
@@ -627,18 +846,73 @@ namespace NowUI
                     muted);
             }
 
+            if (entry.selected)
+            {
+                var accent = theme.GetColor(NowColorToken.Accent);
+
+                Now.Rectangle(new NowRect(itemRect.x + 3f, itemRect.y + 5f, 3f, Mathf.Max(0f, itemRect.height - 10f)))
+                    .SetColor(accent)
+                    .SetRadius(2f)
+                    .Draw();
+            }
+
             if (entry.kind == EntryKind.Submenu)
                 theme.controlRenderer.DrawContextMenuSubmenuIndicator(theme, itemRect, entry.enabled, submenuOpen);
 
             if (entry.enabled && interaction.hovered)
                 UpdateOpenPathFromHover(menu.depth, entry.kind == EntryKind.Submenu ? entry.pathId : 0);
 
-            if (entry.kind != EntryKind.Item || !interaction.clicked || !entry.enabled)
+            if (entry.enabled && highlighted)
+                HandleEntryKeyboard(menu, entry, submenuOpen, submitted);
+
+            if (entry.kind != EntryKind.Item || !entry.enabled || (!interaction.clicked && !submitted))
                 return;
 
             NowControlState.Get<int>(_pendingPathStateId) = entry.pathId;
             CopyOpenPathToPending(menu.depth);
             Close();
+        }
+
+        /// <summary>
+        /// Keyboard driving for the highlighted row: submit or a right pulse
+        /// opens a submenu and highlights its first row; a left pulse closes the
+        /// containing submenu and returns the highlight to the row that opened
+        /// it. Up/down movement lives in
+        /// <see cref="UpdateMenuHighlightFromKeyboard"/> and item activation in
+        /// the click path.
+        /// </summary>
+        static void HandleEntryKeyboard(Menu menu, Entry entry, bool submenuOpen, bool submitted)
+        {
+            if (entry.kind == EntryKind.Submenu &&
+                (submitted || _navRightPulse) &&
+                !submenuOpen &&
+                entry.childMenu >= 0 &&
+                entry.childMenu < _menuCount)
+            {
+                SetOpenPath(menu.depth, entry.pathId);
+                ResetSubmenuScroll(entry.pathId);
+                ClearHoverIntent();
+                _pendingHighlightMenuOverlay = _menus[entry.childMenu].overlayId;
+            }
+
+            if (menu.depth > 0 && _navLeftPulse && menu.parentMenu >= 0)
+            {
+                var parent = _menus[menu.parentMenu];
+                SetOpenPath(menu.depth - 1, 0);
+                ClearHoverIntent();
+                SetHighlight(parent, FindParentEntryIndex(parent, menu.pathId));
+            }
+        }
+
+        static int FindParentEntryIndex(Menu parent, int childPathId)
+        {
+            for (int i = 0; i < parent.entries.Count; ++i)
+            {
+                if (parent.entries[i].pathId == childPathId)
+                    return i;
+            }
+
+            return -1;
         }
 
         static NowRect PlaceSubmenu(Menu child, NowRect parentItemRect, float popupPadding)
@@ -738,7 +1012,9 @@ namespace NowUI
         /// depth is immediate; switching away from an open submenu (to close it
         /// or open a sibling) waits for a short hover-intent delay so diagonal
         /// pointer paths across neighbouring rows do not snap submenus shut.
-        /// Timing comes from the input snapshot's caller-supplied time.
+        /// New intents only start while the pointer is actually moving, so a
+        /// resting pointer never overrides keyboard-opened submenus. Timing
+        /// comes from the input snapshot's caller-supplied time.
         /// </summary>
         static void UpdateOpenPathFromHover(int depth, int desiredPathId)
         {
@@ -766,6 +1042,9 @@ namespace NowUI
 
             if (_hoverIntentDepth != depth || _hoverIntentPath != desiredPathId)
             {
+                if (!_pointerMoved)
+                    return;
+
                 _hoverIntentDepth = depth;
                 _hoverIntentPath = desiredPathId;
                 _hoverIntentStart = time;
@@ -832,6 +1111,13 @@ namespace NowUI
             _pendingPathStateId = 0;
             _menuCount = 0;
             ClearHoverIntent();
+            ClearHighlight();
+            _lastPointerPosition = default;
+            _pointerMoved = false;
+            _navLeftPulse = false;
+            _navRightPulse = false;
+            _navUpPulse = false;
+            _navDownPulse = false;
             _buildStack.Clear();
             _openPath.Clear();
             _pendingOpenPath.Clear();

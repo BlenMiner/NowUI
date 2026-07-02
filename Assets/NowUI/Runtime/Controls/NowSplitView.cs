@@ -117,13 +117,23 @@ namespace NowUI
 
             int dividerId = NowInput.CombineId(id, DividerSeed);
             var interaction = NowControls.Interact(dividerId, hitRect, _navigation, out bool focused, out _);
+            ref float grabOffset = ref NowControlState.Get<float>(dividerId, "grab-offset");
+
+            if (interaction.pressed)
+            {
+                float pressPointer = horizontal ? interaction.pointerPosition.x : interaction.pointerPosition.y;
+                float dividerCenter = horizontal
+                    ? dividerRect.x + thickness * 0.5f
+                    : dividerRect.y + thickness * 0.5f;
+                grabOffset = pressPointer - dividerCenter;
+            }
 
             if (interaction.dragging && usable > 0f)
             {
                 float pointer = horizontal
                     ? interaction.pointerPosition.x - rect.x
                     : interaction.pointerPosition.y - rect.y;
-                ratio = Mathf.Clamp((pointer - thickness * 0.5f) / usable, minRatio, maxRatio);
+                ratio = Mathf.Clamp((pointer - grabOffset - thickness * 0.5f) / usable, minRatio, maxRatio);
                 NowControlState.RequestRepaint();
             }
 

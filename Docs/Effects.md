@@ -39,6 +39,23 @@ readonly struct BulgeDeformer : INowVertexDeformer
 }
 ```
 
+## Time
+
+`NowEffectContext.time` is caller-driven, like every clock in NowUI: it defaults
+to `0` and only changes when the modifier is given a time explicitly with
+`SetTime(...)`. Built-in deformers such as `NowDeformers.Wave(time, ...)` take
+their time as a constructor argument instead; `SetTime` exists for custom
+deformers that read `context.time`.
+
+```csharp
+using (NowEffects.Modifier(new PulseDeformer())
+    .SetTime(Time.time)
+    .Begin())
+{
+    DrawBadge();
+}
+```
+
 ## Texture Modifier
 
 Call `SetRenderToTexture()` when the whole scoped region should behave as one

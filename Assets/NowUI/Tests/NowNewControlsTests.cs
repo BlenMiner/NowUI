@@ -444,7 +444,7 @@ public class NowNewControlsTests
     }
 
     [Test]
-    public void ChipRemoveClickReportsRemoved()
+    public void ChipRemoveClickReportsRemovedWithoutSelection()
     {
         var theme = NowTheme.themeAsset;
         var removeCenter = theme.controlRenderer.ChipRemoveRect(theme, ChipRect).center;
@@ -455,8 +455,22 @@ public class NowNewControlsTests
         Assert.IsFalse(removed);
 
         _pointer.snapshot = new NowInputSnapshot(removeCenter, false, false, true);
-        Assert.IsTrue(DrawChipFrame(out removed));
+        Assert.IsFalse(DrawChipFrame(out removed), "Removal must not report as a click.");
         Assert.IsTrue(removed, "Clicking the remove glyph must report removal.");
+    }
+
+    [Test]
+    public void ChipBodyClickReportsSelectionWithoutRemoval()
+    {
+        var inside = new Vector2(30, 34);
+        bool removed = false;
+
+        _pointer.snapshot = new NowInputSnapshot(inside, true, true, false);
+        Assert.IsFalse(DrawChipFrame(out removed));
+
+        _pointer.snapshot = new NowInputSnapshot(inside, false, false, true);
+        Assert.IsTrue(DrawChipFrame(out removed), "Clicking the chip body must report selection.");
+        Assert.IsFalse(removed);
     }
 
     [Test]
@@ -912,5 +926,90 @@ public class NowNewControlsTests
         _pointer.snapshot = new NowInputSnapshot(upCenter, false, false, true);
         Assert.IsTrue(DrawTimeFrame(ref value), "Popup spinner edits must reflect in the caller's value.");
         Assert.AreEqual(new TimeSpan(10, 30, 0), value);
+    }
+
+    [Test]
+    public void TimePickerEditsPreserveSecondsAndMilliseconds()
+    {
+        var value = new TimeSpan(0, 9, 30, 12, 345);
+        var fieldCenter = TimeRect.center;
+        var upCenter = TimePickerHourUpRect(TimeRect).center;
+
+        _pointer.snapshot = new NowInputSnapshot(fieldCenter, true, true, false);
+        DrawTimeFrame(ref value);
+        _pointer.snapshot = new NowInputSnapshot(fieldCenter, false, false, true);
+        DrawTimeFrame(ref value);
+
+        _pointer.snapshot = new NowInputSnapshot(upCenter, true, true, false);
+        DrawTimeFrame(ref value);
+
+        _pointer.snapshot = new NowInputSnapshot(upCenter, false, false, true);
+        Assert.IsTrue(DrawTimeFrame(ref value));
+        Assert.AreEqual(
+            new TimeSpan(0, 10, 30, 12, 345),
+            value,
+            "Editing hours or minutes must preserve the seconds and sub-second component.");
+    }
+
+    [Test]
+    public void SplitViewDragPreservesTheGrabOffset()
+    {
+        var styles = NowTheme.themeAsset.controlStyles;
+        float thickness = styles.splitterThickness;
+        float usable = SplitRect.width - thickness;
+        var dividerCenter = new Vector2(
+            SplitRect.x + usable * 0.5f + thickness * 0.5f,
+            SplitRect.y + SplitRect.height * 0.5f);
+        var grabPoint = dividerCenter + new Vector2(4f, 0f);
+        var dragPoint = new Vector2(245f, dividerCenter.y);
+        float expected = (dragPoint.x - 4f - SplitRect.x - thickness * 0.5f) / usable;
+        float ratio = 0.5f;
+
+        _pointer.snapshot = new NowInputSnapshot(grabPoint, true, true, false);
+        ratio = DrawSplitFrame(ratio);
+
+        _pointer.snapshot = new NowInputSnapshot(dragPoint, dragPoint - grabPoint, true, false, false);
+        ratio = DrawSplitFrame(ratio);
+
+        _pointer.snapshot = new NowInputSnapshot(dragPoint, false, false, true);
+        ratio = DrawSplitFrame(ratio);
+
+        Assert.AreEqual(
+            expected,
+            ratio,
+            0.003f,
+            "Dragging must keep the grab offset instead of re-centering the divider under the pointer.");
+    }
+
+    [Test]
+    public void DatePickerOpensAtDateTimeMaxValueWithoutThrowing()
+    {
+        var value = DateTime.MaxValue;
+        var fieldCenter = DateRect.center;
+
+        _pointer.snapshot = new NowInputSnapshot(fieldCenter, true, true, false);
+        DrawDateFrame(ref value);
+        _pointer.snapshot = new NowInputSnapshot(fieldCenter, false, false, true);
+        DrawDateFrame(ref value);
+
+        _pointer.snapshot = new NowInputSnapshot(fieldCenter, false, false, false);
+        Assert.IsFalse(DrawDateFrame(ref value), "Opening the calendar at the range edge must not change the value.");
+        Assert.AreEqual(DateTime.MaxValue, value);
+    }
+
+    [Test]
+    public void DatePickerOpensAtDateTimeMinValueWithoutThrowing()
+    {
+        var value = DateTime.MinValue;
+        var fieldCenter = DateRect.center;
+
+        _pointer.snapshot = new NowInputSnapshot(fieldCenter, true, true, false);
+        DrawDateFrame(ref value);
+        _pointer.snapshot = new NowInputSnapshot(fieldCenter, false, false, true);
+        DrawDateFrame(ref value);
+
+        _pointer.snapshot = new NowInputSnapshot(fieldCenter, false, false, false);
+        Assert.IsFalse(DrawDateFrame(ref value), "Opening the calendar at the range edge must not change the value.");
+        Assert.AreEqual(DateTime.MinValue, value);
     }
 }

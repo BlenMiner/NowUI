@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 
 namespace NowUI.Markup
 {
@@ -58,19 +57,27 @@ namespace NowUI.Markup
     {
         const int CacheLimit = 64;
 
+        const int RecentSlots = 4;
+
+        struct RecentSlot
+        {
+            public string markup;
+            public NowMarkupDocument document;
+        }
+
         static readonly Dictionary<string, NowMarkupDocument> _cache =
             new Dictionary<string, NowMarkupDocument>(16);
+
+        static readonly List<string> _cacheOrder = new List<string>(16);
 
         static readonly Dictionary<string, NowMarkupFile> _files =
             new Dictionary<string, NowMarkupFile>(8);
 
-        static string _lastMarkup;
-        static NowMarkupDocument _lastDocument;
+        static readonly RecentSlot[] _recent = new RecentSlot[RecentSlots];
 
-        public static NowMarkupBuilder Document(
-            string markup,
-            [CallerFilePath] string file = "",
-            [CallerLineNumber] int line = 0)
+        static int _nextRecent;
+
+        public static NowMarkupBuilder Document(string markup)
         {
             return new NowMarkupBuilder(markup);
         }
@@ -104,33 +111,54 @@ namespace NowUI.Markup
         {
             markup ??= string.Empty;
 
-            if (ReferenceEquals(markup, _lastMarkup))
-                return _lastDocument;
+            for (int i = 0; i < _recent.Length; ++i)
+            {
+                if (ReferenceEquals(_recent[i].markup, markup))
+                    return _recent[i].document;
+            }
 
             if (!_cache.TryGetValue(markup, out var document))
             {
                 if (_cache.Count >= CacheLimit)
-                    _cache.Clear();
+                    EvictOldestHalf();
 
                 document = NowMarkupDocument.Parse(markup);
                 _cache[markup] = document;
+                _cacheOrder.Add(markup);
             }
 
-            _lastMarkup = markup;
-            _lastDocument = document;
+            _recent[_nextRecent] = new RecentSlot
+            {
+                markup = markup,
+                document = document
+            };
+            _nextRecent = (_nextRecent + 1) % _recent.Length;
             return document;
+        }
+
+        static void EvictOldestHalf()
+        {
+            int evict = _cacheOrder.Count / 2;
+
+            for (int i = 0; i < evict; ++i)
+                _cache.Remove(_cacheOrder[i]);
+
+            _cacheOrder.RemoveRange(0, evict);
+            System.Array.Clear(_recent, 0, _recent.Length);
+            _nextRecent = 0;
         }
 
         public static void Reset()
         {
             _cache.Clear();
+            _cacheOrder.Clear();
+            System.Array.Clear(_recent, 0, _recent.Length);
+            _nextRecent = 0;
 
             foreach (var source in _files.Values)
                 source.Dispose();
 
             _files.Clear();
-            _lastMarkup = null;
-            _lastDocument = null;
         }
 
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]

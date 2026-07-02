@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using NowUI;
 
 /// <summary>
@@ -12,8 +13,9 @@ public class NowControlGalleryExample : MonoBehaviour
     [SerializeField] NowFontAsset _font;
     [SerializeField] NowThemeAsset _theme;
 
-    static readonly string[] _tabPages = { "Inputs", "Pickers", "Data", "Menus" };
+    static readonly string[] _tabPages = { "Inputs", "Pickers", "Data", "Menus", "Inspector" };
     static readonly string[] _qualityOptions = { "Low", "Medium", "High", "Ultra" };
+    static readonly string[] _audioChannels = { "Music", "Effects", "Voice", "Ambient" };
     static readonly string[] _countries =
     {
         "Argentina", "Australia", "Austria", "Belgium", "Brazil", "Canada",
@@ -41,6 +43,11 @@ public class NowControlGalleryExample : MonoBehaviour
     float _splitRatio = 0.35f;
     DateTime _dueDate = new DateTime(2026, 7, 2);
     TimeSpan _alarm = new TimeSpan(7, 30, 0);
+    Key _jumpKey = Key.Space;
+    Key _sprintKey = Key.LeftShift;
+    int _channelMask = 0b0101;
+    LayerMask _cameraLayers = ~0;
+    bool _metadataExpanded = true;
 
     void Awake()
     {
@@ -89,8 +96,11 @@ public class NowControlGalleryExample : MonoBehaviour
                         case 2:
                             DrawDataPage();
                             break;
-                        default:
+                        case 3:
                             DrawMenusPage();
+                            break;
+                        default:
+                            DrawInspectorPage();
                             break;
                     }
                 }
@@ -124,6 +134,15 @@ public class NowControlGalleryExample : MonoBehaviour
             NowLayout.Button("Ghost").SetStyle(NowRectangleStyle.Ghost).Draw();
             NowLayout.Button("Soft").SetStyle(NowRectangleStyle.AccentSoft).Draw();
             NowLayout.Button("Danger").SetStyle(NowRectangleStyle.Danger).Draw();
+
+            using (var reset = NowLayout.Button().SetAlignItems(NowLayoutAlign.Center).Begin())
+            {
+                if (reset.clicked)
+                    _progress = 0f;
+
+                NowLayout.Label("Reset").Draw();
+                NowTooltip.For(reset, "Set the header progress back to zero");
+            }
         }
 
         NowLayout.Checkbox("Enable checkbox").Draw(ref _checkbox);
@@ -142,17 +161,29 @@ public class NowControlGalleryExample : MonoBehaviour
             }
         }
 
+        NowLayout.TabBar(_qualityOptions).SetStretchTabs().SetWidth(360f).Draw(ref _quality);
+
         NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _volume);
         NowLayout.TextField().SetPlaceholder("Name...").SetStretchWidth().Draw(ref _playerName);
         NowLayout.FloatField().SetRange(0f, 32f).SetSpinner(0.5f).SetWidth(160f).Draw(ref _spacingValue);
         NowLayout.IntField().SetRange(0, 10).SetSpinner().SetWidth(160f).Draw(ref _retries);
         NowLayout.TextArea().SetPlaceholder("Notes...").SetLines(2, 4).SetStretchWidth().Draw(ref _notes);
+
+        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Body), "Jump").Draw();
+            NowLayout.KeyBindingField().SetWidth(120f).Draw(ref _jumpKey);
+            NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Body), "Sprint").Draw();
+            NowLayout.KeyBindingField().SetWidth(120f).Draw(ref _sprintKey);
+        }
     }
 
     void DrawPickersPage()
     {
         NowLayout.Dropdown(_qualityOptions).SetWidth(220f).Draw(ref _dropdownIndex);
         NowLayout.ComboBox(_countries).SetWidth(220f).Draw(ref _comboIndex);
+        NowLayout.MaskField(_audioChannels).SetWidth(220f).Draw(ref _channelMask);
+        NowLayout.LayerMaskField().SetWidth(220f).Draw(ref _cameraLayers);
         NowLayout.DatePicker().SetWidth(220f).SetToday(DateTime.Today).Draw(ref _dueDate);
         NowLayout.TimePicker().SetWidth(220f).Set24Hour(false).Draw(ref _alarm);
 
@@ -168,13 +199,20 @@ public class NowControlGalleryExample : MonoBehaviour
     }
 
     string _menuLabResult = "Right-click the playground, or use the buttons.";
+    int _menuLabDropdown;
 
     /// <summary>
     /// Menu edge-case lab: menus taller than the screen (clamp + scroll),
-    /// long submenus, deep nesting, and a menu opened near the screen edge.
-    /// Things to verify: every option reachable via wheel or the top/bottom
-    /// hover strips, submenus survive diagonal pointer paths, scrolling over a
-    /// menu never closes it, scrolling elsewhere does.
+    /// long submenus, deep nesting, a menu opened near the screen edge, and a
+    /// popup-over-text leak check. Things to verify: every option reachable
+    /// via wheel, keyboard, or the top/bottom hover strips; arrows move the
+    /// highlight, Enter activates, right/left dive into and out of submenus;
+    /// submenus survive diagonal pointer paths; a submenu clamped over its
+    /// parent (right-click near the right screen edge) owns the pointer where
+    /// they overlap; scrolling over a menu never
+    /// closes it, scrolling elsewhere does; right-clicking over the open
+    /// dropdown popup must NOT open the selectable text's context menu, and a
+    /// right-click outside must close the popup.
     /// </summary>
     void DrawMenusPage()
     {
@@ -267,6 +305,14 @@ public class NowControlGalleryExample : MonoBehaviour
 
             NowContextMenu.End();
         }
+
+        NowLayout.Dropdown(_qualityOptions).SetWidth(160f).Draw(ref _menuLabDropdown);
+        NowLayout.RichText(
+                "Leak check: open the dropdown above, then right-click over its popup — this selectable text sits " +
+                "beneath it and must not answer; a right-click beside the popup closes it and opens this text's menu.")
+            .SetSelectable()
+            .SetStretchWidth()
+            .Draw();
     }
 
     void DrawDataPage()
@@ -303,7 +349,88 @@ public class NowControlGalleryExample : MonoBehaviour
             {
                 NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Subheading), "Details").Draw();
                 NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), "Select a row on the left; drag the divider to resize.").Draw();
+
+                NowLayout.Foldout("Metadata").Draw(ref _metadataExpanded);
+
+                if (_metadataExpanded)
+                {
+                    NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), "Type: Folder").Draw();
+                    NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), "Items: 5").Draw();
+                }
             }
+        }
+    }
+
+    enum GalleryDifficulty
+    {
+        Easy,
+        Normal,
+        Hard,
+        Nightmare
+    }
+
+    [Flags]
+    enum GallerySpawnAreas
+    {
+        None = 0,
+        Ground = 1 << 0,
+        Air = 1 << 1,
+        Water = 1 << 2,
+        Underground = 1 << 3
+    }
+
+    [Serializable]
+    class GalleryGraphicsSection
+    {
+        [Range(0.5f, 2f)] public float renderScale = 1f;
+        public bool vsync = true;
+        public AnimationCurve lodCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+        public Gradient skyTint = new Gradient();
+    }
+
+    /// <summary>
+    /// Exercises every inspector row kind: attributes, enums and flags, vectors,
+    /// quaternion-as-euler, bounds, nested foldouts, and resizable lists.
+    /// </summary>
+    [Serializable]
+    class GalleryInspectorTarget
+    {
+        [Header("Profile")]
+        public string playerName = "Player One";
+        [Range(1, 99)] public int level = 12;
+        [Min(0f)] public float health = 87.5f;
+        public GalleryDifficulty difficulty = GalleryDifficulty.Normal;
+        public GallerySpawnAreas spawnAreas = GallerySpawnAreas.Ground | GallerySpawnAreas.Air;
+        public LayerMask hitLayers = ~0;
+
+        [Header("Transform")]
+        public Vector3 offset = new Vector3(0f, 1f, 0f);
+        public Quaternion facing = Quaternion.identity;
+        public Rect viewport = new Rect(0f, 0f, 1f, 1f);
+        public Bounds bounds = new Bounds(Vector3.zero, Vector3.one);
+
+        [Header("Look")]
+        public Color tint = new Color(0.4f, 0.7f, 1f);
+        public GalleryGraphicsSection graphics = new GalleryGraphicsSection();
+
+        [Header("Notes")]
+        public System.Collections.Generic.List<string> tags = new System.Collections.Generic.List<string> { "alpha", "beta" };
+        [TextArea(2, 4)] public string bio = "Reflection-driven inspector: NowLayout.Inspector().Draw(ref target).";
+    }
+
+    GalleryInspectorTarget _inspectorTarget = new GalleryInspectorTarget();
+
+    void DrawInspectorPage()
+    {
+        NowLayout.Label(
+                NowTheme.themeAsset.ResolveText(NowTextStyle.Muted),
+                "NowLayout.Inspector().Draw(ref target) renders Unity-style rows for any serializable type.")
+            .Draw();
+
+        using (NowLayout.ScrollView().Begin())
+        using (NowLayout.Vertical(padding: new Vector4(0f, 0f, 12f, 0f), spacing: 4f, stretchWidth: true))
+        {
+            NowLayout.Inspector().SetToday(DateTime.Today).Draw(ref _inspectorTarget);
         }
     }
 }

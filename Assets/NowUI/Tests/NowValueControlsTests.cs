@@ -1142,4 +1142,95 @@ public class NowValueControlsTests
 
         Assert.AreEqual(RenderFlags.Bloom | RenderFlags.Vsync, flags);
     }
+
+    static long AllocatedBytesOrIgnore()
+    {
+        try
+        {
+            return GC.GetAllocatedBytesForCurrentThread();
+        }
+        catch (NotImplementedException)
+        {
+            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
+            return 0;
+        }
+    }
+
+    static Gradient BlackToWhiteGradient()
+    {
+        var gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(Color.black, 0f),
+                new GradientColorKey(Color.white, 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(1f, 0f),
+                new GradientAlphaKey(1f, 1f)
+            });
+        return gradient;
+    }
+
+    [Test]
+    public void GradientFieldClosedDrawIsAllocationFreeAfterWarmup()
+    {
+        var gradient = BlackToWhiteGradient();
+
+        for (int i = 0; i < 3; ++i)
+            DrawGradientFieldFrame(ref gradient);
+
+        long before = AllocatedBytesOrIgnore();
+        DrawGradientFieldFrame(ref gradient);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.AreEqual(0, allocated, "steady-state gradient field draw must not allocate");
+    }
+
+    [Test]
+    public void AnimationCurveFieldClosedDrawIsAllocationFreeAfterWarmup()
+    {
+        var curve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+
+        for (int i = 0; i < 3; ++i)
+            DrawAnimationCurveFrame(ref curve);
+
+        long before = AllocatedBytesOrIgnore();
+        DrawAnimationCurveFrame(ref curve);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.AreEqual(0, allocated, "steady-state animation curve field draw must not allocate");
+    }
+
+    [Test]
+    public void GradientFieldPreviewRefreshesWhenValueChanges()
+    {
+        var gradient = BlackToWhiteGradient();
+
+        DrawGradientFieldFrame(ref gradient);
+        DrawGradientFieldFrame(ref gradient);
+
+        gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(Color.red, 0f),
+                new GradientColorKey(Color.red, 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(1f, 0f),
+                new GradientAlphaKey(1f, 1f)
+            });
+
+        DrawGradientFieldFrame(ref gradient);
+
+        var texture = FindGradientTexture();
+        Assert.NotNull(texture);
+
+        Color middle = texture.GetPixel(texture.width / 2, 0);
+        Assert.AreEqual(1f, middle.r, 0.02f, "The field preview must reflect the newly assigned gradient.");
+        Assert.AreEqual(0f, middle.g, 0.02f);
+    }
 }

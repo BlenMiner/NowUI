@@ -50,10 +50,10 @@ using (NowLayout.Area(NowScreen.safeArea))
 The default input provider reads the primary touch as the primary pointer —
 press, drag, and release map onto the same `NowInput.Interact` states as a
 mouse. The touchscreen only acts as a pointer while a finger is in contact, so
-hover states do not stick to the last touch position. Both the Input System
-(`Touchscreen.current`) and the legacy input manager (`Input.GetTouch`) paths
-are covered; multi-touch gestures (pinch, rotate) are not interpreted — read
-additional touches from the input device directly if you need them.
+hover states do not stick to the last touch position. Touch arrives through
+the Input System (`Touchscreen.current`); multi-touch gestures (pinch, rotate)
+are not interpreted — read additional touches from the input device directly
+if you need them.
 
 ## Native plugins on mobile
 

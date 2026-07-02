@@ -59,6 +59,9 @@ namespace NowUI
             public long minTicks;
             public long maxTicks;
             public bool hasRange;
+            public long highlightTicks;
+            public bool hasHighlight;
+            public int openedFrame;
             public NowRect field;
             public NowRect popupRect;
             public int cachedLabelYear;
@@ -182,6 +185,12 @@ namespace NowUI
                 {
                     shown.year = value.Year;
                     shown.month = value.Month;
+                    ClampShownMonth(ref shown);
+
+                    var openState = GetState(id);
+                    openState.highlightTicks = value.Date.Ticks;
+                    openState.hasHighlight = true;
+                    openState.openedFrame = NowInput.current.frame;
                 }
             }
 
@@ -219,6 +228,8 @@ namespace NowUI
 
         void DeferPopup(NowThemeAsset theme, int id, NowRect field, DateTime value, ref ShownMonth shown)
         {
+            ClampShownMonth(ref shown);
+
             var styles = theme.controlStyles;
             float cell = styles.calendarCellSize;
             float padding = styles.calendarPadding;
@@ -229,11 +240,7 @@ namespace NowUI
             if (_fitToView)
                 popupRect = NowOverlay.FitToView(popupRect);
 
-            if (!_popupStates.TryGetValue(id, out var state))
-            {
-                state = new PopupState();
-                _popupStates[id] = state;
-            }
+            var state = GetState(id);
 
             state.themeAsset = theme;
             state.id = id;
@@ -254,7 +261,19 @@ namespace NowUI
             state.field = Now.TransformScreenRect(field);
             state.popupRect = popupRect;
 
+            NowOverlay.BlockAllSurfaces(id);
             NowOverlay.Defer(popupRect, id, DrawPopup);
+        }
+
+        static PopupState GetState(int id)
+        {
+            if (!_popupStates.TryGetValue(id, out var state))
+            {
+                state = new PopupState();
+                _popupStates[id] = state;
+            }
+
+            return state;
         }
 
         static void DrawPopup(int stateId)
@@ -268,6 +287,7 @@ namespace NowUI
             var popupRect = state.popupRect;
 
             renderer.DrawPopupBackground(theme, popupRect, menu: false);
+            UpdateKeyboard(state);
 
             float padding = styles.calendarPadding;
             float cell = styles.calendarCellSize;
@@ -324,18 +344,91 @@ namespace NowUI
                         state.hasSelected && dayTicks == state.selectedTicks,
                         disabled,
                         interaction,
-                        focused: false,
+                        focused: state.hasHighlight && dayTicks == state.highlightTicks,
                         hoverT));
                 }
             }
 
             var snapshot = NowInput.current;
-            bool pressedOutside = snapshot.primaryPressed &&
+            bool fieldPressClaimedByField = state.field.Contains(snapshot.pointerPosition) &&
+                NowInput.activeId == state.id;
+            bool pressedOutside = snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
-                !state.field.Contains(snapshot.pointerPosition);
+                !fieldPressClaimedByField;
 
-            if (pressedOutside || (snapshot.cancelPressed && !NowOverlay.HasNestedOverlay(state.id)))
+            if (pressedOutside ||
+                (snapshot.cancelPressed && !NowInput.cancelConsumed && !NowOverlay.HasNestedOverlay(state.id)))
+            {
                 NowControlState.Get<bool>(state.id) = false;
+            }
+        }
+
+        /// <summary>
+        /// Keyboard day navigation for the open popup: arrows move a
+        /// popup-local highlighted day (never <see cref="NowFocus"/>), left and
+        /// right step one day, up and down step a week, rolling the shown month
+        /// at grid edges; submit commits the highlighted day. Base focus
+        /// navigation is locked while the popup is open.
+        /// </summary>
+        static void UpdateKeyboard(PopupState state)
+        {
+            if (NowInput.isPassive)
+                return;
+
+            NowFocus.LockNavigation();
+
+            var snapshot = NowInput.current;
+            var navigation = snapshot.navigation;
+            int dayStep = 0;
+
+            if (NowControlState.Repeat(state.id, "nav-x", Mathf.Abs(navigation.x) > 0.55f, 0.35f, 0.12f))
+                dayStep += navigation.x > 0f ? 1 : -1;
+
+            if (NowControlState.Repeat(state.id, "nav-y", Mathf.Abs(navigation.y) > 0.55f, 0.35f, 0.12f))
+                dayStep += navigation.y > 0f ? -7 : 7;
+
+            if (dayStep != 0)
+                MoveHighlight(state, dayStep);
+
+            if (snapshot.submitPressed && snapshot.frame != state.openedFrame && state.hasHighlight)
+                CommitHighlight(state);
+        }
+
+        static void MoveHighlight(PopupState state, int dayStep)
+        {
+            long ticks = state.hasHighlight ? state.highlightTicks : state.selectedTicks;
+            long next = ticks + dayStep * TimeSpan.TicksPerDay;
+
+            if (next < DateTime.MinValue.Ticks || next > DateTime.MaxValue.Date.Ticks)
+                return;
+
+            state.highlightTicks = next;
+            state.hasHighlight = true;
+
+            var day = new DateTime(next);
+            ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId, "shown-month");
+
+            if (day.Year != shown.year || day.Month != shown.month)
+            {
+                shown.year = day.Year;
+                shown.month = day.Month;
+                ClampShownMonth(ref shown);
+            }
+
+            NowControlState.RequestRepaint();
+        }
+
+        static void CommitHighlight(PopupState state)
+        {
+            long ticks = state.highlightTicks;
+
+            if (state.hasRange && (ticks < state.minTicks || ticks > state.maxTicks))
+                return;
+
+            ref var pending = ref NowControlState.Get<PendingDate>(state.pendingId, "pending-date");
+            pending.has = 1;
+            pending.ticks = ticks;
+            NowControlState.Get<bool>(state.id) = false;
         }
 
         static void DrawHeader(PopupState state, NowRect headerRect)
@@ -411,15 +504,41 @@ namespace NowUI
             if (month < 1)
             {
                 month = 12;
-                shown.year = Mathf.Max(1, shown.year - 1);
+                --shown.year;
             }
             else if (month > 12)
             {
                 month = 1;
-                shown.year = Mathf.Min(9998, shown.year + 1);
+                ++shown.year;
             }
 
             shown.month = month;
+            ClampShownMonth(ref shown);
+        }
+
+        /// <summary>
+        /// Clamps the shown month to [0001-02 .. 9999-11]: the 42-day grid
+        /// reaches into the neighbouring months, so the calendar for the very
+        /// first and last month of the DateTime range would step outside it.
+        /// </summary>
+        static void ClampShownMonth(ref ShownMonth shown)
+        {
+            shown.month = Mathf.Clamp(shown.month, 1, 12);
+
+            if (shown.year <= 1)
+            {
+                shown.year = 1;
+
+                if (shown.month < 2)
+                    shown.month = 2;
+            }
+            else if (shown.year >= 9999)
+            {
+                shown.year = 9999;
+
+                if (shown.month > 11)
+                    shown.month = 11;
+            }
         }
 
         static void EnsureStaticLabels()

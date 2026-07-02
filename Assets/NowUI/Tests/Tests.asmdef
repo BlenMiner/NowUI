@@ -13,7 +13,8 @@
         "NowUI.Extensions.NodeGraph",
         "NowUI.Extensions.Sdf",
         "Unity.PerformanceTesting",
-        "UnityEngine.UI"
+        "UnityEngine.UI",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"

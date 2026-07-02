@@ -167,4 +167,60 @@ public class NowTextEditTests
         Assert.AreEqual(3, state.caret);
         Assert.AreEqual(0, state.anchor);
     }
+
+    [Test]
+    public void DeleteToLineStartRemovesBackToTheHardLineStart()
+    {
+        string text = "one\ntwo three";
+        var state = new NowTextEditState { caret = 8, anchor = 8 };
+
+        Assert.IsTrue(NowTextEdit.DeleteToLineStart(ref text, ref state));
+        Assert.AreEqual("one\nthree", text, "Deletion stops at the newline.");
+        Assert.AreEqual(4, state.caret);
+
+        Assert.IsFalse(NowTextEdit.DeleteToLineStart(ref text, ref state),
+            "At a line start there is nothing to delete.");
+        Assert.AreEqual("one\nthree", text);
+    }
+
+    [Test]
+    public void DeleteToLineStartPrefersTheSelection()
+    {
+        string text = "abcdef";
+        var state = new NowTextEditState { anchor = 2, caret = 4 };
+
+        Assert.IsTrue(NowTextEdit.DeleteToLineStart(ref text, ref state));
+        Assert.AreEqual("abef", text, "An existing selection is deleted instead.");
+        Assert.AreEqual(2, state.caret);
+    }
+
+    [Test]
+    public void ModifierMappingFollowsThePlatformConvention()
+    {
+        bool previous = NowTextInput.isMacPlatform;
+
+        try
+        {
+            var frame = new NowTextInputFrame { command = true };
+
+            NowTextInput.isMacPlatform = false;
+            Assert.IsTrue(frame.wordModifier, "Ctrl drives word movement on Windows/Linux.");
+            Assert.IsFalse(frame.lineModifier, "There is no line modifier outside macOS.");
+
+            NowTextInput.isMacPlatform = true;
+            Assert.IsFalse(frame.wordModifier, "Command does not word-jump on macOS.");
+            Assert.IsTrue(frame.lineModifier, "Command drives line movement on macOS.");
+
+            frame = new NowTextInputFrame { option = true };
+            Assert.IsTrue(frame.wordModifier, "Option drives word movement on macOS.");
+            Assert.IsFalse(frame.lineModifier);
+
+            NowTextInput.isMacPlatform = false;
+            Assert.IsFalse(frame.wordModifier, "Alt alone does not word-jump on Windows/Linux.");
+        }
+        finally
+        {
+            NowTextInput.isMacPlatform = previous;
+        }
+    }
 }

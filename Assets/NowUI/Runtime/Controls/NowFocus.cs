@@ -446,7 +446,7 @@ namespace NowUI
                 }
             }
 
-            if (snapshot.cancelPressed)
+            if (snapshot.cancelPressed && !NowInput.cancelConsumedForFrameSwap)
             {
                 Clear();
                 _lastNavigation = snapshot.navigation;

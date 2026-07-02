@@ -39,7 +39,17 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowSwitch SetOptions(NowLayoutOptions options) { _options = options; return this; }
+
+        /// <summary>Fixed width in layout flow.</summary>
+        public NowSwitch SetWidth(float width) { _options = _options.SetWidth(width); return this; }
+
+        /// <summary>Fixed height in layout flow.</summary>
+        public NowSwitch SetHeight(float height) { _options = _options.SetHeight(height); return this; }
+
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
+        public NowSwitch SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowSwitch SetId(NowId id) { _id = id; return this; }
@@ -47,6 +57,7 @@ namespace NowUI
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowSwitch SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
+        /// <summary>Themed text style for the label.</summary>
         public NowSwitch SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
         public bool Draw(ref bool value)

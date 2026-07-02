@@ -1277,4 +1277,63 @@ public class NowControlsTests
             Object.DestroyImmediate(first);
         }
     }
+
+    void DrawScrollFrame(System.Action<NowScrollScope> body = null)
+    {
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            var scroll = Now.ScrollView(new NowRect(0, 0, 200, 100), "scroll-api").Begin();
+
+            for (int i = 0; i < 10; ++i)
+                NowLayout.Rect(180f, 30f);
+
+            body?.Invoke(scroll);
+            scroll.Dispose();
+        }
+    }
+
+    [Test]
+    public void ScrollScopeOffsetSetterClampsToContentRange()
+    {
+        DrawScrollFrame();
+
+        Vector2 max = default;
+        Vector2 clampedHigh = default;
+        Vector2 clampedLow = default;
+
+        DrawScrollFrame(scroll =>
+        {
+            max = scroll.maxScrollOffset;
+            scroll.scrollOffset = new Vector2(0f, 10000f);
+            clampedHigh = scroll.scrollOffset;
+            scroll.scrollOffset = new Vector2(-50f, -50f);
+            clampedLow = scroll.scrollOffset;
+        });
+
+        Assert.Greater(max.y, 0f, "Ten 30px rows in a 100px viewport must produce vertical overflow.");
+        Assert.AreEqual(max, clampedHigh, "Setting past the end must clamp to the max offset.");
+        Assert.AreEqual(Vector2.zero, clampedLow, "Setting before the start must clamp to zero.");
+    }
+
+    [Test]
+    public void ScrollScopeScrollToEndPersistsAcrossFrames()
+    {
+        DrawScrollFrame();
+        DrawScrollFrame(scroll => scroll.ScrollToEnd());
+
+        Vector2 max = default;
+        Vector2 observed = default;
+
+        DrawScrollFrame(scroll =>
+        {
+            max = scroll.maxScrollOffset;
+            observed = scroll.scrollOffset;
+        });
+
+        Assert.Greater(max.y, 0f);
+        Assert.AreEqual(max, observed, "ScrollToEnd must persist into the next frame.");
+    }
 }

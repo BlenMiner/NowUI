@@ -66,6 +66,12 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
     NowLayout.Dropdown(resolutionNames).Draw(ref resolutionIndex);
     NowLayout.EnumDropdown<Quality>().Draw(ref quality);
     NowLayout.EnumFlags<RenderFlags>().Draw(ref renderFlags);
+    NowLayout.MaskField(channelNames).Draw(ref channelMask);
+    NowLayout.LayerMaskField().Draw(ref hitLayers);
+
+    NowLayout.Foldout("Advanced").Draw(ref advancedOpen);
+    if (advancedOpen)
+        DrawAdvancedSection();
 
     using (NowLayout.ScrollView().SetHeight(160).Begin())
         foreach (var line in logLines)
@@ -87,6 +93,8 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
 
     NowLayout.DatePicker().SetToday(DateTime.Today).Draw(ref dueDate);
     NowLayout.TimePicker().Set24Hour(false).Draw(ref alarmTime);
+
+    NowLayout.KeyBindingField().Draw(ref jumpKey);
 }
 ```
 
@@ -96,7 +104,8 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   sweeps, with the phase derived entirely from the caller-passed time (no
   hidden clock).
 - `Badge(text)` is a non-interactive pill; `Chip(text)` is selectable and
-  optionally removable via `SetRemovable().Draw(out bool removed)`.
+  optionally removable via `SetRemovable().Draw(out bool removed)` — the return
+  value reports click/submit only, removal comes solely from the out parameter.
 - `SetSpinner(step)` on numeric text fields adds increment/decrement buttons
   with press-and-hold repeat; up/down navigation steps while focused.
 - `TabBar(labels).Draw(ref index)` is a caller-owned tab strip;
@@ -124,7 +133,20 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   `SetRange(...)`; `Slider(...).Draw(ref int)` snaps to whole numbers, and
   `Slider(...).SetStep(step)` snaps floats to increments.
 - `Vector2Field`, `Vector3Field`, `Vector4Field`, `Vector2IntField` and
-  `Vector3IntField` draw component fields for Unity vector structs.
+  `Vector3IntField` draw component fields for Unity vector structs;
+  `VectorField().Draw(ref Rect)` / `Draw(ref RectInt)` draw X Y W H rows for
+  rect structs.
+- Numeric text fields also bind wide types: `TextField().Draw(ref double)` and
+  `Draw(ref long)` mirror the float/int helpers, including `SetRange(...)` and
+  `SetSpinner(...)`.
+- `Foldout(label)` is a collapsible section header. `Draw(ref bool)` edits
+  caller-owned expansion and returns true when toggled; `Draw()` keeps the
+  expansion in control state and returns whether the section is open.
+- `MaskField(options).Draw(ref int mask)` is the multi-select dropdown twin of
+  `Dropdown` — option i toggles bit `1 << i`, with Nothing/Everything rows, and
+  the popup stays open while toggling. `LayerMaskField().Draw(ref LayerMask)`
+  edits layer masks against the project's named layers (Everything stores -1,
+  like Unity).
 - `ColorPicker` draws a compact swatch field and opens an overlay HSV picker
   with shader-backed saturation/value, hue, optional alpha editing, editable
   hex copy/paste, and Unity-style RGBA channel sliders. Selection applies on
@@ -138,22 +160,37 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   handles, add-key-on-double-click, selected-key Time/Value fields, Smooth/Linear/
   Step/Flat tangent commands, exact step preview, trash/Delete-key removal, and
   optional `SetTimeRange(...)` / `SetValueRange(...)` bounds.
+- `KeyBindingField` edits an Input System `Key` (game-settings rebinding):
+  click it (or press Enter while focused) to capture, and the next key pressed
+  becomes the binding. Escape cancels, Delete/Backspace clears to `Key.None`
+  (disable via `SetAllowClear(false)`), and a pointer press outside cancels.
+  Key names come from the active keyboard layout via `NowKeyNames.GetName`,
+  which is public for building your own binding lists.
 - `Radio(label, isOn).Draw()` returns true when clicked; set your selection in
   response.
 - `TextField` supports click/drag selection (shaped-text cluster aware),
-  standard editing keys with repeat, copy/cut/paste/select-all, double-click
-  select-all, placeholder text, IME composition (rendered inline at the
-  caret, underlined), and the mobile on-screen keyboard.
+  shift-click to extend the selection, standard editing keys with repeat,
+  copy/cut/paste/select-all, undo/redo (Ctrl/Cmd+Z, Ctrl+Y/Cmd+Shift+Z),
+  double-click select-all, placeholder text (visible while an empty field is
+  focused), IME composition (rendered inline at the caret, underlined), and
+  the mobile on-screen keyboard. Enter commits and blurs; Escape reverts the
+  field to the value it had when it gained focus, then blurs. Word and line
+  navigation follow the platform: Ctrl+arrows jump words on Windows/Linux,
+  while macOS uses Option+arrows for words and Cmd+arrows for line ends.
 - `TextArea` is the multi-line editor: word-wrapped with every character
   preserved, caret up/down with a pixel goal column, Home/End per line and
   Ctrl+Home/End per document, shift-selection on every movement, click/drag,
-  double-click word and triple-click line selection, Enter inserts a newline
-  (Escape blurs), IME composition, multi-line clipboard, and a height that
-  grows with content between `SetLines(min, max)` with scroll-to-caret and
-  wheel scrolling beyond it.
+  double-click word and triple-click line selection, shift-click extension,
+  undo/redo, Enter inserts a newline (Escape blurs), IME composition,
+  multi-line clipboard, and a height that grows with content between
+  `SetLines(min, max)` with scroll-to-caret, wheel scrolling, and a draggable
+  scrollbar thumb.
 - `Dropdown` opens an overlay popup that blocks input underneath, scrolls when
-  long, and closes on selection, outside click, or cancel. Selection applies
-  on the next frame's Draw.
+  long (clamped to the visible view), and closes on selection, outside press,
+  or cancel — the dismissing press is consumed and never activates the control
+  beneath. While open, arrow keys move the highlight, Return commits,
+  and typing jumps to the first option starting with that letter. Selection
+  applies on the next frame's Draw.
 - `EnumDropdown<TEnum>` wraps dropdown selection for enum values, and
   `EnumFlags<TEnum>` draws checkboxes for single-bit flag values.
 - `OpenFileField`, `SaveFileField`, `DirectoryField`, and the generic
@@ -166,8 +203,75 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
 - `ScrollView` scrolls with the wheel while hovered and with the scrollbar
   thumb; content height is the layout group's measured extent (one frame
   late, like all layout measurement). Focus navigation can move to clipped
-  children and scrolls the viewport to reveal the focused control. Vertical
-  only for now.
+  children and scrolls the viewport to reveal the focused control. The scope
+  exposes `scrollOffset` and `ScrollToEnd()` for programmatic control (e.g.
+  chat stick-to-bottom). Vertical only for now.
+
+## Inspector
+
+`NowLayout.Inspector().Draw(ref target)` (or `Now.Inspector(rect)` at an
+explicit rect) renders Unity-style label + control rows for any serializable
+type through reflection — built for settings screens, debug panels and modding
+UI where the edited types aren't known at compile time.
+
+```csharp
+[Serializable]
+class GameSettings
+{
+    [Header("Profile")]
+    public string playerName = "Player One";
+    [Range(1, 99)] public int level = 12;
+    public Difficulty difficulty = Difficulty.Normal;   // enum dropdown
+    public SpawnAreas spawnAreas = SpawnAreas.Ground;   // [Flags] mask dropdown
+    public LayerMask hitLayers = ~0;
+
+    public Vector3 offset;
+    public Quaternion facing = Quaternion.identity;     // edited as Euler angles
+    public Color tint = Color.white;
+    public AnimationCurve falloff = AnimationCurve.Linear(0, 0, 1, 1);
+
+    public GraphicsSection graphics = new();            // nested foldout
+    public List<string> tags = new();                   // resizable list
+}
+
+GameSettings _settings = new();
+
+void DrawSettings()
+{
+    if (NowLayout.Inspector().Draw(ref _settings))
+        ApplySettings(_settings);
+}
+```
+
+- Fields follow Unity's serialization rules: public fields plus
+  `[SerializeField]` non-public ones, minus `[NonSerialized]`,
+  `[HideInInspector]`, readonly and static fields. Base-class fields come
+  first and names nicify like Unity (`m_PlayerName` → "Player Name").
+- `[Header]`, `[Space]`, `[Range]` (slider), `[Min]`, `[TextArea]` and
+  `[Multiline]` are honored.
+- Every value control maps to its built-in twin: bool → checkbox, numbers →
+  typed text fields (all widths, including double/long), string → text
+  field/area, enums → dropdown or mask dropdown for `[Flags]`, Color/Color32,
+  vectors, Rect/RectInt, Bounds/BoundsInt, Quaternion (as Euler, drift-free),
+  Gradient, AnimationCurve, LayerMask, DateTime/TimeSpan
+  (pass `SetToday(...)` for the calendar's today ring — caller-passed by
+  design).
+- Nested serializable classes/structs render behind foldouts; arrays and
+  `List<T>` get a foldout, a size field, per-element rows and +/− buttons.
+  Null strings draw as empty; null lists and nested classes are auto-created
+  like Unity's serializer (reported as a change).
+- `UnityEngine.Object` references render read-only (`name (Type)` or
+  `None (Type)`), since there is no asset picker at runtime.
+- `Draw(ref value)` works for structs and classes and returns true when any
+  field changed this frame; `Draw(object target)` edits an existing instance
+  in place.
+- `NowInspector.SetDrawer<T>((ref T value) => ...)` takes over the control
+  cell for a type everywhere it appears — the way to render otherwise
+  unsupported types or restyle built-in rows. `SetLabelWidth`, `SetSpacing`,
+  `SetIndent` and `SetMaxDepth` tune the layout.
+- Rows read and write fields through reflection every frame (value-typed
+  fields box); it is a debugging/modding surface, not a hot path for
+  thousands of fields.
 
 ## File picker fields
 
@@ -339,6 +443,7 @@ Now.ColorPicker(new NowRect(20, 140, 180, 30)).Draw(ref tint);
 Now.GradientField(new NowRect(20, 180, 180, 30)).Draw(ref ramp);
 Now.AnimationCurveField(new NowRect(20, 220, 180, 34)).Draw(ref falloff);
 Now.OpenFileField(new NowRect(20, 264, 260, 30)).SetFilter("Text", "txt", "md").Draw(ref loadPath);
+Now.KeyBindingField(new NowRect(20, 300, 140, 30)).Draw(ref jumpKey);
 ```
 
 Use `NowCornerRadius` or the four-float `SetRadius(topLeft, topRight,
@@ -604,7 +709,7 @@ public static bool MyToggleSwitch(
     // 4. Draw with theme styles.
     var track = theme.Rectangle(rect, value ? NowRectangleStyle.Accent : NowRectangleStyle.Muted);
     track.radius = new Vector4(rect.height, rect.height, rect.height, rect.height) * 0.5f;
-    track.color = NowControls.StateTint(track.color, NowControlState.Transition(
+    track.color = NowControls.StateColor(track.color, NowControlState.Transition(
         interaction, "hover", interaction.hovered), interaction.held);
 
     if (focused)

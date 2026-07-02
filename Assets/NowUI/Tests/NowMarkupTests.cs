@@ -1,8 +1,62 @@
 using NUnit.Framework;
+using NowUI;
 using NowUI.Markup;
+using UnityEngine;
 
 public class NowMarkupTests
 {
+    sealed class FakeProvider : INowInputProvider
+    {
+        public NowInputSnapshot snapshot;
+
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot result)
+        {
+            result = snapshot;
+            return true;
+        }
+    }
+
+    NowFontAsset _font;
+    FakeProvider _provider;
+    NowDrawList _drawList;
+    static readonly Vector2 Surface = new Vector2(512, 512);
+
+    [OneTimeSetUp]
+    public void LoadFont()
+    {
+        _font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        Assert.NotNull(_font, "Default font resource missing.");
+    }
+
+    [SetUp]
+    public void SetUp()
+    {
+        NowInput.Reset();
+        NowFocus.Reset();
+        NowControlState.Reset();
+        NowControls.Reset();
+        NowOverlay.Reset();
+        NowContextMenu.Reset();
+        NowMarkup.Reset();
+        _provider = new FakeProvider();
+        _drawList = new NowDrawList();
+        Now.defaultFont = _font;
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _drawList.Dispose();
+        Now.defaultFont = null;
+        NowInput.Reset();
+        NowFocus.Reset();
+        NowControlState.Reset();
+        NowControls.Reset();
+        NowOverlay.Reset();
+        NowContextMenu.Reset();
+        NowMarkup.Reset();
+    }
+
     static string TextNode(NowMarkupFile source)
     {
         return source.document.root.children[0].children[0].text;
@@ -84,5 +138,76 @@ public class NowMarkupTests
             if (System.IO.File.Exists(path))
                 System.IO.File.Delete(path);
         }
+    }
+
+    [Test]
+    public void CachedDocumentsAreReusedAcrossAlternation()
+    {
+        var a1 = NowMarkup.GetCached("<text>alternating alpha</text>");
+        var b1 = NowMarkup.GetCached("<text>alternating beta</text>");
+
+        Assert.AreSame(a1, NowMarkup.GetCached("<text>alternating alpha</text>"),
+            "alternating between documents must not evict either one");
+        Assert.AreSame(b1, NowMarkup.GetCached("<text>alternating beta</text>"),
+            "alternating between documents must not evict either one");
+    }
+
+    [Test]
+    public void ResultsAreInvalidatedByTheNextDraw()
+    {
+        var document = NowMarkupDocument.Parse("<column><text>events</text></column>");
+        var rect = new NowRect(0, 0, 200f, 120f);
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            var first = document.Draw(rect);
+            Assert.IsNotNull(first.events, "a fresh result must expose its events");
+
+            var second = document.Draw(rect);
+
+            Assert.Throws<System.InvalidOperationException>(() => { var _ = first.events; },
+                "reading a result after the document drew again must throw");
+            Assert.IsNotNull(second.events, "the latest result must stay readable");
+        }
+    }
+
+    [Test]
+    public void CachedDocumentDrawIsAllocationFreeAfterWarmup()
+    {
+        var document = NowMarkupDocument.Parse(
+            "<style>.card { background: #202830; radius: 6; padding: 8; gap: 6; }</style>" +
+            "<column class=\"card\"><text font-size=\"18\" color=\"#ffcc00\">Steady <b>state</b> heading</text>" +
+            "<text>plain body copy that stays unchanged</text></column>");
+        var rect = new NowRect(0, 0, 320f, 240f);
+        var state = new NowMarkupState();
+
+        void DrawFrame()
+        {
+            using (NowInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+                document.Draw(rect, state);
+        }
+
+        DrawFrame();
+        DrawFrame();
+        DrawFrame();
+
+        long before;
+
+        try
+        {
+            before = System.GC.GetAllocatedBytesForCurrentThread();
+        }
+        catch (System.NotImplementedException)
+        {
+            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
+            return;
+        }
+
+        DrawFrame();
+        long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.AreEqual(0, allocated, "steady-state markup draw must not allocate");
     }
 }

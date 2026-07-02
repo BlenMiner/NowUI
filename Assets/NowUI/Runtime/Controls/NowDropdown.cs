@@ -6,10 +6,13 @@ namespace NowUI
     /// <summary>
     /// Dropdown selector:
     /// <code>NowLayout.Dropdown(qualityNames).Draw(ref qualityIndex);</code>
-    /// The popup draws through <see cref="NowOverlay"/> — above everything, with
-    /// the controls underneath pointer-blocked — and closes on selection, on a
-    /// click outside, or on cancel. Long lists scroll. Selection from the popup
-    /// applies on the next frame's Draw (deferred draws run after Draw returns).
+    /// The popup draws through <see cref="NowOverlay"/> — above everything, and
+    /// modal while open: a press outside only dismisses, it never activates the
+    /// control beneath. Long lists clamp to the view and scroll. Arrows move a
+    /// popup-local highlight from the selected item, submit commits it, typing
+    /// jumps to the next option starting with that letter, and cancel closes.
+    /// Selection from the popup applies on the next frame's Draw (deferred
+    /// draws run after Draw returns).
     /// </summary>
     [NowBuilder]
     public struct NowDropdown
@@ -35,6 +38,9 @@ namespace NowUI
             public int scrollId;
             public bool scrolls;
             public float itemHeight;
+            public int highlight = -1;
+            public bool highlightMovedByKeyboard;
+            public int openedFrame;
             public NowRect field;
             public NowRect popupRect;
             public NowRect itemArea;
@@ -105,7 +111,17 @@ namespace NowUI
             ref bool open = ref NowControlState.Get<bool>(id);
 
             if (interaction.clicked || submitted)
+            {
                 open = !open;
+
+                if (open)
+                {
+                    var openState = GetState(id);
+                    openState.highlight = selected >= 0 && selected < optionCount ? selected : -1;
+                    openState.highlightMovedByKeyboard = false;
+                    openState.openedFrame = NowInput.current.frame;
+                }
+            }
 
             if (open && optionCount == 0)
                 open = false;
@@ -145,13 +161,9 @@ namespace NowUI
             var popupRect = new NowRect(field.x, field.yMax + styles.dropdownPopupGap, field.width, popupHeight);
 
             if (fitToView)
-                popupRect = NowOverlay.FitToView(popupRect);
+                popupRect = NowOverlay.ClampToView(popupRect);
 
-            if (!_popupStates.TryGetValue(id, out var state))
-            {
-                state = new PopupState();
-                _popupStates[id] = state;
-            }
+            var state = GetState(id);
 
             state.themeAsset = themeAsset;
             state.options = options;
@@ -161,13 +173,25 @@ namespace NowUI
             state.pendingId = NowInput.GetId(id, "pending");
             state.itemSeed = NowInput.GetId(id, "item");
             state.scrollId = NowInput.GetId(id, "popup-scroll");
-            state.scrolls = contentHeight > styles.dropdownMaxPopupHeight;
+            state.scrolls = popupRect.height < contentHeight - 0.5f;
             state.itemHeight = itemHeight;
             state.field = Now.TransformScreenRect(field);
             state.popupRect = popupRect;
             state.itemArea = popupRect.Inset(popupPadding);
 
+            NowOverlay.BlockAllSurfaces(id);
             NowOverlay.Defer(popupRect, id, DrawPopup);
+        }
+
+        static PopupState GetState(int id)
+        {
+            if (!_popupStates.TryGetValue(id, out var state))
+            {
+                state = new PopupState();
+                _popupStates[id] = state;
+            }
+
+            return state;
         }
 
         static void DrawPopup(int stateId)
@@ -179,6 +203,8 @@ namespace NowUI
             var popupRect = state.popupRect;
 
             themeAsset.controlRenderer.DrawPopupBackground(themeAsset, popupRect, menu: false);
+            UpdateKeyboard(state);
+            RevealHighlight(state);
 
             if (state.scrolls)
             {
@@ -191,12 +217,129 @@ namespace NowUI
             }
 
             var snapshot = NowInput.current;
-            bool pressedOutside = snapshot.primaryPressed &&
+            bool fieldPressClaimedByField = state.field.Contains(snapshot.pointerPosition) &&
+                NowInput.activeId == state.id;
+            bool pressedOutside = snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
-                !state.field.Contains(snapshot.pointerPosition);
+                !fieldPressClaimedByField;
 
-            if (pressedOutside || (snapshot.cancelPressed && !NowOverlay.HasNestedOverlay(state.id)))
+            if (pressedOutside ||
+                (snapshot.cancelPressed && !NowInput.cancelConsumed && !NowOverlay.HasNestedOverlay(state.id)))
+            {
                 NowControlState.Get<bool>(state.id) = false;
+            }
+        }
+
+        /// <summary>
+        /// Menu-style keyboard driving for the open popup: a popup-local
+        /// highlight (never <see cref="NowFocus"/> — items taking focus would
+        /// clear focus-owned state elsewhere), arrows wrap, submit commits and
+        /// typing a letter jumps to the next option starting with it. Base
+        /// focus navigation is locked while the popup is open.
+        /// </summary>
+        static void UpdateKeyboard(PopupState state)
+        {
+            if (NowInput.isPassive)
+                return;
+
+            NowFocus.LockNavigation();
+
+            var snapshot = NowInput.current;
+            float navY = snapshot.navigation.y;
+
+            if (NowControlState.Repeat(state.id, "highlight", Mathf.Abs(navY) > 0.55f, 0.35f, 0.12f) &&
+                state.optionCount > 0)
+            {
+                MoveHighlight(state, navY < 0f ? 1 : -1);
+            }
+
+            TypeToSelect(state);
+
+            if (snapshot.submitPressed &&
+                snapshot.frame != state.openedFrame &&
+                state.highlight >= 0 &&
+                state.highlight < state.optionCount)
+            {
+                NowControlState.Get<int>(state.pendingId) = state.highlight + 1;
+                NowControlState.Get<bool>(state.id) = false;
+            }
+        }
+
+        static void MoveHighlight(PopupState state, int step)
+        {
+            int count = state.optionCount;
+            int next;
+
+            if (state.highlight < 0 || state.highlight >= count)
+            {
+                next = step > 0 ? 0 : count - 1;
+            }
+            else
+            {
+                next = state.highlight + step;
+
+                if (next >= count)
+                    next = 0;
+                else if (next < 0)
+                    next = count - 1;
+            }
+
+            SetHighlight(state, next);
+        }
+
+        static void TypeToSelect(PopupState state)
+        {
+            string typed = NowTextInput.current.characters;
+
+            if (string.IsNullOrEmpty(typed) || state.optionCount == 0)
+                return;
+
+            char first = char.ToUpperInvariant(typed[0]);
+            int start = state.highlight >= 0 && state.highlight < state.optionCount ? state.highlight : -1;
+
+            for (int offset = 1; offset <= state.optionCount; ++offset)
+            {
+                int index = (start + offset) % state.optionCount;
+                string option = state.options[index];
+
+                if (!string.IsNullOrEmpty(option) && char.ToUpperInvariant(option[0]) == first)
+                {
+                    SetHighlight(state, index);
+                    return;
+                }
+            }
+        }
+
+        static void SetHighlight(PopupState state, int index)
+        {
+            state.highlight = index;
+            state.highlightMovedByKeyboard = true;
+            NowControlState.RequestRepaint();
+        }
+
+        /// <summary>
+        /// Shifts a scrolling popup just enough to reveal the keyboard-moved
+        /// highlight; hover and free wheel scrolling never trigger it.
+        /// </summary>
+        static void RevealHighlight(PopupState state)
+        {
+            if (!state.highlightMovedByKeyboard)
+                return;
+
+            state.highlightMovedByKeyboard = false;
+
+            if (!state.scrolls || state.highlight < 0)
+                return;
+
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(state.scrollId);
+            float top = state.highlight * state.itemHeight;
+            float bottom = top + state.itemHeight;
+            float viewHeight = state.itemArea.height;
+
+            if (top < scroll.y)
+                scroll.y = top;
+            else if (bottom > scroll.y + viewHeight)
+                scroll.y = bottom - viewHeight;
         }
 
         static void DrawItems(PopupState state)
@@ -216,7 +359,7 @@ namespace NowUI
                     state.themeAsset,
                     itemRect,
                     state.options[i],
-                    i == state.selected,
+                    i == state.selected || i == state.highlight,
                     itemInteraction));
 
                 if (itemInteraction.clicked)

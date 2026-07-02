@@ -406,6 +406,8 @@ namespace NowUI
             float blurRadius,
             NowGlassBlurQuality quality)
         {
+            blurRadius = QuantizeSharedBlurRadius(blurRadius);
+
             for (int i = 0; i < state.sharedBackdrops.Count; ++i)
             {
                 var shared = state.sharedBackdrops[i];
@@ -426,6 +428,17 @@ namespace NowUI
             };
             state.sharedBackdrops.Add(created);
             return created;
+        }
+
+        /// <summary>
+        /// Shared backdrops are keyed on blur radius; quantizing to quarter-pixel
+        /// steps (with all unblurred radii collapsing to zero, matching the
+        /// <see cref="ShouldBlur"/> threshold) lets animated radii reuse one
+        /// capture instead of re-allocating full-resolution textures every frame.
+        /// </summary>
+        static float QuantizeSharedBlurRadius(float blurRadius)
+        {
+            return blurRadius < 0.25f ? 0f : Mathf.Round(blurRadius * 4f) * 0.25f;
         }
 
         static RequestState GetRequestState(CameraState state, NowWorldGraphic requester)

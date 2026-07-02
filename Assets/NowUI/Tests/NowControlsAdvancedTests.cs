@@ -219,12 +219,12 @@ public class NowControlsAdvancedTests
 
     void FocusField()
     {
-        NowFocus.Focus(NowControls.GetControlId("name"));
+        NowFocus.Focus(NowInput.GetId("name"));
     }
 
     ref NowTextEditState FieldState()
     {
-        return ref NowControlState.Get<NowTextEditState>(NowControls.GetControlId("name"));
+        return ref NowControlState.Get<NowTextEditState>(NowInput.GetId("name"));
     }
 
     static Vector2 TextFieldPoint(string textBefore)
@@ -791,6 +791,316 @@ public class NowControlsAdvancedTests
         DrawFrame(MenuPointer(new Vector2(420f, 220f), scroll: new Vector2(0f, -3f)));
 
         Assert.IsFalse(NowContextMenu.isOpen, "Scrolling away from the menu must close it.");
+    }
+
+    [Test]
+    public void RightClickDoesNotLeakThroughAnOpenOverlay()
+    {
+        var region = new NowRect(20f, 20f, 200f, 40f);
+        var inside = new Vector2(60f, 36f);
+
+        bool DrawFrame(NowInputSnapshot snapshot, bool withOverlay)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+            bool rightClicked;
+
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                rightClicked = NowInput.WasRightClicked(region);
+
+                if (withOverlay)
+                    NowOverlay.DeferScreen(region, 9401, _ => { });
+
+                NowOverlay.Flush();
+            }
+
+            return rightClicked;
+        }
+
+        var rightPress = new NowInputSnapshot(
+            inside, NowPointerButtons.Secondary, NowPointerButtons.Secondary, NowPointerButtons.None);
+
+        Assert.IsTrue(
+            DrawFrame(rightPress, withOverlay: false),
+            "With nothing above it, a right press in the region must report.");
+
+        DrawFrame(new NowInputSnapshot(inside, false, false, false), withOverlay: true);
+
+        Assert.IsFalse(
+            DrawFrame(rightPress, withOverlay: true),
+            "A right press over an open overlay must not leak to the content beneath it.");
+    }
+
+    [Test]
+    public void DropdownPopupClosesOnASecondaryPressOutside()
+    {
+        var options = new List<string> { "Low", "High" };
+        int selected = 0;
+
+        void DrawFrame(NowInputSnapshot snapshot)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                Now.Dropdown(FieldRect, "quality", options).Draw(ref selected);
+                NowOverlay.Flush();
+            }
+        }
+
+        int dropdownId;
+
+        using (NowInput.Begin(_pointer, Surface))
+            dropdownId = NowControls.GetControlId("quality");
+
+        NowControlState.Get<bool>(dropdownId) = true;
+        var outside = new Vector2(420f, 220f);
+
+        DrawFrame(new NowInputSnapshot(outside, false, false, false));
+        Assert.IsTrue(NowControlState.Get<bool>(dropdownId), "The fixture popup must be open before the press.");
+
+        DrawFrame(new NowInputSnapshot(
+            outside, NowPointerButtons.Secondary, NowPointerButtons.Secondary, NowPointerButtons.None));
+
+        Assert.IsFalse(
+            NowControlState.Get<bool>(dropdownId),
+            "A secondary press outside must dismiss the popup exactly like a primary press.");
+    }
+
+    static NowInputSnapshot MenuKeyboard(Vector2 position, Vector2 navigation = default, bool submitPressed = false)
+    {
+        return new NowInputSnapshot(
+            true, position, position, Vector2.zero,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            Vector2.zero, navigation,
+            false, false, false, submitPressed, false, false, false, false,
+            1, 1f);
+    }
+
+    [Test]
+    public void ContextMenuKeyboardNavigatesAndActivatesItems()
+    {
+        const int menuId = 7305;
+        var anchor = new Vector2(20f, 10f);
+        string clicked = null;
+
+        void DrawFrame(NowInputSnapshot snapshot, bool open = false)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                if (open)
+                    NowContextMenu.Open(menuId, anchor);
+
+                if (NowContextMenu.Begin(menuId))
+                {
+                    if (NowContextMenu.Item("First"))
+                        clicked = "First";
+
+                    if (NowContextMenu.Item("Second"))
+                        clicked = "Second";
+
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+        }
+
+        var down = new Vector2(0f, -1f);
+
+        DrawFrame(MenuKeyboard(anchor), open: true);
+        DrawFrame(MenuKeyboard(anchor, navigation: down));
+        DrawFrame(MenuKeyboard(anchor));
+        DrawFrame(MenuKeyboard(anchor, navigation: down));
+        DrawFrame(MenuKeyboard(anchor));
+        DrawFrame(MenuKeyboard(anchor, submitPressed: true));
+        DrawFrame(MenuKeyboard(anchor));
+
+        Assert.AreEqual("Second", clicked, "Two down pulses and submit must activate the second item.");
+        Assert.IsFalse(NowContextMenu.isOpen, "Keyboard activation closes the menu like a click.");
+    }
+
+    [Test]
+    public void ContextMenuKeyboardDivesIntoAndOutOfSubmenus()
+    {
+        const int menuId = 7306;
+        var anchor = new Vector2(20f, 10f);
+        string clicked = null;
+
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        int DrawFrame(NowInputSnapshot snapshot, bool open = false)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+            int before = renderer.popupBackgrounds;
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                if (open)
+                    NowContextMenu.Open(menuId, anchor);
+
+                if (NowContextMenu.Begin(menuId))
+                {
+                    NowContextMenu.Item("First");
+
+                    if (NowContextMenu.BeginSubmenu("More"))
+                    {
+                        if (NowContextMenu.Item("Nested"))
+                            clicked = "Nested";
+
+                        NowContextMenu.EndSubmenu();
+                    }
+
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+
+            return renderer.popupBackgrounds - before;
+        }
+
+        try
+        {
+            var down = new Vector2(0f, -1f);
+            var right = new Vector2(1f, 0f);
+            var left = new Vector2(-1f, 0f);
+
+            DrawFrame(MenuKeyboard(anchor), open: true);
+            DrawFrame(MenuKeyboard(anchor, navigation: down));
+            DrawFrame(MenuKeyboard(anchor));
+            DrawFrame(MenuKeyboard(anchor, navigation: down));
+            DrawFrame(MenuKeyboard(anchor, navigation: right));
+            Assert.AreEqual(2, DrawFrame(MenuKeyboard(anchor)), "A right pulse on the submenu row must open its child.");
+
+            DrawFrame(MenuKeyboard(anchor, navigation: left));
+            Assert.AreEqual(1, DrawFrame(MenuKeyboard(anchor)), "A left pulse must close the submenu again.");
+
+            DrawFrame(MenuKeyboard(anchor, navigation: right));
+            DrawFrame(MenuKeyboard(anchor));
+            DrawFrame(MenuKeyboard(anchor, submitPressed: true));
+            DrawFrame(MenuKeyboard(anchor));
+
+            Assert.AreEqual("Nested", clicked, "Submit must activate the highlighted submenu item.");
+            Assert.IsFalse(NowContextMenu.isOpen);
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    /// <summary>
+    /// A submenu clamped over its parent (menu opened near the screen edge)
+    /// must own the pointer where they overlap: the covered parent rows must
+    /// neither retarget the open path on dwell nor steal the press.
+    /// </summary>
+    [Test]
+    public void SubmenuOverlappingItsParentOwnsThePointer()
+    {
+        const int menuId = 7307;
+        string clicked = null;
+
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        var styles = theme.controlStyles;
+        float itemHeight = styles.contextMenuItemHeight;
+        float pad = styles.popupPadding;
+        float menuWidth = Mathf.Max(160f, styles.contextMenuMinWidth);
+        var anchor = new Vector2(Surface.x - menuWidth - 12f, 20f);
+
+        int DrawFrame(Vector2 pointer, float time, bool open = false, bool down = false, bool pressed = false, bool released = false)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = new NowInputSnapshot(
+                true, pointer, pointer, Vector2.zero,
+                NowInputSnapshot.ToButtonMask(down, NowPointerButton.Primary),
+                NowInputSnapshot.ToButtonMask(pressed, NowPointerButton.Primary),
+                NowInputSnapshot.ToButtonMask(released, NowPointerButton.Primary),
+                Vector2.zero, Vector2.zero,
+                false, false, false, false, false, false, false, false,
+                1, time);
+
+            int before = renderer.popupBackgrounds;
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                if (open)
+                    NowContextMenu.Open(menuId, anchor);
+
+                if (NowContextMenu.Begin(menuId))
+                {
+                    if (NowContextMenu.BeginSubmenu("More"))
+                    {
+                        NowContextMenu.Item("A");
+
+                        if (NowContextMenu.Item("B"))
+                            clicked = "B";
+
+                        NowContextMenu.Item("C");
+                        NowContextMenu.EndSubmenu();
+                    }
+
+                    if (NowContextMenu.Item("Under"))
+                        clicked = "Under";
+
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+
+            return renderer.popupBackgrounds - before;
+        }
+
+        try
+        {
+            var submenuRow = new Vector2(anchor.x + pad + 10f, anchor.y + pad + itemHeight * 0.5f);
+            float childX = Surface.x - menuWidth;
+            var probe = new Vector2(childX + 10f, anchor.y + pad + itemHeight * 1.5f);
+
+            Assert.Greater(probe.x, anchor.x + pad, "The probe must sit over the parent's covered row.");
+            Assert.Less(probe.x, anchor.x + menuWidth - pad, "The probe must sit over the parent's covered row.");
+
+            DrawFrame(submenuRow, 1.0f, open: true);
+            Assert.AreEqual(2, DrawFrame(submenuRow, 1.05f), "Hovering the submenu row must open its child menu.");
+            Assert.LessOrEqual(renderer.lastMenuPopupRect.xMax, Surface.x, "The submenu must clamp into the view.");
+            Assert.IsTrue(renderer.lastMenuPopupRect.Contains(probe), "The probe must sit inside the clamped submenu.");
+
+            DrawFrame(probe, 1.1f);
+            DrawFrame(probe, 1.5f);
+            Assert.AreEqual(2, DrawFrame(probe, 1.55f), "Dwelling over the overlap must not retarget the covered parent row.");
+
+            DrawFrame(probe, 1.6f, down: true, pressed: true);
+            DrawFrame(probe, 1.65f, released: true);
+            DrawFrame(probe, 1.7f);
+
+            Assert.AreEqual("B", clicked, "The press over the overlap must deliver the submenu item, not the covered row.");
+            Assert.IsFalse(NowContextMenu.isOpen);
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
     }
 
     [Test]

@@ -82,8 +82,9 @@ namespace NowUI
         static int _inputResolverVersion;
         static readonly List<NowWorldGraphic> _instances = new List<NowWorldGraphic>(16);
         static readonly RaycastHit[] _sceneOcclusionHits = new RaycastHit[16];
-        static readonly Plane[] _inputFrustumPlanes = new Plane[6];
-        static readonly Plane[] _rebuildFrustumPlanes = new Plane[6];
+        static readonly Plane[] _frustumPlanes = new Plane[6];
+        static Camera _frustumPlanesCamera;
+        static int _frustumPlanesFrame = -1;
         static InputRayResolution _inputRayResolution;
         static Camera _backdropSortCamera;
 
@@ -113,7 +114,9 @@ namespace NowUI
         [NonSerialized] Texture _glassSharpBackdropTexture;
         [NonSerialized] readonly List<Vector3> _vertices = new List<Vector3>(256);
         [NonSerialized] readonly Dictionary<Material, Material> _materials = new Dictionary<Material, Material>(8);
-        [NonSerialized] Material[] _sharedMaterials = Array.Empty<Material>();
+        [NonSerialized] readonly List<Material> _sharedMaterials = new List<Material>(8);
+        [NonSerialized] bool _sharedMaterialsAssigned;
+        [NonSerialized] Camera _fallbackCamera;
         [NonSerialized] bool _dirty = true;
         [NonSerialized] NowInteractionRepaintTracker _repaintTracker;
         [NonSerialized] bool _hasGlassBatches;
@@ -955,7 +958,14 @@ namespace NowUI
                 _hasGlassBatches = false;
                 _maxGlassBlurRadius = 0f;
                 _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
-                _meshRenderer.sharedMaterials = Array.Empty<Material>();
+
+                if (_sharedMaterials.Count > 0 || !_sharedMaterialsAssigned)
+                {
+                    _sharedMaterials.Clear();
+                    _meshRenderer.SetSharedMaterials(_sharedMaterials);
+                    _sharedMaterialsAssigned = true;
+                }
+
                 return;
             }
 
@@ -964,9 +974,13 @@ namespace NowUI
             _hasGlassBatches = false;
             _maxGlassBlurRadius = 0f;
             _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
+            bool materialsChanged = !_sharedMaterialsAssigned || _sharedMaterials.Count != count;
 
-            if (_sharedMaterials.Length != count)
-                _sharedMaterials = new Material[count];
+            if (_sharedMaterials.Count > count)
+                _sharedMaterials.RemoveRange(count, _sharedMaterials.Count - count);
+
+            while (_sharedMaterials.Count < count)
+                _sharedMaterials.Add(null);
 
             for (int i = 0; i < count; ++i)
             {
@@ -979,10 +993,20 @@ namespace NowUI
                     _maxGlassBlurQuality = MaxQuality(_maxGlassBlurQuality, NowGlassRenderer.GetBatchQuality(batch));
                 }
 
-                _sharedMaterials[i] = GetMaterial(batch);
+                var material = GetMaterial(batch);
+
+                if (!ReferenceEquals(_sharedMaterials[i], material))
+                {
+                    _sharedMaterials[i] = material;
+                    materialsChanged = true;
+                }
             }
 
-            _meshRenderer.sharedMaterials = _sharedMaterials;
+            if (materialsChanged)
+            {
+                _meshRenderer.SetSharedMaterials(_sharedMaterials);
+                _sharedMaterialsAssigned = true;
+            }
         }
 
         void RegisterGlassBackdropIfNeeded()
@@ -1041,7 +1065,7 @@ namespace NowUI
             if (camera == null)
                 return;
 
-            GeometryUtility.CalculateFrustumPlanes(camera, _rebuildFrustumPlanes);
+            var frustumPlanes = GetFrustumPlanes(camera);
 
             for (int i = _instances.Count - 1; i >= 0; --i)
             {
@@ -1072,7 +1096,7 @@ namespace NowUI
                 if (!IsLayerVisible(camera, graphic.gameObject.layer))
                     continue;
 
-                if (!graphic.IsInsideFrustum(_rebuildFrustumPlanes))
+                if (!graphic.IsInsideFrustum(frustumPlanes))
                     continue;
 
                 if (graphic.GetCameraDepth(camera) <= requesterDepth + InputOcclusionEpsilon)
@@ -1096,7 +1120,7 @@ namespace NowUI
             }
 
             var batches = _drawList.batches;
-            int count = Mathf.Min(batches.Count, _sharedMaterials.Length);
+            int count = Mathf.Min(batches.Count, _sharedMaterials.Count);
 
             for (int i = 0; i < count; ++i)
             {
@@ -1123,11 +1147,11 @@ namespace NowUI
             if (_meshRenderer)
                 _meshRenderer.SetPropertyBlock(null);
 
-            if (_drawList is not { hasGeometry: true } || _sharedMaterials == null)
+            if (_drawList is not { hasGeometry: true })
                 return;
 
             var batches = _drawList.batches;
-            int count = Mathf.Min(batches.Count, _sharedMaterials.Length);
+            int count = Mathf.Min(batches.Count, _sharedMaterials.Count);
 
             for (int i = 0; i < count; ++i)
             {
@@ -1290,12 +1314,21 @@ namespace NowUI
             transform.rotation = Quaternion.LookRotation(direction.normalized, cmr.transform.up);
         }
 
+        /// <summary>
+        /// Honors the user-assigned camera when set; otherwise falls back to
+        /// <see cref="Camera.main"/> cached in a non-serialized field so the
+        /// serialized reference is never mutated, re-resolving when the cached
+        /// fallback dies.
+        /// </summary>
         Camera ResolveCamera()
         {
             if (_targetCamera)
                 return _targetCamera;
-            _targetCamera = Camera.main;
-            return _targetCamera;
+
+            if (!_fallbackCamera)
+                _fallbackCamera = Camera.main;
+
+            return _fallbackCamera;
         }
 
         bool TryRayToSurface(Ray ray, out Vector2 surfacePosition, out float distance)
@@ -1339,7 +1372,7 @@ namespace NowUI
                 sceneBlockDistance = float.PositiveInfinity
             };
 
-            GeometryUtility.CalculateFrustumPlanes(cmr, _inputFrustumPlanes);
+            var frustumPlanes = GetFrustumPlanes(cmr);
             resolution.sceneBlockDistance = FindSceneBlockDistance(cmr, resolution.ray);
 
             for (int i = _instances.Count - 1; i >= 0; --i)
@@ -1362,7 +1395,7 @@ namespace NowUI
                 if (!IsLayerVisible(cmr, other.gameObject.layer))
                     continue;
 
-                if (!other.IsInsideFrustum(_inputFrustumPlanes))
+                if (!other.IsInsideFrustum(frustumPlanes))
                     continue;
 
                 if (!other.TryRayToSurface(resolution.ray, out var surfacePosition, out float distance))
@@ -1435,8 +1468,26 @@ namespace NowUI
             if (!IsLayerVisible(cmr, gameObject.layer))
                 return false;
 
-            GeometryUtility.CalculateFrustumPlanes(cmr, _rebuildFrustumPlanes);
-            return IsInsideFrustum(_rebuildFrustumPlanes);
+            return IsInsideFrustum(GetFrustumPlanes(cmr));
+        }
+
+        /// <summary>
+        /// Frustum planes cached per camera per frame, mirroring how
+        /// <see cref="ResolveInputRay"/> caches its ray resolution, so rebuild
+        /// culling, input hit-testing and backdrop collection share one
+        /// <see cref="GeometryUtility.CalculateFrustumPlanes(Camera, Plane[])"/> call.
+        /// </summary>
+        static Plane[] GetFrustumPlanes(Camera cmr)
+        {
+            int frame = Time.frameCount;
+
+            if (_frustumPlanesCamera == cmr && _frustumPlanesFrame == frame)
+                return _frustumPlanes;
+
+            GeometryUtility.CalculateFrustumPlanes(cmr, _frustumPlanes);
+            _frustumPlanesCamera = cmr;
+            _frustumPlanesFrame = frame;
+            return _frustumPlanes;
         }
 
         static bool IsLayerVisible(Camera cmr, int layer)
@@ -1523,9 +1574,11 @@ namespace NowUI
             _hasGlassBatches = false;
             _maxGlassBlurRadius = 0f;
             _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
+            _sharedMaterials.Clear();
+            _sharedMaterialsAssigned = false;
 
             if (_meshRenderer != null)
-                _meshRenderer.sharedMaterials = Array.Empty<Material>();
+                _meshRenderer.SetSharedMaterials(_sharedMaterials);
 
             if (_meshFilter != null && _meshFilter.sharedMesh == _drawList?.mesh)
                 _meshFilter.sharedMesh = null;
@@ -1545,7 +1598,8 @@ namespace NowUI
             }
 
             _materials.Clear();
-            _sharedMaterials = Array.Empty<Material>();
+            _sharedMaterials.Clear();
+            _sharedMaterialsAssigned = false;
         }
 
         static Vector2 SanitizeSize(Vector2 value)
@@ -1645,6 +1699,8 @@ namespace NowUI
             _inputResolverVersion = 0;
             _instances.Clear();
             _inputRayResolution = default;
+            _frustumPlanesCamera = null;
+            _frustumPlanesFrame = -1;
         }
     }
 }

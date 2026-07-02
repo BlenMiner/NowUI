@@ -1,5 +1,8 @@
 # NowUI Transform System Design
 
+> Internal design note for unshipped work — nothing described here is part of
+> the current public API.
+
 ## Problem Statement
 
 The current `NowControls.Scale(float)` approach only scales "internals" (text, padding, outlines) but requires manual pre-scaling of rects and spatial values. This creates:

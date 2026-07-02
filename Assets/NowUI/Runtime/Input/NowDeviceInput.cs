@@ -1,12 +1,38 @@
+using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
 
 namespace NowUI
 {
+    /// <summary>
+    /// Keyboard keys the built-in device input maps to UI navigation, focus,
+    /// and submit. Configured through <see cref="NowInput.navigationKeys"/>;
+    /// Escape-as-cancel is always mapped.
+    /// </summary>
+    [Flags]
+    public enum NowNavigationKeys
+    {
+        None = 0,
+        Arrows = 1 << 0,
+        Wasd = 1 << 1,
+        TabFocus = 1 << 2,
+        SpaceSubmit = 1 << 3,
+        EnterSubmit = 1 << 4,
+        All = Arrows | Wasd | TabFocus | SpaceSubmit | EnterSubmit
+    }
+
     internal struct NowMouseInput
     {
+        /// <summary>Sentinel <see cref="pointerSource"/> value for the mouse.</summary>
+        public const int MousePointerSource = -1;
+
         public bool hasPointer;
+
+        /// <summary>Identifies which physical source drives the pointer this frame
+        /// (<see cref="MousePointerSource"/> for the mouse, the touch id for a
+        /// touch) so consumers can zero deltas when the source changes.</summary>
+        public int pointerSource;
 
         public Vector2 screenPosition;
 
@@ -53,6 +79,7 @@ namespace NowUI
             if (mouse != null)
             {
                 input.hasPointer = true;
+                input.pointerSource = NowMouseInput.MousePointerSource;
                 input.screenPosition = mouse.position.ReadValue();
 
                 // Windows reports wheel ticks as ±120 through the input system
@@ -76,18 +103,18 @@ namespace NowUI
 
             if (touchscreen != null)
             {
-                var primaryTouch = touchscreen.primaryTouch;
-                var press = primaryTouch.press;
-
                 // Only treat the touchscreen as the pointer while a touch is in
                 // contact (or just lifted, so releases still register). Outside of
                 // that window the last touch position is stale and would pin hover
                 // states to wherever the finger left the screen.
-                if (press.isPressed || press.wasPressedThisFrame || press.wasReleasedThisFrame)
+                var touch = SelectTrackedTouch(touchscreen);
+
+                if (touch != null)
                 {
                     input.hasPointer = true;
-                    input.screenPosition = primaryTouch.position.ReadValue();
-                    AppendPointerButton(press, NowPointerButton.Primary, ref input);
+                    input.pointerSource = touch.touchId.ReadValue();
+                    input.screenPosition = touch.position.ReadValue();
+                    AppendPointerButton(touch.press, NowPointerButton.Primary, ref input);
                     hasAnyInput = true;
                 }
             }
@@ -96,12 +123,24 @@ namespace NowUI
 
             if (keyboard != null)
             {
-                input.navigation += ReadKeyboardNavigation(keyboard);
-                input.focusPreviousPressed |= keyboard.tabKey.wasPressedThisFrame && keyboard.shiftKey.isPressed;
-                input.focusNextPressed |= keyboard.tabKey.wasPressedThisFrame && !keyboard.shiftKey.isPressed;
-                MergeButton(keyboard.enterKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
-                MergeButton(keyboard.numpadEnterKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
-                MergeButton(keyboard.spaceKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
+                var navigationKeys = NowInput.navigationKeys;
+                input.navigation += ReadKeyboardNavigation(keyboard, navigationKeys);
+
+                if ((navigationKeys & NowNavigationKeys.TabFocus) != 0)
+                {
+                    input.focusPreviousPressed |= keyboard.tabKey.wasPressedThisFrame && keyboard.shiftKey.isPressed;
+                    input.focusNextPressed |= keyboard.tabKey.wasPressedThisFrame && !keyboard.shiftKey.isPressed;
+                }
+
+                if ((navigationKeys & NowNavigationKeys.EnterSubmit) != 0)
+                {
+                    MergeButton(keyboard.enterKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
+                    MergeButton(keyboard.numpadEnterKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
+                }
+
+                if ((navigationKeys & NowNavigationKeys.SpaceSubmit) != 0)
+                    MergeButton(keyboard.spaceKey, ref input.submitDown, ref input.submitPressed, ref input.submitReleased);
+
                 MergeButton(keyboard.escapeKey, ref input.cancelDown, ref input.cancelPressed, ref input.cancelReleased);
                 hasAnyInput = true;
             }
@@ -123,6 +162,53 @@ namespace NowUI
             return hasAnyInput;
         }
 
+        static int s_trackedTouchId = -1;
+
+        /// <summary>
+        /// Picks the touch that drives the pointer: the currently tracked touch
+        /// while it stays pressed, else the earliest active touch (so lifting one
+        /// finger hands the pointer to another without killing it), else the
+        /// tracked touch's release so drags always see their pointer-up.
+        /// </summary>
+        static TouchControl SelectTrackedTouch(Touchscreen touchscreen)
+        {
+            var touches = touchscreen.touches;
+            TouchControl tracked = null;
+            TouchControl earliest = null;
+            TouchControl trackedRelease = null;
+            double earliestStartTime = double.MaxValue;
+
+            for (int i = 0; i < touches.Count; ++i)
+            {
+                var touch = touches[i];
+                var press = touch.press;
+
+                if (press.isPressed || press.wasPressedThisFrame)
+                {
+                    if (touch.touchId.ReadValue() == s_trackedTouchId)
+                        tracked = touch;
+
+                    double startTime = touch.startTime.ReadValue();
+
+                    if (startTime < earliestStartTime)
+                    {
+                        earliestStartTime = startTime;
+                        earliest = touch;
+                    }
+                }
+                else if (press.wasReleasedThisFrame && touch.touchId.ReadValue() == s_trackedTouchId)
+                {
+                    trackedRelease = touch;
+                }
+            }
+
+            var selected = tracked ?? earliest ?? trackedRelease;
+            bool selectedPressed = selected != null &&
+                (selected.press.isPressed || selected.press.wasPressedThisFrame);
+            s_trackedTouchId = selectedPressed ? selected.touchId.ReadValue() : -1;
+            return selected;
+        }
+
         static void AppendPointerButton(ButtonControl control, NowPointerButton button, ref NowMouseInput input)
         {
             if (control == null)
@@ -140,21 +226,23 @@ namespace NowUI
                 input.pointerButtonsReleased |= mask;
         }
 
-        static Vector2 ReadKeyboardNavigation(Keyboard keyboard)
+        static Vector2 ReadKeyboardNavigation(Keyboard keyboard, NowNavigationKeys navigationKeys)
         {
+            bool arrows = (navigationKeys & NowNavigationKeys.Arrows) != 0;
+            bool wasd = (navigationKeys & NowNavigationKeys.Wasd) != 0;
             float x = 0f;
             float y = 0f;
 
-            if (keyboard.leftArrowKey.isPressed || keyboard.aKey.isPressed)
+            if ((arrows && keyboard.leftArrowKey.isPressed) || (wasd && keyboard.aKey.isPressed))
                 x -= 1f;
 
-            if (keyboard.rightArrowKey.isPressed || keyboard.dKey.isPressed)
+            if ((arrows && keyboard.rightArrowKey.isPressed) || (wasd && keyboard.dKey.isPressed))
                 x += 1f;
 
-            if (keyboard.downArrowKey.isPressed || keyboard.sKey.isPressed)
+            if ((arrows && keyboard.downArrowKey.isPressed) || (wasd && keyboard.sKey.isPressed))
                 y -= 1f;
 
-            if (keyboard.upArrowKey.isPressed || keyboard.wKey.isPressed)
+            if ((arrows && keyboard.upArrowKey.isPressed) || (wasd && keyboard.wKey.isPressed))
                 y += 1f;
 
             return new Vector2(x, y);

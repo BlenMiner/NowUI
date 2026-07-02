@@ -38,6 +38,15 @@ namespace NowUI
         /// <summary>Ctrl on Windows/Linux, Command on macOS.</summary>
         public bool command;
 
+        /// <summary>Alt on Windows/Linux, Option on macOS.</summary>
+        public bool option;
+
+        /// <summary>Word-level movement/deletion modifier: Option on macOS, Ctrl elsewhere.</summary>
+        public bool wordModifier => NowTextInput.isMacPlatform ? option : command;
+
+        /// <summary>Line/document-boundary modifier for arrows and Backspace: Command on macOS, unused elsewhere.</summary>
+        public bool lineModifier => NowTextInput.isMacPlatform && command;
+
         public bool copyPressed;
         public bool pastePressed;
         public bool cutPressed;
@@ -75,6 +84,19 @@ namespace NowUI
         {
             get => _source ??= NowKeyboardTextInputSource.instance;
             set => _source = value;
+        }
+
+        /// <summary>
+        /// True on macOS, where Option/Command drive word and line caret
+        /// movement. Detected from the running platform; settable so tests can
+        /// exercise both conventions.
+        /// </summary>
+        public static bool isMacPlatform = DetectMacPlatform();
+
+        static bool DetectMacPlatform()
+        {
+            return Application.platform == RuntimePlatform.OSXEditor ||
+                Application.platform == RuntimePlatform.OSXPlayer;
         }
 
         public static NowTextInputFrame current
@@ -177,6 +199,7 @@ namespace NowUI
             _source = null;
             _frame = default;
             _frameStamp = -1;
+            isMacPlatform = DetectMacPlatform();
             setImeEnabled = DefaultSetImeEnabled;
             setCompositionCursor = DefaultSetCompositionCursor;
         }
@@ -276,11 +299,12 @@ namespace NowUI
 
                 bool ctrl = keyboard.ctrlKey.isPressed;
                 bool command = keyboard.leftCommandKey.isPressed || keyboard.rightCommandKey.isPressed;
-                frame.command = Application.platform == RuntimePlatform.OSXEditor || Application.platform == RuntimePlatform.OSXPlayer
-                    ? command
-                    : ctrl;
+                frame.command = NowTextInput.isMacPlatform ? command : ctrl;
+                frame.option = keyboard.altKey.isPressed;
 
-                if (frame.command)
+                // AltGr arrives as Ctrl+Alt on Windows/Linux; chords and
+                // character stripping must not swallow the typed characters.
+                if (frame.command && !frame.option)
                 {
                     frame.copyPressed = keyboard.cKey.wasPressedThisFrame;
                     frame.pastePressed = keyboard.vKey.wasPressedThisFrame;
@@ -338,12 +362,12 @@ namespace NowUI
                 string composing = Input.compositionString;
                 frame.composition = string.IsNullOrEmpty(composing) ? null : composing;
 
-                bool isMac = Application.platform == RuntimePlatform.OSXEditor || Application.platform == RuntimePlatform.OSXPlayer;
-                frame.command = isMac
+                frame.command = NowTextInput.isMacPlatform
                     ? Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand)
                     : Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+                frame.option = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt) || Input.GetKey(KeyCode.AltGr);
 
-                if (frame.command)
+                if (frame.command && !frame.option)
                 {
                     frame.copyPressed = Input.GetKeyDown(KeyCode.C);
                     frame.pastePressed = Input.GetKeyDown(KeyCode.V);

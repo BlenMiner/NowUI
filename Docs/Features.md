@@ -81,17 +81,17 @@ buttons.
 
 The built-in render paths set up input where they already own a surface:
 
-- `Now.StartUI(...)` uses `NowInput.defaultProvider`, which defaults to
-  screen-space mouse and touch input from the Unity Input System. It falls
-  back to legacy `UnityEngine.Input` only when the legacy input manager is
-  enabled. If neither source is available, it returns no pointer instead of
-  touching a disabled input API. The default provider reads primary,
-  secondary, middle, back, and forward mouse buttons where the active input
-  backend exposes them, and maps the primary touch to the primary pointer
-  while a finger is in contact. With the Input System it also reads keyboard
-  arrows/WASD, gamepad left stick/D-pad, submit, and cancel. Legacy fallback
-  covers touch, mouse buttons 0-4, arrows/WASD, enter/space, escape, and the
-  first two joystick buttons.
+- `Now.StartUI(...)` uses `NowInput.defaultProvider`, which reads screen-space
+  mouse and touch input from the Unity Input System (the package is a
+  required dependency). When no Input System devices are present, it returns
+  no pointer. The provider reads primary, secondary, middle, back, and
+  forward mouse buttons, maps the active touch to the primary pointer while
+  a finger is in contact (surviving multi-finger handoffs), and reads
+  keyboard arrows/WASD, gamepad left stick/D-pad, submit, and cancel.
+  `NowInput.navigationKeys` disables individual keyboard bindings (WASD,
+  arrows, Tab focus, space/enter submit) for games that need those keys, and
+  `NowInput.dragThreshold` overrides the default click-vs-drag distance,
+  which scales with screen DPI on touch devices.
 - `NowGUI.Auto(...)` and `NowGUILayout.Auto(...)` use IMGUI events.
 - `NowGraphic` uses a `RectTransform` mouse provider.
 - `NowWorldGraphic` uses a ray-to-surface provider for world-space meshes.

@@ -184,8 +184,19 @@ namespace NowUI
             }
         }
 
-        static readonly Dictionary<GlassBatchKey, MaterialMeshEntry> _glassMaterialMeshes =
-            new Dictionary<GlassBatchKey, MaterialMeshEntry>(8);
+        sealed class GlassMeshEntry
+        {
+            public int meshId = -1;
+
+            public int lastUsedFrame;
+        }
+
+        const int GlassEntryLifetimeFrames = 300;
+
+        static readonly Dictionary<GlassBatchKey, GlassMeshEntry> _glassMaterialMeshes =
+            new Dictionary<GlassBatchKey, GlassMeshEntry>(8);
+
+        static readonly List<GlassBatchKey> _staleGlassKeys = new List<GlassBatchKey>(8);
 
         static Material _glassMaterial;
 
@@ -256,9 +267,9 @@ namespace NowUI
             _tmpVertex.position.w = rectHeight;
 
             var key = new GlassBatchKey(
-                Mathf.Max(0f, blurRadius),
-                Mathf.Max(0f, glass.saturation),
-                Mathf.Max(0f, glass.brightness),
+                QuantizeGlassBlurRadius(Mathf.Max(0f, blurRadius)),
+                QuantizeGlassVibrancy(Mathf.Max(0f, glass.saturation)),
+                QuantizeGlassVibrancy(Mathf.Max(0f, glass.brightness)),
                 glass.blurQuality == NowGlassBlurQuality.Auto
                     ? NowGlassSettings.currentBlurQuality
                     : NowGlassSettings.Resolve(glass.blurQuality));
@@ -295,13 +306,58 @@ namespace NowUI
 
         static NowMesh UseGlassMaterial(Material material, Material canvasMaterial, GlassBatchKey key)
         {
+            int frame = Time.frameCount;
+
             if (!_glassMaterialMeshes.TryGetValue(key, out var entry))
             {
-                entry = new MaterialMeshEntry();
+                EvictStaleGlassEntries(frame);
+                entry = new GlassMeshEntry();
                 _glassMaterialMeshes[key] = entry;
             }
 
+            entry.lastUsedFrame = frame;
             return UseMaterial(material, canvasMaterial, ref entry.meshId, NowMeshKind.Glass, key.data);
+        }
+
+        /// <summary>
+        /// Quantizes blur radii to quarter-pixel steps so animated blur or scaled
+        /// transforms reuse a batch key instead of minting one per unique float.
+        /// </summary>
+        static float QuantizeGlassBlurRadius(float value)
+        {
+            return Mathf.Round(value * 4f) * 0.25f;
+        }
+
+        /// <summary>Quantizes saturation and brightness to 0.01 steps for stable batch keys.</summary>
+        static float QuantizeGlassVibrancy(float value)
+        {
+            return Mathf.Round(value * 100f) * 0.01f;
+        }
+
+        /// <summary>Drops batch keys that have not drawn recently so animated values cannot grow the cache without bound.</summary>
+        static void EvictStaleGlassEntries(int frame)
+        {
+            _staleGlassKeys.Clear();
+
+            foreach (var pair in _glassMaterialMeshes)
+            {
+                if (frame - pair.Value.lastUsedFrame > GlassEntryLifetimeFrames)
+                    _staleGlassKeys.Add(pair.Key);
+            }
+
+            for (int i = 0; i < _staleGlassKeys.Count; ++i)
+                _glassMaterialMeshes.Remove(_staleGlassKeys[i]);
+
+            _staleGlassKeys.Clear();
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetForRuntimeLoad()
+        {
+            _glassMaterialMeshes.Clear();
+            _staleGlassKeys.Clear();
+            _glassMaterial = null;
+            _glassCanvasMaterial = null;
         }
     }
 }

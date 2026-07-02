@@ -84,7 +84,7 @@ namespace NowUI.Markdown
         NowMarkdownDocument GetDocument()
         {
             return _hasStyle
-                ? NowMarkdownDocument.Parse(_markdown, _style)
+                ? NowMarkdown.GetCached(_markdown, _style)
                 : NowMarkdown.GetCached(_markdown);
         }
     }
@@ -96,8 +96,9 @@ namespace NowUI.Markdown
     /// NowMarkdown.Document(readmeText).Draw(rect);      // explicit rect
     /// var doc = NowMarkdown.Parse(text);                // retained, for many draws
     /// </code>
-    /// Drawn documents are parsed once and cached by text; layout re-runs only
-    /// when the width or font changes, so steady-state drawing allocates nothing.
+    /// Drawn documents are parsed once and cached by text and style; layout
+    /// re-runs only when the width or font changes, so steady-state drawing
+    /// allocates nothing.
     /// Links report back through <see cref="NowMarkdownResult"/> — opening them
     /// is the caller's decision.
     /// </summary>
@@ -105,12 +106,54 @@ namespace NowUI.Markdown
     {
         const int CacheLimit = 64;
 
-        static readonly Dictionary<string, NowMarkdownDocument> _cache =
-            new Dictionary<string, NowMarkdownDocument>(16);
+        const int RecentSlots = 4;
 
-        static string _lastMarkdown;
+        readonly struct CacheKey : System.IEquatable<CacheKey>
+        {
+            public readonly string markdown;
+            public readonly float fontSize;
 
-        static NowMarkdownDocument _lastDocument;
+            public CacheKey(string markdown, NowMarkdownStyle style)
+            {
+                this.markdown = markdown;
+                fontSize = style.fontSize;
+            }
+
+            public bool Equals(CacheKey other)
+            {
+                return fontSize == other.fontSize &&
+                    string.Equals(markdown, other.markdown, System.StringComparison.Ordinal);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is CacheKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((markdown != null ? markdown.GetHashCode() : 0) * 397) ^ fontSize.GetHashCode();
+                }
+            }
+        }
+
+        struct RecentSlot
+        {
+            public string markdown;
+            public float fontSize;
+            public NowMarkdownDocument document;
+        }
+
+        static readonly Dictionary<CacheKey, NowMarkdownDocument> _cache =
+            new Dictionary<CacheKey, NowMarkdownDocument>(16);
+
+        static readonly List<CacheKey> _cacheOrder = new List<CacheKey>(16);
+
+        static readonly RecentSlot[] _recent = new RecentSlot[RecentSlots];
+
+        static int _nextRecent;
 
         public static NowMarkdownBuilder Document(
             string markdown,
@@ -132,30 +175,59 @@ namespace NowUI.Markdown
 
         internal static NowMarkdownDocument GetCached(string markdown)
         {
+            return GetCached(markdown, NowMarkdownStyle.Default);
+        }
+
+        internal static NowMarkdownDocument GetCached(string markdown, NowMarkdownStyle style)
+        {
             markdown ??= string.Empty;
 
-            if (ReferenceEquals(markdown, _lastMarkdown))
-                return _lastDocument;
-
-            if (!_cache.TryGetValue(markdown, out var document))
+            for (int i = 0; i < _recent.Length; ++i)
             {
-                if (_cache.Count >= CacheLimit)
-                    _cache.Clear();
-
-                document = NowMarkdownDocument.Parse(markdown);
-                _cache[markdown] = document;
+                if (ReferenceEquals(_recent[i].markdown, markdown) && _recent[i].fontSize == style.fontSize)
+                    return _recent[i].document;
             }
 
-            _lastMarkdown = markdown;
-            _lastDocument = document;
+            var key = new CacheKey(markdown, style);
+
+            if (!_cache.TryGetValue(key, out var document))
+            {
+                if (_cache.Count >= CacheLimit)
+                    EvictOldestHalf();
+
+                document = NowMarkdownDocument.Parse(markdown, style);
+                _cache[key] = document;
+                _cacheOrder.Add(key);
+            }
+
+            _recent[_nextRecent] = new RecentSlot
+            {
+                markdown = markdown,
+                fontSize = style.fontSize,
+                document = document
+            };
+            _nextRecent = (_nextRecent + 1) % _recent.Length;
             return document;
+        }
+
+        static void EvictOldestHalf()
+        {
+            int evict = _cacheOrder.Count / 2;
+
+            for (int i = 0; i < evict; ++i)
+                _cache.Remove(_cacheOrder[i]);
+
+            _cacheOrder.RemoveRange(0, evict);
+            System.Array.Clear(_recent, 0, _recent.Length);
+            _nextRecent = 0;
         }
 
         public static void Reset()
         {
             _cache.Clear();
-            _lastMarkdown = null;
-            _lastDocument = null;
+            _cacheOrder.Clear();
+            System.Array.Clear(_recent, 0, _recent.Length);
+            _nextRecent = 0;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

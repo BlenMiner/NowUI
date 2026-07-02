@@ -8,6 +8,18 @@ namespace NowUI
 
         NowPointerButtons _buttonsDown;
 
+        bool _leftDown;
+
+        bool _rightDown;
+
+        bool _upDown;
+
+        bool _downDown;
+
+        bool _submitDown;
+
+        bool _cancelDown;
+
         public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
             Event current = Event.current;
@@ -50,11 +62,43 @@ namespace NowUI
             if (current.type == EventType.MouseLeaveWindow)
                 _buttonsDown = NowPointerButtons.None;
 
+            bool focusPreviousPressed = false;
+            bool focusNextPressed = false;
+            bool submitPressed = false;
+            bool submitReleased = false;
+            bool cancelPressed = false;
+            bool cancelReleased = false;
+
+            if (current.type == EventType.KeyDown)
+            {
+                ApplyKeyDown(
+                    current,
+                    ref focusPreviousPressed,
+                    ref focusNextPressed,
+                    ref submitPressed,
+                    ref cancelPressed);
+            }
+            else if (current.type == EventType.KeyUp)
+            {
+                ApplyKeyUp(current, ref submitReleased, ref cancelReleased);
+            }
+
             Vector2 delta = NowInput.ScaleScreenDelta(current.delta, surface);
-            Vector2 scrollDelta = current.type == EventType.ScrollWheel ? current.delta : Vector2.zero;
+            Vector2 scrollDelta = current.type == EventType.ScrollWheel
+                ? new Vector2(current.delta.x, -current.delta.y) / 3f
+                : Vector2.zero;
+
+            bool inside = position.x >= 0f && position.y >= 0f &&
+                position.x <= surface.size.x && position.y <= surface.size.y;
+            NowPointerArbiter.Claim(
+                this,
+                NowPointerArbiter.TierCanvas,
+                0f,
+                inside,
+                _buttonsDown != NowPointerButtons.None);
 
             snapshot = new NowInputSnapshot(
-                true,
+                NowPointerArbiter.IsOwner(this),
                 position,
                 position - delta,
                 delta,
@@ -62,16 +106,129 @@ namespace NowUI
                 pressed,
                 released,
                 scrollDelta,
-                default,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
+                ReadNavigation(),
+                focusPreviousPressed,
+                focusNextPressed,
+                _submitDown,
+                submitPressed,
+                submitReleased,
+                _cancelDown,
+                cancelPressed,
+                cancelReleased,
                 Time.frameCount,
                 Time.realtimeSinceStartup);
             return true;
+        }
+
+        void ApplyKeyDown(
+            Event current,
+            ref bool focusPreviousPressed,
+            ref bool focusNextPressed,
+            ref bool submitPressed,
+            ref bool cancelPressed)
+        {
+            var navigationKeys = NowInput.navigationKeys;
+
+            switch (current.keyCode)
+            {
+                case KeyCode.LeftArrow when (navigationKeys & NowNavigationKeys.Arrows) != 0:
+                case KeyCode.A when (navigationKeys & NowNavigationKeys.Wasd) != 0:
+                    _leftDown = true;
+                    break;
+                case KeyCode.RightArrow when (navigationKeys & NowNavigationKeys.Arrows) != 0:
+                case KeyCode.D when (navigationKeys & NowNavigationKeys.Wasd) != 0:
+                    _rightDown = true;
+                    break;
+                case KeyCode.UpArrow when (navigationKeys & NowNavigationKeys.Arrows) != 0:
+                case KeyCode.W when (navigationKeys & NowNavigationKeys.Wasd) != 0:
+                    _upDown = true;
+                    break;
+                case KeyCode.DownArrow when (navigationKeys & NowNavigationKeys.Arrows) != 0:
+                case KeyCode.S when (navigationKeys & NowNavigationKeys.Wasd) != 0:
+                    _downDown = true;
+                    break;
+                case KeyCode.Tab when (navigationKeys & NowNavigationKeys.TabFocus) != 0:
+                    if (current.shift)
+                        focusPreviousPressed = true;
+                    else
+                        focusNextPressed = true;
+                    break;
+                case KeyCode.Return when (navigationKeys & NowNavigationKeys.EnterSubmit) != 0:
+                case KeyCode.KeypadEnter when (navigationKeys & NowNavigationKeys.EnterSubmit) != 0:
+                case KeyCode.Space when (navigationKeys & NowNavigationKeys.SpaceSubmit) != 0:
+                    if (!_submitDown)
+                        submitPressed = true;
+
+                    _submitDown = true;
+                    break;
+                case KeyCode.Escape:
+                    if (!_cancelDown)
+                        cancelPressed = true;
+
+                    _cancelDown = true;
+                    break;
+            }
+        }
+
+        void ApplyKeyUp(Event current, ref bool submitReleased, ref bool cancelReleased)
+        {
+            switch (current.keyCode)
+            {
+                case KeyCode.LeftArrow:
+                case KeyCode.A:
+                    _leftDown = false;
+                    break;
+                case KeyCode.RightArrow:
+                case KeyCode.D:
+                    _rightDown = false;
+                    break;
+                case KeyCode.UpArrow:
+                case KeyCode.W:
+                    _upDown = false;
+                    break;
+                case KeyCode.DownArrow:
+                case KeyCode.S:
+                    _downDown = false;
+                    break;
+                case KeyCode.Return:
+                case KeyCode.KeypadEnter:
+                case KeyCode.Space:
+                    if (_submitDown)
+                    {
+                        _submitDown = false;
+                        submitReleased = true;
+                    }
+
+                    break;
+                case KeyCode.Escape:
+                    if (_cancelDown)
+                    {
+                        _cancelDown = false;
+                        cancelReleased = true;
+                    }
+
+                    break;
+            }
+        }
+
+        Vector2 ReadNavigation()
+        {
+            float x = 0f;
+            float y = 0f;
+
+            if (_leftDown)
+                x -= 1f;
+
+            if (_rightDown)
+                x += 1f;
+
+            if (_downDown)
+                y -= 1f;
+
+            if (_upDown)
+                y += 1f;
+
+            return Vector2.ClampMagnitude(new Vector2(x, y), 1f);
         }
 
         static bool TryGetIMGUIButton(int button, out NowPointerButton pointerButton)

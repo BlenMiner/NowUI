@@ -179,7 +179,7 @@ public class NowWorldGraphicTests
         protected override void DrawNowUI(NowRect rect)
         {
             var full = new NowRect(0, 0, rect.width, rect.height);
-            var press = NowInput.Interact(NowInput.CombineId(GetInstanceID(), 101), full);
+            var press = NowInput.Interact(NowInput.CombineId(GetEntityId().GetHashCode(), 101), full);
 
             if (press.clicked)
                 ++behindClicks;
@@ -187,7 +187,7 @@ public class NowWorldGraphicTests
             if (!ownsMenu)
                 return;
 
-            var context = NowInput.Interact(NowInput.CombineId(GetInstanceID(), 102), full, NowPointerButton.Secondary);
+            var context = NowInput.Interact(NowInput.CombineId(GetEntityId().GetHashCode(), 102), full, NowPointerButton.Secondary);
 
             if (context.clicked)
                 NowContextMenu.Open(menuId, context.pointerPosition, fitToView: false);

@@ -56,6 +56,10 @@ namespace NowUI
             return new ControlIdScope(true);
         }
 
+        /// <summary>
+        /// Disambiguates repeated panels using an existing <see cref="NowId"/>;
+        /// a default (empty) id leaves the scope stack untouched.
+        /// </summary>
         public static ControlIdScope IdScope(NowId id)
         {
             if (!id.hasValue)
@@ -141,6 +145,10 @@ namespace NowUI
             return Salt(NowInput.GetId(seed, id));
         }
 
+        /// <summary>
+        /// Resolves an optional explicit id to a control id, falling back to the
+        /// captured call-site identity when the id is default.
+        /// </summary>
         public static int GetControlId(NowId id, int fallbackIdentity)
         {
             return id.ResolveControlId(fallbackIdentity);
@@ -242,6 +250,7 @@ namespace NowUI
             _passiveOccurrences.Clear();
         }
 
+        /// <summary>Clears id scopes, occurrence tables and theme overrides (tests/domain reloads).</summary>
         public static void Reset()
         {
             NowTheme.Reset();

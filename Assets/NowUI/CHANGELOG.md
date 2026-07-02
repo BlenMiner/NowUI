@@ -7,6 +7,31 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Project-wide DX/UX/performance pass.** Text editing follows platform
+  conventions: shift-click extends the selection, text fields and areas gain
+  undo/redo, Escape reverts a text field to its focus-time value while Enter
+  commits, placeholders stay visible while an empty field is focused, AltGr
+  characters are no longer swallowed on Windows/Linux layouts, and macOS uses
+  Option/Cmd word- and line-navigation (Ctrl on Windows/Linux, as before).
+  Popups behave like macOS menus: the press that dismisses a dropdown-family
+  popup is consumed instead of activating the control beneath, Esc closes
+  exactly one layer when popups nest, dropdowns are fully keyboard-navigable
+  (arrows, Return, type-to-select), date pickers support arrow-key day
+  navigation, popups clamp to short views and scroll, the combo box filter
+  stays typable while its popup is open, and a key-binding capture cancelled
+  with Esc no longer also closes the enclosing popup. Time picker edits
+  preserve seconds; split-view dividers keep the grab offset. Steady-state
+  per-frame allocations were removed across the runtime (multi-line text
+  segmentation, numeric field formatting, gradient/curve fields, markdown
+  with styles, rich text layout/hit-testing, markup rendering, docking ids,
+  glass batch keys), scroll input is normalized across UI Toolkit/IMGUI
+  hosts, the drag threshold scales with DPI on touch devices, and
+  `NowInput.navigationKeys` can disable WASD/space/tab/enter UI navigation
+  for games that need those keys. Scroll views expose `scrollOffset` /
+  `ScrollToEnd()`; `NowChip.Draw` now reports removal only via its out
+  parameter; effect contexts take caller-passed time via `SetTime` (no hidden
+  clock); `NowCornerRadius.FromPacked` round-trips correctly.
+
 - **Full visual redesign of the default theme.** New slate-neutral light and
   dark palettes (WCAG-contrast checked), a typographic scale
   (`Display`/`Heading`/`Subheading`/`BodyStrong`/`Label`/`Caption` join the
@@ -128,15 +153,22 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the tick-order-dependent behavior that let clicks land on surfaces behind
   popups and menus.
 
-- **Ten new controls**, all following the standard dual `Now.*`/`NowLayout.*`
-  factories, caller-owned values, theme tokens, focus/keyboard navigation, and
-  zero steady-state allocations: `Switch`, `ProgressBar` (determinate +
-  caller-timed indeterminate), `Badge`, `Chip` (selectable/removable),
-  `NowTooltip.For(...)` (hover/long-press, passive overlay), numeric text field
-  spinner buttons (`SetSpinner`), `TabBar`/`TabView`, `SplitView` (draggable
-  focusable divider), `TreeView` (caller-owned expansion/selection state),
-  `ComboBox` (searchable dropdown), `DatePicker` (calendar popup, range
-  clamping, caller-passed today), and `TimePicker` (12/24h).
+- **A wave of new controls**, all following the standard dual
+  `Now.*`/`NowLayout.*` factories, caller-owned values, theme tokens,
+  focus/keyboard navigation, and zero steady-state allocations: `Switch`,
+  `ProgressBar` (determinate + caller-timed indeterminate), `Badge`, `Chip`
+  (selectable/removable), `NowTooltip.For(...)` (hover/long-press, passive
+  overlay), numeric text field spinner buttons (`SetSpinner`),
+  `TabBar`/`TabView`, `SplitView` (draggable focusable divider), `TreeView`
+  (caller-owned expansion/selection state), `ComboBox` (searchable dropdown),
+  `DatePicker` (calendar popup, range clamping, caller-passed today),
+  `TimePicker` (12/24h), `Foldout` (collapsible section header, caller-owned
+  or control-owned expansion), `MaskField`/`LayerMaskField` (multi-select
+  bit-flag dropdown with Nothing/Everything rows; the LayerMask twin edits
+  the project's named layers), `KeyBindingField` (click-to-capture key
+  binder, with `NowKeyNames.GetName` exposing the display names), and
+  `Inspector` (reflection-driven Unity-style property rows for any
+  serializable type).
 - `NowOverlay.DeferPassive` for overlays that draw on top without blocking the
   pointer.
 

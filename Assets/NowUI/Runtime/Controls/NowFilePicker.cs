@@ -50,6 +50,7 @@ namespace NowUI
         sealed class FolderTreeEntry
         {
             public string path;
+            public string key;
             public string name;
             public int depth;
             public bool current;
@@ -83,14 +84,20 @@ namespace NowUI
             public int upButtonId;
             public int filterIndex;
             public string currentDirectory;
+            public string currentDirectoryKey;
+            public string parentDirectory;
             public string selectedDirectory;
+            public string selectedDirectoryKey;
             public string directoryText;
             public string fileName;
             public string error;
+            public string errorLabel;
             public bool actionError;
             public string pendingPath;
             public bool hasPendingPath;
-            public string pendingTreeFocusPath;
+            public string pendingTreeFocusKey;
+            public bool entriesDirty;
+            public bool treeDirty;
             public NowRect fieldRect;
             public NowRect popupRect;
         }
@@ -310,16 +317,47 @@ namespace NowUI
             state.cancelButtonId = NowInput.CombineId(id, CancelSeed);
             state.goButtonId = NowInput.CombineId(id, GoSeed);
             state.upButtonId = NowInput.CombineId(id, UpSeed);
-            state.currentDirectory = ResolveInitialDirectory(value, settings);
-            state.selectedDirectory = null;
+            SetCurrentDirectory(state, ResolveInitialDirectory(value, settings));
+            SetSelectedDirectory(state, null);
             state.directoryText = state.currentDirectory;
             state.fileName = ResolveInitialFileName(value, settings, mode);
             ClearError(state);
             state.entries.Clear();
             state.treeEntries.Clear();
             state.expandedTreePaths.Clear();
-            state.pendingTreeFocusPath = null;
+            state.pendingTreeFocusKey = null;
+            MarkListsDirty(state);
             RevealFolderInTree(state, state.currentDirectory, focus: true, expandTarget: true);
+        }
+
+        static void SetCurrentDirectory(PopupState state, string directory)
+        {
+            state.currentDirectory = directory;
+            state.currentDirectoryKey = TreePathKey(directory);
+            state.parentDirectory = ParentDirectory(directory);
+        }
+
+        static void SetSelectedDirectory(PopupState state, string directory)
+        {
+            state.selectedDirectory = directory;
+            state.selectedDirectoryKey = TreePathKey(directory);
+        }
+
+        /// <summary>
+        /// The entry list and folder tree rebuild only when marked dirty —
+        /// navigation, filter changes and expand/collapse invalidate them
+        /// explicitly so the open popup never touches the disk per frame.
+        /// </summary>
+        static void MarkListsDirty(PopupState state)
+        {
+            state.entriesDirty = true;
+            state.treeDirty = true;
+        }
+
+        static bool KeyEquals(string left, string right)
+        {
+            return !string.IsNullOrEmpty(left) && !string.IsNullOrEmpty(right) &&
+                string.Equals(left, right, StringComparison.CurrentCultureIgnoreCase);
         }
 
         static void RebuildFilterLabels(PopupState state)
@@ -503,6 +541,7 @@ namespace NowUI
             state.fieldRect = Now.TransformScreenRect(field);
             state.popupRect = CalculatePopupRect(theme, field, settings);
 
+            NowOverlay.BlockAllSurfaces(id);
             NowOverlay.Defer(state.popupRect, id, DrawPopup);
         }
 
@@ -573,7 +612,7 @@ namespace NowUI
 
                 using (NowLayout.Horizontal(height: addressHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
                 {
-                    string parent = ParentDirectory(state.currentDirectory);
+                    string parent = state.parentDirectory;
 
                     if (!string.IsNullOrEmpty(parent))
                     {
@@ -590,7 +629,7 @@ namespace NowUI
                         .SetPlaceholder("Address")
                         .Draw(ref state.directoryText))
                     {
-                        state.selectedDirectory = null;
+                        SetSelectedDirectory(state, null);
                         ClearError(state);
                     }
 
@@ -611,7 +650,7 @@ namespace NowUI
                             .SetPlaceholder("File name...")
                             .Draw(ref state.fileName))
                         {
-                            state.selectedDirectory = null;
+                            SetSelectedDirectory(state, null);
                             ClearError(state);
                         }
                     }
@@ -627,7 +666,8 @@ namespace NowUI
                         if (NowLayout.Dropdown(state.filterId, state.filterLabels).SetStretchWidth().Draw(ref filter))
                         {
                             state.filterIndex = Mathf.Clamp(filter, 0, state.filters.Length - 1);
-                            state.selectedDirectory = null;
+                            SetSelectedDirectory(state, null);
+                            state.entriesDirty = true;
                             ClearError(state);
                         }
                     }
@@ -637,7 +677,7 @@ namespace NowUI
                 {
                     if (!string.IsNullOrEmpty(state.error))
                     {
-                        NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Body), "! " + state.error)
+                        NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Body), state.errorLabel)
                             .SetStretchWidth()
                             .SetColor(new Color(0.86f, 0.24f, 0.24f))
                             .Draw();
@@ -762,17 +802,17 @@ namespace NowUI
         static void DrawFolderTreeRow(PopupState state, NowRect row, FolderTreeEntry entry, int index)
         {
             var theme = state.themeAsset;
-            int id = FolderTreeRowId(state, entry.path, index);
-            bool revealFocus = PathEquals(state.pendingTreeFocusPath, entry.path);
+            int id = FolderTreeRowId(state, entry, index);
+            bool revealFocus = KeyEquals(state.pendingTreeFocusKey, entry.key);
 
             if (revealFocus && !NowInput.isPassive)
             {
                 NowFocus.Focus(id);
-                state.pendingTreeFocusPath = null;
+                state.pendingTreeFocusKey = null;
             }
 
             var interaction = NowControls.Interact(id, row, out bool focused, out bool submitted);
-            bool selected = entry.current || PathEquals(state.selectedDirectory, entry.path);
+            bool selected = entry.current || KeyEquals(state.selectedDirectoryKey, entry.key);
             NowRect visual = row.Inset(2f, 1f);
 
             if (selected)
@@ -827,7 +867,7 @@ namespace NowUI
                 return;
             }
 
-            if ((interaction.clicked || submitted) && !PathEquals(state.currentDirectory, entry.path))
+            if ((interaction.clicked || submitted) && !KeyEquals(state.currentDirectoryKey, entry.key))
                 NavigateTo(state, entry.path);
         }
 
@@ -943,7 +983,7 @@ namespace NowUI
                     return;
                 }
 
-                state.selectedDirectory = entry.path;
+                SetSelectedDirectory(state, entry.path);
                 RevealFolderInTree(state, entry.path, focus: true, expandTarget: false);
 
                 if (state.mode == NowFileDialogMode.OpenFile)
@@ -957,7 +997,7 @@ namespace NowUI
             if (state.mode != NowFileDialogMode.Directory)
             {
                 state.fileName = Path.GetFileName(entry.path);
-                state.selectedDirectory = null;
+                SetSelectedDirectory(state, null);
                 ClearError(state);
 
                 if ((state.mode == NowFileDialogMode.OpenFile || state.mode == NowFileDialogMode.SaveFile) && streak >= 2)
@@ -984,6 +1024,10 @@ namespace NowUI
 
         static void BuildFolderTree(PopupState state)
         {
+            if (!state.treeDirty)
+                return;
+
+            state.treeDirty = false;
             state.treeEntries.Clear();
 
             string current = NowFilePickerUtility.TryGetFullPath(state.currentDirectory);
@@ -998,7 +1042,7 @@ namespace NowUI
                 return;
 
             var visited = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
-            AddFolderTreeBranch(state, chain[0], 0, current, visited);
+            AddFolderTreeBranch(state, chain[0], 0, current, TreePathKey(current), visited);
         }
 
         static void BuildDirectoryChain(string directory, List<string> chain)
@@ -1031,6 +1075,7 @@ namespace NowUI
             string path,
             int depth,
             string currentDirectory,
+            string currentKey,
             HashSet<string> visited)
         {
             if (string.IsNullOrEmpty(path) || depth > 64)
@@ -1041,56 +1086,21 @@ namespace NowUI
             if (string.IsNullOrEmpty(key) || !visited.Add(key))
                 return;
 
-            string[] children = GetVisibleDirectories(path, state.settings.showHidden);
-            bool expanded = children.Length > 0 && IsFolderTreeExpanded(state, path);
-            bool current = PathEquals(path, currentDirectory);
+            bool expanded = state.expandedTreePaths.Contains(key);
+            string[] children = expanded
+                ? GetVisibleDirectories(path, state.settings.showHidden)
+                : Array.Empty<string>();
+            bool hasChildren = expanded
+                ? children.Length > 0
+                : HasVisibleDirectory(path, state.settings.showHidden);
+            expanded &= children.Length > 0;
+            bool current = KeyEquals(key, currentKey);
             bool ancestor = !current && IsAncestorDirectory(path, currentDirectory);
-
-            AddFolderTreeEntry(
-                state,
-                path,
-                depth,
-                current,
-                ancestor,
-                hasChildren: children.Length > 0,
-                expanded: expanded);
-
-            if (!expanded)
-                return;
-
-            for (int i = 0; i < children.Length; ++i)
-                AddFolderTreeBranch(state, children[i], depth + 1, currentDirectory, visited);
-        }
-
-        static void AddFolderTreeEntry(
-            PopupState state,
-            string path,
-            int depth,
-            bool current,
-            bool ancestor,
-            bool hasChildren,
-            bool expanded)
-        {
-            if (string.IsNullOrEmpty(path))
-                return;
-
-            for (int i = 0; i < state.treeEntries.Count; ++i)
-            {
-                if (PathEquals(state.treeEntries[i].path, path))
-                {
-                    if (current)
-                        state.treeEntries[i].current = true;
-
-                    state.treeEntries[i].ancestor |= ancestor;
-                    state.treeEntries[i].hasChildren |= hasChildren;
-                    state.treeEntries[i].expanded |= expanded;
-                    return;
-                }
-            }
 
             state.treeEntries.Add(new FolderTreeEntry
             {
                 path = path,
+                key = key,
                 name = NowFilePickerUtility.DisplayName(path),
                 depth = Mathf.Max(0, depth),
                 current = current,
@@ -1098,6 +1108,12 @@ namespace NowUI
                 hasChildren = hasChildren,
                 expanded = expanded
             });
+
+            if (!expanded)
+                return;
+
+            for (int i = 0; i < children.Length; ++i)
+                AddFolderTreeBranch(state, children[i], depth + 1, currentDirectory, currentKey, visited);
         }
 
         static string[] GetVisibleDirectories(string directory, bool showHidden)
@@ -1134,6 +1150,28 @@ namespace NowUI
             }
         }
 
+        /// <summary>
+        /// Early-exit probe for the collapsed-node expand toggle, so building the
+        /// tree never fully enumerates directories that are not expanded.
+        /// </summary>
+        static bool HasVisibleDirectory(string directory, bool showHidden)
+        {
+            try
+            {
+                foreach (string child in Directory.EnumerateDirectories(directory))
+                {
+                    if (showHidden || !NowFilePickerUtility.IsHidden(child))
+                        return true;
+                }
+
+                return false;
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException)
+            {
+                return false;
+            }
+        }
+
         static void RevealFolderInTree(PopupState state, string directory, bool focus, bool expandTarget)
         {
             string full = NowFilePickerUtility.TryGetFullPath(directory);
@@ -1149,13 +1187,7 @@ namespace NowUI
                 SetFolderTreeExpanded(state, chain[i], true);
 
             if (focus)
-                state.pendingTreeFocusPath = full;
-        }
-
-        static bool IsFolderTreeExpanded(PopupState state, string path)
-        {
-            string key = TreePathKey(path);
-            return !string.IsNullOrEmpty(key) && state.expandedTreePaths.Contains(key);
+                state.pendingTreeFocusKey = TreePathKey(full);
         }
 
         static void SetFolderTreeExpanded(PopupState state, string path, bool expanded)
@@ -1165,18 +1197,19 @@ namespace NowUI
             if (string.IsNullOrEmpty(key))
                 return;
 
-            if (expanded)
-                state.expandedTreePaths.Add(key);
-            else
-                state.expandedTreePaths.Remove(key);
+            bool changed = expanded
+                ? state.expandedTreePaths.Add(key)
+                : state.expandedTreePaths.Remove(key);
+
+            if (changed)
+                state.treeDirty = true;
         }
 
-        static int FolderTreeRowId(PopupState state, string path, int fallbackIndex)
+        static int FolderTreeRowId(PopupState state, FolderTreeEntry entry, int fallbackIndex)
         {
-            string key = TreePathKey(path);
-            return string.IsNullOrEmpty(key)
+            return string.IsNullOrEmpty(entry.key)
                 ? NowInput.CombineId(state.treeSeed, fallbackIndex + 1)
-                : NowInput.GetId(state.treeSeed, key);
+                : NowInput.GetId(state.treeSeed, entry.key);
         }
 
         static string TreePathKey(string path)
@@ -1186,17 +1219,21 @@ namespace NowUI
 
         static void RefreshEntries(PopupState state)
         {
+            if (!state.entriesDirty)
+                return;
+
+            state.entriesDirty = false;
             state.entries.Clear();
 
             if (string.IsNullOrEmpty(state.currentDirectory) || !Directory.Exists(state.currentDirectory))
             {
-                state.error = "Directory not found";
+                SetErrorText(state, "Directory not found");
                 return;
             }
 
             try
             {
-                string parent = ParentDirectory(state.currentDirectory);
+                string parent = state.parentDirectory;
 
                 if (!string.IsNullOrEmpty(parent))
                 {
@@ -1232,7 +1269,7 @@ namespace NowUI
                 if (state.mode == NowFileDialogMode.Directory)
                 {
                     if (!state.actionError)
-                        state.error = null;
+                        SetErrorText(state, null);
 
                     return;
                 }
@@ -1260,11 +1297,11 @@ namespace NowUI
                 }
 
                 if (!state.actionError)
-                    state.error = null;
+                    SetErrorText(state, null);
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException)
             {
-                state.error = ex.Message;
+                SetErrorText(state, ex.Message);
                 state.actionError = false;
             }
         }
@@ -1492,12 +1529,13 @@ namespace NowUI
                 return;
             }
 
-            state.currentDirectory = full;
-            state.selectedDirectory = null;
+            SetCurrentDirectory(state, full);
+            SetSelectedDirectory(state, null);
             state.directoryText = full;
             if (state.mode == NowFileDialogMode.OpenFile)
                 state.fileName = string.Empty;
 
+            MarkListsDirty(state);
             RevealFolderInTree(state, full, focus: true, expandTarget: true);
             ClearError(state);
             NowControlState.RequestRepaint();
@@ -1561,7 +1599,7 @@ namespace NowUI
 
         static void SetError(PopupState state, string error, bool focusFileName)
         {
-            state.error = string.IsNullOrWhiteSpace(error) ? "Invalid selection" : error;
+            SetErrorText(state, string.IsNullOrWhiteSpace(error) ? "Invalid selection" : error);
             state.actionError = true;
 
             if (focusFileName && state.fileNameFieldId != 0)
@@ -1576,8 +1614,18 @@ namespace NowUI
 
         static void ClearError(PopupState state)
         {
-            state.error = null;
+            SetErrorText(state, null);
             state.actionError = false;
+        }
+
+        /// <summary>
+        /// Errors and their "! "-prefixed display label are built together when
+        /// the error changes, so the open popup never concatenates per frame.
+        /// </summary>
+        static void SetErrorText(PopupState state, string error)
+        {
+            state.error = error;
+            state.errorLabel = string.IsNullOrEmpty(error) ? null : "! " + error;
         }
 
         static void Commit(PopupState state, string path)
@@ -1591,12 +1639,17 @@ namespace NowUI
 
         static void HandleDismiss(PopupState state)
         {
-            var snapshot = NowInput.current;
-            bool pressedOutside = snapshot.primaryPressed &&
-                !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
-                !state.fieldRect.Contains(snapshot.pointerPosition);
+            if (NowOverlay.HasNestedOverlay(state.id))
+                return;
 
-            if (pressedOutside || (snapshot.cancelPressed && !NowOverlay.HasNestedOverlay(state.id)))
+            var snapshot = NowInput.current;
+            bool fieldPressClaimedByField = state.fieldRect.Contains(snapshot.pointerPosition) &&
+                NowInput.activeId == state.id;
+            bool pressedOutside = snapshot.anyPointerPressed &&
+                !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
+                !fieldPressClaimedByField;
+
+            if (pressedOutside || (snapshot.cancelPressed && !NowInput.cancelConsumed))
                 NowControlState.Get<bool>(state.id) = false;
         }
 

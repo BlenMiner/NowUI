@@ -86,10 +86,46 @@ namespace NowUI
             public bool noParse;
         }
 
+        readonly struct DerivedTagKey : System.IEquatable<DerivedTagKey>
+        {
+            public readonly string name;
+            public readonly NowRichTextTagHandler handler;
+
+            public DerivedTagKey(string name, NowRichTextTagHandler handler)
+            {
+                this.name = name;
+                this.handler = handler;
+            }
+
+            public bool Equals(DerivedTagKey other)
+            {
+                return string.Equals(name, other.name, System.StringComparison.Ordinal) &&
+                    Equals(handler, other.handler);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is DerivedTagKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((name != null ? name.GetHashCode() : 0) * 397) ^
+                        (handler != null ? handler.GetHashCode() : 0);
+                }
+            }
+        }
+
+        const int DerivedCacheLimit = 32;
+
         readonly bool _defaultTags;
         readonly Dictionary<string, NowRichTextTagHandler> _handlers;
         readonly StringBuilder _output = new StringBuilder(128);
         readonly List<StackEntry> _stack = new List<StackEntry>(8);
+        Dictionary<DerivedTagKey, NowRichTextParser> _derived;
+        NowRichTextParser _defaultTagsVariant;
 
         static readonly Dictionary<string, string> EmptyAttributes = new Dictionary<string, string>(0);
 
@@ -103,6 +139,11 @@ namespace NowUI
             _handlers = handlers;
         }
 
+        /// <summary>
+        /// Returns this parser extended with the built-in tags. Derived parsers
+        /// are memoized, so repeated calls on the same parser return the same
+        /// instance — stable inline builder chains reuse cached parse results.
+        /// </summary>
         public NowRichTextParser WithDefaultTags()
         {
             if (_defaultTags)
@@ -111,14 +152,32 @@ namespace NowUI
             if (_handlers == null || _handlers.Count == 0)
                 return Default;
 
-            return new NowRichTextParser(true, CloneHandlers());
+            return _defaultTagsVariant ??= new NowRichTextParser(true, CloneHandlers());
         }
 
+        /// <summary>
+        /// Returns this parser extended with a custom tag handler. Derived
+        /// parsers are memoized per (name, handler), so repeated calls on the
+        /// same parser return the same instance — stable inline builder chains
+        /// reuse cached parse results instead of reparsing every frame.
+        /// </summary>
         public NowRichTextParser WithTag(string name, NowRichTextTagHandler handler)
         {
+            string normalized = NormalizeName(name);
+            var key = new DerivedTagKey(normalized, handler);
+            _derived ??= new Dictionary<DerivedTagKey, NowRichTextParser>(4);
+
+            if (_derived.TryGetValue(key, out var derived))
+                return derived;
+
+            if (_derived.Count >= DerivedCacheLimit)
+                _derived.Clear();
+
             var handlers = CloneHandlers();
-            handlers[NormalizeName(name)] = handler;
-            return new NowRichTextParser(_defaultTags, handlers);
+            handlers[normalized] = handler;
+            derived = new NowRichTextParser(_defaultTags, handlers);
+            _derived[key] = derived;
+            return derived;
         }
 
         Dictionary<string, NowRichTextTagHandler> CloneHandlers()
@@ -626,7 +685,17 @@ namespace NowUI
 
         static string NormalizeName(string name)
         {
-            return (name ?? string.Empty).Trim().ToLowerInvariant();
+            name ??= string.Empty;
+
+            for (int i = 0; i < name.Length; ++i)
+            {
+                char c = name[i];
+
+                if (char.IsWhiteSpace(c) || char.IsUpper(c))
+                    return name.Trim().ToLowerInvariant();
+            }
+
+            return name;
         }
 
         struct ParsedTag

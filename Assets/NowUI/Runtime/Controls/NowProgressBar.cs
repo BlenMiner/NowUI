@@ -44,10 +44,16 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowProgressBar SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
+        /// <summary>Fixed width in layout flow.</summary>
         public NowProgressBar SetWidth(float width) { _options = _options.SetWidth(width); return this; }
 
+        /// <summary>Fixed height (bar thickness) in layout flow.</summary>
+        public NowProgressBar SetHeight(float height) { _options = _options.SetHeight(height); return this; }
+
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
         public NowProgressBar SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>

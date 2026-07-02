@@ -9,6 +9,8 @@ namespace NowUI.Editor
     {
         static bool s_ShowGenerator = true;
 
+        static GUIStyle s_LabelStyle;
+
         static readonly NowColorToken[] PreviewPaletteTokens =
         {
             NowColorToken.Background,
@@ -231,18 +233,16 @@ namespace NowUI.Editor
 
         static void DrawLabel(Rect rect, string text, Color color, int fontSize, TextAnchor alignment)
         {
-            var style = new GUIStyle(EditorStyles.label)
+            s_LabelStyle ??= new GUIStyle(EditorStyles.label)
             {
-                alignment = alignment,
-                clipping = TextClipping.Clip,
-                fontSize = Mathf.Clamp(fontSize, 9, 24),
-                normal =
-                {
-                    textColor = color
-                }
+                clipping = TextClipping.Clip
             };
 
-            GUI.Label(rect, text, style);
+            s_LabelStyle.alignment = alignment;
+            s_LabelStyle.fontSize = Mathf.Clamp(fontSize, 9, 24);
+            s_LabelStyle.normal.textColor = color;
+
+            GUI.Label(rect, text, s_LabelStyle);
         }
 
         static Color ResolveReadableTextColor(NowThemeAsset themeAsset, NowRectangleStyle style)

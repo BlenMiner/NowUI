@@ -319,7 +319,7 @@ namespace NowUI
         {
             Vector4 radius = reference.Resolve(themeAsset);
             if (radius.x >= 999f || radius.y >= 999f || radius.z >= 999f || radius.w >= 999f)
-                return Circle(rect);
+                return CircleRadius(rect);
 
             if (radius == default)
                 return new Vector4(fallback, fallback, fallback, fallback);
@@ -327,7 +327,7 @@ namespace NowUI
             return radius;
         }
 
-        static Vector4 Circle(NowRect rect)
+        static Vector4 CircleRadius(NowRect rect)
         {
             float radius = Mathf.Min(rect.width, rect.height) * 0.5f;
             return new Vector4(radius, radius, radius, radius);

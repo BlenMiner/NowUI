@@ -124,7 +124,11 @@ namespace NowUI
 
                 if (parts.hour != previousHour || parts.minute != previousMinute)
                 {
-                    value = new TimeSpan(parts.hour, parts.minute, 0);
+                    long subMinuteTicks = value.Ticks % TimeSpan.TicksPerMinute;
+                    value = new TimeSpan(
+                        parts.hour * TimeSpan.TicksPerHour +
+                        parts.minute * TimeSpan.TicksPerMinute +
+                        subMinuteTicks);
                     changed = true;
                 }
             }
@@ -227,6 +231,7 @@ namespace NowUI
             state.field = Now.TransformScreenRect(field);
             state.popupRect = popupRect;
 
+            NowOverlay.BlockAllSurfaces(id);
             NowOverlay.Defer(popupRect, id, DrawPopup);
         }
 
@@ -314,12 +319,17 @@ namespace NowUI
             }
 
             var snapshot = NowInput.current;
-            bool pressedOutside = snapshot.primaryPressed &&
+            bool fieldPressClaimedByField = state.field.Contains(snapshot.pointerPosition) &&
+                NowInput.activeId == state.id;
+            bool pressedOutside = snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
-                !state.field.Contains(snapshot.pointerPosition);
+                !fieldPressClaimedByField;
 
-            if (pressedOutside || (snapshot.cancelPressed && !NowOverlay.HasNestedOverlay(state.id)))
+            if (pressedOutside ||
+                (snapshot.cancelPressed && !NowInput.cancelConsumed && !NowOverlay.HasNestedOverlay(state.id)))
+            {
                 NowControlState.Get<bool>(state.id) = false;
+            }
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

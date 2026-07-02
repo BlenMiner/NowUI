@@ -61,7 +61,7 @@ namespace NowUI
 
         public static NowCornerRadius FromPacked(Vector4 packed)
         {
-            return new NowCornerRadius(packed.w, packed.y, packed.x, packed.z);
+            return new NowCornerRadius(packed.z, packed.x, packed.y, packed.w);
         }
 
         public static implicit operator Vector4(NowCornerRadius radius)

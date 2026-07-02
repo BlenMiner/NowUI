@@ -40,13 +40,13 @@ namespace NowUI
 
         public readonly float yMax => y + height;
 
-        public Vector2 position => new Vector2(x, y);
+        public readonly Vector2 position => new Vector2(x, y);
 
-        public Vector2 size => new Vector2(width, height);
+        public readonly Vector2 size => new Vector2(width, height);
 
-        public Vector2 center => new Vector2(x + width * 0.5f, y + height * 0.5f);
+        public readonly Vector2 center => new Vector2(x + width * 0.5f, y + height * 0.5f);
 
-        public bool isEmpty => width <= 0f || height <= 0f;
+        public readonly bool isEmpty => width <= 0f || height <= 0f;
 
         public readonly bool Contains(Vector2 point)
         {

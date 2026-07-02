@@ -8,8 +8,11 @@ namespace NowUI
     /// Searchable dropdown: closed it looks like a dropdown field, open it becomes
     /// a text filter over the options with a popup of matches.
     /// <code>NowLayout.ComboBox(countryNames).Draw(ref countryIndex);</code>
-    /// Up/down move the highlighted match, submit commits it, cancel closes.
-    /// Selection applies on the next frame's Draw, matching dropdown behavior.
+    /// Up/down move the highlighted match, submit commits it (the first match
+    /// when nothing is highlighted), cancel closes. The open filter field draws
+    /// on the popup's overlay layer so it stays typable while the popup blocks
+    /// the surfaces beneath. Selection applies on the next frame's Draw,
+    /// matching dropdown behavior.
     /// </summary>
     [NowBuilder]
     public struct NowComboBox
@@ -32,13 +35,17 @@ namespace NowUI
             public int id;
             public int selected;
             public int highlight;
+            public bool highlightMovedByKeyboard;
             public int pendingId;
+            public int filterId;
             public int itemSeed;
             public int scrollId;
             public bool scrolls;
             public float itemHeight;
             public string filter = string.Empty;
+            public string placeholder;
             public NowRect field;
+            public NowRect fieldLocal;
             public NowRect popupRect;
             public NowRect itemArea;
         }
@@ -131,19 +138,7 @@ namespace NowUI
             }
 
             var state = GetState(id);
-            string filter = state.filter ?? string.Empty;
-
-            bool filterChanged = new NowTextField(rect, new NowId(filterId), _site)
-                .SetPlaceholder(_placeholder)
-                .Draw(ref filter);
-
-            if (filterChanged)
-            {
-                state.filter = filter;
-                state.highlight = -1;
-            }
-
-            Filter(state, _options, optionCount, filter);
+            Filter(state, _options, optionCount, state.filter ?? string.Empty);
 
             if (!NowInput.isPassive)
             {
@@ -153,21 +148,23 @@ namespace NowUI
                 {
                     int step = navY < 0f ? 1 : -1;
                     state.highlight = Mathf.Clamp(state.highlight + step, 0, state.filteredIndices.Count - 1);
+                    state.highlightMovedByKeyboard = true;
                     NowControlState.RequestRepaint();
                 }
 
                 var snapshot = NowInput.current;
 
-                if (snapshot.submitPressed &&
-                    state.highlight >= 0 &&
-                    state.highlight < state.filteredIndices.Count)
+                if (snapshot.submitPressed && state.filteredIndices.Count > 0)
                 {
-                    pending = state.filteredIndices[state.highlight] + 1;
+                    int row = state.highlight >= 0 && state.highlight < state.filteredIndices.Count
+                        ? state.highlight
+                        : 0;
+                    pending = state.filteredIndices[row] + 1;
                     open = false;
                     NowFocus.Clear();
                 }
 
-                if (snapshot.cancelPressed && !NowOverlay.HasNestedOverlay(id))
+                if (snapshot.cancelPressed && !NowInput.cancelConsumed && !NowOverlay.HasNestedOverlay(id))
                 {
                     open = false;
                     NowFocus.Clear();
@@ -178,7 +175,7 @@ namespace NowUI
                 return changed;
 
             NowControlState.RequestRepaint();
-            DeferPopup(theme, _options, id, rect, selected, _fitToView);
+            DeferPopup(theme, _options, id, filterId, rect, selected, optionCount, _fitToView, _placeholder);
             return changed;
         }
 
@@ -213,9 +210,12 @@ namespace NowUI
             NowThemeAsset themeAsset,
             IReadOnlyList<string> options,
             int id,
+            int filterId,
             NowRect field,
             int selected,
-            bool fitToView)
+            int optionCount,
+            bool fitToView,
+            string placeholder)
         {
             var state = GetState(id);
             var styles = themeAsset.controlStyles;
@@ -227,21 +227,25 @@ namespace NowUI
             var popupRect = new NowRect(field.x, field.yMax + styles.dropdownPopupGap, field.width, popupHeight);
 
             if (fitToView)
-                popupRect = NowOverlay.FitToView(popupRect);
+                popupRect = NowOverlay.ClampToView(popupRect);
 
             state.themeAsset = themeAsset;
             state.options = options;
             state.id = id;
             state.selected = selected;
             state.pendingId = NowInput.GetId(id, "pending");
+            state.filterId = filterId;
             state.itemSeed = NowInput.GetId(id, "item");
             state.scrollId = NowInput.GetId(id, "popup-scroll");
-            state.scrolls = contentHeight > styles.dropdownMaxPopupHeight;
+            state.scrolls = popupRect.height < contentHeight - 0.5f;
             state.itemHeight = itemHeight;
+            state.placeholder = placeholder;
             state.field = Now.TransformScreenRect(field);
+            state.fieldLocal = field;
             state.popupRect = popupRect;
             state.itemArea = popupRect.Inset(popupPadding);
 
+            NowOverlay.BlockAllSurfaces(id);
             NowOverlay.Defer(popupRect, id, DrawPopup);
         }
 
@@ -253,7 +257,10 @@ namespace NowUI
             var themeAsset = state.themeAsset;
             var popupRect = state.popupRect;
 
+            DrawFilterField(state);
+
             themeAsset.controlRenderer.DrawPopupBackground(themeAsset, popupRect, menu: false);
+            RevealHighlight(state);
 
             if (state.filteredIndices.Count == 0)
             {
@@ -274,15 +281,65 @@ namespace NowUI
             }
 
             var snapshot = NowInput.current;
-            bool pressedOutside = snapshot.primaryPressed &&
+            bool pressedOutside = snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
                 !state.field.Contains(snapshot.pointerPosition);
 
             if (pressedOutside)
             {
                 NowControlState.Get<bool>(state.id) = false;
-                NowFocus.Clear();
+
+                if (NowFocus.focusedId == state.filterId)
+                    NowFocus.Clear();
             }
+        }
+
+        /// <summary>
+        /// The open filter draws on the popup's overlay layer, not in the base
+        /// pass: the popup's focus layer would otherwise unfocus it after one
+        /// frame, and the popup's modal pointer block would eat its clicks.
+        /// Edits land in <see cref="PopupState.filter"/> and filter the list on
+        /// the next frame's Draw.
+        /// </summary>
+        static void DrawFilterField(PopupState state)
+        {
+            string filter = state.filter ?? string.Empty;
+
+            bool filterChanged = new NowTextField(state.fieldLocal, new NowId(state.filterId), 0)
+                .SetPlaceholder(state.placeholder)
+                .Draw(ref filter);
+
+            if (!filterChanged)
+                return;
+
+            state.filter = filter;
+            state.highlight = -1;
+            NowControlState.RequestRepaint();
+        }
+
+        /// <summary>
+        /// Shifts a scrolling popup just enough to reveal the keyboard-moved
+        /// highlight; hover and free wheel scrolling never trigger it.
+        /// </summary>
+        static void RevealHighlight(PopupState state)
+        {
+            if (!state.highlightMovedByKeyboard)
+                return;
+
+            state.highlightMovedByKeyboard = false;
+
+            if (!state.scrolls || state.highlight < 0)
+                return;
+
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(state.scrollId);
+            float top = state.highlight * state.itemHeight;
+            float bottom = top + state.itemHeight;
+            float viewHeight = state.itemArea.height;
+
+            if (top < scroll.y)
+                scroll.y = top;
+            else if (bottom > scroll.y + viewHeight)
+                scroll.y = bottom - viewHeight;
         }
 
         static void DrawItems(PopupState state)

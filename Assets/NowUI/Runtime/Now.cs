@@ -567,6 +567,7 @@ namespace NowUI
         sealed class TexturedMaterialEntry
         {
             public Material material;
+            public int lastSyncFrame = -1;
         }
 
         static readonly Dictionary<RectangleMaterialKey, MaterialMeshEntry> _rectangleMaterialMeshes =
@@ -701,6 +702,8 @@ namespace NowUI
                 _texturedMaterialCache[key] = entry;
             }
 
+            int frame = Time.frameCount;
+
             if (entry.material == null || entry.material.shader != source.shader)
             {
                 entry.material = new Material(source)
@@ -709,16 +712,21 @@ namespace NowUI
                     hideFlags = HideFlags.HideAndDontSave
                 };
             }
-            else
+            else if (entry.lastSyncFrame != frame)
             {
                 entry.material.CopyPropertiesFromMaterial(source);
             }
+            else
+            {
+                return entry.material;
+            }
 
+            entry.lastSyncFrame = frame;
             entry.material.mainTexture = texture;
             return entry.material;
         }
 
-        static NowMesh UseCustomRectangleMaterial(NowRectangle rectangle)
+        static NowMesh UseCustomRectangleMaterial(in NowRectangle rectangle)
         {
             Material material = rectangle.material;
             Material canvasMaterial = rectangle.canvasMaterial;
@@ -1565,7 +1573,7 @@ namespace NowUI
         /// the rect itself; that default mask is outset so the SDF edge, outline and blur
         /// fall off instead of clipping the anti-aliasing hard at the bounds. Explicit
         /// masks stay exact.</summary>
-        internal static void DrawRect(NowRectangle rectangle)
+        internal static void DrawRect(in NowRectangle rectangle)
         {
             if (_suppressDrawDepth > 0 || _defaultMaterial == null)
                 return;
@@ -1799,7 +1807,7 @@ namespace NowUI
         /// center stretched. Cell edges share rounded coordinates so slices never
         /// seam. Radius, outline and blur do not apply.
         /// </summary>
-        static void DrawSliced(NowRectangle rectangle, NowMesh mesh, float x0, float y0, float rectWidth, float rectHeight, bool hasTransform)
+        static void DrawSliced(in NowRectangle rectangle, NowMesh mesh, float x0, float y0, float rectWidth, float rectHeight, bool hasTransform)
         {
             Vector4 border = rectangle.spriteBorder;
             float sourceWidth = Mathf.Max(rectangle.spritePixelSize.x, 1f);
@@ -2285,12 +2293,17 @@ namespace NowUI
                 }
 
                 var glyphMaterial = prepared.material;
-                int materialId = font.GetMaterialId(prepared.codepoint, fontSize);
-                mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
-                font.SetMaterialId(prepared.codepoint, fontSize, materialId);
+                bool sameMaterial = mesh != null && ReferenceEquals(mesh.material, glyphMaterial);
 
-                if (mesh == null)
-                    return;
+                if (!sameMaterial)
+                {
+                    int materialId = font.GetMaterialId(prepared.codepoint, fontSize);
+                    mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
+                    font.SetMaterialId(prepared.codepoint, fontSize, materialId);
+
+                    if (mesh == null)
+                        return;
+                }
 
                 if (!ReferenceEquals(pixelRangeFont, font) ||
                     !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
@@ -2366,38 +2379,19 @@ namespace NowUI
             if (!HasShapedControlCharacters(value))
                 return TryDrawSingleShapedLine(style, font, value, fontSize);
 
-            bool hasTab = false;
+            var segmentation = GetShapedSegmentation(value);
+            var segments = segmentation.segments;
+            var controls = segmentation.controls;
 
-            int segmentStart = 0;
-
-            for (int i = 0; i <= value.Length; ++i)
+            for (int s = 0; s < segments.Length; ++s)
             {
-                char control = i < value.Length ? value[i] : '\0';
-
-                if (control == '\t')
-                    hasTab = true;
-
-                if (i < value.Length && control != '\n' && control != '\t')
-                    continue;
-
-                if (i > segmentStart)
-                {
-                    string segment = segmentStart == 0 && i == value.Length
-                        ? value
-                        : value.Substring(segmentStart, i - segmentStart);
-
-                    if (!font.TryGetPreparedShapedRun(segment, fontSize, out _))
-                    {
-                        return false;
-                    }
-                }
-
-                segmentStart = i + 1;
+                if (segments[s] != null && !font.TryGetPreparedShapedRun(segments[s], fontSize, out _))
+                    return false;
             }
 
             float tabAdvance = 0f;
 
-            if (hasTab)
+            if (segmentation.hasTab)
             {
                 if (!font.TryGetShapedRun(" ", out var spaceRun) ||
                     !font.EnsureShapedGlyphs(spaceRun, fontSize))
@@ -2421,20 +2415,13 @@ namespace NowUI
             NowFont pixelRangeFont = null;
             Material pixelRangeMaterial = null;
             float pixelRange = 0f;
-            segmentStart = 0;
 
-            for (int i = 0; i <= value.Length; ++i)
+            for (int s = 0; s < segments.Length; ++s)
             {
-                char control = i < value.Length ? value[i] : '\0';
+                var segment = segments[s];
 
-                if (i < value.Length && control != '\n' && control != '\t')
-                    continue;
-
-                if (i > segmentStart)
+                if (segment != null)
                 {
-                    string segment = segmentStart == 0 && i == value.Length
-                        ? value
-                        : value.Substring(segmentStart, i - segmentStart);
                     font.TryGetPreparedShapedRun(segment, fontSize, out var run);
 
                     if (!AppendShapedRun(
@@ -2455,6 +2442,8 @@ namespace NowUI
                     }
                 }
 
+                char control = controls[s];
+
                 if (control == '\n')
                 {
                     style.rect.x = leftPos;
@@ -2464,11 +2453,79 @@ namespace NowUI
                 {
                     style.rect.x += tabAdvance;
                 }
-
-                segmentStart = i + 1;
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Cached \n/\t split of a shaped source string: <see cref="segments"/>
+        /// holds the text between control characters (null when empty) and
+        /// <see cref="controls"/> the control that follows each segment ('\0' at
+        /// the end of the string).
+        /// </summary>
+        sealed class ShapedSegmentation
+        {
+            public string[] segments;
+            public char[] controls;
+            public bool hasTab;
+        }
+
+        const int SHAPED_SEGMENT_CACHE_LIMIT = 512;
+
+        static readonly Dictionary<string, ShapedSegmentation> _shapedSegmentCache =
+            new Dictionary<string, ShapedSegmentation>(64);
+
+        /// <summary>
+        /// Splits a multi-line shaped string once and caches the result, so repeated
+        /// draws of the same string never allocate per-segment substrings. The cache
+        /// follows the prepared-run cache policy: cleared wholesale past a size limit.
+        /// </summary>
+        static ShapedSegmentation GetShapedSegmentation(string value)
+        {
+            if (_shapedSegmentCache.TryGetValue(value, out var segmentation))
+                return segmentation;
+
+            int controlCount = 1;
+
+            for (int i = 0; i < value.Length; ++i)
+            {
+                char character = value[i];
+
+                if (character == '\n' || character == '\t')
+                    ++controlCount;
+            }
+
+            segmentation = new ShapedSegmentation
+            {
+                segments = new string[controlCount],
+                controls = new char[controlCount]
+            };
+
+            int segmentStart = 0;
+            int index = 0;
+
+            for (int i = 0; i <= value.Length; ++i)
+            {
+                char control = i < value.Length ? value[i] : '\0';
+
+                if (i < value.Length && control != '\n' && control != '\t')
+                    continue;
+
+                segmentation.segments[index] = i > segmentStart
+                    ? value.Substring(segmentStart, i - segmentStart)
+                    : null;
+                segmentation.controls[index] = control;
+                segmentation.hasTab |= control == '\t';
+                ++index;
+                segmentStart = i + 1;
+            }
+
+            if (_shapedSegmentCache.Count >= SHAPED_SEGMENT_CACHE_LIMIT)
+                _shapedSegmentCache.Clear();
+
+            _shapedSegmentCache[value] = segmentation;
+            return segmentation;
         }
 
         static bool HasShapedControlCharacters(string value)
@@ -2658,12 +2715,17 @@ namespace NowUI
 
                 var glyph = shaped.glyph;
                 var glyphMaterial = shaped.material;
-                int materialId = font.GetMaterialId(shaped.encodedKey, fontSize);
-                mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
-                font.SetMaterialId(shaped.encodedKey, fontSize, materialId);
+                bool sameMaterial = mesh != null && ReferenceEquals(mesh.material, glyphMaterial);
 
-                if (mesh == null)
-                    return false;
+                if (!sameMaterial)
+                {
+                    int materialId = font.GetMaterialId(shaped.encodedKey, fontSize);
+                    mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
+                    font.SetMaterialId(shaped.encodedKey, fontSize, materialId);
+
+                    if (mesh == null)
+                        return false;
+                }
 
                 if (!ReferenceEquals(pixelRangeFont, font) ||
                     !ReferenceEquals(pixelRangeMaterial, glyphMaterial))

@@ -22,7 +22,7 @@ public sealed class NowWorldGraphicExample : NowWorldGraphic
         var background = NowInput.Interact(rect, NowPointerButton.Secondary);
 
         if (background.clicked)
-            NowContextMenu.Open(NowInput.CombineId(GetInstanceID(), 0x574d4c62), background.pointerPosition);
+            NowContextMenu.Open(NowInput.CombineId(GetEntityId().GetHashCode(), 0x574d4c62), background.pointerPosition);
 
         DrawMenuLab();
 
@@ -57,7 +57,7 @@ public sealed class NowWorldGraphicExample : NowWorldGraphic
     /// </summary>
     void DrawMenuLab()
     {
-        if (!NowContextMenu.Begin(NowInput.CombineId(GetInstanceID(), 0x574d4c62)))
+        if (!NowContextMenu.Begin(NowInput.CombineId(GetEntityId().GetHashCode(), 0x574d4c62)))
             return;
 
         NowContextMenu.Label("World Menu Lab");
