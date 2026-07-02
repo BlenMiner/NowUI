@@ -235,7 +235,7 @@ MonoBehaviour:
       _useToken: 1
       _token: 2
       _fallback: {x: 12, y: 12, z: 12, w: 12}
-    _contextMenuItemHeight: 40
+    _contextMenuItemHeight: 30
     _contextMenuPaddingX: 12
     _contextMenuMinWidth: 160
     _contextMenuRadius: 12

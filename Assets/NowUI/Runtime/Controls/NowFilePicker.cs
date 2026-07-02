@@ -54,6 +54,8 @@ namespace NowUI
             public int depth;
             public bool current;
             public bool ancestor;
+            public bool hasChildren;
+            public bool expanded;
         }
 
         sealed class PopupState
@@ -65,6 +67,7 @@ namespace NowUI
             public readonly List<string> filterLabels = new List<string>(4);
             public readonly List<BrowserEntry> entries = new List<BrowserEntry>(32);
             public readonly List<FolderTreeEntry> treeEntries = new List<FolderTreeEntry>(32);
+            public readonly HashSet<string> expandedTreePaths = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
             public int id;
             public int areaId;
             public int pathFieldId;
@@ -87,6 +90,7 @@ namespace NowUI
             public bool actionError;
             public string pendingPath;
             public bool hasPendingPath;
+            public string pendingTreeFocusPath;
             public NowRect fieldRect;
             public NowRect popupRect;
         }
@@ -313,6 +317,9 @@ namespace NowUI
             ClearError(state);
             state.entries.Clear();
             state.treeEntries.Clear();
+            state.expandedTreePaths.Clear();
+            state.pendingTreeFocusPath = null;
+            RevealFolderInTree(state, state.currentDirectory, focus: true, expandTarget: true);
         }
 
         static void RebuildFilterLabels(PopupState state)
@@ -362,7 +369,7 @@ namespace NowUI
             if (Directory.Exists(full))
                 return full;
 
-            string directory = null;
+            string directory;
 
             try
             {
@@ -755,8 +762,16 @@ namespace NowUI
         static void DrawFolderTreeRow(PopupState state, NowRect row, FolderTreeEntry entry, int index)
         {
             var theme = state.themeAsset;
-            int id = NowInput.CombineId(state.treeSeed, index + 1);
-            var interaction = NowInput.Interact(id, row);
+            int id = FolderTreeRowId(state, entry.path, index);
+            bool revealFocus = PathEquals(state.pendingTreeFocusPath, entry.path);
+
+            if (revealFocus && !NowInput.isPassive)
+            {
+                NowFocus.Focus(id);
+                state.pendingTreeFocusPath = null;
+            }
+
+            var interaction = NowControls.Interact(id, row, out bool focused, out bool submitted);
             bool selected = entry.current || PathEquals(state.selectedDirectory, entry.path);
             NowRect visual = row.Inset(2f, 1f);
 
@@ -767,7 +782,17 @@ namespace NowUI
                     .SetRadius(3f)
                     .SetColor(new Color(accent.r, accent.g, accent.b, entry.current ? 0.20f : 0.12f))
                     .SetOutline(1f)
-                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, entry.current ? 0.52f : 0.34f))
+                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, focused ? 0.70f : entry.current ? 0.52f : 0.34f))
+                    .Draw();
+            }
+            else if (focused)
+            {
+                Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+                Now.Rectangle(visual)
+                    .SetRadius(3f)
+                    .SetColor(new Color(accent.r, accent.g, accent.b, 0.07f))
+                    .SetOutline(1f)
+                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.42f))
                     .Draw();
             }
             else if (interaction.hovered || interaction.held)
@@ -780,17 +805,29 @@ namespace NowUI
                     .Draw();
             }
 
-            float indent = Mathf.Min(Mathf.Max(0, entry.depth) * 14f, 56f);
-            var iconRect = new NowRect(row.x + 7f + indent, row.y, 20f, row.height);
+            Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+            float indent = Mathf.Min(Mathf.Max(0, entry.depth) * 14f, 84f);
+            var toggleRect = new NowRect(row.x + 5f + indent, row.y, 16f, row.height);
+            var iconRect = new NowRect(toggleRect.xMax + 2f, row.y, 20f, row.height);
             var nameRect = new NowRect(iconRect.xMax + 4f, row.y, Mathf.Max(0f, row.xMax - iconRect.xMax - 10f), row.height);
             Color text = entry.ancestor && !entry.current
-                ? theme.GetColor(NowColorToken.TextMuted, Color.gray)
+                ? muted
                 : theme.GetColor(NowColorToken.Text, Color.black);
+
+            if (entry.hasChildren)
+                NowControls.DrawLeftLabel(theme, toggleRect, entry.expanded ? "▾" : "▸", NowTextStyle.Muted, muted);
 
             NowControls.DrawLeftLabel(theme, iconRect, entry.current ? "📂" : "📁", NowTextStyle.Body, Color.white);
             NowControls.DrawLeftLabel(theme, nameRect, entry.name, NowTextStyle.Body, text);
 
-            if (interaction.clicked && !PathEquals(state.currentDirectory, entry.path))
+            if (interaction.clicked && entry.hasChildren && toggleRect.Contains(interaction.pointerPosition))
+            {
+                SetFolderTreeExpanded(state, entry.path, !entry.expanded);
+                NowControlState.RequestRepaint();
+                return;
+            }
+
+            if ((interaction.clicked || submitted) && !PathEquals(state.currentDirectory, entry.path))
                 NavigateTo(state, entry.path);
         }
 
@@ -907,6 +944,7 @@ namespace NowUI
                 }
 
                 state.selectedDirectory = entry.path;
+                RevealFolderInTree(state, entry.path, focus: true, expandTarget: false);
 
                 if (state.mode == NowFileDialogMode.OpenFile)
                     state.fileName = string.Empty;
@@ -955,57 +993,12 @@ namespace NowUI
 
             var chain = new List<string>(8);
             BuildDirectoryChain(current, chain);
-            int currentDepth = Mathf.Max(0, chain.Count - 1);
 
-            for (int i = 0; i < chain.Count - 1; ++i)
-                AddFolderTreeEntry(state, chain[i], i, current: false, ancestor: true);
+            if (chain.Count == 0)
+                return;
 
-            bool addedCurrent = false;
-            string parent = ParentDirectory(current);
-
-            if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
-            {
-                try
-                {
-                    var siblings = Directory.GetDirectories(parent);
-                    Array.Sort(siblings, StringComparer.CurrentCultureIgnoreCase);
-
-                    for (int i = 0; i < siblings.Length; ++i)
-                    {
-                        if (!state.settings.showHidden && NowFilePickerUtility.IsHidden(siblings[i]) && !PathEquals(siblings[i], current))
-                            continue;
-
-                        bool isCurrent = PathEquals(siblings[i], current);
-                        AddFolderTreeEntry(state, siblings[i], currentDepth, isCurrent, ancestor: false);
-                        addedCurrent |= isCurrent;
-                    }
-                }
-                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException)
-                {
-                    addedCurrent = false;
-                }
-            }
-
-            if (!addedCurrent)
-                AddFolderTreeEntry(state, current, currentDepth, current: true, ancestor: false);
-
-            try
-            {
-                var children = Directory.GetDirectories(current);
-                Array.Sort(children, StringComparer.CurrentCultureIgnoreCase);
-
-                for (int i = 0; i < children.Length; ++i)
-                {
-                    if (!state.settings.showHidden && NowFilePickerUtility.IsHidden(children[i]))
-                        continue;
-
-                    AddFolderTreeEntry(state, children[i], currentDepth + 1, current: false, ancestor: false);
-                }
-            }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException)
-            {
-                // The main list owns user-visible directory errors; keep the tree best-effort.
-            }
+            var visited = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+            AddFolderTreeBranch(state, chain[0], 0, current, visited);
         }
 
         static void BuildDirectoryChain(string directory, List<string> chain)
@@ -1033,7 +1026,50 @@ namespace NowUI
                 chain.Add(reversed[i]);
         }
 
-        static void AddFolderTreeEntry(PopupState state, string path, int depth, bool current, bool ancestor)
+        static void AddFolderTreeBranch(
+            PopupState state,
+            string path,
+            int depth,
+            string currentDirectory,
+            HashSet<string> visited)
+        {
+            if (string.IsNullOrEmpty(path) || depth > 64)
+                return;
+
+            string key = TreePathKey(path);
+
+            if (string.IsNullOrEmpty(key) || !visited.Add(key))
+                return;
+
+            string[] children = GetVisibleDirectories(path, state.settings.showHidden);
+            bool expanded = children.Length > 0 && IsFolderTreeExpanded(state, path);
+            bool current = PathEquals(path, currentDirectory);
+            bool ancestor = !current && IsAncestorDirectory(path, currentDirectory);
+
+            AddFolderTreeEntry(
+                state,
+                path,
+                depth,
+                current,
+                ancestor,
+                hasChildren: children.Length > 0,
+                expanded: expanded);
+
+            if (!expanded)
+                return;
+
+            for (int i = 0; i < children.Length; ++i)
+                AddFolderTreeBranch(state, children[i], depth + 1, currentDirectory, visited);
+        }
+
+        static void AddFolderTreeEntry(
+            PopupState state,
+            string path,
+            int depth,
+            bool current,
+            bool ancestor,
+            bool hasChildren,
+            bool expanded)
         {
             if (string.IsNullOrEmpty(path))
                 return;
@@ -1045,6 +1081,9 @@ namespace NowUI
                     if (current)
                         state.treeEntries[i].current = true;
 
+                    state.treeEntries[i].ancestor |= ancestor;
+                    state.treeEntries[i].hasChildren |= hasChildren;
+                    state.treeEntries[i].expanded |= expanded;
                     return;
                 }
             }
@@ -1055,8 +1094,94 @@ namespace NowUI
                 name = NowFilePickerUtility.DisplayName(path),
                 depth = Mathf.Max(0, depth),
                 current = current,
-                ancestor = ancestor
+                ancestor = ancestor,
+                hasChildren = hasChildren,
+                expanded = expanded
             });
+        }
+
+        static string[] GetVisibleDirectories(string directory, bool showHidden)
+        {
+            try
+            {
+                var directories = Directory.GetDirectories(directory);
+                Array.Sort(directories, StringComparer.CurrentCultureIgnoreCase);
+
+                if (showHidden)
+                    return directories;
+
+                int write = 0;
+
+                for (int read = 0; read < directories.Length; ++read)
+                {
+                    if (NowFilePickerUtility.IsHidden(directories[read]))
+                        continue;
+
+                    directories[write++] = directories[read];
+                }
+
+                if (write == directories.Length)
+                    return directories;
+
+                var visible = new string[write];
+                Array.Copy(directories, visible, write);
+                return visible;
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException)
+            {
+                // The main list owns user-visible directory errors; keep the tree best-effort.
+                return Array.Empty<string>();
+            }
+        }
+
+        static void RevealFolderInTree(PopupState state, string directory, bool focus, bool expandTarget)
+        {
+            string full = NowFilePickerUtility.TryGetFullPath(directory);
+
+            if (string.IsNullOrEmpty(full) || !Directory.Exists(full))
+                return;
+
+            var chain = new List<string>(8);
+            BuildDirectoryChain(full, chain);
+            int expandCount = expandTarget ? chain.Count : Mathf.Max(0, chain.Count - 1);
+
+            for (int i = 0; i < expandCount; ++i)
+                SetFolderTreeExpanded(state, chain[i], true);
+
+            if (focus)
+                state.pendingTreeFocusPath = full;
+        }
+
+        static bool IsFolderTreeExpanded(PopupState state, string path)
+        {
+            string key = TreePathKey(path);
+            return !string.IsNullOrEmpty(key) && state.expandedTreePaths.Contains(key);
+        }
+
+        static void SetFolderTreeExpanded(PopupState state, string path, bool expanded)
+        {
+            string key = TreePathKey(path);
+
+            if (string.IsNullOrEmpty(key))
+                return;
+
+            if (expanded)
+                state.expandedTreePaths.Add(key);
+            else
+                state.expandedTreePaths.Remove(key);
+        }
+
+        static int FolderTreeRowId(PopupState state, string path, int fallbackIndex)
+        {
+            string key = TreePathKey(path);
+            return string.IsNullOrEmpty(key)
+                ? NowInput.CombineId(state.treeSeed, fallbackIndex + 1)
+                : NowInput.GetId(state.treeSeed, key);
+        }
+
+        static string TreePathKey(string path)
+        {
+            return string.IsNullOrEmpty(path) ? null : NormalizePathForCompare(path);
         }
 
         static void RefreshEntries(PopupState state)
@@ -1146,7 +1271,7 @@ namespace NowUI
 
         static string FileTypeLabel(string path)
         {
-            string extension = null;
+            string extension;
 
             try
             {
@@ -1165,7 +1290,7 @@ namespace NowUI
 
         static string FileIcon(string path)
         {
-            string extension = null;
+            string extension;
 
             try
             {
@@ -1176,78 +1301,29 @@ namespace NowUI
                 extension = null;
             }
 
-            switch (extension)
+            return extension switch
             {
-                case "png":
-                case "jpg":
-                case "jpeg":
-                case "gif":
-                case "bmp":
-                case "webp":
-                case "tga":
-                case "psd":
-                case "svg":
-                    return "🖼️";
-                case "mp3":
-                case "wav":
-                case "ogg":
-                case "flac":
-                case "m4a":
-                case "aiff":
-                    return "🎵";
-                case "mp4":
-                case "mov":
-                case "avi":
-                case "mkv":
-                case "webm":
-                    return "🎞️";
-                case "zip":
-                case "rar":
-                case "7z":
-                case "tar":
-                case "gz":
-                case "unitypackage":
-                    return "📦";
-                case "cs":
-                case "shader":
-                case "hlsl":
-                case "cginc":
-                case "js":
-                case "ts":
-                case "html":
-                case "css":
-                case "py":
-                case "java":
-                case "cpp":
-                case "h":
-                    return "💻";
-                case "json":
-                case "yaml":
-                case "yml":
-                case "xml":
-                case "md":
-                case "txt":
-                case "log":
-                case "csv":
-                case "ini":
-                    return "📝";
-                case "pdf":
-                    return "📕";
-                case "ttf":
-                case "otf":
-                case "woff":
-                case "woff2":
-                    return "🔤";
-                case "unity":
-                case "prefab":
-                case "asset":
-                case "mat":
-                case "controller":
-                case "anim":
-                    return "🎮";
-                default:
-                    return "📄";
-            }
+                "png" or "jpg" or "jpeg" or "gif" or "bmp" or "webp" or "tga" or "psd" or "svg"
+                    => "🖼️",
+                "mp3" or "wav" or "ogg" or "flac" or "m4a" or "aiff"
+                    => "🎵",
+                "mp4" or "mov" or "avi" or "mkv" or "webm"
+                    => "🎞️",
+                "zip" or "rar" or "7z" or "tar" or "gz" or "unitypackage"
+                    => "📦",
+                "cs" or "shader" or "hlsl" or "cginc" or "js" or "ts" or "html" or "css" or "py" or "java" or "cpp"
+                    or "h"
+                    => "💻",
+                "json" or "yaml" or "yml" or "xml" or "md" or "txt" or "log" or "csv" or "ini"
+                    => "📝",
+                "pdf"
+                    => "📕",
+                "ttf" or "otf" or "woff" or "woff2"
+                    => "🔤",
+                "unity" or "prefab" or "asset" or "mat" or "controller" or "anim"
+                    => "🎮",
+                _ => "📄"
+            };
         }
 
         static bool PathEquals(string left, string right)
@@ -1261,10 +1337,99 @@ namespace NowUI
             return string.Equals(normalizedLeft, normalizedRight, StringComparison.CurrentCultureIgnoreCase);
         }
 
+        static bool IsAncestorDirectory(string ancestor, string directory)
+        {
+            if (string.IsNullOrEmpty(ancestor) || string.IsNullOrEmpty(directory) || PathEquals(ancestor, directory))
+                return false;
+
+            string ancestorPath = NormalizePathForCompare(ancestor);
+            string directoryPath = NormalizePathForCompare(directory);
+
+            if (string.IsNullOrEmpty(ancestorPath) || string.IsNullOrEmpty(directoryPath))
+                return false;
+
+            try
+            {
+                string ancestorRoot = Path.GetPathRoot(ancestorPath);
+                string directoryRoot = Path.GetPathRoot(directoryPath);
+
+                if (!string.Equals(ancestorRoot, directoryRoot, StringComparison.CurrentCultureIgnoreCase))
+                    return false;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+
+            ancestorPath = TrimTrailingSeparatorsPreserveRoot(ancestorPath);
+            directoryPath = TrimTrailingSeparatorsPreserveRoot(directoryPath);
+
+            if (ancestorPath.Length == 0 || directoryPath.Length <= ancestorPath.Length)
+                return false;
+
+            if (IsRootPath(ancestorPath))
+                return directoryPath.StartsWith(ancestorPath, StringComparison.CurrentCultureIgnoreCase);
+
+            if (!directoryPath.StartsWith(ancestorPath, StringComparison.CurrentCultureIgnoreCase))
+                return false;
+
+            char next = directoryPath[ancestorPath.Length];
+            return next == Path.DirectorySeparatorChar || next == Path.AltDirectorySeparatorChar;
+        }
+
+        static string TrimTrailingSeparatorsPreserveRoot(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return path;
+
+            string root;
+
+            try
+            {
+                root = Path.GetPathRoot(path);
+            }
+            catch (ArgumentException)
+            {
+                root = null;
+            }
+
+            string trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            if (string.IsNullOrEmpty(root))
+                return trimmed;
+
+            string trimmedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            if (string.IsNullOrEmpty(trimmed) ||
+                string.Equals(trimmed, trimmedRoot, StringComparison.CurrentCultureIgnoreCase))
+            {
+                return root;
+            }
+
+            return trimmed;
+        }
+
+        static bool IsRootPath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return false;
+
+            try
+            {
+                string root = Path.GetPathRoot(path);
+                return !string.IsNullOrEmpty(root) &&
+                    string.Equals(path, root, StringComparison.CurrentCultureIgnoreCase);
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        }
+
         static string NormalizePathForCompare(string path)
         {
             string full = NowFilePickerUtility.TryGetFullPath(path) ?? path;
-            string root = null;
+            string root;
 
             try
             {
@@ -1333,6 +1498,7 @@ namespace NowUI
             if (state.mode == NowFileDialogMode.OpenFile)
                 state.fileName = string.Empty;
 
+            RevealFolderInTree(state, full, focus: true, expandTarget: true);
             ClearError(state);
             NowControlState.RequestRepaint();
         }

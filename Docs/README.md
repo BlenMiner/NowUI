@@ -58,6 +58,8 @@ it.
   smooth blends, colors, and texture fills.
 - [Rich Text](RichText.md): spans, default tag parsing, custom inline tags,
   Lottie tags, and link/tag hit testing.
+- [Markup](Markup.md): constrained XML-like layout/control markup for
+  AI-authored interfaces, with inline style, style blocks, state, and events.
 
 All of these render in-engine: open `Assets/Scenes/DocsScene.unity` for a
 browsable version with a scrollable side menu, powered by the markdown

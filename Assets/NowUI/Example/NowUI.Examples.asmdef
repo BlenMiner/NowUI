@@ -4,6 +4,7 @@
     "references": [
         "GUID:f8d53a32dbb72f34987c15dba8a48aea",
         "NowUI.Extensions.Markdown",
+        "NowUI.Extensions.Markup",
         "NowUI.Extensions.CodeEditor",
         "NowUI.Extensions.Docking",
         "NowUI.Extensions.NodeGraph",

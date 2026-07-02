@@ -7,7 +7,6 @@
   "documentationUrl": "https://github.com/BlenMiner/NowUI/tree/main/Docs",
   "changelogUrl": "https://github.com/BlenMiner/NowUI/blob/main/Assets/NowUI/CHANGELOG.md",
   "dependencies": {
-    "com.unity.collections": "6.4.0",
     "com.unity.inputsystem": "1.19.0",
     "com.unity.ugui": "2.0.0",
     "com.unity.modules.unitywebrequest": "1.0.0",

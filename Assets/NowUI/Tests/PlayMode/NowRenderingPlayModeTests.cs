@@ -427,6 +427,186 @@ public class NowRenderingPlayModeTests
     }
 
     [UnityTest]
+    public IEnumerator HostOwnedOverlayExtendingPastHostAllowsOnlyLowerUGUI()
+    {
+        var eventSystemObject = new GameObject("TestEventSystem", typeof(UnityEngine.EventSystems.EventSystem));
+        var canvasObject = new GameObject("Canvas", typeof(Canvas), typeof(UnityEngine.UI.GraphicRaycaster));
+        var canvas = canvasObject.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+        var backgroundObject = new GameObject("Background", typeof(UnityEngine.UI.Image));
+        backgroundObject.transform.SetParent(canvasObject.transform, false);
+        var backgroundRect = backgroundObject.GetComponent<RectTransform>();
+        backgroundRect.anchorMin = Vector2.zero;
+        backgroundRect.anchorMax = Vector2.zero;
+        backgroundRect.pivot = Vector2.zero;
+        backgroundRect.anchoredPosition = Vector2.zero;
+        backgroundRect.sizeDelta = new Vector2(300, 300);
+
+        var hostObject = new GameObject("Host", typeof(NowGraphic));
+        hostObject.transform.SetParent(canvasObject.transform, false);
+        var hostRect = hostObject.GetComponent<RectTransform>();
+        hostRect.anchorMin = Vector2.zero;
+        hostRect.anchorMax = Vector2.zero;
+        hostRect.pivot = Vector2.zero;
+        hostRect.anchoredPosition = Vector2.zero;
+        hostRect.sizeDelta = new Vector2(100, 100);
+        var host = hostObject.GetComponent<NowGraphic>();
+
+        GameObject blockerObject = null;
+
+        try
+        {
+            yield return null;
+
+            var popupPointOutsideHost = new Vector2(150, 50);
+
+            Assert.IsFalse(
+                NowRaycastGate.IsPointerAllowed(host, popupPointOutsideHost),
+                "Strict gating still requires the EventSystem hit to be the host.");
+            Assert.IsTrue(
+                NowRaycastGate.IsPointerAllowed(host, popupPointOutsideHost, allowHostOwnedOverlay: true),
+                "Host-owned overlays may receive input over lower UGUI behind the host.");
+
+            blockerObject = new GameObject("Higher Blocker", typeof(UnityEngine.UI.Image));
+            blockerObject.transform.SetParent(canvasObject.transform, false);
+            var blockerRect = blockerObject.GetComponent<RectTransform>();
+            blockerRect.anchorMin = Vector2.zero;
+            blockerRect.anchorMax = Vector2.zero;
+            blockerRect.pivot = Vector2.zero;
+            blockerRect.anchoredPosition = new Vector2(125, 25);
+            blockerRect.sizeDelta = new Vector2(50, 50);
+
+            yield return null;
+
+            Assert.IsFalse(
+                NowRaycastGate.IsPointerAllowed(host, popupPointOutsideHost, allowHostOwnedOverlay: true),
+                "UGUI drawn above the host must still occlude host-owned overlays.");
+        }
+        finally
+        {
+            if (blockerObject != null)
+                Object.DestroyImmediate(blockerObject);
+
+            Object.DestroyImmediate(hostObject);
+            Object.DestroyImmediate(backgroundObject);
+            Object.DestroyImmediate(canvasObject);
+            Object.DestroyImmediate(eventSystemObject);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator HostOwnedWorldOverlayIgnoresSeparateCanvasBehindHost()
+    {
+        NowOverlay.Reset();
+
+        var eventSystemObject = new GameObject("TestEventSystem", typeof(UnityEngine.EventSystems.EventSystem));
+        var cameraObject = new GameObject("Event Camera");
+        var behindCanvasObject = new GameObject("Behind Canvas", typeof(Canvas), typeof(UnityEngine.UI.GraphicRaycaster));
+        var behindObject = new GameObject("Behind", typeof(NowGraphic));
+        var hostCanvasObject = new GameObject("Host Canvas", typeof(Canvas), typeof(UnityEngine.UI.GraphicRaycaster));
+        var hostObject = new GameObject("Host", typeof(NowGraphic));
+        GameObject frontCanvasObject = null;
+        GameObject frontObject = null;
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 2f;
+            camera.pixelRect = new Rect(0, 0, 400, 400);
+            cameraObject.transform.position = new Vector3(0, 0, -10);
+
+            var behindCanvas = behindCanvasObject.GetComponent<Canvas>();
+            behindCanvas.renderMode = RenderMode.WorldSpace;
+            behindCanvas.worldCamera = camera;
+            behindCanvasObject.transform.position = new Vector3(0, 0, 1f);
+
+            behindObject.transform.SetParent(behindCanvasObject.transform, false);
+            var behindRect = behindObject.GetComponent<RectTransform>();
+            behindRect.anchorMin = new Vector2(0.5f, 0.5f);
+            behindRect.anchorMax = new Vector2(0.5f, 0.5f);
+            behindRect.pivot = new Vector2(0.5f, 0.5f);
+            behindRect.anchoredPosition = Vector2.zero;
+            behindRect.sizeDelta = new Vector2(4f, 4f);
+            var behindHost = behindObject.GetComponent<NowGraphic>();
+
+            var hostCanvas = hostCanvasObject.GetComponent<Canvas>();
+            hostCanvas.renderMode = RenderMode.WorldSpace;
+            hostCanvas.worldCamera = camera;
+            hostCanvasObject.transform.position = Vector3.zero;
+
+            hostObject.transform.SetParent(hostCanvasObject.transform, false);
+            var hostRect = hostObject.GetComponent<RectTransform>();
+            hostRect.anchorMin = new Vector2(0.5f, 0.5f);
+            hostRect.anchorMax = new Vector2(0.5f, 0.5f);
+            hostRect.pivot = new Vector2(0.5f, 0.5f);
+            hostRect.anchoredPosition = Vector2.zero;
+            hostRect.sizeDelta = new Vector2(1f, 1f);
+            var host = hostObject.GetComponent<NowGraphic>();
+
+            yield return null;
+
+            var popupPointOutsideHost = (Vector2)camera.WorldToScreenPoint(new Vector3(1.5f, 0f, 0f));
+
+            Assert.IsFalse(
+                NowRaycastGate.IsPointerAllowed(host, popupPointOutsideHost),
+                "Strict gating still requires the world-space hit to be the host.");
+            Assert.IsTrue(
+                NowRaycastGate.IsPointerAllowed(host, popupPointOutsideHost, allowHostOwnedOverlay: true),
+                "Host-owned overlays must ignore separate world-space canvases behind the NowUI host.");
+
+            using (NowOverlay.Host(host, hostRect, camera))
+                NowOverlay.DeferScreen(new NowRect(1.75f, 0.25f, 0.5f, 0.5f), 606, _ => { });
+
+            Assert.IsFalse(
+                NowOverlay.IsPointerBlockedByForeignOverlay(host, popupPointOutsideHost),
+                "A host-owned overlay must not block its own host.");
+            Assert.IsTrue(
+                NowOverlay.IsPointerBlockedByForeignOverlay(behindHost, popupPointOutsideHost),
+                "A host-owned overlay on the front canvas must block NowUI hosts behind it.");
+
+            frontCanvasObject = new GameObject("Front Canvas", typeof(Canvas), typeof(UnityEngine.UI.GraphicRaycaster));
+            var frontCanvas = frontCanvasObject.GetComponent<Canvas>();
+            frontCanvas.renderMode = RenderMode.WorldSpace;
+            frontCanvas.worldCamera = camera;
+            frontCanvasObject.transform.position = new Vector3(0, 0, -1f);
+
+            frontObject = new GameObject("Front", typeof(UnityEngine.UI.Image));
+            frontObject.transform.SetParent(frontCanvasObject.transform, false);
+            var frontRect = frontObject.GetComponent<RectTransform>();
+            frontRect.anchorMin = new Vector2(0.5f, 0.5f);
+            frontRect.anchorMax = new Vector2(0.5f, 0.5f);
+            frontRect.pivot = new Vector2(0.5f, 0.5f);
+            frontRect.anchoredPosition = Vector2.zero;
+            frontRect.sizeDelta = new Vector2(4f, 4f);
+
+            yield return null;
+
+            Assert.IsFalse(
+                NowRaycastGate.IsPointerAllowed(host, popupPointOutsideHost, allowHostOwnedOverlay: true),
+                "World-space UGUI in front of the NowUI host must still occlude host-owned overlays.");
+        }
+        finally
+        {
+            NowOverlay.Reset();
+
+            if (frontObject != null)
+                Object.DestroyImmediate(frontObject);
+
+            if (frontCanvasObject != null)
+                Object.DestroyImmediate(frontCanvasObject);
+
+            Object.DestroyImmediate(hostObject);
+            Object.DestroyImmediate(hostCanvasObject);
+            Object.DestroyImmediate(behindObject);
+            Object.DestroyImmediate(behindCanvasObject);
+            Object.DestroyImmediate(cameraObject);
+            Object.DestroyImmediate(eventSystemObject);
+        }
+    }
+
+    [UnityTest]
     public IEnumerator ScreenSpaceUGUIOccludesWorldGraphicPointer()
     {
         var eventSystemObject = new GameObject("TestEventSystem", typeof(UnityEngine.EventSystems.EventSystem));

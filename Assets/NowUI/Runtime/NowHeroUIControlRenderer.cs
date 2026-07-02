@@ -214,7 +214,7 @@ namespace NowUI
 
         public override void DrawContextMenuItem(in NowPopupItemRenderContext context)
         {
-            if (context.interaction.hovered)
+            if (context.interaction.hovered || context.selected)
             {
                 Color color = context.themeAsset.GetColor(NowColorToken.SurfaceMuted, Color.gray);
                 if (context.interaction.held)
@@ -226,7 +226,12 @@ namespace NowUI
                     .Draw();
             }
 
-            DrawItemLabel(context.themeAsset, context.rect, context.label, context.themeAsset.GetColor(NowColorToken.Text, Color.black));
+            DrawItemLabel(
+                context.themeAsset,
+                context.rect,
+                context.label,
+                context.themeAsset.GetColor(NowColorToken.Text, Color.black),
+                context.hasSubmenu);
         }
 
         public override void DrawScrollbar(in NowScrollbarRenderContext context)
@@ -388,10 +393,11 @@ namespace NowUI
             Now.Line(b, c).SetColor(check).SetWidth(2f).SetCap(NowLineCap.Round).Draw();
         }
 
-        static void DrawItemLabel(NowThemeAsset themeAsset, NowRect rect, string label, Color color)
+        static void DrawItemLabel(NowThemeAsset themeAsset, NowRect rect, string label, Color color, bool hasSubmenu = false)
         {
             float left = themeAsset.controlStyles.contextMenuPaddingX;
-            NowControls.DrawLeftLabel(themeAsset, rect.Inset(left, 0f, 8f, 0f), label, NowTextStyle.Body, color);
+            float right = hasSubmenu ? 28f : 8f;
+            NowControls.DrawLeftLabel(themeAsset, rect.Inset(left, 0f, right, 0f), label, NowTextStyle.Body, color);
         }
 
         static void DrawCenteredButtonLabel(in NowButtonRenderContext context, NowRect rect)

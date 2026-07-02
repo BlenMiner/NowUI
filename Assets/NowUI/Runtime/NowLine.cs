@@ -256,6 +256,7 @@ namespace NowUI
             // Solid cubic Beziers use a dedicated shader that AA's against the true
             // curve. It's immediate-mode only, so skip it during canvas/capture builds.
             bool solidCubic = line.cubic
+                && !hasTransform
                 && !_captureMesh
                 && !(line.dashLength > LineEpsilon && line.dashGap > LineEpsilon)
                 && line.arrows == NowLineArrow.None;

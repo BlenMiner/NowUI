@@ -239,7 +239,12 @@ namespace NowUI.NodeGraph
     public sealed class NowNodeGraphSchema
     {
         readonly Dictionary<int, NowNodeDefinition> _definitions = new Dictionary<int, NowNodeDefinition>();
+        readonly List<NowNodeDefinition> _definitionList = new List<NowNodeDefinition>(8);
         readonly List<NowNodeConnectionRule> _connectionRules = new List<NowNodeConnectionRule>(4);
+
+        public int nodeDefinitionCount => _definitionList.Count;
+
+        public IReadOnlyList<NowNodeDefinition> nodeDefinitions => _definitionList;
 
         public NowNodeDefinition Node(int kindId, string title)
         {
@@ -247,6 +252,7 @@ namespace NowUI.NodeGraph
             {
                 definition = new NowNodeDefinition(kindId, title);
                 _definitions.Add(kindId, definition);
+                _definitionList.Add(definition);
             }
             else
             {
@@ -1624,7 +1630,7 @@ namespace NowUI.NodeGraph
 
         public virtual void DrawLink(in NowNodeGraphLinkContext context)
         {
-            DrawConnection(context.from, context.to, context.color, context.width, context.viewport);
+            DrawConnection(context.from, context.to, context.color, context.width);
         }
 
         public virtual void DrawNode(in NowNodeGraphNodeContext context)
@@ -1737,7 +1743,7 @@ namespace NowUI.NodeGraph
             return origin + Mathf.Floor((min - origin) / step) * step;
         }
 
-        static void DrawConnection(Vector2 from, Vector2 to, Color color, float width, NowRect mask)
+        static void DrawConnection(Vector2 from, Vector2 to, Color color, float width)
         {
             float tangent = Mathf.Max(42f, Mathf.Abs(to.x - from.x) * 0.45f);
             Vector2 c1 = from + Vector2.right * tangent;
@@ -1747,7 +1753,6 @@ namespace NowUI.NodeGraph
                 .SetColor(color)
                 .SetWidth(Mathf.Max(1f, width))
                 .SetCap(NowLineCap.Round)
-                .SetMask(mask)
                 .Draw();
         }
 
@@ -1770,17 +1775,31 @@ namespace NowUI.NodeGraph
     {
         public bool undoRedo = true;
         public bool deleteSelection = true;
+        public bool createNodes = true;
         public string undoLabel = "Undo";
         public string redoLabel = "Redo";
         public string deleteSelectionLabel = "Delete Selection";
+        public string createNodeLabel = "Create Node";
         public Func<NowNodeGraph, NowNodeGraphHistory, bool> drawCustomItems;
+        public Func<NowNodeGraph, NowNodeGraphHistory, NowNodeGraphResult, bool> drawCustomItemsWithResult;
 
         public bool Draw(int id, NowNodeGraph graph, NowNodeGraphHistory history, ref NowNodeGraphResult result)
+        {
+            return Draw(id, graph, history, result.contextMenuGraphPosition, ref result);
+        }
+
+        public bool Draw(
+            int id,
+            NowNodeGraph graph,
+            NowNodeGraphHistory history,
+            Vector2 graphPosition,
+            ref NowNodeGraphResult result)
         {
             if (graph == null || !NowContextMenu.Begin(id))
                 return false;
 
             bool changed = false;
+            bool hasBuiltInItems = false;
 
             if (undoRedo && history != null)
             {
@@ -1799,6 +1818,8 @@ namespace NowUI.NodeGraph
                     result.selectionChanged = true;
                     changed = true;
                 }
+
+                hasBuiltInItems = true;
             }
 
             if (deleteSelection && NowContextMenu.Item(deleteSelectionLabel, graph.SelectedNodeCount() > 0))
@@ -1818,10 +1839,53 @@ namespace NowUI.NodeGraph
                 }
             }
 
-            if (drawCustomItems != null && (undoRedo || deleteSelection))
+            if (deleteSelection)
+                hasBuiltInItems = true;
+
+            if (createNodes && graph.schema != null && graph.schema.nodeDefinitionCount > 0)
+            {
+                if (hasBuiltInItems)
+                    NowContextMenu.Separator();
+
+                if (NowContextMenu.BeginSubmenu(createNodeLabel))
+                {
+                    var definitions = graph.schema.nodeDefinitions;
+
+                    for (int i = 0; i < definitions.Count; ++i)
+                    {
+                        var definition = definitions[i];
+
+                        if (definition == null)
+                            continue;
+
+                        if (NowContextMenu.Item(definition.title))
+                        {
+                            history?.Record(graph);
+                            var node = graph.schema.CreateNode(graph, definition.kindId, graphPosition);
+                            graph.SelectNode(node.id);
+
+                            result.changed = true;
+                            result.selectionChanged = true;
+                            changed = true;
+                        }
+                    }
+
+                    NowContextMenu.EndSubmenu();
+                }
+
+                hasBuiltInItems = true;
+            }
+
+            if ((drawCustomItems != null || drawCustomItemsWithResult != null) && hasBuiltInItems)
                 NowContextMenu.Separator();
 
             if (drawCustomItems != null && drawCustomItems(graph, history))
+            {
+                result.changed = true;
+                changed = true;
+            }
+
+            if (drawCustomItemsWithResult != null && drawCustomItemsWithResult(graph, history, result))
             {
                 result.changed = true;
                 changed = true;
@@ -1913,6 +1977,7 @@ namespace NowUI.NodeGraph
             public byte selectionActive;
             public Vector2 selectionStart;
             public Vector2 selectionEnd;
+            public Vector2 contextMenuGraphPosition;
             public NowNodeContentContext contentContext;
         }
 
@@ -2070,8 +2135,8 @@ namespace NowUI.NodeGraph
             var history = _history ?? _view?.history;
             var contextMenu = _contextMenu ?? _view?.contextMenu;
 
-            if (_schema != null)
-                _graph.schema = _schema;
+            if (schema != null)
+                _graph.schema = schema;
 
             int id = NowControls.GetControlId(_id, _site);
             ref var state = ref NowControlState.Get<CanvasState>(id);
@@ -2112,7 +2177,7 @@ namespace NowUI.NodeGraph
                     renderer.DrawSelection(new NowNodeGraphSelectionContext(_rect, SelectionScreenRect(state), style));
             }
 
-            contextMenu?.Draw(NowInput.GetId(id, "context-menu"), _graph, history, ref result);
+            contextMenu?.Draw(NowInput.GetId(id, "context-menu"), _graph, history, state.contextMenuGraphPosition, ref result);
             result.selectedNodeId = _graph.selectedNodeId;
             return result;
         }
@@ -2310,9 +2375,10 @@ namespace NowUI.NodeGraph
                     }
 
                     NowContextMenu.Open(menuId, menuInteraction.pointerPosition);
+                    state.contextMenuGraphPosition = ScreenToGraph(menuInteraction.pointerPosition, _rect, state);
                     result.contextMenuOpened = true;
                     result.contextMenuPosition = menuInteraction.pointerPosition;
-                    result.contextMenuGraphPosition = ScreenToGraph(menuInteraction.pointerPosition, _rect, state);
+                    result.contextMenuGraphPosition = state.contextMenuGraphPosition;
                     NowControlState.RequestRepaint();
                 }
             }

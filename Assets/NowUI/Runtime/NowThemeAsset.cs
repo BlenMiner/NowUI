@@ -24,16 +24,6 @@ namespace NowUI
 
         [SerializeField] NowControlRenderer _controlRenderer;
 
-        #pragma warning disable 0414
-        [HideInInspector, SerializeField] bool _generatorDark;
-
-        [HideInInspector, SerializeField] Color _generatorKeyColor = new Color(0.18f, 0.28f, 0.40f, 1f);
-
-        [HideInInspector, SerializeField] Color _generatorAccentColor = new Color(0.10f, 0.45f, 0.91f, 1f);
-
-        [HideInInspector, SerializeField] int _generatorSeed = 42069;
-        #pragma warning restore 0414
-
         public NowRectangleStyle defaultRectangleStyle => _defaultRectangleStyle;
 
         public NowTextStyle defaultTextStyle => _defaultTextStyle;
@@ -816,7 +806,7 @@ namespace NowUI
                     _popupRadius = NowThemeRadiusReference.Fallback(default),
                     _contextMenuItemHeight = 26f,
                     _contextMenuPaddingX = 14f,
-                    _contextMenuMinWidth = 120f,
+                    _contextMenuMinWidth = 160f,
                     _contextMenuRadius = 6f,
                     _scrollbarWidth = 8f,
                     _scrollbarPadding = 4f,
@@ -1009,14 +999,22 @@ namespace NowUI
         public readonly string label;
         public readonly bool selected;
         public readonly NowInteraction interaction;
+        public readonly bool hasSubmenu;
 
-        public NowPopupItemRenderContext(NowThemeAsset themeAsset, NowRect rect, string label, bool selected, NowInteraction interaction)
+        public NowPopupItemRenderContext(
+            NowThemeAsset themeAsset,
+            NowRect rect,
+            string label,
+            bool selected,
+            NowInteraction interaction,
+            bool hasSubmenu = false)
         {
             this.themeAsset = themeAsset;
             this.rect = rect;
             this.label = label;
             this.selected = selected;
             this.interaction = interaction;
+            this.hasSubmenu = hasSubmenu;
         }
     }
 
@@ -1373,17 +1371,36 @@ namespace NowUI
 
         public virtual void DrawContextMenuItem(in NowPopupItemRenderContext context)
         {
-            if (context.interaction.hovered)
+            if (context.interaction.hovered || context.selected)
             {
                 var highlight = context.themeAsset.Rectangle(context.rect, NowRectangleStyle.Muted);
                 float radius = context.themeAsset.controlStyles.popupItemRadius;
                 highlight.radius = new Vector4(radius, radius, radius, radius);
-                highlight.color = NowControls.StateTint(context.themeAsset, highlight.color, 1f, context.interaction.held);
+
+                if (context.interaction.hovered)
+                    highlight.color = NowControls.StateTint(context.themeAsset, highlight.color, 1f, context.interaction.held);
+
                 highlight.Draw();
             }
 
             float left = context.themeAsset.controlStyles.contextMenuPaddingX * 0.7f;
-            NowControls.DrawLeftLabel(context.themeAsset, context.rect.Inset(left, 0f, 4f, 0f), context.label, NowTextStyle.Body);
+            float right = context.hasSubmenu ? 22f : 4f;
+            NowControls.DrawLeftLabel(context.themeAsset, context.rect.Inset(left, 0f, right, 0f), context.label, NowTextStyle.Body);
+        }
+
+        public virtual void DrawContextMenuSubmenuIndicator(NowThemeAsset themeAsset, NowRect rect, bool enabled, bool open)
+        {
+            Color color = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+
+            if (!enabled)
+                color.a *= 0.62f;
+
+            NowControls.DrawLeftLabel(
+                themeAsset,
+                new NowRect(rect.xMax - 18f, rect.y, 14f, rect.height),
+                ">",
+                NowTextStyle.Muted,
+                color);
         }
 
         public virtual void DrawScrollbar(in NowScrollbarRenderContext context)

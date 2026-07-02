@@ -496,6 +496,7 @@ namespace NowUI
 
                 var inputSurface = new NowInputSurface(new Vector2(rect.width, rect.height));
 
+                using (NowOverlay.Host(this, rectTransform, GetEventCamera()))
                 using (NowInput.Begin(GetInputProvider(), inputSurface))
                 {
                     StoreLastInteractionInput(NowInput.current, inputSurface.size);

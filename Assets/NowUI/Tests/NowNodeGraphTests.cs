@@ -109,6 +109,7 @@ public class NowNodeGraphTests
         NowControls.Reset();
         NowLayout.Reset();
         NowOverlay.Reset();
+        NowContextMenu.Reset();
         NowTextInput.Reset();
 
         _pointer = new FakePointer();
@@ -121,6 +122,7 @@ public class NowNodeGraphTests
     public void TearDown()
     {
         _drawList.Dispose();
+        NowContextMenu.Reset();
         NowOverlay.Reset();
         NowLayout.Reset();
         NowControls.Reset();
@@ -752,6 +754,87 @@ public class NowNodeGraphTests
         var result = Frame(graph, contextMenu: menu);
 
         Assert.IsTrue(result.contextMenuOpened);
+    }
+
+    [Test]
+    public void ContextMenuCreatesSchemaNodesAtGraphPosition()
+    {
+        var graph = new NowNodeGraph();
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Texture")
+            .SetSize(220f, 140f)
+            .Output(ColorPort, "RGBA", Float4);
+
+        var menu = new NowNodeGraphContextMenu
+        {
+            undoRedo = false,
+            deleteSelection = false
+        };
+        var anchor = new Vector2(120f, 90f);
+
+        Frame(graph, schema: schema, contextMenu: menu);
+
+        _pointer.snapshot = new NowInputSnapshot(
+            anchor,
+            NowPointerButtons.Secondary,
+            NowPointerButtons.Secondary,
+            NowPointerButtons.None);
+        Frame(graph, schema: schema, contextMenu: menu);
+
+        _pointer.snapshot = new NowInputSnapshot(
+            anchor,
+            NowPointerButtons.None,
+            NowPointerButtons.None,
+            NowPointerButtons.Secondary);
+        var opened = Frame(graph, schema: schema, contextMenu: menu);
+
+        Assert.IsTrue(opened.contextMenuOpened);
+        Assert.AreEqual(anchor, opened.contextMenuGraphPosition);
+
+        var styles = NowTheme.themeAsset.controlStyles;
+        float rootWidth = Mathf.Max(160f, styles.contextMenuMinWidth);
+        var submenuPoint = new Vector2(
+            anchor.x + styles.popupPadding + 10f,
+            anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+        var itemPoint = new Vector2(
+            anchor.x + rootWidth + 10f,
+            submenuPoint.y);
+
+        _pointer.snapshot = new NowInputSnapshot(submenuPoint, false, false, false);
+        Frame(graph, schema: schema, contextMenu: menu);
+
+        _pointer.snapshot = new NowInputSnapshot(itemPoint, true, true, false);
+        Frame(graph, schema: schema, contextMenu: menu);
+
+        _pointer.snapshot = new NowInputSnapshot(itemPoint, false, false, true);
+        Frame(graph, schema: schema, contextMenu: menu);
+
+        _pointer.snapshot = new NowInputSnapshot(itemPoint, false, false, false);
+        var created = Frame(graph, schema: schema, contextMenu: menu);
+
+        Assert.IsTrue(created.changed);
+        Assert.IsTrue(created.selectionChanged);
+        Assert.AreEqual(1, graph.nodes.Count);
+        Assert.AreEqual(TextureNode, graph.nodes[0].kindId);
+        Assert.AreEqual(anchor, graph.nodes[0].position);
+        Assert.AreEqual(graph.nodes[0].id, graph.selectedNodeId);
+    }
+
+    [Test]
+    public void CanvasDrawsOffsetLinkGeometry()
+    {
+        var graph = SampleGraph();
+        Assert.IsTrue(graph.TryAddLink("a", "out", "b", "in"));
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            NowNodes.Canvas(graph, new NowRect(24f, 24f, 500f, 280f), "offset-graph")
+                .SetGrid(false)
+                .Draw();
+        }
+
+        Assert.IsTrue(_drawList.hasGeometry);
     }
 
     static NowNodeGraph SampleGraph()

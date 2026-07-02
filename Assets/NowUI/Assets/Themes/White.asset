@@ -237,7 +237,7 @@ MonoBehaviour:
       _fallback: {x: 0, y: 0, z: 0, w: 0}
     _contextMenuItemHeight: 26
     _contextMenuPaddingX: 14
-    _contextMenuMinWidth: 120
+    _contextMenuMinWidth: 160
     _contextMenuRadius: 6
     _scrollbarWidth: 8
     _scrollbarPadding: 4

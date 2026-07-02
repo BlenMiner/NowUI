@@ -138,6 +138,16 @@ namespace NowUI
             public NowRect rect;
             public int id;
             public int parentId;
+            public Component host;
+            public RectTransform hostRectTransform;
+            public Camera hostCamera;
+        }
+
+        struct OverlayHostContext
+        {
+            public Component host;
+            public RectTransform rectTransform;
+            public Camera camera;
         }
 
         static readonly List<DeferredDraw> _deferred = new List<DeferredDraw>(4);
@@ -147,6 +157,8 @@ namespace NowUI
         static readonly List<OverlayBlock> _blocksPrevious = new List<OverlayBlock>(4);
 
         static readonly List<int> _drawingStack = new List<int>(4);
+
+        static readonly List<OverlayHostContext> _hostStack = new List<OverlayHostContext>(2);
 
         static int _registryFrame = -1;
 
@@ -189,6 +201,27 @@ namespace NowUI
             }
         }
 
+        internal static NowOverlayHostScope Host(Component host, RectTransform rectTransform, Camera camera)
+        {
+            if (host == null || rectTransform == null)
+                return default;
+
+            _hostStack.Add(new OverlayHostContext
+            {
+                host = host,
+                rectTransform = rectTransform,
+                camera = camera
+            });
+
+            return new NowOverlayHostScope(true);
+        }
+
+        internal static void PopHost()
+        {
+            if (_hostStack.Count > 0)
+                _hostStack.RemoveAt(_hostStack.Count - 1);
+        }
+
         /// <summary>
         /// Moves an authored popup rect just enough to fit the active visible area.
         /// Screen-space hosts fit to the current input surface; world-space hosts
@@ -221,7 +254,7 @@ namespace NowUI
 
             BeginFrameIfNeeded();
             _deferred.Add(new DeferredDraw { draw = draw, transform = Now.CaptureTransform() });
-            _blocksCurrent.Add(new OverlayBlock { rect = Now.TransformScreenRect(blockRect), parentId = CurrentOverlayId() });
+            AddBlock(Now.TransformScreenRect(blockRect), 0);
         }
 
         /// <summary>
@@ -234,7 +267,7 @@ namespace NowUI
 
             BeginFrameIfNeeded();
             _deferred.Add(new DeferredDraw { draw = draw });
-            _blocksCurrent.Add(new OverlayBlock { rect = blockRect, parentId = CurrentOverlayId() });
+            AddBlock(blockRect, 0);
         }
 
         /// <summary>
@@ -255,7 +288,7 @@ namespace NowUI
                 overlayId = state,
                 transform = Now.CaptureTransform()
             });
-            _blocksCurrent.Add(new OverlayBlock { rect = Now.TransformScreenRect(blockRect), id = state, parentId = CurrentOverlayId() });
+            AddBlock(Now.TransformScreenRect(blockRect), state);
         }
 
         /// <summary>
@@ -268,7 +301,7 @@ namespace NowUI
 
             BeginFrameIfNeeded();
             _deferred.Add(new DeferredDraw { drawWithState = draw, state = state, overlayId = state });
-            _blocksCurrent.Add(new OverlayBlock { rect = blockRect, id = state, parentId = CurrentOverlayId() });
+            AddBlock(blockRect, state);
         }
 
         /// <summary>
@@ -281,7 +314,7 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _blocksCurrent.Add(new OverlayBlock { rect = Now.TransformScreenRect(blockRect), parentId = CurrentOverlayId() });
+            AddBlock(Now.TransformScreenRect(blockRect), 0);
         }
 
         /// <summary>
@@ -293,7 +326,7 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _blocksCurrent.Add(new OverlayBlock { rect = blockRect, parentId = CurrentOverlayId() });
+            AddBlock(blockRect, 0);
         }
 
         /// <summary>
@@ -332,6 +365,43 @@ namespace NowUI
 
             return IsPointerInsideOverlayTree(rootId, pointerPosition, _blocksCurrent) ||
                 IsPointerInsideOverlayTree(rootId, pointerPosition, _blocksPrevious);
+        }
+
+        /// <summary>
+        /// True when the pointer is inside any concrete overlay popup. Modal
+        /// screen-wide blocks use id 0 and are intentionally ignored.
+        /// </summary>
+        internal static bool IsPointerInsideOverlay(Vector2 pointerPosition)
+        {
+            BeginFrameIfNeeded();
+
+            if (_overlayDepth > 0)
+                return IsPointerInsideOverlay(pointerPosition, _blocksCurrent);
+
+            return IsPointerInsideOverlay(pointerPosition, _blocksCurrent) ||
+                IsPointerInsideOverlay(pointerPosition, _blocksPrevious);
+        }
+
+        internal static bool IsPointerInsideOverlay(Component host, Vector2 pointerPosition)
+        {
+            BeginFrameIfNeeded();
+
+            if (_overlayDepth > 0)
+                return IsPointerInsideOverlay(host, pointerPosition, _blocksCurrent);
+
+            return IsPointerInsideOverlay(host, pointerPosition, _blocksCurrent) ||
+                IsPointerInsideOverlay(host, pointerPosition, _blocksPrevious);
+        }
+
+        internal static bool IsPointerBlockedByForeignOverlay(Component host, Vector2 screenPosition)
+        {
+            if (host == null || _overlayDepth > 0)
+                return false;
+
+            BeginFrameIfNeeded();
+
+            return IsPointerBlockedByForeignOverlay(host, screenPosition, _blocksCurrent) ||
+                IsPointerBlockedByForeignOverlay(host, screenPosition, _blocksPrevious);
         }
 
         /// <summary>
@@ -382,6 +452,98 @@ namespace NowUI
             }
 
             return false;
+        }
+
+        static bool IsPointerInsideOverlay(Vector2 pointerPosition, List<OverlayBlock> blocks)
+        {
+            for (int i = 0; i < blocks.Count; ++i)
+            {
+                if (blocks[i].id != 0 && blocks[i].rect.Contains(pointerPosition))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool IsPointerInsideOverlay(Component host, Vector2 pointerPosition, List<OverlayBlock> blocks)
+        {
+            for (int i = 0; i < blocks.Count; ++i)
+            {
+                if (blocks[i].id != 0 &&
+                    BlockBelongsToHost(blocks[i], host) &&
+                    blocks[i].rect.Contains(pointerPosition))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool IsPointerBlockedByForeignOverlay(Component host, Vector2 screenPosition, List<OverlayBlock> blocks)
+        {
+            for (int i = blocks.Count - 1; i >= 0; --i)
+            {
+                var block = blocks[i];
+
+                if (block.host == null || block.host == host)
+                    continue;
+
+                if (!BlockContainsScreenPoint(block, screenPosition))
+                    continue;
+
+                if (NowRaycastGate.IsHostAbove(block.host, host, screenPosition))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool BlockBelongsToHost(OverlayBlock block, Component host)
+        {
+            if (host == null)
+                return block.host == null;
+
+            return block.host == host;
+        }
+
+        static bool BlockContainsScreenPoint(OverlayBlock block, Vector2 screenPosition)
+        {
+            if (block.hostRectTransform == null)
+                return false;
+
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    block.hostRectTransform,
+                    screenPosition,
+                    block.hostCamera,
+                    out var localPosition))
+            {
+                return false;
+            }
+
+            Rect rect = block.hostRectTransform.rect;
+            var position = new Vector2(localPosition.x - rect.xMin, rect.yMax - localPosition.y);
+            return block.rect.Contains(position);
+        }
+
+        static void AddBlock(NowRect rect, int id)
+        {
+            var host = CurrentHostContext();
+
+            _blocksCurrent.Add(new OverlayBlock
+            {
+                rect = rect,
+                id = id,
+                parentId = CurrentOverlayId(),
+                host = host.host,
+                hostRectTransform = host.rectTransform,
+                hostCamera = host.camera
+            });
+        }
+
+        static OverlayHostContext CurrentHostContext()
+        {
+            return _hostStack.Count > 0 ? _hostStack[_hostStack.Count - 1] : default;
         }
 
         static bool BlockBelongsToTree(OverlayBlock block, int rootId, List<OverlayBlock> blocks)
@@ -525,6 +687,7 @@ namespace NowUI
             _blocksCurrent.Clear();
             _blocksPrevious.Clear();
             _drawingStack.Clear();
+            _hostStack.Clear();
             _registryFrame = -1;
             _overlayDepth = 0;
             NowPopupPlacement.Reset();
@@ -534,6 +697,31 @@ namespace NowUI
         static void ResetForRuntimeLoad()
         {
             Reset();
+        }
+    }
+
+    [NowScope]
+    internal struct NowOverlayHostScope : IDisposable
+    {
+        readonly bool _active;
+
+        bool _disposed;
+
+        internal NowOverlayHostScope(bool active)
+        {
+            _active = active;
+            _disposed = false;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+
+            if (_active)
+                NowOverlay.PopHost();
         }
     }
 }

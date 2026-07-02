@@ -1,0 +1,16 @@
+{
+    "name": "NowUI.Extensions.Markup",
+    "rootNamespace": "NowUI.Markup",
+    "references": [
+        "NowUI.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

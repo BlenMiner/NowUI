@@ -6,6 +6,7 @@ using UnityEngine;
 using NowUI;
 using NowUI.CodeEditor;
 using NowUI.Docking;
+using NowUI.Markup;
 using NowUI.Markdown;
 using NowUI.Sdf;
 
@@ -36,6 +37,8 @@ public class NowDocsExample : NowGraphic
         RichText,
         RichTextDemo,
         Markdown,
+        Markup,
+        MarkupDemo,
         CodeEditor,
         CodeEditorDemo,
         Lottie,
@@ -66,6 +69,7 @@ public class NowDocsExample : NowGraphic
         ControlsDemo,
         LottieDemo,
         CodeEditorDemo,
+        MarkupDemo,
         RichTextDemo,
         SdfDemo,
         DockingDemo,
@@ -113,6 +117,8 @@ public class NowDocsExample : NowGraphic
         new Page { title = "Rich text", file = "RichText.md", icon = "🔤" },
         new Page { title = "Rich text demo", icon = "🧪", kind = PageKind.RichTextDemo },
         new Page { title = "Markdown", file = "Markdown.md", icon = "📝" },
+        new Page { title = "Markup", file = "Markup.md", icon = "🧱" },
+        new Page { title = "Markup demo", icon = "🧪", kind = PageKind.MarkupDemo },
         new Page { title = "Code editor", file = "CodeEditor.md", icon = "👩‍💻" },
         new Page { title = "Editor demo", icon = "🧪", kind = PageKind.CodeEditorDemo },
         new Page { title = "Lottie", file = "Lottie.md", icon = "🎞️" },
@@ -159,6 +165,8 @@ public class NowDocsExample : NowGraphic
         Link(PageId.RichText),
         Link(PageId.RichTextDemo, 1),
         Link(PageId.Markdown),
+        Link(PageId.Markup),
+        Link(PageId.MarkupDemo, 1),
         Link(PageId.CodeEditor),
         Link(PageId.CodeEditorDemo, 1),
         Link(PageId.Lottie),
@@ -253,6 +261,9 @@ public class NowDocsExample : NowGraphic
     string _filePickerDirectoryPath = "";
     bool _filePickerShowHidden;
     int _filePickerChanges;
+    readonly NowMarkupState _markupDemoState = new NowMarkupState();
+    int _markupDemoClicks;
+    string _markupDemoLastEvent = "none";
     Texture2D _sdfDemoTexture;
     Texture2D _customMaterialTexture;
     Material _customMaterialCanvas;
@@ -534,6 +545,10 @@ public class NowDocsExample : NowGraphic
                     DrawRichTextDemo(theme);
                     break;
 
+                case PageKind.MarkupDemo:
+                    DrawMarkupDemo(theme);
+                    break;
+
                 case PageKind.SdfDemo:
                     DrawSdfDemo(theme);
                     break;
@@ -583,6 +598,43 @@ public class NowDocsExample : NowGraphic
     const string JsonSample = "{\n  \"name\": \"NowUI\",\n  \"version\": \"0.1.0\",\n  \"mobileForward\": true,\n  \"platforms\": [\"windows\", \"android\", \"ios\", \"webgl\"],\n  \"dependencies\": null,\n  \"stars\": 5\n}";
 
     const string MarkdownSample = "# Editing markdown\n\nThis is **markdown source** with **live highlighting** — headings, *emphasis*,\n`inline code`, [links](https://example.com) and fenced blocks:\n\n```json\n{ \"fences\": \"highlight as JSON\" }\n```\n\n- toggle the preview to render it\n- same selection, undo and clipboard as the JSON editor\n";
+
+    const string MarkupDemoSample =
+        "<style>\n" +
+        "  .card { padding: 16; gap: 10; rect-style: Surface; radius: 10; stretch: 1; }\n" +
+        "  .row { gap: 8; align-items: center; }\n" +
+        "  button.primary { variant: Accent; width: 120; }\n" +
+        "  button.secondary { variant: Outline; width: 120; }\n" +
+        "</style>\n" +
+        "<column class=\"card\">\n" +
+        "  <text style=\"font-size: 22\"><b>AI-authored panel</b></text>\n" +
+        "  <text color=\"#8fa4bd\">This UI is rendered from NowUI markup, not C# controls.</text>\n" +
+        "  <row class=\"row\">\n" +
+        "    <text style=\"width: 80\">Name</text>\n" +
+        "    <textfield id=\"profile-name\" state=\"name\" placeholder=\"Display name\" stretch=\"1\" />\n" +
+        "  </row>\n" +
+        "  <row class=\"row\">\n" +
+        "    <text style=\"width: 80\">Volume</text>\n" +
+        "    <slider id=\"volume\" state=\"volume\" min=\"0\" max=\"1\" step=\"0.05\" stretch=\"1\" />\n" +
+        "  </row>\n" +
+        "  <checkbox id=\"advanced-toggle\" state=\"advanced\">Advanced settings</checkbox>\n" +
+        "  <column visible=\"advanced\" gap=\"8\" padding=\"10\" rect-style=\"Muted\" radius=\"8\">\n" +
+        "    <text><b>Advanced</b> is just a state key.</text>\n" +
+        "    <row class=\"row\">\n" +
+        "      <button id=\"prev-photo\" class=\"secondary\" on-click=\"prev(photo,3)\">Previous</button>\n" +
+        "      <button id=\"next-photo\" class=\"secondary\" on-click=\"next(photo,3)\">Next</button>\n" +
+        "    </row>\n" +
+        "  </column>\n" +
+        "  <gallery id=\"photos\" index=\"photo\" controls=\"true\" gap=\"8\" padding=\"10\" rect-style=\"Muted\" radius=\"8\">\n" +
+        "    <slide><text>Gallery item <b>one</b></text></slide>\n" +
+        "    <slide><text>Gallery item <b>two</b></text></slide>\n" +
+        "    <slide><text>Gallery item <b>three</b></text></slide>\n" +
+        "  </gallery>\n" +
+        "  <row class=\"row\">\n" +
+        "    <flex />\n" +
+        "    <button id=\"save-profile\" class=\"primary\" on-click=\"emit(save)\">Save</button>\n" +
+        "  </row>\n" +
+        "</column>";
 
     string _jsonText = JsonSample;
     string _markdownText = MarkdownSample;
@@ -1040,6 +1092,84 @@ public class NowDocsExample : NowGraphic
         else
         {
             NowMarkdown.Document("Assign a Lottie asset to the docs component to see the `<lottie />` rich-text tag render inline.").Draw();
+        }
+    }
+
+    void DrawMarkupDemo(NowThemeAsset themeAsset)
+    {
+        EnsureMarkupDemoState();
+
+        NowMarkdown.Document("# Markup demo\n\nThe panel below is rendered from a constrained XML-like markup string. Controls write to `NowMarkupState`, actions mutate state keys, and click/change/action events are returned to the host each frame.").Draw();
+
+        using (NowLayout.Horizontal(spacing: 12f, stretchWidth: true))
+        {
+            using (NowLayout.Vertical(width: 430f, spacing: 8f))
+            {
+                var result = NowMarkup.Document(MarkupDemoSample).Draw(_markupDemoState);
+                ConsumeMarkupDemoEvents(result);
+            }
+
+            using (NowLayout.Vertical(spacing: 8f, stretchWidth: true))
+            {
+                NowMarkdown.Document("## State").Draw();
+
+                DrawMarkupDemoStateLine(themeAsset, "name", _markupDemoState.GetString("name", ""));
+                DrawMarkupDemoStateLine(themeAsset, "volume", $"{Mathf.RoundToInt(_markupDemoState.GetFloat("volume") * 100f)}%");
+                DrawMarkupDemoStateLine(themeAsset, "advanced", _markupDemoState.GetBool("advanced").ToString());
+                DrawMarkupDemoStateLine(themeAsset, "photo", (_markupDemoState.GetInt("photo") + 1).ToString());
+                DrawMarkupDemoStateLine(themeAsset, "save events", _markupDemoClicks.ToString());
+                DrawMarkupDemoStateLine(themeAsset, "last event", _markupDemoLastEvent);
+
+                NowMarkdown.Document("## Hot reload\n\nUse `NowMarkup.File(\"Assets/UI/main.nowui\")` to render a disk file. It uses `FileSystemWatcher` to mark the source dirty and reparses on the main thread during `Draw()`.").Draw();
+
+                NowMarkdown.Document("## Source\n\n```xml\n" + MarkupDemoSample + "\n```")
+                    .SetFontSize(13f)
+                    .Draw();
+            }
+        }
+    }
+
+    void EnsureMarkupDemoState()
+    {
+        if (!_markupDemoState.Has("name"))
+            _markupDemoState.SetString("name", "NowUI");
+
+        if (!_markupDemoState.Has("volume"))
+            _markupDemoState.SetFloat("volume", 0.65f);
+
+        if (!_markupDemoState.Has("photo"))
+            _markupDemoState.SetInt("photo", 0);
+    }
+
+    void ConsumeMarkupDemoEvents(NowMarkupResult result)
+    {
+        if (result.events == null)
+            return;
+
+        for (int i = 0; i < result.events.Count; ++i)
+        {
+            var item = result.events[i];
+            _markupDemoLastEvent = item.ToString();
+
+            if (item.kind == NowMarkupEventKind.Action && item.name == "save")
+                ++_markupDemoClicks;
+        }
+    }
+
+    static void DrawMarkupDemoStateLine(NowThemeAsset themeAsset, string key, string value)
+    {
+        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Label(key)
+                .SetWidth(86f)
+                .SetFontSize(13f)
+                .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+                .Draw();
+
+            NowLayout.Label(value)
+                .SetFontSize(13f)
+                .SetStretchWidth()
+                .Draw();
         }
     }
 

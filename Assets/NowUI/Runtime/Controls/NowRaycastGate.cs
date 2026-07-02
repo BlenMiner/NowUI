@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 namespace NowUI
 {
@@ -25,6 +26,18 @@ namespace NowUI
         /// </summary>
         public static bool IsPointerAllowed(Component host, Vector2 screenPosition)
         {
+            return IsPointerAllowed(host, screenPosition, false);
+        }
+
+        /// <summary>
+        /// True when the EventSystem hit at <paramref name="screenPosition"/>
+        /// belongs to <paramref name="host"/>. When
+        /// <paramref name="allowHostOwnedOverlay"/> is true, UGUI hits drawn below
+        /// the host are also allowed so NowUI popups can extend beyond the host
+        /// rect without losing input.
+        /// </summary>
+        public static bool IsPointerAllowed(Component host, Vector2 screenPosition, bool allowHostOwnedOverlay)
+        {
             var eventSystem = EventSystem.current;
 
             if (eventSystem == null || host == null)
@@ -35,9 +48,9 @@ namespace NowUI
             if (s_results.Count == 0)
                 return true;
 
-            var top = s_results[0].gameObject.transform;
-            var root = host.transform;
-            bool allowed = top == root || top.IsChildOf(root);
+            var topResult = s_results[0];
+            bool allowed = IsHostOrChild(host, topResult) ||
+                (allowHostOwnedOverlay && !IsRaycastResultAboveHost(host, topResult, screenPosition));
             s_results.Clear();
             return allowed;
         }
@@ -85,6 +98,45 @@ namespace NowUI
             return pressAllowed;
         }
 
+        internal static bool IsHostAbove(Component candidateHost, Component targetHost, Vector2 screenPosition)
+        {
+            if (candidateHost == null || targetHost == null || candidateHost == targetHost)
+                return false;
+
+            var candidate = ResolveGraphic(candidateHost);
+            var target = ResolveGraphic(targetHost);
+
+            if (candidate == null || target == null)
+                return false;
+
+            var candidateCanvas = candidate.canvas;
+            var targetCanvas = target.canvas;
+
+            if (candidateCanvas == null || targetCanvas == null)
+                return false;
+
+            int candidateLayer = SortingLayer.GetLayerValueFromID(candidateCanvas.sortingLayerID);
+            int targetLayer = SortingLayer.GetLayerValueFromID(targetCanvas.sortingLayerID);
+
+            if (candidateLayer != targetLayer)
+                return candidateLayer > targetLayer;
+
+            if (candidateCanvas.sortingOrder != targetCanvas.sortingOrder)
+                return candidateCanvas.sortingOrder > targetCanvas.sortingOrder;
+
+            if (candidateCanvas.rootCanvas == targetCanvas.rootCanvas)
+                return candidate.depth > target.depth;
+
+            if (TryGraphicRayDistance(candidate, screenPosition, out float candidateDistance) &&
+                TryGraphicRayDistance(target, screenPosition, out float targetDistance))
+            {
+                const float epsilon = 0.001f;
+                return candidateDistance < targetDistance - epsilon;
+            }
+
+            return false;
+        }
+
         static void RaycastAll(EventSystem eventSystem, Vector2 screenPosition)
         {
             if (s_pointerData == null || s_eventSystem != eventSystem)
@@ -97,6 +149,137 @@ namespace NowUI
 
             s_results.Clear();
             eventSystem.RaycastAll(s_pointerData, s_results);
+        }
+
+        static bool IsHostOrChild(Component host, RaycastResult result)
+        {
+            if (result.gameObject == null)
+                return false;
+
+            var top = result.gameObject.transform;
+            var root = host.transform;
+            return top == root || top.IsChildOf(root);
+        }
+
+        static bool IsRaycastResultAboveHost(Component host, RaycastResult result, Vector2 screenPosition)
+        {
+            if (host == null || result.gameObject == null)
+                return true;
+
+            var hostGraphic = ResolveGraphic(host);
+            if (hostGraphic == null)
+                return true;
+
+            var hostCanvas = hostGraphic.canvas;
+
+            if (hostCanvas == null)
+                return true;
+
+            var hostRaycaster = hostCanvas.GetComponent<BaseRaycaster>();
+
+            if (result.module != null && hostRaycaster != null && result.module != hostRaycaster)
+            {
+                if (result.module.sortOrderPriority != hostRaycaster.sortOrderPriority)
+                    return result.module.sortOrderPriority > hostRaycaster.sortOrderPriority;
+
+                if (result.module.renderOrderPriority != hostRaycaster.renderOrderPriority)
+                    return result.module.renderOrderPriority > hostRaycaster.renderOrderPriority;
+            }
+
+            var hitGraphic = result.gameObject.GetComponent<Graphic>();
+            var hitCanvas = hitGraphic != null ? hitGraphic.canvas : null;
+
+            if (hitCanvas != null)
+            {
+                int hitLayer = SortingLayer.GetLayerValueFromID(hitCanvas.sortingLayerID);
+                int hostLayer = SortingLayer.GetLayerValueFromID(hostCanvas.sortingLayerID);
+
+                if (hitLayer != hostLayer)
+                    return hitLayer > hostLayer;
+
+                if (hitCanvas.sortingOrder != hostCanvas.sortingOrder)
+                    return hitCanvas.sortingOrder > hostCanvas.sortingOrder;
+
+                if (hitCanvas.rootCanvas == hostCanvas.rootCanvas)
+                    return result.depth > hostGraphic.depth;
+            }
+
+            if (TryRaycastResultInFrontOfHost(hostGraphic, result, screenPosition, out bool inFront))
+                return inFront;
+
+            return true;
+        }
+
+        static bool TryRaycastResultInFrontOfHost(
+            Graphic hostGraphic,
+            RaycastResult result,
+            Vector2 screenPosition,
+            out bool inFront)
+        {
+            inFront = true;
+
+            var camera = result.module != null ? result.module.eventCamera : null;
+
+            if (camera == null || hostGraphic == null)
+                return false;
+
+            var hostTransform = hostGraphic.rectTransform;
+            var ray = camera.ScreenPointToRay(screenPosition);
+
+            if (!RectTransformUtility.ScreenPointToWorldPointInRectangle(
+                    hostTransform,
+                    screenPosition,
+                    camera,
+                    out var hostWorldPosition))
+            {
+                return false;
+            }
+
+            float hostDistance = Vector3.Dot(hostWorldPosition - ray.origin, ray.direction);
+            float resultDistance = result.distance;
+
+            if (resultDistance <= 0f && result.worldPosition != Vector3.zero)
+                resultDistance = Vector3.Dot(result.worldPosition - ray.origin, ray.direction);
+
+            const float epsilon = 0.001f;
+            inFront = resultDistance < hostDistance - epsilon;
+            return hostDistance >= 0f && resultDistance >= 0f;
+        }
+
+        static Graphic ResolveGraphic(Component component)
+        {
+            var graphic = component as Graphic;
+            return graphic != null ? graphic : component.GetComponent<Graphic>();
+        }
+
+        static bool TryGraphicRayDistance(Graphic graphic, Vector2 screenPosition, out float distance)
+        {
+            distance = 0f;
+
+            if (graphic == null)
+                return false;
+
+            var canvas = graphic.canvas;
+            var camera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? canvas.worldCamera
+                : null;
+
+            if (camera == null)
+                return false;
+
+            var ray = camera.ScreenPointToRay(screenPosition);
+
+            if (!RectTransformUtility.ScreenPointToWorldPointInRectangle(
+                    graphic.rectTransform,
+                    screenPosition,
+                    camera,
+                    out var worldPosition))
+            {
+                return false;
+            }
+
+            distance = Vector3.Dot(worldPosition - ray.origin, ray.direction);
+            return distance >= 0f;
         }
     }
 }

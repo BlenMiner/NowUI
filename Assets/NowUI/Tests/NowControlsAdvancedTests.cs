@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using NowUI;
 
@@ -163,6 +164,7 @@ public class NowControlsAdvancedTests
         NowControlState.Reset();
         NowControls.Reset();
         NowOverlay.Reset();
+        NowContextMenu.Reset();
         NowTextInput.Reset();
 
         _pointer = new FakePointer();
@@ -176,6 +178,7 @@ public class NowControlsAdvancedTests
     {
         _drawList.Dispose();
         NowTextInput.Reset();
+        NowContextMenu.Reset();
         NowOverlay.Reset();
         NowInput.Reset();
         NowFocus.Reset();
@@ -370,6 +373,7 @@ public class NowControlsAdvancedTests
             }
 
             Assert.GreaterOrEqual(renderer.contextMenuItems, 2);
+            Assert.GreaterOrEqual(renderer.lastMenuPopupRect.width, 160f);
             Assert.GreaterOrEqual(renderer.lastMenuPopupRect.x, 0f);
             Assert.GreaterOrEqual(renderer.lastMenuPopupRect.y, 0f);
             Assert.LessOrEqual(renderer.lastMenuPopupRect.xMax, Surface.x);
@@ -382,6 +386,89 @@ public class NowControlsAdvancedTests
             Object.DestroyImmediate(renderer);
             Object.DestroyImmediate(theme);
         }
+    }
+
+    [Test]
+    public void ThemePresetContextMenusStayCompact()
+    {
+        string[] paths =
+        {
+            "Assets/NowUI/Assets/Themes/White.asset",
+            "Assets/NowUI/Assets/Themes/Night.asset",
+            "Assets/NowUI/Assets/Themes/Dark.asset",
+            "Assets/NowUI/Assets/Themes/Material.asset",
+            "Assets/NowUI/Assets/Themes/MaterialDark.asset",
+            "Assets/NowUI/Assets/Themes/HeroUI.asset",
+            "Assets/NowUI/Assets/Themes/HeroUIDark.asset"
+        };
+
+        foreach (string path in paths)
+        {
+            var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(path);
+
+            Assert.IsNotNull(theme, path);
+            Assert.LessOrEqual(
+                theme.controlStyles.contextMenuItemHeight,
+                32f,
+                $"{path} should keep context menu rows compact; large list rows make one-item menus look empty.");
+        }
+    }
+
+    [Test]
+    public void ContextMenuSubmenuDeliversNestedItemClick()
+    {
+        const int menuId = 7011;
+        var anchor = new Vector2(20f, 20f);
+        bool clicked = false;
+
+        void DrawFrame(bool open = false)
+        {
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                if (open)
+                    NowContextMenu.Open(menuId, anchor);
+
+                if (NowContextMenu.Begin(menuId))
+                {
+                    if (NowContextMenu.BeginSubmenu("More"))
+                    {
+                        if (NowContextMenu.Item("Nested Action"))
+                            clicked = true;
+
+                        NowContextMenu.EndSubmenu();
+                    }
+
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+        }
+
+        var styles = NowTheme.themeAsset.controlStyles;
+        float rootWidth = Mathf.Max(160f, styles.contextMenuMinWidth);
+        var submenuPoint = new Vector2(
+            anchor.x + styles.popupPadding + 12f,
+            anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+        var nestedPoint = new Vector2(anchor.x + rootWidth + 12f, submenuPoint.y);
+
+        _pointer.snapshot = new NowInputSnapshot(submenuPoint, false, false, false);
+        DrawFrame(open: true);
+
+        _pointer.snapshot = new NowInputSnapshot(nestedPoint, true, true, false);
+        DrawFrame();
+
+        _pointer.snapshot = new NowInputSnapshot(nestedPoint, false, false, true);
+        DrawFrame();
+
+        Assert.IsFalse(clicked, "Context menu item clicks are delivered on the owner draw after the overlay closes.");
+
+        _pointer.snapshot = new NowInputSnapshot(nestedPoint, false, false, false);
+        DrawFrame();
+
+        Assert.IsTrue(clicked);
+        Assert.IsFalse(NowContextMenu.isOpen);
     }
 
     [Test]
@@ -755,6 +842,19 @@ public class NowControlsAdvancedTests
         Assert.IsTrue(parentHadChild);
         Assert.IsTrue(childSawSelf);
         Assert.IsFalse(NowOverlay.IsPointerInsideOverlayTree(parentId, new Vector2(300, 300)));
+    }
+
+    [Test]
+    public void OverlayConcretePopupHitTestIgnoresModalScreenBlock()
+    {
+        using (NowInput.Begin(_pointer, Surface))
+        {
+            NowOverlay.BlockScreen(new NowRect(-1000f, -1000f, 2000f, 2000f));
+            NowOverlay.DeferScreen(new NowRect(40f, 30f, 80f, 50f), 303, _ => { });
+
+            Assert.IsTrue(NowOverlay.IsPointerInsideOverlay(new Vector2(60f, 40f)));
+            Assert.IsFalse(NowOverlay.IsPointerInsideOverlay(new Vector2(200f, 200f)));
+        }
     }
 
     [Test]

@@ -1434,11 +1434,13 @@ namespace NowUI
         /// <summary>
         /// When set (NowGraphic assigns its host graphic), the pointer is withheld
         /// unless the EventSystem's topmost raycast hit is this component or one of
-        /// its children — UGUI drawn above the host occludes NowUI input, mirroring
-        /// how the host's raycastTarget occludes UGUI beneath it. The verdict latches
-        /// at press time: drags that began on this host keep tracking and their
-        /// release always arrives, while presses that began on occluding UGUI stay
-        /// blocked through release.
+        /// its children. UGUI drawn above the host occludes NowUI input, mirroring
+        /// how the host's raycastTarget occludes UGUI beneath it. Host-owned NowUI
+        /// overlays may extend outside the host rect and still receive input when
+        /// only lower UGUI is under the pointer. The verdict latches at press time:
+        /// drags that began on this host keep tracking and their release always
+        /// arrives, while presses that began on occluding UGUI stay blocked through
+        /// release.
         /// </summary>
         public Component raycastGate;
 
@@ -1515,16 +1517,6 @@ namespace NowUI
             bool buttonsWereDown = _previousButtonsDown != NowPointerButtons.None;
             _previousButtonsDown = mouseInput.pointerButtonsDown;
 
-            bool allowedNow = raycastGate == null ||
-                NowRaycastGate.IsPointerAllowed(raycastGate, mouseInput.screenPosition);
-
-            if (!NowRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow))
-            {
-                _hasPreviousPosition = false;
-                _snapshot = CreateNavigationOnlySnapshot(mouseInput);
-                return;
-            }
-
             if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
                     _rectTransform,
                     mouseInput.screenPosition,
@@ -1538,6 +1530,22 @@ namespace NowUI
 
             Rect rect = _rectTransform.rect;
             var position = new Vector2(localPosition.x - rect.xMin, rect.yMax - localPosition.y);
+            bool blockedByForeignOverlay = raycastGate != null &&
+                NowOverlay.IsPointerBlockedByForeignOverlay(raycastGate, mouseInput.screenPosition);
+            bool insideHostOverlay = raycastGate != null
+                ? NowOverlay.IsPointerInsideOverlay(raycastGate, position)
+                : NowOverlay.IsPointerInsideOverlay(position);
+            bool allowedNow = !blockedByForeignOverlay &&
+                (raycastGate == null ||
+                    NowRaycastGate.IsPointerAllowed(raycastGate, mouseInput.screenPosition, insideHostOverlay));
+
+            if (!NowRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow))
+            {
+                _hasPreviousPosition = false;
+                _snapshot = CreateNavigationOnlySnapshot(mouseInput);
+                return;
+            }
+
             Vector2 previousPosition = _hasPreviousPosition ? _previousPosition : position;
             Vector2 delta = position - previousPosition;
 
