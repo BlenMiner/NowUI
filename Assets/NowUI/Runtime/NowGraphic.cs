@@ -1092,46 +1092,13 @@ namespace NowUI
 
             entry.width = width;
             entry.height = height;
-            entry.source = CreateUGUIGlassTexture(width, height, $"Now UGUI Glass Source {entry.batchIndex}");
-            entry.blurred = CreateUGUIGlassTexture(width, height, $"Now UGUI Glass Blur {entry.batchIndex}");
-        }
-
-        static RenderTexture CreateUGUIGlassTexture(int width, int height, string name)
-        {
-            var descriptor = new RenderTextureDescriptor(
-                Mathf.Max(1, width),
-                Mathf.Max(1, height),
-                RenderTextureFormat.ARGB32,
-                0)
-            {
-                msaaSamples = 1,
-                useMipMap = false,
-                autoGenerateMips = false
-            };
-            var texture = new RenderTexture(descriptor)
-            {
-                name = name,
-                hideFlags = HideFlags.HideAndDontSave,
-                filterMode = FilterMode.Bilinear,
-                wrapMode = TextureWrapMode.Clamp,
-            };
-
-            texture.Create();
-            return texture;
+            entry.source = NowGlassBackdropSurface.CreateTexture(width, height, $"Now UGUI Glass Source {entry.batchIndex}");
+            entry.blurred = NowGlassBackdropSurface.CreateTexture(width, height, $"Now UGUI Glass Blur {entry.batchIndex}");
         }
 
         void EnsureUGUIGlassMaterial(UguiGlassBackdropEntry entry, Material baseMaterial)
         {
-            if (entry.material != null && entry.sourceMaterial == baseMaterial)
-                return;
-
-            ReleaseUGUIGlassMaterial(entry);
-            entry.sourceMaterial = baseMaterial;
-            entry.material = new Material(baseMaterial)
-            {
-                name = $"{baseMaterial.name} Backdrop",
-                hideFlags = HideFlags.HideAndDontSave
-            };
+            NowGlassBackdropSurface.EnsureDerivedMaterial(ref entry.material, ref entry.sourceMaterial, baseMaterial, " Backdrop");
         }
 
         Material GetUGUIGlassBackdropMaterial(int batchIndex)
@@ -1177,42 +1144,15 @@ namespace NowUI
 
         void ReleaseUGUIGlassTextures(UguiGlassBackdropEntry entry)
         {
-            if (entry.source != null)
-            {
-                entry.source.Release();
-                DestroyNowObject(entry.source);
-                entry.source = null;
-            }
-
-            if (entry.blurred != null)
-            {
-                entry.blurred.Release();
-                DestroyNowObject(entry.blurred);
-                entry.blurred = null;
-            }
-
+            NowGlassBackdropSurface.ReleaseTexture(ref entry.source);
+            NowGlassBackdropSurface.ReleaseTexture(ref entry.blurred);
             entry.width = 0;
             entry.height = 0;
         }
 
         void ReleaseUGUIGlassMaterial(UguiGlassBackdropEntry entry)
         {
-            if (entry.material == null)
-                return;
-
-            DestroyNowObject(entry.material);
-            entry.material = null;
-        }
-
-        static void DestroyNowObject(UnityEngine.Object target)
-        {
-            if (target == null)
-                return;
-
-            if (Application.isPlaying)
-                Destroy(target);
-            else
-                DestroyImmediate(target);
+            NowGlassBackdropSurface.ReleaseMaterial(ref entry.material);
         }
 
         void DestroyExtraCanvasRenderers()

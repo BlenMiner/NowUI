@@ -29,6 +29,10 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   generator writes the full extended role set.
 - Wheel scrolling a text area now works over its padding, not just the inner
   text rect.
+- Glass backdrop render-texture and derived-material lifecycles are shared
+  between the UGUI replay path and the world camera-backdrop path
+  (`NowGlassBackdropSurface`), so the RT descriptor and play/edit destroy
+  handling cannot drift apart. The capture pipelines stay per-host.
 
 - Input internals reorganized into `Runtime/Input/`: providers
   (`NowScreenInputProvider`, `NowIMGUIInputProvider`,
