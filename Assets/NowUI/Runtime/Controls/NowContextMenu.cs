@@ -34,12 +34,12 @@ namespace NowUI
     {
         const float MinimumMenuWidth = 160f;
         const float SubmenuGap = 2f;
-        const float ViewMargin = 8f;
         const float ScrollStripHeight = 16f;
 
         const float HoverIntentDelay = 0.18f;
 
         static int _openId;
+        static object _openSurface;
         static Vector2 _position;
         static bool _fitToView = true;
         static int _activeId;
@@ -111,6 +111,7 @@ namespace NowUI
         public static void Open(int id, Vector2 position, bool fitToView = true)
         {
             _openId = id;
+            _openSurface = NowInput.currentProvider;
             _position = position;
             _fitToView = fitToView;
             _openPath.Clear();
@@ -139,6 +140,9 @@ namespace NowUI
             int pendingStateId = NowInput.GetId(id, "ctx-pending-path");
 
             if (_openId != id && NowControlState.Get<int>(pendingStateId) == 0)
+                return false;
+
+            if (_openSurface != null && !ReferenceEquals(_openSurface, NowInput.currentProvider))
                 return false;
 
             _activeId = id;
@@ -308,11 +312,15 @@ namespace NowUI
             for (int i = 0; i < _menuCount; ++i)
                 MeasureMenu(_menus[i], theme);
 
-            ClampMenuHeight(root, theme);
+            root.contentHeight = root.height;
             root.popupRect = new NowRect(_position.x, _position.y, root.width, root.height);
 
             if (_fitToView)
-                root.popupRect = NowOverlay.FitScreenToView(root.popupRect);
+            {
+                root.popupRect = NowOverlay.ClampScreenToView(root.popupRect);
+                root.height = root.popupRect.height;
+                root.scrolls = root.height < root.contentHeight - 0.5f;
+            }
 
             NowControlState.RequestRepaint();
             NowOverlay.BlockAllSurfaces(root.overlayId);
@@ -532,24 +540,6 @@ namespace NowUI
             Now.Line(mid, b).SetColor(color).SetWidth(1.4f).SetCap(NowLineCap.Round).Draw();
         }
 
-        static void ClampMenuHeight(Menu menu, NowThemeAsset theme)
-        {
-            menu.contentHeight = menu.height;
-            menu.scrolls = false;
-
-            var view = NowOverlay.GetViewBounds();
-            float maxHeight = view.height - ViewMargin * 2f;
-            float minHeight = theme.controlStyles.contextMenuItemHeight * 2f + theme.controlStyles.popupPadding * 2f;
-
-            if (maxHeight < minHeight)
-                maxHeight = minHeight;
-
-            if (menu.height <= maxHeight)
-                return;
-
-            menu.height = maxHeight;
-            menu.scrolls = true;
-        }
 
         static void DrawEntry(NowThemeAsset theme, Menu menu, Entry entry, NowRect itemRect)
         {
@@ -635,7 +625,8 @@ namespace NowUI
 
         static NowRect PlaceSubmenu(Menu child, NowRect parentItemRect, float popupPadding)
         {
-            ClampMenuHeight(child, NowTheme.themeAsset);
+            child.contentHeight = child.height;
+            child.scrolls = false;
 
             var rect = new NowRect(
                 parentItemRect.xMax + SubmenuGap,
@@ -644,7 +635,11 @@ namespace NowUI
                 child.height);
 
             if (_fitToView)
-                rect = NowOverlay.FitScreenToView(rect);
+            {
+                rect = NowOverlay.ClampScreenToView(rect);
+                child.height = rect.height;
+                child.scrolls = child.height < child.contentHeight - 0.5f;
+            }
 
             return rect;
         }
@@ -813,6 +808,7 @@ namespace NowUI
         public static void Reset()
         {
             _openId = 0;
+            _openSurface = null;
             _fitToView = true;
             _activeId = 0;
             _pendingPathStateId = 0;

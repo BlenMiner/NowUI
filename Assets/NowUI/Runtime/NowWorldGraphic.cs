@@ -450,50 +450,51 @@ namespace NowUI
             return FitPopupRectToCameraView(rect);
         }
 
-        NowRect INowPopupFitProvider.GetPopupViewBounds()
+        NowRect INowPopupFitProvider.ClampPopupRectToView(NowRect rect)
         {
-            return GetCameraViewBoundsOnSurface();
+            return ClampPopupRectToCameraView(rect);
         }
 
         /// <summary>
-        /// Projects the camera's pixel rect corners onto this surface's UI plane
-        /// and returns their bounding rect in surface coordinates, so oversized
-        /// popups can clamp to what the camera can actually show. Falls back to
-        /// an unbounded rect when the plane is edge-on.
+        /// Shrinks a popup until its screen-space projection fits the camera's
+        /// pixel rect, then moves it into view. Projection-based, so it clamps
+        /// correctly on tilted surfaces where a plane-projected bounding box
+        /// would explode toward the plane's horizon.
         /// </summary>
-        NowRect GetCameraViewBoundsOnSurface()
+        NowRect ClampPopupRectToCameraView(NowRect rect)
         {
-            var unbounded = new NowRect(-100000f, -100000f, 200000f, 200000f);
             var cmr = ResolveCamera();
 
-            if (!cmr)
-                return unbounded;
+            if (!cmr || rect.isEmpty)
+                return rect;
 
             Rect pixels = cmr.pixelRect;
-            float minX = float.PositiveInfinity;
-            float minY = float.PositiveInfinity;
-            float maxX = float.NegativeInfinity;
-            float maxY = float.NegativeInfinity;
+
+            if (pixels.height <= 1f)
+                return FitPopupRectToCameraView(rect);
+
+            const float margin = 8f;
+            const float minPopupHeight = 48f;
+            float maxPixels = Mathf.Max(32f, pixels.height - margin * 2f);
 
             for (int i = 0; i < 4; ++i)
             {
-                var corner = new Vector2(
-                    i % 2 == 0 ? pixels.xMin : pixels.xMax,
-                    i < 2 ? pixels.yMin : pixels.yMax);
+                if (!TryProjectPopupScreenBounds(cmr, rect, out var screenBounds))
+                    break;
 
-                if (!TryRayToSurface(cmr.ScreenPointToRay(corner), out var surfacePoint, out _))
-                    return unbounded;
+                if (screenBounds.height <= maxPixels || screenBounds.height <= 1f)
+                    break;
 
-                minX = Mathf.Min(minX, surfacePoint.x);
-                minY = Mathf.Min(minY, surfacePoint.y);
-                maxX = Mathf.Max(maxX, surfacePoint.x);
-                maxY = Mathf.Max(maxY, surfacePoint.y);
+                float ratio = maxPixels / screenBounds.height;
+                float newHeight = Mathf.Max(minPopupHeight, rect.height * ratio);
+
+                if (newHeight >= rect.height - 0.5f)
+                    break;
+
+                rect = new NowRect(rect.x, rect.y, rect.width, newHeight);
             }
 
-            if (maxX <= minX || maxY <= minY)
-                return unbounded;
-
-            return new NowRect(minX, minY, maxX - minX, maxY - minY);
+            return FitPopupRectToCameraView(rect);
         }
 
         NowRect FitPopupRectToCameraView(NowRect rect)

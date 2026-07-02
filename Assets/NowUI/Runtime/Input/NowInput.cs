@@ -152,6 +152,9 @@ namespace NowUI
 
         public static NowInputSnapshot current => _snapshot;
 
+        /// <summary>The provider serving the active input scope — the surface identity for surface-owned state.</summary>
+        internal static INowInputProvider currentProvider => _currentProvider;
+
         public static bool hasContext => _hasContext;
 
         public static int activeId => _activeId;

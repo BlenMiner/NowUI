@@ -49,6 +49,9 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A context menu now belongs to the input surface that opened it: two
+  surfaces sharing a menu id no longer both draw the menu (and the wrong one
+  can no longer consume the item click).
 - Context menus opened from inside another popup (the animation curve
   editor's tangent menu, dropdowns in dialogs) now win the pointer over the
   popup content beneath them: modal blocks apply between overlay layers, with
@@ -88,8 +91,9 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Submenus clamp and scroll independently, anchor to their scrolled row, and
   close when their row scrolls out of view. Scrolling over an open menu
   scrolls it; scrolling elsewhere still closes it. World-space hosts clamp
-  against the camera view projected onto the UI plane
-  (`INowPopupFitProvider.GetPopupViewBounds`, `NowOverlay.GetViewBounds`).
+  against the popup's screen-space projection, so tilted surfaces clamp
+  correctly (`INowPopupFitProvider.ClampPopupRectToView`,
+  `NowOverlay.ClampScreenToView`).
 - Menu Lab pages for hands-on edge-case testing: a "Menus" tab in the control
   gallery example (60-item playground menu, 80-item submenu, deep nesting,
   screen-corner and 100-item menus) and a right-click stress menu on the

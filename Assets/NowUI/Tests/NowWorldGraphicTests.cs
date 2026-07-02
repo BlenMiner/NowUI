@@ -646,6 +646,127 @@ public class NowWorldGraphicTests
     }
 
     [Test]
+    public void WorldContextMenuBelongsToTheSurfaceThatOpenedIt()
+    {
+        var cameraObject = new GameObject("Now World Menu Camera");
+        var leftObject = new GameObject("Now World Menu Left");
+        var rightObject = new GameObject("Now World Menu Right");
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.pixelRect = new Rect(0, 0, 200, 200);
+            cameraObject.transform.position = new Vector3(0, 0, -5);
+
+            leftObject.transform.position = new Vector3(-0.5f, 0f, 0f);
+            var left = leftObject.AddComponent<MenuWorldGraphic>();
+            left.facingMode = NowWorldFacingMode.None;
+            left.targetCamera = camera;
+            left.size = new Vector2(80f, 60f);
+            left.pixelsPerUnit = 100f;
+            left.pivot = new Vector2(0.5f, 0.5f);
+
+            rightObject.transform.position = new Vector3(0.5f, 0f, 0f);
+            var right = rightObject.AddComponent<MenuWorldGraphic>();
+            right.facingMode = NowWorldFacingMode.None;
+            right.targetCamera = camera;
+            right.size = new Vector2(80f, 60f);
+            right.pixelsPerUnit = 100f;
+            right.pivot = new Vector2(0.5f, 0.5f);
+
+            left.menuId = 9911;
+            right.menuId = 9911;
+
+            var leftFed = new FedWorldProvider { inner = new NowWorldInputProvider { graphic = left, camera = camera } };
+            left.provider = leftFed;
+            var rightFed = new FedWorldProvider { inner = new NowWorldInputProvider { graphic = right, camera = camera } };
+            right.provider = rightFed;
+
+            void Step(NowMouseInput raw)
+            {
+                NowOverlay.ForceNewFrame();
+                NowPointerArbiter.ForceNewFrame();
+                leftFed.raw = raw;
+                rightFed.raw = raw;
+                leftFed.inner.ResetPosition();
+                rightFed.inner.ResetPosition();
+                right.MarkDirty();
+                right.Tick();
+                left.MarkDirty();
+                left.Tick();
+            }
+
+            var anchorScreen = new Vector2(50f, 100f);
+            var itemScreen = new Vector2(60f, 82f);
+
+            Step(RawPointer(anchorScreen));
+            Step(RawPointer(anchorScreen, NowPointerButtons.Secondary, NowPointerButtons.Secondary));
+            Step(RawPointer(anchorScreen, released: NowPointerButtons.Secondary));
+
+            Assert.IsTrue(NowContextMenu.isOpen, "Right-click on the left surface must open its menu.");
+
+            Step(RawPointer(new Vector2(itemScreen.x, itemScreen.y + 0.1f)));
+            Step(RawPointer(new Vector2(itemScreen.x, itemScreen.y + 0.2f), NowPointerButtons.Primary, NowPointerButtons.Primary));
+            Step(RawPointer(new Vector2(itemScreen.x, itemScreen.y + 0.3f), released: NowPointerButtons.Primary));
+            Step(RawPointer(new Vector2(itemScreen.x, itemScreen.y + 0.4f)));
+
+            Assert.AreEqual(1, left.itemClicks, "The surface that opened the menu must deliver the item click.");
+            Assert.AreEqual(0, right.itemClicks, "A surface that shares the menu id must not draw it or steal its delivery.");
+            Assert.AreEqual(0, left.behindClicks);
+            Assert.AreEqual(0, right.behindClicks);
+        }
+        finally
+        {
+            Object.DestroyImmediate(rightObject);
+            Object.DestroyImmediate(leftObject);
+            Object.DestroyImmediate(cameraObject);
+        }
+    }
+
+    [Test]
+    public void WorldPopupClampShrinksToProjectedCameraView()
+    {
+        var cameraObject = new GameObject("Now World Clamp Camera");
+        var panelObject = new GameObject("Now World Clamp Panel");
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.pixelRect = new Rect(0, 0, 200, 200);
+            cameraObject.transform.position = new Vector3(0, 0, -5);
+
+            var graphic = panelObject.AddComponent<RectWorldGraphic>();
+            graphic.facingMode = NowWorldFacingMode.None;
+            graphic.targetCamera = camera;
+            graphic.size = new Vector2(100f, 50f);
+            graphic.pixelsPerUnit = 100f;
+            graphic.pivot = new Vector2(0.5f, 0.5f);
+
+            var provider = (INowPopupFitProvider)graphic;
+            var tall = new NowRect(10f, 10f, 160f, 900f);
+            var clamped = provider.ClampPopupRectToView(tall);
+
+            Assert.Less(clamped.height, 300f, "A popup far taller than the camera view must shrink.");
+            Assert.GreaterOrEqual(clamped.height, 48f, "Clamping must keep a usable minimum height.");
+            Assert.AreEqual(tall.width, clamped.width, 0.001f, "Clamping must not change the width.");
+
+            var small = new NowRect(10f, 10f, 120f, 60f);
+            var untouched = provider.ClampPopupRectToView(small);
+
+            Assert.AreEqual(small.height, untouched.height, 0.001f, "Popups that already fit must keep their size.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(panelObject);
+            Object.DestroyImmediate(cameraObject);
+        }
+    }
+
+    [Test]
     public void WorldInputMapsCameraRayToSurfaceCoordinates()
     {
         var cameraObject = new GameObject("Now World Camera");
