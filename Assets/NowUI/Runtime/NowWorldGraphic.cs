@@ -671,7 +671,13 @@ namespace NowUI
 
         public bool TryScreenPointToSurface(Vector2 screenPosition, out Vector2 surfacePosition)
         {
+            return TryScreenPointToSurface(screenPosition, out surfacePosition, out _);
+        }
+
+        internal bool TryScreenPointToSurface(Vector2 screenPosition, out Vector2 surfacePosition, out float distance)
+        {
             surfacePosition = default;
+            distance = float.PositiveInfinity;
 
             var cmr = ResolveCamera();
 
@@ -683,13 +689,14 @@ namespace NowUI
             if (resolution.owner == this)
             {
                 surfacePosition = resolution.ownerSurfacePosition;
+                distance = resolution.ownerDistance;
                 return true;
             }
 
             if (resolution.owner)
                 return false;
 
-            if (!TryRayToSurface(resolution.ray, out surfacePosition, out float distance))
+            if (!TryRayToSurface(resolution.ray, out surfacePosition, out distance))
                 return false;
 
             if (_depthMode == NowWorldDepthMode.SceneOccluded && IsSceneBlocked(resolution.sceneBlockDistance, distance))

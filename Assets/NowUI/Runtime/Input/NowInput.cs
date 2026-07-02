@@ -431,6 +431,9 @@ namespace NowUI
             Rect localRect = rect;
             Rect screenRect = Now.TransformScreenRect(rect);
 
+            if (_passiveDepth == 0 && _currentProvider != null)
+                NowPointerArbiter.NoteContent(_currentProvider, screenRect);
+
             var snapshot = _snapshot;
             bool hasPointer = _hasContext && snapshot.hasPointer;
             bool hovered = hasPointer && screenRect.Contains(snapshot.pointerPosition) &&
@@ -609,6 +612,7 @@ namespace NowUI
             _scopeDepth = 0;
             _scrollConsumed = false;
             NowRaycastGate.InvalidateCache();
+            NowPointerArbiter.Reset();
         }
 
         /// <summary>

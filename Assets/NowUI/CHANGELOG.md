@@ -75,6 +75,16 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Central pointer-ownership arbitration** (`NowPointerArbiter`): every input
+  surface (screen path, canvas graphics, world graphics, UI Toolkit hosts)
+  registers a per-frame claim — layering tier, depth, whether it has content
+  under the pointer, and held buttons — and exactly one surface owns the
+  pointer, resolved one frame late so the result never depends on host update
+  order. Ownership latches during drags. Surfaces that never claim (single-
+  surface apps, custom providers, tests) keep today's behavior. This replaces
+  the tick-order-dependent behavior that let clicks land on surfaces behind
+  popups and menus.
+
 - **Ten new controls**, all following the standard dual `Now.*`/`NowLayout.*`
   factories, caller-owned values, theme tokens, focus/keyboard navigation, and
   zero steady-state allocations: `Switch`, `ProgressBar` (determinate +

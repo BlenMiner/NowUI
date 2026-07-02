@@ -52,10 +52,18 @@ namespace NowUI
 
         public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
-            Vector2 delta = _hasPointer ? _pointerPosition - _previousPointerPosition : default;
+            NowPointerArbiter.Claim(
+                this,
+                NowPointerArbiter.TierCanvas,
+                0f,
+                _hasPointer,
+                _pointerButtonsDown != NowPointerButtons.None);
+
+            bool hasPointer = _hasPointer && NowPointerArbiter.IsOwner(this);
+            Vector2 delta = hasPointer ? _pointerPosition - _previousPointerPosition : default;
 
             snapshot = new NowInputSnapshot(
-                _hasPointer,
+                hasPointer,
                 _pointerPosition,
                 _previousPointerPosition,
                 delta,

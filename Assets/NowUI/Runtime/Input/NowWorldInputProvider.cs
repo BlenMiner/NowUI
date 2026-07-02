@@ -125,13 +125,21 @@ namespace NowUI
                 return true;
             }
 
-            bool hit = TryScreenPointToSurface(input.screenPosition, out var position);
+            bool hit = TryScreenPointToSurface(input.screenPosition, out var position, out float rayDistance);
             bool inside = hit &&
                           position is { x: >= 0f, y: >= 0f } &&
                           position.x <= surface.size.x &&
                           position.y <= surface.size.y;
             bool insideOverlay = hit && !inside && IsInsideOwnedOverlay(position);
-            bool hasPointer = hit && (inside || insideOverlay ||
+
+            NowPointerArbiter.Claim(
+                this,
+                NowPointerArbiter.TierWorld,
+                rayDistance,
+                hit && (inside || insideOverlay),
+                input.pointerButtonsDown != NowPointerButtons.None);
+
+            bool hasPointer = hit && NowPointerArbiter.IsOwner(this) && (inside || insideOverlay ||
                 input.pointerButtonsDown != NowPointerButtons.None ||
                 input.pointerButtonsReleased != NowPointerButtons.None);
 
@@ -172,10 +180,16 @@ namespace NowUI
 
         public bool TryScreenPointToSurface(Vector2 screenPosition, out Vector2 surfacePosition)
         {
+            return TryScreenPointToSurface(screenPosition, out surfacePosition, out _);
+        }
+
+        internal bool TryScreenPointToSurface(Vector2 screenPosition, out Vector2 surfacePosition, out float distance)
+        {
             if (_graphic)
-                return _graphic.TryScreenPointToSurface(screenPosition, out surfacePosition);
+                return _graphic.TryScreenPointToSurface(screenPosition, out surfacePosition, out distance);
 
             surfacePosition = default;
+            distance = float.PositiveInfinity;
 
             var targetTransform = _transform;
             var targetCamera = ResolveCamera();
@@ -186,7 +200,7 @@ namespace NowUI
             var ray = targetCamera.ScreenPointToRay(screenPosition);
             var plane = new Plane(targetTransform.forward, targetTransform.position);
 
-            if (!plane.Raycast(ray, out float distance))
+            if (!plane.Raycast(ray, out distance))
                 return false;
 
             var local = targetTransform.InverseTransformPoint(ray.GetPoint(distance));

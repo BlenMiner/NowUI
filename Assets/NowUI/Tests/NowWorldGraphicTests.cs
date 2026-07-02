@@ -262,6 +262,7 @@ public class NowWorldGraphicTests
         NowLayout.Reset();
         NowOverlay.Reset();
         NowContextMenu.Reset();
+        NowPointerArbiter.Reset();
     }
 
     [Test]
@@ -531,6 +532,7 @@ public class NowWorldGraphicTests
             void Step(NowMouseInput raw)
             {
                 NowOverlay.ForceNewFrame();
+                NowPointerArbiter.ForceNewFrame();
                 fed.raw = raw;
                 fed.inner.ResetPosition();
                 graphic.MarkDirty();
@@ -602,6 +604,7 @@ public class NowWorldGraphicTests
             void Step(NowMouseInput raw)
             {
                 NowOverlay.ForceNewFrame();
+                NowPointerArbiter.ForceNewFrame();
                 frontFed.raw = raw;
                 backFed.raw = raw;
                 frontFed.inner.ResetPosition();

@@ -128,7 +128,17 @@ namespace NowUI
                 (raycastGate == null ||
                     NowRaycastGate.IsPointerAllowed(raycastGate, mouseInput.screenPosition, insideHostOverlay));
 
-            if (!NowRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow))
+            bool insideHost = position.x >= 0f && position.y >= 0f &&
+                position.x <= rect.width && position.y <= rect.height;
+            NowPointerArbiter.Claim(
+                this,
+                NowPointerArbiter.TierCanvas,
+                0f,
+                allowedNow && (insideHost || insideHostOverlay),
+                mouseInput.pointerButtonsDown != NowPointerButtons.None);
+
+            if (!NowRaycastGate.UpdatePressGate(ref _pressAllowed, buttonsWereDown, allowedNow) ||
+                !NowPointerArbiter.IsOwner(this))
             {
                 _hasPreviousPosition = false;
                 _snapshot = CreateNavigationOnlySnapshot(mouseInput);

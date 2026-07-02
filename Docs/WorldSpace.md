@@ -125,3 +125,22 @@ UI coordinates, so deformers only need to return the local 3D position.
 
 `Assets/NowUI/Example/NowWorldGraphicExample.cs` shows a small billboard label
 that expands its text on hover and logs clicks.
+
+## Pointer Ownership Across Surfaces
+
+When several NowUI surfaces can see the same physical pointer — world
+nameplates under screen-path UI, popups overhanging their surface, multiple
+world panels along one camera ray — `NowPointerArbiter` decides which single
+surface owns it each frame. Surfaces claim with a layering tier (canvas and
+UI Toolkit above the screen path, screen path above world surfaces, world
+surfaces ordered by ray distance) plus whether they actually have content
+under the pointer; a surface's own popups count as its content, so an
+overhanging context menu keeps the pointer even past the surface rect.
+Ownership resolves one frame late (like focus and overlay blocks) and latches
+while a button is held, so drags never transfer between surfaces mid-press.
+
+Custom `INowInputProvider` implementations join arbitration by calling
+`NowPointerArbiter.Claim(this, tier, depth, hitContent, buttonsDown)` when
+building their snapshot and gating their pointer on
+`NowPointerArbiter.IsOwner(this)`. Providers that never claim keep exclusive
+pointer behavior, so single-surface setups and tests need no changes.

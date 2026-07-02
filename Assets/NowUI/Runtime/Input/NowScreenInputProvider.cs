@@ -70,8 +70,18 @@ namespace NowUI
                 delta = NowInput.ScaleScreenDelta(_rawDelta, surface);
             }
 
+            bool hitContent = _hasRawPosition &&
+                (NowPointerArbiter.HadContentAt(this, position) ||
+                 NowOverlay.IsPointerInsideOverlay(position));
+            NowPointerArbiter.Claim(
+                this,
+                NowPointerArbiter.TierScreen,
+                0f,
+                hitContent,
+                _pointerButtonsDown != NowPointerButtons.None);
+
             snapshot = new NowInputSnapshot(
-                _hasRawPosition,
+                _hasRawPosition && NowPointerArbiter.IsOwner(this),
                 position,
                 position - delta,
                 delta,
