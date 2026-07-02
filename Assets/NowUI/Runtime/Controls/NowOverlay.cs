@@ -138,6 +138,7 @@ namespace NowUI
             public NowRect rect;
             public int id;
             public int parentId;
+            public bool modal;
             public Component host;
             public RectTransform hostRectTransform;
             public Camera hostCamera;
@@ -211,6 +212,26 @@ namespace NowUI
                 host = host,
                 rectTransform = rectTransform,
                 camera = camera
+            });
+
+            return new NowOverlayHostScope(true);
+        }
+
+        /// <summary>
+        /// Host identity without a RectTransform, for surfaces with their own
+        /// coordinate space (world graphics). Blocks tagged this way only affect
+        /// their own surface's pointer, never other hosts' local coordinates.
+        /// </summary>
+        internal static NowOverlayHostScope Host(Component host)
+        {
+            if (host == null)
+                return default;
+
+            _hostStack.Add(new OverlayHostContext
+            {
+                host = host,
+                rectTransform = null,
+                camera = null
             });
 
             return new NowOverlayHostScope(true);
@@ -350,6 +371,32 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Blocks base-content pointer interaction on every NowUI surface, not
+        /// just the registering host's — the modal guarantee for context menus
+        /// and modal dialogs. Overlay content itself stays interactive.
+        /// </summary>
+        public static void BlockAllSurfaces()
+        {
+            if (NowInput.isPassive)
+                return;
+
+            BeginFrameIfNeeded();
+
+            var host = CurrentHostContext();
+
+            _blocksCurrent.Add(new OverlayBlock
+            {
+                rect = new NowRect(-100000f, -100000f, 200000f, 200000f),
+                id = 0,
+                parentId = CurrentOverlayId(),
+                modal = true,
+                host = host.host,
+                hostRectTransform = host.rectTransform,
+                hostCamera = host.camera
+            });
+        }
+
+        /// <summary>
         /// True when the pointer position is owned by overlay content registered
         /// last frame; base-layer interactions treat it as hover-blocked. Queries
         /// roll the frame too, so blocks expire even when no overlay registers
@@ -362,10 +409,18 @@ namespace NowUI
 
             BeginFrameIfNeeded();
 
+            var host = CurrentHostContext().host;
+
             for (int i = 0; i < _blocksPrevious.Count; ++i)
             {
-                if (_blocksPrevious[i].rect.Contains(pointerPosition))
+                if (_blocksPrevious[i].modal)
                     return true;
+
+                if (BlockBelongsToHost(_blocksPrevious[i], host) &&
+                    _blocksPrevious[i].rect.Contains(pointerPosition))
+                {
+                    return true;
+                }
             }
 
             return false;

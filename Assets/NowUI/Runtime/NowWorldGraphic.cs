@@ -393,6 +393,7 @@ namespace NowUI
                 var surface = new NowInputSurface(currentSize);
                 scope = _drawList.Begin(currentSize, _glassBlurQuality);
 
+                using (NowOverlay.Host(this))
                 using (NowPopupPlacement.FitProvider(this))
                 using (NowInput.Begin(GetInputProvider(), surface))
                 using (NowControls.IdScope(GetScopeId()))
@@ -1313,8 +1314,11 @@ namespace NowUI
                 if (!other.TryRayToSurface(resolution.ray, out var surfacePosition, out float distance))
                     continue;
 
-                if (!other.ContainsSurfacePoint(surfacePosition))
+                if (!other.ContainsSurfacePoint(surfacePosition) &&
+                    !NowOverlay.IsPointerInsideOverlay(other, surfacePosition))
+                {
                     continue;
+                }
 
                 if (other._depthMode == NowWorldDepthMode.SceneOccluded &&
                     IsSceneBlocked(resolution.sceneBlockDistance, distance))

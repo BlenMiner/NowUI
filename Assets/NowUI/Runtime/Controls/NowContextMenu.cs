@@ -32,12 +32,17 @@ namespace NowUI
         const float MinimumMenuWidth = 160f;
         const float SubmenuGap = 2f;
 
+        const float HoverIntentDelay = 0.18f;
+
         static int _openId;
         static Vector2 _position;
         static bool _fitToView = true;
         static int _activeId;
         static int _pendingPathStateId;
         static int _menuCount;
+        static int _hoverIntentDepth = -1;
+        static int _hoverIntentPath;
+        static float _hoverIntentStart;
 
         static readonly List<Menu> _menus = new List<Menu>(4);
         static readonly List<int> _buildStack = new List<int>(4);
@@ -101,12 +106,14 @@ namespace NowUI
             _fitToView = fitToView;
             _openPath.Clear();
             _pendingOpenPath.Clear();
+            ClearHoverIntent();
             NowControlState.RequestRepaint();
         }
 
         public static void Close()
         {
             _openId = 0;
+            ClearHoverIntent();
         }
 
         /// <summary>
@@ -297,7 +304,7 @@ namespace NowUI
                 root.popupRect = NowOverlay.FitScreenToView(root.popupRect);
 
             NowControlState.RequestRepaint();
-            NowOverlay.BlockScreen(new NowRect(-100000f, -100000f, 200000f, 200000f));
+            NowOverlay.BlockAllSurfaces();
             NowOverlay.DeferScreen(root.popupRect, root.overlayId, DrawDeferred);
         }
 
@@ -438,12 +445,7 @@ namespace NowUI
                 theme.controlRenderer.DrawContextMenuSubmenuIndicator(theme, itemRect, entry.enabled, submenuOpen);
 
             if (entry.enabled && interaction.hovered)
-            {
-                if (entry.kind == EntryKind.Submenu)
-                    SetOpenPath(menu.depth, entry.pathId);
-                else
-                    SetOpenPath(menu.depth, 0);
-            }
+                UpdateOpenPathFromHover(menu.depth, entry.kind == EntryKind.Submenu ? entry.pathId : 0);
 
             if (entry.kind != EntryKind.Item || !interaction.clicked || !entry.enabled)
                 return;
@@ -538,6 +540,62 @@ namespace NowUI
             return _pendingOpenPath.Count > depth && _pendingOpenPath[depth] == pathId;
         }
 
+        /// <summary>
+        /// Applies hovered rows to the open-submenu path. Opening into an empty
+        /// depth is immediate; switching away from an open submenu (to close it
+        /// or open a sibling) waits for a short hover-intent delay so diagonal
+        /// pointer paths across neighbouring rows do not snap submenus shut.
+        /// Timing comes from the input snapshot's caller-supplied time.
+        /// </summary>
+        static void UpdateOpenPathFromHover(int depth, int desiredPathId)
+        {
+            bool alreadyDesired = desiredPathId != 0
+                ? IsPathOpen(depth, desiredPathId)
+                : _openPath.Count <= depth;
+
+            if (alreadyDesired)
+            {
+                if (_hoverIntentDepth == depth)
+                    ClearHoverIntent();
+
+                return;
+            }
+
+            if (_openPath.Count <= depth && desiredPathId != 0)
+            {
+                SetOpenPath(depth, desiredPathId);
+                ClearHoverIntent();
+                return;
+            }
+
+            float time = NowInput.current.time;
+
+            if (_hoverIntentDepth != depth || _hoverIntentPath != desiredPathId)
+            {
+                _hoverIntentDepth = depth;
+                _hoverIntentPath = desiredPathId;
+                _hoverIntentStart = time;
+                NowControlState.RequestRepaint();
+                return;
+            }
+
+            if (time - _hoverIntentStart >= HoverIntentDelay)
+            {
+                SetOpenPath(depth, desiredPathId);
+                ClearHoverIntent();
+                return;
+            }
+
+            NowControlState.RequestRepaint();
+        }
+
+        static void ClearHoverIntent()
+        {
+            _hoverIntentDepth = -1;
+            _hoverIntentPath = 0;
+            _hoverIntentStart = 0f;
+        }
+
         static void SetOpenPath(int depth, int pathId)
         {
             int targetCount = pathId != 0 ? depth + 1 : depth;
@@ -569,6 +627,7 @@ namespace NowUI
             _activeId = 0;
             _pendingPathStateId = 0;
             _menuCount = 0;
+            ClearHoverIntent();
             _buildStack.Clear();
             _openPath.Clear();
             _pendingOpenPath.Clear();

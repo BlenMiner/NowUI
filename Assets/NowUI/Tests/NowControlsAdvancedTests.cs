@@ -469,6 +469,132 @@ public class NowControlsAdvancedTests
     }
 
     [Test]
+    public void ContextMenuSubmenuSurvivesDiagonalHoverThroughSiblingRows()
+    {
+        const int menuId = 7013;
+        var anchor = new Vector2(20f, 20f);
+
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        int DrawFrame(Vector2 pointer, float time, bool open = false)
+        {
+            _pointer.snapshot = new NowInputSnapshot(
+                true, pointer, pointer, Vector2.zero,
+                NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+                Vector2.zero, Vector2.zero,
+                false, false, false, false, false, false, false, false,
+                1, time);
+
+            int before = renderer.popupBackgrounds;
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                if (open)
+                    NowContextMenu.Open(menuId, anchor);
+
+                if (NowContextMenu.Begin(menuId))
+                {
+                    if (NowContextMenu.BeginSubmenu("More"))
+                    {
+                        NowContextMenu.Item("Nested Action");
+                        NowContextMenu.EndSubmenu();
+                    }
+
+                    NowContextMenu.Item("Last");
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+
+            return renderer.popupBackgrounds - before;
+        }
+
+        try
+        {
+            var styles = theme.controlStyles;
+            float rowX = anchor.x + styles.popupPadding + 12f;
+            var submenuRow = new Vector2(rowX, anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+            var lastRow = new Vector2(rowX, anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 1.5f);
+
+            DrawFrame(submenuRow, 1.0f, open: true);
+            Assert.AreEqual(2, DrawFrame(submenuRow, 1.05f), "Hovering the submenu row must open its child menu.");
+            Assert.AreEqual(2, DrawFrame(lastRow, 1.1f), "Briefly crossing a sibling row must not snap the submenu shut.");
+            DrawFrame(lastRow, 1.4f);
+            Assert.AreEqual(1, DrawFrame(lastRow, 1.45f), "Dwelling on a sibling row past the hover-intent delay closes the submenu.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void OverlayPointerBlocksAreScopedToTheirHost()
+    {
+        var hostObject = new GameObject("Overlay Host Test", typeof(Camera));
+        var host = hostObject.GetComponent<Camera>();
+        var otherObject = new GameObject("Other Overlay Host Test", typeof(Camera));
+        var other = otherObject.GetComponent<Camera>();
+        var point = new Vector2(50f, 50f);
+
+        try
+        {
+            using (NowInput.Begin(_pointer, Surface))
+            {
+                using (NowOverlay.Host(host))
+                    NowOverlay.BlockScreen(new NowRect(0f, 0f, 200f, 200f));
+
+                NowOverlay.ForceNewFrame();
+
+                Assert.IsFalse(
+                    NowOverlay.IsPointerBlocked(point),
+                    "A block registered under a host must not block hostless surfaces.");
+
+                using (NowOverlay.Host(other))
+                {
+                    Assert.IsFalse(
+                        NowOverlay.IsPointerBlocked(point),
+                        "A block registered under one host must not block another host.");
+                }
+
+                using (NowOverlay.Host(host))
+                {
+                    Assert.IsTrue(
+                        NowOverlay.IsPointerBlocked(point),
+                        "A block must still apply to its own host.");
+                }
+
+                using (NowOverlay.Host(host))
+                    NowOverlay.BlockAllSurfaces();
+
+                NowOverlay.ForceNewFrame();
+
+                Assert.IsTrue(
+                    NowOverlay.IsPointerBlocked(point),
+                    "A modal block must apply to hostless surfaces.");
+
+                using (NowOverlay.Host(other))
+                {
+                    Assert.IsTrue(
+                        NowOverlay.IsPointerBlocked(point),
+                        "A modal block must apply across hosts.");
+                }
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(hostObject);
+            Object.DestroyImmediate(otherObject);
+        }
+    }
+
+    [Test]
     public void OverlayFitToViewAccountsForCurrentTransform()
     {
         using (NowInput.Begin(_pointer, Surface))

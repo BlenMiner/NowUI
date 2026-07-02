@@ -145,6 +145,79 @@ public class NowWorldGraphicTests
         }
     }
 
+    sealed class FedWorldProvider : INowInputProvider
+    {
+        public NowWorldInputProvider inner;
+        public NowMouseInput raw;
+
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot result)
+        {
+            return inner.TryGetSnapshot(surface, raw, out result);
+        }
+    }
+
+    sealed class MenuWorldGraphic : NowWorldGraphic
+    {
+        public INowInputProvider provider;
+        public int menuId = 9001;
+        public int behindClicks;
+        public int itemClicks;
+        public bool ownsMenu = true;
+
+        protected override bool useLayoutMeasurePass => false;
+
+        protected override INowInputProvider GetInputProvider()
+        {
+            return provider;
+        }
+
+        public void Tick()
+        {
+            base.LateUpdate();
+        }
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            var full = new NowRect(0, 0, rect.width, rect.height);
+            var press = NowInput.Interact(NowInput.CombineId(GetInstanceID(), 101), full);
+
+            if (press.clicked)
+                ++behindClicks;
+
+            if (!ownsMenu)
+                return;
+
+            var context = NowInput.Interact(NowInput.CombineId(GetInstanceID(), 102), full, NowPointerButton.Secondary);
+
+            if (context.clicked)
+                NowContextMenu.Open(menuId, context.pointerPosition, fitToView: false);
+
+            if (NowContextMenu.Begin(menuId))
+            {
+                if (NowContextMenu.Item("Do the thing"))
+                    ++itemClicks;
+
+                NowContextMenu.End();
+            }
+        }
+    }
+
+    static NowMouseInput RawPointer(
+        Vector2 screenPosition,
+        NowPointerButtons down = NowPointerButtons.None,
+        NowPointerButtons pressed = NowPointerButtons.None,
+        NowPointerButtons released = NowPointerButtons.None)
+    {
+        return new NowMouseInput
+        {
+            hasPointer = true,
+            screenPosition = screenPosition,
+            pointerButtonsDown = down,
+            pointerButtonsPressed = pressed,
+            pointerButtonsReleased = released
+        };
+    }
+
     sealed class FakeProvider : INowInputProvider
     {
         public NowInputSnapshot snapshot;
@@ -428,6 +501,144 @@ public class NowWorldGraphicTests
         finally
         {
             Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void WorldContextMenuItemClickDoesNotFallThroughToOwnContent()
+    {
+        var cameraObject = new GameObject("Now World Menu Camera");
+        var panelObject = new GameObject("Now World Menu Panel");
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.pixelRect = new Rect(0, 0, 200, 200);
+            cameraObject.transform.position = new Vector3(0, 0, -5);
+
+            var graphic = panelObject.AddComponent<MenuWorldGraphic>();
+            graphic.facingMode = NowWorldFacingMode.None;
+            graphic.targetCamera = camera;
+            graphic.size = new Vector2(200f, 100f);
+            graphic.pixelsPerUnit = 100f;
+            graphic.pivot = new Vector2(0.5f, 0.5f);
+
+            var fed = new FedWorldProvider { inner = new NowWorldInputProvider { graphic = graphic, camera = camera } };
+            graphic.provider = fed;
+
+            void Step(NowMouseInput raw)
+            {
+                NowOverlay.ForceNewFrame();
+                fed.raw = raw;
+                fed.inner.ResetPosition();
+                graphic.MarkDirty();
+                graphic.Tick();
+            }
+
+            var styles = NowTheme.themeAsset.controlStyles;
+            var anchorScreen = new Vector2(60f, 130f);
+            float itemScreenX = 60f + styles.popupPadding + 10f;
+            float itemScreenY = 130f - (styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+
+            Step(RawPointer(anchorScreen));
+            Step(RawPointer(anchorScreen, NowPointerButtons.Secondary, NowPointerButtons.Secondary));
+            Step(RawPointer(anchorScreen, released: NowPointerButtons.Secondary));
+
+            Assert.IsTrue(NowContextMenu.isOpen, "Right-click release must open the context menu.");
+
+            Step(RawPointer(new Vector2(itemScreenX, itemScreenY + 0.1f)));
+            Step(RawPointer(new Vector2(itemScreenX, itemScreenY + 0.2f), NowPointerButtons.Primary, NowPointerButtons.Primary));
+            Step(RawPointer(new Vector2(itemScreenX, itemScreenY + 0.3f), released: NowPointerButtons.Primary));
+            Step(RawPointer(new Vector2(itemScreenX, itemScreenY + 0.4f)));
+
+            Assert.AreEqual(1, graphic.itemClicks, "The context menu item must receive the click.");
+            Assert.AreEqual(0, graphic.behindClicks, "The content beneath the menu must not receive the click.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(panelObject);
+            Object.DestroyImmediate(cameraObject);
+        }
+    }
+
+    [Test]
+    public void WorldContextMenuOverhangDoesNotClickSurfaceBehind()
+    {
+        var cameraObject = new GameObject("Now World Menu Camera");
+        var frontObject = new GameObject("Now World Menu Front");
+        var backObject = new GameObject("Now World Menu Back");
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.pixelRect = new Rect(0, 0, 200, 200);
+            cameraObject.transform.position = new Vector3(0, 0, -5);
+
+            var front = frontObject.AddComponent<MenuWorldGraphic>();
+            front.facingMode = NowWorldFacingMode.None;
+            front.targetCamera = camera;
+            front.size = new Vector2(120f, 100f);
+            front.pixelsPerUnit = 100f;
+            front.pivot = new Vector2(0.5f, 0.5f);
+
+            backObject.transform.position = new Vector3(0, 0, 1f);
+            var back = backObject.AddComponent<MenuWorldGraphic>();
+            back.facingMode = NowWorldFacingMode.None;
+            back.targetCamera = camera;
+            back.size = new Vector2(400f, 200f);
+            back.pixelsPerUnit = 100f;
+            back.pivot = new Vector2(0.5f, 0.5f);
+            back.ownsMenu = false;
+
+            var frontFed = new FedWorldProvider { inner = new NowWorldInputProvider { graphic = front, camera = camera } };
+            front.provider = frontFed;
+            var backFed = new FedWorldProvider { inner = new NowWorldInputProvider { graphic = back, camera = camera } };
+            back.provider = backFed;
+
+            void Step(NowMouseInput raw)
+            {
+                NowOverlay.ForceNewFrame();
+                frontFed.raw = raw;
+                backFed.raw = raw;
+                frontFed.inner.ResetPosition();
+                backFed.inner.ResetPosition();
+                back.MarkDirty();
+                back.Tick();
+                front.MarkDirty();
+                front.Tick();
+            }
+
+            var styles = NowTheme.themeAsset.controlStyles;
+            var anchorScreen = new Vector2(100f, 130f);
+            float menuWidth = Mathf.Max(160f, styles.contextMenuMinWidth);
+            float overhangScreenX = 100f + menuWidth - 20f;
+            float overhangScreenY = 130f - (styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+
+            Assert.Greater(overhangScreenX, 100f + front.size.x * 0.5f, "The probe point must overhang past the front surface.");
+
+            Step(RawPointer(anchorScreen));
+            Step(RawPointer(anchorScreen, NowPointerButtons.Secondary, NowPointerButtons.Secondary));
+            Step(RawPointer(anchorScreen, released: NowPointerButtons.Secondary));
+
+            Assert.IsTrue(NowContextMenu.isOpen, "Right-click release must open the context menu.");
+
+            Step(RawPointer(new Vector2(overhangScreenX, overhangScreenY + 0.1f)));
+            Step(RawPointer(new Vector2(overhangScreenX, overhangScreenY + 0.2f), NowPointerButtons.Primary, NowPointerButtons.Primary));
+            Step(RawPointer(new Vector2(overhangScreenX, overhangScreenY + 0.3f), released: NowPointerButtons.Primary));
+            Step(RawPointer(new Vector2(overhangScreenX, overhangScreenY + 0.4f)));
+
+            Assert.AreEqual(1, front.itemClicks, "The overhanging context menu item must receive the click.");
+            Assert.AreEqual(0, back.behindClicks, "The surface behind the menu overhang must not receive the click.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(frontObject);
+            Object.DestroyImmediate(backObject);
+            Object.DestroyImmediate(cameraObject);
         }
     }
 

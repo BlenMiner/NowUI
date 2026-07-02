@@ -593,7 +593,7 @@ namespace NowUI
                 if (entry.options.modal &&
                     entry.options.presentationKind == NowViewPresentationKind.Popup)
                 {
-                    NowOverlay.BlockScreen(surface);
+                    NowOverlay.BlockAllSurfaces();
                 }
 
                 NowOverlay.DeferScreen(entry.rect, entry.overlayId, DrawDeferred);

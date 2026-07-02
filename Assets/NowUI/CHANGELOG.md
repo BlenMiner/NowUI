@@ -47,6 +47,19 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   NowUI hosts in a scene now cost one `EventSystem.RaycastAll` per frame
   instead of one per host.
 
+### Fixed
+
+- Context menu submenus no longer snap shut when the pointer crosses a
+  sibling row diagonally on its way into the submenu: switching away from an
+  open submenu now waits for a short hover-intent delay (timed from the input
+  snapshot, no hidden clock).
+- World-space popups fitted to the camera view stay interactive beyond their
+  surface rect: the ray-to-surface resolver and the world input provider now
+  treat a surface's own overlays as part of its hit area.
+- Overlay pointer blocks are scoped to the host that registered them. A
+  context menu on one world nameplate no longer freezes every other NowUI
+  surface (their local coordinates were being compared against foreign block
+  rects); each surface is modal only to itself.
 ### Removed
 
 - `NowControls.StateTint` (brightness-multiplier hover/press states —

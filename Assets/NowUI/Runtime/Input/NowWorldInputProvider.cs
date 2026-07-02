@@ -130,7 +130,8 @@ namespace NowUI
                           position is { x: >= 0f, y: >= 0f } &&
                           position.x <= surface.size.x &&
                           position.y <= surface.size.y;
-            bool hasPointer = hit && (inside ||
+            bool insideOverlay = hit && !inside && IsInsideOwnedOverlay(position);
+            bool hasPointer = hit && (inside || insideOverlay ||
                 input.pointerButtonsDown != NowPointerButtons.None ||
                 input.pointerButtonsReleased != NowPointerButtons.None);
 
@@ -195,6 +196,17 @@ namespace NowUI
                 local.x * ppu + targetSize.x * _pivot.x,
                 targetSize.y * (1f - _pivot.y) - local.y * ppu);
             return true;
+        }
+
+        /// <summary>
+        /// Popups fitted to the camera view can extend past the surface rect;
+        /// the pointer must stay live over this surface's own overlays there.
+        /// </summary>
+        bool IsInsideOwnedOverlay(Vector2 position)
+        {
+            return _graphic != null
+                ? NowOverlay.IsPointerInsideOverlay(_graphic, position)
+                : NowOverlay.IsPointerInsideOverlay(position);
         }
 
         public void ResetPosition()

@@ -141,6 +141,7 @@ public class NowNodeGraphTests
         NowNodeGraphContextMenu contextMenu = null)
     {
         NowTextInput.Invalidate();
+        NowOverlay.ForceNewFrame();
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
@@ -171,6 +172,7 @@ public class NowNodeGraphTests
     NowNodeGraphResult Frame(NowNodeGraphView view)
     {
         NowTextInput.Invalidate();
+        NowOverlay.ForceNewFrame();
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
@@ -184,6 +186,7 @@ public class NowNodeGraphTests
     NowNodeGraphResult Frame(NowNodeGraphView view, NowNodeContentRenderer content)
     {
         NowTextInput.Invalidate();
+        NowOverlay.ForceNewFrame();
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
