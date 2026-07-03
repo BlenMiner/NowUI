@@ -10,16 +10,6 @@ on:
       - 'Tools/NowUI-Harness.ps1'
       - 'Tools/Assert-NowUIVisualArtifacts.ps1'
       - '.github/workflows/visual-smoke.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'Assets/NowUI/**'
-      - 'Packages/**'
-      - 'ProjectSettings/**'
-      - 'Tools/NowUI-Harness.ps1'
-      - 'Tools/Assert-NowUIVisualArtifacts.ps1'
-      - '.github/workflows/visual-smoke.yml'
 
 jobs:
   capture:
