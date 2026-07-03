@@ -55,6 +55,14 @@ namespace NowUI.Markup
     /// </summary>
     public static class NowMarkup
     {
+        /// <summary>
+        /// When true (default), result queries such as <c>Clicked("save")</c>
+        /// warn once in the editor and development builds if the document never
+        /// declares the queried id, key, or action. Release players skip the
+        /// check entirely.
+        /// </summary>
+        public static bool validateQueries = true;
+
         const int CacheLimit = 64;
 
         const int RecentSlots = 4;

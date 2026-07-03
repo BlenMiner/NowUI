@@ -73,28 +73,60 @@ includes the source markup beside the rendered UI.
 
 ## Supported Tags
 
+Layout and text:
+
 - `column`, `row`: layout containers.
 - `panel`, `card`, `section`, `div`: vertical containers, useful with
   background styling.
 - `text`, `label`, `p`, `richtext`: rich text using NowUI default tags.
-- `button`: click control; reports `NowMarkupEventKind.Click`.
-- `checkbox`: boolean control bound to `state`.
-- `slider`: float control bound to `state`, with `min`, `max`, and `step`.
-- `textfield`, `textarea`: string controls bound to `state`.
-- `dropdown`/`select`: integer selected index bound to `state`; use
-  `options="One|Two|Three"` or child `<option>One</option>` tags.
+- `h1` … `h6`: headings — bold text with a size scale (32/26/22/18/16/14);
+  `font-size`/`font-style` styles override the defaults.
+- `hr` (or `divider`): themed horizontal rule; style with `color` and
+  `height`.
+- `ul`, `ol`, `li`: bulleted or numbered lists; items hold inline text or
+  nested block elements.
 - `scroll`: scroll view container.
-- `if`, `show`: visibility-only wrappers.
-- `gallery`: shows one child at a time, bound by `index` or `state`; add
-  `controls="true"` for built-in Prev/Next buttons.
-- `slide`, `item`: optional gallery child wrappers.
 - `space`, `flex`: fixed or flexible layout gaps.
 - `style`: small stylesheet block.
 
-Text supports the default rich-text inline tags:
+Controls:
+
+- `button`: click control; reports `NowMarkupEventKind.Click`.
+- `checkbox`: boolean control bound to `state`.
+- `switch` (or `toggle`): boolean switch bound to `state`; `checked` seeds
+  the initial value.
+- `radio`: HTML-style radio group. All radios sharing a `group` key write
+  their `value` (int or string) into that state key; `checked` seeds the
+  group once.
+- `slider`: float control bound to `state`, with `min`, `max`, and `step`.
+- `progress`: progress bar; bind `state` or set `value`, with `max`
+  (default 1). Without a value it renders indeterminate — point `time` at a
+  state key you update with `Time.time` to animate the sweep (no hidden
+  clocks).
+- `textfield`, `textarea`: string controls bound to `state`.
+- `dropdown`/`select`: integer selected index bound to `state`; use
+  `options="One|Two|Three"` or child `<option>One</option>` tags. A child
+  `<option selected>` seeds the default row.
+- `badge`, `chip`: status label and clickable pill; a chip with `state`
+  toggles that boolean key when clicked.
+
+Structure:
+
+- `if`, `show`: visibility-only wrappers.
+- `details`/`summary`: collapsible section rendered as a foldout; `open`
+  seeds the initial expansion and the open flag lives in `state` (or the
+  element id).
+- `tabs` with `tab title="..."` children: tab bar plus the selected pane,
+  bound by `index` or `state`; `stretch-tabs="true"` makes a segmented bar.
+- `gallery`: shows one child at a time, bound by `index` or `state`; add
+  `controls="true"` for built-in Prev/Next buttons.
+- `slide`, `item`: optional gallery child wrappers.
+
+Text supports the default rich-text inline tags, plus HTML aliases
+(`strong` → `b`, `em` → `i`, `del`/`strike` → `s`):
 
 ```xml
-<b>bold</b> <i>italic</i> <u>underlined</u>
+<b>bold</b> <i>italic</i> <u>underlined</u> <s>strikethrough</s>
 <color=#ffcc00>gold</color> <size=18>large</size>
 <link="docs">link</link> <br/>
 ```
@@ -112,12 +144,17 @@ Common:
 State:
 
 - `state`, `bind`, `value-key`: key in `NowMarkupState`.
+- `group`: shared state key for a radio group (takes precedence on `radio`).
 - If no state key is provided, interactive controls use their `id`.
+- `checked` (checkbox/switch/radio), `open` (details), and
+  `<option selected>` (dropdown) seed initial values, HTML-style.
 
 Events:
 
-- Buttons always report a click event with their `id`.
+- Buttons always report a click event with their `id`; radios and chips
+  report both a click and a change.
 - Value controls report change events with `id`, state key, and value.
+- `result.Changed(name)` matches either the element id or the state key.
 - `on-click` and `on-change` run small UI actions.
 
 Actions:
@@ -151,6 +188,41 @@ Supported declarations:
 
 Values are NowUI units. `px` suffixes are accepted but treated as unitless
 NowUI layout units.
+
+## Avoiding Hard-Coded Strings
+
+Markup lookups are strings by nature, so the extension attacks the two ways
+strings go wrong — silent typos and scattered duplication:
+
+- **Query validation.** Every parsed document builds a manifest of the ids,
+  state keys, and `emit(...)` action names it declares
+  (`document.manifest`). In the editor and development builds, a result
+  query that names something the document never declares —
+  `result.Clicked("sve")` — logs a one-time warning listing what is
+  declared, instead of silently returning false forever. Release players
+  skip the check; opt out with `NowMarkup.validateQueries = false`.
+- **Generated bindings.** Right-click a markup file and choose
+  **Assets → NowUI → Generate Markup Bindings** (or call
+  `NowMarkupBindings.GenerateSource(document, "MainMarkup")`) to emit a
+  constants class next to the file:
+
+```csharp
+public static class MainMarkup
+{
+    public static class Ids { public const string Save = "save"; }
+    public static class Keys { public const string Volume = "volume"; }
+    public static class Actions { public const string SaveGame = "save-game"; }
+}
+```
+
+```csharp
+if (result.Clicked(MainMarkup.Ids.Save))
+    Save(uiState.GetFloat(MainMarkup.Keys.Volume));
+```
+
+The markup file stays the single source of truth: rename an id, regenerate,
+and every stale C# reference becomes a compile error instead of a dead
+lookup.
 
 ## What AI Should Not Emit
 

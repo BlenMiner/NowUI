@@ -129,6 +129,21 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **HTML-inspired markup expansion and typo-safe lookups.** The markup
+  extension gains `h1`–`h6`, `hr`, `ul`/`ol`/`li`, `details`/`summary`
+  (foldout), `tabs`/`tab`, `switch`/`toggle`, `radio` with HTML-style `group`
+  semantics, `progress` (state-bound, indeterminate when valueless, sweep
+  clocked by a caller-updated `time` state key), `badge`, and `chip`;
+  `strong`/`em`/`del` map to rich-text bold/italic/strikethrough and
+  `<option selected>` seeds a dropdown's default row. Documents expose a
+  parse-time `manifest` of declared ids, state keys, and `emit(...)` action
+  names; result queries such as `Clicked("save")` warn once in the editor and
+  development builds when the name is never declared (toggle with
+  `NowMarkup.validateQueries`), and `Changed()` matches element ids or state
+  keys. `NowMarkupBindings.GenerateSource` — or the **Assets → NowUI →
+  Generate Markup Bindings** menu on a markup file — emits a constants class
+  (`MainMarkup.Ids.Save`) so C# stops repeating hard-coded lookup strings.
+
 - **Scrollable context menus.** Menus taller than the visible view clamp
   their height and scroll — mouse wheel, or OS-style top/bottom hover strips —
   so every option stays reachable instead of overflowing the viewport.

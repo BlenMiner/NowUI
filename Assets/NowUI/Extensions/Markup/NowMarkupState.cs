@@ -69,18 +69,50 @@ namespace NowUI.Markup
             }
         }
 
+        /// <summary>
+        /// True when a click event with this element id was recorded. In the
+        /// editor and development builds, an id the document never declares
+        /// logs a one-time warning (see <see cref="NowMarkup.validateQueries"/>).
+        /// </summary>
         public bool Clicked(string id)
         {
+            _document?.ValidateQuery(NowMarkupEventKind.Click, id);
             return HasEvent(id, NowMarkupEventKind.Click);
         }
 
-        public bool Changed(string id)
+        /// <summary>
+        /// True when a change event matching this element id or state key was
+        /// recorded, so <c>Changed("volume")</c> works whether or not the
+        /// slider bound to the "volume" key also carries that id.
+        /// </summary>
+        public bool Changed(string idOrKey)
         {
-            return HasEvent(id, NowMarkupEventKind.Change);
+            _document?.ValidateQuery(NowMarkupEventKind.Change, idOrKey);
+            var items = events;
+
+            if (items == null)
+                return false;
+
+            for (int i = 0; i < items.Count; ++i)
+            {
+                var item = items[i];
+
+                if (item.kind != NowMarkupEventKind.Change)
+                    continue;
+
+                if (string.Equals(item.id, idOrKey, StringComparison.Ordinal) ||
+                    string.Equals(item.name, idOrKey, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public bool Action(string name)
         {
+            _document?.ValidateQuery(NowMarkupEventKind.Action, name);
             var items = events;
 
             if (items == null)

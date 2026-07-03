@@ -22,7 +22,20 @@ namespace NowUI.Markup
         public string richTextContent;
         public string plainTextContent;
         public List<NowMarkupNode> renderableChildren;
+        public bool hasStateKey;
         public List<string> dropdownOptions;
+        public int dropdownDefaultIndex;
+        public List<string> tabLabels;
+        public string tabsBarId;
+        public string summaryLabel;
+        public List<NowMarkupNode> detailChildren;
+        public bool detailsOpenDefault;
+        public string radioValue;
+        public bool radioHasIntValue;
+        public int radioIntValue;
+        public string listMarker;
+        public bool inlineOnly;
+        public NowLayoutOptions dividerOptions;
         public string galleryKey;
         public string galleryPrevId;
         public string galleryNextId;
@@ -58,16 +71,24 @@ namespace NowUI.Markup
     {
         readonly NowMarkupNode _root;
         readonly NowMarkupStyleSheet _styleSheet;
+        readonly NowMarkupManifest _manifest;
         readonly NowMarkupState _ownedState = new NowMarkupState();
         readonly List<NowMarkupEvent> _events = new List<NowMarkupEvent>(8);
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        HashSet<string> _warnedQueries;
+#endif
         int _eventsVersion;
 
         public NowMarkupNode root => _root;
+
+        /// <summary>Ids, state keys, and action names this document declares.</summary>
+        public NowMarkupManifest manifest => _manifest;
 
         public NowMarkupDocument(NowMarkupNode root)
         {
             _root = root ?? NowMarkupParser.Parse(string.Empty);
             _styleSheet = NowMarkupStyleSheet.FromDocument(_root);
+            _manifest = NowMarkupManifest.FromDocument(_root);
         }
 
         public static NowMarkupDocument Parse(string source)
@@ -106,6 +127,70 @@ namespace NowUI.Markup
         {
             return version == _eventsVersion;
         }
+
+        /// <summary>
+        /// Editor/development-build safety net for hard-coded lookup strings:
+        /// warns once when a result query names an id, key, or action the
+        /// document never declares, so typos surface instead of silently
+        /// returning false forever.
+        /// </summary>
+        internal void ValidateQuery(NowMarkupEventKind kind, string name)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (!NowMarkup.validateQueries || string.IsNullOrEmpty(name))
+                return;
+
+            bool known = kind == NowMarkupEventKind.Action
+                ? _manifest.DeclaresAction(name)
+                : _manifest.DeclaresId(name) || _manifest.DeclaresKey(name);
+
+            if (known)
+                return;
+
+            _warnedQueries ??= new HashSet<string>(StringComparer.Ordinal);
+
+            if (!_warnedQueries.Add(kind + ":" + name))
+                return;
+
+            if (kind == NowMarkupEventKind.Action)
+            {
+                Debug.LogWarning(
+                    $"NowMarkup: queried action \"{name}\", but the document never emits it. " +
+                    $"Declared actions: {DescribeNames(_manifest.actions)}.");
+            }
+            else
+            {
+                string verb = kind == NowMarkupEventKind.Click ? "click" : "change";
+                Debug.LogWarning(
+                    $"NowMarkup: queried {verb} \"{name}\", but the document declares no matching id or state key. " +
+                    $"Declared ids: {DescribeNames(_manifest.ids)}; state keys: {DescribeNames(_manifest.keys)}.");
+            }
+#endif
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        static string DescribeNames(IReadOnlyList<string> values)
+        {
+            if (values.Count == 0)
+                return "(none)";
+
+            var builder = new StringBuilder();
+            int count = Math.Min(values.Count, 12);
+
+            for (int i = 0; i < count; ++i)
+            {
+                if (i > 0)
+                    builder.Append(", ");
+
+                builder.Append(values[i]);
+            }
+
+            if (values.Count > count)
+                builder.Append(", …");
+
+            return builder.ToString();
+        }
+#endif
 
         void BeginFrame()
         {
@@ -175,13 +260,51 @@ namespace NowUI.Markup
                 case "label":
                 case "p":
                 case "richtext":
+                case "h1":
+                case "h2":
+                case "h3":
+                case "h4":
+                case "h5":
+                case "h6":
                     RenderText(cache);
+                    break;
+                case "hr":
+                case "divider":
+                    RenderDivider(cache);
+                    break;
+                case "ul":
+                case "ol":
+                    RenderList(node, state, cache);
+                    break;
+                case "details":
+                    RenderDetails(node, state, cache);
+                    break;
+                case "tabs":
+                case "tabview":
+                    RenderTabs(node, state, cache);
                     break;
                 case "button":
                     RenderButton(node, state, cache);
                     break;
                 case "checkbox":
                     RenderCheckbox(node, state, cache);
+                    break;
+                case "switch":
+                case "toggle":
+                    RenderSwitch(node, state, cache);
+                    break;
+                case "radio":
+                    RenderRadio(node, state, cache);
+                    break;
+                case "progress":
+                case "progressbar":
+                    RenderProgress(node, state, cache);
+                    break;
+                case "badge":
+                    RenderBadge(node, cache);
+                    break;
+                case "chip":
+                    RenderChip(node, state, cache);
                     break;
                 case "slider":
                     RenderSlider(node, state, cache);
@@ -238,6 +361,15 @@ namespace NowUI.Markup
                 ? id
                 : "markup:" + node.name + ":" + node.sourceIndex.ToString(CultureInfo.InvariantCulture);
             string key = FirstAttribute(node, "state", "bind", "value-key");
+
+            if (node.name == "radio" &&
+                node.TryAttribute("group", out var group) &&
+                !string.IsNullOrWhiteSpace(group))
+            {
+                key = group.Trim();
+            }
+
+            cache.hasStateKey = !string.IsNullOrEmpty(key);
             cache.controlKey = string.IsNullOrEmpty(key) ? cache.nodeId : key;
             cache.richTextContent = node.TryAttribute("value", out var value)
                 ? value ?? string.Empty
@@ -258,7 +390,40 @@ namespace NowUI.Markup
             if (node.name == "dropdown" || node.name == "select")
             {
                 cache.dropdownOptions = new List<string>(4);
-                BuildOptions(node, cache.dropdownOptions);
+                cache.dropdownDefaultIndex = BuildOptions(node, cache.dropdownOptions);
+            }
+
+            switch (node.name)
+            {
+                case "h1":
+                case "h2":
+                case "h3":
+                case "h4":
+                case "h5":
+                case "h6":
+                    ApplyHeadingDefaults(cache, node.name[1] - '0');
+                    break;
+                case "hr":
+                case "divider":
+                    cache.dividerOptions = DividerOptions(style, cache.options);
+                    break;
+                case "details":
+                    BuildDetails(node, cache);
+                    break;
+                case "tabs":
+                case "tabview":
+                    BuildTabs(node, cache);
+                    break;
+                case "radio":
+                    BuildRadio(node, cache);
+                    break;
+                case "ul":
+                case "ol":
+                    AssignListMarkers(cache, ordered: node.name == "ol");
+                    break;
+                case "li":
+                    cache.inlineOnly = HasInlineContentOnly(node);
+                    break;
             }
 
             if (style.TryGetAny(out var sizeValue, "font-size", "size") &&
@@ -413,6 +578,408 @@ namespace NowUI.Markup
             return cache.galleryLabel;
         }
 
+        static readonly float[] HeadingSizes = { 32f, 26f, 22f, 18f, 16f, 14f };
+
+        static readonly NowLayoutOptions ListContentOptions = default(NowLayoutOptions).SetStretchWidth();
+
+        static void ApplyHeadingDefaults(NowMarkupNodeCache cache, int level)
+        {
+            cache.hasFontSize = true;
+            cache.fontSize = HeadingSizes[Mathf.Clamp(level, 1, HeadingSizes.Length) - 1];
+            cache.hasFontStyle = true;
+            cache.fontStyle = NowFontStyle.Bold;
+        }
+
+        static NowLayoutOptions DividerOptions(NowMarkupStyleMap style, NowLayoutOptions options)
+        {
+            if (!style.TryGet("height", out _))
+                options = options.SetHeight(1f);
+
+            if (!style.TryGet("width", out _) &&
+                !style.TryGetAny(out _, "stretch", "grow", "stretch-width", "grow-x"))
+            {
+                options = options.SetStretchWidth();
+            }
+
+            return options;
+        }
+
+        void BuildDetails(NowMarkupNode node, NowMarkupNodeCache cache)
+        {
+            cache.detailsOpenDefault = ReadAttributeBool(node, "open", false);
+            cache.detailChildren = new List<NowMarkupNode>(cache.renderableChildren.Count);
+            string label = FirstAttribute(node, "summary", "title");
+
+            for (int i = 0; i < cache.renderableChildren.Count; ++i)
+            {
+                var child = cache.renderableChildren[i];
+
+                if (!child.isText && child.name == "summary")
+                {
+                    if (label.Length == 0)
+                        label = PlainTextContent(child);
+
+                    continue;
+                }
+
+                cache.detailChildren.Add(child);
+            }
+
+            cache.summaryLabel = label.Length > 0 ? label : "Details";
+        }
+
+        void BuildTabs(NowMarkupNode node, NowMarkupNodeCache cache)
+        {
+            string key = FirstAttribute(node, "index", "state");
+            cache.galleryKey = string.IsNullOrEmpty(key) ? cache.nodeId + ".index" : key;
+            cache.tabsBarId = cache.nodeId + ".bar";
+            cache.tabLabels = new List<string>(cache.renderableChildren.Count);
+
+            for (int i = 0; i < cache.renderableChildren.Count; ++i)
+            {
+                var child = cache.renderableChildren[i];
+                string label = child.isText ? string.Empty : FirstAttribute(child, "title", "label");
+
+                cache.tabLabels.Add(label.Length > 0
+                    ? label
+                    : "Tab " + (i + 1).ToString(CultureInfo.InvariantCulture));
+            }
+        }
+
+        static void BuildRadio(NowMarkupNode node, NowMarkupNodeCache cache)
+        {
+            string value = FirstAttribute(node, "value", "option");
+
+            if (value.Length == 0)
+                value = cache.plainTextContent;
+
+            if (value.Length == 0)
+                value = cache.nodeId;
+
+            cache.radioValue = value;
+            cache.radioHasIntValue = int.TryParse(
+                value, NumberStyles.Integer, CultureInfo.InvariantCulture, out cache.radioIntValue);
+        }
+
+        void AssignListMarkers(NowMarkupNodeCache cache, bool ordered)
+        {
+            int number = 0;
+
+            for (int i = 0; i < cache.renderableChildren.Count; ++i)
+            {
+                var child = cache.renderableChildren[i];
+
+                if (child.isText || child.name != "li")
+                    continue;
+
+                Cache(child).listMarker = ordered
+                    ? (++number).ToString(CultureInfo.InvariantCulture) + "."
+                    : "•";
+            }
+        }
+
+        static bool HasInlineContentOnly(NowMarkupNode node)
+        {
+            bool hasContent = false;
+
+            for (int i = 0; i < node.children.Count; ++i)
+            {
+                var child = node.children[i];
+
+                if (child.isText)
+                {
+                    hasContent |= !string.IsNullOrWhiteSpace(child.text);
+                    continue;
+                }
+
+                if (!IsRichTextInline(child.name))
+                    return false;
+
+                hasContent = true;
+            }
+
+            return hasContent;
+        }
+
+        void RenderDivider(NowMarkupNodeCache cache)
+        {
+            var rect = NowLayout.Rect(cache.dividerOptions);
+
+            if (rect.width <= 0f || rect.height <= 0f)
+                return;
+
+            Color color = cache.hasFillColor
+                ? cache.fillColor
+                : cache.hasTextColor
+                    ? cache.textColor
+                    : NowTheme.themeAsset.GetColor(NowColorToken.Border);
+
+            var rectangle = Now.Rectangle(rect).SetColor(color);
+
+            if (cache.hasRadius)
+                rectangle = rectangle.SetRadius(cache.radius);
+
+            rectangle.Draw();
+        }
+
+        void RenderList(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
+        {
+            var scope = cache.hasExplicitId
+                ? NowLayout.Vertical(new NowId(cache.nodeId), cache.options)
+                : NowLayout.Vertical(cache.options);
+
+            using (scope)
+            {
+                DrawBackground(cache, scope.rect);
+
+                var children = cache.renderableChildren;
+
+                for (int i = 0; i < children.Count; ++i)
+                {
+                    var child = children[i];
+
+                    if (child.isText || child.name != "li")
+                    {
+                        RenderNode(child, state);
+                        continue;
+                    }
+
+                    if (!ShouldRender(child, state))
+                        continue;
+
+                    RenderListItem(child, state);
+                }
+            }
+        }
+
+        void RenderListItem(NowMarkupNode node, NowMarkupState state)
+        {
+            var cache = Cache(node);
+
+            using (NowLayout.Horizontal(spacing: 8f))
+            {
+                NowLayout.Label(cache.listMarker ?? "•").Draw();
+
+                using (NowLayout.Vertical(ListContentOptions))
+                {
+                    if (cache.inlineOnly)
+                        RenderText(cache);
+                    else
+                        RenderChildren(node, state);
+                }
+            }
+        }
+
+        void RenderDetails(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
+        {
+            string key = cache.controlKey;
+            bool open = state.GetBool(key, cache.detailsOpenDefault);
+            var foldout = NowLayout.Foldout(cache.summaryLabel, new NowId(cache.nodeId))
+                .SetOptions(cache.options);
+
+            if (foldout.Draw(ref open))
+            {
+                state.SetBool(key, open);
+                Record(new NowMarkupEvent(NowMarkupEventKind.Change, cache.nodeId, key, open ? "true" : "false"));
+                ExecuteActions(FirstAttribute(node, "on-change", "onchange"), node, state, cache.nodeId);
+            }
+
+            if (!open)
+                return;
+
+            for (int i = 0; i < cache.detailChildren.Count; ++i)
+                RenderNode(cache.detailChildren[i], state);
+        }
+
+        void RenderTabs(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
+        {
+            var labels = cache.tabLabels;
+            var panes = cache.renderableChildren;
+
+            if (labels.Count == 0)
+                return;
+
+            string key = cache.galleryKey;
+            int previous = state.GetInt(key);
+            int index = Mathf.Clamp(previous, 0, labels.Count - 1);
+
+            if (index != previous)
+                state.SetInt(key, index);
+
+            using (var scope = NowLayout.Vertical(new NowId(cache.nodeId), cache.options))
+            {
+                DrawBackground(cache, scope.rect);
+
+                var bar = NowLayout.TabBar(labels).SetId(new NowId(cache.tabsBarId));
+
+                if (ReadBool(node, cache.style, "stretch-tabs", false))
+                    bar = bar.SetStretchTabs();
+
+                if (bar.Draw(ref index))
+                {
+                    state.SetInt(key, index);
+                    Record(new NowMarkupEvent(
+                        NowMarkupEventKind.Change, cache.nodeId, key, index.ToString(CultureInfo.InvariantCulture)));
+                    ExecuteActions(FirstAttribute(node, "on-change", "onchange"), node, state, cache.nodeId);
+                }
+
+                var pane = panes[index];
+
+                if (!pane.isText && (pane.name == "tab" || pane.name == "page"))
+                    RenderChildren(pane, state);
+                else
+                    RenderNode(pane, state);
+            }
+        }
+
+        void RenderSwitch(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
+        {
+            string id = cache.nodeId;
+            string key = cache.controlKey;
+            bool fallback = ReadAttributeBool(node, "checked", ReadAttributeBool(node, "on", false));
+            bool value = state.GetBool(key, fallback);
+            string label = node.TryAttribute("text", out var text)
+                ? text
+                : cache.plainTextContent;
+
+            var control = NowLayout.Switch(label)
+                .SetId(new NowId(id))
+                .SetOptions(cache.options);
+
+            if (cache.hasControlTextStyle)
+                control = control.SetTextStyle(cache.controlTextStyle);
+
+            if (!control.Draw(ref value))
+                return;
+
+            state.SetBool(key, value);
+            Record(new NowMarkupEvent(NowMarkupEventKind.Change, id, key, value ? "true" : "false"));
+            ExecuteActions(FirstAttribute(node, "on-change", "onchange"), node, state, id);
+        }
+
+        void RenderRadio(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
+        {
+            string id = cache.nodeId;
+            string key = cache.controlKey;
+
+            if (ReadAttributeBool(node, "checked", false) && !state.Has(key))
+            {
+                if (cache.radioHasIntValue)
+                    state.SetInt(key, cache.radioIntValue);
+                else
+                    state.SetString(key, cache.radioValue);
+            }
+
+            bool isOn = cache.radioHasIntValue
+                ? state.GetInt(key, -1) == cache.radioIntValue
+                : string.Equals(state.GetString(key), cache.radioValue, StringComparison.Ordinal);
+
+            string label = node.TryAttribute("text", out var text)
+                ? text
+                : cache.plainTextContent;
+
+            var radio = NowLayout.Radio(label, isOn)
+                .SetId(new NowId(id))
+                .SetOptions(cache.options);
+
+            if (cache.hasControlTextStyle)
+                radio = radio.SetTextStyle(cache.controlTextStyle);
+
+            if (!radio.Draw())
+                return;
+
+            if (cache.radioHasIntValue)
+                state.SetInt(key, cache.radioIntValue);
+            else
+                state.SetString(key, cache.radioValue);
+
+            Record(new NowMarkupEvent(NowMarkupEventKind.Click, id));
+            Record(new NowMarkupEvent(NowMarkupEventKind.Change, id, key, cache.radioValue));
+            ExecuteActions(FirstAttribute(node, "on-click", "onclick"), node, state, id);
+            ExecuteActions(FirstAttribute(node, "on-change", "onchange"), node, state, id);
+        }
+
+        void RenderProgress(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
+        {
+            float max = ReadFloat(node, cache.style, "max", null, 1f);
+            bool hasValue = TryReadFloat(node, cache.style, "value", out float raw);
+
+            if (cache.hasStateKey)
+            {
+                raw = state.GetFloat(cache.controlKey, hasValue ? raw : 0f);
+                hasValue = true;
+            }
+
+            bool indeterminate = ReadBool(node, cache.style, "indeterminate", false) || !hasValue;
+            float value01 = max > 0f ? Mathf.Clamp01(raw / max) : 0f;
+            var bar = NowLayout.ProgressBar(value01).SetOptions(cache.options);
+
+            if (cache.hasExplicitId)
+                bar = bar.SetId(new NowId(cache.nodeId));
+
+            if (indeterminate)
+            {
+                bar = bar.SetIndeterminate();
+
+                if (node.TryAttribute("time", out var timeKey))
+                    bar = bar.SetTime(state.GetFloat(timeKey));
+            }
+
+            bar.Draw();
+        }
+
+        void RenderBadge(NowMarkupNode node, NowMarkupNodeCache cache)
+        {
+            string label = node.TryAttribute("text", out var text)
+                ? text
+                : cache.plainTextContent;
+
+            var badge = NowLayout.Badge(label).SetOptions(cache.options);
+
+            if (cache.hasControlRectStyle)
+                badge = badge.SetStyle(cache.controlRectStyle);
+
+            if (cache.hasControlTextStyle)
+                badge = badge.SetTextStyle(cache.controlTextStyle);
+
+            badge.Draw();
+        }
+
+        void RenderChip(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
+        {
+            string id = cache.nodeId;
+            string key = cache.controlKey;
+            string label = node.TryAttribute("text", out var text)
+                ? text
+                : cache.plainTextContent;
+            bool selected = cache.hasStateKey
+                ? state.GetBool(key, ReadAttributeBool(node, "selected", false))
+                : ReadAttributeBool(node, "selected", false);
+
+            var chip = NowLayout.Chip(label)
+                .SetId(new NowId(id))
+                .SetOptions(cache.options)
+                .SetSelected(selected);
+
+            if (cache.hasControlTextStyle)
+                chip = chip.SetTextStyle(cache.controlTextStyle);
+
+            if (!chip.Draw())
+                return;
+
+            Record(new NowMarkupEvent(NowMarkupEventKind.Click, id));
+
+            if (cache.hasStateKey)
+            {
+                selected = !selected;
+                state.SetBool(key, selected);
+                Record(new NowMarkupEvent(NowMarkupEventKind.Change, id, key, selected ? "true" : "false"));
+                ExecuteActions(FirstAttribute(node, "on-change", "onchange"), node, state, id);
+            }
+
+            ExecuteActions(FirstAttribute(node, "on-click", "onclick", "action"), node, state, id);
+        }
+
         void RenderText(NowMarkupNodeCache cache)
         {
             string value = cache.richTextContent;
@@ -562,7 +1129,8 @@ namespace NowUI.Markup
             string key = cache.controlKey;
             var options = cache.dropdownOptions;
 
-            int selected = state.GetInt(key, ReadInt(node, "selected", 0));
+            int fallback = ReadInt(node, "selected", cache.dropdownDefaultIndex >= 0 ? cache.dropdownDefaultIndex : 0);
+            int selected = state.GetInt(key, fallback);
 
             var dropdown = NowLayout.Dropdown(new NowId(id), options)
                 .SetOptions(cache.options);
@@ -894,9 +1462,10 @@ namespace NowUI.Markup
             return style.TryGetFloat(name, out value);
         }
 
-        static void BuildOptions(NowMarkupNode node, List<string> options)
+        static int BuildOptions(NowMarkupNode node, List<string> options)
         {
             options.Clear();
+            int selected = -1;
 
             if (node.TryAttribute("options", out var optionText))
             {
@@ -917,9 +1486,16 @@ namespace NowUI.Markup
                     ? labelAttr
                     : PlainTextContent(child).Trim();
 
-                if (label.Length > 0)
-                    options.Add(label);
+                if (label.Length == 0)
+                    continue;
+
+                if (ReadAttributeBool(child, "selected", false))
+                    selected = options.Count;
+
+                options.Add(label);
             }
+
+            return selected;
         }
 
         static List<NowMarkupNode> CollectRenderableChildren(NowMarkupNode node)
@@ -994,7 +1570,8 @@ namespace NowUI.Markup
                 return;
             }
 
-            builder.Append('<').Append(node.name);
+            string name = MapInlineName(node.name);
+            builder.Append('<').Append(name);
 
             foreach (var attribute in node.attributes)
             {
@@ -1011,7 +1588,7 @@ namespace NowUI.Markup
             for (int i = 0; i < node.children.Count; ++i)
                 AppendRichText(node.children[i], builder);
 
-            builder.Append("</").Append(node.name).Append('>');
+            builder.Append("</").Append(name).Append('>');
         }
 
         static bool IsRichTextInline(string name)
@@ -1019,9 +1596,13 @@ namespace NowUI.Markup
             switch (name)
             {
                 case "b":
+                case "strong":
                 case "i":
+                case "em":
                 case "u":
                 case "s":
+                case "del":
+                case "strike":
                 case "strikethrough":
                 case "color":
                 case "size":
@@ -1031,6 +1612,23 @@ namespace NowUI.Markup
                     return true;
                 default:
                     return false;
+            }
+        }
+
+        static string MapInlineName(string name)
+        {
+            switch (name)
+            {
+                case "strong":
+                    return "b";
+                case "em":
+                    return "i";
+                case "del":
+                case "strike":
+                case "strikethrough":
+                    return "s";
+                default:
+                    return name;
             }
         }
 
