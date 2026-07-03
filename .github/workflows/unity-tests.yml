@@ -9,15 +9,6 @@ on:
       - 'ProjectSettings/**'
       - '.github/scripts/Run-UnityTests.ps1'
       - '.github/workflows/unity-tests.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'Assets/NowUI/**'
-      - 'Packages/**'
-      - 'ProjectSettings/**'
-      - '.github/scripts/Run-UnityTests.ps1'
-      - '.github/workflows/unity-tests.yml'
 
 jobs:
   unity-tests:
