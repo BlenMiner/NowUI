@@ -850,6 +850,138 @@ public class NowWorldGraphicTests
     }
 
     [Test]
+    public void OverlappingWorldGraphicsRouteClickToFrontMostSurface()
+    {
+        var cameraObject = new GameObject("Now World Click Camera");
+        var backObject = new GameObject("Now World Click Back");
+        var frontObject = new GameObject("Now World Click Front");
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.pixelRect = new Rect(0, 0, 200, 200);
+            cameraObject.transform.position = new Vector3(0, 0, -5);
+            cameraObject.transform.rotation = Quaternion.identity;
+
+            var back = backObject.AddComponent<ClickWorldGraphic>();
+            back.facingMode = NowWorldFacingMode.None;
+            back.targetCamera = camera;
+            back.size = new Vector2(120f, 80f);
+            back.pixelsPerUnit = 100f;
+            back.pivot = new Vector2(0.5f, 0.5f);
+
+            frontObject.transform.position = new Vector3(0, 0, -1f);
+            var front = frontObject.AddComponent<ClickWorldGraphic>();
+            front.facingMode = NowWorldFacingMode.None;
+            front.targetCamera = camera;
+            front.size = new Vector2(120f, 80f);
+            front.pixelsPerUnit = 100f;
+            front.pivot = new Vector2(0.5f, 0.5f);
+
+            var backFed = new FedWorldProvider { inner = new NowWorldInputProvider { graphic = back, camera = camera } };
+            var frontFed = new FedWorldProvider { inner = new NowWorldInputProvider { graphic = front, camera = camera } };
+            back.provider = backFed;
+            front.provider = frontFed;
+
+            void Step(NowMouseInput raw)
+            {
+                NowOverlay.ForceNewFrame();
+                NowPointerArbiter.ForceNewFrame();
+                backFed.raw = raw;
+                frontFed.raw = raw;
+                backFed.inner.ResetPosition();
+                frontFed.inner.ResetPosition();
+                back.MarkDirty();
+                front.MarkDirty();
+                back.RebuildNowUI();
+                front.RebuildNowUI();
+            }
+
+            var screenCenter = new Vector2(100, 100);
+            Step(RawPointer(screenCenter));
+            Step(RawPointer(screenCenter, NowPointerButtons.Primary, NowPointerButtons.Primary));
+            Step(RawPointer(screenCenter, released: NowPointerButtons.Primary));
+
+            Assert.IsTrue(front.clicked, "The front world UI must receive clicks where two world panels overlap.");
+            Assert.IsFalse(back.clicked, "The back world UI must not receive clicks covered by a closer world panel.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(frontObject);
+            Object.DestroyImmediate(backObject);
+            Object.DestroyImmediate(cameraObject);
+        }
+    }
+
+    [Test]
+    public void BackWorldGraphicReceivesClickWhereFrontGraphicDoesNotCover()
+    {
+        var cameraObject = new GameObject("Now World Click Camera");
+        var backObject = new GameObject("Now World Click Back");
+        var frontObject = new GameObject("Now World Click Front");
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.pixelRect = new Rect(0, 0, 200, 200);
+            cameraObject.transform.position = new Vector3(0, 0, -5);
+            cameraObject.transform.rotation = Quaternion.identity;
+
+            var back = backObject.AddComponent<ClickWorldGraphic>();
+            back.facingMode = NowWorldFacingMode.None;
+            back.targetCamera = camera;
+            back.size = new Vector2(160f, 100f);
+            back.pixelsPerUnit = 100f;
+            back.pivot = new Vector2(0.5f, 0.5f);
+
+            frontObject.transform.position = new Vector3(0, 0, -1f);
+            var front = frontObject.AddComponent<ClickWorldGraphic>();
+            front.facingMode = NowWorldFacingMode.None;
+            front.targetCamera = camera;
+            front.size = new Vector2(50f, 50f);
+            front.pixelsPerUnit = 100f;
+            front.pivot = new Vector2(0.5f, 0.5f);
+
+            var backFed = new FedWorldProvider { inner = new NowWorldInputProvider { graphic = back, camera = camera } };
+            var frontFed = new FedWorldProvider { inner = new NowWorldInputProvider { graphic = front, camera = camera } };
+            back.provider = backFed;
+            front.provider = frontFed;
+
+            void Step(NowMouseInput raw)
+            {
+                NowOverlay.ForceNewFrame();
+                NowPointerArbiter.ForceNewFrame();
+                backFed.raw = raw;
+                frontFed.raw = raw;
+                backFed.inner.ResetPosition();
+                frontFed.inner.ResetPosition();
+                back.MarkDirty();
+                front.MarkDirty();
+                back.RebuildNowUI();
+                front.RebuildNowUI();
+            }
+
+            var backOnlyPoint = new Vector2(160, 100);
+            Step(RawPointer(backOnlyPoint));
+            Step(RawPointer(backOnlyPoint, NowPointerButtons.Primary, NowPointerButtons.Primary));
+            Step(RawPointer(backOnlyPoint, released: NowPointerButtons.Primary));
+
+            Assert.IsFalse(front.clicked, "The front world UI must not receive clicks outside its surface bounds.");
+            Assert.IsTrue(back.clicked, "The back world UI must receive clicks at visible points not covered by the front panel.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(frontObject);
+            Object.DestroyImmediate(backObject);
+            Object.DestroyImmediate(cameraObject);
+        }
+    }
+
+    [Test]
     public void WorldInputBlockedFreshPressDoesNotReusePreviousHover()
     {
         var cameraObject = new GameObject("Now World Camera");

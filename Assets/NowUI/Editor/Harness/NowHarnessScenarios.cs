@@ -18,6 +18,7 @@ namespace NowUI.Editor
         public int height;
         public bool includeInGoldens;
         public Func<INowInputProvider> createInputProvider;
+        public Func<NowHarnessScenario, string, NowHarnessCapture> capture;
         public int warmupFrames;
         public Action<NowRect> draw;
     }
@@ -156,6 +157,46 @@ namespace NowUI.Editor
             }
         }
 
+        sealed class FixedWorldInputProvider : INowInputProvider
+        {
+            public NowWorldInputProvider inner;
+            public NowMouseInput raw;
+
+            public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
+            {
+                return inner.TryGetSnapshot(surface, raw, out snapshot);
+            }
+        }
+
+        sealed class WorldHarnessPanel : NowWorldGraphic
+        {
+            public INowInputProvider inputProvider;
+            public NowThemeAsset theme;
+            public Action<NowRect> draw;
+
+            protected override bool useLayoutMeasurePass => false;
+
+            protected override INowInputProvider GetInputProvider()
+            {
+                return inputProvider ?? base.GetInputProvider();
+            }
+
+            protected override void DrawNowUI(NowRect rect)
+            {
+                if (draw == null)
+                    return;
+
+                if (theme != null)
+                {
+                    using (NowControls.Theme(theme))
+                        draw(rect);
+                    return;
+                }
+
+                draw(rect);
+            }
+        }
+
         public static IReadOnlyList<NowHarnessScenario> All()
         {
             EnsureSharedState();
@@ -169,6 +210,8 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "context-submenus", width = 720, height = 420, includeInGoldens = true, createInputProvider = () => new StaticPointerInputProvider(new Vector2(80f, 136f)), draw = DrawContextSubmenus },
                 new NowHarnessScenario { name = "context-edge-submenu", width = 520, height = 300, includeInGoldens = true, createInputProvider = () => new StaticPointerInputProvider(new Vector2(336f, 134f)), draw = DrawContextEdgeSubmenu },
                 new NowHarnessScenario { name = "context-ping-pong-submenus", width = 512, height = 320, includeInGoldens = true, warmupFrames = 3, createInputProvider = () => new SequencePointerInputProvider(new[] { new Vector2(266f, 134f), new Vector2(266f, 134f), new Vector2(128f, 162f), new Vector2(128f, 162f) }), draw = DrawContextPingPongSubmenus },
+                new NowHarnessScenario { name = "world-context-ping-pong-submenus", width = 512, height = 320, includeInGoldens = true, warmupFrames = 3, capture = CaptureWorldContextPingPongSubmenus },
+                new NowHarnessScenario { name = "world-multi-surface-overlap", width = 640, height = 360, includeInGoldens = true, warmupFrames = 3, capture = CaptureWorldMultiSurfaceOverlap },
                 new NowHarnessScenario { name = "text-layout", width = 960, height = 540, includeInGoldens = true, draw = DrawTextLayout },
                 new NowHarnessScenario { name = "glass", width = 640, height = 360, includeInGoldens = true, draw = DrawGlass },
                 new NowHarnessScenario { name = "shader-variants", width = 840, height = 420, includeInGoldens = true, draw = DrawShaderVariants },
@@ -182,6 +225,9 @@ namespace NowUI.Editor
         {
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
             ResetFrameState();
+
+            if (scenario.capture != null)
+                return scenario.capture(scenario, outputPath);
 
             var stopwatch = Stopwatch.StartNew();
             using var renderer = new NowRenderer();
@@ -225,6 +271,164 @@ namespace NowUI.Editor
             finally
             {
                 target.Release();
+                UnityEngine.Object.DestroyImmediate(target);
+            }
+        }
+
+        static NowHarnessCapture CaptureWorldContextPingPongSubmenus(NowHarnessScenario scenario, string outputPath)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var target = new RenderTexture(scenario.width, scenario.height, 24, RenderTextureFormat.ARGB32)
+            {
+                name = "NowUI World Harness Target",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            target.Create();
+
+            var cameraObject = new GameObject("NowUI World Harness Camera") { hideFlags = HideFlags.HideAndDontSave };
+            var panelObject = new GameObject("NowUI World Harness Panel") { hideFlags = HideFlags.HideAndDontSave };
+
+            try
+            {
+                float pixelsPerUnit = 400f;
+                var camera = cameraObject.AddComponent<Camera>();
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = new Color(0.04f, 0.045f, 0.055f, 1f);
+                camera.orthographic = true;
+                camera.orthographicSize = scenario.height / (pixelsPerUnit * 2f);
+                camera.nearClipPlane = 0.01f;
+                camera.farClipPlane = 10f;
+                camera.targetTexture = target;
+                cameraObject.transform.position = new Vector3(0f, 0f, -2f);
+
+                var panel = panelObject.AddComponent<WorldHarnessPanel>();
+                panel.targetCamera = camera;
+                panel.facingMode = NowWorldFacingMode.None;
+                panel.depthMode = NowWorldDepthMode.AlwaysVisible;
+                panel.glassBackdropMode = NowWorldGlassBackdropMode.TintOnly;
+                panel.size = new Vector2(scenario.width, scenario.height);
+                panel.pixelsPerUnit = pixelsPerUnit;
+                panel.pivot = new Vector2(0.5f, 0.5f);
+                panel.inputProvider = new SequencePointerInputProvider(new[]
+                {
+                    new Vector2(266f, 134f),
+                    new Vector2(266f, 134f),
+                    new Vector2(128f, 162f),
+                    new Vector2(128f, 162f)
+                });
+                panel.theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/Default.asset");
+                panel.draw = DrawWorldContextPingPongSubmenus;
+
+                int warmupFrames = Mathf.Max(1, scenario.warmupFrames);
+                for (int i = 0; i < warmupFrames; ++i)
+                    panel.RebuildNowUI();
+
+                panel.RebuildNowUI();
+                camera.Render();
+                WritePng(target, outputPath);
+                stopwatch.Stop();
+
+                return new NowHarnessCapture
+                {
+                    name = scenario.name,
+                    width = scenario.width,
+                    height = scenario.height,
+                    path = outputPath,
+                    batchCount = panel.batchCount,
+                    vertexCount = panel.mesh != null ? panel.mesh.vertexCount : 0,
+                    elapsedMilliseconds = stopwatch.ElapsedMilliseconds
+                };
+            }
+            finally
+            {
+                target.Release();
+                UnityEngine.Object.DestroyImmediate(panelObject);
+                UnityEngine.Object.DestroyImmediate(cameraObject);
+                UnityEngine.Object.DestroyImmediate(target);
+            }
+        }
+
+        static NowHarnessCapture CaptureWorldMultiSurfaceOverlap(NowHarnessScenario scenario, string outputPath)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var target = new RenderTexture(scenario.width, scenario.height, 24, RenderTextureFormat.ARGB32)
+            {
+                name = "NowUI World Multi Surface Target",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            target.Create();
+
+            var cameraObject = new GameObject("NowUI World Multi Surface Camera") { hideFlags = HideFlags.HideAndDontSave };
+            var backObject = new GameObject("NowUI World Multi Surface Back") { hideFlags = HideFlags.HideAndDontSave };
+            var frontObject = new GameObject("NowUI World Multi Surface Front") { hideFlags = HideFlags.HideAndDontSave };
+
+            try
+            {
+                float pixelsPerUnit = 400f;
+                var camera = cameraObject.AddComponent<Camera>();
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = new Color(0.04f, 0.045f, 0.055f, 1f);
+                camera.orthographic = true;
+                camera.orthographicSize = scenario.height / (pixelsPerUnit * 2f);
+                camera.nearClipPlane = 0.01f;
+                camera.farClipPlane = 10f;
+                camera.targetTexture = target;
+                cameraObject.transform.position = new Vector3(0f, 0f, -2f);
+
+                var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/Default.asset");
+                var rawPointer = new NowMouseInput
+                {
+                    hasPointer = true,
+                    screenPosition = new Vector2(scenario.width * 0.5f, scenario.height * 0.455f)
+                };
+
+                var back = backObject.AddComponent<WorldHarnessPanel>();
+                backObject.transform.position = new Vector3(-0.12f, 0.04f, 0.1f);
+                ConfigureWorldHarnessPanel(back, camera, pixelsPerUnit, new Vector2(280f, 170f), theme);
+                back.inputProvider = new FixedWorldInputProvider
+                {
+                    inner = new NowWorldInputProvider { graphic = back, camera = camera },
+                    raw = rawPointer
+                };
+                back.draw = DrawWorldBackSurface;
+
+                var front = frontObject.AddComponent<WorldHarnessPanel>();
+                frontObject.transform.position = new Vector3(0.12f, -0.04f, -0.25f);
+                ConfigureWorldHarnessPanel(front, camera, pixelsPerUnit, new Vector2(240f, 150f), theme);
+                front.inputProvider = new FixedWorldInputProvider
+                {
+                    inner = new NowWorldInputProvider { graphic = front, camera = camera },
+                    raw = rawPointer
+                };
+                front.draw = DrawWorldFrontSurface;
+
+                int warmupFrames = Mathf.Max(2, scenario.warmupFrames);
+                for (int i = 0; i < warmupFrames; ++i)
+                    RebuildWorldOverlapFrame(back, front);
+
+                RebuildWorldOverlapFrame(back, front);
+                camera.Render();
+                WritePng(target, outputPath);
+                stopwatch.Stop();
+
+                return new NowHarnessCapture
+                {
+                    name = scenario.name,
+                    width = scenario.width,
+                    height = scenario.height,
+                    path = outputPath,
+                    batchCount = back.batchCount + front.batchCount,
+                    vertexCount = (back.mesh != null ? back.mesh.vertexCount : 0) +
+                                  (front.mesh != null ? front.mesh.vertexCount : 0),
+                    elapsedMilliseconds = stopwatch.ElapsedMilliseconds
+                };
+            }
+            finally
+            {
+                target.Release();
+                UnityEngine.Object.DestroyImmediate(frontObject);
+                UnityEngine.Object.DestroyImmediate(backObject);
+                UnityEngine.Object.DestroyImmediate(cameraObject);
                 UnityEngine.Object.DestroyImmediate(target);
             }
         }
@@ -301,6 +505,33 @@ namespace NowUI.Editor
             }
 
             return false;
+        }
+
+        static void ConfigureWorldHarnessPanel(
+            WorldHarnessPanel panel,
+            Camera camera,
+            float pixelsPerUnit,
+            Vector2 size,
+            NowThemeAsset theme)
+        {
+            panel.targetCamera = camera;
+            panel.facingMode = NowWorldFacingMode.None;
+            panel.depthMode = NowWorldDepthMode.AlwaysVisible;
+            panel.glassBackdropMode = NowWorldGlassBackdropMode.TintOnly;
+            panel.size = size;
+            panel.pixelsPerUnit = pixelsPerUnit;
+            panel.pivot = new Vector2(0.5f, 0.5f);
+            panel.theme = theme;
+        }
+
+        static void RebuildWorldOverlapFrame(WorldHarnessPanel back, WorldHarnessPanel front)
+        {
+            NowOverlay.ForceNewFrame();
+            NowPointerArbiter.ForceNewFrame();
+            back.MarkDirty();
+            front.MarkDirty();
+            back.RebuildNowUI();
+            front.RebuildNowUI();
         }
 
         static void DrawScenarioFrame(NowHarnessScenario scenario)
@@ -485,6 +716,95 @@ namespace NowUI.Editor
                 NowContextMenu.Item("Delete Chain", enabled: false);
                 NowContextMenu.End();
             }
+        }
+
+        static void DrawWorldContextPingPongSubmenus(NowRect rect)
+        {
+            DrawSurface(rect);
+            HeaderBlock(rect, "World Ping Pong Submenus", "World-space camera fitting flips left, then back right.");
+
+            int menuId = NowInput.GetId("harness-world-context-ping-pong-submenus");
+            var anchor = new Vector2(250f, 116f);
+
+            if (!NowContextMenu.isOpen)
+                NowContextMenu.Open(menuId, anchor);
+
+            if (NowContextMenu.Begin(menuId))
+            {
+                if (NowContextMenu.BeginSubmenu("Level 1"))
+                {
+                    NowContextMenu.Item("Level 1 Action");
+
+                    if (NowContextMenu.BeginSubmenu("Level 2"))
+                    {
+                        NowContextMenu.Item("Deep Action");
+                        NowContextMenu.Item("Deep Settings");
+                        NowContextMenu.EndSubmenu();
+                    }
+
+                    NowContextMenu.Separator();
+                    NowContextMenu.Item("Inspect Chain");
+                    NowContextMenu.EndSubmenu();
+                }
+
+                NowContextMenu.Item("Root Action");
+                NowContextMenu.Item("Rename Chain");
+                NowContextMenu.Item("Delete Chain", enabled: false);
+                NowContextMenu.End();
+            }
+        }
+
+        static void DrawWorldBackSurface(NowRect rect)
+        {
+            DrawWorldSurfacePanel(
+                rect,
+                "Back Surface",
+                "Visible area remains interactive",
+                new Color(0.1f, 0.19f, 0.29f, 0.94f),
+                new Color(0.32f, 0.62f, 0.95f, 0.9f),
+                new NowRect(22f, 96f, 96f, 42f),
+                "Back");
+        }
+
+        static void DrawWorldFrontSurface(NowRect rect)
+        {
+            DrawWorldSurfacePanel(
+                rect,
+                "Front Surface",
+                "Hover at overlap is owned here",
+                new Color(0.24f, 0.16f, 0.13f, 0.96f),
+                new Color(1f, 0.64f, 0.28f, 0.96f),
+                new NowRect(46f, 62f, 160f, 42f),
+                "Front Button");
+        }
+
+        static void DrawWorldSurfacePanel(
+            NowRect rect,
+            string title,
+            string subtitle,
+            Color fill,
+            Color outline,
+            NowRect buttonRect,
+            string buttonText)
+        {
+            Now.Rectangle(rect)
+                .SetColor(fill)
+                .SetRadius(14f)
+                .SetOutline(2f)
+                .SetOutlineColor(outline)
+                .Draw();
+
+            Now.Text(new NowRect(18f, 14f, rect.width - 36f, 26f))
+                .SetFontSize(18f)
+                .SetBold()
+                .SetColor(Color.white)
+                .Draw(title);
+            Now.Text(new NowRect(18f, rect.height - 34f, rect.width - 36f, 22f))
+                .SetFontSize(12f)
+                .SetColor(new Color(1f, 1f, 1f, 0.72f))
+                .Draw(subtitle);
+
+            Now.Button(buttonRect, buttonText).Draw();
         }
 
         static void DrawControls(NowRect rect)
