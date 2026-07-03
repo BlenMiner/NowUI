@@ -115,7 +115,7 @@ Shader "NowUI/UI Glass"
                 float2 size = rect.zw;
                 float2 position = (rawUV - 0.5) * size;
                 float dist = sdRoundedBox(position, size * 0.5, i.radius);
-                float delta = fwidth(dist);
+                float delta = length(float2(ddx(dist), ddy(dist)));
                 float graphicAlpha = 1 - smoothstep(-delta, 0, dist);
 
                 float outline = i.extras.y;

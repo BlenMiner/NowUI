@@ -10,7 +10,8 @@ namespace NowUI
     /// Option i toggles bit <c>1 &lt;&lt; i</c>. The popup lists Nothing and
     /// Everything above the options and stays open while toggling; it closes on
     /// any press outside or on cancel. The field summarizes the mask as
-    /// Nothing, Everything, the single set option, or "Mixed (n)".
+    /// Nothing, Everything, or the selected option names while they fit the
+    /// label area, falling back to "Mixed (n)".
     /// <see cref="Draw(ref LayerMask)"/> edits a <see cref="LayerMask"/> against
     /// the project's named layers (Everything stores -1, like Unity).
     /// </summary>
@@ -54,6 +55,7 @@ namespace NowUI
             public byte initialized;
             public int mask;
             public int optionCount;
+            public float width;
             public string label;
         }
 
@@ -154,7 +156,8 @@ namespace NowUI
                 open = false;
 
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
-            string summary = Summary(id, options, optionCount, mask, allBits);
+            float summaryWidth = renderer.DropdownFieldInnerRect(theme, rect, lineHeight).width;
+            string summary = Summary(id, options, optionCount, mask, allBits, textStyle, summaryWidth);
             renderer.DrawDropdownField(new NowDropdownFieldRenderContext(theme, rect, summary, open, interaction, focused, hoverT));
 
             if (!open)
@@ -305,21 +308,32 @@ namespace NowUI
             }
         }
 
-        static string Summary(int id, IReadOnlyList<string> options, int optionCount, int mask, int allBits)
+        static string Summary(int id, IReadOnlyList<string> options, int optionCount, int mask, int allBits, NowText measure, float availableWidth)
         {
             ref var cache = ref NowControlState.Get<SummaryCache>(NowInput.GetId(id, "summary"));
 
-            if (cache.initialized != 0 && cache.mask == mask && cache.optionCount == optionCount && cache.label != null)
+            if (cache.initialized != 0 && cache.mask == mask && cache.optionCount == optionCount &&
+                cache.width == availableWidth && cache.label != null)
+            {
                 return cache.label;
+            }
 
             cache.initialized = 1;
             cache.mask = mask;
             cache.optionCount = optionCount;
-            cache.label = BuildSummary(options, optionCount, mask, allBits);
+            cache.width = availableWidth;
+            cache.label = BuildSummary(options, optionCount, mask, allBits, measure, availableWidth);
             return cache.label;
         }
 
-        static string BuildSummary(IReadOnlyList<string> options, int optionCount, int mask, int allBits)
+        static readonly System.Text.StringBuilder _summaryBuilder = new System.Text.StringBuilder(64);
+
+        /// <summary>
+        /// Nothing, Everything, or the selected names joined with ", " when the
+        /// joined text fits the field's label width; "Mixed (n)" otherwise. A
+        /// single selected name is always shown, matching single-value fields.
+        /// </summary>
+        static string BuildSummary(IReadOnlyList<string> options, int optionCount, int mask, int allBits, NowText measure, float availableWidth)
         {
             int visible = mask & allBits;
 
@@ -341,7 +355,28 @@ namespace NowUI
                 single = i;
             }
 
-            return count == 1 ? options[single] : $"Mixed ({count})";
+            if (count == 1)
+                return options[single];
+
+            _summaryBuilder.Length = 0;
+
+            for (int i = 0; i < optionCount; ++i)
+            {
+                if ((visible & (1 << i)) == 0)
+                    continue;
+
+                if (_summaryBuilder.Length > 0)
+                    _summaryBuilder.Append(", ");
+
+                _summaryBuilder.Append(options[i]);
+            }
+
+            string list = _summaryBuilder.ToString();
+
+            if (measure.Measure(list).x <= availableWidth)
+                return list;
+
+            return $"Mixed ({count})";
         }
 
         internal static int AllBits(int optionCount)

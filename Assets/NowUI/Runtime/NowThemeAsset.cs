@@ -1357,6 +1357,8 @@ namespace NowUI
         [SerializeField] float _calendarCellSize;
         [SerializeField] float _calendarHeaderHeight;
         [SerializeField] float _calendarPadding;
+        [SerializeField] float _clockDialSize;
+        [SerializeField] float _clockHeaderHeight;
 
         public static NowControlStyleSet Default
         {
@@ -1446,7 +1448,9 @@ namespace NowUI
                     _treeDisclosureSize = 14f,
                     _calendarCellSize = 40f,
                     _calendarHeaderHeight = 36f,
-                    _calendarPadding = 8f
+                    _calendarPadding = 8f,
+                    _clockDialSize = 220f,
+                    _clockHeaderHeight = 44f
                 };
 
                 return style;
@@ -1536,6 +1540,8 @@ namespace NowUI
         public float calendarCellSize => _calendarCellSize <= 0f ? 40f : _calendarCellSize;
         public float calendarHeaderHeight => _calendarHeaderHeight <= 0f ? 36f : _calendarHeaderHeight;
         public float calendarPadding => _calendarPadding <= 0f ? 8f : _calendarPadding;
+        public float clockDialSize => _clockDialSize <= 0f ? 220f : _clockDialSize;
+        public float clockHeaderHeight => _clockHeaderHeight <= 0f ? 44f : _clockHeaderHeight;
     }
 
     public readonly struct NowSliderVisualMetrics
@@ -1702,6 +1708,22 @@ namespace NowUI
             this.metrics = metrics;
             this.dragging = dragging;
             this.hoverT = hoverT;
+        }
+    }
+
+    public readonly struct NowScrollPanAnchorRenderContext
+    {
+        public readonly NowThemeAsset themeAsset;
+        public readonly Vector2 position;
+        public readonly bool canScrollX;
+        public readonly bool canScrollY;
+
+        public NowScrollPanAnchorRenderContext(NowThemeAsset themeAsset, Vector2 position, bool canScrollX, bool canScrollY)
+        {
+            this.themeAsset = themeAsset;
+            this.position = position;
+            this.canScrollX = canScrollX;
+            this.canScrollY = canScrollY;
         }
     }
 
@@ -2193,6 +2215,42 @@ namespace NowUI
                 .SetRadius(radius)
                 .SetColor(thumb)
                 .Draw();
+        }
+
+        /// <summary>Middle-button autoscroll anchor: a ring at the pan origin with chevrons for the scrollable axes.</summary>
+        public virtual void DrawScrollPanAnchor(in NowScrollPanAnchorRenderContext context)
+        {
+            const float Radius = 15f;
+
+            Vector2 center = context.position;
+            var rect = new NowRect(center.x - Radius, center.y - Radius, Radius * 2f, Radius * 2f);
+            Color fill = context.themeAsset.GetColor(NowColorToken.SurfaceElevated);
+            fill.a = 0.92f;
+            Color accent = context.themeAsset.GetColor(NowColorToken.TextMuted);
+
+            Now.Rectangle(rect)
+                .SetRadius(Radius)
+                .SetColor(fill)
+                .SetOutline(1f)
+                .SetOutlineColor(accent)
+                .Draw();
+
+            Now.Rectangle(new NowRect(center.x - 2f, center.y - 2f, 4f, 4f))
+                .SetRadius(2f)
+                .SetColor(accent)
+                .Draw();
+
+            if (context.canScrollY)
+            {
+                DrawChevron(new NowRect(center.x - 5f, rect.y + 2f, 10f, 8f), accent, NowChevronDirection.Up);
+                DrawChevron(new NowRect(center.x - 5f, rect.yMax - 10f, 10f, 8f), accent, NowChevronDirection.Down);
+            }
+
+            if (context.canScrollX)
+            {
+                DrawChevron(new NowRect(rect.x + 2f, center.y - 5f, 8f, 10f), accent, NowChevronDirection.Left);
+                DrawChevron(new NowRect(rect.xMax - 10f, center.y - 5f, 8f, 10f), accent, NowChevronDirection.Right);
+            }
         }
 
         /// <summary>Offset focus ring drawn outside the control at the themed focus color.</summary>

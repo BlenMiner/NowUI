@@ -116,7 +116,7 @@ Shader "NowUI/UI Rectangle"
 
                 // Signed distance field calculation
                 float dist = sdRoundedBox(position, halfSize, rad);
-                float delta = max(fwidth(dist), 0.0001);
+                float delta = max(length(float2(ddx(dist), ddy(dist))), 0.0001);
 
                 // Calculate the different masks based on the SDF
                 float graphicAlpha = 1 - smoothstep(0, delta + max(blur, 0), dist);

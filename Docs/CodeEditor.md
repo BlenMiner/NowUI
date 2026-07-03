@@ -40,7 +40,7 @@ layout flow), `SetFontSize` (default 14), `SetLineNumbers(false)`,
   selection wraps the selection.
 - **Enter auto-indents**, keeping the current line's indentation;
   Enter between `{` and `}` expands the block with an indented middle line.
-- **Tab** inserts two spaces; with a multi-line selection it indents the
+- **Tab** inserts four spaces; with a multi-line selection it indents the
   lines, Shift+Tab dedents.
 - **Smart Home** jumps to the first non-space character, then column zero.
 - **Line shortcuts**: Ctrl+D duplicates the current line (or the selected

@@ -6,8 +6,11 @@ using UnityEngine;
 namespace NowUI
 {
     /// <summary>
-    /// Time-of-day field with a popup of hour/minute spinner fields (plus AM/PM
-    /// in 12-hour mode). The value is caller-owned:
+    /// Time-of-day field with a clock-dial popup: the header shows the hour and
+    /// minute as clickable segments and the dial below sets the active one by
+    /// tap or drag, auto-advancing from hour to minute on release. 24-hour mode
+    /// uses a dual ring (outer 1–12, inner 13–00); 12-hour mode adds AM/PM
+    /// chips. The value is caller-owned:
     /// <code>NowLayout.TimePicker().Draw(ref alarmTime);</code>
     /// </summary>
     [NowBuilder]
@@ -34,12 +37,14 @@ namespace NowUI
         {
             public NowThemeAsset themeAsset;
             public int id;
-            public int hourFieldId;
-            public int minuteFieldId;
+            public int dialId;
+            public int hourHeaderId;
+            public int minuteHeaderId;
             public int amId;
             public int pmId;
             public bool twentyFourHour;
             public int minuteStep;
+            public int openedFrame;
             public NowRect field;
             public NowRect popupRect;
         }
@@ -54,6 +59,14 @@ namespace NowUI
         static readonly Dictionary<int, PopupState> _popupStates = new Dictionary<int, PopupState>(4);
 
         static readonly Dictionary<int, FieldLabel> _fieldLabels = new Dictionary<int, FieldLabel>(8);
+
+        static string[] s_outerHourLabels;
+
+        static string[] s_innerHourLabels;
+
+        static string[] s_minuteLabels;
+
+        static string[] s_twoDigitLabels;
 
         internal NowTimePicker(NowId id, int site)
         {
@@ -92,7 +105,7 @@ namespace NowUI
         /// <summary>24-hour clock (default true); false adds AM/PM chips.</summary>
         public NowTimePicker Set24Hour(bool twentyFourHour) { _twentyFourHour = twentyFourHour; return this; }
 
-        /// <summary>Minute increment used by the popup's minute spinner.</summary>
+        /// <summary>Minute increment the dial snaps to.</summary>
         public NowTimePicker SetMinuteStep(int step) { _minuteStep = Mathf.Clamp(step, 1, 30); return this; }
 
         /// <summary>Edits the time-of-day component; the date part is preserved.</summary>
@@ -151,6 +164,8 @@ namespace NowUI
                     parts.hour = value.Hours;
                     parts.minute = value.Minutes;
                     parts.initialized = 1;
+                    NowControlState.Get<int>(id, "clock-mode") = 0;
+                    GetState(id).openedFrame = NowInput.current.frame;
                 }
             }
 
@@ -207,23 +222,22 @@ namespace NowUI
         void DeferPopup(NowThemeAsset theme, int id, NowRect field)
         {
             var styles = theme.controlStyles;
-            float width = Mathf.Max(field.width, 200f);
-            float height = styles.dropdownFieldMinHeight + styles.popupPadding * 2f + (_twentyFourHour ? 16f : 56f);
+            float padding = styles.popupPadding + 4f;
+            float dialSize = styles.clockDialSize;
+            float width = Mathf.Max(field.width, dialSize + padding * 2f);
+            float height = padding * 2f + styles.clockHeaderHeight + 10f + dialSize + (_twentyFourHour ? 0f : styles.chipHeight + 8f);
             var popupRect = new NowRect(field.x, field.yMax + styles.dropdownPopupGap, width, height);
 
             if (_fitToView)
                 popupRect = NowOverlay.FitToView(popupRect);
 
-            if (!_popupStates.TryGetValue(id, out var state))
-            {
-                state = new PopupState();
-                _popupStates[id] = state;
-            }
+            var state = GetState(id);
 
             state.themeAsset = theme;
             state.id = id;
-            state.hourFieldId = NowInput.GetId(id, "hour");
-            state.minuteFieldId = NowInput.GetId(id, "minute");
+            state.dialId = NowInput.GetId(id, "dial");
+            state.hourHeaderId = NowInput.GetId(id, "hour");
+            state.minuteHeaderId = NowInput.GetId(id, "minute");
             state.amId = NowInput.GetId(id, "am");
             state.pmId = NowInput.GetId(id, "pm");
             state.twentyFourHour = _twentyFourHour;
@@ -233,6 +247,17 @@ namespace NowUI
 
             NowOverlay.BlockAllSurfaces(id);
             NowOverlay.Defer(popupRect, id, DrawPopup);
+        }
+
+        static PopupState GetState(int id)
+        {
+            if (!_popupStates.TryGetValue(id, out var state))
+            {
+                state = new PopupState();
+                _popupStates[id] = state;
+            }
+
+            return state;
         }
 
         static void DrawPopup(int stateId)
@@ -246,66 +271,37 @@ namespace NowUI
             var popupRect = state.popupRect;
 
             renderer.DrawPopupBackground(theme, popupRect, menu: false);
+            EnsureStaticLabels();
 
             ref var parts = ref NowControlState.Get<TimeParts>(state.id, "time-parts");
+            ref int mode = ref NowControlState.Get<int>(state.id, "clock-mode");
+
+            UpdateKeyboard(state, ref parts, ref mode);
 
             var inner = popupRect.Inset(styles.popupPadding + 4f);
-            float fieldHeight = Mathf.Max(styles.dropdownFieldMinHeight, 32f);
-            float separator = 14f;
-            float fieldWidth = (inner.width - separator) * 0.5f;
+            var headerRect = new NowRect(inner.x, inner.y, inner.width, styles.clockHeaderHeight);
 
-            var hourRect = new NowRect(inner.x, inner.y, fieldWidth, fieldHeight);
-            var minuteRect = new NowRect(inner.x + fieldWidth + separator, inner.y, fieldWidth, fieldHeight);
+            DrawPopupHeader(state, headerRect, ref parts, ref mode);
 
-            NowControls.DrawCenteredLabel(
-                theme,
-                new NowRect(inner.x + fieldWidth, inner.y, separator, fieldHeight),
-                ":",
-                NowTextStyle.BodyStrong,
-                popupRect);
+            float dialSize = styles.clockDialSize;
+            var dialRect = new NowRect(inner.x + (inner.width - dialSize) * 0.5f, headerRect.yMax + 10f, dialSize, dialSize);
+            var metrics = renderer.CalculateClockDialMetrics(theme, dialRect);
+            var interaction = NowInput.Interact(state.dialId, dialRect);
 
-            if (state.twentyFourHour)
+            if (interaction.held)
+                ApplyDialPointer(state, in metrics, interaction.pointerPosition, ref parts, mode);
+
+            if (mode == 0 && interaction.released)
             {
-                int hour = parts.hour;
-
-                new NowTextField(hourRect, new NowId(state.hourFieldId), 0)
-                    .SetRange(0, 23)
-                    .SetSpinner(1f)
-                    .Draw(ref hour);
-                parts.hour = hour;
-            }
-            else
-            {
-                int displayHour = parts.hour % 12;
-
-                if (displayHour == 0)
-                    displayHour = 12;
-
-                int editedHour = displayHour;
-
-                new NowTextField(hourRect, new NowId(state.hourFieldId), 0)
-                    .SetRange(1, 12)
-                    .SetSpinner(1f)
-                    .Draw(ref editedHour);
-
-                if (editedHour != displayHour)
-                {
-                    bool pm = parts.hour >= 12;
-                    parts.hour = (editedHour % 12) + (pm ? 12 : 0);
-                }
+                mode = 1;
+                NowControlState.RequestRepaint();
             }
 
-            int minute = parts.minute;
-
-            new NowTextField(minuteRect, new NowId(state.minuteFieldId), 0)
-                .SetRange(0, 59)
-                .SetSpinner(state.minuteStep)
-                .Draw(ref minute);
-            parts.minute = minute;
+            renderer.DrawClockDial(BuildDialContext(state, dialRect, in metrics, in parts, mode));
 
             if (!state.twentyFourHour)
             {
-                float chipY = inner.y + fieldHeight + 8f;
+                float chipY = dialRect.yMax + 8f;
                 float chipWidth = (inner.width - 8f) * 0.5f;
                 var amRect = new NowRect(inner.x, chipY, chipWidth, styles.chipHeight);
                 var pmRect = new NowRect(inner.x + chipWidth + 8f, chipY, chipWidth, styles.chipHeight);
@@ -332,11 +328,273 @@ namespace NowUI
             }
         }
 
+        static void ApplyDialPointer(PopupState state, in NowClockDialMetrics metrics, Vector2 pointer, ref TimeParts parts, int mode)
+        {
+            Vector2 delta = pointer - metrics.center;
+
+            if (delta.magnitude < metrics.faceRadius * 0.15f)
+                return;
+
+            float angle = Mathf.Atan2(delta.x, -delta.y) * Mathf.Rad2Deg;
+
+            if (angle < 0f)
+                angle += 360f;
+
+            if (mode == 0)
+            {
+                int index = Mathf.RoundToInt(angle / 30f) % 12;
+                int hour;
+
+                if (state.twentyFourHour)
+                {
+                    bool innerRing = delta.magnitude < (metrics.outerRadius + metrics.innerRadius) * 0.5f;
+                    hour = innerRing
+                        ? (index == 0 ? 0 : index + 12)
+                        : (index == 0 ? 12 : index);
+                }
+                else
+                {
+                    hour = index + (parts.hour >= 12 ? 12 : 0);
+                }
+
+                if (hour != parts.hour)
+                {
+                    parts.hour = hour;
+                    NowControlState.RequestRepaint();
+                }
+            }
+            else
+            {
+                int step = Mathf.Max(1, state.minuteStep);
+                int minute = Mathf.RoundToInt(angle / (6f * step)) * step % 60;
+
+                if (minute != parts.minute)
+                {
+                    parts.minute = minute;
+                    NowControlState.RequestRepaint();
+                }
+            }
+        }
+
+        static NowClockDialRenderContext BuildDialContext(PopupState state, NowRect dialRect, in NowClockDialMetrics metrics, in TimeParts parts, int mode)
+        {
+            string[] outerLabels;
+            string[] innerLabels = null;
+            int selectedOuter = -1;
+            int selectedInner = -1;
+            float handRadius = metrics.outerRadius;
+            float handAngle;
+            bool handOnLabel = true;
+
+            if (mode == 0)
+            {
+                outerLabels = s_outerHourLabels;
+
+                if (state.twentyFourHour)
+                {
+                    innerLabels = s_innerHourLabels;
+                    int hour = parts.hour;
+
+                    if (hour == 12)
+                    {
+                        selectedOuter = 0;
+                    }
+                    else if (hour >= 1 && hour <= 11)
+                    {
+                        selectedOuter = hour;
+                    }
+                    else
+                    {
+                        selectedInner = hour == 0 ? 0 : hour - 12;
+                        handRadius = metrics.innerRadius;
+                    }
+
+                    handAngle = (selectedOuter >= 0 ? selectedOuter : selectedInner) * 30f;
+                }
+                else
+                {
+                    selectedOuter = parts.hour % 12;
+                    handAngle = selectedOuter * 30f;
+                }
+            }
+            else
+            {
+                outerLabels = s_minuteLabels;
+                handAngle = parts.minute * 6f;
+
+                if (parts.minute % 5 == 0)
+                    selectedOuter = parts.minute / 5;
+                else
+                    handOnLabel = false;
+            }
+
+            return new NowClockDialRenderContext(
+                state.themeAsset,
+                dialRect,
+                metrics,
+                outerLabels,
+                innerLabels,
+                selectedOuter,
+                selectedInner,
+                handAngle,
+                handRadius,
+                handOnLabel);
+        }
+
+        static void DrawPopupHeader(PopupState state, NowRect headerRect, ref TimeParts parts, ref int mode)
+        {
+            var theme = state.themeAsset;
+            float boxWidth = 56f;
+            float colonWidth = 20f;
+            float x = headerRect.x + (headerRect.width - boxWidth * 2f - colonWidth) * 0.5f;
+
+            var hourRect = new NowRect(x, headerRect.y, boxWidth, headerRect.height);
+            var colonRect = new NowRect(hourRect.xMax, headerRect.y, colonWidth, headerRect.height);
+            var minuteRect = new NowRect(colonRect.xMax, headerRect.y, boxWidth, headerRect.height);
+
+            var hour = NowInput.Interact(state.hourHeaderId, hourRect);
+            var minute = NowInput.Interact(state.minuteHeaderId, minuteRect);
+
+            if (hour.clicked && mode != 0)
+            {
+                mode = 0;
+                NowControlState.RequestRepaint();
+            }
+
+            if (minute.clicked && mode != 1)
+            {
+                mode = 1;
+                NowControlState.RequestRepaint();
+            }
+
+            string hourText = state.twentyFourHour
+                ? s_twoDigitLabels[parts.hour]
+                : s_outerHourLabels[parts.hour % 12];
+
+            DrawHeaderCell(theme, hourRect, hourText, mode == 0, hour);
+            NowControls.DrawCenteredLabel(theme, colonRect, ":", NowTextStyle.Subheading, colonRect);
+            DrawHeaderCell(theme, minuteRect, s_twoDigitLabels[parts.minute], mode == 1, minute);
+        }
+
+        static void DrawHeaderCell(NowThemeAsset theme, NowRect rect, string label, bool active, in NowInteraction interaction)
+        {
+            Color background = active
+                ? theme.GetColor(interaction.held ? NowColorToken.AccentPressed : NowColorToken.Accent)
+                : theme.GetColor(interaction.hovered || interaction.held ? NowColorToken.SurfaceHover : NowColorToken.SurfaceMuted);
+
+            Now.Rectangle(rect).SetRadius(8f).SetColor(background).Draw();
+
+            Color textColor = active
+                ? theme.GetColor(NowColorToken.AccentText)
+                : theme.GetColor(NowColorToken.Text);
+
+            NowControls.DrawCenteredLabel(theme, rect, label, NowTextStyle.Subheading, rect, textColor);
+        }
+
+        /// <summary>
+        /// Keyboard editing for the open popup: left/right switch between hour
+        /// and minute, up/down step the active unit (minutes by the configured
+        /// step), submit advances from hour to minute and then closes. Base
+        /// focus navigation is locked while the popup is open.
+        /// </summary>
+        static void UpdateKeyboard(PopupState state, ref TimeParts parts, ref int mode)
+        {
+            if (NowInput.isPassive)
+                return;
+
+            NowFocus.LockNavigation();
+
+            var snapshot = NowInput.current;
+            var navigation = snapshot.navigation;
+
+            if (NowControlState.Repeat(state.id, "nav-x", Mathf.Abs(navigation.x) > 0.55f, 0.35f, 0.2f))
+            {
+                int next = navigation.x > 0f ? 1 : 0;
+
+                if (next != mode)
+                {
+                    mode = next;
+                    NowControlState.RequestRepaint();
+                }
+            }
+
+            if (NowControlState.Repeat(state.id, "nav-y", Mathf.Abs(navigation.y) > 0.55f, 0.35f, 0.08f))
+            {
+                int direction = navigation.y > 0f ? 1 : -1;
+
+                if (mode == 0)
+                {
+                    parts.hour = (parts.hour + direction + 24) % 24;
+                }
+                else
+                {
+                    int step = Mathf.Max(1, state.minuteStep);
+                    parts.minute = (parts.minute + direction * step + 60) % 60;
+                }
+
+                NowControlState.RequestRepaint();
+            }
+
+            if (snapshot.submitPressed && snapshot.frame != state.openedFrame)
+            {
+                if (mode == 0)
+                {
+                    mode = 1;
+                    NowControlState.RequestRepaint();
+                }
+                else
+                {
+                    NowControlState.Get<bool>(state.id) = false;
+                }
+            }
+        }
+
+        static void EnsureStaticLabels()
+        {
+            if (s_outerHourLabels == null)
+            {
+                s_outerHourLabels = new string[12];
+                s_outerHourLabels[0] = "12";
+
+                for (int i = 1; i < 12; ++i)
+                    s_outerHourLabels[i] = i.ToString(CultureInfo.InvariantCulture);
+            }
+
+            if (s_innerHourLabels == null)
+            {
+                s_innerHourLabels = new string[12];
+                s_innerHourLabels[0] = "00";
+
+                for (int i = 1; i < 12; ++i)
+                    s_innerHourLabels[i] = (i + 12).ToString(CultureInfo.InvariantCulture);
+            }
+
+            if (s_minuteLabels == null)
+            {
+                s_minuteLabels = new string[12];
+
+                for (int i = 0; i < 12; ++i)
+                    s_minuteLabels[i] = (i * 5).ToString("00", CultureInfo.InvariantCulture);
+            }
+
+            if (s_twoDigitLabels == null)
+            {
+                s_twoDigitLabels = new string[60];
+
+                for (int i = 0; i < 60; ++i)
+                    s_twoDigitLabels[i] = i.ToString("00", CultureInfo.InvariantCulture);
+            }
+        }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetForRuntimeLoad()
         {
             _popupStates.Clear();
             _fieldLabels.Clear();
+            s_outerHourLabels = null;
+            s_innerHourLabels = null;
+            s_minuteLabels = null;
+            s_twoDigitLabels = null;
         }
     }
 }

@@ -5,8 +5,10 @@ namespace NowUI
 {
     /// <summary>
     /// One selectable line segment: a rect plus the range of the source text it
-    /// shows. <see cref="fontSize"/> overrides the call-level size when set, so
-    /// regions mixing sizes (headings, code) hit-test correctly.
+    /// shows. <see cref="fontSize"/> overrides the call-level size when set —
+    /// <see cref="fontStyle"/> rides along with it — so regions mixing sizes
+    /// and styles (headings, bold spans, code) hit-test and highlight with the
+    /// metrics they were laid out with.
     /// </summary>
     public struct NowTextSelectionLine
     {
@@ -17,6 +19,8 @@ namespace NowUI
         public int length;
 
         public float fontSize;
+
+        public NowFontStyle fontStyle;
     }
 
     public struct NowTextSelectionResult
@@ -47,6 +51,8 @@ namespace NowUI
     public static class NowTextSelection
     {
         static readonly List<NowRect> _singleExclusion = new List<NowRect>(1);
+
+        static readonly List<NowRect> _highlightScratch = new List<NowRect>(16);
 
         /// <summary>Single-region convenience: <see cref="Interact"/> + <see cref="DrawHighlights"/>.</summary>
         public static NowTextSelectionResult Draw(
@@ -168,6 +174,7 @@ namespace NowUI
             {
                 int hit = HitTest(text, lines, font, fontSize, fontStyle, interaction.pointerPosition);
                 NowTextEdit.DragSelectionGesture(ref state, text, in gesture, hit);
+                NowScrollView.RequestDragScroll();
                 NowControlState.RequestRepaint();
             }
 
@@ -215,8 +222,41 @@ namespace NowUI
             if (!state.hasSelection)
                 return false;
 
-            int selectionMin = state.selectionMin;
-            int selectionMax = state.selectionMax;
+            _highlightScratch.Clear();
+            BuildHighlightRects(text, lines, font, fontSize, fontStyle,
+                state.selectionMin, state.selectionMax, _highlightScratch);
+
+            for (int i = 0; i < _highlightScratch.Count; ++i)
+            {
+                Now.Rectangle(_highlightScratch[i])
+                    .SetColor(highlightColor)
+                    .Draw();
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Computes the highlight rects for a selection range. A segment whose
+        /// selection continues on the same row clips to the next segment's
+        /// start (styled runs can abut exactly or overlap by the layout pad),
+        /// and contiguous same-row rects merge into one, so translucent
+        /// highlights never double-blend into darker seams. A selection that
+        /// continues past the end of a row extends slightly to hint the
+        /// covered line break.
+        /// </summary>
+        internal static void BuildHighlightRects(
+            string text,
+            List<NowTextSelectionLine> lines,
+            NowFontAsset font,
+            float fontSize,
+            NowFontStyle fontStyle,
+            int selectionMin,
+            int selectionMax,
+            List<NowRect> output)
+        {
+            bool hasPending = false;
+            float pendingX0 = 0f, pendingX1 = 0f, pendingY = 0f, pendingHeight = 0f;
 
             for (int i = 0; i < lines.Count; ++i)
             {
@@ -227,26 +267,41 @@ namespace NowUI
                     continue;
 
                 float size = line.fontSize > 0f ? line.fontSize : fontSize;
+                var style = line.fontSize > 0f ? line.fontStyle : fontStyle;
                 int from = Mathf.Max(selectionMin, line.start);
                 int to = Mathf.Min(selectionMax, lineEnd);
-                float x0 = line.rect.x + Advance(text, line.start, from - line.start, font, size, fontStyle);
-                float x1 = line.rect.x + Advance(text, line.start, to - line.start, font, size, fontStyle);
+                float x0 = line.rect.x + Advance(text, line.start, from - line.start, font, size, style);
+                float x1 = line.rect.x + Advance(text, line.start, to - line.start, font, size, style);
 
                 if (selectionMax > lineEnd && to == lineEnd)
                 {
                     bool bridged = i + 1 < lines.Count &&
-                        Mathf.Abs(lines[i + 1].rect.y - line.rect.y) < 0.5f &&
-                        lines[i + 1].rect.x > x1;
+                        Mathf.Abs(lines[i + 1].rect.y - line.rect.y) < 0.5f;
 
-                    x1 = bridged ? lines[i + 1].rect.x : x1 + size * 0.35f;
+                    x1 = bridged ? Mathf.Max(lines[i + 1].rect.x, x0) : x1 + size * 0.35f;
                 }
 
-                Now.Rectangle(new NowRect(x0, line.rect.y, Mathf.Max(x1 - x0, 1f), line.rect.height))
-                    .SetColor(highlightColor)
-                    .Draw();
+                if (hasPending &&
+                    Mathf.Abs(line.rect.y - pendingY) < 0.5f &&
+                    Mathf.Abs(line.rect.height - pendingHeight) < 0.5f &&
+                    x0 <= pendingX1 + 0.5f)
+                {
+                    pendingX1 = Mathf.Max(pendingX1, x1);
+                    continue;
+                }
+
+                if (hasPending)
+                    output.Add(new NowRect(pendingX0, pendingY, Mathf.Max(pendingX1 - pendingX0, 1f), pendingHeight));
+
+                pendingX0 = x0;
+                pendingX1 = x1;
+                pendingY = line.rect.y;
+                pendingHeight = line.rect.height;
+                hasPending = true;
             }
 
-            return true;
+            if (hasPending)
+                output.Add(new NowRect(pendingX0, pendingY, Mathf.Max(pendingX1 - pendingX0, 1f), pendingHeight));
         }
 
         /// <summary>Selects the whole region's text (for context menus and shortcuts).</summary>
@@ -298,6 +353,7 @@ namespace NowUI
                 if (position.x <= segment.rect.xMax)
                 {
                     float size = segment.fontSize > 0f ? segment.fontSize : fontSize;
+                    var segmentStyle = segment.fontSize > 0f ? segment.fontStyle : style;
                     float x = position.x - segment.rect.x;
                     int index = segment.start;
                     int end = segment.start + segment.length;
@@ -306,7 +362,7 @@ namespace NowUI
                     while (index < end)
                     {
                         int next = NowTextEdit.NextIndex(text, index);
-                        float glyphWidth = Advance(text, index, next - index, font, size, style);
+                        float glyphWidth = Advance(text, index, next - index, font, size, segmentStyle);
 
                         if (advance + glyphWidth * 0.5f >= x)
                             return index;

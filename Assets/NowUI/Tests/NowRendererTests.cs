@@ -920,8 +920,15 @@ public class NowRendererTests
             graphic.targetCamera = camera;
 
             Assert.IsTrue(NowPipelineGraphic.BuildDrawList(camera, drawList));
-            Assert.AreEqual(1, graphic.drawCount);
+            Assert.AreEqual(2, graphic.drawCount, "The default layout measure pass runs the UI twice per build.");
             Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(4, drawList.mesh.vertexCount, "The measure pass must not contribute geometry.");
+
+            graphic.drawCount = 0;
+            graphic.layoutMeasurePass = false;
+
+            Assert.IsTrue(NowPipelineGraphic.BuildDrawList(camera, drawList));
+            Assert.AreEqual(1, graphic.drawCount, "Disabling layoutMeasurePass skips the extra pass.");
             Assert.AreEqual(4, drawList.mesh.vertexCount);
         }
         finally

@@ -195,7 +195,9 @@ namespace NowUI
     /// register their rect every frame as they draw; navigation resolves spatially
     /// against the previous frame's registry (immediate mode has no widget tree).
     /// Pointer interaction focuses controls explicitly (<see cref="Focus"/>), the
-    /// navigation vector moves focus directionally, Tab cycles by draw order,
+    /// navigation vector moves focus directionally with a sticky cross-axis
+    /// anchor (repeated moves hold the starting row/column across offset
+    /// intermediate controls), Tab cycles by draw order,
     /// cancel clears it, and
     /// <see cref="SubmitPressed"/> lets the focused control activate from
     /// keyboard/gamepad submit.
@@ -232,11 +234,21 @@ namespace NowUI
 
         static int _navigationLockFrame = -1;
 
+        static int _retainFocusFrame = -1;
+
         static Vector2 _lastNavigation;
 
         static Vector2 _repeatDirection;
 
         static float _nextNavigationRepeatTime;
+
+        static Vector2 _navigationMemory;
+
+        static Vector2 _navigationMemoryFocusedCenter;
+
+        static bool _hasNavigationMemory;
+
+        static int _navigationMemoryRevision;
 
         /// <summary>
         /// Keeps NowUI focus and Unity's EventSystem selection mutually exclusive
@@ -348,6 +360,9 @@ namespace NowUI
             return _scrollRegionStack.Count > 0 ? _scrollRegionStack[_scrollRegionStack.Count - 1] : 0;
         }
 
+        /// <summary>The innermost scroll region enclosing the current draw position, or 0.</summary>
+        internal static int currentScrollRegionId => CurrentScrollRegionId();
+
         internal static bool TryGetFocusedRectInScrollRegion(int scrollRegionId, out NowRect rect)
         {
             rect = default;
@@ -406,6 +421,23 @@ namespace NowUI
             _navigationLockFrame = Time.frameCount;
         }
 
+        /// <summary>
+        /// Keeps pointer presses from clearing focus this frame. Modal overlays
+        /// that act on focus-owned state without taking focus themselves — a
+        /// context menu over a text selection — call this every frame while
+        /// open, so pressing their rows (or dismissing them with a press
+        /// outside) leaves the owner focused and its selection alive. Effective
+        /// on the next frame swap, like registration.
+        /// </summary>
+        public static void RetainFocus()
+        {
+            if (NowInput.isPassive)
+                return;
+
+            BeginFrameIfNeeded();
+            _retainFocusFrame = Time.frameCount;
+        }
+
         static void BeginFrameIfNeeded()
         {
             int frame = Time.frameCount;
@@ -454,7 +486,7 @@ namespace NowUI
                 return;
             }
 
-            if (snapshot.primaryPressed && _focusedId != 0)
+            if (snapshot.primaryPressed && _focusedId != 0 && _retainFocusFrame < Time.frameCount - 1)
             {
                 bool overControl = false;
 
@@ -618,14 +650,27 @@ namespace NowUI
             }
 
             if (_previous[focusedIndex].navigation.TryGetDirectional(direction, out int targetId) &&
-                TryFocusRegistered(targetId, activeLayerId))
+                TryFocusRegistered(targetId, activeLayerId, out Rect targetRect))
             {
+                SetNavigationMemory(targetRect.center, targetRect.center);
                 return;
             }
 
+            bool vertical = direction.y != 0f;
             Vector2 origin = _previous[focusedIndex].rect.center;
+
+            if (_hasNavigationMemory && _navigationMemoryRevision == _focusRevision)
+            {
+                Vector2 anchor = _navigationMemory + (origin - _navigationMemoryFocusedCenter);
+
+                if (vertical)
+                    origin.x = anchor.x;
+                else
+                    origin.y = anchor.y;
+            }
+
             float bestScore = float.MaxValue;
-            int bestId = 0;
+            int bestIndex = -1;
 
             for (int i = 0; i < _previous.Count; ++i)
             {
@@ -644,16 +689,53 @@ namespace NowUI
                 if (score < bestScore)
                 {
                     bestScore = score;
-                    bestId = _previous[i].id;
+                    bestIndex = i;
                 }
             }
 
-            if (bestId != 0)
-                SetFocused(bestId);
+            if (bestIndex >= 0)
+            {
+                SetFocused(_previous[bestIndex].id);
+
+                Vector2 focusedCenter = _previous[bestIndex].rect.center;
+                Vector2 memory = origin;
+
+                if (vertical)
+                    memory.y = focusedCenter.y;
+                else
+                    memory.x = focusedCenter.x;
+
+                SetNavigationMemory(memory, focusedCenter);
+            }
+        }
+
+        /// <summary>
+        /// Records the virtual cursor after a directional move: the along-axis
+        /// coordinate follows the newly focused control while the cross-axis
+        /// anchor persists, so repeated moves stay in the starting row/column
+        /// even when an intermediate control is offset. The focused center is
+        /// stored alongside so the anchor can be translated by however much the
+        /// focused rect has moved since — scrolling shifts registered rects in
+        /// screen space, and the anchor must shift with them. Stamped with the
+        /// focus revision — any non-directional focus change invalidates it.
+        /// </summary>
+        static void SetNavigationMemory(Vector2 position, Vector2 focusedCenter)
+        {
+            _navigationMemory = position;
+            _navigationMemoryFocusedCenter = focusedCenter;
+            _hasNavigationMemory = true;
+            _navigationMemoryRevision = _focusRevision;
         }
 
         static bool TryFocusRegistered(int id, int activeLayerId)
         {
+            return TryFocusRegistered(id, activeLayerId, out _);
+        }
+
+        static bool TryFocusRegistered(int id, int activeLayerId, out Rect rect)
+        {
+            rect = default;
+
             if (id == 0)
                 return false;
 
@@ -662,6 +744,7 @@ namespace NowUI
                 if (_previous[i].id == id && IsFocusableInLayer(_previous[i], activeLayerId))
                 {
                     SetFocused(id);
+                    rect = _previous[i].rect;
                     return true;
                 }
             }
@@ -669,8 +752,16 @@ namespace NowUI
             return false;
         }
 
+        /// <summary>
+        /// Seeds focus at the edge opposite the pressed direction. Controls
+        /// visible in the viewport win over ones registered through a scroll
+        /// region but currently clipped away — seeding should land where the
+        /// user is looking, not yank the scroll to a far-off control.
+        /// </summary>
         static int FindEdgeFocus(Vector2 direction, int activeLayerId)
         {
+            float bestVisibleScore = float.MaxValue;
+            int bestVisibleId = 0;
             float bestScore = float.MaxValue;
             int bestId = 0;
             int fallbackId = 0;
@@ -685,12 +776,23 @@ namespace NowUI
 
                 float score = Vector2.Dot(_previous[i].rect.center, direction);
 
+                if (_previous[i].visibleRect.width > 0f &&
+                    _previous[i].visibleRect.height > 0f &&
+                    score < bestVisibleScore)
+                {
+                    bestVisibleScore = score;
+                    bestVisibleId = _previous[i].id;
+                }
+
                 if (score < bestScore)
                 {
                     bestScore = score;
                     bestId = _previous[i].id;
                 }
             }
+
+            if (bestVisibleId != 0)
+                return bestVisibleId;
 
             return bestId != 0 ? bestId : fallbackId;
         }
@@ -760,7 +862,12 @@ namespace NowUI
             _focusRevision = 0;
             _registryFrame = -1;
             _navigationLockFrame = -1;
+            _retainFocusFrame = -1;
             _lastNavigation = default;
+            _navigationMemory = default;
+            _navigationMemoryFocusedCenter = default;
+            _hasNavigationMemory = false;
+            _navigationMemoryRevision = 0;
             ResetNavigationRepeat();
             respectEventSystem = true;
         }

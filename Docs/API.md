@@ -27,12 +27,15 @@ extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
 
 ## Extension Surface
 
-- `NowUI.Extensions.Markdown`: parser, document cache, syntax, image state, and
+- `NowUI.Markdown`: parser, document cache, syntax, image state, and
   builder APIs.
-- `NowUI.Extensions.CodeEditor`: editor builder, language registry, tokens,
+- `NowUI.Markup`: constrained XML-like markup parsing, state binding, and
+  hot-reloadable document rendering.
+- `NowUI.CodeEditor`: editor builder, language registry, tokens,
   diagnostics, and bundled JSON/Markdown profiles.
-- `NowUI.Extensions.Docking`: dock-space builder and retained docking state.
-- `NowUI.Extensions.Sdf`: SDF graph and builder APIs.
+- `NowUI.Docking`: dock-space builder and retained docking state.
+- `NowUI.NodeGraph`: node-graph data, ports, links, and graph view drawing.
+- `NowUI.Sdf`: SDF graph and builder APIs.
 
 ## Compatibility Rules
 

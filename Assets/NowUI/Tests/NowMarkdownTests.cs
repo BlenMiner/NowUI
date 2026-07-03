@@ -639,15 +639,19 @@ public class NowMarkdownTests
             var from = new Vector2(pad + 1f, lineMidY);
             var to = new Vector2(pad + _font.MeasureText("int", codeSize).x + 1f, lineMidY);
 
-            void Frame(NowInputSnapshot snapshot)
+            void Frame(NowInputSnapshot snapshot, NowTextInputFrame keys = default, bool forceFocusFrame = false)
             {
-                keyboard.frame = default;
+                NowOverlay.ForceNewFrame();
+                keyboard.frame = keys;
                 NowTextInput.Invalidate();
                 _provider.snapshot = snapshot;
 
                 using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
                 {
+                    if (forceFocusFrame)
+                        NowFocus.ForceNewFrame();
+
                     document.Draw(rect);
                     NowOverlay.Flush();
                 }
@@ -661,12 +665,17 @@ public class NowMarkdownTests
             Assert.IsTrue(NowContextMenu.isOpen, "right-clicking the code block must open the context menu");
 
             var copyItem = new Vector2(to.x + 30f, to.y + 4f + 13f);
-            Frame(new NowInputSnapshot(copyItem, true, true, false));
+            Frame(new NowInputSnapshot(copyItem, true, true, false), forceFocusFrame: true);
             Frame(new NowInputSnapshot(copyItem, false, false, true));
             Frame(new NowInputSnapshot(copyItem, false, false, false));
 
             Assert.AreEqual("int", copied, "the Copy item must copy the selected range");
             Assert.IsFalse(NowContextMenu.isOpen, "choosing an item closes the menu");
+
+            copied = null;
+            Frame(new NowInputSnapshot(copyItem, false, false, false), new NowTextInputFrame { copyPressed = true });
+            Assert.AreEqual("int", copied,
+                "the original selection must survive the menu click — no clear, no select-all");
         }
         finally
         {

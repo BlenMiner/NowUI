@@ -235,6 +235,44 @@ namespace NowUI
         }
     }
 
+    /// <summary>Shared clock-face geometry so hit-testing and rendering agree.</summary>
+    public struct NowClockDialMetrics
+    {
+        public Vector2 center;
+        public float faceRadius;
+        public float outerRadius;
+        public float innerRadius;
+        public float knobRadius;
+    }
+
+    public readonly struct NowClockDialRenderContext
+    {
+        public readonly NowThemeAsset themeAsset;
+        public readonly NowRect rect;
+        public readonly NowClockDialMetrics metrics;
+        public readonly string[] outerLabels;
+        public readonly string[] innerLabels;
+        public readonly int selectedOuterIndex;
+        public readonly int selectedInnerIndex;
+        public readonly float handAngle;
+        public readonly float handRadius;
+        public readonly bool handOnLabel;
+
+        public NowClockDialRenderContext(NowThemeAsset themeAsset, NowRect rect, NowClockDialMetrics metrics, string[] outerLabels, string[] innerLabels, int selectedOuterIndex, int selectedInnerIndex, float handAngle, float handRadius, bool handOnLabel)
+        {
+            this.themeAsset = themeAsset;
+            this.rect = rect;
+            this.metrics = metrics;
+            this.outerLabels = outerLabels;
+            this.innerLabels = innerLabels;
+            this.selectedOuterIndex = selectedOuterIndex;
+            this.selectedInnerIndex = selectedInnerIndex;
+            this.handAngle = handAngle;
+            this.handRadius = handRadius;
+            this.handOnLabel = handOnLabel;
+        }
+    }
+
     public partial class NowControlRenderer
     {
         public virtual Vector2 MeasureSwitch(NowThemeAsset themeAsset, string label, NowTextStyle textStyle)
@@ -664,6 +702,89 @@ namespace NowUI
 
             if (context.focused)
                 DrawFocusRing(context.themeAsset, context.rect.Inset(2f, 2f, 2f, 2f), radius);
+        }
+
+        public virtual NowClockDialMetrics CalculateClockDialMetrics(NowThemeAsset themeAsset, NowRect rect)
+        {
+            NowClockDialMetrics metrics;
+            metrics.center = rect.center;
+            metrics.faceRadius = Mathf.Min(rect.width, rect.height) * 0.5f;
+            metrics.knobRadius = metrics.faceRadius * 0.14f;
+            metrics.outerRadius = metrics.faceRadius - metrics.knobRadius - 4f;
+            metrics.innerRadius = metrics.outerRadius - metrics.knobRadius * 2f - 6f;
+            return metrics;
+        }
+
+        /// <summary>Point on the dial at <paramref name="angle"/> degrees, 0 at 12 o'clock, clockwise.</summary>
+        public static Vector2 ClockDialPosition(in NowClockDialMetrics metrics, float angle, float radius)
+        {
+            float radians = angle * Mathf.Deg2Rad;
+            return metrics.center + new Vector2(Mathf.Sin(radians) * radius, -Mathf.Cos(radians) * radius);
+        }
+
+        public virtual void DrawClockDial(in NowClockDialRenderContext context)
+        {
+            var theme = context.themeAsset;
+            var metrics = context.metrics;
+            var faceRect = new NowRect(
+                metrics.center.x - metrics.faceRadius,
+                metrics.center.y - metrics.faceRadius,
+                metrics.faceRadius * 2f,
+                metrics.faceRadius * 2f);
+
+            Now.Rectangle(faceRect)
+                .SetRadius(metrics.faceRadius)
+                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted))
+                .Draw();
+
+            Color accent = theme.GetColor(NowColorToken.Accent);
+            Vector2 knobCenter = ClockDialPosition(metrics, context.handAngle, context.handRadius);
+
+            Now.Line(metrics.center, knobCenter).SetColor(accent).SetWidth(2f).SetCap(NowLineCap.Round).Draw();
+
+            Now.Rectangle(new NowRect(metrics.center.x - 3f, metrics.center.y - 3f, 6f, 6f))
+                .SetRadius(3f)
+                .SetColor(accent)
+                .Draw();
+
+            Now.Rectangle(new NowRect(
+                    knobCenter.x - metrics.knobRadius,
+                    knobCenter.y - metrics.knobRadius,
+                    metrics.knobRadius * 2f,
+                    metrics.knobRadius * 2f))
+                .SetRadius(metrics.knobRadius)
+                .SetColor(accent)
+                .Draw();
+
+            DrawClockDialLabels(theme, metrics, context.outerLabels, metrics.outerRadius, context.selectedOuterIndex, NowTextStyle.Body, theme.GetColor(NowColorToken.Text));
+
+            if (context.innerLabels != null)
+                DrawClockDialLabels(theme, metrics, context.innerLabels, metrics.innerRadius, context.selectedInnerIndex, NowTextStyle.Caption, theme.GetColor(NowColorToken.TextMuted));
+
+            if (!context.handOnLabel)
+            {
+                Now.Rectangle(new NowRect(knobCenter.x - 2f, knobCenter.y - 2f, 4f, 4f))
+                    .SetRadius(2f)
+                    .SetColor(theme.GetColor(NowColorToken.AccentText))
+                    .Draw();
+            }
+        }
+
+        void DrawClockDialLabels(NowThemeAsset themeAsset, in NowClockDialMetrics metrics, string[] labels, float radius, int selectedIndex, NowTextStyle textStyle, Color color)
+        {
+            Color selectedColor = themeAsset.GetColor(NowColorToken.AccentText);
+
+            for (int i = 0; i < labels.Length; ++i)
+            {
+                Vector2 position = ClockDialPosition(metrics, i * 30f, radius);
+                var labelRect = new NowRect(
+                    position.x - metrics.knobRadius,
+                    position.y - metrics.knobRadius,
+                    metrics.knobRadius * 2f,
+                    metrics.knobRadius * 2f);
+
+                NowControls.DrawCenteredLabel(themeAsset, labelRect, labels[i], textStyle, labelRect, i == selectedIndex ? selectedColor : color);
+            }
         }
     }
 }

@@ -42,6 +42,22 @@ Now.Bezier(
     .Draw();
 ```
 
+## Gradients
+
+`SetGradient(from, to)` blends the stroke color from the start of the line to
+its end. Straight lines, polylines, and Beziers interpolate by distance along
+the stroke; dashes pick up the slice of the gradient that matches their
+position, and arrow heads take their endpoint's color. `SetColor` switches
+back to a solid stroke.
+
+```csharp
+Now.Bezier(from, c1, c2, to)
+    .SetWidth(3f)
+    .SetCap(NowLineCap.Round)
+    .SetGradient(new Color(0.38f, 0.75f, 1f, 1f), new Color(1f, 0.62f, 0.3f, 1f))
+    .Draw();
+```
+
 ## Dashes
 
 `SetDash(dash, gap, offset)` splits a stroke by distance along the flattened

@@ -27,6 +27,7 @@ public class NowDocsExample : NowGraphic
         Production,
         Layout,
         Controls,
+        ControlsGallery,
         FilePickerDemo,
         ViewStackDemo,
         CustomControls,
@@ -67,6 +68,7 @@ public class NowDocsExample : NowGraphic
         [UsedImplicitly]
         Markdown,
         ControlsDemo,
+        ControlsGalleryDemo,
         LottieDemo,
         CodeEditorDemo,
         MarkupDemo,
@@ -107,10 +109,11 @@ public class NowDocsExample : NowGraphic
         new Page { title = "Production gates", file = "Production.md", icon = "🚢" },
         new Page { title = "Layout", file = "Layout.md", icon = "📐" },
         new Page { title = "Controls", file = "Controls.md", icon = "🎛️" },
+        new Page { title = "Controls gallery", icon = "🧪", kind = PageKind.ControlsGalleryDemo },
         new Page { title = "File picker demo", icon = "📁", kind = PageKind.FilePickerDemo },
         new Page { title = "View stack demo", icon = "🧭", kind = PageKind.ViewStackDemo },
         new Page { title = "Custom controls", file = "CustomControls.md", icon = "🧰" },
-        new Page { title = "Live controls demo", icon = "🧪", kind = PageKind.ControlsDemo },
+        new Page { title = "Custom controls demo", icon = "🧪", kind = PageKind.ControlsDemo },
         new Page { title = "Styles & themes", file = "StylesAndThemes.md", icon = "🎨" },
         new Page { title = "Mobile", file = "Mobile.md", icon = "📱" },
         new Page { title = "IMGUI", file = "EditorGUI.md", icon = "🖥️" },
@@ -153,6 +156,7 @@ public class NowDocsExample : NowGraphic
         Section("Core UI", "🧱"),
         Link(PageId.Layout),
         Link(PageId.Controls),
+        Link(PageId.ControlsGallery, 1),
         Link(PageId.FilePickerDemo, 1),
         Link(PageId.ViewStackDemo, 1),
         Link(PageId.CustomControls),
@@ -219,6 +223,31 @@ public class NowDocsExample : NowGraphic
     int _rating = 3;
     int _builderRating = 2;
     int _clicks;
+    int _gallerySaves;
+    bool _galleryShadows = true;
+    bool _galleryNotifications = true;
+    bool _galleryChipSelected = true;
+    bool _galleryAdvanced;
+    int _galleryQuality = 1;
+    float _galleryVolume = 0.72f;
+    float _gallerySpeed = 24f;
+    int _galleryLives = 3;
+    Vector3 _gallerySpawn = new Vector3(0f, 1.5f, 4f);
+    Color _galleryTint = new Color(0.36f, 0.62f, 1f, 1f);
+    Gradient _galleryRamp;
+    AnimationCurve _galleryFalloff;
+    string _galleryName = "";
+    string _galleryNotes = "";
+    int _galleryResolution = 1;
+    int _galleryTab;
+    int _galleryCountry;
+    int _galleryChannels = 3;
+    LayerMask _galleryLayers = 1;
+    GalleryQuality _galleryQualityLevel = GalleryQuality.High;
+    GalleryChannels _galleryChannelFlags = GalleryChannels.Music | GalleryChannels.Effects;
+    System.DateTime _galleryDate;
+    System.TimeSpan _galleryAlarm = new System.TimeSpan(7, 30, 0);
+    UnityEngine.InputSystem.Key _galleryJumpKey = UnityEngine.InputSystem.Key.Space;
     bool _lottieScrub;
     float _lottieProgress = 0.35f;
     bool _sdfDemoLocked;
@@ -315,21 +344,37 @@ public class NowDocsExample : NowGraphic
 
     void DrawDocsSidebarHeader(NowThemeAsset theme, NowRect rect)
     {
-        using (NowLayout.Area(610001, rect, spacing: 6f, padding: 0f, alignItems: NowLayoutAlign.Start))
-        {
-            using (NowLayout.Horizontal(height: 24f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
-            {
-                NowLayout.Label("📚")
-                    .SetWidth(22f)
-                    .SetFontSize(18f)
-                    .SetColor(Color.white)
-                    .Draw();
+        Color text = theme.GetColor(NowColorToken.Text, Color.white);
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+        Color accent = theme.GetColor(NowColorToken.Accent, new Color(0.10f, 0.45f, 0.95f, 1f));
+        Color accentText = theme.GetColor(NowColorToken.AccentText, Color.white);
 
-                NowLayout.Label("NowUI Docs")
-                    .SetFontSize(18f)
-                    .SetBold()
-                    .SetColor(theme.GetColor(NowColorToken.Text, Color.white))
+        using (NowLayout.Area(610001, rect, spacing: 9f, padding: 0f, alignItems: NowLayoutAlign.Start))
+        {
+            using (NowLayout.Horizontal(height: 30f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 9f))
+            {
+                NowRect badge = NowLayout.Rect(30f, 30f);
+                Now.Rectangle(badge)
+                    .SetColor(accent)
+                    .SetRadius(9f)
                     .Draw();
+                DrawCenteredText(theme, badge, "N", 16f, accentText, bold: true);
+
+                using (NowLayout.Vertical(spacing: 0f, stretchWidth: true))
+                {
+                    NowLayout.Label("NowUI")
+                        .SetFontSize(15f)
+                        .SetHeight(17f)
+                        .SetBold()
+                        .SetColor(text)
+                        .Draw();
+
+                    NowLayout.Label("Immediate-mode UI docs")
+                        .SetFontSize(10f)
+                        .SetHeight(13f)
+                        .SetColor(muted)
+                        .Draw();
+                }
             }
 
             NowLayout.TextField("docs-search")
@@ -337,6 +382,25 @@ public class NowDocsExample : NowGraphic
                 .SetStretchWidth()
                 .Draw(ref _docsSearch);
         }
+    }
+
+    /// <summary>Draws a single string centered inside a rect, outside any layout group.</summary>
+    static void DrawCenteredText(NowThemeAsset theme, NowRect rect, string value, float fontSize, Color color, bool bold = false)
+    {
+        var text = theme.Text(default, NowTextStyle.Body)
+            .SetFontSize(fontSize)
+            .SetColor(color);
+
+        if (bold)
+            text = text.SetBold();
+
+        Vector2 size = text.Measure(value);
+        text.rect = new NowRect(
+            rect.x + (rect.width - size.x) * 0.5f,
+            rect.y + (rect.height - size.y) * 0.5f,
+            size.x + 1f,
+            size.y + 1f);
+        text.Draw(value);
     }
 
     void DrawDocsNavigation(NowThemeAsset theme, NowRect rect)
@@ -373,9 +437,18 @@ public class NowDocsExample : NowGraphic
 
             if (!drewAny)
             {
+                NowLayout.Space(8f);
+
                 NowLayout.Label("No matching pages")
                     .SetFontSize(12f)
+                    .SetBold()
+                    .SetColor(theme.GetColor(NowColorToken.Text, Color.white))
+                    .Draw();
+
+                NowLayout.Label($"Nothing matches \"{_docsSearch.Trim()}\".")
+                    .SetFontSize(11f)
                     .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+                    .SetStretchWidth()
                     .Draw();
             }
         }
@@ -383,17 +456,24 @@ public class NowDocsExample : NowGraphic
 
     void DrawDocsNavSection(NowThemeAsset theme, NavEntry entry)
     {
-        using (NowLayout.Horizontal(height: 22f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 5f))
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+
+        using (NowLayout.Horizontal(height: 20f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 7f))
         {
             NowLayout.Label(entry.icon)
-                .SetFontSize(10f)
+                .SetFontSize(9f)
                 .SetColor(Color.white)
                 .Draw();
 
             NowLayout.Label(entry.title.ToUpperInvariant())
                 .SetFontSize(10f)
                 .SetBold()
-                .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+                .SetColor(muted)
+                .Draw();
+
+            NowRect rule = NowLayout.Rect(height: 1f, stretchWidth: true);
+            Now.Rectangle(rule)
+                .SetColor(new Color(muted.r, muted.g, muted.b, 0.16f))
                 .Draw();
         }
     }
@@ -416,18 +496,25 @@ public class NowDocsExample : NowGraphic
         if (interaction.clicked || submitted)
             _selected = pageIndex;
 
+        float hoverT = NowControlState.Transition(interaction, "hover", interaction.hovered || focused, 14f);
+
         if (selected)
         {
             Now.Rectangle(row)
+                .SetColor(theme.GetColor(NowColorToken.AccentMuted, new Color(accent.r, accent.g, accent.b, 0.18f)))
+                .SetRadius(7f)
+                .Draw();
+
+            Now.Rectangle(new NowRect(row.x + 3f, row.y + 7f, 3f, row.height - 14f))
                 .SetColor(accent)
-                .SetRadius(6f)
+                .SetRadius(1.5f)
                 .Draw();
         }
-        else if (interaction.hovered || focused)
+        else if (hoverT > 0.004f)
         {
             Now.Rectangle(row)
-                .SetColor(new Color(accent.r, accent.g, accent.b, 0.08f))
-                .SetRadius(6f)
+                .SetColor(new Color(accent.r, accent.g, accent.b, 0.09f * hoverT))
+                .SetRadius(7f)
                 .Draw();
         }
 
@@ -456,10 +543,14 @@ public class NowDocsExample : NowGraphic
             .SetColor(Color.white)
             .Draw(page.icon);
 
-        Now.Text(new NowRect(badgeRect.xMax + 8f, row.y + 5f, row.xMax - badgeRect.xMax - 14f, row.height - 8f))
+        var title = Now.Text(new NowRect(badgeRect.xMax + 8f, row.y + 5f, row.xMax - badgeRect.xMax - 14f, row.height - 8f))
             .SetFontSize(12f)
-            .SetColor(selected ? accentText : text)
-            .Draw(page.title);
+            .SetColor(selected ? text : Color.Lerp(text, accentText, hoverT * 0.2f));
+
+        if (selected)
+            title = title.SetBold();
+
+        title.Draw(page.title);
     }
 
     bool SectionHasVisiblePage(int sectionIndex)
@@ -516,83 +607,259 @@ public class NowDocsExample : NowGraphic
         theme.Rectangle(bounds, NowRectangleStyle.Surface).Draw();
 
         var menuRect = new NowRect(bounds.x + 12, bounds.y + 12, 292, bounds.height - 24);
-        var contentRect = new NowRect(menuRect.xMax + 12, bounds.y + 12, bounds.xMax - menuRect.xMax - 24, bounds.height - 24);
+        theme.Rectangle(menuRect, NowRectangleStyle.Elevated).Draw();
 
-        var menuTitleRect = new NowRect(menuRect.x, menuRect.y, menuRect.width, 68f);
-        var menuListRect = new NowRect(menuRect.x, menuTitleRect.yMax + 10f, menuRect.width, menuRect.yMax - menuTitleRect.yMax - 10f);
+        var menuInner = menuRect.Inset(12f);
+        var menuTitleRect = new NowRect(menuInner.x, menuInner.y, menuInner.width, 76f);
+        var menuListRect = new NowRect(menuInner.x, menuTitleRect.yMax + 10f, menuInner.width, menuInner.yMax - menuTitleRect.yMax - 10f);
+
+        Color separator = theme.GetColor(NowColorToken.Border, Color.gray);
+        Now.Rectangle(new NowRect(menuInner.x, menuTitleRect.yMax + 4f, menuInner.width, 1f))
+            .SetColor(new Color(separator.r, separator.g, separator.b, 0.45f))
+            .Draw();
 
         DrawDocsSidebarHeader(theme, menuTitleRect);
         DrawDocsNavigation(theme, menuListRect);
 
+        float contentAvailable = bounds.xMax - menuRect.xMax - 24f;
+        float scrollGutter = theme.controlStyles.scrollbarWidth + theme.controlStyles.scrollbarPadding;
+        float contentWidth = Mathf.Max(1f, Mathf.Min(contentAvailable - scrollGutter, 940f));
+        var contentRect = new NowRect(menuRect.xMax + 12f, bounds.y + 12, contentAvailable, bounds.height - 24);
+
         using (NowLayout.Area(contentRect))
         using (NowLayout.ScrollView($"docs-scroll-{_selected}").Begin())
+        using (NowLayout.Horizontal(stretchWidth: true))
         {
-            switch (Pages[_selected].kind)
+            NowLayout.FlexibleSpace();
+
+            using (NowLayout.Vertical(width: contentWidth, spacing: 0f))
             {
-                case PageKind.ControlsDemo:
-                    DrawLiveDemo(theme);
-                    break;
-
-                case PageKind.LottieDemo:
-                    DrawLottieDemo(theme);
-                    break;
-
-                case PageKind.CodeEditorDemo:
-                    DrawCodeEditorDemo();
-                    break;
-
-                case PageKind.RichTextDemo:
-                    DrawRichTextDemo(theme);
-                    break;
-
-                case PageKind.MarkupDemo:
-                    DrawMarkupDemo(theme);
-                    break;
-
-                case PageKind.SdfDemo:
-                    DrawSdfDemo(theme);
-                    break;
-
-                case PageKind.DockingDemo:
-                    DrawDockingDemo(theme);
-                    break;
-
-                case PageKind.LinesDemo:
-                    DrawLinesDemo(theme);
-                    break;
-
-                case PageKind.ShapesDemo:
-                    DrawShapesDemo(theme);
-                    break;
-
-                case PageKind.CustomMaterialsDemo:
-                    DrawCustomMaterialsDemo(theme);
-                    break;
-
-                case PageKind.GlassDemo:
-                    DrawGlassDemo(theme);
-                    break;
-
-                case PageKind.EffectsDemo:
-                    DrawEffectsDemo(theme);
-                    break;
-
-                case PageKind.ViewStackDemo:
-                    DrawViewStackDemo(theme);
-                    break;
-
-                case PageKind.FilePickerDemo:
-                    DrawFilePickerDemo(theme);
-                    break;
-
-                default:
-                    var result = NowMarkdown.Document(LoadDoc(Pages[_selected].file)).Draw();
-
-                    if (result.clickedLink != null)
-                        NavigateLink(result.clickedLink);
-                    break;
+                DrawDocsBreadcrumb(theme);
+                DrawDocsPageContent(theme);
+                DrawDocsPager(theme);
             }
+
+            NowLayout.FlexibleSpace();
         }
+    }
+
+    void DrawDocsPageContent(NowThemeAsset theme)
+    {
+        switch (Pages[_selected].kind)
+        {
+            case PageKind.ControlsDemo:
+                DrawLiveDemo(theme);
+                break;
+
+            case PageKind.ControlsGalleryDemo:
+                DrawControlsGalleryDemo(theme);
+                break;
+
+            case PageKind.LottieDemo:
+                DrawLottieDemo(theme);
+                break;
+
+            case PageKind.CodeEditorDemo:
+                DrawCodeEditorDemo();
+                break;
+
+            case PageKind.RichTextDemo:
+                DrawRichTextDemo(theme);
+                break;
+
+            case PageKind.MarkupDemo:
+                DrawMarkupDemo(theme);
+                break;
+
+            case PageKind.SdfDemo:
+                DrawSdfDemo(theme);
+                break;
+
+            case PageKind.DockingDemo:
+                DrawDockingDemo(theme);
+                break;
+
+            case PageKind.LinesDemo:
+                DrawLinesDemo(theme);
+                break;
+
+            case PageKind.ShapesDemo:
+                DrawShapesDemo(theme);
+                break;
+
+            case PageKind.CustomMaterialsDemo:
+                DrawCustomMaterialsDemo(theme);
+                break;
+
+            case PageKind.GlassDemo:
+                DrawGlassDemo(theme);
+                break;
+
+            case PageKind.EffectsDemo:
+                DrawEffectsDemo(theme);
+                break;
+
+            case PageKind.ViewStackDemo:
+                DrawViewStackDemo(theme);
+                break;
+
+            case PageKind.FilePickerDemo:
+                DrawFilePickerDemo(theme);
+                break;
+
+            default:
+                var result = NowMarkdown.Document(LoadDoc(Pages[_selected].file)).Draw();
+
+                if (result.clickedLink != null)
+                    NavigateLink(result.clickedLink);
+                break;
+        }
+    }
+
+    /// <summary>Draws the muted "Section / Page" trail above the page content.</summary>
+    void DrawDocsBreadcrumb(NowThemeAsset theme)
+    {
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+        Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+
+        using (NowLayout.Horizontal(height: 16f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+        {
+            NowLayout.Label(SectionTitleFor(_selected).ToUpperInvariant())
+                .SetFontSize(10f)
+                .SetBold()
+                .SetColor(muted)
+                .Draw();
+
+            NowLayout.Label("/")
+                .SetFontSize(10f)
+                .SetColor(new Color(muted.r, muted.g, muted.b, 0.55f))
+                .Draw();
+
+            NowLayout.Label(Pages[_selected].title.ToUpperInvariant())
+                .SetFontSize(10f)
+                .SetBold()
+                .SetColor(accent)
+                .Draw();
+        }
+
+        NowLayout.Space(4f);
+    }
+
+    /// <summary>Draws previous/next page cards at the bottom of the content column.</summary>
+    void DrawDocsPager(NowThemeAsset theme)
+    {
+        int position = NavigationPositionOf(_selected);
+        int previous = AdjacentPage(position, -1);
+        int next = AdjacentPage(position, +1);
+
+        if (previous < 0 && next < 0)
+            return;
+
+        Color border = theme.GetColor(NowColorToken.Border, Color.gray);
+
+        NowLayout.Space(28f);
+        NowRect rule = NowLayout.Rect(height: 1f, stretchWidth: true);
+        Now.Rectangle(rule)
+            .SetColor(new Color(border.r, border.g, border.b, 0.45f))
+            .Draw();
+        NowLayout.Space(12f);
+
+        var rect = NowLayout.Rect(height: 58f, stretchWidth: true);
+        float half = (rect.width - 12f) * 0.5f;
+
+        if (previous >= 0)
+            DrawDocsPagerCard(theme, new NowRect(rect.x, rect.y, half, rect.height), previous, forward: false);
+
+        if (next >= 0)
+            DrawDocsPagerCard(theme, new NowRect(rect.xMax - half, rect.y, half, rect.height), next, forward: true);
+
+        NowLayout.Space(8f);
+    }
+
+    void DrawDocsPagerCard(NowThemeAsset theme, NowRect rect, int pageIndex, bool forward)
+    {
+        var page = Pages[pageIndex];
+        var interaction = NowControls.Interact(forward ? "docs-pager-next" : "docs-pager-prev", rect, out bool focused, out bool submitted);
+
+        if (interaction.clicked || submitted)
+            _selected = pageIndex;
+
+        float hoverT = NowControlState.Transition(interaction, "hover", interaction.hovered || focused, 14f);
+        Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+        Color border = theme.GetColor(NowColorToken.Border, Color.gray);
+        Color text = theme.GetColor(NowColorToken.Text, Color.white);
+        Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+
+        Now.Rectangle(rect)
+            .SetColor(new Color(accent.r, accent.g, accent.b, 0.04f + hoverT * 0.07f))
+            .SetOutline(1f)
+            .SetOutlineColor(Color.Lerp(new Color(border.r, border.g, border.b, 0.8f), accent, hoverT))
+            .SetRadius(9f)
+            .Draw();
+
+        var mask = rect.Inset(12f, 0f);
+        DrawPagerCardLine(theme, rect, mask, forward, forward ? "NEXT" : "PREVIOUS", 9f, muted, bold: true, y: rect.y + 11f);
+        DrawPagerCardLine(theme, rect, mask, forward, forward ? $"{page.icon} {page.title}  →" : $"←  {page.icon} {page.title}", 13f,
+            Color.Lerp(text, accent, hoverT * 0.6f), bold: false, y: rect.y + 28f);
+    }
+
+    static void DrawPagerCardLine(NowThemeAsset theme, NowRect rect, NowRect mask, bool alignRight, string value, float fontSize, Color color, bool bold, float y)
+    {
+        var line = theme.Text(default, NowTextStyle.Body)
+            .SetFontSize(fontSize)
+            .SetColor(color);
+
+        if (bold)
+            line = line.SetBold();
+
+        Vector2 size = line.Measure(value);
+        float x = alignRight ? rect.xMax - 14f - size.x : rect.x + 14f;
+        line.rect = new NowRect(x, y, size.x + 2f, size.y + 2f);
+        line.SetMask(mask).Draw(value);
+    }
+
+    /// <summary>Title of the navigation section that contains the given page.</summary>
+    static string SectionTitleFor(int pageIndex)
+    {
+        string section = "";
+
+        for (int i = 0; i < Navigation.Length; ++i)
+        {
+            var entry = Navigation[i];
+
+            if (entry.section)
+                section = entry.title;
+            else if (entry.pageIndex == pageIndex)
+                return section;
+        }
+
+        return section;
+    }
+
+    static int NavigationPositionOf(int pageIndex)
+    {
+        for (int i = 0; i < Navigation.Length; ++i)
+        {
+            if (!Navigation[i].section && Navigation[i].pageIndex == pageIndex)
+                return i;
+        }
+
+        return -1;
+    }
+
+    /// <summary>Page index of the nearest non-section navigation entry in the given direction, or -1.</summary>
+    static int AdjacentPage(int navigationIndex, int direction)
+    {
+        if (navigationIndex < 0)
+            return -1;
+
+        for (int i = navigationIndex + direction; i >= 0 && i < Navigation.Length; i += direction)
+        {
+            if (!Navigation[i].section)
+                return Navigation[i].pageIndex;
+        }
+
+        return -1;
     }
 
     const string JsonSample = "{\n  \"name\": \"NowUI\",\n  \"version\": \"0.1.0\",\n  \"mobileForward\": true,\n  \"platforms\": [\"windows\", \"android\", \"ios\", \"webgl\"],\n  \"dependencies\": null,\n  \"stars\": 5\n}";
@@ -2594,9 +2861,244 @@ public class NowDocsExample : NowGraphic
         }
     }
 
+    enum GalleryQuality
+    {
+        Low,
+        Medium,
+        High,
+        Ultra
+    }
+
+    [System.Flags]
+    enum GalleryChannels
+    {
+        None = 0,
+        Music = 1,
+        Effects = 2,
+        Voice = 4,
+        Ambient = 8
+    }
+
+    static readonly string[] GalleryResolutions = { "1280 x 720", "1920 x 1080", "2560 x 1440", "3840 x 2160" };
+    static readonly string[] GalleryTabs = { "General", "Audio", "Video" };
+    static readonly string[] GalleryCountries = { "Portugal", "Japan", "Brazil", "Norway", "Canada" };
+    static readonly string[] GalleryChannelNames = { "Music", "Effects", "Voice", "Ambient" };
+
+    void EnsureGalleryState()
+    {
+        if (_galleryRamp == null)
+        {
+            _galleryRamp = new Gradient();
+            _galleryRamp.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(new Color(0.16f, 0.47f, 0.96f), 0f),
+                    new GradientColorKey(new Color(1f, 0.72f, 0.16f), 1f)
+                },
+                new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) });
+        }
+
+        _galleryFalloff ??= AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
+        if (_galleryDate == default)
+            _galleryDate = System.DateTime.Today;
+    }
+
+    static void DrawGalleryLabel(NowThemeAsset theme, string text)
+    {
+        NowLayout.Label(text)
+            .SetWidth(96f)
+            .SetFontSize(12f)
+            .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+            .Draw();
+    }
+
+    void DrawControlsGalleryDemo(NowThemeAsset theme)
+    {
+        EnsureGalleryState();
+
+        using (NowLayout.Vertical(spacing: 8f, stretchWidth: true))
+            DrawControlsGalleryContent(theme);
+
+        NowControlState.RequestRepaint();
+    }
+
+    void DrawControlsGalleryContent(NowThemeAsset theme)
+    {
+        var intro = NowMarkdown.Document("# Controls gallery\n\nEvery control below is a built-in from" +
+            " [Controls](Controls.md), drawn with its themed default look. Values live on the docs" +
+            " component and are passed by ref each frame — nothing here is retained.\n\n## Buttons & status").Draw();
+
+        if (intro.clickedLink != null)
+            NavigateLink(intro.clickedLink);
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            if (NowLayout.Button("Save").Draw())
+                ++_gallerySaves;
+
+            NowLayout.Badge(_gallerySaves.ToString()).SetStyle(NowRectangleStyle.Danger).Draw();
+
+            if (NowLayout.Chip("Filter: Active").SetSelected(_galleryChipSelected).Draw())
+                _galleryChipSelected = !_galleryChipSelected;
+
+            NowLayout.FlexibleSpace();
+        }
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Determinate");
+            NowLayout.ProgressBar(_galleryVolume).SetStretchWidth().Draw();
+        }
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Indeterminate");
+            NowLayout.ProgressBar().SetIndeterminate().SetTime(Time.time).SetStretchWidth().Draw();
+        }
+
+        NowMarkdown.Document("## Toggles").Draw();
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 16f))
+        {
+            NowLayout.Checkbox("Enable shadows").Draw(ref _galleryShadows);
+            NowLayout.Switch("Notifications").Draw(ref _galleryNotifications);
+            NowLayout.FlexibleSpace();
+        }
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 16f))
+        {
+            if (NowLayout.Radio("Low", _galleryQuality == 0).Draw()) _galleryQuality = 0;
+            if (NowLayout.Radio("Medium", _galleryQuality == 1).Draw()) _galleryQuality = 1;
+            if (NowLayout.Radio("High", _galleryQuality == 2).Draw()) _galleryQuality = 2;
+            NowLayout.FlexibleSpace();
+        }
+
+        NowMarkdown.Document("## Sliders & numbers").Draw();
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Volume");
+            NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _galleryVolume);
+            NowLayout.Label($"{Mathf.RoundToInt(_galleryVolume * 100f)}%").SetWidth(40f).SetFontSize(12f).Draw();
+        }
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Speed");
+            NowLayout.FloatField().SetRange(0f, 100f).SetSpinner(0.5f).SetStretchWidth().Draw(ref _gallerySpeed);
+            DrawGalleryLabel(theme, "Lives");
+            NowLayout.IntField().SetRange(0, 99).SetSpinner().SetStretchWidth().Draw(ref _galleryLives);
+        }
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Spawn");
+            NowLayout.Vector3Field().SetStretchWidth().Draw(ref _gallerySpawn);
+        }
+
+        NowMarkdown.Document("## Text").Draw();
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Name");
+            NowLayout.TextField("gallery-name").SetPlaceholder("Player name...").SetStretchWidth().Draw(ref _galleryName);
+        }
+
+        NowLayout.TextArea("gallery-notes").SetPlaceholder("Notes...").SetLines(3, 6).SetStretchWidth().Draw(ref _galleryNotes);
+
+        NowMarkdown.Document("## Selection").Draw();
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Resolution");
+            NowLayout.Dropdown(GalleryResolutions).SetStretchWidth().Draw(ref _galleryResolution);
+            DrawGalleryLabel(theme, "Quality");
+            NowLayout.EnumDropdown<GalleryQuality>().SetStretchWidth().Draw(ref _galleryQualityLevel);
+        }
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Country");
+            NowLayout.ComboBox(GalleryCountries).SetStretchWidth().Draw(ref _galleryCountry);
+            DrawGalleryLabel(theme, "Channels");
+            NowLayout.MaskField(GalleryChannelNames, "gallery-channels").SetStretchWidth().Draw(ref _galleryChannels);
+        }
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Tabs");
+            NowLayout.TabBar(GalleryTabs).SetStretchWidth().Draw(ref _galleryTab);
+        }
+
+        NowLayout.Label($"Active tab: {GalleryTabs[_galleryTab]}")
+            .SetFontSize(12f)
+            .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+            .Draw();
+
+        NowMarkdown.Document("## Pickers").Draw();
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Tint");
+            NowLayout.ColorPicker("gallery-tint").SetShowAlpha(false).SetStretchWidth().Draw(ref _galleryTint);
+            DrawGalleryLabel(theme, "Ramp");
+            NowLayout.GradientField("gallery-ramp").SetStretchWidth().Draw(ref _galleryRamp);
+        }
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Falloff");
+            NowLayout.AnimationCurveField("gallery-falloff").SetTimeRange(0f, 1f).SetStretchWidth().Draw(ref _galleryFalloff);
+        }
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Due date");
+            NowLayout.DatePicker().SetStretchWidth().Draw(ref _galleryDate);
+            DrawGalleryLabel(theme, "Alarm");
+            NowLayout.TimePicker().SetStretchWidth().Draw(ref _galleryAlarm);
+        }
+
+        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        {
+            DrawGalleryLabel(theme, "Jump key");
+            NowLayout.KeyBindingField("gallery-jump").SetStretchWidth().Draw(ref _galleryJumpKey);
+        }
+
+        NowMarkdown.Document("## Disclosure").Draw();
+
+        NowLayout.Foldout("Advanced").Draw(ref _galleryAdvanced);
+
+        if (_galleryAdvanced)
+        {
+            using (NowLayout.Vertical(spacing: 8f, padding: 10f, stretchWidth: true))
+            {
+                using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+                {
+                    DrawGalleryLabel(theme, "Flags");
+                    NowLayout.EnumFlags<GalleryChannels>().SetStretchWidth().Draw(ref _galleryChannelFlags);
+                }
+
+                using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+                {
+                    DrawGalleryLabel(theme, "Hit layers");
+                    NowLayout.LayerMaskField("gallery-layers").SetStretchWidth().Draw(ref _galleryLayers);
+                }
+            }
+        }
+
+        NowLayout.Space(6f);
+        NowLayout.Label($"Saves: {_gallerySaves}   Name: {(string.IsNullOrEmpty(_galleryName) ? "—" : _galleryName)}   Due: {_galleryDate:yyyy-MM-dd}   Key: {_galleryJumpKey}")
+            .SetFontSize(12f)
+            .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+            .SetStretchWidth()
+            .Draw();
+    }
+
     void DrawLiveDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# Live demo\n\nThe controls below run the code from" +
+        NowMarkdown.Document("# Custom controls demo\n\nThe controls below run the code from" +
             " [CustomControls.md](CustomControls.md) — a wrapped variant, a reshaped" +
             " round button, and a from-scratch rating control.\n\n## Wrap: `DangerButton`").Draw();
 

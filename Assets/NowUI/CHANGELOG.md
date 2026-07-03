@@ -7,6 +7,17 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Date and time picker navigation.** The calendar header label is now
+  clickable and zooms out to a month grid and then a 12-year grid (arrows step
+  month/year/12 years per view, Escape steps one zoom level back, arrow keys
+  move and submit selects). The time picker popup replaces its spinner fields
+  with an Android-style clock dial: clickable hour/minute header segments,
+  tap-or-drag selection with hour→minute auto-advance, a dual ring in 24-hour
+  mode (outer 1–12, inner 13–00), AM/PM chips in 12-hour mode, dial snapping
+  via `SetMinuteStep`, and arrow-key editing. Custom renderers can theme the
+  dial through `NowControlRenderer.CalculateClockDialMetrics`/`DrawClockDial`
+  and the new `clockDialSize`/`clockHeaderHeight` style values.
+
 - **Project-wide DX/UX/performance pass.** Text editing follows platform
   conventions: shift-click extends the selection, text fields and areas gain
   undo/redo, Escape reverts a text field to its focus-time value while Enter
@@ -71,9 +82,52 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - UGUI raycast-gate queries are cached per frame and pointer position: many
   NowUI hosts in a scene now cost one `EventSystem.RaycastAll` per frame
   instead of one per host.
+- Directional focus navigation keeps a sticky cross-axis anchor: repeated
+  moves hold the row/column you started in even when an offset control (a
+  lone centered button between two rows) sits in between, matching
+  console/TV navigation conventions. The anchor follows deliberate moves on
+  its own axis, translates with scrolled content, and resets on any pointer,
+  `Focus()`, Tab, or explicit-link focus change. Directional focus seeding
+  (pressing a direction with nothing focused) now prefers controls visible
+  in the viewport over ones scrolled out of it.
 
 ### Fixed
 
+- Scroll views no longer flash a phantom horizontal scrollbar (with a
+  one-frame content rewrap) on the frame content first grows past the
+  viewport height. Bar visibility now also requires the content to exceed
+  the extent it was actually measured against, so stretch-width content
+  that merely filled last frame's full width cannot read as horizontal
+  overflow once the vertical bar reserves its gutter. Genuine overflow
+  revealed by a width reduction shows one re-measure later (same-frame in
+  measure-pass hosts), and a bar hides immediately when the viewport grows
+  enough for content to fit. `NowScrollScope` exposes
+  `verticalScrollbarVisible` / `horizontalScrollbarVisible`.
+- Pipeline-rendered UI (`NowPipelineGraphic`) now runs the NowLayout measure
+  pass like every other host, so flexible space, stretching and auto-sized
+  groups are exact every frame instead of flickering in from zero when
+  content first appears. All graphics on a camera share one build, so the
+  pass runs when any rendered graphic wants it; the new serialized
+  `layoutMeasurePass` toggle (default on, matching `NowGraphic` /
+  `NowWorldGraphic` / `NowVisualElement`) opts a graphic out to save the
+  extra pass on UIs that skip NowLayout.
+- Text selection highlights no longer double-blend into darker vertical bands
+  where styled runs meet (a link followed by punctuation, bold inside a
+  sentence): highlights bridging into a same-row segment clip to that
+  segment's start instead of overshooting past it, and contiguous same-row
+  rects merge into a single quad before drawing. Segments also carry the
+  font style they were laid out with (`NowTextSelectionLine.fontStyle`, set
+  alongside the existing `fontSize` override), so bold headings highlight and
+  hit-test with bold metrics instead of coming up short of the word.
+- Clicking a context menu item over a text selection no longer clears the
+  selection before the item can act on it. The menu retains the owner's
+  focus while open (`NowFocus.RetainFocus`), and item clicks — which deliver
+  one frame after the menu closes — now match by label instead of by
+  position, so a "Copy" click can never fire the item that slid into its
+  slot (previously it triggered "Select All" when the selection state
+  changed between the click and delivery frames). A click whose item is not
+  re-declared on the delivery frame is dropped instead of waiting to match a
+  later layout.
 - Per-corner radii now round the corners they name. `NowCornerRadius.packed`
   was vertically flipped against the shader's corner decode, so
   `NowCornerRadius.Top(...)` rounded the bottom corners (node title bars,
@@ -129,6 +183,107 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Node graph UX pass.** Six interaction upgrades from a reference-editor
+  audit (Blender, Blueprints, Figma, touch): (1) **drag a fresh wire onto
+  empty canvas** opens the node search filtered to kinds with a compatible
+  port and auto-wires the one you pick (`SetDropToSearch`, on by default);
+  (2) **release-to-snap** — dropping a link near a compatible port connects
+  to it without a pixel-perfect hit, and enlarged, nearest-center port
+  targets (`style.portHitRadius`/`portSnapRadius`, `SetPortHitRadius`) make
+  wiring workable on a fingertip; (3) **marquee add/subtract** — Shift adds,
+  Ctrl/Cmd subtracts, and a modifier-click no longer wipes the selection;
+  (4) **arrow-key nudge** of the selection (Shift = larger step, `SetNudge`),
+  coalesced to one undo per hold; (5) **reachable pan** — right-drag pans
+  (a right *click* still opens the menu) and `SetPanWithPrimaryDrag(true)`
+  makes a one-finger/primary drag pan on touch (marquee moves to Shift-drag);
+  (6) **Backspace** deletes the selection alongside Delete (Mac keyboards).
+  The audit's larger structural items — a multi-touch input substrate for
+  pinch/two-finger pan, node groups/comment frames, resize handles,
+  auto-layout, and full keyboard graph-building — are scoped as follow-ups.
+- **Node graph evaluation.** `NowNodeGraphEvaluator<T>` computes values from a
+  node graph: register a handler per node kind, pull upstream values with
+  `ctx.Input(portId, fallback)`, and call `Evaluate`/`TryEvaluate` on any node
+  or output port. Evaluation memoizes shared upstream nodes per call, treats
+  unconnected ports and unregistered kinds as fallbacks, and breaks cycles
+  deterministically so half-edited graphs stay evaluable.
+  `NowNodeGraph.TryGetInputLink` exposes the underlying link lookup. The new
+  `NowMathGraphExample` (`Assets/Scenes/MathGraph.unity`) dogfoods it as a math
+  playground whose plot node samples and draws `f(x)` live while constants,
+  links, and nodes are edited.
+- **Node previews.** `NowNodeDefinition.Preview(renderer, height)` adds a
+  preview area to a node kind: it grows the node below its body content, the
+  preview renderer receives the shared content context with `isPreview` set,
+  and node contexts expose `hasPreview`/`previewRect` for custom renderers.
+  Minimizing a node (its title-bar compact toggle) hides the preview along
+  with the body. The math graph example gives every producing node a live
+  sparkline preview of its own `f(x)`.
+- **Typed port colors and conversion-gradient links.** `NowNodeGraphSchema.
+  TypeColor(typeId, color)` colors port dots and connections by value type
+  (explicit `port.color` still wins). Links whose endpoint types differ — an
+  allowed conversion — draw with a gradient from the output type's color to
+  the input type's, and the pending link drag shows the same gradient over a
+  compatible target. Powered by new core gradient strokes:
+  `NowLine.SetGradient(from, to)` blends straight lines, polylines, and
+  Beziers along their length on both the dedicated Bezier shader path and the
+  flattened mesh path, with dashes sampling their slice of the gradient and
+  arrow heads taking their endpoint color.
+- **Node graph link re-plugging and clipboard.** Dragging from an occupied
+  input port picks up the existing connection instead of starting a new one:
+  drop it on another compatible input to rewire, drop it on empty canvas to
+  unplug it, or drop it back on the same port for a history-free no-op.
+  `NowNodeGraphClipboard` adds copy/cut/paste/duplicate for the node
+  selection — links between copied nodes are captured and remapped to the
+  fresh ids on paste, relative layout is preserved around the paste position,
+  and everything is undoable. The canvas answers the standard
+  Ctrl/Cmd+C/X/V/D shortcuts while focused (paste lands at the pointer), the
+  context menu gains Copy/Cut/Paste/Duplicate items (paste lands at the
+  click), and `SetClipboard` isolates an editor from the default shared
+  buffer. The context menu's Undo/Redo items are now opt-in
+  (`undoRedo = true`; the keyboard shortcuts are unaffected) and the delete
+  item is labeled "Delete".
+- **Node graph visual polish and editor shortcuts.** Nodes cast the theme's
+  elevation shadows (selected nodes lift higher; `style.nodeShadows` opts
+  out), `node.color` now tints the title bar instead of the whole body with
+  the vertically centered title text picking a contrast-aware color, a
+  hairline separates the title from the body, the default grid is much
+  quieter, hovered nodes emphasize their border, connected ports draw filled
+  while empty ports draw as hollow rings, and during a link drag
+  incompatible ports dim while compatible ones grow.
+- **Reroute nodes.** `schema.Reroute(kindId)` registers a tiny pass-through
+  pill for tidying wires: no title bar or toggles, dragged by its body, one
+  input and one fan-out output at its left/right center
+  (`NowNodeGraphSchema.RerouteInputPortId`/`RerouteOutputPortId`), restylable
+  via `DrawReroute` and flagged `reroute` in the node render context. Wire
+  the evaluator with a one-line pass-through handler.
+- **Node search palette.** Space over a focused canvas opens a
+  VSCode-style palette at the pointer: a standard `NowTextField` query
+  (caret, selection, clipboard, IME) filters the schema's node titles,
+  Up/Down/Enter or click creates at the opening position, Escape or an
+  outside click dismisses. Recently created kinds are offered first on an
+  empty query, so repeating the last node is Space+Enter. The canvas result
+  reports `searchOpened`.
+- **Compact nodes.** Every node gets a minus/plus toggle in its title bar
+  that collapses it to just the title and ports (wide nodes also narrow),
+  hiding body content and preview, for dense graphs. `node.compact`
+  serializes and round-trips history, the canvas result reports
+  `compactToggled`, and custom renderers restyle the glyph via
+  `DrawCompactToggle`. Connections are first-class:
+  hovering thickens a wire, clicking selects it (`graph.selectedLink`,
+  cleared by any node selection), Delete removes it undoably, and the
+  selected wire brightens over a soft halo. Escape cancels a link drag or
+  marquee, Ctrl/Cmd+A selects all nodes, and F frames the selection or whole
+  graph. Renderer contexts expose the new `hovered`/`connected`/`selected`
+  state for custom skins.
+- **Browser-style scroll view auto-scrolling.** Drag-selecting text (or any
+  custom drag gesture that calls `NowScrollView.RequestDragScroll()` on its
+  dragging frames) auto-scrolls the innermost enclosing scroll view while the
+  pointer sits near or past the viewport edge, speeding up with distance.
+  Middle-click autoscroll pans like a browser: a middle press drops an anchor
+  and the view scrolls with speed proportional to the pointer's distance from
+  it — press-drag-release pans once, a middle click with no drag keeps
+  panning until any button press or cancel ends it. The anchor visual routes
+  through the new `NowControlRenderer.DrawScrollPanAnchor` hook so themes can
+  restyle it.
 - **HTML-inspired markup expansion and typo-safe lookups.** The markup
   extension gains `h1`–`h6`, `hr`, `ul`/`ol`/`li`, `details`/`summary`
   (foldout), `tabs`/`tab`, `switch`/`toggle`, `radio` with HTML-style `group`

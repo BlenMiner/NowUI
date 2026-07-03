@@ -954,6 +954,134 @@ public class NowControlsTests
         Assert.AreEqual(2, NowFocus.focusedId);
     }
 
+    static readonly NowRect MemoryTopRight = new NowRect(210, 10, 80, 30);
+    static readonly NowRect MemoryMiddle = new NowRect(110, 60, 80, 30);
+    static readonly NowRect MemoryBottomLeft = new NowRect(10, 400, 80, 30);
+    static readonly NowRect MemoryBottomCenter = new NowRect(110, 400, 80, 30);
+    static readonly NowRect MemoryBottomRight = new NowRect(210, 400, 80, 30);
+
+    void RegisterMemoryLayout()
+    {
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(3, MemoryTopRight);
+            NowFocus.Register(4, MemoryMiddle);
+            NowFocus.Register(5, MemoryBottomLeft);
+            NowFocus.Register(6, MemoryBottomCenter);
+            NowFocus.Register(7, MemoryBottomRight);
+        }
+    }
+
+    void NavigateMemoryLayout(Vector2 navigation)
+    {
+        _provider.snapshot = NavigationSnapshot(navigation);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+    }
+
+    [Test]
+    public void DirectionalNavigationRemembersCrossAxisOrigin()
+    {
+        RegisterMemoryLayout();
+        NowFocus.Focus(3);
+
+        NavigateMemoryLayout(Vector2.down);
+        Assert.AreEqual(4, NowFocus.focusedId, "First move down should reach the offset middle button.");
+
+        RegisterMemoryLayout();
+        NavigateMemoryLayout(Vector2.down);
+        Assert.AreEqual(7, NowFocus.focusedId, "Second move down should return to the starting column, not the middle button's column.");
+    }
+
+    [Test]
+    public void ExplicitFocusClearsDirectionalNavigationMemory()
+    {
+        RegisterMemoryLayout();
+        NowFocus.Focus(3);
+
+        NavigateMemoryLayout(Vector2.down);
+        Assert.AreEqual(4, NowFocus.focusedId);
+
+        RegisterMemoryLayout();
+        NowFocus.Focus(5);
+
+        NavigateMemoryLayout(Vector2.up);
+        Assert.AreEqual(4, NowFocus.focusedId, "After an explicit focus the stale cross-axis anchor must not pull navigation sideways.");
+    }
+
+    [Test]
+    public void HorizontalMoveUpdatesDirectionalNavigationMemory()
+    {
+        RegisterMemoryLayout();
+        NowFocus.Focus(5);
+
+        NavigateMemoryLayout(Vector2.right);
+        Assert.AreEqual(6, NowFocus.focusedId);
+
+        RegisterMemoryLayout();
+        NavigateMemoryLayout(Vector2.right);
+        Assert.AreEqual(7, NowFocus.focusedId);
+
+        RegisterMemoryLayout();
+        NavigateMemoryLayout(Vector2.up);
+        Assert.AreEqual(3, NowFocus.focusedId, "Horizontal movement must re-anchor the column used by later vertical moves.");
+    }
+
+    void RegisterShiftedColumns(float shift)
+    {
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, new NowRect(410 + shift, 10, 80, 30));
+            NowFocus.Register(2, new NowRect(210 + shift, 10, 80, 30));
+            NowFocus.Register(3, new NowRect(410 + shift, 60, 80, 30));
+            NowFocus.Register(4, new NowRect(210 + shift, 60, 80, 30));
+            NowFocus.Register(5, new NowRect(410 + shift, 110, 80, 30));
+            NowFocus.Register(6, new NowRect(210 + shift, 110, 80, 30));
+        }
+    }
+
+    [Test]
+    public void NavigationMemoryShiftsWithScrolledContent()
+    {
+        RegisterShiftedColumns(0f);
+        NowFocus.Focus(2);
+
+        NavigateMemoryLayout(Vector2.down);
+        Assert.AreEqual(4, NowFocus.focusedId);
+
+        RegisterShiftedColumns(-200f);
+        NavigateMemoryLayout(Vector2.down);
+        Assert.AreEqual(6, NowFocus.focusedId, "The cross-axis anchor must move with scrolled content, not point at the old screen position.");
+    }
+
+    [Test]
+    public void EdgeFocusSeedingPrefersVisibleControls()
+    {
+        var viewport = new NowRect(0, 0, 120, 40);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        using (Now.Mask(viewport))
+        using (NowFocus.BeginScrollRegion(500))
+        {
+            NowFocus.Register(1, new NowRect(0, -100, 100, 30));
+            NowFocus.Register(2, new NowRect(0, 0, 100, 30));
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.down);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(2, NowFocus.focusedId, "Seeding should land on a visible control, not one clipped out of the scroll viewport.");
+    }
+
     [Test]
     public void ExplicitTabNavigationOverridesRegistrationOrder()
     {

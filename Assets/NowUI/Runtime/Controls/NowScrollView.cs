@@ -59,6 +59,44 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowScrollView SetId(NowId id) { _id = id; return this; }
 
+        static int s_dragScrollRegionId;
+
+        static int s_dragScrollFrame = -1;
+
+        /// <summary>
+        /// Marks the current pointer drag as scroll-aware: the innermost scroll
+        /// view enclosing the calling control scrolls while the pointer sits
+        /// near (or past) its viewport edge, browser-style. Call every dragging
+        /// frame — text selection does; custom drag gestures opt in with one call.
+        /// </summary>
+        public static void RequestDragScroll()
+        {
+            if (NowInput.isPassive || !NowInput.hasContext)
+                return;
+
+            int region = NowFocus.currentScrollRegionId;
+
+            if (region == 0)
+                return;
+
+            s_dragScrollRegionId = region;
+            s_dragScrollFrame = NowInput.current.frame;
+        }
+
+        internal static bool TryConsumeDragScroll(int id)
+        {
+            if (s_dragScrollRegionId != id ||
+                s_dragScrollFrame != NowInput.current.frame ||
+                NowInput.activeId == 0)
+            {
+                return false;
+            }
+
+            s_dragScrollRegionId = 0;
+            s_dragScrollFrame = -1;
+            return true;
+        }
+
         public NowScrollScope Begin()
         {
             var options = _options;
@@ -78,7 +116,14 @@ namespace NowUI
 
             NowLayout.TryGetCachedContentSize(areaKey, out Vector2 content);
             var styles = NowTheme.themeAsset.controlStyles;
-            var scrollLayout = ResolveScrollLayout(viewport, content, styles.scrollbarWidth + styles.scrollbarPadding);
+
+            ref Vector2 measuredSize = ref NowControlState.Get<Vector2>(id, "layout-size");
+
+            if (measuredSize == Vector2.zero)
+                measuredSize = new Vector2(viewport.width, viewport.height);
+
+            var scrollLayout = ResolveScrollLayout(viewport, content, measuredSize, styles.scrollbarWidth + styles.scrollbarPadding);
+            measuredSize = new Vector2(scrollLayout.contentViewport.width, scrollLayout.contentViewport.height);
 
             ref Vector2 scroll = ref NowControlState.Get<Vector2>(id);
 
@@ -114,20 +159,33 @@ namespace NowUI
             public int focusRevision;
         }
 
-        static ScrollLayout ResolveScrollLayout(NowRect viewport, Vector2 content, float barReserve)
+        /// <summary>
+        /// A bar appears only when the content exceeds both the space available
+        /// this frame and the extent it was actually measured against
+        /// (<paramref name="measuredSize"/>). The cached content size is one
+        /// layout pass old: content that merely filled the width it was given
+        /// still reports that width after a vertical bar reserves space, which
+        /// the available-space check alone reads as horizontal overflow — a
+        /// phantom horizontal bar plus a one-frame rewrap on the frame content
+        /// first crosses the viewport height. Genuine overflow created by a
+        /// shrink instead shows one re-measure later, like all deferred layout.
+        /// </summary>
+        static ScrollLayout ResolveScrollLayout(NowRect viewport, Vector2 content, Vector2 measuredSize, float barReserve)
         {
             const float Epsilon = 0.5f;
             barReserve = Mathf.Max(0f, barReserve);
 
-            bool vertical = content.y > viewport.height + Epsilon;
-            bool horizontal = content.x > viewport.width + Epsilon;
+            bool verticalMeasured = content.y > measuredSize.y + Epsilon;
+            bool horizontalMeasured = content.x > measuredSize.x + Epsilon;
+            bool vertical = verticalMeasured && content.y > viewport.height + Epsilon;
+            bool horizontal = horizontalMeasured && content.x > viewport.width + Epsilon;
 
             for (int i = 0; i < 4; ++i)
             {
                 float availableWidth = Mathf.Max(0f, viewport.width - (vertical ? barReserve : 0f));
                 float availableHeight = Mathf.Max(0f, viewport.height - (horizontal ? barReserve : 0f));
-                bool nextVertical = content.y > availableHeight + Epsilon;
-                bool nextHorizontal = content.x > availableWidth + Epsilon;
+                bool nextVertical = verticalMeasured && content.y > availableHeight + Epsilon;
+                bool nextHorizontal = horizontalMeasured && content.x > availableWidth + Epsilon;
 
                 if (nextVertical == vertical && nextHorizontal == horizontal)
                     break;
@@ -142,13 +200,20 @@ namespace NowUI
             return new ScrollLayout
             {
                 contentViewport = new NowRect(viewport.x, viewport.y, contentWidth, contentHeight),
-                maxScrollX = Mathf.Max(0f, content.x - contentWidth),
-                maxScrollY = Mathf.Max(0f, content.y - contentHeight),
+                maxScrollX = horizontal ? Mathf.Max(0f, content.x - contentWidth) : 0f,
+                maxScrollY = vertical ? Mathf.Max(0f, content.y - contentHeight) : 0f,
                 verticalBarVisible = vertical,
                 horizontalBarVisible = horizontal
             };
         }
 
+        /// <summary>
+        /// Scrolls a newly focused control into the viewport, once per focus
+        /// change. Focus gained under the pointer (click/tap) is exempt: the
+        /// control is already where the user is looking, and pointer focus can
+        /// land on rects far larger than the viewport (a selectable document),
+        /// where revealing an edge would yank the scroll position.
+        /// </summary>
         static void EnsureFocusedControlVisible(int id, NowRect viewport, float maxScrollX, float maxScrollY, ref Vector2 scroll)
         {
             if ((maxScrollX <= 0f && maxScrollY <= 0f) || NowInput.isPassive ||
@@ -166,6 +231,11 @@ namespace NowUI
 
             reveal.focusedId = focusedId;
             reveal.focusRevision = focusRevision;
+
+            var snapshot = NowInput.current;
+
+            if (snapshot.hasPointer && focused.Contains(snapshot.pointerPosition))
+                return;
 
             const float Padding = 4f;
             float left = viewport.x + Padding;
@@ -202,6 +272,30 @@ namespace NowUI
     [NowScope]
     public struct NowScrollScope : IDisposable
     {
+        const float EdgeScrollMargin = 28f;
+
+        const float EdgeScrollMaxOvershoot = 112f;
+
+        const float EdgeScrollSpeed = 10f;
+
+        const float PanDeadZone = 8f;
+
+        const float PanScrollSpeed = 4f;
+
+        const float MaxAutoScrollDeltaTime = 0.1f;
+
+        struct AutoScrollTime
+        {
+            public float lastTime;
+        }
+
+        struct PanScrollState
+        {
+            public Vector2 anchor;
+            public byte mode;
+            public bool dragged;
+        }
+
         NowLayoutScope _layout;
         NowMaskScope _mask;
         NowFocusScrollRegionScope _focus;
@@ -268,6 +362,12 @@ namespace NowUI
         /// <summary>The largest valid scroll offset this frame (content minus viewport).</summary>
         public Vector2 maxScrollOffset => new Vector2(_maxScrollX, _maxScrollY);
 
+        /// <summary>True when the vertical scrollbar is shown this frame.</summary>
+        public bool verticalScrollbarVisible => _verticalBarVisible;
+
+        /// <summary>True when the horizontal scrollbar is shown this frame.</summary>
+        public bool horizontalScrollbarVisible => _horizontalBarVisible;
+
         /// <summary>
         /// Scrolls to the end of the content on both axes — the chat/log
         /// stick-to-bottom pattern:
@@ -298,6 +398,8 @@ namespace NowUI
             _mask.Dispose();
 
             ref Vector2 scroll = ref NowControlState.Get<Vector2>(_id);
+            bool panAnchorVisible = false;
+            Vector2 panAnchor = default;
 
             if (_maxScrollX > 0f || _maxScrollY > 0f)
             {
@@ -315,10 +417,23 @@ namespace NowUI
                         NowControlState.RequestRepaint();
                     }
                 }
+
+                if (!NowInput.isPassive)
+                {
+                    ApplyDragScroll(ref scroll);
+                    panAnchorVisible = ApplyPanScroll(ref scroll, out panAnchor);
+                }
             }
 
             scroll.x = _maxScrollX > 0f ? Mathf.Clamp(scroll.x, 0f, _maxScrollX) : 0f;
             scroll.y = _maxScrollY > 0f ? Mathf.Clamp(scroll.y, 0f, _maxScrollY) : 0f;
+
+            if (panAnchorVisible)
+            {
+                var panTheme = NowTheme.themeAsset;
+                panTheme.controlRenderer.DrawScrollPanAnchor(new NowScrollPanAnchorRenderContext(
+                    panTheme, panAnchor, _maxScrollX > 0f, _maxScrollY > 0f));
+            }
 
             if (!_verticalBarVisible && !_horizontalBarVisible)
                 return;
@@ -395,6 +510,125 @@ namespace NowUI
                 metrics,
                 dragging,
                 hoverT));
+        }
+
+        /// <summary>
+        /// Scrolls toward the pointer while a drag that called
+        /// <see cref="NowScrollView.RequestDragScroll"/> holds it near or past
+        /// the viewport edge, speeding up with distance.
+        /// </summary>
+        void ApplyDragScroll(ref Vector2 scroll)
+        {
+            if (!NowScrollView.TryConsumeDragScroll(_id))
+                return;
+
+            var snapshot = NowInput.current;
+            Rect viewport = Now.TransformScreenRect((Rect)_contentViewport);
+            Vector2 pointer = snapshot.pointerPosition;
+            float dt = ConsumeDeltaTime("drag-scroll-time", snapshot.time);
+            float vx = _maxScrollX > 0f ? EdgeScrollVelocity(pointer.x, viewport.xMin, viewport.xMax) : 0f;
+            float vy = _maxScrollY > 0f ? EdgeScrollVelocity(pointer.y, viewport.yMin, viewport.yMax) : 0f;
+
+            if (vx == 0f && vy == 0f)
+                return;
+
+            scroll.x += vx * dt;
+            scroll.y += vy * dt;
+            NowControlState.RequestRepaint();
+        }
+
+        /// <summary>
+        /// Browser-style middle-button autoscroll: a middle press drops an
+        /// anchor and scroll speed grows with the pointer's distance from it.
+        /// Press-drag-release pans once; a middle click with no drag keeps
+        /// panning until any button press or cancel ends it.
+        /// </summary>
+        bool ApplyPanScroll(ref Vector2 scroll, out Vector2 anchor)
+        {
+            int panId = NowInput.GetId(_id, "pan");
+            var interaction = NowInput.Interact(panId, _contentViewport, NowPointerButton.Middle);
+            ref var pan = ref NowControlState.Get<PanScrollState>(panId);
+            var snapshot = NowInput.current;
+
+            if (interaction.pressed)
+            {
+                if (pan.mode == 0)
+                {
+                    pan.mode = 1;
+                    pan.anchor = snapshot.pointerPosition;
+                    pan.dragged = false;
+                }
+                else
+                {
+                    pan.mode = 0;
+                }
+            }
+            else if (pan.mode == 1)
+            {
+                pan.dragged |= interaction.dragging;
+
+                if (interaction.released)
+                    pan.mode = pan.dragged ? (byte)0 : (byte)2;
+                else if (!interaction.active)
+                    pan.mode = 0;
+            }
+            else if (pan.mode == 2 && (snapshot.anyPointerPressed || snapshot.cancelPressed))
+            {
+                pan.mode = 0;
+            }
+
+            anchor = Now.InverseTransformScreenPoint(pan.anchor);
+
+            if (pan.mode == 0)
+                return false;
+
+            float dt = ConsumeDeltaTime("pan-scroll-time", snapshot.time);
+            Vector2 offset = snapshot.pointerPosition - pan.anchor;
+
+            if (_maxScrollX > 0f)
+                scroll.x += PanVelocity(offset.x) * dt;
+
+            if (_maxScrollY > 0f)
+                scroll.y += PanVelocity(offset.y) * dt;
+
+            NowControlState.RequestRepaint();
+            return true;
+        }
+
+        /// <summary>
+        /// Frame delta from the input snapshot clock, keyed per feature so an
+        /// idle stretch (or the first frame of a gesture) yields zero instead
+        /// of one huge step.
+        /// </summary>
+        float ConsumeDeltaTime(string key, float time)
+        {
+            ref var state = ref NowControlState.Get<AutoScrollTime>(_id, key);
+            float delta = time - state.lastTime;
+            state.lastTime = time;
+            return delta > 0f && delta <= MaxAutoScrollDeltaTime ? delta : 0f;
+        }
+
+        static float EdgeScrollVelocity(float position, float min, float max)
+        {
+            float margin = Mathf.Min(EdgeScrollMargin, (max - min) * 0.25f);
+            float overshoot = 0f;
+
+            if (position < min + margin)
+                overshoot = position - (min + margin);
+            else if (position > max - margin)
+                overshoot = position - (max - margin);
+
+            return Mathf.Clamp(overshoot, -EdgeScrollMaxOvershoot, EdgeScrollMaxOvershoot) * EdgeScrollSpeed;
+        }
+
+        static float PanVelocity(float distance)
+        {
+            float magnitude = Mathf.Abs(distance);
+
+            if (magnitude <= PanDeadZone)
+                return 0f;
+
+            return Mathf.Sign(distance) * (magnitude - PanDeadZone) * PanScrollSpeed;
         }
 
         static bool WouldWheelMove(Vector2 scroll, float maxScrollX, float maxScrollY, Vector2 wheel)

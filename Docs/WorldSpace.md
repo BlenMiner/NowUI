@@ -66,6 +66,13 @@ need to stay readable. `SceneOccluded` sets the cloned NowUI materials to
 `ZTest LessEqual`, so world panels can be hidden by nearer scene geometry.
 The source package materials are never mutated.
 
+Scene occlusion applies to panel content only: overlay batches (context
+menus, dropdown popups, tooltips) always render above scene geometry, so a
+menu that extends past the panel is never sliced by a floor or wall crossing
+the panel's plane. Input is already blocked while scene geometry covers a
+`SceneOccluded` panel, so overlays can only be open while the panel itself is
+unobstructed.
+
 ## Glass Backdrops
 
 `NowWorldGraphic` can draw `Now.Glass(...)` panes by sampling a camera backdrop

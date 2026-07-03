@@ -9,8 +9,10 @@ namespace NowUI
     /// Date field with a calendar popup. The date is caller-owned; the popup
     /// edits only the date component and preserves the value's time of day:
     /// <code>NowLayout.DatePicker().Draw(ref dueDate);</code>
-    /// Day cells are keyboard-navigable inside the popup; the optional
-    /// <see cref="SetToday"/> highlight is caller-passed — no hidden clock.
+    /// Clicking the header label zooms out from days to a month grid and then
+    /// a 12-year grid; picking a year or month drills back in. Day cells are
+    /// keyboard-navigable inside the popup; the optional <see cref="SetToday"/>
+    /// highlight is caller-passed — no hidden clock.
     /// </summary>
     [NowBuilder]
     public struct NowDatePicker
@@ -48,8 +50,11 @@ namespace NowUI
             public int pendingId;
             public int shownMonthId;
             public int daySeed;
+            public int monthSeed;
+            public int yearSeed;
             public int prevId;
             public int nextId;
+            public int labelId;
             public int year;
             public int month;
             public long selectedTicks;
@@ -67,6 +72,12 @@ namespace NowUI
             public int cachedLabelYear;
             public int cachedLabelMonth;
             public string monthLabel;
+            public int cachedHeaderYear;
+            public string yearHeaderLabel;
+            public int cachedRangeStart;
+            public string rangeLabel;
+            public int cachedYearStart = -1;
+            public readonly string[] yearLabels = new string[12];
         }
 
         sealed class FieldLabel
@@ -83,6 +94,8 @@ namespace NowUI
         static string[] s_dayLabels;
 
         static string[] s_weekdayLabels;
+
+        static string[] s_monthLabels;
 
         internal NowDatePicker(NowId id, int site)
         {
@@ -186,6 +199,7 @@ namespace NowUI
                     shown.year = value.Year;
                     shown.month = value.Month;
                     ClampShownMonth(ref shown);
+                    NowControlState.Get<int>(id, "calendar-view") = 0;
 
                     var openState = GetState(id);
                     openState.highlightTicks = value.Date.Ticks;
@@ -247,8 +261,11 @@ namespace NowUI
             state.pendingId = id;
             state.shownMonthId = id;
             state.daySeed = NowInput.GetId(id, "day");
+            state.monthSeed = NowInput.GetId(id, "month");
+            state.yearSeed = NowInput.GetId(id, "year");
             state.prevId = NowInput.GetId(id, "prev-month");
             state.nextId = NowInput.GetId(id, "next-month");
+            state.labelId = NowInput.GetId(id, "header-label");
             state.year = shown.year;
             state.month = shown.month;
             state.selectedTicks = value.Date.Ticks;
@@ -286,19 +303,50 @@ namespace NowUI
             var styles = theme.controlStyles;
             var popupRect = state.popupRect;
 
+            ref int view = ref NowControlState.Get<int>(state.id, "calendar-view");
+
             renderer.DrawPopupBackground(theme, popupRect, menu: false);
-            UpdateKeyboard(state);
+            UpdateKeyboard(state, ref view);
 
             float padding = styles.calendarPadding;
             float cell = styles.calendarCellSize;
             var inner = popupRect.Inset(padding);
             var headerRect = new NowRect(inner.x, inner.y, inner.width, styles.calendarHeaderHeight);
 
-            DrawHeader(state, headerRect);
+            DrawHeader(state, headerRect, ref view);
 
             EnsureStaticLabels();
 
-            float gridTop = headerRect.yMax;
+            if (view == 0)
+                DrawDayGrid(state, inner, headerRect.yMax, cell);
+            else if (view == 1)
+                DrawMonthGrid(state, inner, headerRect.yMax, ref view);
+            else
+                DrawYearGrid(state, inner, headerRect.yMax, ref view);
+
+            var snapshot = NowInput.current;
+            bool fieldPressClaimedByField = state.field.Contains(snapshot.pointerPosition) &&
+                NowInput.activeId == state.id;
+            bool pressedOutside = snapshot.anyPointerPressed &&
+                !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
+                !fieldPressClaimedByField;
+            bool cancelled = snapshot.cancelPressed && !NowInput.cancelConsumed && !NowOverlay.HasNestedOverlay(state.id);
+
+            if (cancelled && view > 0)
+            {
+                --view;
+                NowControlState.RequestRepaint();
+            }
+            else if (pressedOutside || cancelled)
+            {
+                NowControlState.Get<bool>(state.id) = false;
+            }
+        }
+
+        static void DrawDayGrid(PopupState state, NowRect inner, float gridTop, float cell)
+        {
+            var theme = state.themeAsset;
+            var renderer = theme.controlRenderer;
 
             for (int i = 0; i < 7; ++i)
             {
@@ -348,29 +396,157 @@ namespace NowUI
                         hoverT));
                 }
             }
+        }
 
-            var snapshot = NowInput.current;
-            bool fieldPressClaimedByField = state.field.Contains(snapshot.pointerPosition) &&
-                NowInput.activeId == state.id;
-            bool pressedOutside = snapshot.anyPointerPressed &&
-                !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
-                !fieldPressClaimedByField;
+        static void DrawMonthGrid(PopupState state, NowRect inner, float gridTop, ref int view)
+        {
+            var theme = state.themeAsset;
+            var renderer = theme.controlRenderer;
+            float columnWidth = inner.width / 3f;
+            float rowHeight = (inner.yMax - gridTop) / 4f;
+            var selected = new DateTime(state.selectedTicks);
+            var today = new DateTime(state.todayTicks);
 
-            if (pressedOutside ||
-                (snapshot.cancelPressed && !NowInput.cancelConsumed && !NowOverlay.HasNestedOverlay(state.id)))
+            for (int month = 1; month <= 12; ++month)
             {
-                NowControlState.Get<bool>(state.id) = false;
+                int index = month - 1;
+                var cellRect = new NowRect(
+                    inner.x + (index % 3) * columnWidth,
+                    gridTop + (index / 3) * rowHeight,
+                    columnWidth,
+                    rowHeight);
+
+                bool disabled = MonthDisabled(state, state.year, month);
+                int cellId = NowInput.CombineId(state.monthSeed, month);
+                var interaction = NowInput.Interact(cellId, cellRect);
+
+                if (interaction.clicked && !disabled)
+                {
+                    ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId, "shown-month");
+                    shown.year = state.year;
+                    shown.month = month;
+                    ClampShownMonth(ref shown);
+                    view = 0;
+                    NowControlState.RequestRepaint();
+                }
+
+                float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
+
+                renderer.DrawCalendarDay(new NowCalendarDayRenderContext(
+                    theme,
+                    cellRect,
+                    s_monthLabels[index],
+                    inMonth: true,
+                    isToday: state.hasToday && today.Year == state.year && today.Month == month,
+                    selected: state.hasSelected && selected.Year == state.year && selected.Month == month,
+                    disabled,
+                    interaction,
+                    focused: month == state.month,
+                    hoverT));
+            }
+        }
+
+        static void DrawYearGrid(PopupState state, NowRect inner, float gridTop, ref int view)
+        {
+            var theme = state.themeAsset;
+            var renderer = theme.controlRenderer;
+            float columnWidth = inner.width / 3f;
+            float rowHeight = (inner.yMax - gridTop) / 4f;
+            int start = YearPageStart(state.year);
+            var selected = new DateTime(state.selectedTicks);
+            var today = new DateTime(state.todayTicks);
+
+            EnsureYearLabels(state, start);
+
+            for (int index = 0; index < 12; ++index)
+            {
+                int year = start + index;
+
+                if (year > 9999)
+                    break;
+
+                var cellRect = new NowRect(
+                    inner.x + (index % 3) * columnWidth,
+                    gridTop + (index / 3) * rowHeight,
+                    columnWidth,
+                    rowHeight);
+
+                bool disabled = YearDisabled(state, year);
+                int cellId = NowInput.CombineId(state.yearSeed, index + 1);
+                var interaction = NowInput.Interact(cellId, cellRect);
+
+                if (interaction.clicked && !disabled)
+                {
+                    ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId, "shown-month");
+                    shown.year = year;
+                    ClampShownMonth(ref shown);
+                    view = 1;
+                    NowControlState.RequestRepaint();
+                }
+
+                float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
+
+                renderer.DrawCalendarDay(new NowCalendarDayRenderContext(
+                    theme,
+                    cellRect,
+                    state.yearLabels[index],
+                    inMonth: true,
+                    isToday: state.hasToday && today.Year == year,
+                    selected: state.hasSelected && selected.Year == year,
+                    disabled,
+                    interaction,
+                    focused: year == state.year,
+                    hoverT));
+            }
+        }
+
+        static bool MonthDisabled(PopupState state, int year, int month)
+        {
+            if (!state.hasRange)
+                return false;
+
+            long start = new DateTime(year, month, 1).Ticks;
+            long end = new DateTime(year, month, DateTime.DaysInMonth(year, month)).Ticks;
+            return end < state.minTicks || start > state.maxTicks;
+        }
+
+        static bool YearDisabled(PopupState state, int year)
+        {
+            if (!state.hasRange)
+                return false;
+
+            return new DateTime(year, 12, 31).Ticks < state.minTicks ||
+                new DateTime(year, 1, 1).Ticks > state.maxTicks;
+        }
+
+        static int YearPageStart(int year)
+        {
+            return year - ((year - 1) % 12);
+        }
+
+        static void EnsureYearLabels(PopupState state, int start)
+        {
+            if (state.cachedYearStart == start)
+                return;
+
+            state.cachedYearStart = start;
+
+            for (int i = 0; i < 12; ++i)
+            {
+                int year = start + i;
+                state.yearLabels[i] = year <= 9999 ? year.ToString(CultureInfo.InvariantCulture) : string.Empty;
             }
         }
 
         /// <summary>
-        /// Keyboard day navigation for the open popup: arrows move a
-        /// popup-local highlighted day (never <see cref="NowFocus"/>), left and
-        /// right step one day, up and down step a week, rolling the shown month
-        /// at grid edges; submit commits the highlighted day. Base focus
-        /// navigation is locked while the popup is open.
+        /// Keyboard navigation for the open popup (never <see cref="NowFocus"/>;
+        /// base focus navigation is locked while it is open). In the day view
+        /// arrows move a popup-local highlighted day — left and right step one
+        /// day, up and down step a week, rolling the shown month at grid edges —
+        /// and submit commits it. In the month and year views arrows move the
+        /// shown month or year through the 3-wide grid and submit zooms back in.
         /// </summary>
-        static void UpdateKeyboard(PopupState state)
+        static void UpdateKeyboard(PopupState state, ref int view)
         {
             if (NowInput.isPassive)
                 return;
@@ -379,19 +555,51 @@ namespace NowUI
 
             var snapshot = NowInput.current;
             var navigation = snapshot.navigation;
-            int dayStep = 0;
+
+            if (view == 0)
+            {
+                int dayStep = 0;
+
+                if (NowControlState.Repeat(state.id, "nav-x", Mathf.Abs(navigation.x) > 0.55f, 0.35f, 0.12f))
+                    dayStep += navigation.x > 0f ? 1 : -1;
+
+                if (NowControlState.Repeat(state.id, "nav-y", Mathf.Abs(navigation.y) > 0.55f, 0.35f, 0.12f))
+                    dayStep += navigation.y > 0f ? -7 : 7;
+
+                if (dayStep != 0)
+                    MoveHighlight(state, dayStep);
+
+                if (snapshot.submitPressed && snapshot.frame != state.openedFrame && state.hasHighlight)
+                    CommitHighlight(state);
+
+                return;
+            }
+
+            int step = 0;
 
             if (NowControlState.Repeat(state.id, "nav-x", Mathf.Abs(navigation.x) > 0.55f, 0.35f, 0.12f))
-                dayStep += navigation.x > 0f ? 1 : -1;
+                step += navigation.x > 0f ? 1 : -1;
 
             if (NowControlState.Repeat(state.id, "nav-y", Mathf.Abs(navigation.y) > 0.55f, 0.35f, 0.12f))
-                dayStep += navigation.y > 0f ? -7 : 7;
+                step += navigation.y > 0f ? -3 : 3;
 
-            if (dayStep != 0)
-                MoveHighlight(state, dayStep);
+            if (step != 0)
+            {
+                ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId, "shown-month");
 
-            if (snapshot.submitPressed && snapshot.frame != state.openedFrame && state.hasHighlight)
-                CommitHighlight(state);
+                if (view == 1)
+                    StepMonths(ref shown, step);
+                else
+                    StepYears(ref shown, step);
+
+                NowControlState.RequestRepaint();
+            }
+
+            if (snapshot.submitPressed && snapshot.frame != state.openedFrame)
+            {
+                --view;
+                NowControlState.RequestRepaint();
+            }
         }
 
         static void MoveHighlight(PopupState state, int dayStep)
@@ -431,7 +639,7 @@ namespace NowUI
             NowControlState.Get<bool>(state.id) = false;
         }
 
-        static void DrawHeader(PopupState state, NowRect headerRect)
+        static void DrawHeader(PopupState state, NowRect headerRect, ref int view)
         {
             var theme = state.themeAsset;
             float buttonSize = headerRect.height;
@@ -443,34 +651,87 @@ namespace NowUI
             var next = NowInput.Interact(state.nextId, nextRect);
 
             ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId, "shown-month");
+            int arrowStep = view == 0 ? 1 : view == 1 ? 12 : 144;
 
             if (prev.clicked)
             {
-                StepMonth(ref shown, -1);
+                StepMonths(ref shown, -arrowStep);
                 NowControlState.RequestRepaint();
             }
 
             if (next.clicked)
             {
-                StepMonth(ref shown, 1);
+                StepMonths(ref shown, arrowStep);
                 NowControlState.RequestRepaint();
             }
 
             DrawHeaderButton(theme, prevRect, prev, left: true);
             DrawHeaderButton(theme, nextRect, next, left: false);
 
-            if (state.cachedLabelYear != state.year || state.cachedLabelMonth != state.month || state.monthLabel == null)
+            var labelRect = new NowRect(prevRect.xMax, headerRect.y, nextRect.x - prevRect.xMax, headerRect.height);
+            var label = NowInput.Interact(state.labelId, labelRect);
+
+            if (label.clicked && view < 2)
             {
-                state.cachedLabelYear = state.year;
-                state.cachedLabelMonth = state.month;
-                state.monthLabel = string.Format(
-                    CultureInfo.CurrentCulture,
-                    "{0} {1}",
-                    CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(state.month),
-                    state.year);
+                ++view;
+                NowControlState.RequestRepaint();
             }
 
-            NowControls.DrawCenteredLabel(theme, headerRect, state.monthLabel, NowTextStyle.BodyStrong, headerRect);
+            if (view < 2 && (label.hovered || label.held))
+            {
+                Now.Rectangle(labelRect.Inset(2f, 4f, 2f, 4f))
+                    .SetRadius(6f)
+                    .SetColor(label.held
+                        ? theme.GetColor(NowColorToken.SurfacePressed)
+                        : theme.GetColor(NowColorToken.SurfaceHover))
+                    .Draw();
+            }
+
+            NowControls.DrawCenteredLabel(theme, headerRect, HeaderLabel(state, view), NowTextStyle.BodyStrong, headerRect);
+        }
+
+        static string HeaderLabel(PopupState state, int view)
+        {
+            if (view == 0)
+            {
+                if (state.cachedLabelYear != state.year || state.cachedLabelMonth != state.month || state.monthLabel == null)
+                {
+                    state.cachedLabelYear = state.year;
+                    state.cachedLabelMonth = state.month;
+                    state.monthLabel = string.Format(
+                        CultureInfo.CurrentCulture,
+                        "{0} {1}",
+                        CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(state.month),
+                        state.year);
+                }
+
+                return state.monthLabel;
+            }
+
+            if (view == 1)
+            {
+                if (state.cachedHeaderYear != state.year || state.yearHeaderLabel == null)
+                {
+                    state.cachedHeaderYear = state.year;
+                    state.yearHeaderLabel = state.year.ToString(CultureInfo.InvariantCulture);
+                }
+
+                return state.yearHeaderLabel;
+            }
+
+            int start = YearPageStart(state.year);
+
+            if (state.cachedRangeStart != start || state.rangeLabel == null)
+            {
+                state.cachedRangeStart = start;
+                state.rangeLabel = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} – {1}",
+                    start,
+                    Mathf.Min(start + 11, 9999));
+            }
+
+            return state.rangeLabel;
         }
 
         static void DrawHeaderButton(NowThemeAsset theme, NowRect rect, in NowInteraction interaction, bool left)
@@ -497,22 +758,18 @@ namespace NowUI
             Now.Line(tip, bottom).SetColor(color).SetWidth(1.6f).SetCap(NowLineCap.Round).Draw();
         }
 
-        static void StepMonth(ref ShownMonth shown, int delta)
+        static void StepMonths(ref ShownMonth shown, int delta)
         {
-            int month = shown.month + delta;
+            int index = shown.year * 12 + (shown.month - 1) + delta;
+            index = Mathf.Clamp(index, 12, 9999 * 12 + 11);
+            shown.year = index / 12;
+            shown.month = index % 12 + 1;
+            ClampShownMonth(ref shown);
+        }
 
-            if (month < 1)
-            {
-                month = 12;
-                --shown.year;
-            }
-            else if (month > 12)
-            {
-                month = 1;
-                ++shown.year;
-            }
-
-            shown.month = month;
+        static void StepYears(ref ShownMonth shown, int delta)
+        {
+            shown.year = Mathf.Clamp(shown.year + delta, 1, 9999);
             ClampShownMonth(ref shown);
         }
 
@@ -560,6 +817,15 @@ namespace NowUI
                 for (int i = 0; i < 7; ++i)
                     s_weekdayLabels[i] = format.GetShortestDayName((DayOfWeek)((first + i) % 7));
             }
+
+            if (s_monthLabels == null)
+            {
+                s_monthLabels = new string[12];
+                var format = CultureInfo.CurrentCulture.DateTimeFormat;
+
+                for (int i = 0; i < 12; ++i)
+                    s_monthLabels[i] = format.GetAbbreviatedMonthName(i + 1);
+            }
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -569,6 +835,7 @@ namespace NowUI
             _fieldLabels.Clear();
             s_dayLabels = null;
             s_weekdayLabels = null;
+            s_monthLabels = null;
         }
     }
 }

@@ -37,6 +37,8 @@ namespace NowUI
 
         [SerializeField] NowGlassBlurQuality _glassBlurQuality = NowGlassBlurQuality.Auto;
 
+        [SerializeField] bool _layoutMeasurePass = true;
+
         int _registrationIndex;
 
         public event Action<NowPipelineGraphic, Camera, Rect> rebuildNowUI;
@@ -82,6 +84,20 @@ namespace NowUI
         {
             get => _glassBlurQuality;
             set => _glassBlurQuality = value;
+        }
+
+        /// <summary>
+        /// When enabled, camera builds run a NowLayout measure pass (draws
+        /// suppressed, input passive) before the real pass — so flexible space,
+        /// stretching and auto-sized groups are exact every frame instead of
+        /// settling one frame late. All graphics on a camera share one build,
+        /// so the pass runs when any rendered graphic has it enabled; disable
+        /// it on every graphic that skips NowLayout to save the extra pass.
+        /// </summary>
+        public bool layoutMeasurePass
+        {
+            get => _layoutMeasurePass;
+            set => _layoutMeasurePass = value;
         }
 
         public static bool HasGraphicsFor(Camera camera)
@@ -138,7 +154,7 @@ namespace NowUI
                     NowFrame.DrawContent(
                         ref content,
                         new NowRect(0f, 0f, size.x, size.y),
-                        measurePass: false,
+                        AnyRenderableWantsMeasurePass(camera),
                         trackContent: false);
                 }
 
@@ -155,6 +171,19 @@ namespace NowUI
             }
 
             return drawList.hasGeometry;
+        }
+
+        static bool AnyRenderableWantsMeasurePass(Camera camera)
+        {
+            for (int i = 0; i < _graphics.Count; ++i)
+            {
+                var graphic = _graphics[i];
+
+                if (graphic != null && graphic._layoutMeasurePass && graphic.CanRender(camera))
+                    return true;
+            }
+
+            return false;
         }
 
         public bool CanRender(Camera camera)

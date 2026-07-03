@@ -121,12 +121,12 @@ Shader "NowUI/UI Ripple UGUI"
                 float4 radius = float4(i.radiusXYZ, i.uv.z);
                 float2 centered = (rawUV - 0.5) * rect.zw;
                 float shapeDist = sdRoundedBox(centered, rect.zw * 0.5, radius);
-                float shapeDelta = max(fwidth(shapeDist), 0.0001);
+                float shapeDelta = max(length(float2(ddx(shapeDist), ddy(shapeDist))), 0.0001);
                 float shapeAlpha = 1.0 - smoothstep(0.0, shapeDelta, shapeDist);
 
                 float2 screenPos = float2(pos.x, -pos.y);
                 float circleDist = length(screenPos - i.extras.xy) - i.extras.w;
-                float circleDelta = max(fwidth(circleDist), 0.0001);
+                float circleDelta = max(length(float2(ddx(circleDist), ddy(circleDist))), 0.0001);
                 float circleAlpha = 1.0 - smoothstep(-circleDelta, circleDelta, circleDist);
 
                 float alpha = i.color.a * shapeAlpha * circleAlpha;

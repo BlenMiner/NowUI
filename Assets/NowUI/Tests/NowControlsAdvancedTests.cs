@@ -683,6 +683,73 @@ public class NowControlsAdvancedTests
     }
 
     [Test]
+    public void ContextMenuClickDeliversByLabelWhenItemsShift()
+    {
+        const int menuId = 7017;
+        var anchor = new Vector2(20f, 20f);
+        bool includeCopy = true;
+        bool copyClicked = false;
+        bool selectAllClicked = false;
+
+        void DrawFrame(bool open = false)
+        {
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                if (open)
+                    NowContextMenu.Open(menuId, anchor);
+
+                if (NowContextMenu.Begin(menuId))
+                {
+                    if (includeCopy && NowContextMenu.Item("Copy"))
+                        copyClicked = true;
+
+                    if (NowContextMenu.Item("Select All"))
+                        selectAllClicked = true;
+
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+        }
+
+        void ClickCopyRow()
+        {
+            var styles = NowTheme.themeAsset.controlStyles;
+            var copyRow = new Vector2(
+                anchor.x + styles.popupPadding + 12f,
+                anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+
+            _pointer.snapshot = new NowInputSnapshot(copyRow, false, false, false);
+            DrawFrame(open: true);
+
+            _pointer.snapshot = new NowInputSnapshot(copyRow, true, true, false);
+            DrawFrame();
+
+            _pointer.snapshot = new NowInputSnapshot(copyRow, false, false, true);
+            DrawFrame();
+        }
+
+        ClickCopyRow();
+        includeCopy = false;
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(20f, 20f), false, false, false);
+        DrawFrame();
+
+        Assert.IsFalse(selectAllClicked,
+            "a click on Copy must not deliver to whichever item slid into its slot on the delivery frame");
+        Assert.IsFalse(copyClicked, "an undeclared item cannot deliver");
+
+        includeCopy = true;
+        ClickCopyRow();
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(20f, 20f), false, false, false);
+        DrawFrame();
+
+        Assert.IsTrue(copyClicked, "the clicked label delivers when it is declared on the delivery frame");
+        Assert.IsFalse(selectAllClicked);
+    }
+
+    [Test]
     public void ContextMenuSubmenuSurvivesDiagonalHoverThroughSiblingRows()
     {
         const int menuId = 7013;
@@ -2099,12 +2166,89 @@ public class NowControlsAdvancedTests
             DrawFrame();
 
             Assert.Greater(renderer.verticalScrollbars, verticalBefore, "Tall cached content should draw a vertical scrollbar.");
-            Assert.Greater(renderer.horizontalScrollbars, horizontalBefore, "The vertical scrollbar gutter should reduce width enough to reveal horizontal overflow.");
+            Assert.AreEqual(horizontalBefore, renderer.horizontalScrollbars, "Horizontal overflow shows only once content has re-measured inside the gutter-reduced width.");
+
+            int horizontalSettled = renderer.horizontalScrollbars;
+
+            DrawFrame();
+
+            Assert.Greater(renderer.horizontalScrollbars, horizontalSettled, "The vertical scrollbar gutter should reduce width enough to reveal horizontal overflow.");
         }
         finally
         {
             Object.DestroyImmediate(renderer);
             Object.DestroyImmediate(theme);
+            NowLayout.Reset();
+        }
+    }
+
+    (bool vertical, bool horizontal, Vector2 maxScroll) DrawStretchContentScrollFrame(NowRect viewport, float contentHeight)
+    {
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            var scroll = Now.ScrollView(viewport, "stretch-flicker").Begin();
+            NowLayout.Rect(height: contentHeight, stretchWidth: true);
+            var result = (scroll.verticalScrollbarVisible, scroll.horizontalScrollbarVisible, scroll.maxScrollOffset);
+            scroll.Dispose();
+            return result;
+        }
+    }
+
+    [Test]
+    public void ScrollViewVerticalOverflowDoesNotFlashHorizontalBar()
+    {
+        NowLayout.Reset();
+
+        try
+        {
+            var viewport = new NowRect(0, 0, 200, 100);
+
+            DrawStretchContentScrollFrame(viewport, 90f);
+            var fitting = DrawStretchContentScrollFrame(viewport, 150f);
+
+            Assert.IsFalse(fitting.vertical, "Cached content still fits on the frame it grows.");
+            Assert.IsFalse(fitting.horizontal);
+
+            var crossing = DrawStretchContentScrollFrame(viewport, 150f);
+
+            Assert.IsTrue(crossing.vertical, "Content taller than the viewport must show the vertical bar.");
+            Assert.IsFalse(crossing.horizontal, "Stretch-width content measured at the full width must not fake a horizontal bar when the vertical bar appears.");
+            Assert.AreEqual(0f, crossing.maxScroll.x, "No horizontal bar means no horizontal scroll range.");
+
+            var settled = DrawStretchContentScrollFrame(viewport, 150f);
+
+            Assert.IsTrue(settled.vertical);
+            Assert.IsFalse(settled.horizontal, "Content re-measured at the gutter-reduced width must stay horizontal-bar-free.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+        }
+    }
+
+    [Test]
+    public void ScrollViewViewportGrowthHidesVerticalBarImmediately()
+    {
+        NowLayout.Reset();
+
+        try
+        {
+            var small = new NowRect(0, 0, 200, 100);
+            var large = new NowRect(0, 0, 200, 300);
+
+            DrawStretchContentScrollFrame(small, 150f);
+            var overflowing = DrawStretchContentScrollFrame(small, 150f);
+
+            Assert.IsTrue(overflowing.vertical, "Content taller than the small viewport must show the vertical bar.");
+
+            var grown = DrawStretchContentScrollFrame(large, 150f);
+
+            Assert.IsFalse(grown.vertical, "Content fitting the grown viewport must hide the vertical bar without waiting for a re-measure.");
+            Assert.AreEqual(Vector2.zero, grown.maxScroll, "Fitting content has no scroll range.");
+        }
+        finally
+        {
             NowLayout.Reset();
         }
     }
@@ -2145,6 +2289,189 @@ public class NowControlsAdvancedTests
             ref Vector2 scroll = ref NowControlState.Get<Vector2>(scrollId);
             Assert.Greater(scroll.x, 0f, "Horizontal wheel delta should scroll wide content.");
             Assert.LessOrEqual(scroll.x, 60f, "Horizontal scroll must clamp to content - viewport.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+        }
+    }
+
+    NowInputSnapshot ButtonSnapshot(
+        Vector2 pointer,
+        NowPointerButtons down,
+        NowPointerButtons pressed,
+        NowPointerButtons released,
+        float time)
+    {
+        return new NowInputSnapshot(
+            true, pointer, pointer, Vector2.zero,
+            down, pressed, released,
+            Vector2.zero, Vector2.zero,
+            false, false, false, false, false, false, 1, time);
+    }
+
+    void DrawDragScrollFrame(Vector2 pointer, bool down, bool pressed, bool released, float time)
+    {
+        _pointer.snapshot = ButtonSnapshot(
+            pointer,
+            NowInputSnapshot.ToButtonMask(down, NowPointerButton.Primary),
+            NowInputSnapshot.ToButtonMask(pressed, NowPointerButton.Primary),
+            NowInputSnapshot.ToButtonMask(released, NowPointerButton.Primary),
+            time);
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        using (Now.ScrollView(new NowRect(0, 0, 200, 100), "drag-scroll").Begin())
+        {
+            NowLayout.Rect(180f, 400f);
+            var content = NowInput.Interact("drag-content", new NowRect(0, 0, 200, 400));
+
+            if (content.dragging)
+                NowScrollView.RequestDragScroll();
+        }
+    }
+
+    [Test]
+    public void ScrollViewDragScrollsWhenPointerNearsViewportEdge()
+    {
+        NowLayout.Reset();
+
+        try
+        {
+            DrawDragScrollFrame(new Vector2(100f, 50f), false, false, false, 0.00f);
+            DrawDragScrollFrame(new Vector2(100f, 50f), false, false, false, 0.05f);
+            DrawDragScrollFrame(new Vector2(100f, 50f), true, true, false, 0.10f);
+            DrawDragScrollFrame(new Vector2(100f, 92f), true, false, false, 0.15f);
+            DrawDragScrollFrame(new Vector2(100f, 92f), true, false, false, 0.20f);
+
+            int scrollId;
+
+            using (NowInput.Begin(_pointer, Surface))
+                scrollId = NowControls.GetControlId("drag-scroll");
+
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(scrollId);
+            float afterHold = scroll.y;
+            Assert.Greater(afterHold, 0f, "Dragging near the bottom edge should auto-scroll down.");
+
+            DrawDragScrollFrame(new Vector2(100f, 92f), true, false, false, 0.25f);
+            Assert.Greater(scroll.y, afterHold, "Auto-scroll should continue while the drag holds at the edge.");
+
+            DrawDragScrollFrame(new Vector2(100f, 92f), false, false, true, 0.30f);
+            float afterRelease = scroll.y;
+            DrawDragScrollFrame(new Vector2(100f, 92f), false, false, false, 0.35f);
+            Assert.AreEqual(afterRelease, scroll.y, 0.001f, "Auto-scroll must stop when the drag ends.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+        }
+    }
+
+    [Test]
+    public void ScrollViewDragScrollIgnoresPointerAwayFromEdges()
+    {
+        NowLayout.Reset();
+
+        try
+        {
+            DrawDragScrollFrame(new Vector2(100f, 30f), false, false, false, 0.00f);
+            DrawDragScrollFrame(new Vector2(100f, 30f), false, false, false, 0.05f);
+            DrawDragScrollFrame(new Vector2(100f, 30f), true, true, false, 0.10f);
+            DrawDragScrollFrame(new Vector2(100f, 60f), true, false, false, 0.15f);
+            DrawDragScrollFrame(new Vector2(100f, 60f), true, false, false, 0.20f);
+
+            int scrollId;
+
+            using (NowInput.Begin(_pointer, Surface))
+                scrollId = NowControls.GetControlId("drag-scroll");
+
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(scrollId);
+            Assert.AreEqual(0f, scroll.y, 0.001f, "Dragging in the middle of the viewport should not auto-scroll.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+        }
+    }
+
+    void DrawPanScrollFrame(Vector2 pointer, bool middleDown, bool middlePressed, bool middleReleased, bool primaryPressed, float time)
+    {
+        _pointer.snapshot = ButtonSnapshot(
+            pointer,
+            NowInputSnapshot.ToButtonMask(middleDown, NowPointerButton.Middle),
+            NowInputSnapshot.ToButtonMask(middlePressed, NowPointerButton.Middle) |
+                NowInputSnapshot.ToButtonMask(primaryPressed, NowPointerButton.Primary),
+            NowInputSnapshot.ToButtonMask(middleReleased, NowPointerButton.Middle),
+            time);
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        using (Now.ScrollView(new NowRect(0, 0, 200, 100), "pan-scroll").Begin())
+        {
+            NowLayout.Rect(180f, 400f);
+        }
+    }
+
+    [Test]
+    public void ScrollViewMiddleClickPansUntilNextPress()
+    {
+        NowLayout.Reset();
+
+        try
+        {
+            DrawPanScrollFrame(new Vector2(100f, 50f), false, false, false, false, 0.00f);
+            DrawPanScrollFrame(new Vector2(100f, 50f), false, false, false, false, 0.05f);
+            DrawPanScrollFrame(new Vector2(100f, 50f), true, true, false, false, 0.10f);
+            DrawPanScrollFrame(new Vector2(100f, 50f), false, false, true, false, 0.15f);
+            DrawPanScrollFrame(new Vector2(100f, 90f), false, false, false, false, 0.20f);
+            DrawPanScrollFrame(new Vector2(100f, 90f), false, false, false, false, 0.25f);
+
+            int scrollId;
+
+            using (NowInput.Begin(_pointer, Surface))
+                scrollId = NowControls.GetControlId("pan-scroll");
+
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(scrollId);
+            float whilePanning = scroll.y;
+            Assert.Greater(whilePanning, 0f, "A middle click should keep panning after release.");
+
+            DrawPanScrollFrame(new Vector2(100f, 90f), false, false, false, true, 0.30f);
+            float afterStop = scroll.y;
+            DrawPanScrollFrame(new Vector2(100f, 90f), false, false, false, false, 0.35f);
+            Assert.AreEqual(afterStop, scroll.y, 0.001f, "Any button press must end sticky pan mode.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+        }
+    }
+
+    [Test]
+    public void ScrollViewMiddleDragPansAndStopsOnRelease()
+    {
+        NowLayout.Reset();
+
+        try
+        {
+            DrawPanScrollFrame(new Vector2(100f, 50f), false, false, false, false, 0.00f);
+            DrawPanScrollFrame(new Vector2(100f, 50f), false, false, false, false, 0.05f);
+            DrawPanScrollFrame(new Vector2(100f, 50f), true, true, false, false, 0.10f);
+            DrawPanScrollFrame(new Vector2(100f, 90f), true, false, false, false, 0.15f);
+            DrawPanScrollFrame(new Vector2(100f, 90f), true, false, false, false, 0.20f);
+
+            int scrollId;
+
+            using (NowInput.Begin(_pointer, Surface))
+                scrollId = NowControls.GetControlId("pan-scroll");
+
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(scrollId);
+            float whileHeld = scroll.y;
+            Assert.Greater(whileHeld, 0f, "Holding middle away from the anchor should pan the content.");
+
+            DrawPanScrollFrame(new Vector2(100f, 90f), false, false, true, false, 0.25f);
+            float afterRelease = scroll.y;
+            DrawPanScrollFrame(new Vector2(100f, 90f), false, false, false, false, 0.30f);
+            Assert.AreEqual(afterRelease, scroll.y, 0.001f, "Releasing after a middle drag must end the pan.");
         }
         finally
         {

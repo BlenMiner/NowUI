@@ -27,18 +27,22 @@ namespace NowUI.Internal
 
         public readonly NowRect bounds;
 
+        /// <summary>Deferred overlay geometry (popups, menus, tooltips) drawn after regular content.</summary>
+        public readonly bool overlay;
+
         public NowMeshBatch(Material material, NowMeshKind kind)
             : this(material, null, kind, default)
         {
         }
 
-        public NowMeshBatch(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 data, NowRect bounds = default)
+        public NowMeshBatch(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 data, NowRect bounds = default, bool overlay = false)
         {
             this.material = material;
             this.canvasMaterial = canvasMaterial;
             this.kind = kind;
             this.data = data;
             this.bounds = bounds;
+            this.overlay = overlay;
         }
     }
 

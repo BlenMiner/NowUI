@@ -37,6 +37,9 @@ stay owned by you, passed by ref.
 using (NowLayout.Area(NowScreen.safeArea))
 using (NowLayout.Vertical(padding: 16, spacing: 8))
 {
+    NowLayout.Label("Settings").SetBold().SetFontSize(18).Draw();
+    NowLayout.Lottie(spinnerAsset).SetTime(Time.time).SetHeight(24).Draw();
+
     if (NowLayout.Button("Save").Draw())
         Save();
 
@@ -98,6 +101,11 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
 }
 ```
 
+- `Label(text)` flows themed text; builder styling (`SetFontSize`, `SetBold`,
+  `SetColor`) overrides the theme presets per call.
+- `Lottie(asset)` reserves a layout box for a vector animation; time always
+  comes from the caller — `SetTime(Time.time)` plays, `SetNormalizedTime`
+  pins a frame for scrubbing (no hidden clock).
 - `Switch(...).Draw(ref value)` is the toggle-switch twin of `Checkbox` — same
   contract, sliding-knob visual.
 - `ProgressBar(value01)` draws a determinate fill; `SetIndeterminate().SetTime(t)`
@@ -118,8 +126,14 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   type to filter, up/down highlight, submit commits.
 - `DatePicker().Draw(ref DateTime)` opens a calendar popup (only the date
   component changes; pass `SetToday(DateTime.Today)` for the today ring —
-  caller-passed by design). `TimePicker().Draw(ref TimeSpan)` edits time with
-  spinner fields and optional AM/PM chips.
+  caller-passed by design). Clicking the header label zooms out to a month
+  grid and then a 12-year grid for fast navigation; picking a year or month
+  drills back in, and Escape steps one zoom level back before closing.
+- `TimePicker().Draw(ref TimeSpan)` edits time with a clock dial: the header
+  shows clickable hour and minute segments, tapping or dragging the dial sets
+  the active one, and releasing on an hour auto-advances to minutes. 24-hour
+  mode uses a dual ring (outer 1–12, inner 13–00); `Set24Hour(false)` adds
+  AM/PM chips, and `SetMinuteStep(n)` snaps the dial.
 - `NowTooltip.For(rect, "help text")` attaches a hover/long-press tooltip to
   any rect; it renders as a passive overlay that never blocks the pointer.
 - Context menus taller than the view clamp their height and scroll (mouse
@@ -144,9 +158,10 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   expansion in control state and returns whether the section is open.
 - `MaskField(options).Draw(ref int mask)` is the multi-select dropdown twin of
   `Dropdown` — option i toggles bit `1 << i`, with Nothing/Everything rows, and
-  the popup stays open while toggling. `LayerMaskField().Draw(ref LayerMask)`
-  edits layer masks against the project's named layers (Everything stores -1,
-  like Unity).
+  the popup stays open while toggling. The closed field lists the selected
+  names ("Music, Effects") while they fit its label area, falling back to
+  "Mixed (n)". `LayerMaskField().Draw(ref LayerMask)` edits layer masks
+  against the project's named layers (Everything stores -1, like Unity).
 - `ColorPicker` draws a compact swatch field and opens an overlay HSV picker
   with shader-backed saturation/value, hue, optional alpha editing, editable
   hex copy/paste, and Unity-style RGBA channel sliders. Selection applies on
@@ -201,11 +216,24 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   when the selected path changes; loading and saving the file contents remains
   caller-owned.
 - `ScrollView` scrolls with the wheel while hovered and with the scrollbar
-  thumb; content height is the layout group's measured extent (one frame
-  late, like all layout measurement). Focus navigation can move to clipped
-  children and scrolls the viewport to reveal the focused control. The scope
-  exposes `scrollOffset` and `ScrollToEnd()` for programmatic control (e.g.
-  chat stick-to-bottom). Vertical only for now.
+  thumb; content size is the layout group's measured extent (one frame
+  late, like all layout measurement). Bars appear per axis when content
+  exceeds the space it was measured against, so a vertical bar reserving
+  its gutter never flashes a phantom horizontal bar. Focus navigation can
+  move to clipped children and scrolls the viewport to reveal the focused
+  control. The scope exposes `scrollOffset`, `maxScrollOffset`,
+  `ScrollToEnd()` and `verticalScrollbarVisible` /
+  `horizontalScrollbarVisible` for programmatic control (e.g. chat
+  stick-to-bottom).
+- Scroll views auto-scroll while a scroll-aware drag (text selection, or any
+  custom gesture that calls `NowScrollView.RequestDragScroll()` on its
+  dragging frames) holds the pointer near or past the viewport edge — speed
+  grows with distance, browser-style. Middle-click autoscroll also works like
+  a browser: a middle press drops an anchor (drawn via the themable
+  `DrawScrollPanAnchor` renderer hook) and the view pans with speed
+  proportional to the pointer's distance from it; press-drag-release pans
+  once, while a middle click with no drag keeps panning until any button
+  press ends it.
 
 ## Inspector
 
@@ -623,8 +651,12 @@ custom `NowControlRenderer` on the active theme.
 Focusable controls register with `NowFocus` every frame. Arrows, WASD, the
 d-pad or left stick move focus spatially, including held-input repeat after
 a short delay; when nothing is focused, directional navigation starts from
-the opposite edge of the control set. Tab and Shift+Tab cycle through controls
-in draw order. Submit (enter/space/gamepad south) activates the focused
+the opposite edge of the control set, preferring controls currently visible
+in the viewport. Spatial moves keep a sticky cross-axis anchor: navigating
+down a form holds the column you started in even when a row in between only
+has one offset control, until you deliberately move sideways (or focus
+changes by pointer, Tab, or an explicit link). Tab and Shift+Tab cycle
+through controls in draw order. Submit (enter/space/gamepad south) activates the focused
 control; cancel clears focus (and closes popups). Clicking a control focuses
 it. Focused controls draw a focus outline.
 

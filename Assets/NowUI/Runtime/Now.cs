@@ -42,7 +42,7 @@ namespace NowUI
         /// <summary>
         /// Font used by text helpers when no explicit font is provided, such as
         /// <see cref="Text(NowRect)"/> and <see cref="NowLayout.Label(string)"/>.
-        /// Defaults to the bundled OpenSans-Regular font unless overridden.
+        /// Defaults to the bundled NotoSans font unless overridden.
         /// </summary>
         public static NowFontAsset defaultFont
         {
@@ -350,6 +350,8 @@ namespace NowUI
 
         static int _lastUsedMeshId = -1;
 
+        static int _overlayStartMesh = int.MaxValue;
+
         static bool _captureMesh;
 
         static Mesh _legacyGlassReplayMesh;
@@ -362,6 +364,7 @@ namespace NowUI
         {
             public StaticList<NowMesh> meshes;
             public int lastUsedMeshId;
+            public int overlayStartMesh;
             public bool captureMesh;
             public NowRect screenMask;
             public readonly List<NowRect> maskStack = new List<NowRect>(4);
@@ -944,6 +947,7 @@ namespace NowUI
 
             state.meshes = _meshes;
             state.lastUsedMeshId = _lastUsedMeshId;
+            state.overlayStartMesh = _overlayStartMesh;
             state.captureMesh = _captureMesh;
             state.screenMask = Now.screenMask;
             state.maskStack.Clear();
@@ -967,6 +971,7 @@ namespace NowUI
             _captureMesh = true;
             _meshes = RentCaptureMeshes();
             _lastUsedMeshId = -1;
+            _overlayStartMesh = int.MaxValue;
         }
 
         static StaticList<NowMesh> RentCaptureMeshes()
@@ -988,6 +993,19 @@ namespace NowUI
 
             meshes.count = 0;
             _meshCapturePool.Push(meshes.array);
+        }
+
+        /// <summary>
+        /// Marks every mesh created from here to the end of the frame or the
+        /// enclosing capture as overlay geometry (deferred popups, menus,
+        /// tooltips). Breaks the current batch so overlay draws never merge
+        /// into a content batch; world hosts render overlay batches with their
+        /// own depth state so scene geometry cannot slice through them.
+        /// </summary>
+        internal static void MarkOverlayBatchStart()
+        {
+            _overlayStartMesh = Mathf.Min(_overlayStartMesh, _meshes.count);
+            _lastUsedMeshId = -1;
         }
 
         internal static void BeginSuppressDraw()
@@ -1038,6 +1056,7 @@ namespace NowUI
                 _meshes = new StaticList<NowMesh>(100);
                 _captureMesh = false;
                 _lastUsedMeshId = -1;
+                _overlayStartMesh = int.MaxValue;
                 return;
             }
 
@@ -1046,6 +1065,7 @@ namespace NowUI
 
             _meshes = state.meshes;
             _lastUsedMeshId = state.lastUsedMeshId;
+            _overlayStartMesh = state.overlayStartMesh;
             _captureMesh = state.captureMesh;
             Now.screenMask = state.screenMask;
             _maskStack.Clear();
@@ -1236,7 +1256,8 @@ namespace NowUI
                     mesh.canvasMaterial,
                     mesh.kind,
                     mesh.batchData,
-                    bounds));
+                    bounds,
+                    i >= _overlayStartMesh));
 
                 if (layout == NowMeshLayout.Canvas)
                 {

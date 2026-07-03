@@ -845,7 +845,10 @@ namespace NowUI
                 return;
 
             using var profile = NowProfiler.OverlayFlush.Auto();
+            Now.MarkOverlayBatchStart();
             ++_overlayDepth;
+
+            const int MaxFlushedOverlays = 1024;
 
             try
             {
@@ -853,6 +856,17 @@ namespace NowUI
                 // the same flush, drawn after their parents.
                 for (int i = 0; i < _deferred.Count; ++i)
                 {
+                    if (i >= MaxFlushedOverlays)
+                    {
+                        var last = _deferred[i];
+                        var callback = last.drawWithState?.Method ?? last.draw?.Method;
+                        Debug.LogError(
+                            $"NowOverlay.Flush aborted after {MaxFlushedOverlays} overlays in one frame — an overlay " +
+                            $"is re-deferring itself every pass. Last overlay id {last.overlayId}, callback " +
+                            $"{callback?.DeclaringType?.Name}.{callback?.Name}.");
+                        break;
+                    }
+
                     var deferred = _deferred[i];
                     _drawingStack.Add(deferred.overlayId);
 

@@ -334,22 +334,51 @@ public class NowNewControlsTests
         return new NowRect(inner.x, inner.y, styles.calendarHeaderHeight, styles.calendarHeaderHeight);
     }
 
-    static NowRect TimePickerHourUpRect(NowRect field)
+    static NowRect CalendarHeaderLabelRect(NowRect field)
     {
         var styles = NowTheme.themeAsset.controlStyles;
-        float width = Mathf.Max(field.width, 200f);
-        float height = styles.dropdownFieldMinHeight + styles.popupPadding * 2f + 16f;
-        var popup = new NowRect(field.x, field.yMax + styles.dropdownPopupGap, width, height);
-        var inner = popup.Inset(styles.popupPadding + 4f);
-        float fieldHeight = Mathf.Max(styles.dropdownFieldMinHeight, 32f);
-        float fieldWidth = (inner.width - 14f) * 0.5f;
-        var hourRect = new NowRect(inner.x, inner.y, fieldWidth, fieldHeight);
+        var inner = CalendarPopupRect(field).Inset(styles.calendarPadding);
+        float buttonSize = styles.calendarHeaderHeight;
+        return new NowRect(inner.x + buttonSize, inner.y, inner.width - buttonSize * 2f, buttonSize);
+    }
+
+    static NowRect CalendarZoomCellRect(NowRect field, int index)
+    {
+        var styles = NowTheme.themeAsset.controlStyles;
+        var inner = CalendarPopupRect(field).Inset(styles.calendarPadding);
+        float gridTop = inner.y + styles.calendarHeaderHeight;
+        float columnWidth = inner.width / 3f;
+        float rowHeight = (inner.yMax - gridTop) / 4f;
 
         return new NowRect(
-            hourRect.xMax - styles.spinnerButtonWidth - 1f,
-            hourRect.y + 1f,
-            styles.spinnerButtonWidth,
-            hourRect.height * 0.5f - 1f);
+            inner.x + (index % 3) * columnWidth,
+            gridTop + (index / 3) * rowHeight,
+            columnWidth,
+            rowHeight);
+    }
+
+    static NowRect TimePickerDialRect(NowRect field)
+    {
+        var styles = NowTheme.themeAsset.controlStyles;
+        float padding = styles.popupPadding + 4f;
+        float dialSize = styles.clockDialSize;
+        float width = Mathf.Max(field.width, dialSize + padding * 2f);
+        float height = padding * 2f + styles.clockHeaderHeight + 10f + dialSize;
+        var popup = new NowRect(field.x, field.yMax + styles.dropdownPopupGap, width, height);
+        var inner = popup.Inset(padding);
+
+        return new NowRect(
+            inner.x + (inner.width - dialSize) * 0.5f,
+            inner.y + styles.clockHeaderHeight + 10f,
+            dialSize,
+            dialSize);
+    }
+
+    static Vector2 TimePickerDialPoint(NowRect field, float angle, bool innerRing = false)
+    {
+        var theme = NowTheme.themeAsset;
+        var metrics = theme.controlRenderer.CalculateClockDialMetrics(theme, TimePickerDialRect(field));
+        return NowControlRenderer.ClockDialPosition(metrics, angle, innerRing ? metrics.innerRadius : metrics.outerRadius);
     }
 
     [Test]
@@ -908,24 +937,97 @@ public class NowNewControlsTests
         Assert.AreEqual(new DateTime(2026, 6, 15), value.Date);
     }
 
+    void ClickDateAt(Vector2 point, ref DateTime value)
+    {
+        _pointer.snapshot = new NowInputSnapshot(point, true, true, false);
+        DrawDateFrame(ref value);
+        _pointer.snapshot = new NowInputSnapshot(point, false, false, true);
+        DrawDateFrame(ref value);
+    }
+
     [Test]
-    public void TimePickerHourSpinnerEditsValue()
+    public void DatePickerHeaderZoomSelectsMonth()
+    {
+        var value = new DateTime(2026, 6, 15, 10, 30, 0);
+        var target = new DateTime(2026, 3, 10);
+
+        ClickDateAt(DateRect.center, ref value);
+        ClickDateAt(CalendarHeaderLabelRect(DateRect).center, ref value);
+        ClickDateAt(CalendarZoomCellRect(DateRect, 2).center, ref value);
+        ClickDateAt(CalendarDayCellRect(DateRect, 2026, 3, target).center, ref value);
+
+        _pointer.snapshot = new NowInputSnapshot(DateRect.center + new Vector2(0f, -100f), false, false, false);
+        Assert.IsTrue(DrawDateFrame(ref value), "Pending day selection must apply on the next Draw.");
+        Assert.AreEqual(target, value.Date);
+        Assert.AreEqual(new TimeSpan(10, 30, 0), value.TimeOfDay, "Zoom navigation must preserve the time of day.");
+    }
+
+    [Test]
+    public void DatePickerYearZoomSelectsYearAndMonth()
+    {
+        var value = new DateTime(2026, 6, 15, 7, 0, 0);
+        var target = new DateTime(2020, 2, 14);
+        var headerCenter = CalendarHeaderLabelRect(DateRect).center;
+
+        ClickDateAt(DateRect.center, ref value);
+        ClickDateAt(headerCenter, ref value);
+        ClickDateAt(headerCenter, ref value);
+        ClickDateAt(CalendarZoomCellRect(DateRect, 2020 - 2017).center, ref value);
+        ClickDateAt(CalendarZoomCellRect(DateRect, 1).center, ref value);
+        ClickDateAt(CalendarDayCellRect(DateRect, 2020, 2, target).center, ref value);
+
+        _pointer.snapshot = new NowInputSnapshot(DateRect.center + new Vector2(0f, -100f), false, false, false);
+        Assert.IsTrue(DrawDateFrame(ref value), "Pending day selection must apply on the next Draw.");
+        Assert.AreEqual(target, value.Date);
+        Assert.AreEqual(new TimeSpan(7, 0, 0), value.TimeOfDay);
+    }
+
+    [Test]
+    public void TimePickerDialSetsHourThenAutoAdvancesToMinutes()
     {
         var value = new TimeSpan(9, 30, 0);
         var fieldCenter = TimeRect.center;
-        var upCenter = TimePickerHourUpRect(TimeRect).center;
+        var hourPoint = TimePickerDialPoint(TimeRect, 10 * 30f);
+        var minutePoint = TimePickerDialPoint(TimeRect, 45 * 6f);
 
         _pointer.snapshot = new NowInputSnapshot(fieldCenter, true, true, false);
         Assert.IsFalse(DrawTimeFrame(ref value));
         _pointer.snapshot = new NowInputSnapshot(fieldCenter, false, false, true);
         Assert.IsFalse(DrawTimeFrame(ref value));
 
-        _pointer.snapshot = new NowInputSnapshot(upCenter, true, true, false);
+        _pointer.snapshot = new NowInputSnapshot(hourPoint, true, true, false);
         Assert.IsFalse(DrawTimeFrame(ref value));
 
-        _pointer.snapshot = new NowInputSnapshot(upCenter, false, false, true);
-        Assert.IsTrue(DrawTimeFrame(ref value), "Popup spinner edits must reflect in the caller's value.");
+        _pointer.snapshot = new NowInputSnapshot(hourPoint, false, false, true);
+        Assert.IsTrue(DrawTimeFrame(ref value), "Dial edits must reflect in the caller's value.");
         Assert.AreEqual(new TimeSpan(10, 30, 0), value);
+
+        _pointer.snapshot = new NowInputSnapshot(minutePoint, true, true, false);
+        DrawTimeFrame(ref value);
+
+        _pointer.snapshot = new NowInputSnapshot(minutePoint, false, false, true);
+        Assert.IsTrue(DrawTimeFrame(ref value), "Releasing on an hour must advance the dial to minutes.");
+        Assert.AreEqual(new TimeSpan(10, 45, 0), value);
+    }
+
+    [Test]
+    public void TimePickerDialSelectsInnerRingHoursIn24HourMode()
+    {
+        var value = new TimeSpan(9, 30, 0);
+        var fieldCenter = TimeRect.center;
+        var innerPoint = TimePickerDialPoint(TimeRect, 5 * 30f, innerRing: true);
+
+        _pointer.snapshot = new NowInputSnapshot(fieldCenter, true, true, false);
+        DrawTimeFrame(ref value);
+        _pointer.snapshot = new NowInputSnapshot(fieldCenter, false, false, true);
+        DrawTimeFrame(ref value);
+
+        _pointer.snapshot = new NowInputSnapshot(innerPoint, true, true, false);
+        DrawTimeFrame(ref value);
+
+        _pointer.snapshot = new NowInputSnapshot(innerPoint, false, false, true);
+        Assert.IsTrue(DrawTimeFrame(ref value));
+        Assert.AreEqual(new TimeSpan(17, 30, 0), value, "The inner ring at the 5 o'clock position must map to 17.");
     }
 
     [Test]
@@ -933,17 +1035,17 @@ public class NowNewControlsTests
     {
         var value = new TimeSpan(0, 9, 30, 12, 345);
         var fieldCenter = TimeRect.center;
-        var upCenter = TimePickerHourUpRect(TimeRect).center;
+        var hourPoint = TimePickerDialPoint(TimeRect, 10 * 30f);
 
         _pointer.snapshot = new NowInputSnapshot(fieldCenter, true, true, false);
         DrawTimeFrame(ref value);
         _pointer.snapshot = new NowInputSnapshot(fieldCenter, false, false, true);
         DrawTimeFrame(ref value);
 
-        _pointer.snapshot = new NowInputSnapshot(upCenter, true, true, false);
+        _pointer.snapshot = new NowInputSnapshot(hourPoint, true, true, false);
         DrawTimeFrame(ref value);
 
-        _pointer.snapshot = new NowInputSnapshot(upCenter, false, false, true);
+        _pointer.snapshot = new NowInputSnapshot(hourPoint, false, false, true);
         Assert.IsTrue(DrawTimeFrame(ref value));
         Assert.AreEqual(
             new TimeSpan(0, 10, 30, 12, 345),

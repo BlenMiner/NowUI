@@ -241,6 +241,75 @@ public class NowTextSelectionTests
     }
 
     [Test]
+    public void HighlightRectsMergeAbuttingSameRowSegments()
+    {
+        string text = "hello world";
+        float leadWidth = _font.MeasureText("hello ", Size).x;
+        float wordWidth = _font.MeasureText("world", Size).x;
+        var lines = new List<NowTextSelectionLine>
+        {
+            new NowTextSelectionLine { rect = new NowRect(0, 0, leadWidth + 1f, 20), start = 0, length = 6, fontSize = Size },
+            new NowTextSelectionLine { rect = new NowRect(leadWidth, 0, wordWidth + 1f, 20), start = 6, length = 5, fontSize = Size }
+        };
+
+        var rects = new List<NowRect>();
+        NowTextSelection.BuildHighlightRects(
+            text, lines, _font, Size, NowFontStyle.Regular, 0, text.Length, rects);
+
+        Assert.AreEqual(1, rects.Count,
+            "abutting same-row highlights must merge into one rect; stacked translucent quads double-blend into dark seams");
+        Assert.AreEqual(0f, rects[0].x, 0.01f);
+        Assert.AreEqual(leadWidth + wordWidth, rects[0].width, 0.5f);
+    }
+
+    [Test]
+    public void HighlightRectsMeasureSegmentsWithTheirOwnFontStyle()
+    {
+        string text = "Bold";
+        float boldSize = Size * 1.5f;
+        float expected = _font.MeasureText(text, boldSize, NowFontStyle.Bold).x;
+        var lines = new List<NowTextSelectionLine>
+        {
+            new NowTextSelectionLine
+            {
+                rect = new NowRect(0, 0, expected + 1f, 30),
+                start = 0,
+                length = 4,
+                fontSize = boldSize,
+                fontStyle = NowFontStyle.Bold
+            }
+        };
+
+        var rects = new List<NowRect>();
+        NowTextSelection.BuildHighlightRects(
+            text, lines, _font, Size, NowFontStyle.Regular, 0, text.Length, rects);
+
+        Assert.AreEqual(1, rects.Count);
+        Assert.AreEqual(expected, rects[0].width, 0.01f,
+            "a styled segment must highlight with the metrics it was laid out with, not the call-level style");
+    }
+
+    [Test]
+    public void HighlightRectsExtendPastRowEndForWrappedSelections()
+    {
+        string text = "first line\nsecond";
+        float firstWidth = _font.MeasureText("first line", Size).x;
+        var lines = new List<NowTextSelectionLine>
+        {
+            new NowTextSelectionLine { rect = new NowRect(0, 0, firstWidth + 1f, 20), start = 0, length = 10, fontSize = Size },
+            new NowTextSelectionLine { rect = new NowRect(0, 20, 120, 20), start = 11, length = 6, fontSize = Size }
+        };
+
+        var rects = new List<NowRect>();
+        NowTextSelection.BuildHighlightRects(
+            text, lines, _font, Size, NowFontStyle.Regular, 0, text.Length, rects);
+
+        Assert.AreEqual(2, rects.Count, "rows keep separate rects");
+        Assert.Greater(rects[0].width, firstWidth + 1f,
+            "a selection continuing on the next row hints the covered line break");
+    }
+
+    [Test]
     public void RightClickReportsAndPreservesTheSelection()
     {
         var fromX = new Vector2(XAt("hello "), 10f);

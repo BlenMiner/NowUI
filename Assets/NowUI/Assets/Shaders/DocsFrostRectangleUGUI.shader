@@ -138,7 +138,7 @@ Shader "NowUI/Examples/Frost Rectangle UGUI"
                 float4 radius = float4(i.radiusXYZ, i.uv.z);
                 float2 centered = (i.uv.xy - 0.5) * rect.zw;
                 float dist = sdRoundedBox(centered, rect.zw * 0.5, radius);
-                float delta = fwidth(dist);
+                float delta = length(float2(ddx(dist), ddy(dist)));
                 float shapeAlpha = 1 - smoothstep(-delta - i.extras.x, 0, dist);
                 float outlineWidth = max(i.extras.y, delta);
                 float outlineAlpha = i.extras.y == 0 ? 0 : smoothstep(-outlineWidth - delta, -outlineWidth, dist);

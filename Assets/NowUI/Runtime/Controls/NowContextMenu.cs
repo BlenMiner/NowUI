@@ -90,6 +90,7 @@ namespace NowUI
             public bool enabled;
             public bool selected;
             public int pathId;
+            public int deliveryId;
             public int localIndex;
             public int childMenu;
         }
@@ -208,6 +209,7 @@ namespace NowUI
             var menu = CurrentMenu();
             int localIndex = menu.entries.Count;
             int pathId = NowInput.CombineId(menu.pathId, localIndex + 1);
+            int deliveryId = ItemDeliveryId(menu, label ?? string.Empty);
 
             menu.entries.Add(new Entry
             {
@@ -216,13 +218,14 @@ namespace NowUI
                 enabled = enabled,
                 selected = selected,
                 pathId = pathId,
+                deliveryId = deliveryId,
                 localIndex = localIndex,
                 childMenu = -1
             });
 
             ref int pending = ref NowControlState.Get<int>(_pendingPathStateId);
 
-            if (pending == pathId)
+            if (pending == deliveryId)
             {
                 pending = 0;
                 _pendingOpenPath.Clear();
@@ -230,6 +233,29 @@ namespace NowUI
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Click-delivery identity for an item: label-based (plus an occurrence
+        /// counter for duplicate labels) rather than positional. Clicks deliver
+        /// one frame after the menu closes, and conditionally declared items can
+        /// shift positions between the click and the delivery frame — a
+        /// positional id would then hand the click to whichever item inherited
+        /// the slot.
+        /// </summary>
+        static int ItemDeliveryId(Menu menu, string label)
+        {
+            int occurrence = 0;
+
+            for (int i = 0; i < menu.entries.Count; ++i)
+            {
+                var entry = menu.entries[i];
+
+                if (entry.kind == EntryKind.Item && string.Equals(entry.label, label))
+                    ++occurrence;
+            }
+
+            return NowInput.CombineId(NowInput.GetId(menu.pathId, label), occurrence);
         }
 
         /// <summary>Adds a submenu row; true while that submenu should declare its children.</summary>
@@ -248,10 +274,17 @@ namespace NowUI
             var parent = _menus[parentIndex];
             int localIndex = parent.entries.Count;
             int pathId = NowInput.CombineId(parent.pathId, localIndex + 1);
+
+            // The overlay id must not be CombineId(_activeId, pathId): for root-level
+            // rows pathId is CombineId(_activeId, row + 1), and CombineId's xor mix
+            // cancels to the constant row + 1 — colliding with any menu whose own id
+            // is that small. A colliding FindMenu resolves the child's deferred draw
+            // back to its ancestor, which re-defers the child in the same flush,
+            // looping until the overlay cap trips.
             int childMenu = AddMenu(
                 _activeId,
                 pathId,
-                NowInput.CombineId(_activeId, pathId),
+                NowInput.CombineId(NowInput.GetId(_activeId, "ctx-submenu"), pathId),
                 parentIndex,
                 parent.depth + 1);
 
@@ -325,6 +358,12 @@ namespace NowUI
             });
         }
 
+        /// <summary>
+        /// Ends the declaration pass. The delivery pass (the one Begin grants
+        /// after the menu closed) is the only chance to claim a pending click:
+        /// anything unclaimed — the clicked item was not re-declared — is
+        /// dropped here rather than left waiting to match a later layout.
+        /// </summary>
         public static void End()
         {
             if (_activeId == 0)
@@ -335,7 +374,11 @@ namespace NowUI
             _buildStack.Clear();
 
             if (_openId != id)
+            {
+                NowControlState.Get<int>(_pendingPathStateId) = 0;
+                _pendingOpenPath.Clear();
                 return;
+            }
 
             var root = _menus[0];
 
@@ -400,7 +443,10 @@ namespace NowUI
         /// the navigation pulses that drive the menu-local highlight. The menu
         /// never takes <see cref="NowFocus"/> focus — stealing it would clear
         /// selections and other focus-owned state the menu items act on — so
-        /// base focus navigation is locked while the menu is open instead.
+        /// base focus navigation is locked while the menu is open, and focus is
+        /// retained so pressing a menu row (or dismissing the menu) does not
+        /// clear the owner's focus and collapse the selection an item is about
+        /// to act on.
         /// </summary>
         static void UpdateTreeInput(Menu root)
         {
@@ -414,6 +460,7 @@ namespace NowUI
             _navUpPulse = NavPulse(root, NavUpSeed, snapshot.navigation.y > NavThreshold);
             _navDownPulse = NavPulse(root, NavDownSeed, snapshot.navigation.y < -NavThreshold);
             NowFocus.LockNavigation();
+            NowFocus.RetainFocus();
 
             if (_highlightMenuOverlay == 0)
                 return;
@@ -925,7 +972,7 @@ namespace NowUI
             if (entry.kind != EntryKind.Item || !entry.enabled || (!interaction.clicked && !submitted))
                 return;
 
-            NowControlState.Get<int>(_pendingPathStateId) = entry.pathId;
+            NowControlState.Get<int>(_pendingPathStateId) = entry.deliveryId;
             CopyOpenPathToPending(menu.depth);
             Close();
         }
@@ -987,18 +1034,29 @@ namespace NowUI
                 var preferred = preferRight ? right : left;
                 var alternate = preferRight ? left : right;
 
-                rect = SubmenuFitsHorizontally(preferred)
-                    ? preferred
-                    : SubmenuFitsHorizontally(alternate)
-                        ? alternate
-                        : preferred;
+                var clampedPreferred = NowOverlay.ClampScreenToView(preferred);
+                var clampedAlternate = NowOverlay.ClampScreenToView(alternate);
+                float preferredError = HorizontalClampError(preferred, clampedPreferred);
+                float alternateError = HorizontalClampError(alternate, clampedAlternate);
 
-                rect = NowOverlay.ClampScreenToView(rect);
+                rect = preferredError <= alternateError + 0.5f ? clampedPreferred : clampedAlternate;
                 child.height = rect.height;
                 child.scrolls = child.height < child.contentHeight - 0.5f;
             }
 
             return rect;
+        }
+
+        /// <summary>
+        /// How far the view clamp displaced or shrank a submenu candidate
+        /// horizontally. Zero means the side fits as placed; larger values mean
+        /// the clamp dragged the submenu back over its ancestors, so the side
+        /// with the smaller error wins even when neither fits outright (angled
+        /// world panels routinely leave no perfectly fitting side).
+        /// </summary>
+        static float HorizontalClampError(NowRect candidate, NowRect clamped)
+        {
+            return Mathf.Abs(clamped.x - candidate.x) + Mathf.Abs(clamped.width - candidate.width);
         }
 
         static NowRect SubmenuCandidate(NowRect parentItemRect, Menu child, float popupPadding, bool right)
@@ -1021,13 +1079,6 @@ namespace NowUI
 
             var ancestor = _menus[parent.parentMenu];
             return parent.popupRect.center.x >= ancestor.popupRect.center.x;
-        }
-
-        static bool SubmenuFitsHorizontally(NowRect rect)
-        {
-            var clamped = NowOverlay.ClampScreenToView(rect);
-            return Mathf.Abs(clamped.x - rect.x) < 0.5f &&
-                Mathf.Abs(clamped.width - rect.width) < 0.5f;
         }
 
         static void MeasureMenu(Menu menu, NowThemeAsset theme)

@@ -235,7 +235,7 @@ namespace NowUI
 
             if (selectable)
             {
-                run.start = Capture(source, start, length, run.rect, run.fontSize, separate);
+                run.start = Capture(source, start, length, run.rect, run.fontSize, run.fontStyle, separate);
                 runs[runs.Count - 1] = run;
             }
 
@@ -265,12 +265,12 @@ namespace NowUI
             return start;
         }
 
-        public int Capture(string text, NowRect rect, float fontSize, bool separate = true)
+        public int Capture(string text, NowRect rect, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, bool separate = true)
         {
-            return Capture(text, 0, text?.Length ?? 0, rect, fontSize, separate);
+            return Capture(text, 0, text?.Length ?? 0, rect, fontSize, fontStyle, separate);
         }
 
-        public int Capture(string text, int sourceStart, int length, NowRect rect, float fontSize, bool separate = true)
+        public int Capture(string text, int sourceStart, int length, NowRect rect, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, bool separate = true)
         {
             if (separate && _text.Length > 0)
                 _text.Append(rect.y > _lastSelectionY + 0.5f ? '\n' : ' ');
@@ -285,7 +285,8 @@ namespace NowUI
                 rect = rect,
                 start = start,
                 length = length,
-                fontSize = fontSize
+                fontSize = fontSize,
+                fontStyle = fontStyle
             });
 
             return start;
@@ -319,7 +320,7 @@ namespace NowUI
             };
 
             if (selectable && length > 0)
-                run.start = Capture(text, rect, style.fontSize, separate);
+                run.start = Capture(text, rect, style.fontSize, style.fontStyle, separate);
 
             runs.Add(run);
             return run;
@@ -721,7 +722,8 @@ namespace NowUI
                 rect = run.rect,
                 start = run.start,
                 length = run.length,
-                fontSize = run.fontSize
+                fontSize = run.fontSize,
+                fontStyle = run.fontStyle
             };
         }
 
@@ -729,6 +731,7 @@ namespace NowUI
             string text,
             NowRect rect,
             float fontSize,
+            NowFontStyle fontStyle,
             System.Text.StringBuilder builder,
             List<NowTextSelectionLine> selectionLines,
             ref float lastY)
@@ -745,7 +748,8 @@ namespace NowUI
                 rect = rect,
                 start = flatStart,
                 length = text.Length,
-                fontSize = fontSize
+                fontSize = fontSize,
+                fontStyle = fontStyle
             });
         }
 
@@ -756,7 +760,7 @@ namespace NowUI
             List<NowTextSelectionLine> selectionLines,
             ref float lastY)
         {
-            CaptureSegment(text, run.rect, run.fontSize, builder, selectionLines, ref lastY);
+            CaptureSegment(text, run.rect, run.fontSize, run.fontStyle, builder, selectionLines, ref lastY);
         }
     }
 }

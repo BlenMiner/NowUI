@@ -35,6 +35,10 @@ namespace NowUI
 
         public Vector4 color;
 
+        public Vector4 colorEnd;
+
+        public bool gradient;
+
         public float width;
 
         public NowLineCap cap;
@@ -61,6 +65,8 @@ namespace NowUI
             control2 = to;
             mask = default;
             color = Vector4.one;
+            colorEnd = Vector4.one;
+            gradient = false;
             width = 1f;
             cap = NowLineCap.Butt;
             cubic = false;
@@ -109,12 +115,30 @@ namespace NowUI
         public NowLine SetColor(Color color)
         {
             this.color = color;
+            gradient = false;
             return this;
         }
 
         public NowLine SetColor(Vector4 color)
         {
             this.color = color;
+            gradient = false;
+            return this;
+        }
+
+        public NowLine SetGradient(Color from, Color to)
+        {
+            color = from;
+            colorEnd = to;
+            gradient = true;
+            return this;
+        }
+
+        public NowLine SetGradient(Vector4 from, Vector4 to)
+        {
+            color = from;
+            colorEnd = to;
+            gradient = true;
             return this;
         }
 
@@ -180,6 +204,8 @@ namespace NowUI
 
         static StaticList<Vector2> _lineStrokeNormals = new StaticList<Vector2>(64);
 
+        static StaticList<float> _lineStrokeArcs = new StaticList<float>(64);
+
         static Material _bezierMaterial;
 
         static int _bezierMesh = -1;
@@ -238,8 +264,9 @@ namespace NowUI
             bool hasTransform = _transformStack.Count > 0;
 
             var color = ApplyColorMultiplier(line.color);
+            var colorEnd = line.gradient ? ApplyColorMultiplier(line.colorEnd) : color;
 
-            if (color.w <= 0.0005f)
+            if (color.w <= 0.0005f && colorEnd.w <= 0.0005f)
                 return;
 
             _linePoints.Clear();
@@ -271,7 +298,7 @@ namespace NowUI
                 bezierMask = ApplyAmbientMask(bezierMask);
 
                 if (!bezierMask.isEmpty)
-                    DrawBezierStroke(from, control1, control2, to, scaledWidth, color, bezierMask, line.cap);
+                    DrawBezierStroke(from, control1, control2, to, scaledWidth, color, colorEnd, bezierMask, line.cap);
 
                 return;
             }
@@ -293,15 +320,15 @@ namespace NowUI
             _lineBuffer.Clear();
 
             if (line.dashLength > LineEpsilon && line.dashGap > LineEpsilon)
-                EmitDashedLine(ref _linePoints, line, color, _lineBuffer);
+                EmitDashedLine(ref _linePoints, line, color, colorEnd, _lineBuffer);
             else
-                EmitLineStroke(ref _linePoints, false, scaledWidth, line.cap, color, _lineBuffer);
+                EmitLineStroke(ref _linePoints, false, scaledWidth, line.cap, color, colorEnd, _lineBuffer);
 
             if ((line.arrows & NowLineArrow.Start) != 0)
                 EmitLineArrow(ref _linePoints, false, line, color, _lineBuffer);
 
             if ((line.arrows & NowLineArrow.End) != 0)
-                EmitLineArrow(ref _linePoints, true, line, color, _lineBuffer);
+                EmitLineArrow(ref _linePoints, true, line, colorEnd, _lineBuffer);
 
             if (_lineBuffer.positions.count == 0 || _lineBuffer.indices.count == 0)
                 return;
@@ -350,7 +377,7 @@ namespace NowUI
 
             _lineBuffer.Clear();
             float scaledWidth = hasTransform ? ApplyTransformScalar(width) : width;
-            EmitLineStroke(ref _linePoints, false, scaledWidth, cap, color, _lineBuffer);
+            EmitLineStroke(ref _linePoints, false, scaledWidth, cap, color, color, _lineBuffer);
 
             if (_lineBuffer.positions.count == 0 || _lineBuffer.indices.count == 0)
                 return;
@@ -438,6 +465,7 @@ namespace NowUI
             Vector2 p3,
             float width,
             Vector4 color,
+            Vector4 colorEnd,
             NowRect mask,
             NowLineCap cap)
         {
@@ -532,10 +560,13 @@ namespace NowUI
                         bPos = b + segDir * extend;
                 }
 
-                int v0 = AddBezierVertex(mesh, aPos + na, ta, cp01, cp23, color, halfWidth, aaWidth, maskVec);
-                int v1 = AddBezierVertex(mesh, bPos + nb, tb, cp01, cp23, color, halfWidth, aaWidth, maskVec);
-                int v2 = AddBezierVertex(mesh, bPos - nb, tb, cp01, cp23, color, halfWidth, aaWidth, maskVec);
-                int v3 = AddBezierVertex(mesh, aPos - na, ta, cp01, cp23, color, halfWidth, aaWidth, maskVec);
+                Vector4 colorA = colorEnd == color ? color : Vector4.Lerp(color, colorEnd, ta);
+                Vector4 colorB = colorEnd == color ? color : Vector4.Lerp(color, colorEnd, tb);
+
+                int v0 = AddBezierVertex(mesh, aPos + na, ta, cp01, cp23, colorA, halfWidth, aaWidth, maskVec);
+                int v1 = AddBezierVertex(mesh, bPos + nb, tb, cp01, cp23, colorB, halfWidth, aaWidth, maskVec);
+                int v2 = AddBezierVertex(mesh, bPos - nb, tb, cp01, cp23, colorB, halfWidth, aaWidth, maskVec);
+                int v3 = AddBezierVertex(mesh, aPos - na, ta, cp01, cp23, colorA, halfWidth, aaWidth, maskVec);
 
                 mesh.AddRawTriangleUnchecked(v0, v1, v2);
                 mesh.AddRawTriangleUnchecked(v0, v2, v3);
@@ -597,6 +628,7 @@ namespace NowUI
             ref StaticList<Vector2> points,
             NowLine line,
             Vector4 color,
+            Vector4 colorTo,
             NowLottieDrawBuffer buffer)
         {
             bool hasTransform = _transformStack.Count > 0;
@@ -609,13 +641,27 @@ namespace NowUI
 
             if (dash <= LineEpsilon || gap <= LineEpsilon || pattern <= LineEpsilon)
             {
-                EmitLineStroke(ref points, false, scaledWidth, line.cap, color, buffer);
+                EmitLineStroke(ref points, false, scaledWidth, line.cap, color, colorTo, buffer);
                 return;
+            }
+
+            bool hasGradient = colorTo != color;
+            float totalLength = 0f;
+
+            if (hasGradient)
+            {
+                for (int i = 1; i < points.count; ++i)
+                    totalLength += (points.array[i] - points.array[i - 1]).magnitude;
+
+                if (totalLength <= LineEpsilon)
+                    hasGradient = false;
             }
 
             float phase = Mathf.Repeat(line.dashOffset * scalar, pattern);
             bool drawing = phase < dash;
             float remaining = drawing ? dash - phase : pattern - phase;
+            float traveled = 0f;
+            float dashStartDistance = 0f;
 
             _lineDashPoints.Clear();
 
@@ -642,9 +688,14 @@ namespace NowUI
                         Vector2 dashEnd = start + delta * (next / length);
 
                         if (_lineDashPoints.count == 0)
+                        {
+                            dashStartDistance = traveled + walked;
                             AddLinePoint(ref _lineDashPoints, dashStart);
+                        }
                         else
+                        {
                             AddLinePointIfDistinct(ref _lineDashPoints, dashStart);
+                        }
 
                         AddLinePointIfDistinct(ref _lineDashPoints, dashEnd);
                     }
@@ -654,7 +705,18 @@ namespace NowUI
                     if (remaining - step <= LineEpsilon)
                     {
                         if (drawing && _lineDashPoints.count >= 2)
-                            EmitLineStroke(ref _lineDashPoints, false, scaledWidth, line.cap, color, buffer);
+                        {
+                            EmitDashStroke(
+                                scaledWidth,
+                                line.cap,
+                                color,
+                                colorTo,
+                                hasGradient,
+                                dashStartDistance,
+                                traveled + walked,
+                                totalLength,
+                                buffer);
+                        }
 
                         _lineDashPoints.Clear();
                         drawing = !drawing;
@@ -665,12 +727,48 @@ namespace NowUI
                         remaining -= step;
                     }
                 }
+
+                traveled += length;
             }
 
             if (drawing && _lineDashPoints.count >= 2)
-                EmitLineStroke(ref _lineDashPoints, false, scaledWidth, line.cap, color, buffer);
+            {
+                EmitDashStroke(
+                    scaledWidth,
+                    line.cap,
+                    color,
+                    colorTo,
+                    hasGradient,
+                    dashStartDistance,
+                    traveled,
+                    totalLength,
+                    buffer);
+            }
 
             _lineDashPoints.Clear();
+        }
+
+        static void EmitDashStroke(
+            float width,
+            NowLineCap cap,
+            Vector4 color,
+            Vector4 colorTo,
+            bool hasGradient,
+            float startDistance,
+            float endDistance,
+            float totalLength,
+            NowLottieDrawBuffer buffer)
+        {
+            Vector4 from = color;
+            Vector4 to = color;
+
+            if (hasGradient)
+            {
+                from = Vector4.Lerp(color, colorTo, Mathf.Clamp01(startDistance / totalLength));
+                to = Vector4.Lerp(color, colorTo, Mathf.Clamp01(endDistance / totalLength));
+            }
+
+            EmitLineStroke(ref _lineDashPoints, false, width, cap, from, to, buffer);
         }
 
         static void EmitLineArrow(
@@ -709,12 +807,12 @@ namespace NowUI
             _lineDashPoints.Clear();
             AddLinePoint(ref _lineDashPoints, sideA);
             AddLinePoint(ref _lineDashPoints, tip);
-            EmitLineStroke(ref _lineDashPoints, false, scaledWidth, NowLineCap.Round, color, buffer);
+            EmitLineStroke(ref _lineDashPoints, false, scaledWidth, NowLineCap.Round, color, color, buffer);
 
             _lineDashPoints.Clear();
             AddLinePoint(ref _lineDashPoints, tip);
             AddLinePoint(ref _lineDashPoints, sideB);
-            EmitLineStroke(ref _lineDashPoints, false, scaledWidth, NowLineCap.Round, color, buffer);
+            EmitLineStroke(ref _lineDashPoints, false, scaledWidth, NowLineCap.Round, color, color, buffer);
 
             _lineDashPoints.Clear();
         }
@@ -767,6 +865,7 @@ namespace NowUI
             float width,
             NowLineCap cap,
             Vector4 color,
+            Vector4 colorTo,
             NowLottieDrawBuffer buffer)
         {
             float halfWidth = width * 0.5f;
@@ -855,6 +954,25 @@ namespace NowUI
                 AddLinePoint(ref _lineStrokeNormals, average * scale);
             }
 
+            bool hasGradient = colorTo != color;
+            float totalArc = 0f;
+
+            if (hasGradient)
+            {
+                _lineStrokeArcs.Clear();
+                _lineStrokeArcs.EnsureCapacity(count);
+                _lineStrokeArcs.array[_lineStrokeArcs.count++] = 0f;
+
+                for (int i = 1; i < count; ++i)
+                {
+                    totalArc += (_lineStrokePoints.array[i] - _lineStrokePoints.array[i - 1]).magnitude;
+                    _lineStrokeArcs.array[_lineStrokeArcs.count++] = totalArc;
+                }
+
+                if (totalArc <= LineEpsilon)
+                    hasGradient = false;
+            }
+
             int firstRing = -1;
             int previousRing = -1;
 
@@ -867,6 +985,14 @@ namespace NowUI
             {
                 Vector2 position = _lineStrokePoints.array[i];
                 Vector2 normal = _lineStrokeNormals.array[i];
+
+                if (hasGradient)
+                {
+                    coreColor = Vector4.Lerp(color, colorTo, _lineStrokeArcs.array[i] / totalArc);
+                    coreColor.w *= coreAlpha;
+                    edgeColor = coreColor;
+                    edgeColor.w = 0f;
+                }
 
                 int ring = buffer.AddVertex(position + normal * outerWidth, edgeColor);
                 buffer.AddVertex(position + normal * innerWidth, coreColor);
@@ -890,7 +1016,7 @@ namespace NowUI
                 Vector2 startDirection = NormalizeLineVector(_lineStrokePoints.array[0] - _lineStrokePoints.array[1]);
                 Vector2 endDirection = NormalizeLineVector(_lineStrokePoints.array[count - 1] - _lineStrokePoints.array[count - 2]);
                 EmitLineRoundCap(_lineStrokePoints.array[0], startDirection, innerWidth, outerWidth, coreAlpha, color, buffer);
-                EmitLineRoundCap(_lineStrokePoints.array[count - 1], endDirection, innerWidth, outerWidth, coreAlpha, color, buffer);
+                EmitLineRoundCap(_lineStrokePoints.array[count - 1], endDirection, innerWidth, outerWidth, coreAlpha, hasGradient ? colorTo : color, buffer);
             }
         }
 

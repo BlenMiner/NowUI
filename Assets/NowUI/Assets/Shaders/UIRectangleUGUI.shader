@@ -132,7 +132,7 @@ Shader "NowUI/UI Rectangle UGUI"
                 float2 position = (rawUV - 0.5) * rect.zw;
                 float2 halfSize = rect.zw * 0.5;
                 float dist = sdRoundedBox(position, halfSize, rad);
-                float delta = max(fwidth(dist), 0.0001);
+                float delta = max(length(float2(ddx(dist), ddy(dist))), 0.0001);
                 float graphicAlpha = 1 - smoothstep(0, delta + max(blur, 0), dist);
 
                 // An outline thinner than one AA width would sit entirely inside

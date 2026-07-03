@@ -13,7 +13,7 @@ using UnityEngine;
 
 public sealed class OverlayExample : MonoBehaviour
 {
-    [SerializeField] NowFont font;
+    [SerializeField] NowFontAsset font;
 
     void OnPostRender()
     {
@@ -311,7 +311,7 @@ using UnityEngine;
 
 public sealed class MyPanel : NowGraphic
 {
-    [SerializeField] NowFont font;
+    [SerializeField] NowFontAsset font;
 
     protected override void DrawNowUI(NowRect rect)
     {
@@ -369,7 +369,7 @@ using UnityEngine;
 public sealed class NowRenderTextureExample : MonoBehaviour
 {
     [SerializeField] RenderTexture target;
-    [SerializeField] NowFont font;
+    [SerializeField] NowFontAsset font;
 
     readonly NowRenderer renderer = new NowRenderer();
 

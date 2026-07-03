@@ -114,6 +114,8 @@ namespace NowUI
         [NonSerialized] Texture _glassSharpBackdropTexture;
         [NonSerialized] readonly List<Vector3> _vertices = new List<Vector3>(256);
         [NonSerialized] readonly Dictionary<Material, Material> _materials = new Dictionary<Material, Material>(8);
+
+        [NonSerialized] readonly Dictionary<Material, Material> _overlayMaterials = new Dictionary<Material, Material>(4);
         [NonSerialized] readonly List<Material> _sharedMaterials = new List<Material>(8);
         [NonSerialized] bool _sharedMaterialsAssigned;
         [NonSerialized] Camera _fallbackCamera;
@@ -462,7 +464,13 @@ namespace NowUI
         /// Shrinks a popup until its screen-space projection fits the camera's
         /// pixel rect, then moves it into view. Projection-based, so it clamps
         /// correctly on tilted surfaces where a plane-projected bounding box
-        /// would explode toward the plane's horizon.
+        /// would explode toward the plane's horizon. The height search bisects
+        /// to the tallest fitting height: pixel density varies across a tilted
+        /// popup, so a single proportional shrink overshoots and wastes view
+        /// space whenever the trimmed end projected larger than average. Each
+        /// probe is measured after the fit translation — moving along a tilted
+        /// plane changes the projection, so measuring at the original position
+        /// lets the placed popup drift past the view edge.
         /// </summary>
         NowRect ClampPopupRectToCameraView(NowRect rect)
         {
@@ -480,24 +488,46 @@ namespace NowUI
             const float minPopupHeight = 48f;
             float maxPixels = Mathf.Max(32f, pixels.height - margin * 2f);
 
-            for (int i = 0; i < 4; ++i)
+            var fitted = FitPopupRectToCameraView(rect);
+
+            if (FitsViewVertically(cmr, fitted, pixels, maxPixels))
+                return fitted;
+
+            float tooTall = rect.height;
+            float fitting = Mathf.Min(minPopupHeight, rect.height);
+            var best = FitPopupRectToCameraView(new NowRect(rect.x, rect.y, rect.width, fitting));
+
+            for (int i = 0; i < 10 && tooTall - fitting > 1f; ++i)
             {
-                if (!TryProjectPopupScreenBounds(cmr, rect, out var screenBounds))
-                    break;
+                float probe = (fitting + tooTall) * 0.5f;
+                var candidate = FitPopupRectToCameraView(new NowRect(rect.x, rect.y, rect.width, probe));
 
-                if (screenBounds.height <= maxPixels || screenBounds.height <= 1f)
-                    break;
-
-                float ratio = maxPixels / screenBounds.height;
-                float newHeight = Mathf.Max(minPopupHeight, rect.height * ratio);
-
-                if (newHeight >= rect.height - 0.5f)
-                    break;
-
-                rect = new NowRect(rect.x, rect.y, rect.width, newHeight);
+                if (FitsViewVertically(cmr, candidate, pixels, maxPixels))
+                {
+                    fitting = probe;
+                    best = candidate;
+                }
+                else
+                {
+                    tooTall = probe;
+                }
             }
 
-            return FitPopupRectToCameraView(rect);
+            return best;
+        }
+
+        /// <summary>
+        /// Whether a fitted popup's projection stays within the vertical view
+        /// budget and actually landed inside the pixel rect after translation.
+        /// </summary>
+        bool FitsViewVertically(Camera cmr, NowRect fitted, Rect pixels, float maxPixels)
+        {
+            if (!TryProjectPopupScreenBounds(cmr, fitted, out var bounds))
+                return false;
+
+            return bounds.height <= maxPixels &&
+                bounds.yMin >= pixels.yMin - 0.5f &&
+                bounds.yMax <= pixels.yMax + 0.5f;
         }
 
         NowRect FitPopupRectToCameraView(NowRect rect)
@@ -1213,21 +1243,23 @@ namespace NowUI
             if (!source)
                 return null;
 
-            if (!_materials.TryGetValue(source, out var material) || !material)
+            var cache = batch.overlay ? _overlayMaterials : _materials;
+
+            if (!cache.TryGetValue(source, out var material) || !material)
             {
                 material = new Material(source)
                 {
-                    name = source.name + " World",
+                    name = source.name + (batch.overlay ? " World Overlay" : " World"),
                     hideFlags = HideFlags.HideAndDontSave
                 };
-                _materials[source] = material;
+                cache[source] = material;
             }
             else
             {
                 material.CopyPropertiesFromMaterial(source);
             }
 
-            ApplyDepthMode(material);
+            ApplyDepthMode(material, batch.overlay);
             ApplyGlassBackdropMode(material, batch);
             return material;
         }
@@ -1267,14 +1299,20 @@ namespace NowUI
                 _maxGlassBlurRadius >= GlassSceneDepthBlurThreshold;
         }
 
-        void ApplyDepthMode(Material material)
+        /// <summary>
+        /// Scene occlusion applies to panel content only: overlay batches
+        /// (menus, dropdowns, tooltips) always render above scene geometry.
+        /// Input is already blocked while scene geometry covers the panel, so
+        /// overlays can only exist while the panel itself is unobstructed.
+        /// </summary>
+        void ApplyDepthMode(Material material, bool overlay)
         {
             if (!material || !material.HasProperty(_zTestId))
                 return;
 
             material.SetFloat(
                 _zTestId,
-                _depthMode == NowWorldDepthMode.SceneOccluded
+                _depthMode == NowWorldDepthMode.SceneOccluded && !overlay
                     ? (float)CompareFunction.LessEqual
                     : (float)CompareFunction.Always);
         }
@@ -1586,7 +1624,15 @@ namespace NowUI
 
         void ReleaseMaterials()
         {
-            foreach (var material in _materials.Values)
+            ReleaseMaterialCache(_materials);
+            ReleaseMaterialCache(_overlayMaterials);
+            _sharedMaterials.Clear();
+            _sharedMaterialsAssigned = false;
+        }
+
+        static void ReleaseMaterialCache(Dictionary<Material, Material> cache)
+        {
+            foreach (var material in cache.Values)
             {
                 if (material == null)
                     continue;
@@ -1597,9 +1643,7 @@ namespace NowUI
                     DestroyImmediate(material);
             }
 
-            _materials.Clear();
-            _sharedMaterials.Clear();
-            _sharedMaterialsAssigned = false;
+            cache.Clear();
         }
 
         static Vector2 SanitizeSize(Vector2 value)
