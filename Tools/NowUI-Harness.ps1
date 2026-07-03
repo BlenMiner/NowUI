@@ -16,7 +16,10 @@ param(
     [string] $ArtifactsPath = (Join-Path (Resolve-Path ".").Path "artifacts\local"),
 
     [Parameter(Mandatory = $false)]
-    [switch] $UpdateBaselines
+    [switch] $UpdateBaselines,
+
+    [Parameter(Mandatory = $false)]
+    [switch] $CleanScriptAssemblies
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,12 +31,40 @@ function Resolve-UnityEditor {
         return (Resolve-Path -LiteralPath $RequestedPath).Path
     }
 
-    $fallback = "C:\Program Files\Unity\Hub\Editor\6000.4.0f1\Editor\Unity.exe"
-    if (Test-Path -LiteralPath $fallback) {
-        return $fallback
+    $fallbacks = @(
+        "C:\Program Files\Unity\Hub\Editor\6000.4.0f1\Editor\Unity.exe",
+        "/Applications/Unity/Hub/Editor/6000.4.0f1/Unity.app/Contents/MacOS/Unity",
+        "/opt/unity/Editor/Unity",
+        "/opt/Unity/Editor/Unity",
+        "$HOME/Unity/Hub/Editor/6000.4.0f1/Editor/Unity"
+    )
+
+    foreach ($fallback in $fallbacks) {
+        if (Test-Path -LiteralPath $fallback) {
+            return (Resolve-Path -LiteralPath $fallback).Path
+        }
     }
 
     throw "Unity editor was not found. Pass -UnityEditor or set UNITY_EDITOR."
+}
+
+function Clear-ScriptAssemblies {
+    $project = (Resolve-Path -LiteralPath $ProjectPath).Path
+    $scriptAssembliesPath = Join-Path $project "Library/ScriptAssemblies"
+
+    if (!(Test-Path -LiteralPath $scriptAssembliesPath)) {
+        return
+    }
+
+    $resolvedScriptAssemblies = Resolve-Path -LiteralPath $scriptAssembliesPath
+    $projectPrefix = $project.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+
+    if (!$resolvedScriptAssemblies.Path.StartsWith($projectPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove ScriptAssemblies outside the project path: '$($resolvedScriptAssemblies.Path)'."
+    }
+
+    Write-Host "Removing stale Unity script assemblies from '$($resolvedScriptAssemblies.Path)'."
+    Remove-Item -LiteralPath $resolvedScriptAssemblies.Path -Recurse -Force
 }
 
 function Invoke-Unity {
@@ -85,11 +116,13 @@ function Invoke-TestRun {
     $resultPath = Join-Path $platformArtifacts "NowUI-$TestPlatform-results.xml"
     $logPath = Join-Path $platformArtifacts "NowUI-$TestPlatform.log"
 
+    Remove-Item -LiteralPath $resultPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
+
     $args = @(
         "-runTests",
         "-testPlatform", $TestPlatform,
-        "-testResults", $resultPath,
-        "-quit"
+        "-testResults", $resultPath
     )
 
     if (![string]::IsNullOrWhiteSpace($Filter)) {
@@ -131,6 +164,10 @@ function Invoke-ExecuteMethod {
 }
 
 New-Item -ItemType Directory -Force -Path $ArtifactsPath | Out-Null
+
+if ($CleanScriptAssemblies) {
+    Clear-ScriptAssemblies
+}
 
 switch ($Mode) {
     "EditMode" { Invoke-TestRun "EditMode" }

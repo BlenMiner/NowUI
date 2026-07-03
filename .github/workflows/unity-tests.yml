@@ -2,6 +2,22 @@ name: Unity Tests
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Assets/NowUI/**'
+      - 'Packages/**'
+      - 'ProjectSettings/**'
+      - '.github/scripts/Run-UnityTests.ps1'
+      - '.github/workflows/unity-tests.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'Assets/NowUI/**'
+      - 'Packages/**'
+      - 'ProjectSettings/**'
+      - '.github/scripts/Run-UnityTests.ps1'
+      - '.github/workflows/unity-tests.yml'
 
 jobs:
   unity-tests:
@@ -22,6 +38,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate native plugin import settings
+        shell: pwsh
+        run: |
+          $pluginBinaries = Get-ChildItem -Path Assets\NowUI\Plugins -Recurse -File |
+            Where-Object { $_.Name -match '\.(dll|dylib|so|a|bc)$' }
+
+          $missingMetas = $pluginBinaries |
+            Where-Object { -not (Test-Path -LiteralPath "$($_.FullName).meta") }
+
+          if ($missingMetas) {
+            Write-Host "Native plugin files missing Unity meta files:"
+            $missingMetas | ForEach-Object { Write-Host " - $($_.FullName)" }
+            exit 1
+          }
+
+          $pluginMetas = $pluginBinaries |
+            ForEach-Object { Get-Item -LiteralPath "$($_.FullName).meta" }
+
+          $missingImporters = $pluginMetas |
+            Where-Object { -not (Select-String -LiteralPath $_.FullName -Pattern 'PluginImporter:' -Quiet) }
+
+          if ($missingImporters) {
+            Write-Host "Native plugin meta files missing PluginImporter settings:"
+            $missingImporters | ForEach-Object { Write-Host " - $($_.FullName)" }
+            exit 1
+          }
+
       - name: Run Unity tests
         shell: pwsh
         run: >
@@ -30,6 +73,7 @@ jobs:
           -ProjectPath "${env:GITHUB_WORKSPACE}"
           -TestPlatform "${{ matrix.testPlatform }}"
           -ArtifactsPath "${env:GITHUB_WORKSPACE}\artifacts\${{ matrix.testPlatform }}"
+          -CleanScriptAssemblies
 
       - name: Upload Unity test artifacts
         if: always()

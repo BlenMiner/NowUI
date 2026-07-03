@@ -823,6 +823,43 @@ jobs:
             exit 1
           fi
 
+      - name: Validate Unity plugin meta files
+        shell: bash
+        run: |
+          missing_meta=()
+          missing=()
+
+          while IFS= read -r binary; do
+            meta="${binary}.meta"
+
+            if [ ! -f "$meta" ]; then
+              missing_meta+=("$binary")
+              continue
+            fi
+
+            if ! grep -q "PluginImporter:" "$meta"; then
+              missing+=("$meta")
+            fi
+          done < <(find Assets/NowUI/Plugins -type f \( \
+            -name "*.dll" -o \
+            -name "*.dylib" -o \
+            -name "*.so" -o \
+            -name "*.a" -o \
+            -name "*.bc" \
+          \) | sort)
+
+          if [ "${#missing_meta[@]}" -gt 0 ]; then
+            echo "Native plugin files missing Unity meta files:"
+            printf ' - %s\n' "${missing_meta[@]}"
+            exit 1
+          fi
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Native plugin meta files missing PluginImporter settings:"
+            printf ' - %s\n' "${missing[@]}"
+            exit 1
+          fi
+
       - name: Commit and push plugin artifacts
         shell: bash
         run: |

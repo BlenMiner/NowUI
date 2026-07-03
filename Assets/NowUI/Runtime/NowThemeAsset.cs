@@ -1705,25 +1705,8 @@ namespace NowUI
         }
     }
 
-    public partial class NowControlRenderer : ScriptableObject
+    public partial class NowControlRenderer
     {
-        static NowControlRenderer _defaultRenderer;
-
-        public static NowControlRenderer defaultRenderer
-        {
-            get
-            {
-                if (_defaultRenderer == null)
-                {
-                    _defaultRenderer = CreateInstance<NowControlRenderer>();
-                    _defaultRenderer.name = "Now Default Control Renderer";
-                    _defaultRenderer.hideFlags = HideFlags.HideAndDontSave;
-                }
-
-                return _defaultRenderer;
-            }
-        }
-
         public virtual Vector2 MeasureButton(NowThemeAsset themeAsset, string label, NowTextStyle textStyle)
         {
             var text = NowControls.Text(themeAsset, textStyle);

@@ -16,8 +16,7 @@ Unity refuses to open the same project twice.
   -runTests `
   -testPlatform EditMode `
   -testResults 'Temp\NowUI-EditModeResults.xml' `
-  -logFile 'Temp\NowUI-EditMode.log' `
-  -quit
+  -logFile 'Temp\NowUI-EditMode.log'
 ```
 
 ```powershell
@@ -27,13 +26,35 @@ Unity refuses to open the same project twice.
   -runTests `
   -testPlatform PlayMode `
   -testResults 'Temp\NowUI-PlayModeResults.xml' `
-  -logFile 'Temp\NowUI-PlayMode.log' `
-  -quit
+  -logFile 'Temp\NowUI-PlayMode.log'
 ```
 
 For CI, `.github/workflows/unity-tests.yml` runs the same commands through
 `.github/scripts/Run-UnityTests.ps1` on a self-hosted Windows runner with Unity
-`6000.4.0f1`.
+`6000.4.0f1`. Do not pass `-quit` to Unity test runs here; the Unity Test
+Framework exits batchmode after writing results. The script also fails the job
+if Unity exits without producing the expected XML. CI passes
+`-CleanScriptAssemblies` so stale generated assemblies from a reused workspace
+cannot pollute logs.
+
+## Visual Validation
+
+`.github/workflows/visual-smoke.yml` runs the editor visual harness as a
+separate rendering gate:
+
+- Windows, macOS, and Linux self-hosted runners execute
+  `Tools/NowUI-Harness.ps1 -Mode Visual`, producing PNG captures and a
+  `manifest.json`.
+- `Tools/Assert-NowUIVisualArtifacts.ps1` validates the manifest, PNG headers,
+  dimensions, file sizes, and nonzero batch/vertex counts.
+- The Windows runner also executes `-Mode Golden` to compare canonical captures
+  against `Assets/NowUI/Tests/Baselines/Visual`.
+- All captures are uploaded as workflow artifacts for inspection.
+
+The cross-OS jobs require Unity `6000.4.0f1` on self-hosted runners with the
+standard GitHub runner OS labels (`Windows`, `macOS`, `Linux`). Linux visual
+runners must provide a graphics-capable session or virtual display; do not run
+the visual harness with `-nographics`.
 
 ## Allocation Bar
 
