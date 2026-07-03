@@ -288,6 +288,32 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Deletes from the start of the caret's hard line to the caret
+        /// (macOS Cmd+Backspace). A selection is deleted instead when present.
+        /// </summary>
+        public static bool DeleteToLineStart(ref string text, ref NowTextEditState state)
+        {
+            text ??= string.Empty;
+            Clamp(ref state, text);
+
+            if (DeleteSelection(ref text, ref state))
+                return true;
+
+            int start = state.caret;
+
+            while (start > 0 && text[start - 1] != '\n')
+                --start;
+
+            if (start == state.caret)
+                return false;
+
+            text = text.Remove(start, state.caret - start);
+            state.caret = start;
+            state.anchor = start;
+            return true;
+        }
+
+        /// <summary>
         /// Moves the caret one codepoint (or word) left/right. Without
         /// <paramref name="select"/>, an existing selection collapses to its edge
         /// instead of moving, matching platform conventions.

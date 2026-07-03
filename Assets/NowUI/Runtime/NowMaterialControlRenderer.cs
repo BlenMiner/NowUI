@@ -48,7 +48,7 @@ namespace NowUI
         {
             Vector4 padding = themeAsset.controlStyles.dropdownFieldPadding;
             float top = (rect.height - lineHeight) * 0.5f;
-            return rect.Inset(padding.x, top, Mathf.Max(padding.z, 32f), top);
+            return rect.Inset(padding.x, top, Mathf.Max(padding.z, themeAsset.controlStyles.dropdownArrowInset), top);
         }
 
         public override void DrawButton(in NowButtonRenderContext context)
@@ -73,7 +73,7 @@ namespace NowUI
             DrawButtonRipple(context, rectangle.radius);
 
             if (!string.IsNullOrEmpty(context.label))
-                DrawButtonLabel(context);
+                DrawButtonLabel(context, context.rect);
         }
 
         protected override Color ResolveDefaultButtonTextColor(NowThemeAsset themeAsset, NowRectangleStyle rectangleStyle)
@@ -215,7 +215,8 @@ namespace NowUI
 
             NowRect inner = DropdownFieldInnerRect(context.themeAsset, context.rect, LabelHeight(context.themeAsset));
             NowControls.DrawLeftLabel(context.themeAsset, inner, context.current, NowTextStyle.Body);
-            DrawChevron(context.themeAsset, new NowRect(context.rect.xMax - 24f, context.rect.y, 16f, context.rect.height), context.open);
+            float chevron = context.themeAsset.controlStyles.fieldChevronSize;
+            DrawChevron(context.themeAsset, new NowRect(context.rect.xMax - chevron - 8f, context.rect.y, chevron, context.rect.height), context.open);
         }
 
         public override void DrawPopupBackground(NowThemeAsset themeAsset, NowRect rect, bool menu)
@@ -318,7 +319,7 @@ namespace NowUI
         {
             Vector4 radius = reference.Resolve(themeAsset);
             if (radius.x >= 999f || radius.y >= 999f || radius.z >= 999f || radius.w >= 999f)
-                return Circle(rect);
+                return CircleRadius(rect);
 
             if (radius == default)
                 return new Vector4(fallback, fallback, fallback, fallback);
@@ -326,7 +327,7 @@ namespace NowUI
             return radius;
         }
 
-        static Vector4 Circle(NowRect rect)
+        static Vector4 CircleRadius(NowRect rect)
         {
             float radius = Mathf.Min(rect.width, rect.height) * 0.5f;
             return new Vector4(radius, radius, radius, radius);

@@ -1003,11 +1003,11 @@ public class NowRendererTests
 
             Assert.AreEqual(0.1666667f, uv0[0].x, 0.0001f);
             Assert.AreEqual(0.4375f, uv0[0].y, 0.0001f);
-            Assert.AreEqual(4f, uv0[0].z, 0.0001f);
+            Assert.AreEqual(3f, uv0[0].z, 0.0001f);
             Assert.AreEqual(-0.1666667f, uv0[0].w, 0.0001f);
             Assert.AreEqual(0.8333333f, uv0[2].x, 0.0001f);
             Assert.AreEqual(0.8125f, uv0[2].y, 0.0001f);
-            Assert.AreEqual(4f, uv0[2].z, 0.0001f);
+            Assert.AreEqual(3f, uv0[2].z, 0.0001f);
             Assert.AreEqual(1.1666667f, uv0[2].w, 0.0001f);
             Assert.AreEqual(-0.25f, uv3[0].z, 0.0001f);
             Assert.AreEqual(1.25f, uv3[2].z, 0.0001f);

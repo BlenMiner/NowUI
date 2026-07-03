@@ -10,6 +10,38 @@ namespace NowUI
         public int anchor;
     }
 
+    /// <summary>
+    /// Per-control undo stacks for the built-in text controls, keyed by control
+    /// id like the popup-state caches. Each stack caps its own entry count, so
+    /// memory stays bounded per control.
+    /// </summary>
+    internal static class NowTextUndoRegistry
+    {
+        static readonly Dictionary<int, NowTextUndoStack> _stacks = new Dictionary<int, NowTextUndoStack>(8);
+
+        public static NowTextUndoStack Get(int id)
+        {
+            if (!_stacks.TryGetValue(id, out var stack))
+            {
+                stack = new NowTextUndoStack();
+                _stacks[id] = stack;
+            }
+
+            return stack;
+        }
+
+        public static void Reset()
+        {
+            _stacks.Clear();
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetForRuntimeLoad()
+        {
+            Reset();
+        }
+    }
+
     /// <summary>Small undo/redo stack for immediate-mode text editors.</summary>
     public sealed class NowTextUndoStack
     {

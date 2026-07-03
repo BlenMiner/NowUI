@@ -77,7 +77,8 @@ namespace NowUI
             bool subdivideText,
             bool hasSourceRect,
             NowRect sourceRect,
-            int effectId)
+            int effectId,
+            float time)
             where TDeformer : struct, INowVertexDeformer
         {
             if (drawList == null || !drawList.hasGeometry)
@@ -93,7 +94,7 @@ namespace NowUI
             if (sourceRect.isEmpty)
                 return;
 
-            var context = new NowEffectContext(effectId, sourceRect);
+            var context = new NowEffectContext(effectId, sourceRect, time);
             var batches = drawList.batches;
             int subMeshCount = Mathf.Min(batches.Count, mesh.subMeshCount);
 

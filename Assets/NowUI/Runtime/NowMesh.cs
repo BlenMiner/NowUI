@@ -143,7 +143,7 @@ namespace NowUI.Internal
 
         public Vector4 uvwh;
 
-        public bool IsOutsideMask(Vector4 rect)
+        public readonly bool IsOutsideMask(Vector4 rect)
         {
             return rect.x + rect.z < mask.x ||
                 rect.x >= mask.x + mask.z ||
@@ -337,12 +337,12 @@ namespace NowUI.Internal
             _tris.EnsureCapacity(INDICES_PER_RECT);
         }
 
-        public void AddRect(NowRectVertex vertexData, float extraX, float extraY)
+        public void AddRect(in NowRectVertex vertexData, float extraX, float extraY)
         {
             AddRect(vertexData, extraX, extraY, 0f);
         }
 
-        public void AddRect(NowRectVertex vertexData, float extraX, float extraY, float geometryPadding)
+        public void AddRect(in NowRectVertex vertexData, float extraX, float extraY, float geometryPadding)
         {
             Vector4 extra = default;
             extra.x = extraX;
@@ -350,12 +350,12 @@ namespace NowUI.Internal
             AddRect(vertexData, extra, geometryPadding);
         }
 
-        public void AddRect(NowRectVertex vertexData, Vector4 extra)
+        public void AddRect(in NowRectVertex vertexData, Vector4 extra)
         {
             AddRect(vertexData, extra, 0f);
         }
 
-        public void AddRect(NowRectVertex vertexData, Vector4 extra, float geometryPadding)
+        public void AddRect(in NowRectVertex vertexData, Vector4 extra, float geometryPadding)
         {
             var position = vertexData.position;
             float padding = Mathf.Max(0f, geometryPadding);
@@ -628,18 +628,15 @@ namespace NowUI.Internal
             _tris.EnsureCapacity(indexCount);
         }
 
+        /// <summary>
+        /// Every append path grows all vertex streams in lockstep (same counts, same
+        /// EnsureCapacity calls, same initial capacity), so checking one vertex stream
+        /// and the index stream covers them all.
+        /// </summary>
         bool HasTextGlyphCapacity()
         {
             return
-                _mask.count + VERTICES_PER_RECT <= _mask.array.Length &&
-                _rect.count + VERTICES_PER_RECT <= _rect.array.Length &&
-                _radius.count + VERTICES_PER_RECT <= _radius.array.Length &&
-                _color.count + VERTICES_PER_RECT <= _color.array.Length &&
-                _outlineColor.count + VERTICES_PER_RECT <= _outlineColor.array.Length &&
-                _extra.count + VERTICES_PER_RECT <= _extra.array.Length &&
                 _verts.count + VERTICES_PER_RECT <= _verts.array.Length &&
-                _uvs.count + VERTICES_PER_RECT <= _uvs.array.Length &&
-                _rawuv.count + VERTICES_PER_RECT <= _rawuv.array.Length &&
                 _tris.count + INDICES_PER_RECT <= _tris.array.Length;
         }
 

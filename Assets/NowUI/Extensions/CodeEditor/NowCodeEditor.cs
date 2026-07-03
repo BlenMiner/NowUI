@@ -105,8 +105,12 @@ namespace NowUI.CodeEditor
             public NowCodeLanguage language;
             public readonly List<NowTextLine> lines = new List<NowTextLine>(64);
             public readonly List<int> lineStates = new List<int>(64);
+            public readonly List<float> lineWidths = new List<float>(64);
             public readonly List<NowCodeDiagnostic> diagnostics = new List<NowCodeDiagnostic>(4);
             public float contentWidth;
+            public NowFontAsset measureFont;
+            public float measureFontSize;
+            public NowFontStyle measureFontStyle;
             public readonly NowTextUndoStack undo = new NowTextUndoStack();
             public string statusMessage;
             public string positionText;
@@ -131,6 +135,14 @@ namespace NowUI.CodeEditor
         static readonly List<NowCodeToken> _tokenScratch = new List<NowCodeToken>(32);
 
         static readonly List<string> _numberStrings = new List<string>(128);
+
+        static readonly System.Text.StringBuilder _blockEditScratch = new System.Text.StringBuilder(256);
+
+        static readonly List<int> _oldStateScratch = new List<int>(64);
+
+        static readonly List<int> _oldStartScratch = new List<int>(64);
+
+        static readonly List<float> _oldWidthScratch = new List<float>(64);
 
         /// <summary>Clears retained caches (undo stacks, line tables); used by tests and domain reloads.</summary>
         public static void ResetCaches()
@@ -405,10 +417,14 @@ namespace NowUI.CodeEditor
                         revealCaret = true;
                         cache.undo.Push(text, in state, typing: true);
 
-                        if (!PairBackspace(ref text, ref state, _language) &&
-                            (frame.command || !IndentBackspace(ref text, ref state)))
+                        if (frame.lineModifier)
                         {
-                            NowTextEdit.Backspace(ref text, ref state, frame.command);
+                            NowTextEdit.DeleteToLineStart(ref text, ref state);
+                        }
+                        else if (!PairBackspace(ref text, ref state, _language) &&
+                            (frame.wordModifier || !IndentBackspace(ref text, ref state)))
+                        {
+                            NowTextEdit.Backspace(ref text, ref state, frame.wordModifier);
                         }
                     }
 
@@ -416,36 +432,68 @@ namespace NowUI.CodeEditor
                     {
                         revealCaret = true;
                         cache.undo.Push(text, in state, typing: true);
-                        NowTextEdit.Delete(ref text, ref state, frame.command);
-                    }
-
-                    if (NowControlState.Repeat(NowInput.GetId(id, "left"), frame.leftHeld))
-                    {
-                        revealCaret = true;
-                        NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.command);
-                    }
-
-                    if (NowControlState.Repeat(NowInput.GetId(id, "right"), frame.rightHeld))
-                    {
-                        revealCaret = true;
-                        NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.command);
+                        NowTextEdit.Delete(ref text, ref state, frame.wordModifier);
                     }
 
                     if (!ReferenceEquals(cache.text, text))
                         Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
 
+                    if (NowControlState.Repeat(NowInput.GetId(id, "left"), frame.leftHeld))
+                    {
+                        revealCaret = true;
+
+                        if (frame.lineModifier)
+                            SmartHome(text, cache, ref state, frame.shift);
+                        else
+                            NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.wordModifier);
+                    }
+
+                    if (NowControlState.Repeat(NowInput.GetId(id, "right"), frame.rightHeld))
+                    {
+                        revealCaret = true;
+
+                        if (frame.lineModifier)
+                        {
+                            var caretLineSpan = cache.lines[LineOf(cache, state.caret)];
+                            state.caret = caretLineSpan.start + caretLineSpan.length;
+
+                            if (!frame.shift)
+                                state.anchor = state.caret;
+                        }
+                        else
+                        {
+                            NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.wordModifier);
+                        }
+                    }
+
                     if (NowControlState.Repeat(NowInput.GetId(id, "up"), frame.upHeld))
                     {
                         revealCaret = true;
-                        MoveVertical(ref state, ref editor, text, cache, font, _fontSize, textStyle.fontStyle, -1, frame.shift);
-                        verticalMove = true;
+
+                        if (frame.lineModifier)
+                        {
+                            NowTextEdit.MoveHome(ref state, frame.shift);
+                        }
+                        else
+                        {
+                            MoveVertical(ref state, ref editor, text, cache, font, _fontSize, textStyle.fontStyle, -1, frame.shift);
+                            verticalMove = true;
+                        }
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "down"), frame.downHeld))
                     {
                         revealCaret = true;
-                        MoveVertical(ref state, ref editor, text, cache, font, _fontSize, textStyle.fontStyle, 1, frame.shift);
-                        verticalMove = true;
+
+                        if (frame.lineModifier)
+                        {
+                            NowTextEdit.MoveEnd(ref state, text, frame.shift);
+                        }
+                        else
+                        {
+                            MoveVertical(ref state, ref editor, text, cache, font, _fontSize, textStyle.fontStyle, 1, frame.shift);
+                            verticalMove = true;
+                        }
                     }
 
                     if (frame.homePressed)
@@ -593,10 +641,10 @@ namespace NowUI.CodeEditor
 
             if (gutterWidth > 0f)
             {
-                float gutterBottomLeft = statusHeight > 0f ? 0f : cornerRadius.z;
+                float gutterBottomLeft = statusHeight > 0f ? 0f : cornerRadius.w;
                 Now.Rectangle(new NowRect(rect.x, rect.y, gutterWidth, rect.height - statusHeight))
                     .SetColor(themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
-                    .SetRadius(cornerRadius.w, 0f, 0f, gutterBottomLeft)
+                    .SetRadius(cornerRadius.z, 0f, 0f, gutterBottomLeft)
                     .Draw();
 
                 using (Now.Mask(new NowRect(rect.x, textRect.y, gutterWidth, textRect.height)))
@@ -896,7 +944,7 @@ namespace NowUI.CodeEditor
 
             Now.Rectangle(statusRect)
                 .SetColor(themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f)))
-                .SetRadius(0f, 0f, cornerRadius.x, cornerRadius.z)
+                .SetRadius(0f, 0f, cornerRadius.y, cornerRadius.w)
                 .Draw();
 
             var line = cache.lines[caretLine];
@@ -1002,27 +1050,113 @@ namespace NowUI.CodeEditor
             return cache;
         }
 
+        /// <summary>
+        /// Refreshes the line table, per-line tokenizer states, widths and
+        /// diagnostics for <paramref name="text"/>. Retokenization is
+        /// incremental: unchanged lines before the edit reuse their cached
+        /// state, and it stops as soon as the carry state re-synchronizes with
+        /// the cached state of a line inside the unchanged tail.
+        /// </summary>
         static void Rebuild(EditorCache cache, string text, NowFontAsset font, float fontSize, NowFontStyle fontStyle)
         {
+            string oldText = cache.text;
+            int oldCount = cache.lines.Count;
+            bool incremental = oldText != null &&
+                cache.lineStates.Count == oldCount &&
+                cache.lineWidths.Count == oldCount &&
+                ReferenceEquals(cache.measureFont, font) &&
+                cache.measureFontSize == fontSize &&
+                cache.measureFontStyle == fontStyle;
+
+            cache.measureFont = font;
+            cache.measureFontSize = fontSize;
+            cache.measureFontStyle = fontStyle;
+
+            _oldStateScratch.Clear();
+            _oldStartScratch.Clear();
+            _oldWidthScratch.Clear();
+
+            if (incremental)
+            {
+                for (int i = 0; i < oldCount; ++i)
+                {
+                    _oldStateScratch.Add(cache.lineStates[i]);
+                    _oldStartScratch.Add(cache.lines[i].start);
+                    _oldWidthScratch.Add(cache.lineWidths[i]);
+                }
+            }
+
             cache.text = text;
             cache.lines.Clear();
             cache.lineStates.Clear();
+            cache.lineWidths.Clear();
             cache.diagnostics.Clear();
-            cache.contentWidth = 0f;
             NowTextMetrics.LayoutHardLines(text, cache.lines);
 
-            int state = 0;
+            int prefix = 0;
+            int suffix = 0;
 
-            for (int i = 0; i < cache.lines.Count; ++i)
+            if (incremental)
             {
+                int shared = Mathf.Min(oldText.Length, text.Length);
+
+                while (prefix < shared && oldText[prefix] == text[prefix])
+                    ++prefix;
+
+                int maxSuffix = shared - prefix;
+
+                while (suffix < maxSuffix && oldText[oldText.Length - 1 - suffix] == text[text.Length - 1 - suffix])
+                    ++suffix;
+            }
+
+            int newCount = cache.lines.Count;
+            int shift = oldCount - newCount;
+            int suffixStart = text.Length - suffix;
+
+            int line = 0;
+
+            while (incremental && line < newCount - 1 && line < oldCount && cache.lines[line + 1].start <= prefix)
+            {
+                cache.lineStates.Add(_oldStateScratch[line]);
+                cache.lineWidths.Add(_oldWidthScratch[line]);
+                ++line;
+            }
+
+            int state = incremental && line < _oldStateScratch.Count ? _oldStateScratch[line] : 0;
+
+            int startShift = (oldText?.Length ?? 0) - text.Length;
+
+            for (; line < newCount; ++line)
+            {
+                int oldLine = line + shift;
+
+                if (incremental && oldLine >= 0 && oldLine < oldCount &&
+                    cache.lines[line].start >= prefix &&
+                    cache.lines[line].start >= suffixStart &&
+                    _oldStartScratch[oldLine] == cache.lines[line].start + startShift &&
+                    state == _oldStateScratch[oldLine])
+                {
+                    for (int k = line; k < newCount; ++k)
+                    {
+                        cache.lineStates.Add(_oldStateScratch[k + shift]);
+                        cache.lineWidths.Add(_oldWidthScratch[k + shift]);
+                    }
+
+                    break;
+                }
+
                 cache.lineStates.Add(state);
                 _tokenScratch.Clear();
-                state = cache.language.TokenizeLine(text, cache.lines[i].start, cache.lines[i].length, state, _tokenScratch);
+                state = cache.language.TokenizeLine(text, cache.lines[line].start, cache.lines[line].length, state, _tokenScratch);
+                cache.lineWidths.Add(Advance(text, font, fontSize, fontStyle, cache.lines[line].start, cache.lines[line].length));
+            }
 
-                float width = Advance(text, font, fontSize, fontStyle, cache.lines[i].start, cache.lines[i].length);
+            cache.contentWidth = 0f;
 
-                if (width > cache.contentWidth)
-                    cache.contentWidth = width;
+            for (int i = 0; i < cache.lineWidths.Count; ++i)
+            {
+                if (cache.lineWidths[i] > cache.contentWidth)
+                    cache.contentWidth = cache.lineWidths[i];
             }
 
             cache.language.Validate(text, cache.diagnostics);
@@ -1338,9 +1472,15 @@ namespace NowUI.CodeEditor
             int delta = 0;
             int firstLineDelta = 0;
 
-            for (int i = lastLine; i >= firstLine; --i)
+            _blockEditScratch.Clear();
+            _blockEditScratch.EnsureCapacity(text.Length + (shift ? 0 : (lastLine - firstLine + 1) * IndentUnit.Length));
+            int cursor = 0;
+
+            for (int i = firstLine; i <= lastLine; ++i)
             {
                 int lineStart = cache.lines[i].start;
+                _blockEditScratch.Append(text, cursor, lineStart - cursor);
+                cursor = lineStart;
 
                 if (shift)
                 {
@@ -1351,7 +1491,7 @@ namespace NowUI.CodeEditor
 
                     if (remove > 0)
                     {
-                        text = text.Remove(lineStart, remove);
+                        cursor = lineStart + remove;
                         delta -= remove;
 
                         if (i == firstLine)
@@ -1360,13 +1500,18 @@ namespace NowUI.CodeEditor
                 }
                 else
                 {
-                    text = text.Insert(lineStart, IndentUnit);
+                    _blockEditScratch.Append(IndentUnit);
                     delta += IndentUnit.Length;
 
                     if (i == firstLine)
                         firstLineDelta = IndentUnit.Length;
                 }
             }
+
+            _blockEditScratch.Append(text, cursor, text.Length - cursor);
+
+            if (delta != 0)
+                text = _blockEditScratch.ToString();
 
             if (state.hasSelection)
             {

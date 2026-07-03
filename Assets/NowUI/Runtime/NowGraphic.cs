@@ -129,13 +129,15 @@ namespace NowUI
 
         [NonSerialized] Vector2 _layoutInputMeasurementSize;
 
-        [NonSerialized] bool _wantsInteractionRepaint;
-
-        [NonSerialized] bool _hasLastInteractionInput;
-
-        [NonSerialized] InteractionInputState _lastInteractionInput;
+        [NonSerialized] NowInteractionRepaintTracker _repaintTracker;
 
         [NonSerialized] readonly List<CanvasRenderer> _extraCanvasRenderers = new List<CanvasRenderer>(2);
+
+        [NonSerialized] bool _extraRendererStateValid;
+
+        [NonSerialized] Vector2 _extraRendererPivot;
+
+        [NonSerialized] bool _extraRendererCullTransparentMesh;
 
         [NonSerialized] readonly List<IMaterialModifier> _materialModifiers = new List<IMaterialModifier>(4);
 
@@ -166,103 +168,6 @@ namespace NowUI
         Vector2 _clipSoftness;
 
         bool _validClipRect;
-
-        struct InteractionInputState
-        {
-            const float PositionEpsilonSqr = 0.25f;
-
-            public bool pointerInside;
-
-            public Vector2 pointerPosition;
-
-            public NowPointerButtons pointerButtonsDown;
-
-            public NowPointerButtons pointerButtonsPressed;
-
-            public NowPointerButtons pointerButtonsReleased;
-
-            public Vector2 scrollDelta;
-
-            public Vector2 navigation;
-
-            public bool focusPreviousPressed;
-
-            public bool focusNextPressed;
-
-            public bool submitDown;
-
-            public bool submitPressed;
-
-            public bool submitReleased;
-
-            public bool cancelDown;
-
-            public bool cancelPressed;
-
-            public bool cancelReleased;
-
-            public static InteractionInputState FromSnapshot(NowInputSnapshot snapshot, Vector2 size)
-            {
-                bool inside = snapshot.hasPointer &&
-                    snapshot.pointerPosition.x >= 0f &&
-                    snapshot.pointerPosition.y >= 0f &&
-                    snapshot.pointerPosition.x <= size.x &&
-                    snapshot.pointerPosition.y <= size.y;
-
-                return new InteractionInputState
-                {
-                    pointerInside = inside,
-                    pointerPosition = snapshot.pointerPosition,
-                    pointerButtonsDown = snapshot.pointerButtonsDown,
-                    pointerButtonsPressed = snapshot.pointerButtonsPressed,
-                    pointerButtonsReleased = snapshot.pointerButtonsReleased,
-                    scrollDelta = snapshot.scrollDelta,
-                    navigation = snapshot.navigation,
-                    focusPreviousPressed = snapshot.focusPreviousPressed,
-                    focusNextPressed = snapshot.focusNextPressed,
-                    submitDown = snapshot.submitDown,
-                    submitPressed = snapshot.submitPressed,
-                    submitReleased = snapshot.submitReleased,
-                    cancelDown = snapshot.cancelDown,
-                    cancelPressed = snapshot.cancelPressed,
-                    cancelReleased = snapshot.cancelReleased
-                };
-            }
-
-            public bool HasChangedSince(in InteractionInputState previous)
-            {
-                bool pointerRelevant =
-                    pointerInside ||
-                    previous.pointerInside ||
-                    pointerButtonsDown != NowPointerButtons.None ||
-                    previous.pointerButtonsDown != NowPointerButtons.None;
-
-                if (pointerInside != previous.pointerInside)
-                    return true;
-
-                if (pointerRelevant && (pointerPosition - previous.pointerPosition).sqrMagnitude > PositionEpsilonSqr)
-                    return true;
-
-                if (pointerButtonsDown != previous.pointerButtonsDown)
-                    return true;
-
-                if (pointerButtonsPressed != NowPointerButtons.None ||
-                    pointerButtonsReleased != NowPointerButtons.None)
-                    return true;
-
-                if (pointerRelevant && scrollDelta != Vector2.zero)
-                    return true;
-
-                if ((navigation - previous.navigation).sqrMagnitude > PositionEpsilonSqr)
-                    return true;
-
-                if (submitDown != previous.submitDown || cancelDown != previous.cancelDown)
-                    return true;
-
-                return focusPreviousPressed || focusNextPressed ||
-                    submitPressed || submitReleased || cancelPressed || cancelReleased;
-            }
-        }
 
         sealed class UguiGlassBackdropEntry
         {
@@ -487,7 +392,7 @@ namespace NowUI
             var frame = NowFrame.Begin(GetCanvasScaleFactor(), trackRepaint: true);
             var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset, false, _glassBlurQuality);
             bool colorMultiplierActive = false;
-            _wantsInteractionRepaint = false;
+            _repaintTracker.SetWantsRepaint(false);
 
             try
             {
@@ -499,7 +404,7 @@ namespace NowUI
                 using (NowOverlay.Host(this, rectTransform, GetEventCamera()))
                 using (NowInput.Begin(GetInputProvider(), inputSurface))
                 {
-                    StoreLastInteractionInput(NowInput.current, inputSurface.size);
+                    _repaintTracker.StoreFrameInput(NowInput.current, inputSurface.size);
 
                     var content = new FrameContent(this);
                     Vector2 measured = NowFrame.DrawContent(
@@ -517,7 +422,7 @@ namespace NowUI
 
                 Now.EndColorMultiplier();
                 colorMultiplierActive = false;
-                _wantsInteractionRepaint = frame.EndRepaintTracking();
+                _repaintTracker.SetWantsRepaint(frame.EndRepaintTracking());
 
                 scope.Dispose();
             }
@@ -606,7 +511,7 @@ namespace NowUI
             }
 
             if (_rebuildEveryFrame ||
-                (_autoRebuildOnInteraction && (_wantsInteractionRepaint || HasInteractionInputChanged())))
+                (_autoRebuildOnInteraction && ShouldRepaintForInteraction()))
             {
                 SetVerticesDirty();
             }
@@ -617,48 +522,30 @@ namespace NowUI
         /// button, scroll or navigation input changes, while idle hover stays
         /// retained.
         /// </summary>
-        bool HasInteractionInputChanged()
+        bool ShouldRepaintForInteraction()
         {
+            if (_repaintTracker.wantsRepaint)
+                return true;
+
             var rect = rectTransform.rect;
 
             if (rect.width <= 0f || rect.height <= 0f)
                 return false;
 
-            var provider = GetInputProvider();
-            var size = new Vector2(rect.width, rect.height);
-            var surface = new NowInputSurface(size);
-
-            if (!provider.TryGetSnapshot(surface, out var snapshot))
-                snapshot = default;
-
-            var current = InteractionInputState.FromSnapshot(snapshot, size);
-
-            if (!_hasLastInteractionInput)
-            {
-                _lastInteractionInput = current;
-                _hasLastInteractionInput = true;
-                return false;
-            }
-
-            return current.HasChangedSince(_lastInteractionInput);
-        }
-
-        void StoreLastInteractionInput(NowInputSnapshot snapshot, Vector2 size)
-        {
-            _lastInteractionInput = InteractionInputState.FromSnapshot(snapshot, size);
-            _hasLastInteractionInput = true;
+            var surface = new NowInputSurface(new Vector2(rect.width, rect.height));
+            return _repaintTracker.HasInputChanged(GetInputProvider(), surface);
         }
 
         protected override void OnEnable()
         {
             base.OnEnable();
-            _hasLastInteractionInput = false;
+            _repaintTracker.Reset();
             EnsureCanvasChannels();
         }
 
         protected override void OnDisable()
         {
-            _hasLastInteractionInput = false;
+            _repaintTracker.Reset();
             ReleaseStencilMaterials();
             ReleaseUGUIGlassBackdrops();
             ClearCanvasRenderer(canvasRenderer);
@@ -965,6 +852,9 @@ namespace NowUI
         {
             PruneDestroyedExtraCanvasRenderers();
 
+            Vector2 pivot = rectTransform.pivot;
+            bool cullTransparentMesh = canvasRenderer.cullTransparentMesh;
+
             while (_extraCanvasRenderers.Count < count)
             {
                 int pageIndex = _extraCanvasRenderers.Count + 1;
@@ -974,32 +864,46 @@ namespace NowUI
                 };
 
                 go.transform.SetParent(transform, false);
-                _extraCanvasRenderers.Add(go.GetComponent<CanvasRenderer>());
+                var crenderer = go.GetComponent<CanvasRenderer>();
+                ConfigureExtraCanvasRenderer(crenderer, _extraCanvasRenderers.Count, pivot, cullTransparentMesh);
+                _extraCanvasRenderers.Add(crenderer);
             }
+
+            if (_extraRendererStateValid &&
+                _extraRendererPivot == pivot &&
+                _extraRendererCullTransparentMesh == cullTransparentMesh)
+            {
+                return;
+            }
+
+            _extraRendererStateValid = true;
+            _extraRendererPivot = pivot;
+            _extraRendererCullTransparentMesh = cullTransparentMesh;
 
             for (int i = 0; i < _extraCanvasRenderers.Count; ++i)
-            {
-                var crenderer = _extraCanvasRenderers[i];
+                ConfigureExtraCanvasRenderer(_extraCanvasRenderers[i], i, pivot, cullTransparentMesh);
+        }
 
-                if (crenderer == null)
-                    continue;
+        void ConfigureExtraCanvasRenderer(CanvasRenderer crenderer, int siblingIndex, Vector2 pivot, bool cullTransparentMesh)
+        {
+            if (crenderer == null)
+                return;
 
-                var childTransform = crenderer.transform as RectTransform;
+            var childTransform = crenderer.transform as RectTransform;
 
-                if (childTransform == null)
-                    continue;
+            if (childTransform == null)
+                return;
 
-                childTransform.SetSiblingIndex(i);
-                childTransform.anchorMin = Vector2.zero;
-                childTransform.anchorMax = Vector2.one;
-                childTransform.pivot = rectTransform.pivot;
-                childTransform.offsetMin = Vector2.zero;
-                childTransform.offsetMax = Vector2.zero;
-                childTransform.localScale = Vector3.one;
-                childTransform.localRotation = Quaternion.identity;
-                crenderer.cullTransparentMesh = canvasRenderer.cullTransparentMesh;
-                ApplyRendererMaskState(crenderer);
-            }
+            childTransform.SetSiblingIndex(siblingIndex);
+            childTransform.anchorMin = Vector2.zero;
+            childTransform.anchorMax = Vector2.one;
+            childTransform.pivot = pivot;
+            childTransform.offsetMin = Vector2.zero;
+            childTransform.offsetMax = Vector2.zero;
+            childTransform.localScale = Vector3.one;
+            childTransform.localRotation = Quaternion.identity;
+            crenderer.cullTransparentMesh = cullTransparentMesh;
+            ApplyRendererMaskState(crenderer);
         }
 
         void ApplyCullToExtraCanvasRenderers()
@@ -1211,46 +1115,13 @@ namespace NowUI
 
             entry.width = width;
             entry.height = height;
-            entry.source = CreateUGUIGlassTexture(width, height, $"Now UGUI Glass Source {entry.batchIndex}");
-            entry.blurred = CreateUGUIGlassTexture(width, height, $"Now UGUI Glass Blur {entry.batchIndex}");
-        }
-
-        static RenderTexture CreateUGUIGlassTexture(int width, int height, string name)
-        {
-            var descriptor = new RenderTextureDescriptor(
-                Mathf.Max(1, width),
-                Mathf.Max(1, height),
-                RenderTextureFormat.ARGB32,
-                0)
-            {
-                msaaSamples = 1,
-                useMipMap = false,
-                autoGenerateMips = false
-            };
-            var texture = new RenderTexture(descriptor)
-            {
-                name = name,
-                hideFlags = HideFlags.HideAndDontSave,
-                filterMode = FilterMode.Bilinear,
-                wrapMode = TextureWrapMode.Clamp,
-            };
-
-            texture.Create();
-            return texture;
+            entry.source = NowGlassBackdropSurface.CreateTexture(width, height, $"Now UGUI Glass Source {entry.batchIndex}");
+            entry.blurred = NowGlassBackdropSurface.CreateTexture(width, height, $"Now UGUI Glass Blur {entry.batchIndex}");
         }
 
         void EnsureUGUIGlassMaterial(UguiGlassBackdropEntry entry, Material baseMaterial)
         {
-            if (entry.material != null && entry.sourceMaterial == baseMaterial)
-                return;
-
-            ReleaseUGUIGlassMaterial(entry);
-            entry.sourceMaterial = baseMaterial;
-            entry.material = new Material(baseMaterial)
-            {
-                name = $"{baseMaterial.name} Backdrop",
-                hideFlags = HideFlags.HideAndDontSave
-            };
+            NowGlassBackdropSurface.EnsureDerivedMaterial(ref entry.material, ref entry.sourceMaterial, baseMaterial, " Backdrop");
         }
 
         Material GetUGUIGlassBackdropMaterial(int batchIndex)
@@ -1296,42 +1167,15 @@ namespace NowUI
 
         void ReleaseUGUIGlassTextures(UguiGlassBackdropEntry entry)
         {
-            if (entry.source != null)
-            {
-                entry.source.Release();
-                DestroyNowObject(entry.source);
-                entry.source = null;
-            }
-
-            if (entry.blurred != null)
-            {
-                entry.blurred.Release();
-                DestroyNowObject(entry.blurred);
-                entry.blurred = null;
-            }
-
+            NowGlassBackdropSurface.ReleaseTexture(ref entry.source);
+            NowGlassBackdropSurface.ReleaseTexture(ref entry.blurred);
             entry.width = 0;
             entry.height = 0;
         }
 
         void ReleaseUGUIGlassMaterial(UguiGlassBackdropEntry entry)
         {
-            if (entry.material == null)
-                return;
-
-            DestroyNowObject(entry.material);
-            entry.material = null;
-        }
-
-        static void DestroyNowObject(UnityEngine.Object target)
-        {
-            if (target == null)
-                return;
-
-            if (Application.isPlaying)
-                Destroy(target);
-            else
-                DestroyImmediate(target);
+            NowGlassBackdropSurface.ReleaseMaterial(ref entry.material);
         }
 
         void DestroyExtraCanvasRenderers()
@@ -1379,7 +1223,14 @@ namespace NowUI
                     return null;
 
                 if (_textMaterials.TryGetValue(batch.material, out var texturedRect) && texturedRect != null)
+                {
+                    var sourceTexture = batch.material.mainTexture;
+
+                    if (!ReferenceEquals(texturedRect.mainTexture, sourceTexture))
+                        texturedRect.mainTexture = sourceTexture;
+
                     return texturedRect;
+                }
 
                 if (_rectangleMaterial == null)
                     _rectangleMaterial = Resources.Load<Material>("NowUI/UIMaterialUGUI");
@@ -1405,7 +1256,17 @@ namespace NowUI
                 return null;
 
             if (_textMaterials.TryGetValue(batch.material, out var textMaterial) && textMaterial != null)
+            {
+                if (batch.material.HasProperty(_mainTexProp))
+                {
+                    var sourceTexture = batch.material.mainTexture;
+
+                    if (!ReferenceEquals(textMaterial.mainTexture, sourceTexture))
+                        textMaterial.mainTexture = sourceTexture;
+                }
+
                 return textMaterial;
+            }
 
             Material textMaterialTemplate = GetTextMaterialTemplate(batch.material);
 

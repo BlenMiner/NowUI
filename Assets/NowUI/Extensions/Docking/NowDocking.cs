@@ -29,6 +29,7 @@ namespace NowUI.Docking
         sealed class WindowState
         {
             public string id;
+            public int idHash;
             public string title;
             public Action<NowRect> draw;
             public bool submitted;
@@ -70,6 +71,12 @@ namespace NowUI.Docking
             public NowDockSide side;
             public int tabIndex;
         }
+
+        static readonly int SplitterSeed = NowInput.GetId("dock-splitter");
+        static readonly int ContentSeed = NowInput.GetId("dock-content");
+        static readonly int TabSeed = NowInput.GetId("dock-tab");
+        static readonly int FloatingSeed = NowInput.GetId("dock-floating");
+        static readonly int DragContentSeed = NowInput.GetId("dock-drag-content");
 
         static readonly Color DockBackground = new Color(0.075f, 0.085f, 0.105f, 1f);
         static readonly Color DockPanel = new Color(0.105f, 0.12f, 0.155f, 1f);
@@ -114,7 +121,8 @@ namespace NowUI.Docking
             {
                 window = new WindowState
                 {
-                    id = windowId
+                    id = windowId,
+                    idHash = NowInput.GetId(windowId)
                 };
                 _windows.Add(windowId, window);
                 _windowOrder.Add(windowId);
@@ -653,7 +661,7 @@ namespace NowUI.Docking
 
         void DrawSplitter(Node node, int controlId, Style style, NowThemeAsset theme)
         {
-            int splitterId = NowInput.GetId(controlId, "splitter:" + node.id);
+            int splitterId = NowInput.CombineId(NowInput.CombineId(controlId, SplitterSeed), node.id);
             var hitRect = node.horizontal
                 ? node.splitterRect.Outset(3f, 0f)
                 : node.splitterRect.Outset(0f, 3f);
@@ -700,7 +708,7 @@ namespace NowUI.Docking
                 if (contentRect.width > 0f && contentRect.height > 0f)
                 {
                     using (Now.Mask(contentRect))
-                    using (NowLayout.Area(NowInput.GetId(controlId, "content:" + selected.id), contentRect))
+                    using (NowLayout.Area(NowInput.CombineId(NowInput.CombineId(controlId, ContentSeed), selected.idHash), contentRect))
                     {
                         selected.draw(contentRect);
                     }
@@ -750,7 +758,7 @@ namespace NowUI.Docking
 
         void DrawTab(Node leaf, WindowState window, NowRect tabRect, bool selected, int controlId, Style style, NowThemeAsset theme)
         {
-            int tabId = DockTabId(controlId, window.id);
+            int tabId = DockTabId(controlId, window);
             var tabHitRect = tabRect.Inset(0f, 2f, 0f, 2f);
             var tabVisualRect = CompactTabVisualRect(tabRect);
             NowRect closeRect = default;
@@ -822,9 +830,14 @@ namespace NowUI.Docking
             }
         }
 
+        static int DockTabId(int controlId, WindowState window)
+        {
+            return NowInput.CombineId(NowInput.CombineId(controlId, TabSeed), window.idHash);
+        }
+
         static int DockTabId(int controlId, string windowId)
         {
-            return NowInput.GetId(controlId, "dock-tab:" + windowId);
+            return NowInput.CombineId(NowInput.CombineId(controlId, TabSeed), NowInput.GetId(windowId));
         }
 
         static NowRect CompactTabVisualRect(NowRect tabRect)
@@ -1199,7 +1212,7 @@ namespace NowUI.Docking
                 if (window.floatingRect.isEmpty)
                     window.floatingRect = FloatingRectAt(_dockRect.center, window, style);
 
-                int windowControlId = NowInput.GetId(controlId, "floating:" + window.id);
+                int windowControlId = NowInput.CombineId(NowInput.CombineId(controlId, FloatingSeed), window.idHash);
                 var draw = window.draw;
                 string title = window.title;
                 bool canClose = window.canClose;
@@ -1291,7 +1304,7 @@ namespace NowUI.Docking
             float closeSpace = canClose ? 28f : 6f;
             float tabWidth = Mathf.Min(TabWidth(theme, title), Mathf.Max(48f, titleRect.width - closeSpace - 44f));
             var tabRect = new NowRect(titleRect.x, titleRect.y, tabWidth, titleRect.height);
-            var tabInteraction = NowInput.Interact(DockTabId(dockControlId, window.id), tabRect);
+            var tabInteraction = NowInput.Interact(DockTabId(dockControlId, window), tabRect);
 
             if (tabInteraction.dragStarted)
                 BeginTabDrag(window, tabInteraction.pointerPosition, style);
@@ -1417,8 +1430,12 @@ namespace NowUI.Docking
 
             if (contentRect.width > 0f && contentRect.height > 0f && draw != null)
             {
+                int dragContentId = NowInput.CombineId(
+                    NowInput.CombineId(controlId, DragContentSeed),
+                    NowInput.GetId(_draggingWindowId));
+
                 using (Now.Mask(contentRect))
-                using (NowLayout.Area(NowInput.GetId(controlId, "drag-content:" + _draggingWindowId), contentRect))
+                using (NowLayout.Area(dragContentId, contentRect))
                 {
                     draw(contentRect);
                 }
@@ -1452,7 +1469,7 @@ namespace NowUI.Docking
                 Mathf.Max(0f, titleRect.xMax - closeSpace - tabRect.xMax),
                 titleRect.height);
             var titleInteraction = NowInput.Interact(NowInput.GetId(controlId, "move-title"), moveRect);
-            var tabInteraction = NowInput.Interact(DockTabId(dockControlId, window.id), tabRect);
+            var tabInteraction = NowInput.Interact(DockTabId(dockControlId, window), tabRect);
 
             if (titleInteraction.pressed)
                 BringWindowToFront(window.id);
@@ -1557,7 +1574,7 @@ namespace NowUI.Docking
                 .Draw();
 
             var accent = theme.GetColor(NowColorToken.Accent, new Color(1f, 0.48f, 0.25f, 1f));
-            float tabHover = NowControlState.Transition(DockTabId(dockControlId, window.id), tabInteraction.hovered || tabInteraction.held || _draggingWindowId == window.id);
+            float tabHover = NowControlState.Transition(DockTabId(dockControlId, window), tabInteraction.hovered || tabInteraction.held || _draggingWindowId == window.id);
             var tabVisualRect = CompactTabVisualRect(tabRect);
 
             Now.Rectangle(tabVisualRect)
@@ -1602,7 +1619,7 @@ namespace NowUI.Docking
             if (contentRect.width > 0f && contentRect.height > 0f && draw != null)
             {
                 using (Now.Mask(contentRect))
-                using (NowLayout.Area(NowInput.GetId(controlId, "content:" + window.id), contentRect))
+                using (NowLayout.Area(NowInput.CombineId(NowInput.CombineId(controlId, ContentSeed), window.idHash), contentRect))
                 {
                     draw(contentRect);
                 }

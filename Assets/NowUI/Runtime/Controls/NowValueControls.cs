@@ -29,8 +29,10 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowVectorField SetOptions(NowLayoutOptions options) { _settings.options = options; return this; }
 
+        /// <summary>Fixed row width; components stretch to share it.</summary>
         public NowVectorField SetWidth(float width)
         {
             _settings.options = _settings.options.SetWidth(width);
@@ -38,6 +40,7 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Stretches the row to fill available width, weighted against stretching siblings.</summary>
         public NowVectorField SetStretchWidth(float weight = 1f)
         {
             _settings.options = _settings.options.SetStretchWidth(weight);
@@ -45,6 +48,7 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Fixed width for each component field instead of stretching.</summary>
         public NowVectorField SetComponentWidth(float width)
         {
             _settings.componentWidth = Mathf.Max(1f, width);
@@ -52,10 +56,13 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Width reserved for each axis label; 0 hides the labels.</summary>
         public NowVectorField SetLabelWidth(float width) { _settings.labelWidth = Mathf.Max(0f, width); return this; }
 
+        /// <summary>Gap between the label/field pairs on the row.</summary>
         public NowVectorField SetSpacing(float spacing) { _settings.spacing = Mathf.Max(0f, spacing); return this; }
 
+        /// <summary>Clamps every component to this inclusive range.</summary>
         public NowVectorField SetRange(float min, float max)
         {
             if (max < min)
@@ -67,13 +74,16 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Clamps every component to this inclusive integer range.</summary>
         public NowVectorField SetRange(int min, int max)
         {
             return SetRange((float)min, max);
         }
 
+        /// <summary>Numeric display format for the component fields (e.g. <c>"0.###"</c>).</summary>
         public NowVectorField SetFormat(string format) { _settings.format = string.IsNullOrEmpty(format) ? null : format; return this; }
 
+        /// <summary>Themed text style for the component fields.</summary>
         public NowVectorField SetTextStyle(NowTextStyle style) { _settings.textStyle = style; return this; }
 
         public bool Draw(ref Vector2 value)
@@ -103,6 +113,40 @@ namespace NowUI
 
             if (changed)
                 value = new Vector2Int(x, y);
+
+            return changed;
+        }
+
+        /// <summary>Draws X, Y, W, H fields for a rect on one row.</summary>
+        public bool Draw(ref Rect value)
+        {
+            float x = value.x;
+            float y = value.y;
+            float w = value.width;
+            float h = value.height;
+            int id = NowControls.GetControlId(_id, _site);
+            bool changed = NowVectorFieldUtility.DrawFloatComponents(
+                id, _hasRect, _rect, _settings, NowVectorFieldUtility.XYWH, ref x, ref y, ref w, ref h);
+
+            if (changed)
+                value = new Rect(x, y, w, h);
+
+            return changed;
+        }
+
+        /// <summary>Draws X, Y, W, H fields for an integer rect on one row.</summary>
+        public bool Draw(ref RectInt value)
+        {
+            int x = value.x;
+            int y = value.y;
+            int w = value.width;
+            int h = value.height;
+            int id = NowControls.GetControlId(_id, _site);
+            bool changed = NowVectorFieldUtility.DrawIntComponents(
+                id, _hasRect, _rect, _settings, NowVectorFieldUtility.XYWH, ref x, ref y, ref w, ref h);
+
+            if (changed)
+                value = new RectInt(x, y, w, h);
 
             return changed;
         }
@@ -148,14 +192,19 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowEnumDropdown<TEnum> SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
+        /// <summary>Fixed width in layout flow.</summary>
         public NowEnumDropdown<TEnum> SetWidth(float width) { _options = _options.SetWidth(width); return this; }
 
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
         public NowEnumDropdown<TEnum> SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
+        /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowEnumDropdown<TEnum> SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowEnumDropdown<TEnum> SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
         public bool Draw(ref TEnum value)
@@ -203,16 +252,22 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowEnumFlags<TEnum> SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
+        /// <summary>Fixed width in layout flow.</summary>
         public NowEnumFlags<TEnum> SetWidth(float width) { _options = _options.SetWidth(width); return this; }
 
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
         public NowEnumFlags<TEnum> SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
+        /// <summary>Vertical gap between the flag checkboxes.</summary>
         public NowEnumFlags<TEnum> SetSpacing(float spacing) { _spacing = Mathf.Max(0f, spacing); return this; }
 
+        /// <summary>Themed text style for the flag labels.</summary>
         public NowEnumFlags<TEnum> SetTextStyle(NowTextStyle style) { _textStyle = style; return this; }
 
+        /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowEnumFlags<TEnum> SetId(NowId id) { _id = id; return this; }
 
         public bool Draw(ref TEnum value)
@@ -356,10 +411,13 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowColorPicker SetOptions(NowLayoutOptions options) { _settings.options = options; return this; }
 
+        /// <summary>Fixed width in layout flow.</summary>
         public NowColorPicker SetWidth(float width) { _settings.options = _settings.options.SetWidth(width); return this; }
 
+        /// <summary>Fixed field height in layout flow.</summary>
         public NowColorPicker SetHeight(float height)
         {
             _settings.options = _settings.options.SetHeight(height);
@@ -367,30 +425,37 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
         public NowColorPicker SetStretchWidth(float weight = 1f) { _settings.options = _settings.options.SetStretchWidth(weight); return this; }
 
+        /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowColorPicker SetId(NowId id)
         {
             _settings.idOverride = id;
             return this;
         }
 
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowColorPicker SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
+        /// <summary>Shows or hides the alpha strip and alpha channel slider.</summary>
         public NowColorPicker SetShowAlpha(bool showAlpha) { _settings.showAlpha = showAlpha; return this; }
 
+        /// <summary>Edge size of the popup's saturation/value square.</summary>
         public NowColorPicker SetPopupSize(float saturationValueSize)
         {
             _settings.saturationValueSize = Mathf.Max(64f, saturationValueSize);
             return this;
         }
 
+        /// <summary>Total popup width.</summary>
         public NowColorPicker SetPopupWidth(float width)
         {
             _settings.popupWidth = Mathf.Max(140f, width);
             return this;
         }
 
+        /// <summary>Keeps the popup inside the view bounds (on by default).</summary>
         public NowColorPicker SetFitToView(bool fitToView = true)
         {
             _settings.fitToView = fitToView;
@@ -483,7 +548,7 @@ namespace NowUI
                 .SetColor(value)
                 .SetRadius(3f)
                 .SetOutline(1f)
-                .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(theme.GetColor(NowColorToken.Border))
                 .Draw();
 
             float labelX = swatch.xMax + 7f;
@@ -677,7 +742,7 @@ namespace NowUI
             }
 
             var snapshot = NowInput.current;
-            bool pressedOutside = snapshot.primaryPressed &&
+            bool pressedOutside = snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
                 !state.fieldRect.Contains(snapshot.pointerPosition);
 
@@ -986,8 +1051,8 @@ namespace NowUI
         static void DrawChecker(NowRect rect, float cellSize, NowThemeAsset theme)
         {
             cellSize = Mathf.Max(2f, cellSize);
-            Color a = theme.GetColor(NowColorToken.Surface, Color.white);
-            Color b = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.8f, 0.8f, 0.8f, 1f));
+            Color a = theme.GetColor(NowColorToken.Surface);
+            Color b = theme.GetColor(NowColorToken.SurfaceMuted);
             int columns = Mathf.CeilToInt(rect.width / cellSize);
             int rows = Mathf.CeilToInt(rect.height / cellSize);
 
@@ -1192,6 +1257,21 @@ namespace NowUI
             public GradientMode mode;
         }
 
+        /// <summary>
+        /// Per-control mirror of the gradient's keys. Unity's key getters return
+        /// fresh array copies on every access, so the field preview reads this
+        /// mirror and refreshes it only when a change is detected, keeping the
+        /// steady-state draw allocation-free.
+        /// </summary>
+        struct KeyMirror
+        {
+            public byte initialized;
+            public Gradient source;
+            public GradientColorKey[] colorKeys;
+            public GradientAlphaKey[] alphaKeys;
+            public GradientMode mode;
+        }
+
         sealed class GradientTextureCache
         {
             public Texture2D texture;
@@ -1220,6 +1300,7 @@ namespace NowUI
         const int DeleteAlphaSeed = 0x47524441;
         const int DeleteShortcutSeed = 0x47524453;
         const int ColorPickerHexInputSeed = 0x43484558;
+        const int KeyMirrorSeed = 0x47524b4d;
         const string DeleteGlyph = "🗑";
 
         internal NowGradientField(NowId id, int site)
@@ -1238,10 +1319,13 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowGradientField SetOptions(NowLayoutOptions options) { _settings.options = options; return this; }
 
+        /// <summary>Fixed width in layout flow.</summary>
         public NowGradientField SetWidth(float width) { _settings.options = _settings.options.SetWidth(width); return this; }
 
+        /// <summary>Fixed field height in layout flow.</summary>
         public NowGradientField SetHeight(float height)
         {
             _settings.options = _settings.options.SetHeight(height);
@@ -1249,22 +1333,27 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
         public NowGradientField SetStretchWidth(float weight = 1f) { _settings.options = _settings.options.SetStretchWidth(weight); return this; }
 
+        /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowGradientField SetId(NowId id)
         {
             _settings.idOverride = id;
             return this;
         }
 
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowGradientField SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
+        /// <summary>Total popup width.</summary>
         public NowGradientField SetPopupWidth(float width)
         {
             _settings.popupWidth = Mathf.Max(180f, width);
             return this;
         }
 
+        /// <summary>Keeps the popup inside the view bounds (on by default).</summary>
         public NowGradientField SetFitToView(bool fitToView = true)
         {
             _settings.fitToView = fitToView;
@@ -1288,6 +1377,19 @@ namespace NowUI
                 changed = true;
             }
 
+            ref var mirror = ref NowControlState.Get<KeyMirror>(NowInput.CombineId(id, KeyMirrorSeed));
+
+            if (mirror.initialized == 0 || changed ||
+                !ReferenceEquals(mirror.source, value) || mirror.mode != value.mode)
+            {
+                mirror.initialized = 1;
+                mirror.source = value;
+                mirror.colorKeys = value.colorKeys;
+                mirror.alphaKeys = value.alphaKeys;
+                mirror.mode = value.mode;
+                Normalize(ref mirror.colorKeys, ref mirror.alphaKeys);
+            }
+
             var theme = NowTheme.themeAsset;
             var rect = NowControls.ReserveRect(_hasRect, _rect, _settings.options, MeasureField(_settings));
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
@@ -1297,7 +1399,7 @@ namespace NowUI
                 open = !open;
 
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
-            DrawField(id, theme, rect, value.colorKeys, value.alphaKeys, value.mode, open, focused, interaction.held, hoverT);
+            DrawField(id, theme, rect, mirror.colorKeys, mirror.alphaKeys, mirror.mode, open, focused, interaction.held, hoverT);
 
             if (open)
             {
@@ -1575,7 +1677,7 @@ namespace NowUI
                     SetPending(state.pendingId, state.colorKeys, state.alphaKeys, state.mode);
 
             var snapshot = NowInput.current;
-            bool pressedOutside = snapshot.primaryPressed &&
+            bool pressedOutside = snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
                 !state.fieldRect.Contains(snapshot.pointerPosition);
 
@@ -1599,16 +1701,16 @@ namespace NowUI
 
         static void DrawRampLabel(NowThemeAsset theme, NowRect rect, string label, bool selected)
         {
-            var background = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.9f, 0.9f, 0.9f, 1f));
+            var background = theme.GetColor(NowColorToken.SurfaceMuted);
 
             if (selected)
-                background = Color.Lerp(background, theme.GetColor(NowColorToken.Accent, Color.blue), 0.16f);
+                background = Color.Lerp(background, theme.GetColor(NowColorToken.Accent), 0.16f);
 
             Now.Rectangle(rect)
                 .SetColor(background)
                 .SetRadius(3f)
                 .SetOutline(selected ? 1f : 0f)
-                .SetOutlineColor(theme.GetColor(NowColorToken.Accent, Color.blue))
+                .SetOutlineColor(theme.GetColor(NowColorToken.Accent))
                 .Draw();
 
             NowControls.DrawCenteredLabel(
@@ -1835,7 +1937,7 @@ namespace NowUI
         static void DrawKeyEditorBackground(NowThemeAsset theme, NowRect rect)
         {
             Now.Rectangle(rect)
-                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.9f, 0.9f, 0.9f, 1f)))
+                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted))
                 .SetRadius(4f)
                 .Draw();
         }
@@ -1845,7 +1947,7 @@ namespace NowUI
             Now.Rectangle(rect)
                 .SetColor(Color.clear)
                 .SetOutline(1f)
-                .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(theme.GetColor(NowColorToken.Border))
                 .SetRadius(4f)
                 .Draw();
             NowControls.DrawLeftLabel(
@@ -1929,7 +2031,7 @@ namespace NowUI
             Now.Rectangle(rect)
                 .SetColor(Color.clear)
                 .SetOutline(1f)
-                .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(theme.GetColor(NowColorToken.Border))
                 .SetRadius(3f)
                 .Draw();
         }
@@ -2088,8 +2190,8 @@ namespace NowUI
         static void DrawChecker(NowRect rect, float cellSize, NowThemeAsset theme)
         {
             cellSize = Mathf.Max(2f, cellSize);
-            Color a = theme.GetColor(NowColorToken.Surface, Color.white);
-            Color b = theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.8f, 0.8f, 0.8f, 1f));
+            Color a = theme.GetColor(NowColorToken.Surface);
+            Color b = theme.GetColor(NowColorToken.SurfaceMuted);
             int columns = Mathf.CeilToInt(rect.width / cellSize);
             int rows = Mathf.CeilToInt(rect.height / cellSize);
 
@@ -2114,7 +2216,7 @@ namespace NowUI
         {
             if (selected)
             {
-                Color halo = theme.GetColor(NowColorToken.Accent, Color.blue);
+                Color halo = theme.GetColor(NowColorToken.Accent);
                 halo.a *= 0.18f;
                 Now.Rectangle(rect.Outset(3f))
                     .SetColor(halo)
@@ -2127,7 +2229,7 @@ namespace NowUI
                 .SetColor(color)
                 .SetRadius(3f)
                 .SetOutline(selected ? 2f : 1f)
-                .SetOutlineColor(selected ? theme.GetColor(NowColorToken.Accent, Color.blue) : theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(selected ? theme.GetColor(NowColorToken.Accent) : theme.GetColor(NowColorToken.Border))
                 .Draw();
         }
 
@@ -2383,14 +2485,40 @@ namespace NowUI
 
         static void SortColorKeys(GradientColorKey[] keys)
         {
-            if (keys != null)
-                Array.Sort(keys, (a, b) => a.time.CompareTo(b.time));
+            if (keys == null || IsSortedByTime(keys))
+                return;
+
+            Array.Sort(keys, (a, b) => a.time.CompareTo(b.time));
         }
 
         static void SortAlphaKeys(GradientAlphaKey[] keys)
         {
-            if (keys != null)
-                Array.Sort(keys, (a, b) => a.time.CompareTo(b.time));
+            if (keys == null || IsSortedByTime(keys))
+                return;
+
+            Array.Sort(keys, (a, b) => a.time.CompareTo(b.time));
+        }
+
+        static bool IsSortedByTime(GradientColorKey[] keys)
+        {
+            for (int i = 1; i < keys.Length; ++i)
+            {
+                if (keys[i - 1].time > keys[i].time)
+                    return false;
+            }
+
+            return true;
+        }
+
+        static bool IsSortedByTime(GradientAlphaKey[] keys)
+        {
+            for (int i = 1; i < keys.Length; ++i)
+            {
+                if (keys[i - 1].time > keys[i].time)
+                    return false;
+            }
+
+            return true;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -2459,6 +2587,21 @@ namespace NowUI
             public WrapMode postWrapMode;
         }
 
+        /// <summary>
+        /// Per-control mirror of the curve's keyframes. Unity's keys getter
+        /// returns a fresh array copy on every access, so the field preview reads
+        /// this mirror and refreshes it only on a detected change (new instance,
+        /// key count change, or a popup edit), keeping the steady-state draw
+        /// allocation-free.
+        /// </summary>
+        struct KeyMirror
+        {
+            public byte initialized;
+            public int sourceLength;
+            public AnimationCurve source;
+            public Keyframe[] keys;
+        }
+
         struct CurveBounds
         {
             public float timeMin;
@@ -2489,6 +2632,7 @@ namespace NowUI
         const int FlatTangentSeed = 0x4143464c;
         const int TangentContextSeed = 0x41434354;
         const int DeleteShortcutSeed = 0x41434453;
+        const int KeyMirrorSeed = 0x41434b4d;
         const float VerticalTangentPixelThreshold = 2f;
         const float StepTangentHandlePixels = 36f;
         const string DeleteGlyph = "🗑";
@@ -2509,10 +2653,13 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowAnimationCurveField SetOptions(NowLayoutOptions options) { _settings.options = options; return this; }
 
+        /// <summary>Fixed width in layout flow.</summary>
         public NowAnimationCurveField SetWidth(float width) { _settings.options = _settings.options.SetWidth(width); return this; }
 
+        /// <summary>Fixed field height in layout flow.</summary>
         public NowAnimationCurveField SetHeight(float height)
         {
             _settings.options = _settings.options.SetHeight(height);
@@ -2520,16 +2667,20 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
         public NowAnimationCurveField SetStretchWidth(float weight = 1f) { _settings.options = _settings.options.SetStretchWidth(weight); return this; }
 
+        /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowAnimationCurveField SetId(NowId id)
         {
             _settings.idOverride = id;
             return this;
         }
 
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowAnimationCurveField SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
+        /// <summary>Total popup size for the curve editor.</summary>
         public NowAnimationCurveField SetPopupSize(float width, float height)
         {
             _settings.popupWidth = Mathf.Max(240f, width);
@@ -2537,12 +2688,14 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Keeps the popup inside the view bounds (on by default).</summary>
         public NowAnimationCurveField SetFitToView(bool fitToView = true)
         {
             _settings.fitToView = fitToView;
             return this;
         }
 
+        /// <summary>Fixed horizontal plot range instead of auto-fitting the keys.</summary>
         public NowAnimationCurveField SetTimeRange(float min, float max)
         {
             if (max < min)
@@ -2554,6 +2707,7 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Fixed vertical plot range instead of auto-fitting the keys.</summary>
         public NowAnimationCurveField SetValueRange(float min, float max)
         {
             if (max < min)
@@ -2582,6 +2736,18 @@ namespace NowUI
                 changed = true;
             }
 
+            ref var mirror = ref NowControlState.Get<KeyMirror>(NowInput.CombineId(id, KeyMirrorSeed));
+
+            if (mirror.initialized == 0 || changed ||
+                !ReferenceEquals(mirror.source, value) || mirror.sourceLength != value.length)
+            {
+                mirror.initialized = 1;
+                mirror.source = value;
+                mirror.sourceLength = value.length;
+                mirror.keys = value.keys;
+                Normalize(ref mirror.keys);
+            }
+
             var theme = NowTheme.themeAsset;
             var rect = NowControls.ReserveRect(_hasRect, _rect, _settings.options, MeasureField(_settings));
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
@@ -2591,7 +2757,7 @@ namespace NowUI
                 open = !open;
 
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
-            DrawField(theme, rect, value.keys, value.preWrapMode, value.postWrapMode, _settings, open, focused, interaction.held, hoverT);
+            DrawField(theme, rect, mirror.keys, value.preWrapMode, value.postWrapMode, _settings, open, focused, interaction.held, hoverT);
 
             if (open)
             {
@@ -2770,7 +2936,7 @@ namespace NowUI
             if (changed)
                 SetPending(state.pendingId, state.keys, state.preWrapMode, state.postWrapMode);
             var snapshot = NowInput.current;
-            bool pressedOutside = snapshot.primaryPressed &&
+            bool pressedOutside = snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
                 !state.fieldRect.Contains(snapshot.pointerPosition);
 
@@ -2787,7 +2953,7 @@ namespace NowUI
             var rect = state.inspectorRect;
 
             Now.Rectangle(rect)
-                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.9f, 0.9f, 0.9f, 1f)))
+                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted))
                 .SetRadius(4f)
                 .Draw();
 
@@ -2873,7 +3039,7 @@ namespace NowUI
                 Now.Rectangle(deleteRect)
                     .SetColor(Color.clear)
                     .SetOutline(1f)
-                    .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
+                    .SetOutlineColor(theme.GetColor(NowColorToken.Border))
                     .SetRadius(4f)
                     .Draw();
                 NowControls.DrawCenteredLabel(theme, deleteRect, DeleteGlyph, NowTextStyle.Muted, deleteRect);
@@ -3012,8 +3178,7 @@ namespace NowUI
             int menuId = NowInput.CombineId(state.id, TangentContextSeed);
             Vector2 localPointer = Now.InverseTransformScreenPoint(snapshot.pointerPosition);
 
-            if ((snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0 &&
-                state.plotRect.Contains(localPointer))
+            if (NowInput.WasRightClicked(state.plotRect))
             {
                 selected = HitKey(state.plotRect, state.bounds, state.keys, localPointer, selected);
                 NowContextMenu.Open(menuId, snapshot.pointerPosition);
@@ -3072,11 +3237,11 @@ namespace NowUI
         static void DrawGrid(NowRect rect, CurveBounds bounds, NowThemeAsset theme)
         {
             Now.Rectangle(rect)
-                .SetColor(theme.GetColor(NowColorToken.Surface, Color.white))
+                .SetColor(theme.GetColor(NowColorToken.Surface))
                 .SetRadius(4f)
                 .Draw();
 
-            Color grid = theme.GetColor(NowColorToken.Border, Color.gray);
+            Color grid = theme.GetColor(NowColorToken.Border);
             grid.a *= 0.38f;
 
             for (int i = 1; i < 6; ++i)
@@ -3087,7 +3252,7 @@ namespace NowUI
                 Now.Line(new Vector2(rect.x, y), new Vector2(rect.xMax, y)).SetColor(grid).SetWidth(1f).Draw();
             }
 
-            Color axis = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+            Color axis = theme.GetColor(NowColorToken.TextMuted);
             axis.a *= 0.55f;
 
             if (bounds.timeMin < 0f && bounds.timeMax > 0f)
@@ -3105,14 +3270,14 @@ namespace NowUI
             Now.Rectangle(rect)
                 .SetColor(Color.clear)
                 .SetOutline(1f)
-                .SetOutlineColor(theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(theme.GetColor(NowColorToken.Border))
                 .Draw();
         }
 
         static void DrawSelectedKeyGuides(NowRect plot, CurveBounds bounds, Keyframe key, NowThemeAsset theme)
         {
             var point = CurvePoint(plot, bounds, key.time, key.value);
-            Color guide = theme.GetColor(NowColorToken.Accent, Color.blue);
+            Color guide = theme.GetColor(NowColorToken.Accent);
             guide.a *= 0.32f;
 
             Now.Line(new Vector2(point.x, plot.y), new Vector2(point.x, plot.yMax))
@@ -3143,7 +3308,7 @@ namespace NowUI
                 return;
 
             var keyPoint = CurvePoint(plot, bounds, keys[selected].time, keys[selected].value);
-            Color color = theme.GetColor(NowColorToken.Accent, Color.blue);
+            Color color = theme.GetColor(NowColorToken.Accent);
             Color handleColor = color;
             handleColor.a = Mathf.Clamp01(handleColor.a * 0.92f);
 
@@ -3156,7 +3321,7 @@ namespace NowUI
             var rect = new NowRect(handle.x - size * 0.5f, handle.y - size * 0.5f, size, size);
 
             Now.Rectangle(rect)
-                .SetColor(theme.GetColor(NowColorToken.Surface, Color.white))
+                .SetColor(theme.GetColor(NowColorToken.Surface))
                 .SetRadius(size * 0.5f)
                 .SetOutline(1.5f)
                 .SetOutlineColor(color)
@@ -3176,7 +3341,7 @@ namespace NowUI
             PreviewCurve.keys = keys;
             PreviewCurve.preWrapMode = preWrapMode;
             PreviewCurve.postWrapMode = postWrapMode;
-            Color color = theme.GetColor(NowColorToken.Accent, Color.blue);
+            Color color = theme.GetColor(NowColorToken.Accent);
             int samples = Mathf.Clamp(settings.samples, 8, 128);
 
             if (keys == null || keys.Length == 0)
@@ -3317,10 +3482,10 @@ namespace NowUI
         static void DrawKey(NowRect rect, bool selected, NowThemeAsset theme)
         {
             Now.Rectangle(rect)
-                .SetColor(theme.GetColor(NowColorToken.Surface, Color.white))
+                .SetColor(theme.GetColor(NowColorToken.Surface))
                 .SetRadius(rect.width * 0.5f)
                 .SetOutline(selected ? 2f : 1f)
-                .SetOutlineColor(selected ? theme.GetColor(NowColorToken.Accent, Color.blue) : theme.GetColor(NowColorToken.Border, Color.gray))
+                .SetOutlineColor(selected ? theme.GetColor(NowColorToken.Accent) : theme.GetColor(NowColorToken.Border))
                 .Draw();
         }
 
@@ -3736,8 +3901,21 @@ namespace NowUI
 
         static void SortKeys(Keyframe[] keys)
         {
-            if (keys != null)
-                Array.Sort(keys, (a, b) => a.time.CompareTo(b.time));
+            if (keys == null || IsSortedByTime(keys))
+                return;
+
+            Array.Sort(keys, (a, b) => a.time.CompareTo(b.time));
+        }
+
+        static bool IsSortedByTime(Keyframe[] keys)
+        {
+            for (int i = 1; i < keys.Length; ++i)
+            {
+                if (keys[i - 1].time > keys[i].time)
+                    return false;
+            }
+
+            return true;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -4044,6 +4222,7 @@ namespace NowUI
         static readonly string[] XY = { "X", "Y" };
         static readonly string[] XYZ = { "X", "Y", "Z" };
         static readonly string[] XYZW = { "X", "Y", "Z", "W" };
+        internal static readonly string[] XYWH = { "X", "Y", "W", "H" };
 
         public static bool DrawFloatComponents(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref float x, ref float y)
         {
@@ -4076,15 +4255,36 @@ namespace NowUI
 
         public static bool DrawFloatComponents(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref float x, ref float y, ref float z, ref float w)
         {
+            return DrawFloatComponents(id, hasRect, rect, settings, XYZW, ref x, ref y, ref z, ref w);
+        }
+
+        public static bool DrawFloatComponents(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, string[] labels, ref float x, ref float y, ref float z, ref float w)
+        {
             bool changed = false;
 
             using (BeginScope(id, hasRect, rect, settings))
             {
                 bool stretch = ShouldStretchComponents(hasRect, settings);
-                changed |= DrawFloatComponent(id, 0, XYZW[0], settings, stretch, ref x);
-                changed |= DrawFloatComponent(id, 1, XYZW[1], settings, stretch, ref y);
-                changed |= DrawFloatComponent(id, 2, XYZW[2], settings, stretch, ref z);
-                changed |= DrawFloatComponent(id, 3, XYZW[3], settings, stretch, ref w);
+                changed |= DrawFloatComponent(id, 0, labels[0], settings, stretch, ref x);
+                changed |= DrawFloatComponent(id, 1, labels[1], settings, stretch, ref y);
+                changed |= DrawFloatComponent(id, 2, labels[2], settings, stretch, ref z);
+                changed |= DrawFloatComponent(id, 3, labels[3], settings, stretch, ref w);
+            }
+
+            return changed;
+        }
+
+        public static bool DrawIntComponents(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, string[] labels, ref int x, ref int y, ref int z, ref int w)
+        {
+            bool changed = false;
+
+            using (BeginScope(id, hasRect, rect, settings))
+            {
+                bool stretch = ShouldStretchComponents(hasRect, settings);
+                changed |= DrawIntComponent(id, 0, labels[0], settings, stretch, ref x);
+                changed |= DrawIntComponent(id, 1, labels[1], settings, stretch, ref y);
+                changed |= DrawIntComponent(id, 2, labels[2], settings, stretch, ref z);
+                changed |= DrawIntComponent(id, 3, labels[3], settings, stretch, ref w);
             }
 
             return changed;
@@ -4343,7 +4543,7 @@ namespace NowUI
             float halfSize = size * 0.5f;
             Vector2 center = new Vector2(rect.x + rect.width * 0.5f, rect.y + rect.height * 0.5f);
             float offset = halfSize * 0.35f;
-            Color color = theme.GetColor(NowColorToken.TextMuted, new Color(0.6f, 0.6f, 0.6f, 1f));
+            Color color = theme.GetColor(NowColorToken.TextMuted);
 
             Vector2 a, b, c;
             if (open)

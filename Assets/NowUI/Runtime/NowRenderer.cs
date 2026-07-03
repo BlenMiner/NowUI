@@ -190,7 +190,7 @@ namespace NowUI
         internal static void DrawRange(
             CommandBuffer commandBuffer,
             Mesh mesh,
-            System.Collections.Generic.IReadOnlyList<NowUI.Internal.NowMeshBatch> batches,
+            List<NowMeshBatch> batches,
             Vector2 size,
             RenderTargetIdentifier target,
             int targetWidth,
@@ -222,7 +222,7 @@ namespace NowUI
         internal static void DrawRangeTransformed(
             CommandBuffer commandBuffer,
             Mesh mesh,
-            System.Collections.Generic.IReadOnlyList<NowUI.Internal.NowMeshBatch> batches,
+            List<NowMeshBatch> batches,
             Vector2 projectionSize,
             RenderTargetIdentifier target,
             int start,
@@ -254,7 +254,7 @@ namespace NowUI
         static void DrawBatches(
             CommandBuffer commandBuffer,
             Mesh mesh,
-            IReadOnlyList<NowMeshBatch> batches,
+            List<NowMeshBatch> batches,
             Vector2 size,
             NowRenderTargetContext targetContext,
             int start,
@@ -282,7 +282,7 @@ namespace NowUI
         static void DrawBatchesTransformed(
             CommandBuffer commandBuffer,
             Mesh mesh,
-            IReadOnlyList<NowMeshBatch> batches,
+            List<NowMeshBatch> batches,
             Vector2 size,
             NowRenderTargetContext targetContext,
             int start,
@@ -365,7 +365,7 @@ namespace NowUI
         static void DrawSelfReplayGlass(
             CommandBuffer commandBuffer,
             Mesh mesh,
-            IReadOnlyList<NowMeshBatch> batches,
+            List<NowMeshBatch> batches,
             Matrix4x4 projection,
             Material material,
             int subMesh,

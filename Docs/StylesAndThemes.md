@@ -7,32 +7,54 @@ explicitly.
 
 Create a theme from Unity with `Create > NowUI > Theme`.
 
-The package includes built-in `White`, `Dark`, `Night`, `Material`,
-`MaterialDark`, `HeroUI`, `HeroUIDark`, `UnityEditor`, and `UnityEditorDark`
-theme assets under `Assets/NowUI/Assets/Themes`. They share the same enum tokens
-and presets, so UI code can switch between them without changing call sites. The
-Material themes assign `MaterialControlRenderer`, the HeroUI themes assign
-`HeroUIControlRenderer`, and the Unity Editor themes assign
-`UnityEditorControlRenderer`, so built-in controls can use their own metrics,
-rounded shapes, focus rings, state layers, popup surfaces, and field treatment.
+The package includes built-in `Default`, `DefaultDark`, `Material`, and
+`MaterialDark` theme assets under `Assets/NowUI/Assets/Themes`. They share the
+same enum tokens and presets, so UI code can switch between them without
+changing call sites. `Default`/`DefaultDark` use the built-in control renderer
+(soft shadows, line-drawn glyphs, offset focus rings, pressed scale); the
+Material themes assign `MaterialControlRenderer` for a state-layer/ripple
+design language.
+
+Light and dark twins are cross-linked through each asset's counterpart slot,
+so one flag switches the whole UI:
+
+```csharp
+NowTheme.preferDark = systemDarkMode;
+```
 
 ## Theme Contents
 
-The theme currently has six style groups.
+The theme currently has seven style groups.
 
-- Palette tokens: one fixed color slot per `NowColorToken`.
+- Palette tokens: one fixed color slot per `NowColorToken`. Beyond the base
+  eight (background, surfaces, text, border, accent) the palette covers state
+  variants (`SurfaceHover`, `SurfacePressed`, `AccentHover`, `AccentPressed`,
+  `AccentMuted`), emphasis (`SurfaceElevated`, `BorderStrong`, `FocusRing`),
+  status roles (`Success`/`Warning`/`Danger`, each with `*Text` and `*Muted`),
+  and depth (`Shadow`, `Scrim`). Themes authored before the extended set keep
+  working: missing roles are derived from the base eight on load.
 - Spacing tokens: `Vector4(left, top, right, bottom)` insets keyed by
-  `NowSpacingToken`.
+  `NowSpacingToken` (`Xs` 4 through `Xxl` 32, plus `Panel`).
 - Radius tokens: `Vector4(top-left, top-right, bottom-right, bottom-left)`
-  corner radii keyed by `NowRadiusToken`.
-- Rectangle presets: fill color, radius, padding, blur, outline, and outline
-  color, with one fixed preset slot per `NowRectangleStyle`.
-- Text presets: optional font, font size, color, outline, outline color, and
-  padding, with one fixed preset slot per `NowTextStyle`.
+  corner radii keyed by `NowRadiusToken` (`Sm` 6 through `Xl` 24, plus `Pill`).
+- Shadow presets: two-layer (key + ambient) drop shadows keyed by
+  `NowElevationToken` (`Raised`, `Overlay`, `Modal`), with a dark-mode alpha
+  scale. Draw them with `DrawElevated`:
+  `theme.Rectangle(rect, NowRectangleStyle.Elevated).DrawElevated(theme, NowElevationToken.Raised);`
+- Rectangle presets: fill color, radius, padding, blur, outline, outline
+  color, and optional elevation, with one fixed preset slot per
+  `NowRectangleStyle` (`Surface`, `Muted`, `Outline`, `Accent`, `Elevated`,
+  `AccentSoft`, `Danger`, `Ghost`).
+- Text presets: optional font, font size, font style (weight), color, outline,
+  outline color, and padding, with one fixed preset slot per `NowTextStyle`.
+  The type scale runs `Display` 34 / `Title` 26 / `Heading` 20 / `Subheading`
+  17 / `Body`+`BodyStrong` 15 / `Button` 15 / `Label` 13 / `Muted` 13 /
+  `Caption` 12.
 - Control styles and an optional `NowControlRenderer` that built-in controls
   use for metrics and visual rendering. Control styles include component
-  padding, min heights, radii, state-layer opacity, toggle/slider state-layer
-  size, popup metrics, and scrollbar metrics.
+  padding, min heights, radii, state-layer opacity, focus ring offset,
+  disabled opacity, minimum touch target, popup metrics, and scrollbar
+  metrics.
 
 These groups are not add/remove lists in the inspector; every enum value has a
 known serialized field, so themes cannot accidentally omit or duplicate a
@@ -116,9 +138,9 @@ available for one-off calculations with raw `Vector4` spacing values.
 When custom drawing code needs a raw token value, resolve it from the theme.
 
 ```csharp
-Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+Color accent = theme.GetColor(NowColorToken.Accent);
 Vector4 compact = theme.GetSpacing(NowSpacingToken.Sm, new Vector4(8, 8, 8, 8));
-Vector4 radius = theme.GetRadius(NowRadiusToken.Md, new Vector4(8, 8, 8, 8));
+Vector4 radius = theme.GetRadius(NowRadiusToken.Md, new Vector4(10, 10, 10, 10));
 
 Now.Rectangle(new Vector4(10, 10, 180, 48))
     .SetColor(accent)
@@ -156,23 +178,19 @@ and scrollbars draw. Leave it empty to use the default renderer.
 The shipped design-system renderers map the small NowUI style surface onto the
 closest native variants:
 
+- Default: `Accent` is solid, `Surface`/`Elevated` are filled cards with a
+  border (`Elevated` adds a drop shadow), `Outline` is bordered, `Ghost` is
+  transparent until hovered, `AccentSoft` is a tinted secondary, and `Danger`
+  is the destructive variant.
 - Material: `Accent` is filled, `Muted` is tonal, `Outline` is outlined, and
   `Surface` behaves like a text button.
-- HeroUI: `Accent` is solid, `Muted` is flat/default, `Outline` is bordered,
-  and `Surface` is ghost-like.
-- Unity Editor: all button-like variants stay compact and grey; selected rows
-  and text selections use the Editor highlight token.
 
 The renderer hook intentionally keeps behavior in the built-in controls. It can
 replace visuals and measurements, but exact parity with larger design systems
 needs more control-state and component-slot data than NowUI exposes today:
 
-- Disabled, pending/loading, read-only, invalid, and required states.
+- Pending/loading, read-only, invalid, and required states.
 - Focus-visible versus pointer focus, instead of a single `focused` bit.
-- Per-component variants beyond the four rectangle styles, such as Material
-  elevated buttons or HeroUI shadow/faded/light variants.
-- First-class elevation/shadow and pressed-scale/shape animation tokens instead
-  of renderer-local approximations.
 - Leading/trailing icons, field labels, helper/error text, and clear buttons in
   text fields and dropdowns.
-- Typography weight, line-height, letter-spacing, and font-family tokens.
+- Line-height and letter-spacing tokens.

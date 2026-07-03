@@ -108,6 +108,7 @@ namespace NowUI.Markdown
         NowFontAsset _layoutFont;
         int _imagesVersion = -1;
         bool _hasLoadingImages;
+        bool _referencesImages;
 
         public NowMarkdownDocument(NowMarkdownBlock root, NowMarkdownStyle style)
         {
@@ -377,14 +378,10 @@ namespace NowUI.Markdown
 
             image.Draw();
 
-            var snapshot = NowInput.current;
             int menuId = NowInput.CombineId(NowInput.GetId(docId, "img-menu"), opIndex);
 
-            if (!NowInput.isPassive && snapshot.hasPointer && target.Contains(snapshot.pointerPosition) &&
-                (snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0)
-            {
-                NowContextMenu.Open(menuId, snapshot.pointerPosition);
-            }
+            if (NowInput.WasRightClicked(target))
+                NowContextMenu.Open(menuId, NowInput.current.pointerPosition);
 
             if (NowContextMenu.Begin(menuId))
             {
@@ -414,7 +411,7 @@ namespace NowUI.Markdown
             background.outlineColor = themeAsset.GetColor(NowColorToken.Border, Color.gray);
 
             if (interaction.hovered)
-                background.color = NowControls.StateTint(background.color, 1f, interaction.held);
+                background.color = NowControls.StateColor(background.color, 1f, interaction.held);
 
             background.Draw();
 
@@ -585,7 +582,7 @@ namespace NowUI.Markdown
             NowFontAsset font = probe.font;
 
             if (font == _layoutFont && Mathf.Abs(width - _layoutWidth) <= 0.5f &&
-                _imagesVersion == NowMarkdownImages.version)
+                (!_referencesImages || _imagesVersion == NowMarkdownImages.version))
             {
                 return;
             }
@@ -594,6 +591,7 @@ namespace NowUI.Markdown
             _layoutFont = font;
             _imagesVersion = NowMarkdownImages.version;
             _hasLoadingImages = false;
+            _referencesImages = false;
             _strikeSequence = 0;
             _ops.Clear();
             _links.Clear();
@@ -1103,6 +1101,7 @@ namespace NowUI.Markdown
 
         void LayoutImage(NowMarkdownInline node, ref NowRichTextCursor cursor, float fontSize, NowFontStyle style, int link)
         {
+            _referencesImages = true;
             var state = NowMarkdownImages.GetState(node.url, out var texture);
 
             if (state == NowMarkdownImageState.Loaded && texture != null)

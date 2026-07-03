@@ -74,13 +74,19 @@ namespace NowUI
     {
         public readonly int id;
         public readonly NowRect sourceRect;
+
+        /// <summary>
+        /// Caller-provided time set through
+        /// <see cref="NowModifierBuilder{TDeformer}.SetTime(float)"/>; 0 when none
+        /// was supplied. NowUI never reads a clock on the caller's behalf.
+        /// </summary>
         public readonly float time;
 
-        internal NowEffectContext(int id, NowRect sourceRect)
+        internal NowEffectContext(int id, NowRect sourceRect, float time)
         {
             this.id = id;
             this.sourceRect = sourceRect;
-            time = Time.realtimeSinceStartup;
+            this.time = time;
         }
     }
 
@@ -223,7 +229,8 @@ namespace NowUI
             bool renderToTexture,
             bool subdivideText,
             bool hasSourceRect,
-            NowRect sourceRect)
+            NowRect sourceRect,
+            float time)
             where TDeformer : struct, INowVertexDeformer
         {
             var entry = GetEntry(id, out bool temporary);
@@ -246,6 +253,7 @@ namespace NowUI
                     subdivideText,
                     hasSourceRect,
                     sourceRect,
+                    time,
                     drawScope,
                     captureProfile);
             }
@@ -338,7 +346,8 @@ namespace NowUI
                         scope.subdivideText,
                         true,
                         textureRect,
-                        scope.id);
+                        scope.id,
+                        scope.time);
                     return;
                 }
 
@@ -349,7 +358,8 @@ namespace NowUI
                     scope.subdivideText,
                     true,
                     sourceRect,
-                    scope.id);
+                    scope.id,
+                    scope.time);
             }
             finally
             {
@@ -534,6 +544,7 @@ namespace NowUI
         bool _subdivideText;
         bool _hasSourceRect;
         NowRect _sourceRect;
+        float _time;
 
         internal NowModifierBuilder(TDeformer deformer, int site)
         {
@@ -545,6 +556,7 @@ namespace NowUI
             _subdivideText = false;
             _hasSourceRect = false;
             _sourceRect = default;
+            _time = 0f;
         }
 
         public NowModifierBuilder<TDeformer> SetId(NowId id)
@@ -584,6 +596,17 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// Time exposed to deformers through <see cref="NowEffectContext.time"/>.
+        /// The caller passes its own clock (e.g. <c>SetTime(Time.time)</c>);
+        /// without it the context time stays 0.
+        /// </summary>
+        public NowModifierBuilder<TDeformer> SetTime(float time)
+        {
+            _time = time;
+            return this;
+        }
+
         public NowModifierScope<TDeformer> Begin()
         {
             int id = NowControls.GetControlId(_id, _site);
@@ -594,7 +617,8 @@ namespace NowUI
                 _renderToTexture,
                 _subdivideText,
                 _hasSourceRect,
-                _sourceRect);
+                _sourceRect,
+                _time);
         }
     }
 
@@ -611,6 +635,7 @@ namespace NowUI
         internal bool subdivideText;
         internal bool hasSourceRect;
         internal NowRect sourceRect;
+        internal float time;
         internal NowDrawScope drawScope;
         internal Unity.Profiling.ProfilerMarker.AutoScope captureProfile;
         bool _disposed;
@@ -625,6 +650,7 @@ namespace NowUI
             bool subdivideText,
             bool hasSourceRect,
             NowRect sourceRect,
+            float time,
             NowDrawScope drawScope,
             Unity.Profiling.ProfilerMarker.AutoScope captureProfile)
         {
@@ -637,6 +663,7 @@ namespace NowUI
             this.subdivideText = subdivideText;
             this.hasSourceRect = hasSourceRect;
             this.sourceRect = sourceRect;
+            this.time = time;
             this.drawScope = drawScope;
             this.captureProfile = captureProfile;
             _disposed = false;
@@ -744,7 +771,8 @@ namespace NowUI
             bool subdivideText,
             bool hasSourceRect,
             NowRect sourceRect,
-            int effectId)
+            int effectId,
+            float time)
             where TDeformer : struct, INowVertexDeformer
         {
             NowEffectsMesh.DrawCapturedDrawList(
@@ -754,7 +782,8 @@ namespace NowUI
                 subdivideText,
                 hasSourceRect,
                 sourceRect,
-                effectId);
+                effectId,
+                time);
         }
 
         internal static NowRect PixelSnapOutward(NowRect rect)

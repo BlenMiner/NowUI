@@ -406,6 +406,8 @@ namespace NowUI
             float blurRadius,
             NowGlassBlurQuality quality)
         {
+            blurRadius = QuantizeSharedBlurRadius(blurRadius);
+
             for (int i = 0; i < state.sharedBackdrops.Count; ++i)
             {
                 var shared = state.sharedBackdrops[i];
@@ -426,6 +428,17 @@ namespace NowUI
             };
             state.sharedBackdrops.Add(created);
             return created;
+        }
+
+        /// <summary>
+        /// Shared backdrops are keyed on blur radius; quantizing to quarter-pixel
+        /// steps (with all unblurred radii collapsing to zero, matching the
+        /// <see cref="ShouldBlur"/> threshold) lets animated radii reuse one
+        /// capture instead of re-allocating full-resolution textures every frame.
+        /// </summary>
+        static float QuantizeSharedBlurRadius(float blurRadius)
+        {
+            return blurRadius < 0.25f ? 0f : Mathf.Round(blurRadius * 4f) * 0.25f;
         }
 
         static RequestState GetRequestState(CameraState state, NowWorldGraphic requester)
@@ -798,24 +811,7 @@ namespace NowUI
 
         static RenderTexture CreateTexture(int width, int height, string name)
         {
-            var descriptor = new RenderTextureDescriptor(
-                Mathf.Max(1, width),
-                Mathf.Max(1, height),
-                RenderTextureFormat.ARGB32,
-                0)
-            {
-                msaaSamples = 1,
-                useMipMap = false,
-                autoGenerateMips = false
-            };
-
-            return new RenderTexture(descriptor)
-            {
-                name = name,
-                hideFlags = HideFlags.HideAndDontSave,
-                filterMode = FilterMode.Bilinear,
-                wrapMode = TextureWrapMode.Clamp
-            };
+            return NowGlassBackdropSurface.CreateTexture(width, height, name);
         }
 
         static void RemoveBuiltInBuffer(Camera camera)
@@ -964,14 +960,7 @@ namespace NowUI
             if (request?.backdrop == null)
                 return;
 
-            request.backdrop.Release();
-
-            if (Application.isPlaying)
-                Object.Destroy(request.backdrop);
-            else
-                Object.DestroyImmediate(request.backdrop);
-
-            request.backdrop = null;
+            NowGlassBackdropSurface.ReleaseTexture(ref request.backdrop);
             request.backdropReady = false;
             request.backdropReadyFrame = -1;
             request.backdropPendingFrame = -1;
@@ -984,14 +973,7 @@ namespace NowUI
             if (request?.source == null)
                 return;
 
-            request.source.Release();
-
-            if (Application.isPlaying)
-                Object.Destroy(request.source);
-            else
-                Object.DestroyImmediate(request.source);
-
-            request.source = null;
+            NowGlassBackdropSurface.ReleaseTexture(ref request.source);
             request.sourceReady = false;
             request.sourceReadyFrame = -1;
             request.sourcePendingFrame = -1;
@@ -1018,17 +1000,7 @@ namespace NowUI
 
         static void ReleaseTexture(ref RenderTexture texture)
         {
-            if (texture == null)
-                return;
-
-            texture.Release();
-
-            if (Application.isPlaying)
-                Object.Destroy(texture);
-            else
-                Object.DestroyImmediate(texture);
-
-            texture = null;
+            NowGlassBackdropSurface.ReleaseTexture(ref texture);
         }
 
         public static void ResetEditorPreviewState()

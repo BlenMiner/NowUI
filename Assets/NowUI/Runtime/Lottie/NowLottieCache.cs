@@ -176,5 +176,11 @@ namespace NowUI
 
             NowLottieAsset.DestroyRuntimeAsset(entry.asset);
         }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetForRuntimeLoad()
+        {
+            Reset();
+        }
     }
 }

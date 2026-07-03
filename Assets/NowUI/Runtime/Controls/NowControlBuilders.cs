@@ -44,12 +44,16 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowButton SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
+        /// <summary>Fixed width in layout flow.</summary>
         public NowButton SetWidth(float width) { _options = _options.SetWidth(width); return this; }
 
+        /// <summary>Fixed height in layout flow.</summary>
         public NowButton SetHeight(float height) { _options = _options.SetHeight(height); return this; }
 
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
         public NowButton SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
@@ -58,8 +62,10 @@ namespace NowUI
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowButton SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
+        /// <summary>Themed rectangle style for the background.</summary>
         public NowButton SetStyle(NowRectangleStyle style) { _rectPreset = style; return this; }
 
+        /// <summary>Themed text style for the label.</summary>
         public NowButton SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
         /// <summary>Cross-axis alignment for children inside <see cref="Begin"/> (vertical centering of icons/labels).</summary>
@@ -214,7 +220,17 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowCheckbox SetOptions(NowLayoutOptions options) { _options = options; return this; }
+
+        /// <summary>Fixed width in layout flow.</summary>
+        public NowCheckbox SetWidth(float width) { _options = _options.SetWidth(width); return this; }
+
+        /// <summary>Fixed height in layout flow.</summary>
+        public NowCheckbox SetHeight(float height) { _options = _options.SetHeight(height); return this; }
+
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
+        public NowCheckbox SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowCheckbox SetId(NowId id) { _id = id; return this; }
@@ -222,6 +238,7 @@ namespace NowUI
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowCheckbox SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
+        /// <summary>Themed text style for the label.</summary>
         public NowCheckbox SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
         /// <summary>Cross-axis alignment for children inside <see cref="Begin"/> (vertical centering of icons/labels).</summary>
@@ -339,7 +356,17 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowRadio SetOptions(NowLayoutOptions options) { _options = options; return this; }
+
+        /// <summary>Fixed width in layout flow.</summary>
+        public NowRadio SetWidth(float width) { _options = _options.SetWidth(width); return this; }
+
+        /// <summary>Fixed height in layout flow.</summary>
+        public NowRadio SetHeight(float height) { _options = _options.SetHeight(height); return this; }
+
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
+        public NowRadio SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowRadio SetId(NowId id) { _id = id; return this; }
@@ -347,6 +374,7 @@ namespace NowUI
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowRadio SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
+        /// <summary>Themed text style for the label.</summary>
         public NowRadio SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
         /// <summary>Cross-axis alignment for children inside <see cref="Begin"/> (vertical centering of icons/labels).</summary>
@@ -449,10 +477,16 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowSlider SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
+        /// <summary>Fixed width in layout flow.</summary>
         public NowSlider SetWidth(float width) { _options = _options.SetWidth(width); return this; }
 
+        /// <summary>Fixed height in layout flow.</summary>
+        public NowSlider SetHeight(float height) { _options = _options.SetHeight(height); return this; }
+
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
         public NowSlider SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
         /// <summary>Snap values to increments anchored at the slider minimum. Use 1 for integer sliders.</summary>

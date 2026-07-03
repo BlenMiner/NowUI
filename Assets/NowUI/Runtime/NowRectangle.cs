@@ -27,7 +27,12 @@ namespace NowUI
             this.bottomLeft = bottomLeft;
         }
 
-        public Vector4 packed => new Vector4(bottomRight, topRight, bottomLeft, topLeft);
+        /// <summary>
+        /// The corner order the sdRoundedBox shaders decode: x/y select the
+        /// right half (top, bottom), z/w the left half (top, bottom), with the
+        /// quad's raw UV origin at the bottom.
+        /// </summary>
+        public Vector4 packed => new Vector4(topRight, bottomRight, topLeft, bottomLeft);
 
         public static NowCornerRadius All(float radius)
         {
@@ -56,7 +61,7 @@ namespace NowUI
 
         public static NowCornerRadius FromPacked(Vector4 packed)
         {
-            return new NowCornerRadius(packed.w, packed.y, packed.x, packed.z);
+            return new NowCornerRadius(packed.z, packed.x, packed.y, packed.w);
         }
 
         public static implicit operator Vector4(NowCornerRadius radius)

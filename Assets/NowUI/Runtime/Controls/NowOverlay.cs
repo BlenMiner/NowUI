@@ -13,6 +13,13 @@ namespace NowUI
     {
         /// <summary>Returns a rect moved into view, preserving its size whenever possible.</summary>
         NowRect FitPopupRectToView(NowRect rect);
+
+        /// <summary>
+        /// Shrinks an oversized popup rect until it can fit the visible view,
+        /// then moves it into view. World hosts clamp against the popup's
+        /// screen-space projection, so tilted surfaces clamp correctly.
+        /// </summary>
+        NowRect ClampPopupRectToView(NowRect rect);
     }
 
     internal static class NowPopupPlacement
@@ -56,10 +63,66 @@ namespace NowUI
                 : FitToSurface(rect);
         }
 
+        /// <summary>
+        /// Shrinks and moves an ambient-transform-space popup rect until it fits
+        /// the visible view, mapping the screen-space clamp back through the
+        /// active transform like <see cref="FitToView"/>.
+        /// </summary>
+        public static NowRect ClampLocalToView(NowRect rect)
+        {
+            if (rect.isEmpty)
+                return rect;
+
+            var transformed = Now.TransformScreenRect(rect);
+            var clamped = ClampToView(transformed);
+
+            Vector2 positionDelta = clamped.position - transformed.position;
+            var sizeDelta = new Vector2(clamped.width - transformed.width, clamped.height - transformed.height);
+
+            if (positionDelta.sqrMagnitude <= 0.0001f && sizeDelta.sqrMagnitude <= 0.0001f)
+                return rect;
+
+            Vector2 localPosition = rect.position + Now.InverseTransformScreenVector(positionDelta);
+            Vector2 localSizeDelta = Now.InverseTransformScreenVector(sizeDelta);
+            return new NowRect(
+                localPosition.x,
+                localPosition.y,
+                rect.width + localSizeDelta.x,
+                rect.height + localSizeDelta.y);
+        }
+
         internal static void PopFitProvider()
         {
             if (_fitProviders.Count > 0)
                 _fitProviders.RemoveAt(_fitProviders.Count - 1);
+        }
+
+        /// <summary>
+        /// Shrinks an oversized popup rect until it fits the visible view, then
+        /// moves it into view: the fit provider when one is active (world hosts
+        /// clamp against the popup's screen projection), the input surface
+        /// otherwise.
+        /// </summary>
+        public static NowRect ClampToView(NowRect rect)
+        {
+            if (rect.isEmpty)
+                return rect;
+
+            if (_fitProviders.Count > 0)
+                return _fitProviders[_fitProviders.Count - 1].ClampPopupRectToView(rect);
+
+            Vector2 size = NowInput.surface.size;
+
+            if (size.x <= 0f || size.y <= 0f)
+                return rect;
+
+            const float margin = 8f;
+            float maxHeight = Mathf.Max(32f, size.y - margin * 2f);
+
+            if (rect.height > maxHeight)
+                rect = new NowRect(rect.x, rect.y, rect.width, maxHeight);
+
+            return FitToSurface(rect);
         }
 
         public static NowRect FitToSurface(NowRect rect)
@@ -131,6 +194,7 @@ namespace NowUI
             public int state;
             public int overlayId;
             public Now.NowTransformSnapshot transform;
+            public NowThemeAsset theme;
         }
 
         struct OverlayBlock
@@ -138,6 +202,8 @@ namespace NowUI
             public NowRect rect;
             public int id;
             public int parentId;
+            public bool modal;
+            public int modalInteractiveRootId;
             public Component host;
             public RectTransform hostRectTransform;
             public Camera hostCamera;
@@ -216,6 +282,26 @@ namespace NowUI
             return new NowOverlayHostScope(true);
         }
 
+        /// <summary>
+        /// Host identity without a RectTransform, for surfaces with their own
+        /// coordinate space (world graphics). Blocks tagged this way only affect
+        /// their own surface's pointer, never other hosts' local coordinates.
+        /// </summary>
+        internal static NowOverlayHostScope Host(Component host)
+        {
+            if (host == null)
+                return default;
+
+            _hostStack.Add(new OverlayHostContext
+            {
+                host = host,
+                rectTransform = null,
+                camera = null
+            });
+
+            return new NowOverlayHostScope(true);
+        }
+
         internal static void PopHost()
         {
             if (_hostStack.Count > 0)
@@ -243,6 +329,25 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Shrinks an oversized popup rect until it fits the visible view, then
+        /// moves it into view.
+        /// </summary>
+        public static NowRect ClampScreenToView(NowRect rect)
+        {
+            return NowPopupPlacement.ClampToView(rect);
+        }
+
+        /// <summary>
+        /// Shrinks and moves an ambient-transform-space popup rect until it
+        /// fits the visible view — the clamping counterpart of
+        /// <see cref="FitToView"/> for dropdown-family popups.
+        /// </summary>
+        public static NowRect ClampToView(NowRect rect)
+        {
+            return NowPopupPlacement.ClampLocalToView(rect);
+        }
+
+        /// <summary>
         /// Queues a draw callback for the end of the frame and blocks pointer
         /// interaction inside <paramref name="blockRect"/> for everything that is
         /// not itself overlay content. Ignored during layout measure passes.
@@ -253,7 +358,7 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _deferred.Add(new DeferredDraw { draw = draw, transform = Now.CaptureTransform() });
+            _deferred.Add(new DeferredDraw { draw = draw, transform = Now.CaptureTransform(), theme = NowTheme.currentScopeTheme });
             AddBlock(Now.TransformScreenRect(blockRect), 0);
         }
 
@@ -266,7 +371,7 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _deferred.Add(new DeferredDraw { draw = draw });
+            _deferred.Add(new DeferredDraw { draw = draw, theme = NowTheme.currentScopeTheme });
             AddBlock(blockRect, 0);
         }
 
@@ -286,7 +391,8 @@ namespace NowUI
                 drawWithState = draw,
                 state = state,
                 overlayId = state,
-                transform = Now.CaptureTransform()
+                transform = Now.CaptureTransform(),
+                theme = NowTheme.currentScopeTheme
             });
             AddBlock(Now.TransformScreenRect(blockRect), state);
         }
@@ -300,8 +406,29 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _deferred.Add(new DeferredDraw { drawWithState = draw, state = state, overlayId = state });
+            _deferred.Add(new DeferredDraw { drawWithState = draw, state = state, overlayId = state, theme = NowTheme.currentScopeTheme });
             AddBlock(blockRect, state);
+        }
+
+        /// <summary>
+        /// Queues an overlay that draws above everything but never blocks the
+        /// pointer — tooltips and other purely informational layers that must not
+        /// steal hover or clicks from the controls beneath them.
+        /// </summary>
+        public static void DeferPassive(int state, DrawCallback draw)
+        {
+            if (draw == null || NowInput.isPassive)
+                return;
+
+            BeginFrameIfNeeded();
+            _deferred.Add(new DeferredDraw
+            {
+                drawWithState = draw,
+                state = state,
+                overlayId = state,
+                transform = Now.CaptureTransform(),
+                theme = NowTheme.currentScopeTheme
+            });
         }
 
         /// <summary>
@@ -330,6 +457,37 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Blocks pointer interaction on every NowUI surface, not just the
+        /// registering host's — the modal guarantee for context menus and modal
+        /// dialogs. Base content is blocked everywhere; other overlay content is
+        /// blocked too, except the overlay subtree rooted at
+        /// <paramref name="interactiveRootId"/> (the modal's own popups), so a
+        /// context menu opened from inside another popup wins the pointer over
+        /// the popup beneath it.
+        /// </summary>
+        public static void BlockAllSurfaces(int interactiveRootId = 0)
+        {
+            if (NowInput.isPassive)
+                return;
+
+            BeginFrameIfNeeded();
+
+            var host = CurrentHostContext();
+
+            _blocksCurrent.Add(new OverlayBlock
+            {
+                rect = new NowRect(-100000f, -100000f, 200000f, 200000f),
+                id = 0,
+                parentId = CurrentOverlayId(),
+                modal = true,
+                modalInteractiveRootId = interactiveRootId,
+                host = host.host,
+                hostRectTransform = host.rectTransform,
+                hostCamera = host.camera
+            });
+        }
+
+        /// <summary>
         /// True when the pointer position is owned by overlay content registered
         /// last frame; base-layer interactions treat it as hover-blocked. Queries
         /// roll the frame too, so blocks expire even when no overlay registers
@@ -337,15 +495,56 @@ namespace NowUI
         /// </summary>
         public static bool IsPointerBlocked(Vector2 pointerPosition)
         {
-            if (_overlayDepth > 0)
-                return false;
-
             BeginFrameIfNeeded();
+
+            if (_overlayDepth > 0)
+                return IsOverlayContentBlocked();
+
+            var host = CurrentHostContext().host;
 
             for (int i = 0; i < _blocksPrevious.Count; ++i)
             {
-                if (_blocksPrevious[i].rect.Contains(pointerPosition))
+                if (_blocksPrevious[i].modal)
                     return true;
+
+                if (BlockBelongsToHost(_blocksPrevious[i], host) &&
+                    _blocksPrevious[i].rect.Contains(pointerPosition))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Overlay content is normally exempt from pointer blocks (it sits on
+        /// top), but a modal registered by a nested popup — a context menu
+        /// opened from inside another popup — must still occlude the overlay
+        /// layers beneath it. Only the modal's own overlay subtree stays
+        /// interactive.
+        /// </summary>
+        static bool IsOverlayContentBlocked()
+        {
+            int drawing = CurrentOverlayId();
+
+            for (int i = 0; i < _blocksPrevious.Count; ++i)
+            {
+                var block = _blocksPrevious[i];
+
+                if (!block.modal)
+                    continue;
+
+                if (block.modalInteractiveRootId != 0 &&
+                    drawing != 0 &&
+                    (drawing == block.modalInteractiveRootId ||
+                     OverlayIdBelongsToTree(drawing, block.modalInteractiveRootId, _blocksPrevious) ||
+                     OverlayIdBelongsToTree(drawing, block.modalInteractiveRootId, _blocksCurrent)))
+                {
+                    continue;
+                }
+
+                return true;
             }
 
             return false;
@@ -660,6 +859,7 @@ namespace NowUI
                     try
                     {
                         using (Now.ApplyTransformSnapshot(deferred.transform))
+                        using (NowTheme.ScopeOrDefault(deferred.theme))
                         {
                             if (deferred.drawWithState != null)
                                 deferred.drawWithState(deferred.state);

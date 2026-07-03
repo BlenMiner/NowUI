@@ -13,7 +13,7 @@ namespace NowUI.Markup
     {
         static readonly HashSet<string> VoidTags = new HashSet<string>
         {
-            "br", "space", "flex", "slider", "textfield", "input"
+            "br", "hr", "space", "flex", "slider", "textfield", "input", "progress"
         };
 
         public static NowMarkupNode Parse(string source)

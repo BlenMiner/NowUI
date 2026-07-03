@@ -33,7 +33,8 @@ namespace NowUI
     /// Browser-style text selection over caller-positioned line segments:
     /// press and drag selects (across everything the segment list covers, like
     /// dragging over a webpage), double-click selects a word, triple-click a
-    /// line, Ctrl/Cmd+A selects all, Ctrl/Cmd+C copies through
+    /// line, shift-click extends the selection from the existing anchor,
+    /// Ctrl/Cmd+A selects all, Ctrl/Cmd+C copies through
     /// <see cref="NowClipboard"/>. Selection
     /// state keys off the id in <see cref="NowControlState"/>; focus
     /// integration clears the selection when the user clicks elsewhere.
@@ -98,11 +99,7 @@ namespace NowUI
 
             var snapshot = NowInput.current;
 
-            if (!NowInput.isPassive &&
-                snapshot.hasPointer &&
-                bounds.Contains(snapshot.pointerPosition) &&
-                Now.IsInsideAmbientMask(snapshot.pointerPosition) &&
-                (snapshot.pointerButtonsPressed & NowPointerButtons.Secondary) != 0)
+            if (NowInput.WasRightClicked(bounds))
             {
                 NowFocus.Focus(id);
                 result.rightClicked = true;
@@ -138,23 +135,33 @@ namespace NowUI
             {
                 NowFocus.Focus(id);
                 int hit = HitTest(text, lines, font, fontSize, fontStyle, interaction.pointerPosition);
-                int streak = NowControlState.ClickStreak(id, true, interaction.pointerPosition);
 
-                if (streak >= 3)
+                if (NowTextInput.current.shift)
                 {
-                    NowTextEdit.SelectLine(ref state, text, hit);
-                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Line, in state);
-                }
-                else if (streak == 2)
-                {
-                    NowTextEdit.SelectWord(ref state, text, hit);
-                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Word, in state);
+                    state.caret = hit;
+                    var anchorOrigin = new NowTextEditState { caret = state.anchor, anchor = state.anchor };
+                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in anchorOrigin);
                 }
                 else
                 {
-                    state.caret = hit;
-                    state.anchor = hit;
-                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
+                    int streak = NowControlState.ClickStreak(id, true, interaction.pointerPosition);
+
+                    if (streak >= 3)
+                    {
+                        NowTextEdit.SelectLine(ref state, text, hit);
+                        NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Line, in state);
+                    }
+                    else if (streak == 2)
+                    {
+                        NowTextEdit.SelectWord(ref state, text, hit);
+                        NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Word, in state);
+                    }
+                    else
+                    {
+                        state.caret = hit;
+                        state.anchor = hit;
+                        NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
+                    }
                 }
             }
             else if (interaction.dragging)

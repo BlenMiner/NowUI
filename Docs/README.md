@@ -24,9 +24,12 @@ it.
   deformers, subdivision, snapshots, and performance notes.
 - [World Space](WorldSpace.md): direct-mesh nameplates, hover tooltips,
   diegetic panels, ray-mapped input, depth modes, and surface deformers.
-- [Controls](Controls.md): buttons, checkboxes, radios, sliders, text fields,
-  dropdowns, file pickers, scroll views, view stacks/dialogs, and the toolkit
-  for building custom controls.
+- [Controls](Controls.md): buttons, checkboxes, radios, switches, sliders,
+  progress bars, badges/chips, tooltips, text fields, dropdowns, combo boxes,
+  mask/layer-mask fields, key binding fields, date/time pickers, file pickers,
+  tabs, split views, tree views, foldouts, scroll views, view stacks/dialogs,
+  the reflection-driven inspector, and the toolkit for building custom
+  controls.
 - [Custom Controls](CustomControls.md): the how-to guide — restyling through
   themes, wrapping variants, custom shapes on standard interaction, and
   building new controls from scratch (with a live demo in the docs browser
@@ -60,6 +63,9 @@ it.
   Lottie tags, and link/tag hit testing.
 - [Markup](Markup.md): constrained XML-like layout/control markup for
   AI-authored interfaces, with inline style, style blocks, state, and events.
+- [Markdown](Markdown.md): GitHub-flavored Markdown rendered through
+  `Now`/`NowLayout` primitives — layout-flow, explicit-rect, and retained
+  document forms.
 
 All of these render in-engine: open `Assets/Scenes/DocsScene.unity` for a
 browsable version with a scrollable side menu, powered by the markdown

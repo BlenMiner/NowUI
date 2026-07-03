@@ -1010,4 +1010,104 @@ public class NowMarkdownTests
             Assert.AreEqual(0, allocated, "steady-state markdown draw must not allocate");
         }
     }
+
+    [Test]
+    public void StyledDocumentsAreCachedByTextAndStyle()
+    {
+        var style = new NowMarkdownStyle { fontSize = 20f };
+        var first = NowMarkdown.GetCached("styled *markdown* body", style);
+        var second = NowMarkdown.GetCached("styled *markdown* body", style);
+
+        Assert.AreSame(first, second, "same text and style must reuse the cached document");
+        Assert.AreNotSame(first, NowMarkdown.GetCached("styled *markdown* body"),
+            "the default style must not reuse a styled cache entry");
+        Assert.AreNotSame(first, NowMarkdown.GetCached("styled *markdown* body", new NowMarkdownStyle { fontSize = 24f }),
+            "a different font size must parse its own document");
+    }
+
+    [Test]
+    public void AlternatingDocumentsKeepTheirCachedInstances()
+    {
+        var a1 = NowMarkdown.GetCached("alternating cached doc a");
+        var b1 = NowMarkdown.GetCached("alternating cached doc b");
+        var a2 = NowMarkdown.GetCached("alternating cached doc a");
+        var b2 = NowMarkdown.GetCached("alternating cached doc b");
+
+        Assert.AreSame(a1, a2, "alternating between documents must not evict either one");
+        Assert.AreSame(b1, b2, "alternating between documents must not evict either one");
+    }
+
+    [Test]
+    public void StyledBuilderDrawIsAllocationFreeAfterWarmup()
+    {
+        var rect = new NowRect(0, 0, 300f, 100f);
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            NowMarkdown.Document("styled *steady* state body").SetFontSize(19f).Draw(rect);
+            NowMarkdown.Document("styled *steady* state body").SetFontSize(19f).Draw(rect);
+
+            long before;
+
+            try
+            {
+                before = System.GC.GetAllocatedBytesForCurrentThread();
+            }
+            catch (System.NotImplementedException)
+            {
+                Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
+                return;
+            }
+
+            NowMarkdown.Document("styled *steady* state body").SetFontSize(19f).Draw(rect);
+            long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.AreEqual(0, allocated, "steady-state styled markdown draw must not reparse or allocate");
+        }
+    }
+
+    [Test]
+    public void ImageVersionBumpsOnlyRelayoutDocumentsWithImages()
+    {
+        var withoutImages = NowMarkdownDocument.Parse("plain paragraph, no images here");
+        var withImages = NowMarkdownDocument.Parse("![pic](local/versioned-image)");
+        var texture = new Texture2D(32, 16, TextureFormat.RGBA32, false);
+
+        try
+        {
+            using (NowInput.Begin(_provider, Surface))
+            {
+                float plainHeight = withoutImages.MeasureHeight(400f);
+                float imageBefore = withImages.MeasureHeight(400f);
+
+                NowMarkdownImages.SetTexture("local/versioned-image", texture);
+
+                long before;
+
+                try
+                {
+                    before = System.GC.GetAllocatedBytesForCurrentThread();
+                }
+                catch (System.NotImplementedException)
+                {
+                    Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
+                    return;
+                }
+
+                float plainAfter = withoutImages.MeasureHeight(400f);
+                long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+
+                Assert.AreEqual(0, allocated, "image version bumps must not relayout image-free documents");
+                Assert.AreEqual(plainHeight, plainAfter, 0.001f);
+                Assert.AreNotEqual(imageBefore, withImages.MeasureHeight(400f),
+                    "documents that reference the loaded image must relayout");
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+            NowMarkdownImages.Reset();
+        }
+    }
 }

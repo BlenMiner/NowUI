@@ -9,14 +9,20 @@ namespace NowUI.Editor
     {
         static bool s_ShowGenerator = true;
 
+        static GUIStyle s_LabelStyle;
+
         static readonly NowColorToken[] PreviewPaletteTokens =
         {
             NowColorToken.Background,
             NowColorToken.Surface,
-            NowColorToken.SurfaceMuted,
+            NowColorToken.SurfaceElevated,
             NowColorToken.Text,
             NowColorToken.Border,
-            NowColorToken.Accent
+            NowColorToken.Accent,
+            NowColorToken.AccentMuted,
+            NowColorToken.Success,
+            NowColorToken.Warning,
+            NowColorToken.Danger
         };
 
         static readonly NowRectangleStyle[] PreviewRectangleStyles =
@@ -24,7 +30,9 @@ namespace NowUI.Editor
             NowRectangleStyle.Surface,
             NowRectangleStyle.Muted,
             NowRectangleStyle.Outline,
-            NowRectangleStyle.Accent
+            NowRectangleStyle.Accent,
+            NowRectangleStyle.AccentSoft,
+            NowRectangleStyle.Danger
         };
 
         SerializedProperty _generatorDark;
@@ -135,6 +143,12 @@ namespace NowUI.Editor
         void ApplyGeneratedPalette(NowThemePaletteGenerator.Palette palette)
         {
             NowThemePaletteGenerator.WriteToSerializedTheme(serializedObject, palette);
+            serializedObject.ApplyModifiedProperties();
+
+            var asset = (NowThemeAsset)target;
+            asset.RegenerateDerivedRoles();
+            EditorUtility.SetDirty(asset);
+            serializedObject.Update();
         }
 
         static void DrawPreview(NowThemeAsset themeAsset, Rect rect)
@@ -187,7 +201,7 @@ namespace NowUI.Editor
             for (int i = 0; i < PreviewRectangleStyles.Length; ++i)
             {
                 NowRectangleStyle style = PreviewRectangleStyles[i];
-                float width = Mathf.Min(120f, (rect.width - gap * 3f) / 4f);
+                float width = Mathf.Min(120f, (rect.width - gap * (PreviewRectangleStyles.Length - 1)) / PreviewRectangleStyles.Length);
                 Rect item = new Rect(x, y, width, height);
                 DrawStyledRect(themeAsset, item, style);
                 DrawLabel(item, style.ToString(), ResolveReadableTextColor(themeAsset, style), 11, TextAnchor.MiddleCenter);
@@ -219,18 +233,16 @@ namespace NowUI.Editor
 
         static void DrawLabel(Rect rect, string text, Color color, int fontSize, TextAnchor alignment)
         {
-            var style = new GUIStyle(EditorStyles.label)
+            s_LabelStyle ??= new GUIStyle(EditorStyles.label)
             {
-                alignment = alignment,
-                clipping = TextClipping.Clip,
-                fontSize = Mathf.Clamp(fontSize, 9, 24),
-                normal =
-                {
-                    textColor = color
-                }
+                clipping = TextClipping.Clip
             };
 
-            GUI.Label(rect, text, style);
+            s_LabelStyle.alignment = alignment;
+            s_LabelStyle.fontSize = Mathf.Clamp(fontSize, 9, 24);
+            s_LabelStyle.normal.textColor = color;
+
+            GUI.Label(rect, text, s_LabelStyle);
         }
 
         static Color ResolveReadableTextColor(NowThemeAsset themeAsset, NowRectangleStyle style)

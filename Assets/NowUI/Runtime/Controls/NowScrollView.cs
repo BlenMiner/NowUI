@@ -17,7 +17,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowScrollView
     {
-        readonly NowId _id;
+        NowId _id;
         readonly int _site;
         NowLayoutOptions _options;
         readonly NowRect _rect;
@@ -44,9 +44,20 @@ namespace NowUI
             _hasRect = true;
         }
 
+        /// <summary>Explicit layout options, overriding the default stretch-to-fill sizing.</summary>
         public NowScrollView SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
+        /// <summary>Fixed viewport width in layout flow.</summary>
+        public NowScrollView SetWidth(float width) { _options = _options.SetWidth(width); return this; }
+
+        /// <summary>Fixed viewport height in layout flow.</summary>
         public NowScrollView SetHeight(float height) { _options = _options.SetHeight(height); return this; }
+
+        /// <summary>Stretches the viewport to fill available width, weighted against stretching siblings.</summary>
+        public NowScrollView SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
+
+        /// <summary>Explicit control id, decoupling identity from the call site.</summary>
+        public NowScrollView SetId(NowId id) { _id = id; return this; }
 
         public NowScrollScope Begin()
         {
@@ -230,6 +241,51 @@ namespace NowUI
 
         /// <summary>The clipped viewport rect this scroll view occupies.</summary>
         public NowRect viewport => _viewport;
+
+        /// <summary>
+        /// Current scroll offset in pixels; setting clamps to the valid range.
+        /// Content size is measured a frame late, so on the very first frame the
+        /// range is still zero — the repaint loop settles it on the next frame.
+        /// </summary>
+        public Vector2 scrollOffset
+        {
+            get => NowControlState.Get<Vector2>(_id);
+            set
+            {
+                ref Vector2 scroll = ref NowControlState.Get<Vector2>(_id);
+                var clamped = new Vector2(
+                    _maxScrollX > 0f ? Mathf.Clamp(value.x, 0f, _maxScrollX) : 0f,
+                    _maxScrollY > 0f ? Mathf.Clamp(value.y, 0f, _maxScrollY) : 0f);
+
+                if (scroll == clamped)
+                    return;
+
+                scroll = clamped;
+                NowControlState.RequestRepaint();
+            }
+        }
+
+        /// <summary>The largest valid scroll offset this frame (content minus viewport).</summary>
+        public Vector2 maxScrollOffset => new Vector2(_maxScrollX, _maxScrollY);
+
+        /// <summary>
+        /// Scrolls to the end of the content on both axes — the chat/log
+        /// stick-to-bottom pattern:
+        /// <code>
+        /// using (var scroll = NowLayout.ScrollView().Begin())
+        /// {
+        ///     foreach (var message in messages)
+        ///         NowLayout.Label(message).Draw();
+        ///
+        ///     if (pinToBottom)
+        ///         scroll.ScrollToEnd();
+        /// }
+        /// </code>
+        /// </summary>
+        public void ScrollToEnd()
+        {
+            scrollOffset = new Vector2(_maxScrollX, _maxScrollY);
+        }
 
         public void Dispose()
         {

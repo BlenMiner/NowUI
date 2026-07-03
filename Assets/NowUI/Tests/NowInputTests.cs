@@ -578,6 +578,117 @@ public class NowInputTests
         Assert.IsFalse(NowInput.hasContext);
     }
 
+    [Test]
+    public void ScrollConsumptionCarriesIntoAndOutOfNestedScopes()
+    {
+        _provider.snapshot = ScrollSnapshot(new Vector2(18, 20), new Vector2(0f, -1f));
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            Assert.AreEqual(new Vector2(0f, -1f), NowInput.ConsumeScrollDelta(_rect));
+
+            using (NowInput.Begin(_provider, new Vector2(100, 100)))
+                Assert.AreEqual(Vector2.zero, NowInput.ConsumeScrollDelta(_rect));
+
+            Assert.AreEqual(Vector2.zero, NowInput.ConsumeScrollDelta(_rect));
+        }
+    }
+
+    [Test]
+    public void ScrollConsumedInNestedScopeStaysConsumedInOuterScope()
+    {
+        _provider.snapshot = ScrollSnapshot(new Vector2(18, 20), new Vector2(0f, -1f));
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            using (NowInput.Begin(_provider, new Vector2(100, 100)))
+                Assert.AreEqual(new Vector2(0f, -1f), NowInput.ConsumeScrollDelta(_rect));
+
+            Assert.AreEqual(Vector2.zero, NowInput.ConsumeScrollDelta(_rect));
+        }
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+            Assert.AreEqual(new Vector2(0f, -1f), NowInput.ConsumeScrollDelta(_rect));
+    }
+
+    [Test]
+    public void DragThresholdExplicitOverrideWinsAndResetRestoresScaledDefault()
+    {
+        NowInput.dragThreshold = 12f;
+        Assert.AreEqual(12f, NowInput.dragThreshold);
+
+        NowInput.Reset();
+
+        float dpi = Screen.dpi;
+        float expected = dpi > 0f ? 4f * Mathf.Max(1f, dpi / 160f) : 4f;
+        Assert.AreEqual(expected, NowInput.dragThreshold, 0.0001f);
+        Assert.GreaterOrEqual(NowInput.dragThreshold, 4f);
+    }
+
+    [Test]
+    public void ExplicitDragThresholdSuppressesSmallDragsAndKeepsClicks()
+    {
+        NowInput.dragThreshold = 50f;
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+            NowInput.Interact(1, _rect);
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(28, 20), new Vector2(10, 0), true, false, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            var held = NowInput.Interact(1, _rect);
+
+            Assert.IsFalse(held.dragging);
+            Assert.IsFalse(held.dragStarted);
+        }
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(28, 20), Vector2.zero, false, false, true);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            var release = NowInput.Interact(1, _rect);
+
+            Assert.IsTrue(release.clicked);
+            Assert.IsFalse(release.dragEnded);
+        }
+    }
+
+    [Test]
+    public void NavigationKeysDefaultToAllAndResetRestoresThem()
+    {
+        Assert.AreEqual(NowNavigationKeys.All, NowInput.navigationKeys);
+
+        NowInput.navigationKeys = NowNavigationKeys.Arrows | NowNavigationKeys.TabFocus;
+        Assert.AreEqual(NowNavigationKeys.Arrows | NowNavigationKeys.TabFocus, NowInput.navigationKeys);
+
+        NowInput.Reset();
+        Assert.AreEqual(NowNavigationKeys.All, NowInput.navigationKeys);
+    }
+
+    static NowInputSnapshot ScrollSnapshot(Vector2 position, Vector2 scrollDelta)
+    {
+        return new NowInputSnapshot(
+            true,
+            position,
+            position,
+            Vector2.zero,
+            NowPointerButtons.None,
+            NowPointerButtons.None,
+            NowPointerButtons.None,
+            scrollDelta,
+            Vector2.zero,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            1,
+            0.5f);
+    }
+
     static NowInputSnapshot SnapshotAt(
         int frame,
         NowPointerButtons down,

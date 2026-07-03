@@ -17,14 +17,16 @@ namespace NowUI
     /// <code>NowLayout.TextArea().SetPlaceholder("Notes...").Draw(ref notes);</code>
     /// Word-wrapped editing with every character preserved, caret up/down with a
     /// pixel goal column, Home/End (Ctrl for document start/end), shift-selection
-    /// on every movement, click/drag/double-click selection, Enter inserts a
-    /// newline (Escape blurs), triple-click selects the line, IME composition
-    /// rendered inline at the caret (underlined, editing keys suppressed until
-    /// committed), Ctrl+Backspace/Delete word ops, multi-line
-    /// clipboard through <see cref="NowClipboard"/>, auto-growing height
-    /// between min and max lines with scroll-to-caret and wheel scrolling, and a
-    /// multiline on-screen keyboard on mobile. Rendering uses per-codepoint
-    /// metrics so the caret always matches the glyphs.
+    /// on every movement, click/drag/double-click selection, shift-click extends
+    /// the selection, Enter inserts a newline (Escape blurs), triple-click
+    /// selects the line, IME composition rendered inline at the caret
+    /// (underlined, editing keys suppressed until committed), word and line
+    /// caret movement following the platform convention (Option/Command on
+    /// macOS, Ctrl elsewhere), undo/redo, multi-line clipboard through
+    /// <see cref="NowClipboard"/>, auto-growing height between min and max
+    /// lines with scroll-to-caret, wheel scrolling and a draggable themed
+    /// scrollbar, and a multiline on-screen keyboard on mobile. Rendering uses
+    /// per-codepoint metrics so the caret always matches the glyphs.
     /// </summary>
     [NowBuilder]
     public struct NowTextArea
@@ -120,10 +122,6 @@ namespace NowUI
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureTextArea(theme, lineHeight, visualLines));
             var inner = renderer.TextAreaInnerRect(theme, rect);
 
-            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
-            bool verticalMove = false;
-            bool revealCaret = false;
-
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
             ref var area = ref NowControlState.Get<AreaState>(id, "area");
@@ -140,6 +138,21 @@ namespace NowUI
                 lastLineCount = lines.Count;
                 NowControlState.RequestRepaint();
             }
+
+            // The scrollbar claims its press before the text body, so dragging
+            // the thumb scrolls instead of moving the caret (first interaction wins).
+            bool scrollbarDragging = false;
+
+            if (!NowInput.isPassive)
+            {
+                var preMetrics = ScrollbarMetrics(theme, rect, inner, lines.Count * lineHeight, area.scrollY);
+                scrollbarDragging = NowScrollbar.Interact(
+                    NowInput.GetId(id, "vscroll"), NowScrollbarAxis.Vertical, in preMetrics, ref area.scrollY);
+            }
+
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
+            bool verticalMove = false;
+            bool revealCaret = false;
 
             if (focused && area.hadFocus == 0)
             {
@@ -167,23 +180,33 @@ namespace NowUI
 
                 int hit = NowTextMetrics.HitTest(text, lines, fontAsset, fontSize, textStyle.fontStyle,
                     interaction.pointerPosition, inner, lineHeight, 0f, area.scrollY);
-                int streak = NowControlState.ClickStreak(id, true, interaction.pointerPosition);
 
-                if (streak >= 3)
+                if (NowTextInput.current.shift)
                 {
-                    NowTextEdit.SelectLine(ref state, text, hit);
-                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Line, in state);
-                }
-                else if (streak == 2)
-                {
-                    NowTextEdit.SelectWord(ref state, text, hit);
-                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Word, in state);
+                    state.caret = hit;
+                    var anchorOrigin = new NowTextEditState { caret = state.anchor, anchor = state.anchor };
+                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in anchorOrigin);
                 }
                 else
                 {
-                    state.caret = hit;
-                    state.anchor = hit;
-                    NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
+                    int streak = NowControlState.ClickStreak(id, true, interaction.pointerPosition);
+
+                    if (streak >= 3)
+                    {
+                        NowTextEdit.SelectLine(ref state, text, hit);
+                        NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Line, in state);
+                    }
+                    else if (streak == 2)
+                    {
+                        NowTextEdit.SelectWord(ref state, text, hit);
+                        NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Word, in state);
+                    }
+                    else
+                    {
+                        state.caret = hit;
+                        state.anchor = hit;
+                        NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
+                    }
                 }
             }
             else if (interaction.dragging)
@@ -199,11 +222,13 @@ namespace NowUI
             {
                 NowFocus.LockNavigation();
                 var frame = NowTextInput.current;
+                var undo = NowTextUndoRegistry.Get(id);
                 composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
 
                 if (!string.IsNullOrEmpty(frame.characters))
                 {
                     revealCaret = true;
+                    undo.Push(text, in state, typing: true);
                     NowTextEdit.Insert(ref text, ref state, frame.characters);
                 }
 
@@ -215,6 +240,18 @@ namespace NowUI
                 {
                     if (frame.escapePressed)
                         NowFocus.Clear();
+
+                    if (frame.undoPressed)
+                    {
+                        revealCaret = true;
+                        undo.Undo(ref text, ref state);
+                    }
+
+                    if (frame.redoPressed)
+                    {
+                        revealCaret = true;
+                        undo.Redo(ref text, ref state);
+                    }
 
                     if (frame.selectAllPressed)
                     {
@@ -228,6 +265,7 @@ namespace NowUI
                     if (frame.cutPressed && state.hasSelection)
                     {
                         revealCaret = true;
+                        undo.Push(text, in state, typing: false);
                         NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
                         NowTextEdit.DeleteSelection(ref text, ref state);
                     }
@@ -238,56 +276,106 @@ namespace NowUI
                         string buffer = NowClipboard.Paste();
 
                         if (!string.IsNullOrEmpty(buffer))
+                        {
+                            undo.Push(text, in state, typing: false);
                             NowTextEdit.Insert(ref text, ref state, buffer.Replace("\r\n", "\n").Replace('\r', '\n'));
+                        }
                     }
 
                     if (NowControlState.Repeat(id, "enter", frame.enterHeld))
                     {
                         revealCaret = true;
+                        undo.Push(text, in state, typing: true);
                         NowTextEdit.Insert(ref text, ref state, "\n");
                     }
 
                     if (NowControlState.Repeat(id, "bs", frame.backspaceHeld))
                     {
                         revealCaret = true;
-                        NowTextEdit.Backspace(ref text, ref state, frame.command);
+                        undo.Push(text, in state, typing: true);
+
+                        if (frame.lineModifier)
+                            NowTextEdit.DeleteToLineStart(ref text, ref state);
+                        else
+                            NowTextEdit.Backspace(ref text, ref state, frame.wordModifier);
                     }
 
                     if (NowControlState.Repeat(id, "del", frame.deleteHeld))
                     {
                         revealCaret = true;
-                        NowTextEdit.Delete(ref text, ref state, frame.command);
-                    }
-
-                    if (NowControlState.Repeat(id, "left", frame.leftHeld))
-                    {
-                        revealCaret = true;
-                        NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.command);
-                    }
-
-                    if (NowControlState.Repeat(id, "right", frame.rightHeld))
-                    {
-                        revealCaret = true;
-                        NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.command);
+                        undo.Push(text, in state, typing: true);
+                        NowTextEdit.Delete(ref text, ref state, frame.wordModifier);
                     }
 
                     if (text != original)
                         LayoutLines(text, fontAsset, fontSize, textStyle.fontStyle, inner.width, lines);
 
+                    if (NowControlState.Repeat(id, "left", frame.leftHeld))
+                    {
+                        revealCaret = true;
+
+                        if (frame.lineModifier)
+                        {
+                            int line = NowTextMetrics.LineOf(text, lines, state.caret);
+                            state.caret = lines[line].start;
+
+                            if (!frame.shift)
+                                state.anchor = state.caret;
+                        }
+                        else
+                        {
+                            NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.wordModifier);
+                        }
+                    }
+
+                    if (NowControlState.Repeat(id, "right", frame.rightHeld))
+                    {
+                        revealCaret = true;
+
+                        if (frame.lineModifier)
+                        {
+                            int line = NowTextMetrics.LineOf(text, lines, state.caret);
+                            state.caret = lines[line].start + lines[line].length;
+
+                            if (!frame.shift)
+                                state.anchor = state.caret;
+                        }
+                        else
+                        {
+                            NowTextEdit.MoveCaret(ref state, text, 1, frame.shift, frame.wordModifier);
+                        }
+                    }
+
                     if (NowControlState.Repeat(id, "up", frame.upHeld))
                     {
                         revealCaret = true;
-                        MoveVertical(ref state, text, lines, fontAsset, fontSize,
-                            textStyle.fontStyle, area.goalX, -1, frame.shift);
-                        verticalMove = true;
+
+                        if (frame.lineModifier)
+                        {
+                            NowTextEdit.MoveHome(ref state, frame.shift);
+                        }
+                        else
+                        {
+                            MoveVertical(ref state, text, lines, fontAsset, fontSize,
+                                textStyle.fontStyle, area.goalX, -1, frame.shift);
+                            verticalMove = true;
+                        }
                     }
 
                     if (NowControlState.Repeat(id, "down", frame.downHeld))
                     {
                         revealCaret = true;
-                        MoveVertical(ref state, text, lines, fontAsset, fontSize,
-                            textStyle.fontStyle, area.goalX, 1, frame.shift);
-                        verticalMove = true;
+
+                        if (frame.lineModifier)
+                        {
+                            NowTextEdit.MoveEnd(ref state, text, frame.shift);
+                        }
+                        else
+                        {
+                            MoveVertical(ref state, text, lines, fontAsset, fontSize,
+                                textStyle.fontStyle, area.goalX, 1, frame.shift);
+                            verticalMove = true;
+                        }
                     }
 
                     if (frame.homePressed)
@@ -365,14 +453,15 @@ namespace NowUI
             float maxScroll = Mathf.Max(0f, contentHeight - inner.height);
 
             float pendingWheel = NowInput.current.scrollDelta.y;
+            float wheelStep = theme.controlStyles.scrollWheelStep;
 
-            if (interaction.hovered && maxScroll > 0f && WouldWheelMove(area.scrollY, maxScroll, pendingWheel, lineHeight))
+            if (interaction.hovered && maxScroll > 0f && WouldWheelMove(area.scrollY, maxScroll, pendingWheel, wheelStep))
             {
-                float wheel = NowInput.ConsumeScrollDelta(inner).y;
+                float wheel = NowInput.ConsumeScrollDelta(rect).y;
 
                 if (wheel != 0f)
                 {
-                    area.scrollY -= wheel * lineHeight * 2f;
+                    area.scrollY -= wheel * wheelStep;
                     NowControlState.RequestRepaint();
                 }
             }
@@ -406,7 +495,7 @@ namespace NowUI
                     DrawSelection(theme, renderer, text, lines, fontAsset, fontSize, textStyle.fontStyle,
                         inner, lineHeight, area.scrollY, state, firstVisible, lastVisible);
 
-                if (display.Length == 0 && !focused && !string.IsNullOrEmpty(_placeholder))
+                if (display.Length == 0 && !string.IsNullOrEmpty(_placeholder))
                 {
                     var placeholder = NowControls.Text(theme, NowTextStyle.Muted);
                     placeholder.rect = new NowRect(inner.x, inner.y, inner.width, lineHeight);
@@ -441,21 +530,11 @@ namespace NowUI
 
             if (maxScroll > 0f)
             {
-                float trackHeight = inner.height;
-                float thumbHeight = Mathf.Max(18f, trackHeight * (inner.height / contentHeight));
-                float travel = trackHeight - thumbHeight;
-                float normalized = maxScroll > 0f ? area.scrollY / maxScroll : 0f;
-
-                var track = new NowRect(rect.xMax - 5f, inner.y, 3f, trackHeight);
-                var metrics = new NowScrollbarMetrics
-                {
-                    visible = true,
-                    maxValue = maxScroll,
-                    travel = travel,
-                    track = track,
-                    thumb = new NowRect(rect.xMax - 5f, inner.y + travel * normalized, 3f, thumbHeight)
-                };
-                renderer.DrawScrollbar(new NowScrollbarRenderContext(theme, NowScrollbarAxis.Vertical, metrics, false, 0f));
+                int thumbId = NowInput.GetId(id, "vscroll");
+                var metrics = ScrollbarMetrics(theme, rect, inner, contentHeight, area.scrollY);
+                float hoverT = NowControlState.Transition(thumbId, NowInput.IsHovered(metrics.track.Outset(4f, 2f)));
+                renderer.DrawScrollbar(new NowScrollbarRenderContext(
+                    theme, NowScrollbarAxis.Vertical, metrics, scrollbarDragging, hoverT));
             }
 
             if (focused)
@@ -464,12 +543,30 @@ namespace NowUI
             return text != original;
         }
 
-        static bool WouldWheelMove(float scrollY, float maxScroll, float wheel, float lineHeight)
+        static NowScrollbarMetrics ScrollbarMetrics(NowThemeAsset theme, NowRect rect, NowRect inner, float contentHeight, float scrollY)
+        {
+            float barWidth = theme.controlStyles.scrollbarWidth;
+            var track = new NowRect(
+                rect.xMax - barWidth - 2f,
+                inner.y + 2f,
+                barWidth,
+                Mathf.Max(0f, inner.height - 4f));
+
+            return NowScrollbar.Calculate(
+                NowScrollbarAxis.Vertical,
+                track,
+                inner.height,
+                contentHeight,
+                scrollY,
+                theme.controlStyles.scrollbarMinThumbSize);
+        }
+
+        static bool WouldWheelMove(float scrollY, float maxScroll, float wheel, float step)
         {
             if (wheel == 0f)
                 return false;
 
-            float next = Mathf.Clamp(scrollY - wheel * lineHeight * 2f, 0f, maxScroll);
+            float next = Mathf.Clamp(scrollY - wheel * step, 0f, maxScroll);
             return !Mathf.Approximately(next, scrollY);
         }
 

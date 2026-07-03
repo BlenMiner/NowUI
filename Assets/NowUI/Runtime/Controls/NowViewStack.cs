@@ -593,7 +593,7 @@ namespace NowUI
                 if (entry.options.modal &&
                     entry.options.presentationKind == NowViewPresentationKind.Popup)
                 {
-                    NowOverlay.BlockScreen(surface);
+                    NowOverlay.BlockAllSurfaces(entry.overlayId);
                 }
 
                 NowOverlay.DeferScreen(entry.rect, entry.overlayId, DrawDeferred);
@@ -1097,14 +1097,22 @@ namespace NowUI
             }
         }
 
+        /// <summary>
+        /// Cancel and outside presses only ever close the topmost layer: with a
+        /// nested overlay (a dropdown or date picker opened from the view) still
+        /// open, that overlay owns the dismissal and the view stays.
+        /// </summary>
         void HandleTopClosePolicy(Entry entry)
         {
             if (!NowInput.hasContext || NowInput.isPassive)
                 return;
 
+            if (NowOverlay.HasNestedOverlay(entry.overlayId))
+                return;
+
             var snapshot = NowInput.current;
 
-            if (entry.options.closeOnCancel && snapshot.cancelPressed)
+            if (entry.options.closeOnCancel && snapshot.cancelPressed && !NowInput.cancelConsumed)
             {
                 Pop(entry);
                 return;
@@ -1113,11 +1121,11 @@ namespace NowUI
             if (!entry.options.closeOnOutsideClick || !snapshot.hasPointer)
                 return;
 
-            bool pressed = snapshot.WasPointerPressed(NowPointerButton.Primary) ||
-                snapshot.WasPointerPressed(NowPointerButton.Secondary);
-
-            if (pressed && !entry.rect.Contains(snapshot.pointerPosition))
+            if (snapshot.anyPointerPressed &&
+                !NowOverlay.IsPointerInsideOverlayTree(entry.overlayId, snapshot.pointerPosition))
+            {
                 Pop(entry);
+            }
         }
 
         static NowRect ResolveRect(NowViewOptions options, NowRect surface)

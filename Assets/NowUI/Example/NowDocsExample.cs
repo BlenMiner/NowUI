@@ -607,8 +607,9 @@ public class NowDocsExample : NowGraphic
         "  button.secondary { variant: Outline; width: 120; }\n" +
         "</style>\n" +
         "<column class=\"card\">\n" +
-        "  <text style=\"font-size: 22\"><b>AI-authored panel</b></text>\n" +
+        "  <h3>AI-authored panel</h3>\n" +
         "  <text color=\"#8fa4bd\">This UI is rendered from NowUI markup, not C# controls.</text>\n" +
+        "  <hr/>\n" +
         "  <row class=\"row\">\n" +
         "    <text style=\"width: 80\">Name</text>\n" +
         "    <textfield id=\"profile-name\" state=\"name\" placeholder=\"Display name\" stretch=\"1\" />\n" +
@@ -617,14 +618,22 @@ public class NowDocsExample : NowGraphic
         "    <text style=\"width: 80\">Volume</text>\n" +
         "    <slider id=\"volume\" state=\"volume\" min=\"0\" max=\"1\" step=\"0.05\" stretch=\"1\" />\n" +
         "  </row>\n" +
-        "  <checkbox id=\"advanced-toggle\" state=\"advanced\">Advanced settings</checkbox>\n" +
-        "  <column visible=\"advanced\" gap=\"8\" padding=\"10\" rect-style=\"Muted\" radius=\"8\">\n" +
-        "    <text><b>Advanced</b> is just a state key.</text>\n" +
-        "    <row class=\"row\">\n" +
-        "      <button id=\"prev-photo\" class=\"secondary\" on-click=\"prev(photo,3)\">Previous</button>\n" +
-        "      <button id=\"next-photo\" class=\"secondary\" on-click=\"next(photo,3)\">Next</button>\n" +
-        "    </row>\n" +
-        "  </column>\n" +
+        "  <progress state=\"volume\" />\n" +
+        "  <row class=\"row\">\n" +
+        "    <radio group=\"quality\" value=\"0\" checked=\"true\">Low</radio>\n" +
+        "    <radio group=\"quality\" value=\"1\">Medium</radio>\n" +
+        "    <radio group=\"quality\" value=\"2\">High</radio>\n" +
+        "  </row>\n" +
+        "  <switch id=\"advanced-toggle\" state=\"advanced\">Advanced settings</switch>\n" +
+        "  <details id=\"advanced-details\" state=\"advanced\" summary=\"Advanced\">\n" +
+        "    <column gap=\"8\" padding=\"10\" rect-style=\"Muted\" radius=\"8\">\n" +
+        "      <text><b>Advanced</b> is just a state key.</text>\n" +
+        "      <row class=\"row\">\n" +
+        "        <button id=\"prev-photo\" class=\"secondary\" on-click=\"prev(photo,3)\">Previous</button>\n" +
+        "        <button id=\"next-photo\" class=\"secondary\" on-click=\"next(photo,3)\">Next</button>\n" +
+        "      </row>\n" +
+        "    </column>\n" +
+        "  </details>\n" +
         "  <gallery id=\"photos\" index=\"photo\" controls=\"true\" gap=\"8\" padding=\"10\" rect-style=\"Muted\" radius=\"8\">\n" +
         "    <slide><text>Gallery item <b>one</b></text></slide>\n" +
         "    <slide><text>Gallery item <b>two</b></text></slide>\n" +
@@ -1116,6 +1125,7 @@ public class NowDocsExample : NowGraphic
                 DrawMarkupDemoStateLine(themeAsset, "name", _markupDemoState.GetString("name", ""));
                 DrawMarkupDemoStateLine(themeAsset, "volume", $"{Mathf.RoundToInt(_markupDemoState.GetFloat("volume") * 100f)}%");
                 DrawMarkupDemoStateLine(themeAsset, "advanced", _markupDemoState.GetBool("advanced").ToString());
+                DrawMarkupDemoStateLine(themeAsset, "quality", _markupDemoState.GetInt("quality").ToString());
                 DrawMarkupDemoStateLine(themeAsset, "photo", (_markupDemoState.GetInt("photo") + 1).ToString());
                 DrawMarkupDemoStateLine(themeAsset, "save events", _markupDemoClicks.ToString());
                 DrawMarkupDemoStateLine(themeAsset, "last event", _markupDemoLastEvent);
@@ -2641,7 +2651,7 @@ public static class GuideControls
 
         var circle = theme.Rectangle(rect, NowRectangleStyle.Accent);
         circle.radius = Vector4.one * radius;
-        circle.color = NowControls.StateTint(circle.color, hoverT, interaction.held && inCircle);
+        circle.color = NowControls.StateColor(circle.color, hoverT, interaction.held && inCircle);
 
         if (focused)
         {

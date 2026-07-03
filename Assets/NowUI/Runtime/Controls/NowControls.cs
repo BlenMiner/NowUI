@@ -15,6 +15,11 @@ namespace NowUI
     /// rects (<c>Now.Button(rect, "Save").Draw()</c>) — mirroring how
     /// <c>NowLayout.Label</c> and <c>Now.Text</c> already split.
     ///
+    /// Control API conventions (custom controls should follow them too):
+    /// action controls return <c>bool</c> from <c>Draw()</c> — true on click or
+    /// submit-while-focused; value controls take <c>Draw(ref value)</c>, mutate
+    /// the caller-owned ref and return true when it changed this frame.
+    ///
     /// Everything here is public so custom controls are first-class, not
     /// second-class.
     /// </summary>
@@ -51,6 +56,10 @@ namespace NowUI
             return new ControlIdScope(true);
         }
 
+        /// <summary>
+        /// Disambiguates repeated panels using an existing <see cref="NowId"/>;
+        /// a default (empty) id leaves the scope stack untouched.
+        /// </summary>
         public static ControlIdScope IdScope(NowId id)
         {
             if (!id.hasValue)
@@ -136,6 +145,10 @@ namespace NowUI
             return Salt(NowInput.GetId(seed, id));
         }
 
+        /// <summary>
+        /// Resolves an optional explicit id to a control id, falling back to the
+        /// captured call-site identity when the id is default.
+        /// </summary>
         public static int GetControlId(NowId id, int fallbackIdentity)
         {
             return id.ResolveControlId(fallbackIdentity);
@@ -237,6 +250,7 @@ namespace NowUI
             _passiveOccurrences.Clear();
         }
 
+        /// <summary>Clears id scopes, occurrence tables and theme overrides (tests/domain reloads).</summary>
         public static void Reset()
         {
             NowTheme.Reset();
@@ -374,19 +388,30 @@ namespace NowUI
             return interaction;
         }
 
-        /// <summary>Hover/press tint applied on top of a preset color.</summary>
-        public static Vector4 StateTint(Vector4 color, float hoverT, bool held)
+        /// <summary>
+        /// Hover/press state applied on top of a resolved color: mixes toward
+        /// white on dark colors and toward black on light ones, so feedback stays
+        /// visible in both light and dark themes. Amounts come from the theme's
+        /// hover/pressed state opacities.
+        /// </summary>
+        public static Vector4 StateColor(Vector4 color, float hoverT, bool held)
         {
-            return StateTint(NowTheme.themeAsset, color, hoverT, held);
+            return StateColor(NowTheme.themeAsset, color, hoverT, held);
         }
 
-        public static Vector4 StateTint(NowThemeAsset themeAsset, Vector4 color, float hoverT, bool held)
+        public static Vector4 StateColor(NowThemeAsset themeAsset, Vector4 color, float hoverT, bool held)
         {
             var styles = themeAsset != null ? themeAsset.controlStyles : NowControlStyleSet.Default;
-            float brightness = held ? styles.pressedBrightness : Mathf.Lerp(1f, styles.hoverBrightness, hoverT);
-            color.x *= brightness;
-            color.y *= brightness;
-            color.z *= brightness;
+            float amount = held ? styles.pressedStateOpacity : styles.hoverStateOpacity * Mathf.Clamp01(hoverT);
+
+            if (amount <= 0f)
+                return color;
+
+            float luminance = color.x * 0.2126f + color.y * 0.7152f + color.z * 0.0722f;
+            float overlay = luminance < 0.5f ? 1f : 0f;
+            color.x = Mathf.LerpUnclamped(color.x, overlay, amount);
+            color.y = Mathf.LerpUnclamped(color.y, overlay, amount);
+            color.z = Mathf.LerpUnclamped(color.z, overlay, amount);
             return color;
         }
 

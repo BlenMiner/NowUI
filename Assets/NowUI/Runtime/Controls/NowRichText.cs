@@ -91,6 +91,28 @@ namespace NowUI
 
         static readonly NowRichTextLayout SharedLayout = new NowRichTextLayout();
 
+        struct LayoutInputs
+        {
+            public int documentRevision;
+            public NowFontAsset font;
+            public float fontSize;
+            public NowFontStyle fontStyle;
+            public Vector4 color;
+            public float lineHeight;
+            public bool wrap;
+
+            public bool Matches(in LayoutInputs other)
+            {
+                return documentRevision == other.documentRevision &&
+                    ReferenceEquals(font, other.font) &&
+                    fontSize == other.fontSize &&
+                    fontStyle == other.fontStyle &&
+                    color == other.color &&
+                    lineHeight == other.lineHeight &&
+                    wrap == other.wrap;
+            }
+        }
+
         struct State
         {
             public NowRichTextLayout layout;
@@ -102,6 +124,14 @@ namespace NowUI
             public Vector4 parsedColor;
             public Vector4 parsedAccentColor;
             public float contentHeight;
+            public int documentRevision;
+            public bool hasLayout;
+            public LayoutInputs layoutInputs;
+            public NowRect layoutRect;
+            public bool hasMeasuredHeight;
+            public LayoutInputs measuredInputs;
+            public float measuredWidth;
+            public float measuredHeight;
         }
 
         int ResolveControlId() => NowControls.GetControlId(_id, _site);
@@ -183,15 +213,35 @@ namespace NowUI
             float lineHeight = _lineHeight > 0f ? _lineHeight : _style.fontSize * DefaultLineHeight;
             ref var state = ref NowControlState.Get<State>(id);
             var document = PrepareDocument(ref state);
-            NowRect rect = Reserve(lineHeight, document, ref state);
+            var inputs = new LayoutInputs
+            {
+                documentRevision = state.documentRevision,
+                font = _style.font,
+                fontSize = _style.fontSize,
+                fontStyle = _style.fontStyle,
+                color = _style.color,
+                lineHeight = lineHeight,
+                wrap = _wrap
+            };
+            NowRect rect = Reserve(lineHeight, document, ref state, inputs);
             var interaction = _selectable ? default : NowInput.Interact(id, rect);
 
             if (state.layout == null)
+            {
                 state.layout = new NowRichTextLayout();
+                state.hasLayout = false;
+            }
 
-            state.layout.Clear();
-            BuildLayout(state.layout, rect, lineHeight, document);
-            state.layout.CompleteLines();
+            if (!state.hasLayout || state.layoutRect != rect || !state.layoutInputs.Matches(inputs))
+            {
+                state.layout.Clear();
+                BuildLayout(state.layout, rect, lineHeight, document);
+                state.layout.CompleteLines();
+                state.hasLayout = true;
+                state.layoutInputs = inputs;
+                state.layoutRect = rect;
+            }
+
             UpdateReservedHeight(ref state, lineHeight);
 
             bool hovered = _selectable ? NowInput.IsHovered(rect) : interaction.hovered;
@@ -256,7 +306,7 @@ namespace NowUI
                 NowContextMenu.End();
             }
 
-            Color highlight = NowTheme.themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            Color highlight = NowTheme.themeAsset.GetColor(NowColorToken.Accent);
             highlight.a = 0.25f;
 
             return NowTextSelection.DrawHighlights(
@@ -272,7 +322,7 @@ namespace NowUI
         NowRichTextDocument PrepareDocument(ref State state)
         {
             var baseStyle = new NowRichTextStyle(_style.fontSize, _style.fontStyle).SetColor(_style.color);
-            Vector4 accentColor = NowTheme.themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            Vector4 accentColor = NowTheme.themeAsset.GetColor(NowColorToken.Accent);
 
             if (state.document == null)
                 state.document = new NowRichTextDocument();
@@ -293,26 +343,66 @@ namespace NowUI
                     state.parsedFontStyle = baseStyle.fontStyle;
                     state.parsedColor = baseStyle.color;
                     state.parsedAccentColor = accentColor;
+                    ++state.documentRevision;
                 }
 
                 return state.document;
             }
 
-            state.parsedValue = null;
-            state.parsedParser = null;
-            state.document.Clear();
-            state.document.text = _value;
-
-            if (_spans != null)
+            if (state.parsedParser != null ||
+                !string.Equals(state.parsedValue, _value) ||
+                !SpansMatch(state.document.spans, _spans))
             {
-                for (int i = 0; i < _spans.Count; ++i)
-                    state.document.spans.Add(_spans[i]);
+                state.parsedValue = _value;
+                state.parsedParser = null;
+                state.document.Clear();
+                state.document.text = _value;
+
+                if (_spans != null)
+                {
+                    for (int i = 0; i < _spans.Count; ++i)
+                        state.document.spans.Add(_spans[i]);
+                }
+
+                ++state.documentRevision;
             }
 
             return state.document;
         }
 
-        NowRect Reserve(float lineHeight, NowRichTextDocument document, ref State state)
+        static bool SpansMatch(List<NowRichTextSpan> current, IReadOnlyList<NowRichTextSpan> requested)
+        {
+            int count = requested?.Count ?? 0;
+
+            if (current.Count != count)
+                return false;
+
+            for (int i = 0; i < count; ++i)
+            {
+                var a = current[i];
+                var b = requested[i];
+
+                if (a.start != b.start || a.length != b.length || a.tag != b.tag ||
+                    !StylesMatch(a.style, b.style))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        static bool StylesMatch(in NowRichTextStyle a, in NowRichTextStyle b)
+        {
+            return a.fontSize == b.fontSize &&
+                a.fontStyle == b.fontStyle &&
+                a.hasColor == b.hasColor &&
+                a.color == b.color &&
+                a.underline == b.underline &&
+                a.strikethrough == b.strikethrough;
+        }
+
+        NowRect Reserve(float lineHeight, NowRichTextDocument document, ref State state, in LayoutInputs inputs)
         {
             if (_hasRect)
                 return _rect;
@@ -331,8 +421,16 @@ namespace NowUI
             }
 
             float width = ResolveLayoutWidth(document.text);
-            float height = MeasureHeight(width, lineHeight, document);
-            return NowControls.ReserveRect(false, default, _options, new Vector2(width, height));
+
+            if (!state.hasMeasuredHeight || state.measuredWidth != width || !state.measuredInputs.Matches(inputs))
+            {
+                state.measuredHeight = MeasureHeight(width, lineHeight, document);
+                state.measuredWidth = width;
+                state.measuredInputs = inputs;
+                state.hasMeasuredHeight = true;
+            }
+
+            return NowControls.ReserveRect(false, default, _options, new Vector2(width, state.measuredHeight));
         }
 
         void UpdateReservedHeight(ref State state, float lineHeight)

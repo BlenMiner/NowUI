@@ -63,7 +63,7 @@ namespace NowUI
 
         internal Field fields;
 
-        internal bool Has(Field field)
+        internal readonly bool Has(Field field)
         {
             return (fields & field) != 0;
         }
@@ -901,7 +901,7 @@ namespace NowUI
             return Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
         }
 
-        public static NowLayoutScope Area(NowRect rect, NowLayoutOptions options)
+        public static NowLayoutScope Area(NowRect rect, in NowLayoutOptions options)
         {
             return Area(default(NowId), rect, options);
         }
@@ -926,7 +926,7 @@ namespace NowUI
             return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
         }
 
-        public static NowLayoutScope Area(NowId id, NowRect rect, NowLayoutOptions options)
+        public static NowLayoutScope Area(NowId id, NowRect rect, in NowLayoutOptions options)
         {
             OnFrameBoundary();
             return Area(id.ResolveStableId(HashCombine(AreaSeed, _areaCounter)), rect, options);
@@ -955,7 +955,7 @@ namespace NowUI
         }
 
         /// <summary>Area keyed by a precomputed identity hash (e.g. <see cref="NowControls.SiteId"/>).</summary>
-        public static NowLayoutScope Area(int id, NowRect rect, NowLayoutOptions options)
+        public static NowLayoutScope Area(int id, NowRect rect, in NowLayoutOptions options)
         {
             OnFrameBoundary();
 
@@ -1007,7 +1007,7 @@ namespace NowUI
             Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
         }
 
-        public static void Area(NowRect rect, NowLayoutOptions options, Action ui)
+        public static void Area(NowRect rect, in NowLayoutOptions options, Action ui)
         {
             Area(default(NowId), rect, options, ui);
         }
@@ -1034,7 +1034,7 @@ namespace NowUI
             Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
         }
 
-        public static void Area(NowId id, NowRect rect, NowLayoutOptions options, Action ui)
+        public static void Area(NowId id, NowRect rect, in NowLayoutOptions options, Action ui)
         {
             if (ui == null)
                 throw new ArgumentNullException(nameof(ui));
@@ -1169,7 +1169,7 @@ namespace NowUI
             return BeginGroup(true, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
-        public static NowLayoutScope Horizontal(NowLayoutOptions options)
+        public static NowLayoutScope Horizontal(in NowLayoutOptions options)
         {
             return BeginGroup(true, default, options);
         }
@@ -1200,7 +1200,7 @@ namespace NowUI
             return BeginGroup(true, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
-        public static NowLayoutScope Horizontal(NowId id, NowLayoutOptions options)
+        public static NowLayoutScope Horizontal(NowId id, in NowLayoutOptions options)
         {
             return BeginGroup(true, id, options);
         }
@@ -1277,7 +1277,7 @@ namespace NowUI
             return BeginGroup(false, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
-        public static NowLayoutScope Vertical(NowLayoutOptions options)
+        public static NowLayoutScope Vertical(in NowLayoutOptions options)
         {
             return BeginGroup(false, default, options);
         }
@@ -1308,7 +1308,7 @@ namespace NowUI
             return BeginGroup(false, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
         }
 
-        public static NowLayoutScope Vertical(NowId id, NowLayoutOptions options)
+        public static NowLayoutScope Vertical(NowId id, in NowLayoutOptions options)
         {
             return BeginGroup(false, id, options);
         }
@@ -1351,7 +1351,7 @@ namespace NowUI
         }
 
         /// <summary>Reserves a rect sized by <paramref name="options"/> at the current layout position.</summary>
-        public static NowRect Rect(NowLayoutOptions options)
+        public static NowRect Rect(in NowLayoutOptions options)
         {
             ref var group = ref RequireGroup();
             return Allocate(ref group, options, Vector2.zero, false, out _, out _);
@@ -1455,13 +1455,44 @@ namespace NowUI
 
         public static NowLottieBuilder Lottie(ReadOnlySpan<char> url, NowLayoutOptions options)
         {
-            string key = url.ToString();
+            string key = ResolveLottieUrl(url);
             var asset = NowLottieCache.GetAsset(key);
             return new NowLottieBuilder(Now.Lottie(default, asset), options, key);
         }
 
+        static readonly Dictionary<int, string> _lottieUrlCache = new Dictionary<int, string>(16);
+
+        /// <summary>
+        /// Resolves a URL span to its cached string via a content hash, so repeated
+        /// span draws of the same URL never materialize a new string.
+        /// </summary>
+        static string ResolveLottieUrl(ReadOnlySpan<char> url)
+        {
+            int hash = HashChars(url);
+
+            if (_lottieUrlCache.TryGetValue(hash, out var cached) && url.SequenceEqual(cached))
+                return cached;
+
+            string key = url.ToString();
+            _lottieUrlCache[hash] = key;
+            return key;
+        }
+
+        static int HashChars(ReadOnlySpan<char> value)
+        {
+            unchecked
+            {
+                int hash = (int)2166136261;
+
+                for (int i = 0; i < value.Length; ++i)
+                    hash = (hash ^ value[i]) * 16777619;
+
+                return hash;
+            }
+        }
+
         /// <summary>Allocates layout space for an animation without drawing it.</summary>
-        internal static NowRect ReserveLottie(in NowLottie style, NowLayoutOptions options)
+        internal static NowRect ReserveLottie(in NowLottie style, in NowLayoutOptions options)
         {
             ref var group = ref RequireGroup();
             return Allocate(ref group, options, LottieAutoSize(style, options), false, out _, out _);
@@ -1500,14 +1531,14 @@ namespace NowUI
         }
 
         /// <summary>Measures, allocates and draws a label at the current layout position.</summary>
-        internal static NowText PlaceLabel(NowText style, string value, NowLayoutOptions options)
+        internal static NowText PlaceLabel(NowText style, string value, in NowLayoutOptions options)
         {
             var rect = ReserveLabel(style, value, options);
             return DrawLabelAt(style, value, rect);
         }
 
         /// <summary>Allocates layout space for a label without drawing it.</summary>
-        internal static NowRect ReserveLabel(NowText style, string value, NowLayoutOptions options)
+        internal static NowRect ReserveLabel(NowText style, string value, in NowLayoutOptions options)
         {
             ref var group = ref RequireGroup();
             var measured = style.Measure(value);
@@ -1546,7 +1577,7 @@ namespace NowUI
             Reset();
         }
 
-        static NowLayoutScope BeginGroup(bool horizontal, NowId id, NowLayoutOptions options)
+        static NowLayoutScope BeginGroup(bool horizontal, NowId id, in NowLayoutOptions options)
         {
             ref var parent = ref RequireGroup("Layout groups require an open area. Call NowLayout.Area first.");
 
@@ -1760,7 +1791,7 @@ namespace NowUI
 
         static NowRect Allocate(
             ref Group group,
-            NowLayoutOptions options,
+            in NowLayoutOptions options,
             Vector2 autoSize,
             bool stretchCrossByDefault,
             out bool mainAuto,

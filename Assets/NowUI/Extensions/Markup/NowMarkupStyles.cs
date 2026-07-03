@@ -252,7 +252,7 @@ namespace NowUI.Markup
 
                     for (int i = 0; i < selectorParts.Length; ++i)
                     {
-                        string selector = selectorParts[i].Trim();
+                        string selector = selectorParts[i].Trim().ToLowerInvariant();
 
                         if (selector.Length == 0)
                             continue;
@@ -301,10 +301,8 @@ namespace NowUI.Markup
 
         static bool Matches(NowMarkupNode node, string selector)
         {
-            if (node == null || node.isText || string.IsNullOrWhiteSpace(selector))
+            if (node == null || node.isText || string.IsNullOrEmpty(selector))
                 return false;
-
-            selector = selector.Trim().ToLowerInvariant();
 
             string id = node.Attribute("id");
             string classes = node.Attribute("class");

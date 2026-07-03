@@ -18,6 +18,16 @@ namespace NowUI
 
         static readonly List<RaycastResult> s_results = new List<RaycastResult>(16);
 
+        static int s_cachedFrame = -1;
+
+        static Vector2 s_cachedPosition;
+
+        static bool s_hasCachedResults;
+
+        static readonly Dictionary<Canvas, BaseRaycaster> s_canvasRaycasters = new Dictionary<Canvas, BaseRaycaster>();
+
+        static readonly Dictionary<Component, Graphic> s_resolvedGraphics = new Dictionary<Component, Graphic>();
+
         /// <summary>
         /// True when the topmost EventSystem raycast hit at
         /// <paramref name="screenPosition"/> is <paramref name="host"/> or one of
@@ -49,26 +59,15 @@ namespace NowUI
                 return true;
 
             var topResult = s_results[0];
-            bool allowed = IsHostOrChild(host, topResult) ||
+            return IsHostOrChild(host, topResult) ||
                 (allowHostOwnedOverlay && !IsRaycastResultAboveHost(host, topResult, screenPosition));
-            s_results.Clear();
-            return allowed;
-        }
-
-        /// <summary>
-        /// True when the pointer is over any raycastable UI element — the standard
-        /// "don't click through the canvas" test for the screen render path.
-        /// </summary>
-        public static bool IsPointerOverUGUI()
-        {
-            var eventSystem = EventSystem.current;
-            return eventSystem != null && eventSystem.IsPointerOverGameObject();
         }
 
         /// <summary>
         /// True when <paramref name="screenPosition"/> is over any raycastable UI
-        /// element. Use this when input has already been sampled outside Unity's
-        /// EventSystem pointer module.
+        /// element — the standard "don't click through the canvas" test. Position
+        /// based (rather than EventSystem.IsPointerOverGameObject, which only
+        /// tracks the mouse pointer id) so it stays reliable for touch input.
         /// </summary>
         public static bool IsPointerOverUGUI(Vector2 screenPosition)
         {
@@ -78,9 +77,20 @@ namespace NowUI
                 return false;
 
             RaycastAll(eventSystem, screenPosition);
-            bool over = s_results.Count > 0;
+            return s_results.Count > 0;
+        }
+
+        /// <summary>
+        /// Drops the shared same-frame raycast cache. Call after mutating the UGUI
+        /// hierarchy mid-frame (tests, dynamic canvas edits) so the next gate query
+        /// re-raycasts instead of reusing stale results.
+        /// </summary>
+        public static void InvalidateCache()
+        {
+            s_hasCachedResults = false;
             s_results.Clear();
-            return over;
+            s_canvasRaycasters.Clear();
+            s_resolvedGraphics.Clear();
         }
 
         /// <summary>
@@ -137,18 +147,36 @@ namespace NowUI
             return false;
         }
 
+        /// <summary>
+        /// Raycasts through the EventSystem at most once per (frame, position):
+        /// every host provider queries the same pointer sample each frame, so the
+        /// results are shared instead of re-raycasting per host.
+        /// </summary>
         static void RaycastAll(EventSystem eventSystem, Vector2 screenPosition)
         {
             if (s_pointerData == null || s_eventSystem != eventSystem)
             {
                 s_pointerData = new PointerEventData(eventSystem);
                 s_eventSystem = eventSystem;
+                s_hasCachedResults = false;
+            }
+
+            int frame = Time.frameCount;
+
+            if (s_hasCachedResults &&
+                s_cachedFrame == frame &&
+                (s_cachedPosition - screenPosition).sqrMagnitude <= 0.0001f)
+            {
+                return;
             }
 
             s_pointerData.position = screenPosition;
 
             s_results.Clear();
             eventSystem.RaycastAll(s_pointerData, s_results);
+            s_cachedFrame = frame;
+            s_cachedPosition = screenPosition;
+            s_hasCachedResults = true;
         }
 
         static bool IsHostOrChild(Component host, RaycastResult result)
@@ -175,7 +203,7 @@ namespace NowUI
             if (hostCanvas == null)
                 return true;
 
-            var hostRaycaster = hostCanvas.GetComponent<BaseRaycaster>();
+            var hostRaycaster = ResolveRaycaster(hostCanvas);
 
             if (result.module != null && hostRaycaster != null && result.module != hostRaycaster)
             {
@@ -186,21 +214,20 @@ namespace NowUI
                     return result.module.renderOrderPriority > hostRaycaster.renderOrderPriority;
             }
 
-            var hitGraphic = result.gameObject.GetComponent<Graphic>();
-            var hitCanvas = hitGraphic != null ? hitGraphic.canvas : null;
-
-            if (hitCanvas != null)
+            if (result.module is GraphicRaycaster)
             {
-                int hitLayer = SortingLayer.GetLayerValueFromID(hitCanvas.sortingLayerID);
+                int hitLayer = SortingLayer.GetLayerValueFromID(result.sortingLayer);
                 int hostLayer = SortingLayer.GetLayerValueFromID(hostCanvas.sortingLayerID);
 
                 if (hitLayer != hostLayer)
                     return hitLayer > hostLayer;
 
-                if (hitCanvas.sortingOrder != hostCanvas.sortingOrder)
-                    return hitCanvas.sortingOrder > hostCanvas.sortingOrder;
+                if (result.sortingOrder != hostCanvas.sortingOrder)
+                    return result.sortingOrder > hostCanvas.sortingOrder;
 
-                if (hitCanvas.rootCanvas == hostCanvas.rootCanvas)
+                var hostRoot = hostCanvas.rootCanvas;
+
+                if (hostRoot != null && result.module.transform.IsChildOf(hostRoot.transform))
                     return result.depth > hostGraphic.depth;
             }
 
@@ -246,10 +273,39 @@ namespace NowUI
             return hostDistance >= 0f && resultDistance >= 0f;
         }
 
+        /// <summary>
+        /// Component-to-graphic lookup cached per host: the association is stable,
+        /// so the per-frame GetComponent in the overlay gate path is paid once.
+        /// Destroyed entries re-resolve; <see cref="InvalidateCache"/> drops all.
+        /// </summary>
         static Graphic ResolveGraphic(Component component)
         {
-            var graphic = component as Graphic;
-            return graphic != null ? graphic : component.GetComponent<Graphic>();
+            if (component is Graphic graphic)
+                return graphic;
+
+            if (!s_resolvedGraphics.TryGetValue(component, out var resolved) || resolved == null)
+            {
+                resolved = component.GetComponent<Graphic>();
+                s_resolvedGraphics[component] = resolved;
+            }
+
+            return resolved;
+        }
+
+        /// <summary>
+        /// Canvas-to-raycaster lookup cached per canvas, mirroring
+        /// <see cref="ResolveGraphic"/> so the overlay gate never re-fetches the
+        /// host raycaster every frame.
+        /// </summary>
+        static BaseRaycaster ResolveRaycaster(Canvas canvas)
+        {
+            if (!s_canvasRaycasters.TryGetValue(canvas, out var raycaster) || raycaster == null)
+            {
+                raycaster = canvas.GetComponent<BaseRaycaster>();
+                s_canvasRaycasters[canvas] = raycaster;
+            }
+
+            return raycaster;
         }
 
         static bool TryGraphicRayDistance(Graphic graphic, Vector2 screenPosition, out float distance)

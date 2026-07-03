@@ -5,7 +5,187 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Project-wide DX/UX/performance pass.** Text editing follows platform
+  conventions: shift-click extends the selection, text fields and areas gain
+  undo/redo, Escape reverts a text field to its focus-time value while Enter
+  commits, placeholders stay visible while an empty field is focused, AltGr
+  characters are no longer swallowed on Windows/Linux layouts, and macOS uses
+  Option/Cmd word- and line-navigation (Ctrl on Windows/Linux, as before).
+  Popups behave like macOS menus: the press that dismisses a dropdown-family
+  popup is consumed instead of activating the control beneath, Esc closes
+  exactly one layer when popups nest, dropdowns are fully keyboard-navigable
+  (arrows, Return, type-to-select), date pickers support arrow-key day
+  navigation, popups clamp to short views and scroll, the combo box filter
+  stays typable while its popup is open, and a key-binding capture cancelled
+  with Esc no longer also closes the enclosing popup. Time picker edits
+  preserve seconds; split-view dividers keep the grab offset. Steady-state
+  per-frame allocations were removed across the runtime (multi-line text
+  segmentation, numeric field formatting, gradient/curve fields, markdown
+  with styles, rich text layout/hit-testing, markup rendering, docking ids,
+  glass batch keys), scroll input is normalized across UI Toolkit/IMGUI
+  hosts, the drag threshold scales with DPI on touch devices, and
+  `NowInput.navigationKeys` can disable WASD/space/tab/enter UI navigation
+  for games that need those keys. Scroll views expose `scrollOffset` /
+  `ScrollToEnd()`; `NowChip.Draw` now reports removal only via its out
+  parameter; effect contexts take caller-passed time via `SetTime` (no hidden
+  clock); `NowCornerRadius.FromPacked` round-trips correctly.
+
+- **Full visual redesign of the default theme.** New slate-neutral light and
+  dark palettes (WCAG-contrast checked), a typographic scale
+  (`Display`/`Heading`/`Subheading`/`BodyStrong`/`Label`/`Caption` join the
+  existing text styles, with per-preset font weight), retuned spacing/radius
+  scales, and a two-layer elevation shadow system
+  (`NowElevationToken.Raised/Overlay/Modal`). The default control renderer
+  absorbs the former HeroUI polish: soft shadows, line-drawn chevrons and
+  check marks, offset focus rings, pressed scale, and token-driven
+  hover/pressed states that stay visible on dark surfaces.
+- `NowColorToken` grows from 8 to 27 roles: surface/accent state variants,
+  `SurfaceElevated`, `BorderStrong`, `FocusRing`, `Success`/`Warning`/`Danger`
+  triads, `Shadow` and `Scrim`. Themes authored against the old 8 colors keep
+  working — missing roles derive automatically on load, and
+  `NowThemeAsset.MigrateDerivedRoles()`/`RegenerateDerivedRoles()` bake them.
+  Color lookups now hit a flat cache instead of a switch.
+- `NowRectangleStyle` gains `Elevated`, `AccentSoft`, `Danger`, `Ghost`.
+- Built-in themes are now `Default`/`DefaultDark` and
+  `Material`/`MaterialDark`, cross-linked as light/dark counterparts;
+  `NowTheme.preferDark = systemDarkMode` switches the whole UI. The theme
+  generator writes the full extended role set.
+- Wheel scrolling a text area now works over its padding, not just the inner
+  text rect.
+- Glass backdrop render-texture and derived-material lifecycles are shared
+  between the UGUI replay path and the world camera-backdrop path
+  (`NowGlassBackdropSurface`), so the RT descriptor and play/edit destroy
+  handling cannot drift apart. The capture pipelines stay per-host.
+
+- Input internals reorganized into `Runtime/Input/`: providers
+  (`NowScreenInputProvider`, `NowIMGUIInputProvider`,
+  `NowRectTransformInputProvider`, `NowWorldInputProvider`,
+  `NowUIToolkitInputProvider`) are now standalone files instead of being
+  embedded in `NowInput.cs`/`NowWorldGraphic.cs`/`NowVisualElement.cs`.
+  Namespaces and type names are unchanged.
+- `NowGraphic` and `NowWorldGraphic` share one interaction-repaint watcher
+  (`NowInteractionRepaintTracker`) instead of duplicating input-change
+  tracking per host.
+- UGUI raycast-gate queries are cached per frame and pointer position: many
+  NowUI hosts in a scene now cost one `EventSystem.RaycastAll` per frame
+  instead of one per host.
+
+### Fixed
+
+- Per-corner radii now round the corners they name. `NowCornerRadius.packed`
+  was vertically flipped against the shader's corner decode, so
+  `NowCornerRadius.Top(...)` rounded the bottom corners (node title bars,
+  file picker headers, and the context menu scroll strips all drew mirrored).
+  Code that unpacked a packed radius `Vector4` by component must switch to
+  the new order: `x`=topRight, `y`=bottomRight, `z`=topLeft, `w`=bottomLeft.
+- Deferred overlay draws (context menus, dropdown popups, tooltips, dialogs)
+  now capture the ambient theme scope at declare time and re-apply it when
+  the overlay queue flushes. Previously popups rendered with whatever theme
+  was active at end-of-frame — outside every `NowTheme.Scope`, so scoped
+  themes never styled them.
+- The built-in fallback light theme (used when no theme asset is scoped or
+  assigned) is now fully initialized; it previously shipped blank style
+  constants, leaving popups square-cornered and unpadded.
+- Context menu scroll strips are drawn as the popup's own rounded shape
+  clipped to the edge band, so they follow the menu's rounded silhouette
+  exactly instead of overpainting the corners with a square rect (a plain
+  strip rect cannot round correctly once the corner radius exceeds half the
+  strip height).
+- A context menu now belongs to the input surface that opened it: two
+  surfaces sharing a menu id no longer both draw the menu (and the wrong one
+  can no longer consume the item click).
+- Context menus opened from inside another popup (the animation curve
+  editor's tangent menu, dropdowns in dialogs) now win the pointer over the
+  popup content beneath them: modal blocks apply between overlay layers, with
+  only the modal's own overlay subtree exempt. Previously all overlay content
+  bypassed pointer blocks, so the popup underneath kept claiming presses —
+  menu items would highlight but clicks fell through (e.g. double-click added
+  a curve key instead of picking a tangent option).
+- Context menu submenus no longer snap shut when the pointer crosses a
+  sibling row diagonally on its way into the submenu: switching away from an
+  open submenu now waits for a short hover-intent delay (timed from the input
+  snapshot, no hidden clock).
+- World-space popups fitted to the camera view stay interactive beyond their
+  surface rect: the ray-to-surface resolver and the world input provider now
+  treat a surface's own overlays as part of its hit area.
+- Overlay pointer blocks are scoped to the host that registered them. A
+  context menu on one world nameplate no longer freezes every other NowUI
+  surface (their local coordinates were being compared against foreign block
+  rects); each surface is modal only to itself.
+### Removed
+
+- `NowControls.StateTint` (brightness-multiplier hover/press states —
+  invisible on dark surfaces). Use `NowControls.StateColor` or the explicit
+  `SurfaceHover`/`AccentHover`/`*Pressed` tokens.
+- `NowHeroUIControlRenderer` and the `White`/`Dark`/`Night`/`HeroUI`/
+  `HeroUIDark` theme assets: the HeroUI look is now the built-in default.
+- Legacy Input Manager fallback. The Input System package has always been a
+  hard dependency of NowUI; the dead `ENABLE_LEGACY_INPUT_MANAGER` code path
+  (used only when the Input System reported zero devices) is gone. Projects
+  with Active Input Handling set to "Both" and no Input System devices must
+  switch to the Input System.
+
 ### Added
+
+- **HTML-inspired markup expansion and typo-safe lookups.** The markup
+  extension gains `h1`–`h6`, `hr`, `ul`/`ol`/`li`, `details`/`summary`
+  (foldout), `tabs`/`tab`, `switch`/`toggle`, `radio` with HTML-style `group`
+  semantics, `progress` (state-bound, indeterminate when valueless, sweep
+  clocked by a caller-updated `time` state key), `badge`, and `chip`;
+  `strong`/`em`/`del` map to rich-text bold/italic/strikethrough and
+  `<option selected>` seeds a dropdown's default row. Documents expose a
+  parse-time `manifest` of declared ids, state keys, and `emit(...)` action
+  names; result queries such as `Clicked("save")` warn once in the editor and
+  development builds when the name is never declared (toggle with
+  `NowMarkup.validateQueries`), and `Changed()` matches element ids or state
+  keys. `NowMarkupBindings.GenerateSource` — or the **Assets → NowUI →
+  Generate Markup Bindings** menu on a markup file — emits a constants class
+  (`MainMarkup.Ids.Save`) so C# stops repeating hard-coded lookup strings.
+
+- **Scrollable context menus.** Menus taller than the visible view clamp
+  their height and scroll — mouse wheel, or OS-style top/bottom hover strips —
+  so every option stays reachable instead of overflowing the viewport.
+  Submenus clamp and scroll independently, anchor to their scrolled row, and
+  close when their row scrolls out of view. Scrolling over an open menu
+  scrolls it; scrolling elsewhere still closes it. World-space hosts clamp
+  against the popup's screen-space projection, so tilted surfaces clamp
+  correctly (`INowPopupFitProvider.ClampPopupRectToView`,
+  `NowOverlay.ClampScreenToView`).
+- Menu Lab pages for hands-on edge-case testing: a "Menus" tab in the control
+  gallery example (60-item playground menu, 80-item submenu, deep nesting,
+  screen-corner and 100-item menus) and a right-click stress menu on the
+  world graphic example (40 overflow options, 50-item submenu, deep chain).
+
+- **Central pointer-ownership arbitration** (`NowPointerArbiter`): every input
+  surface (screen path, canvas graphics, world graphics, UI Toolkit hosts)
+  registers a per-frame claim — layering tier, depth, whether it has content
+  under the pointer, and held buttons — and exactly one surface owns the
+  pointer, resolved one frame late so the result never depends on host update
+  order. Ownership latches during drags. Surfaces that never claim (single-
+  surface apps, custom providers, tests) keep today's behavior. This replaces
+  the tick-order-dependent behavior that let clicks land on surfaces behind
+  popups and menus.
+
+- **A wave of new controls**, all following the standard dual
+  `Now.*`/`NowLayout.*` factories, caller-owned values, theme tokens,
+  focus/keyboard navigation, and zero steady-state allocations: `Switch`,
+  `ProgressBar` (determinate + caller-timed indeterminate), `Badge`, `Chip`
+  (selectable/removable), `NowTooltip.For(...)` (hover/long-press, passive
+  overlay), numeric text field spinner buttons (`SetSpinner`),
+  `TabBar`/`TabView`, `SplitView` (draggable focusable divider), `TreeView`
+  (caller-owned expansion/selection state), `ComboBox` (searchable dropdown),
+  `DatePicker` (calendar popup, range clamping, caller-passed today),
+  `TimePicker` (12/24h), `Foldout` (collapsible section header, caller-owned
+  or control-owned expansion), `MaskField`/`LayerMaskField` (multi-select
+  bit-flag dropdown with Nothing/Everything rows; the LayerMask twin edits
+  the project's named layers), `KeyBindingField` (click-to-capture key
+  binder, with `NowKeyNames.GetName` exposing the display names), and
+  `Inspector` (reflection-driven Unity-style property rows for any
+  serializable type).
+- `NowOverlay.DeferPassive` for overlays that draw on top without blocking the
+  pointer.
 
 - `NowDrawList.Warmup(...)` and `NowRenderer.Warmup(...)` to run a
   representative initialization frame and clear the result before measuring

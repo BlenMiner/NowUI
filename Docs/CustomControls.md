@@ -34,9 +34,11 @@ using (NowTheme.Scope(darkTheme))
 ```
 
 Editing the `Accent` preset in a theme asset restyles every button in one
-place. The enum styles (`Surface`, `Muted`, `Outline`, `Accent`) are the
-blessed set. For app-specific variants such as a danger action, wrap the
-built-in control or assign a custom `NowControlRenderer` on the theme.
+place. The enum styles (`Surface`, `Elevated`, `Muted`, `Outline`, `Accent`,
+`AccentSoft`, `Danger`, `Ghost`) are the blessed set — destructive actions
+are just `SetStyle(NowRectangleStyle.Danger)`. For looks outside that set,
+wrap the built-in control or assign a custom `NowControlRenderer` on the
+theme.
 
 ## 2. Wrap: variants of existing controls
 
@@ -105,7 +107,7 @@ public static bool RoundButton(
 
     var circle = theme.Rectangle(rect, NowRectangleStyle.Accent);
     circle.radius = Vector4.one * radius;
-    circle.color = NowControls.StateTint(circle.color, hoverT, interaction.held && inCircle);
+    circle.color = NowControls.StateColor(circle.color, hoverT, interaction.held && inCircle);
 
     if (focused)
     {

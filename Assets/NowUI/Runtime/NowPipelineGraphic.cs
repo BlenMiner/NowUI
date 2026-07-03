@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace NowUI
 {
@@ -8,11 +9,21 @@ namespace NowUI
     [ExecuteAlways]
     public class NowPipelineGraphic : MonoBehaviour
     {
+        const int MissingConsumerWarningFrames = 120;
+
         static readonly List<NowPipelineGraphic> _graphics = new List<NowPipelineGraphic>(16);
 
         static readonly Comparison<NowPipelineGraphic> _orderComparison = CompareOrder;
 
         static int _nextRegistrationIndex;
+
+        static bool _orderDirty = true;
+
+        static int _lastPolledFrame = -1;
+
+        static int _pollWatchStartFrame = -1;
+
+        static bool _warnedMissingConsumer;
 
         [SerializeField] Camera _targetCamera;
 
@@ -57,7 +68,14 @@ namespace NowUI
         public int order
         {
             get => _order;
-            set => _order = value;
+            set
+            {
+                if (_order == value)
+                    return;
+
+                _order = value;
+                _orderDirty = true;
+            }
         }
 
         public NowGlassBlurQuality glassBlurQuality
@@ -68,6 +86,8 @@ namespace NowUI
 
         public static bool HasGraphicsFor(Camera camera)
         {
+            _lastPolledFrame = Time.frameCount;
+
             if (camera == null)
                 return false;
 
@@ -92,6 +112,8 @@ namespace NowUI
         /// </summary>
         public static bool BuildDrawList(Camera camera, NowDrawList drawList, float uiScale)
         {
+            _lastPolledFrame = Time.frameCount;
+
             if (camera == null)
                 throw new ArgumentNullException(nameof(camera));
 
@@ -162,12 +184,74 @@ namespace NowUI
             {
                 _registrationIndex = ++_nextRegistrationIndex;
                 _graphics.Add(this);
+                _orderDirty = true;
             }
+
+            _pollWatchStartFrame = Time.frameCount;
         }
 
         protected virtual void OnDisable()
         {
-            _graphics.Remove(this);
+            if (_graphics.Remove(this))
+                _orderDirty = true;
+        }
+
+        protected virtual void LateUpdate()
+        {
+            WarnIfNothingConsumesDrawLists();
+        }
+
+        /// <summary>
+        /// A NowPipelineGraphic only renders when a render feature or custom pass
+        /// polls <see cref="HasGraphicsFor"/> / <see cref="BuildDrawList"/>; without
+        /// one it is silently invisible, so this warns once when enabled graphics
+        /// have gone unpolled for a while.
+        /// </summary>
+        static void WarnIfNothingConsumesDrawLists()
+        {
+            if (_warnedMissingConsumer || !Application.isPlaying)
+                return;
+
+            int lastActivityFrame = Mathf.Max(_lastPolledFrame, _pollWatchStartFrame);
+
+            if (Time.frameCount - lastActivityFrame <= MissingConsumerWarningFrames)
+                return;
+
+            _warnedMissingConsumer = true;
+            Debug.LogWarning(BuildMissingConsumerMessage());
+        }
+
+        static string BuildMissingConsumerMessage()
+        {
+            var pipeline = GraphicsSettings.currentRenderPipeline;
+
+            if (pipeline == null)
+            {
+                return "NowPipelineGraphic components are enabled but nothing consumes their draw lists: the Built-in Render Pipeline has no NowUI hook. Render them yourself by calling NowPipelineGraphic.BuildDrawList from a camera callback and drawing the result, or use NowGraphic / NowWorldGraphic instead.";
+            }
+
+            string pipelineName = pipeline.GetType().Name;
+
+            if (pipelineName.Contains("Universal"))
+            {
+                return "NowPipelineGraphic components are enabled but nothing consumes their draw lists. Add the NowUniversalRendererFeature to the active Universal Renderer asset (Universal Render Pipeline Asset > Renderer > Add Renderer Feature).";
+            }
+
+            if (pipelineName.Contains("HDRenderPipeline") || pipelineName.Contains("HighDefinition"))
+            {
+                return "NowPipelineGraphic components are enabled but nothing consumes their draw lists. Add a Custom Pass Volume with a NowHighDefinitionCustomPass to the scene.";
+            }
+
+            return $"NowPipelineGraphic components are enabled but nothing consumes their draw lists on '{pipelineName}'. Add a render pass that calls NowPipelineGraphic.HasGraphicsFor / BuildDrawList.";
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetForRuntimeLoad()
+        {
+            _orderDirty = true;
+            _lastPolledFrame = -1;
+            _pollWatchStartFrame = -1;
+            _warnedMissingConsumer = false;
         }
 
         protected virtual void DrawNowUI(Camera camera, Rect rect)
@@ -192,7 +276,11 @@ namespace NowUI
 
         static void DrawAll(Camera camera, Rect rect)
         {
-            _graphics.Sort(_orderComparison);
+            if (_orderDirty)
+            {
+                _graphics.Sort(_orderComparison);
+                _orderDirty = false;
+            }
 
             for (int i = 0; i < _graphics.Count; ++i)
             {

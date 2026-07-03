@@ -266,7 +266,7 @@ namespace NowUI
             return new NowPolygon(points, start, count);
         }
 
-        internal static void DrawCircle(NowCircle circle)
+        internal static void DrawCircle(in NowCircle circle)
         {
             bool hasTransform = _transformStack.Count > 0;
 
@@ -299,7 +299,7 @@ namespace NowUI
             DrawShapePoints(circle.mask, hasTransform, circle.fill, circle.color, scaledOutline, circle.outlineColor);
         }
 
-        internal static void DrawTriangle(NowTriangle triangle)
+        internal static void DrawTriangle(in NowTriangle triangle)
         {
             bool hasTransform = _transformStack.Count > 0;
             float scaledOutline = hasTransform ? ApplyTransformScalar(triangle.outline) : triangle.outline;
@@ -311,7 +311,7 @@ namespace NowUI
             DrawShapePoints(triangle.mask, hasTransform, triangle.fill, triangle.color, scaledOutline, triangle.outlineColor);
         }
 
-        internal static void DrawPolygon(NowPolygon polygon)
+        internal static void DrawPolygon(in NowPolygon polygon)
         {
             int available = polygon.pointList != null
                 ? polygon.pointList.Count

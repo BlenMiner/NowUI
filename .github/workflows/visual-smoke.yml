@@ -1,0 +1,104 @@
+name: NowUI Visual Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Assets/NowUI/**'
+      - 'Packages/**'
+      - 'ProjectSettings/**'
+      - 'Tools/NowUI-Harness.ps1'
+      - 'Tools/Assert-NowUIVisualArtifacts.ps1'
+      - '.github/workflows/visual-smoke.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'Assets/NowUI/**'
+      - 'Packages/**'
+      - 'ProjectSettings/**'
+      - 'Tools/NowUI-Harness.ps1'
+      - 'Tools/Assert-NowUIVisualArtifacts.ps1'
+      - '.github/workflows/visual-smoke.yml'
+
+jobs:
+  capture:
+    name: ${{ matrix.os_name }} capture
+    runs-on: ${{ fromJSON(matrix.runs_on) }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os_name: windows
+            runs_on: '["self-hosted","Windows"]'
+            unity_editor: 'C:\Program Files\Unity\Hub\Editor\6000.4.0f1\Editor\Unity.exe'
+          - os_name: macos
+            runs_on: '["self-hosted","macOS"]'
+            unity_editor: '/Applications/Unity/Hub/Editor/6000.4.0f1/Unity.app/Contents/MacOS/Unity'
+          - os_name: linux
+            runs_on: '["self-hosted","Linux"]'
+            unity_editor: '/opt/unity/Editor/Unity'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Capture visual harness
+        shell: pwsh
+        run: >
+          ./Tools/NowUI-Harness.ps1
+          -Mode Visual
+          -UnityEditor "${{ matrix.unity_editor }}"
+          -ProjectPath "${env:GITHUB_WORKSPACE}"
+          -ArtifactsPath "${env:GITHUB_WORKSPACE}/artifacts/visual/${{ matrix.os_name }}"
+          -CleanScriptAssemblies
+
+      - name: Validate visual artifacts
+        shell: pwsh
+        run: >
+          ./Tools/Assert-NowUIVisualArtifacts.ps1
+          -ArtifactsPath "${env:GITHUB_WORKSPACE}/artifacts/visual/${{ matrix.os_name }}/visual"
+          -MinCaptures 15
+
+      - name: Upload visual artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowui-visual-${{ matrix.os_name }}
+          path: artifacts/visual/${{ matrix.os_name }}
+
+  golden:
+    name: windows golden comparison
+    runs-on:
+      - self-hosted
+      - Windows
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compare golden screenshots
+        shell: pwsh
+        run: >
+          ./Tools/NowUI-Harness.ps1
+          -Mode Golden
+          -UnityEditor "C:\Program Files\Unity\Hub\Editor\6000.4.0f1\Editor\Unity.exe"
+          -ProjectPath "${env:GITHUB_WORKSPACE}"
+          -ArtifactsPath "${env:GITHUB_WORKSPACE}/artifacts/golden/windows"
+          -CleanScriptAssemblies
+
+      - name: Validate golden artifacts
+        shell: pwsh
+        run: >
+          ./Tools/Assert-NowUIVisualArtifacts.ps1
+          -ArtifactsPath "${env:GITHUB_WORKSPACE}/artifacts/golden/windows/golden"
+          -MinCaptures 13
+
+      - name: Upload golden artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowui-golden-windows
+          path: artifacts/golden/windows
