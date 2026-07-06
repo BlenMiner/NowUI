@@ -82,6 +82,12 @@ namespace NowUI
             return new NowSwitch(rect, label, NowControls.SiteId(file, line));
         }
 
+        /// <summary>Draggable divider between two panes at an explicit rect.</summary>
+        public static NowSplitter Splitter(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowSplitter(rect, id, NowControls.SiteId(file, line));
+        }
+
         /// <summary>Determinate or indeterminate progress bar at an explicit rect.</summary>
         public static NowProgressBar ProgressBar(NowRect rect, float value01 = 0f, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
@@ -219,6 +225,12 @@ namespace NowUI
         public static NowSwitch Switch(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowSwitch(label, NowControls.SiteId(file, line));
+        }
+
+        /// <summary>Draggable divider between two panes in layout flow.</summary>
+        public static NowSplitter Splitter(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowSplitter(id, NowControls.SiteId(file, line));
         }
 
         /// <summary>Determinate or indeterminate progress bar in layout flow.</summary>

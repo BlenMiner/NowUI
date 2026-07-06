@@ -52,6 +52,13 @@ namespace NowUI.CodeEditor
 
         const string IndentUnit = "    ";
 
+        const int MaxVisibleCompletions = 8;
+
+        const float CompletionPadding = 4f;
+
+        /// <summary>Payload of the last no-selection line copy/cut, so paste can re-insert it as a whole line.</summary>
+        static string s_lineClipboard;
+
         NowId _id;
         readonly int _site;
         readonly NowCodeLanguage _language;
@@ -118,6 +125,14 @@ namespace NowUI.CodeEditor
             public int positionColumn = -1;
             public string tooltipMessage;
             public NowRect tooltipRect;
+            public int validatedVersion;
+            public readonly List<NowCodeCompletionItem> completionItems = new List<NowCodeCompletionItem>(64);
+            public readonly List<int> completionVisible = new List<int>(64);
+            public int completionReplaceStart = -1;
+            public int completionSelected;
+            public int completionWindow;
+            public NowRect completionPopupRect;
+            public float completionRowHeight;
         }
 
         struct EditorState
@@ -190,6 +205,13 @@ namespace NowUI.CodeEditor
 
             if (!ReferenceEquals(cache.text, text))
                 Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
+            else if (cache.validatedVersion != _language.validationVersion)
+                Revalidate(cache, text);
+
+            // Async validators report pending work; keep repainting so their
+            // results land without waiting for the next interaction.
+            if (_language.validationPending && !NowInput.isPassive)
+                NowControlState.RequestRepaint();
 
             float gutterWidth = _hideLineNumbers
                 ? 0f
@@ -259,9 +281,24 @@ namespace NowUI.CodeEditor
 
             editor.hadFocus = focused ? (byte)1 : (byte)0;
 
-            if (interaction.pressed)
+            if (interaction.pressed && CompletionsOpen(cache) &&
+                cache.completionPopupRect.Contains(interaction.pointerPosition))
+            {
+                int row = cache.completionWindow + (int)((interaction.pointerPosition.y -
+                    cache.completionPopupRect.y - CompletionPadding) / Mathf.Max(cache.completionRowHeight, 1f));
+
+                if (row >= 0 && row < cache.completionVisible.Count)
+                {
+                    revealCaret = true;
+                    cache.undo.Push(text, in state, typing: false);
+                    cache.completionSelected = row;
+                    AcceptCompletion(cache, ref text, ref state);
+                }
+            }
+            else if (interaction.pressed)
             {
                 revealCaret = true;
+                CloseCompletions(cache);
                 NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
 
                 bool onStatusBar = statusHeight > 0f && interaction.pointerPosition.y >= rect.yMax - statusHeight - 1f;
@@ -295,7 +332,11 @@ namespace NowUI.CodeEditor
                     else
                     {
                         state.caret = hit;
-                        state.anchor = hit;
+
+                        // Shift+click extends the selection from the existing anchor.
+                        if (!NowTextInput.current.shift)
+                            state.anchor = hit;
+
                         NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
                     }
                 }
@@ -323,7 +364,21 @@ namespace NowUI.CodeEditor
                     cache.undo.Push(text, in state, typing: true);
 
                     for (int i = 0; i < frame.characters.Length; ++i)
-                        HandleCharacter(frame.characters[i], ref text, ref state, _language);
+                    {
+                        char c = frame.characters[i];
+                        HandleCharacter(c, ref text, ref state, _language);
+
+                        if (_language.IsIndentCloser(c))
+                            ReindentCloser(c, ref text, ref state, _language, cache);
+
+                        // Identifier characters open or narrow the completion
+                        // popup; trigger characters ('.') query the language
+                        // directly; anything else dismisses it.
+                        if (_language.IsCompletionTrigger(c) || IsIdentifierChar(c))
+                            OpenOrRefreshCompletions(cache, _language, text, state.caret);
+                        else
+                            CloseCompletions(cache);
+                    }
                 }
 
                 if (composition != null)
@@ -333,39 +388,58 @@ namespace NowUI.CodeEditor
                 if (composition == null)
                 {
                     if (frame.escapePressed)
-                        NowFocus.Clear();
+                    {
+                        if (CompletionsOpen(cache))
+                            CloseCompletions(cache);
+                        else
+                            NowFocus.Clear();
+                    }
 
                     if (frame.undoPressed)
                     {
                         revealCaret = true;
+                        CloseCompletions(cache);
                         cache.undo.Undo(ref text, ref state);
                     }
 
                     if (frame.redoPressed)
                     {
                         revealCaret = true;
+                        CloseCompletions(cache);
                         cache.undo.Redo(ref text, ref state);
                     }
 
                     if (frame.selectAllPressed)
                     {
                         revealCaret = true;
+                        CloseCompletions(cache);
                         NowTextEdit.SelectAll(ref state, text);
                     }
 
                     // Copy/cut with no selection act on the whole line, like an IDE.
                     if (frame.copyPressed)
-                        NowClipboard.Copy(state.hasSelection
-                            ? NowTextEdit.GetSelection(text, state)
-                            : CurrentLine(text, state.caret));
+                    {
+                        if (state.hasSelection)
+                        {
+                            s_lineClipboard = null;
+                            NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                        }
+                        else
+                        {
+                            s_lineClipboard = CurrentLine(text, state.caret);
+                            NowClipboard.Copy(s_lineClipboard);
+                        }
+                    }
 
                     if (frame.cutPressed)
                     {
                         revealCaret = true;
+                        CloseCompletions(cache);
                         cache.undo.Push(text, in state, typing: false);
 
                         if (state.hasSelection)
                         {
+                            s_lineClipboard = null;
                             NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
                             NowTextEdit.DeleteSelection(ref text, ref state);
                         }
@@ -378,6 +452,7 @@ namespace NowUI.CodeEditor
                     if (frame.duplicatePressed)
                     {
                         revealCaret = true;
+                        CloseCompletions(cache);
                         cache.undo.Push(text, in state, typing: false);
                         DuplicateLines(ref text, ref state);
                     }
@@ -385,31 +460,64 @@ namespace NowUI.CodeEditor
                     if (frame.pastePressed)
                     {
                         revealCaret = true;
+                        CloseCompletions(cache);
                         string buffer = NowClipboard.Paste();
 
                         if (!string.IsNullOrEmpty(buffer))
                         {
                             cache.undo.Push(text, in state, typing: false);
-                            NowTextEdit.Insert(ref text, ref state, buffer.Replace("\r\n", "\n").Replace('\r', '\n'));
+                            buffer = buffer.Replace("\r\n", "\n").Replace('\r', '\n');
+
+                            // A whole-line copy pastes as a whole line above the
+                            // caret's line (the IDE convention), instead of
+                            // splicing mid-line at the caret.
+                            if (!state.hasSelection && buffer == s_lineClipboard && buffer.EndsWith("\n"))
+                            {
+                                NowTextMetrics.LineBounds(text, state.caret, out int lineStart, out _);
+                                text = text.Insert(lineStart, buffer);
+                                state.caret += buffer.Length;
+                                state.anchor = state.caret;
+                            }
+                            else
+                            {
+                                NowTextEdit.Insert(ref text, ref state, buffer);
+                            }
                         }
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "enter"), frame.enterHeld))
                     {
                         revealCaret = true;
-                        cache.undo.Push(text, in state, typing: true);
-                        InsertNewlineWithIndent(ref text, ref state, _language);
+
+                        if (CompletionsOpen(cache))
+                        {
+                            cache.undo.Push(text, in state, typing: false);
+                            AcceptCompletion(cache, ref text, ref state);
+                        }
+                        else
+                        {
+                            cache.undo.Push(text, in state, typing: true);
+                            InsertNewlineWithIndent(ref text, ref state, _language);
+                        }
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "tab"), frame.tabHeld))
                     {
                         revealCaret = true;
 
-                        if (!ReferenceEquals(cache.text, text))
-                            Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
+                        if (CompletionsOpen(cache))
+                        {
+                            cache.undo.Push(text, in state, typing: false);
+                            AcceptCompletion(cache, ref text, ref state);
+                        }
+                        else
+                        {
+                            if (!ReferenceEquals(cache.text, text))
+                                Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
 
-                        cache.undo.Push(text, in state, typing: true);
-                        HandleTab(ref text, ref state, cache, frame.shift);
+                            cache.undo.Push(text, in state, typing: true);
+                            HandleTab(ref text, ref state, cache, frame.shift);
+                        }
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "bs"), frame.backspaceHeld))
@@ -419,6 +527,7 @@ namespace NowUI.CodeEditor
 
                         if (frame.lineModifier)
                         {
+                            CloseCompletions(cache);
                             NowTextEdit.DeleteToLineStart(ref text, ref state);
                         }
                         else if (!PairBackspace(ref text, ref state, _language) &&
@@ -426,11 +535,15 @@ namespace NowUI.CodeEditor
                         {
                             NowTextEdit.Backspace(ref text, ref state, frame.wordModifier);
                         }
+
+                        if (CompletionsOpen(cache))
+                            RefreshCompletionFilter(cache, text, state.caret);
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "del"), frame.deleteHeld))
                     {
                         revealCaret = true;
+                        CloseCompletions(cache);
                         cache.undo.Push(text, in state, typing: true);
                         NowTextEdit.Delete(ref text, ref state, frame.wordModifier);
                     }
@@ -441,6 +554,7 @@ namespace NowUI.CodeEditor
                     if (NowControlState.Repeat(NowInput.GetId(id, "left"), frame.leftHeld))
                     {
                         revealCaret = true;
+                        CloseCompletions(cache);
 
                         if (frame.lineModifier)
                             SmartHome(text, cache, ref state, frame.shift);
@@ -451,6 +565,7 @@ namespace NowUI.CodeEditor
                     if (NowControlState.Repeat(NowInput.GetId(id, "right"), frame.rightHeld))
                     {
                         revealCaret = true;
+                        CloseCompletions(cache);
 
                         if (frame.lineModifier)
                         {
@@ -468,37 +583,54 @@ namespace NowUI.CodeEditor
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "up"), frame.upHeld))
                     {
-                        revealCaret = true;
-
-                        if (frame.lineModifier)
+                        if (CompletionsOpen(cache))
                         {
-                            NowTextEdit.MoveHome(ref state, frame.shift);
+                            cache.completionSelected = Mathf.Max(cache.completionSelected - 1, 0);
+                            NowControlState.RequestRepaint();
                         }
                         else
                         {
-                            MoveVertical(ref state, ref editor, text, cache, font, _fontSize, textStyle.fontStyle, -1, frame.shift);
-                            verticalMove = true;
+                            revealCaret = true;
+
+                            if (frame.lineModifier)
+                            {
+                                NowTextEdit.MoveHome(ref state, frame.shift);
+                            }
+                            else
+                            {
+                                MoveVertical(ref state, ref editor, text, cache, font, _fontSize, textStyle.fontStyle, -1, frame.shift);
+                                verticalMove = true;
+                            }
                         }
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "down"), frame.downHeld))
                     {
-                        revealCaret = true;
-
-                        if (frame.lineModifier)
+                        if (CompletionsOpen(cache))
                         {
-                            NowTextEdit.MoveEnd(ref state, text, frame.shift);
+                            cache.completionSelected = Mathf.Min(cache.completionSelected + 1, cache.completionVisible.Count - 1);
+                            NowControlState.RequestRepaint();
                         }
                         else
                         {
-                            MoveVertical(ref state, ref editor, text, cache, font, _fontSize, textStyle.fontStyle, 1, frame.shift);
-                            verticalMove = true;
+                            revealCaret = true;
+
+                            if (frame.lineModifier)
+                            {
+                                NowTextEdit.MoveEnd(ref state, text, frame.shift);
+                            }
+                            else
+                            {
+                                MoveVertical(ref state, ref editor, text, cache, font, _fontSize, textStyle.fontStyle, 1, frame.shift);
+                                verticalMove = true;
+                            }
                         }
                     }
 
                     if (frame.homePressed)
                     {
                         revealCaret = true;
+                        CloseCompletions(cache);
 
                         if (frame.command)
                         {
@@ -513,6 +645,7 @@ namespace NowUI.CodeEditor
                     if (frame.endPressed)
                     {
                         revealCaret = true;
+                        CloseCompletions(cache);
 
                         if (frame.command)
                         {
@@ -597,6 +730,11 @@ namespace NowUI.CodeEditor
             editor.scrollY = Mathf.Clamp(editor.scrollY, 0f, maxScrollY);
             editor.scrollX = Mathf.Clamp(editor.scrollX, 0f, maxScrollX);
 
+            if (!focused)
+                CloseCompletions(cache);
+            else if (CompletionsOpen(cache))
+                LayoutCompletionPopup(id, cache, text, font, _fontSize, textStyle.fontStyle, textRect, lineHeight, in editor, caretLine);
+
             if (focused && !NowInput.isPassive)
                 NowTextInput.setCompositionCursor?.Invoke(new Vector2(
                     textRect.x + caretX - editor.scrollX,
@@ -634,7 +772,13 @@ namespace NowUI.CodeEditor
 
             Vector4 cornerRadius = themeAsset.Rectangle(rect, NowRectangleStyle.Outline).radius;
 
-            themeAsset.Rectangle(rect, NowRectangleStyle.Surface).SetRadius(cornerRadius).Draw();
+            // The code canvas sits on the Background token — the darkest surface
+            // in IDE-style dark themes — while keeping the Surface preset's
+            // outline so the editor still reads as a bounded panel.
+            themeAsset.Rectangle(rect, NowRectangleStyle.Surface)
+                .SetColor(themeAsset.GetColor(NowColorToken.Background, Color.white))
+                .SetRadius(cornerRadius)
+                .Draw();
 
             int firstVisible = Mathf.Max(0, Mathf.FloorToInt(editor.scrollY / lineHeight));
             int lastVisible = Mathf.Min(cache.lines.Count - 1, Mathf.CeilToInt((editor.scrollY + textRect.height) / lineHeight));
@@ -676,8 +820,14 @@ namespace NowUI.CodeEditor
                         .Draw();
                 }
 
+                if (focused && composition == null)
+                    DrawOccurrenceHighlights(themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, in state, ref editor, firstVisible, lastVisible);
+
                 if (focused && state.hasSelection && composition == null)
                     DrawSelection(themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, in state, ref editor, firstVisible, lastVisible);
+
+                if (focused && !state.hasSelection && composition == null)
+                    DrawBracketMatch(themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, in state, ref editor, firstVisible, lastVisible);
 
                 float originX = textRect.x - editor.scrollX;
 
@@ -834,34 +984,318 @@ namespace NowUI.CodeEditor
 
         static Vector4 KindColor(NowThemeAsset themeAsset, NowCodeTokenKind kind)
         {
+            // Fixed literal colors come in a light and a dark variant (the dark
+            // ones matching JetBrains Rider's dark scheme: blue keywords, tan
+            // types and strings, green calls, violet fields, teal numbers) so
+            // syntax stays readable on both modes; everything else resolves
+            // through theme tokens.
+            bool dark = themeAsset.isDark;
+
             switch (kind)
             {
-                case NowCodeTokenKind.Property:
-                case NowCodeTokenKind.Attribute:
                 case NowCodeTokenKind.Heading:
                 case NowCodeTokenKind.Link:
                 case NowCodeTokenKind.ListMarker:
                     return themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+                case NowCodeTokenKind.Property:
+                    return dark
+                        ? new Vector4(0.757f, 0.569f, 1f, 1f)
+                        : themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+                case NowCodeTokenKind.Attribute:
+                    return dark
+                        ? new Vector4(0.224f, 0.80f, 0.56f, 1f)
+                        : themeAsset.GetColor(NowColorToken.Accent, Color.blue);
                 case NowCodeTokenKind.String:
                 case NowCodeTokenKind.CodeSpan:
-                    return new Vector4(0.16f, 0.52f, 0.26f, 1f);
+                    return dark
+                        ? new Vector4(0.79f, 0.64f, 0.43f, 1f)
+                        : new Vector4(0.16f, 0.52f, 0.26f, 1f);
                 case NowCodeTokenKind.Number:
+                    return dark
+                        ? new Vector4(0.93f, 0.58f, 0.75f, 1f)
+                        : new Vector4(0.55f, 0.27f, 0.68f, 1f);
                 case NowCodeTokenKind.Emphasis:
-                    return new Vector4(0.55f, 0.27f, 0.68f, 1f);
+                    return dark
+                        ? new Vector4(0.71f, 0.58f, 0.94f, 1f)
+                        : new Vector4(0.55f, 0.27f, 0.68f, 1f);
+                case NowCodeTokenKind.Constant:
+                    return dark
+                        ? new Vector4(0.40f, 0.76f, 0.80f, 1f)
+                        : new Vector4(0.05f, 0.45f, 0.50f, 1f);
                 case NowCodeTokenKind.Keyword:
                 case NowCodeTokenKind.Strong:
                 case NowCodeTokenKind.Tag:
-                    return new Vector4(0.80f, 0.42f, 0.13f, 1f);
+                    return dark
+                        ? new Vector4(0.42f, 0.58f, 0.92f, 1f)
+                        : new Vector4(0.80f, 0.42f, 0.13f, 1f);
                 case NowCodeTokenKind.Comment:
-                case NowCodeTokenKind.Punctuation:
                 case NowCodeTokenKind.Quote:
                 case NowCodeTokenKind.Fence:
                     return themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+                case NowCodeTokenKind.Punctuation:
+                    // Rider renders operators and delimiters in the plain text
+                    // color on dark schemes; light schemes keep them muted.
+                    return dark
+                        ? themeAsset.GetColor(NowColorToken.Text, Color.white)
+                        : themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
                 case NowCodeTokenKind.Error:
                     return new Vector4(0.86f, 0.24f, 0.24f, 1f);
                 default:
                     return themeAsset.GetColor(NowColorToken.Text, Color.black);
             }
+        }
+
+        /// <summary>
+        /// Highlights every visible occurrence of the identifier under the
+        /// caret (or of an exact-word selection), IDE style. Matching is
+        /// textual with word boundaries; keywords, literals and comments are
+        /// excluded by asking the tokenizer what the caret word is.
+        /// </summary>
+        void DrawOccurrenceHighlights(NowThemeAsset themeAsset, string text, EditorCache cache, NowFontAsset font,
+            float fontSize, NowFontStyle fontStyle, NowRect textRect, float lineHeight, in NowTextEditState state,
+            ref EditorState editor, int firstVisible, int lastVisible)
+        {
+            const int MaxWordLength = 64;
+            int wordStart;
+            int wordEnd;
+
+            if (state.hasSelection)
+            {
+                wordStart = state.selectionMin;
+                wordEnd = state.selectionMax;
+
+                if (wordEnd - wordStart > MaxWordLength)
+                    return;
+
+                for (int i = wordStart; i < wordEnd; ++i)
+                {
+                    if (!IsIdentifierChar(text[i]))
+                        return;
+                }
+
+                bool wholeWord = (wordStart == 0 || !IsIdentifierChar(text[wordStart - 1])) &&
+                    (wordEnd >= text.Length || !IsIdentifierChar(text[wordEnd]));
+
+                if (!wholeWord)
+                    return;
+            }
+            else
+            {
+                wordStart = state.caret;
+                wordEnd = state.caret;
+
+                while (wordStart > 0 && IsIdentifierChar(text[wordStart - 1]))
+                    --wordStart;
+
+                while (wordEnd < text.Length && IsIdentifierChar(text[wordEnd]))
+                    ++wordEnd;
+            }
+
+            int wordLength = wordEnd - wordStart;
+
+            if (wordLength <= 0 || wordLength > MaxWordLength)
+                return;
+
+            // Only identifiers get occurrence highlights: retokenize the word's
+            // line and bail when the word is a keyword, literal or comment.
+            int wordLine = LineOf(cache, wordStart);
+            var wordLineSpan = cache.lines[wordLine];
+            _tokenScratch.Clear();
+            _language.TokenizeLine(text, wordLineSpan.start, wordLineSpan.length, cache.lineStates[wordLine], _tokenScratch);
+
+            for (int t = 0; t < _tokenScratch.Count; ++t)
+            {
+                var token = _tokenScratch[t];
+
+                if (token.start > wordStart)
+                    break;
+
+                if (token.start + token.length <= wordStart)
+                    continue;
+
+                switch (token.kind)
+                {
+                    case NowCodeTokenKind.Keyword:
+                    case NowCodeTokenKind.String:
+                    case NowCodeTokenKind.Number:
+                    case NowCodeTokenKind.Comment:
+                    case NowCodeTokenKind.Punctuation:
+                        return;
+                }
+
+                break;
+            }
+
+            string word = text.Substring(wordStart, wordLength);
+            Color highlight = themeAsset.GetColor(NowColorToken.AccentMuted, new Color(0.4f, 0.5f, 0.7f, 1f));
+            highlight.a *= 0.9f;
+
+            for (int i = firstVisible; i <= lastVisible; ++i)
+            {
+                var line = cache.lines[i];
+                int lineEnd = line.start + line.length;
+                int searchFrom = line.start;
+
+                while (searchFrom + wordLength <= lineEnd)
+                {
+                    int found = text.IndexOf(word, searchFrom, lineEnd - searchFrom, System.StringComparison.Ordinal);
+
+                    if (found < 0)
+                        break;
+
+                    bool boundary = (found == 0 || !IsIdentifierChar(text[found - 1])) &&
+                        (found + wordLength >= text.Length || !IsIdentifierChar(text[found + wordLength]));
+
+                    if (boundary)
+                    {
+                        float x = textRect.x + Advance(text, font, fontSize, fontStyle, line.start, found - line.start) - editor.scrollX;
+                        float width = Advance(text, font, fontSize, fontStyle, found, wordLength);
+
+                        Now.Rectangle(new NowRect(x - 1f, textRect.y + i * lineHeight - editor.scrollY, width + 2f, lineHeight))
+                            .SetColor(highlight)
+                            .SetRadius(3f)
+                            .Draw();
+                    }
+
+                    searchFrom = found + wordLength;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Highlights the bracket at the caret and its match — the character
+        /// before the caret wins over the one after, quotes are skipped (their
+        /// pair is directionless), and the match search is the same depth scan
+        /// the dedent rule uses.
+        /// </summary>
+        void DrawBracketMatch(NowThemeAsset themeAsset, string text, EditorCache cache, NowFontAsset font,
+            float fontSize, NowFontStyle fontStyle, NowRect textRect, float lineHeight, in NowTextEditState state,
+            ref EditorState editor, int firstVisible, int lastVisible)
+        {
+            int index = FindBracketAtCaret(text, state.caret, out char open, out char close, out bool isOpen);
+
+            if (index < 0)
+                return;
+
+            int match = isOpen
+                ? ScanForwardForClose(text, index, open, close)
+                : ScanBackwardForOpen(text, index, open, close);
+
+            if (match < 0)
+                return;
+
+            Color highlight = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            highlight.a = 0.30f;
+
+            DrawBracketHighlight(text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor,
+                index, firstVisible, lastVisible, highlight);
+            DrawBracketHighlight(text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor,
+                match, firstVisible, lastVisible, highlight);
+        }
+
+        int FindBracketAtCaret(string text, int caret, out char open, out char close, out bool isOpen)
+        {
+            open = '\0';
+            close = '\0';
+            isOpen = false;
+            var pairs = _language.autoPairs;
+
+            for (int side = 0; side < 2; ++side)
+            {
+                int index = side == 0 ? caret - 1 : caret;
+
+                if (index < 0 || index >= text.Length)
+                    continue;
+
+                char c = text[index];
+
+                for (int i = 0; i < pairs.Count; ++i)
+                {
+                    if (pairs[i].open == pairs[i].close)
+                        continue;
+
+                    if (pairs[i].open == c)
+                    {
+                        open = pairs[i].open;
+                        close = pairs[i].close;
+                        isOpen = true;
+                        return index;
+                    }
+
+                    if (pairs[i].close == c)
+                    {
+                        open = pairs[i].open;
+                        close = pairs[i].close;
+                        isOpen = false;
+                        return index;
+                    }
+                }
+            }
+
+            return -1;
+        }
+
+        static int ScanForwardForClose(string text, int openIndex, char open, char close)
+        {
+            int depth = 0;
+
+            for (int i = openIndex + 1; i < text.Length; ++i)
+            {
+                if (text[i] == open)
+                {
+                    ++depth;
+                }
+                else if (text[i] == close)
+                {
+                    if (depth == 0)
+                        return i;
+
+                    --depth;
+                }
+            }
+
+            return -1;
+        }
+
+        static int ScanBackwardForOpen(string text, int closeIndex, char open, char close)
+        {
+            int depth = 0;
+
+            for (int i = closeIndex - 1; i >= 0; --i)
+            {
+                if (text[i] == close)
+                {
+                    ++depth;
+                }
+                else if (text[i] == open)
+                {
+                    if (depth == 0)
+                        return i;
+
+                    --depth;
+                }
+            }
+
+            return -1;
+        }
+
+        void DrawBracketHighlight(string text, EditorCache cache, NowFontAsset font, float fontSize,
+            NowFontStyle fontStyle, NowRect textRect, float lineHeight, ref EditorState editor,
+            int index, int firstVisible, int lastVisible, Color color)
+        {
+            int line = LineOf(cache, index);
+
+            if (line < firstVisible || line > lastVisible)
+                return;
+
+            var span = cache.lines[line];
+            float x = textRect.x + Advance(text, font, fontSize, fontStyle, span.start, index - span.start) - editor.scrollX;
+            float width = Mathf.Max(Advance(text, font, fontSize, fontStyle, index, 1), 4f);
+
+            Now.Rectangle(new NowRect(x - 1f, textRect.y + line * lineHeight - editor.scrollY, width + 2f, lineHeight))
+                .SetColor(color)
+                .SetRadius(3f)
+                .Draw();
         }
 
         void DrawSelection(NowThemeAsset themeAsset, string text, EditorCache cache, NowFontAsset font, float fontSize,
@@ -1002,7 +1436,10 @@ namespace NowUI.CodeEditor
                 cache.tooltipMessage = message;
                 cache.tooltipRect = new NowRect(pointer.x + 12f, pointer.y + 18f, width, 24f);
 
-                NowOverlay.Defer(default, id, DrawDiagnosticTooltipOverlay);
+                // Passive: a capturing overlay would open a focus layer, making the
+                // editor read as unfocused while the tooltip shows — on dismissal it
+                // "regains" focus and jumps the caret to the end of the text.
+                NowOverlay.DeferPassive(id, DrawDiagnosticTooltipOverlay);
                 return;
             }
         }
@@ -1024,6 +1461,219 @@ namespace NowUI.CodeEditor
                 NowTextStyle.Body);
             tooltipStyle.SetFontSize(12f).Draw(cache.tooltipMessage);
             cache.tooltipMessage = null;
+        }
+
+        static bool CompletionsOpen(EditorCache cache)
+        {
+            return cache.completionReplaceStart >= 0 && cache.completionVisible.Count > 0;
+        }
+
+        static bool IsIdentifierChar(char c)
+        {
+            return char.IsLetterOrDigit(c) || c == '_';
+        }
+
+        static void CloseCompletions(EditorCache cache)
+        {
+            cache.completionReplaceStart = -1;
+            cache.completionItems.Clear();
+            cache.completionVisible.Clear();
+            cache.completionSelected = 0;
+            cache.completionWindow = 0;
+        }
+
+        /// <summary>
+        /// Narrows an open popup against the word at the caret, or asks the
+        /// language for fresh candidates when no popup is open (word start or
+        /// trigger character). The language is only queried once per word; the
+        /// filter handles every following keystroke.
+        /// </summary>
+        static void OpenOrRefreshCompletions(EditorCache cache, NowCodeLanguage language, string text, int caret)
+        {
+            if (cache.completionReplaceStart >= 0)
+            {
+                RefreshCompletionFilter(cache, text, caret);
+
+                if (cache.completionReplaceStart >= 0)
+                    return;
+            }
+
+            cache.completionItems.Clear();
+            cache.completionVisible.Clear();
+
+            if (!language.TryGetCompletions(text, caret, cache.completionItems, out int replaceStart) ||
+                cache.completionItems.Count == 0)
+            {
+                CloseCompletions(cache);
+                return;
+            }
+
+            cache.completionReplaceStart = Mathf.Clamp(replaceStart, 0, caret);
+            cache.completionSelected = 0;
+            cache.completionWindow = 0;
+            RefreshCompletionFilter(cache, text, caret);
+        }
+
+        static void RefreshCompletionFilter(EditorCache cache, string text, int caret)
+        {
+            int start = cache.completionReplaceStart;
+
+            if (start < 0)
+                return;
+
+            if (caret < start || caret > text.Length)
+            {
+                CloseCompletions(cache);
+                return;
+            }
+
+            for (int i = start; i < caret; ++i)
+            {
+                if (!IsIdentifierChar(text[i]))
+                {
+                    CloseCompletions(cache);
+                    return;
+                }
+            }
+
+            cache.completionVisible.Clear();
+            int wordLength = caret - start;
+
+            for (int i = 0; i < cache.completionItems.Count; ++i)
+            {
+                string label = cache.completionItems[i].label;
+
+                if (string.IsNullOrEmpty(label) || label.Length < wordLength)
+                    continue;
+
+                if (wordLength == 0 ||
+                    string.Compare(label, 0, text, start, wordLength, System.StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    cache.completionVisible.Add(i);
+                }
+            }
+
+            if (cache.completionVisible.Count == 0)
+            {
+                CloseCompletions(cache);
+                return;
+            }
+
+            cache.completionSelected = Mathf.Clamp(cache.completionSelected, 0, cache.completionVisible.Count - 1);
+        }
+
+        static void AcceptCompletion(EditorCache cache, ref string text, ref NowTextEditState state)
+        {
+            if (!CompletionsOpen(cache))
+                return;
+
+            var item = cache.completionItems[cache.completionVisible[cache.completionSelected]];
+            string insert = string.IsNullOrEmpty(item.insertText) ? item.label : item.insertText;
+            int start = cache.completionReplaceStart;
+            int end = Mathf.Clamp(state.caret, start, text.Length);
+
+            text = text.Remove(start, end - start).Insert(start, insert);
+            state.caret = start + insert.Length;
+            state.anchor = state.caret;
+            CloseCompletions(cache);
+        }
+
+        static void LayoutCompletionPopup(int id, EditorCache cache, string text, NowFontAsset font, float fontSize,
+            NowFontStyle fontStyle, NowRect textRect, float lineHeight, in EditorState editor, int caretLine)
+        {
+            int count = cache.completionVisible.Count;
+            int rows = Mathf.Min(MaxVisibleCompletions, count);
+            float rowHeight = Mathf.Ceil(fontSize + 8f);
+
+            // Keep the selection inside the visible window.
+            if (cache.completionSelected < cache.completionWindow)
+                cache.completionWindow = cache.completionSelected;
+
+            if (cache.completionSelected >= cache.completionWindow + rows)
+                cache.completionWindow = cache.completionSelected - rows + 1;
+
+            cache.completionWindow = Mathf.Clamp(cache.completionWindow, 0, Mathf.Max(0, count - rows));
+
+            float width = 160f;
+
+            for (int r = 0; r < rows; ++r)
+            {
+                var item = cache.completionItems[cache.completionVisible[cache.completionWindow + r]];
+                float rowWidth = 20f + Advance(item.label, font, fontSize, fontStyle);
+
+                if (!string.IsNullOrEmpty(item.detail))
+                    rowWidth += 24f + Advance(item.detail, font, fontSize * 0.85f, fontStyle);
+
+                width = Mathf.Max(width, rowWidth);
+            }
+
+            width = Mathf.Min(width, 440f);
+
+            var anchorLine = cache.lines[LineOf(cache, Mathf.Min(cache.completionReplaceStart, text.Length))];
+            float anchorX = Advance(text, font, fontSize, fontStyle, anchorLine.start,
+                Mathf.Max(cache.completionReplaceStart - anchorLine.start, 0));
+            float height = rows * rowHeight + CompletionPadding * 2f;
+
+            float x = Mathf.Clamp(textRect.x + anchorX - editor.scrollX, textRect.x, Mathf.Max(textRect.x, textRect.xMax - width));
+            float caretTop = textRect.y + caretLine * lineHeight - editor.scrollY;
+            float y = caretTop + lineHeight + 2f;
+
+            // Flip above the caret line when there is no room below.
+            if (y + height > textRect.yMax && caretTop - height - 2f >= textRect.y)
+                y = caretTop - height - 2f;
+
+            cache.completionPopupRect = new NowRect(x, y, width, height);
+            cache.completionRowHeight = rowHeight;
+            NowOverlay.DeferPassive(id, DrawCompletionOverlay);
+        }
+
+        static void DrawCompletionOverlay(int id)
+        {
+            if (!_caches.TryGetValue(id, out var cache) ||
+                cache.completionReplaceStart < 0 ||
+                cache.completionVisible.Count == 0)
+            {
+                return;
+            }
+
+            var theme = NowTheme.themeAsset;
+            var rect = cache.completionPopupRect;
+            var background = theme.Rectangle(rect, NowRectangleStyle.Surface);
+            background.outline = 1f;
+            background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
+            background.SetRadius(4f).Draw();
+
+            var font = cache.measureFont;
+            float fontSize = cache.measureFontSize;
+            float rowHeight = cache.completionRowHeight;
+            int rows = Mathf.Min(MaxVisibleCompletions, cache.completionVisible.Count - cache.completionWindow);
+
+            for (int r = 0; r < rows; ++r)
+            {
+                int index = cache.completionWindow + r;
+                var item = cache.completionItems[cache.completionVisible[index]];
+                var rowRect = new NowRect(rect.x + 2f, rect.y + CompletionPadding + r * rowHeight, rect.width - 4f, rowHeight);
+
+                if (index == cache.completionSelected)
+                {
+                    Now.Rectangle(rowRect)
+                        .SetColor(theme.palette.surfaceHover)
+                        .SetRadius(3f)
+                        .Draw();
+                }
+
+                var labelStyle = theme.Text(new NowRect(rowRect.x + 8f, rowRect.y, rowRect.width - 16f, rowRect.height), NowTextStyle.Body);
+                labelStyle.SetFontSize(fontSize).Draw(item.label);
+
+                if (!string.IsNullOrEmpty(item.detail))
+                {
+                    float detailWidth = Advance(item.detail, font, fontSize * 0.85f, cache.measureFontStyle);
+                    var detailStyle = theme.Text(
+                        new NowRect(rowRect.xMax - detailWidth - 8f, rowRect.y, detailWidth + 4f, rowRect.height),
+                        NowTextStyle.Muted);
+                    detailStyle.SetFontSize(fontSize * 0.85f).Draw(item.detail);
+                }
+            }
         }
 
         static string NumberString(int value)
@@ -1161,6 +1811,17 @@ namespace NowUI.CodeEditor
                     cache.contentWidth = cache.lineWidths[i];
             }
 
+            Revalidate(cache, text);
+        }
+
+        /// <summary>
+        /// Re-runs validation without retokenizing — on every edit, and again
+        /// when an async validator bumps its version for the same text.
+        /// </summary>
+        static void Revalidate(EditorCache cache, string text)
+        {
+            cache.validatedVersion = cache.language.validationVersion;
+            cache.diagnostics.Clear();
             cache.language.Validate(text, cache.diagnostics);
 
             if (cache.diagnostics.Count == 0)
@@ -1246,7 +1907,8 @@ namespace NowUI.CodeEditor
         static void CutLine(ref string text, ref NowTextEditState state)
         {
             NowTextMetrics.LineBounds(text, state.caret, out int start, out int end);
-            NowClipboard.Copy(text.Substring(start, end - start) + "\n");
+            s_lineClipboard = text.Substring(start, end - start) + "\n";
+            NowClipboard.Copy(s_lineClipboard);
 
             int removeStart = start;
             int removeEnd = end;
@@ -1434,6 +2096,200 @@ namespace NowUI.CodeEditor
             state.caret -= remove;
             state.anchor = state.caret;
             return true;
+        }
+
+        /// <summary>
+        /// Formatting on close: when a closing bracket is typed onto an
+        /// otherwise-whitespace line, the line dedents to match the line that
+        /// opened the pair, and every enclosed line re-indents by bracket depth
+        /// — so wrapping existing code in a new scope indents it properly.
+        /// Lines inside multi-line strings or comments are left untouched.
+        /// </summary>
+        static void ReindentCloser(char closer, ref string text, ref NowTextEditState state, NowCodeLanguage language, EditorCache cache)
+        {
+            int closerIndex = state.caret - 1;
+
+            if (closerIndex < 0 || closerIndex >= text.Length || text[closerIndex] != closer)
+                return;
+
+            int lineStart = closerIndex;
+
+            while (lineStart > 0 && text[lineStart - 1] != '\n')
+                --lineStart;
+
+            for (int i = lineStart; i < closerIndex; ++i)
+            {
+                if (text[i] != ' ' && text[i] != '\t')
+                    return;
+            }
+
+            char opener = '\0';
+            var pairs = language.autoPairs;
+
+            for (int i = 0; i < pairs.Count; ++i)
+            {
+                if (pairs[i].close == closer)
+                {
+                    opener = pairs[i].open;
+                    break;
+                }
+            }
+
+            if (opener == '\0' || opener == closer)
+                return;
+
+            // Scan back for the matching opener (a heuristic — strings and
+            // comments are not skipped, like most lightweight editors).
+            int depth = 0;
+            int scan = closerIndex - 1;
+
+            while (scan >= 0)
+            {
+                char c = text[scan];
+
+                if (c == closer)
+                {
+                    ++depth;
+                }
+                else if (c == opener)
+                {
+                    if (depth == 0)
+                        break;
+
+                    --depth;
+                }
+
+                --scan;
+            }
+
+            if (scan < 0)
+                return;
+
+            int openerLineStart = scan;
+
+            while (openerLineStart > 0 && text[openerLineStart - 1] != '\n')
+                --openerLineStart;
+
+            int indentEnd = openerLineStart;
+
+            while (indentEnd < text.Length && text[indentEnd] == ' ')
+                ++indentEnd;
+
+            int currentIndent = closerIndex - lineStart;
+            int targetIndent = indentEnd - openerLineStart;
+            string baseIndent = text.Substring(openerLineStart, targetIndent);
+
+            if (targetIndent != currentIndent)
+            {
+                text = text.Remove(lineStart, currentIndent).Insert(lineStart, baseIndent);
+                state.caret += targetIndent - currentIndent;
+                state.anchor = state.caret;
+            }
+
+            // The edit above happened at the closer's own line, so every index
+            // before lineStart — including the opener — is still valid.
+            ReindentEnclosedBlock(ref text, ref state, language, cache, scan, baseIndent, lineStart);
+        }
+
+        /// <summary>
+        /// Re-indents every line between a bracket pair to
+        /// <paramref name="baseIndent"/> plus one indent unit per nesting level,
+        /// with closer-led lines dedenting one level. Blank lines lose trailing
+        /// whitespace; blocks touching multi-line strings or comments are left
+        /// alone (their layout is content, not formatting).
+        /// </summary>
+        static void ReindentEnclosedBlock(ref string text, ref NowTextEditState state, NowCodeLanguage language,
+            EditorCache cache, int openerIndex, string baseIndent, int closerLineStart)
+        {
+            int firstLineStart = openerIndex;
+
+            while (firstLineStart < closerLineStart && text[firstLineStart] != '\n')
+                ++firstLineStart;
+
+            ++firstLineStart;
+
+            if (firstLineStart >= closerLineStart)
+                return;
+
+            // The cache predates this keystroke, but the typed characters add no
+            // newline, so line indices still map; any interior line starting
+            // inside a multi-line construct vetoes the reformat.
+            if (cache.text != null && cache.lineStates.Count == cache.lines.Count)
+            {
+                int cachedLength = cache.text.Length;
+                int firstLine = LineOf(cache, Mathf.Min(firstLineStart, cachedLength));
+                int lastLine = LineOf(cache, Mathf.Min(closerLineStart, cachedLength));
+
+                for (int i = firstLine; i <= lastLine && i < cache.lineStates.Count; ++i)
+                {
+                    if (cache.lineStates[i] != 0)
+                        return;
+                }
+            }
+
+            var builder = _blockEditScratch;
+            builder.Clear();
+            builder.Append(text, 0, firstLineStart);
+
+            int depth = 1;
+            int pos = firstLineStart;
+
+            while (pos < closerLineStart)
+            {
+                int lineEnd = pos;
+
+                while (text[lineEnd] != '\n')
+                    ++lineEnd;
+
+                int contentStart = pos;
+
+                while (contentStart < lineEnd && (text[contentStart] == ' ' || text[contentStart] == '\t'))
+                    ++contentStart;
+
+                if (contentStart == lineEnd)
+                {
+                    builder.Append('\n');
+                }
+                else
+                {
+                    int lineDepth = language.IsIndentCloser(text[contentStart]) ? Mathf.Max(depth - 1, 0) : depth;
+                    builder.Append(baseIndent);
+
+                    for (int d = 0; d < lineDepth; ++d)
+                        builder.Append(IndentUnit);
+
+                    builder.Append(text, contentStart, lineEnd - contentStart);
+                    builder.Append('\n');
+
+                    for (int k = contentStart; k < lineEnd; ++k)
+                    {
+                        if (language.IsIndentOpener(text[k]))
+                            ++depth;
+                        else if (language.IsIndentCloser(text[k]))
+                            depth = Mathf.Max(depth - 1, 0);
+                    }
+                }
+
+                pos = lineEnd + 1;
+            }
+
+            int delta = builder.Length - closerLineStart;
+
+            if (delta == 0 && builder.Length == closerLineStart)
+            {
+                bool unchanged = true;
+
+                for (int i = firstLineStart; i < closerLineStart && unchanged; ++i)
+                    unchanged = builder[i] == text[i];
+
+                if (unchanged)
+                    return;
+            }
+
+            builder.Append(text, closerLineStart, text.Length - closerLineStart);
+            state.caret += delta;
+            state.anchor = state.caret;
+            text = builder.ToString();
         }
 
         static void InsertNewlineWithIndent(ref string text, ref NowTextEditState state, NowCodeLanguage language)

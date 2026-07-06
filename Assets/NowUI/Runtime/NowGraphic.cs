@@ -131,6 +131,8 @@ namespace NowUI
 
         [NonSerialized] NowInteractionRepaintTracker _repaintTracker;
 
+        [NonSerialized] bool _insideGeometryRebuild;
+
         [NonSerialized] readonly List<CanvasRenderer> _extraCanvasRenderers = new List<CanvasRenderer>(2);
 
         [NonSerialized] bool _extraRendererStateValid;
@@ -350,6 +352,17 @@ namespace NowUI
 
         public override void SetVerticesDirty()
         {
+            // From inside this graphic's own draw pass (a DrawNowUI handler
+            // mutating state), dirtying is illegal mid-canvas-rebuild — UGUI
+            // rejects registrations while rebuilding. Convert to a repaint
+            // request; the frame tracker picks it up and LateUpdate schedules
+            // the next rebuild.
+            if (_insideGeometryRebuild)
+            {
+                NowControlState.RequestRepaint();
+                return;
+            }
+
             _hasLayoutInputMeasurement = false;
             base.SetVerticesDirty();
 
@@ -393,6 +406,7 @@ namespace NowUI
             var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset, false, _glassBlurQuality);
             bool colorMultiplierActive = false;
             _repaintTracker.SetWantsRepaint(false);
+            _insideGeometryRebuild = true;
 
             try
             {
@@ -437,6 +451,7 @@ namespace NowUI
             }
             finally
             {
+                _insideGeometryRebuild = false;
                 frame.Dispose();
             }
 

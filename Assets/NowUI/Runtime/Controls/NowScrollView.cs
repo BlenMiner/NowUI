@@ -22,6 +22,7 @@ namespace NowUI
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
+        bool _followTail;
 
         internal NowScrollView(NowId id, int site)
         {
@@ -30,6 +31,7 @@ namespace NowUI
             _options = default;
             _rect = default;
             _hasRect = false;
+            _followTail = false;
         }
 
         internal NowScrollView(NowRect rect, NowId id, int site) : this(id, site)
@@ -58,6 +60,13 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowScrollView SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>
+        /// Keeps the view pinned to the bottom as content grows — the console/log
+        /// pattern. The pin holds only while the user is already at the bottom;
+        /// scrolling up releases it, and scrolling back down re-engages it.
+        /// </summary>
+        public NowScrollView SetFollowTail(bool follow = true) { _followTail = follow; return this; }
 
         static int s_dragScrollRegionId;
 
@@ -126,6 +135,20 @@ namespace NowUI
             measuredSize = new Vector2(scrollLayout.contentViewport.width, scrollLayout.contentViewport.height);
 
             ref Vector2 scroll = ref NowControlState.Get<Vector2>(id);
+
+            if (_followTail)
+            {
+                // Pin to the bottom while the user was already there last frame;
+                // slack tolerates sub-pixel drift without trapping a deliberate
+                // one-line scroll away from the tail.
+                const float TailSlack = 2f;
+                ref float lastMaxScrollY = ref NowControlState.Get<float>(id, "follow-tail");
+
+                if (scroll.y >= lastMaxScrollY - TailSlack)
+                    scroll.y = scrollLayout.maxScrollY;
+
+                lastMaxScrollY = scrollLayout.maxScrollY;
+            }
 
             scroll.x = Mathf.Clamp(scroll.x, 0f, scrollLayout.maxScrollX);
             scroll.y = Mathf.Clamp(scroll.y, 0f, scrollLayout.maxScrollY);

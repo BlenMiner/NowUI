@@ -309,7 +309,10 @@ namespace NowUI
             var track = context.glyphRect;
             float trackRadius = track.height * 0.5f;
 
-            Color offColor = StateToken(context.themeAsset, NowColorToken.SurfaceMuted, NowColorToken.SurfaceHover, NowColorToken.SurfacePressed, context.hoverT, context.interaction.held);
+            // The off track uses the pressed-surface tone: SurfaceMuted matches
+            // the muted panels switches often sit on, which made the control
+            // invisible there — one step brighter keeps it legible everywhere.
+            Color offColor = StateToken(context.themeAsset, NowColorToken.SurfacePressed, NowColorToken.Border, NowColorToken.BorderStrong, context.hoverT, context.interaction.held);
             Color onColor = StateToken(context.themeAsset, NowColorToken.Accent, NowColorToken.AccentHover, NowColorToken.AccentPressed, context.hoverT, context.interaction.held);
 
             Now.Rectangle(track)
@@ -324,10 +327,19 @@ namespace NowUI
             float knobX = Mathf.LerpUnclamped(track.x + inset, track.xMax - inset - knob, context.onT);
             var knobRect = new NowRect(knobX, track.y + inset, knob, knob);
 
+            // Dark themes need a light knob — Surface is nearly the track color
+            // there; light themes keep the classic white Surface knob.
+            Color knobColor = context.themeAsset.isDark
+                ? Color.LerpUnclamped(
+                    context.themeAsset.GetColor(NowColorToken.TextMuted),
+                    context.themeAsset.GetColor(NowColorToken.Text),
+                    context.onT)
+                : context.themeAsset.GetColor(NowColorToken.Surface);
+
             DrawElevationShadow(context.themeAsset, knobRect, Circle(knobRect), NowElevationToken.Raised);
             Now.Rectangle(knobRect)
                 .SetRadius(knob * 0.5f)
-                .SetColor(context.themeAsset.GetColor(NowColorToken.Surface))
+                .SetColor(knobColor)
                 .Draw();
 
             if (context.focused)

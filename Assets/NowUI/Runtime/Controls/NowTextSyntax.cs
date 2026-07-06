@@ -21,7 +21,8 @@ namespace NowUI
         ListMarker,
         Fence,
         Tag,
-        Attribute
+        Attribute,
+        Constant
     }
 
     public struct NowTextToken

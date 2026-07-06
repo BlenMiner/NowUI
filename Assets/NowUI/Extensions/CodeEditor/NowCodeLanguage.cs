@@ -21,7 +21,8 @@ namespace NowUI.CodeEditor
         ListMarker,
         Fence,
         Tag,
-        Attribute
+        Attribute,
+        Constant
     }
 
     /// <summary>One highlighted range within a line; ranges index into the full text.</summary>
@@ -66,6 +67,20 @@ namespace NowUI.CodeEditor
             this.removeBeforeCaret = removeBeforeCaret;
             this.removeAfterCaret = removeAfterCaret;
         }
+    }
+
+    /// <summary>
+    /// One completion candidate: the label is shown and prefix-matched against
+    /// the word being typed, the insert text (label when empty) replaces the
+    /// word on accept, and the detail renders as a muted right-aligned hint.
+    /// </summary>
+    public struct NowCodeCompletionItem
+    {
+        public string label;
+
+        public string insertText;
+
+        public string detail;
     }
 
     /// <summary>A bracket/quote pair the editor auto-closes, skips over and wraps selections with.</summary>
@@ -138,6 +153,32 @@ namespace NowUI.CodeEditor
             return false;
         }
 
+        /// <summary>
+        /// Fills completion candidates for the caret position and reports where
+        /// the word being completed starts — accepted items replace
+        /// [replaceStart, caret). The editor opens the popup when this returns
+        /// candidates and filters them locally as the user keeps typing, so
+        /// languages only get queried when a word or trigger begins. Default: none.
+        /// </summary>
+        public virtual bool TryGetCompletions(string text, int caret, List<NowCodeCompletionItem> items, out int replaceStart)
+        {
+            replaceStart = caret;
+            return false;
+        }
+
+        /// <summary>Characters that open completions the moment they are typed ('.' in C#).</summary>
+        public virtual bool IsCompletionTrigger(char c) => false;
+
+        /// <summary>
+        /// Monotonic version for validators that finish asynchronously: bump it
+        /// when fresh diagnostics are ready and the editor re-runs
+        /// <see cref="Validate"/> without waiting for a text change.
+        /// </summary>
+        public virtual int validationVersion => 0;
+
+        /// <summary>True while an async validation pass runs; the editor keeps repainting until it lands.</summary>
+        public virtual bool validationPending => false;
+
         /// <summary>Characters that increase indentation when a newline follows them.</summary>
         public virtual bool IsIndentOpener(char c) => false;
 
@@ -158,6 +199,7 @@ namespace NowUI.CodeEditor
             Register(NowJsonLanguage.instance);
             Register(NowMarkupCodeLanguage.instance);
             Register(NowMarkdownCodeLanguage.instance);
+            Register(NowCSharpLanguage.instance);
         }
 
         /// <summary>Registers a profile so other languages (markdown fences) can find it by name.</summary>
