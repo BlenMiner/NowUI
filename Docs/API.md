@@ -32,7 +32,7 @@ extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
 - `NowUI.Markup`: constrained XML-like markup parsing, state binding, and
   hot-reloadable document rendering.
 - `NowUI.CodeEditor`: editor builder, language registry, tokens,
-  diagnostics, and bundled JSON/Markdown profiles.
+  diagnostics, completion hooks, and bundled JSON/Markdown/Markup profiles.
 - `NowUI.Docking`: dock-space builder and retained docking state.
 - `NowUI.NodeGraph`: node-graph data, ports, links, and graph view drawing.
 - `NowUI.Sdf`: SDF graph and builder APIs.

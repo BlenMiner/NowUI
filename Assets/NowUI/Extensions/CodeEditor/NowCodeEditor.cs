@@ -33,8 +33,8 @@ namespace NowUI.CodeEditor
     /// <summary>
     /// A code editor: syntax highlighting through a <see cref="NowCodeLanguage"/>
     /// profile, validation squiggles with hover tooltips and a status bar
-    /// (click the error to jump to it), bracket/quote auto-close, skip-over and
-    /// selection wrapping, Enter auto-indent with brace expansion, Tab
+    /// (click the error to jump to it), bracket/quote auto-close, language
+    /// completions, skip-over and selection wrapping, Enter auto-indent, Tab
     /// indent/dedent (multi-line with a selection), smart Home, undo/redo
     /// (Ctrl+Z / Ctrl+Y), line numbers, a current-line highlight, two-axis
     /// scrolling with caret-into-view, double/triple-click selection, IME
@@ -837,6 +837,7 @@ namespace NowUI.CodeEditor
             switch (kind)
             {
                 case NowCodeTokenKind.Property:
+                case NowCodeTokenKind.Attribute:
                 case NowCodeTokenKind.Heading:
                 case NowCodeTokenKind.Link:
                 case NowCodeTokenKind.ListMarker:
@@ -849,6 +850,7 @@ namespace NowUI.CodeEditor
                     return new Vector4(0.55f, 0.27f, 0.68f, 1f);
                 case NowCodeTokenKind.Keyword:
                 case NowCodeTokenKind.Strong:
+                case NowCodeTokenKind.Tag:
                     return new Vector4(0.80f, 0.42f, 0.13f, 1f);
                 case NowCodeTokenKind.Comment:
                 case NowCodeTokenKind.Punctuation:
@@ -1308,6 +1310,12 @@ namespace NowUI.CodeEditor
                     return;
                 }
             }
+
+            if (!state.hasSelection && language.TryComplete(c, text, in state, out var completion))
+            {
+                ApplyCompletion(ref text, ref state, in completion);
+                return;
+            }
             else if (state.caret < text.Length && text[state.caret] == c)
             {
                 for (int i = 0; i < pairs.Count; ++i)
@@ -1346,6 +1354,19 @@ namespace NowUI.CodeEditor
             }
 
             NowTextEdit.Insert(ref text, ref state, c.ToString());
+        }
+
+        static void ApplyCompletion(ref string text, ref NowTextEditState state, in NowCodeCompletion completion)
+        {
+            string insert = completion.text ?? string.Empty;
+            int removeBefore = Mathf.Max(0, completion.removeBeforeCaret);
+            int removeAfter = Mathf.Max(0, completion.removeAfterCaret);
+            int start = Mathf.Clamp(state.caret - removeBefore, 0, text.Length);
+            int end = Mathf.Clamp(state.caret + removeAfter, start, text.Length);
+
+            text = text.Remove(start, end - start).Insert(start, insert);
+            state.caret = Mathf.Clamp(start + completion.caretOffset, start, start + insert.Length);
+            state.anchor = state.caret;
         }
 
         static readonly Dictionary<int, string> _pairTexts = new Dictionary<int, string>(8);

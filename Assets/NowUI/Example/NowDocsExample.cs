@@ -866,6 +866,30 @@ public class NowDocsExample : NowGraphic
 
     const string MarkdownSample = "# Editing markdown\n\nThis is **markdown source** with **live highlighting** — headings, *emphasis*,\n`inline code`, [links](https://example.com) and fenced blocks:\n\n```json\n{ \"fences\": \"highlight as JSON\" }\n```\n\n- toggle the preview to render it\n- same selection, undo and clipboard as the JSON editor\n";
 
+    const string MarkupEditorSample =
+        "<style>\n" +
+        "  .panel { padding: 14; gap: 9; rect-style: Muted; radius: 8; stretch: 1; }\n" +
+        "  .row { gap: 8; align-items: center; }\n" +
+        "</style>\n" +
+        "<column class=\"panel\">\n" +
+        "  <h3>Markup editor preview</h3>\n" +
+        "  <text color=\"#8fa4bd\">Type tags in the editor, then inspect the live NowUI render.</text>\n" +
+        "  <hr />\n" +
+        "  <row class=\"row\">\n" +
+        "    <text style=\"width: 74\">Name</text>\n" +
+        "    <textfield id=\"editor-name\" state=\"name\" placeholder=\"Display name\" stretch=\"1\" />\n" +
+        "  </row>\n" +
+        "  <row class=\"row\">\n" +
+        "    <text style=\"width: 74\">Volume</text>\n" +
+        "    <slider id=\"editor-volume\" state=\"volume\" min=\"0\" max=\"1\" step=\"0.05\" stretch=\"1\" />\n" +
+        "  </row>\n" +
+        "  <progress state=\"volume\" />\n" +
+        "  <row class=\"row\">\n" +
+        "    <badge>Live</badge>\n" +
+        "    <button id=\"editor-save\" on-click=\"emit(save)\">Save</button>\n" +
+        "  </row>\n" +
+        "</column>";
+
     const string MarkupDemoSample =
         "<style>\n" +
         "  .card { padding: 16; gap: 10; rect-style: Surface; radius: 10; stretch: 1; }\n" +
@@ -914,7 +938,10 @@ public class NowDocsExample : NowGraphic
 
     string _jsonText = JsonSample;
     string _markdownText = MarkdownSample;
+    string _markupEditorText = MarkupEditorSample;
     bool _markdownPreview;
+    readonly NowMarkupState _markupEditorState = new NowMarkupState();
+    bool _markupEditorStateReady;
 
     static readonly string[] DockDemoObjects =
     {
@@ -1033,9 +1060,9 @@ public class NowDocsExample : NowGraphic
     void DrawCodeEditorDemo()
     {
         NowMarkdown.Document("# Code editor\n\n`NowUI.Extensions.CodeEditor` — syntax highlighting, validation" +
-            " squiggles (hover them, click the status error to jump), bracket/quote auto-close, Enter" +
-            " auto-indent, Tab indent/dedent, smart Home, undo/redo, line numbers. Break the JSON below" +
-            " and watch the squiggle and status bar.\n\n## JSON").Draw();
+            " squiggles (hover them, click the status error to jump), bracket/quote auto-close, language" +
+            " completions, Enter auto-indent, Tab indent/dedent, smart Home, undo/redo, line numbers." +
+            " Break the JSON below and watch the squiggle and status bar.\n\n## JSON").Draw();
 
         var json = NowCode.Editor(NowJsonLanguage.instance, "demo-json").SetHeight(220).Draw(ref _jsonText);
 
@@ -1052,6 +1079,33 @@ public class NowDocsExample : NowGraphic
             NowMarkdown.Document(_markdownText).Draw();
         else
             NowCode.Editor(NowMarkdownCodeLanguage.instance, "demo-md").SetHeight(260).Draw(ref _markdownText);
+
+        NowMarkdown.Document("## Markup\n\nThe markup profile highlights tags, attributes, comments, entities" +
+            " and style blocks. Type `<column>` or `<button>` and the editor completes the matching close tag;" +
+            " type `/` before a generated `>` to make a self-closing tag. The preview below is rendered through" +
+            " `NowMarkup` in the same NowUI docs scene.").Draw();
+
+        var markup = NowCode.Editor(NowMarkupCodeLanguage.instance, "demo-markup").SetHeight(300).Draw(ref _markupEditorText);
+
+        if (!markup.isValid)
+            NowLayout.Label("Markup has a balancing issue — check the editor status bar.")
+                .SetFontSize(11)
+                .SetColor(new Color(0.86f, 0.24f, 0.24f))
+                .Draw();
+
+        NowMarkdown.Document("### Rendered preview").Draw();
+        EnsureMarkupEditorState();
+        NowMarkup.Document(_markupEditorText).Draw(_markupEditorState);
+    }
+
+    void EnsureMarkupEditorState()
+    {
+        if (_markupEditorStateReady)
+            return;
+
+        _markupEditorStateReady = true;
+        _markupEditorState.SetString("name", "NowUI");
+        _markupEditorState.SetFloat("volume", 0.65f);
     }
 
     void DrawSdfDemo(NowThemeAsset themeAsset)

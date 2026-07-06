@@ -50,8 +50,9 @@ it.
   tokens, spacing/radius tokens, rectangle presets, text presets, and preview
   workflow.
 - [Code Editor](CodeEditor.md): the embeddable code editor extension —
-  syntax highlighting, validation squiggles, auto-pairs, auto-indent,
-  undo/redo; JSON and markdown profiles with a registry for adding more.
+  syntax highlighting, validation squiggles, auto-pairs, IDE-style
+  completions, auto-indent, undo/redo; JSON, markdown and markup profiles
+  with a registry for adding more.
 - [Docking](Docking.md): dockable tabbed windows with side splits, splitter
   resizing, floating windows, tab-drag dock guides, and retained layout state.
 - [Node Graph](NodeGraph.md): shader-style and visual-scripting-style graph

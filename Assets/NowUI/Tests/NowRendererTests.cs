@@ -679,6 +679,56 @@ public class NowRendererTests
     }
 
     [Test]
+    public void TextBufferBuildsCompositeNumericLabel()
+    {
+        Span<char> chars = stackalloc char[32];
+        var buffer = new NowTextBuffer(chars);
+
+        buffer.Append("f(");
+        buffer.Append(1.25f, "0.00");
+        buffer.Append(") = ");
+        buffer.Append(-0.5f, "0.00");
+
+        Assert.IsFalse(buffer.truncated);
+        Assert.AreEqual("f(1.25) = -0.50", buffer.span.ToString());
+    }
+
+    [Test]
+    public void TextDrawsFormattedNumbers()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        Assert.NotNull(font, "Default font resource missing.");
+
+        var previousFont = Now.defaultFont;
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Now.defaultFont = font;
+
+            using (drawList.Begin(new Vector2(128, 64)))
+            {
+                Now.Text(new NowRect(4f, 6f, 80f, 24f), font)
+                    .SetFontSize(18f)
+                    .Draw(42);
+
+                Now.Text(new NowRect(4f, 30f, 80f, 24f), font)
+                    .SetFontSize(18f)
+                    .Draw(1.25f, "0.00");
+            }
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.Greater(drawList.mesh.vertexCount, 0);
+        }
+        finally
+        {
+            drawList.Dispose();
+            Now.defaultFont = previousFont;
+        }
+    }
+
+    [Test]
     public void ModifierScopeRunsControlsPassively()
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));

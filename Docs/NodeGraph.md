@@ -334,8 +334,10 @@ user-created graph/schema objects. Schema renderers receive a reused
 by `node.id` or `userId`.
 
 Avoid creating strings, lambdas, textures, lists, or temporary data objects from
-inside `Render`/`SetNodeContent` callbacks. Build schemas once, cache textures
-and labels, and mutate user-owned value data directly.
+inside `Render`/`SetNodeContent` callbacks. Build schemas once, cache textures,
+use `Now.Text(...).Draw(value, "0.00")` for simple numeric labels, use a
+stack-backed `NowTextBuffer` for composed dynamic labels such as
+`f(x) = value`, and mutate user-owned value data directly.
 
 Useful controls:
 

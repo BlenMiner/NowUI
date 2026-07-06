@@ -27,7 +27,11 @@ namespace NowUI.CodeEditor
 
         public override string name => "markdown";
 
+        public override IReadOnlyList<string> aliases => Aliases;
+
         public override IReadOnlyList<NowCodeAutoPair> autoPairs => Pairs;
+
+        static readonly string[] Aliases = { "md" };
 
         public override int TokenizeLine(string text, int start, int length, int state, List<NowCodeToken> tokens)
         {

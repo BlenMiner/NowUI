@@ -1,5 +1,4 @@
-using System.Collections.Generic;
-using System.Globalization;
+using System;
 using UnityEngine;
 using NowUI;
 using NowUI.NodeGraph;
@@ -38,19 +37,11 @@ public sealed class NowMathGraphExample : MonoBehaviour
     static readonly Color ScalarColor = new Color(0.20f, 0.55f, 0.95f, 1f);
     static readonly Color IntegerColor = new Color(0.93f, 0.50f, 0.16f, 1f);
 
-    sealed class CachedLabel
-    {
-        public float a = float.NaN;
-        public float b = float.NaN;
-        public string text = string.Empty;
-    }
-
     [SerializeField] NowFontAsset _font;
 
     readonly NowNodeGraph _graph = new NowNodeGraph();
     readonly NowNodeGraphHistory _history = new NowNodeGraphHistory();
     readonly NowNodeGraphContextMenu _menu = new NowNodeGraphContextMenu();
-    readonly Dictionary<string, CachedLabel> _labels = new Dictionary<string, CachedLabel>(8);
     NowNodeGraphSchema _schema;
     NowNodeGraphEvaluator<float> _evaluator;
     float _x;
@@ -177,7 +168,7 @@ public sealed class NowMathGraphExample : MonoBehaviour
                 Now.Text(ctx.Row(1, 18f))
                     .SetFontSize(12f)
                     .SetColor(ctx.style.textMuted)
-                    .Draw(FormatLabel(ctx.node.id, string.Empty, GetConstant(ctx.node)));
+                    .Draw(GetConstant(ctx.node), "0.00");
             });
 
         _schema.Node(Add, "Add")
@@ -328,10 +319,17 @@ public sealed class NowMathGraphExample : MonoBehaviour
                 ctx.MarkChanged();
         }
 
+        Span<char> labelChars = stackalloc char[48];
+        var label = new NowTextBuffer(labelChars);
+        label.Append("f(");
+        label.Append(_previewX, "0.00");
+        label.Append(") = ");
+        label.Append(previewValue, "0.00");
+
         Now.Text(new NowRect(body.x, slider.yMax + 4f, body.width, 16f))
             .SetFontSize(12f)
             .SetColor(ctx.style.text)
-            .Draw(FormatPlotLabel(ctx.node.id, _previewX, previewValue));
+            .Draw(label.span);
     }
 
     void DrawPlotCurve(NowRect plot, NowNodeContentContext ctx)
@@ -426,45 +424,4 @@ public sealed class NowMathGraphExample : MonoBehaviour
         node.userId = Mathf.RoundToInt(value * 1000f);
     }
 
-    string FormatLabel(string key, string prefix, float value)
-    {
-        var label = GetLabel(key);
-
-        if (label.a != value)
-        {
-            label.a = value;
-            label.text = prefix + value.ToString("0.00", CultureInfo.InvariantCulture);
-        }
-
-        return label.text;
-    }
-
-    string FormatPlotLabel(string key, float x, float value)
-    {
-        var label = GetLabel(key);
-
-        if (label.a != x || label.b != value)
-        {
-            label.a = x;
-            label.b = value;
-            label.text = string.Format(
-                CultureInfo.InvariantCulture,
-                "f({0:0.00}) = {1:0.00}",
-                x,
-                value);
-        }
-
-        return label.text;
-    }
-
-    CachedLabel GetLabel(string key)
-    {
-        if (!_labels.TryGetValue(key, out var label))
-        {
-            label = new CachedLabel();
-            _labels.Add(key, label);
-        }
-
-        return label;
-    }
 }

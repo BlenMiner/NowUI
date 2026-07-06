@@ -76,15 +76,25 @@ public class NowCodeEditorTests
 
     NowCodeEditorResult Frame(ref string text, NowTextInputFrame keys = default)
     {
+        return FrameLanguage(ref text, NowJsonLanguage.instance, keys);
+    }
+
+    NowCodeEditorResult FrameLanguage(ref string text, NowCodeLanguage language, NowTextInputFrame keys = default)
+    {
         _keyboard.frame = keys;
         NowTextInput.Invalidate();
         NowCodeEditorResult result;
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-            result = NowCode.Editor(EditorRect, NowJsonLanguage.instance, "code").Draw(ref text);
+            result = NowCode.Editor(EditorRect, language, "code").Draw(ref text);
 
         return result;
+    }
+
+    NowCodeEditorResult MarkupFrame(ref string text, NowTextInputFrame keys = default)
+    {
+        return FrameLanguage(ref text, NowMarkupCodeLanguage.instance, keys);
     }
 
     void PointerFrame(ref string text, Vector2 pointer, bool down, bool pressed, bool released)
@@ -168,6 +178,13 @@ public class NowCodeEditorTests
         return diagnostics;
     }
 
+    static List<NowCodeDiagnostic> Validate(NowCodeLanguage language, string text)
+    {
+        var diagnostics = new List<NowCodeDiagnostic>();
+        language.Validate(text, diagnostics);
+        return diagnostics;
+    }
+
     static string LongJsonDocument()
     {
         var lines = new List<string> { "{" };
@@ -232,6 +249,14 @@ public class NowCodeEditorTests
     }
 
     [Test]
+    public void LanguageRegistryFindsMarkdownAndMarkupAliases()
+    {
+        Assert.AreSame(NowMarkdownCodeLanguage.instance, NowCodeLanguage.Find("md"));
+        Assert.AreSame(NowMarkupCodeLanguage.instance, NowCodeLanguage.Find("nowui"));
+        Assert.AreSame(NowMarkupCodeLanguage.instance, NowCodeLanguage.Find("xml"));
+    }
+
+    [Test]
     public void MarkdownFencesDelegateToTheEmbeddedLanguage()
     {
         var markdown = NowMarkdownCodeLanguage.instance;
@@ -253,6 +278,23 @@ public class NowCodeEditorTests
     }
 
     [Test]
+    public void MarkdownFencesDelegateToMarkupAliases()
+    {
+        var markdown = NowMarkdownCodeLanguage.instance;
+        var tokens = new List<NowCodeToken>();
+
+        int state = markdown.TokenizeLine("```nowui", 0, 8, 0, tokens);
+        tokens.Clear();
+
+        const string Line = "<button id=\"save\" />";
+        markdown.TokenizeLine(Line, 0, Line.Length, state, tokens);
+
+        Assert.IsTrue(tokens.Exists(t => t.kind == NowCodeTokenKind.Tag), "NowUI fences must highlight tags.");
+        Assert.IsTrue(tokens.Exists(t => t.kind == NowCodeTokenKind.Attribute), "NowUI fences must highlight attributes.");
+        Assert.IsTrue(tokens.Exists(t => t.kind == NowCodeTokenKind.String), "NowUI fences must highlight attribute values.");
+    }
+
+    [Test]
     public void MarkdownValidatorWarnsOnUnclosedFence()
     {
         var diagnostics = new List<NowCodeDiagnostic>();
@@ -265,6 +307,36 @@ public class NowCodeEditorTests
         diagnostics.Clear();
         NowMarkdownCodeLanguage.instance.Validate("```json\n{}\n```", diagnostics);
         Assert.IsEmpty(diagnostics);
+    }
+
+    [Test]
+    public void MarkupTokenizerHighlightsTagsAttributesStringsCommentsAndEntities()
+    {
+        var tokens = Tokenize(NowMarkupCodeLanguage.instance, "<button id=\"save\" disabled>&amp;</button>");
+
+        Assert.IsTrue(tokens.Exists(t => t.kind == NowCodeTokenKind.Tag), "Tag names should be distinct.");
+        Assert.IsTrue(tokens.Exists(t => t.kind == NowCodeTokenKind.Attribute), "Attribute names should be distinct.");
+        Assert.IsTrue(tokens.Exists(t => t.kind == NowCodeTokenKind.String), "Attribute values should be strings.");
+        Assert.IsTrue(tokens.Exists(t => t.kind == NowCodeTokenKind.Punctuation), "Tag delimiters should be punctuation.");
+        Assert.IsTrue(tokens.Exists(t => t.kind == NowCodeTokenKind.Keyword), "Entities should be highlighted.");
+
+        tokens = Tokenize(NowMarkupCodeLanguage.instance, "<!-- note -->");
+        Assert.IsTrue(tokens.Exists(t => t.kind == NowCodeTokenKind.Comment));
+    }
+
+    [Test]
+    public void MarkupValidatorReportsMismatchedAndUnclosedTags()
+    {
+        Assert.IsEmpty(Validate(NowMarkupCodeLanguage.instance, "<column><input /><br></column>"));
+        Assert.IsEmpty(Validate(NowMarkupCodeLanguage.instance, "<style>.label::before { content: \"<\"; }</style><text>x</text>"));
+
+        var diagnostics = Validate(NowMarkupCodeLanguage.instance, "<column><text>x</column>");
+        Assert.AreEqual(1, diagnostics.Count);
+        StringAssert.Contains("</text>", diagnostics[0].message);
+
+        diagnostics = Validate(NowMarkupCodeLanguage.instance, "<column><text>x</text>");
+        Assert.AreEqual(1, diagnostics.Count);
+        StringAssert.Contains("Unclosed <column>", diagnostics[0].message);
     }
 
     [Test]
@@ -315,6 +387,70 @@ public class NowCodeEditorTests
 
         Assert.AreEqual("{\n    \n}", text);
         Assert.AreEqual(6, State().caret, "The caret sits on the indented middle line.");
+    }
+
+    [Test]
+    public void MarkupTypingAngleCompletesClosingTag()
+    {
+        string text = string.Empty;
+        Focus();
+
+        MarkupFrame(ref text, new NowTextInputFrame { characters = "<button>" });
+
+        Assert.AreEqual("<button></button>", text);
+        Assert.AreEqual("<button>".Length, State().caret, "The caret stays between the completed tags.");
+    }
+
+    [Test]
+    public void MarkupSlashSelfClosesBeforeGeneratedAngle()
+    {
+        string text = string.Empty;
+        Focus();
+
+        MarkupFrame(ref text, new NowTextInputFrame { characters = "<input/" });
+
+        Assert.AreEqual("<input />", text);
+        Assert.AreEqual(text.Length, State().caret);
+    }
+
+    [Test]
+    public void MarkupVoidTagsDoNotGetClosingTags()
+    {
+        string text = string.Empty;
+        Focus();
+
+        MarkupFrame(ref text, new NowTextInputFrame { characters = "<br>" });
+
+        Assert.AreEqual("<br>", text);
+        Assert.AreEqual(text.Length, State().caret);
+    }
+
+    [Test]
+    public void MarkupSlashCompletesNearestOpenTag()
+    {
+        string text = "<column>";
+        Focus();
+        MarkupFrame(ref text);
+        State().caret = text.Length;
+        State().anchor = State().caret;
+
+        MarkupFrame(ref text, new NowTextInputFrame { characters = "</" });
+
+        Assert.AreEqual("<column></column>", text);
+        Assert.AreEqual(text.Length, State().caret);
+    }
+
+    [Test]
+    public void EnterBetweenMarkupTagsExpandsWithIndent()
+    {
+        string text = string.Empty;
+        Focus();
+
+        MarkupFrame(ref text, new NowTextInputFrame { characters = "<column>" });
+        MarkupFrame(ref text, new NowTextInputFrame { enterHeld = true });
+
+        Assert.AreEqual("<column>\n    \n</column>", text);
+        Assert.AreEqual("<column>\n    ".Length, State().caret);
     }
 
     [Test]

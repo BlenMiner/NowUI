@@ -19,7 +19,9 @@ namespace NowUI
         Link,
         Quote,
         ListMarker,
-        Fence
+        Fence,
+        Tag,
+        Attribute
     }
 
     public struct NowTextToken
