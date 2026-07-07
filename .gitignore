@@ -75,3 +75,11 @@ crashlytics-build.properties
 
 # Packed Addressables
 /[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+
+# Native WebGL plugin build (Native/build-msdf-webgl.sh): dependency
+# checkouts and object output are transient; the script and the two
+# committed headers are the reproducible parts.
+/Native/msdf-atlas-gen/
+/Native/freetype/
+/Native/harfbuzz/
+/Native/build-msdf-webgl/

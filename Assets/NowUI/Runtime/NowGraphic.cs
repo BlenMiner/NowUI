@@ -111,6 +111,9 @@ namespace NowUI
         [SerializeField, Tooltip("Report the measured NowLayout content extent as this graphic's preferred size, so UGUI LayoutGroups and ContentSizeFitters size it like any other layout element. Layout queries run a passive NowLayout measure pass before geometry rebuilds.")]
         bool _driveLayoutSize = true;
 
+        [SerializeField, Tooltip("Allow interactive input (clicks, typing, focus) while not in Play Mode. Off renders edit mode as a pure preview — the Input System keeps devices live in the editor, so without this gate a focused control keeps reacting to the keyboard outside Play Mode.")]
+        bool _editModeInteraction;
+
         [SerializeField, HideInInspector]
         Texture _uguiBackdropSourceTexture;
 
@@ -405,6 +408,7 @@ namespace NowUI
             var frame = NowFrame.Begin(GetCanvasScaleFactor(), trackRepaint: true);
             var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset, false, _glassBlurQuality);
             bool colorMultiplierActive = false;
+            bool interactive = Application.isPlaying || _editModeInteraction;
             _repaintTracker.SetWantsRepaint(false);
             _insideGeometryRebuild = true;
 
@@ -416,8 +420,13 @@ namespace NowUI
                 var inputSurface = new NowInputSurface(new Vector2(rect.width, rect.height));
 
                 using (NowOverlay.Host(this, rectTransform, GetEventCamera()))
-                using (NowInput.Begin(GetInputProvider(), inputSurface))
+                using (NowInput.Begin(interactive ? GetInputProvider() : null, inputSurface))
                 {
+                    // Edit-mode preview: no pointer (null provider) and a passive
+                    // frame, so nothing focuses, types or transitions state.
+                    if (!interactive)
+                        NowInput.BeginPassive();
+
                     _repaintTracker.StoreFrameInput(NowInput.current, inputSurface.size);
 
                     var content = new FrameContent(this);
@@ -434,6 +443,9 @@ namespace NowUI
                     }
                 }
 
+                if (!interactive)
+                    NowInput.EndPassive();
+
                 Now.EndColorMultiplier();
                 colorMultiplierActive = false;
                 _repaintTracker.SetWantsRepaint(frame.EndRepaintTracking());
@@ -442,6 +454,9 @@ namespace NowUI
             }
             catch (Exception ex)
             {
+                if (!interactive)
+                    NowInput.EndPassive();
+
                 if (colorMultiplierActive)
                     Now.EndColorMultiplier();
 
@@ -541,6 +556,9 @@ namespace NowUI
         {
             if (_repaintTracker.wantsRepaint)
                 return true;
+
+            if (!Application.isPlaying && !_editModeInteraction)
+                return false;
 
             var rect = rectTransform.rect;
 

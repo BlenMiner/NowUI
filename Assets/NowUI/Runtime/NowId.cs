@@ -6,6 +6,15 @@ namespace NowUI
     /// Stable explicit identity for controls, layout caches, effects and retained
     /// extension state. Default means "use the call site"; strings are hashed with
     /// NowUI's string id function, and integer ids avoid per-frame string work.
+    ///
+    /// Explicit ids are STABLE: resolving the same id any number of times, from
+    /// any pass or code path, yields the same control id — that is what makes
+    /// them cross-referenceable (focus a control from a shortcut handler,
+    /// pre-claim its presses, read its state from outside its draw). An integer
+    /// id is used verbatim — mint one with <see cref="NowInput.CombineId"/> from
+    /// a parent control id — while a string id resolves within the active
+    /// <see cref="NowControls.IdScope(string)"/>. Only call-site (default)
+    /// identity is occurrence-salted for loops.
     /// </summary>
     public readonly struct NowId : IEquatable<NowId>
     {
@@ -69,10 +78,12 @@ namespace NowUI
 
         internal int ResolveControlId(int site)
         {
+            // Explicit ids resolve deterministically (see the type summary);
+            // only the call-site fallback goes through occurrence salting.
             return _kind switch
             {
                 StringKind => NowControls.GetControlId(_stringValue),
-                IntKind => NowControls.GetControlId(_intValue),
+                IntKind => _intValue,
                 _ => NowControls.GetControlId(site)
             };
         }

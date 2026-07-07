@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7fc6d0b96f8f49d4a8da53c8d2c48f91, type: 3}
+  m_Name: JetBrainsMono
+  m_EditorClassIdentifier: NowUI.Runtime::NowUI.NowFontFamily
+  _fallbacks: []
+  _regular: {fileID: 11400000, guid: f8d8aa8919f6db2429183f839249c09b, type: 2}
+  _bold: {fileID: 11400000, guid: 938d1076f0709c249b1b768b9081ee25, type: 2}
+  _italic: {fileID: 11400000, guid: 6507a9160a15bd44bb7eba445d37cb1a, type: 2}
+  _boldItalic: {fileID: 11400000, guid: 1ab0f1f697fe1d241a63b60a9356fab8, type: 2}

@@ -384,10 +384,10 @@ Shader "NowUI/SDF Scene"
                     return;
                 }
 
-                float aDist;
-                float bDist;
-                float4 aFill;
-                float4 bFill;
+                float aDist = 0;
+                float bDist = 0;
+                float4 aFill = 0;
+                float4 bFill = 0;
                 evalGraph(layer0.x, scenePos, tint, aDist, aFill);
                 evalGraph(layer1.x, scenePos, tint, bDist, bFill);
                 float t = saturate(layer1.y);

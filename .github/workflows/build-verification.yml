@@ -1,0 +1,115 @@
+name: Build Verification
+
+# Builds an actual player per platform so integration problems surface in CI
+# instead of on someone's machine. This is the only check that exercises the
+# full platform pipeline: IL2CPP over the whole managed surface, the platform
+# linker consuming every native plugin (a WebGL build is what catches wasm-ld
+# duplicate-symbol collisions between our plugins and Unity's player
+# libraries), and player-side code stripping.
+#
+# Runs on the self-hosted runners (licensed editor, platform modules managed
+# by hand) — no GameCI licensing dance needed. Manual dispatch only: player
+# builds take minutes and switching build targets churns the runner's
+# Library, so run it when platform-risky things changed (native plugins, the
+# WebGL toolchain, a Unity upgrade), not on every push.
+#
+# Extending the matrix:
+#   - Android: install the Android module + SDK/NDK on the Windows runner and
+#     add Android to the target choices below.
+#   - iOS: needs the macOS runner (iOS module generates an Xcode project; a
+#     follow-up xcodebuild step is what actually verifies the static link,
+#     where libnowui-msdf.a has the same latent collision class as WebGL had).
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Platform to build"
+        type: choice
+        required: true
+        default: "all"
+        options:
+          - all
+          - WebGL
+          - StandaloneWindows64
+
+concurrency:
+  group: build-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
+    runs-on:
+      - self-hosted
+      - Windows
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - WebGL
+          - StandaloneWindows64
+    env:
+      UNITY_EDITOR: 'C:\Program Files\Unity\Hub\Editor\6000.4.0f1\Editor\Unity.exe'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check platform module is installed
+        shell: pwsh
+        run: |
+          $editorRoot = Split-Path -Parent $env:UNITY_EDITOR
+          $module = switch ("${{ matrix.target }}") {
+            "WebGL" { Join-Path $editorRoot "Data\PlaybackEngines\WebGLSupport" }
+            "StandaloneWindows64" { Join-Path $editorRoot "Data\PlaybackEngines\WindowsStandaloneSupport" }
+            "Android" { Join-Path $editorRoot "Data\PlaybackEngines\AndroidPlayer" }
+            default { $null }
+          }
+
+          if ($module -and -not (Test-Path $module)) {
+            Write-Host "::error::The ${{ matrix.target }} build module is not installed for $env:UNITY_EDITOR. Install it via Unity Hub on the runner."
+            exit 1
+          }
+
+      - name: Build player
+        shell: pwsh
+        run: |
+          $artifacts = Join-Path $env:GITHUB_WORKSPACE "artifacts"
+          New-Item -ItemType Directory -Force -Path $artifacts | Out-Null
+          $logFile = Join-Path $artifacts "build-${{ matrix.target }}.log"
+          $env:NOWUI_BUILD_OUTPUT = Join-Path $artifacts "player-${{ matrix.target }}"
+
+          $unityArgs = @(
+            "-batchmode",
+            "-nographics",
+            "-projectPath", "$env:GITHUB_WORKSPACE",
+            "-buildTarget", "${{ matrix.target }}",
+            "-executeMethod", "NowUI.EditorCI.NowBuildVerification.Build",
+            "-logFile", "$logFile"
+          )
+
+          $process = Start-Process -FilePath $env:UNITY_EDITOR -ArgumentList $unityArgs -PassThru -Wait -NoNewWindow
+
+          if ($process.ExitCode -ne 0) {
+            Write-Host "::error::Unity build for ${{ matrix.target }} failed with exit code $($process.ExitCode). Last log lines:"
+            if (Test-Path $logFile) {
+              Get-Content $logFile -Tail 120
+            }
+            exit $process.ExitCode
+          }
+
+          Write-Host "Build for ${{ matrix.target }} succeeded."
+          if (Test-Path $logFile) {
+            Select-String -Path $logFile -Pattern "Build verification:" | ForEach-Object { $_.Line }
+          }
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-verification-${{ matrix.target }}-log
+          path: artifacts/build-${{ matrix.target }}.log
+          if-no-files-found: ignore

@@ -1,3 +1,13 @@
+// Valve for platforms without the native msdf plugin: undefining
+// NOWUI_MSDF_NATIVE for a platform compiles the bindings out and swaps in
+// stubs that throw DllNotFoundException, so every call site's existing
+// plugin-missing fallback engages. Statically linked platforms (WebGL, iOS)
+// need this rather than shipping without the plugin — an __Internal
+// DllImport with no plugin is a link error, not a runtime exception.
+// WebGL's plugin is built by Now-UI/Native/build-msdf-webgl.sh, which keeps
+// its symbols disjoint from Unity's player libraries.
+#define NOWUI_MSDF_NATIVE
+
 using NowUI.Internal;
 using System;
 using System.Collections.Generic;
@@ -105,6 +115,7 @@ namespace NowUI
             public float descender;
         }
 
+#if NOWUI_MSDF_NATIVE
         [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
         static extern int nowui_compile_font_from_memory(
             byte[] fontData,
@@ -134,6 +145,37 @@ namespace NowUI
             ref NativeAtlasInfo info,
             [Out] byte[] errorBuffer,
             int errorBufferLength);
+#else
+        static int nowui_compile_font_from_memory(
+            byte[] fontData,
+            int fontDataLength,
+            int size,
+            int pixelRange,
+            byte[] atlasRgba,
+            int atlasRgbaLength,
+            NativeGlyph[] glyphs,
+            int glyphCapacity,
+            ref NativeAtlasInfo info,
+            byte[] errorBuffer,
+            int errorBufferLength) =>
+            throw new DllNotFoundException(LIBRARY_NAME);
+
+        static int nowui_compile_font_from_memory_with_codepoints(
+            byte[] fontData,
+            int fontDataLength,
+            int size,
+            int pixelRange,
+            int[] codepoints,
+            int codepointCount,
+            byte[] atlasRgba,
+            int atlasRgbaLength,
+            NativeGlyph[] glyphs,
+            int glyphCapacity,
+            ref NativeAtlasInfo info,
+            byte[] errorBuffer,
+            int errorBufferLength) =>
+            throw new DllNotFoundException(LIBRARY_NAME);
+#endif
 
         [StructLayout(LayoutKind.Sequential)]
         struct NativeSessionInfo
@@ -145,6 +187,7 @@ namespace NowUI
 
         const int SESSION_RESIZED = 1;
 
+#if NOWUI_MSDF_NATIVE
         [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
         static extern int nowui_msdf_session_create(
             byte[] fontData,
@@ -206,6 +249,72 @@ namespace NowUI
             ref NativeColorAtlasInfo info,
             [Out] byte[] errorBuffer,
             int errorBufferLength);
+#else
+        static int nowui_msdf_session_create(
+            byte[] fontData,
+            int fontDataLength,
+            int size,
+            int pixelRange,
+            ref NativeSessionInfo info,
+            out IntPtr session,
+            byte[] errorBuffer,
+            int errorBufferLength) =>
+            throw new DllNotFoundException(LIBRARY_NAME);
+
+        static int nowui_msdf_session_create_fixed(
+            byte[] fontData,
+            int fontDataLength,
+            int size,
+            int pixelRange,
+            int atlasSide,
+            ref NativeSessionInfo info,
+            out IntPtr session,
+            byte[] errorBuffer,
+            int errorBufferLength) =>
+            throw new DllNotFoundException(LIBRARY_NAME);
+
+        static int nowui_msdf_session_add_glyphs(
+            IntPtr session,
+            int[] codepoints,
+            int codepointCount,
+            NativeGlyph[] glyphs,
+            int glyphCapacity,
+            out int glyphCount,
+            out int atlasSide,
+            out int changeFlags,
+            byte[] errorBuffer,
+            int errorBufferLength) =>
+            throw new DllNotFoundException(LIBRARY_NAME);
+
+        static int nowui_msdf_session_copy_atlas(
+            IntPtr session,
+            byte[] atlasRgba,
+            int atlasRgbaLength,
+            byte[] errorBuffer,
+            int errorBufferLength) =>
+            throw new DllNotFoundException(LIBRARY_NAME);
+
+        // No native session can exist without a successful create, and Dispose
+        // paths must never throw — the destroy stub is a no-op.
+        static void nowui_msdf_session_destroy(IntPtr session)
+        {
+        }
+
+        static int nowui_compile_color_font_from_memory_with_codepoints(
+            byte[] fontData,
+            int fontDataLength,
+            int size,
+            int[] codepoints,
+            int codepointCount,
+            byte[] atlasRgba,
+            int atlasRgbaLength,
+            NativeColorGlyph[] glyphs,
+            int glyphCapacity,
+            ref NativeColorAtlasInfo info,
+            byte[] errorBuffer,
+            int errorBufferLength) =>
+            throw new DllNotFoundException(LIBRARY_NAME);
+#endif
 
         internal static bool IsColorFont(byte[] fontData)
         {
@@ -723,6 +832,11 @@ namespace NowUI
 
                 font = CreateColorFont(atlasRgba, nativeGlyphs, info, materialTemplate, out error);
                 return font != null;
+            }
+            catch (DllNotFoundException ex)
+            {
+                error = "NowUI native font compiler plugin was not found for this platform; color fonts require it.\n" + ex.Message;
+                return false;
             }
             catch (EntryPointNotFoundException ex)
             {

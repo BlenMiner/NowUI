@@ -14,6 +14,9 @@ name: Build Native Libraries
       - main
     paths:
       - "Assets/NowUI/Plugins/Native/**"
+      - "Native/build-msdf-webgl.sh"
+      - "Native/nowui-ftmodule.h"
+      - "Native/nowui-ft-renames.h"
       - ".github/workflows/build-native-libraries.yml"
   workflow_dispatch:
     inputs:
@@ -29,6 +32,10 @@ name: Build Native Libraries
         description: "HarfBuzz git tag for the embedded amalgamated build"
         required: false
         default: "10.1.0"
+      freetype_ref:
+        description: "FreeType git tag for the WebGL symbol-disjoint build"
+        required: false
+        default: "VER-2-13-3"
 
 permissions:
   actions: read
@@ -42,6 +49,7 @@ env:
   MSDF_ATLAS_GEN_REF: ${{ inputs.msdf_atlas_gen_ref || 'v1.4' }}
   EMSCRIPTEN_REF: ${{ inputs.emscripten_ref || '3.1.38' }}
   HARFBUZZ_REF: ${{ inputs.harfbuzz_ref || '10.1.0' }}
+  FREETYPE_REF: ${{ inputs.freetype_ref || 'VER-2-13-3' }}
   ANDROID_PLATFORM: android-23
   IOS_DEPLOYMENT_TARGET: "13.0"
 
@@ -236,6 +244,12 @@ jobs:
           name: native-${{ matrix.artifact_name }}
           path: ${{ github.workspace }}/artifacts/native-${{ matrix.artifact_name }}
 
+  # The WebGL msdf plugin is NOT built through vcpkg like the other
+  # platforms: bundling FreeType/HarfBuzz/Brotli as strong globals collides
+  # with Unity's own player libraries at wasm-ld time and fails every WebGL
+  # player build. Native/build-msdf-webgl.sh compiles the sources directly —
+  # HarfBuzz unbundled (resolves against Unity's copy), FreeType minimal with
+  # Unity-colliding symbols renamed via the committed Native/nowui-ft-renames.h.
   build-webgl:
     name: webgl-emscripten
     runs-on: ubuntu-latest
@@ -248,13 +262,9 @@ jobs:
         shell: bash
         run: |
           echo "EMSDK_ROOT=$RUNNER_TEMP/emsdk" >> "$GITHUB_ENV"
-          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
-          echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg-installed-webgl" >> "$GITHUB_ENV"
           echo "MSDF_ATLAS_GEN_SOURCE=$RUNNER_TEMP/msdf-atlas-gen" >> "$GITHUB_ENV"
-          echo "BUILD_DIR=$RUNNER_TEMP/msdf-atlas-gen-webgl-build" >> "$GITHUB_ENV"
-          echo "INSTALL_DIR=$RUNNER_TEMP/msdf-atlas-gen-webgl-install" >> "$GITHUB_ENV"
-          echo "NOWUI_MSDF_BUILD_DIR=$RUNNER_TEMP/nowui-msdf-webgl-build" >> "$GITHUB_ENV"
-          echo "NOWUI_MSDF_INSTALL_DIR=$RUNNER_TEMP/nowui-msdf-webgl-install" >> "$GITHUB_ENV"
+          echo "FREETYPE_SOURCE=$RUNNER_TEMP/freetype" >> "$GITHUB_ENV"
+          echo "HARFBUZZ_SOURCE=$RUNNER_TEMP/harfbuzz" >> "$GITHUB_ENV"
           echo "NOWUI_VG_BUILD_DIR=$RUNNER_TEMP/nowui-vg-webgl-build" >> "$GITHUB_ENV"
           echo "PLUGIN_DIR=$GITHUB_WORKSPACE/artifacts/native-webgl/Assets/NowUI/Plugins/WebGL" >> "$GITHUB_ENV"
 
@@ -263,11 +273,15 @@ jobs:
         run: |
           git clone --recursive --branch "$MSDF_ATLAS_GEN_REF" https://github.com/Chlumsky/msdf-atlas-gen.git "$MSDF_ATLAS_GEN_SOURCE"
 
+      - name: Checkout FreeType
+        shell: bash
+        run: |
+          git clone --depth 1 --branch "$FREETYPE_REF" https://github.com/freetype/freetype.git "$FREETYPE_SOURCE"
+
       - name: Checkout HarfBuzz
         shell: bash
         run: |
-          git clone --depth 1 --branch "$HARFBUZZ_REF" https://github.com/harfbuzz/harfbuzz.git "$RUNNER_TEMP/harfbuzz"
-          echo "HARFBUZZ_SOURCE=$RUNNER_TEMP/harfbuzz" >> "$GITHUB_ENV"
+          git clone --depth 1 --branch "$HARFBUZZ_REF" https://github.com/harfbuzz/harfbuzz.git "$HARFBUZZ_SOURCE"
 
       - name: Setup Emscripten
         shell: bash
@@ -276,60 +290,12 @@ jobs:
           "$EMSDK_ROOT/emsdk" install "$EMSCRIPTEN_REF"
           "$EMSDK_ROOT/emsdk" activate "$EMSCRIPTEN_REF"
 
-      - name: Bootstrap vcpkg
-        shell: bash
-        run: |
-          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
-          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
-
-      - name: Build msdf-atlas-gen for WebGL
+      - name: Build nowui-msdf for WebGL (symbol-disjoint)
         shell: bash
         run: |
           source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
-
-          cmake \
-            -S "$MSDF_ATLAS_GEN_SOURCE" \
-            -B "$BUILD_DIR" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
-            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
-            -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DMSDF_ATLAS_BUILD_STANDALONE=OFF \
-            -DMSDF_ATLAS_INSTALL=ON \
-            -DMSDF_ATLAS_USE_SKIA=OFF \
-            -DMSDF_ATLAS_NO_ARTERY_FONT=ON \
-            -DMSDF_ATLAS_DYNAMIC_RUNTIME=OFF \
-            -DMSDF_ATLAS_NO_PNG=ON \
-            -DMSDFGEN_DISABLE_PNG=ON
-
-          cmake --build "$BUILD_DIR" --config Release --parallel
-          cmake --install "$BUILD_DIR" --config Release
-
-      - name: Build nowui-msdf for WebGL
-        shell: bash
-        run: |
-          source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
-
-          cmake \
-            -S "$GITHUB_WORKSPACE/Assets/NowUI/Plugins/Native/nowui-msdf" \
-            -B "$NOWUI_MSDF_BUILD_DIR" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="$NOWUI_MSDF_INSTALL_DIR" \
-            -DCMAKE_PREFIX_PATH="$INSTALL_DIR;$VCPKG_INSTALLED_DIR/wasm32-emscripten" \
-            -Dmsdf-atlas-gen_DIR="$INSTALL_DIR/lib/cmake/msdf-atlas-gen" \
-            -Dmsdfgen_DIR="$INSTALL_DIR/lib/cmake/msdfgen" \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
-            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
-            -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
-            -DNOWUI_HARFBUZZ_DIR="$HARFBUZZ_SOURCE" \
-            -DNOWUI_MSDF_DISABLE_FILE_API=ON
-
-          cmake --build "$NOWUI_MSDF_BUILD_DIR" --config Release --parallel
-          cmake --install "$NOWUI_MSDF_BUILD_DIR" --config Release
+          mkdir -p "$PLUGIN_DIR"
+          NOWUI_MSDF_TARGET="$PLUGIN_DIR/nowui-msdf.bc" bash Native/build-msdf-webgl.sh
 
       - name: Build nowui-vg for WebGL
         shell: bash
@@ -348,17 +314,6 @@ jobs:
         run: |
           source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
           mkdir -p "$PLUGIN_DIR"
-
-          mapfile -t archives < <(find "$NOWUI_MSDF_INSTALL_DIR/lib" "$INSTALL_DIR/lib" "$VCPKG_INSTALLED_DIR/wasm32-emscripten/lib" \
-            -maxdepth 1 -type f \( -name '*.a' -o -name '*.bc' \) \
-            | sort)
-
-          if [ "${#archives[@]}" -eq 0 ]; then
-            echo "No WebGL archives were found to package."
-            exit 1
-          fi
-
-          emcc -r -O3 -g0 -Wl,--whole-archive "${archives[@]}" -Wl,--no-whole-archive -o "$PLUGIN_DIR/nowui-msdf.bc"
 
           vg_archive=$(find "$NOWUI_VG_BUILD_DIR" -maxdepth 2 -type f -name 'libnowui-vg.a' | head -n 1)
 

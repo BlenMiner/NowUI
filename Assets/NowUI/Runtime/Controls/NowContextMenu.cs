@@ -87,6 +87,7 @@ namespace NowUI
         {
             public EntryKind kind;
             public string label;
+            public string shortcut;
             public bool enabled;
             public bool selected;
             public int pathId;
@@ -136,6 +137,9 @@ namespace NowUI
 
         /// <summary>True while any context menu is open.</summary>
         public static bool isOpen => _openId != 0;
+
+        /// <summary>True when the menu with this id is the one currently open.</summary>
+        public static bool IsOpen(int id) => _openId != 0 && _openId == id;
 
         public static void Open(int id, Vector2 position, bool fitToView = true)
         {
@@ -197,11 +201,23 @@ namespace NowUI
         /// <summary>Adds an item; true when it was clicked (the frame after the click).</summary>
         public static bool Item(string label)
         {
-            return Item(label, true, false);
+            return Item(label, null, true, false);
         }
 
         /// <summary>Adds an item; true when it was clicked (the frame after the click).</summary>
         public static bool Item(string label, bool enabled, bool selected = false)
+        {
+            return Item(label, null, enabled, selected);
+        }
+
+        /// <summary>Adds an item with a right-aligned shortcut hint ("Ctrl+C").</summary>
+        public static bool Item(string label, string shortcut)
+        {
+            return Item(label, shortcut, true, false);
+        }
+
+        /// <summary>Adds an item with a right-aligned shortcut hint ("Ctrl+C").</summary>
+        public static bool Item(string label, string shortcut, bool enabled, bool selected = false)
         {
             if (_activeId == 0 || _buildStack.Count == 0)
                 return false;
@@ -215,6 +231,7 @@ namespace NowUI
             {
                 kind = EntryKind.Item,
                 label = label ?? string.Empty,
+                shortcut = shortcut,
                 enabled = enabled,
                 selected = selected,
                 pathId = pathId,
@@ -950,6 +967,25 @@ namespace NowUI
                     muted);
             }
 
+            if (!string.IsNullOrEmpty(entry.shortcut))
+            {
+                Color shortcutColor = theme.GetColor(NowColorToken.TextMuted);
+
+                if (!entry.enabled)
+                    shortcutColor.a *= 0.62f;
+
+                float shortcutWidth = theme.ResolveText(NowTextStyle.Muted).Measure(entry.shortcut).x;
+                float shortcutInset = theme.controlStyles.contextMenuPaddingX * 0.7f +
+                    (entry.kind == EntryKind.Submenu ? 22f : 0f);
+
+                NowControls.DrawLeftLabel(
+                    theme,
+                    new NowRect(itemRect.xMax - shortcutWidth - shortcutInset, itemRect.y, shortcutWidth + 6f, itemRect.height),
+                    entry.shortcut,
+                    NowTextStyle.Muted,
+                    shortcutColor);
+            }
+
             if (entry.selected)
             {
                 var accent = theme.GetColor(NowColorToken.Accent);
@@ -1098,6 +1134,10 @@ namespace NowUI
                 if (entry.kind != EntryKind.Separator)
                 {
                     float rightReserve = entry.kind == EntryKind.Submenu ? 24f : 0f;
+
+                    if (!string.IsNullOrEmpty(entry.shortcut))
+                        rightReserve += textStyle.Measure(entry.shortcut).x + 28f;
+
                     width = Mathf.Max(width, textStyle.Measure(entry.label).x + paddingX * 2f + rightReserve);
                 }
 
@@ -1123,6 +1163,13 @@ namespace NowUI
 
             int index = _menuCount++;
             _menus[index].Reset(rootId, pathId, overlayId, parentMenu, depth);
+
+            // Submenu overlays chain to the root menu id, so a control that
+            // declared itself the menu's owner reads as focused-within while
+            // any depth of the tree is the active focus layer.
+            if (parentMenu >= 0)
+                NowFocus.DeclareOwner(overlayId, rootId);
+
             return index;
         }
 

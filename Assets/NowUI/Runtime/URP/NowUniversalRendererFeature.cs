@@ -87,6 +87,11 @@ namespace NowUI
 
         sealed class NowUniversalWorldGlassPass : ScriptableRenderPass
         {
+            // Compatibility Mode path (Render Graph disabled). The attribute
+            // mirrors the obsolete base member, which is how URP's own samples
+            // silence CS0672 while still supporting this mode; Render Graph
+            // support requires a RecordRenderGraph port of the pass.
+            [System.Obsolete("Compatibility Mode rendering path (Render Graph disabled).", false)]
             public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
             {
                 var camera = renderingData.cameraData.camera;
@@ -117,6 +122,8 @@ namespace NowUI
 
             public float uiScale = 1f;
 
+            // Compatibility Mode path (Render Graph disabled) — see above.
+            [System.Obsolete("Compatibility Mode rendering path (Render Graph disabled).", false)]
             public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
             {
                 var camera = renderingData.cameraData.camera;

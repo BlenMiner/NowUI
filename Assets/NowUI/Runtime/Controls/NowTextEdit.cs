@@ -82,14 +82,31 @@ namespace NowUI
             return index;
         }
 
+        /// <summary>
+        /// IDE-style word boundaries: moving right stops at the end of the
+        /// current identifier, or skips punctuation and spaces to the start of
+        /// the next one; line breaks are their own stop. Whitespace-run jumping
+        /// crosses entire expressions in code, where words touch punctuation.
+        /// </summary>
         static int NextWord(string text, int index)
         {
             int length = text.Length;
 
-            while (index < length && char.IsWhiteSpace(text[index]))
-                index = NextIndex(text, index);
+            if (index >= length)
+                return length;
 
-            while (index < length && !char.IsWhiteSpace(text[index]))
+            if (text[index] == '\n')
+                return index + 1;
+
+            if (IsWordCharacter(text[index]))
+            {
+                while (index < length && IsWordCharacter(text[index]))
+                    index = NextIndex(text, index);
+
+                return index;
+            }
+
+            while (index < length && !IsWordCharacter(text[index]) && text[index] != '\n')
                 index = NextIndex(text, index);
 
             return index;
@@ -97,10 +114,21 @@ namespace NowUI
 
         static int PrevWord(string text, int index)
         {
-            while (index > 0 && char.IsWhiteSpace(text[index - 1]))
-                index = PrevIndex(text, index);
+            if (index <= 0)
+                return 0;
 
-            while (index > 0 && !char.IsWhiteSpace(text[index - 1]))
+            if (text[index - 1] == '\n')
+                return index - 1;
+
+            if (IsWordCharacter(text[index - 1]))
+            {
+                while (index > 0 && IsWordCharacter(text[index - 1]))
+                    index = PrevIndex(text, index);
+
+                return index;
+            }
+
+            while (index > 0 && !IsWordCharacter(text[index - 1]) && text[index - 1] != '\n')
                 index = PrevIndex(text, index);
 
             return index;

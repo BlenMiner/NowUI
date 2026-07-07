@@ -133,13 +133,18 @@ Shader "NowUI/UI Rectangle UGUI"
                 float2 halfSize = rect.zw * 0.5;
                 float dist = sdRoundedBox(position, halfSize, rad);
                 float delta = max(length(float2(ddx(dist), ddy(dist))), 0.0001);
-                float graphicAlpha = 1 - smoothstep(0, delta + max(blur, 0), dist);
+                // Half-pixel AA band centered on the true edge: alpha crosses
+                // 0.5 exactly at dist == 0, so shapes neither grow nor halo.
+                float aa = 0.5 * delta;
+                float graphicAlpha = 1 - smoothstep(-aa, aa + max(blur, 0), dist);
 
                 // An outline thinner than one AA width would sit entirely inside
                 // the edge fade and render as a washed-out sliver; draw at least
-                // one AA width of it so thin outlines stay solid.
+                // one AA width of it so thin outlines stay solid. The inner
+                // transition centers on -outlineWidth so the ring renders at its
+                // requested thickness instead of one AA width fatter.
                 float outlineWidth = max(outline, delta);
-                float outlineAlpha = outline == 0 ? 0 : smoothstep(-outlineWidth - delta, -outlineWidth, dist);
+                float outlineAlpha = outline == 0 ? 0 : smoothstep(-outlineWidth - aa, -outlineWidth + aa, dist);
 
                 // Premultiplied compositing avoids color leaking through partially
                 // transparent pixels while keeping the existing inside-outline

@@ -116,11 +116,12 @@ Shader "NowUI/UI Glass"
                 float2 position = (rawUV - 0.5) * size;
                 float dist = sdRoundedBox(position, size * 0.5, i.radius);
                 float delta = length(float2(ddx(dist), ddy(dist)));
-                float graphicAlpha = 1 - smoothstep(-delta, 0, dist);
+                float aa = 0.5 * delta;
+                float graphicAlpha = 1 - smoothstep(-aa, aa, dist);
 
                 float outline = i.extras.y;
                 float outlineWidth = max(outline, delta);
-                float outlineAlpha = outline == 0 ? 0 : smoothstep(-outlineWidth - delta, -outlineWidth, dist);
+                float outlineAlpha = outline == 0 ? 0 : smoothstep(-outlineWidth - aa, -outlineWidth + aa, dist);
 
                 float saturation = i.extras.z;
                 float brightness = i.extras.w;

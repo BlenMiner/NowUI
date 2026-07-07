@@ -22,7 +22,9 @@ namespace NowUI.CodeEditor
         Fence,
         Tag,
         Attribute,
-        Constant
+        Constant,
+        DocComment,
+        DocTag
     }
 
     /// <summary>One highlighted range within a line; ranges index into the full text.</summary>
@@ -168,6 +170,29 @@ namespace NowUI.CodeEditor
 
         /// <summary>Characters that open completions the moment they are typed ('.' in C#).</summary>
         public virtual bool IsCompletionTrigger(char c) => false;
+
+        /// <summary>Line comment prefix ("//" in C#), or null when the language has none — enables toggle-comment.</summary>
+        public virtual string lineCommentPrefix => null;
+
+        /// <summary>
+        /// One-line quick-info for the symbol at a position — shown in the
+        /// hover tooltip after a short dwell. Default: none.
+        /// </summary>
+        public virtual bool TryGetHoverInfo(string text, int position, out string info)
+        {
+            info = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Every span referring to the same symbol as the identifier at a
+        /// position (declaration included), in document order — powers rename.
+        /// Token kind is ignored; spans carry positions only. Default: none.
+        /// </summary>
+        public virtual bool TryGetRenameSpans(string text, int position, List<NowCodeToken> spans)
+        {
+            return false;
+        }
 
         /// <summary>
         /// Monotonic version for validators that finish asynchronously: bump it

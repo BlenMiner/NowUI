@@ -35,6 +35,7 @@ namespace NowUI
         bool _spinner;
         float _spinnerStep;
         int _spinnerTicks;
+        bool _selectAllOnFocus;
 
         const int SpinnerUpSeed = 0x4e545355;
         const int SpinnerDownSeed = 0x4e545344;
@@ -83,6 +84,7 @@ namespace NowUI
             _spinner = false;
             _spinnerStep = 1f;
             _spinnerTicks = 0;
+            _selectAllOnFocus = false;
         }
 
         internal NowTextField(NowRect rect, NowId id, int site) : this(id, site)
@@ -136,6 +138,13 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowTextField SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>
+        /// Selects the whole text when focus arrives without a click — the
+        /// convention for dialog fields and inline rename prompts. A click
+        /// still places the caret where the user pointed.
+        /// </summary>
+        public NowTextField SetSelectAllOnFocus() { _selectAllOnFocus = true; return this; }
 
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowTextField SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
@@ -514,15 +523,12 @@ namespace NowUI
             if (focused && hadFocus == 0)
             {
                 NowTextInput.DiscardPending();
-                NowTextInput.setImeEnabled?.Invoke(true);
                 revert.text = text;
 
-                if (!interaction.pressed)
+                if (_selectAllOnFocus)
+                    NowTextEdit.SelectAll(ref state, text);
+                else if (!interaction.pressed)
                     NowTextEdit.MoveEnd(ref state, text, false);
-            }
-            else if (!focused && hadFocus == 1)
-            {
-                NowTextInput.setImeEnabled?.Invoke(false);
             }
 
             hadFocus = focused ? (byte)1 : (byte)0;
@@ -574,6 +580,7 @@ namespace NowUI
             if (focused && !NowInput.isPassive)
             {
                 NowFocus.LockNavigation();
+                NowTextInput.RequestTextCapture();
                 var frame = NowTextInput.current;
                 var undo = NowTextUndoRegistry.Get(id);
                 composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
@@ -728,7 +735,7 @@ namespace NowUI
                 {
                     var placeholder = NowControls.Text(theme, NowTextStyle.Muted);
                     placeholder.rect = new NowRect(inner.x, inner.y, inner.width, inner.height);
-                    placeholder.SetFontSize(fontSize).Draw(_placeholder);
+                    placeholder.SetFontSize(fontSize).SetItalic().Draw(_placeholder);
                 }
 
                 if (composition != null)

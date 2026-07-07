@@ -2141,7 +2141,12 @@ namespace NowUI
 
             var fallbacks = fontAsset.fallbacks;
 
-            if ((fallbacks == null || fallbacks.Count == 0) && style == NowFontStyle.Regular)
+            // The no-fallback fast-out only applies to a plain NowFont, which
+            // the direct lookup above already tried. Family assets resolve
+            // their own style fonts inside TryResolveGlyph — bailing here left
+            // fallback-less families (JetBrains Mono) drawing nothing on the
+            // span/codepoint path.
+            if (fontAsset is NowFont && (fallbacks == null || fallbacks.Count == 0) && style == NowFontStyle.Regular)
                 return false;
 
             var visited = _textGlyphResolveVisited;

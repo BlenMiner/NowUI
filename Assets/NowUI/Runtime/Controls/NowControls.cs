@@ -137,17 +137,22 @@ namespace NowUI
 
         /// <summary>
         /// Derives a control id from an explicit string id within the active id
-        /// scope, with the same per-frame occurrence salting as the site overload.
+        /// scope. Explicit ids are stable — never occurrence-salted — so the same
+        /// name resolves to the same control from anywhere under the same scope;
+        /// two controls sharing one explicit id in one frame share state, which
+        /// is the caller's bug, not something to silently disambiguate.
         /// </summary>
         public static int GetControlId(string id)
         {
             int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            return Salt(NowInput.GetId(seed, id));
+            return NowInput.GetId(seed, id);
         }
 
         /// <summary>
         /// Resolves an optional explicit id to a control id, falling back to the
-        /// captured call-site identity when the id is default.
+        /// captured call-site identity when the id is default. Explicit ids are
+        /// stable (integers verbatim, strings scoped — see <see cref="NowId"/>);
+        /// only the call-site fallback is occurrence-salted.
         /// </summary>
         public static int GetControlId(NowId id, int fallbackIdentity)
         {
@@ -159,34 +164,20 @@ namespace NowUI
             if (!id.hasValue)
                 return 0;
 
-            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            int resolved;
-
+            // Must mirror NowId.ResolveControlId exactly, or navigation links
+            // point at ids no control ever registers: int ids verbatim,
+            // string ids seeded by the active scope.
             if (id.isString)
             {
-                resolved = NowInput.GetId(seed, id.stringValue);
-            }
-            else
-            {
-                resolved = id.intValue;
-
-                if (seed != 0)
-                {
-                    unchecked
-                    {
-                        resolved = (seed * 397) ^ resolved;
-                    }
-                }
-
-                if (resolved == 0)
-                    resolved = 1;
+                int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
+                return NowInput.GetId(seed, id.stringValue);
             }
 
-            return resolved;
+            return id.intValue;
         }
 
         /// <summary>
-        /// Derives a control id from a precomputed identity hash (usually a
+        /// Derives a control id from a call-site identity hash (a
         /// <see cref="SiteId"/>) within the active id scope. Repeated draws of the
         /// same identity in one frame — loop iterations over a single call site —
         /// are salted by occurrence so they never share interaction state; the
@@ -195,7 +186,7 @@ namespace NowUI
         /// <c>SetId</c> or an <see>
         ///     <cref>IdScope</cref>
         /// </see>
-        /// keyed by your data.
+        /// keyed by your data — explicit ids are never salted.
         /// </summary>
         public static int GetControlId(int identity)
         {
@@ -242,6 +233,45 @@ namespace NowUI
         internal static void ResetControlIdOccurrences()
         {
             _labelOccurrences.Clear();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            _interactedIds.Clear();
+#endif
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        static readonly HashSet<int> _interactedIds = new HashSet<int>(64);
+
+        static readonly HashSet<int> _duplicateWarnedIds = new HashSet<int>(8);
+#endif
+
+        /// <summary>
+        /// Editor/development-build check: warns when two controls resolve to the
+        /// same id in one pass. Call-site identity can't collide (occurrence
+        /// salting), so a duplicate means an explicit id was reused — the
+        /// controls silently share focus, state and interaction, which is
+        /// almost never intended. Off in release builds; disable via
+        /// <see cref="warnOnDuplicateControlIds"/> if a custom control draws
+        /// one identity twice on purpose.
+        /// </summary>
+        public static bool warnOnDuplicateControlIds = true;
+
+        [System.Diagnostics.Conditional("UNITY_EDITOR"), System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
+        static void CheckDuplicateControlId(int id)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (!warnOnDuplicateControlIds || NowInput.isPassive)
+                return;
+
+            if (_interactedIds.Add(id) || !_duplicateWarnedIds.Add(id))
+                return;
+
+            Debug.LogWarning(
+                $"NowUI: two controls resolved to the same id (0x{id:X8}) in one pass — they share focus, state and " +
+                "interaction. An explicit id is being reused: give each control its own identity with SetId keyed by " +
+                "your data, wrap repeated panels in NowControls.IdScope, or mint sub-region ids with " +
+                "NowInput.CombineId(parentId, seed). (Warned once per id; NowControls.warnOnDuplicateControlIds " +
+                "disables this check.)");
+#endif
         }
 
         /// <summary>Starts a fresh measure-pass occurrence count; called when a passive pass begins.</summary>
@@ -257,6 +287,10 @@ namespace NowUI
             _idStack.Clear();
             _labelOccurrences.Clear();
             _passiveOccurrences.Clear();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            _interactedIds.Clear();
+            _duplicateWarnedIds.Clear();
+#endif
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -360,6 +394,7 @@ namespace NowUI
         /// </summary>
         public static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation, out bool focused, out bool submitted)
         {
+            CheckDuplicateControlId(id);
             var interaction = NowInput.Interact(id, rect);
             NowFocus.Register(id, rect, navigation);
 

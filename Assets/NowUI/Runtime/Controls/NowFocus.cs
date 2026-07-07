@@ -268,6 +268,65 @@ namespace NowUI
             return id != 0 && _focusedId == id && IsFocusedInActiveLayer(id);
         }
 
+        static readonly Dictionary<int, int> _ownersCurrent = new Dictionary<int, int>(16);
+
+        static readonly Dictionary<int, int> _ownersPrevious = new Dictionary<int, int>(16);
+
+        /// <summary>
+        /// Declares that a control or overlay layer belongs to an owner for
+        /// <see cref="IsFocusedWithin"/>. Call every interactive frame while
+        /// the relationship exists, like <see cref="Register"/> — an editor
+        /// declares its inline rename field, a control declares the context
+        /// menu it opened, a menu declares its submenu overlays.
+        /// </summary>
+        public static void DeclareOwner(int id, int ownerId)
+        {
+            if (id == 0 || ownerId == 0 || id == ownerId || NowInput.isPassive)
+                return;
+
+            BeginFrameIfNeeded();
+            _ownersCurrent[id] = ownerId;
+        }
+
+        /// <summary>
+        /// Focus-within: true when this control is focused, when focus sits on
+        /// a control it owns (transitively, via <see cref="DeclareOwner"/>), or
+        /// when the active overlay focus layer belongs to it. This is what
+        /// visuals should test — a parent whose inline field, popup or context
+        /// menu is active keeps rendering focused instead of blinking through
+        /// every internal handoff.
+        /// </summary>
+        public static bool IsFocusedWithin(int id)
+        {
+            if (id == 0)
+                return false;
+
+            if (OwnerChainReaches(_focusedId, id))
+                return true;
+
+            int layerId = NowOverlay.activeFocusLayerId;
+            return layerId != 0 && OwnerChainReaches(layerId, id);
+        }
+
+        static bool OwnerChainReaches(int cursor, int id)
+        {
+            for (int depth = 0; cursor != 0 && depth < 8; ++depth)
+            {
+                if (cursor == id)
+                    return true;
+
+                if (!_ownersCurrent.TryGetValue(cursor, out int owner) &&
+                    !_ownersPrevious.TryGetValue(cursor, out owner))
+                {
+                    return false;
+                }
+
+                cursor = owner;
+            }
+
+            return false;
+        }
+
         public static void Focus(int id)
         {
             SetFocused(id);
@@ -450,6 +509,12 @@ namespace NowUI
             _previous.Clear();
             _previous.AddRange(_current);
             _current.Clear();
+
+            _ownersPrevious.Clear();
+            foreach (var owner in _ownersCurrent)
+                _ownersPrevious[owner.Key] = owner.Value;
+            _ownersCurrent.Clear();
+
             ProcessNavigation();
         }
 
@@ -857,6 +922,8 @@ namespace NowUI
         {
             _current.Clear();
             _previous.Clear();
+            _ownersCurrent.Clear();
+            _ownersPrevious.Clear();
             _scrollRegionStack.Clear();
             _focusedId = 0;
             _focusRevision = 0;

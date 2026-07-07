@@ -550,6 +550,8 @@ namespace NowUI
                     false);
             }
 
+            NowTextInput.MaintainCapture();
+
             bool pressed =
                 hovered &&
                 snapshot.WasPointerPressed(button) &&

@@ -43,6 +43,8 @@ namespace NowUI.CodeEditor
 
         public override IReadOnlyList<string> aliases => Aliases;
 
+        public override string lineCommentPrefix => "//";
+
         public override bool IsIndentOpener(char c) => c == '{' || c == '(' || c == '[';
 
         public override bool IsIndentCloser(char c) => c == '}' || c == ')' || c == ']';
@@ -76,7 +78,13 @@ namespace NowUI.CodeEditor
 
                 if (c == '/' && i + 1 < end && text[i + 1] == '/')
                 {
-                    tokens.Add(new NowCodeToken { start = i, length = end - i, kind = NowCodeTokenKind.Comment });
+                    // "///" (but not "////") is an XML doc comment: tags and
+                    // attribute strings color distinctly for easier reading.
+                    if (i + 2 < end && text[i + 2] == '/' && (i + 3 >= end || text[i + 3] != '/'))
+                        ScanDocComment(text, i, end, tokens);
+                    else
+                        tokens.Add(new NowCodeToken { start = i, length = end - i, kind = NowCodeTokenKind.Comment });
+
                     break;
                 }
 
@@ -133,6 +141,59 @@ namespace NowUI.CodeEditor
             }
 
             return 0;
+        }
+
+        static void ScanDocComment(string text, int start, int end, List<NowCodeToken> tokens)
+        {
+            int cursor = start;
+
+            while (cursor < end)
+            {
+                if (text[cursor] == '<')
+                {
+                    int tagStart = cursor;
+                    ++cursor;
+
+                    while (cursor < end && text[cursor] != '>')
+                    {
+                        if (text[cursor] == '"')
+                        {
+                            if (cursor > tagStart)
+                                tokens.Add(new NowCodeToken { start = tagStart, length = cursor - tagStart, kind = NowCodeTokenKind.DocTag });
+
+                            int stringStart = cursor;
+                            ++cursor;
+
+                            while (cursor < end && text[cursor] != '"')
+                                ++cursor;
+
+                            if (cursor < end)
+                                ++cursor;
+
+                            tokens.Add(new NowCodeToken { start = stringStart, length = cursor - stringStart, kind = NowCodeTokenKind.String });
+                            tagStart = cursor;
+                            continue;
+                        }
+
+                        ++cursor;
+                    }
+
+                    if (cursor < end)
+                        ++cursor;
+
+                    if (cursor > tagStart)
+                        tokens.Add(new NowCodeToken { start = tagStart, length = cursor - tagStart, kind = NowCodeTokenKind.DocTag });
+                }
+                else
+                {
+                    int textStart = cursor;
+
+                    while (cursor < end && text[cursor] != '<')
+                        ++cursor;
+
+                    tokens.Add(new NowCodeToken { start = textStart, length = cursor - textStart, kind = NowCodeTokenKind.DocComment });
+                }
+            }
         }
 
         static bool IsLineStart(string text, int lineStart, int index)

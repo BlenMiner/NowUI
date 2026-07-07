@@ -70,6 +70,7 @@ namespace NowUI.CodeEditor
         float _fontSize;
         bool _hideLineNumbers;
         bool _hideStatusBar;
+        NowFontAsset _font;
 
         internal NowCodeEditor(NowCodeLanguage language, NowId id, int site)
         {
@@ -84,6 +85,7 @@ namespace NowUI.CodeEditor
             _fontSize = 14f;
             _hideLineNumbers = false;
             _hideStatusBar = false;
+            _font = null;
         }
 
         internal NowCodeEditor(NowRect rect, NowCodeLanguage language, NowId id, int site) : this(language, id, site)
@@ -97,6 +99,9 @@ namespace NowUI.CodeEditor
         public NowCodeEditor SetWidth(float width) { _width = width; return this; }
 
         public NowCodeEditor SetFontSize(float fontSize) { _fontSize = fontSize; return this; }
+
+        /// <summary>Explicit font (e.g. a monospaced family), overriding the theme's body font.</summary>
+        public NowCodeEditor SetFont(NowFontAsset font) { _font = font; return this; }
 
         public NowCodeEditor SetLineNumbers(bool show) { _hideLineNumbers = !show; return this; }
 
@@ -125,6 +130,24 @@ namespace NowUI.CodeEditor
             public int positionColumn = -1;
             public string tooltipMessage;
             public NowRect tooltipRect;
+            public int tooltipAnchorStart = -1;
+            public int tooltipAnchorLength;
+            public int tooltipSelectionAnchor;
+            public int tooltipSelectionCaret;
+            public bool tooltipDragging;
+            public int hoverProbeStart = -1;
+            public int hoverProbeLength;
+            public float hoverProbeTime;
+            public bool hoverProbeFailed;
+            public bool goToLineActive;
+            public string goToLineBuffer = "";
+            public bool renameActive;
+            public string renameBuffer = "";
+            public string renameText;
+            public int renamePrimary;
+            public readonly List<NowCodeToken> renameSpans = new List<NowCodeToken>(16);
+            public int positionSelection = -1;
+            public bool suppressCaretJump;
             public int validatedVersion;
             public readonly List<NowCodeCompletionItem> completionItems = new List<NowCodeCompletionItem>(64);
             public readonly List<int> completionVisible = new List<int>(64);
@@ -184,6 +207,10 @@ namespace NowUI.CodeEditor
             int id = NowControls.GetControlId(_id, _site);
 
             var textStyle = theme.Text(default, NowTextStyle.Body).SetFontSize(_fontSize);
+
+            if (_font != null)
+                textStyle = textStyle.SetFont(_font);
+
             var font = textStyle.font;
 
             if (font == null)
@@ -207,6 +234,9 @@ namespace NowUI.CodeEditor
                 Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
             else if (cache.validatedVersion != _language.validationVersion)
                 Revalidate(cache, text);
+
+            if (cache.renameActive && !ReferenceEquals(cache.renameText, text))
+                cache.renameActive = false;
 
             // Async validators report pending work; keep repainting so their
             // results land without waiting for the next interaction.
@@ -259,6 +289,16 @@ namespace NowUI.CodeEditor
                 }
             }
 
+            // The inline rename field floats inside the editor rect: claim its
+            // presses before the editor's own interaction (first claim wins,
+            // like the scrollbars), so clicking the field doesn't move the
+            // document caret or steal focus back to the editor.
+            if (!NowInput.isPassive &&
+                TryGetRenameFieldRect(cache, text, font, textStyle.fontStyle, textRect, lineHeight, in editor, out NowRect renameClaimRect))
+            {
+                NowInput.Interact(RenameFieldControlId(id), renameClaimRect);
+            }
+
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
             bool verticalMove = false;
             bool revealCaret = false;
@@ -266,22 +306,39 @@ namespace NowUI.CodeEditor
             if (focused && editor.hadFocus == 0)
             {
                 NowTextInput.DiscardPending();
-                NowTextInput.setImeEnabled?.Invoke(true);
 
-                if (!interaction.pressed)
+                // Focus returning from this editor's own context menu keeps the
+                // caret where it was; only genuine external focus (Tab) jumps.
+                if (!interaction.pressed && !cache.suppressCaretJump)
                 {
                     NowTextEdit.MoveEnd(ref state, text, false);
                     revealCaret = true;
                 }
-            }
-            else if (!focused && editor.hadFocus == 1)
-            {
-                NowTextInput.setImeEnabled?.Invoke(false);
+
+                cache.suppressCaretJump = false;
             }
 
             editor.hadFocus = focused ? (byte)1 : (byte)0;
 
-            if (interaction.pressed && CompletionsOpen(cache) &&
+            if (cache.tooltipDragging && !interaction.held && !interaction.dragging && !interaction.pressed)
+                cache.tooltipDragging = false;
+
+            if (interaction.pressed && cache.tooltipAnchorStart >= 0 &&
+                cache.tooltipRect.Contains(interaction.pointerPosition))
+            {
+                // Selecting inside the tooltip; the editor caret stays put.
+                cache.tooltipDragging = true;
+                int hit = TooltipHitIndex(cache, interaction.pointerPosition.x);
+                cache.tooltipSelectionAnchor = hit;
+                cache.tooltipSelectionCaret = hit;
+                NowControlState.RequestRepaint();
+            }
+            else if (cache.tooltipDragging && interaction.dragging)
+            {
+                cache.tooltipSelectionCaret = TooltipHitIndex(cache, interaction.pointerPosition.x);
+                NowControlState.RequestRepaint();
+            }
+            else if (interaction.pressed && CompletionsOpen(cache) &&
                 cache.completionPopupRect.Contains(interaction.pointerPosition))
             {
                 int row = cache.completionWindow + (int)((interaction.pointerPosition.y -
@@ -355,10 +412,23 @@ namespace NowUI.CodeEditor
             if (focused && !NowInput.isPassive)
             {
                 NowFocus.LockNavigation();
+                NowTextInput.RequestTextCapture();
                 var frame = NowTextInput.current;
                 composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
 
-                if (!string.IsNullOrEmpty(frame.characters))
+                if (!string.IsNullOrEmpty(frame.characters) && cache.goToLineActive)
+                {
+                    for (int i = 0; i < frame.characters.Length; ++i)
+                    {
+                        char c = frame.characters[i];
+
+                        if (char.IsDigit(c) && cache.goToLineBuffer.Length < 7)
+                            cache.goToLineBuffer += c;
+                    }
+
+                    NowControlState.RequestRepaint();
+                }
+                else if (!string.IsNullOrEmpty(frame.characters))
                 {
                     revealCaret = true;
                     cache.undo.Push(text, in state, typing: true);
@@ -373,11 +443,19 @@ namespace NowUI.CodeEditor
 
                         // Identifier characters open or narrow the completion
                         // popup; trigger characters ('.') query the language
-                        // directly; anything else dismisses it.
+                        // directly; anything else dismisses it. Typing inside a
+                        // string, comment or other literal never completes.
                         if (_language.IsCompletionTrigger(c) || IsIdentifierChar(c))
-                            OpenOrRefreshCompletions(cache, _language, text, state.caret);
+                        {
+                            if (IsInsideLiteralOrComment(cache, _language, text, state.caret - 1))
+                                CloseCompletions(cache);
+                            else
+                                OpenOrRefreshCompletions(cache, _language, text, state.caret);
+                        }
                         else
+                        {
                             CloseCompletions(cache);
+                        }
                     }
                 }
 
@@ -389,7 +467,9 @@ namespace NowUI.CodeEditor
                 {
                     if (frame.escapePressed)
                     {
-                        if (CompletionsOpen(cache))
+                        if (cache.goToLineActive)
+                            cache.goToLineActive = false;
+                        else if (CompletionsOpen(cache))
                             CloseCompletions(cache);
                         else
                             NowFocus.Clear();
@@ -419,7 +499,13 @@ namespace NowUI.CodeEditor
                     // Copy/cut with no selection act on the whole line, like an IDE.
                     if (frame.copyPressed)
                     {
-                        if (state.hasSelection)
+                        if (cache.tooltipAnchorStart >= 0 && cache.tooltipSelectionCaret != cache.tooltipSelectionAnchor)
+                        {
+                            int selectionMin = Mathf.Min(cache.tooltipSelectionAnchor, cache.tooltipSelectionCaret);
+                            int selectionMax = Mathf.Max(cache.tooltipSelectionAnchor, cache.tooltipSelectionCaret);
+                            NowClipboard.Copy(cache.tooltipMessage.Substring(selectionMin, selectionMax - selectionMin));
+                        }
+                        else if (state.hasSelection)
                         {
                             s_lineClipboard = null;
                             NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
@@ -461,35 +547,48 @@ namespace NowUI.CodeEditor
                     {
                         revealCaret = true;
                         CloseCompletions(cache);
-                        string buffer = NowClipboard.Paste();
+                        PasteFromClipboard(cache, ref text, ref state);
+                    }
 
-                        if (!string.IsNullOrEmpty(buffer))
-                        {
-                            cache.undo.Push(text, in state, typing: false);
-                            buffer = buffer.Replace("\r\n", "\n").Replace('\r', '\n');
+                    if (frame.commentPressed)
+                    {
+                        revealCaret = true;
+                        CloseCompletions(cache);
+                        cache.undo.Push(text, in state, typing: false);
+                        ToggleLineComment(ref text, ref state, _language);
+                    }
 
-                            // A whole-line copy pastes as a whole line above the
-                            // caret's line (the IDE convention), instead of
-                            // splicing mid-line at the caret.
-                            if (!state.hasSelection && buffer == s_lineClipboard && buffer.EndsWith("\n"))
-                            {
-                                NowTextMetrics.LineBounds(text, state.caret, out int lineStart, out _);
-                                text = text.Insert(lineStart, buffer);
-                                state.caret += buffer.Length;
-                                state.anchor = state.caret;
-                            }
-                            else
-                            {
-                                NowTextEdit.Insert(ref text, ref state, buffer);
-                            }
-                        }
+                    if (frame.goToLinePressed)
+                    {
+                        cache.goToLineActive = true;
+                        cache.goToLineBuffer = "";
+                        cache.renameActive = false;
+                        CloseCompletions(cache);
+                        NowControlState.RequestRepaint();
+                    }
+
+                    if (frame.renamePressed)
+                    {
+                        StartRename(id, cache, text, in state);
+                        NowControlState.RequestRepaint();
                     }
 
                     if (NowControlState.Repeat(NowInput.GetId(id, "enter"), frame.enterHeld))
                     {
                         revealCaret = true;
 
-                        if (CompletionsOpen(cache))
+                        if (cache.goToLineActive)
+                        {
+                            cache.goToLineActive = false;
+
+                            if (int.TryParse(cache.goToLineBuffer, out int targetLine))
+                            {
+                                int lineIndex = Mathf.Clamp(targetLine - 1, 0, cache.lines.Count - 1);
+                                state.caret = cache.lines[lineIndex].start;
+                                state.anchor = state.caret;
+                            }
+                        }
+                        else if (CompletionsOpen(cache))
                         {
                             cache.undo.Push(text, in state, typing: false);
                             AcceptCompletion(cache, ref text, ref state);
@@ -520,7 +619,15 @@ namespace NowUI.CodeEditor
                         }
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "bs"), frame.backspaceHeld))
+                    if (NowControlState.Repeat(NowInput.GetId(id, "bs"), frame.backspaceHeld) && cache.goToLineActive)
+                    {
+                        if (cache.goToLineBuffer.Length > 0)
+                            cache.goToLineBuffer = cache.goToLineBuffer.Substring(0, cache.goToLineBuffer.Length - 1);
+
+                        NowControlState.RequestRepaint();
+                    }
+                    else if (NowControlState.Repeat(NowInput.GetId(id, "bs-edit"),
+                        frame.backspaceHeld && !cache.goToLineActive))
                     {
                         revealCaret = true;
                         cache.undo.Push(text, in state, typing: true);
@@ -588,6 +695,13 @@ namespace NowUI.CodeEditor
                             cache.completionSelected = Mathf.Max(cache.completionSelected - 1, 0);
                             NowControlState.RequestRepaint();
                         }
+                        else if (frame.option && !frame.lineModifier)
+                        {
+                            // Alt+Up: move the selected lines up one line.
+                            revealCaret = true;
+                            cache.undo.Push(text, in state, typing: false);
+                            MoveLines(ref text, ref state, -1);
+                        }
                         else
                         {
                             revealCaret = true;
@@ -610,6 +724,13 @@ namespace NowUI.CodeEditor
                         {
                             cache.completionSelected = Mathf.Min(cache.completionSelected + 1, cache.completionVisible.Count - 1);
                             NowControlState.RequestRepaint();
+                        }
+                        else if (frame.option && !frame.lineModifier)
+                        {
+                            // Alt+Down: move the selected lines down one line.
+                            revealCaret = true;
+                            cache.undo.Push(text, in state, typing: false);
+                            MoveLines(ref text, ref state, 1);
                         }
                         else
                         {
@@ -661,6 +782,97 @@ namespace NowUI.CodeEditor
                         }
                     }
                 }
+            }
+
+            // Right-click: the standard editing context menu. Opening notes the
+            // focus hand-off so the caret survives the menu's focus layer.
+            int contextMenuId = NowInput.GetId(id, "context-menu");
+            var secondary = NowInput.Interact(NowInput.GetId(id, "context-press"), rect, NowPointerButton.Secondary);
+
+            if (secondary.clicked)
+            {
+                NowFocus.Focus(id);
+                CloseCompletions(cache);
+                CloseTooltip(cache);
+                cache.suppressCaretJump = true;
+
+                // IDE convention: right-click inside the selection keeps it;
+                // anywhere else moves the caret to the click point first.
+                if (textRect.Contains(secondary.pointerPosition))
+                {
+                    int hit = HitTest(text, cache, font, _fontSize, textStyle.fontStyle,
+                        secondary.pointerPosition, textRect, lineHeight, editor.scrollX, editor.scrollY);
+
+                    if (!state.hasSelection || hit < state.selectionMin || hit > state.selectionMax)
+                    {
+                        state.caret = hit;
+                        state.anchor = hit;
+                    }
+                }
+
+                NowContextMenu.Open(contextMenuId, secondary.pointerPosition);
+            }
+
+            if (NowContextMenu.Begin(contextMenuId))
+            {
+                cache.suppressCaretJump = true;
+
+                if (NowContextMenu.Item("Cut", Chord("X")))
+                {
+                    cache.undo.Push(text, in state, typing: false);
+
+                    if (state.hasSelection)
+                    {
+                        s_lineClipboard = null;
+                        NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                        NowTextEdit.DeleteSelection(ref text, ref state);
+                    }
+                    else
+                    {
+                        CutLine(ref text, ref state);
+                    }
+                }
+
+                if (NowContextMenu.Item("Copy", Chord("C")))
+                {
+                    if (state.hasSelection)
+                    {
+                        s_lineClipboard = null;
+                        NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
+                    }
+                    else
+                    {
+                        s_lineClipboard = CurrentLine(text, state.caret);
+                        NowClipboard.Copy(s_lineClipboard);
+                    }
+                }
+
+                if (NowContextMenu.Item("Paste", Chord("V")))
+                    PasteFromClipboard(cache, ref text, ref state);
+
+                NowContextMenu.Separator();
+
+                if (NowContextMenu.Item("Duplicate Line", Chord("D")))
+                {
+                    cache.undo.Push(text, in state, typing: false);
+                    DuplicateLines(ref text, ref state);
+                }
+
+                if (NowContextMenu.Item("Toggle Comment", Chord("/"), !string.IsNullOrEmpty(_language.lineCommentPrefix)))
+                {
+                    cache.undo.Push(text, in state, typing: false);
+                    ToggleLineComment(ref text, ref state, _language);
+                }
+
+                if (NowContextMenu.Item("Rename Symbol", "F2"))
+                    StartRename(id, cache, text, in state);
+
+                NowContextMenu.Separator();
+
+                if (NowContextMenu.Item("Select All", Chord("A")))
+                    NowTextEdit.SelectAll(ref state, text);
+
+                NowContextMenu.End();
             }
 
             if (!ReferenceEquals(cache.text, text))
@@ -740,9 +952,92 @@ namespace NowUI.CodeEditor
                     textRect.x + caretX - editor.scrollX,
                     textRect.y + caretLine * lineHeight - editor.scrollY + lineHeight));
 
+            // Focus-within drives the visuals: while the editor's context menu
+            // or inline rename field is active, focus (or the active overlay
+            // layer) chains back to the editor through declared ownership, so
+            // selection, caret and the focus border never blink through the
+            // menu's open/dismiss frames or the rename handoff.
+            if (NowContextMenu.IsOpen(NowInput.GetId(id, "context-menu")))
+                NowFocus.DeclareOwner(NowInput.GetId(id, "context-menu"), id);
+
+            bool visualFocused = NowFocus.IsFocusedWithin(id);
+
             DrawVisuals(id, theme, textStyle, font, rect, textRect, gutterWidth, statusHeight, lineHeight,
-                text, cache, in state, ref editor, focused, composition, caretLine, caretX,
+                text, cache, in state, ref editor, visualFocused, composition, caretLine, caretX,
                 interaction.pointerPosition, interaction.hovered);
+
+            if (cache.goToLineActive)
+            {
+                string prompt = $"Go to line: {cache.goToLineBuffer}";
+                float promptWidth = Advance(prompt, font, TooltipFontSize, textStyle.fontStyle) + 20f;
+                var promptRect = new NowRect(textRect.xMax - promptWidth - 8f, textRect.y + 6f, promptWidth, 26f);
+                var promptBackground = theme.Rectangle(promptRect, NowRectangleStyle.Surface);
+                promptBackground.outline = 1f;
+                promptBackground.outlineColor = theme.GetColor(NowColorToken.Accent, Color.blue);
+                promptBackground.SetRadius(6f).Draw();
+
+                theme.Text(new NowRect(promptRect.x + 10f, promptRect.y, promptRect.width, promptRect.height), NowTextStyle.Body)
+                    .SetFont(font)
+                    .SetFontSize(TooltipFontSize)
+                    .Draw(prompt);
+            }
+
+            // Inline rename: a real text field floating over the identifier —
+            // full caret, selection and clipboard, with the name preselected.
+            // The field's explicit id resolves identically everywhere, so the
+            // focus StartRename handed it simply sticks. Enter commits, Escape
+            // cancels, and losing focus (a click elsewhere, Tab) cancels.
+            if (TryGetRenameFieldRect(cache, text, font, textStyle.fontStyle, textRect, lineHeight, in editor, out NowRect fieldRect))
+            {
+                int fieldControlId = RenameFieldControlId(id);
+                bool interactivePass = !NowInput.isPassive;
+                bool fieldFocused = NowFocus.focusedId == fieldControlId;
+                var inputFrame = NowTextInput.current;
+
+                // While an IME composition is open, Enter confirms the
+                // conversion and Escape cancels it — both belong to the IME,
+                // not to the rename.
+                bool composing = !string.IsNullOrEmpty(inputFrame.composition);
+                bool commit = interactivePass && fieldFocused && inputFrame.enterPressed && !composing;
+                bool cancel = interactivePass && !commit &&
+                    ((inputFrame.escapePressed && !composing) || !fieldFocused);
+
+                NowFocus.DeclareOwner(fieldControlId, id);
+                Now.TextField(fieldRect, new NowId(fieldControlId))
+                    .SetSelectAllOnFocus()
+                    .Draw(ref cache.renameBuffer);
+
+                if (commit)
+                {
+                    ApplyRename(cache, ref text, ref state);
+                    Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
+                    result.changed = text != original;
+                    result.diagnosticCount = cache.diagnostics.Count;
+                    result.isValid = cache.diagnostics.Count == 0;
+                    cache.suppressCaretJump = true;
+
+                    // The keystroke that committed the rename is spent: without
+                    // this, the still-held Enter retriggers in the editor next
+                    // frame and inserts a newline at the caret.
+                    NowTextInput.ConsumeEnterUntilReleased();
+                    NowFocus.Focus(id);
+                    NowControlState.RequestRepaint();
+                }
+                else if (cancel)
+                {
+                    cache.renameActive = false;
+
+                    // Escape hands focus back to the editor; a click away
+                    // leaves focus where the user put it.
+                    if (inputFrame.escapePressed)
+                    {
+                        cache.suppressCaretJump = true;
+                        NowFocus.Focus(id);
+                    }
+
+                    NowControlState.RequestRepaint();
+                }
+            }
 
             if (focused)
                 NowControlState.RequestRepaint();
@@ -794,23 +1089,79 @@ namespace NowUI.CodeEditor
                 using (Now.Mask(new NowRect(rect.x, textRect.y, gutterWidth, textRect.height)))
                 {
                     var numberStyle = themeAsset.Text(default, NowTextStyle.Muted).SetFontSize(fontSize - 2f);
+                    var activeNumberStyle = numberStyle.SetColor(themeAsset.GetColor(NowColorToken.Text, Color.black));
 
                     for (int i = firstVisible; i <= lastVisible; ++i)
                     {
                         string number = NumberString(i + 1);
                         float numberWidth = Advance(number, font, fontSize - 2f, fontStyle);
-                        numberStyle.rect = new NowRect(
+                        var style = focused && i == caretLine ? activeNumberStyle : numberStyle;
+                        style.rect = new NowRect(
                             rect.x + gutterWidth - numberWidth - 8f,
                             textRect.y + i * lineHeight - editor.scrollY,
                             numberWidth + 4f,
                             lineHeight);
-                        numberStyle.Draw(number);
+                        style.Draw(number);
                     }
                 }
             }
 
             using (Now.Mask(textRect))
             {
+                // Indent guides: one hairline per indent level above the first,
+                // with blank lines carrying the depth of the previous code line.
+                {
+                    float spaceWidth = Advance(" ", font, fontSize, fontStyle);
+
+                    if (spaceWidth > 0f)
+                    {
+                        Color guideColor = themeAsset.GetColor(NowColorToken.Border, Color.gray);
+                        guideColor.a *= 0.5f;
+
+                        int carryIndent = 0;
+
+                        for (int i = firstVisible - 1; i >= 0 && firstVisible - i < 400; --i)
+                        {
+                            var seed = cache.lines[i];
+                            int seedEnd = seed.start + seed.length;
+                            int seedContent = seed.start;
+
+                            while (seedContent < seedEnd && text[seedContent] == ' ')
+                                ++seedContent;
+
+                            if (seedContent < seedEnd)
+                            {
+                                carryIndent = seedContent - seed.start;
+                                break;
+                            }
+                        }
+
+                        for (int i = firstVisible; i <= lastVisible; ++i)
+                        {
+                            var guideLine = cache.lines[i];
+                            int guideEnd = guideLine.start + guideLine.length;
+                            int content = guideLine.start;
+
+                            while (content < guideEnd && text[content] == ' ')
+                                ++content;
+
+                            int indentChars = content < guideEnd ? content - guideLine.start : carryIndent;
+
+                            if (content < guideEnd)
+                                carryIndent = indentChars;
+
+                            int levels = indentChars / IndentUnit.Length;
+                            float guideY = textRect.y + i * lineHeight - editor.scrollY;
+
+                            for (int level = 1; level < levels; ++level)
+                            {
+                                float guideX = textRect.x + level * IndentUnit.Length * spaceWidth - editor.scrollX;
+                                Now.Rectangle(new NowRect(guideX, guideY, 1f, lineHeight)).SetColor(guideColor).Draw();
+                            }
+                        }
+                    }
+                }
+
                 if (focused && caretLine >= firstVisible && caretLine <= lastVisible)
                 {
                     Color lineTint = themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
@@ -822,6 +1173,9 @@ namespace NowUI.CodeEditor
 
                 if (focused && composition == null)
                     DrawOccurrenceHighlights(themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, in state, ref editor, firstVisible, lastVisible);
+
+                if (cache.renameActive)
+                    DrawRenameHighlights(themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, firstVisible, lastVisible);
 
                 if (focused && state.hasSelection && composition == null)
                     DrawSelection(themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, in state, ref editor, firstVisible, lastVisible);
@@ -893,7 +1247,10 @@ namespace NowUI.CodeEditor
 
                 DrawSquiggles(text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, firstVisible, lastVisible);
 
-                if (focused && NowControlState.Blink(1f, editor.blinkAnchor))
+                // While the inline rename field is open it owns the caret;
+                // focus-within keeps the editor visuals alive, but two blinking
+                // carets read as a glitch.
+                if (focused && !cache.renameActive && NowControlState.Blink(1f, editor.blinkAnchor))
                 {
                     Now.Rectangle(new NowRect(
                             originX + caretX,
@@ -922,8 +1279,7 @@ namespace NowUI.CodeEditor
                 : themeAsset.GetColor(NowColorToken.Border, Color.gray);
             border.Draw();
 
-            if (hovered)
-                DrawDiagnosticTooltip(id, themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, pointer);
+            DrawDiagnosticTooltip(id, text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, pointer);
         }
 
         static void Scrollbars(EditorCache cache, NowRect rect, NowRect textRect, float statusHeight, float lineHeight,
@@ -1032,6 +1388,14 @@ namespace NowUI.CodeEditor
                 case NowCodeTokenKind.Quote:
                 case NowCodeTokenKind.Fence:
                     return themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+                case NowCodeTokenKind.DocComment:
+                    return dark
+                        ? new Vector4(0.44f, 0.63f, 0.37f, 1f)
+                        : new Vector4(0.22f, 0.46f, 0.18f, 1f);
+                case NowCodeTokenKind.DocTag:
+                    return dark
+                        ? new Vector4(0.36f, 0.50f, 0.32f, 1f)
+                        : new Vector4(0.34f, 0.50f, 0.30f, 1f);
                 case NowCodeTokenKind.Punctuation:
                     // Rider renders operators and delimiters in the plain text
                     // color on dark schemes; light schemes keep them muted.
@@ -1055,76 +1419,96 @@ namespace NowUI.CodeEditor
             float fontSize, NowFontStyle fontStyle, NowRect textRect, float lineHeight, in NowTextEditState state,
             ref EditorState editor, int firstVisible, int lastVisible)
         {
-            const int MaxWordLength = 64;
+            const int MaxWordLength = 128;
             int wordStart;
             int wordEnd;
+            bool requireBoundary;
 
             if (state.hasSelection)
             {
+                // Any single-line selection highlights its literal matches; a
+                // pure-identifier selection additionally requires word
+                // boundaries so "test" does not light up inside "TESTfes".
                 wordStart = state.selectionMin;
                 wordEnd = state.selectionMax;
 
                 if (wordEnd - wordStart > MaxWordLength)
                     return;
 
+                bool identifierOnly = true;
+                bool contentSeen = false;
+
                 for (int i = wordStart; i < wordEnd; ++i)
                 {
-                    if (!IsIdentifierChar(text[i]))
+                    if (text[i] == '\n')
                         return;
+
+                    if (!IsIdentifierChar(text[i]))
+                        identifierOnly = false;
+
+                    if (!char.IsWhiteSpace(text[i]))
+                        contentSeen = true;
                 }
 
-                bool wholeWord = (wordStart == 0 || !IsIdentifierChar(text[wordStart - 1])) &&
-                    (wordEnd >= text.Length || !IsIdentifierChar(text[wordEnd]));
-
-                if (!wholeWord)
+                if (!contentSeen)
                     return;
+
+                requireBoundary = identifierOnly;
             }
             else
             {
                 wordStart = state.caret;
                 wordEnd = state.caret;
+                requireBoundary = true;
 
                 while (wordStart > 0 && IsIdentifierChar(text[wordStart - 1]))
                     --wordStart;
 
                 while (wordEnd < text.Length && IsIdentifierChar(text[wordEnd]))
                     ++wordEnd;
+
+                if (wordEnd <= wordStart)
+                    return;
+
+                // Only identifiers get caret-based highlights: retokenize the
+                // word's line and bail when it is a keyword, literal or comment.
+                // Explicit selections skip this — selecting "int" should light
+                // up every "int".
+                int wordLine = LineOf(cache, wordStart);
+                var wordLineSpan = cache.lines[wordLine];
+                _tokenScratch.Clear();
+                _language.TokenizeLine(text, wordLineSpan.start, wordLineSpan.length, cache.lineStates[wordLine], _tokenScratch);
+
+                for (int t = 0; t < _tokenScratch.Count; ++t)
+                {
+                    var token = _tokenScratch[t];
+
+                    if (token.start > wordStart)
+                        break;
+
+                    if (token.start + token.length <= wordStart)
+                        continue;
+
+                    switch (token.kind)
+                    {
+                        case NowCodeTokenKind.Keyword:
+                        case NowCodeTokenKind.String:
+                        case NowCodeTokenKind.Number:
+                        case NowCodeTokenKind.Comment:
+                        case NowCodeTokenKind.DocComment:
+                        case NowCodeTokenKind.DocTag:
+                        case NowCodeTokenKind.Punctuation:
+                            return;
+                    }
+
+                    break;
+                }
             }
 
             int wordLength = wordEnd - wordStart;
 
             if (wordLength <= 0 || wordLength > MaxWordLength)
                 return;
-
-            // Only identifiers get occurrence highlights: retokenize the word's
-            // line and bail when the word is a keyword, literal or comment.
-            int wordLine = LineOf(cache, wordStart);
-            var wordLineSpan = cache.lines[wordLine];
-            _tokenScratch.Clear();
-            _language.TokenizeLine(text, wordLineSpan.start, wordLineSpan.length, cache.lineStates[wordLine], _tokenScratch);
-
-            for (int t = 0; t < _tokenScratch.Count; ++t)
-            {
-                var token = _tokenScratch[t];
-
-                if (token.start > wordStart)
-                    break;
-
-                if (token.start + token.length <= wordStart)
-                    continue;
-
-                switch (token.kind)
-                {
-                    case NowCodeTokenKind.Keyword:
-                    case NowCodeTokenKind.String:
-                    case NowCodeTokenKind.Number:
-                    case NowCodeTokenKind.Comment:
-                    case NowCodeTokenKind.Punctuation:
-                        return;
-                }
-
-                break;
-            }
 
             string word = text.Substring(wordStart, wordLength);
             Color highlight = themeAsset.GetColor(NowColorToken.AccentMuted, new Color(0.4f, 0.5f, 0.7f, 1f));
@@ -1143,8 +1527,9 @@ namespace NowUI.CodeEditor
                     if (found < 0)
                         break;
 
-                    bool boundary = (found == 0 || !IsIdentifierChar(text[found - 1])) &&
-                        (found + wordLength >= text.Length || !IsIdentifierChar(text[found + wordLength]));
+                    bool boundary = !requireBoundary ||
+                        ((found == 0 || !IsIdentifierChar(text[found - 1])) &&
+                        (found + wordLength >= text.Length || !IsIdentifierChar(text[found + wordLength])));
 
                     if (boundary)
                     {
@@ -1385,12 +1770,16 @@ namespace NowUI.CodeEditor
 
             var line = cache.lines[caretLine];
             int column = state.caret - line.start;
+            int selectionLength = state.hasSelection ? state.selectionMax - state.selectionMin : 0;
 
-            if (cache.positionLine != caretLine || cache.positionColumn != column)
+            if (cache.positionLine != caretLine || cache.positionColumn != column || cache.positionSelection != selectionLength)
             {
                 cache.positionLine = caretLine;
                 cache.positionColumn = column;
-                cache.positionText = $"Ln {caretLine + 1}, Col {column + 1}";
+                cache.positionSelection = selectionLength;
+                cache.positionText = selectionLength > 0
+                    ? $"Ln {caretLine + 1}, Col {column + 1}  ({selectionLength} selected)"
+                    : $"Ln {caretLine + 1}, Col {column + 1}";
             }
 
             var positionStyle = themeAsset.Text(
@@ -1410,44 +1799,195 @@ namespace NowUI.CodeEditor
             messageStyle.SetFontSize(11f).Draw(message);
         }
 
-        void DrawDiagnosticTooltip(int id, NowThemeAsset themeAsset, string text, EditorCache cache, NowFontAsset font,
+        const float TooltipFontSize = 12f;
+
+        const float HoverInfoDelay = 0.4f;
+
+        /// <summary>
+        /// Anchored editor tooltip: diagnostics open immediately, symbol
+        /// quick-info opens after a short dwell (when the language provides
+        /// it), and both pin under their text span instead of chasing the
+        /// pointer. The tooltip stays while the pointer is over the span or
+        /// the tooltip itself, so its text can be read, selected and copied.
+        /// </summary>
+        void DrawDiagnosticTooltip(int id, string text, EditorCache cache, NowFontAsset font,
             float fontSize, NowFontStyle fontStyle, NowRect textRect, float lineHeight, ref EditorState editor, Vector2 pointer)
         {
-            if (cache.diagnostics.Count == 0 || !textRect.Contains(pointer))
-                return;
+            int hoverIndex = -1;
+            int diagnosticStart = -1;
+            int diagnosticLength = 0;
+            string diagnosticMessage = null;
 
-            int hoverLine = Mathf.FloorToInt((pointer.y - textRect.y + editor.scrollY) / lineHeight);
+            // A pointer captured by an overlay (an open context menu above the
+            // editor) is not hovering the text, even though it is inside
+            // textRect — probing there would pop tooltips under the menu.
+            bool pointerBlocked = NowOverlay.IsPointerBlocked(NowInput.current.pointerPosition);
 
-            if (hoverLine < 0 || hoverLine >= cache.lines.Count)
-                return;
-
-            var line = cache.lines[hoverLine];
-            int hoverIndex = HitIndex(text, line, font, fontSize, fontStyle, pointer.x - textRect.x + editor.scrollX);
-
-            for (int d = 0; d < cache.diagnostics.Count; ++d)
+            if (!pointerBlocked && textRect.Contains(pointer))
             {
-                var diagnostic = cache.diagnostics[d];
+                int hoverLine = Mathf.FloorToInt((pointer.y - textRect.y + editor.scrollY) / lineHeight);
 
-                if (hoverIndex < diagnostic.start || hoverIndex > diagnostic.start + diagnostic.length)
-                    continue;
+                if (hoverLine >= 0 && hoverLine < cache.lines.Count)
+                {
+                    var line = cache.lines[hoverLine];
+                    hoverIndex = HitIndex(text, line, font, fontSize, fontStyle, pointer.x - textRect.x + editor.scrollX);
 
-                string message = diagnostic.message ?? string.Empty;
-                float width = Advance(message, font, 12f, fontStyle) + 16f;
-                cache.tooltipMessage = message;
-                cache.tooltipRect = new NowRect(pointer.x + 12f, pointer.y + 18f, width, 24f);
+                    for (int d = 0; d < cache.diagnostics.Count; ++d)
+                    {
+                        var diagnostic = cache.diagnostics[d];
 
-                // Passive: a capturing overlay would open a focus layer, making the
-                // editor read as unfocused while the tooltip shows — on dismissal it
-                // "regains" focus and jumps the caret to the end of the text.
-                NowOverlay.DeferPassive(id, DrawDiagnosticTooltipOverlay);
-                return;
+                        if (hoverIndex >= diagnostic.start && hoverIndex <= diagnostic.start + diagnostic.length)
+                        {
+                            diagnosticStart = diagnostic.start;
+                            diagnosticLength = diagnostic.length;
+                            diagnosticMessage = diagnostic.message ?? string.Empty;
+                            break;
+                        }
+                    }
+                }
             }
+
+            if (cache.tooltipAnchorStart >= 0)
+            {
+                bool overTooltip = cache.tooltipRect.Outset(6f, 6f).Contains(pointer) || cache.tooltipDragging;
+                bool overAnchor = hoverIndex >= cache.tooltipAnchorStart &&
+                    hoverIndex <= cache.tooltipAnchorStart + cache.tooltipAnchorLength;
+
+                if (!overTooltip && !overAnchor)
+                    CloseTooltip(cache);
+            }
+
+            if (cache.tooltipAnchorStart < 0)
+            {
+                if (diagnosticStart >= 0)
+                {
+                    OpenTooltip(cache, text, font, fontSize, fontStyle, textRect, lineHeight, ref editor,
+                        diagnosticStart, diagnosticLength, diagnosticMessage);
+                }
+                else if (hoverIndex >= 0)
+                {
+                    // Identifier under the pointer: quick-info after a dwell.
+                    int wordStart = hoverIndex;
+                    int wordEnd = hoverIndex;
+
+                    while (wordStart > 0 && IsIdentifierChar(text[wordStart - 1]))
+                        --wordStart;
+
+                    while (wordEnd < text.Length && IsIdentifierChar(text[wordEnd]))
+                        ++wordEnd;
+
+                    if (wordEnd > wordStart)
+                    {
+                        if (cache.hoverProbeStart != wordStart || cache.hoverProbeLength != wordEnd - wordStart)
+                        {
+                            cache.hoverProbeStart = wordStart;
+                            cache.hoverProbeLength = wordEnd - wordStart;
+                            cache.hoverProbeTime = Time.realtimeSinceStartup;
+                            cache.hoverProbeFailed = false;
+                        }
+
+                        if (!cache.hoverProbeFailed && !NowInput.isPassive)
+                        {
+                            if (Time.realtimeSinceStartup - cache.hoverProbeTime >= HoverInfoDelay)
+                            {
+                                if (_language.TryGetHoverInfo(text, wordStart, out string info) && !string.IsNullOrEmpty(info))
+                                    OpenTooltip(cache, text, font, fontSize, fontStyle, textRect, lineHeight, ref editor,
+                                        wordStart, wordEnd - wordStart, info);
+                                else
+                                    cache.hoverProbeFailed = true;
+                            }
+                            else
+                            {
+                                NowControlState.RequestRepaint();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        cache.hoverProbeStart = -1;
+                    }
+                }
+                else
+                {
+                    cache.hoverProbeStart = -1;
+                }
+            }
+
+            // Passive: a capturing overlay would open a focus layer, making the
+            // editor read as unfocused while the tooltip shows — on dismissal it
+            // would "regain" focus and jump the caret to the end of the text.
+            if (cache.tooltipAnchorStart >= 0 && !string.IsNullOrEmpty(cache.tooltipMessage))
+                NowOverlay.DeferPassive(id, DrawDiagnosticTooltipOverlay);
+        }
+
+        void OpenTooltip(EditorCache cache, string text, NowFontAsset font, float fontSize, NowFontStyle fontStyle,
+            NowRect textRect, float lineHeight, ref EditorState editor, int anchorStart, int anchorLength, string message)
+        {
+            float width = Advance(message, font, TooltipFontSize, fontStyle) + 16f;
+            const float Height = 24f;
+
+            int anchorLine = LineOf(cache, Mathf.Clamp(anchorStart, 0, Mathf.Max(text.Length - 1, 0)));
+            var anchorSpan = cache.lines[anchorLine];
+            float x = textRect.x + Advance(text, font, fontSize, fontStyle, anchorSpan.start,
+                Mathf.Max(anchorStart - anchorSpan.start, 0)) - editor.scrollX;
+            float y = textRect.y + (anchorLine + 1) * lineHeight - editor.scrollY + 2f;
+
+            if (y + Height > textRect.yMax)
+                y = textRect.y + anchorLine * lineHeight - editor.scrollY - Height - 2f;
+
+            cache.tooltipAnchorStart = anchorStart;
+            cache.tooltipAnchorLength = anchorLength;
+            cache.tooltipMessage = message;
+            cache.tooltipRect = new NowRect(
+                Mathf.Clamp(x, textRect.x, Mathf.Max(textRect.x, textRect.xMax - width)), y, width, Height);
+            cache.tooltipSelectionAnchor = 0;
+            cache.tooltipSelectionCaret = 0;
+        }
+
+        static void CloseTooltip(EditorCache cache)
+        {
+            cache.tooltipAnchorStart = -1;
+            cache.tooltipAnchorLength = 0;
+            cache.tooltipMessage = null;
+            cache.tooltipSelectionAnchor = 0;
+            cache.tooltipSelectionCaret = 0;
+            cache.tooltipDragging = false;
+            cache.hoverProbeStart = -1;
+            cache.hoverProbeFailed = false;
+        }
+
+        static int TooltipHitIndex(EditorCache cache, float pointerX)
+        {
+            string message = cache.tooltipMessage;
+            var font = cache.measureFont;
+
+            if (font == null || string.IsNullOrEmpty(message))
+                return 0;
+
+            float local = pointerX - (cache.tooltipRect.x + 8f);
+            float x = 0f;
+
+            for (int i = 0; i < message.Length; ++i)
+            {
+                float width = Advance(message, font, TooltipFontSize, cache.measureFontStyle, i, 1);
+
+                if (local < x + width * 0.5f)
+                    return i;
+
+                x += width;
+            }
+
+            return message.Length;
         }
 
         static void DrawDiagnosticTooltipOverlay(int id)
         {
-            if (!_caches.TryGetValue(id, out var cache) || string.IsNullOrEmpty(cache.tooltipMessage))
+            if (!_caches.TryGetValue(id, out var cache) ||
+                cache.tooltipAnchorStart < 0 ||
+                string.IsNullOrEmpty(cache.tooltipMessage))
+            {
                 return;
+            }
 
             var tooltipRect = cache.tooltipRect;
             var theme = NowTheme.themeAsset;
@@ -1456,16 +1996,277 @@ namespace NowUI.CodeEditor
             background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
             background.SetRadius(4f).Draw();
 
+            var font = cache.measureFont;
+            int selectionMin = Mathf.Min(cache.tooltipSelectionAnchor, cache.tooltipSelectionCaret);
+            int selectionMax = Mathf.Max(cache.tooltipSelectionAnchor, cache.tooltipSelectionCaret);
+
+            if (font != null && selectionMax > selectionMin)
+            {
+                float x0 = Advance(cache.tooltipMessage, font, TooltipFontSize, cache.measureFontStyle, 0, selectionMin);
+                float width = Advance(cache.tooltipMessage, font, TooltipFontSize, cache.measureFontStyle, selectionMin, selectionMax - selectionMin);
+                Color highlight = theme.GetColor(NowColorToken.Accent, Color.blue);
+                highlight.a = 0.3f;
+
+                Now.Rectangle(new NowRect(tooltipRect.x + 8f + x0, tooltipRect.y + 3f, width, tooltipRect.height - 6f))
+                    .SetColor(highlight)
+                    .SetRadius(2f)
+                    .Draw();
+            }
+
             var tooltipStyle = theme.Text(
                 new NowRect(tooltipRect.x + 8f, tooltipRect.y, tooltipRect.width, tooltipRect.height),
                 NowTextStyle.Body);
-            tooltipStyle.SetFontSize(12f).Draw(cache.tooltipMessage);
-            cache.tooltipMessage = null;
+
+            if (font != null)
+                tooltipStyle = tooltipStyle.SetFont(font);
+
+            tooltipStyle.SetFontSize(TooltipFontSize).Draw(cache.tooltipMessage);
+        }
+
+        /// <summary>Platform-appropriate shortcut label for menu hints.</summary>
+        static string Chord(string key)
+        {
+            return NowTextInput.isMacPlatform ? "Cmd+" + key : "Ctrl+" + key;
         }
 
         static bool CompletionsOpen(EditorCache cache)
         {
             return cache.completionReplaceStart >= 0 && cache.completionVisible.Count > 0;
+        }
+
+        /// <summary>
+        /// Begins a rename of the symbol at the caret: the language reports
+        /// every span referring to it, the prompt prefills with the current
+        /// name, and Enter applies the edit to all spans at once.
+        /// </summary>
+        void StartRename(int editorId, EditorCache cache, string text, in NowTextEditState state)
+        {
+            cache.renameSpans.Clear();
+            cache.renameActive = false;
+
+            int position = state.caret;
+
+            if (position > 0 &&
+                (position >= text.Length || !IsIdentifierChar(text[position])) &&
+                IsIdentifierChar(text[position - 1]))
+            {
+                --position;
+            }
+
+            if (!_language.TryGetRenameSpans(text, position, cache.renameSpans) || cache.renameSpans.Count == 0)
+            {
+                cache.renameSpans.Clear();
+                return;
+            }
+
+            cache.renamePrimary = 0;
+
+            for (int i = 0; i < cache.renameSpans.Count; ++i)
+            {
+                var span = cache.renameSpans[i];
+
+                if (position >= span.start && position <= span.start + span.length)
+                {
+                    cache.renamePrimary = i;
+                    break;
+                }
+            }
+
+            var primary = cache.renameSpans[cache.renamePrimary];
+            cache.renameBuffer = text.Substring(primary.start, primary.length);
+            cache.renameText = text;
+            cache.renameActive = true;
+            cache.goToLineActive = false;
+            CloseCompletions(cache);
+            CloseTooltip(cache);
+
+            // Focusing the field is the whole handoff: its first focused draw
+            // captures text input and preselects the name. The field keeps no
+            // frames of state between sessions — it stops drawing when rename
+            // closes, so its recorded focus byte can be stale from last time.
+            int fieldControlId = RenameFieldControlId(editorId);
+            ref byte fieldHadFocus = ref NowControlState.Get<byte>(fieldControlId, "hadfocus");
+            fieldHadFocus = 0;
+            NowFocus.DeclareOwner(fieldControlId, editorId);
+            NowFocus.Focus(fieldControlId);
+        }
+
+        /// <summary>
+        /// The inline rename field's control id, minted from the editor's
+        /// resolved id: every reference — the press pre-claim, StartRename's
+        /// focus and the field itself — agrees on one identity, in any pass
+        /// and under any id scope.
+        /// </summary>
+        static int RenameFieldControlId(int editorId)
+        {
+            return NowInput.GetId(editorId, "rename-field");
+        }
+
+        bool TryGetRenameFieldRect(EditorCache cache, string text, NowFontAsset font, NowFontStyle fontStyle,
+            NowRect textRect, float lineHeight, in EditorState editor, out NowRect fieldRect)
+        {
+            fieldRect = default;
+
+            if (!cache.renameActive || !ReferenceEquals(cache.renameText, text) || cache.renameSpans.Count == 0)
+                return false;
+
+            var primary = cache.renameSpans[Mathf.Clamp(cache.renamePrimary, 0, cache.renameSpans.Count - 1)];
+            int primaryLine = LineOf(cache, Mathf.Min(primary.start, Mathf.Max(text.Length - 1, 0)));
+            var primaryLineSpan = cache.lines[primaryLine];
+            float fieldX = textRect.x + Advance(text, font, _fontSize, fontStyle,
+                primaryLineSpan.start, Mathf.Max(primary.start - primaryLineSpan.start, 0)) - editor.scrollX;
+            float fieldWidth = Mathf.Max(
+                Advance(cache.renameBuffer ?? string.Empty, font, _fontSize, fontStyle) + 44f, 120f);
+            fieldX = Mathf.Clamp(fieldX - 6f, textRect.x, Mathf.Max(textRect.x, textRect.xMax - fieldWidth));
+            float fieldHeight = lineHeight + 10f;
+            // Clamp vertically too: the field draws outside the editor's text
+            // mask, so with the renamed span scrolled off-screen it would float
+            // over the status bar or whatever sits above/below the editor.
+            float fieldY = Mathf.Clamp(
+                textRect.y + primaryLine * lineHeight - editor.scrollY - 5f,
+                textRect.y,
+                Mathf.Max(textRect.y, textRect.yMax - fieldHeight));
+            fieldRect = new NowRect(fieldX, fieldY, fieldWidth, fieldHeight);
+            return true;
+        }
+
+        static void ApplyRename(EditorCache cache, ref string text, ref NowTextEditState state)
+        {
+            cache.renameActive = false;
+            string newName = cache.renameBuffer;
+
+            if (cache.renameSpans.Count == 0 ||
+                !ReferenceEquals(cache.renameText, text) ||
+                !IsValidIdentifier(newName))
+            {
+                return;
+            }
+
+            var first = cache.renameSpans[0];
+            string oldName = text.Substring(first.start, first.length);
+
+            if (newName == oldName)
+                return;
+
+            cache.undo.Push(text, in state, typing: false);
+
+            var builder = _blockEditScratch;
+            builder.Clear();
+            int cursor = 0;
+            int newCaret = state.caret;
+
+            for (int i = 0; i < cache.renameSpans.Count; ++i)
+            {
+                var span = cache.renameSpans[i];
+                builder.Append(text, cursor, span.start - cursor).Append(newName);
+                cursor = span.start + span.length;
+
+                if (state.caret >= span.start + span.length)
+                    newCaret += newName.Length - span.length;
+                else if (state.caret > span.start)
+                    newCaret = builder.Length;
+            }
+
+            builder.Append(text, cursor, text.Length - cursor);
+            text = builder.ToString();
+            state.caret = Mathf.Clamp(newCaret, 0, text.Length);
+            state.anchor = state.caret;
+        }
+
+        static void DrawRenameHighlights(NowThemeAsset themeAsset, string text, EditorCache cache, NowFontAsset font,
+            float fontSize, NowFontStyle fontStyle, NowRect textRect, float lineHeight, ref EditorState editor,
+            int firstVisible, int lastVisible)
+        {
+            Color highlight = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            highlight.a = 0.28f;
+
+            for (int i = 0; i < cache.renameSpans.Count; ++i)
+            {
+                var span = cache.renameSpans[i];
+
+                if (span.start >= text.Length)
+                    continue;
+
+                int line = LineOf(cache, span.start);
+
+                if (line < firstVisible || line > lastVisible)
+                    continue;
+
+                var lineSpan = cache.lines[line];
+                float x = textRect.x + Advance(text, font, fontSize, fontStyle, lineSpan.start, span.start - lineSpan.start) - editor.scrollX;
+                float width = Advance(text, font, fontSize, fontStyle, span.start, span.length);
+
+                Now.Rectangle(new NowRect(x - 1f, textRect.y + line * lineHeight - editor.scrollY, width + 2f, lineHeight))
+                    .SetColor(highlight)
+                    .SetRadius(3f)
+                    .Draw();
+            }
+        }
+
+        static bool IsValidIdentifier(string name)
+        {
+            if (string.IsNullOrEmpty(name) || char.IsDigit(name[0]))
+                return false;
+
+            for (int i = 0; i < name.Length; ++i)
+            {
+                if (!IsIdentifierChar(name[i]))
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// True when the position sits inside a string, comment or code-span
+        /// token — or on a line that begins inside a multi-line construct. The
+        /// caret line is retokenized against the fresh text; its entry state
+        /// comes from the cache, which is valid because typed characters never
+        /// move the line's start.
+        /// </summary>
+        static bool IsInsideLiteralOrComment(EditorCache cache, NowCodeLanguage language, string text, int position)
+        {
+            if (position < 0 || position >= text.Length)
+                return false;
+
+            NowTextMetrics.LineBounds(text, position, out int lineStart, out int lineEnd);
+
+            int entryState = 0;
+
+            if (cache.text != null && cache.lineStates.Count > 0)
+            {
+                int lineIndex = LineOf(cache, Mathf.Min(lineStart, cache.text.Length));
+
+                if (lineIndex >= 0 && lineIndex < cache.lineStates.Count)
+                    entryState = cache.lineStates[lineIndex];
+            }
+
+            // A non-zero entry state means the line starts inside a multi-line
+            // construct (block comment, verbatim string, fence...).
+            if (entryState != 0)
+                return true;
+
+            _tokenScratch.Clear();
+            language.TokenizeLine(text, lineStart, lineEnd - lineStart, entryState, _tokenScratch);
+
+            for (int i = 0; i < _tokenScratch.Count; ++i)
+            {
+                var token = _tokenScratch[i];
+
+                if (token.start > position)
+                    break;
+
+                if (position >= token.start + token.length)
+                    continue;
+
+                return token.kind == NowCodeTokenKind.String ||
+                    token.kind == NowCodeTokenKind.Comment ||
+                    token.kind == NowCodeTokenKind.DocComment ||
+                    token.kind == NowCodeTokenKind.DocTag ||
+                    token.kind == NowCodeTokenKind.CodeSpan;
+            }
+
+            return false;
         }
 
         static bool IsIdentifierChar(char c)
@@ -1823,6 +2624,7 @@ namespace NowUI.CodeEditor
             cache.validatedVersion = cache.language.validationVersion;
             cache.diagnostics.Clear();
             cache.language.Validate(text, cache.diagnostics);
+            CloseTooltip(cache);
 
             if (cache.diagnostics.Count == 0)
             {
@@ -1896,6 +2698,176 @@ namespace NowUI.CodeEditor
 
             if (!select)
                 state.anchor = state.caret;
+        }
+
+        /// <summary>
+        /// Paste with line-copy semantics shared by the keyboard chord and the
+        /// context menu: a whole-line payload inserts above the caret's line.
+        /// </summary>
+        static void PasteFromClipboard(EditorCache cache, ref string text, ref NowTextEditState state)
+        {
+            string buffer = NowClipboard.Paste();
+
+            if (string.IsNullOrEmpty(buffer))
+                return;
+
+            cache.undo.Push(text, in state, typing: false);
+            buffer = buffer.Replace("\r\n", "\n").Replace('\r', '\n');
+
+            if (!state.hasSelection && buffer == s_lineClipboard && buffer.EndsWith("\n"))
+            {
+                NowTextMetrics.LineBounds(text, state.caret, out int lineStart, out _);
+                text = text.Insert(lineStart, buffer);
+                state.caret += buffer.Length;
+                state.anchor = state.caret;
+            }
+            else
+            {
+                NowTextEdit.Insert(ref text, ref state, buffer);
+            }
+        }
+
+        /// <summary>
+        /// Comments or uncomments every line the selection touches with the
+        /// language's line comment prefix — uncomment only when every non-blank
+        /// line already carries it, IDE style. Blank lines stay untouched.
+        /// </summary>
+        static void ToggleLineComment(ref string text, ref NowTextEditState state, NowCodeLanguage language)
+        {
+            string prefix = language.lineCommentPrefix;
+
+            if (string.IsNullOrEmpty(prefix) || text.Length == 0)
+                return;
+
+            NowTextMetrics.LineBounds(text, state.selectionMin, out int blockStart, out _);
+            NowTextMetrics.LineBounds(text, state.selectionMax, out int lastLineStart, out _);
+
+            bool allCommented = true;
+
+            for (int pos = blockStart; pos <= lastLineStart && pos <= text.Length;)
+            {
+                int end = pos;
+
+                while (end < text.Length && text[end] != '\n')
+                    ++end;
+
+                int content = pos;
+
+                while (content < end && (text[content] == ' ' || text[content] == '\t'))
+                    ++content;
+
+                if (content < end &&
+                    (content + prefix.Length > end || string.CompareOrdinal(text, content, prefix, 0, prefix.Length) != 0))
+                {
+                    allCommented = false;
+                    break;
+                }
+
+                pos = end + 1;
+            }
+
+            var builder = _blockEditScratch;
+            builder.Clear();
+            builder.Append(text, 0, blockStart);
+
+            int caretDelta = 0;
+            int anchorDelta = 0;
+            int cursor = blockStart;
+
+            for (int pos = blockStart; pos <= lastLineStart && pos <= text.Length;)
+            {
+                int end = pos;
+
+                while (end < text.Length && text[end] != '\n')
+                    ++end;
+
+                int content = pos;
+
+                while (content < end && (text[content] == ' ' || text[content] == '\t'))
+                    ++content;
+
+                int delta = 0;
+
+                if (content >= end)
+                {
+                    builder.Append(text, pos, end - pos);
+                }
+                else if (allCommented)
+                {
+                    int remove = prefix.Length;
+
+                    if (content + remove < end && text[content + remove] == ' ')
+                        ++remove;
+
+                    builder.Append(text, pos, content - pos);
+                    builder.Append(text, content + remove, end - content - remove);
+                    delta = -remove;
+                }
+                else
+                {
+                    builder.Append(text, pos, content - pos);
+                    builder.Append(prefix).Append(' ');
+                    builder.Append(text, content, end - content);
+                    delta = prefix.Length + 1;
+                }
+
+                if (state.caret >= content)
+                    caretDelta += delta;
+
+                if (state.anchor >= content)
+                    anchorDelta += delta;
+
+                cursor = end;
+
+                if (end < text.Length)
+                {
+                    builder.Append('\n');
+                    cursor = end + 1;
+                }
+
+                pos = end + 1;
+            }
+
+            builder.Append(text, cursor, text.Length - cursor);
+            text = builder.ToString();
+            state.caret = Mathf.Clamp(state.caret + caretDelta, 0, text.Length);
+            state.anchor = Mathf.Clamp(state.anchor + anchorDelta, 0, text.Length);
+        }
+
+        /// <summary>Moves the lines the selection touches one line up or down, caret riding along.</summary>
+        static void MoveLines(ref string text, ref NowTextEditState state, int direction)
+        {
+            NowTextMetrics.LineBounds(text, state.selectionMin, out int blockStart, out _);
+            NowTextMetrics.LineBounds(text, state.selectionMax, out _, out int blockEnd);
+
+            if (direction < 0)
+            {
+                if (blockStart == 0)
+                    return;
+
+                NowTextMetrics.LineBounds(text, blockStart - 1, out int aboveStart, out int aboveEnd);
+                string block = text.Substring(blockStart, blockEnd - blockStart);
+                string above = text.Substring(aboveStart, aboveEnd - aboveStart);
+
+                text = text.Substring(0, aboveStart) + block + "\n" + above + text.Substring(blockEnd);
+                int delta = -(above.Length + 1);
+                state.caret += delta;
+                state.anchor += delta;
+            }
+            else
+            {
+                if (blockEnd >= text.Length)
+                    return;
+
+                NowTextMetrics.LineBounds(text, blockEnd + 1, out int belowStart, out int belowEnd);
+                string block = text.Substring(blockStart, blockEnd - blockStart);
+                string below = text.Substring(belowStart, belowEnd - belowStart);
+
+                text = text.Substring(0, blockStart) + below + "\n" + block + text.Substring(belowEnd);
+                int delta = below.Length + 1;
+                state.caret += delta;
+                state.anchor += delta;
+            }
         }
 
         static string CurrentLine(string text, int caret)
@@ -2308,6 +3280,63 @@ namespace NowUI.CodeEditor
                 ++indentEnd;
 
             string indent = text.Substring(lineStart, indentEnd - lineStart);
+
+            // An empty line has no indentation to copy; inherit from the nearest
+            // non-blank line above (plus one level after an opener) so pressing
+            // Enter on a blank line keeps the current nesting instead of
+            // resetting to column one. Only a genuinely blank line qualifies —
+            // at column 0 of a line WITH content the inherited indent would be
+            // injected in front of that content.
+            bool restOfLineBlank = true;
+
+            for (int probe = state.caret; probe < text.Length && text[probe] != '\n'; ++probe)
+            {
+                if (text[probe] != ' ' && text[probe] != '\t')
+                {
+                    restOfLineBlank = false;
+                    break;
+                }
+            }
+
+            if (lineStart == state.caret && lineStart > 0 && restOfLineBlank)
+            {
+                int scan = lineStart - 1;
+
+                while (scan >= 0)
+                {
+                    int previousEnd = scan;
+                    int previousStart = previousEnd;
+
+                    while (previousStart > 0 && text[previousStart - 1] != '\n')
+                        --previousStart;
+
+                    int lastContent = previousEnd - 1;
+
+                    while (lastContent >= previousStart && (text[lastContent] == ' ' || text[lastContent] == '\t'))
+                        --lastContent;
+
+                    if (lastContent >= previousStart)
+                    {
+                        int previousIndentEnd = previousStart;
+
+                        while (previousIndentEnd < previousEnd && text[previousIndentEnd] == ' ')
+                            ++previousIndentEnd;
+
+                        indent = text.Substring(previousStart, previousIndentEnd - previousStart);
+
+                        if (language.IsIndentOpener(text[lastContent]))
+                            indent += IndentUnit;
+
+                        break;
+                    }
+
+                    if (previousStart == 0)
+                        break;
+
+                    scan = previousStart - 1;
+                }
+            }
+
             char previous = state.caret > 0 ? text[state.caret - 1] : '\0';
             char next = state.caret < text.Length ? text[state.caret] : '\0';
 

@@ -157,17 +157,12 @@ namespace NowUI
             if (focused && area.hadFocus == 0)
             {
                 NowTextInput.DiscardPending();
-                NowTextInput.setImeEnabled?.Invoke(true);
 
                 if (!interaction.pressed)
                 {
                     NowTextEdit.MoveEnd(ref state, text, false);
                     revealCaret = true;
                 }
-            }
-            else if (!focused && area.hadFocus == 1)
-            {
-                NowTextInput.setImeEnabled?.Invoke(false);
             }
 
             area.hadFocus = focused ? (byte)1 : (byte)0;
@@ -221,6 +216,7 @@ namespace NowUI
             if (focused && !NowInput.isPassive)
             {
                 NowFocus.LockNavigation();
+                NowTextInput.RequestTextCapture();
                 var frame = NowTextInput.current;
                 var undo = NowTextUndoRegistry.Get(id);
                 composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
@@ -499,7 +495,7 @@ namespace NowUI
                 {
                     var placeholder = NowControls.Text(theme, NowTextStyle.Muted);
                     placeholder.rect = new NowRect(inner.x, inner.y, inner.width, lineHeight);
-                    placeholder.SetFontSize(fontSize).Draw(_placeholder);
+                    placeholder.SetFontSize(fontSize).SetItalic().Draw(_placeholder);
                 }
 
                 for (int i = firstVisible; i <= lastVisible && i < lines.Count; ++i)

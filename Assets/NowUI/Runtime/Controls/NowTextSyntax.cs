@@ -22,7 +22,9 @@ namespace NowUI
         Fence,
         Tag,
         Attribute,
-        Constant
+        Constant,
+        DocComment,
+        DocTag
     }
 
     public struct NowTextToken

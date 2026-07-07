@@ -54,6 +54,15 @@ namespace NowUI
         public bool undoPressed;
         public bool redoPressed;
         public bool duplicatePressed;
+
+        /// <summary>Ctrl+/ (Cmd+/ on macOS): toggle line comment in code editors.</summary>
+        public bool commentPressed;
+
+        /// <summary>Ctrl+G (Cmd+G on macOS): go to line in code editors.</summary>
+        public bool goToLinePressed;
+
+        /// <summary>F2: rename the symbol at the caret in code editors.</summary>
+        public bool renamePressed;
     }
 
     public interface INowTextInputSource
@@ -106,12 +115,104 @@ namespace NowUI
                 if (_frameStamp != Time.frameCount)
                 {
                     _frameStamp = Time.frameCount;
+                    MaintainCapture();
 
                     if (!source.TryGetFrame(out _frame))
                         _frame = default;
+
+                    if (_enterConsumed)
+                    {
+                        if (Time.realtimeSinceStartup - _enterConsumedTime > EnterConsumedTimeout)
+                        {
+                            _enterConsumed = false;
+                        }
+                        else if (_frame.enterPressed || _frame.enterHeld)
+                        {
+                            _frame.enterPressed = false;
+                            _frame.enterHeld = false;
+                        }
+                        else
+                        {
+                            _enterConsumed = false;
+                        }
+                    }
                 }
 
                 return _frame;
+            }
+        }
+
+        static int _captureRequestFrame = -1;
+
+        static bool _captureActive;
+
+        static bool _enterConsumed;
+
+        static float _enterConsumedTime;
+
+        /// <summary>
+        /// Release detection samples only when some control reads
+        /// <see cref="current"/>; if focus leaves every text control while
+        /// Enter is still down, the release goes unobserved and the flag would
+        /// stay armed to eat a future, unrelated keystroke. No deliberate
+        /// commit-Enter is held this long, so expire the consumption instead.
+        /// </summary>
+        const float EnterConsumedTimeout = 2f;
+
+        /// <summary>
+        /// Swallows the current Enter keystroke until the key is released: the
+        /// frame's enter flags read false for every later consumer, including
+        /// held-key repeat. A control that commits on Enter and hands focus
+        /// away — an inline rename field, a dialog — calls this so the same
+        /// keystroke doesn't leak into whatever gains focus next (a code
+        /// editor would insert a newline from the still-held key).
+        /// </summary>
+        public static void ConsumeEnterUntilReleased()
+        {
+            _enterConsumed = true;
+            _enterConsumedTime = Time.realtimeSinceStartup;
+
+            if (_frameStamp == Time.frameCount)
+            {
+                _frame.enterPressed = false;
+                _frame.enterHeld = false;
+            }
+        }
+
+        /// <summary>
+        /// Declares that the calling control consumes text input this frame.
+        /// Focused text editors call this every interactive frame; the platform
+        /// IME turns on with the first request and off once a full frame passes
+        /// with none. Centralizing the transitions here means focus handoffs
+        /// between text controls can never race an enable against a disable,
+        /// and a control that stops being drawn mid-focus cannot leave text
+        /// input dead — the old per-control on/off calls did both.
+        /// </summary>
+        public static void RequestTextCapture()
+        {
+            if (NowInput.isPassive)
+                return;
+
+            _captureRequestFrame = Time.frameCount;
+
+            if (!_captureActive)
+            {
+                _captureActive = true;
+                setImeEnabled?.Invoke(true);
+            }
+        }
+
+        /// <summary>
+        /// Releases the IME when no control has requested capture for a full
+        /// frame. Runs from the interaction plumbing so release doesn't depend
+        /// on any text control still drawing.
+        /// </summary>
+        internal static void MaintainCapture()
+        {
+            if (_captureActive && _captureRequestFrame < Time.frameCount - 1)
+            {
+                _captureActive = false;
+                setImeEnabled?.Invoke(false);
             }
         }
 
@@ -199,6 +300,9 @@ namespace NowUI
             _source = null;
             _frame = default;
             _frameStamp = -1;
+            _captureRequestFrame = -1;
+            _captureActive = false;
+            _enterConsumed = false;
             isMacPlatform = DetectMacPlatform();
             setImeEnabled = DefaultSetImeEnabled;
             setCompositionCursor = DefaultSetCompositionCursor;
@@ -294,6 +398,7 @@ namespace NowUI
                 frame.escapePressed = keyboard.escapeKey.wasPressedThisFrame;
                 frame.tabPressed = keyboard.tabKey.wasPressedThisFrame;
                 frame.tabHeld = keyboard.tabKey.isPressed;
+                frame.renamePressed = keyboard.f2Key.wasPressedThisFrame;
                 frame.shift = keyboard.shiftKey.isPressed;
                 frame.composition = _composition;
 
@@ -314,6 +419,8 @@ namespace NowUI
                     frame.redoPressed = keyboard.yKey.wasPressedThisFrame ||
                         (keyboard.zKey.wasPressedThisFrame && frame.shift);
                     frame.duplicatePressed = keyboard.dKey.wasPressedThisFrame;
+                    frame.commentPressed = keyboard.slashKey.wasPressedThisFrame;
+                    frame.goToLinePressed = keyboard.gKey.wasPressedThisFrame;
 
                     frame.characters = null;
                 }
@@ -358,6 +465,7 @@ namespace NowUI
                 frame.tabPressed = Input.GetKeyDown(KeyCode.Tab);
                 frame.tabHeld = Input.GetKey(KeyCode.Tab);
                 frame.shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+                frame.renamePressed = Input.GetKeyDown(KeyCode.F2);
 
                 string composing = Input.compositionString;
                 frame.composition = string.IsNullOrEmpty(composing) ? null : composing;
@@ -376,6 +484,8 @@ namespace NowUI
                     frame.undoPressed = Input.GetKeyDown(KeyCode.Z) && !frame.shift;
                     frame.redoPressed = Input.GetKeyDown(KeyCode.Y) || (Input.GetKeyDown(KeyCode.Z) && frame.shift);
                     frame.duplicatePressed = Input.GetKeyDown(KeyCode.D);
+                    frame.commentPressed = Input.GetKeyDown(KeyCode.Slash);
+                    frame.goToLinePressed = Input.GetKeyDown(KeyCode.G);
                     frame.characters = null;
                 }
 
