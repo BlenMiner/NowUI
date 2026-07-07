@@ -78,14 +78,58 @@ namespace NowUI.Docking
         static readonly int FloatingSeed = NowInput.GetId("dock-floating");
         static readonly int DragContentSeed = NowInput.GetId("dock-drag-content");
 
-        static readonly Color DockBackground = new Color(0.075f, 0.085f, 0.105f, 1f);
-        static readonly Color DockPanel = new Color(0.105f, 0.12f, 0.155f, 1f);
-        static readonly Color DockPanelRaised = new Color(0.135f, 0.155f, 0.205f, 1f);
-        static readonly Color DockTabBar = new Color(0.075f, 0.085f, 0.11f, 1f);
-        static readonly Color DockTabInactive = new Color(0.105f, 0.12f, 0.155f, 1f);
-        static readonly Color DockBorder = new Color(0.28f, 0.32f, 0.40f, 1f);
-        static readonly Color DockText = new Color(0.90f, 0.925f, 0.975f, 1f);
-        static readonly Color DockTextMuted = new Color(0.66f, 0.705f, 0.79f, 1f);
+        /// <summary>Dock colors resolved from the active theme each draw, with
+        /// the legacy hardcoded scheme as the theme-less fallback.</summary>
+        struct Skin
+        {
+            public Color background;
+            public Color panel;
+            public Color panelRaised;
+            public Color tabBar;
+            public Color hover;
+            public Color border;
+            public Color text;
+            public Color textMuted;
+            public Color accent;
+            public Color shadow;
+        }
+
+        static readonly Skin FallbackSkin = new Skin
+        {
+            background = new Color(0.075f, 0.085f, 0.105f, 1f),
+            panel = new Color(0.105f, 0.12f, 0.155f, 1f),
+            panelRaised = new Color(0.135f, 0.155f, 0.205f, 1f),
+            tabBar = new Color(0.075f, 0.085f, 0.11f, 1f),
+            hover = new Color(0.135f, 0.155f, 0.205f, 1f),
+            border = new Color(0.28f, 0.32f, 0.40f, 1f),
+            text = new Color(0.90f, 0.925f, 0.975f, 1f),
+            textMuted = new Color(0.66f, 0.705f, 0.79f, 1f),
+            accent = new Color(1f, 0.48f, 0.25f, 1f),
+            shadow = new Color(0f, 0f, 0f, 0.45f),
+        };
+
+        Skin _skin = FallbackSkin;
+
+        static Skin ResolveSkin(NowThemeAsset theme)
+        {
+            if (theme == null)
+                return FallbackSkin;
+
+            var palette = theme.palette;
+            return new Skin
+            {
+                background = palette.background,
+                panel = palette.surface,
+                panelRaised = palette.surfaceElevated,
+                tabBar = palette.surfaceMuted,
+                hover = palette.surfaceHover,
+                border = palette.border,
+                text = palette.text,
+                textMuted = palette.textMuted,
+                accent = palette.accent,
+                shadow = palette.shadow,
+            };
+        }
 
         readonly Dictionary<string, WindowState> _windows = new Dictionary<string, WindowState>(8);
         readonly List<string> _windowOrder = new List<string>(8);
@@ -161,6 +205,29 @@ namespace NowUI.Docking
             RemoveWindowFromTree(idOrTitle);
         }
 
+        /// <summary>Select a docked window's tab (or raise it when floating)
+        /// without moving it, unlike a Center dock which reorders tabs.</summary>
+        public void FocusWindow(string idOrTitle)
+        {
+            if (string.IsNullOrEmpty(idOrTitle))
+                return;
+
+            if (_windows.TryGetValue(idOrTitle, out var window) && window.floating)
+            {
+                BringWindowToFront(idOrTitle);
+                NowControlState.RequestRepaint();
+                return;
+            }
+
+            var leaf = FindLeafContaining(_root, idOrTitle);
+
+            if (leaf == null || leaf.selected == idOrTitle)
+                return;
+
+            leaf.selected = idOrTitle;
+            NowControlState.RequestRepaint();
+        }
+
         public void ClearLayout()
         {
             _root = null;
@@ -186,7 +253,12 @@ namespace NowUI.Docking
             _leaves.Clear();
         }
 
-        public bool Dock(string windowId, string targetWindowId, NowDockSide side)
+        /// <summary>
+        /// Programmatically dock a window relative to another. For side docks,
+        /// <paramref name="ratio"/> is the docked window's share of the split
+        /// (0.5 = even); it is ignored for <see cref="NowDockSide.Center"/>.
+        /// </summary>
+        public bool Dock(string windowId, string targetWindowId, NowDockSide side, float ratio = 0.5f)
         {
             if (string.IsNullOrEmpty(windowId) || string.IsNullOrEmpty(targetWindowId) ||
                 !_windows.ContainsKey(windowId) || !_windows.ContainsKey(targetWindowId))
@@ -207,7 +279,7 @@ namespace NowUI.Docking
             if (target == null)
                 return false;
 
-            DockWindowToLeaf(windowId, target, side);
+            DockWindowToLeaf(windowId, target, side, ratio);
             return true;
         }
 
@@ -217,13 +289,14 @@ namespace NowUI.Docking
             {
                 _dockRect = rect;
                 var theme = NowTheme.themeAsset;
+                _skin = ResolveSkin(theme);
 
                 EnsureLayout(GetCurrentlySubmittedWindows(includeFloating: false));
 
                 if (style.drawBackground)
                 {
                     Now.Rectangle(rect)
-                        .SetColor(DockBackground)
+                        .SetColor(_skin.background)
                         .SetRadius(6f)
                         .Draw();
                 }
@@ -471,7 +544,7 @@ namespace NowUI.Docking
                 _root.parent = null;
         }
 
-        void DockWindowToLeaf(string windowId, Node target, NowDockSide side)
+        void DockWindowToLeaf(string windowId, Node target, NowDockSide side, float ratio = 0.5f)
         {
             if (target == null || !_windows.TryGetValue(windowId, out var window))
                 return;
@@ -508,7 +581,9 @@ namespace NowUI.Docking
             Node first = dockBefore ? docked : target;
             Node second = dockBefore ? target : docked;
             Node targetParent = target.parent;
-            var split = NewSplit(first, second, horizontal, 0.5f);
+            // The split ratio sizes the FIRST pane; ratio names the docked
+            // window's share regardless of which side it lands on.
+            var split = NewSplit(first, second, horizontal, dockBefore ? ratio : 1f - ratio);
 
             if (targetParent == null)
             {
@@ -661,21 +736,20 @@ namespace NowUI.Docking
 
         void DrawSplitter(Node node, int controlId, Style style, NowThemeAsset theme)
         {
+            // The standard splitter control (grip pill, hover/drag feedback)
+            // owns the divider; the node ratio is exactly its 0..1 split.
             int splitterId = NowInput.CombineId(NowInput.CombineId(controlId, SplitterSeed), node.id);
-            var hitRect = node.horizontal
-                ? node.splitterRect.Outset(3f, 0f)
-                : node.splitterRect.Outset(0f, 3f);
-            var interaction = NowInput.Interact(splitterId, hitRect);
+            float usable = node.horizontal
+                ? Mathf.Max(1f, node.rect.width - style.splitterSize)
+                : Mathf.Max(1f, node.rect.height - style.splitterSize);
 
-            if (interaction.dragging)
-            {
-                float usable = node.horizontal
-                    ? Mathf.Max(1f, node.rect.width - style.splitterSize)
-                    : Mathf.Max(1f, node.rect.height - style.splitterSize);
-                float delta = node.horizontal ? interaction.dragDelta.x : interaction.dragDelta.y;
-                node.ratio = ClampRatio(node.ratio + delta / usable, usable, style.minPaneSize);
-                NowControlState.RequestRepaint();
-            }
+            float ratio = node.ratio;
+
+            Now.Splitter(node.splitterRect, new NowId(splitterId))
+                .SetColumn(node.horizontal)
+                .Draw(ref ratio, usable, style.minPaneSize);
+
+            node.ratio = ClampRatio(ratio, usable, style.minPaneSize);
         }
 
         void DrawLeaf(Node leaf, int controlId, Style style, NowThemeAsset theme)
@@ -683,19 +757,19 @@ namespace NowUI.Docking
             ValidateSelections(leaf);
 
             Now.Rectangle(leaf.rect)
-                .SetColor(DockPanel)
+                .SetColor(_skin.panel)
                 .SetRadius(5f)
                 .Draw();
 
             var tabBar = new NowRect(leaf.rect.x, leaf.rect.y, leaf.rect.width, Mathf.Min(style.tabHeight, leaf.rect.height));
 
             Now.Rectangle(tabBar)
-                .SetColor(DockTabBar)
+                .SetColor(_skin.tabBar)
                 .SetRadius(TopTabRadius(5f))
                 .Draw();
 
             Now.Rectangle(new NowRect(tabBar.x, tabBar.yMax - 1f, tabBar.width, 1f))
-                .SetColor(DockBorder)
+                .SetColor(WithAlpha(_skin.border, 0.7f))
                 .Draw();
 
             DrawTabs(leaf, tabBar, controlId, style, theme);
@@ -798,35 +872,46 @@ namespace NowUI.Docking
             }
 
             float hover = NowControlState.Transition(tabId, interaction.hovered || interaction.held || selected);
-            var accent = theme.GetColor(NowColorToken.Accent, new Color(1f, 0.48f, 0.25f, 1f));
+            var accent = _skin.accent;
 
             if (selected)
             {
-                Now.Rectangle(new NowRect(tabVisualRect.x + 12f, tabVisualRect.yMax - 1f, Mathf.Max(0f, tabVisualRect.width - 24f), 1f))
-                    .SetColor(WithAlpha(accent, 0.86f))
+                // The selected tab fills with the panel color, covering the tab
+                // bar's bottom border so tab and content read as one surface.
+                var fillRect = new NowRect(tabVisualRect.x, tabVisualRect.y, tabVisualRect.width, tabRect.yMax - tabVisualRect.y);
+
+                Now.Rectangle(fillRect)
+                    .SetColor(_skin.panel)
+                    .SetRadius(TopTabRadius(5f))
+                    .Draw();
+
+                Now.Rectangle(new NowRect(tabVisualRect.x + 1f, tabVisualRect.y, Mathf.Max(0f, tabVisualRect.width - 2f), 2f))
+                    .SetColor(WithAlpha(accent, 0.9f))
+                    .SetRadius(1f)
                     .Draw();
             }
             else if (hover > 0.01f)
             {
-                Now.Rectangle(new NowRect(tabVisualRect.x + 12f, tabVisualRect.yMax - 1f, Mathf.Max(0f, tabVisualRect.width - 24f), 1f))
-                    .SetColor(WithAlpha(accent, hover * 0.32f))
+                Now.Rectangle(tabVisualRect)
+                    .SetColor(WithAlpha(_skin.hover, hover * 0.7f))
+                    .SetRadius(TopTabRadius(4f))
                     .Draw();
             }
 
             var textRect = tabVisualRect.Inset(9f, 0f, window.canClose ? 20f : 9f, 0f);
-            DrawCenteredText(theme, textRect, window.title, NowTextStyle.Button, 12f, selected ? DockText : Color.Lerp(DockTextMuted, DockText, hover * 0.35f));
+            DrawCenteredText(theme, textRect, window.title, NowTextStyle.Button, 12f, selected ? _skin.text : Color.Lerp(_skin.textMuted, _skin.text, hover * 0.35f));
 
             if (window.canClose)
             {
                 if (closeHovered || closeHeld)
                 {
                     Now.Rectangle(closeRect.Outset(1f, 0f))
-                        .SetColor(Color.Lerp(DockTabInactive, DockPanelRaised, closeHeld ? 0.9f : 0.55f))
+                        .SetColor(WithAlpha(_skin.hover, closeHeld ? 1f : 0.75f))
                         .SetRadius(3f)
                         .Draw();
                 }
 
-                DrawText(theme, closeRect, "x", NowTextStyle.Button, 12f, closeHovered ? DockText : DockTextMuted);
+                DrawCenteredText(theme, closeRect, "×", NowTextStyle.Button, 12f, closeHovered ? _skin.text : WithAlpha(_skin.textMuted, 0.5f + hover * 0.5f));
             }
         }
 
@@ -1326,7 +1411,7 @@ namespace NowUI.Docking
             if (target.leaf == null)
                 return;
 
-            var accent = theme.GetColor(NowColorToken.Accent, new Color(1f, 0.48f, 0.25f, 1f));
+            var accent = _skin.accent;
 
             if (target.side == NowDockSide.Center)
             {
@@ -1370,19 +1455,19 @@ namespace NowUI.Docking
 
         void DrawDraggedTabPill(NowRect rect, string title, NowThemeAsset theme)
         {
-            var accent = theme.GetColor(NowColorToken.Accent, new Color(1f, 0.48f, 0.25f, 1f));
+            DrawWindowShadow(rect, 0.55f);
 
             Now.Rectangle(rect)
-                .SetColor(WithAlpha(DockPanelRaised, 0.72f))
+                .SetColor(WithAlpha(_skin.panelRaised, 0.9f))
                 .SetRadius(TopTabRadius(4f))
                 .Draw();
 
             Now.Rectangle(new NowRect(rect.x + 8f, rect.yMax - 2f, Mathf.Max(0f, rect.width - 16f), 2f))
-                .SetColor(accent)
+                .SetColor(_skin.accent)
                 .SetRadius(1f)
                 .Draw();
 
-            DrawCenteredText(theme, rect.Inset(10f, 0f), title, NowTextStyle.Button, 12f, DockText);
+            DrawCenteredText(theme, rect.Inset(10f, 0f), title, NowTextStyle.Button, 12f, _skin.text);
         }
 
         void DrawDragGhostWindow(
@@ -1393,16 +1478,18 @@ namespace NowUI.Docking
             Style style,
             NowThemeAsset theme)
         {
+            DrawWindowShadow(rect, 0.7f);
+
             Now.Rectangle(rect)
-                .SetColor(WithAlpha(DockPanel, 0.94f))
+                .SetColor(WithAlpha(_skin.panel, 0.94f))
                 .SetRadius(6f)
                 .Draw();
 
             var titleRect = new NowRect(rect.x, rect.y, rect.width, Mathf.Min(style.tabHeight, rect.height));
-            var accent = theme.GetColor(NowColorToken.Accent, new Color(1f, 0.48f, 0.25f, 1f));
+            var accent = _skin.accent;
 
             Now.Rectangle(titleRect)
-                .SetColor(WithAlpha(DockTabBar, 0.98f))
+                .SetColor(WithAlpha(_skin.tabBar, 0.98f))
                 .SetRadius(TopTabRadius(6f))
                 .Draw();
 
@@ -1411,7 +1498,7 @@ namespace NowUI.Docking
             var tabVisualRect = CompactTabVisualRect(tabRect);
 
             Now.Rectangle(tabVisualRect)
-                .SetColor(WithAlpha(DockPanelRaised, 0.68f))
+                .SetColor(WithAlpha(_skin.panelRaised, 0.68f))
                 .SetRadius(TopTabRadius(4f))
                 .Draw();
 
@@ -1420,7 +1507,7 @@ namespace NowUI.Docking
                 .SetRadius(1f)
                 .Draw();
 
-            DrawCenteredText(theme, tabVisualRect.Inset(9f, 0f), title, NowTextStyle.Button, 12f, DockText);
+            DrawCenteredText(theme, tabVisualRect.Inset(9f, 0f), title, NowTextStyle.Button, 12f, _skin.text);
 
             var contentRect = new NowRect(
                 rect.x,
@@ -1562,23 +1649,25 @@ namespace NowUI.Docking
                     _pendingCloseId = window.id;
             }
 
+            DrawWindowShadow(rect);
+
             Now.Rectangle(rect)
-                .SetColor(DockPanel)
+                .SetColor(_skin.panel)
                 .SetRadius(6f)
                 .Draw();
 
-            var titleColor = Color.Lerp(DockTabBar, DockPanelRaised, titleInteraction.hovered ? 0.35f : 0f);
+            var titleColor = Color.Lerp(_skin.tabBar, _skin.panelRaised, titleInteraction.hovered ? 0.35f : 0f);
             Now.Rectangle(titleRect)
                 .SetColor(titleColor)
                 .SetRadius(TopTabRadius(6f))
                 .Draw();
 
-            var accent = theme.GetColor(NowColorToken.Accent, new Color(1f, 0.48f, 0.25f, 1f));
+            var accent = _skin.accent;
             float tabHover = NowControlState.Transition(DockTabId(dockControlId, window), tabInteraction.hovered || tabInteraction.held || _draggingWindowId == window.id);
             var tabVisualRect = CompactTabVisualRect(tabRect);
 
             Now.Rectangle(tabVisualRect)
-                .SetColor(WithAlpha(DockPanelRaised, Mathf.Lerp(0.52f, 0.68f, tabHover)))
+                .SetColor(WithAlpha(_skin.panelRaised, Mathf.Lerp(0.52f, 0.68f, tabHover)))
                 .SetRadius(TopTabRadius(4f))
                 .Draw();
 
@@ -1587,19 +1676,19 @@ namespace NowUI.Docking
                 .SetRadius(1f)
                 .Draw();
 
-            DrawCenteredText(theme, tabVisualRect.Inset(9f, 0f), title, NowTextStyle.Button, 12f, DockText);
+            DrawCenteredText(theme, tabVisualRect.Inset(9f, 0f), title, NowTextStyle.Button, 12f, _skin.text);
 
             if (canClose)
             {
                 if (closeHovered || closeHeld)
                 {
                     Now.Rectangle(closeRect.Outset(1f, 0f))
-                        .SetColor(Color.Lerp(DockTabInactive, DockPanelRaised, closeHeld ? 0.9f : 0.55f))
+                        .SetColor(WithAlpha(_skin.hover, closeHeld ? 1f : 0.75f))
                         .SetRadius(3f)
                         .Draw();
                 }
 
-                DrawText(theme, closeRect, "x", NowTextStyle.Button, 12f, closeHovered ? DockText : DockTextMuted);
+                DrawCenteredText(theme, closeRect, "×", NowTextStyle.Button, 12f, closeHovered ? _skin.text : _skin.textMuted);
             }
 
             if (resize.hovered || resize.held)
@@ -1677,13 +1766,24 @@ namespace NowUI.Docking
             return new NowRect(x, y, width, height);
         }
 
-        static void DrawPanelOutline(NowRect rect, float radius)
+        void DrawPanelOutline(NowRect rect, float radius)
         {
             Now.Rectangle(rect)
-                .SetColor(WithAlpha(DockPanel, 0f))
+                .SetColor(WithAlpha(_skin.panel, 0f))
                 .SetRadius(radius)
                 .SetOutline(1f)
-                .SetOutlineColor(DockBorder)
+                .SetOutlineColor(WithAlpha(_skin.border, 0.85f))
+                .Draw();
+        }
+
+        /// <summary>Soft drop shadow behind floating surfaces so they read as a
+        /// layer above the dock instead of a flat overlap.</summary>
+        void DrawWindowShadow(NowRect rect, float strength = 1f)
+        {
+            Now.Rectangle(rect.Outset(10f, 8f).Offset(new Vector2(0f, 4f)))
+                .SetColor(_skin.shadow, _skin.shadow.a * strength)
+                .SetRadius(14f)
+                .SetBlur(14f)
                 .Draw();
         }
 
