@@ -550,7 +550,7 @@ public class NowTextAreaTests
     }
 
     [Test]
-    public void ImeEnablesOnFocusGainAndDisablesOnLoss()
+    public void ImeEnablesOnFocusGainAndDisablesAfterAnIdleFrame()
     {
         var calls = new List<bool>();
         NowTextInput.setImeEnabled = enabled => calls.Add(enabled);
@@ -559,11 +559,15 @@ public class NowTextAreaTests
         Focus();
         Frame(ref text);
 
+        Assert.AreEqual(1, calls.Count);
+        Assert.IsTrue(calls[0]);
+
         NowFocus.Clear();
-        Frame(ref text);
+        NowTextInput.MaintainCapture(Time.frameCount + 1);
+        Assert.AreEqual(1, calls.Count, "Capture stays active through the first idle frame.");
+        NowTextInput.MaintainCapture(Time.frameCount + 2);
 
         Assert.AreEqual(2, calls.Count);
-        Assert.IsTrue(calls[0]);
         Assert.IsFalse(calls[1]);
     }
 

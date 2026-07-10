@@ -10,7 +10,9 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Package dependencies on Burst, Collections, and Mathematics are now declared
   explicitly in `package.json`, so a Git/UPM install resolves the managed font
   fallback and supporting collections APIs without relying on packages that
-  happen to be present in the host project.
+  happen to be present in the host project. Versions align with Unity 6000.4's
+  supported packages, and the UnityWebRequest texture module used by Markdown
+  image loading is now declared as well.
 
 - **Date and time picker navigation.** The calendar header label is now
   clickable and zooms out to a month grid and then a 12-year grid (arrows step

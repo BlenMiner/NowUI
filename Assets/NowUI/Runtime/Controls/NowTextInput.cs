@@ -227,7 +227,12 @@ namespace NowUI
         /// </summary>
         internal static void MaintainCapture()
         {
-            if (_captureActive && _captureRequestFrame < Time.frameCount - 1)
+            MaintainCapture(Time.frameCount);
+        }
+
+        internal static void MaintainCapture(int frame)
+        {
+            if (_captureActive && _captureRequestFrame < frame - 1)
             {
                 _captureActive = false;
                 setImeEnabled?.Invoke(false);

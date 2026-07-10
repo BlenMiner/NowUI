@@ -117,6 +117,9 @@ public class NowTextEditTests
         Assert.AreEqual(3, state.caret);
 
         NowTextEdit.MoveCaret(ref state, Text, 1, select: false, word: true);
+        Assert.AreEqual(4, state.caret);
+
+        NowTextEdit.MoveCaret(ref state, Text, 1, select: false, word: true);
         Assert.AreEqual(7, state.caret);
 
         state.caret = Text.Length;
