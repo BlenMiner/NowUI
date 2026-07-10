@@ -62,15 +62,84 @@ The recommended API is schema-first:
 - Port ids are user-defined integers passed to `Input`, `Output`, and link APIs.
 - `typeId` is your integer value type, such as `Float`, `Float4`, or `Texture`.
 - `userId` is an optional integer handle back to your own data model.
+- For small serialized node metadata, use `node.SetData(key, value)`,
+  `node.GetData(key)`, `node.TryGetData(key, out value)`, and
+  `node.RemoveData(key)`. Keyed data is copied, pasted, and restored through
+  graph history with the node.
 - `Render` draws custom node bodies for value setters, previews, swatches, and
   other domain UI. The `ctx.bodyRect` passed to custom content is already
   inset away from the port label lanes.
-- `ctx.Row(...)` and `ctx.Scale(...)` scale custom content dimensions with the
-  canvas zoom. Use them for controls inside nodes instead of fixed screen-pixel
-  heights.
-- Built-in controls drawn inside `Render` also receive a scoped
-  `NowControls.controlScale` equal to the canvas zoom, so their text, padding,
-  outlines, handles, and deferred popups stay proportional to the node.
+- `ctx.bodyRect`, `ctx.Row(...)`, and `ctx.Scale(...)` are graph-space. Draw
+  normal node-local controls with those rects; the canvas transform scales them
+  with zoom automatically. Use `ctx.GraphToScreen(...)`,
+  `ctx.ScreenToGraph(...)`, `ctx.GraphVectorToScreen(...)`, and
+  `ctx.ScreenVectorToGraph(...)` when a node body needs to anchor an overlay,
+  tooltip, popup, or other screen-space behavior. These conversions include
+  both graph zoom/pan and any transform applied by a parent view.
+- `ctx.Row(index, height, gap)` is for uniform-height rows. For mixed-height
+  controls, use `ctx.RowAfter(previousRect, height, gap)` or
+  `ctx.RowAt(yOffset, height)` so shorter status rows do not overlap taller
+  fields.
+- `ctx.bodyRect` and the regular row helpers reserve lanes for port labels.
+  For a picker, text field, or other control placed above the ports, use
+  `ctx.FullWidthRow(...)`, `ctx.FullWidthRowAfter(...)`, or
+  `ctx.FullWidthRowAt(...)`. These span the node's padded width, and the canvas
+  keeps the matching `SetContentHeight(...)` area out of node dragging so the
+  control receives pointer input across its full width.
+- When a control inside `Render` mutates `ctx.node` or graph data, call
+  `ctx.RecordChange()` before the mutation. It records the current graph in
+  the canvas history when one is provided and marks the canvas result as
+  changed. Use `ctx.MarkChanged()` only for changes that are tracked elsewhere
+  or do not need undo.
+- Use `SetSearchKeywords(...)` on node definitions for aliases, symbols, and
+  domain terms that users may type in the Space search palette, such as
+  `if`, `print`, `+=`, or `local`.
+- Use `SetCategory(...)` on node definitions when a schema grows beyond a few
+  nodes. The Space search palette shows the category as muted secondary text
+  and matches it in search queries, so users can type broad groups such as
+  `Flow`, `Math`, or `Variables`.
+- Use `SetSearchDetail(...)` for concise secondary text in the Space search
+  palette, such as a method signature or short node description. Details are
+  searchable and render on a second line only for rows that need them.
+- If a custom node body puts controls above its ports, call
+  `SetContentHeight(height)` on the node definition with the same graph-space
+  height. The canvas gives render callbacks a `bodyRect` clamped to that
+  height, moves port hit/draw rows below it, expands the node's minimum height,
+  and keeps that top control area out of node dragging. Pair it with
+  `SetWidth(width)` when you want the graph to compute the node's height from
+  its title, content, and ports instead of guessing a total
+  `SetSize(width, height)` by hand. `SetPortTopOffset(height)` remains available
+  for lower-level port-row offset behavior when you do not want the callback
+  `bodyRect` clamped.
+- Use `Initialize(node => ...)` on a node definition when a created node needs
+  per-definition metadata after its size, color, ports, renderer, and preview
+  have been applied. This is useful for schema search entries that create a
+  preconfigured node rather than a blank generic kind.
+- Build schemas once, or call `schema.Clear()` before rebuilding an existing
+  schema instance. `Input` and `Output` update an existing port when the same
+  port id is reused, and append when the id is new. Use `RemoveInput(id)` and
+  `RemoveOutput(id)` for conditional schema ports, or `ClearPorts()` before
+  intentionally replacing the full port shape. Use `graph.Clear()` when you want
+  to reset nodes, links, and selection while keeping the graph object alive.
+- Existing serialized nodes keep their stored `node.size`, so changing a node
+  definition later will not silently resize old graphs. If your editor does not
+  expose manual node resizing and you want old nodes to adopt the current
+  schema dimensions again, call `graph.ResetNodeSizesToSchema(schema)`.
+- Treat node port ids as stable keys. `node.AddInput(...)` and
+  `node.AddOutput(...)` return and update the existing port when the id already
+  exists instead of appending a duplicate, which keeps link resolution and hit
+  testing unambiguous. Schema definitions support both integer ids and named
+  string ids through `Input(...)`, `Output(...)`, `RemoveInput(...)`, and
+  `RemoveOutput(...)`.
+- For dynamic node instances whose ports change from node-local state, prefer
+  `graph.UpsertNodeInput(...)`, `graph.UpsertNodeOutput(...)`,
+  `graph.RemoveNodeInput(...)`, and `graph.RemoveNodeOutput(...)`. These mutate
+  the node and immediately clean links that became stale, incompatible,
+  duplicate, or over the current connection limit. Use the lower-level
+  `node.UpsertInput(...)`, `node.UpsertOutput(...)`, `node.RemoveInput(...)`,
+  and `node.RemoveOutput(...)` only while constructing detached nodes or when
+  you intentionally want to defer cleanup until an explicit
+  `graph.PruneInvalidLinks()` call.
 
 The graph still stores node ids as strings so existing links remain stable, but
 the schema and link helpers let you avoid stringly typed ports:
@@ -140,6 +209,11 @@ sealed class ShaderGraphRenderer : NowNodeGraphDefaultRenderer
 }
 ```
 
+For semantic title colors, override
+`ResolveNodeTitleColor(in NowNodeGraphNodeContext context)` on
+`NowNodeGraphDefaultRenderer`. This keeps category coloring in the renderer and
+avoids mutating serialized `node.color` values during drawing.
+
 ## Previews
 
 A node definition can declare a preview: an extra content area at the bottom
@@ -183,12 +257,22 @@ _evaluator.Kind(RerouteKind, ctx => ctx.Input(NowNodeGraphSchema.RerouteInputPor
 
 Pressing Space over a focused canvas (with a schema attached) opens a
 command-palette-style search at the pointer: type to filter node titles,
-Up/Down to highlight, Enter or click to create the node at the position where
-the palette opened, Escape or an outside click to dismiss. The query is a
-standard `NowTextField` (caret, selection, clipboard, and IME behave like any
-other field). Recently created kinds sort first while the query is empty, so
-re-adding the last node is Space+Enter. Opening reports `searchOpened` in the
-canvas result.
+`SetCategory(...)`, and `SetSearchKeywords(...)`, Up/Down to highlight, Enter
+or click to create the node at the position where the palette opened, Escape
+or an outside click to dismiss. The query is a standard `NowTextField` (caret,
+selection, clipboard, and IME behave like any other field). Recently created
+kinds sort first while the query is empty, so re-adding the last node is
+Space+Enter. Opening reports `searchOpened` in the canvas result.
+The palette shows 8 results by default; schemas with large action or method
+catalogs can raise this with `SetSearchResultLimit(maxResults)`.
+When a query is active, results are ranked by relevance: title matches outrank
+keyword matches, keyword matches outrank detail matches, detail matches outrank
+category matches, and schema order is preserved for ties.
+
+The search ignores only the input event that opened it. This avoids Space being
+treated as both "open search" and "submit", while still letting the next Enter
+press create the highlighted node. Passive measurement/layout passes do not
+close or mutate the search state.
 
 **Drag a wire into empty canvas** to open the same palette wired to the port
 you dragged from: the list is filtered to node kinds that expose a compatible
@@ -237,6 +321,12 @@ Input ports default to one connection, so dragging a new compatible link onto
 an occupied input replaces the existing link. Set `maxConnections` to `0` for
 unlimited links.
 
+Use `graph.TryCreateLink(...)` or `graph.CanAddLink(...)` for custom previews
+and drop validation. They check type compatibility and current connection
+limits, matching `TryAddLink(...)`; when replugging an existing connection, pass
+that picked link as the ignored link so the source port's own limit does not
+block the preview.
+
 ## Evaluation
 
 `NowNodeGraphEvaluator<T>` turns a graph into values. Register one handler per
@@ -267,9 +357,11 @@ float result = evaluator.Evaluate(_graph, "sum");
   link-following the evaluator uses when you need to walk dependencies
   yourself.
 
-Store per-node values in `node.userId` (an `int` handle) or in your own
-dictionary keyed by `node.id`. `userId` round-trips through history snapshots,
-so undo/redo restores values edited through node content controls.
+Store compact numeric state in `node.userId`, small serialized strings in
+`node.SetData(key, value)`, or larger domain objects in your own dictionary
+keyed by `node.id`. `userId` and keyed node data both round-trip through
+history snapshots, copy/paste, and duplicate, so undo/redo restores values
+edited through node content controls.
 
 `NowMathGraphExample` (`Assets/Scenes/MathGraph.unity`) is a live math
 playground built on the evaluator: an `X` variable node, constant sliders, and
@@ -361,7 +453,8 @@ Useful controls:
 - Nudge selected nodes with the arrow keys (Shift for the larger step; tune with
   `SetNudge`). A hold-burst is one undo entry.
 - Press Space to open the node search palette at the pointer; type to filter,
-  Enter to add. Recently added kinds are offered first.
+  Enter/Submit to add, or Escape/Cancel to close. Recently added kinds are
+  offered first.
 - Press Ctrl/Cmd+C, X, V, or D while the canvas is focused to copy, cut,
   paste (at the pointer), or duplicate the selected nodes.
 - Right-click a port to remove its connected links.

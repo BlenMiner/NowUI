@@ -7,6 +7,13 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Package dependencies on Burst, Collections, and Mathematics are now declared
+  explicitly in `package.json`, so a Git/UPM install resolves the managed font
+  fallback and supporting collections APIs without relying on packages that
+  happen to be present in the host project. Versions align with Unity 6000.4's
+  supported packages, and the UnityWebRequest texture module used by Markdown
+  image loading is now declared as well.
+
 - **Date and time picker navigation.** The calendar header label is now
   clickable and zooms out to a month grid and then a 12-year grid (arrows step
   month/year/12 years per view, Escape steps one zoom level back, arrow keys
@@ -92,6 +99,12 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in the viewport over ones scrolled out of it.
 
 ### Fixed
+
+- Retained UGUI and world-space hosts now repaint for text editing keys and
+  keyboard shortcuts as well as pointer/navigation changes. Combo-box typing,
+  clipboard commands, undo/redo, and other keyboard-only interactions no
+  longer wait for an unrelated pointer event when continuous rebuilding is
+  disabled.
 
 - Scroll views no longer flash a phantom horizontal scrollbar (with a
   one-frame content rewrap) on the frame content first grows past the
@@ -182,6 +195,23 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   switch to the Input System.
 
 ### Added
+
+- **Node graph authoring and embedded-control APIs.** Node definitions can
+  describe search categories, details, keywords, content geometry, dynamic
+  initialization, and ports that are added, updated, or removed by stable id.
+  Nodes gain keyed string metadata that survives history and clipboard
+  operations; graphs can clear/reset schema-backed state, prune invalid links,
+  and preview link validity without mutating. Custom node bodies gain mixed-
+  height/full-width row helpers, graph/screen coordinate conversion, and an
+  undo-aware `RecordChange()`. Search now ranks metadata matches, supports a
+  configurable result limit, and accepts generic Submit/Cancel input.
+- **Richer combo boxes and selectable rows.** `NowComboBox.Draw(ref string)`
+  stores option text directly and can accept a typed custom value. Popup rows
+  support searchable secondary details and a minimum width independent of the
+  closed field. `Now.SelectableRow` / `NowLayout.SelectableRow` add a focused,
+  theme-aware list row with caller-owned selection.
+- Public active-transform point/vector conversion helpers on `Now`, plus
+  dock-space `SetPaneRadius` and `SetPaneOutline` styling controls.
 
 - **Node graph UX pass.** Six interaction upgrades from a reference-editor
   audit (Blender, Blueprints, Figma, touch): (1) **drag a fresh wire onto

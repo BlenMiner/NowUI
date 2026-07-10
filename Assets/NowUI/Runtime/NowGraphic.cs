@@ -102,7 +102,7 @@ namespace NowUI
         [Header("NowUI")]
         [SerializeField] bool _rebuildEveryFrame;
 
-        [SerializeField, Tooltip("Rebuild automatically when pointer/button/scroll/navigation input changes for this graphic or a control inside it requested a repaint (animations, caret blink). Keeps NowControls live inside retained UGUI without Rebuild Every Frame.")]
+        [SerializeField, Tooltip("Rebuild automatically when pointer, keyboard, scroll, or navigation input changes for this graphic, or a control inside it requests a repaint. Keeps NowControls live inside retained UGUI without Rebuild Every Frame.")]
         bool _autoRebuildOnInteraction = true;
 
         [SerializeField, Tooltip("Withhold pointer input when UGUI elements draw above this graphic, so they occlude NowUI controls the same way this graphic's Raycast Target occludes UGUI beneath it.")]
@@ -549,7 +549,7 @@ namespace NowUI
 
         /// <summary>
         /// Cheap input watcher so hosted controls get a rebuild when pointer,
-        /// button, scroll or navigation input changes, while idle hover stays
+        /// keyboard, scroll or navigation input changes, while idle hover stays
         /// retained.
         /// </summary>
         bool ShouldRepaintForInteraction()
@@ -566,7 +566,7 @@ namespace NowUI
                 return false;
 
             var surface = new NowInputSurface(new Vector2(rect.width, rect.height));
-            return _repaintTracker.HasInputChanged(GetInputProvider(), surface);
+            return _repaintTracker.ShouldRepaint(GetInputProvider(), surface);
         }
 
         protected override void OnEnable()

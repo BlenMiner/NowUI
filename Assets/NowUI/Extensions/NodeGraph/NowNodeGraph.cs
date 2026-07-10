@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text;
 using UnityEngine;
 
 namespace NowUI.NodeGraph
@@ -22,6 +23,8 @@ namespace NowUI.NodeGraph
     public delegate bool NowNodeConnectionRule(NowNodeConnectionContext context);
 
     public delegate void NowNodeContentRenderer(NowNodeContentContext context);
+
+    public delegate void NowNodeInitializer(NowNode node);
 
     public static class NowNodeIds
     {
@@ -58,6 +61,7 @@ namespace NowUI.NodeGraph
     {
         public NowNodeGraph graph;
         public NowNodeGraphSchema schema;
+        public NowNodeGraphHistory history;
         public NowNode node;
         public NowRect nodeRect;
         public NowRect bodyRect;
@@ -66,7 +70,14 @@ namespace NowUI.NodeGraph
         public bool selected;
         public bool isPreview;
         public bool changed;
+        internal NowRect viewportRect;
+        internal Vector2 pan;
+        internal Now.NowTransform screenTransform;
 
+        /// <summary>
+        /// Returns a graph-space value. Node content is drawn inside the graph
+        /// transform, so graph-space dimensions scale with the canvas automatically.
+        /// </summary>
         public float Scale(float value)
         {
             return value;
@@ -77,7 +88,116 @@ namespace NowUI.NodeGraph
             height = Mathf.Max(0f, Scale(height));
             gap = Mathf.Max(0f, Scale(gap));
             float y = bodyRect.y + index * (height + gap);
+            return BodyRowAt(y, height);
+        }
+
+        public NowRect RowAt(float yOffset, float height = 20f)
+        {
+            height = Mathf.Max(0f, Scale(height));
+            return BodyRowAt(bodyRect.y + Scale(yOffset), height);
+        }
+
+        public NowRect RowAfter(NowRect previous, float height = 20f, float gap = 4f)
+        {
+            height = Mathf.Max(0f, Scale(height));
+            gap = Mathf.Max(0f, Scale(gap));
+            float y = previous.isEmpty ? bodyRect.y : previous.yMax + gap;
+            return BodyRowAt(y, height);
+        }
+
+        /// <summary>
+        /// Returns a row spanning the node's padded width instead of the narrower
+        /// lane between port labels. Use this for controls placed above ports.
+        /// </summary>
+        public NowRect FullWidthRow(int index, float height = 20f, float gap = 4f)
+        {
+            height = Mathf.Max(0f, Scale(height));
+            gap = Mathf.Max(0f, Scale(gap));
+            float y = bodyRect.y + index * (height + gap);
+            return FullWidthRowAtY(y, height);
+        }
+
+        public NowRect FullWidthRowAt(float yOffset, float height = 20f)
+        {
+            height = Mathf.Max(0f, Scale(height));
+            return FullWidthRowAtY(bodyRect.y + Scale(yOffset), height);
+        }
+
+        public NowRect FullWidthRowAfter(NowRect previous, float height = 20f, float gap = 4f)
+        {
+            height = Mathf.Max(0f, Scale(height));
+            gap = Mathf.Max(0f, Scale(gap));
+            float y = previous.isEmpty ? bodyRect.y : previous.yMax + gap;
+            return FullWidthRowAtY(y, height);
+        }
+
+        NowRect BodyRowAt(float y, float height)
+        {
             return new NowRect(bodyRect.x, y, bodyRect.width, Mathf.Max(0f, Mathf.Min(height, bodyRect.yMax - y)));
+        }
+
+        NowRect FullWidthRowAtY(float y, float height)
+        {
+            if (isPreview)
+                return BodyRowAt(y, height);
+
+            float padding = Mathf.Max(0f, style.contentPadding);
+            return new NowRect(
+                nodeRect.x + padding,
+                y,
+                Mathf.Max(0f, nodeRect.width - padding * 2f),
+                Mathf.Max(0f, Mathf.Min(height, bodyRect.yMax - y)));
+        }
+
+        public Vector2 GraphToScreen(Vector2 point)
+        {
+            return new Vector2(
+                point.x * screenTransform.scale.x + screenTransform.origin.x,
+                point.y * screenTransform.scale.y + screenTransform.origin.y);
+        }
+
+        public NowRect GraphToScreen(NowRect rect)
+        {
+            if (rect.isEmpty)
+                return default;
+
+            Vector2 a = GraphToScreen(rect.position);
+            Vector2 b = GraphToScreen(new Vector2(rect.xMax, rect.yMax));
+            return new NowRect(
+                Mathf.Min(a.x, b.x),
+                Mathf.Min(a.y, b.y),
+                Mathf.Abs(b.x - a.x),
+                Mathf.Abs(b.y - a.y));
+        }
+
+        public Vector2 GraphVectorToScreen(Vector2 vector)
+        {
+            return new Vector2(vector.x * screenTransform.scale.x, vector.y * screenTransform.scale.y);
+        }
+
+        public float GraphUnitsToScreen(float value)
+        {
+            return value * Mathf.Max(Mathf.Abs(screenTransform.scale.x), Mathf.Abs(screenTransform.scale.y));
+        }
+
+        public Vector2 ScreenToGraph(Vector2 point)
+        {
+            return new Vector2(
+                Mathf.Approximately(screenTransform.scale.x, 0f) ? 0f : (point.x - screenTransform.origin.x) / screenTransform.scale.x,
+                Mathf.Approximately(screenTransform.scale.y, 0f) ? 0f : (point.y - screenTransform.origin.y) / screenTransform.scale.y);
+        }
+
+        public Vector2 ScreenVectorToGraph(Vector2 vector)
+        {
+            return new Vector2(
+                Mathf.Approximately(screenTransform.scale.x, 0f) ? 0f : vector.x / screenTransform.scale.x,
+                Mathf.Approximately(screenTransform.scale.y, 0f) ? 0f : vector.y / screenTransform.scale.y);
+        }
+
+        public float ScreenUnitsToGraph(float value)
+        {
+            float scale = Mathf.Max(Mathf.Abs(screenTransform.scale.x), Mathf.Abs(screenTransform.scale.y));
+            return value / Mathf.Max(scale, 0.001f);
         }
 
         public void Texture(Texture texture, NowRect rect, float radius = 4f)
@@ -87,6 +207,12 @@ namespace NowUI.NodeGraph
 
         public void MarkChanged()
         {
+            changed = true;
+        }
+
+        public void RecordChange()
+        {
+            history?.Record(graph);
             changed = true;
         }
     }
@@ -143,6 +269,16 @@ namespace NowUI.NodeGraph
             this.maxConnections = maxConnections;
         }
 
+        public NowNodePortDefinition(string id, string label, NowNodePortDirection direction, int typeId, int maxConnections)
+        {
+            intId = 0;
+            this.id = string.IsNullOrEmpty(id) ? Guid.NewGuid().ToString("N") : id;
+            this.label = label ?? string.Empty;
+            this.direction = direction;
+            this.typeId = typeId;
+            this.maxConnections = maxConnections;
+        }
+
         public NowNodePortDefinition SetColor(Color color)
         {
             this.color = color;
@@ -163,13 +299,19 @@ namespace NowUI.NodeGraph
     {
         public readonly int kindId;
         public string title;
+        public string category;
+        public string searchDetail;
+        public string searchKeywords;
         public Vector2 size;
         public Color color = Color.clear;
         public readonly List<NowNodePortDefinition> inputs = new List<NowNodePortDefinition>(4);
         public readonly List<NowNodePortDefinition> outputs = new List<NowNodePortDefinition>(4);
         public NowNodeContentRenderer renderer;
         public NowNodeContentRenderer previewRenderer;
+        public NowNodeInitializer initializer;
         public float previewHeight;
+        public float contentHeight = -1f;
+        public float portTopOffset;
         public bool reroute;
 
         public bool hasPreview => previewRenderer != null && previewHeight > 0f;
@@ -186,6 +328,43 @@ namespace NowUI.NodeGraph
             return this;
         }
 
+        public NowNodeDefinition SetCategory(string category)
+        {
+            this.category = string.IsNullOrWhiteSpace(category) ? null : category.Trim();
+            return this;
+        }
+
+        public NowNodeDefinition SetSearchDetail(string detail)
+        {
+            searchDetail = string.IsNullOrWhiteSpace(detail) ? null : detail.Trim();
+            return this;
+        }
+
+        public NowNodeDefinition SetSearchKeywords(params string[] keywords)
+        {
+            if (keywords == null || keywords.Length == 0)
+            {
+                searchKeywords = null;
+                return this;
+            }
+
+            var builder = new StringBuilder();
+
+            for (int i = 0; i < keywords.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(keywords[i]))
+                    continue;
+
+                if (builder.Length > 0)
+                    builder.Append(' ');
+
+                builder.Append(keywords[i].Trim());
+            }
+
+            searchKeywords = builder.Length == 0 ? null : builder.ToString();
+            return this;
+        }
+
         public NowNodeDefinition SetSize(Vector2 size)
         {
             this.size = size;
@@ -198,21 +377,83 @@ namespace NowUI.NodeGraph
             return this;
         }
 
+        public NowNodeDefinition SetWidth(float width)
+        {
+            size = new Vector2(width, -1f);
+            return this;
+        }
+
         public NowNodeDefinition SetColor(Color color)
         {
             this.color = color;
             return this;
         }
 
+        public NowNodeDefinition SetContentHeight(float height)
+        {
+            contentHeight = Mathf.Max(0f, height);
+            portTopOffset = Mathf.Max(portTopOffset, contentHeight);
+            return this;
+        }
+
+        public NowNodeDefinition SetPortTopOffset(float offset)
+        {
+            portTopOffset = Mathf.Max(0f, offset);
+            return this;
+        }
+
+        public NowNodeDefinition ClearPorts()
+        {
+            inputs.Clear();
+            outputs.Clear();
+            return this;
+        }
+
         public NowNodeDefinition Input(int id, string label, int typeId = 0, int maxConnections = 1)
         {
-            inputs.Add(new NowNodePortDefinition(id, label, NowNodePortDirection.Input, typeId, maxConnections));
+            AddOrReplacePort(inputs, new NowNodePortDefinition(id, label, NowNodePortDirection.Input, typeId, maxConnections));
+            return this;
+        }
+
+        public NowNodeDefinition Input(string id, string label, int typeId = 0, int maxConnections = 1)
+        {
+            AddOrReplacePort(inputs, new NowNodePortDefinition(id, label, NowNodePortDirection.Input, typeId, maxConnections));
             return this;
         }
 
         public NowNodeDefinition Output(int id, string label, int typeId = 0, int maxConnections = 0)
         {
-            outputs.Add(new NowNodePortDefinition(id, label, NowNodePortDirection.Output, typeId, maxConnections));
+            AddOrReplacePort(outputs, new NowNodePortDefinition(id, label, NowNodePortDirection.Output, typeId, maxConnections));
+            return this;
+        }
+
+        public NowNodeDefinition Output(string id, string label, int typeId = 0, int maxConnections = 0)
+        {
+            AddOrReplacePort(outputs, new NowNodePortDefinition(id, label, NowNodePortDirection.Output, typeId, maxConnections));
+            return this;
+        }
+
+        public NowNodeDefinition RemoveInput(int id)
+        {
+            RemovePort(inputs, NowNodeIds.FromInt(id));
+            return this;
+        }
+
+        public NowNodeDefinition RemoveInput(string id)
+        {
+            RemovePort(inputs, id);
+            return this;
+        }
+
+        public NowNodeDefinition RemoveOutput(int id)
+        {
+            RemovePort(outputs, NowNodeIds.FromInt(id));
+            return this;
+        }
+
+        public NowNodeDefinition RemoveOutput(string id)
+        {
+            RemovePort(outputs, id);
             return this;
         }
 
@@ -227,6 +468,43 @@ namespace NowUI.NodeGraph
             previewRenderer = renderer;
             previewHeight = Mathf.Max(0f, height);
             return this;
+        }
+
+        public NowNodeDefinition Initialize(NowNodeInitializer initializer)
+        {
+            this.initializer = initializer;
+            return this;
+        }
+
+        static void AddOrReplacePort(List<NowNodePortDefinition> ports, NowNodePortDefinition port)
+        {
+            for (int i = 0; i < ports.Count; ++i)
+            {
+                if (ports[i] != null && ports[i].id == port.id)
+                {
+                    ports[i] = port;
+                    return;
+                }
+            }
+
+            ports.Add(port);
+        }
+
+        static bool RemovePort(List<NowNodePortDefinition> ports, string id)
+        {
+            if (ports == null || string.IsNullOrEmpty(id))
+                return false;
+
+            for (int i = ports.Count - 1; i >= 0; --i)
+            {
+                if (ports[i] == null || ports[i].id != id)
+                    continue;
+
+                ports.RemoveAt(i);
+                return true;
+            }
+
+            return false;
         }
 
         internal void ApplyTo(NowNode node)
@@ -246,6 +524,8 @@ namespace NowUI.NodeGraph
 
             for (int i = 0; i < outputs.Count; ++i)
                 node.outputs.Add(outputs[i].CreatePort());
+
+            initializer?.Invoke(node);
         }
     }
 
@@ -259,6 +539,15 @@ namespace NowUI.NodeGraph
         public int nodeDefinitionCount => _definitionList.Count;
 
         public IReadOnlyList<NowNodeDefinition> nodeDefinitions => _definitionList;
+
+        public NowNodeGraphSchema Clear()
+        {
+            _definitions.Clear();
+            _definitionList.Clear();
+            _connectionRules.Clear();
+            _typeColors.Clear();
+            return this;
+        }
 
         public NowNodeDefinition Node(int kindId, string title)
         {
@@ -281,6 +570,18 @@ namespace NowUI.NodeGraph
             return _definitions.TryGetValue(kindId, out definition);
         }
 
+        public bool TryGetNodeSize(int kindId, out Vector2 size)
+        {
+            if (_definitions.TryGetValue(kindId, out var definition))
+            {
+                size = definition.size;
+                return true;
+            }
+
+            size = default;
+            return false;
+        }
+
         public const int RerouteInputPortId = 1;
         public const int RerouteOutputPortId = 2;
 
@@ -289,8 +590,7 @@ namespace NowUI.NodeGraph
             var definition = Node(kindId, title);
             definition.reroute = true;
             definition.SetSize(26f, 26f);
-            definition.inputs.Clear();
-            definition.outputs.Clear();
+            definition.ClearPorts();
             definition.Input(RerouteInputPortId, string.Empty, typeId);
             definition.Output(RerouteOutputPortId, string.Empty, typeId);
             return definition;
@@ -317,6 +617,30 @@ namespace NowUI.NodeGraph
             if (_definitions.TryGetValue(kindId, out var definition) && definition.hasPreview)
             {
                 height = definition.previewHeight;
+                return true;
+            }
+
+            height = 0f;
+            return false;
+        }
+
+        public bool TryGetPortTopOffset(int kindId, out float offset)
+        {
+            if (_definitions.TryGetValue(kindId, out var definition) && definition.portTopOffset > 0f)
+            {
+                offset = definition.portTopOffset;
+                return true;
+            }
+
+            offset = 0f;
+            return false;
+        }
+
+        public bool TryGetContentHeight(int kindId, out float height)
+        {
+            if (_definitions.TryGetValue(kindId, out var definition) && definition.contentHeight >= 0f)
+            {
+                height = definition.contentHeight;
                 return true;
             }
 
@@ -414,17 +738,38 @@ namespace NowUI.NodeGraph
     }
 
     [Serializable]
+    public sealed class NowNodeData
+    {
+        public string key;
+        public string value;
+
+        public NowNodeData()
+        {
+        }
+
+        public NowNodeData(string key, string value)
+        {
+            this.key = key ?? string.Empty;
+            this.value = value ?? string.Empty;
+        }
+    }
+
+    [Serializable]
     public sealed class NowNode
     {
         public string id;
         public string title;
         public int kindId;
         public int userId;
+        public string userData;
+        public string userData2;
+        public string userData3;
         public Vector2 position;
         public Vector2 size;
         public Color color = Color.clear;
         public bool selected;
         public bool compact;
+        public List<NowNodeData> data = new List<NowNodeData>(4);
         public List<NowNodePort> inputs = new List<NowNodePort>(4);
         public List<NowNodePort> outputs = new List<NowNodePort>(4);
 
@@ -445,9 +790,7 @@ namespace NowUI.NodeGraph
 
         public NowNodePort AddInput(string id, string label, int typeId = 0)
         {
-            var port = new NowNodePort(id, label, NowNodePortDirection.Input, typeId);
-            inputs.Add(port);
-            return port;
+            return AddOrUpdatePort(ref inputs, id, label, NowNodePortDirection.Input, typeId, maxConnections: 1);
         }
 
         public NowNodePort AddInput(int id, string label, int typeId = 0)
@@ -455,11 +798,19 @@ namespace NowUI.NodeGraph
             return AddInput(NowNodeIds.FromInt(id), label, typeId);
         }
 
+        public bool UpsertInput(string id, string label, int typeId = 0, int maxConnections = 1)
+        {
+            return UpsertPort(ref inputs, id, label, NowNodePortDirection.Input, typeId, maxConnections);
+        }
+
+        public bool UpsertInput(int id, string label, int typeId = 0, int maxConnections = 1)
+        {
+            return UpsertInput(NowNodeIds.FromInt(id), label, typeId, maxConnections);
+        }
+
         public NowNodePort AddOutput(string id, string label, int typeId = 0)
         {
-            var port = new NowNodePort(id, label, NowNodePortDirection.Output, typeId);
-            outputs.Add(port);
-            return port;
+            return AddOrUpdatePort(ref outputs, id, label, NowNodePortDirection.Output, typeId, maxConnections: 0);
         }
 
         public NowNodePort AddOutput(int id, string label, int typeId = 0)
@@ -467,11 +818,41 @@ namespace NowUI.NodeGraph
             return AddOutput(NowNodeIds.FromInt(id), label, typeId);
         }
 
+        public bool UpsertOutput(string id, string label, int typeId = 0, int maxConnections = 0)
+        {
+            return UpsertPort(ref outputs, id, label, NowNodePortDirection.Output, typeId, maxConnections);
+        }
+
+        public bool UpsertOutput(int id, string label, int typeId = 0, int maxConnections = 0)
+        {
+            return UpsertOutput(NowNodeIds.FromInt(id), label, typeId, maxConnections);
+        }
+
+        public bool RemoveInput(string id)
+        {
+            return RemovePort(inputs, id);
+        }
+
+        public bool RemoveInput(int id)
+        {
+            return RemoveInput(NowNodeIds.FromInt(id));
+        }
+
+        public bool RemoveOutput(string id)
+        {
+            return RemovePort(outputs, id);
+        }
+
+        public bool RemoveOutput(int id)
+        {
+            return RemoveOutput(NowNodeIds.FromInt(id));
+        }
+
         public bool TryGetPort(string portId, NowNodePortDirection direction, out NowNodePort port)
         {
             var ports = direction == NowNodePortDirection.Input ? inputs : outputs;
 
-            for (int i = 0; i < ports.Count; ++i)
+            for (int i = 0; ports != null && i < ports.Count; ++i)
             {
                 if (ports[i] != null && ports[i].id == portId)
                 {
@@ -487,6 +868,182 @@ namespace NowUI.NodeGraph
         public bool TryGetPort(int portId, NowNodePortDirection direction, out NowNodePort port)
         {
             return TryGetPort(NowNodeIds.FromInt(portId), direction, out port);
+        }
+
+        public string GetData(string key, string fallback = null)
+        {
+            return TryGetData(key, out string value) ? value : fallback;
+        }
+
+        public bool TryGetData(string key, out string value)
+        {
+            int index = IndexOfData(key);
+
+            if (index >= 0)
+            {
+                value = data[index]?.value ?? string.Empty;
+                return true;
+            }
+
+            value = null;
+            return false;
+        }
+
+        public bool SetData(string key, string value)
+        {
+            if (string.IsNullOrEmpty(key))
+                throw new ArgumentException("Data key must be non-empty.", nameof(key));
+
+            if (value == null)
+                return RemoveData(key);
+
+            if (data == null)
+                data = new List<NowNodeData>(4);
+
+            int index = IndexOfData(key);
+
+            if (index >= 0)
+            {
+                NowNodeData entry = data[index];
+
+                if (entry == null)
+                {
+                    data[index] = new NowNodeData(key, value);
+                    return true;
+                }
+
+                bool changed = entry.value != value || entry.key != key;
+                entry.key = key;
+                entry.value = value;
+                return changed;
+            }
+
+            data.Add(new NowNodeData(key, value));
+            return true;
+        }
+
+        public bool RemoveData(string key)
+        {
+            int index = IndexOfData(key);
+
+            if (index < 0)
+                return false;
+
+            data.RemoveAt(index);
+            return true;
+        }
+
+        int IndexOfData(string key)
+        {
+            if (string.IsNullOrEmpty(key) || data == null)
+                return -1;
+
+            for (int i = 0; i < data.Count; ++i)
+            {
+                if (data[i] != null && string.Equals(data[i].key, key, StringComparison.Ordinal))
+                    return i;
+            }
+
+            return -1;
+        }
+
+        static bool UpsertPort(
+            ref List<NowNodePort> ports,
+            string id,
+            string label,
+            NowNodePortDirection direction,
+            int typeId,
+            int maxConnections)
+        {
+            if (ports == null)
+                ports = new List<NowNodePort>(4);
+
+            if (string.IsNullOrEmpty(id))
+                throw new ArgumentException("Port id must be non-empty when upserting.", nameof(id));
+
+            string portId = id;
+            label ??= string.Empty;
+
+            for (int i = 0; i < ports.Count; ++i)
+            {
+                NowNodePort port = ports[i];
+
+                if (port == null || port.id != portId)
+                    continue;
+
+                bool changed = port.label != label ||
+                    port.direction != direction ||
+                    port.typeId != typeId ||
+                    port.maxConnections != maxConnections;
+
+                port.label = label;
+                port.direction = direction;
+                port.typeId = typeId;
+                port.maxConnections = maxConnections;
+                return changed;
+            }
+
+            ports.Add(new NowNodePort(portId, label, direction, typeId)
+            {
+                maxConnections = maxConnections
+            });
+            return true;
+        }
+
+        static NowNodePort AddOrUpdatePort(
+            ref List<NowNodePort> ports,
+            string id,
+            string label,
+            NowNodePortDirection direction,
+            int typeId,
+            int maxConnections)
+        {
+            if (ports == null)
+                ports = new List<NowNodePort>(4);
+
+            if (string.IsNullOrEmpty(id))
+                throw new ArgumentException("Port id must be non-empty when adding.", nameof(id));
+
+            label ??= string.Empty;
+
+            for (int i = 0; i < ports.Count; ++i)
+            {
+                NowNodePort port = ports[i];
+
+                if (port == null || port.id != id)
+                    continue;
+
+                port.label = label;
+                port.direction = direction;
+                port.typeId = typeId;
+                return port;
+            }
+
+            var created = new NowNodePort(id, label, direction, typeId)
+            {
+                maxConnections = maxConnections
+            };
+            ports.Add(created);
+            return created;
+        }
+
+        static bool RemovePort(List<NowNodePort> ports, string id)
+        {
+            if (ports == null || string.IsNullOrEmpty(id))
+                return false;
+
+            for (int i = ports.Count - 1; i >= 0; --i)
+            {
+                NowNodePort port = ports[i];
+
+                if (port != null && port.id == id)
+                {
+                    ports.RemoveAt(i);
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 
@@ -594,6 +1151,49 @@ namespace NowUI.NodeGraph
         {
             this.schema = schema;
             return this;
+        }
+
+        public bool ResetNodeSizeToSchema(NowNode node)
+        {
+            if (node == null || schema == null || !schema.TryGetNodeSize(node.kindId, out var size))
+                return false;
+
+            if (node.size == size)
+                return false;
+
+            node.size = size;
+            return true;
+        }
+
+        public int ResetNodeSizesToSchema()
+        {
+            if (schema == null || nodes == null)
+                return 0;
+
+            int changed = 0;
+
+            for (int i = 0; i < nodes.Count; ++i)
+            {
+                if (ResetNodeSizeToSchema(nodes[i]))
+                    ++changed;
+            }
+
+            return changed;
+        }
+
+        public int ResetNodeSizesToSchema(NowNodeGraphSchema schema)
+        {
+            this.schema = schema;
+            return ResetNodeSizesToSchema();
+        }
+
+        public void Clear()
+        {
+            nodes.Clear();
+            links.Clear();
+            selectedNodeId = null;
+            selectedNodeIds?.Clear();
+            selectedLink = default;
         }
 
         public bool RemoveNode(string nodeId)
@@ -825,6 +1425,46 @@ namespace NowUI.NodeGraph
             return TryFindPort(NowNodeIds.FromInt(nodeId), NowNodeIds.FromInt(portId), direction, out node, out port);
         }
 
+        public bool UpsertNodeInput(NowNode node, string id, string label, int typeId = 0, int maxConnections = 1)
+        {
+            return UpsertNodePort(node, id, label, NowNodePortDirection.Input, typeId, maxConnections);
+        }
+
+        public bool UpsertNodeInput(NowNode node, int id, string label, int typeId = 0, int maxConnections = 1)
+        {
+            return UpsertNodeInput(node, NowNodeIds.FromInt(id), label, typeId, maxConnections);
+        }
+
+        public bool UpsertNodeOutput(NowNode node, string id, string label, int typeId = 0, int maxConnections = 0)
+        {
+            return UpsertNodePort(node, id, label, NowNodePortDirection.Output, typeId, maxConnections);
+        }
+
+        public bool UpsertNodeOutput(NowNode node, int id, string label, int typeId = 0, int maxConnections = 0)
+        {
+            return UpsertNodeOutput(node, NowNodeIds.FromInt(id), label, typeId, maxConnections);
+        }
+
+        public bool RemoveNodeInput(NowNode node, string id)
+        {
+            return RemoveNodePort(node, id, NowNodePortDirection.Input);
+        }
+
+        public bool RemoveNodeInput(NowNode node, int id)
+        {
+            return RemoveNodeInput(node, NowNodeIds.FromInt(id));
+        }
+
+        public bool RemoveNodeOutput(NowNode node, string id)
+        {
+            return RemoveNodePort(node, id, NowNodePortDirection.Output);
+        }
+
+        public bool RemoveNodeOutput(NowNode node, int id)
+        {
+            return RemoveNodeOutput(node, NowNodeIds.FromInt(id));
+        }
+
         public bool TryAddLink(string outputNodeId, string outputPortId, string inputNodeId, string inputPortId, bool replaceInput = true)
         {
             return TryAddLink(new NowNodeLink(outputNodeId, outputPortId, inputNodeId, inputPortId), replaceInput);
@@ -842,7 +1482,7 @@ namespace NowUI.NodeGraph
 
         public bool TryAddLink(NowNodeLink link, bool replaceInput = true)
         {
-            if (!CanAddLink(link, out var outputPort, out var inputPort))
+            if (!CanAddLink(link, replaceInput, default, false, out var outputPort, out var inputPort))
                 return false;
 
             for (int i = 0; i < links.Count; ++i)
@@ -936,12 +1576,86 @@ namespace NowUI.NodeGraph
             return RemoveLinksForPort(NowNodeIds.FromInt(nodeId), NowNodeIds.FromInt(portId));
         }
 
+        public int PruneInvalidLinks()
+        {
+            if (links == null || links.Count == 0)
+                return 0;
+
+            int removed = 0;
+            var seen = new HashSet<NowNodeLink>();
+            var inputCounts = new Dictionary<string, int>();
+            var outputCounts = new Dictionary<string, int>();
+
+            for (int i = 0; i < links.Count;)
+            {
+                NowNodeLink link = links[i];
+
+                if (!seen.Add(link) ||
+                    !TryResolveLink(link, out _, out NowNodePort outputPort, out _, out NowNodePort inputPort) ||
+                    ExceedsPortLimit(inputCounts, LinkInputKey(link), inputPort.maxConnections) ||
+                    ExceedsPortLimit(outputCounts, LinkOutputKey(link), outputPort.maxConnections))
+                {
+                    links.RemoveAt(i);
+                    ++removed;
+                    continue;
+                }
+
+                IncrementPortCount(inputCounts, LinkInputKey(link));
+                IncrementPortCount(outputCounts, LinkOutputKey(link));
+                ++i;
+            }
+
+            return removed;
+        }
+
         public bool TryCreateLink(
             string firstNodeId,
             string firstPortId,
             string secondNodeId,
             string secondPortId,
-            out NowNodeLink link)
+            out NowNodeLink link,
+            bool replaceInput = true)
+        {
+            return TryCreateLink(
+                firstNodeId,
+                firstPortId,
+                secondNodeId,
+                secondPortId,
+                out link,
+                default,
+                false,
+                replaceInput);
+        }
+
+        public bool TryCreateLink(
+            string firstNodeId,
+            string firstPortId,
+            string secondNodeId,
+            string secondPortId,
+            out NowNodeLink link,
+            NowNodeLink ignoredLink,
+            bool replaceInput = true)
+        {
+            return TryCreateLink(
+                firstNodeId,
+                firstPortId,
+                secondNodeId,
+                secondPortId,
+                out link,
+                ignoredLink,
+                ignoredLink.isValid,
+                replaceInput);
+        }
+
+        bool TryCreateLink(
+            string firstNodeId,
+            string firstPortId,
+            string secondNodeId,
+            string secondPortId,
+            out NowNodeLink link,
+            NowNodeLink ignoredLink,
+            bool hasIgnoredLink,
+            bool replaceInput)
         {
             link = default;
 
@@ -958,7 +1672,11 @@ namespace NowUI.NodeGraph
             else
                 return false;
 
-            return CanAddLink(link, out _, out _);
+            if (CanAddLink(link, replaceInput, ignoredLink, hasIgnoredLink, out _, out _))
+                return true;
+
+            link = default;
+            return false;
         }
 
         public bool TryCreateLink(
@@ -966,14 +1684,16 @@ namespace NowUI.NodeGraph
             int firstPortId,
             string secondNodeId,
             int secondPortId,
-            out NowNodeLink link)
+            out NowNodeLink link,
+            bool replaceInput = true)
         {
             return TryCreateLink(
                 firstNodeId,
                 NowNodeIds.FromInt(firstPortId),
                 secondNodeId,
                 NowNodeIds.FromInt(secondPortId),
-                out link);
+                out link,
+                replaceInput);
         }
 
         public bool TryCreateLink(
@@ -981,19 +1701,26 @@ namespace NowUI.NodeGraph
             int firstPortId,
             int secondNodeId,
             int secondPortId,
-            out NowNodeLink link)
+            out NowNodeLink link,
+            bool replaceInput = true)
         {
             return TryCreateLink(
                 NowNodeIds.FromInt(firstNodeId),
                 NowNodeIds.FromInt(firstPortId),
                 NowNodeIds.FromInt(secondNodeId),
                 NowNodeIds.FromInt(secondPortId),
-                out link);
+                out link,
+                replaceInput);
         }
 
-        public bool CanAddLink(NowNodeLink link)
+        public bool CanAddLink(NowNodeLink link, bool replaceInput = true)
         {
-            return CanAddLink(link, out _, out _);
+            return CanAddLink(link, replaceInput, default, false, out _, out _);
+        }
+
+        public bool CanAddLink(NowNodeLink link, NowNodeLink ignoredLink, bool replaceInput = true)
+        {
+            return CanAddLink(link, replaceInput, ignoredLink, ignoredLink.isValid, out _, out _);
         }
 
         public bool TryGetInputLink(string inputNodeId, string inputPortId, out NowNodeLink link)
@@ -1016,16 +1743,89 @@ namespace NowUI.NodeGraph
             return TryGetInputLink(inputNodeId, NowNodeIds.FromInt(inputPortId), out link);
         }
 
-        bool CanAddLink(NowNodeLink link, out NowNodePort outputPort, out NowNodePort inputPort)
+        bool UpsertNodePort(
+            NowNode node,
+            string id,
+            string label,
+            NowNodePortDirection direction,
+            int typeId,
+            int maxConnections)
+        {
+            if (node == null)
+                return false;
+
+            bool changed = direction == NowNodePortDirection.Input
+                ? node.UpsertInput(id, label, typeId, maxConnections)
+                : node.UpsertOutput(id, label, typeId, maxConnections);
+
+            if (changed)
+                PruneInvalidLinks();
+
+            return changed;
+        }
+
+        bool RemoveNodePort(NowNode node, string id, NowNodePortDirection direction)
+        {
+            if (node == null)
+                return false;
+
+            bool removed = direction == NowNodePortDirection.Input
+                ? node.RemoveInput(id)
+                : node.RemoveOutput(id);
+
+            if (removed)
+                RemoveLinksForPort(node.id, id);
+
+            return removed;
+        }
+
+        bool CanAddLink(
+            NowNodeLink link,
+            bool replaceInput,
+            NowNodeLink ignoredLink,
+            bool hasIgnoredLink,
+            out NowNodePort outputPort,
+            out NowNodePort inputPort)
         {
             outputPort = null;
+            inputPort = null;
+
+            if (!TryResolveLink(link, out _, out outputPort, out _, out inputPort))
+                return false;
+
+            if (HasLink(link, ignoredLink, hasIgnoredLink))
+                return true;
+
+            int inputCount = CountInputLinks(link.inputNodeId, link.inputPortId, ignoredLink, hasIgnoredLink);
+
+            if (inputPort.maxConnections > 0 && inputCount >= inputPort.maxConnections && !replaceInput)
+                return false;
+
+            int outputCount = CountOutputLinks(link.outputNodeId, link.outputPortId, ignoredLink, hasIgnoredLink);
+
+            if (outputPort.maxConnections > 0 && outputCount >= outputPort.maxConnections)
+                return false;
+
+            return true;
+        }
+
+        bool TryResolveLink(
+            NowNodeLink link,
+            out NowNode outputNode,
+            out NowNodePort outputPort,
+            out NowNode inputNode,
+            out NowNodePort inputPort)
+        {
+            outputNode = null;
+            outputPort = null;
+            inputNode = null;
             inputPort = null;
 
             if (!link.isValid || link.outputNodeId == link.inputNodeId)
                 return false;
 
-            if (!TryFindPort(link.outputNodeId, link.outputPortId, NowNodePortDirection.Output, out var outputNode, out outputPort) ||
-                !TryFindPort(link.inputNodeId, link.inputPortId, NowNodePortDirection.Input, out var inputNode, out inputPort))
+            if (!TryFindPort(link.outputNodeId, link.outputPortId, NowNodePortDirection.Output, out outputNode, out outputPort) ||
+                !TryFindPort(link.inputNodeId, link.inputPortId, NowNodePortDirection.Input, out inputNode, out inputPort))
             {
                 return false;
             }
@@ -1052,10 +1852,18 @@ namespace NowUI.NodeGraph
 
         int CountInputLinks(string nodeId, string portId)
         {
+            return CountInputLinks(nodeId, portId, default, false);
+        }
+
+        int CountInputLinks(string nodeId, string portId, NowNodeLink ignoredLink, bool hasIgnoredLink)
+        {
             int count = 0;
 
             for (int i = 0; i < links.Count; ++i)
             {
+                if (hasIgnoredLink && links[i] == ignoredLink)
+                    continue;
+
                 if (links[i].inputNodeId == nodeId && links[i].inputPortId == portId)
                     ++count;
             }
@@ -1065,15 +1873,64 @@ namespace NowUI.NodeGraph
 
         int CountOutputLinks(string nodeId, string portId)
         {
+            return CountOutputLinks(nodeId, portId, default, false);
+        }
+
+        int CountOutputLinks(string nodeId, string portId, NowNodeLink ignoredLink, bool hasIgnoredLink)
+        {
             int count = 0;
 
             for (int i = 0; i < links.Count; ++i)
             {
+                if (hasIgnoredLink && links[i] == ignoredLink)
+                    continue;
+
                 if (links[i].outputNodeId == nodeId && links[i].outputPortId == portId)
                     ++count;
             }
 
             return count;
+        }
+
+        bool HasLink(NowNodeLink link, NowNodeLink ignoredLink, bool hasIgnoredLink)
+        {
+            for (int i = 0; i < links.Count; ++i)
+            {
+                if (hasIgnoredLink && links[i] == ignoredLink)
+                    continue;
+
+                if (links[i] == link)
+                    return true;
+            }
+
+            return false;
+        }
+
+        static string LinkInputKey(NowNodeLink link)
+        {
+            return (link.inputNodeId ?? string.Empty) + "\n" + (link.inputPortId ?? string.Empty);
+        }
+
+        static string LinkOutputKey(NowNodeLink link)
+        {
+            return (link.outputNodeId ?? string.Empty) + "\n" + (link.outputPortId ?? string.Empty);
+        }
+
+        static bool ExceedsPortLimit(Dictionary<string, int> counts, string key, int maxConnections)
+        {
+            return maxConnections > 0 &&
+                counts != null &&
+                counts.TryGetValue(key, out int count) &&
+                count >= maxConnections;
+        }
+
+        static void IncrementPortCount(Dictionary<string, int> counts, string key)
+        {
+            if (counts == null)
+                return;
+
+            counts.TryGetValue(key, out int count);
+            counts[key] = count + 1;
         }
 
         internal void SyncSelectionFlags()
@@ -1157,18 +2014,35 @@ namespace NowUI.NodeGraph
                 title = node.title,
                 kindId = node.kindId,
                 userId = node.userId,
+                userData = node.userData,
+                userData2 = node.userData2,
+                userData3 = node.userData3,
                 position = node.position,
                 size = node.size,
                 color = node.color,
                 selected = node.selected,
                 compact = node.compact,
+                data = new List<NowNodeData>(node.data != null ? node.data.Count : 0),
                 inputs = new List<NowNodePort>(node.inputs != null ? node.inputs.Count : 0),
                 outputs = new List<NowNodePort>(node.outputs != null ? node.outputs.Count : 0)
             };
 
+            CloneData(node.data, clone.data);
             ClonePorts(node.inputs, clone.inputs);
             ClonePorts(node.outputs, clone.outputs);
             return clone;
+        }
+
+        static void CloneData(List<NowNodeData> source, List<NowNodeData> target)
+        {
+            if (source == null)
+                return;
+
+            for (int i = 0; i < source.Count; ++i)
+            {
+                NowNodeData entry = source[i];
+                target.Add(entry == null ? null : new NowNodeData(entry.key, entry.value));
+            }
         }
 
         internal static void ClonePorts(List<NowNodePort> source, List<NowNodePort> target)
@@ -1633,6 +2507,7 @@ namespace NowUI.NodeGraph
         public float minZoom;
         public float maxZoom;
         public float zoomStep;
+        public int searchResultLimit;
 
         public static NowNodeGraphStyle Default(NowThemeAsset theme)
         {
@@ -1704,7 +2579,8 @@ namespace NowUI.NodeGraph
                 nodeSnapGuideWidth = 1.5f,
                 minZoom = 0.35f,
                 maxZoom = 2.25f,
-                zoomStep = 1.12f
+                zoomStep = 1.12f,
+                searchResultLimit = 8
             };
         }
 
@@ -2011,7 +2887,7 @@ namespace NowUI.NodeGraph
             }
 
             Color nodeColor = context.selected ? style.nodeSelected : style.node;
-            Color titleColor = context.node.color.a > 0f ? context.node.color : style.nodeTitle;
+            Color titleColor = ResolveNodeTitleColor(context);
             Color borderColor = context.selected
                 ? style.selectedBorder
                 : context.hovered
@@ -2086,6 +2962,15 @@ namespace NowUI.NodeGraph
             Color titleGlyph = titleText;
             titleGlyph.a *= 0.8f;
             DrawCompactToggle(context.compactToggleRect, context.compact, titleGlyph, style);
+        }
+
+        /// <summary>
+        /// Resolves a normal node's title fill. Override this to apply semantic colors
+        /// without mutating the serialized <see cref="NowNode.color"/> value.
+        /// </summary>
+        protected virtual Color ResolveNodeTitleColor(in NowNodeGraphNodeContext context)
+        {
+            return context.node.color.a > 0f ? context.node.color : context.style.nodeTitle;
         }
 
         protected virtual void DrawReroute(in NowNodeGraphNodeContext context)
@@ -2558,6 +3443,7 @@ namespace NowUI.NodeGraph
             public NowNodeLink pickedLink;
             public int hoveredLinkIndex;
             public byte searchOpen;
+            public byte searchSuppressInput;
             public Vector2 searchScreenPosition;
             public Vector2 searchGraphPosition;
             public NodeSearchData searchData;
@@ -2577,6 +3463,7 @@ namespace NowUI.NodeGraph
             public byte nodeDragHistoryRecorded;
             public Vector2 nodeDragPointerGraphStart;
             public Vector2 nodeDragActiveNodeStart;
+            public Vector2 pointerLocalPosition;
             public byte snapGuideFlags;
             public Vector2 snapGuideXFrom;
             public Vector2 snapGuideXTo;
@@ -2590,6 +3477,7 @@ namespace NowUI.NodeGraph
         {
             public readonly List<int> recents = new List<int>(8);
             public readonly List<NowNodeDefinition> results = new List<NowNodeDefinition>(16);
+            public readonly List<NodeSearchMatch> matches = new List<NodeSearchMatch>(32);
             public string query = string.Empty;
             public string lastQuery = string.Empty;
             public int fieldId;
@@ -2608,6 +3496,13 @@ namespace NowUI.NodeGraph
             public NowNodePort scratchTargetPort;
         }
 
+        struct NodeSearchMatch
+        {
+            public NowNodeDefinition definition;
+            public int score;
+            public int order;
+        }
+
         struct PortHit
         {
             public bool valid;
@@ -2622,10 +3517,12 @@ namespace NowUI.NodeGraph
         const int NudgeYShortcutSeed = 0x4e554448;
         const float CompactMinWidth = 148f;
         const float CompactMaxWidth = 200f;
-        const int MaxSearchResults = 8;
+        const int DefaultSearchResultLimit = 8;
+        const int MaxSearchResultLimit = 64;
         const float SearchWidth = 260f;
         const float SearchFieldHeight = 30f;
         const float SearchRowHeight = 24f;
+        const float SearchDetailRowHeight = 36f;
         const float SearchPadding = 8f;
         const byte SnapGuideXFlag = 1;
         const byte SnapGuideYFlag = 2;
@@ -2768,6 +3665,14 @@ namespace NowUI.NodeGraph
             return this;
         }
 
+        /// <summary>Maximum number of node-search results shown at once. Default 8.</summary>
+        public NowNodeGraphCanvas SetSearchResultLimit(int maxResults)
+        {
+            EnsureStyle();
+            _style.searchResultLimit = Mathf.Clamp(maxResults, 1, MaxSearchResultLimit);
+            return this;
+        }
+
         public NowNodeGraphCanvas SetSchema(NowNodeGraphSchema schema)
         {
             _schema = schema;
@@ -2854,7 +3759,10 @@ namespace NowUI.NodeGraph
             result.hovered = NowInput.IsHovered(_rect);
             result.hasPointer = NowInput.current.hasPointer;
             result.pointerPosition = NowInput.current.pointerPosition;
-            result.pointerGraphPosition = ScreenToGraph(result.pointerPosition, _rect, state);
+            state.pointerLocalPosition = result.hasPointer
+                ? Now.InverseTransformScreenPoint(result.pointerPosition)
+                : _rect.center;
+            result.pointerGraphPosition = ScreenToGraph(state.pointerLocalPosition, _rect, state);
             HandleKeyboardShortcuts(focusId, ref state, style, history, clipboard, ref result);
             HandleNodeSearch(focusId, ref state, style, schema, history, ref result);
             HandleCanvasNavigation(id, ref state, style, ref result);
@@ -2870,7 +3778,7 @@ namespace NowUI.NodeGraph
                 HandleInteractions(id, ref state, style, schema, history, contextMenu, ref result);
 
                 int hoveredNodeIndex = result.hovered && NowInput.current.hasPointer && state.linkActive == 0
-                    ? FindNodeAt(NowInput.current.pointerPosition, state, style)
+                    ? FindNodeAt(state.pointerLocalPosition, state, style)
                     : -1;
 
                 // Apply transform for graph content (links and nodes)
@@ -2882,7 +3790,7 @@ namespace NowUI.NodeGraph
                         DrawPendingLink(state, style, renderer);
 
                     DrawNodeSnapGuide(state, style);
-                    DrawNodes(id, ref state, style, schema, renderer, hoveredNodeIndex, ref result);
+                    DrawNodes(id, ref state, style, schema, history, renderer, hoveredNodeIndex, ref result);
                 }
 
                 if (state.selectionActive != 0)
@@ -2972,7 +3880,7 @@ namespace NowUI.NodeGraph
             if (_graph.schema != null && !frame.command && !frame.option && ContainsChar(frame.characters, ' '))
             {
                 state.searchHasLinkSource = 0;
-                OpenNodeSearch(focusId, ref state, ref result);
+                OpenNodeSearch(focusId, ref state, ref result, suppressCurrentInput: true);
                 return;
             }
 
@@ -3143,14 +4051,19 @@ namespace NowUI.NodeGraph
             }
         }
 
-        void OpenNodeSearch(int focusId, ref CanvasState state, ref NowNodeGraphResult result)
+        void OpenNodeSearch(
+            int focusId,
+            ref CanvasState state,
+            ref NowNodeGraphResult result,
+            bool suppressCurrentInput = false)
         {
             var snapshot = NowInput.current;
             Vector2 screen = snapshot.hasPointer && NowInput.IsHovered(_rect)
-                ? snapshot.pointerPosition
+                ? state.pointerLocalPosition
                 : _rect.center;
 
             state.searchOpen = 1;
+            state.searchSuppressInput = (byte)(suppressCurrentInput ? 1 : 0);
             state.searchScreenPosition = screen;
             state.searchGraphPosition = ScreenToGraph(screen, _rect, state);
 
@@ -3189,23 +4102,24 @@ namespace NowUI.NodeGraph
 
             var data = state.searchData;
 
-            if (data == null || schema == null || NowInput.isPassive ||
-                (!NowFocus.IsFocused(focusId) && NowFocus.focusedId != data.fieldId))
+            if (data == null || schema == null)
             {
                 state.searchOpen = 0;
                 state.searchHasLinkSource = 0;
                 return;
             }
 
+            if (NowInput.isPassive)
+                return;
+
             var snapshot = NowInput.current;
             var frame = NowTextInput.current;
+            bool suppressInput = state.searchSuppressInput != 0;
+            state.searchSuppressInput = 0;
 
-            if (frame.escapePressed || (snapshot.cancelPressed && !NowInput.cancelConsumed))
+            if (SearchCancelPressed(suppressInput, snapshot, frame))
             {
-                state.searchOpen = 0;
-                state.searchHasLinkSource = 0;
-                NowFocus.Focus(focusId);
-                NowControlState.RequestRepaint();
+                CloseNodeSearch(focusId, ref state);
                 return;
             }
 
@@ -3219,9 +4133,10 @@ namespace NowUI.NodeGraph
                 NowControlState.RequestRepaint();
             }
 
-            BuildSearchResults(schema, data);
+            BuildSearchResults(schema, data, style);
 
             int count = data.results.Count;
+            float rowHeight = SearchRowHeightForResults(data.results);
 
             if (count > 0)
             {
@@ -3241,13 +4156,13 @@ namespace NowUI.NodeGraph
                 }
             }
 
-            var popup = SearchPopupRect(state, count);
+            var popup = SearchPopupRect(state, count, rowHeight);
             data.popupRect = popup;
             data.style = style;
 
             if (snapshot.hasPointer)
             {
-                int row = SearchRowAt(popup, snapshot.pointerPosition, count);
+                int row = SearchRowAt(popup, state.pointerLocalPosition, count, rowHeight);
 
                 if (row >= 0 && row != data.highlight && snapshot.pointerDelta != Vector2.zero)
                 {
@@ -3255,33 +4170,23 @@ namespace NowUI.NodeGraph
                     NowControlState.RequestRepaint();
                 }
 
-                if (NowInput.WasPointerPressed(NowPointerButton.Primary))
+                if (!suppressInput && NowInput.WasPointerPressed(NowPointerButton.Primary))
                 {
-                    if (!popup.Contains(snapshot.pointerPosition))
-                    {
-                        state.searchOpen = 0;
-                        state.searchHasLinkSource = 0;
-                        NowFocus.Focus(focusId);
-                        NowControlState.RequestRepaint();
-                        return;
-                    }
-
                     if (row >= 0 && row < count)
                     {
                         CreateSearchNode(data.results[row], focusId, ref state, schema, history, ref result);
                         return;
                     }
+
+                    if (!popup.Contains(state.pointerLocalPosition))
+                    {
+                        CloseNodeSearch(focusId, ref state);
+                        return;
+                    }
                 }
             }
 
-            // Space doubles as the "submit" navigation key, and Space is also what
-            // opens (and types into) this palette — so a Space press must never
-            // count as a confirm. Enter confirms; gamepad submit confirms only when
-            // no space arrived this frame.
-            bool submitConfirm = frame.enterPressed ||
-                (snapshot.submitPressed && !ContainsChar(frame.characters, ' '));
-
-            if (submitConfirm && count > 0)
+            if (SearchConfirmPressed(suppressInput, snapshot, frame) && count > 0)
             {
                 CreateSearchNode(data.results[data.highlight], focusId, ref state, schema, history, ref result);
                 return;
@@ -3296,39 +4201,161 @@ namespace NowUI.NodeGraph
             NowOverlay.Defer(popup, data.drawAction);
         }
 
-        void BuildSearchResults(NowNodeGraphSchema schema, NodeSearchData data)
+        static bool SearchCancelPressed(bool suppressInput, NowInputSnapshot snapshot, NowTextInputFrame frame)
+        {
+            return !suppressInput &&
+                (frame.escapePressed || (snapshot.cancelPressed && !NowInput.cancelConsumed));
+        }
+
+        static bool SearchConfirmPressed(bool suppressInput, NowInputSnapshot snapshot, NowTextInputFrame frame)
+        {
+            return !suppressInput &&
+                (frame.enterPressed || (snapshot.submitPressed && !ContainsChar(frame.characters, ' ')));
+        }
+
+        void CloseNodeSearch(int focusId, ref CanvasState state)
+        {
+            state.searchOpen = 0;
+            state.searchHasLinkSource = 0;
+            state.searchSuppressInput = 0;
+            NowFocus.Focus(focusId);
+            NowControlState.RequestRepaint();
+        }
+
+        void BuildSearchResults(NowNodeGraphSchema schema, NodeSearchData data, NowNodeGraphStyle style)
         {
             data.results.Clear();
+            data.matches.Clear();
             var definitions = schema.nodeDefinitions;
             string query = data.query;
+            int limit = SearchResultLimit(style);
 
             if (string.IsNullOrEmpty(query))
             {
-                for (int i = 0; i < data.recents.Count && data.results.Count < MaxSearchResults; ++i)
+                for (int i = 0; i < data.recents.Count && data.results.Count < limit; ++i)
                 {
                     if (schema.TryGetNode(data.recents[i], out var recent) && DefinitionAcceptsSource(schema, data, recent))
                         data.results.Add(recent);
                 }
             }
 
-            for (int i = 0; i < definitions.Count && data.results.Count < MaxSearchResults; ++i)
+            if (string.IsNullOrEmpty(query))
+            {
+                for (int i = 0; i < definitions.Count && data.results.Count < limit; ++i)
+                {
+                    var definition = definitions[i];
+
+                    if (definition == null || data.results.Contains(definition))
+                        continue;
+
+                    if (!DefinitionAcceptsSource(schema, data, definition))
+                        continue;
+
+                    data.results.Add(definition);
+                }
+
+                return;
+            }
+
+            for (int i = 0; i < definitions.Count; ++i)
             {
                 var definition = definitions[i];
 
-                if (definition == null || data.results.Contains(definition))
+                if (definition == null)
                     continue;
 
-                if (!string.IsNullOrEmpty(query) &&
-                    (definition.title == null || definition.title.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0))
+                int score = DefinitionSearchScore(definition, query);
+                if (score <= 0 || !DefinitionAcceptsSource(schema, data, definition))
+                    continue;
+
+                data.matches.Add(new NodeSearchMatch
                 {
-                    continue;
-                }
-
-                if (!DefinitionAcceptsSource(schema, data, definition))
-                    continue;
-
-                data.results.Add(definition);
+                    definition = definition,
+                    score = score,
+                    order = i
+                });
             }
+
+            data.matches.Sort(CompareSearchMatches);
+
+            for (int i = 0; i < data.matches.Count && data.results.Count < limit; ++i)
+                data.results.Add(data.matches[i].definition);
+        }
+
+        static int CompareSearchMatches(NodeSearchMatch a, NodeSearchMatch b)
+        {
+            int result = b.score.CompareTo(a.score);
+            return result != 0 ? result : a.order.CompareTo(b.order);
+        }
+
+        static int DefinitionSearchScore(NowNodeDefinition definition, string query)
+        {
+            int title = SearchTextScore(definition?.title, query);
+            int keywords = SearchTextScore(definition?.searchKeywords, query);
+            int detail = SearchTextScore(definition?.searchDetail, query);
+            int category = SearchTextScore(definition?.category, query);
+            int score = 0;
+
+            if (title > 0)
+                score = Mathf.Max(score, 300 + title);
+
+            if (keywords > 0)
+                score = Mathf.Max(score, 200 + keywords);
+
+            if (detail > 0)
+                score = Mathf.Max(score, 180 + detail);
+
+            if (category > 0)
+                score = Mathf.Max(score, 100 + category);
+
+            return score;
+        }
+
+        static int SearchTextScore(string value, string query)
+        {
+            if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(query))
+                return 0;
+
+            if (string.Equals(value, query, StringComparison.OrdinalIgnoreCase))
+                return 100;
+
+            if (value.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+                return 90;
+
+            if (ContainsTokenPrefix(value, query))
+                return 80;
+
+            return ContainsSearchText(value, query) ? 70 : 0;
+        }
+
+        static bool ContainsTokenPrefix(string value, string query)
+        {
+            if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(query) || query.Length > value.Length)
+                return false;
+
+            for (int i = 0; i <= value.Length - query.Length; ++i)
+            {
+                if (i > 0 && char.IsLetterOrDigit(value[i - 1]))
+                    continue;
+
+                if (string.Compare(value, i, query, 0, query.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                    return true;
+            }
+
+            return false;
+        }
+
+        static int SearchResultLimit(NowNodeGraphStyle style)
+        {
+            return style.searchResultLimit > 0
+                ? Mathf.Clamp(style.searchResultLimit, 1, MaxSearchResultLimit)
+                : DefaultSearchResultLimit;
+        }
+
+        static bool ContainsSearchText(string value, string query)
+        {
+            return !string.IsNullOrEmpty(value) &&
+                value.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         // When the search was opened by dragging a link into empty space, only offer
@@ -3373,23 +4400,37 @@ namespace NowUI.NodeGraph
             return false;
         }
 
-        NowRect SearchPopupRect(CanvasState state, int resultCount)
+        static float SearchRowHeightForResults(IReadOnlyList<NowNodeDefinition> results)
+        {
+            if (results == null)
+                return SearchRowHeight;
+
+            for (int i = 0; i < results.Count; ++i)
+            {
+                if (!string.IsNullOrEmpty(results[i]?.searchDetail))
+                    return SearchDetailRowHeight;
+            }
+
+            return SearchRowHeight;
+        }
+
+        NowRect SearchPopupRect(CanvasState state, int resultCount, float rowHeight)
         {
             float rows = Mathf.Max(1, resultCount);
-            float height = SearchPadding * 2f + SearchFieldHeight + 4f + rows * SearchRowHeight;
+            float height = SearchPadding * 2f + SearchFieldHeight + 4f + rows * rowHeight;
             float x = Mathf.Clamp(state.searchScreenPosition.x, _rect.x, Mathf.Max(_rect.x, _rect.xMax - SearchWidth));
             float y = Mathf.Clamp(state.searchScreenPosition.y, _rect.y, Mathf.Max(_rect.y, _rect.yMax - height));
             return new NowRect(x, y, SearchWidth, height);
         }
 
-        static int SearchRowAt(NowRect popup, Vector2 point, int count)
+        static int SearchRowAt(NowRect popup, Vector2 point, int count, float rowHeight)
         {
             float top = popup.y + SearchPadding + SearchFieldHeight + 4f;
 
             if (point.x < popup.x + 6f || point.x > popup.xMax - 6f || point.y < top)
                 return -1;
 
-            int row = (int)((point.y - top) / SearchRowHeight);
+            int row = (int)((point.y - top) / rowHeight);
             return row >= 0 && row < count ? row : -1;
         }
 
@@ -3485,17 +4526,18 @@ namespace NowUI.NodeGraph
             }
 
             float rowTop = field.yMax + 4f;
+            float rowHeight = SearchRowHeightForResults(data.results);
 
             if (data.results.Count == 0)
             {
-                var emptyRow = new NowRect(popup.x + 6f, rowTop, popup.width - 12f, SearchRowHeight);
+                var emptyRow = new NowRect(popup.x + 6f, rowTop, popup.width - 12f, rowHeight);
                 DrawSearchLabel(emptyRow.Inset(10f, 0f), emptyRow, "No matching nodes", style.textMuted, 12.5f);
                 return;
             }
 
             for (int i = 0; i < data.results.Count; ++i)
             {
-                var row = new NowRect(popup.x + 6f, rowTop + i * SearchRowHeight, popup.width - 12f, SearchRowHeight);
+                var row = new NowRect(popup.x + 6f, rowTop + i * rowHeight, popup.width - 12f, rowHeight);
 
                 if (i == data.highlight)
                 {
@@ -3508,7 +4550,39 @@ namespace NowUI.NodeGraph
                         .Draw();
                 }
 
-                DrawSearchLabel(row.Inset(10f, 0f), row, data.results[i].title, style.text, 12.5f);
+                DrawSearchResult(row.Inset(10f, 0f), row, data.results[i], style);
+            }
+        }
+
+        static void DrawSearchResult(NowRect rect, NowRect mask, NowNodeDefinition definition, NowNodeGraphStyle style)
+        {
+            if (definition == null)
+                return;
+
+            bool hasDetail = !string.IsNullOrEmpty(definition.searchDetail);
+            NowRect titleRect = hasDetail
+                ? new NowRect(rect.x, rect.y + 2f, rect.width, 17f)
+                : rect;
+
+            if (!string.IsNullOrEmpty(definition.category))
+            {
+                var categoryStyle = NowTheme.themeAsset.Text(rect, NowTextStyle.Caption)
+                    .SetFontSize(10.5f)
+                    .SetColor(style.textMuted);
+                Vector2 categorySize = categoryStyle.Measure(definition.category);
+                float categoryWidth = Mathf.Min(92f, categorySize.x + 1f);
+                var categoryRect = new NowRect(rect.xMax - categoryWidth, titleRect.y, categoryWidth, titleRect.height);
+
+                DrawSearchLabel(categoryRect, mask, definition.category, style.textMuted, 10.5f);
+                titleRect = new NowRect(rect.x, titleRect.y, Mathf.Max(0f, categoryRect.x - rect.x - 8f), titleRect.height);
+            }
+
+            DrawSearchLabel(titleRect, mask, definition.title, style.text, 12.5f);
+
+            if (hasDetail)
+            {
+                var detailRect = new NowRect(rect.x, rect.y + 18f, rect.width, 15f);
+                DrawSearchLabel(detailRect, mask, definition.searchDetail, style.textMuted, 10.5f);
             }
         }
 
@@ -3552,7 +4626,7 @@ namespace NowUI.NodeGraph
             var snapshot = NowInput.current;
 
             if (snapshot.hasPointer && NowInput.IsHovered(_rect))
-                return ScreenToGraph(snapshot.pointerPosition, _rect, state);
+                return ScreenToGraph(state.pointerLocalPosition, _rect, state);
 
             return ScreenToGraph(_rect.center, _rect, state);
         }
@@ -3626,7 +4700,7 @@ namespace NowUI.NodeGraph
 
             if (wheel.y != 0f && NowInput.current.hasPointer)
             {
-                Vector2 pointer = NowInput.current.pointerPosition;
+                Vector2 pointer = state.pointerLocalPosition;
                 Vector2 graphPoint = ScreenToGraph(pointer, _rect, state);
                 float previousZoom = state.zoom;
                 state.zoom = Mathf.Clamp(state.zoom * Mathf.Pow(style.zoomStep, wheel.y), style.minZoom, style.maxZoom);
@@ -3657,13 +4731,13 @@ namespace NowUI.NodeGraph
 
             if (NowInput.current.hasPointer)
             {
-                pointerOverPort = FindPortAt(NowInput.current.pointerPosition, state, style, out _);
-                pointerNodeIndex = FindNodeAt(NowInput.current.pointerPosition, state, style);
+                pointerOverPort = FindPortAt(state.pointerLocalPosition, state, style, out _);
+                pointerNodeIndex = FindNodeAt(state.pointerLocalPosition, state, style);
                 pointerOverNodeOrPort = pointerOverPort || pointerNodeIndex >= 0;
             }
 
             int hoveredLink = -1;
-            bool nodeDragActive = false;
+            bool nodePointerActive = false;
 
             if (NowInput.current.hasPointer &&
                 !pointerOverNodeOrPort &&
@@ -3671,7 +4745,7 @@ namespace NowUI.NodeGraph
                 state.selectionActive == 0 &&
                 NowInput.IsHovered(_rect))
             {
-                hoveredLink = FindLinkAt(NowInput.current.pointerPosition, state, style);
+                hoveredLink = FindLinkAt(state.pointerLocalPosition, state, style);
             }
 
             if (state.hoveredLinkIndex != hoveredLink)
@@ -3692,21 +4766,25 @@ namespace NowUI.NodeGraph
                 InteractCompactToggle(id, n, node, ref state, style, history, ref result);
 
                 int nodeControlId = NodeControlId(id, n, node);
-                var titleRect = NodeTitleScreenRect(node, _rect, state, style);
-                var nodeInteraction = NowInput.Interact(nodeControlId, titleRect);
+                var nodeDragRect = NodeDragScreenRect(nodeControlId, node, _rect, state, style);
+                var nodeInteraction = NowInput.Interact(nodeControlId, nodeDragRect);
+
+                if (nodeInteraction.active)
+                    nodePointerActive = true;
 
                 if (nodeInteraction.pressed)
+                {
                     SelectNodeFromPointer(node.id, ref result);
+                    BeginNodeDrag(nodeControlId, node, ref state);
+                }
 
                 if (nodeInteraction.dragging)
                 {
-                    nodeDragActive = true;
-
                     bool allowSnapping = !NowTextInput.current.option;
                     Vector2 graphDragDelta = nodeInteraction.dragDelta / Mathf.Max(state.zoom, 0.001f);
 
-                    if (nodeInteraction.dragStarted || state.nodeDragControlId != nodeControlId)
-                        BeginNodeDrag(nodeControlId, node, graphDragDelta, ref state);
+                    if (state.nodeDragControlId != nodeControlId)
+                        BeginNodeDrag(nodeControlId, node, ref state);
 
                     if (!allowSnapping || !style.snapNodes || style.nodeSnapMode != NowNodeSnapMode.Align || style.nodeSnapDistance <= 0f)
                         ClearNodeSnapGuide(ref state);
@@ -3729,7 +4807,7 @@ namespace NowUI.NodeGraph
                 }
             }
 
-            if (!nodeDragActive)
+            if (!nodePointerActive)
             {
                 state.nodeDragControlId = 0;
                 state.nodeDragHistoryRecorded = 0;
@@ -3976,12 +5054,12 @@ namespace NowUI.NodeGraph
             bool addNewLink = false;
             bool droppedOnPort = false;
             NowNodeLink newLink = default;
-            Vector2 pointer = NowInput.current.pointerPosition;
+            Vector2 pointer = state.pointerLocalPosition;
 
             if ((FindPortAt(pointer, state, style, out var target) ||
                  FindCompatiblePortNear(pointer, sourceNode, sourcePort, state, style, out target)) &&
                 TryGetPort(target.nodeIndex, target.direction, target.portIndex, out var targetNode, out var targetPort) &&
-                _graph.TryCreateLink(sourceNode.id, sourcePort.id, targetNode.id, targetPort.id, out newLink))
+                _graph.TryCreateLink(sourceNode.id, sourcePort.id, targetNode.id, targetPort.id, out newLink, pickedLink))
             {
                 droppedOnPort = true;
                 addNewLink = !HasLink(newLink);
@@ -4192,23 +5270,23 @@ namespace NowUI.NodeGraph
             }
         }
 
-        void BeginNodeDrag(int nodeControlId, NowNode activeNode, Vector2 graphDragDelta, ref CanvasState state)
+        void BeginNodeDrag(int nodeControlId, NowNode activeNode, ref CanvasState state)
         {
             state.nodeDragControlId = nodeControlId;
             state.nodeDragHistoryRecorded = 0;
-            state.nodeDragPointerGraphStart = ScreenToGraph(NowInput.current.pointerPosition, _rect, state) - graphDragDelta;
             state.nodeDragActiveNodeStart = activeNode != null ? activeNode.position : default;
+            state.nodeDragPointerGraphStart = ScreenToGraph(state.pointerLocalPosition, _rect, state);
             ClearNodeSnapGuide(ref state);
         }
 
         Vector2 NodeDragDeltaFromStart(NowNode activeNode, Vector2 fallbackDelta, CanvasState state)
         {
-            if (activeNode == null || state.nodeDragControlId == 0)
+            if (activeNode == null || state.nodeDragControlId == 0 || !NowInput.current.hasPointer)
                 return fallbackDelta;
 
-            Vector2 intendedTotalDelta = ScreenToGraph(NowInput.current.pointerPosition, _rect, state) - state.nodeDragPointerGraphStart;
-            Vector2 appliedTotalDelta = activeNode.position - state.nodeDragActiveNodeStart;
-            return intendedTotalDelta - appliedTotalDelta;
+            Vector2 currentPointer = ScreenToGraph(state.pointerLocalPosition, _rect, state);
+            Vector2 targetPosition = state.nodeDragActiveNodeStart + (currentPointer - state.nodeDragPointerGraphStart);
+            return targetPosition - activeNode.position;
         }
 
         bool MoveSelectedNodes(
@@ -4624,17 +5702,17 @@ namespace NowUI.NodeGraph
 
             Vector2 anchor = PortGraphPosition(node, state.linkDirection, state.linkPortIndex, style);
             Vector2 freeEnd = NowInput.current.hasPointer
-                ? ScreenToGraph(NowInput.current.pointerPosition, _rect, state)
+                ? ScreenToGraph(state.pointerLocalPosition, _rect, state)
                 : anchor;
             Color sourceColor = LinkEndpointColor(port, style);
             Color targetColor = sourceColor;
 
             if (NowInput.current.hasPointer)
             {
-                if (FindPortAt(NowInput.current.pointerPosition, state, style, out var target) &&
+                if (FindPortAt(state.pointerLocalPosition, state, style, out var target) &&
                     TryGetPort(target.nodeIndex, target.direction, target.portIndex, out var targetNode, out var targetPort))
                 {
-                    if (_graph.TryCreateLink(node.id, port.id, targetNode.id, targetPort.id, out _))
+                    if (_graph.TryCreateLink(node.id, port.id, targetNode.id, targetPort.id, out _, state.pickedLink))
                     {
                         targetColor = LinkEndpointColor(targetPort, style);
                         freeEnd = ScreenToGraph(target.center, _rect, state);
@@ -4645,7 +5723,7 @@ namespace NowUI.NodeGraph
                         targetColor = style.incompatiblePort;
                     }
                 }
-                else if (FindCompatiblePortNear(NowInput.current.pointerPosition, node, port, state, style, out var snap) &&
+                else if (FindCompatiblePortNear(state.pointerLocalPosition, node, port, state, style, out var snap) &&
                          TryGetPort(snap.nodeIndex, snap.direction, snap.portIndex, out _, out var snapPort))
                 {
                     targetColor = LinkEndpointColor(snapPort, style);
@@ -4690,6 +5768,7 @@ namespace NowUI.NodeGraph
             ref CanvasState state,
             NowNodeGraphStyle style,
             NowNodeGraphSchema schema,
+            NowNodeGraphHistory history,
             INowNodeGraphRenderer renderer,
             int hoveredNodeIndex,
             ref NowNodeGraphResult result)
@@ -4699,7 +5778,7 @@ namespace NowUI.NodeGraph
                 var node = _graph.nodes[i];
 
                 if (node != null && !_graph.IsNodeSelected(node.id))
-                    DrawNode(canvasId, i, node, ref state, style, schema, renderer, false, i == hoveredNodeIndex, ref result);
+                    DrawNode(canvasId, i, node, ref state, style, schema, history, renderer, false, i == hoveredNodeIndex, ref result);
             }
 
             for (int i = 0; i < _graph.nodes.Count; ++i)
@@ -4707,7 +5786,7 @@ namespace NowUI.NodeGraph
                 var node = _graph.nodes[i];
 
                 if (node != null && _graph.IsNodeSelected(node.id))
-                    DrawNode(canvasId, i, node, ref state, style, schema, renderer, true, i == hoveredNodeIndex, ref result);
+                    DrawNode(canvasId, i, node, ref state, style, schema, history, renderer, true, i == hoveredNodeIndex, ref result);
             }
         }
 
@@ -4718,6 +5797,7 @@ namespace NowUI.NodeGraph
             ref CanvasState state,
             NowNodeGraphStyle style,
             NowNodeGraphSchema schema,
+            NowNodeGraphHistory history,
             INowNodeGraphRenderer renderer,
             bool selected,
             bool hovered,
@@ -4752,10 +5832,10 @@ namespace NowUI.NodeGraph
 
             if (!reroute && !node.compact)
             {
-                DrawNodeContent(node, rect, contentRect, ref state, style, schema, selected, ref result);
+                DrawNodeContent(node, rect, contentRect, ref state, style, schema, history, selected, ref result);
 
                 if (hasPreview && !previewRect.isEmpty)
-                    DrawNodePreviewContent(node, rect, previewRect, ref state, style, schema, selected, ref result);
+                    DrawNodePreviewContent(node, rect, previewRect, ref state, style, schema, history, selected, ref result);
             }
 
             DrawPortList(canvasId, nodeIndex, node, NowNodePortDirection.Input, state, style, renderer);
@@ -4769,6 +5849,7 @@ namespace NowUI.NodeGraph
             ref CanvasState state,
             NowNodeGraphStyle style,
             NowNodeGraphSchema schema,
+            NowNodeGraphHistory history,
             bool selected,
             ref NowNodeGraphResult result)
         {
@@ -4788,11 +5869,15 @@ namespace NowUI.NodeGraph
 
             context.graph = _graph;
             context.schema = schema;
+            context.history = history;
             context.node = node;
             context.nodeRect = nodeRect;
             context.bodyRect = bodyRect;
             context.style = style;
             context.zoom = state.zoom;
+            context.viewportRect = _rect;
+            context.pan = state.pan;
+            context.screenTransform = Now.currentTransform;
             context.selected = selected;
             context.isPreview = false;
             context.changed = false;
@@ -4813,6 +5898,7 @@ namespace NowUI.NodeGraph
             ref CanvasState state,
             NowNodeGraphStyle style,
             NowNodeGraphSchema schema,
+            NowNodeGraphHistory history,
             bool selected,
             ref NowNodeGraphResult result)
         {
@@ -4826,11 +5912,15 @@ namespace NowUI.NodeGraph
 
             context.graph = _graph;
             context.schema = schema;
+            context.history = history;
             context.node = node;
             context.nodeRect = nodeRect;
             context.bodyRect = previewRect;
             context.style = style;
             context.zoom = state.zoom;
+            context.viewportRect = _rect;
+            context.pan = state.pan;
+            context.screenTransform = Now.currentTransform;
             context.selected = selected;
             context.isPreview = true;
             context.changed = false;
@@ -4916,7 +6006,7 @@ namespace NowUI.NodeGraph
                 return false;
             }
 
-            return _graph.TryCreateLink(sourceNode.id, sourcePort.id, targetNode.id, targetPort.id, out _);
+            return _graph.TryCreateLink(sourceNode.id, sourcePort.id, targetNode.id, targetPort.id, out _, state.pickedLink);
         }
 
         Color PortColor(NowNodePort port, NowNodePortDirection direction, NowNodeGraphStyle style)
@@ -5089,7 +6179,7 @@ namespace NowUI.NodeGraph
                     float distSqr = (center - point).sqrMagnitude;
 
                     if (distSqr <= bestSqr &&
-                        _graph.TryCreateLink(sourceNode.id, sourcePort.id, node.id, port.id, out _))
+                        _graph.TryCreateLink(sourceNode.id, sourcePort.id, node.id, port.id, out _, state.pickedLink))
                     {
                         bestSqr = distSqr;
                         hit = new PortHit
@@ -5161,6 +6251,68 @@ namespace NowUI.NodeGraph
             return new NowRect(rect.x, rect.y, rect.width, style.titleHeight * state.zoom);
         }
 
+        NowRect NodeDragScreenRect(
+            int nodeControlId,
+            NowNode node,
+            NowRect viewport,
+            CanvasState state,
+            NowNodeGraphStyle style)
+        {
+            NowRect nodeRect = NodeScreenRect(node, viewport, state, style);
+
+            if (IsRerouteNode(node) ||
+                (NowInput.activeId == nodeControlId && NowInput.activeButton == NowPointerButton.Primary))
+            {
+                return nodeRect;
+            }
+
+            if (!NowInput.current.hasPointer)
+                return NodeTitleScreenRect(node, viewport, state, style);
+
+            Vector2 pointer = state.pointerLocalPosition;
+
+            if (!nodeRect.Contains(pointer))
+                return NodeTitleScreenRect(node, viewport, state, style);
+
+            if (CompactToggleScreenRect(node, viewport, state, style).Contains(pointer))
+                return NodeTitleScreenRect(node, viewport, state, style);
+
+            NowRect titleRect = NodeTitleScreenRect(node, viewport, state, style);
+
+            if (titleRect.Contains(pointer))
+                return nodeRect;
+
+            NowRect contentRect = NodeContentScreenRect(node, nodeRect, titleRect, state, style);
+
+            if (!contentRect.isEmpty && TopContentControlScreenRect(node, nodeRect, contentRect, state, style).Contains(pointer))
+                return titleRect;
+
+            return nodeRect;
+        }
+
+        NowRect TopContentControlScreenRect(
+            NowNode node,
+            NowRect nodeRect,
+            NowRect contentRect,
+            CanvasState state,
+            NowNodeGraphStyle style)
+        {
+            float zoom = Mathf.Max(state.zoom, 0.001f);
+            float offset = TryGetContentHeight(node, out float contentHeight)
+                ? contentHeight * zoom
+                : PortTopOffset(node) * zoom;
+
+            if (offset <= 0f)
+            {
+                float rowHeight = Mathf.Max(style.portRowHeight, 28f) * zoom;
+                float gap = 4f * zoom;
+                offset = rowHeight * 2f + gap;
+            }
+
+            float controlHeight = Mathf.Min(contentRect.height, offset);
+            return new NowRect(nodeRect.x, contentRect.y, nodeRect.width, controlHeight);
+        }
+
         NowRect NodeContentScreenRect(
             NowNode node,
             NowRect nodeRect,
@@ -5181,11 +6333,16 @@ namespace NowUI.NodeGraph
             if (!node.compact && NodeHasPreview(node, out float previewHeight))
                 bottom += (previewHeight + style.contentPadding * 0.5f) * zoom;
 
+            float height = Mathf.Max(0f, nodeRect.yMax - top - bottom);
+
+            if (TryGetContentHeight(node, out float contentHeight))
+                height = Mathf.Min(height, contentHeight * zoom);
+
             return new NowRect(
                 nodeRect.x + left,
                 top,
                 Mathf.Max(0f, nodeRect.width - left - right),
-                Mathf.Max(0f, nodeRect.yMax - top - bottom));
+                height);
         }
 
         NowRect NodeContentGraphRect(
@@ -5206,11 +6363,16 @@ namespace NowUI.NodeGraph
             if (!node.compact && NodeHasPreview(node, out float previewHeight))
                 bottom += previewHeight + style.contentPadding * 0.5f;
 
+            float height = Mathf.Max(0f, nodeRect.yMax - top - bottom);
+
+            if (TryGetContentHeight(node, out float contentHeight))
+                height = Mathf.Min(height, contentHeight);
+
             return new NowRect(
                 nodeRect.x + left,
                 top,
                 Mathf.Max(0f, nodeRect.width - left - right),
-                Mathf.Max(0f, nodeRect.yMax - top - bottom));
+                height);
         }
 
         bool IsRerouteNode(NowNode node)
@@ -5229,16 +6391,20 @@ namespace NowUI.NodeGraph
             if (size.x <= 0f)
                 size.x = _graph.defaultNodeSize.x > 0f ? _graph.defaultNodeSize.x : 180f;
 
-            if (size.y <= 0f)
+            bool autoHeight = size.y < 0f;
+
+            if (autoHeight)
+                size.y = 0f;
+            else if (size.y <= 0f)
                 size.y = _graph.defaultNodeSize.y > 0f ? _graph.defaultNodeSize.y : 118f;
 
             int rows = Mathf.Max(node.inputs != null ? node.inputs.Count : 0, node.outputs != null ? node.outputs.Count : 0);
-            float minHeight = style.titleHeight + 12f + rows * style.portRowHeight;
+            float minHeight = style.titleHeight + 12f + PortTopOffset(node) + rows * style.portRowHeight;
 
             if (node.compact)
                 return RoundNodeSizeToGrid(new Vector2(Mathf.Clamp(Mathf.Max(size.x, 128f), CompactMinWidth, CompactMaxWidth), minHeight), style);
 
-            float height = Mathf.Max(size.y, minHeight);
+            float height = autoHeight ? minHeight : Mathf.Max(size.y, minHeight);
 
             if (NodeHasPreview(node, out float previewHeight))
                 height += previewHeight + style.contentPadding;
@@ -5317,8 +6483,26 @@ namespace NowUI.NodeGraph
             if (IsRerouteNode(node))
                 return new Vector2(x, node.position.y + size.y * 0.5f);
 
-            float y = node.position.y + style.titleHeight + 8f + index * style.portRowHeight + style.portRowHeight * 0.5f;
+            float y = node.position.y + style.titleHeight + 8f + PortTopOffset(node) + index * style.portRowHeight + style.portRowHeight * 0.5f;
             return new Vector2(x, y);
+        }
+
+        float PortTopOffset(NowNode node)
+        {
+            var schema = _graph.schema;
+            return node != null && schema != null && schema.TryGetPortTopOffset(node.kindId, out float offset)
+                ? offset
+                : 0f;
+        }
+
+        bool TryGetContentHeight(NowNode node, out float height)
+        {
+            var schema = _graph.schema;
+            if (node != null && schema != null && schema.TryGetContentHeight(node.kindId, out height))
+                return true;
+
+            height = 0f;
+            return false;
         }
 
         static Vector2 GraphToScreen(Vector2 point, NowRect viewport, CanvasState state)

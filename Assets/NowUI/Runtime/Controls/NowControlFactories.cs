@@ -22,6 +22,12 @@ namespace NowUI
             return new NowButton(rect, label, NowControls.SiteId(file, line));
         }
 
+        /// <summary>Focusable row with caller-owned selection at an explicit rect.</summary>
+        public static NowSelectableRow SelectableRow(NowRect rect, string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowSelectableRow(rect, label, NowControls.SiteId(file, line));
+        }
+
         /// <summary>Labeled checkbox at an explicit rect.</summary>
         public static NowCheckbox Checkbox(NowRect rect, string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
@@ -165,6 +171,12 @@ namespace NowUI
         public static NowButton Button(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowButton(label, NowControls.SiteId(file, line));
+        }
+
+        /// <summary>Focusable row with caller-owned selection in layout flow.</summary>
+        public static NowSelectableRow SelectableRow(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowSelectableRow(label, NowControls.SiteId(file, line));
         }
 
         /// <summary>Labeled checkbox in layout flow.</summary>

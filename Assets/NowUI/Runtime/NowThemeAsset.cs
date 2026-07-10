@@ -1672,6 +1672,7 @@ namespace NowUI
         public readonly NowThemeAsset themeAsset;
         public readonly NowRect rect;
         public readonly string label;
+        public readonly string detail;
         public readonly bool selected;
         public readonly NowInteraction interaction;
         public readonly bool hasSubmenu;
@@ -1683,10 +1684,23 @@ namespace NowUI
             bool selected,
             NowInteraction interaction,
             bool hasSubmenu = false)
+            : this(themeAsset, rect, label, null, selected, interaction, hasSubmenu)
+        {
+        }
+
+        public NowPopupItemRenderContext(
+            NowThemeAsset themeAsset,
+            NowRect rect,
+            string label,
+            string detail,
+            bool selected,
+            NowInteraction interaction,
+            bool hasSubmenu = false)
         {
             this.themeAsset = themeAsset;
             this.rect = rect;
             this.label = label;
+            this.detail = detail;
             this.selected = selected;
             this.interaction = interaction;
             this.hasSubmenu = hasSubmenu;
@@ -2160,7 +2174,26 @@ namespace NowUI
             Color textColor = context.selected
                 ? context.themeAsset.GetColor(NowColorToken.Accent)
                 : context.themeAsset.GetColor(NowColorToken.Text);
-            NowControls.DrawLeftLabel(context.themeAsset, context.rect.Inset(8f, 0f, 4f, 0f), context.label, NowTextStyle.Body, textColor);
+            NowRect content = context.rect.Inset(8f, 0f, 4f, 0f);
+
+            if (string.IsNullOrEmpty(context.detail))
+            {
+                NowControls.DrawLeftLabel(context.themeAsset, content, context.label, NowTextStyle.Body, textColor);
+                return;
+            }
+
+            var title = content;
+            title.height = Mathf.Max(0f, content.height * 0.5f);
+            title.y += 2f;
+            var detail = new NowRect(content.x, title.yMax - 1f, content.width, Mathf.Max(0f, content.yMax - title.yMax));
+
+            NowControls.DrawLeftLabel(context.themeAsset, title, context.label, NowTextStyle.Body, textColor);
+            NowControls.DrawLeftLabel(
+                context.themeAsset,
+                detail,
+                context.detail,
+                NowTextStyle.Caption,
+                context.themeAsset.GetColor(NowColorToken.TextMuted));
         }
 
         public virtual void DrawContextMenuItem(in NowPopupItemRenderContext context)

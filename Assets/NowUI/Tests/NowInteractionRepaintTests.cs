@@ -55,6 +55,23 @@ public class NowInteractionRepaintTests
         }
     }
 
+    sealed class MockTextInputSource : INowTextInputSource
+    {
+        public NowTextInputFrame frame;
+
+        public bool TryGetFrame(out NowTextInputFrame frame)
+        {
+            frame = this.frame;
+            return true;
+        }
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        NowTextInput.Reset();
+    }
+
     [Test]
     public void FromSnapshotDetectsPointerInsideSurface()
     {
@@ -231,6 +248,34 @@ public class NowInteractionRepaintTests
 
         tracker.SetWantsRepaint(false);
 
+        Assert.IsFalse(tracker.ShouldRepaint(provider, surface));
+    }
+
+    [Test]
+    public void TrackerRepaintsForRetainedHostKeyboardShortcuts()
+    {
+        var tracker = new NowInteractionRepaintTracker();
+        var provider = new MockInputProvider { snapshot = Snapshot(new Vector2(50f, 50f)) };
+        var keyboard = new MockTextInputSource();
+        var surface = new NowInputSurface(Size);
+
+        tracker.StoreFrameInput(provider.snapshot, Size);
+        NowTextInput.source = keyboard;
+
+        keyboard.frame = new NowTextInputFrame { deleteHeld = true };
+        NowTextInput.Invalidate();
+        Assert.IsTrue(tracker.ShouldRepaint(provider, surface), "Delete must wake a retained host.");
+
+        keyboard.frame = new NowTextInputFrame { command = true, undoPressed = true };
+        NowTextInput.Invalidate();
+        Assert.IsTrue(tracker.ShouldRepaint(provider, surface), "Undo must wake a retained host.");
+
+        keyboard.frame = new NowTextInputFrame { characters = " " };
+        NowTextInput.Invalidate();
+        Assert.IsTrue(tracker.ShouldRepaint(provider, surface), "Printable graph shortcuts must wake a retained host.");
+
+        keyboard.frame = default;
+        NowTextInput.Invalidate();
         Assert.IsFalse(tracker.ShouldRepaint(provider, surface));
     }
 

@@ -128,7 +128,7 @@ public sealed class NowNodeGraphExample : MonoBehaviour
             .Output(PortAlpha, "Alpha", Float)
             .Render(ctx =>
             {
-                var preview = new NowRect(ctx.bodyRect.x, ctx.bodyRect.y + ctx.Scale(4f), ctx.bodyRect.width, ctx.Scale(54f));
+                var preview = new NowRect(ctx.bodyRect.x, ctx.bodyRect.y + 4f, ctx.bodyRect.width, 54f);
                 ctx.Texture(_previewTexture, preview, 4f);
                 DrawNodeCaption(preview, "Checker Preview");
             });
@@ -138,7 +138,7 @@ public sealed class NowNodeGraphExample : MonoBehaviour
             .Output(PortColor, "Color", Float4)
             .Render(ctx =>
             {
-                var picker = new NowRect(ctx.bodyRect.x, ctx.bodyRect.y + ctx.Scale(8f), ctx.bodyRect.width, ctx.Scale(30f));
+                var picker = new NowRect(ctx.bodyRect.x, ctx.bodyRect.y + 8f, ctx.bodyRect.width, 30f);
 
                 using (NowControls.IdScope(ctx.node.id))
                 {
@@ -154,7 +154,7 @@ public sealed class NowNodeGraphExample : MonoBehaviour
             .Render(ctx =>
             {
                 EnsureValueFields();
-                var field = new NowRect(ctx.bodyRect.x, ctx.bodyRect.y + ctx.Scale(8f), ctx.bodyRect.width, ctx.Scale(30f));
+                var field = new NowRect(ctx.bodyRect.x, ctx.bodyRect.y + 8f, ctx.bodyRect.width, 30f);
 
                 using (NowControls.IdScope(ctx.node.id))
                 {
@@ -176,7 +176,7 @@ public sealed class NowNodeGraphExample : MonoBehaviour
             .Render(ctx =>
             {
                 EnsureValueFields();
-                var field = new NowRect(ctx.bodyRect.x, ctx.bodyRect.y + ctx.Scale(8f), ctx.bodyRect.width, ctx.Scale(34f));
+                var field = new NowRect(ctx.bodyRect.x, ctx.bodyRect.y + 8f, ctx.bodyRect.width, 34f);
 
                 using (NowControls.IdScope(ctx.node.id))
                 {

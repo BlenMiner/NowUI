@@ -217,6 +217,63 @@ public class NowNodeGraphTests
         }
     }
 
+    NowNodeGraphResult TransformedFrame(
+        NowNodeGraph graph,
+        Vector2 scale,
+        Vector2 origin,
+        Func<NowNodeGraphCanvas, NowNodeGraphCanvas> configure = null)
+    {
+        NowTextInput.Invalidate();
+        NowOverlay.ForceNewFrame();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        using (Now.Transform(scale, origin))
+        {
+            var canvas = NowNodes.Canvas(graph, CanvasRect, "transformed-graph");
+            if (configure != null)
+                canvas = configure(canvas);
+
+            var result = canvas.Draw();
+            NowOverlay.Flush();
+            return result;
+        }
+    }
+
+    NowNodeGraphResult PassiveFrame(
+        NowNodeGraph graph,
+        NowNodeGraphSchema schema = null,
+        Func<NowNodeGraphCanvas, NowNodeGraphCanvas> configure = null)
+    {
+        NowTextInput.Invalidate();
+        NowOverlay.ForceNewFrame();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            NowInput.BeginPassive();
+
+            try
+            {
+                var canvas = NowNodes.Canvas(graph, CanvasRect, "graph");
+
+                if (schema != null)
+                    canvas = canvas.SetSchema(schema);
+
+                if (configure != null)
+                    canvas = configure(canvas);
+
+                var result = canvas.Draw();
+                NowOverlay.Flush();
+                return result;
+            }
+            finally
+            {
+                NowInput.EndPassive();
+            }
+        }
+    }
+
     [Test]
     public void AddsTypeCompatibleLink()
     {
@@ -279,6 +336,215 @@ public class NowNodeGraphTests
     }
 
     [Test]
+    public void LinkPreviewRespectsOutputConnectionLimit()
+    {
+        var graph = new NowNodeGraph();
+        var source = graph.AddNode("source", "Source", Vector2.zero);
+        var a = graph.AddNode("a", "A", Vector2.zero);
+        var b = graph.AddNode("b", "B", Vector2.zero);
+        NowNodePort output = source.AddOutput("out", "Out", Float);
+        output.maxConnections = 1;
+        a.AddInput("in", "In", Float);
+        b.AddInput("in", "In", Float);
+
+        Assert.IsTrue(graph.TryAddLink("source", "out", "a", "in"));
+        Assert.IsFalse(graph.TryCreateLink("source", "out", "b", "in", out NowNodeLink blockedLink));
+        Assert.IsFalse(graph.CanAddLink(new NowNodeLink("source", "out", "b", "in")));
+        Assert.IsFalse(blockedLink.isValid);
+    }
+
+    [Test]
+    public void LinkPreviewAllowsSingleInputReplacement()
+    {
+        var graph = new NowNodeGraph();
+        var a = graph.AddNode("a", "A", Vector2.zero);
+        var b = graph.AddNode("b", "B", Vector2.zero);
+        var sink = graph.AddNode("sink", "Sink", Vector2.zero);
+        a.AddOutput("out", "Out", Float);
+        b.AddOutput("out", "Out", Float);
+        sink.AddInput("in", "In", Float);
+
+        Assert.IsTrue(graph.TryAddLink("a", "out", "sink", "in"));
+        Assert.IsTrue(graph.TryCreateLink("b", "out", "sink", "in", out NowNodeLink replacementLink));
+        Assert.IsTrue(graph.CanAddLink(replacementLink));
+    }
+
+    [Test]
+    public void LinkPreviewCanIgnorePickedLimitedOutputLink()
+    {
+        var graph = new NowNodeGraph();
+        var source = graph.AddNode("source", "Source", Vector2.zero);
+        var a = graph.AddNode("a", "A", Vector2.zero);
+        var b = graph.AddNode("b", "B", Vector2.zero);
+        NowNodePort output = source.AddOutput("out", "Out", Float);
+        output.maxConnections = 1;
+        a.AddInput("in", "In", Float);
+        b.AddInput("in", "In", Float);
+        var pickedLink = new NowNodeLink("source", "out", "a", "in");
+
+        Assert.IsTrue(graph.TryAddLink(pickedLink));
+        Assert.IsFalse(graph.TryCreateLink("source", "out", "b", "in", out _));
+        Assert.IsTrue(graph.TryCreateLink("source", "out", "b", "in", out NowNodeLink replugLink, pickedLink));
+        Assert.IsTrue(graph.CanAddLink(replugLink, pickedLink));
+    }
+
+    [Test]
+    public void NodePortsCanBeUpsertedAndRemovedById()
+    {
+        var node = new NowNode("node", "Node", Vector2.zero);
+
+        Assert.IsTrue(node.UpsertInput("in", "Old In", Float));
+        Assert.IsFalse(node.UpsertInput("in", "Old In", Float));
+        Assert.IsTrue(node.UpsertInput("in", "New In", Float4, maxConnections: 2));
+        Assert.IsTrue(node.UpsertOutput("out", "Out", Float3, maxConnections: 1));
+
+        Assert.AreEqual(1, node.inputs.Count);
+        Assert.AreEqual("New In", node.inputs[0].label);
+        Assert.AreEqual(Float4, node.inputs[0].typeId);
+        Assert.AreEqual(2, node.inputs[0].maxConnections);
+        Assert.AreEqual(1, node.outputs.Count);
+        Assert.AreEqual(1, node.outputs[0].maxConnections);
+
+        Assert.IsTrue(node.RemoveInput("in"));
+        Assert.IsFalse(node.RemoveInput("in"));
+        Assert.IsTrue(node.RemoveOutput("out"));
+        Assert.AreEqual(0, node.inputs.Count);
+        Assert.AreEqual(0, node.outputs.Count);
+    }
+
+    [Test]
+    public void AddPortReusesExistingPortId()
+    {
+        var node = new NowNode("node", "Node", Vector2.zero);
+        NowNodePort input = node.AddInput("in", "Old In", Float);
+        input.maxConnections = 2;
+
+        NowNodePort updatedInput = node.AddInput("in", "New In", Float4);
+        NowNodePort output = node.AddOutput("out", "Old Out", Float);
+        NowNodePort updatedOutput = node.AddOutput("out", "New Out", Float3);
+
+        Assert.AreSame(input, updatedInput);
+        Assert.AreEqual(1, node.inputs.Count);
+        Assert.AreEqual("New In", input.label);
+        Assert.AreEqual(Float4, input.typeId);
+        Assert.AreEqual(2, input.maxConnections);
+        Assert.AreSame(output, updatedOutput);
+        Assert.AreEqual(1, node.outputs.Count);
+        Assert.AreEqual("New Out", output.label);
+        Assert.AreEqual(Float3, output.typeId);
+    }
+
+    [Test]
+    public void ResetNodeSizesToSchemaRestoresDefinitionSize()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Texture")
+            .SetWidth(220f);
+        schema.Node(OutputNode, "Output")
+            .SetSize(180f, 92f);
+
+        var graph = new NowNodeGraph();
+        var texture = graph.AddNode(schema, TextureNode, Vector2.zero, id: "texture");
+        var output = graph.AddNode(schema, OutputNode, Vector2.zero, id: "output");
+        texture.size = new Vector2(420f, 260f);
+        output.size = new Vector2(320f, 160f);
+
+        Assert.AreEqual(2, graph.ResetNodeSizesToSchema(schema));
+        Assert.AreEqual(new Vector2(220f, -1f), texture.size);
+        Assert.AreEqual(new Vector2(180f, 92f), output.size);
+        Assert.AreEqual(0, graph.ResetNodeSizesToSchema());
+    }
+
+    [Test]
+    public void NodeDataCanBeStoredByKey()
+    {
+        var node = new NowNode("node", "Node", Vector2.zero);
+
+        Assert.IsTrue(node.SetData("method", "Game.Api.Score"));
+        Assert.IsFalse(node.SetData("method", "Game.Api.Score"));
+        Assert.IsTrue(node.SetData("method", "Game.Api.ScoreText"));
+        Assert.IsTrue(node.TryGetData("method", out string value));
+        Assert.AreEqual("Game.Api.ScoreText", value);
+        Assert.AreEqual("Game.Api.ScoreText", node.GetData("method"));
+        Assert.AreEqual("fallback", node.GetData("missing", "fallback"));
+
+        Assert.IsTrue(node.RemoveData("method"));
+        Assert.IsFalse(node.TryGetData("method", out _));
+    }
+
+    [Test]
+    public void GraphPortUpsertPrunesInvalidLinks()
+    {
+        var graph = new NowNodeGraph();
+        var source = graph.AddNode("source", "Source", Vector2.zero);
+        var sink = graph.AddNode("sink", "Sink", Vector2.zero);
+        source.AddOutput("out", "Out", Float);
+        sink.AddInput("in", "In", Float);
+
+        Assert.IsTrue(graph.TryAddLink("source", "out", "sink", "in"));
+        Assert.AreEqual(1, graph.links.Count);
+
+        Assert.IsTrue(graph.UpsertNodeInput(sink, "in", "In", Float4));
+        Assert.AreEqual(0, graph.links.Count);
+    }
+
+    [Test]
+    public void GraphPortRemovalDropsPortLinks()
+    {
+        var graph = new NowNodeGraph();
+        var source = graph.AddNode("source", "Source", Vector2.zero);
+        var sink = graph.AddNode("sink", "Sink", Vector2.zero);
+        source.AddOutput("out", "Out", Float);
+        sink.AddInput("in", "In", Float);
+
+        Assert.IsTrue(graph.TryAddLink("source", "out", "sink", "in"));
+        Assert.AreEqual(1, graph.links.Count);
+
+        Assert.IsTrue(graph.RemoveNodeInput(sink, "in"));
+        Assert.AreEqual(0, graph.links.Count);
+    }
+
+    [Test]
+    public void PruneInvalidLinksRemovesStaleDynamicPortLinks()
+    {
+        var graph = new NowNodeGraph();
+        var source = graph.AddNode("source", "Source", Vector2.zero);
+        var sink = graph.AddNode("sink", "Sink", Vector2.zero);
+        source.AddOutput("out", "Out", Float);
+        sink.AddInput("in", "In", Float);
+
+        Assert.IsTrue(graph.TryAddLink("source", "out", "sink", "in"));
+        Assert.AreEqual(1, graph.links.Count);
+
+        Assert.IsTrue(sink.UpsertInput("in", "In", Float4));
+
+        Assert.AreEqual(1, graph.PruneInvalidLinks());
+        Assert.AreEqual(0, graph.links.Count);
+    }
+
+    [Test]
+    public void PruneInvalidLinksEnforcesCurrentLimitsAndRemovesDuplicates()
+    {
+        var graph = new NowNodeGraph();
+        var a = graph.AddNode("a", "A", Vector2.zero);
+        var b = graph.AddNode("b", "B", Vector2.zero);
+        var sink = graph.AddNode("sink", "Sink", Vector2.zero);
+        a.AddOutput("out", "Out", Float);
+        b.AddOutput("out", "Out", Float);
+        NowNodePort input = sink.AddInput("in", "In", Float);
+        input.maxConnections = 0;
+
+        Assert.IsTrue(graph.TryAddLink("a", "out", "sink", "in"));
+        Assert.IsTrue(graph.TryAddLink("b", "out", "sink", "in"));
+        graph.links.Add(graph.links[0]);
+        input.maxConnections = 1;
+
+        Assert.AreEqual(2, graph.PruneInvalidLinks());
+        Assert.AreEqual(1, graph.links.Count);
+        Assert.AreEqual("a", graph.links[0].outputNodeId);
+    }
+
+    [Test]
     public void CustomCompatibilityControlsConnections()
     {
         var graph = new NowNodeGraph();
@@ -318,6 +584,79 @@ public class NowNodeGraphTests
     }
 
     [Test]
+    public void DefinitionPortsUpsertByPortIdAndCanBeCleared()
+    {
+        var schema = new NowNodeGraphSchema();
+        var definition = schema.Node(TextureNode, "Texture")
+            .Input(ValuePort, "Old In", Float)
+            .Input(ValuePort, "New In", Float4, maxConnections: 2)
+            .Output(ColorPort, "Old Out", Float)
+            .Output(ColorPort, "New Out", Float4, maxConnections: 3);
+
+        Assert.AreEqual(1, definition.inputs.Count);
+        Assert.AreEqual(1, definition.outputs.Count);
+        Assert.AreEqual("New In", definition.inputs[0].label);
+        Assert.AreEqual(Float4, definition.inputs[0].typeId);
+        Assert.AreEqual(2, definition.inputs[0].maxConnections);
+        Assert.AreEqual("New Out", definition.outputs[0].label);
+        Assert.AreEqual(Float4, definition.outputs[0].typeId);
+        Assert.AreEqual(3, definition.outputs[0].maxConnections);
+
+        Assert.AreSame(definition, definition.ClearPorts());
+        Assert.AreEqual(0, definition.inputs.Count);
+        Assert.AreEqual(0, definition.outputs.Count);
+    }
+
+    [Test]
+    public void DefinitionPortsCanBeRemovedFluently()
+    {
+        var schema = new NowNodeGraphSchema();
+        var definition = schema.Node(TextureNode, "Texture")
+            .Input(ValuePort, "Value", Float)
+            .Input("mask", "Mask", Float4)
+            .Output(ColorPort, "Color", Float4)
+            .Output("preview", "Preview", Float);
+
+        Assert.AreSame(definition, definition.RemoveInput(ValuePort));
+        Assert.AreSame(definition, definition.RemoveOutput("preview"));
+        Assert.AreSame(definition, definition.RemoveInput("missing"));
+
+        var graph = new NowNodeGraph();
+        NowNode node = graph.AddNode(schema, TextureNode, Vector2.zero, id: "texture");
+
+        Assert.AreEqual(1, definition.inputs.Count);
+        Assert.AreEqual("mask", definition.inputs[0].id);
+        Assert.AreEqual(1, definition.outputs.Count);
+        Assert.AreEqual(NowNodeIds.FromInt(ColorPort), definition.outputs[0].id);
+        Assert.AreEqual(1, node.inputs.Count);
+        Assert.AreEqual("mask", node.inputs[0].id);
+        Assert.AreEqual(1, node.outputs.Count);
+        Assert.AreEqual(NowNodeIds.FromInt(ColorPort), node.outputs[0].id);
+    }
+
+    [Test]
+    public void DefinitionInitializerRunsAfterPortsAreApplied()
+    {
+        bool sawAppliedPort = false;
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Texture")
+            .Output(ColorPort, "RGBA", Float4)
+            .Initialize(node =>
+            {
+                sawAppliedPort = node.outputs.Count == 1 && node.outputs[0].id == NowNodeIds.FromInt(ColorPort);
+                node.title = "Initialized";
+                node.userData = "created-from-definition";
+            });
+
+        var graph = new NowNodeGraph();
+        var created = graph.AddNode(schema, TextureNode, Vector2.zero);
+
+        Assert.IsTrue(sawAppliedPort);
+        Assert.AreEqual("Initialized", created.title);
+        Assert.AreEqual("created-from-definition", created.userData);
+    }
+
+    [Test]
     public void SchemaConnectionRulesCanBridgeDifferentTypes()
     {
         var schema = new NowNodeGraphSchema();
@@ -334,6 +673,65 @@ public class NowNodeGraphTests
 
         Assert.IsTrue(graph.TryAddLink("float", ValuePort, "output", ColorPort));
         Assert.AreEqual(1, graph.links.Count);
+    }
+
+    [Test]
+    public void SchemaClearRemovesDefinitionsRulesAndTypeColors()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Texture").Output(ValuePort, "Value", Float);
+        schema.Allow(Float, Float4);
+        schema.TypeColor(Float, Color.red);
+
+        var output = new NowNodePort("out", "Out", NowNodePortDirection.Output, Float);
+        var input = new NowNodePort("in", "In", NowNodePortDirection.Input, Float4);
+
+        Assert.AreEqual(1, schema.nodeDefinitionCount);
+        Assert.IsTrue(schema.TryGetNode(TextureNode, out _));
+        Assert.IsTrue(schema.TryGetTypeColor(Float, out _));
+        Assert.IsTrue(schema.CanConnect(null, null, output, null, input));
+
+        Assert.AreSame(schema, schema.Clear());
+
+        Assert.AreEqual(0, schema.nodeDefinitionCount);
+        Assert.IsFalse(schema.TryGetNode(TextureNode, out _));
+        Assert.IsFalse(schema.TryGetTypeColor(Float, out _));
+        Assert.IsFalse(schema.CanConnect(null, null, output, null, input));
+
+        schema.Node(TextureNode, "Texture").Output(ColorPort, "Color", Float4);
+
+        Assert.AreEqual(1, schema.nodeDefinitionCount);
+        Assert.IsTrue(schema.TryGetNode(TextureNode, out var rebuilt));
+        Assert.AreEqual(1, rebuilt.outputs.Count);
+        Assert.AreEqual(NowNodeIds.FromInt(ColorPort), rebuilt.outputs[0].id);
+    }
+
+    [Test]
+    public void GraphClearRemovesNodesLinksAndSelection()
+    {
+        var graph = SampleGraph();
+        Assert.IsTrue(graph.TryAddLink("a", "out", "b", "in"));
+        graph.SelectAllNodes();
+
+        Assert.AreEqual(2, graph.nodes.Count);
+        Assert.AreEqual(1, graph.links.Count);
+        Assert.AreEqual(2, graph.SelectedNodeCount());
+
+        graph.Clear();
+
+        Assert.AreEqual(0, graph.nodes.Count);
+        Assert.AreEqual(0, graph.links.Count);
+        Assert.AreEqual(0, graph.SelectedNodeCount());
+        Assert.IsFalse(graph.HasSelectedLink());
+
+        var linkedGraph = SampleGraph();
+        Assert.IsTrue(linkedGraph.TryAddLink("a", "out", "b", "in"));
+        linkedGraph.SelectLink(linkedGraph.links[0]);
+        Assert.IsTrue(linkedGraph.HasSelectedLink());
+
+        linkedGraph.Clear();
+
+        Assert.IsFalse(linkedGraph.HasSelectedLink());
     }
 
     [Test]
@@ -470,15 +868,73 @@ public class NowNodeGraphTests
 
         _pointer.snapshot = new NowInputSnapshot(new Vector2(70f, 45f), true, true, false);
         Frame(graph, configure: canvas => canvas.SetNodeSnapping(false));
+        int capturedId = NowInput.activeId;
+        Assert.AreNotEqual(0, capturedId, "pressing a node must capture the primary pointer");
 
         _pointer.snapshot = new NowInputSnapshot(new Vector2(110f, 65f), new Vector2(40f, 20f), true, false, false);
         var result = Frame(graph, configure: canvas => canvas.SetNodeSnapping(false));
+        Assert.AreEqual(capturedId, NowInput.activeId, "node pointer capture must survive into the drag frame");
 
         _pointer.snapshot = new NowInputSnapshot(new Vector2(110f, 65f), false, false, true);
         Frame(graph, configure: canvas => canvas.SetNodeSnapping(false));
 
         Assert.IsTrue(result.nodeMoved);
         Assert.AreEqual(new Vector2(80f, 50f), graph.FindNode("a").position);
+    }
+
+    [Test]
+    public void DraggingNodeTracksPointerInsideParentTransform()
+    {
+        var graph = SampleGraph();
+        var scale = new Vector2(1.5f, 1.25f);
+        var origin = new Vector2(30f, 20f);
+        Func<NowNodeGraphCanvas, NowNodeGraphCanvas> freeMove = canvas => canvas.SetNodeSnapping(false);
+        TransformedFrame(graph, scale, origin, freeMove);
+
+        var startLocal = new Vector2(70f, 45f);
+        var endLocal = new Vector2(110f, 65f);
+        var startScreen = Vector2.Scale(startLocal, scale) + origin;
+        var endScreen = Vector2.Scale(endLocal, scale) + origin;
+
+        _pointer.snapshot = new NowInputSnapshot(startScreen, true, true, false);
+        TransformedFrame(graph, scale, origin, freeMove);
+
+        _pointer.snapshot = new NowInputSnapshot(endScreen, endScreen - startScreen, true, false, false);
+        var result = TransformedFrame(graph, scale, origin, freeMove);
+
+        _pointer.snapshot = new NowInputSnapshot(endScreen, false, false, true);
+        TransformedFrame(graph, scale, origin, freeMove);
+
+        Assert.IsTrue(result.nodeMoved);
+        Assert.AreEqual(new Vector2(80f, 50f), graph.FindNode("a").position);
+    }
+
+    [Test]
+    public void DraggingNodeBodyBelowControlRowsMovesPosition()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Body Drag")
+            .SetSize(220f, 180f)
+            .Render(ctx =>
+            {
+                Now.Button(ctx.Row(0, 24f), "Edit").SetId("body-control").Draw();
+            });
+
+        var graph = new NowNodeGraph();
+        graph.AddNode(schema, TextureNode, new Vector2(40f, 30f), id: "a");
+
+        Frame(graph, schema, configure: canvas => canvas.SetNodeSnapping(false));
+
+        var start = new Vector2(120f, 145f);
+        var end = new Vector2(150f, 165f);
+        _pointer.snapshot = new NowInputSnapshot(start, true, true, false);
+        Frame(graph, schema, configure: canvas => canvas.SetNodeSnapping(false));
+
+        _pointer.snapshot = new NowInputSnapshot(end, end - start, true, false, false);
+        var result = Frame(graph, schema, configure: canvas => canvas.SetNodeSnapping(false));
+
+        Assert.IsTrue(result.nodeMoved);
+        Assert.AreEqual(new Vector2(70f, 50f), graph.FindNode("a").position);
     }
 
     [Test]
@@ -745,6 +1201,100 @@ public class NowNodeGraphTests
     }
 
     [Test]
+    public void PortTopOffsetMovesPortsBelowCustomContentAndExpandsNode()
+    {
+        const float offset = 56f;
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Offset")
+            .SetSize(180f, 80f)
+            .SetPortTopOffset(offset)
+            .Input(ValuePort, "In", Float)
+            .Output(ColorPort, "Out", Float);
+
+        var graph = new NowNodeGraph();
+        graph.AddNode(schema, TextureNode, new Vector2(40f, 30f), id: "offset");
+        var renderer = new CountingRenderer();
+
+        Frame(graph, schema, renderer: renderer, configure: canvas => canvas.SetNodeSnapping(false));
+
+        float expectedHeight = 30f + 12f + offset + 24f;
+        float expectedPortY = 30f + 30f + 8f + offset + 12f;
+
+        Assert.AreEqual(expectedHeight, renderer.lastNode.nodeRect.height, 0.0001f);
+        Assert.AreEqual(expectedPortY, renderer.lastPort.center.y, 0.0001f);
+    }
+
+    [Test]
+    public void WidthAndContentHeightLetNodeUseComputedMinimumHeight()
+    {
+        const float contentHeight = 10f;
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Auto Height")
+            .SetWidth(180f)
+            .SetContentHeight(contentHeight)
+            .Input(ValuePort, "In", Float)
+            .Output(ColorPort, "Out", Float);
+
+        var graph = new NowNodeGraph();
+        graph.AddNode(schema, TextureNode, new Vector2(40f, 30f), id: "auto-height");
+        var renderer = new CountingRenderer();
+
+        Frame(graph, schema, renderer: renderer, configure: canvas => canvas.SetNodeSnapping(false));
+
+        float expectedHeight = 30f + 12f + contentHeight + 24f;
+        float expectedPortY = 30f + 30f + 8f + contentHeight + 12f;
+
+        Assert.Less(expectedHeight, graph.defaultNodeSize.y);
+        Assert.AreEqual(expectedHeight, renderer.lastNode.nodeRect.height, 0.0001f);
+        Assert.AreEqual(expectedPortY, renderer.lastPort.center.y, 0.0001f);
+    }
+
+    [Test]
+    public void ContentHeightClampsBodyRectAbovePortRows()
+    {
+        const float contentHeight = 32f;
+        NowNodeContentContext seen = null;
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Clamped Content")
+            .SetWidth(180f)
+            .SetContentHeight(contentHeight)
+            .Input(ValuePort, "In", Float)
+            .Output(ColorPort, "Out", Float)
+            .Render(ctx => seen = ctx);
+
+        var graph = new NowNodeGraph();
+        graph.AddNode(schema, TextureNode, new Vector2(40f, 30f), id: "content");
+        var renderer = new CountingRenderer();
+
+        Frame(graph, schema, renderer: renderer, configure: canvas => canvas.SetNodeSnapping(false));
+
+        Assert.NotNull(seen);
+        Assert.AreEqual(contentHeight, seen.bodyRect.height, 0.0001f);
+        Assert.Less(seen.bodyRect.yMax, renderer.lastPort.center.y);
+    }
+
+    [Test]
+    public void PortTopOffsetAloneDoesNotClampBodyRect()
+    {
+        const float offset = 32f;
+        NowNodeContentContext seen = null;
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Port Offset")
+            .SetSize(180f, 160f)
+            .SetPortTopOffset(offset)
+            .Input(ValuePort, "In", Float)
+            .Render(ctx => seen = ctx);
+
+        var graph = new NowNodeGraph();
+        graph.AddNode(schema, TextureNode, new Vector2(40f, 30f), id: "offset");
+
+        Frame(graph, schema, configure: canvas => canvas.SetNodeSnapping(false));
+
+        Assert.NotNull(seen);
+        Assert.Greater(seen.bodyRect.height, offset);
+    }
+
+    [Test]
     public void ContentRowsStayInGraphSpaceWithCanvasZoom()
     {
         float seenZoom = 0f;
@@ -798,6 +1348,182 @@ public class NowNodeGraphTests
     }
 
     [Test]
+    public void ContentRowsCanStackMixedHeights()
+    {
+        NowRect field = default;
+        NowRect status = default;
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Mixed Rows")
+            .SetSize(220f, 118f)
+            .Render(ctx =>
+            {
+                field = ctx.Row(0, 28f);
+                status = ctx.RowAfter(field, 18f);
+            });
+
+        var graph = new NowNodeGraph();
+        graph.AddNode(schema, TextureNode, new Vector2(40f, 30f), id: "mixed");
+
+        Frame(graph, schema);
+
+        Assert.AreEqual(field.yMax + 4f, status.y, 0.0001f);
+        Assert.GreaterOrEqual(status.y, field.yMax);
+    }
+
+    [Test]
+    public void FullWidthContentRowSpansPortLabelLanes()
+    {
+        NowRect regular = default;
+        NowRect full = default;
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Full Width")
+            .SetWidth(220f)
+            .SetContentHeight(28f)
+            .Input(ValuePort, "Input", Float)
+            .Output(ColorPort, "Output", Float)
+            .Render(ctx =>
+            {
+                regular = ctx.Row(0, 28f);
+                full = ctx.FullWidthRow(0, 28f);
+            });
+
+        var graph = new NowNodeGraph();
+        graph.AddNode(schema, TextureNode, new Vector2(40f, 30f), id: "full-width");
+        Frame(graph, schema, configure: canvas => canvas.SetNodeSnapping(false));
+
+        Assert.Less(full.x, regular.x);
+        Assert.Greater(full.xMax, regular.xMax);
+        Assert.AreEqual(regular.y, full.y, 0.0001f);
+        Assert.AreEqual(regular.height, full.height, 0.0001f);
+    }
+
+    [Test]
+    public void FullWidthContentControlDoesNotStartNodeDrag()
+    {
+        bool clicked = false;
+        NowRect buttonRect = default;
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Editable")
+            .SetWidth(220f)
+            .SetContentHeight(28f)
+            .Input(ValuePort, "Input", Float)
+            .Output(ColorPort, "Output", Float)
+            .Render(ctx =>
+            {
+                buttonRect = ctx.FullWidthRow(0, 28f);
+                if (Now.Button(buttonRect, "Edit").SetId("full-width-edit").Draw())
+                    clicked = true;
+            });
+
+        var graph = new NowNodeGraph();
+        var node = graph.AddNode(schema, TextureNode, new Vector2(40f, 30f), id: "editable");
+        Frame(graph, schema, configure: canvas => canvas.SetNodeSnapping(false));
+        var pointer = new Vector2(buttonRect.x + 5f, buttonRect.center.y);
+
+        _pointer.snapshot = new NowInputSnapshot(pointer, true, true, false);
+        Frame(graph, schema, configure: canvas => canvas.SetNodeSnapping(false));
+        _pointer.snapshot = new NowInputSnapshot(pointer, false, false, true);
+        Frame(graph, schema, configure: canvas => canvas.SetNodeSnapping(false));
+
+        Assert.IsTrue(clicked);
+        Assert.AreEqual(new Vector2(40f, 30f), node.position);
+    }
+
+    [Test]
+    public void ContentContextConvertsBetweenGraphAndScreenSpace()
+    {
+        float seenZoom = 0f;
+        NowRect graphRow = default;
+        NowRect screenRow = default;
+        NowRect transformedRow = default;
+        Vector2 roundTripCenter = default;
+        Vector2 graphVector = default;
+        float graphUnits = 0f;
+
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Preview")
+            .SetSize(180f, 118f)
+            .Render(ctx =>
+            {
+                seenZoom = ctx.zoom;
+                graphRow = ctx.Row(0, 20f);
+                screenRow = ctx.GraphToScreen(graphRow);
+                transformedRow = Now.TransformScreenRect(graphRow);
+                roundTripCenter = ctx.ScreenToGraph(screenRow.center);
+                graphVector = ctx.ScreenVectorToGraph(ctx.GraphVectorToScreen(new Vector2(3f, 4f)));
+                graphUnits = ctx.ScreenUnitsToGraph(ctx.GraphUnitsToScreen(12f));
+            });
+
+        var graph = new NowNodeGraph();
+        graph.AddNode(schema, TextureNode, new Vector2(40f, 30f), id: "preview");
+
+        Frame(graph, schema);
+
+        _pointer.snapshot = new NowInputSnapshot(
+            true,
+            new Vector2(100f, 100f),
+            new Vector2(100f, 100f),
+            Vector2.zero,
+            NowPointerButtons.None,
+            NowPointerButtons.None,
+            NowPointerButtons.None,
+            new Vector2(0f, 3f),
+            Vector2.zero,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            1,
+            1f);
+        Frame(graph, schema);
+
+        Assert.Greater(seenZoom, 1f);
+        Assert.AreEqual(transformedRow.x, screenRow.x, 0.0001f);
+        Assert.AreEqual(transformedRow.y, screenRow.y, 0.0001f);
+        Assert.AreEqual(transformedRow.width, screenRow.width, 0.0001f);
+        Assert.AreEqual(transformedRow.height, screenRow.height, 0.0001f);
+        Assert.AreEqual(graphRow.center.x, roundTripCenter.x, 0.0001f);
+        Assert.AreEqual(graphRow.center.y, roundTripCenter.y, 0.0001f);
+        Assert.AreEqual(3f, graphVector.x, 0.0001f);
+        Assert.AreEqual(4f, graphVector.y, 0.0001f);
+        Assert.AreEqual(12f, graphUnits, 0.0001f);
+        Assert.AreEqual(20f * seenZoom, screenRow.height, 0.0001f);
+    }
+
+    [Test]
+    public void ContentContextScreenConversionIncludesParentTransform()
+    {
+        NowRect graphRow = default;
+        NowRect screenRow = default;
+        Vector2 roundTrip = default;
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Transformed Content")
+            .SetSize(180f, 118f)
+            .Render(ctx =>
+            {
+                graphRow = ctx.Row(0, 20f);
+                screenRow = ctx.GraphToScreen(graphRow);
+                roundTrip = ctx.ScreenToGraph(screenRow.center);
+            });
+
+        var graph = new NowNodeGraph().SetSchema(schema);
+        graph.AddNode(schema, TextureNode, new Vector2(40f, 30f), id: "transformed-content");
+        var scale = new Vector2(1.5f, 1.25f);
+        var origin = new Vector2(30f, 20f);
+        TransformedFrame(graph, scale, origin);
+
+        Vector2 expectedCenter = Vector2.Scale(graphRow.center, scale) + origin;
+        Assert.AreEqual(expectedCenter.x, screenRow.center.x, 0.0001f);
+        Assert.AreEqual(expectedCenter.y, screenRow.center.y, 0.0001f);
+        Assert.AreEqual(graphRow.center.x, roundTrip.x, 0.0001f);
+        Assert.AreEqual(graphRow.center.y, roundTrip.y, 0.0001f);
+    }
+
+    [Test]
     public void NodeBodyControlsReceivePointerInput()
     {
         bool clicked = false;
@@ -830,6 +1556,35 @@ public class NowNodeGraphTests
 
         Assert.IsTrue(clicked);
         Assert.IsTrue(result.changed);
+    }
+
+    [Test]
+    public void NodeBodyContentCanRecordUndoableChanges()
+    {
+        bool changedOnce = false;
+        var history = new NowNodeGraphHistory();
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Editable")
+            .SetSize(190f, 118f)
+            .Render(ctx =>
+            {
+                if (changedOnce)
+                    return;
+
+                ctx.RecordChange();
+                ctx.node.userId = 42;
+                changedOnce = true;
+            });
+
+        var graph = new NowNodeGraph();
+        graph.AddNode(schema, TextureNode, new Vector2(40f, 30f), userId: 7, id: "editable");
+
+        var result = Frame(graph, schema, history: history);
+
+        Assert.IsTrue(result.changed);
+        Assert.AreEqual(42, graph.FindNode("editable").userId);
+        Assert.IsTrue(history.Undo(graph));
+        Assert.AreEqual(7, graph.FindNode("editable").userId);
     }
 
     [Test]
@@ -1197,6 +1952,11 @@ public class NowNodeGraphTests
     {
         var graph = SampleGraph();
         Assert.IsTrue(graph.TryAddLink("a", "out", "b", "in"));
+        graph.FindNode("a").userData = "method";
+        graph.FindNode("a").userData2 = "signature";
+        graph.FindNode("a").userData3 = "int,string";
+        graph.FindNode("a").SetData("method", "Game.Api.Score");
+        graph.FindNode("a").SetData("signature", "int Game.Api.Score(string)");
 
         Frame(graph);
 
@@ -1230,6 +1990,11 @@ public class NowNodeGraphTests
         Assert.AreNotEqual("b", pastedB.id);
         Assert.AreEqual(new Vector2(280f, 0f), pastedB.position - pastedA.position);
         Assert.AreEqual(new NowNodeLink(pastedA.id, "out", pastedB.id, "in"), graph.links[1]);
+        Assert.AreEqual("method", pastedA.userData);
+        Assert.AreEqual("signature", pastedA.userData2);
+        Assert.AreEqual("int,string", pastedA.userData3);
+        Assert.AreEqual("Game.Api.Score", pastedA.GetData("method"));
+        Assert.AreEqual("int Game.Api.Score(string)", pastedA.GetData("signature"));
     }
 
     [Test]
@@ -1485,6 +2250,194 @@ public class NowNodeGraphTests
     }
 
     [Test]
+    public void NodeSearchMatchesDefinitionKeywords()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Branch")
+            .SetSearchKeywords("if condition else")
+            .SetSize(200f, 120f)
+            .Output(ValuePort, "Out", Float);
+        schema.Node(OutputNode, "Output")
+            .SetSize(200f, 120f)
+            .Input(ColorPort, "In", Float);
+
+        var graph = new NowNodeGraph();
+        Frame(graph, schema: schema);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(200f, 150f), true, true, false);
+        Frame(graph, schema: schema);
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(200f, 150f), false, false, true);
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { characters = " " };
+        var opened = Frame(graph, schema: schema);
+        Assert.IsTrue(opened.searchOpened);
+
+        _keyboard.frame = new NowTextInputFrame { characters = "if" };
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { enterPressed = true };
+        Frame(graph, schema: schema);
+        _keyboard.frame = default;
+
+        Assert.AreEqual(1, graph.nodes.Count);
+        Assert.AreEqual(TextureNode, graph.nodes[0].kindId);
+        Assert.AreEqual("Branch", graph.nodes[0].title);
+    }
+
+    [Test]
+    public void NodeSearchMatchesDefinitionCategory()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Delay")
+            .SetCategory("Flow")
+            .SetSize(200f, 120f)
+            .Output(ValuePort, "Out", Float);
+        schema.Node(OutputNode, "Output")
+            .SetCategory("Values")
+            .SetSize(200f, 120f)
+            .Input(ColorPort, "In", Float);
+
+        var graph = new NowNodeGraph();
+        Frame(graph, schema: schema);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(200f, 150f), true, true, false);
+        Frame(graph, schema: schema);
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(200f, 150f), false, false, true);
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { characters = " " };
+        var opened = Frame(graph, schema: schema);
+        Assert.IsTrue(opened.searchOpened);
+
+        _keyboard.frame = new NowTextInputFrame { characters = "flow" };
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { enterPressed = true };
+        Frame(graph, schema: schema);
+        _keyboard.frame = default;
+
+        Assert.AreEqual(1, graph.nodes.Count);
+        Assert.AreEqual(TextureNode, graph.nodes[0].kindId);
+        Assert.AreEqual("Delay", graph.nodes[0].title);
+    }
+
+    [Test]
+    public void NodeSearchRanksTitleMatchesBeforeKeywordAndCategoryMatches()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Category Match")
+            .SetCategory("Score")
+            .SetSize(180f, 90f)
+            .Output(ValuePort, "Out", Float);
+        schema.Node(TextureNode + 1, "Keyword Match")
+            .SetSearchKeywords("score")
+            .SetSize(180f, 90f)
+            .Output(ValuePort, "Out", Float);
+        schema.Node(TextureNode + 2, "Score")
+            .SetSize(180f, 90f)
+            .Output(ValuePort, "Out", Float);
+
+        var graph = new NowNodeGraph();
+        Frame(graph, schema: schema);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(200f, 150f), true, true, false);
+        Frame(graph, schema: schema);
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(200f, 150f), false, false, true);
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { characters = " " };
+        var opened = Frame(graph, schema: schema);
+        Assert.IsTrue(opened.searchOpened);
+
+        _keyboard.frame = new NowTextInputFrame { characters = "score" };
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { enterPressed = true };
+        Frame(graph, schema: schema);
+        _keyboard.frame = default;
+
+        Assert.AreEqual(1, graph.nodes.Count);
+        Assert.AreEqual(TextureNode + 2, graph.nodes[0].kindId);
+        Assert.AreEqual("Score", graph.nodes[0].title);
+    }
+
+    [Test]
+    public void NodeSearchMatchesDefinitionDetail()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Call")
+            .SetSearchDetail("int Game.Api.Score(string text)")
+            .SetSize(180f, 90f)
+            .Output(ValuePort, "Out", Float);
+        schema.Node(OutputNode, "Output")
+            .SetSize(180f, 90f)
+            .Input(ColorPort, "In", Float);
+
+        var graph = new NowNodeGraph();
+        Frame(graph, schema: schema);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(200f, 150f), true, true, false);
+        Frame(graph, schema: schema);
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(200f, 150f), false, false, true);
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { characters = " " };
+        var opened = Frame(graph, schema: schema);
+        Assert.IsTrue(opened.searchOpened);
+
+        _keyboard.frame = new NowTextInputFrame { characters = "api.score" };
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { enterPressed = true };
+        Frame(graph, schema: schema);
+        _keyboard.frame = default;
+
+        Assert.AreEqual(1, graph.nodes.Count);
+        Assert.AreEqual(TextureNode, graph.nodes[0].kindId);
+        Assert.AreEqual("Call", graph.nodes[0].title);
+    }
+
+    [Test]
+    public void SearchResultLimitAllowsSelectingRowsBeyondDefaultLimit()
+    {
+        var schema = new NowNodeGraphSchema();
+
+        for (int i = 0; i < 12; i++)
+        {
+            schema.Node(TextureNode + i, "Node " + i.ToString("00"))
+                .SetSize(180f, 90f)
+                .Output(ValuePort, "Out", Float);
+        }
+
+        var graph = new NowNodeGraph();
+        Func<NowNodeGraphCanvas, NowNodeGraphCanvas> largeSearch =
+            canvas => canvas.SetSearchResultLimit(12);
+
+        Frame(graph, schema: schema, configure: largeSearch);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(40f, 40f), true, true, false);
+        Frame(graph, schema: schema, configure: largeSearch);
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(40f, 40f), false, false, true);
+        Frame(graph, schema: schema, configure: largeSearch);
+
+        _keyboard.frame = new NowTextInputFrame { characters = " " };
+        var opened = Frame(graph, schema: schema, configure: largeSearch);
+        Assert.IsTrue(opened.searchOpened);
+
+        _keyboard.frame = new NowTextInputFrame { characters = "node" };
+        Frame(graph, schema: schema, configure: largeSearch);
+        _keyboard.frame = default;
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(60f, 316f), true, true, false);
+        Frame(graph, schema: schema, configure: largeSearch);
+
+        Assert.AreEqual(1, graph.nodes.Count);
+        Assert.AreEqual(TextureNode + 10, graph.nodes[0].kindId);
+        Assert.AreEqual("Node 10", graph.nodes[0].title);
+    }
+
+    [Test]
     public void SpaceOpensSearchWithoutImmediatelyCreatingNode()
     {
         var schema = new NowNodeGraphSchema();
@@ -1522,6 +2475,168 @@ public class NowNodeGraphTests
         _keyboard.frame = default;
 
         Assert.AreEqual(1, graph.nodes.Count);
+    }
+
+    [Test]
+    public void SpaceSearchUsesCanvasLocalPositionInsideParentTransform()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Texture").SetSize(180f, 90f).Output(ValuePort, "Out", Float);
+        var graph = new NowNodeGraph().SetSchema(schema);
+        var scale = new Vector2(1.4f, 1.2f);
+        var origin = new Vector2(24f, 18f);
+        var localPointer = new Vector2(200f, 150f);
+        var screenPointer = Vector2.Scale(localPointer, scale) + origin;
+
+        TransformedFrame(graph, scale, origin);
+        _pointer.snapshot = new NowInputSnapshot(screenPointer, true, true, false);
+        TransformedFrame(graph, scale, origin);
+        _pointer.snapshot = new NowInputSnapshot(screenPointer, false, false, true);
+        TransformedFrame(graph, scale, origin);
+
+        _keyboard.frame = new NowTextInputFrame { characters = " " };
+        var opened = TransformedFrame(graph, scale, origin);
+        Assert.IsTrue(opened.searchOpened);
+
+        _keyboard.frame = new NowTextInputFrame { enterPressed = true };
+        TransformedFrame(graph, scale, origin);
+        _keyboard.frame = default;
+
+        Assert.AreEqual(1, graph.nodes.Count);
+        Assert.AreEqual(localPointer, graph.nodes[0].position);
+    }
+
+    [Test]
+    public void SearchGenericSubmitCreatesHighlightedNode()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Texture").SetSize(180f, 90f).Output(ValuePort, "Out", Float);
+
+        var graph = new NowNodeGraph();
+        Frame(graph, schema: schema);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), true, true, false);
+        Frame(graph, schema: schema);
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), false, false, true);
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { characters = " " };
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = default;
+        _pointer.snapshot = new NowInputSnapshot(
+            true, new Vector2(10f, 10f), new Vector2(10f, 10f), Vector2.zero,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            submitDown: true, submitPressed: true, submitReleased: false,
+            cancelDown: false, cancelPressed: false, cancelReleased: false,
+            frame: 1, time: 0.016f);
+        Frame(graph, schema: schema);
+
+        Assert.AreEqual(1, graph.nodes.Count);
+        Assert.AreEqual(TextureNode, graph.nodes[0].kindId);
+    }
+
+    [Test]
+    public void TypingSpaceInSearchDoesNotSubmit()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Debug Log").SetSize(180f, 90f).Output(ValuePort, "Out", Float);
+
+        var graph = new NowNodeGraph();
+        Frame(graph, schema: schema);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), true, true, false);
+        Frame(graph, schema: schema);
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), false, false, true);
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { characters = " " };
+        Frame(graph, schema: schema);
+
+        _pointer.snapshot = new NowInputSnapshot(
+            true, new Vector2(10f, 10f), new Vector2(10f, 10f), Vector2.zero,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            submitDown: true, submitPressed: true, submitReleased: false,
+            cancelDown: false, cancelPressed: false, cancelReleased: false,
+            frame: 1, time: 0.016f);
+        _keyboard.frame = new NowTextInputFrame { characters = " " };
+        Frame(graph, schema: schema);
+
+        Assert.AreEqual(0, graph.nodes.Count);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), false, false, false);
+        _keyboard.frame = new NowTextInputFrame { enterPressed = true };
+        Frame(graph, schema: schema);
+        _keyboard.frame = default;
+
+        Assert.AreEqual(1, graph.nodes.Count);
+    }
+
+    [Test]
+    public void SearchCancelClosesWithoutCreatingNode()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Texture").SetSize(180f, 90f).Output(ValuePort, "Out", Float);
+
+        var graph = new NowNodeGraph();
+        Frame(graph, schema: schema);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), true, true, false);
+        Frame(graph, schema: schema);
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), false, false, true);
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { characters = " " };
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = default;
+        _pointer.snapshot = new NowInputSnapshot(
+            true, new Vector2(10f, 10f), new Vector2(10f, 10f), Vector2.zero,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            submitDown: false, submitPressed: false, submitReleased: false,
+            cancelDown: true, cancelPressed: true, cancelReleased: false,
+            frame: 1, time: 0.016f);
+        Frame(graph, schema: schema);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), false, false, false);
+        _keyboard.frame = new NowTextInputFrame { enterPressed = true };
+        Frame(graph, schema: schema);
+        _keyboard.frame = default;
+
+        Assert.AreEqual(0, graph.nodes.Count);
+    }
+
+    [Test]
+    public void OpenSearchSurvivesPassiveDrawBeforeNextInput()
+    {
+        var schema = new NowNodeGraphSchema();
+        schema.Node(TextureNode, "Texture").SetSize(180f, 90f).Output(ValuePort, "Out", Float);
+
+        var graph = new NowNodeGraph();
+        Frame(graph, schema: schema);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), true, true, false);
+        Frame(graph, schema: schema);
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), false, false, true);
+        Frame(graph, schema: schema);
+
+        _keyboard.frame = new NowTextInputFrame { characters = " " };
+        var opened = Frame(graph, schema: schema);
+        Assert.IsTrue(opened.searchOpened);
+
+        _keyboard.frame = default;
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(10f, 10f), false, false, false);
+        PassiveFrame(graph, schema);
+
+        _keyboard.frame = new NowTextInputFrame { enterPressed = true };
+        Frame(graph, schema: schema);
+        _keyboard.frame = default;
+
+        Assert.AreEqual(1, graph.nodes.Count);
+        Assert.AreEqual(TextureNode, graph.nodes[0].kindId);
     }
 
     [Test]

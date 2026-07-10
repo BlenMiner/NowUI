@@ -62,6 +62,21 @@ public class NowControlsTests
         return result;
     }
 
+    bool DrawSelectableRowFrame(Vector2 pointer, bool down, bool pressed, bool released)
+    {
+        _provider.snapshot = new NowInputSnapshot(pointer, down, pressed, released);
+        bool result;
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            result = Now.SelectableRow(ButtonRect, "Warning")
+                .SetId("row")
+                .SetSelected()
+                .Draw();
+
+        return result;
+    }
+
     bool DrawInteractionFrame(Vector2 pointer)
     {
         _provider.snapshot = new NowInputSnapshot(pointer, false, false, false);
@@ -206,6 +221,16 @@ public class NowControlsTests
     }
 
     [Test]
+    public void SelectableRowClicksOnPressAndReleaseInside()
+    {
+        Vector2 inside = new Vector2(60, 36);
+
+        Assert.IsFalse(DrawSelectableRowFrame(inside, down: true, pressed: true, released: false));
+        Assert.IsTrue(DrawSelectableRowFrame(inside, down: false, pressed: false, released: true));
+        Assert.IsTrue(_drawList.hasGeometry, "Selectable row drew no visuals.");
+    }
+
+    [Test]
     public void InteractRequestsRepaintOnlyWhenInteractionStateChanges()
     {
         Vector2 inside = new Vector2(60, 36);
@@ -227,18 +252,20 @@ public class NowControlsTests
     [Test]
     public void PassiveMeasurePassMirrorsActiveOccurrenceSalting()
     {
+        int site = NowControls.SiteId("test", 253);
+
         using (NowInput.Begin(_provider, Surface))
         {
-            int active1 = NowControls.GetControlId("row");
-            int active2 = NowControls.GetControlId("row");
+            int active1 = NowControls.GetControlId(site);
+            int active2 = NowControls.GetControlId(site);
 
             NowInput.BeginPassive();
-            int passive1 = NowControls.GetControlId("row");
-            int passive2 = NowControls.GetControlId("row");
+            int passive1 = NowControls.GetControlId(site);
+            int passive2 = NowControls.GetControlId(site);
             NowInput.EndPassive();
 
             NowInput.BeginPassive();
-            int secondPass1 = NowControls.GetControlId("row");
+            int secondPass1 = NowControls.GetControlId(site);
             NowInput.EndPassive();
 
             Assert.AreNotEqual(active1, active2, "Repeated draws of one id must salt apart.");
@@ -395,15 +422,16 @@ public class NowControlsTests
     }
 
     [Test]
-    public void DuplicateLabelsGetDistinctStableIds()
+    public void RepeatedCallSiteGetsDistinctStableIds()
     {
         int first, second, third;
+        int site = NowControls.SiteId("test", 423);
 
         using (NowInput.Begin(_provider, Surface))
         {
-            first = NowControls.GetControlId("Delete");
-            second = NowControls.GetControlId("Delete");
-            third = NowControls.GetControlId("Delete");
+            first = NowControls.GetControlId(site);
+            second = NowControls.GetControlId(site);
+            third = NowControls.GetControlId(site);
         }
 
         Assert.AreNotEqual(first, second);
@@ -413,7 +441,7 @@ public class NowControlsTests
         int firstNextFrame;
 
         using (NowInput.Begin(_provider, Surface))
-            firstNextFrame = NowControls.GetControlId("Delete");
+            firstNextFrame = NowControls.GetControlId(site);
 
         Assert.AreEqual(first, firstNextFrame);
     }
@@ -651,14 +679,14 @@ public class NowControlsTests
             using (NowLayout.Area(new Vector4(0, 0, 420, 220)))
             {
                 using (NowControls.IdScope(1001))
-                using (var button = NowLayout.Button("Item").SetId(7).Begin())
+                using (var button = NowLayout.Button("Item").SetId("item").Begin())
                 {
                     small = button.rect;
                     NowLayout.Rect(width: 40f, height: 20f);
                 }
 
                 using (NowControls.IdScope(1002))
-                using (var button = NowLayout.Button("Item").SetId(7).Begin())
+                using (var button = NowLayout.Button("Item").SetId("item").Begin())
                 {
                     large = button.rect;
                     NowLayout.Rect(width: 160f, height: 20f);

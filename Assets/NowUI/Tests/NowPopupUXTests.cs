@@ -140,6 +140,25 @@ public class NowPopupUXTests
         }
     }
 
+    bool DrawComboStringFrame(ref string selected, NowInputSnapshot snapshot, string typed = null)
+    {
+        NowOverlay.ForceNewFrame();
+        _pointer.snapshot = snapshot;
+        _keyboard.frame = new NowTextInputFrame { characters = typed };
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            bool changed = Now.ComboBox(FieldRect, Options)
+                .SetId("combo-string")
+                .SetAllowCustomValue()
+                .Draw(ref selected);
+            NowOverlay.Flush();
+            return changed;
+        }
+    }
+
     [Test]
     public void ComboBoxFilterStaysTypableWhileThePopupBlockIsActive()
     {
@@ -158,6 +177,44 @@ public class NowPopupUXTests
             DrawComboFrame(ref selected, Snapshot(fieldCenter)),
             "Typing on the 3rd+ open frame must reach the filter and submit its first match.");
         Assert.AreEqual(1, selected, "The filter 'med' must select Medium.");
+    }
+
+    [Test]
+    public void ComboBoxStringModeCanCommitCustomText()
+    {
+        string selected = string.Empty;
+        var fieldCenter = FieldRect.center;
+
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter, down: true, pressed: true));
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter, released: true));
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter));
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter));
+
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter), typed: "Custom.Method");
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter, submitPressed: true));
+
+        Assert.IsTrue(
+            DrawComboStringFrame(ref selected, Snapshot(fieldCenter)),
+            "String combo boxes with custom values must apply the committed filter on the next Draw.");
+        Assert.AreEqual("Custom.Method", selected);
+    }
+
+    [Test]
+    public void ComboBoxStringModePrefersOptionMatchesBeforeCustomText()
+    {
+        string selected = string.Empty;
+        var fieldCenter = FieldRect.center;
+
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter, down: true, pressed: true));
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter, released: true));
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter));
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter));
+
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter), typed: "med");
+        DrawComboStringFrame(ref selected, Snapshot(fieldCenter, submitPressed: true));
+
+        Assert.IsTrue(DrawComboStringFrame(ref selected, Snapshot(fieldCenter)));
+        Assert.AreEqual("Medium", selected);
     }
 
     bool DrawDropdownAndButtonFrame(ref int selected, NowInputSnapshot snapshot)

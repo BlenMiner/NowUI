@@ -40,7 +40,6 @@ concurrency:
 jobs:
   build:
     name: ${{ matrix.target }}
-    if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
     runs-on:
       - self-hosted
       - Windows
@@ -56,9 +55,11 @@ jobs:
 
     steps:
       - name: Checkout
+        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
         uses: actions/checkout@v4
 
       - name: Check platform module is installed
+        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
         shell: pwsh
         run: |
           $editorRoot = Split-Path -Parent $env:UNITY_EDITOR
@@ -75,6 +76,7 @@ jobs:
           }
 
       - name: Build player
+        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
         shell: pwsh
         run: |
           $artifacts = Join-Path $env:GITHUB_WORKSPACE "artifacts"
@@ -107,7 +109,7 @@ jobs:
           }
 
       - name: Upload build log
-        if: always()
+        if: ${{ always() && (inputs.target == 'all' || inputs.target == matrix.target) }}
         uses: actions/upload-artifact@v4
         with:
           name: build-verification-${{ matrix.target }}-log

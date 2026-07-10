@@ -137,7 +137,9 @@ public class NowRenderingPlayModeTests
     {
         using (_renderer.Begin(_target))
         {
-            Now.Rectangle(new NowRect(0, 0, Side, Side))
+            // Overscan the opaque backdrop so the rectangle's intentional
+            // half-pixel AA edge lies outside the render target.
+            Now.Rectangle(new NowRect(-1, -1, Side + 2, Side + 2))
                 .SetColor(new Color(0.18f, 0.2f, 0.24f, 1f))
                 .Draw();
             Now.Rectangle(new NowRect(32, 24, 64, 80))
@@ -157,7 +159,7 @@ public class NowRenderingPlayModeTests
     {
         using (_renderer.Begin(_target))
         {
-            Now.Rectangle(new NowRect(0, 0, Side, Side))
+            Now.Rectangle(new NowRect(-1, -1, Side + 2, Side + 2))
                 .SetColor(new Color(0.18f, 0.2f, 0.24f, 1f))
                 .Draw();
             Now.Rectangle(new NowRect(24, 24, 80, 80))
@@ -189,10 +191,10 @@ public class NowRenderingPlayModeTests
     {
         using (_renderer.Begin(_target))
         {
-            Now.Rectangle(new NowRect(0, 0, Side / 2f, Side))
+            Now.Rectangle(new NowRect(-1, -1, Side / 2f + 1, Side + 2))
                 .SetColor(Color.red)
                 .Draw();
-            Now.Rectangle(new NowRect(Side / 2f, 0, Side / 2f, Side))
+            Now.Rectangle(new NowRect(Side / 2f, -1, Side / 2f + 1, Side + 2))
                 .SetColor(Color.blue)
                 .Draw();
             Now.Glass(new NowRect(48, 16, 32, 96))
@@ -254,10 +256,10 @@ public class NowRenderingPlayModeTests
     {
         using (_renderer.Begin(_target))
         {
-            Now.Rectangle(new NowRect(0, 0, Side / 2f, Side))
+            Now.Rectangle(new NowRect(-1, -1, Side / 2f + 1, Side + 2))
                 .SetColor(Color.red)
                 .Draw();
-            Now.Rectangle(new NowRect(Side / 2f, 0, Side / 2f, Side))
+            Now.Rectangle(new NowRect(Side / 2f, -1, Side / 2f + 1, Side + 2))
                 .SetColor(Color.blue)
                 .Draw();
             Now.Glass(new NowRect(32, 24, 64, 80))

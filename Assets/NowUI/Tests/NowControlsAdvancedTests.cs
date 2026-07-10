@@ -119,6 +119,8 @@ public class NowControlsAdvancedTests
         public int popupBackgrounds;
         public int popupItems;
         public int contextMenuItems;
+        public readonly List<string> popupLabels = new List<string>();
+        public readonly List<string> popupDetails = new List<string>();
         public readonly List<string> contextMenuLabels = new List<string>();
         public readonly List<NowRect> menuPopupRects = new List<NowRect>();
         public readonly List<RecordedContextMenuItem> contextMenuItemRecords = new List<RecordedContextMenuItem>();
@@ -181,6 +183,8 @@ public class NowControlsAdvancedTests
         public override void DrawPopupItem(in NowPopupItemRenderContext context)
         {
             ++popupItems;
+            popupLabels.Add(context.label);
+            popupDetails.Add(context.detail);
             base.DrawPopupItem(context);
         }
 
@@ -248,6 +252,35 @@ public class NowControlsAdvancedTests
             Vector2.zero, Vector2.zero,
             false, false, false, false, false, false, false, false,
             1, time);
+    }
+
+    static NowInputSnapshot ComboSnapshot(
+        Vector2 pointer,
+        bool down = false,
+        bool pressed = false,
+        bool released = false,
+        bool submitPressed = false)
+    {
+        return new NowInputSnapshot(
+            true,
+            pointer,
+            pointer,
+            Vector2.zero,
+            NowInputSnapshot.ToButtonMask(down, NowPointerButton.Primary),
+            NowInputSnapshot.ToButtonMask(pressed, NowPointerButton.Primary),
+            NowInputSnapshot.ToButtonMask(released, NowPointerButton.Primary),
+            Vector2.zero,
+            Vector2.zero,
+            false,
+            false,
+            submitPressed,
+            submitPressed,
+            false,
+            false,
+            false,
+            false,
+            Time.frameCount,
+            Time.realtimeSinceStartup);
     }
 
     ContextMenuFrame DrawSiblingSubmenuFrame(
@@ -546,6 +579,122 @@ public class NowControlsAdvancedTests
         {
             Now.defaultFont = previousFont;
             Object.DestroyImmediate(font);
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void ComboBoxPopupMinWidthCanExceedFieldWidth()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        var options = new List<string>
+        {
+            "Game.MathUtils.Fibonacci(int)",
+            "Game.MathUtils.TextScore(string)",
+            "Game.Rules.IsCritical(bool)"
+        };
+        int selected = 0;
+        var rect = new NowRect(20f, 20f, 140f, 30f);
+        const float minPopupWidth = 320f;
+
+        void DrawFrame(NowInputSnapshot snapshot)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                Now.ComboBox(rect, options)
+                    .SetId("wide-combo")
+                    .SetPopupMinWidth(minPopupWidth)
+                    .Draw(ref selected);
+                NowOverlay.Flush();
+            }
+        }
+
+        try
+        {
+            DrawFrame(new NowInputSnapshot(rect.center, true, true, false));
+            DrawFrame(new NowInputSnapshot(rect.center, false, false, true));
+            DrawFrame(new NowInputSnapshot(rect.center, false, false, false));
+
+            Assert.Greater(renderer.popupBackgrounds, 0);
+            Assert.Greater(renderer.lastPopupRect.width, rect.width);
+            Assert.GreaterOrEqual(renderer.lastPopupRect.width, minPopupWidth - 0.01f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void ComboBoxOptionDetailsRenderAndFilter()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        var options = new List<string>
+        {
+            "TextScore(string)",
+            "FlagScore(bool)"
+        };
+        var details = new List<string>
+        {
+            "int Game.MathUtils.TextScore(string)",
+            "int Game.MathUtils.FlagScore(bool)"
+        };
+        int selected = 1;
+        var rect = new NowRect(20f, 20f, 140f, 30f);
+
+        bool DrawFrame(NowInputSnapshot snapshot, string typed = null)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+            _keyboard.frame = new NowTextInputFrame { characters = typed };
+            NowTextInput.Invalidate();
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                bool changed = Now.ComboBox(rect, options)
+                    .SetId("detail-combo")
+                    .SetPopupMinWidth(320f)
+                    .SetOptionDetails(details)
+                    .Draw(ref selected);
+                NowOverlay.Flush();
+                return changed;
+            }
+        }
+
+        try
+        {
+            Vector2 center = rect.center;
+            DrawFrame(ComboSnapshot(center, down: true, pressed: true));
+            DrawFrame(ComboSnapshot(center, released: true));
+            DrawFrame(ComboSnapshot(center));
+            DrawFrame(ComboSnapshot(center));
+
+            Assert.That(renderer.popupDetails, Does.Contain(details[0]));
+            Assert.That(renderer.popupDetails, Does.Contain(details[1]));
+
+            DrawFrame(ComboSnapshot(center), "Game.MathUtils.TextScore");
+            DrawFrame(ComboSnapshot(center, submitPressed: true));
+
+            Assert.IsTrue(DrawFrame(ComboSnapshot(center)));
+            Assert.AreEqual(0, selected);
+        }
+        finally
+        {
             Object.DestroyImmediate(renderer);
             Object.DestroyImmediate(theme);
         }
