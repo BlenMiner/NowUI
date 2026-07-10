@@ -124,6 +124,13 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   live in a caller-owned `NowTreeViewState`.
 - `ComboBox(options).Draw(ref index)` is a searchable dropdown: open it and
   type to filter, up/down highlight, submit commits.
+  `Draw(ref string value)` stores the selected option text directly; combine it
+  with `SetAllowCustomValue()` when a filter that is not in the option list
+  should be accepted as a free-form value. Use `SetPopupMinWidth(width)` when
+  the field is compact but the searchable options need more room, such as
+  method names or file paths. Use `SetOptionDetails(details)` for secondary
+  searchable text such as method signatures; popup rows become two-line only
+  when details exist.
 - `DatePicker().Draw(ref DateTime)` opens a calendar popup (only the date
   component changes; pass `SetToday(DateTime.Today)` for the today ring —
   caller-passed by design). Clicking the header label zooms out to a month
@@ -141,6 +148,9 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   submenus clamp and scroll independently. Scrolling over an open menu
   scrolls it; scrolling elsewhere closes it.
 - `Button(...).Draw()` returns true on click or on submit while focused.
+- `SelectableRow(...).SetSelected(isSelected).Draw()` is the lightweight list
+  row primitive. The caller owns selection state; the control only handles
+  focus, hover/pressed/selected visuals, and activation.
 - `Checkbox(...).Draw(ref value)` / `Slider(...).Draw(ref value)` mutate the
   ref and return true when it changed.
 - `FloatField` / `IntField` are typed text-field helpers with optional

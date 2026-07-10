@@ -56,10 +56,15 @@ namespace NowUI
             return current.HasChangedSince(_lastInput);
         }
 
-        /// <summary>Control-requested repaint or fresh input change, in one call.</summary>
+        /// <summary>
+        /// Control-requested repaint or fresh pointer, navigation, text-editing,
+        /// or shortcut input, in one call.
+        /// </summary>
         public bool ShouldRepaint(INowInputProvider provider, NowInputSurface surface)
         {
-            return _wantsRepaint || HasInputChanged(provider, surface);
+            return _wantsRepaint ||
+                HasInputChanged(provider, surface) ||
+                NowTextInput.current.hasActivity;
         }
 
         /// <summary>Clears the stored sample so the next poll primes instead of comparing.</summary>

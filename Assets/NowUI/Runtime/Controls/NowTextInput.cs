@@ -63,6 +63,24 @@ namespace NowUI
 
         /// <summary>F2: rename the symbol at the caret in code editors.</summary>
         public bool renamePressed;
+
+        /// <summary>
+        /// True when this frame contains keyboard input that an interactive
+        /// control may consume. Retained hosts use this to schedule a draw for
+        /// shortcuts and editing keys without rebuilding continuously for a
+        /// modifier key held on its own.
+        /// </summary>
+        public bool hasActivity =>
+            !string.IsNullOrEmpty(characters) ||
+            !string.IsNullOrEmpty(composition) ||
+            backspaceHeld || deleteHeld ||
+            leftHeld || rightHeld || upHeld || downHeld ||
+            homePressed || endPressed ||
+            enterPressed || enterHeld || escapePressed ||
+            tabPressed || tabHeld || renamePressed ||
+            copyPressed || pastePressed || cutPressed || selectAllPressed ||
+            undoPressed || redoPressed || duplicatePressed ||
+            commentPressed || goToLinePressed;
     }
 
     public interface INowTextInputSource

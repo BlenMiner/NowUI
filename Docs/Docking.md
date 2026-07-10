@@ -20,6 +20,8 @@ void OnPostRender()
 
         NowDock.Space(_dock, new NowRect(20, 20, Screen.width - 40, Screen.height - 40), 100)
             .SetMinPaneSize(140)
+            .SetPaneRadius(6)
+            .SetPaneOutline(true)
             .Draw();
     }
 }
@@ -27,6 +29,10 @@ void OnPostRender()
 
 Window callbacks run inside a clipped `NowLayout.Area`, so normal layout calls
 work directly:
+
+`SetPaneRadius` controls the corner radius shared by each docked pane and its
+tab bar. `SetPaneOutline(false)` removes the pane border for layouts that draw
+their own surrounding frame.
 
 ```csharp
 void DrawInspector(NowRect rect)

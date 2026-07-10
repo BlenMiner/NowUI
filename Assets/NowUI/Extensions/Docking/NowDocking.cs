@@ -62,6 +62,8 @@ namespace NowUI.Docking
             public float splitterSize;
             public float minPaneSize;
             public float contentPadding;
+            public float paneRadius;
+            public bool drawPaneOutline;
             public bool drawBackground;
         }
 
@@ -758,14 +760,14 @@ namespace NowUI.Docking
 
             Now.Rectangle(leaf.rect)
                 .SetColor(_skin.panel)
-                .SetRadius(5f)
+                .SetRadius(style.paneRadius)
                 .Draw();
 
             var tabBar = new NowRect(leaf.rect.x, leaf.rect.y, leaf.rect.width, Mathf.Min(style.tabHeight, leaf.rect.height));
 
             Now.Rectangle(tabBar)
                 .SetColor(_skin.tabBar)
-                .SetRadius(TopTabRadius(5f))
+                .SetRadius(TopTabRadius(style.paneRadius))
                 .Draw();
 
             Now.Rectangle(new NowRect(tabBar.x, tabBar.yMax - 1f, tabBar.width, 1f))
@@ -789,7 +791,8 @@ namespace NowUI.Docking
                 }
             }
 
-            DrawPanelOutline(leaf.rect, 5f);
+            if (style.drawPaneOutline)
+                DrawPanelOutline(leaf.rect, style.paneRadius);
         }
 
         void DrawTabs(Node leaf, NowRect tabBar, int controlId, Style style, NowThemeAsset theme)
@@ -1801,6 +1804,8 @@ namespace NowUI.Docking
                 splitterSize = DefaultSplitterSize,
                 minPaneSize = DefaultMinPaneSize,
                 contentPadding = DefaultContentPadding,
+                paneRadius = 5f,
+                drawPaneOutline = true,
                 drawBackground = true
             };
         }
@@ -1845,6 +1850,20 @@ namespace NowUI.Docking
         public NowDockSpaceBuilder SetContentPadding(float value)
         {
             _style.contentPadding = Mathf.Max(0f, value);
+            return this;
+        }
+
+        /// <summary>Set the corner radius used by docked panes and their tab bars.</summary>
+        public NowDockSpaceBuilder SetPaneRadius(float value)
+        {
+            _style.paneRadius = Mathf.Max(0f, value);
+            return this;
+        }
+
+        /// <summary>Choose whether docked panes draw an outer border.</summary>
+        public NowDockSpaceBuilder SetPaneOutline(bool draw)
+        {
+            _style.drawPaneOutline = draw;
             return this;
         }
 

@@ -6,8 +6,15 @@
   "unity": "6000.4",
   "documentationUrl": "https://github.com/BlenMiner/NowUI/tree/main/Docs",
   "changelogUrl": "https://github.com/BlenMiner/NowUI/blob/main/Assets/NowUI/CHANGELOG.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BlenMiner/NowUI.git"
+  },
   "dependencies": {
+    "com.unity.burst": "1.8.27",
+    "com.unity.collections": "2.6.5",
     "com.unity.inputsystem": "1.19.0",
+    "com.unity.mathematics": "1.3.2",
     "com.unity.ugui": "2.0.0",
     "com.unity.modules.unitywebrequest": "1.0.0",
     "com.unity.modules.uielements": "1.0.0"

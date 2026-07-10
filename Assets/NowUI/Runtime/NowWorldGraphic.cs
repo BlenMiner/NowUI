@@ -1320,7 +1320,7 @@ namespace NowUI
         bool HasInteractionInputChanged()
         {
             var surface = new NowInputSurface(SanitizeSize(_size));
-            return _repaintTracker.HasInputChanged(GetInputProvider(), surface);
+            return _repaintTracker.ShouldRepaint(GetInputProvider(), surface);
         }
 
         void ApplyFacing()

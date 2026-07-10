@@ -134,6 +134,159 @@ namespace NowUI
     }
 
     /// <summary>
+    /// Focusable list row with caller-owned selection. <see cref="Draw"/> returns
+    /// true on click or submit while focused.
+    /// </summary>
+    [NowBuilder]
+    public struct NowSelectableRow
+    {
+        readonly string _label;
+        readonly int _site;
+        NowId _id;
+        NowFocusNavigation _navigation;
+        NowLayoutOptions _options;
+        NowTextStyle _textPreset;
+        bool _selected;
+        bool _hasTextColor;
+        Color _textColor;
+        float _paddingX;
+        float _paddingY;
+        readonly NowRect _rect;
+        readonly bool _hasRect;
+
+        const float DefaultPaddingX = 8f;
+        const float DefaultPaddingY = 4f;
+        const float DefaultMinHeight = 22f;
+
+        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+
+        internal NowSelectableRow(string label, int site)
+        {
+            _label = label ?? string.Empty;
+            _site = site;
+            _id = default;
+            _navigation = default;
+            _options = default;
+            _textPreset = NowTextStyle.Body;
+            _selected = false;
+            _hasTextColor = false;
+            _textColor = default;
+            _paddingX = DefaultPaddingX;
+            _paddingY = DefaultPaddingY;
+            _rect = default;
+            _hasRect = false;
+        }
+
+        internal NowSelectableRow(NowRect rect, string label, int site) : this(label, site)
+        {
+            _rect = rect;
+            _hasRect = true;
+        }
+
+        /// <summary>Explicit layout options, overriding the content-derived size.</summary>
+        public NowSelectableRow SetOptions(NowLayoutOptions options) { _options = options; return this; }
+
+        /// <summary>Fixed width in layout flow.</summary>
+        public NowSelectableRow SetWidth(float width) { _options = _options.SetWidth(width); return this; }
+
+        /// <summary>Fixed height in layout flow.</summary>
+        public NowSelectableRow SetHeight(float height) { _options = _options.SetHeight(height); return this; }
+
+        /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
+        public NowSelectableRow SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
+
+        /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
+        public NowSelectableRow SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>Explicit directional/Tab focus targets for this control.</summary>
+        public NowSelectableRow SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
+
+        /// <summary>Caller-owned selection state.</summary>
+        public NowSelectableRow SetSelected(bool selected = true) { _selected = selected; return this; }
+
+        /// <summary>Themed text style for the label.</summary>
+        public NowSelectableRow SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
+
+        /// <summary>Overrides the text color while preserving the chosen text style.</summary>
+        public NowSelectableRow SetColor(Color color) { _textColor = color; _hasTextColor = true; return this; }
+
+        /// <summary>Horizontal and vertical label padding.</summary>
+        public NowSelectableRow SetPadding(float horizontal, float vertical)
+        {
+            _paddingX = Mathf.Max(0f, horizontal);
+            _paddingY = Mathf.Max(0f, vertical);
+            return this;
+        }
+
+        public bool Draw()
+        {
+            var theme = NowTheme.themeAsset;
+            NowText text = NowControls.Text(theme, _textPreset);
+
+            if (_hasTextColor)
+                text = text.SetColor(_textColor);
+
+            Vector2 textSize = text.Measure(_label);
+            var contentSize = new Vector2(
+                textSize.x + _paddingX * 2f,
+                Mathf.Max(DefaultMinHeight, textSize.y + _paddingY * 2f));
+
+            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
+            var interaction = NowControls.Interact(ResolveControlId(), rect, _navigation, out bool focused, out bool submitted);
+
+            DrawBackground(theme, rect, interaction, focused);
+
+            NowRect labelRect = rect.Inset(_paddingX, 0f);
+
+            if (_hasTextColor)
+                NowControls.DrawLeftLabel(theme, labelRect, _label, _textPreset, _textColor);
+            else
+                NowControls.DrawLeftLabel(theme, labelRect, _label, _textPreset);
+
+            return interaction.clicked || submitted;
+        }
+
+        void DrawBackground(NowThemeAsset theme, NowRect rect, NowInteraction interaction, bool focused)
+        {
+            NowRect visual = rect.Inset(2f, 1f);
+
+            if (_selected)
+            {
+                Color accent = theme.GetColor(NowColorToken.Accent);
+                Now.Rectangle(visual)
+                    .SetRadius(3f)
+                    .SetColor(new Color(accent.r, accent.g, accent.b, 0.18f))
+                    .SetOutline(1f)
+                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, focused ? 0.70f : 0.48f))
+                    .Draw();
+                return;
+            }
+
+            if (focused)
+            {
+                Color accent = theme.GetColor(NowColorToken.Accent);
+                Now.Rectangle(visual)
+                    .SetRadius(3f)
+                    .SetColor(new Color(accent.r, accent.g, accent.b, 0.07f))
+                    .SetOutline(1f)
+                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.42f))
+                    .Draw();
+                return;
+            }
+
+            if (!interaction.hovered && !interaction.held)
+                return;
+
+            Color surface = theme.GetColor(NowColorToken.SurfaceMuted);
+            surface = NowControls.StateColor(theme, surface, 1f, interaction.held);
+            Now.Rectangle(visual)
+                .SetRadius(3f)
+                .SetColor(surface)
+                .Draw();
+        }
+    }
+
+    /// <summary>
     /// Scope returned by the controls' Begin() methods; interaction results are
     /// readable inside the scope while custom content draws as layout children.
     /// For toggling controls (checkbox, radio), <see cref="clicked"/> doubles as

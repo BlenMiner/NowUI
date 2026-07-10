@@ -320,7 +320,24 @@ namespace NowUI
             return _transformStack.Count > 0 ? ApplyTransformRect(rect) : rect;
         }
 
-        internal static Vector2 InverseTransformScreenPoint(Vector2 position)
+        /// <summary>Transforms a local point through the active transform stack.</summary>
+        public static Vector2 TransformScreenPoint(Vector2 position)
+        {
+            return ApplyTransform(position);
+        }
+
+        /// <summary>Transforms a local vector through the active scale without translation.</summary>
+        public static Vector2 TransformScreenVector(Vector2 vector)
+        {
+            if (_transformStack.Count == 0)
+                return vector;
+
+            var transform = _transformStack[_transformStack.Count - 1];
+            return new Vector2(vector.x * transform.scale.x, vector.y * transform.scale.y);
+        }
+
+        /// <summary>Converts a screen point into the local space of the active transform stack.</summary>
+        public static Vector2 InverseTransformScreenPoint(Vector2 position)
         {
             if (_transformStack.Count == 0)
                 return position;
@@ -331,7 +348,8 @@ namespace NowUI
                 Mathf.Approximately(transform.scale.y, 0f) ? 0f : (position.y - transform.origin.y) / transform.scale.y);
         }
 
-        internal static Vector2 InverseTransformScreenVector(Vector2 vector)
+        /// <summary>Converts a screen vector into the local space of the active transform stack.</summary>
+        public static Vector2 InverseTransformScreenVector(Vector2 vector)
         {
             if (_transformStack.Count == 0)
                 return vector;

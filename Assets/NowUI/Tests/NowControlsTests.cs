@@ -62,6 +62,21 @@ public class NowControlsTests
         return result;
     }
 
+    bool DrawSelectableRowFrame(Vector2 pointer, bool down, bool pressed, bool released)
+    {
+        _provider.snapshot = new NowInputSnapshot(pointer, down, pressed, released);
+        bool result;
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            result = Now.SelectableRow(ButtonRect, "Warning")
+                .SetId("row")
+                .SetSelected()
+                .Draw();
+
+        return result;
+    }
+
     bool DrawInteractionFrame(Vector2 pointer)
     {
         _provider.snapshot = new NowInputSnapshot(pointer, false, false, false);
@@ -203,6 +218,16 @@ public class NowControlsTests
         Assert.IsFalse(DrawButtonFrame(inside, down: true, pressed: true, released: false));
         Assert.IsTrue(DrawButtonFrame(inside, down: false, pressed: false, released: true));
         Assert.IsTrue(_drawList.hasGeometry, "Button drew no visuals.");
+    }
+
+    [Test]
+    public void SelectableRowClicksOnPressAndReleaseInside()
+    {
+        Vector2 inside = new Vector2(60, 36);
+
+        Assert.IsFalse(DrawSelectableRowFrame(inside, down: true, pressed: true, released: false));
+        Assert.IsTrue(DrawSelectableRowFrame(inside, down: false, pressed: false, released: true));
+        Assert.IsTrue(_drawList.hasGeometry, "Selectable row drew no visuals.");
     }
 
     [Test]
