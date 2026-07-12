@@ -670,7 +670,7 @@ namespace NowUI
         static Material GetBlurMaterial()
         {
             if (_blurMaterial == null)
-                _blurMaterial = Resources.Load<Material>("NowUI/GlassBlurMaterial");
+                _blurMaterial = Now.LoadRequiredResource<Material>("NowUI/GlassBlurMaterial");
 
             return _blurMaterial;
         }

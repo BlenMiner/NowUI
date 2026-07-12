@@ -116,7 +116,7 @@ namespace NowUI
             float distance = _axis == NowWaveAxis.Y
                 ? vertex.normalized.x * Mathf.Max(1f, context.sourceRect.width)
                 : vertex.normalized.y * Mathf.Max(1f, context.sourceRect.height);
-            float offset = Mathf.Sin((distance / _wavelength + _time) * Mathf.PI * 2f) * _amplitude;
+            float offset = Mathf.Sin((distance / _wavelength + _time + context.time) * Mathf.PI * 2f) * _amplitude;
 
             if (_axis == NowWaveAxis.Y)
                 position.y += offset;
@@ -187,6 +187,13 @@ namespace NowUI
             return new NowGenieDeformer(targetRect, progress, direction);
         }
 
+        /// <summary>
+        /// Builds a sine-wave vertex deformer. <paramref name="time"/> is the wave
+        /// phase in cycles; it composes additively with the modifier's
+        /// <see cref="NowModifierBuilder{TDeformer}.SetTime(float)"/> channel, so
+        /// passing 0 here and calling <c>SetTime(Time.time)</c> on the modifier
+        /// animates the wave the same way.
+        /// </summary>
         public static NowWaveDeformer Wave(
             float time,
             float amplitude,
@@ -636,7 +643,10 @@ namespace NowUI
         /// <summary>
         /// Time exposed to deformers through <see cref="NowEffectContext.time"/>.
         /// The caller passes its own clock (e.g. <c>SetTime(Time.time)</c>);
-        /// without it the context time stays 0.
+        /// without it the context time stays 0. Built-in deformers:
+        /// <see cref="NowWaveDeformer"/> adds this to its constructor phase;
+        /// <see cref="NowGenieDeformer"/> is driven by its progress argument and
+        /// ignores it. Custom deformers opt in by reading the context time.
         /// </summary>
         public NowModifierBuilder<TDeformer> SetTime(float time)
         {

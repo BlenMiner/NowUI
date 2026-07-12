@@ -88,6 +88,7 @@ namespace NowUI
         float _lineHeight;
         bool _wrap;
         bool _selectable;
+        bool _plainText;
 
         static readonly NowRichTextLayout SharedLayout = new NowRichTextLayout();
 
@@ -150,6 +151,7 @@ namespace NowUI
             _lineHeight = 0f;
             _wrap = true;
             _selectable = false;
+            _plainText = false;
         }
 
         internal NowRichText(NowRect rect, string value, NowText style, int site) : this(value, style, site)
@@ -182,6 +184,15 @@ namespace NowUI
 
         public NowRichText SetSpans(IReadOnlyList<NowRichTextSpan> spans) { _spans = spans; return this; }
 
+        /// <summary>
+        /// Enables the built-in tag set: <c>&lt;b&gt;</c>, <c>&lt;i&gt;</c>,
+        /// <c>&lt;u&gt;</c>, <c>&lt;s&gt;</c>/<c>&lt;strikethrough&gt;</c>,
+        /// <c>&lt;color=...&gt;</c> (3/4/6/8-digit hex with optional '#', or an
+        /// HTML color name like <c>red</c>), <c>&lt;size=18&gt;</c>,
+        /// <c>&lt;link=id&gt;</c>, <c>&lt;br/&gt;</c> and <c>&lt;noparse&gt;</c>.
+        /// Unrecognized tags render literally; add custom ones with
+        /// <see cref="ParseTag(string, NowRichTextTagHandler)"/>.
+        /// </summary>
         public NowRichText ParseDefaultTags()
         {
             _parser = (_parser ?? NowRichTextParser.Empty).WithDefaultTags();
@@ -197,6 +208,19 @@ namespace NowUI
         public NowRichText UseParser(NowRichTextParser parser)
         {
             _parser = parser;
+            return this;
+        }
+
+        /// <summary>
+        /// Declares the value deliberately plain: no tag parsing, and the
+        /// editor/dev-build hint that fires when an unparsed value contains
+        /// markup-looking tags is suppressed. Use for generated or user text
+        /// that may legitimately contain angle brackets.
+        /// </summary>
+        public NowRichText SetPlainText()
+        {
+            _parser = null;
+            _plainText = true;
             return this;
         }
 
@@ -353,6 +377,11 @@ namespace NowUI
                 !string.Equals(state.parsedValue, _value) ||
                 !SpansMatch(state.document.spans, _spans))
             {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if (_spans == null && !_plainText && ContainsDefaultTag(_value) && s_warnedUnparsedTagSites.Add(_site))
+                    Debug.LogWarning($"NowUI: RichText value contains markup-looking tags but no parser is attached, so they render literally. Chain .ParseDefaultTags() to parse them, or .SetPlainText() if the angle brackets are intentional. Value: \"{(_value.Length > 60 ? _value.Substring(0, 60) + "…" : _value)}\"");
+#endif
+
                 state.parsedValue = _value;
                 state.parsedParser = null;
                 state.document.Clear();
@@ -369,6 +398,59 @@ namespace NowUI
 
             return state.document;
         }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        static readonly HashSet<int> s_warnedUnparsedTagSites = new HashSet<int>();
+
+        /// <summary>
+        /// Cheap dev-build scan for tags the default parser would recognize
+        /// (&lt;b&gt;, &lt;color=...&gt;, closing forms, ...) so the unparsed-tag
+        /// hint only fires on values that were plausibly meant as markup.
+        /// </summary>
+        static bool ContainsDefaultTag(string value)
+        {
+            for (int i = 0; i < value.Length - 1; ++i)
+            {
+                if (value[i] != '<')
+                    continue;
+
+                int start = i + 1;
+
+                if (start < value.Length && value[start] == '/')
+                    ++start;
+
+                int end = start;
+
+                while (end < value.Length && char.IsLetter(value[end]))
+                    ++end;
+
+                if (end == start || end >= value.Length)
+                    continue;
+
+                char terminator = value[end];
+
+                if (terminator != '>' && terminator != '=' && terminator != ' ' && terminator != '/')
+                    continue;
+
+                switch (value.Substring(start, end - start).ToLowerInvariant())
+                {
+                    case "b":
+                    case "i":
+                    case "u":
+                    case "s":
+                    case "strikethrough":
+                    case "color":
+                    case "size":
+                    case "link":
+                    case "br":
+                    case "noparse":
+                        return true;
+                }
+            }
+
+            return false;
+        }
+#endif
 
         static bool SpansMatch(List<NowRichTextSpan> current, IReadOnlyList<NowRichTextSpan> requested)
         {
@@ -651,6 +733,13 @@ namespace NowUI
 
     public static partial class Now
     {
+        /// <summary>
+        /// Rich text at an explicit rect. Tag parsing is opt-in: chain
+        /// <see cref="NowRichText.ParseDefaultTags"/> to interpret
+        /// <c>&lt;b&gt;</c>-style markup, or <see cref="NowRichText.SetSpans"/>
+        /// to style generated ranges — a bare value renders as plain
+        /// (selectable) text.
+        /// </summary>
         public static NowRichText RichText(
             NowRect rect,
             string value,
@@ -663,6 +752,13 @@ namespace NowUI
 
     public static partial class NowLayout
     {
+        /// <summary>
+        /// Rich text in layout flow. Tag parsing is opt-in: chain
+        /// <see cref="NowRichText.ParseDefaultTags"/> to interpret
+        /// <c>&lt;b&gt;</c>-style markup, or <see cref="NowRichText.SetSpans"/>
+        /// to style generated ranges — a bare value renders as plain
+        /// (selectable) text.
+        /// </summary>
         public static NowRichText RichText(
             string value,
             [CallerFilePath] string file = "",

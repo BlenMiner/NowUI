@@ -178,21 +178,37 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// Expands the drawn rect outward by <paramref name="all"/> on every edge
+        /// — background padding around a content rect, the inverse of
+        /// layout-group padding. Applied at draw time, so it composes with
+        /// <see cref="SetPosition(NowRect)"/> and <see cref="SetMask(NowRect)"/>
+        /// in any order; negative values inset instead.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetPadding(float all)
         {
             return SetPadding(new Vector4(all, all, all, all));
         }
 
+        /// <summary>
+        /// Expands the drawn rect outward by the given edge amounts (x = left,
+        /// y = top, z = right, w = bottom) — background padding around a content
+        /// rect, the inverse of layout-group padding. Applied at draw time, so it
+        /// composes with <see cref="SetPosition(NowRect)"/> and
+        /// <see cref="SetMask(NowRect)"/> in any order; negative values inset
+        /// instead.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetPadding(Vector4 padding)
         {
-            padding = new Vector4(-padding.x, -padding.y, -padding.z, -padding.w);
             this.padding = padding;
-            mask = mask.Inset(padding.x, padding.y, padding.z, padding.w);
             return this;
         }
 
+        /// <summary>Sets the outline width in UI units. The outline stays invisible
+        /// until an outline color with alpha above zero is supplied — use
+        /// <see cref="SetOutline(float, Color)"/> to set both in one call.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetOutline(float outline)
         {
@@ -200,13 +216,43 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Sets the outline width in UI units and its color together.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NowRectangle SetOutline(float outline, Color color)
+        {
+            this.outline = outline;
+            outlineColor = color;
+            return this;
+        }
+
+        /// <summary>Sets the outline width in UI units and its color together.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NowRectangle SetOutline(float outline, Vector4 color)
+        {
+            this.outline = outline;
+            outlineColor = color;
+            return this;
+        }
+
+        /// <summary>
+        /// Moves the rect. The default mask (which the constructor sets to the
+        /// rect) follows the move; a mask pinned with
+        /// <see cref="SetMask(NowRect)"/> stays where it was put.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetPosition(NowRect rect)
         {
+            if (mask == this.rect)
+                mask = rect;
+
             this.rect = rect;
             return this;
         }
 
+        /// <summary>
+        /// Pins the clip mask independently of the rect: later
+        /// <see cref="SetPosition(NowRect)"/> calls no longer move it.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetMask(NowRect mask)
         {

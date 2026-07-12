@@ -121,6 +121,32 @@ namespace NowUI
                 _themeStack.RemoveAt(_themeStack.Count - 1);
         }
 
+        static bool _warnedLeakedThemeScope;
+
+        /// <summary>
+        /// Frame-entry self-heal called by <c>Now.StartUI</c>: clears theme scopes a
+        /// previous frame leaked so a forgotten Dispose cannot restyle the whole app,
+        /// and reports the leak once so it is attributable.
+        /// </summary>
+        internal static void ResetStackForFrame()
+        {
+            if (_themeStack.Count == 0)
+            {
+                _warnedLeakedThemeScope = false;
+                return;
+            }
+
+            _themeStack.Clear();
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (!_warnedLeakedThemeScope)
+            {
+                _warnedLeakedThemeScope = true;
+                Debug.LogWarning("NowUI: a NowTheme.Scope from the previous frame was never disposed; the theme stack was reset. Wrap the scope in a using statement.");
+            }
+#endif
+        }
+
         public static void Reset()
         {
             _themeStack.Clear();
@@ -144,6 +170,7 @@ namespace NowUI
         }
     }
 
+    [NowScope]
     public struct ThemeScope : IDisposable
     {
         bool _active;

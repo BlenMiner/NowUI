@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace NowUI
@@ -21,6 +22,10 @@ namespace NowUI
         readonly bool _hasRect;
 
         const int AreaKeySeed = 0x4e424172;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        static readonly HashSet<int> s_warnedBeginLabelSites = new HashSet<int>();
+#endif
 
         int ResolveControlId() => NowControls.GetControlId(_id, _site);
 
@@ -89,6 +94,11 @@ namespace NowUI
         /// </summary>
         public NowControlScope Begin()
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (_label.Length > 0 && s_warnedBeginLabelSites.Add(_site))
+                Debug.LogWarning($"NowUI: Button(\"{_label}\").Begin() never renders the label — draw it as content inside the scope (NowLayout.Label(...)), or use Draw() for a plain labeled button.");
+#endif
+
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
             int id = ResolveControlId();
@@ -662,13 +672,15 @@ namespace NowUI
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureSlider(theme));
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
 
-            float range = Mathf.Max(_max - _min, 0.0001f);
+            float min = Mathf.Min(_min, _max);
+            float max = Mathf.Max(_min, _max);
+            float range = Mathf.Max(max - min, 0.0001f);
             float previous = value;
 
             if (interaction.held && rect.width > knobSize)
             {
                 float t = Mathf.Clamp01((interaction.pointerPosition.x - rect.x - knobSize * 0.5f) / (rect.width - knobSize));
-                value = _min + t * range;
+                value = min + t * range;
             }
 
             if (focused && !NowInput.isPassive)
@@ -679,13 +691,13 @@ namespace NowUI
                     value += Mathf.Sign(navX) * range * theme.controlStyles.sliderNavigationStep;
             }
 
-            value = Mathf.Clamp(value, _min, _max);
+            value = Mathf.Clamp(value, min, max);
 
             if (_step > 0f)
-                value = Snap(value, _min, _max, _step);
+                value = Snap(value, min, max, _step);
 
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
-            float normalized = (value - _min) / range;
+            float normalized = (value - min) / range;
             var metrics = renderer.CalculateSliderMetrics(theme, rect, normalized);
             renderer.DrawSlider(new NowSliderRenderContext(theme, rect, metrics, interaction, focused, hoverT));
             return !Mathf.Approximately(previous, value);

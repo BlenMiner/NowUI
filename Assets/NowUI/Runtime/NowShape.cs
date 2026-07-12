@@ -61,8 +61,17 @@ namespace NowUI
         public NowCircle SetColor(Vector4 color) { this.color = color; fill = true; return this; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetFill(bool fill = true) { this.fill = fill; return this; }
+        /// <summary>Sets the outline width in UI units. The outline stays invisible
+        /// until an outline color with alpha above zero is supplied — use
+        /// <see cref="SetOutline(float, Color)"/> to set both in one call.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetOutline(float outline) { this.outline = outline; return this; }
+        /// <summary>Sets the outline width in UI units and its color together.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NowCircle SetOutline(float outline, Color color) { this.outline = outline; outlineColor = color; return this; }
+        /// <summary>Sets the outline width in UI units and its color together.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NowCircle SetOutline(float outline, Vector4 color) { this.outline = outline; outlineColor = color; return this; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetOutlineColor(Color color) { outlineColor = color; return this; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -119,8 +128,17 @@ namespace NowUI
         public NowTriangle SetColor(Vector4 color) { this.color = color; fill = true; return this; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowTriangle SetFill(bool fill = true) { this.fill = fill; return this; }
+        /// <summary>Sets the outline width in UI units. The outline stays invisible
+        /// until an outline color with alpha above zero is supplied — use
+        /// <see cref="SetOutline(float, Color)"/> to set both in one call.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowTriangle SetOutline(float outline) { this.outline = outline; return this; }
+        /// <summary>Sets the outline width in UI units and its color together.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NowTriangle SetOutline(float outline, Color color) { this.outline = outline; outlineColor = color; return this; }
+        /// <summary>Sets the outline width in UI units and its color together.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NowTriangle SetOutline(float outline, Vector4 color) { this.outline = outline; outlineColor = color; return this; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowTriangle SetOutlineColor(Color color) { outlineColor = color; return this; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -221,8 +239,17 @@ namespace NowUI
         public NowPolygon SetColor(Vector4 color) { this.color = color; fill = true; return this; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetFill(bool fill = true) { this.fill = fill; return this; }
+        /// <summary>Sets the outline width in UI units. The outline stays invisible
+        /// until an outline color with alpha above zero is supplied — use
+        /// <see cref="SetOutline(float, Color)"/> to set both in one call.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetOutline(float outline) { this.outline = outline; return this; }
+        /// <summary>Sets the outline width in UI units and its color together.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NowPolygon SetOutline(float outline, Color color) { this.outline = outline; outlineColor = color; return this; }
+        /// <summary>Sets the outline width in UI units and its color together.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NowPolygon SetOutline(float outline, Vector4 color) { this.outline = outline; outlineColor = color; return this; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetOutlineColor(Color color) { outlineColor = color; return this; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

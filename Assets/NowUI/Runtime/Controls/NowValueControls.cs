@@ -495,7 +495,7 @@ namespace NowUI
                 }
             }
 
-            value = Clamp01(value);
+            var displayValue = Clamp01(value);
 
             var rect = NowControls.ReserveRect(_hasRect, _rect, _settings.options, MeasureField(_settings));
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
@@ -505,13 +505,13 @@ namespace NowUI
                 open = !open;
 
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
-            string label = FieldLabel(id, value, _settings.showAlpha);
-            DrawField(theme, rect, value, label, open, focused, interaction.held, hoverT);
+            string label = FieldLabel(id, displayValue, _settings.showAlpha);
+            DrawField(theme, rect, displayValue, label, open, focused, interaction.held, hoverT);
 
             if (open)
             {
                 NowControlState.RequestRepaint();
-                DeferPopup(theme, id, pendingId, rect, value, _settings);
+                DeferPopup(theme, id, pendingId, rect, displayValue, _settings);
             }
 
             return changed;

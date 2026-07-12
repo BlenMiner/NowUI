@@ -221,6 +221,7 @@ namespace NowUI.CodeEditor
 
             _registry = new Dictionary<string, NowCodeLanguage>(System.StringComparer.OrdinalIgnoreCase);
             _registered = new List<NowCodeLanguage>();
+            Register(NowPlainLanguage.instance);
             Register(NowJsonLanguage.instance);
             Register(NowMarkupCodeLanguage.instance);
             Register(NowMarkdownCodeLanguage.instance);
@@ -302,6 +303,29 @@ namespace NowUI.CodeEditor
                     message = diagnostic.message
                 });
             }
+        }
+    }
+
+    /// <summary>
+    /// Plain-text profile: no highlighting, no diagnostics — every editor
+    /// feature (editing, undo, search, line numbers) still works. Registered as
+    /// "text" (alias "plain") so markdown fences can target it, and used as the
+    /// fallback when <see cref="NowCode.Editor(NowCodeLanguage, NowId, string, int)"/>
+    /// receives a null language.
+    /// </summary>
+    public sealed class NowPlainLanguage : NowCodeLanguage
+    {
+        public static readonly NowPlainLanguage instance = new NowPlainLanguage();
+
+        static readonly string[] Aliases = { "plain", "txt" };
+
+        public override string name => "text";
+
+        public override IReadOnlyList<string> aliases => Aliases;
+
+        public override int TokenizeLine(string text, int start, int length, int state, List<NowCodeToken> tokens)
+        {
+            return 0;
         }
     }
 }

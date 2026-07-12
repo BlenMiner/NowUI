@@ -211,12 +211,42 @@ namespace NowUI
             return Begin(provider, new NowInputSurface(size));
         }
 
+        static bool _warnedLeakedPassiveScope;
+
+        /// <summary>
+        /// Frame-entry self-heal: a NowEffects modifier/snapshot scope (or other
+        /// passive scope) leaked in a previous frame would otherwise leave input
+        /// disabled for the rest of the session. Clears the depth at every
+        /// top-level frame start and reports the leak once so it is attributable.
+        /// </summary>
+        static void HealLeakedPassiveScope()
+        {
+            if (_passiveDepth == 0)
+            {
+                _warnedLeakedPassiveScope = false;
+                return;
+            }
+
+            _passiveDepth = 0;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (!_warnedLeakedPassiveScope)
+            {
+                _warnedLeakedPassiveScope = true;
+                Debug.LogWarning("NowUI: a NowEffects or passive input scope from the previous frame was never disposed; input was re-enabled. Wrap the scope in a using statement.");
+            }
+#endif
+        }
+
         public static NowInputScope Begin(INowInputProvider provider, NowInputSurface surface)
         {
             bool topLevel = _scopeDepth == 0;
 
             if (topLevel)
+            {
+                HealLeakedPassiveScope();
                 CompleteFrame();
+            }
 
             var scope = new NowInputScope(_surface, _snapshot, _hasContext, _scrollConsumed, topLevel);
             ++_scopeDepth;
@@ -245,7 +275,10 @@ namespace NowUI
         public static void Update(INowInputProvider provider, NowInputSurface surface)
         {
             if (_scopeDepth == 0)
+            {
+                HealLeakedPassiveScope();
                 CompleteFrame();
+            }
 
             Update(provider, surface, _scopeDepth == 0);
         }

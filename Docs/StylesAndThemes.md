@@ -35,8 +35,11 @@ The theme currently has seven style groups.
   working: missing roles are derived from the base eight on load.
 - Spacing tokens: `Vector4(left, top, right, bottom)` insets keyed by
   `NowSpacingToken` (`Xs` 4 through `Xxl` 32, plus `Panel`).
-- Radius tokens: `Vector4(top-left, top-right, bottom-right, bottom-left)`
+- Radius tokens: `Vector4(top-right, bottom-right, top-left, bottom-left)`
   corner radii keyed by `NowRadiusToken` (`Sm` 6 through `Xl` 24, plus `Pill`).
+  This is the packed order raw `Vector4` radii use everywhere (matching
+  `NowCornerRadius.packed`); to author corners by name use
+  `new NowCornerRadius(topLeft, topRight, bottomRight, bottomLeft).packed`.
 - Shadow presets: two-layer (key + ambient) drop shadows keyed by
   `NowElevationToken` (`Raised`, `Overlay`, `Modal`), with a dark-mode alpha
   scale. Draw them with `DrawElevated`:

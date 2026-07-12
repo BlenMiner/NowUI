@@ -25,7 +25,8 @@ itself.
 Requirements:
 
 - Unity `6000.4` or newer
-- Dependencies (installed automatically): Input System, UGUI, Collections
+- Dependencies (installed automatically): Burst, Collections, Mathematics,
+  Input System, UGUI
 
 ## Quick Start
 

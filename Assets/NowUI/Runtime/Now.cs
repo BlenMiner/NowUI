@@ -16,7 +16,15 @@ namespace NowUI
     {
         static Material _defaultMaterial;
 
-        public static NowRect screenMask;
+        /// <summary>
+        /// Logical UI-unit rect of the current frame's surface, recomputed by
+        /// every <see cref="StartUI()"/> overload — the drawing area and the
+        /// basis of the projection. Read it for screen-relative placement; it is
+        /// not a clip surface (use <see cref="Mask(NowRect)"/> to clip) and it
+        /// cannot be assigned mid-frame — pass a region to
+        /// <see cref="StartUI(NowRect, float)"/> instead.
+        /// </summary>
+        public static NowRect screenMask { get; internal set; }
 
         static float _uiScale = 1f;
 
@@ -40,7 +48,8 @@ namespace NowUI
         static NowFontAsset _defaultFont;
 
         /// <summary>
-        /// Font used by text helpers when no explicit font is provided, such as
+        /// Font used by text helpers when no explicit font is provided and no
+        /// <see cref="Font(NowFontAsset)"/> scope is active, such as
         /// <see cref="Text(NowRect)"/> and <see cref="NowLayout.Label(string)"/>.
         /// Defaults to the bundled NotoSans font unless overridden.
         /// </summary>
@@ -49,7 +58,7 @@ namespace NowUI
             get
             {
                 if (_defaultFont == null)
-                    _defaultFont = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+                    _defaultFont = LoadRequiredResource<NowFontAsset>("NowUI/NotoSans");
 
                 return _defaultFont;
             }
@@ -795,11 +804,28 @@ namespace NowUI
             return true;
         }
 
+        static readonly HashSet<string> _reportedMissingResources = new HashSet<string>();
+
+        /// <summary>
+        /// Loads a bundled resource the library cannot function without, logging a
+        /// one-shot error instead of degrading silently when it is missing, so a
+        /// blank screen is always attributable from the log.
+        /// </summary>
+        internal static T LoadRequiredResource<T>(string path) where T : UnityEngine.Object
+        {
+            var asset = Resources.Load<T>(path);
+
+            if (asset == null && _reportedMissingResources.Add(path))
+                Debug.LogError($"NowUI: required bundled resource 'Resources/{path}' failed to load; whatever depends on it will not render. Check that the NowUI package resources are included in the project and build.");
+
+            return asset;
+        }
+
         private static void Initialize()
         {
             if (_defaultMaterial == null)
             {
-                _defaultMaterial = Resources.Load<Material>("NowUI/UIMaterial");
+                _defaultMaterial = LoadRequiredResource<Material>("NowUI/UIMaterial");
                 _meshes.count = 0;
                 _defaultMesh = -1;
             }
@@ -808,6 +834,53 @@ namespace NowUI
                 _defaultMesh = CreateMesh(_defaultMaterial, NowMeshKind.Rectangle);
 
             _lastUsedMeshId = _defaultMesh;
+        }
+
+        static bool _screenFrameActive;
+
+        static bool _warnedNestedStartUI;
+
+        static bool _warnedLeakedSuppressScope;
+
+        /// <summary>
+        /// Shared frame-entry reset for the StartUI overloads: self-heals ambient
+        /// state a leaked scope from a previous frame left behind, and reports
+        /// misuse that would otherwise silently discard content.
+        /// </summary>
+        static void BeginScreenFrame()
+        {
+            if (_screenFrameActive && !_warnedNestedStartUI)
+            {
+                _warnedNestedStartUI = true;
+                Debug.LogError("NowUI: Now.StartUI was called while a UI frame was already open; everything drawn so far this frame was discarded. Dispose the previous NowUIScreenScope before starting a new frame.");
+            }
+
+            _screenFrameActive = true;
+
+            if (_suppressDrawDepth != 0)
+            {
+                _suppressDrawDepth = 0;
+
+                if (!_warnedLeakedSuppressScope)
+                {
+                    _warnedLeakedSuppressScope = true;
+                    Debug.LogError("NowUI: a NowGUIScope or draw-suppressing scope from a previous frame was never disposed, so rendering was suppressed. Wrap the scope in a using statement.");
+                }
+            }
+            else
+            {
+                _warnedLeakedSuppressScope = false;
+            }
+
+            NowTheme.ResetStackForFrame();
+            NowControls.ResetIdScopesForFrame();
+
+            _captureMesh = false;
+            _meshes.count = 0;
+            _lastUsedMeshId = -1;
+            _fontStack.Clear();
+            _maskStack.Clear();
+            _transformStack.Clear();
         }
 
         public static NowUIScreenScope StartUI()
@@ -828,12 +901,7 @@ namespace NowUI
             if (uiScale <= 0f || float.IsNaN(uiScale) || float.IsInfinity(uiScale))
                 throw new ArgumentOutOfRangeException(nameof(uiScale), "uiScale must be a positive finite value.");
 
-            _captureMesh = false;
-            _meshes.count = 0;
-            _lastUsedMeshId = -1;
-            _fontStack.Clear();
-            _maskStack.Clear();
-            _transformStack.Clear();
+            BeginScreenFrame();
             _uiScale = uiScale;
 
             screenMask = new NowRect(0f, 0f, Screen.width / uiScale, Screen.height / uiScale);
@@ -846,22 +914,45 @@ namespace NowUI
 
         /// <summary>
         /// Starts a frame using an explicit screen-space mask as the logical UI
-        /// surface. Dispose the returned scope to submit rendering and finalize
-        /// input for the frame.
+        /// surface, with UI units equal to screen pixels. Dispose the returned
+        /// scope to submit rendering and finalize input for the frame.
         /// </summary>
         public static NowUIScreenScope StartUI(NowRect screenMask)
         {
-            _captureMesh = false;
-            _meshes.count = 0;
-            _lastUsedMeshId = -1;
+            return StartUI(screenMask, 1f);
+        }
 
-            _fontStack.Clear();
-            _maskStack.Clear();
-            _transformStack.Clear();
+        /// <summary>
+        /// Starts a frame using an explicit screen-space mask as the UI surface at
+        /// <paramref name="uiScale"/> pixels per UI unit. The mask stays in screen
+        /// pixels; drawing code works in the scaled logical units, so
+        /// <c>Now.StartUI(region, NowScreen.recommendedUIScale)</c> combines a
+        /// sub-region with density scaling. Dispose the returned scope to submit
+        /// rendering and finalize input for the frame.
+        /// </summary>
+        public static NowUIScreenScope StartUI(NowRect screenMask, float uiScale)
+        {
+            if (uiScale <= 0f || float.IsNaN(uiScale) || float.IsInfinity(uiScale))
+                throw new ArgumentOutOfRangeException(nameof(uiScale), "uiScale must be a positive finite value.");
 
-            _uiScale = 1f;
-            Now.screenMask = screenMask;
-            NowInput.Update(NowInputSurface.FromScreenMask(screenMask));
+            if (float.IsNaN(screenMask.x) || float.IsNaN(screenMask.y) ||
+                float.IsNaN(screenMask.width) || float.IsNaN(screenMask.height) ||
+                float.IsInfinity(screenMask.x) || float.IsInfinity(screenMask.y) ||
+                float.IsInfinity(screenMask.width) || float.IsInfinity(screenMask.height) ||
+                screenMask.width < 0f || screenMask.height < 0f)
+                throw new ArgumentOutOfRangeException(nameof(screenMask), "screenMask must have finite coordinates and a non-negative size.");
+
+            BeginScreenFrame();
+            _uiScale = uiScale;
+
+            Now.screenMask = new NowRect(
+                screenMask.x / uiScale,
+                screenMask.y / uiScale,
+                screenMask.width / uiScale,
+                screenMask.height / uiScale);
+            NowInput.Update(new NowInputSurface(
+                new Vector2(screenMask.width / uiScale, screenMask.height / uiScale),
+                new Rect(screenMask.x, screenMask.y, screenMask.width, screenMask.height)));
             Initialize();
             return new NowUIScreenScope(true);
         }
@@ -1334,6 +1425,8 @@ namespace NowUI
 
         internal static void FinishUIScreenFrame()
         {
+            _screenFrameActive = false;
+
             if (_captureMesh)
                 return;
 
@@ -1594,10 +1687,10 @@ namespace NowUI
             var position = rectangle.rect;
             var pad = rectangle.padding;
 
-            position.x += pad.x;
-            position.y += pad.y;
-            position.width = position.width - pad.x - pad.z;
-            position.height = position.height - pad.y - pad.w;
+            position.x -= pad.x;
+            position.y -= pad.y;
+            position.width = position.width + pad.x + pad.z;
+            position.height = position.height + pad.y + pad.w;
 
             if (rectangle.texture != null && rectangle.preserveAspect && !rectangle.sliced &&
                 position.width > 0f && position.height > 0f)
@@ -1647,6 +1740,16 @@ namespace NowUI
                 return;
 
             var rectMask = rectangle.mask;
+            bool defaultMask = !rectMask.isEmpty && rectMask == rectangle.rect;
+
+            if (!rectMask.isEmpty)
+            {
+                rectMask.x -= pad.x;
+                rectMask.y -= pad.y;
+                rectMask.width += pad.x + pad.z;
+                rectMask.height += pad.y + pad.w;
+            }
+
             float visualPadding = RectangleVisualPadding(rectangle.blur, rectangle.outline);
 
             float blur = rectangle.blur;
@@ -1663,7 +1766,7 @@ namespace NowUI
                 geometryPadding = RectangleVisualPadding(blur, outline);
             }
 
-            if (!rectMask.isEmpty && rectMask == rectangle.rect)
+            if (defaultMask)
                 rectMask = rectMask.Outset(visualPadding);
 
             if (hasTransform)
@@ -2960,9 +3063,14 @@ namespace NowUI
             return new NowText(position, font);
         }
 
+        /// <summary>
+        /// Starts a text builder using the active ambient font — the innermost
+        /// <see cref="Font(NowFontAsset)"/> scope, or <see cref="defaultFont"/>
+        /// when none is pushed.
+        /// </summary>
         public static NowText Text(NowRect position)
         {
-            return new NowText(position, defaultFont);
+            return new NowText(position, font);
         }
 
         public static NowLottie Lottie(NowRect position, NowLottieAsset asset)

@@ -88,11 +88,20 @@ namespace NowUI
             };
         }
 
+        /// <summary>
+        /// Stable resolution for layout groups, caches and input cross-references.
+        /// Follows the same contract as <see cref="ResolveControlId(int)"/>: ints
+        /// verbatim, strings seeded by the active
+        /// <see cref="NowControls.IdScope(string)"/> — so the same string names
+        /// the same thing everywhere under one scope, and reusable panels under
+        /// different scopes never collide. Use int ids for identities that must
+        /// resolve identically from outside any scope.
+        /// </summary>
         internal int ResolveStableId(int fallback)
         {
             return _kind switch
             {
-                StringKind => NowInput.GetId(_stringValue),
+                StringKind => NowControls.GetControlId(_stringValue),
                 IntKind => _intValue,
                 _ => fallback != 0 ? fallback : 1
             };

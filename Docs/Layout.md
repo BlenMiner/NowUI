@@ -89,7 +89,10 @@ space like an invisible stretch element.
   then the real pass. Exact from frame one, at twice the layout cost.
 
 When a layout's identity is ambiguous across frames (rows generated in a loop,
-collapsing panels), pass an explicit id: `NowLayout.Vertical($"row-{i}")`.
+collapsing panels), pass an explicit id. Ints are ids too, so the loop index
+alone works and allocates nothing: `NowLayout.Vertical(i)`. Interpolated
+strings (`$"row-{i}"`) also work but allocate every frame — prefer them only
+for stable, hand-named panels.
 
 During the callback form's measure pass, `NowInput.Interact` reports hover
 but never presses or drags, so interaction code is safe to run in both passes.

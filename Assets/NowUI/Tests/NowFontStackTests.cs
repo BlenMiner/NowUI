@@ -61,6 +61,15 @@ public class NowFontStackTests
     }
 
     [Test]
+    public void TextBuilderUsesActiveFont()
+    {
+        using (Now.Font(_contextFont))
+            Assert.AreSame(_contextFont, Now.Text(default(NowRect)).font);
+
+        Assert.AreSame(_baseFont, Now.Text(default(NowRect)).font);
+    }
+
+    [Test]
     public void PushingNullFontThrows()
     {
         Assert.Throws<ArgumentNullException>(() => Now.Font(null));

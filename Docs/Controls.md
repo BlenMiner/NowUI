@@ -468,8 +468,9 @@ sealed class DetailsView : INowView
 
 ## Explicit rects
 
-Every control has a `Now.*` twin taking a rect, for HUDs and free-form
-drawing:
+Every control except `TreeView` has a `Now.*` twin taking a rect, for HUDs
+and free-form drawing (`TreeView` flows in the ambient layout — give it a
+region with `NowLayout.Area(rect)` or host it in a `ScrollView`):
 
 ```csharp
 if (Now.Button(new NowRect(20, 20, 120, 40), "Save").Draw())
@@ -782,7 +783,7 @@ The toolkit pieces:
 | `NowInput.Interact(rect)` | Id-less interaction: identity from the call site |
 | `interaction.GetId("slot")` / `interaction.State<T>("slot")` | Sub-state keys derived from the resolved control id |
 | `NowInput.CombineId(a, b)` | Mint sub-element ids (rows, links, items) without strings |
-| `using (NowControls.Scale(scale))` | Scale built-in control internals when a host already scales explicit rects, such as zoomable node content |
+| `using (Now.Transform(scale, origin))` | Scale/pan drawing and input together when a host already scales explicit rects, such as zoomable node content |
 | `NowControlState.Get<T>(id)` / `Get<T>(id, "slot")` | Persistent ephemeral slot (struct), evicted when stale |
 | `NowControlState.Transition / Repeat / DetectDoubleClick / ClickStreak / Blink` | The standard timing behaviors; common animation/repeat helpers also accept `NowInteraction` |
 | `NowControlState.RequestRepaint()` | Tell retained hosts (UGUI) to render another frame |
@@ -813,8 +814,9 @@ Conventions that keep custom controls consistent:
 
 ## Current limitations
 
-- ScrollView is vertical-only and does not yet capture touch drags that start
-  on child controls (wheel and scrollbar work everywhere).
+- ScrollView does not yet capture touch flick-drags that start on child
+  controls (wheel, scrollbar thumbs, and scroll-aware drags via
+  `NowScrollView.RequestDragScroll()` work everywhere).
 - IME composition renders inline with the default screen-space cursor
   reporting; hosts whose surface is not the screen (UGUI canvases, render
   textures) should replace `NowTextInput.setCompositionCursor` to transform

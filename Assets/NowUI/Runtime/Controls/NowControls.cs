@@ -58,15 +58,22 @@ namespace NowUI
 
         /// <summary>
         /// Disambiguates repeated panels using an existing <see cref="NowId"/>;
-        /// a default (empty) id leaves the scope stack untouched.
+        /// a default (empty) id leaves the scope stack untouched. String ids nest
+        /// exactly like <see cref="IdScope(string)"/>.
         /// </summary>
         public static ControlIdScope IdScope(NowId id)
         {
             if (!id.hasValue)
                 return new ControlIdScope(false);
 
+            if (id.isString)
+            {
+                _idStack.Add(GetControlId(id.stringValue));
+                return new ControlIdScope(true);
+            }
+
             int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            int resolved = id.ResolveStableId(1);
+            int resolved = id.intValue;
 
             if (seed != 0)
                 resolved = NowInput.CombineId(seed, resolved);
@@ -102,6 +109,32 @@ namespace NowUI
         {
             if (_idStack.Count > 0)
                 _idStack.RemoveAt(_idStack.Count - 1);
+        }
+
+        static bool _warnedLeakedIdScope;
+
+        /// <summary>
+        /// Frame-entry self-heal called by <c>Now.StartUI</c>: clears id scopes a
+        /// previous frame leaked so a forgotten Dispose cannot silently re-scope
+        /// every control id in the app, and reports the leak once.
+        /// </summary>
+        internal static void ResetIdScopesForFrame()
+        {
+            if (_idStack.Count == 0)
+            {
+                _warnedLeakedIdScope = false;
+                return;
+            }
+
+            _idStack.Clear();
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (!_warnedLeakedIdScope)
+            {
+                _warnedLeakedIdScope = true;
+                Debug.LogWarning("NowUI: a NowControls.IdScope from the previous frame was never disposed; the id scope stack was reset. Wrap the scope in a using statement.");
+            }
+#endif
         }
 
         static readonly Dictionary<int, int> _labelOccurrences = new Dictionary<int, int>(32);
@@ -596,6 +629,7 @@ namespace NowUI
         }
     }
 
+    [NowScope]
     public struct ControlIdScope : IDisposable
     {
         bool _active;

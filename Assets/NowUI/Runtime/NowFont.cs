@@ -2712,7 +2712,7 @@ namespace NowUI
             var materialTemplate = _dynamicMaterialTemplate;
 
             if (materialTemplate == null)
-                materialTemplate = Resources.Load<Material>("NowUI/TxtMaterial");
+                materialTemplate = Now.LoadRequiredResource<Material>("NowUI/TxtMaterial");
 
             if (materialTemplate == null)
                 return null;

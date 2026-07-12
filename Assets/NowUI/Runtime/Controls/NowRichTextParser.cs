@@ -503,6 +503,12 @@ namespace NowUI
             return false;
         }
 
+        /// <summary>
+        /// Parses a color tag value: 3/4/6/8-digit hex (with or without '#') or
+        /// any HTML color name Unity's <see cref="ColorUtility"/> understands
+        /// (red, orange, grey, ...). Results are memoized with the parsed
+        /// document, so the named-color fallback never runs per frame.
+        /// </summary>
         static bool TryParseColor(string value, out Vector4 color)
         {
             color = default;
@@ -512,31 +518,64 @@ namespace NowUI
 
             value = value.Trim();
 
-            if (value.StartsWith("#"))
-                value = value.Substring(1);
+            if (value.Length == 0)
+                return false;
 
-            if (value.Length != 6 && value.Length != 8)
+            string hex = value[0] == '#' ? value.Substring(1) : value;
+
+            if (TryParseHexColor(hex, out color))
+                return true;
+
+            if (ColorUtility.TryParseHtmlString(value.ToLowerInvariant(), out Color named))
+            {
+                color = named;
+                return true;
+            }
+
+            return false;
+        }
+
+        static bool TryParseHexColor(string value, out Vector4 color)
+        {
+            color = default;
+
+            if (value.Length != 3 && value.Length != 4 && value.Length != 6 && value.Length != 8)
                 return false;
 
             if (!uint.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint parsed))
                 return false;
 
-            if (value.Length == 6)
+            switch (value.Length)
             {
-                color = new Vector4(
-                    ((parsed >> 16) & 0xff) / 255f,
-                    ((parsed >> 8) & 0xff) / 255f,
-                    (parsed & 0xff) / 255f,
-                    1f);
-                return true;
+                case 3:
+                    color = new Vector4(
+                        ((parsed >> 8) & 0xf) / 15f,
+                        ((parsed >> 4) & 0xf) / 15f,
+                        (parsed & 0xf) / 15f,
+                        1f);
+                    return true;
+                case 4:
+                    color = new Vector4(
+                        ((parsed >> 12) & 0xf) / 15f,
+                        ((parsed >> 8) & 0xf) / 15f,
+                        ((parsed >> 4) & 0xf) / 15f,
+                        (parsed & 0xf) / 15f);
+                    return true;
+                case 6:
+                    color = new Vector4(
+                        ((parsed >> 16) & 0xff) / 255f,
+                        ((parsed >> 8) & 0xff) / 255f,
+                        (parsed & 0xff) / 255f,
+                        1f);
+                    return true;
+                default:
+                    color = new Vector4(
+                        ((parsed >> 24) & 0xff) / 255f,
+                        ((parsed >> 16) & 0xff) / 255f,
+                        ((parsed >> 8) & 0xff) / 255f,
+                        (parsed & 0xff) / 255f);
+                    return true;
             }
-
-            color = new Vector4(
-                ((parsed >> 24) & 0xff) / 255f,
-                ((parsed >> 16) & 0xff) / 255f,
-                ((parsed >> 8) & 0xff) / 255f,
-                (parsed & 0xff) / 255f);
-            return true;
         }
 
         static string TagValue(in ParsedTag tag)

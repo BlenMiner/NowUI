@@ -7,11 +7,18 @@ public sealed class NowUIRenderTextureGlassSample : MonoBehaviour
 
     readonly NowRenderer _renderer = new NowRenderer();
     readonly NowGlassDiagnosticEntry[] _glassDiagnostics = new NowGlassDiagnosticEntry[8];
+    int _copiedDiagnosticCount;
     bool _warmed;
 
     void OnEnable()
     {
+        NowGlassSettings.diagnosticsEnabled = true;
         NowGlassSettings.ReserveDiagnostics(_glassDiagnostics.Length);
+    }
+
+    void OnDisable()
+    {
+        NowGlassSettings.diagnosticsEnabled = false;
     }
 
     void OnDestroy()
@@ -35,8 +42,7 @@ public sealed class NowUIRenderTextureGlassSample : MonoBehaviour
 
         _renderer.Render(target, clear: true, clearColor: Color.clear);
 
-        if (NowGlassSettings.diagnosticsEnabled)
-            NowGlassSettings.CopyLastFrameDiagnosticsTo(_glassDiagnostics);
+        _copiedDiagnosticCount = NowGlassSettings.CopyLastFrameDiagnosticsTo(_glassDiagnostics);
     }
 
     void DrawUI()

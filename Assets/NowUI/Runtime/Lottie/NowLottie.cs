@@ -44,12 +44,24 @@ namespace NowUI
             playbackFrameRate = 0f;
         }
 
+        /// <summary>
+        /// Moves the animation rect. The default mask (which the constructor sets
+        /// to the rect) follows the move; a mask pinned with
+        /// <see cref="SetMask(NowRect)"/> stays where it was put.
+        /// </summary>
         public NowLottie SetPosition(NowRect rect)
         {
+            if (mask == this.rect)
+                mask = rect;
+
             this.rect = rect;
             return this;
         }
 
+        /// <summary>
+        /// Pins the clip mask independently of the rect: later
+        /// <see cref="SetPosition(NowRect)"/> calls no longer move it.
+        /// </summary>
         public NowLottie SetMask(NowRect mask)
         {
             this.mask = mask;

@@ -160,10 +160,11 @@ namespace NowUI
         public static int diagnosticEntryCapacity => _diagnosticEntryLimit;
 
         /// <summary>
-        /// Reserves storage for per-pane diagnostics. Recording never grows this
-        /// list implicitly; entries beyond the reserved capacity are counted in
-        /// <see cref="NowGlassFrameDiagnostics.droppedEntryCount"/> so diagnostics
-        /// can stay allocation-free even when enabled.
+        /// Reserves storage for per-pane diagnostics. Reserving does not start
+        /// recording — set <see cref="diagnosticsEnabled"/> to record. Recording
+        /// never grows this list implicitly; entries beyond the reserved capacity
+        /// are counted in <see cref="NowGlassFrameDiagnostics.droppedEntryCount"/>
+        /// so diagnostics can stay allocation-free even when enabled.
         /// </summary>
         public static void ReserveDiagnostics(int paneCapacity)
         {

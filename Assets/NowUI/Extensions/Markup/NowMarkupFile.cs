@@ -26,6 +26,32 @@ namespace NowUI.Markup
         bool _loaded;
         bool _disposed;
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        string _lastWarnedError;
+#endif
+
+        /// <summary>
+        /// Records a load failure so it is both readable through
+        /// <see cref="lastError"/> and, in editor/development builds, logged once
+        /// per distinct error — a missing file otherwise renders as silent blank UI.
+        /// </summary>
+        void SetLoadError(string error)
+        {
+            _lastError = error;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (error == null)
+            {
+                _lastWarnedError = null;
+            }
+            else if (error != _lastWarnedError)
+            {
+                _lastWarnedError = error;
+                UnityEngine.Debug.LogWarning($"NowMarkup: {error}");
+            }
+#endif
+        }
+
         public NowMarkupFile(string path)
         {
             _path = path ?? string.Empty;
@@ -84,7 +110,7 @@ namespace NowUI.Markup
 
             if (!info.Exists)
             {
-                _lastError = $"Markup file not found: {_resolvedPath}";
+                SetLoadError($"Markup file not found: {_resolvedPath}");
                 _loaded = true;
                 _document = null;
                 return false;
@@ -122,7 +148,7 @@ namespace NowUI.Markup
         {
             if (!info.Exists)
             {
-                _lastError = $"Markup file not found: {_resolvedPath}";
+                SetLoadError($"Markup file not found: {_resolvedPath}");
                 _loaded = true;
                 _document = null;
                 return false;
@@ -134,14 +160,14 @@ namespace NowUI.Markup
                 _document = NowMarkupDocument.Parse(text);
                 _lastWriteUtc = info.LastWriteTimeUtc;
                 _lastLength = info.Length;
-                _lastError = null;
+                SetLoadError(null);
                 _loaded = true;
                 Interlocked.Exchange(ref _dirty, 0);
                 return true;
             }
             catch (Exception ex)
             {
-                _lastError = ex.Message;
+                SetLoadError($"Failed to load markup file '{_resolvedPath}': {ex.Message}");
                 _loaded = true;
                 _nextPollUtc = DateTime.UtcNow.AddMilliseconds(250);
                 return false;

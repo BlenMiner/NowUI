@@ -40,7 +40,9 @@ if (result.clicked && result.TryGetHitTag(out var tag) && tag.name == "link")
 ```
 
 Default tag parsing is opt-in. Without `.ParseDefaultTags()`, markup-like text
-is rendered literally.
+is rendered literally. In the editor and development builds, a value that
+contains recognizable tags with no parser attached logs a one-time hint;
+chain `.SetPlainText()` when the angle brackets are intentional.
 
 ## Built-In Tags
 
@@ -53,11 +55,16 @@ The default parser supports common UI text tags:
 <s>struck</s>
 <strikethrough>struck</strikethrough>
 <color=#ffcc00>gold</color>
+<color=red>named</color>
 <size=18>larger</size>
 <link="docs/getting-started">link</link>
 <br/>
 <noparse><b>literal</b></noparse>
 ```
+
+`<color>` accepts 3/4/6/8-digit hex (the `#` is optional) and the HTML
+color names Unity's `ColorUtility` understands (`red`, `orange`, `grey`, ...).
+An unparseable value renders the tag literally.
 
 `<link>` produces a metadata span. Hit testing reports a tag id through
 `NowRichTextHit`, while the caller decides whether that means opening a URL,

@@ -42,12 +42,24 @@ namespace NowUI
             blurQuality = NowGlassBlurQuality.Auto;
         }
 
+        /// <summary>
+        /// Moves the glass rect. The default mask (which the constructor sets to
+        /// the rect) follows the move; a mask pinned with
+        /// <see cref="SetMask(NowRect)"/> stays where it was put.
+        /// </summary>
         public NowGlass SetPosition(NowRect rect)
         {
+            if (mask == this.rect)
+                mask = rect;
+
             this.rect = rect;
             return this;
         }
 
+        /// <summary>
+        /// Pins the clip mask independently of the rect: later
+        /// <see cref="SetPosition(NowRect)"/> calls no longer move it.
+        /// </summary>
         public NowGlass SetMask(NowRect mask)
         {
             this.mask = mask;
@@ -96,9 +108,28 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Sets the outline width in UI units. The outline stays invisible
+        /// until an outline color with alpha above zero is supplied — use
+        /// <see cref="SetOutline(float, Color)"/> to set both in one call.</summary>
         public NowGlass SetOutline(float outline)
         {
             this.outline = Mathf.Max(0f, outline);
+            return this;
+        }
+
+        /// <summary>Sets the outline width in UI units and its color together.</summary>
+        public NowGlass SetOutline(float outline, Color color)
+        {
+            this.outline = Mathf.Max(0f, outline);
+            outlineColor = color;
+            return this;
+        }
+
+        /// <summary>Sets the outline width in UI units and its color together.</summary>
+        public NowGlass SetOutline(float outline, Vector4 color)
+        {
+            this.outline = Mathf.Max(0f, outline);
+            outlineColor = color;
             return this;
         }
 
@@ -292,7 +323,7 @@ namespace NowUI
         static Material GetGlassMaterial()
         {
             if (_glassMaterial == null)
-                _glassMaterial = Resources.Load<Material>("NowUI/GlassMaterial");
+                _glassMaterial = Now.LoadRequiredResource<Material>("NowUI/GlassMaterial");
 
             return _glassMaterial;
         }
@@ -300,7 +331,7 @@ namespace NowUI
         static Material GetGlassCanvasMaterial()
         {
             if (_glassCanvasMaterial == null)
-                _glassCanvasMaterial = Resources.Load<Material>("NowUI/GlassMaterialUGUI");
+                _glassCanvasMaterial = Now.LoadRequiredResource<Material>("NowUI/GlassMaterialUGUI");
 
             return _glassCanvasMaterial;
         }

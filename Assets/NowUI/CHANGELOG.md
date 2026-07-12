@@ -7,6 +7,27 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **DX hardening pass (breaking).** String `NowId`s now resolve within the
+  active `NowControls.IdScope` for layout groups, caches, and input
+  cross-references, matching the documented contract and the control path --
+  values change only under a non-empty scope; use int ids for identities that
+  must resolve identically from anywhere. `Now.screenMask` is now a read-only
+  property (start a sub-region frame via `Now.StartUI(rect, uiScale)`
+  instead). `Now.Text(rect)` honors the ambient `Now.Font(...)` scope as its
+  docs promised. `SetPosition` on `NowRectangle`/`NowText`/`NowGlass`/
+  `NowLottie` moves the constructor-defaulted mask with the rect, so moved
+  templates no longer clip to their original bounds (masks pinned with
+  `SetMask` are untouched). `NowRectangle.SetPadding` stores the caller's
+  values and applies them at draw time -- order-independent with
+  `SetPosition`/`SetMask`, same visuals, and the public field now holds the
+  positive padding that was set.
+- **Frame lifecycle self-heals leaked scopes.** `Now.StartUI` resets leaked
+  draw-suppression scopes (which used to blank all rendering app-wide), theme
+  scopes, id scopes, and passive input scopes from prior frames, logging an
+  attributable error/warning once instead of failing silently. Nested
+  `StartUI` calls and invalid screen masks are reported instead of silently
+  discarding the frame, and missing bundled resources (UIMaterial, NotoSans,
+  glass materials) log a one-shot error instead of rendering nothing.
 - Package dependencies on Burst, Collections, and Mathematics are now declared
   explicitly in `package.json`, so a Git/UPM install resolves the managed font
   fallback and supporting collections APIs without relying on packages that
@@ -196,6 +217,20 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **DX pass additions.** `Now.StartUI(NowRect, float uiScale)` combines a
+  sub-region surface with density scaling. `SetOutline(width, color)`
+  overloads on `NowRectangle`, `NowCircle`, `NowTriangle`, `NowPolygon`, and
+  `NowGlass` set the outline in one call (width-only outlines render nothing
+  until a color is supplied, now documented). `NowLayout.OverrideLabelStyle`
+  scopes a label-style override and `ClearLabelStyle` restores theme tracking.
+  Rich text `<color>` accepts 3/4-digit hex and HTML color names, and
+  `NowRichText.SetPlainText()` marks a value as deliberately unparsed (dev
+  builds hint once when markup-looking tags render literally). The code
+  editor registers a plain-text language ("text"/"plain") and falls back to
+  it when given a null language; `NowMarkupFile` logs load failures once per
+  distinct error in dev builds. Reversed slider bounds normalize instead of
+  destroying the value, and the color picker no longer silently clamps a
+  caller's HDR color while reporting no change.
 - **Node graph authoring and embedded-control APIs.** Node definitions can
   describe search categories, details, keywords, content geometry, dynamic
   initialization, and ports that are added, updated, or removed by stable id.

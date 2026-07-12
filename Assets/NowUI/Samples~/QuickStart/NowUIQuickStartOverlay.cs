@@ -1,8 +1,18 @@
 using NowUI;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public sealed class NowUIQuickStartOverlay : MonoBehaviour
 {
+    void OnEnable()
+    {
+        if (GraphicsSettings.currentRenderPipeline != null)
+            Debug.LogWarning("NowUIQuickStartOverlay draws from OnPostRender, which only runs on the Built-in Render Pipeline. On URP/HDRP use the NowUniversalRendererFeature / HDRP custom pass with a NowPipelineGraphic, or a NowGraphic under a Canvas — see Docs/RenderPipelines.md.", this);
+
+        if (!TryGetComponent<Camera>(out var cam) || !cam.enabled)
+            Debug.LogWarning("NowUIQuickStartOverlay must live on an enabled Camera for OnPostRender to fire.", this);
+    }
+
     void OnPostRender()
     {
         using (Now.StartUI(NowScreen.recommendedUIScale))

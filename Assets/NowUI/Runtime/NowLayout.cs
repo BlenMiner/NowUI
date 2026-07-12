@@ -1493,7 +1493,10 @@ namespace NowUI
         /// explicit style. Defaults to the active theme's body text at a 16px font size.
         /// The default is cached against the resolved theme instance, the ambient font
         /// and <see cref="NowThemeAsset.contentVersion"/>, so per-label calls skip the
-        /// full preset resolution.
+        /// full preset resolution. Assigning the setter installs a process-wide
+        /// default that stops tracking the theme until <see cref="ClearLabelStyle"/>
+        /// restores it; for a temporary override use
+        /// <see cref="OverrideLabelStyle(NowText)"/> with a using statement.
         /// </summary>
         public static NowText labelStyle
         {
@@ -1522,6 +1525,39 @@ namespace NowUI
                 _labelStyle = value;
                 _hasLabelStyle = true;
             }
+        }
+
+        /// <summary>
+        /// Removes a <see cref="labelStyle"/> override so implicit labels resume
+        /// tracking the active theme's body text style.
+        /// </summary>
+        public static void ClearLabelStyle()
+        {
+            _hasLabelStyle = false;
+            _labelStyle = default;
+        }
+
+        /// <summary>
+        /// Temporarily overrides <see cref="labelStyle"/>; dispose the returned
+        /// scope (ideally with a using statement) to restore whatever was active
+        /// before:
+        /// <code>
+        /// using (NowLayout.OverrideLabelStyle(heading))
+        ///     NowLayout.Label("Section").Draw();
+        /// </code>
+        /// </summary>
+        public static NowLabelStyleScope OverrideLabelStyle(NowText style)
+        {
+            var scope = new NowLabelStyleScope(_labelStyle, _hasLabelStyle);
+            _labelStyle = style;
+            _hasLabelStyle = true;
+            return scope;
+        }
+
+        internal static void RestoreLabelStyle(NowText style, bool hasStyle)
+        {
+            _labelStyle = style;
+            _hasLabelStyle = hasStyle;
         }
 
         /// <summary>
@@ -2170,6 +2206,36 @@ namespace NowUI
             {
                 return (a * 397) ^ b;
             }
+        }
+    }
+
+    /// <summary>
+    /// Scope returned by <see cref="NowLayout.OverrideLabelStyle(NowText)"/>;
+    /// disposing restores the label style that was active when the scope opened.
+    /// </summary>
+    [NowScope]
+    public struct NowLabelStyleScope : IDisposable
+    {
+        readonly NowText _previous;
+
+        readonly bool _hadPrevious;
+
+        bool _active;
+
+        internal NowLabelStyleScope(NowText previous, bool hadPrevious)
+        {
+            _previous = previous;
+            _hadPrevious = hadPrevious;
+            _active = true;
+        }
+
+        public void Dispose()
+        {
+            if (!_active)
+                return;
+
+            _active = false;
+            NowLayout.RestoreLabelStyle(_previous, _hadPrevious);
         }
     }
 }

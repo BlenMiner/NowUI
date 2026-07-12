@@ -202,6 +202,11 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// Stores padding on the style, but no text draw path currently consumes
+        /// it — this has no visual effect today. Inset the rect you draw into
+        /// instead.
+        /// </summary>
         public NowText SetPadding(float all)
         {
             padding = new Vector4(all, all, all, all);
@@ -226,12 +231,24 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// Moves the text rect. The default mask (which the constructor sets to
+        /// the rect) follows the move; a mask pinned with
+        /// <see cref="SetMask(NowRect)"/> stays where it was put.
+        /// </summary>
         public NowText SetPosition(NowRect rect)
         {
+            if (mask == this.rect)
+                mask = rect;
+
             this.rect = rect;
             return this;
         }
 
+        /// <summary>
+        /// Pins the clip mask independently of the rect: later
+        /// <see cref="SetPosition(NowRect)"/> calls no longer move it.
+        /// </summary>
         public NowText SetMask(NowRect mask)
         {
             this.mask = mask;

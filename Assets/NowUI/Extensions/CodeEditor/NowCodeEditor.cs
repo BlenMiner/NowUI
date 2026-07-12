@@ -61,7 +61,7 @@ namespace NowUI.CodeEditor
 
         NowId _id;
         readonly int _site;
-        readonly NowCodeLanguage _language;
+        NowCodeLanguage _language;
         readonly NowRect _rect;
         readonly bool _hasRect;
         NowFocusNavigation _navigation;
@@ -230,6 +230,23 @@ namespace NowUI.CodeEditor
             ResetCaches();
         }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        static readonly HashSet<int> s_warnedNullLanguageSites = new HashSet<int>();
+#endif
+
+        /// <summary>
+        /// Reports a null language once per call site in editor/development
+        /// builds; the editor falls back to <see cref="NowPlainLanguage"/> instead
+        /// of silently drawing nothing.
+        /// </summary>
+        static void WarnNullLanguage(int site)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (s_warnedNullLanguageSites.Add(site))
+                Debug.LogWarning("NowUI: NowCode.Editor was called with a null language; falling back to plain text. Pass a language profile such as NowJsonLanguage.instance, or NowPlainLanguage.instance to make plain text explicit.");
+#endif
+        }
+
         public NowCodeEditorResult Draw(ref string text)
         {
             text ??= string.Empty;
@@ -237,7 +254,10 @@ namespace NowUI.CodeEditor
             var result = default(NowCodeEditorResult);
 
             if (_language == null)
-                return result;
+            {
+                _language = NowPlainLanguage.instance;
+                WarnNullLanguage(_site);
+            }
 
             var theme = NowTheme.themeAsset;
             int id = NowControls.GetControlId(_id, _site);
