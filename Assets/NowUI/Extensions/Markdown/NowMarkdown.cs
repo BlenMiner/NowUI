@@ -3,6 +3,109 @@ using UnityEngine;
 
 namespace NowUI.Markdown
 {
+    /// <summary>
+    /// Everything an embed renderer needs to draw one fenced block live inside
+    /// a rendered markdown document.
+    /// </summary>
+    public readonly struct NowMarkdownEmbedContext
+    {
+        /// <summary>Reserved rect: width is final, height is last frame's measurement (converges like all frame-late layout).</summary>
+        public readonly NowRect rect;
+
+        /// <summary>Verbatim fence content.</summary>
+        public readonly string source;
+
+        /// <summary>Full fence info string (first word selected the renderer; the rest is renderer-defined).</summary>
+        public readonly string info;
+
+        /// <summary>Ordinal of this embed within its document, stable across frames.</summary>
+        public readonly int index;
+
+        /// <summary>Stable id of the parsed document instance hosting the embed.</summary>
+        public readonly int documentId;
+
+        internal NowMarkdownEmbedContext(NowRect rect, string source, string info, int index, int documentId)
+        {
+            this.rect = rect;
+            this.source = source;
+            this.info = info;
+            this.index = index;
+            this.documentId = documentId;
+        }
+
+        /// <summary>Identity unique to this embed instance — the key for any retained per-embed state.</summary>
+        public int embedId => NowInput.CombineId(documentId, index);
+    }
+
+    /// <summary>
+    /// Draws one embedded block during markdown drawing and returns the measured
+    /// content height in UI units (0 while a first measurement is still
+    /// settling). Runs live every frame, so interaction works; the reserved
+    /// height converges one frame after the returned height changes.
+    /// </summary>
+    public delegate float NowMarkdownEmbedRenderer(in NowMarkdownEmbedContext context);
+
+    /// <summary>
+    /// Maps fenced-code info strings to live renderers, turning those fences
+    /// into embedded content instead of highlighted code. Caller-owned: build
+    /// one, keep it in a field, and pass it to
+    /// <see cref="NowMarkdownBuilder.SetEmbeds(NowMarkdownEmbedSet)"/> — without
+    /// one, every fence renders as a code block, so documents degrade
+    /// gracefully wherever embeds are not wired up.
+    /// <code>
+    /// static readonly NowMarkdownEmbedSet Embeds = new NowMarkdownEmbedSet()
+    ///     .Add("chart", DrawChartEmbed);
+    ///
+    /// NowMarkdown.Document(text).SetEmbeds(Embeds).Draw();
+    /// </code>
+    /// </summary>
+    public class NowMarkdownEmbedSet
+    {
+        readonly Dictionary<string, NowMarkdownEmbedRenderer> _renderers =
+            new Dictionary<string, NowMarkdownEmbedRenderer>(4, System.StringComparer.OrdinalIgnoreCase);
+
+        int _version;
+
+        internal int version => _version;
+
+        /// <summary>
+        /// Registers a renderer for fences whose info string starts with
+        /// <paramref name="info"/> (case-insensitive); registering the same name
+        /// again replaces the renderer.
+        /// </summary>
+        public NowMarkdownEmbedSet Add(string info, NowMarkdownEmbedRenderer renderer)
+        {
+            if (string.IsNullOrWhiteSpace(info))
+                throw new System.ArgumentException("Embed info strings cannot be null or empty.", nameof(info));
+
+            if (renderer == null)
+                throw new System.ArgumentNullException(nameof(renderer));
+
+            _renderers[info.Trim()] = renderer;
+            ++_version;
+            return this;
+        }
+
+        internal bool TryGet(string fenceInfo, out NowMarkdownEmbedRenderer renderer)
+        {
+            renderer = null;
+
+            if (_renderers.Count == 0 || string.IsNullOrEmpty(fenceInfo))
+                return false;
+
+            int end = 0;
+
+            while (end < fenceInfo.Length && !char.IsWhiteSpace(fenceInfo[end]))
+                ++end;
+
+            if (end == 0)
+                return false;
+
+            string word = end == fenceInfo.Length ? fenceInfo : fenceInfo.Substring(0, end);
+            return _renderers.TryGetValue(word, out renderer);
+        }
+    }
+
     [NowBuilder]
     public struct NowMarkdownBuilder
     {
@@ -13,6 +116,7 @@ namespace NowUI.Markdown
         NowLayoutOptions _options;
         NowMarkdownStyle _style;
         bool _hasStyle;
+        NowMarkdownEmbedSet _embeds;
 
         internal NowMarkdownBuilder(string markdown, string file, int line)
         {
@@ -22,6 +126,7 @@ namespace NowUI.Markdown
             _options = default;
             _style = default;
             _hasStyle = false;
+            _embeds = null;
         }
 
         public NowMarkdownBuilder SetOptions(NowLayoutOptions options)
@@ -63,13 +168,24 @@ namespace NowUI.Markdown
             return this;
         }
 
+        /// <summary>
+        /// Turns fenced code blocks whose info string matches a registered embed
+        /// into live embedded content (see <see cref="NowMarkdownEmbedSet"/>).
+        /// Without this, every fence renders as a highlighted code block.
+        /// </summary>
+        public NowMarkdownBuilder SetEmbeds(NowMarkdownEmbedSet embeds)
+        {
+            _embeds = embeds;
+            return this;
+        }
+
         /// <summary>Draws in the active layout group.</summary>
         [NowConsumer]
         public NowMarkdownResult Draw()
         {
             var document = GetDocument();
             var content = NowLayout.ContentRect(_options, _file, _line);
-            var result = document.Draw(content.rect);
+            var result = document.Draw(content.rect, _embeds);
             content.End(result.height);
             return result;
         }
@@ -78,7 +194,7 @@ namespace NowUI.Markdown
         [NowConsumer]
         public NowMarkdownResult Draw(NowRect rect)
         {
-            return GetDocument().Draw(rect);
+            return GetDocument().Draw(rect, _embeds);
         }
 
         NowMarkdownDocument GetDocument()

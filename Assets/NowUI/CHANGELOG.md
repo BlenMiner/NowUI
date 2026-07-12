@@ -217,6 +217,17 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Live embeds in Markdown, including inline NowUI markup.** Fenced code
+  blocks can now render as live content: pass a caller-owned
+  `NowMarkdownEmbedSet` to `NowMarkdown.Document(text).SetEmbeds(...)` and
+  fences whose info string matches a registered renderer draw live inside
+  the document flow, height-converging like images. The new
+  `NowUI.Extensions.Markdown.Markup` bridge assembly ships `NowMarkupEmbeds`,
+  which renders ` ```markup ` / ` ```nowui ` fences as live NowUI markup with
+  shared state and event queries (`Clicked`/`Changed`/`Action`); without an
+  embed set every fence stays a highlighted code block, so documents degrade
+  gracefully. `NowLayout.TryGetCachedContentSize` is now public — the
+  measured content extent of an explicit-id group or area.
 - **DX pass additions.** `Now.StartUI(NowRect, float uiScale)` combines a
   sub-region surface with density scaling. `SetOutline(width, color)`
   overloads on `NowRectangle`, `NowCircle`, `NowTriangle`, `NowPolygon`, and

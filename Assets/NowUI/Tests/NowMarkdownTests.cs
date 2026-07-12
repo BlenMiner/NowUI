@@ -1119,4 +1119,130 @@ public class NowMarkdownTests
             NowMarkdownImages.Reset();
         }
     }
+
+    [Test]
+    public void EmbedRendererReceivesFenceSourceAndInfo()
+    {
+        int calls = 0;
+        string seenSource = null;
+        string seenInfo = null;
+        int seenIndex = -1;
+
+        float Renderer(in NowMarkdownEmbedContext context)
+        {
+            ++calls;
+            seenSource = context.source;
+            seenInfo = context.info;
+            seenIndex = context.index;
+            return 120f;
+        }
+
+        var embeds = new NowMarkdownEmbedSet().Add("widget", Renderer);
+        var document = NowMarkdownDocument.Parse(
+            "before\n\n```widget size=big\nhello-embed\n```\n\nafter");
+        var rect = new NowRect(0, 0, 400f, 400f);
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            document.Draw(rect, embeds);
+
+        Assert.AreEqual(1, calls, "embed renderer must run exactly once per fence per draw");
+        StringAssert.Contains("hello-embed", seenSource);
+        Assert.AreEqual("widget size=big", seenInfo,
+            "the full fence info string must reach the renderer; the first word selects it");
+        Assert.AreEqual(0, seenIndex);
+    }
+
+    [Test]
+    public void EmbedHeightConvergesIntoDocumentLayout()
+    {
+        float Renderer(in NowMarkdownEmbedContext context)
+        {
+            return 120f;
+        }
+
+        var embeds = new NowMarkdownEmbedSet().Add("widget", Renderer);
+        var document = NowMarkdownDocument.Parse("```widget\nx\n```");
+        var rect = new NowRect(0, 0, 400f, 400f);
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            document.Draw(rect, embeds);
+
+        Assert.AreEqual(120f, document.MeasureHeight(400f), 0.75f,
+            "the renderer-reported height must feed back into the block layout");
+    }
+
+    [Test]
+    public void FencesWithoutMatchingEmbedStayCodeBlocks()
+    {
+        int calls = 0;
+
+        float Renderer(in NowMarkdownEmbedContext context)
+        {
+            ++calls;
+            return 50f;
+        }
+
+        var embeds = new NowMarkdownEmbedSet().Add("widget", Renderer);
+        var document = NowMarkdownDocument.Parse("```csharp\nvar x = 1;\n```");
+        var plain = NowMarkdownDocument.Parse("```csharp\nvar x = 1;\n```");
+        var rect = new NowRect(0, 0, 400f, 400f);
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            document.Draw(rect, embeds);
+
+        Assert.AreEqual(0, calls, "non-matching fences must never invoke embed renderers");
+        Assert.AreEqual(plain.MeasureHeight(400f), document.MeasureHeight(400f), 0.001f,
+            "non-matching fences must lay out exactly like ordinary code blocks");
+    }
+
+    [Test]
+    public void EmbedSetIsStickyAcrossPlainDrawsAndMeasure()
+    {
+        float Renderer(in NowMarkdownEmbedContext context)
+        {
+            return 90f;
+        }
+
+        var embeds = new NowMarkdownEmbedSet().Add("widget", Renderer);
+        var document = NowMarkdownDocument.Parse("```widget\nx\n```");
+        var rect = new NowRect(0, 0, 400f, 400f);
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            document.Draw(rect, embeds);
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            document.Draw(rect);
+
+        Assert.AreEqual(90f, document.MeasureHeight(400f), 0.75f,
+            "the embed set must stay sticky for parameterless draws and measures");
+    }
+
+    [Test]
+    public void MarkupEmbedsRenderLiveMarkupAndBindState()
+    {
+        var embeds = new NowMarkupEmbeds();
+        var document = NowMarkdownDocument.Parse(
+            "# Doc\n\n```markup\n<column gap=\"4\">\n  <text>Hello</text>\n  <radio group=\"mode\" value=\"1\" checked=\"true\">A</radio>\n</column>\n```");
+        var rect = new NowRect(0, 0, 400f, 400f);
+
+        for (int i = 0; i < 3; ++i)
+        {
+            using (NowInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+                document.Draw(rect, embeds);
+        }
+
+        Assert.AreEqual(1, embeds.state.GetInt("mode", -1),
+            "markup inside the fence must execute live and seed its bound state");
+
+        var plainCode = NowMarkdownDocument.Parse(
+            "# Doc\n\n```markup\n<column gap=\"4\">\n  <text>Hello</text>\n  <radio group=\"mode\" value=\"1\" checked=\"true\">A</radio>\n</column>\n```");
+        Assert.AreNotEqual(plainCode.MeasureHeight(400f), document.MeasureHeight(400f),
+            "an embedded markup block must lay out as live content, not as the code block");
+    }
 }

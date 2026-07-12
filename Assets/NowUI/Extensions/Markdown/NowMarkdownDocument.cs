@@ -41,7 +41,15 @@ namespace NowUI.Markdown
             Line,
             Image,
             CopyButton,
-            SelectionLayer
+            SelectionLayer,
+            Embed
+        }
+
+        struct EmbedSlot
+        {
+            public string source;
+            public string info;
+            public NowMarkdownEmbedRenderer renderer;
         }
 
         struct SelectionRegion
@@ -126,6 +134,14 @@ namespace NowUI.Markdown
         bool _hasLoadingImages;
         bool _referencesImages;
 
+        readonly List<EmbedSlot> _embedSlots = new List<EmbedSlot>(2);
+        readonly List<float> _embedHeights = new List<float>(2);
+        NowMarkdownEmbedSet _embeds;
+        NowMarkdownEmbedSet _layoutEmbeds;
+        int _layoutEmbedsVersion = -1;
+        int _embedHeightsVersion;
+        int _layoutEmbedHeightsVersion = -1;
+
         public NowMarkdownDocument(NowMarkdownBlock root, NowMarkdownStyle style)
         {
             _root = root;
@@ -159,6 +175,19 @@ namespace NowUI.Markdown
         /// </summary>
         public NowMarkdownResult Draw(NowRect rect)
         {
+            return Draw(rect, _embeds);
+        }
+
+        /// <summary>
+        /// Draws the document with an embed set: fenced blocks whose info string
+        /// matches a registered embed render live instead of as code. The set is
+        /// sticky — it also serves later <see cref="Draw(NowRect)"/> and
+        /// <see cref="MeasureHeight(float)"/> calls until replaced.
+        /// </summary>
+        public NowMarkdownResult Draw(NowRect rect, NowMarkdownEmbedSet embeds)
+        {
+            _embeds = embeds;
+
             var result = default(NowMarkdownResult);
             var theme = NowTheme.themeAsset;
 
@@ -266,10 +295,48 @@ namespace NowUI.Markdown
 
                         break;
                     }
+                    case OpKind.Embed:
+                    {
+                        DrawEmbed(op, target);
+                        break;
+                    }
                 }
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Runs an embed renderer live inside its reserved rect and feeds the
+        /// measured height back into layout: a change bumps the embed-heights
+        /// version, which re-bakes the op list next frame — the same
+        /// convergence contract images use.
+        /// </summary>
+        void DrawEmbed(in Op op, NowRect target)
+        {
+            var slot = _embedSlots[op.link];
+
+            if (slot.renderer == null)
+                return;
+
+            var context = new NowMarkdownEmbedContext(target, slot.source, slot.info, op.link, GetHashCode());
+            float measured;
+
+            using (Now.Mask(target.Outset(2f)))
+                measured = slot.renderer(in context);
+
+            if (measured <= 0f)
+            {
+                NowControlState.RequestRepaint();
+                return;
+            }
+
+            if (Mathf.Abs(measured - _embedHeights[op.link]) > 0.5f)
+            {
+                _embedHeights[op.link] = measured;
+                ++_embedHeightsVersion;
+                NowControlState.RequestRepaint();
+            }
         }
 
         void InteractDocumentSelection(int docId, NowRect origin)
@@ -650,7 +717,10 @@ namespace NowUI.Markdown
             NowFontAsset font = probe.font;
 
             if (font == _layoutFont && Mathf.Abs(width - _layoutWidth) <= 0.5f &&
-                (!_referencesImages || _imagesVersion == NowMarkdownImages.version))
+                (!_referencesImages || _imagesVersion == NowMarkdownImages.version) &&
+                ReferenceEquals(_embeds, _layoutEmbeds) &&
+                (_embeds == null || _layoutEmbedsVersion == _embeds.version) &&
+                _layoutEmbedHeightsVersion == _embedHeightsVersion)
             {
                 return;
             }
@@ -658,11 +728,15 @@ namespace NowUI.Markdown
             _layoutWidth = width;
             _layoutFont = font;
             _imagesVersion = NowMarkdownImages.version;
+            _layoutEmbeds = _embeds;
+            _layoutEmbedsVersion = _embeds?.version ?? -1;
+            _layoutEmbedHeightsVersion = _embedHeightsVersion;
             _hasLoadingImages = false;
             _referencesImages = false;
             _strikeSequence = 0;
             _ops.Clear();
             _links.Clear();
+            _embedSlots.Clear();
             _selectionRegions.Clear();
             _selectionLines.Clear();
 
@@ -757,7 +831,11 @@ namespace NowUI.Markdown
                     LayoutInlines(block.inlines, x, ref y, width, _style.fontSize, NowFontStyle.Regular, Role.Body, -1);
                     break;
                 case NowMarkdownBlockType.CodeBlock:
-                    LayoutCodeBlock(block, x, ref y, width);
+                    if (_embeds != null && _embeds.TryGet(block.info, out var embedRenderer))
+                        LayoutEmbedBlock(block, embedRenderer, x, ref y, width);
+                    else
+                        LayoutCodeBlock(block, x, ref y, width);
+
                     break;
                 case NowMarkdownBlockType.Quote:
                 {
@@ -782,6 +860,39 @@ namespace NowUI.Markdown
         }
 
         static readonly List<NowTextToken> _tokenScratch = new List<NowTextToken>(16);
+
+        /// <summary>
+        /// Reserves space for a live embed at last frame's measured height (one
+        /// line before the first measurement lands) and records the slot the
+        /// draw pass renders through. Embeds are interactive, so they take no
+        /// part in text selection.
+        /// </summary>
+        void LayoutEmbedBlock(NowMarkdownBlock block, NowMarkdownEmbedRenderer renderer, float x, ref float y, float width)
+        {
+            int ordinal = _embedSlots.Count;
+
+            while (_embedHeights.Count <= ordinal)
+                _embedHeights.Add(0f);
+
+            float height = Mathf.Max(_embedHeights[ordinal], LineHeight(_style.fontSize));
+
+            _embedSlots.Add(new EmbedSlot
+            {
+                source = block.literal ?? string.Empty,
+                info = block.info ?? string.Empty,
+                renderer = renderer
+            });
+
+            _ops.Add(new Op
+            {
+                kind = OpKind.Embed,
+                role = Role.Body,
+                rect = new NowRect(x, y, width - x, height),
+                link = ordinal
+            });
+
+            y += height;
+        }
 
         void LayoutCodeBlock(NowMarkdownBlock block, float x, ref float y, float width)
         {

@@ -1906,16 +1906,27 @@ namespace NowUI
             return new NowContentRect(rect, slot);
         }
 
-        internal static bool TryGetCachedContentSize(string id, out Vector2 size)
+        /// <summary>
+        /// Last measured content size of an explicit-id group or area — how
+        /// scroll views and container controls learn their content extent.
+        /// Measured when the group ends, so reading it after the group's using
+        /// scope closes sees this frame's value; reading before sees last
+        /// frame's (the standard frame-late layout contract).
+        /// </summary>
+        public static bool TryGetCachedContentSize(string id, out Vector2 size)
         {
             if (id != null)
-                return TryGetCachedContentSize(NowInput.GetId(id), out size);
+                return TryGetCachedContentSize(NowControls.GetControlId(id), out size);
 
             size = default;
             return false;
         }
 
-        internal static bool TryGetCachedContentSize(NowId id, out Vector2 size)
+        /// <summary>
+        /// Last measured content size of an explicit-id group or area — see
+        /// <see cref="TryGetCachedContentSize(string, out Vector2)"/>.
+        /// </summary>
+        public static bool TryGetCachedContentSize(NowId id, out Vector2 size)
         {
             if (id.hasValue)
                 return TryGetCachedContentSize(id.ResolveStableId(1), out size);
@@ -1924,7 +1935,11 @@ namespace NowUI
             return false;
         }
 
-        internal static bool TryGetCachedContentSize(int id, out Vector2 size)
+        /// <summary>
+        /// Last measured content size of an explicit-id group or area — see
+        /// <see cref="TryGetCachedContentSize(string, out Vector2)"/>.
+        /// </summary>
+        public static bool TryGetCachedContentSize(int id, out Vector2 size)
         {
             if (_cache.TryGetValue(id, out var cached))
             {

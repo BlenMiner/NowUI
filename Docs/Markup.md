@@ -54,6 +54,10 @@ void OnPostRender()
 </column>
 ```
 
+Markup also embeds inside rendered Markdown: a ` ```markup ` fence drawn
+with the `NowMarkupEmbeds` bridge renders as live markup instead of code —
+see [Markdown.md](Markdown.md#live-embeds).
+
 `NowMarkup.Document(markupText)` is for markup strings you already loaded.
 `NowMarkup.File(path)` is for hot-reloadable disk files. It uses
 `FileSystemWatcher` when possible and falls back to timestamp polling; watcher

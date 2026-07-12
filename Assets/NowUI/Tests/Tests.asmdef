@@ -8,6 +8,7 @@
         "NowUI.Runtime",
         "NowUI.Extensions.Markdown",
         "NowUI.Extensions.Markup",
+        "NowUI.Extensions.Markdown.Markup",
         "NowUI.Extensions.CodeEditor",
         "NowUI.Extensions.Docking",
         "NowUI.Extensions.NodeGraph",

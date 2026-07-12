@@ -73,6 +73,57 @@ Links are not opened automatically: the result reports `clickedLink` /
   numbers and comments, with multiline comment/verbatim-string state carried
   across lines; unknown languages render plain
 
+## Live embeds
+
+Fenced blocks can render as live content instead of highlighted code. Embeds
+are opt-in per draw: pass a caller-owned `NowMarkdownEmbedSet` mapping fence
+info strings to renderers, and any fence whose info string's first word
+matches renders through the registered `NowMarkdownEmbedRenderer` — drawn
+live every frame inside the document flow, with the measured height fed back
+into layout (one frame late, like images). Without a set, every fence stays
+an ordinary code block, so documents degrade gracefully on GitHub and in
+renderers that never wire embeds up.
+
+The bundled `NowUI.Extensions.Markdown.Markup` bridge turns ` ```markup `
+(or ` ```nowui `) fences into live [NowUI markup](Markup.md) — controls,
+state bindings, and events included:
+
+```csharp
+readonly NowMarkupEmbeds _embeds = new NowMarkupEmbeds();
+
+var result = NowMarkdown.Document(text).SetEmbeds(_embeds).Draw();
+
+if (_embeds.Clicked("save"))
+    Save();
+```
+
+````markdown
+# Settings
+
+Adjust and save:
+
+```markup
+<column gap="8">
+  <row gap="8" align-items="center">
+    <text>Volume</text>
+    <slider state="volume" min="0" max="1" style="stretch: 1" />
+  </row>
+  <button id="save" variant="Accent" on-click="emit(save)">Save</button>
+</column>
+```
+````
+
+Every embedded block shares the `NowMarkupEmbeds` instance's
+`NowMarkupState`, so a slider in one block can drive visibility in another
+block of the same document; interaction identity is scoped per embed, so two
+identical snippets never fight over focus. Seed and read values through
+`embeds.state`, and query events with `Clicked`/`Changed`/`Action` after the
+draw. Custom embeds (charts, diagrams, anything drawable) register the same
+way: `new NowMarkdownEmbedSet().Add("chart", DrawChart)`.
+
+Embeds run arbitrary UI from document content — only enable them for
+markdown you control, not for untrusted user or network content.
+
 ## Deliberately out of scope
 
 - Raw HTML, blocks and inline: rendered as plain text, never interpreted
