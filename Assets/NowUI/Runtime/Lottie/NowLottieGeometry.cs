@@ -48,7 +48,7 @@ namespace NowUI.Internal
             return result;
         }
 
-        public Vector2 Transform(Vector2 point)
+        public readonly Vector2 Transform(Vector2 point)
         {
             return new Vector2(
                 a * point.x + c * point.y + tx,
@@ -56,14 +56,14 @@ namespace NowUI.Internal
         }
 
         /// <summary>Transforms a direction (tangent), ignoring translation.</summary>
-        public Vector2 TransformVector(Vector2 vector)
+        public readonly Vector2 TransformVector(Vector2 vector)
         {
             return new Vector2(
                 a * vector.x + c * vector.y,
                 b * vector.x + d * vector.y);
         }
 
-        public float MeanScale()
+        public readonly float MeanScale()
         {
             float scaleX = Mathf.Sqrt(a * a + b * b);
             float scaleY = Mathf.Sqrt(c * c + d * d);
@@ -281,26 +281,48 @@ namespace NowUI.Internal
             return new NowLottiePaint { color = color, alphaMultiplier = 1f };
         }
 
-        public Vector4 ColorAt(Vector2 position)
+        public readonly Vector4 ColorAt(Vector2 position)
         {
             if (!isGradient)
                 return color;
 
-            float t;
+            GetGradientFactors(out float invRadius, out Vector2 directionScale);
+            return ColorAt(position, invRadius, directionScale);
+        }
 
+        /// <summary>
+        /// Precomputes the per-paint gradient factors (inverse radius for radial,
+        /// direction divided by squared length for linear) so per-vertex evaluation
+        /// avoids the square root and division.
+        /// </summary>
+        internal readonly void GetGradientFactors(out float invRadius, out Vector2 directionScale)
+        {
             if (gradientType == 2)
             {
                 float radius = Vector2.Distance(gradientStart, gradientEnd);
-                t = radius > 0.0001f ? Vector2.Distance(position, gradientStart) / radius : 0f;
+                invRadius = radius > 0.0001f ? 1f / radius : 0f;
+                directionScale = Vector2.zero;
+                return;
             }
-            else
-            {
-                Vector2 direction = gradientEnd - gradientStart;
-                float lengthSquared = Vector2.Dot(direction, direction);
-                t = lengthSquared > 0.0001f
-                    ? Vector2.Dot(position - gradientStart, direction) / lengthSquared
-                    : 0f;
-            }
+
+            Vector2 direction = gradientEnd - gradientStart;
+            float lengthSquared = Vector2.Dot(direction, direction);
+            invRadius = 0f;
+            directionScale = lengthSquared > 0.0001f ? direction / lengthSquared : Vector2.zero;
+        }
+
+        /// <summary>
+        /// Fast path taking factors from <see cref="GetGradientFactors"/>, hoisted out
+        /// of the per-vertex tessellation loops.
+        /// </summary>
+        internal readonly Vector4 ColorAt(Vector2 position, float invRadius, Vector2 directionScale)
+        {
+            if (!isGradient)
+                return color;
+
+            float t = gradientType == 2
+                ? Vector2.Distance(position, gradientStart) * invRadius
+                : Vector2.Dot(position - gradientStart, directionScale);
 
             t = Mathf.Clamp01(t);
 
@@ -313,7 +335,7 @@ namespace NowUI.Internal
             return result;
         }
 
-        Vector4 EvaluateColorStops(float t)
+        readonly Vector4 EvaluateColorStops(float t)
         {
             var stops = gradientStops;
             int count = colorStopCount;
@@ -350,7 +372,7 @@ namespace NowUI.Internal
             return new Vector4(stops[lastOffset + 1], stops[lastOffset + 2], stops[lastOffset + 3], 1f);
         }
 
-        float EvaluateAlphaStops(float t)
+        readonly float EvaluateAlphaStops(float t)
         {
             var stops = gradientStops;
             int colorFloats = colorStopCount * 4;
@@ -597,6 +619,7 @@ namespace NowUI.Internal
             _activeEdges.Clear();
             int nextEdge = 0;
             float maxSlabHeight = paint.isGradient && gradientSpan > 0f ? gradientSpan : float.MaxValue;
+            paint.GetGradientFactors(out float invRadius, out Vector2 directionScale);
 
             for (int slab = 0; slab + 1 < _slabYs.count; ++slab)
             {
@@ -655,7 +678,7 @@ namespace NowUI.Internal
                     float fractionBottom = chunk == verticalChunks - 1 ? 1f : fractionTop + inverseChunks;
                     float ya = Mathf.Lerp(slabTop, slabBottom, fractionTop);
                     float yb = Mathf.Lerp(slabTop, slabBottom, fractionBottom);
-                    EmitSlabSpans(ya, yb, fractionTop, fractionBottom, hasClip, clipInvert, evenOdd, paint, buffer, gradientSpan);
+                    EmitSlabSpans(ya, yb, fractionTop, fractionBottom, hasClip, clipInvert, evenOdd, paint, invRadius, directionScale, buffer, gradientSpan);
                 }
             }
         }
@@ -669,6 +692,8 @@ namespace NowUI.Internal
             bool clipInvert,
             bool evenOdd,
             in NowLottiePaint paint,
+            float invRadius,
+            Vector2 directionScale,
             NowLottieDrawBuffer buffer,
             float gradientSpan)
         {
@@ -704,7 +729,7 @@ namespace NowUI.Internal
                 }
                 else if (spanOpen)
                 {
-                    EmitTrapezoid(spanTopX, edgeTopX, spanBottomX, edgeBottomX, ya, yb, paint, buffer, gradientSpan);
+                    EmitTrapezoid(spanTopX, edgeTopX, spanBottomX, edgeBottomX, ya, yb, paint, invRadius, directionScale, buffer, gradientSpan);
                     spanOpen = false;
                 }
             }
@@ -879,6 +904,8 @@ namespace NowUI.Internal
             float ya,
             float yb,
             in NowLottiePaint paint,
+            float invRadius,
+            Vector2 directionScale,
             NowLottieDrawBuffer buffer,
             float gradientSpan)
         {
@@ -906,10 +933,10 @@ namespace NowUI.Internal
                 var c = new Vector2(Mathf.Lerp(bottomLeft, bottomRight, t1), yb);
                 var d = new Vector2(Mathf.Lerp(bottomLeft, bottomRight, t0), yb);
 
-                int ia = buffer.AddVertex(a, paint.ColorAt(a));
-                int ib = buffer.AddVertex(b, paint.ColorAt(b));
-                int ic = buffer.AddVertex(c, paint.ColorAt(c));
-                int id = buffer.AddVertex(d, paint.ColorAt(d));
+                int ia = buffer.AddVertex(a, paint.ColorAt(a, invRadius, directionScale));
+                int ib = buffer.AddVertex(b, paint.ColorAt(b, invRadius, directionScale));
+                int ic = buffer.AddVertex(c, paint.ColorAt(c, invRadius, directionScale));
+                int id = buffer.AddVertex(d, paint.ColorAt(d, invRadius, directionScale));
                 buffer.AddQuad(ia, ib, ic, id);
             }
         }
@@ -964,6 +991,8 @@ namespace NowUI.Internal
 
         static readonly List<bool> _fringeInside = new List<bool>(128);
 
+        static readonly List<Vector4> _contourBounds = new List<Vector4>(16);
+
         public static void EmitFillFringe(
             List<NowLottiePolyline> contours,
             List<NowLottiePolyline> clipContours,
@@ -976,6 +1005,10 @@ namespace NowUI.Internal
                 return;
 
             bool hasClip = clipContours != null && clipContours.Count > 0;
+            paint.GetGradientFactors(out float invRadius, out Vector2 directionScale);
+
+            if (contours.Count > 1)
+                CollectContourBounds(contours);
 
             for (int contourIndex = 0; contourIndex < contours.Count; ++contourIndex)
             {
@@ -1042,7 +1075,7 @@ namespace NowUI.Internal
                 for (int i = 0; i < count; ++i)
                 {
                     Vector2 position = points[i];
-                    Vector4 innerColor = paint.ColorAt(position);
+                    Vector4 innerColor = paint.ColorAt(position, invRadius, directionScale);
                     Vector4 outerColor = innerColor;
                     outerColor.w = 0f;
 
@@ -1082,6 +1115,33 @@ namespace NowUI.Internal
             return area * 0.5f;
         }
 
+        /// <summary>
+        /// Per-contour bounds (min.x, min.y, max.x, max.y) computed once per fill so
+        /// the O(contours^2) containment test can skip contours whose box the probe
+        /// point lies strictly outside — the winding number there is always zero.
+        /// </summary>
+        static void CollectContourBounds(List<NowLottiePolyline> contours)
+        {
+            _contourBounds.Clear();
+
+            for (int i = 0; i < contours.Count; ++i)
+            {
+                var points = contours[i].points;
+                var bounds = new Vector4(float.MaxValue, float.MaxValue, float.MinValue, float.MinValue);
+
+                for (int p = 0; p < points.Count; ++p)
+                {
+                    Vector2 point = points[p];
+                    bounds.x = Mathf.Min(bounds.x, point.x);
+                    bounds.y = Mathf.Min(bounds.y, point.y);
+                    bounds.z = Mathf.Max(bounds.z, point.x);
+                    bounds.w = Mathf.Max(bounds.w, point.y);
+                }
+
+                _contourBounds.Add(bounds);
+            }
+        }
+
         static int ContainmentDepth(List<NowLottiePolyline> contours, int contourIndex)
         {
             var probe = contours[contourIndex].points[0];
@@ -1090,6 +1150,11 @@ namespace NowUI.Internal
             for (int i = 0; i < contours.Count; ++i)
             {
                 if (i == contourIndex)
+                    continue;
+
+                Vector4 bounds = _contourBounds[i];
+
+                if (probe.x < bounds.x || probe.y < bounds.y || probe.x > bounds.z || probe.y > bounds.w)
                     continue;
 
                 if (WindingNumber(contours[i].points, probe) != 0)
@@ -1162,8 +1227,10 @@ namespace NowUI.Internal
             if (halfWidth <= 0f)
                 return;
 
+            paint.GetGradientFactors(out float invRadius, out Vector2 directionScale);
+
             for (int i = 0; i < polylines.Count; ++i)
-                EmitStrokePolyline(polylines[i], halfWidth, cap, join, paint, buffer, aaWidth);
+                EmitStrokePolyline(polylines[i], halfWidth, cap, join, paint, invRadius, directionScale, buffer, aaWidth);
         }
 
         static void EmitStrokePolyline(
@@ -1172,6 +1239,8 @@ namespace NowUI.Internal
             int cap,
             int join,
             in NowLottiePaint paint,
+            float invRadius,
+            Vector2 directionScale,
             NowLottieDrawBuffer buffer,
             float aaWidth)
         {
@@ -1255,7 +1324,7 @@ namespace NowUI.Internal
                 Vector2 position = _strokePoints[i];
                 Vector2 normal = _strokeNormals[i];
 
-                Vector4 coreColor = paint.ColorAt(position);
+                Vector4 coreColor = paint.ColorAt(position, invRadius, directionScale);
                 coreColor.w *= coreAlpha;
                 Vector4 edgeColor = coreColor;
                 edgeColor.w = 0f;
@@ -1281,8 +1350,8 @@ namespace NowUI.Internal
             {
                 Vector2 startDirection = Normalize(_strokePoints[0] - _strokePoints[1]);
                 Vector2 endDirection = Normalize(_strokePoints[count - 1] - _strokePoints[count - 2]);
-                EmitRoundCap(_strokePoints[0], startDirection, innerWidth, outerWidth, coreAlpha, paint, buffer);
-                EmitRoundCap(_strokePoints[count - 1], endDirection, innerWidth, outerWidth, coreAlpha, paint, buffer);
+                EmitRoundCap(_strokePoints[0], startDirection, innerWidth, outerWidth, coreAlpha, paint, invRadius, directionScale, buffer);
+                EmitRoundCap(_strokePoints[count - 1], endDirection, innerWidth, outerWidth, coreAlpha, paint, invRadius, directionScale, buffer);
             }
         }
 
@@ -1301,11 +1370,13 @@ namespace NowUI.Internal
             float outerWidth,
             float coreAlpha,
             in NowLottiePaint paint,
+            float invRadius,
+            Vector2 directionScale,
             NowLottieDrawBuffer buffer)
         {
             Vector2 normal = new Vector2(direction.y, -direction.x);
 
-            Vector4 coreColor = paint.ColorAt(center);
+            Vector4 coreColor = paint.ColorAt(center, invRadius, directionScale);
             coreColor.w *= coreAlpha;
             Vector4 edgeColor = coreColor;
             edgeColor.w = 0f;
@@ -1337,6 +1408,8 @@ namespace NowUI.Internal
 
         static readonly List<NowLottiePolyline> _trimScratch = new List<NowLottiePolyline>(16);
 
+        static readonly List<float> _trimLengths = new List<float>(16);
+
         /// <summary>
         /// Replaces the polylines in place with their trimmed versions. start/end/offset
         /// are normalized fractions (start and end already divided by 100, offset by 360).
@@ -1358,12 +1431,16 @@ namespace NowUI.Internal
                 return;
 
             _trimScratch.Clear();
+            _trimLengths.Clear();
+
+            for (int i = 0; i < polylines.Count; ++i)
+                _trimLengths.Add(polylines[i].Length());
 
             if (individually)
             {
                 for (int i = 0; i < polylines.Count; ++i)
                 {
-                    float length = polylines[i].Length();
+                    float length = _trimLengths[i];
                     ExtractWrappedRange(polylines[i], trimStart * length, trimEnd * length, length, _trimScratch);
                 }
             }
@@ -1372,7 +1449,7 @@ namespace NowUI.Internal
                 float totalLength = 0f;
 
                 for (int i = 0; i < polylines.Count; ++i)
-                    totalLength += polylines[i].Length();
+                    totalLength += _trimLengths[i];
 
                 float globalStart = trimStart * totalLength;
                 float globalEnd = trimEnd * totalLength;
@@ -1390,7 +1467,7 @@ namespace NowUI.Internal
 
                     for (int i = 0; i < polylines.Count; ++i)
                     {
-                        float length = polylines[i].Length();
+                        float length = _trimLengths[i];
                         float localStart = Mathf.Max(rangeStart - walked, 0f);
                         float localEnd = Mathf.Min(rangeEnd - walked, length);
 

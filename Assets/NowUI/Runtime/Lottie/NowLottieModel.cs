@@ -102,6 +102,15 @@ namespace NowUI.Internal
 
         public int parent = -1;
 
+        /// <summary>
+        /// Direct reference to the parent layer, resolved lazily from
+        /// <see cref="parent"/> on first render; layer lists are immutable after
+        /// parse so the linear index lookup only ever runs once per layer.
+        /// </summary>
+        internal NowLottieLayer resolvedParent;
+
+        internal bool parentResolved;
+
         public float inPoint;
 
         public float outPoint;
@@ -650,29 +659,204 @@ namespace NowUI.Internal
 
         public bool isAnimated => _keyframes != null && _keyframes.Length > 0;
 
+        /// <summary>
+        /// Scalar fast path mirroring <see cref="EvaluateInto"/> for a single
+        /// component: single-element destinations never take the spatial branch, so
+        /// the keyframe segment can be read directly without the scratch round trip.
+        /// </summary>
         public float EvaluateFloat(float frame)
         {
-            EvaluateInto(frame, _scalarScratch);
-            return _scalarScratch[0];
+            if (_keyframes == null || _keyframes.Length == 0)
+                return Get(_staticValue, 0);
+
+            var keys = _keyframes;
+
+            if (frame <= keys[0].time)
+                return Get(keys[0].startValue, 0);
+
+            var lastKey = keys[keys.Length - 1];
+
+            if (frame >= lastKey.time)
+                return Get(lastKey.startValue ?? keys[keys.Length - 2].endValue, 0);
+
+            int segment = FindSegment(keys, frame);
+            var key = keys[segment];
+
+            if (key.hold)
+                return Get(key.startValue, 0);
+
+            var next = keys[segment + 1];
+            var from = key.startValue;
+            var to = key.endValue ?? next.startValue;
+
+            if (to == null)
+                return Get(from, 0);
+
+            return Mathf.LerpUnclamped(Get(from, 0), Get(to, 0), EvaluateEasedT(key, next, frame));
         }
 
+        /// <summary>
+        /// Two-component fast path mirroring <see cref="EvaluateInto"/>; properties
+        /// with fewer than two dimensions fall back to the scratch path so its exact
+        /// semantics are preserved.
+        /// </summary>
         public Vector2 EvaluateVector2(float frame)
         {
-            EvaluateInto(frame, _vectorScratch);
-            return new Vector2(_vectorScratch[0], _vectorScratch[1]);
+            if (dimensions < 2)
+            {
+                EvaluateInto(frame, _vectorScratch);
+                return new Vector2(_vectorScratch[0], _vectorScratch[1]);
+            }
+
+            if (_keyframes == null || _keyframes.Length == 0)
+                return new Vector2(Get(_staticValue, 0), Get(_staticValue, 1));
+
+            var keys = _keyframes;
+
+            if (frame <= keys[0].time)
+                return new Vector2(Get(keys[0].startValue, 0), Get(keys[0].startValue, 1));
+
+            var lastKey = keys[keys.Length - 1];
+
+            if (frame >= lastKey.time)
+            {
+                var edge = lastKey.startValue ?? keys[keys.Length - 2].endValue;
+                return new Vector2(Get(edge, 0), Get(edge, 1));
+            }
+
+            int segment = FindSegment(keys, frame);
+            var key = keys[segment];
+
+            if (key.hold)
+                return new Vector2(Get(key.startValue, 0), Get(key.startValue, 1));
+
+            var next = keys[segment + 1];
+            var from = key.startValue;
+            var to = key.endValue ?? next.startValue;
+
+            if (to == null)
+                return new Vector2(Get(from, 0), Get(from, 1));
+
+            float easedT = EvaluateEasedT(key, next, frame);
+
+            if (key.tangentOut != null && key.tangentIn != null)
+            {
+                return new Vector2(
+                    EvaluateSpatial(from, to, key.tangentOut, key.tangentIn, 0, easedT),
+                    EvaluateSpatial(from, to, key.tangentOut, key.tangentIn, 1, easedT));
+            }
+
+            return new Vector2(
+                Mathf.LerpUnclamped(Get(from, 0), Get(to, 0), easedT),
+                Mathf.LerpUnclamped(Get(from, 1), Get(to, 1), easedT));
         }
 
+        /// <summary>
+        /// Four-component fast path mirroring <see cref="EvaluateInto"/>; properties
+        /// with fewer than four dimensions fall back to the scratch path so its exact
+        /// semantics are preserved.
+        /// </summary>
         public Vector4 EvaluateVector4(float frame)
         {
-            EvaluateInto(frame, _vectorScratch);
-            return new Vector4(_vectorScratch[0], _vectorScratch[1], _vectorScratch[2], _vectorScratch[3]);
+            if (dimensions < 4)
+            {
+                EvaluateInto(frame, _vectorScratch);
+                return new Vector4(_vectorScratch[0], _vectorScratch[1], _vectorScratch[2], _vectorScratch[3]);
+            }
+
+            if (_keyframes == null || _keyframes.Length == 0)
+                return new Vector4(Get(_staticValue, 0), Get(_staticValue, 1), Get(_staticValue, 2), Get(_staticValue, 3));
+
+            var keys = _keyframes;
+
+            if (frame <= keys[0].time)
+            {
+                var first = keys[0].startValue;
+                return new Vector4(Get(first, 0), Get(first, 1), Get(first, 2), Get(first, 3));
+            }
+
+            var lastKey = keys[keys.Length - 1];
+
+            if (frame >= lastKey.time)
+            {
+                var edge = lastKey.startValue ?? keys[keys.Length - 2].endValue;
+                return new Vector4(Get(edge, 0), Get(edge, 1), Get(edge, 2), Get(edge, 3));
+            }
+
+            int segment = FindSegment(keys, frame);
+            var key = keys[segment];
+
+            if (key.hold)
+            {
+                var held = key.startValue;
+                return new Vector4(Get(held, 0), Get(held, 1), Get(held, 2), Get(held, 3));
+            }
+
+            var next = keys[segment + 1];
+            var from = key.startValue;
+            var to = key.endValue ?? next.startValue;
+
+            if (to == null)
+                return new Vector4(Get(from, 0), Get(from, 1), Get(from, 2), Get(from, 3));
+
+            float easedT = EvaluateEasedT(key, next, frame);
+
+            if (key.tangentOut != null && key.tangentIn != null)
+            {
+                return new Vector4(
+                    EvaluateSpatial(from, to, key.tangentOut, key.tangentIn, 0, easedT),
+                    EvaluateSpatial(from, to, key.tangentOut, key.tangentIn, 1, easedT),
+                    Mathf.LerpUnclamped(Get(from, 2), Get(to, 2), easedT),
+                    Mathf.LerpUnclamped(Get(from, 3), Get(to, 3), easedT));
+            }
+
+            return new Vector4(
+                Mathf.LerpUnclamped(Get(from, 0), Get(to, 0), easedT),
+                Mathf.LerpUnclamped(Get(from, 1), Get(to, 1), easedT),
+                Mathf.LerpUnclamped(Get(from, 2), Get(to, 2), easedT),
+                Mathf.LerpUnclamped(Get(from, 3), Get(to, 3), easedT));
         }
 
-        [ThreadStatic] static float[] _scalarScratchStorage;
+        int FindSegment(Keyframe[] keys, float frame)
+        {
+            int segment = Mathf.Clamp(_cursor, 0, keys.Length - 2);
+
+            while (segment > 0 && frame < keys[segment].time)
+                --segment;
+
+            while (segment < keys.Length - 2 && frame >= keys[segment + 1].time)
+                ++segment;
+
+            _cursor = segment;
+            return segment;
+        }
+
+        static float EvaluateEasedT(Keyframe key, Keyframe next, float frame)
+        {
+            float duration = next.time - key.time;
+            float linearT = duration > 0f ? (frame - key.time) / duration : 0f;
+
+            return key.hasEase
+                ? NowLottieEasing.Evaluate(key.easeOutX, key.easeOutY, key.easeInX, key.easeInY, linearT)
+                : linearT;
+        }
+
+        static float EvaluateSpatial(float[] from, float[] to, float[] tangentOut, float[] tangentIn, int index, float easedT)
+        {
+            float oneMinusT = 1f - easedT;
+            float b0 = oneMinusT * oneMinusT * oneMinusT;
+            float b1 = 3f * oneMinusT * oneMinusT * easedT;
+            float b2 = 3f * oneMinusT * easedT * easedT;
+            float b3 = easedT * easedT * easedT;
+
+            float p0 = Get(from, index);
+            float p3 = Get(to, index);
+            float p1 = p0 + Get(tangentOut, index);
+            float p2 = p3 + Get(tangentIn, index);
+            return b0 * p0 + b1 * p1 + b2 * p2 + b3 * p3;
+        }
 
         [ThreadStatic] static float[] _vectorScratchStorage;
-
-        static float[] _scalarScratch => _scalarScratchStorage ??= new float[1];
 
         static float[] _vectorScratch => _vectorScratchStorage ??= new float[4];
 
@@ -705,15 +889,7 @@ namespace NowUI.Internal
                 return;
             }
 
-            int segment = Mathf.Clamp(_cursor, 0, keys.Length - 2);
-
-            while (segment > 0 && frame < keys[segment].time)
-                --segment;
-
-            while (segment < keys.Length - 2 && frame >= keys[segment + 1].time)
-                ++segment;
-
-            _cursor = segment;
+            int segment = FindSegment(keys, frame);
 
             var key = keys[segment];
             var next = keys[segment + 1];
@@ -724,11 +900,7 @@ namespace NowUI.Internal
                 return;
             }
 
-            float duration = next.time - key.time;
-            float linearT = duration > 0f ? (frame - key.time) / duration : 0f;
-            float easedT = key.hasEase
-                ? NowLottieEasing.Evaluate(key.easeOutX, key.easeOutY, key.easeInX, key.easeInY, linearT)
-                : linearT;
+            float easedT = EvaluateEasedT(key, next, frame);
 
             var from = key.startValue;
             var to = key.endValue ?? next.startValue;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 
 namespace NowUI
@@ -385,6 +386,7 @@ namespace NowUI
         const int BlueSeed = 0x43424c31;
         const int AlphaChannelSeed = 0x43414331;
         const int ChannelValueHitSeed = 0x43564831;
+        const int ColorPendingSeed = 0x43504e44;
 
         static Material _saturationValueMaterial;
         static Material _hueMaterial;
@@ -477,7 +479,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             int id = ResolveControlId();
-            int pendingId = NowInput.GetId(id, "color-pending");
+            int pendingId = NowInput.CombineId(id, ColorPendingSeed);
             ref var pending = ref NowControlState.Get<PendingColor>(pendingId);
             bool changed = false;
 
@@ -1050,27 +1052,7 @@ namespace NowUI
 
         static void DrawChecker(NowRect rect, float cellSize, NowThemeAsset theme)
         {
-            cellSize = Mathf.Max(2f, cellSize);
-            Color a = theme.GetColor(NowColorToken.Surface);
-            Color b = theme.GetColor(NowColorToken.SurfaceMuted);
-            int columns = Mathf.CeilToInt(rect.width / cellSize);
-            int rows = Mathf.CeilToInt(rect.height / cellSize);
-
-            for (int y = 0; y < rows; ++y)
-            {
-                for (int x = 0; x < columns; ++x)
-                {
-                    float x0 = rect.x + x * cellSize;
-                    float y0 = rect.y + y * cellSize;
-                    Now.Rectangle(new NowRect(
-                            x0,
-                            y0,
-                            Mathf.Min(cellSize, rect.xMax - x0),
-                            Mathf.Min(cellSize, rect.yMax - y0)))
-                        .SetColor(((x + y) & 1) == 0 ? a : b)
-                        .Draw();
-                }
-            }
+            CheckerDraw.Draw(rect, cellSize, theme);
         }
 
         static void DrawSaturationValueHandle(NowRect rect, float saturation, float brightness)
@@ -1247,6 +1229,16 @@ namespace NowUI
             public GradientColorKey[] colorKeys;
             public GradientAlphaKey[] alphaKeys;
             public GradientMode mode;
+
+            /// <summary>
+            /// Re-clone guard: the key arrays refresh only when the source
+            /// gradient instance changes or an edit was applied — Unity's key
+            /// getters allocate fresh arrays on every access, so open frames
+            /// must not read them unconditionally.
+            /// </summary>
+            public Gradient source;
+
+            public byte keysInitialized;
         }
 
         struct PendingGradient
@@ -1301,6 +1293,12 @@ namespace NowUI
         const int DeleteShortcutSeed = 0x47524453;
         const int ColorPickerHexInputSeed = 0x43484558;
         const int KeyMirrorSeed = 0x47524b4d;
+        const int GradientPendingSeed = 0x47504e44;
+        const int SelectedKindSeed = 0x4753454b;
+        const int SelectedColorSeed = 0x47534343;
+        const int SelectedAlphaSeed = 0x47534341;
+        const int DraggedColorSeed = 0x47444743;
+        const int DraggedAlphaSeed = 0x47444741;
         const string DeleteGlyph = "🗑";
 
         internal NowGradientField(NowId id, int site)
@@ -1366,7 +1364,7 @@ namespace NowUI
                 value = DefaultGradient();
 
             int id = ResolveControlId();
-            int pendingId = NowInput.GetId(id, "gradient-pending");
+            int pendingId = NowInput.CombineId(id, GradientPendingSeed);
             ref var pending = ref NowControlState.Get<PendingGradient>(pendingId);
             bool changed = false;
 
@@ -1404,7 +1402,7 @@ namespace NowUI
             if (open)
             {
                 NowControlState.RequestRepaint();
-                DeferPopup(theme, id, pendingId, rect, value, _settings);
+                DeferPopup(theme, id, pendingId, rect, value, _settings, changed);
             }
 
             return changed;
@@ -1450,7 +1448,8 @@ namespace NowUI
             int pendingId,
             NowRect field,
             Gradient value,
-            NowGradientFieldSettings settings)
+            NowGradientFieldSettings settings,
+            bool changed)
         {
             float padding = settings.popupPadding;
             var colorPickerSettings = NowColorPickerSettings.Default;
@@ -1458,7 +1457,7 @@ namespace NowUI
             float colorPickerWidth = NowColorPicker.CalculateEditorWidth(colorPickerSettings);
             float popupWidth = Mathf.Max(settings.popupWidth, field.width, colorPickerWidth + padding * 2f);
             colorPickerSettings.popupWidth = popupWidth - padding * 2f;
-            int selectedKindId = NowInput.GetId(id, "gradient-selected-kind");
+            int selectedKindId = NowInput.CombineId(id, SelectedKindSeed);
             float stripHeight = settings.stripHeight;
             float markerLaneHeight = settings.alphaStripHeight;
             float keyEditorHeight = settings.keyEditorHeight;
@@ -1494,11 +1493,11 @@ namespace NowUI
             state.settings = settings;
             state.id = id;
             state.pendingId = pendingId;
-            state.selectedColorId = NowInput.GetId(id, "gradient-selected-color");
-            state.selectedAlphaId = NowInput.GetId(id, "gradient-selected-alpha");
+            state.selectedColorId = NowInput.CombineId(id, SelectedColorSeed);
+            state.selectedAlphaId = NowInput.CombineId(id, SelectedAlphaSeed);
             state.selectedKindId = selectedKindId;
-            state.draggedColorId = NowInput.GetId(id, "gradient-dragged-color");
-            state.draggedAlphaId = NowInput.GetId(id, "gradient-dragged-alpha");
+            state.draggedColorId = NowInput.CombineId(id, DraggedColorSeed);
+            state.draggedAlphaId = NowInput.CombineId(id, DraggedAlphaSeed);
             state.fieldRect = Now.TransformScreenRect(field);
             state.popupRect = popupRect;
             state.gradientRect = gradientRect;
@@ -1508,9 +1507,16 @@ namespace NowUI
             state.keyEditorRect = keyEditorRect;
             state.colorPickerRect = colorPickerRect;
             state.colorPickerSettings = colorPickerSettings;
-            state.colorKeys = Clone(value.colorKeys);
-            state.alphaKeys = Clone(value.alphaKeys);
-            state.mode = value.mode;
+
+            if (state.keysInitialized == 0 || changed ||
+                !ReferenceEquals(state.source, value) || state.mode != value.mode)
+            {
+                state.keysInitialized = 1;
+                state.source = value;
+                state.colorKeys = Clone(value.colorKeys);
+                state.alphaKeys = Clone(value.alphaKeys);
+                state.mode = value.mode;
+            }
 
             NowOverlay.Defer(popupRect, id, DrawPopup);
         }
@@ -2189,27 +2195,7 @@ namespace NowUI
 
         static void DrawChecker(NowRect rect, float cellSize, NowThemeAsset theme)
         {
-            cellSize = Mathf.Max(2f, cellSize);
-            Color a = theme.GetColor(NowColorToken.Surface);
-            Color b = theme.GetColor(NowColorToken.SurfaceMuted);
-            int columns = Mathf.CeilToInt(rect.width / cellSize);
-            int rows = Mathf.CeilToInt(rect.height / cellSize);
-
-            for (int y = 0; y < rows; ++y)
-            {
-                for (int x = 0; x < columns; ++x)
-                {
-                    float x0 = rect.x + x * cellSize;
-                    float y0 = rect.y + y * cellSize;
-                    Now.Rectangle(new NowRect(
-                            x0,
-                            y0,
-                            Mathf.Min(cellSize, rect.xMax - x0),
-                            Mathf.Min(cellSize, rect.yMax - y0)))
-                        .SetColor(((x + y) & 1) == 0 ? a : b)
-                        .Draw();
-                }
-            }
+            CheckerDraw.Draw(rect, cellSize, theme);
         }
 
         static void DrawMarker(NowRect rect, Color color, bool selected, NowThemeAsset theme)
@@ -2483,20 +2469,52 @@ namespace NowUI
             return clone;
         }
 
+        /// <summary>
+        /// In-place insertion sort by time: stable and allocation-free, unlike
+        /// Array.Sort with a comparison delegate, so drag frames stay clean.
+        /// </summary>
         static void SortColorKeys(GradientColorKey[] keys)
         {
             if (keys == null || IsSortedByTime(keys))
                 return;
 
-            Array.Sort(keys, (a, b) => a.time.CompareTo(b.time));
+            for (int i = 1; i < keys.Length; ++i)
+            {
+                var key = keys[i];
+                int j = i - 1;
+
+                while (j >= 0 && keys[j].time > key.time)
+                {
+                    keys[j + 1] = keys[j];
+                    --j;
+                }
+
+                keys[j + 1] = key;
+            }
         }
 
+        /// <summary>
+        /// In-place insertion sort by time: stable and allocation-free, unlike
+        /// Array.Sort with a comparison delegate, so drag frames stay clean.
+        /// </summary>
         static void SortAlphaKeys(GradientAlphaKey[] keys)
         {
             if (keys == null || IsSortedByTime(keys))
                 return;
 
-            Array.Sort(keys, (a, b) => a.time.CompareTo(b.time));
+            for (int i = 1; i < keys.Length; ++i)
+            {
+                var key = keys[i];
+                int j = i - 1;
+
+                while (j >= 0 && keys[j].time > key.time)
+                {
+                    keys[j + 1] = keys[j];
+                    --j;
+                }
+
+                keys[j + 1] = key;
+            }
         }
 
         static bool IsSortedByTime(GradientColorKey[] keys)
@@ -2577,6 +2595,18 @@ namespace NowUI
             public WrapMode preWrapMode;
             public WrapMode postWrapMode;
             public CurveBounds bounds;
+
+            /// <summary>
+            /// Re-clone guard: the keyframe array refreshes only when the source
+            /// curve instance or key count changes or an edit was applied —
+            /// Unity's keys getter allocates a fresh array on every access, so
+            /// open frames must not read it unconditionally.
+            /// </summary>
+            public AnimationCurve source;
+
+            public int sourceLength;
+
+            public byte keysInitialized;
         }
 
         struct PendingCurve
@@ -2633,6 +2663,9 @@ namespace NowUI
         const int TangentContextSeed = 0x41434354;
         const int DeleteShortcutSeed = 0x41434453;
         const int KeyMirrorSeed = 0x41434b4d;
+        const int CurvePendingSeed = 0x41435044;
+        const int SelectedKeySeed = 0x4143534b;
+        const int DraggedKeySeed = 0x4143444b;
         const float VerticalTangentPixelThreshold = 2f;
         const float StepTangentHandlePixels = 36f;
         const string DeleteGlyph = "🗑";
@@ -2725,7 +2758,7 @@ namespace NowUI
                 value = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 
             int id = ResolveControlId();
-            int pendingId = NowInput.GetId(id, "curve-pending");
+            int pendingId = NowInput.CombineId(id, CurvePendingSeed);
             ref var pending = ref NowControlState.Get<PendingCurve>(pendingId);
             bool changed = false;
 
@@ -2762,7 +2795,7 @@ namespace NowUI
             if (open)
             {
                 NowControlState.RequestRepaint();
-                DeferPopup(theme, id, pendingId, rect, value, _settings);
+                DeferPopup(theme, id, pendingId, rect, value, _settings, changed);
             }
 
             return changed;
@@ -2808,7 +2841,8 @@ namespace NowUI
             int pendingId,
             NowRect field,
             AnimationCurve value,
-            NowAnimationCurveFieldSettings settings)
+            NowAnimationCurveFieldSettings settings,
+            bool changed)
         {
             NowRect fieldScreen = Now.TransformScreenRect(field);
             float padding = settings.popupPadding;
@@ -2838,13 +2872,22 @@ namespace NowUI
             state.settings = settings;
             state.id = id;
             state.pendingId = pendingId;
-            state.selectedKeyId = NowInput.GetId(id, "curve-selected-key");
-            state.draggedKeyId = NowInput.GetId(id, "curve-dragged-key");
+            state.selectedKeyId = NowInput.CombineId(id, SelectedKeySeed);
+            state.draggedKeyId = NowInput.CombineId(id, DraggedKeySeed);
             state.fieldRect = fieldScreen;
             state.popupRect = popupRect;
             state.plotRect = plotRect;
             state.inspectorRect = inspectorRect;
-            state.keys = Clone(value.keys);
+
+            if (state.keysInitialized == 0 || changed ||
+                !ReferenceEquals(state.source, value) || state.sourceLength != value.length)
+            {
+                state.keysInitialized = 1;
+                state.source = value;
+                state.sourceLength = value.length;
+                state.keys = Clone(value.keys);
+            }
+
             state.preWrapMode = value.preWrapMode;
             state.postWrapMode = value.postWrapMode;
 
@@ -3899,12 +3942,28 @@ namespace NowUI
             return clone;
         }
 
+        /// <summary>
+        /// In-place insertion sort by time: stable and allocation-free, unlike
+        /// Array.Sort with a comparison delegate, so drag frames stay clean.
+        /// </summary>
         static void SortKeys(Keyframe[] keys)
         {
             if (keys == null || IsSortedByTime(keys))
                 return;
 
-            Array.Sort(keys, (a, b) => a.time.CompareTo(b.time));
+            for (int i = 1; i < keys.Length; ++i)
+            {
+                var key = keys[i];
+                int j = i - 1;
+
+                while (j >= 0 && keys[j].time > key.time)
+                {
+                    keys[j + 1] = keys[j];
+                    --j;
+                }
+
+                keys[j + 1] = key;
+            }
         }
 
         static bool IsSortedByTime(Keyframe[] keys)
@@ -4476,62 +4535,158 @@ namespace NowUI
         }
     }
 
+    /// <summary>
+    /// Caches the enum's underlying type code per closed generic. Lives outside
+    /// <see cref="NowEnumCache{TEnum}"/> because that type's static constructor
+    /// calls <see cref="NowEnumBits.ToUInt64{TEnum}"/> — a field on the same
+    /// type would be observed mid-initialization as its zeroed default.
+    /// </summary>
+    static class NowEnumTypeCode<TEnum> where TEnum : struct, Enum
+    {
+        public static readonly TypeCode value = Type.GetTypeCode(Enum.GetUnderlyingType(typeof(TEnum)));
+    }
+
+    /// <summary>
+    /// Enum-to-bits conversion via reinterpretation instead of boxing: the
+    /// type-code switch guarantees the reinterpreted primitive has exactly the
+    /// enum's underlying size.
+    /// </summary>
     static class NowEnumBits
     {
         public static ulong ToUInt64<TEnum>(TEnum value) where TEnum : struct, Enum
         {
-            object boxed = value;
-
-            switch (Type.GetTypeCode(Enum.GetUnderlyingType(typeof(TEnum))))
+            switch (NowEnumTypeCode<TEnum>.value)
             {
-                case TypeCode.SByte: return unchecked((ulong)Convert.ToSByte(boxed));
-                case TypeCode.Byte: return Convert.ToByte(boxed);
-                case TypeCode.Int16: return unchecked((ulong)Convert.ToInt16(boxed));
-                case TypeCode.UInt16: return Convert.ToUInt16(boxed);
-                case TypeCode.Int32: return unchecked((ulong)Convert.ToInt32(boxed));
-                case TypeCode.UInt32: return Convert.ToUInt32(boxed);
-                case TypeCode.Int64: return unchecked((ulong)Convert.ToInt64(boxed));
-                case TypeCode.UInt64: return Convert.ToUInt64(boxed);
+                case TypeCode.SByte: return unchecked((ulong)UnsafeUtility.As<TEnum, sbyte>(ref value));
+                case TypeCode.Byte: return UnsafeUtility.As<TEnum, byte>(ref value);
+                case TypeCode.Int16: return unchecked((ulong)UnsafeUtility.As<TEnum, short>(ref value));
+                case TypeCode.UInt16: return UnsafeUtility.As<TEnum, ushort>(ref value);
+                case TypeCode.Int32: return unchecked((ulong)UnsafeUtility.As<TEnum, int>(ref value));
+                case TypeCode.UInt32: return UnsafeUtility.As<TEnum, uint>(ref value);
+                case TypeCode.Int64: return unchecked((ulong)UnsafeUtility.As<TEnum, long>(ref value));
+                case TypeCode.UInt64: return UnsafeUtility.As<TEnum, ulong>(ref value);
                 default: return 0UL;
             }
         }
 
         public static TEnum FromUInt64<TEnum>(ulong value) where TEnum : struct, Enum
         {
-            object boxed;
-
-            switch (Type.GetTypeCode(Enum.GetUnderlyingType(typeof(TEnum))))
+            switch (NowEnumTypeCode<TEnum>.value)
             {
                 case TypeCode.SByte:
-                    boxed = unchecked((sbyte)value);
-                    break;
+                {
+                    sbyte narrowed = unchecked((sbyte)value);
+                    return UnsafeUtility.As<sbyte, TEnum>(ref narrowed);
+                }
                 case TypeCode.Byte:
-                    boxed = (byte)value;
-                    break;
+                {
+                    byte narrowed = (byte)value;
+                    return UnsafeUtility.As<byte, TEnum>(ref narrowed);
+                }
                 case TypeCode.Int16:
-                    boxed = unchecked((short)value);
-                    break;
+                {
+                    short narrowed = unchecked((short)value);
+                    return UnsafeUtility.As<short, TEnum>(ref narrowed);
+                }
                 case TypeCode.UInt16:
-                    boxed = (ushort)value;
-                    break;
+                {
+                    ushort narrowed = (ushort)value;
+                    return UnsafeUtility.As<ushort, TEnum>(ref narrowed);
+                }
                 case TypeCode.Int32:
-                    boxed = unchecked((int)value);
-                    break;
+                {
+                    int narrowed = unchecked((int)value);
+                    return UnsafeUtility.As<int, TEnum>(ref narrowed);
+                }
                 case TypeCode.UInt32:
-                    boxed = (uint)value;
-                    break;
+                {
+                    uint narrowed = (uint)value;
+                    return UnsafeUtility.As<uint, TEnum>(ref narrowed);
+                }
                 case TypeCode.Int64:
-                    boxed = unchecked((long)value);
-                    break;
+                {
+                    long narrowed = unchecked((long)value);
+                    return UnsafeUtility.As<long, TEnum>(ref narrowed);
+                }
                 case TypeCode.UInt64:
-                    boxed = value;
-                    break;
+                    return UnsafeUtility.As<ulong, TEnum>(ref value);
                 default:
-                    boxed = 0;
-                    break;
+                    return default;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Transparency checkerboard as a single textured quad: a shared 2x2
+    /// point-filtered repeat texture tiled to the cell size, replacing one
+    /// rectangle per cell. Cells anchor at the rect's top-left with color A
+    /// first, matching the per-cell layout this draws instead of.
+    /// </summary>
+    static class CheckerDraw
+    {
+        static Texture2D _texture;
+        static Color32 _colorA;
+        static Color32 _colorB;
+        static readonly Color32[] _pixels = new Color32[4];
+
+        public static void Draw(NowRect rect, float cellSize, NowThemeAsset theme)
+        {
+            cellSize = Mathf.Max(2f, cellSize);
+            Color32 a = theme.GetColor(NowColorToken.Surface);
+            Color32 b = theme.GetColor(NowColorToken.SurfaceMuted);
+            float cellsU = rect.width / (cellSize * 2f);
+            float cellsV = rect.height / (cellSize * 2f);
+
+            Now.Rectangle(rect)
+                .SetTexture(GetTexture(a, b))
+                .SetUV(new Vector4(0f, 1f - cellsV, cellsU, cellsV))
+                .Draw();
+        }
+
+        static Texture2D GetTexture(Color32 a, Color32 b)
+        {
+            if (_texture != null && SameColor(_colorA, a) && SameColor(_colorB, b))
+                return _texture;
+
+            if (_texture == null)
+            {
+                _texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, true)
+                {
+                    name = "Now Checker Texture",
+                    hideFlags = HideFlags.HideAndDontSave,
+                    filterMode = FilterMode.Point,
+                    wrapMode = TextureWrapMode.Repeat
+                };
             }
 
-            return (TEnum)Enum.ToObject(typeof(TEnum), boxed);
+            _pixels[0] = b;
+            _pixels[1] = a;
+            _pixels[2] = a;
+            _pixels[3] = b;
+            _texture.SetPixels32(_pixels);
+            _texture.Apply(false, false);
+            _colorA = a;
+            _colorB = b;
+            return _texture;
+        }
+
+        static bool SameColor(Color32 x, Color32 y)
+        {
+            return x.r == y.r && x.g == y.g && x.b == y.b && x.a == y.a;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetForRuntimeLoad()
+        {
+            if (_texture != null)
+            {
+                if (Application.isPlaying)
+                    UnityEngine.Object.Destroy(_texture);
+                else
+                    UnityEngine.Object.DestroyImmediate(_texture);
+            }
+
+            _texture = null;
         }
     }
 

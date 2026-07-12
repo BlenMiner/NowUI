@@ -48,7 +48,41 @@ namespace NowUI
 
         bool _rawInputAvailable = true;
 
+        int _snapshotFrame = -1;
+
+        NowInputSurface _snapshotSurface;
+
+        NowInputSnapshot _snapshot;
+
+        bool _snapshotAvailable;
+
+        /// <summary>
+        /// Serves the frame's snapshot from a per-(frame, surface) cache like
+        /// <see cref="NowRectTransformInputProvider"/> does, so repeated queries
+        /// (measure pass, draw pass, repaint-tracker polls) skip the arbiter
+        /// footprint scan and overlay checks.
+        /// </summary>
         public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
+        {
+            int frame = Time.frameCount;
+
+            if (_snapshotFrame == frame &&
+                _snapshotSurface.size.x == surface.size.x &&
+                _snapshotSurface.size.y == surface.size.y &&
+                _snapshotSurface.screenRect == surface.screenRect)
+            {
+                snapshot = _snapshot;
+                return _snapshotAvailable;
+            }
+
+            _snapshotFrame = frame;
+            _snapshotSurface = surface;
+            _snapshotAvailable = BuildSnapshot(surface, out _snapshot);
+            snapshot = _snapshot;
+            return _snapshotAvailable;
+        }
+
+        bool BuildSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
             if (!TryUpdateRawInput())
             {

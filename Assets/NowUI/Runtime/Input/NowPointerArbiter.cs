@@ -52,6 +52,14 @@ namespace NowUI
 
         static readonly List<ContentRect> _contentPrevious = new List<ContentRect>(64);
 
+        /// <summary>Per-key union of last frame's content rects (one entry per
+        /// surface), folded lazily on the first <see cref="HadContentAt"/> query
+        /// after the frame roll so misses are rejected without scanning the full
+        /// footprint list and frames with no queries pay nothing.</summary>
+        static readonly List<ContentRect> _contentBoundsPrevious = new List<ContentRect>(4);
+
+        static bool _contentBoundsDirty;
+
         static object _winner;
 
         static int _registryFrame = -1;
@@ -113,13 +121,74 @@ namespace NowUI
 
             BeginFrameIfNeeded();
 
-            for (int i = 0; i < _contentPrevious.Count; ++i)
+            if (_contentBoundsDirty)
+                FoldContentBounds();
+
+            for (int i = 0; i < _contentBoundsPrevious.Count; ++i)
             {
-                if (ReferenceEquals(_contentPrevious[i].key, key) && _contentPrevious[i].rect.Contains(position))
-                    return true;
+                if (!ReferenceEquals(_contentBoundsPrevious[i].key, key))
+                    continue;
+
+                if (!_contentBoundsPrevious[i].rect.Contains(position))
+                    return false;
+
+                for (int j = 0; j < _contentPrevious.Count; ++j)
+                {
+                    if (ReferenceEquals(_contentPrevious[j].key, key) && _contentPrevious[j].rect.Contains(position))
+                        return true;
+                }
+
+                return false;
             }
 
             return false;
+        }
+
+        static void FoldContentBounds()
+        {
+            _contentBoundsDirty = false;
+            _contentBoundsPrevious.Clear();
+
+            int index = 0;
+
+            while (index < _contentPrevious.Count)
+            {
+                object key = _contentPrevious[index].key;
+                var first = _contentPrevious[index].rect;
+                float xMin = first.xMin;
+                float yMin = first.yMin;
+                float xMax = first.xMax;
+                float yMax = first.yMax;
+                bool seen = false;
+
+                for (int i = 0; i < _contentBoundsPrevious.Count; ++i)
+                {
+                    if (ReferenceEquals(_contentBoundsPrevious[i].key, key))
+                    {
+                        seen = true;
+                        break;
+                    }
+                }
+
+                ++index;
+
+                if (seen)
+                    continue;
+
+                for (int i = index; i < _contentPrevious.Count; ++i)
+                {
+                    if (!ReferenceEquals(_contentPrevious[i].key, key))
+                        continue;
+
+                    var rect = _contentPrevious[i].rect;
+                    xMin = Mathf.Min(xMin, rect.xMin);
+                    yMin = Mathf.Min(yMin, rect.yMin);
+                    xMax = Mathf.Max(xMax, rect.xMax);
+                    yMax = Mathf.Max(yMax, rect.yMax);
+                }
+
+                _contentBoundsPrevious.Add(new ContentRect { key = key, rect = Rect.MinMaxRect(xMin, yMin, xMax, yMax) });
+            }
         }
 
         static void BeginFrameIfNeeded()
@@ -149,6 +218,9 @@ namespace NowUI
             _contentPrevious.Clear();
             _contentPrevious.AddRange(_contentCurrent);
             _contentCurrent.Clear();
+
+            _contentBoundsPrevious.Clear();
+            _contentBoundsDirty = true;
 
             if (_winner != null)
             {
@@ -185,6 +257,8 @@ namespace NowUI
             _claimsPrevious.Clear();
             _contentCurrent.Clear();
             _contentPrevious.Clear();
+            _contentBoundsPrevious.Clear();
+            _contentBoundsDirty = false;
             _winner = null;
             _registryFrame = -1;
         }

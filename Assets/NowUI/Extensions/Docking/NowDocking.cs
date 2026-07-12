@@ -32,11 +32,26 @@ namespace NowUI.Docking
             public int idHash;
             public string title;
             public Action<NowRect> draw;
+            public Action drawSimple;
             public bool submitted;
             public bool hidden;
             public bool canClose;
             public bool floating;
             public NowRect floatingRect;
+            /// <summary>Snapshots of the draw delegates taken when a floating window is deferred, because ResetFrameSubmissions clears the live ones before the overlay flushes.</summary>
+            public Action<NowRect> frameDraw;
+            public Action frameDrawSimple;
+            public Action floatingOverlayDraw;
+            public string measuredTitle;
+            public NowFontAsset measuredFont;
+            public NowFontStyle measuredFontStyle;
+            public Vector2 titleSize;
+            public int closeSeedTabId;
+            public int closeId;
+            public int floatSeedControlId;
+            public int floatMoveTitleId;
+            public int floatResizeId;
+            public int floatCloseId;
         }
 
         sealed class Node
@@ -145,11 +160,33 @@ namespace NowUI.Docking
         Vector2 _tabDragOffset;
         bool _hasTabDragOffset;
         string _pendingCloseId;
+        /// <summary>Per-draw context and drag-feedback snapshots read by cached overlay callbacks, so deferred drawing allocates no closures.</summary>
+        int _frameControlId;
+        Style _frameStyle;
+        NowThemeAsset _frameTheme;
+        DropTarget _dragFeedbackTarget;
+        WindowState _dragFeedbackWindow;
+        NowRect _dragPillRect;
+        NowRect _dragGhostRect;
+        Action<NowRect> _dragGhostDraw;
+        Action _dragGhostDrawSimple;
+        Action _dropGuideOverlay;
+        Action _draggedTabPillOverlay;
+        Action _dragGhostOverlay;
+
+        /// <summary>
+        /// Draw callback standing in for a null layout-based window action, so
+        /// windows submitted without content still render their chrome exactly
+        /// like the old wrapper-lambda overload did.
+        /// </summary>
+        static readonly Action EmptyDraw = () => { };
 
         /// <summary>Submit a layout-based window for this frame.</summary>
         public void Window(string title, Action draw, string id = null, bool canClose = false)
         {
-            Window(title, _ => draw?.Invoke(), id, canClose);
+            var window = SubmitWindow(title, id, canClose);
+            window.draw = null;
+            window.drawSimple = draw ?? EmptyDraw;
         }
 
         /// <summary>
@@ -157,6 +194,13 @@ namespace NowUI.Docking
         /// clipped content rect for the selected tab.
         /// </summary>
         public void Window(string title, Action<NowRect> draw, string id = null, bool canClose = false)
+        {
+            var window = SubmitWindow(title, id, canClose);
+            window.draw = draw;
+            window.drawSimple = null;
+        }
+
+        WindowState SubmitWindow(string title, string id, bool canClose)
         {
             if (string.IsNullOrEmpty(title))
                 throw new ArgumentException("Dock window titles cannot be null or empty.", nameof(title));
@@ -175,9 +219,22 @@ namespace NowUI.Docking
             }
 
             window.title = title;
-            window.draw = draw;
             window.canClose = canClose;
             window.submitted = true;
+            return window;
+        }
+
+        static bool HasDraw(WindowState window)
+        {
+            return window.draw != null || window.drawSimple != null;
+        }
+
+        static void InvokeDraw(Action<NowRect> draw, Action drawSimple, NowRect contentRect)
+        {
+            if (draw != null)
+                draw(contentRect);
+            else
+                drawSimple?.Invoke();
         }
 
         public bool IsWindowOpen(string idOrTitle)
@@ -238,6 +295,10 @@ namespace NowUI.Docking
             _hasTabDragOffset = false;
             _pendingCloseId = null;
             _nextNodeId = 1;
+            _dragFeedbackWindow = null;
+            _dragFeedbackTarget = default;
+            _dragGhostDraw = null;
+            _dragGhostDrawSimple = null;
 
             foreach (var window in _windows.Values)
             {
@@ -292,6 +353,9 @@ namespace NowUI.Docking
                 _dockRect = rect;
                 var theme = NowTheme.themeAsset;
                 _skin = ResolveSkin(theme);
+                _frameControlId = controlId;
+                _frameStyle = style;
+                _frameTheme = theme;
 
                 EnsureLayout(GetCurrentlySubmittedWindows(includeFloating: false));
 
@@ -353,6 +417,7 @@ namespace NowUI.Docking
 
                 window.submitted = false;
                 window.draw = null;
+                window.drawSimple = null;
             }
         }
 
@@ -777,7 +842,7 @@ namespace NowUI.Docking
             DrawTabs(leaf, tabBar, controlId, style, theme);
 
             if (leaf.tabs.Count > 0 && !string.IsNullOrEmpty(leaf.selected) &&
-                _windows.TryGetValue(leaf.selected, out var selected) && selected.draw != null)
+                _windows.TryGetValue(leaf.selected, out var selected) && HasDraw(selected))
             {
                 var contentRect = leaf.contentRect.Inset(style.contentPadding);
 
@@ -786,7 +851,7 @@ namespace NowUI.Docking
                     using (Now.Mask(contentRect))
                     using (NowLayout.Area(NowInput.CombineId(NowInput.CombineId(controlId, ContentSeed), selected.idHash), contentRect))
                     {
-                        selected.draw(contentRect);
+                        InvokeDraw(selected.draw, selected.drawSimple, contentRect);
                     }
                 }
             }
@@ -822,15 +887,35 @@ namespace NowUI.Docking
 
         float TabWidth(NowThemeAsset theme, WindowState window)
         {
-            return TabWidth(theme, window.title, window.canClose);
+            return TabWidth(theme, window, window.canClose);
         }
 
-        static float TabWidth(NowThemeAsset theme, string title, bool canClose = false)
+        static float TabWidth(NowThemeAsset theme, WindowState window, bool includeClose)
+        {
+            float closeWidth = includeClose ? 18f : 0f;
+            return Mathf.Clamp(TitleSize(theme, window).x + closeWidth + 24f, 76f, 180f);
+        }
+
+        /// <summary>
+        /// Measured title size cached on the window, keyed by the exact inputs
+        /// the measure depends on (title reference, resolved font, font style;
+        /// the tab font size is fixed), so tabs stop re-measuring every frame.
+        /// </summary>
+        static Vector2 TitleSize(NowThemeAsset theme, WindowState window)
         {
             var text = theme.ResolveText(NowTextStyle.Button).SetFontSize(12f);
-            float labelWidth = text.Measure(title).x;
-            float closeWidth = canClose ? 18f : 0f;
-            return Mathf.Clamp(labelWidth + closeWidth + 24f, 76f, 180f);
+
+            if (!ReferenceEquals(window.measuredTitle, window.title) ||
+                !ReferenceEquals(window.measuredFont, text.font) ||
+                window.measuredFontStyle != text.fontStyle)
+            {
+                window.measuredTitle = window.title;
+                window.measuredFont = text.font;
+                window.measuredFontStyle = text.fontStyle;
+                window.titleSize = text.Measure(window.title);
+            }
+
+            return window.titleSize;
         }
 
         void DrawTab(Node leaf, WindowState window, NowRect tabRect, bool selected, int controlId, Style style, NowThemeAsset theme)
@@ -844,8 +929,14 @@ namespace NowUI.Docking
 
             if (window.canClose)
             {
+                if (window.closeSeedTabId != tabId)
+                {
+                    window.closeSeedTabId = tabId;
+                    window.closeId = NowInput.GetId(tabId, "close");
+                }
+
                 closeRect = new NowRect(tabVisualRect.xMax - 17f, tabVisualRect.y + 3f, 13f, Mathf.Max(12f, tabVisualRect.height - 6f));
-                var closeInteraction = NowInput.Interact(NowInput.GetId(tabId, "close"), closeRect);
+                var closeInteraction = NowInput.Interact(window.closeId, closeRect);
                 closeHovered = closeInteraction.hovered;
                 closeHeld = closeInteraction.held;
 
@@ -902,7 +993,8 @@ namespace NowUI.Docking
             }
 
             var textRect = tabVisualRect.Inset(9f, 0f, window.canClose ? 20f : 9f, 0f);
-            DrawCenteredText(theme, textRect, window.title, NowTextStyle.Button, 12f, selected ? _skin.text : Color.Lerp(_skin.textMuted, _skin.text, hover * 0.35f));
+            DrawCenteredText(theme, textRect, window.title, NowTextStyle.Button, 12f,
+                selected ? _skin.text : Color.Lerp(_skin.textMuted, _skin.text, hover * 0.35f), TitleSize(theme, window));
 
             if (window.canClose)
             {
@@ -1060,15 +1152,20 @@ namespace NowUI.Docking
 
         static void DrawCenteredText(NowThemeAsset theme, NowRect rect, string value, NowTextStyle style, float fontSize, Color color)
         {
-            DrawText(theme, rect, value, style, fontSize, true, color, true);
+            DrawText(theme, rect, value, style, fontSize, true, color, true, false, default);
+        }
+
+        static void DrawCenteredText(NowThemeAsset theme, NowRect rect, string value, NowTextStyle style, float fontSize, Color color, Vector2 measuredSize)
+        {
+            DrawText(theme, rect, value, style, fontSize, true, color, true, true, measuredSize);
         }
 
         static void DrawText(NowThemeAsset theme, NowRect rect, string value, NowTextStyle style, float fontSize, bool hasColor, Color color)
         {
-            DrawText(theme, rect, value, style, fontSize, hasColor, color, false);
+            DrawText(theme, rect, value, style, fontSize, hasColor, color, false, false, default);
         }
 
-        static void DrawText(NowThemeAsset theme, NowRect rect, string value, NowTextStyle style, float fontSize, bool hasColor, Color color, bool centered)
+        static void DrawText(NowThemeAsset theme, NowRect rect, string value, NowTextStyle style, float fontSize, bool hasColor, Color color, bool centered, bool hasSize, Vector2 measuredSize)
         {
             if (rect.width <= 0f || rect.height <= 0f || string.IsNullOrEmpty(value))
                 return;
@@ -1078,7 +1175,7 @@ namespace NowUI.Docking
             if (hasColor)
                 text = text.SetColor(color);
 
-            var size = text.Measure(value);
+            var size = hasSize ? measuredSize : text.Measure(value);
             float width = centered ? Mathf.Min(rect.width, size.x + 1f) : rect.width;
             float x = centered ? rect.x + Mathf.Max(0f, (rect.width - width) * 0.5f) : rect.x;
             var textRect = new NowRect(
@@ -1292,7 +1389,7 @@ namespace NowUI.Docking
             for (int i = 0; i < _windowOrder.Count; ++i)
             {
                 if (!_windows.TryGetValue(_windowOrder[i], out var window) ||
-                    !window.submitted || window.hidden || !window.floating || window.draw == null)
+                    !window.submitted || window.hidden || !window.floating || !HasDraw(window))
                 {
                     continue;
                 }
@@ -1300,24 +1397,30 @@ namespace NowUI.Docking
                 if (window.floatingRect.isEmpty)
                     window.floatingRect = FloatingRectAt(_dockRect.center, window, style);
 
-                int windowControlId = NowInput.CombineId(NowInput.CombineId(controlId, FloatingSeed), window.idHash);
-                var draw = window.draw;
-                string title = window.title;
-                bool canClose = window.canClose;
-
                 if (ShouldUseTabOnlyDragFeedback(window, style, theme))
                 {
-                    ProcessFloatingTabDrag(controlId, window, title, canClose, style, theme);
+                    ProcessFloatingTabDrag(controlId, window, style, theme);
                     continue;
                 }
 
-                var blockRect = window.floatingRect.Outset(2f);
+                window.frameDraw = window.draw;
+                window.frameDrawSimple = window.drawSimple;
 
-                NowOverlay.Defer(blockRect, () =>
+                if (window.floatingOverlayDraw == null)
                 {
-                    DrawFloatingWindow(controlId, windowControlId, window, title, canClose, draw, style, theme);
-                });
+                    var captured = window;
+                    window.floatingOverlayDraw = () => DrawFloatingWindowOverlay(captured);
+                }
+
+                var blockRect = window.floatingRect.Outset(2f);
+                NowOverlay.Defer(blockRect, window.floatingOverlayDraw);
             }
+        }
+
+        void DrawFloatingWindowOverlay(WindowState window)
+        {
+            int windowControlId = NowInput.CombineId(NowInput.CombineId(_frameControlId, FloatingSeed), window.idHash);
+            DrawFloatingWindow(_frameControlId, windowControlId, window, _frameStyle, _frameTheme);
         }
 
         void DrawTabDragFeedback(int controlId, Style style, NowThemeAsset theme)
@@ -1330,37 +1433,47 @@ namespace NowUI.Docking
 
             var pointer = NowInput.current.pointerPosition;
             bool hasTarget = TryGetDropTarget(pointer, style, theme, window.id, out var target);
+            _dragFeedbackWindow = window;
 
             if (hasTarget)
             {
-                NowOverlay.Defer(default, () =>
-                {
-                    DrawDropGuide(target, window.id, style, theme);
-                });
+                _dragFeedbackTarget = target;
+                _dropGuideOverlay ??= DrawDropGuideOverlay;
+                NowOverlay.Defer(default, _dropGuideOverlay);
             }
 
             if (hasTarget && target.side == NowDockSide.Center)
             {
-                var pill = DraggedTabPillRect(pointer, window.title, style, theme);
-
-                NowOverlay.Defer(default, () =>
-                {
-                    DrawDraggedTabPill(pill, window.title, theme);
-                });
+                _dragPillRect = DraggedTabPillRect(pointer, window, style, theme);
+                _draggedTabPillOverlay ??= DrawDraggedTabPillOverlay;
+                NowOverlay.Defer(default, _draggedTabPillOverlay);
                 return;
             }
 
-            if (window.floating || window.draw == null)
+            if (window.floating || !HasDraw(window))
                 return;
 
-            var ghostRect = FloatingRectAt(pointer, window, style);
-            var draw = window.draw;
-            string title = window.title;
+            _dragGhostRect = FloatingRectAt(pointer, window, style);
+            _dragGhostDraw = window.draw;
+            _dragGhostDrawSimple = window.drawSimple;
+            _dragGhostOverlay ??= DrawDragGhostOverlay;
+            NowOverlay.Defer(default, _dragGhostOverlay);
+        }
 
-            NowOverlay.Defer(default, () =>
-            {
-                DrawDragGhostWindow(controlId, ghostRect, title, draw, style, theme);
-            });
+        void DrawDropGuideOverlay()
+        {
+            if (_dragFeedbackWindow == null)
+                return;
+
+            DrawDropGuide(_dragFeedbackTarget, _dragFeedbackWindow.id, _frameStyle, _frameTheme);
+        }
+
+        void DrawDraggedTabPillOverlay()
+        {
+            if (_dragFeedbackWindow == null)
+                return;
+
+            DrawDraggedTabPill(_dragPillRect, _dragFeedbackWindow, _frameTheme);
         }
 
         bool ShouldUseTabOnlyDragFeedback(WindowState window, Style style, NowThemeAsset theme)
@@ -1375,8 +1488,6 @@ namespace NowUI.Docking
         void ProcessFloatingTabDrag(
             int dockControlId,
             WindowState window,
-            string title,
-            bool canClose,
             Style style,
             NowThemeAsset theme)
         {
@@ -1389,8 +1500,8 @@ namespace NowUI.Docking
                 rect = window.floatingRect = FloatingRectAt(_dockRect.center, window, style);
 
             var titleRect = new NowRect(rect.x, rect.y, rect.width, Mathf.Min(style.tabHeight, rect.height));
-            float closeSpace = canClose ? 28f : 6f;
-            float tabWidth = Mathf.Min(TabWidth(theme, title), Mathf.Max(48f, titleRect.width - closeSpace - 44f));
+            float closeSpace = window.canClose ? 28f : 6f;
+            float tabWidth = Mathf.Min(TabWidth(theme, window, false), Mathf.Max(48f, titleRect.width - closeSpace - 44f));
             var tabRect = new NowRect(titleRect.x, titleRect.y, tabWidth, titleRect.height);
             var tabInteraction = NowInput.Interact(DockTabId(dockControlId, window), tabRect);
 
@@ -1448,15 +1559,15 @@ namespace NowUI.Docking
                 .Draw();
         }
 
-        NowRect DraggedTabPillRect(Vector2 pointer, string title, Style style, NowThemeAsset theme)
+        NowRect DraggedTabPillRect(Vector2 pointer, WindowState window, Style style, NowThemeAsset theme)
         {
-            float width = TabWidth(theme, title);
+            float width = TabWidth(theme, window, false);
             float height = Mathf.Max(18f, style.tabHeight - 6f);
             float xOffset = _hasTabDragOffset ? Mathf.Clamp(_tabDragOffset.x, 12f, width - 12f) : width * 0.5f;
             return new NowRect(pointer.x - xOffset, pointer.y - height * 0.5f, width, height);
         }
 
-        void DrawDraggedTabPill(NowRect rect, string title, NowThemeAsset theme)
+        void DrawDraggedTabPill(NowRect rect, WindowState window, NowThemeAsset theme)
         {
             DrawWindowShadow(rect, 0.55f);
 
@@ -1470,17 +1581,22 @@ namespace NowUI.Docking
                 .SetRadius(1f)
                 .Draw();
 
-            DrawCenteredText(theme, rect.Inset(10f, 0f), title, NowTextStyle.Button, 12f, _skin.text);
+            DrawCenteredText(theme, rect.Inset(10f, 0f), window.title, NowTextStyle.Button, 12f, _skin.text, TitleSize(theme, window));
         }
 
-        void DrawDragGhostWindow(
-            int controlId,
-            NowRect rect,
-            string title,
-            Action<NowRect> draw,
-            Style style,
-            NowThemeAsset theme)
+        void DrawDragGhostOverlay()
         {
+            var window = _dragFeedbackWindow;
+
+            if (window == null)
+                return;
+
+            int controlId = _frameControlId;
+            NowRect rect = _dragGhostRect;
+            string title = window.title;
+            var style = _frameStyle;
+            var theme = _frameTheme;
+
             DrawWindowShadow(rect, 0.7f);
 
             Now.Rectangle(rect)
@@ -1496,7 +1612,7 @@ namespace NowUI.Docking
                 .SetRadius(TopTabRadius(6f))
                 .Draw();
 
-            float tabWidth = Mathf.Min(TabWidth(theme, title), Mathf.Max(48f, titleRect.width - 12f));
+            float tabWidth = Mathf.Min(TabWidth(theme, window, false), Mathf.Max(48f, titleRect.width - 12f));
             var tabRect = new NowRect(titleRect.x, titleRect.y, tabWidth, titleRect.height);
             var tabVisualRect = CompactTabVisualRect(tabRect);
 
@@ -1510,7 +1626,7 @@ namespace NowUI.Docking
                 .SetRadius(1f)
                 .Draw();
 
-            DrawCenteredText(theme, tabVisualRect.Inset(9f, 0f), title, NowTextStyle.Button, 12f, _skin.text);
+            DrawCenteredText(theme, tabVisualRect.Inset(9f, 0f), title, NowTextStyle.Button, 12f, _skin.text, TitleSize(theme, window));
 
             var contentRect = new NowRect(
                 rect.x,
@@ -1518,16 +1634,17 @@ namespace NowUI.Docking
                 rect.width,
                 Mathf.Max(0f, rect.height - titleRect.height)).Inset(style.contentPadding);
 
-            if (contentRect.width > 0f && contentRect.height > 0f && draw != null)
+            if (contentRect.width > 0f && contentRect.height > 0f &&
+                (_dragGhostDraw != null || _dragGhostDrawSimple != null))
             {
                 int dragContentId = NowInput.CombineId(
                     NowInput.CombineId(controlId, DragContentSeed),
-                    NowInput.GetId(_draggingWindowId));
+                    window.idHash);
 
                 using (Now.Mask(contentRect))
                 using (NowLayout.Area(dragContentId, contentRect))
                 {
-                    draw(contentRect);
+                    InvokeDraw(_dragGhostDraw, _dragGhostDrawSimple, contentRect);
                 }
             }
 
@@ -1538,12 +1655,20 @@ namespace NowUI.Docking
             int dockControlId,
             int controlId,
             WindowState window,
-            string title,
-            bool canClose,
-            Action<NowRect> draw,
             Style style,
             NowThemeAsset theme)
         {
+            string title = window.title;
+            bool canClose = window.canClose;
+
+            if (window.floatSeedControlId != controlId)
+            {
+                window.floatSeedControlId = controlId;
+                window.floatMoveTitleId = NowInput.GetId(controlId, "move-title");
+                window.floatResizeId = NowInput.GetId(controlId, "resize");
+                window.floatCloseId = NowInput.GetId(controlId, "close");
+            }
+
             var rect = window.floatingRect;
 
             if (rect.isEmpty)
@@ -1551,14 +1676,14 @@ namespace NowUI.Docking
 
             var titleRect = new NowRect(rect.x, rect.y, rect.width, Mathf.Min(style.tabHeight, rect.height));
             float closeSpace = canClose ? 28f : 6f;
-            float tabWidth = Mathf.Min(TabWidth(theme, title), Mathf.Max(48f, titleRect.width - closeSpace - 44f));
+            float tabWidth = Mathf.Min(TabWidth(theme, window, false), Mathf.Max(48f, titleRect.width - closeSpace - 44f));
             var tabRect = new NowRect(titleRect.x, titleRect.y, tabWidth, titleRect.height);
             var moveRect = new NowRect(
                 tabRect.xMax,
                 titleRect.y,
                 Mathf.Max(0f, titleRect.xMax - closeSpace - tabRect.xMax),
                 titleRect.height);
-            var titleInteraction = NowInput.Interact(NowInput.GetId(controlId, "move-title"), moveRect);
+            var titleInteraction = NowInput.Interact(window.floatMoveTitleId, moveRect);
             var tabInteraction = NowInput.Interact(DockTabId(dockControlId, window), tabRect);
 
             if (titleInteraction.pressed)
@@ -1589,7 +1714,7 @@ namespace NowUI.Docking
             rect = window.floatingRect;
             titleRect = new NowRect(rect.x, rect.y, rect.width, Mathf.Min(style.tabHeight, rect.height));
             closeSpace = canClose ? 28f : 6f;
-            tabWidth = Mathf.Min(TabWidth(theme, title), Mathf.Max(48f, titleRect.width - closeSpace - 44f));
+            tabWidth = Mathf.Min(TabWidth(theme, window, false), Mathf.Max(48f, titleRect.width - closeSpace - 44f));
             tabRect = new NowRect(titleRect.x, titleRect.y, tabWidth, titleRect.height);
             moveRect = new NowRect(
                 tabRect.xMax,
@@ -1603,7 +1728,7 @@ namespace NowUI.Docking
                 rect = window.floatingRect;
                 titleRect = new NowRect(rect.x, rect.y, rect.width, Mathf.Min(style.tabHeight, rect.height));
                 closeSpace = canClose ? 28f : 6f;
-                tabWidth = Mathf.Min(TabWidth(theme, title), Mathf.Max(48f, titleRect.width - closeSpace - 44f));
+                tabWidth = Mathf.Min(TabWidth(theme, window, false), Mathf.Max(48f, titleRect.width - closeSpace - 44f));
                 tabRect = new NowRect(titleRect.x, titleRect.y, tabWidth, titleRect.height);
                 moveRect = new NowRect(
                     tabRect.xMax,
@@ -1614,7 +1739,7 @@ namespace NowUI.Docking
             }
 
             var resizeRect = new NowRect(rect.xMax - 16f, rect.yMax - 16f, 16f, 16f);
-            var resize = NowInput.Interact(NowInput.GetId(controlId, "resize"), resizeRect);
+            var resize = NowInput.Interact(window.floatResizeId, resizeRect);
 
             if (resize.dragging)
             {
@@ -1626,7 +1751,7 @@ namespace NowUI.Docking
                 rect = window.floatingRect;
                 titleRect = new NowRect(rect.x, rect.y, rect.width, Mathf.Min(style.tabHeight, rect.height));
                 closeSpace = canClose ? 28f : 6f;
-                tabWidth = Mathf.Min(TabWidth(theme, title), Mathf.Max(48f, titleRect.width - closeSpace - 44f));
+                tabWidth = Mathf.Min(TabWidth(theme, window, false), Mathf.Max(48f, titleRect.width - closeSpace - 44f));
                 tabRect = new NowRect(titleRect.x, titleRect.y, tabWidth, titleRect.height);
                 moveRect = new NowRect(
                     tabRect.xMax,
@@ -1644,7 +1769,7 @@ namespace NowUI.Docking
             if (canClose)
             {
                 closeRect = new NowRect(titleRect.xMax - 22f, titleRect.y + 5f, 16f, titleRect.height - 10f);
-                var closeInteraction = NowInput.Interact(NowInput.GetId(controlId, "close"), closeRect);
+                var closeInteraction = NowInput.Interact(window.floatCloseId, closeRect);
                 closeHovered = closeInteraction.hovered;
                 closeHeld = closeInteraction.held;
 
@@ -1679,7 +1804,7 @@ namespace NowUI.Docking
                 .SetRadius(1f)
                 .Draw();
 
-            DrawCenteredText(theme, tabVisualRect.Inset(9f, 0f), title, NowTextStyle.Button, 12f, _skin.text);
+            DrawCenteredText(theme, tabVisualRect.Inset(9f, 0f), title, NowTextStyle.Button, 12f, _skin.text, TitleSize(theme, window));
 
             if (canClose)
             {
@@ -1708,12 +1833,13 @@ namespace NowUI.Docking
                 rect.width,
                 Mathf.Max(0f, rect.height - titleRect.height)).Inset(style.contentPadding);
 
-            if (contentRect.width > 0f && contentRect.height > 0f && draw != null)
+            if (contentRect.width > 0f && contentRect.height > 0f &&
+                (window.frameDraw != null || window.frameDrawSimple != null))
             {
                 using (Now.Mask(contentRect))
                 using (NowLayout.Area(NowInput.CombineId(NowInput.CombineId(controlId, ContentSeed), window.idHash), contentRect))
                 {
-                    draw(contentRect);
+                    InvokeDraw(window.frameDraw, window.frameDrawSimple, contentRect);
                 }
             }
 

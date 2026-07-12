@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Unity.Burst;
 using Unity.Collections;
@@ -15,6 +16,9 @@ namespace NowUI.Internal
     ///
     /// Trim paths and matte-clipped strokes still use the scalar path: they splice
     /// polylines on the managed side and are rare enough not to matter.
+    ///
+    /// Input and output buffers are persistent scratch shared across calls, so like
+    /// the scalar tessellator this class is main-thread only.
     /// </summary>
     internal static class NowLottieBurstTessellator
     {
@@ -33,6 +37,8 @@ namespace NowUI.Internal
             public int gradientType;
             public Vector2 gradientStart;
             public Vector2 gradientEnd;
+            public float invRadius;
+            public Vector2 directionScale;
             public int gradientStopDataLength;
             public int colorStopCount;
             public float alphaMultiplier;
@@ -40,6 +46,8 @@ namespace NowUI.Internal
 
         static BurstPaint ToBurstPaint(in NowLottiePaint paint)
         {
+            paint.GetGradientFactors(out float invRadius, out Vector2 directionScale);
+
             return new BurstPaint
             {
                 isGradient = paint.isGradient,
@@ -47,21 +55,24 @@ namespace NowUI.Internal
                 gradientType = paint.gradientType,
                 gradientStart = paint.gradientStart,
                 gradientEnd = paint.gradientEnd,
+                invRadius = invRadius,
+                directionScale = directionScale,
                 gradientStopDataLength = paint.gradientStopDataLength,
                 colorStopCount = paint.colorStopCount,
                 alphaMultiplier = paint.alphaMultiplier
             };
         }
 
-        static NativeArray<float> CopyStops(in NowLottiePaint paint)
+        static void CopyStops(in NowLottiePaint paint)
         {
+            if (!paint.isGradient)
+                return;
+
             int length = paint.gradientStops != null ? Mathf.Min(paint.gradientStopDataLength, paint.gradientStops.Length) : 0;
-            var stops = new NativeArray<float>(Mathf.Max(1, length), Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            EnsureCapacity(ref _stopsScratch, Mathf.Max(1, length));
 
-            for (int i = 0; i < length; ++i)
-                stops[i] = paint.gradientStops[i];
-
-            return stops;
+            if (length > 0)
+                NativeArray<float>.Copy(paint.gradientStops, _stopsScratch, length);
         }
 
         static Vector4 ColorAt(in BurstPaint paint, in NativeArray<float> stops, Vector2 position)
@@ -69,21 +80,9 @@ namespace NowUI.Internal
             if (!paint.isGradient)
                 return paint.color;
 
-            float t;
-
-            if (paint.gradientType == 2)
-            {
-                float radius = Vector2.Distance(paint.gradientStart, paint.gradientEnd);
-                t = radius > 0.0001f ? Vector2.Distance(position, paint.gradientStart) / radius : 0f;
-            }
-            else
-            {
-                Vector2 direction = paint.gradientEnd - paint.gradientStart;
-                float lengthSquared = Vector2.Dot(direction, direction);
-                t = lengthSquared > 0.0001f
-                    ? Vector2.Dot(position - paint.gradientStart, direction) / lengthSquared
-                    : 0f;
-            }
+            float t = paint.gradientType == 2
+                ? Vector2.Distance(position, paint.gradientStart) * paint.invRadius
+                : Vector2.Dot(position - paint.gradientStart, paint.directionScale);
 
             t = Mathf.Clamp01(t);
 
@@ -373,6 +372,7 @@ namespace NowUI.Internal
 
             [ReadOnly] public NativeArray<Vector2> clipPoints;
             [ReadOnly] public NativeArray<PolyRange> clipRanges;
+            public int clipRangeCount;
             public bool hasClip;
             public bool clipInvert;
             public bool evenOdd;
@@ -422,7 +422,7 @@ namespace NowUI.Internal
 
                 if (hasClip)
                 {
-                    for (int i = 0; i < clipRanges.Length; ++i)
+                    for (int i = 0; i < clipRangeCount; ++i)
                         CollectEdges(clipPoints, clipRanges[i], true, edges, slabYs);
                 }
 
@@ -681,9 +681,13 @@ namespace NowUI.Internal
                 if (aaWidth <= 0f)
                     return;
 
-                bool fringeHasClip = hasClip && clipRanges.Length > 0;
+                bool fringeHasClip = hasClip && clipRangeCount > 0;
                 var fringeNormals = new NativeList<Vector2>(128, Allocator.Temp);
                 var fringeInside = new NativeList<byte>(128, Allocator.Temp);
+                var contourBounds = new NativeArray<Vector4>(ranges.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+
+                if (ranges.Length > 1)
+                    CollectContourBounds(points, ranges, contourBounds);
 
                 for (int contourIndex = 0; contourIndex < ranges.Length; ++contourIndex)
                 {
@@ -697,7 +701,7 @@ namespace NowUI.Internal
                     if (Mathf.Abs(area) < EPSILON)
                         continue;
 
-                    int depth = ContainmentDepth(points, ranges, contourIndex);
+                    int depth = ContainmentDepth(points, ranges, contourBounds, contourIndex);
                     float direction = Mathf.Sign(area) * ((depth & 1) == 0 ? 1f : -1f);
 
                     fringeNormals.Clear();
@@ -777,7 +781,7 @@ namespace NowUI.Internal
             {
                 int winding = 0;
 
-                for (int i = 0; i < clipRanges.Length; ++i)
+                for (int i = 0; i < clipRangeCount; ++i)
                     winding += WindingNumber(clipPoints, clipRanges[i], probe);
 
                 return winding;
@@ -797,7 +801,31 @@ namespace NowUI.Internal
                 return area * 0.5f;
             }
 
-            static int ContainmentDepth(NativeList<Vector2> points, NativeList<PolyRange> ranges, int contourIndex)
+            /// <summary>
+            /// Port of the scalar per-contour bounds (min.x, min.y, max.x, max.y) used
+            /// to skip winding tests for probes strictly outside a contour's box.
+            /// </summary>
+            static void CollectContourBounds(NativeList<Vector2> points, NativeList<PolyRange> ranges, NativeArray<Vector4> contourBounds)
+            {
+                for (int i = 0; i < ranges.Length; ++i)
+                {
+                    PolyRange range = ranges[i];
+                    var bounds = new Vector4(float.MaxValue, float.MaxValue, float.MinValue, float.MinValue);
+
+                    for (int p = 0; p < range.count; ++p)
+                    {
+                        Vector2 point = points[range.start + p];
+                        bounds.x = Mathf.Min(bounds.x, point.x);
+                        bounds.y = Mathf.Min(bounds.y, point.y);
+                        bounds.z = Mathf.Max(bounds.z, point.x);
+                        bounds.w = Mathf.Max(bounds.w, point.y);
+                    }
+
+                    contourBounds[i] = bounds;
+                }
+            }
+
+            static int ContainmentDepth(NativeList<Vector2> points, NativeList<PolyRange> ranges, NativeArray<Vector4> contourBounds, int contourIndex)
             {
                 Vector2 probe = points[ranges[contourIndex].start];
                 int depth = 0;
@@ -805,6 +833,11 @@ namespace NowUI.Internal
                 for (int i = 0; i < ranges.Length; ++i)
                 {
                     if (i == contourIndex)
+                        continue;
+
+                    Vector4 bounds = contourBounds[i];
+
+                    if (probe.x < bounds.x || probe.y < bounds.y || probe.x > bounds.z || probe.y > bounds.w)
                         continue;
 
                     if (WindingNumber(points, ranges[i], probe) != 0)
@@ -1251,46 +1284,37 @@ namespace NowUI.Internal
             if (forceScalar || contours.isEmpty)
                 return false;
 
-            var packed = CopyPacked(contours);
-            var (clipPoints, clipRanges, hasClip) = CopyClip(clipPolylines);
-            var stops = CopyStops(paint);
-            var outputs = AllocateOutputs();
+            EnsureScratch();
+            CopyPacked(contours);
+            bool hasClip = CopyClip(clipPolylines, out int clipRangeCount);
+            CopyStops(paint);
+            ClearOutputs();
 
-            try
+            new FillJob
             {
-                new FillJob
-                {
-                    packedContours = packed,
-                    contourCount = contours.contourCount,
-                    tolerance = tolerance,
-                    clipPoints = clipPoints,
-                    clipRanges = clipRanges,
-                    hasClip = hasClip,
-                    clipInvert = clipInvert,
-                    evenOdd = evenOdd,
-                    paint = ToBurstPaint(paint),
-                    gradientStops = stops,
-                    aaWidth = aaWidth,
-                    gradientSpan = gradientSpan,
-                    outPositions = outputs.positions,
-                    outColors = outputs.colors,
-                    outIndices = outputs.indices,
-                    outBounds = outputs.bounds,
-                    outHasBounds = outputs.hasBounds,
-                    baseVertex = buffer.positions.count
-                }.Run();
+                packedContours = _packedScratch,
+                contourCount = contours.contourCount,
+                tolerance = tolerance,
+                clipPoints = _clipPointsScratch,
+                clipRanges = _clipRangesScratch,
+                clipRangeCount = clipRangeCount,
+                hasClip = hasClip,
+                clipInvert = clipInvert,
+                evenOdd = evenOdd,
+                paint = ToBurstPaint(paint),
+                gradientStops = _stopsScratch,
+                aaWidth = aaWidth,
+                gradientSpan = gradientSpan,
+                outPositions = _outPositions,
+                outColors = _outColors,
+                outIndices = _outIndices,
+                outBounds = _outBounds,
+                outHasBounds = _outHasBounds,
+                baseVertex = buffer.positions.count
+            }.Run();
 
-                CopyOutputs(outputs, buffer);
-                return true;
-            }
-            finally
-            {
-                DisposeOutputs(outputs);
-                packed.Dispose();
-                clipPoints.Dispose();
-                clipRanges.Dispose();
-                stops.Dispose();
-            }
+            CopyOutputs(buffer);
+            return true;
         }
 
         public static bool TryStroke(
@@ -1308,86 +1332,151 @@ namespace NowUI.Internal
             if (forceScalar || contours.isEmpty || width * 0.5f <= 0f)
                 return false;
 
-            var packed = CopyPacked(contours);
-            var stops = CopyStops(paint);
-            var outputs = AllocateOutputs();
+            EnsureScratch();
+            CopyPacked(contours);
+            CopyStops(paint);
+            ClearOutputs();
 
-            try
+            new StrokeJob
             {
-                new StrokeJob
-                {
-                    packedContours = packed,
-                    contourCount = contours.contourCount,
-                    tolerance = tolerance,
-                    halfWidth = width * 0.5f,
-                    cap = cap,
-                    paint = ToBurstPaint(paint),
-                    gradientStops = stops,
-                    aaWidth = aaWidth,
-                    outPositions = outputs.positions,
-                    outColors = outputs.colors,
-                    outIndices = outputs.indices,
-                    outBounds = outputs.bounds,
-                    outHasBounds = outputs.hasBounds,
-                    baseVertex = buffer.positions.count
-                }.Run();
+                packedContours = _packedScratch,
+                contourCount = contours.contourCount,
+                tolerance = tolerance,
+                halfWidth = width * 0.5f,
+                cap = cap,
+                paint = ToBurstPaint(paint),
+                gradientStops = _stopsScratch,
+                aaWidth = aaWidth,
+                outPositions = _outPositions,
+                outColors = _outColors,
+                outIndices = _outIndices,
+                outBounds = _outBounds,
+                outHasBounds = _outHasBounds,
+                baseVertex = buffer.positions.count
+            }.Run();
 
-                CopyOutputs(outputs, buffer);
-                return true;
-            }
-            finally
-            {
-                DisposeOutputs(outputs);
-                packed.Dispose();
-                stops.Dispose();
-            }
+            CopyOutputs(buffer);
+            return true;
         }
 
-        struct OutputBuffers
+        static NativeList<Vector2> _outPositions;
+
+        static NativeList<Vector4> _outColors;
+
+        static NativeList<int> _outIndices;
+
+        static NativeArray<Vector2> _outBounds;
+
+        static NativeArray<int> _outHasBounds;
+
+        static NativeArray<float> _packedScratch;
+
+        static NativeArray<float> _stopsScratch;
+
+        static NativeArray<Vector2> _clipPointsScratch;
+
+        static NativeArray<PolyRange> _clipRangesScratch;
+
+        static List<NowLottiePolyline> _cachedClipList;
+
+        static int _cachedClipRangeCount;
+
+        static int _cachedClipPointCount;
+
+        static bool _scratchCreated;
+
+        /// <summary>
+        /// Persistent scratch reused across calls to avoid per-paint TempJob churn.
+        /// Created lazily and disposed on domain unload so leak detection stays clean
+        /// across editor reloads and batch test runs.
+        /// </summary>
+        static void EnsureScratch()
         {
-            public NativeList<Vector2> positions;
-            public NativeList<Vector4> colors;
-            public NativeList<int> indices;
-            public NativeArray<Vector2> bounds;
-            public NativeArray<int> hasBounds;
+            if (_scratchCreated)
+                return;
+
+            _outPositions = new NativeList<Vector2>(1024, Allocator.Persistent);
+            _outColors = new NativeList<Vector4>(1024, Allocator.Persistent);
+            _outIndices = new NativeList<int>(2048, Allocator.Persistent);
+            _outBounds = new NativeArray<Vector2>(2, Allocator.Persistent);
+            _outHasBounds = new NativeArray<int>(1, Allocator.Persistent);
+            _packedScratch = new NativeArray<float>(256, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            _stopsScratch = new NativeArray<float>(64, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            _clipPointsScratch = new NativeArray<Vector2>(64, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            _clipRangesScratch = new NativeArray<PolyRange>(8, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            _scratchCreated = true;
+
+            AppDomain.CurrentDomain.DomainUnload += OnDomainUnload;
+            Application.quitting += DisposeScratch;
         }
 
-        static OutputBuffers AllocateOutputs()
+        static void OnDomainUnload(object sender, EventArgs e)
         {
-            return new OutputBuffers
-            {
-                positions = new NativeList<Vector2>(1024, Allocator.TempJob),
-                colors = new NativeList<Vector4>(1024, Allocator.TempJob),
-                indices = new NativeList<int>(2048, Allocator.TempJob),
-                bounds = new NativeArray<Vector2>(2, Allocator.TempJob),
-                hasBounds = new NativeArray<int>(1, Allocator.TempJob)
-            };
+            DisposeScratch();
         }
 
-        static void DisposeOutputs(OutputBuffers outputs)
+        static void DisposeScratch()
         {
-            outputs.positions.Dispose();
-            outputs.colors.Dispose();
-            outputs.indices.Dispose();
-            outputs.bounds.Dispose();
-            outputs.hasBounds.Dispose();
+            if (!_scratchCreated)
+                return;
+
+            _scratchCreated = false;
+            AppDomain.CurrentDomain.DomainUnload -= OnDomainUnload;
+            Application.quitting -= DisposeScratch;
+            _cachedClipList = null;
+            _cachedClipRangeCount = 0;
+            _cachedClipPointCount = 0;
+            _outPositions.Dispose();
+            _outColors.Dispose();
+            _outIndices.Dispose();
+            _outBounds.Dispose();
+            _outHasBounds.Dispose();
+            _packedScratch.Dispose();
+            _stopsScratch.Dispose();
+            _clipPointsScratch.Dispose();
+            _clipRangesScratch.Dispose();
         }
 
-        static NativeArray<float> CopyPacked(NowLottieContourSet contours)
+        static void EnsureCapacity<T>(ref NativeArray<T> array, int length) where T : unmanaged
         {
-            var packed = new NativeArray<float>(Mathf.Max(1, contours.data.count), Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-            NativeArray<float>.Copy(contours.data.array, packed, contours.data.count);
-            return packed;
+            if (array.Length >= length)
+                return;
+
+            array.Dispose();
+            array = new NativeArray<T>(Mathf.NextPowerOfTwo(length), Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         }
 
-        static (NativeArray<Vector2>, NativeArray<PolyRange>, bool) CopyClip(List<NowLottiePolyline> clipPolylines)
+        static void ClearOutputs()
+        {
+            _outPositions.Clear();
+            _outColors.Clear();
+            _outIndices.Clear();
+            _outHasBounds[0] = 0;
+        }
+
+        static void CopyPacked(NowLottieContourSet contours)
+        {
+            EnsureCapacity(ref _packedScratch, Mathf.Max(1, contours.data.count));
+            NativeArray<float>.Copy(contours.data.array, _packedScratch, contours.data.count);
+        }
+
+        /// <summary>
+        /// Drops the cached clip copy when its source list is released back to a pool;
+        /// pooled lists can return later with different contents under the same
+        /// reference, which the reference-keyed cache could not detect on its own.
+        /// </summary>
+        internal static void InvalidateClip(List<NowLottiePolyline> clipPolylines)
+        {
+            if (ReferenceEquals(_cachedClipList, clipPolylines))
+                _cachedClipList = null;
+        }
+
+        static bool CopyClip(List<NowLottiePolyline> clipPolylines, out int clipRangeCount)
         {
             if (clipPolylines == null || clipPolylines.Count == 0)
             {
-                return (
-                    new NativeArray<Vector2>(1, Allocator.TempJob),
-                    new NativeArray<PolyRange>(1, Allocator.TempJob),
-                    false);
+                clipRangeCount = 0;
+                return false;
             }
 
             int totalPoints = 0;
@@ -1395,15 +1484,24 @@ namespace NowUI.Internal
             for (int i = 0; i < clipPolylines.Count; ++i)
                 totalPoints += clipPolylines[i].points.Count;
 
-            var points = new NativeArray<Vector2>(Mathf.Max(1, totalPoints), Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-            var ranges = new NativeArray<PolyRange>(clipPolylines.Count, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            clipRangeCount = clipPolylines.Count;
+
+            if (ReferenceEquals(_cachedClipList, clipPolylines) &&
+                _cachedClipRangeCount == clipRangeCount &&
+                _cachedClipPointCount == totalPoints)
+            {
+                return true;
+            }
+
+            EnsureCapacity(ref _clipPointsScratch, Mathf.Max(1, totalPoints));
+            EnsureCapacity(ref _clipRangesScratch, clipRangeCount);
             int cursor = 0;
 
             for (int i = 0; i < clipPolylines.Count; ++i)
             {
                 var polyline = clipPolylines[i];
 
-                ranges[i] = new PolyRange
+                _clipRangesScratch[i] = new PolyRange
                 {
                     start = cursor,
                     count = polyline.points.Count,
@@ -1411,16 +1509,19 @@ namespace NowUI.Internal
                 };
 
                 for (int p = 0; p < polyline.points.Count; ++p)
-                    points[cursor++] = polyline.points[p];
+                    _clipPointsScratch[cursor++] = polyline.points[p];
             }
 
-            return (points, ranges, true);
+            _cachedClipList = clipPolylines;
+            _cachedClipRangeCount = clipRangeCount;
+            _cachedClipPointCount = totalPoints;
+            return true;
         }
 
-        static void CopyOutputs(OutputBuffers outputs, NowLottieDrawBuffer buffer)
+        static void CopyOutputs(NowLottieDrawBuffer buffer)
         {
-            int vertexCount = outputs.positions.Length;
-            int indexCount = outputs.indices.Length;
+            int vertexCount = _outPositions.Length;
+            int indexCount = _outIndices.Length;
 
             if (vertexCount == 0)
                 return;
@@ -1429,26 +1530,26 @@ namespace NowUI.Internal
             buffer.colors.EnsureCapacity(vertexCount);
             buffer.indices.EnsureCapacity(indexCount);
 
-            NativeArray<Vector2>.Copy(outputs.positions.AsArray(), 0, buffer.positions.array, buffer.positions.count, vertexCount);
-            NativeArray<Vector4>.Copy(outputs.colors.AsArray(), 0, buffer.colors.array, buffer.colors.count, vertexCount);
-            NativeArray<int>.Copy(outputs.indices.AsArray(), 0, buffer.indices.array, buffer.indices.count, indexCount);
+            NativeArray<Vector2>.Copy(_outPositions.AsArray(), 0, buffer.positions.array, buffer.positions.count, vertexCount);
+            NativeArray<Vector4>.Copy(_outColors.AsArray(), 0, buffer.colors.array, buffer.colors.count, vertexCount);
+            NativeArray<int>.Copy(_outIndices.AsArray(), 0, buffer.indices.array, buffer.indices.count, indexCount);
 
             buffer.positions.count += vertexCount;
             buffer.colors.count += vertexCount;
             buffer.indices.count += indexCount;
 
-            if (outputs.hasBounds[0] != 0)
+            if (_outHasBounds[0] != 0)
             {
                 if (!buffer.hasBounds)
                 {
-                    buffer.boundsMin = outputs.bounds[0];
-                    buffer.boundsMax = outputs.bounds[1];
+                    buffer.boundsMin = _outBounds[0];
+                    buffer.boundsMax = _outBounds[1];
                     buffer.hasBounds = true;
                 }
                 else
                 {
-                    buffer.boundsMin = Vector2.Min(buffer.boundsMin, outputs.bounds[0]);
-                    buffer.boundsMax = Vector2.Max(buffer.boundsMax, outputs.bounds[1]);
+                    buffer.boundsMin = Vector2.Min(buffer.boundsMin, _outBounds[0]);
+                    buffer.boundsMax = Vector2.Max(buffer.boundsMax, _outBounds[1]);
                 }
             }
         }

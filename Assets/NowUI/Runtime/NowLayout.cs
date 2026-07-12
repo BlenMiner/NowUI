@@ -802,6 +802,14 @@ namespace NowUI
             public float parentCrossMin;
 
             public float parentCrossMax;
+
+            /// <summary>Set when a cached measurement existed for this group at begin;
+            /// flex shares read the snapshot below instead of re-probing the cache.</summary>
+            public bool hasCache;
+
+            public float cachedFixedMain;
+
+            public float cachedFlexTotal;
         }
 
         struct CachedGroup
@@ -826,6 +834,14 @@ namespace NowUI
         static NowText _labelStyle;
 
         static bool _hasLabelStyle;
+
+        static NowText _defaultLabelStyle;
+
+        static NowThemeAsset _defaultLabelStyleTheme;
+
+        static NowFontAsset _defaultLabelStyleFont;
+
+        static int _defaultLabelStyleVersion;
 
         static Group[] _groups = new Group[16];
 
@@ -962,6 +978,8 @@ namespace NowUI
             int areaId = id;
             _areaCounter++;
 
+            bool hasCache = _cache.TryGetValue(areaId, out var cached);
+
             Push(new Group
             {
                 id = areaId,
@@ -971,7 +989,10 @@ namespace NowUI
                 padding = options.Has(NowLayoutOptions.Field.Padding) ? options.padding : default,
                 spacing = options.Has(NowLayoutOptions.Field.Spacing) ? options.spacing : 0f,
                 alignItems = options.Has(NowLayoutOptions.Field.AlignItems) ? options.alignItems : NowLayoutAlign.Start,
-                parentMainMax = float.MaxValue
+                parentMainMax = float.MaxValue,
+                hasCache = hasCache,
+                cachedFixedMain = cached.fixedMain,
+                cachedFlexTotal = cached.flexTotal
             });
 
             return new NowLayoutScope(NowLayoutScope.Kind.Area, rect);
@@ -985,7 +1006,9 @@ namespace NowUI
         /// exact every frame, including the first and while animating. The callback
         /// must not mutate state unconditionally (input is inert during measuring,
         /// so reacting to clicks is always safe); check <see cref="isMeasurePass"/>
-        /// when in doubt.
+        /// when in doubt. A lambda that captures locals allocates a closure every
+        /// rebuild — cache the delegate in a field, or pass the captured data
+        /// through the <c>Area&lt;TState&gt;</c> overloads with a static lambda.
         /// </summary>
         public static void Area(
             NowRect rect,
@@ -1061,6 +1084,94 @@ namespace NowUI
 
             using (Area(id, rect, options))
                 ui();
+        }
+
+        /// <summary>
+        /// Two-pass callback area that threads <paramref name="state"/> into the
+        /// callback, so a static lambda can be used and no closure is allocated
+        /// per rebuild:
+        /// <code>
+        /// NowLayout.Area(rect, this, static self => self.DrawContent());
+        /// </code>
+        /// </summary>
+        public static void Area<TState>(
+            NowRect rect,
+            TState state,
+            Action<TState> ui,
+            float spacing = 0f,
+            float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+        {
+            Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui);
+        }
+
+        public static void Area<TState>(
+            NowRect rect,
+            TState state,
+            Action<TState> ui,
+            Vector4 padding,
+            float spacing = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+        {
+            Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui);
+        }
+
+        public static void Area<TState>(NowRect rect, in NowLayoutOptions options, TState state, Action<TState> ui)
+        {
+            Area(default(NowId), rect, options, state, ui);
+        }
+
+        public static void Area<TState>(
+            NowId id,
+            NowRect rect,
+            TState state,
+            Action<TState> ui,
+            float spacing = 0f,
+            float padding = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+        {
+            Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui);
+        }
+
+        public static void Area<TState>(
+            NowId id,
+            NowRect rect,
+            TState state,
+            Action<TState> ui,
+            Vector4 padding,
+            float spacing = 0f,
+            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+        {
+            Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui);
+        }
+
+        public static void Area<TState>(NowId id, NowRect rect, in NowLayoutOptions options, TState state, Action<TState> ui)
+        {
+            if (ui == null)
+                throw new ArgumentNullException(nameof(ui));
+
+            if (_measurePass)
+            {
+                using (Area(id, rect, options))
+                    ui(state);
+
+                return;
+            }
+
+            int areaCounter = BeginMeasurePass();
+
+            try
+            {
+                using (Area(id, rect, options))
+                    ui(state);
+            }
+            finally
+            {
+                EndMeasurePass(areaCounter);
+            }
+
+            using (Area(id, rect, options))
+                ui(state);
         }
 
         /// <summary>
@@ -1380,12 +1491,32 @@ namespace NowUI
         /// <summary>
         /// Style template used by <see cref="Label(string)"/> overloads that take no
         /// explicit style. Defaults to the active theme's body text at a 16px font size.
+        /// The default is cached against the resolved theme instance, the ambient font
+        /// and <see cref="NowThemeAsset.contentVersion"/>, so per-label calls skip the
+        /// full preset resolution.
         /// </summary>
         public static NowText labelStyle
         {
-            get => _hasLabelStyle
-                ? _labelStyle
-                : NowTheme.themeAsset.ResolveText(NowTextStyle.Body).SetFontSize(DefaultLabelFontSize);
+            get
+            {
+                if (_hasLabelStyle)
+                    return _labelStyle;
+
+                var theme = NowTheme.themeAsset;
+                var font = Now.font;
+
+                if (!ReferenceEquals(theme, _defaultLabelStyleTheme) ||
+                    !ReferenceEquals(font, _defaultLabelStyleFont) ||
+                    _defaultLabelStyleVersion != NowThemeAsset.contentVersion)
+                {
+                    _defaultLabelStyle = theme.ResolveText(NowTextStyle.Body).SetFontSize(DefaultLabelFontSize);
+                    _defaultLabelStyleTheme = theme;
+                    _defaultLabelStyleFont = font;
+                    _defaultLabelStyleVersion = NowThemeAsset.contentVersion;
+                }
+
+                return _defaultLabelStyle;
+            }
             set
             {
                 _labelStyle = value;
@@ -1568,6 +1699,10 @@ namespace NowUI
             _lastCleanupTime = 0.0;
             _labelStyle = default;
             _hasLabelStyle = false;
+            _defaultLabelStyle = default;
+            _defaultLabelStyleTheme = null;
+            _defaultLabelStyleFont = null;
+            _defaultLabelStyleVersion = 0;
             _measurePass = false;
         }
 
@@ -1587,8 +1722,9 @@ namespace NowUI
             parent.childIndex++;
 
             Vector2 autoSize = default;
+            bool hasCache = _cache.TryGetValue(groupId, out var cached);
 
-            if (_cache.TryGetValue(groupId, out var cached))
+            if (hasCache)
                 autoSize = new Vector2(cached.contentWidth, cached.contentHeight);
 
             bool mainIsWidth = parent.horizontal;
@@ -1622,7 +1758,10 @@ namespace NowUI
                     : 0f,
                 parentCrossMax = options.Has(mainIsWidth ? NowLayoutOptions.Field.MaxHeight : NowLayoutOptions.Field.MaxWidth)
                     ? (mainIsWidth ? options.maxHeight : options.maxWidth)
-                    : float.MaxValue
+                    : float.MaxValue,
+                hasCache = hasCache,
+                cachedFixedMain = cached.fixedMain,
+                cachedFlexTotal = cached.flexTotal
             });
 
             return new NowLayoutScope(
@@ -1953,15 +2092,15 @@ namespace NowUI
 
         static float FlexShare(ref Group group, float weight)
         {
-            if (!_cache.TryGetValue(group.id, out var cached) || cached.flexTotal <= 0f)
+            if (!group.hasCache || group.cachedFlexTotal <= 0f)
                 return 0f;
 
             float avail = group.horizontal
                 ? group.rect.width - group.padding.x - group.padding.z
                 : group.rect.height - group.padding.y - group.padding.w;
 
-            float remaining = avail - cached.fixedMain;
-            return remaining > 0f ? remaining * weight / cached.flexTotal : 0f;
+            float remaining = avail - group.cachedFixedMain;
+            return remaining > 0f ? remaining * weight / group.cachedFlexTotal : 0f;
         }
 
         static ref Group Top()

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using NowUI.Internal;
 using UnityEngine;
 
@@ -28,6 +29,7 @@ namespace NowUI
             fill = true;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetPosition(Vector2 center, float radius)
         {
             this.center = center;
@@ -35,6 +37,7 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetPosition(Vector2 center, Vector2 radius)
         {
             this.center = center;
@@ -42,6 +45,7 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetRect(NowRect rect)
         {
             center = rect.center;
@@ -49,13 +53,21 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetMask(NowRect mask) { this.mask = mask; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetColor(Color color) { this.color = color; fill = true; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetColor(Vector4 color) { this.color = color; fill = true; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetFill(bool fill = true) { this.fill = fill; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetOutline(float outline) { this.outline = outline; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetOutlineColor(Color color) { outlineColor = color; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetOutlineColor(Vector4 color) { outlineColor = color; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowCircle SetSegments(int segments) { this.segments = segments; return this; }
 
         [NowConsumer]
@@ -90,6 +102,7 @@ namespace NowUI
             fill = true;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowTriangle SetPosition(Vector2 a, Vector2 b, Vector2 c)
         {
             this.a = a;
@@ -98,12 +111,19 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowTriangle SetMask(NowRect mask) { this.mask = mask; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowTriangle SetColor(Color color) { this.color = color; fill = true; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowTriangle SetColor(Vector4 color) { this.color = color; fill = true; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowTriangle SetFill(bool fill = true) { this.fill = fill; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowTriangle SetOutline(float outline) { this.outline = outline; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowTriangle SetOutlineColor(Color color) { outlineColor = color; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowTriangle SetOutlineColor(Vector4 color) { outlineColor = color; return this; }
 
         [NowConsumer]
@@ -153,6 +173,7 @@ namespace NowUI
             fill = true;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetPoints(Vector2[] points)
         {
             this.points = points;
@@ -162,6 +183,7 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetPoints(Vector2[] points, int start, int count)
         {
             this.points = points;
@@ -171,6 +193,7 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetPoints(List<Vector2> points)
         {
             this.points = null;
@@ -180,6 +203,7 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetPoints(List<Vector2> points, int start, int count)
         {
             this.points = null;
@@ -189,12 +213,19 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetMask(NowRect mask) { this.mask = mask; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetColor(Color color) { this.color = color; fill = true; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetColor(Vector4 color) { this.color = color; fill = true; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetFill(bool fill = true) { this.fill = fill; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetOutline(float outline) { this.outline = outline; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetOutlineColor(Color color) { outlineColor = color; return this; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowPolygon SetOutlineColor(Vector4 color) { outlineColor = color; return this; }
 
         [NowConsumer]
@@ -288,12 +319,27 @@ namespace NowUI
 
             _shapePoints.EnsureCapacity(segments);
 
-            for (int i = 0; i < segments; ++i)
+            if (segments <= MaxCachedCircleSegments)
             {
-                float angle = (Mathf.PI * 2f * i) / segments;
-                AddShapePoint(new Vector2(
-                    center.x + Mathf.Cos(angle) * rx,
-                    center.y + Mathf.Sin(angle) * ry));
+                var directions = GetCircleDirections(segments);
+
+                for (int i = 0; i < segments; ++i)
+                {
+                    var direction = directions[i];
+                    AddShapePoint(new Vector2(
+                        center.x + direction.x * rx,
+                        center.y + direction.y * ry));
+                }
+            }
+            else
+            {
+                for (int i = 0; i < segments; ++i)
+                {
+                    float angle = (Mathf.PI * 2f * i) / segments;
+                    AddShapePoint(new Vector2(
+                        center.x + Mathf.Cos(angle) * rx,
+                        center.y + Mathf.Sin(angle) * ry));
+                }
             }
 
             DrawShapePoints(circle.mask, hasTransform, circle.fill, circle.color, scaledOutline, circle.outlineColor);
@@ -400,7 +446,7 @@ namespace NowUI
             if (resolvedMask.isEmpty)
                 return;
 
-            var mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
+            var mesh = UseMaterial(_defaultMaterial, NowMeshKind.Rectangle);
 
             if (mesh == null)
                 return;
@@ -426,6 +472,32 @@ namespace NowUI
         {
             int segments = Mathf.CeilToInt(Mathf.Sqrt(Mathf.Max(radius, 1f)) * 8f);
             return Mathf.Clamp(segments, 16, 128);
+        }
+
+        const int MaxCachedCircleSegments = 128;
+
+        static readonly Dictionary<int, Vector2[]> _circleDirections = new Dictionary<int, Vector2[]>();
+
+        /// <summary>
+        /// Returned tables are shared and must never be mutated. The cache is bounded
+        /// because callers only request counts up to <see cref="MaxCachedCircleSegments"/>.
+        /// </summary>
+        static Vector2[] GetCircleDirections(int segments)
+        {
+            if (!_circleDirections.TryGetValue(segments, out var directions))
+            {
+                directions = new Vector2[segments];
+
+                for (int i = 0; i < segments; ++i)
+                {
+                    float angle = (Mathf.PI * 2f * i) / segments;
+                    directions[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                }
+
+                _circleDirections[segments] = directions;
+            }
+
+            return directions;
         }
 
         static void AddShapePoint(Vector2 point)

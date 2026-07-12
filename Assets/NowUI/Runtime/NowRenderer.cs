@@ -17,7 +17,7 @@ namespace NowUI
 
         static readonly int _selfReplaySourceId = Shader.PropertyToID("_NowGlassSelfReplaySource");
 
-        static readonly int _selfReplayBlurredId = Shader.PropertyToID("_NowGlassSelfReplayBlurred");
+        static readonly int _selfReplayAccumulationId = Shader.PropertyToID("_NowGlassSelfReplayAccumulation");
 
         public NowGlassBlurQuality glassBlurQuality { get; set; } = NowGlassBlurQuality.Auto;
 
@@ -300,6 +300,15 @@ namespace NowUI
             long requestedEnd = (long)safeStart + count;
             int end = Mathf.Min(batches.Count, requestedEnd > int.MaxValue ? int.MaxValue : (int)requestedEnd);
 
+            int replayTargetWidth = Mathf.Max(1, selfReplayTargetWidth);
+            int replayTargetHeight = Mathf.Max(1, selfReplayTargetHeight);
+            bool accumulateReplay =
+                allowSelfReplay &&
+                !targetContext.isValid &&
+                CountSelfReplayGlassBatches(batches, safeStart, end) > 1;
+            bool accumulationAllocated = false;
+            int accumulationCursor = safeStart;
+
             for (int i = safeStart; i < end; ++i)
             {
                 var batch = batches[i];
@@ -328,20 +337,54 @@ namespace NowUI
                         allowSelfReplay &&
                         NowGlassRenderer.CanDrawSelfReplay(batch))
                     {
-                        DrawSelfReplayGlass(
-                            commandBuffer,
-                            mesh,
-                            batches,
-                            projection,
-                            batch.material,
-                            i,
-                            batch,
-                            size,
-                            Mathf.Max(1, selfReplayTargetWidth),
-                            Mathf.Max(1, selfReplayTargetHeight),
-                            selfReplayTarget,
-                            safeStart,
-                            drawMatrix);
+                        if (accumulateReplay)
+                        {
+                            if (!accumulationAllocated)
+                            {
+                                commandBuffer.GetTemporaryRT(_selfReplayAccumulationId, replayTargetWidth, replayTargetHeight, 0, FilterMode.Bilinear, RenderTextureFormat.ARGB32);
+                                commandBuffer.SetRenderTarget(_selfReplayAccumulationId);
+                                commandBuffer.ClearRenderTarget(true, true, Color.clear);
+                                accumulationAllocated = true;
+                            }
+
+                            AccumulateReplayBatches(commandBuffer, mesh, batches, accumulationCursor, i, drawMatrix);
+                            accumulationCursor = i;
+
+                            var capture = NowGlassRenderer.GetCaptureRect(batch.bounds, size, replayTargetWidth, replayTargetHeight, batch.data.x);
+                            NowGlassRenderer.DrawGlassWithBlurredCapture(
+                                commandBuffer,
+                                mesh,
+                                projection,
+                                batch.material,
+                                i,
+                                batch,
+                                capture,
+                                _selfReplayAccumulationId,
+                                replayTargetWidth,
+                                replayTargetHeight,
+                                capture.sourceScaleOffset,
+                                selfReplayTarget,
+                                drawMatrix,
+                                "NowRendererSelfReplay");
+                        }
+                        else
+                        {
+                            DrawSelfReplayGlass(
+                                commandBuffer,
+                                mesh,
+                                batches,
+                                projection,
+                                batch.material,
+                                i,
+                                batch,
+                                size,
+                                replayTargetWidth,
+                                replayTargetHeight,
+                                selfReplayTarget,
+                                safeStart,
+                                drawMatrix);
+                        }
+
                         commandBuffer.SetViewProjectionMatrices(Matrix4x4.identity, projection);
                         continue;
                     }
@@ -354,6 +397,66 @@ namespace NowUI
                         targetContext.isValid
                             ? NowGlassFallbackReason.MissingBlurMaterial
                             : NowGlassFallbackReason.MissingTargetContext,
+                        batch.data.x,
+                        batch.bounds);
+                }
+
+                commandBuffer.DrawMesh(mesh, drawMatrix, batch.material, i, 0);
+            }
+
+            if (accumulationAllocated)
+                commandBuffer.ReleaseTemporaryRT(_selfReplayAccumulationId);
+        }
+
+        static int CountSelfReplayGlassBatches(List<NowMeshBatch> batches, int start, int end)
+        {
+            int count = 0;
+
+            for (int i = start; i < end; ++i)
+            {
+                var batch = batches[i];
+
+                if (batch.kind == NowMeshKind.Glass && NowGlassRenderer.CanDrawSelfReplay(batch) && ++count > 1)
+                    break;
+            }
+
+            return count;
+        }
+
+        /// <summary>
+        /// Extends the shared self-replay accumulation with batches drawn since
+        /// the previous glass pane. Glass batches are drawn without a backdrop
+        /// (and record the same fallback) exactly like a full per-pane replay,
+        /// so incremental accumulation stays visually identical to replaying
+        /// every prior batch per pane.
+        /// </summary>
+        static void AccumulateReplayBatches(
+            CommandBuffer commandBuffer,
+            Mesh mesh,
+            List<NowMeshBatch> batches,
+            int start,
+            int end,
+            Matrix4x4 drawMatrix)
+        {
+            if (end <= start)
+                return;
+
+            commandBuffer.SetRenderTarget(_selfReplayAccumulationId);
+
+            for (int i = start; i < end; ++i)
+            {
+                var batch = batches[i];
+
+                if (batch.material == null)
+                    continue;
+
+                if (batch.kind == NowMeshKind.Glass)
+                {
+                    NowGlassRenderer.DisableBackdrop(commandBuffer);
+                    NowGlassRenderer.RecordFallback(
+                        "NowRenderer",
+                        NowGlassRenderer.GetBatchQuality(batch),
+                        NowGlassFallbackReason.MissingTargetContext,
                         batch.data.x,
                         batch.bounds);
                 }
@@ -377,10 +480,8 @@ namespace NowUI
             int replayStart,
             Matrix4x4 drawMatrix)
         {
-            var quality = NowGlassRenderer.GetBatchQuality(batch);
             var capture = NowGlassRenderer.GetCaptureRect(batch.bounds, drawSize, targetWidth, targetHeight, batch.data.x);
             commandBuffer.GetTemporaryRT(_selfReplaySourceId, capture.width, capture.height, 0, FilterMode.Bilinear, RenderTextureFormat.ARGB32);
-            commandBuffer.GetTemporaryRT(_selfReplayBlurredId, capture.width, capture.height, 0, FilterMode.Bilinear, RenderTextureFormat.ARGB32);
             commandBuffer.SetRenderTarget(_selfReplaySourceId);
             commandBuffer.ClearRenderTarget(true, true, Color.clear);
 
@@ -398,24 +499,22 @@ namespace NowUI
                 0,
                 0);
 
-            NowGlassRenderer.CopyAndBlurBackdrop(
+            NowGlassRenderer.DrawGlassWithBlurredCapture(
                 commandBuffer,
+                mesh,
+                projection,
+                material,
+                subMesh,
+                batch,
+                capture,
                 _selfReplaySourceId,
-                _selfReplayBlurredId,
                 capture.width,
                 capture.height,
-                batch.data.x,
-                quality,
-                "NowRendererSelfReplay",
-                capture.uiRect,
-                out _);
+                new Vector4(1f, 1f, 0f, 0f),
+                target,
+                drawMatrix,
+                "NowRendererSelfReplay");
 
-            commandBuffer.SetRenderTarget(target);
-            commandBuffer.SetViewProjectionMatrices(Matrix4x4.identity, projection);
-            NowGlassRenderer.EnableBackdrop(commandBuffer, _selfReplayBlurredId, capture.backdropUvTransform);
-            commandBuffer.DrawMesh(mesh, drawMatrix, material, subMesh, 0);
-            NowGlassRenderer.DisableBackdrop(commandBuffer);
-            commandBuffer.ReleaseTemporaryRT(_selfReplayBlurredId);
             commandBuffer.ReleaseTemporaryRT(_selfReplaySourceId);
         }
 

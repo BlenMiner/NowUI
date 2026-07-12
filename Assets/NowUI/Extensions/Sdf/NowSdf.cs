@@ -1011,6 +1011,8 @@ namespace NowUI.Sdf
         readonly Dictionary<NowSdfGraph, int> _graphIds = new Dictionary<NowSdfGraph, int>(8);
 
         Material _material;
+        ulong _uploadedHash;
+        bool _hasUploadedHash;
         NowSdfGraph _activeGraph;
         int _inlineGraphCursor;
         NowSdfOperation _pendingOperation;
@@ -1089,6 +1091,7 @@ namespace NowUI.Sdf
                 UnityEngine.Object.DestroyImmediate(_material);
 
             _material = null;
+            _hasUploadedHash = false;
         }
 
         public void SetColor(Vector4 color)
@@ -1398,6 +1401,7 @@ namespace NowUI.Sdf
 
             _material.name = "Now SDF Scene";
             _material.hideFlags = HideFlags.HideAndDontSave;
+            _hasUploadedHash = false;
             return _material;
         }
 
@@ -1419,6 +1423,14 @@ namespace NowUI.Sdf
                     (float)layer.kind);
                 _layerData1[i] = new Vector4(targetId, layer.morph, 0f, 0f);
             }
+
+            ulong contentHash = ComputeUploadHash(shapeCount, layerCount);
+
+            if (_hasUploadedHash && contentHash == _uploadedHash)
+                return;
+
+            _uploadedHash = contentHash;
+            _hasUploadedHash = true;
 
             material.SetFloat(_shapeCountProp, shapeCount);
             material.SetFloat(_layerCountProp, layerCount);
@@ -1446,6 +1458,79 @@ namespace NowUI.Sdf
             material.SetVector(_contourColorProp, _contourColor);
             material.SetVector(_contourMaskProp, _contourMask);
             material.SetVector(_warpProp, _warp);
+        }
+
+        /// <summary>
+        /// 64-bit FNV-1a over everything Upload writes to the material: counts,
+        /// the used range of the shape and layer arrays, the effect vectors and
+        /// the texture identity. When it matches the last uploaded hash the
+        /// material already holds identical values (each cache owns its own
+        /// material instance and nothing else writes to it), so static scenes
+        /// skip all SetVectorArray/SetVector traffic.
+        /// </summary>
+        ulong ComputeUploadHash(int shapeCount, int layerCount)
+        {
+            ulong hash = 1469598103934665603UL;
+            hash = HashValue(hash, shapeCount);
+            hash = HashValue(hash, layerCount);
+            hash = HashValue(hash, _feather);
+            hash = HashValue(hash, _texture != null ? _texture.GetEntityId().GetHashCode() : 0);
+
+            for (int i = 0; i < shapeCount; ++i)
+            {
+                hash = HashValue(hash, _data0[i]);
+                hash = HashValue(hash, _data1[i]);
+                hash = HashValue(hash, _data2[i]);
+                hash = HashValue(hash, _shapeMeta[i]);
+                hash = HashValue(hash, _colors[i]);
+                hash = HashValue(hash, _uvs[i]);
+            }
+
+            for (int i = 0; i < layerCount; ++i)
+            {
+                hash = HashValue(hash, _layerData0[i]);
+                hash = HashValue(hash, _layerData1[i]);
+            }
+
+            hash = HashValue(hash, _outline);
+            hash = HashValue(hash, _outlineColor);
+            hash = HashValue(hash, _glow);
+            hash = HashValue(hash, _glowColor);
+            hash = HashValue(hash, _shadow);
+            hash = HashValue(hash, _shadowColor);
+            hash = HashValue(hash, _innerShadow);
+            hash = HashValue(hash, _innerShadowColor);
+            hash = HashValue(hash, _emboss);
+            hash = HashValue(hash, _contour);
+            hash = HashValue(hash, _contourColor);
+            hash = HashValue(hash, _contourMask);
+            hash = HashValue(hash, _warp);
+            return hash;
+        }
+
+        static ulong HashValue(ulong hash, int value)
+        {
+            unchecked
+            {
+                return (hash ^ (uint)value) * 0x100000001B3UL;
+            }
+        }
+
+        static ulong HashValue(ulong hash, float value)
+        {
+            unchecked
+            {
+                return (hash ^ (uint)value.GetHashCode()) * 0x100000001B3UL;
+            }
+        }
+
+        static ulong HashValue(ulong hash, Vector4 value)
+        {
+            hash = HashValue(hash, value.x);
+            hash = HashValue(hash, value.y);
+            hash = HashValue(hash, value.z);
+            hash = HashValue(hash, value.w);
+            return hash;
         }
 
         int GetGraphId(NowSdfGraph graph, ref int shapeCount)

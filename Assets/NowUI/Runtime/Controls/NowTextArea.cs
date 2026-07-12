@@ -98,7 +98,31 @@ namespace NowUI
             public byte hadFocus;
         }
 
-        static readonly List<NowTextLine> _lineScratch = new List<NowTextLine>(16);
+        /// <summary>
+        /// Per-control wrapped-line cache: the strings, font and width that
+        /// produced <see cref="lines"/>, so unchanged draws skip re-wrapping.
+        /// </summary>
+        struct WrapCache
+        {
+            public List<NowTextLine> lines;
+            public string text;
+            public NowFontAsset font;
+            public float fontSize;
+            public NowFontStyle style;
+            public float width;
+        }
+
+        const int WrapCacheSeed = 0x4e544101;
+        const int LineCountSeed = 0x4e544102;
+        const int SelectionGestureSeed = 0x4e544103;
+        const int VScrollSeed = 0x4e544104;
+        const int EnterRepeatSeed = 0x4e544105;
+        const int BackspaceRepeatSeed = 0x4e544106;
+        const int DeleteRepeatSeed = 0x4e544107;
+        const int LeftRepeatSeed = 0x4e544108;
+        const int RightRepeatSeed = 0x4e544109;
+        const int UpRepeatSeed = 0x4e54410a;
+        const int DownRepeatSeed = 0x4e54410b;
 
         static readonly List<NowTextLine> _compatLineScratch = new List<NowTextLine>(16);
 
@@ -116,7 +140,7 @@ namespace NowUI
             float fontSize = textStyle.fontSize;
             float lineHeight = fontAsset != null ? fontAsset.GetLineHeight(textStyle.fontStyle) * fontSize : fontSize * 1.2f;
 
-            ref int lastLineCount = ref NowControlState.Get<int>(id, "lines");
+            ref int lastLineCount = ref NowControlState.Get<int>(NowInput.CombineId(id, LineCountSeed));
             int visualLines = Mathf.Clamp(Mathf.Max(lastLineCount, 1), _minLines, _maxLines);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureTextArea(theme, lineHeight, visualLines));
@@ -125,13 +149,16 @@ namespace NowUI
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
             ref var area = ref NowControlState.Get<AreaState>(id, "area");
-            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(id, "selection-gesture");
+            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(NowInput.CombineId(id, SelectionGestureSeed));
 
             if (fontAsset == null)
                 return false;
 
-            var lines = _lineScratch;
-            LayoutLines(text, fontAsset, fontSize, textStyle.fontStyle, inner.width, lines);
+            int scrollbarId = NowInput.CombineId(id, VScrollSeed);
+            ref var wrap = ref NowControlState.Get<WrapCache>(NowInput.CombineId(id, WrapCacheSeed));
+            wrap.lines ??= new List<NowTextLine>(16);
+            var lines = wrap.lines;
+            EnsureLines(ref wrap, text, fontAsset, fontSize, textStyle.fontStyle, inner.width);
 
             if (lastLineCount != lines.Count)
             {
@@ -147,7 +174,7 @@ namespace NowUI
             {
                 var preMetrics = ScrollbarMetrics(theme, rect, inner, lines.Count * lineHeight, area.scrollY);
                 scrollbarDragging = NowScrollbar.Interact(
-                    NowInput.GetId(id, "vscroll"), NowScrollbarAxis.Vertical, in preMetrics, ref area.scrollY);
+                    scrollbarId, NowScrollbarAxis.Vertical, in preMetrics, ref area.scrollY);
             }
 
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
@@ -278,14 +305,14 @@ namespace NowUI
                         }
                     }
 
-                    if (NowControlState.Repeat(id, "enter", frame.enterHeld))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, EnterRepeatSeed), frame.enterHeld))
                     {
                         revealCaret = true;
                         undo.Push(text, in state, typing: true);
                         NowTextEdit.Insert(ref text, ref state, "\n");
                     }
 
-                    if (NowControlState.Repeat(id, "bs", frame.backspaceHeld))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, BackspaceRepeatSeed), frame.backspaceHeld))
                     {
                         revealCaret = true;
                         undo.Push(text, in state, typing: true);
@@ -296,7 +323,7 @@ namespace NowUI
                             NowTextEdit.Backspace(ref text, ref state, frame.wordModifier);
                     }
 
-                    if (NowControlState.Repeat(id, "del", frame.deleteHeld))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, DeleteRepeatSeed), frame.deleteHeld))
                     {
                         revealCaret = true;
                         undo.Push(text, in state, typing: true);
@@ -304,9 +331,9 @@ namespace NowUI
                     }
 
                     if (text != original)
-                        LayoutLines(text, fontAsset, fontSize, textStyle.fontStyle, inner.width, lines);
+                        EnsureLines(ref wrap, text, fontAsset, fontSize, textStyle.fontStyle, inner.width);
 
-                    if (NowControlState.Repeat(id, "left", frame.leftHeld))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, LeftRepeatSeed), frame.leftHeld))
                     {
                         revealCaret = true;
 
@@ -324,7 +351,7 @@ namespace NowUI
                         }
                     }
 
-                    if (NowControlState.Repeat(id, "right", frame.rightHeld))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, RightRepeatSeed), frame.rightHeld))
                     {
                         revealCaret = true;
 
@@ -342,7 +369,7 @@ namespace NowUI
                         }
                     }
 
-                    if (NowControlState.Repeat(id, "up", frame.upHeld))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, UpRepeatSeed), frame.upHeld))
                     {
                         revealCaret = true;
 
@@ -358,7 +385,7 @@ namespace NowUI
                         }
                     }
 
-                    if (NowControlState.Repeat(id, "down", frame.downHeld))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, DownRepeatSeed), frame.downHeld))
                     {
                         revealCaret = true;
 
@@ -428,7 +455,7 @@ namespace NowUI
             }
 
             if (text != original || composition != null)
-                LayoutLines(display, fontAsset, fontSize, textStyle.fontStyle, inner.width, lines);
+                EnsureLines(ref wrap, display, fontAsset, fontSize, textStyle.fontStyle, inner.width);
 
             int caretLine = NowTextMetrics.LineOf(display, lines, displayCaret);
             float caretX = NowTextMetrics.Advance(display, fontAsset, fontSize, textStyle.fontStyle,
@@ -526,7 +553,7 @@ namespace NowUI
 
             if (maxScroll > 0f)
             {
-                int thumbId = NowInput.GetId(id, "vscroll");
+                int thumbId = scrollbarId;
                 var metrics = ScrollbarMetrics(theme, rect, inner, contentHeight, area.scrollY);
                 float hoverT = NowControlState.Transition(thumbId, NowInput.IsHovered(metrics.track.Outset(4f, 2f)));
                 renderer.DrawScrollbar(new NowScrollbarRenderContext(
@@ -581,9 +608,24 @@ namespace NowUI
                 lines.Add(new NowTextAreaLine { start = _compatLineScratch[i].start, length = _compatLineScratch[i].length });
         }
 
-        internal static void LayoutLines(string text, NowFontAsset font, float fontSize, NowFontStyle style, float width, List<NowTextLine> lines)
+        static void EnsureLines(ref WrapCache cache, string text, NowFontAsset font, float fontSize, NowFontStyle style, float width)
         {
-            NowTextMetrics.LayoutWrappedLines(text, font, fontSize, style, width, lines);
+            if (ReferenceEquals(cache.text, text) &&
+                ReferenceEquals(cache.font, font) &&
+                cache.fontSize == fontSize &&
+                cache.style == style &&
+                cache.width == width &&
+                cache.text != null)
+            {
+                return;
+            }
+
+            NowTextMetrics.LayoutWrappedLines(text, font, fontSize, style, width, cache.lines);
+            cache.text = text;
+            cache.font = font;
+            cache.fontSize = fontSize;
+            cache.style = style;
+            cache.width = width;
         }
 
         /// <summary>The line containing the caret index (wrap boundaries belong to the next line).</summary>

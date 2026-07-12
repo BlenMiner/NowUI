@@ -21,6 +21,9 @@ namespace NowUI
     {
         NowId _id;
         readonly int _site;
+
+        const int ExpandedSeed = 0x4e464458;
+
         readonly string _label;
         NowFocusNavigation _navigation;
         NowLayoutOptions _options;
@@ -64,7 +67,7 @@ namespace NowUI
         public bool Draw()
         {
             int id = NowControls.GetControlId(_id, _site);
-            ref bool expanded = ref NowControlState.Get<bool>(NowInput.GetId(id, "expanded"));
+            ref bool expanded = ref NowControlState.Get<bool>(NowInput.CombineId(id, ExpandedSeed));
             DrawHeader(id, ref expanded);
             return expanded;
         }

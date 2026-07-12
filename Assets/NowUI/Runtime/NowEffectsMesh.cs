@@ -28,6 +28,12 @@ namespace NowUI
         static int[] _indexMap = new int[256];
         static int[] _grid = new int[256];
 
+        /// <summary>
+        /// Union of the per-batch bounds recorded at capture time, avoiding a full
+        /// CPU readback of the captured mesh. Every NowMesh append path encapsulates
+        /// its emitted vertices, so the union always contains the geometry; for
+        /// tessellated fills (AddGeometry) it is a slightly padded superset.
+        /// </summary>
         internal static bool TryGetDrawListBounds(NowDrawList drawList, out NowRect bounds)
         {
             bounds = default;
@@ -35,8 +41,21 @@ namespace NowUI
             if (drawList == null || !drawList.hasGeometry)
                 return false;
 
-            ReadMesh(drawList.mesh);
-            return TryGetBounds(_vertices, out bounds);
+            var batches = drawList.batches;
+            bool hasBounds = false;
+
+            for (int i = 0; i < batches.Count; ++i)
+            {
+                var batchBounds = batches[i].bounds;
+
+                if (batchBounds.isEmpty)
+                    continue;
+
+                bounds = hasBounds ? bounds.Union(batchBounds) : batchBounds;
+                hasBounds = true;
+            }
+
+            return hasBounds;
         }
 
         internal static void RenderDrawListToTexture(

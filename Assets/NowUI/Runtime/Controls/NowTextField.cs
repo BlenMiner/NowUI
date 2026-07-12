@@ -39,6 +39,18 @@ namespace NowUI
 
         const int SpinnerUpSeed = 0x4e545355;
         const int SpinnerDownSeed = 0x4e545344;
+        const int NumberStateSeed = 0x4e544601;
+        const int SelectionGestureSeed = 0x4e544602;
+        const int RevertSeed = 0x4e544603;
+        const int BlinkSeed = 0x4e544604;
+        const int LastCaretSeed = 0x4e544605;
+        const int BackspaceRepeatSeed = 0x4e544606;
+        const int DeleteRepeatSeed = 0x4e544607;
+        const int LeftRepeatSeed = 0x4e544608;
+        const int RightRepeatSeed = 0x4e544609;
+        const int SpinUpRepeatSeed = 0x4e54460a;
+        const int SpinDownRepeatSeed = 0x4e54460b;
+        const int SpinNavRepeatSeed = 0x4e54460c;
 
         static TouchScreenKeyboard s_touchKeyboard;
         static int s_touchKeyboardId;
@@ -208,7 +220,7 @@ namespace NowUI
             if (_hasNumberRange)
                 value = Mathf.Clamp(value, _numberMin, _numberMax);
 
-            ref var numberState = ref NowControlState.Get<NumberEditState>(id, "number");
+            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.CombineId(id, NumberStateSeed));
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatFloat(ref numberState, value, format);
@@ -260,7 +272,7 @@ namespace NowUI
             if (_hasNumberRange)
                 value = Mathf.Clamp(value, Mathf.CeilToInt(_numberMin), Mathf.FloorToInt(_numberMax));
 
-            ref var numberState = ref NowControlState.Get<NumberEditState>(id, "number");
+            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.CombineId(id, NumberStateSeed));
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatLong(ref numberState, value);
@@ -312,7 +324,7 @@ namespace NowUI
             if (_hasNumberRange)
                 value = ClampDouble(value, _numberMin, _numberMax);
 
-            ref var numberState = ref NowControlState.Get<NumberEditState>(id, "number");
+            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.CombineId(id, NumberStateSeed));
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatDouble(ref numberState, value, format);
@@ -364,7 +376,7 @@ namespace NowUI
             if (_hasNumberRange)
                 value = ClampLong(value, _numberMin, _numberMax);
 
-            ref var numberState = ref NowControlState.Get<NumberEditState>(id, "number");
+            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.CombineId(id, NumberStateSeed));
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatLong(ref numberState, value);
@@ -514,11 +526,11 @@ namespace NowUI
 
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
-            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(id, "selection-gesture");
+            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(NowInput.CombineId(id, SelectionGestureSeed));
 
             // Focus gained without a click (tab/gamepad/programmatic): caret to end.
             ref byte hadFocus = ref NowControlState.Get<byte>(id, "hadfocus");
-            ref var revert = ref NowControlState.Get<RevertState>(id, "revert");
+            ref var revert = ref NowControlState.Get<RevertState>(NowInput.CombineId(id, RevertSeed));
 
             if (focused && hadFocus == 0)
             {
@@ -635,7 +647,7 @@ namespace NowUI
                         }
                     }
 
-                    if (NowControlState.Repeat(id, "bs", frame.backspaceHeld))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, BackspaceRepeatSeed), frame.backspaceHeld))
                     {
                         undo.Push(text, in state, typing: true);
 
@@ -645,13 +657,13 @@ namespace NowUI
                             NowTextEdit.Backspace(ref text, ref state, frame.wordModifier);
                     }
 
-                    if (NowControlState.Repeat(id, "del", frame.deleteHeld))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, DeleteRepeatSeed), frame.deleteHeld))
                     {
                         undo.Push(text, in state, typing: true);
                         NowTextEdit.Delete(ref text, ref state, frame.wordModifier);
                     }
 
-                    if (NowControlState.Repeat(id, "left", frame.leftHeld))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, LeftRepeatSeed), frame.leftHeld))
                     {
                         if (frame.lineModifier)
                             NowTextEdit.MoveHome(ref state, frame.shift);
@@ -659,7 +671,7 @@ namespace NowUI
                             NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.wordModifier);
                     }
 
-                    if (NowControlState.Repeat(id, "right", frame.rightHeld))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, RightRepeatSeed), frame.rightHeld))
                     {
                         if (frame.lineModifier)
                             NowTextEdit.MoveEnd(ref state, text, frame.shift);
@@ -681,8 +693,8 @@ namespace NowUI
                 CloseTouchKeyboard();
             }
 
-            ref float blinkAnchor = ref NowControlState.Get<float>(id, "blink");
-            ref int lastCaret = ref NowControlState.Get<int>(id, "lastcaret");
+            ref float blinkAnchor = ref NowControlState.Get<float>(NowInput.CombineId(id, BlinkSeed));
+            ref int lastCaret = ref NowControlState.Get<int>(NowInput.CombineId(id, LastCaretSeed));
 
             if (state.caret != lastCaret || text != original || interaction.pressed)
             {
@@ -760,17 +772,17 @@ namespace NowUI
             {
                 int ticks = 0;
 
-                if (NowControlState.Repeat(id, "spin-up", spinnerUp.held, 0.35f, 0.06f))
+                if (NowControlState.Repeat(NowInput.CombineId(id, SpinUpRepeatSeed), spinnerUp.held, 0.35f, 0.06f))
                     ++ticks;
 
-                if (NowControlState.Repeat(id, "spin-down", spinnerDown.held, 0.35f, 0.06f))
+                if (NowControlState.Repeat(NowInput.CombineId(id, SpinDownRepeatSeed), spinnerDown.held, 0.35f, 0.06f))
                     --ticks;
 
                 if (focused && !NowInput.isPassive)
                 {
                     float navY = NowInput.current.navigation.y;
 
-                    if (NowControlState.Repeat(id, "spin-nav", Mathf.Abs(navY) > 0.55f, 0.35f, 0.08f))
+                    if (NowControlState.Repeat(NowInput.CombineId(id, SpinNavRepeatSeed), Mathf.Abs(navY) > 0.55f, 0.35f, 0.08f))
                         ticks += navY > 0f ? 1 : -1;
                 }
 

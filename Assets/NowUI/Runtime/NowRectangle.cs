@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace NowUI
@@ -113,6 +114,14 @@ namespace NowUI
         /// <summary>Optional UGUI-specific material used by <see cref="NowGraphic"/>.</summary>
         public Material canvasMaterial;
 
+        /// <summary>
+        /// Skips the per-frame property re-sync of the cached textured copy of
+        /// <see cref="material"/>. Set when the source material's properties never
+        /// change after assignment; property (and shader) edits on the source are
+        /// then no longer picked up automatically.
+        /// </summary>
+        public bool staticMaterial;
+
         public NowRectangle(NowRect rect)
         {
             mask = rect;
@@ -131,43 +140,51 @@ namespace NowUI
             preserveAspect = false;
             material = null;
             canvasMaterial = null;
+            staticMaterial = false;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetBlur(float blur)
         {
             this.blur = blur;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetRadius(float allRadius)
         {
             radius = new Vector4(allRadius, allRadius, allRadius, allRadius);
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetRadius(float topLeft, float topRight, float bottomRight, float bottomLeft)
         {
             radius = new NowCornerRadius(topLeft, topRight, bottomRight, bottomLeft).packed;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetRadius(NowCornerRadius radius)
         {
             this.radius = radius.packed;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetRadius(Vector4 radius)
         {
             this.radius = radius;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetPadding(float all)
         {
             return SetPadding(new Vector4(all, all, all, all));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetPadding(Vector4 padding)
         {
             padding = new Vector4(-padding.x, -padding.y, -padding.z, -padding.w);
@@ -176,48 +193,56 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetOutline(float outline)
         {
             this.outline = outline;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetPosition(NowRect rect)
         {
             this.rect = rect;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetMask(NowRect mask)
         {
             this.mask = mask;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetColor(Color color)
         {
             this.color = color;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetColor(Color color, float alpha)
         {
             this.color = new Color(color.r, color.g, color.b, alpha);
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetColor(Vector4 color)
         {
             this.color = color;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetOutlineColor(Color color)
         {
             outlineColor = color;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetOutlineColor(Vector4 color)
         {
             outlineColor = color;
@@ -229,6 +254,7 @@ namespace NowUI
         /// radius and masks like any rectangle):
         /// <code>Now.Rectangle(rect).SetTexture(photo).SetRadius(8).Draw();</code>
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetTexture(Texture texture)
         {
             this.texture = texture;
@@ -236,6 +262,7 @@ namespace NowUI
         }
 
         /// <summary>Restricts sampling to a texture sub-region (u, v, width, height in 0..1).</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetUV(Vector4 uvRect)
         {
             this.uvRect = uvRect;
@@ -249,6 +276,7 @@ namespace NowUI
         /// blur do not apply to sliced draws.
         /// <code>Now.Rectangle(rect).SetSprite(panelSprite, sliced: true).Draw();</code>
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetSprite(Sprite sprite, bool sliced = false)
         {
             if (sprite == null || sprite.texture == null)
@@ -270,6 +298,7 @@ namespace NowUI
         }
 
         /// <summary>Letterboxes the texture inside the rect instead of stretching it.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetPreserveAspect(bool preserve = true)
         {
             preserveAspect = preserve;
@@ -282,6 +311,7 @@ namespace NowUI
         /// rectangle shader; if a texture is also set, NowUI draws with a cached
         /// material instance whose main texture is assigned to that texture.
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetMaterial(Material material)
         {
             this.material = material;
@@ -289,9 +319,24 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Like <see cref="SetMaterial(Material)"/>; pass
+        /// <paramref name="syncPerFrame"/> false when the material's properties never
+        /// change, so textured draws skip the per-frame property copy into the cached
+        /// textured material instance.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NowRectangle SetMaterial(Material material, bool syncPerFrame)
+        {
+            this.material = material;
+            staticMaterial = !syncPerFrame;
+            return this;
+        }
+
+        /// <summary>
         /// Uses one material for normal render paths and a separate UGUI-compatible
         /// material when the rectangle is drawn inside <see cref="NowGraphic"/>.
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetMaterial(Material material, Material canvasMaterial)
         {
             this.material = material;
@@ -303,6 +348,7 @@ namespace NowUI
         /// Overrides only the UGUI material. Non-UGUI hosts keep using the normal
         /// built-in or custom rectangle material.
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetCanvasMaterial(Material canvasMaterial)
         {
             this.canvasMaterial = canvasMaterial;

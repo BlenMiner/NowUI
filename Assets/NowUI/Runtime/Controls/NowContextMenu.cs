@@ -75,6 +75,17 @@ namespace NowUI
         static readonly List<int> _openPath = new List<int>(4);
         static readonly List<int> _pendingOpenPath = new List<int>(4);
 
+        /// <summary>
+        /// Outstanding click deliveries. While zero, <see cref="Begin"/> for a
+        /// closed menu returns without hashing its pending-path id or touching
+        /// the state store — the common case for every potential menu owner on
+        /// every frame. Never reset: an owner that vanishes before its delivery
+        /// pass leaves the count high, which only re-enables the slow check.
+        /// </summary>
+        static int _pendingDeliveryCount;
+
+        static readonly Dictionary<int, int> _labelOccurrenceScratch = new Dictionary<int, int>(32);
+
         enum EntryKind
         {
             Item,
@@ -180,6 +191,9 @@ namespace NowUI
             if (NowInput.isPassive)
                 return false;
 
+            if (_openId != id && _pendingDeliveryCount == 0)
+                return false;
+
             int pendingStateId = NowInput.GetId(id, "ctx-pending-path");
 
             if (_openId != id && NowControlState.Get<int>(pendingStateId) == 0)
@@ -192,6 +206,7 @@ namespace NowUI
             _pendingPathStateId = pendingStateId;
             _menuCount = 0;
             _buildStack.Clear();
+            _labelOccurrenceScratch.Clear();
 
             int rootIndex = AddMenu(id, id, id, -1, 0);
             _buildStack.Add(rootIndex);
@@ -245,6 +260,10 @@ namespace NowUI
             if (pending == deliveryId)
             {
                 pending = 0;
+
+                if (_pendingDeliveryCount > 0)
+                    --_pendingDeliveryCount;
+
                 _pendingOpenPath.Clear();
                 return enabled;
             }
@@ -262,17 +281,10 @@ namespace NowUI
         /// </summary>
         static int ItemDeliveryId(Menu menu, string label)
         {
-            int occurrence = 0;
-
-            for (int i = 0; i < menu.entries.Count; ++i)
-            {
-                var entry = menu.entries[i];
-
-                if (entry.kind == EntryKind.Item && string.Equals(entry.label, label))
-                    ++occurrence;
-            }
-
-            return NowInput.CombineId(NowInput.GetId(menu.pathId, label), occurrence);
+            int labelId = NowInput.GetId(menu.pathId, label);
+            _labelOccurrenceScratch.TryGetValue(labelId, out int occurrence);
+            _labelOccurrenceScratch[labelId] = occurrence + 1;
+            return NowInput.CombineId(labelId, occurrence);
         }
 
         /// <summary>Adds a submenu row; true while that submenu should declare its children.</summary>
@@ -392,7 +404,16 @@ namespace NowUI
 
             if (_openId != id)
             {
-                NowControlState.Get<int>(_pendingPathStateId) = 0;
+                ref int pending = ref NowControlState.Get<int>(_pendingPathStateId);
+
+                if (pending != 0)
+                {
+                    pending = 0;
+
+                    if (_pendingDeliveryCount > 0)
+                        --_pendingDeliveryCount;
+                }
+
                 _pendingOpenPath.Clear();
                 return;
             }
@@ -1008,7 +1029,12 @@ namespace NowUI
             if (entry.kind != EntryKind.Item || !entry.enabled || (!interaction.clicked && !submitted))
                 return;
 
-            NowControlState.Get<int>(_pendingPathStateId) = entry.deliveryId;
+            ref int pendingDelivery = ref NowControlState.Get<int>(_pendingPathStateId);
+
+            if (pendingDelivery == 0)
+                ++_pendingDeliveryCount;
+
+            pendingDelivery = entry.deliveryId;
             CopyOpenPathToPending(menu.depth);
             Close();
         }

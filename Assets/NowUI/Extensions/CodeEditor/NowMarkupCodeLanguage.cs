@@ -343,7 +343,7 @@ namespace NowUI.CodeEditor
             if (i == nameStart)
                 return start + 1;
 
-            string tagName = text.Substring(nameStart, i - nameStart);
+            int nameEnd = i;
             Add(tokens, nameStart, i - nameStart, NowCodeTokenKind.Tag);
 
             bool selfClosing = false;
@@ -406,7 +406,7 @@ namespace NowUI.CodeEditor
             if (close >= 0)
                 Add(tokens, close, 1, NowCodeTokenKind.Punctuation);
 
-            opensStyle = !closing && !selfClosing && StringEquals(tagName, "style");
+            opensStyle = !closing && !selfClosing && RegionEqualsIgnoreCase(text, nameStart, nameEnd - nameStart, "style");
             return close >= 0 ? close + 1 : end;
         }
 
@@ -766,16 +766,68 @@ namespace NowUI.CodeEditor
             return -1;
         }
 
+        /// <summary>
+        /// Ordinal search bounded to [start, end): unlike string.IndexOf with a
+        /// StringComparison, the scan never walks past <paramref name="end"/>,
+        /// keeping per-line tokenization O(line) instead of O(document).
+        /// </summary>
         static int IndexOf(string text, string value, int start, int end)
         {
-            int found = text.IndexOf(value, start, StringComparison.Ordinal);
-            return found >= 0 && found + value.Length <= end ? found : -1;
+            int limit = end - value.Length;
+            char first = value[0];
+
+            for (int i = start; i <= limit; ++i)
+            {
+                if (text[i] != first)
+                    continue;
+
+                int k = 1;
+
+                while (k < value.Length && text[i + k] == value[k])
+                    ++k;
+
+                if (k == value.Length)
+                    return i;
+            }
+
+            return -1;
         }
 
+        /// <summary>
+        /// Case-insensitive counterpart of <see cref="IndexOf"/>, using the
+        /// same per-char invariant comparison as ordinal-ignore-case instead of
+        /// culture-table search.
+        /// </summary>
         static int IndexOfIgnoreCase(string text, string value, int start, int end)
         {
-            int found = text.IndexOf(value, start, StringComparison.OrdinalIgnoreCase);
-            return found >= 0 && found + value.Length <= end ? found : -1;
+            int limit = end - value.Length;
+
+            for (int i = start; i <= limit; ++i)
+            {
+                int k = 0;
+
+                while (k < value.Length && CharEqualsIgnoreCase(text[i + k], value[k]))
+                    ++k;
+
+                if (k == value.Length)
+                    return i;
+            }
+
+            return -1;
+        }
+
+        static bool RegionEqualsIgnoreCase(string text, int start, int length, string value)
+        {
+            if (length != value.Length)
+                return false;
+
+            for (int i = 0; i < length; ++i)
+            {
+                if (!CharEqualsIgnoreCase(text[start + i], value[i]))
+                    return false;
+            }
+
+            return true;
         }
 
         static bool StartsWith(string text, int index, string value, int end)

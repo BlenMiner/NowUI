@@ -18,6 +18,10 @@ namespace NowUI
     {
         NowId _id;
         readonly int _site;
+
+        const int TimePartsSeed = 0x4e545054;
+        const int ClockModeSeed = 0x4e54434d;
+
         NowFocusNavigation _navigation;
         NowLayoutOptions _layoutOptions;
         readonly NowRect _rect;
@@ -126,7 +130,7 @@ namespace NowUI
             var renderer = theme.controlRenderer;
             int id = NowControls.GetControlId(_id, _site);
 
-            ref var parts = ref NowControlState.Get<TimeParts>(id, "time-parts");
+            ref var parts = ref NowControlState.Get<TimeParts>(NowInput.CombineId(id, TimePartsSeed));
             ref bool open = ref NowControlState.Get<bool>(id);
             bool changed = false;
 
@@ -147,9 +151,9 @@ namespace NowUI
             }
 
             var textStyle = NowControls.Text(theme, NowTextStyle.Body);
-            float lineHeight = textStyle.Measure("Ag").y;
-            if (lineHeight <= 0f)
-                lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
+            float lineHeight = textStyle.font != null
+                ? textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize
+                : 20f;
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _layoutOptions, renderer.MeasureDropdownField(theme, lineHeight));
 
@@ -164,7 +168,7 @@ namespace NowUI
                     parts.hour = value.Hours;
                     parts.minute = value.Minutes;
                     parts.initialized = 1;
-                    NowControlState.Get<int>(id, "clock-mode") = 0;
+                    NowControlState.Get<int>(NowInput.CombineId(id, ClockModeSeed)) = 0;
                     GetState(id).openedFrame = NowInput.current.frame;
                 }
             }
@@ -273,8 +277,8 @@ namespace NowUI
             renderer.DrawPopupBackground(theme, popupRect, menu: false);
             EnsureStaticLabels();
 
-            ref var parts = ref NowControlState.Get<TimeParts>(state.id, "time-parts");
-            ref int mode = ref NowControlState.Get<int>(state.id, "clock-mode");
+            ref var parts = ref NowControlState.Get<TimeParts>(NowInput.CombineId(state.id, TimePartsSeed));
+            ref int mode = ref NowControlState.Get<int>(NowInput.CombineId(state.id, ClockModeSeed));
 
             UpdateKeyboard(state, ref parts, ref mode);
 

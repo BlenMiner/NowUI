@@ -28,9 +28,24 @@ namespace NowUI.NodeGraph
 
     public static class NowNodeIds
     {
+        static readonly string[] SmallIds = BuildSmallIds();
+
         public static string FromInt(int id)
         {
-            return id.ToString(CultureInfo.InvariantCulture);
+            var cache = SmallIds;
+            return (uint)id < (uint)cache.Length
+                ? cache[id]
+                : id.ToString(CultureInfo.InvariantCulture);
+        }
+
+        static string[] BuildSmallIds()
+        {
+            var ids = new string[256];
+
+            for (int i = 0; i < ids.Length; ++i)
+                ids[i] = i.ToString(CultureInfo.InvariantCulture);
+
+            return ids;
         }
     }
 
@@ -247,6 +262,33 @@ namespace NowUI.NodeGraph
         public bool isInput => direction == NowNodePortDirection.Input;
 
         public bool isOutput => direction == NowNodePortDirection.Output;
+
+        [NonSerialized] string _idHashSource;
+        [NonSerialized] int _idHash;
+
+        /// <summary>
+        /// Control-id hash of <see cref="id"/>, cached against the current string
+        /// instance and recomputed when the id field is reassigned. Returns 0 for
+        /// a null or empty id.
+        /// </summary>
+        internal int idHash
+        {
+            get
+            {
+                string value = id;
+
+                if (string.IsNullOrEmpty(value))
+                    return 0;
+
+                if (!ReferenceEquals(_idHashSource, value))
+                {
+                    _idHash = NowInput.GetId(value);
+                    _idHashSource = value;
+                }
+
+                return _idHash;
+            }
+        }
     }
 
     public sealed class NowNodePortDefinition
@@ -786,6 +828,33 @@ namespace NowUI.NodeGraph
             this.title = title ?? string.Empty;
             this.position = position;
             size = default;
+        }
+
+        [NonSerialized] string _idHashSource;
+        [NonSerialized] int _idHash;
+
+        /// <summary>
+        /// Control-id hash of <see cref="id"/>, cached against the current string
+        /// instance and recomputed when the id field is reassigned. Returns 0 for
+        /// a null or empty id.
+        /// </summary>
+        internal int idHash
+        {
+            get
+            {
+                string value = id;
+
+                if (string.IsNullOrEmpty(value))
+                    return 0;
+
+                if (!ReferenceEquals(_idHashSource, value))
+                {
+                    _idHash = NowInput.GetId(value);
+                    _idHashSource = value;
+                }
+
+                return _idHash;
+            }
         }
 
         public NowNodePort AddInput(string id, string label, int typeId = 0)
@@ -3471,6 +3540,36 @@ namespace NowUI.NodeGraph
             public Vector2 snapGuideYTo;
             public Vector2 contextMenuGraphPosition;
             public NowNodeContentContext contentContext;
+            public DrawCache drawCache;
+        }
+
+        /// <summary>
+        /// Per-canvas lookup structures rebuilt lazily within each Draw so hot
+        /// loops avoid O(links x ports) and O(nodes x nodes) string scans. All
+        /// entries are invalidated at the start of every Draw, again whenever the
+        /// canvas mutates the graph mid-frame, and double-checked against the
+        /// source collection counts, so mutations between frames never leak stale
+        /// results into the next Draw.
+        /// </summary>
+        sealed class DrawCache
+        {
+            public readonly Dictionary<string, int> nodeIndexById = new Dictionary<string, int>(32);
+            public readonly HashSet<(string nodeId, string portId)> connectedPorts = new HashSet<(string nodeId, string portId)>();
+            public readonly HashSet<string> selectedIds = new HashSet<string>();
+            public bool nodeIndexValid;
+            public bool connectedPortsValid;
+            public bool selectionValid;
+            public int nodeIndexCount;
+            public int connectedLinkCount;
+            public int selectionCount;
+            public string selectionPrimary;
+
+            public void Invalidate()
+            {
+                nodeIndexValid = false;
+                connectedPortsValid = false;
+                selectionValid = false;
+            }
         }
 
         sealed class NodeSearchData
@@ -3542,6 +3641,7 @@ namespace NowUI.NodeGraph
         bool _hasStyle;
         Action<NowNode, NowRect> _legacyNodeContent;
         NowNodeContentRenderer _nodeContent;
+        DrawCache _drawCache;
 
         internal NowNodeGraphCanvas(NowNodeGraph graph, NowRect rect, NowId id, int site)
         {
@@ -3559,6 +3659,7 @@ namespace NowUI.NodeGraph
             _hasStyle = false;
             _legacyNodeContent = null;
             _nodeContent = null;
+            _drawCache = null;
         }
 
         internal NowNodeGraphCanvas(NowNodeGraphView view, NowRect rect, NowId id, int site)
@@ -3577,6 +3678,7 @@ namespace NowUI.NodeGraph
             _hasStyle = false;
             _legacyNodeContent = null;
             _nodeContent = null;
+            _drawCache = null;
         }
 
         public NowNodeGraphCanvas SetStyle(NowNodeGraphStyle style)
@@ -3752,6 +3854,12 @@ namespace NowUI.NodeGraph
             int id = NowControls.GetControlId(_id, _site);
             ref var state = ref NowControlState.Get<CanvasState>(id);
             InitializeState(ref state, style);
+
+            if (state.drawCache == null)
+                state.drawCache = new DrawCache();
+
+            _drawCache = state.drawCache;
+            _drawCache.Invalidate();
 
             int focusId = NowInput.GetId(id, "focus");
             RegisterCanvasFocus(focusId);
@@ -4963,6 +5071,7 @@ namespace NowUI.NodeGraph
 
                     history?.Record(_graph);
                     int removed = _graph.RemoveLinksForPort(node.id, port.id);
+                    _drawCache?.Invalidate();
 
                     if (removed > 0)
                     {
@@ -5095,6 +5204,7 @@ namespace NowUI.NodeGraph
                 result.createdLink = newLink;
             }
 
+            _drawCache?.Invalidate();
             ClearLinkDrag(ref state);
             NowControlState.RequestRepaint();
         }
@@ -5131,18 +5241,108 @@ namespace NowUI.NodeGraph
 
         bool HasLinksForPort(string nodeId, string portId)
         {
-            for (int i = 0; i < _graph.links.Count; ++i)
-            {
-                var link = _graph.links[i];
+            var cache = _drawCache;
+            var links = _graph.links;
 
-                if ((link.inputNodeId == nodeId && link.inputPortId == portId) ||
-                    (link.outputNodeId == nodeId && link.outputPortId == portId))
+            if (cache == null)
+            {
+                for (int i = 0; i < links.Count; ++i)
                 {
-                    return true;
+                    var link = links[i];
+
+                    if ((link.inputNodeId == nodeId && link.inputPortId == portId) ||
+                        (link.outputNodeId == nodeId && link.outputPortId == portId))
+                    {
+                        return true;
+                    }
                 }
+
+                return false;
             }
 
-            return false;
+            if (!cache.connectedPortsValid || cache.connectedLinkCount != links.Count)
+            {
+                cache.connectedPorts.Clear();
+
+                for (int i = 0; i < links.Count; ++i)
+                {
+                    var link = links[i];
+                    cache.connectedPorts.Add((link.inputNodeId, link.inputPortId));
+                    cache.connectedPorts.Add((link.outputNodeId, link.outputPortId));
+                }
+
+                cache.connectedLinkCount = links.Count;
+                cache.connectedPortsValid = true;
+            }
+
+            return cache.connectedPorts.Contains((nodeId, portId));
+        }
+
+        int CachedIndexOfNode(string nodeId)
+        {
+            var cache = _drawCache;
+
+            if (cache == null)
+                return _graph.IndexOfNode(nodeId);
+
+            var nodes = _graph.nodes;
+
+            if (!cache.nodeIndexValid || cache.nodeIndexCount != nodes.Count)
+            {
+                cache.nodeIndexById.Clear();
+
+                for (int i = 0; i < nodes.Count; ++i)
+                {
+                    var node = nodes[i];
+
+                    if (node != null && !string.IsNullOrEmpty(node.id) && !cache.nodeIndexById.ContainsKey(node.id))
+                        cache.nodeIndexById.Add(node.id, i);
+                }
+
+                cache.nodeIndexCount = nodes.Count;
+                cache.nodeIndexValid = true;
+            }
+
+            return !string.IsNullOrEmpty(nodeId) && cache.nodeIndexById.TryGetValue(nodeId, out int index)
+                ? index
+                : -1;
+        }
+
+        bool CachedIsNodeSelected(string nodeId)
+        {
+            var cache = _drawCache;
+
+            if (cache == null)
+                return _graph.IsNodeSelected(nodeId);
+
+            var ids = _graph.selectedNodeIds;
+            int count = ids != null ? ids.Count : 0;
+
+            if (!cache.selectionValid ||
+                cache.selectionCount != count ||
+                !ReferenceEquals(cache.selectionPrimary, _graph.selectedNodeId))
+            {
+                cache.selectedIds.Clear();
+
+                if (count > 0)
+                {
+                    for (int i = 0; i < count; ++i)
+                    {
+                        if (ids[i] != null)
+                            cache.selectedIds.Add(ids[i]);
+                    }
+                }
+                else if (!string.IsNullOrEmpty(_graph.selectedNodeId))
+                {
+                    cache.selectedIds.Add(_graph.selectedNodeId);
+                }
+
+                cache.selectionCount = count;
+                cache.selectionPrimary = _graph.selectedNodeId;
+                cache.selectionValid = true;
+            }
+
+            return !string.IsNullOrEmpty(nodeId) && cache.selectedIds.Contains(nodeId);
         }
 
         void SelectNode(string nodeId, ref NowNodeGraphResult result)
@@ -5151,6 +5351,7 @@ namespace NowUI.NodeGraph
             int previousCount = _graph.SelectedNodeCount();
             bool hadLink = _graph.selectedLink.isValid;
             _graph.SelectNode(nodeId);
+            _drawCache?.Invalidate();
 
             if (previous != _graph.selectedNodeId || previousCount != _graph.SelectedNodeCount() || hadLink)
             {
@@ -5166,6 +5367,7 @@ namespace NowUI.NodeGraph
                 return;
 
             _graph.SelectLink(link);
+            _drawCache?.Invalidate();
             result.changed = true;
             result.selectionChanged = true;
             NowControlState.RequestRepaint();
@@ -5188,7 +5390,7 @@ namespace NowUI.NodeGraph
                     continue;
                 }
 
-                float distanceSquared = DistanceSquaredToConnection(point, from, to);
+                float distanceSquared = DistanceSquaredToConnection(point, from, to, threshold);
 
                 if (distanceSquared < bestDistanceSquared)
                 {
@@ -5200,11 +5402,28 @@ namespace NowUI.NodeGraph
             return bestIndex;
         }
 
-        static float DistanceSquaredToConnection(Vector2 point, Vector2 from, Vector2 to)
+        /// <summary>
+        /// Distance from a point to the sampled connection curve, or
+        /// float.MaxValue when the point lies further than
+        /// <paramref name="earlyOutDistance"/> from the curve's control-polygon
+        /// AABB. The bezier and its sampled polyline both stay inside the convex
+        /// hull of the control points, so the early-out can never reject a point
+        /// within that distance of the curve.
+        /// </summary>
+        static float DistanceSquaredToConnection(Vector2 point, Vector2 from, Vector2 to, float earlyOutDistance)
         {
             const int Segments = 24;
 
             float tangent = Mathf.Max(42f, Mathf.Abs(to.x - from.x) * 0.45f);
+
+            if (point.x < Mathf.Min(from.x, to.x - tangent) - earlyOutDistance ||
+                point.x > Mathf.Max(from.x + tangent, to.x) + earlyOutDistance ||
+                point.y < Mathf.Min(from.y, to.y) - earlyOutDistance ||
+                point.y > Mathf.Max(from.y, to.y) + earlyOutDistance)
+            {
+                return float.MaxValue;
+            }
+
             Vector2 c1 = from + Vector2.right * tangent;
             Vector2 c2 = to + Vector2.left * tangent;
 
@@ -5262,6 +5481,8 @@ namespace NowUI.NodeGraph
             else
                 _graph.AddNodeToSelection(nodeId);
 
+            _drawCache?.Invalidate();
+
             if (previous != _graph.selectedNodeId || previousCount != _graph.SelectedNodeCount())
             {
                 result.changed = true;
@@ -5300,7 +5521,7 @@ namespace NowUI.NodeGraph
             if (activeNode == null || delta == Vector2.zero)
                 return false;
 
-            int selectedCount = activeNode != null && _graph.IsNodeSelected(activeNode.id)
+            int selectedCount = activeNode != null && CachedIsNodeSelected(activeNode.id)
                 ? _graph.SelectedNodeCount()
                 : 0;
             bool moveSelection = selectedCount > 1;
@@ -5328,7 +5549,7 @@ namespace NowUI.NodeGraph
                 {
                     var node = _graph.nodes[i];
 
-                    if (node != null && _graph.IsNodeSelected(node.id))
+                    if (node != null && CachedIsNodeSelected(node.id))
                         node.position += delta;
                 }
             }
@@ -5466,7 +5687,7 @@ namespace NowUI.NodeGraph
             {
                 var node = _graph.nodes[i];
 
-                if (node == null || !_graph.IsNodeSelected(node.id))
+                if (node == null || !CachedIsNodeSelected(node.id))
                     continue;
 
                 var rect = new NowRect(node.position, ResolveNodeSize(node, style));
@@ -5497,7 +5718,7 @@ namespace NowUI.NodeGraph
         bool IsMovingNode(NowNode node, NowNode activeNode, bool moveSelection)
         {
             if (moveSelection)
-                return _graph.IsNodeSelected(node.id);
+                return CachedIsNodeSelected(node.id);
 
             return ReferenceEquals(node, activeNode);
         }
@@ -5639,6 +5860,8 @@ namespace NowUI.NodeGraph
                     _graph.AddNodeToSelection(node.id);
             }
 
+            _drawCache?.Invalidate();
+
             if (previous != _graph.selectedNodeId || previousCount != _graph.SelectedNodeCount())
             {
                 result.changed = true;
@@ -5777,7 +6000,7 @@ namespace NowUI.NodeGraph
             {
                 var node = _graph.nodes[i];
 
-                if (node != null && !_graph.IsNodeSelected(node.id))
+                if (node != null && !CachedIsNodeSelected(node.id))
                     DrawNode(canvasId, i, node, ref state, style, schema, history, renderer, false, i == hoveredNodeIndex, ref result);
             }
 
@@ -5785,7 +6008,7 @@ namespace NowUI.NodeGraph
             {
                 var node = _graph.nodes[i];
 
-                if (node != null && _graph.IsNodeSelected(node.id))
+                if (node != null && CachedIsNodeSelected(node.id))
                     DrawNode(canvasId, i, node, ref state, style, schema, history, renderer, true, i == hoveredNodeIndex, ref result);
             }
         }
@@ -5888,7 +6111,10 @@ namespace NowUI.NodeGraph
                 schema?.DrawNodeContent(context);
 
             if (context.changed)
+            {
                 result.changed = true;
+                _drawCache?.Invalidate();
+            }
         }
 
         void DrawNodePreviewContent(
@@ -5928,7 +6154,10 @@ namespace NowUI.NodeGraph
             schema?.DrawNodePreview(context);
 
             if (context.changed)
+            {
                 result.changed = true;
+                _drawCache?.Invalidate();
+            }
         }
 
         void DrawPortList(
@@ -6062,7 +6291,7 @@ namespace NowUI.NodeGraph
         {
             port = null;
             position = default;
-            int nodeIndex = _graph.IndexOfNode(nodeId);
+            int nodeIndex = CachedIndexOfNode(nodeId);
 
             if (nodeIndex < 0)
                 return false;
@@ -6517,7 +6746,10 @@ namespace NowUI.NodeGraph
 
         static int NodeControlId(int canvasId, int nodeIndex, NowNode node)
         {
-            return DataId(canvasId, node.id, 0x4e000 + nodeIndex);
+            int idHash = node.idHash;
+            return idHash != 0
+                ? NowInput.CombineId(canvasId, idHash)
+                : NowInput.CombineId(canvasId, 0x4e000 + nodeIndex);
         }
 
         static int PortControlId(
@@ -6531,14 +6763,10 @@ namespace NowUI.NodeGraph
             int nodeId = NodeControlId(canvasId, nodeIndex, node);
             int dirId = direction == NowNodePortDirection.Input ? 0x491 : 0x4f1;
             int baseId = NowInput.CombineId(nodeId, dirId);
-            return DataId(baseId, port.id, portIndex + 1);
-        }
-
-        static int DataId(int seed, string value, int fallback)
-        {
-            return string.IsNullOrEmpty(value)
-                ? NowInput.CombineId(seed, fallback)
-                : NowInput.GetId(seed, value);
+            int idHash = port.idHash;
+            return idHash != 0
+                ? NowInput.CombineId(baseId, idHash)
+                : NowInput.CombineId(baseId, portIndex + 1);
         }
 
         static void InitializeState(ref CanvasState state, NowNodeGraphStyle style)

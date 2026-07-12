@@ -16,7 +16,16 @@ namespace NowUI
     {
         public static float Advance(string text, NowFontAsset font, float fontSize, NowFontStyle style, int start, int count)
         {
-            return count <= 0 || font == null ? 0f : font.MeasureText(text, start, count, fontSize, style).x;
+            if (count <= 0 || font == null || text == null || start < 0 || start + count > text.Length)
+                return 0f;
+
+            if (count == 1 && !char.IsHighSurrogate(text[start]))
+                return font.GetCodepointAdvance(text[start], fontSize, style);
+
+            if (count == 2 && char.IsHighSurrogate(text[start]) && char.IsLowSurrogate(text[start + 1]))
+                return font.GetCodepointAdvance(char.ConvertToUtf32(text[start], text[start + 1]), fontSize, style);
+
+            return font.MeasureText(text, start, count, fontSize, style).x;
         }
 
         public static float Advance(string text, NowFontAsset font, float fontSize, NowFontStyle style)

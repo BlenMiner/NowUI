@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -69,6 +70,7 @@ namespace NowUI.Internal
             count = 0;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void EnsureCapacity(int additionalCount)
         {
             int requiredCapacity = count + additionalCount;
@@ -169,6 +171,22 @@ namespace NowUI.Internal
         public const int INITIAL_INDEX_CAPACITY = INITIAL_RECT_CAPACITY * INDICES_PER_RECT;
 
         internal const MeshUpdateFlags VertexStreamUploadFlags = MeshUpdateFlags.DontRecalculateBounds;
+
+        /// <summary>
+        /// Index data comes straight from internal emitters that already guarantee
+        /// in-range indices, and callers assign explicit bounds after upload, so
+        /// validation, bounds recalculation, and user notification are all skipped.
+        /// </summary>
+        internal const MeshUpdateFlags IndexUploadFlags =
+            MeshUpdateFlags.DontValidateIndices |
+            MeshUpdateFlags.DontRecalculateBounds |
+            MeshUpdateFlags.DontNotifyMeshUsers;
+
+        /// <summary>
+        /// Shared 16-bit index staging buffer. Safe as a static because
+        /// <see cref="UploadMesh"/> only runs on the main thread (Unity Mesh API).
+        /// </summary>
+        static StaticList<ushort> _indexScratch = new StaticList<ushort>(INITIAL_INDEX_CAPACITY);
 
         internal static readonly VertexAttributeDescriptor[] RenderVertexLayout =
         {
@@ -288,8 +306,6 @@ namespace NowUI.Internal
 
         static readonly Vector2 _uv3 = new Vector2(1, 0);
 
-        Vector3 _a, _b, _c, _d;
-
         void ClearBounds()
         {
             _hasBounds = false;
@@ -329,6 +345,9 @@ namespace NowUI.Internal
 
         void EnsureRectCapacity()
         {
+            if (HasRectCapacity())
+                return;
+
             _mask.EnsureCapacity(VERTICES_PER_RECT);
             _rect.EnsureCapacity(VERTICES_PER_RECT);
             _radius.EnsureCapacity(VERTICES_PER_RECT);
@@ -442,29 +461,27 @@ namespace NowUI.Internal
 
             _extra.count += 4;
 
-            _a.x = geometry.x;
-            _a.y = geometry.y;
-            _a.z = 0;
+            Vector3 cornerA = default, cornerB = default, cornerC = default, cornerD = default;
 
-            _b.x = _a.x;
-            _b.y = _a.y + geometry.w;
-            _b.z = 0;
+            cornerA.x = geometry.x;
+            cornerA.y = geometry.y;
 
-            _c.x = _a.x + geometry.z;
-            _c.y = _b.y;
-            _c.z = 0;
+            cornerB.x = cornerA.x;
+            cornerB.y = cornerA.y + geometry.w;
 
-            _d.x = _c.x;
-            _d.y = _a.y;
-            _d.z = 0;
+            cornerC.x = cornerA.x + geometry.z;
+            cornerC.y = cornerB.y;
+
+            cornerD.x = cornerC.x;
+            cornerD.y = cornerA.y;
 
             var varr = _verts.array;
             var vcount = _verts.count;
 
-            varr[vcount++] = _a;
-            varr[vcount++] = _b;
-            varr[vcount++] = _c;
-            varr[vcount++] = _d;
+            varr[vcount++] = cornerA;
+            varr[vcount++] = cornerB;
+            varr[vcount++] = cornerC;
+            varr[vcount++] = cornerD;
 
             _verts.count = vcount;
 
@@ -635,9 +652,10 @@ namespace NowUI.Internal
         /// <summary>
         /// Every append path grows all vertex streams in lockstep (same counts, same
         /// EnsureCapacity calls, same initial capacity), so checking one vertex stream
-        /// and the index stream covers them all.
+        /// and the index stream covers them all. Rects and text glyphs share the same
+        /// 4-vertex/6-index footprint.
         /// </summary>
-        bool HasTextGlyphCapacity()
+        bool HasRectCapacity()
         {
             return
                 _verts.count + VERTICES_PER_RECT <= _verts.array.Length &&
@@ -682,7 +700,7 @@ namespace NowUI.Internal
 
             EncapsulateRect(position);
 
-            if (!HasTextGlyphCapacity())
+            if (!HasRectCapacity())
                 ReserveTextGlyphs(1);
 
             int indexOffset = _verts.count;
@@ -1437,12 +1455,19 @@ namespace NowUI.Internal
             var destinationVertices = vertices.array;
             int destinationBase = vertices.count;
 
-            for (int i = 0; i < count; ++i)
+            if (positionOffset.x == 0f && positionOffset.y == 0f)
             {
-                var vertex = sourceVertices[i];
-                vertex.x += positionOffset.x;
-                vertex.y += positionOffset.y;
-                destinationVertices[destinationBase + i] = vertex;
+                System.Array.Copy(sourceVertices, 0, destinationVertices, destinationBase, count);
+            }
+            else
+            {
+                for (int i = 0; i < count; ++i)
+                {
+                    var vertex = sourceVertices[i];
+                    vertex.x += positionOffset.x;
+                    vertex.y += positionOffset.y;
+                    destinationVertices[destinationBase + i] = vertex;
+                }
             }
 
             vertices.count += count;
@@ -1510,7 +1535,7 @@ namespace NowUI.Internal
             destination.EnsureCapacity(count);
             int destinationBase = destination.count;
 
-            if (NowLottieNative.packCanvasAvailable && !isRectangleLike)
+            if (NowLottieNative.packCanvasAvailable)
             {
                 NowLottieNative.PackCanvas(
                     _verts.array,
@@ -1527,6 +1552,9 @@ namespace NowUI.Internal
                     positionOffset,
                     destination.array,
                     destinationBase);
+
+                if (isRectangleLike)
+                    PatchRectangleCanvasVertices(destination.array, destinationBase, count);
 
                 destination.count += count;
                 return;
@@ -1573,6 +1601,23 @@ namespace NowUI.Internal
             }
 
             destination.count += count;
+        }
+
+        /// <summary>
+        /// Rectangle-family batches differ from the native pack's default layout in
+        /// exactly two floats (uv0.w carries rawUv.x, uv3.z carries rawUv.y), so the
+        /// native output is fixed up in place instead of taking the full managed swizzle.
+        /// </summary>
+        void PatchRectangleCanvasVertices(NowCanvasVertex[] output, int destinationBase, int count)
+        {
+            var rawUvs = _rawuv.array;
+
+            for (int i = 0; i < count; ++i)
+            {
+                var rawUv = rawUvs[i];
+                output[destinationBase + i].uv0.w = rawUv.x;
+                output[destinationBase + i].uv3.z = rawUv.y;
+            }
         }
 
         public void AppendTriangles(ref StaticList<int> triangles, int vertexOffset)
@@ -1653,7 +1698,37 @@ namespace NowUI.Internal
                 unityMesh.SetUVs(7, _rawuv.array, 0, _rawuv.count, VertexStreamUploadFlags);
             }
 
-            unityMesh.SetTriangles(_tris.array, 0, _tris.count, 0, false);
+            var indexFormat = _verts.count > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+            unityMesh.SetIndexBufferParams(_tris.count, indexFormat);
+
+            if (indexFormat == IndexFormat.UInt16)
+            {
+                _indexScratch.Clear();
+                _indexScratch.EnsureCapacity(_tris.count);
+
+                var indexSource = _tris.array;
+                var indexDestination = _indexScratch.array;
+
+                for (int i = 0; i < _tris.count; ++i)
+                    indexDestination[i] = (ushort)indexSource[i];
+
+                _indexScratch.count = _tris.count;
+                unityMesh.SetIndexBufferData(_indexScratch.array, 0, 0, _tris.count, IndexUploadFlags);
+            }
+            else
+            {
+                unityMesh.SetIndexBufferData(_tris.array, 0, 0, _tris.count, IndexUploadFlags);
+            }
+
+            unityMesh.subMeshCount = 1;
+
+            var descriptor = new SubMeshDescriptor(0, _tris.count)
+            {
+                firstVertex = 0,
+                vertexCount = _verts.count
+            };
+
+            unityMesh.SetSubMesh(0, descriptor, IndexUploadFlags);
             unityMesh.bounds = ToUnityBounds(GetBounds(Vector2.zero));
         }
     }

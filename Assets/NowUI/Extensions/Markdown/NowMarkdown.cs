@@ -188,6 +188,18 @@ namespace NowUI.Markdown
                     return _recent[i].document;
             }
 
+            for (int i = 0; i < _recent.Length; ++i)
+            {
+                if (_recent[i].markdown != null &&
+                    _recent[i].fontSize == style.fontSize &&
+                    _recent[i].markdown.Length == markdown.Length &&
+                    string.Equals(_recent[i].markdown, markdown, System.StringComparison.Ordinal))
+                {
+                    _recent[i].markdown = markdown;
+                    return _recent[i].document;
+                }
+            }
+
             var key = new CacheKey(markdown, style);
 
             if (!_cache.TryGetValue(key, out var document))

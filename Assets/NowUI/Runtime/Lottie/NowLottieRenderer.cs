@@ -48,6 +48,7 @@ namespace NowUI.Internal
 
         static void ReleasePolylineList(List<NowLottiePolyline> list)
         {
+            NowLottieBurstTessellator.InvalidateClip(list);
             NowLottiePolylinePool.ReleaseAll(list);
             _listPool.Push(list);
         }
@@ -107,6 +108,16 @@ namespace NowUI.Internal
         }
 
         /// <summary>
+        /// Snaps large tessellation sizes to whole pixels so sub-pixel size animation
+        /// reuses cached geometry; the resulting extent shifts by at most half a pixel.
+        /// Sizes under 64px keep exact keys because rounding is visible at small scales.
+        /// </summary>
+        static float QuantizeRenderSize(float size)
+        {
+            return size < 64f ? size : Mathf.Round(size);
+        }
+
+        /// <summary>
         /// Returns a tessellated buffer for the requested frame (untinted, built at
         /// origin — offset/scale/tint it when appending to a mesh), reusing a cached
         /// one when an identical draw happened recently. The returned buffer is owned
@@ -119,6 +130,8 @@ namespace NowUI.Internal
             float height,
             bool preserveAspect)
         {
+            width = QuantizeRenderSize(width);
+            height = QuantizeRenderSize(height);
             ++_cacheStamp;
 
             CacheEntry oldest = _cache[0];
@@ -227,6 +240,7 @@ namespace NowUI.Internal
             if (_useNative)
                 NowLottieNative.Begin(FLATTEN_TOLERANCE, AA_WIDTH);
 
+            _matrixCache.Clear();
             RenderLayerList(composition, composition.layers, frame, rootMatrix, tint, 1f, buffer, null, null, false, 0);
 
             if (_useNative)
@@ -250,10 +264,6 @@ namespace NowUI.Internal
         {
             if (depth > 8)
                 return;
-
-            // The memoized chain matrices are only valid for one (layer list, frame)
-            // pass; precomp recursion re-resolves its parents afterwards.
-            _matrixCache.Clear();
 
             // Lottie stores the top-most layer first; render bottom-up.
             for (int i = layers.Count - 1; i >= 0; --i)
@@ -367,11 +377,21 @@ namespace NowUI.Internal
             }
         }
 
+        struct LayerMatrixEntry
+        {
+            public float frame;
+
+            public NowMatrix2D matrix;
+        }
+
         /// <summary>
-        /// Layer chain matrices memoized per layer list render: parent layers are
-        /// shared by many children and would otherwise be re-evaluated per child.
+        /// Layer chain matrices memoized per Render pass: parent layers are shared by
+        /// many children and would otherwise be re-evaluated per child. Entries carry
+        /// the frame they were evaluated at so precomp recursion (which may visit the
+        /// same layer list at a remapped frame) never returns a stale matrix and the
+        /// outer layer list keeps its memo across precomp returns.
         /// </summary>
-        static readonly Dictionary<NowLottieLayer, NowMatrix2D> _matrixCache = new Dictionary<NowLottieLayer, NowMatrix2D>(32);
+        static readonly Dictionary<NowLottieLayer, LayerMatrixEntry> _matrixCache = new Dictionary<NowLottieLayer, LayerMatrixEntry>(32);
 
         static NowMatrix2D ResolveLayerMatrix(
             List<NowLottieLayer> layers,
@@ -388,24 +408,32 @@ namespace NowUI.Internal
             float compFrame,
             int depth)
         {
-            if (_matrixCache.TryGetValue(layer, out var cached))
-                return cached;
+            if (_matrixCache.TryGetValue(layer, out var cached) && cached.frame == compFrame)
+                return cached.matrix;
 
             var matrix = layer.transform.EvaluateMatrix(layer.ToLocalFrame(compFrame));
 
             if (layer.parent >= 0 && depth < 64)
             {
-                for (int i = 0; i < layers.Count; ++i)
+                if (!layer.parentResolved)
                 {
-                    if (layers[i].index == layer.parent)
+                    for (int i = 0; i < layers.Count; ++i)
                     {
-                        matrix = NowMatrix2D.Mul(ResolveChainMatrix(layers, layers[i], compFrame, depth + 1), matrix);
-                        break;
+                        if (layers[i].index == layer.parent)
+                        {
+                            layer.resolvedParent = layers[i];
+                            break;
+                        }
                     }
+
+                    layer.parentResolved = true;
                 }
+
+                if (layer.resolvedParent != null)
+                    matrix = NowMatrix2D.Mul(ResolveChainMatrix(layers, layer.resolvedParent, compFrame, depth + 1), matrix);
             }
 
-            _matrixCache[layer] = matrix;
+            _matrixCache[layer] = new LayerMatrixEntry { frame = compFrame, matrix = matrix };
             return matrix;
         }
 
@@ -459,10 +487,14 @@ namespace NowUI.Internal
             int contourSourceCount = -1;
             var trim = default(NowLottieTrimInfo);
             bool trimEvaluated = false;
+            int geometrySourcesBelow = CountGeometrySources(items, items.Count);
 
             for (int i = items.Count - 1; i >= 0; --i)
             {
                 var item = items[i];
+
+                if (IsGeometrySource(item))
+                    --geometrySourcesBelow;
 
                 if (item.hidden)
                     continue;
@@ -490,7 +522,7 @@ namespace NowUI.Internal
                 if (!isFill && !isStroke)
                     continue;
 
-                int sourceCount = CountGeometrySources(items, i);
+                int sourceCount = geometrySourcesBelow;
 
                 if (contourSet == null || sourceCount != contourSourceCount)
                 {
@@ -521,23 +553,22 @@ namespace NowUI.Internal
                 ReleaseContourSet(contourSet);
         }
 
+        static bool IsGeometrySource(NowLottieShapeItem item)
+        {
+            return !item.hidden &&
+                (item is NowLottiePathShape || item is NowLottieEllipse ||
+                 item is NowLottieRectShape || item is NowLottiePolystar ||
+                 item is NowLottieGroup);
+        }
+
         static int CountGeometrySources(List<NowLottieShapeItem> items, int beforeIndex)
         {
             int count = 0;
 
             for (int i = 0; i < beforeIndex; ++i)
             {
-                var item = items[i];
-
-                if (item.hidden)
-                    continue;
-
-                if (item is NowLottiePathShape || item is NowLottieEllipse ||
-                    item is NowLottieRectShape || item is NowLottiePolystar ||
-                    item is NowLottieGroup)
-                {
+                if (IsGeometrySource(items[i]))
                     ++count;
-                }
             }
 
             return count;

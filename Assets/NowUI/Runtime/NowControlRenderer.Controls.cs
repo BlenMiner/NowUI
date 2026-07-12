@@ -495,12 +495,62 @@ namespace NowUI
 
         static readonly List<NowTextRun> s_tooltipRuns = new List<NowTextRun>(16);
 
+        static string s_tooltipLayoutText;
+        static NowFontAsset s_tooltipLayoutFont;
+        static float s_tooltipLayoutFontSize;
+        static NowFontStyle s_tooltipLayoutFontStyle;
+        static float s_tooltipLayoutWidth;
+        static Vector2 s_tooltipLayoutSize;
+
+        /// <summary>
+        /// True when <see cref="s_tooltipRuns"/> already holds the layout this
+        /// call would produce. Measure wraps at the tooltip's max width while
+        /// draw wraps at the measured rect, so the widths differ for narrow
+        /// tooltips; re-wrapping at any width between the widest laid-out line
+        /// and the original wrap width cannot move a break, so those runs are
+        /// reusable as-is.
+        /// </summary>
+        static bool TooltipRunsReusable(string text, in NowText style, float width)
+        {
+            var font = style.font != null ? style.font : Now.font;
+            return s_tooltipLayoutText != null &&
+                ReferenceEquals(s_tooltipLayoutText, text) &&
+                ReferenceEquals(s_tooltipLayoutFont, font) &&
+                s_tooltipLayoutFontSize == style.fontSize &&
+                s_tooltipLayoutFontStyle == style.fontStyle &&
+                width <= s_tooltipLayoutWidth &&
+                (width == s_tooltipLayoutWidth || width >= s_tooltipLayoutSize.x);
+        }
+
+        static void RecordTooltipLayout(string text, in NowText style, float width, Vector2 size)
+        {
+            s_tooltipLayoutText = text;
+            s_tooltipLayoutFont = style.font != null ? style.font : Now.font;
+            s_tooltipLayoutFontSize = style.fontSize;
+            s_tooltipLayoutFontStyle = style.fontStyle;
+            s_tooltipLayoutWidth = width;
+            s_tooltipLayoutSize = size;
+        }
+
         public virtual Vector2 MeasureTooltip(NowThemeAsset themeAsset, string text)
         {
             var styles = themeAsset.controlStyles;
             var body = NowControls.Text(themeAsset, NowTextStyle.Caption);
             body.mask = default;
-            Vector2 size = NowTextWrap.Layout(body, text ?? string.Empty, styles.tooltipMaxWidth - styles.tooltipPadding * 2f, s_tooltipRuns);
+            string value = text ?? string.Empty;
+            float wrapWidth = styles.tooltipMaxWidth - styles.tooltipPadding * 2f;
+            Vector2 size;
+
+            if (TooltipRunsReusable(value, in body, wrapWidth))
+            {
+                size = s_tooltipLayoutSize;
+            }
+            else
+            {
+                size = NowTextWrap.Layout(body, value, wrapWidth, s_tooltipRuns);
+                RecordTooltipLayout(value, in body, wrapWidth, size);
+            }
+
             return new Vector2(
                 Mathf.Min(styles.tooltipMaxWidth, size.x + styles.tooltipPadding * 2f),
                 size.y + styles.tooltipPadding * 2f);
@@ -522,8 +572,16 @@ namespace NowUI
                 .SetColor(context.themeAsset.GetColor(NowColorToken.Background));
             text.mask = default;
             float pad = styles.tooltipPadding;
-            NowTextWrap.Layout(text, context.text ?? string.Empty, context.rect.width - pad * 2f, s_tooltipRuns);
-            NowTextWrap.Draw(text, context.text ?? string.Empty, s_tooltipRuns, new Vector2(context.rect.x + pad, context.rect.y + pad));
+            string value = context.text ?? string.Empty;
+            float wrapWidth = context.rect.width - pad * 2f;
+
+            if (!TooltipRunsReusable(value, in text, wrapWidth))
+            {
+                Vector2 size = NowTextWrap.Layout(text, value, wrapWidth, s_tooltipRuns);
+                RecordTooltipLayout(value, in text, wrapWidth, size);
+            }
+
+            NowTextWrap.Draw(text, value, s_tooltipRuns, new Vector2(context.rect.x + pad, context.rect.y + pad));
         }
 
         public virtual float TabBarHeight(NowThemeAsset themeAsset)

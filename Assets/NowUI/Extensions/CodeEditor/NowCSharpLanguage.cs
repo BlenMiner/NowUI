@@ -39,6 +39,72 @@ namespace NowUI.CodeEditor
             "record", "with", "partial", "dynamic", "global", "where", "required",
         };
 
+        /// <summary>
+        /// Keywords bucketed by length for allocation-free matching against a
+        /// text range; rebuilt when <see cref="Keywords"/> grows (subclasses may
+        /// add entries) so the two stay in sync without hashing a substring.
+        /// </summary>
+        static string[][] _keywordBuckets;
+
+        static int _keywordBucketCount;
+
+        static bool IsKeyword(string text, int start, int length)
+        {
+            var buckets = _keywordBuckets;
+
+            if (buckets == null || _keywordBucketCount != Keywords.Count)
+                buckets = BuildKeywordBuckets();
+
+            if (length <= 0 || length >= buckets.Length)
+                return false;
+
+            var bucket = buckets[length];
+
+            if (bucket == null)
+                return false;
+
+            char first = text[start];
+
+            for (int i = 0; i < bucket.Length; ++i)
+            {
+                string keyword = bucket[i];
+
+                if (keyword[0] == first && string.CompareOrdinal(text, start, keyword, 0, length) == 0)
+                    return true;
+            }
+
+            return false;
+        }
+
+        static string[][] BuildKeywordBuckets()
+        {
+            int maxLength = 0;
+
+            foreach (string keyword in Keywords)
+            {
+                if (keyword.Length > maxLength)
+                    maxLength = keyword.Length;
+            }
+
+            var counts = new int[maxLength + 1];
+
+            foreach (string keyword in Keywords)
+                ++counts[keyword.Length];
+
+            var buckets = new string[maxLength + 1][];
+
+            foreach (string keyword in Keywords)
+            {
+                int length = keyword.Length;
+                buckets[length] ??= new string[counts[length]];
+                buckets[length][--counts[length]] = keyword;
+            }
+
+            _keywordBucketCount = Keywords.Count;
+            _keywordBuckets = buckets;
+            return buckets;
+        }
+
         public override string name => "csharp";
 
         public override IReadOnlyList<string> aliases => Aliases;
@@ -371,9 +437,8 @@ namespace NowUI.CodeEditor
                 ++i;
 
             int wordLength = i - wordStart;
-            string word = text.Substring(wordStart, wordLength);
 
-            if (Keywords.Contains(word))
+            if (IsKeyword(text, wordStart, wordLength))
             {
                 tokens.Add(new NowCodeToken { start = wordStart, length = wordLength, kind = NowCodeTokenKind.Keyword });
                 return;

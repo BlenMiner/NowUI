@@ -124,6 +124,11 @@ namespace NowUI
         [NonSerialized] bool _hasGlassBatches;
         [NonSerialized] float _maxGlassBlurRadius;
         [NonSerialized] NowGlassBlurQuality _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
+        [NonSerialized] bool _appliedGlassStateValid;
+        [NonSerialized] Texture _appliedGlassTexture;
+        [NonSerialized] Texture _appliedGlassSharpTexture;
+        [NonSerialized] bool _appliedGlassUseBackdrop;
+        [NonSerialized] bool _appliedGlassUseSceneDepth;
         [NonSerialized] int _scopeId;
 #if UNITY_EDITOR
         static bool _editorCallbacksRegistered;
@@ -893,19 +898,21 @@ namespace NowUI
             RegisterGlassBackdropIfNeeded();
 
             bool needsRebuild = _dirty || _rebuildEveryFrame || _repaintTracker.wantsRepaint;
+            bool visibilityChecked = false;
 
             if (!needsRebuild && _autoRebuildOnInteraction)
             {
                 if (!IsVisibleForRebuild())
                     return;
 
+                visibilityChecked = true;
                 needsRebuild = HasInteractionInputChanged();
             }
 
             if (!needsRebuild)
                 return;
 
-            if (!IsVisibleForRebuild())
+            if (!visibilityChecked && !IsVisibleForRebuild())
                 return;
 
             RebuildNowUI();
@@ -950,6 +957,12 @@ namespace NowUI
             return _scopeId;
         }
 
+        /// <summary>
+        /// The deform-free fast path is gated on the exact runtime type: a derived
+        /// class may override <see cref="DeformVertex"/> without assigning
+        /// <see cref="_deformer"/>, so the per-vertex virtual call is only skipped
+        /// when this is provably the base implementation with no deformer.
+        /// </summary>
         void ApplyWorldTransform()
         {
             var targetMesh = _drawList.mesh;
@@ -960,18 +973,34 @@ namespace NowUI
             targetMesh.GetVertices(_vertices);
 
             var currentSize = SanitizeSize(_size);
+            float ppu = SanitizePixelsPerUnit(_pixelsPerUnit);
+            bool skipDeform = _deformer == null && GetType() == typeof(NowWorldGraphic);
 
-            for (int i = 0; i < _vertices.Count; ++i)
+            if (skipDeform)
             {
-                var source = _vertices[i];
-                var ui = new Vector2(source.x, -source.y);
-                var local = UIToLocal(ui);
-                local.z = source.z / SanitizePixelsPerUnit(_pixelsPerUnit);
-                var normalized = new Vector2(
-                    currentSize.x > 0f ? Mathf.Clamp01(ui.x / currentSize.x) : 0f,
-                    currentSize.y > 0f ? Mathf.Clamp01(ui.y / currentSize.y) : 0f);
+                for (int i = 0; i < _vertices.Count; ++i)
+                {
+                    var source = _vertices[i];
+                    var ui = new Vector2(source.x, -source.y);
+                    var local = UIToLocal(ui, currentSize, ppu);
+                    local.z = source.z / ppu;
+                    _vertices[i] = local;
+                }
+            }
+            else
+            {
+                for (int i = 0; i < _vertices.Count; ++i)
+                {
+                    var source = _vertices[i];
+                    var ui = new Vector2(source.x, -source.y);
+                    var local = UIToLocal(ui, currentSize, ppu);
+                    local.z = source.z / ppu;
+                    var normalized = new Vector2(
+                        currentSize.x > 0f ? Mathf.Clamp01(ui.x / currentSize.x) : 0f,
+                        currentSize.y > 0f ? Mathf.Clamp01(ui.y / currentSize.y) : 0f);
 
-                _vertices[i] = DeformVertex(new NowWorldVertex(i, ui, normalized, local));
+                    _vertices[i] = DeformVertex(new NowWorldVertex(i, ui, normalized, local));
+                }
             }
 
             targetMesh.SetVertices(_vertices);
@@ -982,6 +1011,8 @@ namespace NowUI
         {
             if (!_meshRenderer)
                 return;
+
+            _appliedGlassStateValid = false;
 
             if (_drawList is not { hasGeometry: true })
             {
@@ -1166,13 +1197,35 @@ namespace NowUI
             ApplyGlassBackdropTexture(texture, texture);
         }
 
+        /// <summary>
+        /// Runs per camera per frame from the glass backdrop scheduler, so it
+        /// early-outs when the same textures and flags were already applied and the
+        /// materials have not been rebuilt since (rebuilds copy properties from the
+        /// source material, which resets these values and invalidates the cache).
+        /// </summary>
         internal void ApplyGlassBackdropTexture(Texture texture, Texture sharpTexture)
         {
             _glassBackdropTexture = texture;
             _glassSharpBackdropTexture = sharpTexture ? sharpTexture : texture;
             bool useBackdrop = texture && glassBackdropMode != NowWorldGlassBackdropMode.TintOnly;
+            bool useSceneDepth = UsesGlassSceneDepth();
             var fallback = texture ? texture : Texture2D.blackTexture;
             var sharpFallback = _glassSharpBackdropTexture ? _glassSharpBackdropTexture : fallback;
+
+            if (_appliedGlassStateValid &&
+                ReferenceEquals(_appliedGlassTexture, fallback) &&
+                ReferenceEquals(_appliedGlassSharpTexture, sharpFallback) &&
+                _appliedGlassUseBackdrop == useBackdrop &&
+                _appliedGlassUseSceneDepth == useSceneDepth)
+            {
+                return;
+            }
+
+            _appliedGlassStateValid = true;
+            _appliedGlassTexture = fallback;
+            _appliedGlassSharpTexture = sharpFallback;
+            _appliedGlassUseBackdrop = useBackdrop;
+            _appliedGlassUseSceneDepth = useSceneDepth;
 
             if (_meshRenderer)
                 _meshRenderer.SetPropertyBlock(null);
@@ -1342,14 +1395,29 @@ namespace NowUI
                 if (direction.sqrMagnitude <= 0.000001f)
                     return;
 
-                transform.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+                SetFacingRotation(Quaternion.LookRotation(direction.normalized, Vector3.up));
                 return;
             }
 
             if (direction.sqrMagnitude <= 0.000001f)
                 return;
 
-            transform.rotation = Quaternion.LookRotation(direction.normalized, cmr.transform.up);
+            SetFacingRotation(Quaternion.LookRotation(direction.normalized, cmr.transform.up));
+        }
+
+        /// <summary>
+        /// Skips the transform write when the target matches the current rotation
+        /// (within float noise), so a static camera does not dirty this transform
+        /// hierarchy and its renderer bounds every LateUpdate.
+        /// </summary>
+        void SetFacingRotation(Quaternion target)
+        {
+            const float epsilon = 0.0000001f;
+
+            if (1f - Mathf.Abs(Quaternion.Dot(transform.rotation, target)) <= epsilon)
+                return;
+
+            transform.rotation = target;
         }
 
         /// <summary>
@@ -1612,6 +1680,9 @@ namespace NowUI
             _hasGlassBatches = false;
             _maxGlassBlurRadius = 0f;
             _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
+            _appliedGlassStateValid = false;
+            _appliedGlassTexture = null;
+            _appliedGlassSharpTexture = null;
             _sharedMaterials.Clear();
             _sharedMaterialsAssigned = false;
 

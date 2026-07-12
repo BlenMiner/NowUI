@@ -307,7 +307,7 @@ namespace NowUI
             _downDown = false;
         }
 
-        void ClearTransient(NowInputSnapshot snapshot)
+        void ClearTransient(in NowInputSnapshot snapshot)
         {
             _previousPointerPosition = snapshot.pointerPosition;
             _pointerButtonsPressed = NowPointerButtons.None;

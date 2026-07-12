@@ -201,8 +201,11 @@ namespace NowUI
     {
         const double CacheLifetimeSeconds = 10.0;
 
+        const int MaxPooledTemporaryEntries = 8;
+
         static readonly Dictionary<int, Entry> _entries = new Dictionary<int, Entry>(16);
         static readonly List<int> _removeIds = new List<int>(8);
+        static readonly Stack<Entry> _temporaryEntryPool = new Stack<Entry>(4);
         static double _lastCleanupTime;
 
         public static NowModifierBuilder<TDeformer> Modifier<TDeformer>(
@@ -264,7 +267,7 @@ namespace NowUI
                 NowInput.EndPassive();
 
                 if (temporary)
-                    entry.Dispose();
+                    ReturnTemporaryEntry(entry);
 
                 throw;
             }
@@ -291,7 +294,7 @@ namespace NowUI
                 NowInput.EndPassive();
 
                 if (temporary)
-                    entry.Dispose();
+                    ReturnTemporaryEntry(entry);
 
                 throw;
             }
@@ -317,17 +320,19 @@ namespace NowUI
                 if (!entry.capture.hasGeometry)
                     return;
 
-                NowRect sourceRect = scope.hasSourceRect && !scope.sourceRect.isEmpty
-                    ? scope.sourceRect
-                    : Now.TryGetDrawListBounds(entry.capture, out var inferred)
-                        ? inferred
-                        : default;
-
-                if (sourceRect.isEmpty)
-                    return;
+                bool hasExplicitSourceRect = scope.hasSourceRect && !scope.sourceRect.isEmpty;
 
                 if (scope.renderToTexture)
                 {
+                    NowRect sourceRect = hasExplicitSourceRect
+                        ? scope.sourceRect
+                        : Now.TryGetDrawListBounds(entry.capture, out var inferred)
+                            ? inferred
+                            : default;
+
+                    if (sourceRect.isEmpty)
+                        return;
+
                     var textureRect = Now.PixelSnapOutward(sourceRect);
                     var target = entry.GetTarget(textureRect);
                     Now.RenderDrawListToTexture(entry.capture, textureRect, target, entry.commandBuffer);
@@ -356,8 +361,8 @@ namespace NowUI
                     scope.deformer,
                     scope.subdivision,
                     scope.subdivideText,
-                    true,
-                    sourceRect,
+                    hasExplicitSourceRect,
+                    hasExplicitSourceRect ? scope.sourceRect : default,
                     scope.id,
                     scope.time);
             }
@@ -368,7 +373,7 @@ namespace NowUI
                 entry.inUse = false;
 
                 if (scope.temporaryEntry)
-                    entry.Dispose();
+                    ReturnTemporaryEntry(entry);
                 else
                     CleanupUnusedEntries();
             }
@@ -403,7 +408,7 @@ namespace NowUI
                 entry.inUse = false;
 
                 if (scope.temporaryEntry)
-                    entry.Dispose();
+                    ReturnTemporaryEntry(entry);
                 else
                     CleanupUnusedEntries();
             }
@@ -435,7 +440,35 @@ namespace NowUI
             }
 
             temporary = true;
-            return new Entry();
+            return RentTemporaryEntry();
+        }
+
+        static Entry RentTemporaryEntry()
+        {
+            return _temporaryEntryPool.Count > 0 ? _temporaryEntryPool.Pop() : new Entry();
+        }
+
+        /// <summary>
+        /// Returns a temporary entry (nested same-id scope) to the pool instead of
+        /// destroying its meshes and command buffer every occurrence. The render
+        /// target is released because pooled entries can sit idle indefinitely.
+        /// </summary>
+        static void ReturnTemporaryEntry(Entry entry)
+        {
+            if (entry == null)
+                return;
+
+            if (_temporaryEntryPool.Count >= MaxPooledTemporaryEntries)
+            {
+                entry.Dispose();
+                return;
+            }
+
+            entry.capture.Clear();
+            entry.surface.Clear();
+            entry.ReleaseTarget();
+            entry.inUse = false;
+            _temporaryEntryPool.Push(entry);
         }
 
         static void CleanupUnusedEntries()
@@ -471,6 +504,10 @@ namespace NowUI
                 entry.Dispose();
 
             _entries.Clear();
+
+            while (_temporaryEntryPool.Count > 0)
+                _temporaryEntryPool.Pop().Dispose();
+
             _lastCleanupTime = 0.0;
         }
 
@@ -515,7 +552,7 @@ namespace NowUI
                 ReleaseTarget();
             }
 
-            void ReleaseTarget()
+            public void ReleaseTarget()
             {
                 if (target == null)
                     return;

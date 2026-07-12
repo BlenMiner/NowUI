@@ -77,6 +77,7 @@ namespace NowUI
             _hasPreviousPosition = false;
             _previousPosition = default;
             _snapshot = default;
+            NowInputSystemInput.Invalidate();
         }
 
         void UpdateSnapshot()

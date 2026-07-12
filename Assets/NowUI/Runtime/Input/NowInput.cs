@@ -521,7 +521,7 @@ namespace NowUI
             if (_passiveDepth == 0 && _currentProvider != null)
                 NowPointerArbiter.NoteContent(_currentProvider, screenRect);
 
-            var snapshot = _snapshot;
+            ref readonly var snapshot = ref _snapshot;
             bool hasPointer = _hasContext && snapshot.hasPointer;
             bool hovered = hasPointer && screenRect.Contains(snapshot.pointerPosition) &&
                 Now.IsInsideAmbientMask(snapshot.pointerPosition) &&
@@ -705,6 +705,7 @@ namespace NowUI
             _cancelClaimFrame = int.MinValue;
             NowRaycastGate.InvalidateCache();
             NowPointerArbiter.Reset();
+            NowInputSystemInput.Invalidate();
         }
 
         /// <summary>

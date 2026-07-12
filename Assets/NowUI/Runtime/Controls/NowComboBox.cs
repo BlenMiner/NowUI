@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace NowUI
@@ -50,6 +51,25 @@ namespace NowUI
             public string filter = string.Empty;
             public string placeholder;
             public bool allowCustomValue;
+
+            /// <summary>
+            /// Inputs of the last <see cref="Filter"/> run; while they match,
+            /// open frames skip re-scanning every option.
+            /// </summary>
+            public string filteredFilter;
+
+            public IReadOnlyList<string> filteredOptions;
+
+            public IReadOnlyList<string> filteredDetails;
+
+            public int filteredOptionCount;
+
+            public int filteredContentStamp;
+
+            public bool filteredAllowCustomValue;
+
+            public bool filteredValid;
+
             public NowRect field;
             public NowRect fieldLocal;
             public NowRect popupRect;
@@ -128,9 +148,9 @@ namespace NowUI
             pending = 0;
 
             var textStyle = NowControls.Text(theme, NowTextStyle.Body);
-            float lineHeight = textStyle.Measure("Ag").y;
-            if (lineHeight <= 0f)
-                lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
+            float lineHeight = textStyle.font != null
+                ? textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize
+                : 20f;
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _layoutOptions, renderer.MeasureDropdownField(theme, lineHeight));
 
@@ -231,9 +251,9 @@ namespace NowUI
             }
 
             var textStyle = NowControls.Text(theme, NowTextStyle.Body);
-            float lineHeight = textStyle.Measure("Ag").y;
-            if (lineHeight <= 0f)
-                lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
+            float lineHeight = textStyle.font != null
+                ? textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize
+                : 20f;
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _layoutOptions, renderer.MeasureDropdownField(theme, lineHeight));
 
@@ -313,8 +333,53 @@ namespace NowUI
             return state;
         }
 
+        /// <summary>
+        /// Folds the identity of every option/detail string so in-place element
+        /// replacement in a caller-owned list (same list reference, same count)
+        /// still invalidates the filter memo. Strings are immutable, so a changed
+        /// entry is always a new reference.
+        /// </summary>
+        static int ContentStamp(IReadOnlyList<string> options, IReadOnlyList<string> details, int optionCount)
+        {
+            unchecked
+            {
+                int stamp = optionCount;
+
+                for (int i = 0; i < optionCount; ++i)
+                    stamp = (stamp * 397) ^ RuntimeHelpers.GetHashCode(options[i]);
+
+                if (details != null)
+                {
+                    for (int i = 0; i < details.Count; ++i)
+                        stamp = (stamp * 397) ^ RuntimeHelpers.GetHashCode(details[i]);
+                }
+
+                return stamp;
+            }
+        }
+
         static void Filter(PopupState state, IReadOnlyList<string> options, IReadOnlyList<string> details, int optionCount, string filter)
         {
+            int contentStamp = ContentStamp(options, details, optionCount);
+
+            if (state.filteredValid &&
+                ReferenceEquals(state.filteredFilter, filter) &&
+                ReferenceEquals(state.filteredOptions, options) &&
+                ReferenceEquals(state.filteredDetails, details) &&
+                state.filteredOptionCount == optionCount &&
+                state.filteredContentStamp == contentStamp &&
+                state.filteredAllowCustomValue == state.allowCustomValue)
+            {
+                return;
+            }
+
+            state.filteredValid = true;
+            state.filteredFilter = filter;
+            state.filteredOptions = options;
+            state.filteredDetails = details;
+            state.filteredOptionCount = optionCount;
+            state.filteredContentStamp = contentStamp;
+            state.filteredAllowCustomValue = state.allowCustomValue;
             state.filteredIndices.Clear();
 
             for (int i = 0; i < optionCount; ++i)

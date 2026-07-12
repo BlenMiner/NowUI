@@ -7,12 +7,83 @@ using UnityEngine;
 namespace NowUI.Markup
 {
     /// <summary>
+    /// Render dispatch kind resolved once from a node's tag name, so per-frame
+    /// dispatch switches on an enum instead of a tag-string switch.
+    /// </summary>
+    internal enum NowMarkupNodeKind : byte
+    {
+        PassThrough,
+        GroupVertical,
+        GroupHorizontal,
+        Scroll,
+        Gallery,
+        Text,
+        Divider,
+        List,
+        Details,
+        Tabs,
+        Button,
+        Checkbox,
+        Switch,
+        Radio,
+        Progress,
+        Badge,
+        Chip,
+        Slider,
+        TextField,
+        TextArea,
+        Dropdown,
+        Space,
+        Flex,
+        Break
+    }
+
+    /// <summary>
+    /// How a node's precomputed visibility resolves each frame: always visible,
+    /// a constant, or a state key looked up live.
+    /// </summary>
+    internal enum NowMarkupVisibility : byte
+    {
+        None,
+        Literal,
+        StateKey
+    }
+
+    /// <summary>
     /// Per-node render data resolved once from the immutable document and its
     /// stylesheet, so steady-state drawing does not re-derive styles, ids, or
     /// content strings.
     /// </summary>
     internal sealed class NowMarkupNodeCache
     {
+        public NowMarkupNodeKind kind;
+        public NowMarkupVisibility visibility;
+        public bool visibilityInvert;
+        public bool visibilityLiteral;
+        public string visibilityKey;
+        public string controlLabel;
+        public bool checkedDefault;
+        public bool chipSelectedDefault;
+        public float sliderMin;
+        public float sliderMax;
+        public float sliderDefault;
+        public bool sliderHasStep;
+        public float sliderStep;
+        public float progressMax;
+        public bool progressHasValue;
+        public float progressValue;
+        public bool progressIndeterminate;
+        public bool progressHasTime;
+        public string progressTimeKey;
+        public string textDefault;
+        public bool hasPlaceholder;
+        public string placeholder;
+        public int textMinLines;
+        public int textMaxLines;
+        public int dropdownFallback;
+        public bool galleryControls;
+        public bool tabsStretch;
+        public float spaceSize;
         public NowMarkupStyleMap style;
         public NowLayoutOptions options;
         public string text;
@@ -224,10 +295,89 @@ namespace NowUI.Markup
 
             var cache = Cache(node);
 
-            if (!ShouldRender(node, state))
+            if (!ShouldRender(cache, state))
                 return;
 
-            switch (node.name)
+            switch (cache.kind)
+            {
+                case NowMarkupNodeKind.GroupVertical:
+                    RenderGroup(node, state, cache, vertical: true);
+                    break;
+                case NowMarkupNodeKind.GroupHorizontal:
+                    RenderGroup(node, state, cache, vertical: false);
+                    break;
+                case NowMarkupNodeKind.Scroll:
+                    RenderScroll(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Gallery:
+                    RenderGallery(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Text:
+                    RenderText(cache);
+                    break;
+                case NowMarkupNodeKind.Divider:
+                    RenderDivider(cache);
+                    break;
+                case NowMarkupNodeKind.List:
+                    RenderList(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Details:
+                    RenderDetails(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Tabs:
+                    RenderTabs(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Button:
+                    RenderButton(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Checkbox:
+                    RenderCheckbox(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Switch:
+                    RenderSwitch(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Radio:
+                    RenderRadio(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Progress:
+                    RenderProgress(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Badge:
+                    RenderBadge(cache);
+                    break;
+                case NowMarkupNodeKind.Chip:
+                    RenderChip(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Slider:
+                    RenderSlider(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.TextField:
+                    RenderTextField(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.TextArea:
+                    RenderTextArea(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Dropdown:
+                    RenderDropdown(node, state, cache);
+                    break;
+                case NowMarkupNodeKind.Space:
+                    RenderSpace(cache, flexible: false);
+                    break;
+                case NowMarkupNodeKind.Flex:
+                    RenderSpace(cache, flexible: true);
+                    break;
+                case NowMarkupNodeKind.Break:
+                    NowLayout.Space(cache.spaceSize);
+                    break;
+                default:
+                    RenderChildren(node, state);
+                    break;
+            }
+        }
+
+        static NowMarkupNodeKind KindOf(string name)
+        {
+            switch (name)
             {
                 case "column":
                 case "vstack":
@@ -235,27 +385,15 @@ namespace NowUI.Markup
                 case "section":
                 case "panel":
                 case "card":
-                    RenderGroup(node, state, cache, vertical: true);
-                    break;
+                    return NowMarkupNodeKind.GroupVertical;
                 case "row":
                 case "hstack":
-                    RenderGroup(node, state, cache, vertical: false);
-                    break;
-                case "if":
-                case "show":
-                    RenderChildren(node, state);
-                    break;
+                    return NowMarkupNodeKind.GroupHorizontal;
                 case "scroll":
                 case "scrollview":
-                    RenderScroll(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.Scroll;
                 case "gallery":
-                    RenderGallery(node, state, cache);
-                    break;
-                case "slide":
-                case "item":
-                    RenderChildren(node, state);
-                    break;
+                    return NowMarkupNodeKind.Gallery;
                 case "text":
                 case "label":
                 case "p":
@@ -266,73 +404,53 @@ namespace NowUI.Markup
                 case "h4":
                 case "h5":
                 case "h6":
-                    RenderText(cache);
-                    break;
+                    return NowMarkupNodeKind.Text;
                 case "hr":
                 case "divider":
-                    RenderDivider(cache);
-                    break;
+                    return NowMarkupNodeKind.Divider;
                 case "ul":
                 case "ol":
-                    RenderList(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.List;
                 case "details":
-                    RenderDetails(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.Details;
                 case "tabs":
                 case "tabview":
-                    RenderTabs(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.Tabs;
                 case "button":
-                    RenderButton(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.Button;
                 case "checkbox":
-                    RenderCheckbox(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.Checkbox;
                 case "switch":
                 case "toggle":
-                    RenderSwitch(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.Switch;
                 case "radio":
-                    RenderRadio(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.Radio;
                 case "progress":
                 case "progressbar":
-                    RenderProgress(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.Progress;
                 case "badge":
-                    RenderBadge(node, cache);
-                    break;
+                    return NowMarkupNodeKind.Badge;
                 case "chip":
-                    RenderChip(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.Chip;
                 case "slider":
-                    RenderSlider(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.Slider;
                 case "textfield":
                 case "input":
-                    RenderTextField(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.TextField;
                 case "textarea":
-                    RenderTextArea(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.TextArea;
                 case "dropdown":
                 case "select":
-                    RenderDropdown(node, state, cache);
-                    break;
+                    return NowMarkupNodeKind.Dropdown;
                 case "space":
-                    RenderSpace(node, cache.style, flexible: false);
-                    break;
+                    return NowMarkupNodeKind.Space;
                 case "flex":
                 case "flexspace":
-                    RenderSpace(node, cache.style, flexible: true);
-                    break;
+                    return NowMarkupNodeKind.Flex;
                 case "br":
-                    NowLayout.Space(ReadFloat(node, cache.style, "height", "size", 8f));
-                    break;
+                    return NowMarkupNodeKind.Break;
                 default:
-                    RenderChildren(node, state);
-                    break;
+                    return NowMarkupNodeKind.PassThrough;
             }
         }
 
@@ -353,6 +471,8 @@ namespace NowUI.Markup
             }
 
             var style = _styleSheet.Resolve(node);
+            cache.kind = KindOf(node.name);
+            BuildVisibility(node, cache);
             cache.style = style;
             cache.options = NowMarkupStyleHelpers.LayoutOptions(style);
             cache.hasExplicitId = HasId(node);
@@ -486,8 +606,145 @@ namespace NowUI.Markup
                 cache.controlTextStyle = controlTextStyle;
             }
 
+            BuildControlDefaults(node, cache, style);
+
             node.renderCache = cache;
             return cache;
+        }
+
+        /// <summary>
+        /// Precomputes every attribute a control reads per frame; documents and
+        /// stylesheets are immutable after parse, so only state lookups stay live.
+        /// </summary>
+        static void BuildControlDefaults(NowMarkupNode node, NowMarkupNodeCache cache, NowMarkupStyleMap style)
+        {
+            switch (cache.kind)
+            {
+                case NowMarkupNodeKind.Gallery:
+                    cache.galleryControls = ReadBool(node, style, "controls", false);
+                    break;
+                case NowMarkupNodeKind.Tabs:
+                    cache.tabsStretch = ReadBool(node, style, "stretch-tabs", false);
+                    break;
+                case NowMarkupNodeKind.Slider:
+                    cache.sliderMin = ReadFloat(node, style, "min", "minimum", 0f);
+                    cache.sliderMax = ReadFloat(node, style, "max", "maximum", 1f);
+                    cache.sliderDefault = ReadFloat(node, style, "value", "default", cache.sliderMin);
+                    cache.sliderHasStep = TryReadFloat(node, style, "step", out cache.sliderStep);
+                    break;
+                case NowMarkupNodeKind.Progress:
+                    cache.progressMax = ReadFloat(node, style, "max", null, 1f);
+                    cache.progressHasValue = TryReadFloat(node, style, "value", out cache.progressValue);
+                    cache.progressIndeterminate = ReadBool(node, style, "indeterminate", false);
+                    cache.progressHasTime = node.TryAttribute("time", out cache.progressTimeKey);
+                    break;
+                case NowMarkupNodeKind.TextField:
+                    cache.textDefault = node.Attribute("value");
+                    cache.hasPlaceholder = node.TryAttribute("placeholder", out cache.placeholder);
+                    break;
+                case NowMarkupNodeKind.TextArea:
+                    cache.textDefault = node.Attribute("value", cache.plainTextContent);
+                    cache.hasPlaceholder = node.TryAttribute("placeholder", out cache.placeholder);
+                    cache.textMinLines = Mathf.Max(1, ReadInt(node, "min-lines", 3));
+                    cache.textMaxLines = Mathf.Max(cache.textMinLines, ReadInt(node, "max-lines", 8));
+                    break;
+                case NowMarkupNodeKind.Dropdown:
+                    cache.dropdownFallback = ReadInt(node, "selected",
+                        cache.dropdownDefaultIndex >= 0 ? cache.dropdownDefaultIndex : 0);
+                    break;
+                case NowMarkupNodeKind.Checkbox:
+                    cache.checkedDefault = ReadAttributeBool(node, "checked", false);
+                    cache.controlLabel = ControlLabel(node, cache);
+                    break;
+                case NowMarkupNodeKind.Switch:
+                    cache.checkedDefault = ReadAttributeBool(node, "checked", ReadAttributeBool(node, "on", false));
+                    cache.controlLabel = ControlLabel(node, cache);
+                    break;
+                case NowMarkupNodeKind.Radio:
+                    cache.checkedDefault = ReadAttributeBool(node, "checked", false);
+                    cache.controlLabel = ControlLabel(node, cache);
+                    break;
+                case NowMarkupNodeKind.Chip:
+                    cache.chipSelectedDefault = ReadAttributeBool(node, "selected", false);
+                    cache.controlLabel = ControlLabel(node, cache);
+                    break;
+                case NowMarkupNodeKind.Badge:
+                    cache.controlLabel = ControlLabel(node, cache);
+                    break;
+                case NowMarkupNodeKind.Button:
+                    cache.controlLabel = ControlLabel(node, cache);
+
+                    if (string.IsNullOrEmpty(cache.controlLabel))
+                        cache.controlLabel = cache.nodeId;
+
+                    break;
+                case NowMarkupNodeKind.Space:
+                    cache.spaceSize = ReadFloat(node, style, "size", "height", 8f);
+                    break;
+                case NowMarkupNodeKind.Flex:
+                    cache.spaceSize = ReadFloat(node, style, "weight", "stretch", 1f);
+                    break;
+                case NowMarkupNodeKind.Break:
+                    cache.spaceSize = ReadFloat(node, style, "height", "size", 8f);
+                    break;
+            }
+        }
+
+        static string ControlLabel(NowMarkupNode node, NowMarkupNodeCache cache)
+        {
+            return node.TryAttribute("text", out var text) ? text : cache.plainTextContent;
+        }
+
+        /// <summary>
+        /// Resolves the visibility attributes (if/when/visible/show/hidden) once:
+        /// literal expressions collapse to a constant, state-key expressions keep
+        /// only the live lookup, and bang prefixes fold into one invert flag.
+        /// </summary>
+        static void BuildVisibility(NowMarkupNode node, NowMarkupNodeCache cache)
+        {
+            bool hiddenSemantics = false;
+
+            if (!node.TryAttribute("if", out var expression) &&
+                !node.TryAttribute("when", out expression) &&
+                !node.TryAttribute("visible", out expression) &&
+                !node.TryAttribute("show", out expression))
+            {
+                if (!node.TryAttribute("hidden", out expression))
+                {
+                    cache.visibility = NowMarkupVisibility.None;
+                    return;
+                }
+
+                hiddenSemantics = true;
+            }
+
+            expression = expression?.Trim() ?? string.Empty;
+
+            if (expression.Length == 0)
+            {
+                cache.visibility = NowMarkupVisibility.Literal;
+                cache.visibilityLiteral = hiddenSemantics;
+                return;
+            }
+
+            bool invert = hiddenSemantics;
+
+            while (expression.StartsWith("!", StringComparison.Ordinal))
+            {
+                invert = !invert;
+                expression = expression.Substring(1).TrimStart();
+            }
+
+            if (NowMarkupState.TryParseBool(expression, out bool literal))
+            {
+                cache.visibility = NowMarkupVisibility.Literal;
+                cache.visibilityLiteral = invert ? !literal : literal;
+                return;
+            }
+
+            cache.visibility = NowMarkupVisibility.StateKey;
+            cache.visibilityKey = expression;
+            cache.visibilityInvert = invert;
         }
 
         void RenderGroup(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache, bool vertical)
@@ -537,7 +794,7 @@ namespace NowUI.Markup
                 else
                     RenderNode(slide, state);
 
-                if (ReadBool(node, cache.style, "controls", false))
+                if (cache.galleryControls)
                 {
                     using (NowLayout.Horizontal(spacing: 8f))
                     {
@@ -744,7 +1001,7 @@ namespace NowUI.Markup
                         continue;
                     }
 
-                    if (!ShouldRender(child, state))
+                    if (!ShouldRender(Cache(child), state))
                         continue;
 
                     RenderListItem(child, state);
@@ -812,7 +1069,7 @@ namespace NowUI.Markup
 
                 var bar = NowLayout.TabBar(labels).SetId(new NowId(cache.tabsBarId));
 
-                if (ReadBool(node, cache.style, "stretch-tabs", false))
+                if (cache.tabsStretch)
                     bar = bar.SetStretchTabs();
 
                 if (bar.Draw(ref index))
@@ -836,13 +1093,9 @@ namespace NowUI.Markup
         {
             string id = cache.nodeId;
             string key = cache.controlKey;
-            bool fallback = ReadAttributeBool(node, "checked", ReadAttributeBool(node, "on", false));
-            bool value = state.GetBool(key, fallback);
-            string label = node.TryAttribute("text", out var text)
-                ? text
-                : cache.plainTextContent;
+            bool value = state.GetBool(key, cache.checkedDefault);
 
-            var control = NowLayout.Switch(label)
+            var control = NowLayout.Switch(cache.controlLabel)
                 .SetId(new NowId(id))
                 .SetOptions(cache.options);
 
@@ -862,7 +1115,7 @@ namespace NowUI.Markup
             string id = cache.nodeId;
             string key = cache.controlKey;
 
-            if (ReadAttributeBool(node, "checked", false) && !state.Has(key))
+            if (cache.checkedDefault && !state.Has(key))
             {
                 if (cache.radioHasIntValue)
                     state.SetInt(key, cache.radioIntValue);
@@ -874,11 +1127,7 @@ namespace NowUI.Markup
                 ? state.GetInt(key, -1) == cache.radioIntValue
                 : string.Equals(state.GetString(key), cache.radioValue, StringComparison.Ordinal);
 
-            string label = node.TryAttribute("text", out var text)
-                ? text
-                : cache.plainTextContent;
-
-            var radio = NowLayout.Radio(label, isOn)
+            var radio = NowLayout.Radio(cache.controlLabel, isOn)
                 .SetId(new NowId(id))
                 .SetOptions(cache.options);
 
@@ -901,8 +1150,9 @@ namespace NowUI.Markup
 
         void RenderProgress(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
         {
-            float max = ReadFloat(node, cache.style, "max", null, 1f);
-            bool hasValue = TryReadFloat(node, cache.style, "value", out float raw);
+            float max = cache.progressMax;
+            bool hasValue = cache.progressHasValue;
+            float raw = cache.progressValue;
 
             if (cache.hasStateKey)
             {
@@ -910,7 +1160,7 @@ namespace NowUI.Markup
                 hasValue = true;
             }
 
-            bool indeterminate = ReadBool(node, cache.style, "indeterminate", false) || !hasValue;
+            bool indeterminate = cache.progressIndeterminate || !hasValue;
             float value01 = max > 0f ? Mathf.Clamp01(raw / max) : 0f;
             var bar = NowLayout.ProgressBar(value01).SetOptions(cache.options);
 
@@ -921,20 +1171,16 @@ namespace NowUI.Markup
             {
                 bar = bar.SetIndeterminate();
 
-                if (node.TryAttribute("time", out var timeKey))
-                    bar = bar.SetTime(state.GetFloat(timeKey));
+                if (cache.progressHasTime)
+                    bar = bar.SetTime(state.GetFloat(cache.progressTimeKey));
             }
 
             bar.Draw();
         }
 
-        void RenderBadge(NowMarkupNode node, NowMarkupNodeCache cache)
+        void RenderBadge(NowMarkupNodeCache cache)
         {
-            string label = node.TryAttribute("text", out var text)
-                ? text
-                : cache.plainTextContent;
-
-            var badge = NowLayout.Badge(label).SetOptions(cache.options);
+            var badge = NowLayout.Badge(cache.controlLabel).SetOptions(cache.options);
 
             if (cache.hasControlRectStyle)
                 badge = badge.SetStyle(cache.controlRectStyle);
@@ -949,14 +1195,11 @@ namespace NowUI.Markup
         {
             string id = cache.nodeId;
             string key = cache.controlKey;
-            string label = node.TryAttribute("text", out var text)
-                ? text
-                : cache.plainTextContent;
             bool selected = cache.hasStateKey
-                ? state.GetBool(key, ReadAttributeBool(node, "selected", false))
-                : ReadAttributeBool(node, "selected", false);
+                ? state.GetBool(key, cache.chipSelectedDefault)
+                : cache.chipSelectedDefault;
 
-            var chip = NowLayout.Chip(label)
+            var chip = NowLayout.Chip(cache.controlLabel)
                 .SetId(new NowId(id))
                 .SetOptions(cache.options)
                 .SetSelected(selected);
@@ -1001,14 +1244,8 @@ namespace NowUI.Markup
         void RenderButton(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
         {
             string id = cache.nodeId;
-            string label = node.TryAttribute("text", out var text)
-                ? text
-                : cache.plainTextContent;
 
-            if (string.IsNullOrEmpty(label))
-                label = id;
-
-            var button = NowLayout.Button(label)
+            var button = NowLayout.Button(cache.controlLabel)
                 .SetId(new NowId(id))
                 .SetOptions(cache.options);
 
@@ -1029,13 +1266,9 @@ namespace NowUI.Markup
         {
             string id = cache.nodeId;
             string key = cache.controlKey;
-            bool fallback = ReadAttributeBool(node, "checked", false);
-            bool value = state.GetBool(key, fallback);
-            string label = node.TryAttribute("text", out var text)
-                ? text
-                : cache.plainTextContent;
+            bool value = state.GetBool(key, cache.checkedDefault);
 
-            var checkbox = NowLayout.Checkbox(label)
+            var checkbox = NowLayout.Checkbox(cache.controlLabel)
                 .SetId(new NowId(id))
                 .SetOptions(cache.options);
 
@@ -1054,16 +1287,14 @@ namespace NowUI.Markup
         {
             string id = cache.nodeId;
             string key = cache.controlKey;
-            float min = ReadFloat(node, cache.style, "min", "minimum", 0f);
-            float max = ReadFloat(node, cache.style, "max", "maximum", 1f);
-            float value = state.GetFloat(key, ReadFloat(node, cache.style, "value", "default", min));
+            float value = state.GetFloat(key, cache.sliderDefault);
 
-            var slider = NowLayout.Slider(min, max)
+            var slider = NowLayout.Slider(cache.sliderMin, cache.sliderMax)
                 .SetId(new NowId(id))
                 .SetOptions(cache.options);
 
-            if (TryReadFloat(node, cache.style, "step", out float step))
-                slider = slider.SetStep(step);
+            if (cache.sliderHasStep)
+                slider = slider.SetStep(cache.sliderStep);
 
             if (!slider.Draw(ref value))
                 return;
@@ -1077,13 +1308,13 @@ namespace NowUI.Markup
         {
             string id = cache.nodeId;
             string key = cache.controlKey;
-            string value = state.GetString(key, node.Attribute("value"));
+            string value = state.GetString(key, cache.textDefault);
 
             var field = NowLayout.TextField(new NowId(id))
                 .SetOptions(cache.options);
 
-            if (node.TryAttribute("placeholder", out var placeholder))
-                field = field.SetPlaceholder(placeholder);
+            if (cache.hasPlaceholder)
+                field = field.SetPlaceholder(cache.placeholder);
 
             if (cache.hasControlTextStyle)
                 field = field.SetTextStyle(cache.controlTextStyle);
@@ -1100,17 +1331,15 @@ namespace NowUI.Markup
         {
             string id = cache.nodeId;
             string key = cache.controlKey;
-            string value = state.GetString(key, node.Attribute("value", cache.plainTextContent));
+            string value = state.GetString(key, cache.textDefault);
 
             var area = NowLayout.TextArea(new NowId(id))
                 .SetOptions(cache.options);
 
-            if (node.TryAttribute("placeholder", out var placeholder))
-                area = area.SetPlaceholder(placeholder);
+            if (cache.hasPlaceholder)
+                area = area.SetPlaceholder(cache.placeholder);
 
-            int minLines = Mathf.Max(1, ReadInt(node, "min-lines", 3));
-            int maxLines = Mathf.Max(minLines, ReadInt(node, "max-lines", 8));
-            area = area.SetLines(minLines, maxLines);
+            area = area.SetLines(cache.textMinLines, cache.textMaxLines);
 
             if (cache.hasControlTextStyle)
                 area = area.SetTextStyle(cache.controlTextStyle);
@@ -1128,9 +1357,7 @@ namespace NowUI.Markup
             string id = cache.nodeId;
             string key = cache.controlKey;
             var options = cache.dropdownOptions;
-
-            int fallback = ReadInt(node, "selected", cache.dropdownDefaultIndex >= 0 ? cache.dropdownDefaultIndex : 0);
-            int selected = state.GetInt(key, fallback);
+            int selected = state.GetInt(key, cache.dropdownFallback);
 
             var dropdown = NowLayout.Dropdown(new NowId(id), options)
                 .SetOptions(cache.options);
@@ -1144,15 +1371,15 @@ namespace NowUI.Markup
             ExecuteActions(FirstAttribute(node, "on-change", "onchange"), node, state, id);
         }
 
-        void RenderSpace(NowMarkupNode node, NowMarkupStyleMap style, bool flexible)
+        static void RenderSpace(NowMarkupNodeCache cache, bool flexible)
         {
             if (flexible)
             {
-                NowLayout.FlexibleSpace(ReadFloat(node, style, "weight", "stretch", 1f));
+                NowLayout.FlexibleSpace(cache.spaceSize);
                 return;
             }
 
-            NowLayout.Space(ReadFloat(node, style, "size", "height", 8f));
+            NowLayout.Space(cache.spaceSize);
         }
 
         static void DrawBackground(NowMarkupNodeCache cache, NowRect rect)
@@ -1188,57 +1415,20 @@ namespace NowUI.Markup
                 text = text.SetSelectable();
         }
 
-        bool ShouldRender(NowMarkupNode node, NowMarkupState state)
+        static bool ShouldRender(NowMarkupNodeCache cache, NowMarkupState state)
         {
-            if (TryVisibility(node, state, "if", false, out bool visible))
-                return visible;
-
-            if (TryVisibility(node, state, "when", false, out visible))
-                return visible;
-
-            if (TryVisibility(node, state, "visible", false, out visible))
-                return visible;
-
-            if (TryVisibility(node, state, "show", false, out visible))
-                return visible;
-
-            if (TryVisibility(node, state, "hidden", false, out bool hidden))
-                return !hidden;
-
-            return true;
-        }
-
-        bool TryVisibility(NowMarkupNode node, NowMarkupState state, string attribute, bool fallback, out bool value)
-        {
-            value = fallback;
-
-            if (!node.TryAttribute(attribute, out var expression))
-                return false;
-
-            value = EvalBool(expression, state, fallback);
-            return true;
-        }
-
-        bool EvalBool(string expression, NowMarkupState state, bool fallback)
-        {
-            expression = expression?.Trim() ?? string.Empty;
-
-            if (expression.Length == 0)
-                return fallback;
-
-            bool invert = false;
-
-            while (expression.StartsWith("!", StringComparison.Ordinal))
+            switch (cache.visibility)
             {
-                invert = !invert;
-                expression = expression.Substring(1).TrimStart();
+                case NowMarkupVisibility.Literal:
+                    return cache.visibilityLiteral;
+                case NowMarkupVisibility.StateKey:
+                {
+                    bool value = state.GetBool(cache.visibilityKey, false);
+                    return cache.visibilityInvert ? !value : value;
+                }
+                default:
+                    return true;
             }
-
-            bool value = NowMarkupState.TryParseBool(expression, out bool literal)
-                ? literal
-                : state.GetBool(expression, fallback);
-
-            return invert ? !value : value;
         }
 
         void ExecuteActions(string actions, NowMarkupNode node, NowMarkupState state, string sourceId)

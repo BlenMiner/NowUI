@@ -342,19 +342,19 @@ namespace NowUI
 
         /// <summary>True when any pointer button was pressed this frame — the
         /// outside-press dismissal check shared by every popup layer.</summary>
-        public bool anyPointerPressed => pointerButtonsPressed != NowPointerButtons.None;
+        public readonly bool anyPointerPressed => pointerButtonsPressed != NowPointerButtons.None;
 
-        public bool IsPointerDown(NowPointerButton button)
+        public readonly bool IsPointerDown(NowPointerButton button)
         {
             return IsSet(pointerButtonsDown, button);
         }
 
-        public bool WasPointerPressed(NowPointerButton button)
+        public readonly bool WasPointerPressed(NowPointerButton button)
         {
             return IsSet(pointerButtonsPressed, button);
         }
 
-        public bool WasPointerReleased(NowPointerButton button)
+        public readonly bool WasPointerReleased(NowPointerButton button)
         {
             return IsSet(pointerButtonsReleased, button);
         }

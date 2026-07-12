@@ -231,6 +231,8 @@ namespace NowUI
             _previousButtonsDown = NowPointerButtons.None;
             _pressAllowed = true;
             _snapshot = default;
+            _resolvedMainCamera = null;
+            NowInputSystemInput.Invalidate();
         }
 
         NowInputSnapshot CreateSnapshot(
@@ -264,12 +266,22 @@ namespace NowUI
                 Time.realtimeSinceStartup);
         }
 
+        /// <summary>
+        /// Memoized <see cref="Camera.main"/> fallback, re-resolved once the
+        /// cached camera is destroyed or deactivates; the <see cref="camera"/>
+        /// property stays the explicit override and always wins.
+        /// </summary>
+        Camera _resolvedMainCamera;
+
         Camera ResolveCamera()
         {
             if (_camera)
                 return _camera;
 
-            return Camera.main;
+            if (_resolvedMainCamera == null || !_resolvedMainCamera.isActiveAndEnabled)
+                _resolvedMainCamera = Camera.main;
+
+            return _resolvedMainCamera;
         }
 
         static Vector2 SanitizeSize(Vector2 value)

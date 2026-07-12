@@ -180,6 +180,79 @@ namespace NowUI
                 plan);
         }
 
+        /// <summary>
+        /// Blurs an already-captured backdrop at blur-plan resolution and draws
+        /// the glass batch sampling that plan-sized result directly, so no
+        /// capture-sized upsample target is allocated per pane.
+        /// <paramref name="captureSourceScaleOffset"/> selects the capture
+        /// region inside <paramref name="captureSource"/> in normalized UVs;
+        /// pass (1, 1, 0, 0) when the source is already cropped to the capture.
+        /// </summary>
+        internal static void DrawGlassWithBlurredCapture(
+            CommandBuffer commandBuffer,
+            Mesh mesh,
+            Matrix4x4 projection,
+            Material material,
+            int subMesh,
+            in NowMeshBatch batch,
+            in NowGlassCaptureRect capture,
+            RenderTargetIdentifier captureSource,
+            int captureSourceWidth,
+            int captureSourceHeight,
+            Vector4 captureSourceScaleOffset,
+            RenderTargetIdentifier drawTarget,
+            Matrix4x4 drawMatrix,
+            string host)
+        {
+            var blurMaterial = GetBlurMaterial();
+
+            if (commandBuffer == null || mesh == null || material == null || blurMaterial == null)
+                return;
+
+            var quality = GetBatchQuality(batch);
+            var plan = GetBlurPlan(batch.data.x, capture.width, capture.height, quality);
+
+            commandBuffer.GetTemporaryRT(_sourceId, plan.width, plan.height, 0, FilterMode.Bilinear, RenderTextureFormat.ARGB32);
+            commandBuffer.SetGlobalVector(_blurDirectionId, Vector4.zero);
+            BlitBlur(commandBuffer, captureSource, _sourceId, captureSourceWidth, captureSourceHeight, blurMaterial, captureSourceScaleOffset);
+
+            if (plan.iterations > 0)
+            {
+                commandBuffer.GetTemporaryRT(_scratchId, plan.width, plan.height, 0, FilterMode.Bilinear, RenderTextureFormat.ARGB32);
+
+                for (int i = 0; i < plan.iterations; ++i)
+                {
+                    float passStep = plan.step;
+                    commandBuffer.SetGlobalVector(_blurDirectionId, new Vector4(passStep, 0f, 0f, 0f));
+                    BlitBlur(commandBuffer, _sourceId, _scratchId, plan.width, plan.height, blurMaterial);
+                    commandBuffer.SetGlobalVector(_blurDirectionId, new Vector4(0f, passStep, 0f, 0f));
+                    BlitBlur(commandBuffer, _scratchId, _sourceId, plan.width, plan.height, blurMaterial);
+                }
+            }
+
+            commandBuffer.SetRenderTarget(drawTarget);
+            commandBuffer.SetViewProjectionMatrices(Matrix4x4.identity, projection);
+            commandBuffer.SetGlobalTexture(_backdropTexId, _sourceId);
+            commandBuffer.SetGlobalVector(_backdropUvTransformId, capture.backdropUvTransform);
+            commandBuffer.SetGlobalFloat(_useBackdropId, 1f);
+            commandBuffer.DrawMesh(mesh, drawMatrix, material, subMesh, 0);
+            commandBuffer.SetGlobalFloat(_useBackdropId, 0f);
+            commandBuffer.SetGlobalVector(_backdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
+
+            if (plan.iterations > 0)
+                commandBuffer.ReleaseTemporaryRT(_scratchId);
+
+            commandBuffer.ReleaseTemporaryRT(_sourceId);
+
+            RecordDiagnostics(
+                host,
+                quality,
+                NowGlassFallbackReason.None,
+                batch.data.x,
+                capture,
+                plan);
+        }
+
         internal static bool CopyAndBlurBackdrop(
             CommandBuffer commandBuffer,
             RenderTargetIdentifier source,
@@ -281,6 +354,8 @@ namespace NowUI
             commandBuffer.SetGlobalVector(_blurDirectionId, Vector4.zero);
             BlitBlur(commandBuffer, source, _sourceId, width, height, blurMaterial);
 
+            bool finalPassWritesDestination = plan.iterations > 0 && plan.downsample == 1;
+
             if (plan.iterations > 0)
             {
                 commandBuffer.GetTemporaryRT(_scratchId, plan.width, plan.height, 0, FilterMode.Bilinear, RenderTextureFormat.ARGB32);
@@ -291,14 +366,22 @@ namespace NowUI
                     commandBuffer.SetGlobalVector(_blurDirectionId, new Vector4(passStep, 0f, 0f, 0f));
                     BlitBlur(commandBuffer, _sourceId, _scratchId, plan.width, plan.height, blurMaterial);
                     commandBuffer.SetGlobalVector(_blurDirectionId, new Vector4(0f, passStep, 0f, 0f));
-                    BlitBlur(commandBuffer, _scratchId, _sourceId, plan.width, plan.height, blurMaterial);
+
+                    if (finalPassWritesDestination && i == plan.iterations - 1)
+                        BlitBlur(commandBuffer, _scratchId, destination, plan.width, plan.height, blurMaterial);
+                    else
+                        BlitBlur(commandBuffer, _scratchId, _sourceId, plan.width, plan.height, blurMaterial);
                 }
 
                 commandBuffer.ReleaseTemporaryRT(_scratchId);
             }
 
-            commandBuffer.SetGlobalVector(_blurDirectionId, Vector4.zero);
-            BlitBlur(commandBuffer, _sourceId, destination, plan.width, plan.height, blurMaterial);
+            if (!finalPassWritesDestination)
+            {
+                commandBuffer.SetGlobalVector(_blurDirectionId, Vector4.zero);
+                BlitBlur(commandBuffer, _sourceId, destination, plan.width, plan.height, blurMaterial);
+            }
+
             commandBuffer.ReleaseTemporaryRT(_sourceId);
             RecordDiagnostics(host, quality, NowGlassFallbackReason.None, radius, width, height, plan.width, plan.height, captureRect, plan);
             return true;

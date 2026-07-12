@@ -322,7 +322,7 @@ namespace NowUI
 
         static float Advance(string text, int start, int count, NowFontAsset font, float fontSize, NowFontStyle style)
         {
-            return count <= 0 ? 0f : font.MeasureText(text, start, count, fontSize, style).x;
+            return NowTextMetrics.Advance(text, font, fontSize, style, start, count);
         }
 
         static int HitTest(string text, List<NowTextSelectionLine> lines, NowFontAsset font, float fontSize, NowFontStyle style, Vector2 position)

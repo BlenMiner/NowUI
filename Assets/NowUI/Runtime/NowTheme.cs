@@ -34,11 +34,21 @@ namespace NowUI
         /// is set and disagrees with the resolved theme's mode, a linked matching
         /// counterpart wins.
         /// </summary>
+        /// <remarks>
+        /// The no-scope path returns the built-in default by plain reference: the
+        /// hidden defaults always match their mode, have no counterpart, and are
+        /// never destroyed by NowUI, so mode resolution and the Unity lifetime
+        /// check are skipped until domain reload resets the statics.
+        /// </remarks>
         public static NowThemeAsset themeAsset
         {
             get
             {
-                return ResolveMode(_themeStack.Count > 0 ? _themeStack[^1] : DefaultAsset());
+                if (_themeStack.Count > 0)
+                    return ResolveMode(_themeStack[^1]);
+
+                var cached = _preferDark == true ? _defaultDarkThemeAsset : _defaultThemeAsset;
+                return ReferenceEquals(cached, null) ? DefaultAsset() : cached;
             }
         }
 

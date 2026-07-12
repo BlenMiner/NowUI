@@ -710,9 +710,7 @@ namespace NowUI
 
         static float Advance(string text, in NowRichTextRun run, int start, int length)
         {
-            return run.font == null || length <= 0
-                ? 0f
-                : run.font.MeasureText(text, start, length, run.fontSize, run.fontStyle).x;
+            return NowTextMetrics.Advance(text, run.font, run.fontSize, run.fontStyle, start, length);
         }
 
         public static NowTextSelectionLine ToSelectionLine(in NowRichTextRun run)

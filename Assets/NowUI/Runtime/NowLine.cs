@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using NowUI.Internal;
 using UnityEngine;
 
@@ -86,6 +87,7 @@ namespace NowUI
             cubic = true;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetPosition(Vector2 from, Vector2 to)
         {
             this.from = from;
@@ -96,6 +98,7 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetBezier(Vector2 from, Vector2 control1, Vector2 control2, Vector2 to)
         {
             this.from = from;
@@ -106,12 +109,14 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetMask(NowRect mask)
         {
             this.mask = mask;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetColor(Color color)
         {
             this.color = color;
@@ -119,6 +124,7 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetColor(Vector4 color)
         {
             this.color = color;
@@ -126,6 +132,7 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetGradient(Color from, Color to)
         {
             color = from;
@@ -134,6 +141,7 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetGradient(Vector4 from, Vector4 to)
         {
             color = from;
@@ -142,18 +150,21 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetWidth(float width)
         {
             this.width = width;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetCap(NowLineCap cap)
         {
             this.cap = cap;
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetDash(float dashLength, float gapLength, float offset = 0f)
         {
             this.dashLength = dashLength;
@@ -162,6 +173,7 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetSolid()
         {
             dashLength = 0f;
@@ -170,6 +182,7 @@ namespace NowUI
             return this;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowLine SetArrow(NowLineArrow arrows = NowLineArrow.End, float length = 0f, float width = 0f)
         {
             this.arrows = arrows;
@@ -207,8 +220,6 @@ namespace NowUI
         static StaticList<float> _lineStrokeArcs = new StaticList<float>(64);
 
         static Material _bezierMaterial;
-
-        static int _bezierMesh = -1;
 
         static StaticList<Vector2> _bezierPoints = new StaticList<Vector2>(128);
 
@@ -256,7 +267,7 @@ namespace NowUI
             return new NowLine(from, control1, control2, to);
         }
 
-        internal static void DrawLine(NowLine line)
+        internal static void DrawLine(in NowLine line)
         {
             if (_suppressDrawDepth > 0 || _defaultMaterial == null || line.width <= 0f)
                 return;
@@ -320,15 +331,15 @@ namespace NowUI
             _lineBuffer.Clear();
 
             if (line.dashLength > LineEpsilon && line.dashGap > LineEpsilon)
-                EmitDashedLine(ref _linePoints, line, color, colorEnd, _lineBuffer);
+                EmitDashedLine(ref _linePoints, line, color, colorEnd, _lineBuffer, scaledWidth, hasTransform ? ApplyTransformScalar(1f) : 1f);
             else
                 EmitLineStroke(ref _linePoints, false, scaledWidth, line.cap, color, colorEnd, _lineBuffer);
 
             if ((line.arrows & NowLineArrow.Start) != 0)
-                EmitLineArrow(ref _linePoints, false, line, color, _lineBuffer);
+                EmitLineArrow(ref _linePoints, false, line, color, _lineBuffer, scaledWidth);
 
             if ((line.arrows & NowLineArrow.End) != 0)
-                EmitLineArrow(ref _linePoints, true, line, colorEnd, _lineBuffer);
+                EmitLineArrow(ref _linePoints, true, line, colorEnd, _lineBuffer, scaledWidth);
 
             if (_lineBuffer.positions.count == 0 || _lineBuffer.indices.count == 0)
                 return;
@@ -343,7 +354,7 @@ namespace NowUI
             if (mask.isEmpty)
                 return;
 
-            var mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
+            var mesh = UseMaterial(_defaultMaterial, NowMeshKind.Rectangle);
 
             if (mesh == null)
                 return;
@@ -390,7 +401,7 @@ namespace NowUI
             if (mask.isEmpty)
                 return;
 
-            var mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
+            var mesh = UseMaterial(_defaultMaterial, NowMeshKind.Rectangle);
 
             if (mesh == null)
                 return;
@@ -525,7 +536,7 @@ namespace NowUI
                 return;
 
             int segmentCount = count - 1;
-            var mesh = UseMaterial(material, ref _bezierMesh, NowMeshKind.Bezier);
+            var mesh = UseMaterial(material, NowMeshKind.Bezier);
 
             if (mesh == null)
                 return;
@@ -626,15 +637,13 @@ namespace NowUI
 
         static void EmitDashedLine(
             ref StaticList<Vector2> points,
-            NowLine line,
+            in NowLine line,
             Vector4 color,
             Vector4 colorTo,
-            NowLottieDrawBuffer buffer)
+            NowLottieDrawBuffer buffer,
+            float scaledWidth,
+            float scalar)
         {
-            bool hasTransform = _transformStack.Count > 0;
-            float scaledWidth = hasTransform ? ApplyTransformScalar(line.width) : line.width;
-            float scalar = hasTransform ? ApplyTransformScalar(1f) : 1f;
-
             float dash = Mathf.Max(line.dashLength * scalar, 0f);
             float gap = Mathf.Max(line.dashGap * scalar, 0f);
             float pattern = dash + gap;
@@ -774,15 +783,15 @@ namespace NowUI
         static void EmitLineArrow(
             ref StaticList<Vector2> points,
             bool atEnd,
-            NowLine line,
+            in NowLine line,
             Vector4 color,
-            NowLottieDrawBuffer buffer)
+            NowLottieDrawBuffer buffer,
+            float scaledWidth)
         {
             if (!TryGetLineTangent(ref points, atEnd, out var tip, out var direction))
                 return;
 
             bool hasTransform = _transformStack.Count > 0;
-            float scaledWidth = hasTransform ? ApplyTransformScalar(line.width) : line.width;
 
             float length = line.arrowLength > LineEpsilon
                 ? line.arrowLength

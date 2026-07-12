@@ -273,6 +273,7 @@ namespace NowUI
                 glass.blurQuality == NowGlassBlurQuality.Auto
                     ? NowGlassSettings.currentBlurQuality
                     : NowGlassSettings.Resolve(glass.blurQuality));
+            var keyData = key.data;
             var mesh = UseGlassMaterial(material, GetGlassCanvasMaterial(), key);
 
             if (mesh == null)
@@ -281,10 +282,10 @@ namespace NowUI
             mesh = EnsureMeshCapacity(mesh, material, NowMeshKind.Glass, 4);
 
             Vector4 extra = default;
-            extra.x = key.data.x;
+            extra.x = keyData.x;
             extra.y = outline;
-            extra.z = key.data.y;
-            extra.w = key.data.z;
+            extra.z = keyData.y;
+            extra.w = keyData.z;
             mesh.AddRect(_tmpVertex, extra, geometryPadding);
         }
 

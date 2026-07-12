@@ -101,9 +101,9 @@ namespace NowUI
             pending = 0;
 
             var textStyle = NowControls.Text(theme, NowTextStyle.Body);
-            float lineHeight = textStyle.Measure("Ag").y;
-            if (lineHeight <= 0f)
-                lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
+            float lineHeight = textStyle.font != null
+                ? textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize
+                : 20f;
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _layoutOptions, renderer.MeasureDropdownField(theme, lineHeight));
 

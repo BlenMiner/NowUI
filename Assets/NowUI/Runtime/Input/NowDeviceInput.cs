@@ -70,7 +70,43 @@ namespace NowUI
 
     internal static class NowInputSystemInput
     {
+        static NowMouseInput s_input;
+
+        static bool s_available;
+
+        static int s_frameStamp = -1;
+
+        static NowNavigationKeys s_navigationKeys;
+
+        /// <summary>
+        /// Frame-cached device read shared by every provider: the ~40 Input
+        /// System control reads run once per frame no matter how many hosts
+        /// poll. Control state cannot change within an Input System update, so
+        /// the cache is behavior-preserving; a mid-frame
+        /// <see cref="NowInput.navigationKeys"/> change still resamples.
+        /// </summary>
         public static bool TryGet(out NowMouseInput input)
+        {
+            var navigationKeys = NowInput.navigationKeys;
+
+            if (s_frameStamp != Time.frameCount || s_navigationKeys != navigationKeys)
+            {
+                s_frameStamp = Time.frameCount;
+                s_navigationKeys = navigationKeys;
+                s_available = Read(navigationKeys, out s_input);
+            }
+
+            input = s_input;
+            return s_available;
+        }
+
+        /// <summary>Forces resampling; used by tests where frameCount is static.</summary>
+        public static void Invalidate()
+        {
+            s_frameStamp = -1;
+        }
+
+        static bool Read(NowNavigationKeys navigationKeys, out NowMouseInput input)
         {
             input = default;
             bool hasAnyInput = false;
@@ -123,7 +159,6 @@ namespace NowUI
 
             if (keyboard != null)
             {
-                var navigationKeys = NowInput.navigationKeys;
                 input.navigation += ReadKeyboardNavigation(keyboard, navigationKeys);
 
                 if ((navigationKeys & NowNavigationKeys.TabFocus) != 0)
@@ -256,6 +291,13 @@ namespace NowUI
             down |= control.isPressed;
             pressed |= control.wasPressedThisFrame;
             released |= control.wasReleasedThisFrame;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetForRuntimeLoad()
+        {
+            s_frameStamp = -1;
+            s_trackedTouchId = -1;
         }
     }
 }

@@ -108,6 +108,8 @@ namespace NowUI
 
         static readonly Dictionary<int, int> _passiveOccurrences = new Dictionary<int, int>(32);
 
+        const int InteractionRepaintSeed = 0x4e435249;
+
         struct InteractionRepaintState
         {
             public bool hovered;
@@ -117,6 +119,24 @@ namespace NowUI
             public bool focused;
         }
 
+        sealed class ReferenceStringComparer : IEqualityComparer<string>
+        {
+            public bool Equals(string x, string y)
+            {
+                return ReferenceEquals(x, y);
+            }
+
+            public int GetHashCode(string value)
+            {
+                return RuntimeHelpers.GetHashCode(value);
+            }
+        }
+
+        const int SiteFileHashCacheLimit = 4096;
+
+        static readonly Dictionary<string, int> _siteFileHashes =
+            new Dictionary<string, int>(64, new ReferenceStringComparer());
+
         /// <summary>
         /// Hashes a call site (file + line) into a control identity. The control
         /// factories capture their caller via [CallerFilePath]/[CallerLineNumber]
@@ -125,12 +145,31 @@ namespace NowUI
         /// disambiguated by per-frame occurrence in <see cref="GetControlId(int)"/>.
         /// Custom controls get the same behavior by declaring the caller-info
         /// parameters themselves and forwarding them here.
+        /// The path's content hash is memoized by reference: caller-info paths
+        /// are compiler-interned constants, so each call site pays the
+        /// O(path-length) walk once. Non-interned strings still hash correctly
+        /// (the cached value is the content hash); the cache is size-capped so
+        /// dynamic paths cannot grow it without bound.
         /// </summary>
         public static int SiteId(string file, int line)
         {
             unchecked
             {
-                int hash = ((file != null ? file.GetHashCode() : 0) * 397) ^ line;
+                int fileHash;
+
+                if (file == null)
+                {
+                    fileHash = 0;
+                }
+                else if (!_siteFileHashes.TryGetValue(file, out fileHash))
+                {
+                    fileHash = file.GetHashCode();
+
+                    if (_siteFileHashes.Count < SiteFileHashCacheLimit)
+                        _siteFileHashes.Add(file, fileHash);
+                }
+
+                int hash = (fileHash * 397) ^ line;
                 return hash != 0 ? hash : 1;
             }
         }
@@ -406,7 +445,7 @@ namespace NowUI
 
             if (!NowInput.isPassive)
             {
-                ref var repaint = ref NowControlState.Get<InteractionRepaintState>(id, "interaction");
+                ref var repaint = ref NowControlState.Get<InteractionRepaintState>(NowInput.CombineId(id, InteractionRepaintSeed));
 
                 if (repaint.hovered != interaction.hovered ||
                     repaint.held != interaction.held ||
@@ -464,6 +503,37 @@ namespace NowUI
             return NowLayout.Rect(options);
         }
 
+        static string _labelMeasureText;
+        static NowFontAsset _labelMeasureFont;
+        static float _labelMeasureFontSize;
+        static NowFontStyle _labelMeasureStyle;
+        static Vector2 _labelMeasureSize;
+
+        /// <summary>
+        /// One-entry measure memo for the label helpers: controls measure their
+        /// label for sizing and again for centering in the same draw, so the
+        /// second call is a repeat of the first for free.
+        /// </summary>
+        static Vector2 MeasureLabel(in NowText text, string label)
+        {
+            if (label != null &&
+                ReferenceEquals(_labelMeasureText, label) &&
+                ReferenceEquals(_labelMeasureFont, text.font) &&
+                _labelMeasureFontSize == text.fontSize &&
+                _labelMeasureStyle == text.fontStyle)
+            {
+                return _labelMeasureSize;
+            }
+
+            Vector2 size = text.Measure(label);
+            _labelMeasureText = label;
+            _labelMeasureFont = text.font;
+            _labelMeasureFontSize = text.fontSize;
+            _labelMeasureStyle = text.fontStyle;
+            _labelMeasureSize = size;
+            return size;
+        }
+
         internal static void DrawCenteredLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle, NowRect mask)
         {
             DrawCenteredLabel(activeThemeAsset, rect, label, textStyle, mask, default, false);
@@ -477,7 +547,7 @@ namespace NowUI
         static void DrawCenteredLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle, NowRect mask, Color color, bool overrideColor)
         {
             var text = Text(activeThemeAsset, textStyle);
-            Vector2 size = text.Measure(label);
+            Vector2 size = MeasureLabel(in text, label);
             float pad = 1f;
 
             text.rect = new NowRect(
@@ -510,7 +580,7 @@ namespace NowUI
         static void DrawLeftLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle, Color color, bool overrideColor)
         {
             var text = Text(activeThemeAsset, textStyle);
-            Vector2 size = text.Measure(label);
+            Vector2 size = MeasureLabel(in text, label);
             float pad = 1f;
 
             text.rect = new NowRect(

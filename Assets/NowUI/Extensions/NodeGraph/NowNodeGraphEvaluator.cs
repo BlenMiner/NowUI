@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace NowUI.NodeGraph
@@ -66,13 +67,55 @@ namespace NowUI.NodeGraph
     /// <see cref="Kind"/>, then ask for any node's value with <see cref="Evaluate(NowNodeGraph, string, T)"/>.
     /// Each top-level call walks upstream links, memoizes every visited output port
     /// for the duration of that call, and breaks cycles by handing the handler its
-    /// fallback value instead of recursing.
+    /// fallback value instead of recursing. Wrap several calls in
+    /// <see cref="BeginBatch"/> to share the memo table across them.
     /// </summary>
     public sealed class NowNodeGraphEvaluator<T>
     {
         readonly Dictionary<int, NowNodeEvalHandler<T>> _handlers = new Dictionary<int, NowNodeEvalHandler<T>>(8);
         readonly Dictionary<(string nodeId, string portId), T> _memo = new Dictionary<(string, string), T>(32);
         readonly HashSet<(string nodeId, string portId)> _visiting = new HashSet<(string, string)>();
+        int _batchDepth;
+
+        /// <summary>
+        /// Starts a caller-owned evaluation batch: every Evaluate/TryEvaluate call
+        /// until the returned scope is disposed shares one memo table, so upstream
+        /// nodes feeding several roots are computed once per batch instead of once
+        /// per call. The caller decides the batch lifetime (typically one rebuild
+        /// pass) because graph edits made mid-batch are not observed by output
+        /// ports that were already memoized. Scopes nest; the memo clears when the
+        /// outermost scope is disposed.
+        /// </summary>
+        public BatchScope BeginBatch()
+        {
+            if (_batchDepth == 0)
+                _memo.Clear();
+
+            ++_batchDepth;
+            return new BatchScope(this);
+        }
+
+        void EndBatch()
+        {
+            if (_batchDepth > 0 && --_batchDepth == 0)
+                _memo.Clear();
+        }
+
+        /// <summary>Handle for one <see cref="BeginBatch"/> call; dispose exactly once per scope.</summary>
+        public readonly struct BatchScope : IDisposable
+        {
+            readonly NowNodeGraphEvaluator<T> _evaluator;
+
+            internal BatchScope(NowNodeGraphEvaluator<T> evaluator)
+            {
+                _evaluator = evaluator;
+            }
+
+            public void Dispose()
+            {
+                _evaluator?.EndBatch();
+            }
+        }
 
         /// <summary>Registers (or replaces) the handler for a node kind. Pass null to remove.</summary>
         public NowNodeGraphEvaluator<T> Kind(int kindId, NowNodeEvalHandler<T> handler)
@@ -148,7 +191,7 @@ namespace NowUI.NodeGraph
 
             bool isRoot = _visiting.Count == 0;
 
-            if (isRoot)
+            if (isRoot && _batchDepth == 0)
                 _memo.Clear();
 
             try

@@ -40,7 +40,9 @@ namespace NowUI.Markup
 
         public bool TryGet(string name, out string value)
         {
-            if (_values.TryGetValue(NormalizeProperty(name), out var entry))
+            string key = IsNormalized(name) ? name : NormalizeProperty(name);
+
+            if (key.Length > 0 && _values.TryGetValue(key, out var entry))
             {
                 value = entry.value;
                 return true;
@@ -48,6 +50,27 @@ namespace NowUI.Markup
 
             value = string.Empty;
             return false;
+        }
+
+        /// <summary>
+        /// True when normalization would return the string unchanged, so constant
+        /// lookup names skip the allocating lower-case/replace path. Non-ASCII
+        /// falls through to the full normalization to match its case mapping.
+        /// </summary>
+        static bool IsNormalized(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return false;
+
+            for (int i = 0; i < value.Length; ++i)
+            {
+                char c = value[i];
+
+                if (c == '_' || c >= 128 || char.IsUpper(c) || char.IsWhiteSpace(c))
+                    return false;
+            }
+
+            return true;
         }
 
         public bool TryGetAny(out string value, params string[] names)

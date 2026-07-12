@@ -28,6 +28,8 @@ namespace NowUI
 
         static bool _callbacksRegistered;
 
+        static int _lastCleanupFrame = int.MinValue;
+
         sealed class CameraState
         {
             public Camera camera;
@@ -153,6 +155,9 @@ namespace NowUI
 
             if (!_states.TryGetValue(camera, out var state))
             {
+                _lastCleanupFrame = int.MinValue;
+                CleanupStaleStates();
+
                 state = new CameraState
                 {
                     camera = camera
@@ -213,6 +218,9 @@ namespace NowUI
 
             if (!_states.TryGetValue(camera, out var state))
             {
+                _lastCleanupFrame = int.MinValue;
+                CleanupStaleStates();
+
                 state = new CameraState
                 {
                     camera = camera
@@ -825,9 +833,20 @@ namespace NowUI
             state.builtInBufferAttached = false;
         }
 
+        /// <summary>
+        /// Staleness is frame-granular (lastUsedFrame &lt; frame - 1), so the full
+        /// walk runs at most once per frame even though registration, request
+        /// queries, and camera callbacks all trigger it. Explicit cleanup entry
+        /// points reset the gate first so they always sweep.
+        /// </summary>
         static void CleanupStaleStates()
         {
             int frame = Time.frameCount;
+
+            if (frame == _lastCleanupFrame)
+                return;
+
+            _lastCleanupFrame = frame;
             _staleCameras.Clear();
 
             foreach (var pair in _states)
@@ -1005,6 +1024,8 @@ namespace NowUI
 
         public static void ResetEditorPreviewState()
         {
+            _lastCleanupFrame = int.MinValue;
+
             for (int i = 0; i < _staleCameras.Count; ++i)
                 _staleCameras[i] = null;
 
@@ -1051,8 +1072,14 @@ namespace NowUI
             ResetEditorPreviewState();
         }
 
+        /// <summary>
+        /// Always sweeps, bypassing the once-per-frame gate, so explicit
+        /// end-of-frame cleanup keeps releasing destroyed cameras even in
+        /// batch runs where <see cref="Time.frameCount"/> is frozen.
+        /// </summary>
         public static void EndFrameCleanup()
         {
+            _lastCleanupFrame = int.MinValue;
             CleanupStaleStates();
         }
     }

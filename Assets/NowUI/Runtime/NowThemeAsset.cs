@@ -37,23 +37,32 @@ namespace NowUI
 
         [SerializeField, HideInInspector] int _generatorSeed;
 
+        static int _contentVersion;
+
+        /// <summary>
+        /// Bumped whenever any theme asset's content may have changed
+        /// (deserialization, inspector edits, resets, palette regeneration).
+        /// Consumers caching values resolved from a theme revalidate against it.
+        /// </summary>
+        internal static int contentVersion => _contentVersion;
+
         public NowRectangleStyle defaultRectangleStyle => _defaultRectangleStyle;
 
         public NowTextStyle defaultTextStyle => _defaultTextStyle;
 
-        public NowThemeColorSet palette => _palette;
+        public ref readonly NowThemeColorSet palette => ref _palette;
 
-        public NowThemeSpacingSet spacings => _spacings;
+        public ref readonly NowThemeSpacingSet spacings => ref _spacings;
 
-        public NowThemeRadiusSet radii => _radii;
+        public ref readonly NowThemeRadiusSet radii => ref _radii;
 
-        public NowThemeShadowSet shadows => _shadows;
+        public ref readonly NowThemeShadowSet shadows => ref _shadows;
 
-        public NowRectangleStyleSet rectanglePresets => _rectanglePresets;
+        public ref readonly NowRectangleStyleSet rectanglePresets => ref _rectanglePresets;
 
-        public NowTextStyleSet textPresets => _textPresets;
+        public ref readonly NowTextStyleSet textPresets => ref _textPresets;
 
-        public NowControlStyleSet controlStyles => _controlStyles;
+        public ref readonly NowControlStyleSet controlStyles => ref _controlStyles;
 
         /// <summary>The opposite-mode twin used by <see cref="NowTheme.preferDark"/>.</summary>
         public NowThemeAsset counterpart => _counterpart;
@@ -215,6 +224,7 @@ namespace NowUI
         public void MigrateDerivedRoles()
         {
             _palette.MigrateDerivedRoles();
+            _contentVersion++;
         }
 
         /// <summary>Resets every set to the built-in light or dark defaults.</summary>
@@ -229,6 +239,7 @@ namespace NowUI
             _controlStyles = NowControlStyleSet.Default;
             _generatorDark = dark;
             _palette.InvalidateCache();
+            _contentVersion++;
         }
 
         /// <summary>Links the opposite-mode twin used by <see cref="NowTheme.preferDark"/>.</summary>
@@ -247,16 +258,19 @@ namespace NowUI
             _palette.ClearDerivedRoles();
             _palette.MigrateDerivedRoles();
             _palette.InvalidateCache();
+            _contentVersion++;
         }
 
         void OnEnable()
         {
             _palette.InvalidateCache();
+            _contentVersion++;
         }
 
         void OnValidate()
         {
             _palette.InvalidateCache();
+            _contentVersion++;
         }
 
         void ISerializationCallbackReceiver.OnBeforeSerialize()
@@ -267,6 +281,7 @@ namespace NowUI
         {
             _palette.MigrateDerivedRoles();
             _palette.InvalidateCache();
+            _contentVersion++;
         }
     }
 
@@ -374,33 +389,33 @@ namespace NowUI
         /// <summary>Kept as an alias of <see cref="DefaultLight"/> for compatibility.</summary>
         public static NowThemeColorSet Default => DefaultLight;
 
-        public Color background => _background;
-        public Color surface => _surface;
-        public Color surfaceMuted => _surfaceMuted;
-        public Color text => _text;
-        public Color textMuted => _textMuted;
-        public Color border => _border;
-        public Color accent => _accent;
-        public Color accentText => _accentText;
-        public Color surfaceElevated => _surfaceElevated;
-        public Color surfaceHover => _surfaceHover;
-        public Color surfacePressed => _surfacePressed;
-        public Color accentHover => _accentHover;
-        public Color accentPressed => _accentPressed;
-        public Color accentMuted => _accentMuted;
-        public Color borderStrong => _borderStrong;
-        public Color focusRing => _focusRing;
-        public Color success => _success;
-        public Color successText => _successText;
-        public Color successMuted => _successMuted;
-        public Color warning => _warning;
-        public Color warningText => _warningText;
-        public Color warningMuted => _warningMuted;
-        public Color danger => _danger;
-        public Color dangerText => _dangerText;
-        public Color dangerMuted => _dangerMuted;
-        public Color shadow => _shadow;
-        public Color scrim => _scrim;
+        public readonly Color background => _background;
+        public readonly Color surface => _surface;
+        public readonly Color surfaceMuted => _surfaceMuted;
+        public readonly Color text => _text;
+        public readonly Color textMuted => _textMuted;
+        public readonly Color border => _border;
+        public readonly Color accent => _accent;
+        public readonly Color accentText => _accentText;
+        public readonly Color surfaceElevated => _surfaceElevated;
+        public readonly Color surfaceHover => _surfaceHover;
+        public readonly Color surfacePressed => _surfacePressed;
+        public readonly Color accentHover => _accentHover;
+        public readonly Color accentPressed => _accentPressed;
+        public readonly Color accentMuted => _accentMuted;
+        public readonly Color borderStrong => _borderStrong;
+        public readonly Color focusRing => _focusRing;
+        public readonly Color success => _success;
+        public readonly Color successText => _successText;
+        public readonly Color successMuted => _successMuted;
+        public readonly Color warning => _warning;
+        public readonly Color warningText => _warningText;
+        public readonly Color warningMuted => _warningMuted;
+        public readonly Color danger => _danger;
+        public readonly Color dangerText => _dangerText;
+        public readonly Color dangerMuted => _dangerMuted;
+        public readonly Color shadow => _shadow;
+        public readonly Color scrim => _scrim;
 
         /// <summary>True when the background reads as dark (cached with the color cache).</summary>
         public bool isDark
@@ -607,16 +622,16 @@ namespace NowUI
             _xxl = new Vector4(32f, 32f, 32f, 32f)
         };
 
-        public Vector4 none => _none;
-        public Vector4 xs => _xs;
-        public Vector4 sm => _sm;
-        public Vector4 md => _md;
-        public Vector4 lg => _lg;
-        public Vector4 panel => _panel;
-        public Vector4 xl => _xl == default ? Default.xl : _xl;
-        public Vector4 xxl => _xxl == default ? Default.xxl : _xxl;
+        public readonly Vector4 none => _none;
+        public readonly Vector4 xs => _xs;
+        public readonly Vector4 sm => _sm;
+        public readonly Vector4 md => _md;
+        public readonly Vector4 lg => _lg;
+        public readonly Vector4 panel => _panel;
+        public readonly Vector4 xl => _xl == default ? Default.xl : _xl;
+        public readonly Vector4 xxl => _xxl == default ? Default.xxl : _xxl;
 
-        public bool TryGet(NowSpacingToken token, out Vector4 insets)
+        public readonly bool TryGet(NowSpacingToken token, out Vector4 insets)
         {
             switch (token)
             {
@@ -671,14 +686,14 @@ namespace NowUI
             _xl = new Vector4(24f, 24f, 24f, 24f)
         };
 
-        public Vector4 none => _none;
-        public Vector4 sm => _sm;
-        public Vector4 md => _md;
-        public Vector4 lg => _lg;
-        public Vector4 pill => _pill;
-        public Vector4 xl => _xl == default ? Default.xl : _xl;
+        public readonly Vector4 none => _none;
+        public readonly Vector4 sm => _sm;
+        public readonly Vector4 md => _md;
+        public readonly Vector4 lg => _lg;
+        public readonly Vector4 pill => _pill;
+        public readonly Vector4 xl => _xl == default ? Default.xl : _xl;
 
-        public bool TryGet(NowRadiusToken token, out Vector4 radius)
+        public readonly bool TryGet(NowRadiusToken token, out Vector4 radius)
         {
             switch (token)
             {
@@ -724,10 +739,10 @@ namespace NowUI
             _alpha = alpha;
         }
 
-        public float offsetY => _offsetY;
-        public float blur => _blur;
-        public float spread => _spread;
-        public float alpha => _alpha;
+        public readonly float offsetY => _offsetY;
+        public readonly float blur => _blur;
+        public readonly float spread => _spread;
+        public readonly float alpha => _alpha;
     }
 
     /// <summary>A two-layer drop shadow: a directional key layer plus a soft ambient layer.</summary>
@@ -743,8 +758,8 @@ namespace NowUI
             _ambient = ambient;
         }
 
-        public NowShadowLayer key => _key;
-        public NowShadowLayer ambient => _ambient;
+        public readonly NowShadowLayer key => _key;
+        public readonly NowShadowLayer ambient => _ambient;
     }
 
     [Serializable]
@@ -769,14 +784,14 @@ namespace NowUI
             _darkModeAlphaScale = 1.6f
         };
 
-        public NowShadowPreset raised => _raised;
-        public NowShadowPreset overlay => _overlay;
-        public NowShadowPreset modal => _modal;
+        public readonly NowShadowPreset raised => _raised;
+        public readonly NowShadowPreset overlay => _overlay;
+        public readonly NowShadowPreset modal => _modal;
 
         /// <summary>Dark themes need stronger shadow alpha since tint carries less contrast.</summary>
-        public float darkModeAlphaScale => _darkModeAlphaScale <= 0f ? Default.darkModeAlphaScale : _darkModeAlphaScale;
+        public readonly float darkModeAlphaScale => _darkModeAlphaScale <= 0f ? Default.darkModeAlphaScale : _darkModeAlphaScale;
 
-        public bool TryGet(NowElevationToken token, out NowShadowPreset preset)
+        public readonly bool TryGet(NowElevationToken token, out NowShadowPreset preset)
         {
             switch (token)
             {
@@ -822,13 +837,13 @@ namespace NowUI
             };
         }
 
-        public bool useToken => _useToken;
+        public readonly bool useToken => _useToken;
 
-        public NowColorToken token => _token;
+        public readonly NowColorToken token => _token;
 
-        public Color fallback => _fallback;
+        public readonly Color fallback => _fallback;
 
-        public Color Resolve(NowThemeAsset themeAsset)
+        public readonly Color Resolve(NowThemeAsset themeAsset)
         {
             if (_useToken && themeAsset != null && themeAsset.TryGetColor(_token, out var color))
                 return color;
@@ -863,13 +878,13 @@ namespace NowUI
             };
         }
 
-        public bool useToken => _useToken;
+        public readonly bool useToken => _useToken;
 
-        public NowSpacingToken token => _token;
+        public readonly NowSpacingToken token => _token;
 
-        public Vector4 fallback => _fallback;
+        public readonly Vector4 fallback => _fallback;
 
-        public Vector4 Resolve(NowThemeAsset themeAsset)
+        public readonly Vector4 Resolve(NowThemeAsset themeAsset)
         {
             if (_useToken && themeAsset != null && themeAsset.TryGetSpacing(_token, out var spacing))
                 return spacing;
@@ -904,13 +919,13 @@ namespace NowUI
             };
         }
 
-        public bool useToken => _useToken;
+        public readonly bool useToken => _useToken;
 
-        public NowRadiusToken token => _token;
+        public readonly NowRadiusToken token => _token;
 
-        public Vector4 fallback => _fallback;
+        public readonly Vector4 fallback => _fallback;
 
-        public Vector4 Resolve(NowThemeAsset themeAsset)
+        public readonly Vector4 Resolve(NowThemeAsset themeAsset)
         {
             if (_useToken && themeAsset != null && themeAsset.TryGetRadius(_token, out var radius))
                 return radius;
@@ -994,16 +1009,16 @@ namespace NowUI
             _hasExtendedPresets = true
         };
 
-        public NowRectanglePreset surface => _surface;
-        public NowRectanglePreset muted => _muted;
-        public NowRectanglePreset outline => _outline;
-        public NowRectanglePreset accent => _accent;
-        public NowRectanglePreset elevated => _hasExtendedPresets ? _elevated : Default.elevated;
-        public NowRectanglePreset accentSoft => _hasExtendedPresets ? _accentSoft : Default.accentSoft;
-        public NowRectanglePreset danger => _hasExtendedPresets ? _danger : Default.danger;
-        public NowRectanglePreset ghost => _hasExtendedPresets ? _ghost : Default.ghost;
+        public readonly NowRectanglePreset surface => _surface;
+        public readonly NowRectanglePreset muted => _muted;
+        public readonly NowRectanglePreset outline => _outline;
+        public readonly NowRectanglePreset accent => _accent;
+        public readonly NowRectanglePreset elevated => _hasExtendedPresets ? _elevated : Default.elevated;
+        public readonly NowRectanglePreset accentSoft => _hasExtendedPresets ? _accentSoft : Default.accentSoft;
+        public readonly NowRectanglePreset danger => _hasExtendedPresets ? _danger : Default.danger;
+        public readonly NowRectanglePreset ghost => _hasExtendedPresets ? _ghost : Default.ghost;
 
-        public bool TryGet(NowRectangleStyle style, out NowRectanglePreset preset)
+        public readonly bool TryGet(NowRectangleStyle style, out NowRectanglePreset preset)
         {
             switch (style)
             {
@@ -1084,14 +1099,14 @@ namespace NowUI
             _elevation = elevation;
         }
 
-        public float blur => _blur;
+        public readonly float blur => _blur;
 
-        public float outline => _outline;
+        public readonly float outline => _outline;
 
         /// <summary>Optional drop-shadow level applied by <see cref="NowRectangle.Draw(NowThemeAsset)"/>-style helpers and the control renderer.</summary>
-        public NowElevationToken elevation => _elevation;
+        public readonly NowElevationToken elevation => _elevation;
 
-        public NowRectangle Apply(NowThemeAsset themeAsset, NowRectangle rectangle)
+        public readonly NowRectangle Apply(NowThemeAsset themeAsset, NowRectangle rectangle)
         {
             rectangle.color = _fill.Resolve(themeAsset);
             rectangle.radius = _radius.Resolve(themeAsset);
@@ -1143,16 +1158,16 @@ namespace NowUI
                 fontStyle);
         }
 
-        public NowTextPreset title => _title;
-        public NowTextPreset body => _body;
-        public NowTextPreset muted => _muted;
-        public NowTextPreset button => _button;
-        public NowTextPreset display => Fallback(_display, NowTextStyle.Display);
-        public NowTextPreset heading => Fallback(_heading, NowTextStyle.Heading);
-        public NowTextPreset subheading => Fallback(_subheading, NowTextStyle.Subheading);
-        public NowTextPreset bodyStrong => Fallback(_bodyStrong, NowTextStyle.BodyStrong);
-        public NowTextPreset label => Fallback(_label, NowTextStyle.Label);
-        public NowTextPreset caption => Fallback(_caption, NowTextStyle.Caption);
+        public readonly NowTextPreset title => _title;
+        public readonly NowTextPreset body => _body;
+        public readonly NowTextPreset muted => _muted;
+        public readonly NowTextPreset button => _button;
+        public readonly NowTextPreset display => Fallback(_display, NowTextStyle.Display);
+        public readonly NowTextPreset heading => Fallback(_heading, NowTextStyle.Heading);
+        public readonly NowTextPreset subheading => Fallback(_subheading, NowTextStyle.Subheading);
+        public readonly NowTextPreset bodyStrong => Fallback(_bodyStrong, NowTextStyle.BodyStrong);
+        public readonly NowTextPreset label => Fallback(_label, NowTextStyle.Label);
+        public readonly NowTextPreset caption => Fallback(_caption, NowTextStyle.Caption);
 
         static NowTextPreset Fallback(NowTextPreset preset, NowTextStyle style)
         {
@@ -1163,7 +1178,7 @@ namespace NowUI
             return fallback;
         }
 
-        public bool TryGet(NowTextStyle style, out NowTextPreset preset)
+        public readonly bool TryGet(NowTextStyle style, out NowTextPreset preset)
         {
             switch (style)
             {
@@ -1250,11 +1265,11 @@ namespace NowUI
             _fontStyle = fontStyle;
         }
 
-        public float fontSize => _fontSize;
+        public readonly float fontSize => _fontSize;
 
-        public NowFontStyle fontStyle => _fontStyle;
+        public readonly NowFontStyle fontStyle => _fontStyle;
 
-        public NowText Apply(NowThemeAsset themeAsset, NowText text)
+        public readonly NowText Apply(NowThemeAsset themeAsset, NowText text)
         {
             if (_font != null)
                 text.font = _font;
@@ -1457,91 +1472,91 @@ namespace NowUI
             }
         }
 
-        public Vector4 buttonPadding => _buttonPadding;
-        public float buttonContentGap => _buttonContentGap;
-        public float buttonFallbackContentWidth => _buttonFallbackContentWidth;
-        public float buttonFallbackContentHeight => _buttonFallbackContentHeight;
-        public float buttonMinHeight => _buttonMinHeight;
-        public NowThemeRadiusReference buttonRadius => _buttonRadius;
-        public float focusOutline => _focusOutline;
-        public NowThemeColorReference focusColor => _focusColor;
-        public NowThemeColorReference fieldFocusColor => _fieldFocusColor;
-        public float focusRingOffset => _focusRingOffset <= 0f ? 2f : _focusRingOffset;
-        public float hoverStateOpacity => _hoverStateOpacity;
-        public float pressedStateOpacity => _pressedStateOpacity;
-        public float disabledOpacity => _disabledOpacity <= 0f ? 0.45f : _disabledOpacity;
-        public float rippleDuration => _rippleDuration;
-        public float rippleOpacity => _rippleOpacity;
-        public float controlMinTouchTarget => _controlMinTouchTarget <= 0f ? 44f : _controlMinTouchTarget;
-        public float toggleSize => _toggleSize;
-        public float toggleGap => _toggleGap;
-        public float toggleStateLayerSize => _toggleStateLayerSize;
-        public float checkboxMarkInsetRatio => _checkboxMarkInsetRatio;
-        public float checkboxMarkRadius => _checkboxMarkRadius;
-        public float radioDotInsetRatio => _radioDotInsetRatio;
-        public float sliderHeight => _sliderHeight;
-        public float sliderKnobSize => _sliderKnobSize;
-        public float sliderTrackThickness => _sliderTrackThickness;
-        public float sliderNavigationStep => _sliderNavigationStep;
-        public float sliderStateLayerSize => _sliderStateLayerSize;
-        public Vector4 textFieldPadding => _textFieldPadding;
-        public float textFieldMinHeight => _textFieldMinHeight;
-        public NowThemeRadiusReference fieldRadius => _fieldRadius;
-        public Vector4 textAreaPadding => _textAreaPadding;
-        public float selectionAlpha => _selectionAlpha;
-        public float caretWidth => _caretWidth;
-        public float compositionUnderlineHeight => _compositionUnderlineHeight;
-        public Vector4 dropdownFieldPadding => _dropdownFieldPadding == default ? _textFieldPadding : _dropdownFieldPadding;
-        public float dropdownFieldMinHeight => _dropdownFieldMinHeight;
-        public float dropdownItemHeight => _dropdownItemHeight;
-        public float dropdownMaxPopupHeight => _dropdownMaxPopupHeight;
-        public float dropdownPopupGap => _dropdownPopupGap;
-        public float dropdownArrowInset => _dropdownArrowInset <= 0f ? 28f : _dropdownArrowInset;
-        public float fieldChevronSize => _fieldChevronSize <= 0f ? 16f : _fieldChevronSize;
-        public float popupPadding => _popupPadding;
-        public float popupItemRadius => _popupItemRadius;
-        public NowThemeRadiusReference popupRadius => _popupRadius;
-        public float contextMenuItemHeight => _contextMenuItemHeight;
-        public float contextMenuPaddingX => _contextMenuPaddingX;
-        public float contextMenuMinWidth => _contextMenuMinWidth;
-        public float contextMenuRadius => _contextMenuRadius <= 0f ? 10f : _contextMenuRadius;
-        public float submenuIndicatorInset => _submenuIndicatorInset <= 0f ? 18f : _submenuIndicatorInset;
-        public float submenuIndicatorSize => _submenuIndicatorSize <= 0f ? 14f : _submenuIndicatorSize;
-        public float scrollbarWidth => _scrollbarWidth;
-        public float scrollbarPadding => _scrollbarPadding;
-        public float scrollbarMinThumbSize => _scrollbarMinThumbSize;
-        public float scrollWheelStep => _scrollWheelStep;
-        public float switchWidth => _switchWidth <= 0f ? 44f : _switchWidth;
-        public float switchHeight => _switchHeight <= 0f ? 24f : _switchHeight;
-        public float switchKnobInset => _switchKnobInset <= 0f ? 3f : _switchKnobInset;
-        public float progressBarHeight => _progressBarHeight <= 0f ? 8f : _progressBarHeight;
-        public float progressBarSweepRatio => _progressBarSweepRatio <= 0f ? 0.3f : _progressBarSweepRatio;
-        public float progressBarPeriod => _progressBarPeriod <= 0f ? 1.2f : _progressBarPeriod;
-        public float badgeMinSize => _badgeMinSize <= 0f ? 20f : _badgeMinSize;
-        public float badgePaddingX => _badgePaddingX <= 0f ? 8f : _badgePaddingX;
-        public float chipHeight => _chipHeight <= 0f ? 28f : _chipHeight;
-        public float chipPaddingX => _chipPaddingX <= 0f ? 12f : _chipPaddingX;
-        public float chipRemoveSize => _chipRemoveSize <= 0f ? 16f : _chipRemoveSize;
-        public float tooltipDelay => _tooltipDelay <= 0f ? 0.55f : _tooltipDelay;
-        public float tooltipLongPressDelay => _tooltipLongPressDelay <= 0f ? 0.45f : _tooltipLongPressDelay;
-        public float tooltipPadding => _tooltipPadding <= 0f ? 8f : _tooltipPadding;
-        public float tooltipMaxWidth => _tooltipMaxWidth <= 0f ? 280f : _tooltipMaxWidth;
-        public float tooltipGap => _tooltipGap <= 0f ? 6f : _tooltipGap;
-        public float spinnerButtonWidth => _spinnerButtonWidth <= 0f ? 20f : _spinnerButtonWidth;
-        public float tabHeight => _tabHeight <= 0f ? 40f : _tabHeight;
-        public float tabPaddingX => _tabPaddingX <= 0f ? 16f : _tabPaddingX;
-        public float tabIndicatorThickness => _tabIndicatorThickness <= 0f ? 2f : _tabIndicatorThickness;
-        public float tabSpacing => _tabSpacing;
-        public float splitterThickness => _splitterThickness <= 0f ? 4f : _splitterThickness;
-        public float splitterHitOutset => _splitterHitOutset <= 0f ? 10f : _splitterHitOutset;
-        public float treeRowHeight => _treeRowHeight <= 0f ? 32f : _treeRowHeight;
-        public float treeIndentWidth => _treeIndentWidth <= 0f ? 18f : _treeIndentWidth;
-        public float treeDisclosureSize => _treeDisclosureSize <= 0f ? 14f : _treeDisclosureSize;
-        public float calendarCellSize => _calendarCellSize <= 0f ? 40f : _calendarCellSize;
-        public float calendarHeaderHeight => _calendarHeaderHeight <= 0f ? 36f : _calendarHeaderHeight;
-        public float calendarPadding => _calendarPadding <= 0f ? 8f : _calendarPadding;
-        public float clockDialSize => _clockDialSize <= 0f ? 220f : _clockDialSize;
-        public float clockHeaderHeight => _clockHeaderHeight <= 0f ? 44f : _clockHeaderHeight;
+        public readonly Vector4 buttonPadding => _buttonPadding;
+        public readonly float buttonContentGap => _buttonContentGap;
+        public readonly float buttonFallbackContentWidth => _buttonFallbackContentWidth;
+        public readonly float buttonFallbackContentHeight => _buttonFallbackContentHeight;
+        public readonly float buttonMinHeight => _buttonMinHeight;
+        public readonly NowThemeRadiusReference buttonRadius => _buttonRadius;
+        public readonly float focusOutline => _focusOutline;
+        public readonly NowThemeColorReference focusColor => _focusColor;
+        public readonly NowThemeColorReference fieldFocusColor => _fieldFocusColor;
+        public readonly float focusRingOffset => _focusRingOffset <= 0f ? 2f : _focusRingOffset;
+        public readonly float hoverStateOpacity => _hoverStateOpacity;
+        public readonly float pressedStateOpacity => _pressedStateOpacity;
+        public readonly float disabledOpacity => _disabledOpacity <= 0f ? 0.45f : _disabledOpacity;
+        public readonly float rippleDuration => _rippleDuration;
+        public readonly float rippleOpacity => _rippleOpacity;
+        public readonly float controlMinTouchTarget => _controlMinTouchTarget <= 0f ? 44f : _controlMinTouchTarget;
+        public readonly float toggleSize => _toggleSize;
+        public readonly float toggleGap => _toggleGap;
+        public readonly float toggleStateLayerSize => _toggleStateLayerSize;
+        public readonly float checkboxMarkInsetRatio => _checkboxMarkInsetRatio;
+        public readonly float checkboxMarkRadius => _checkboxMarkRadius;
+        public readonly float radioDotInsetRatio => _radioDotInsetRatio;
+        public readonly float sliderHeight => _sliderHeight;
+        public readonly float sliderKnobSize => _sliderKnobSize;
+        public readonly float sliderTrackThickness => _sliderTrackThickness;
+        public readonly float sliderNavigationStep => _sliderNavigationStep;
+        public readonly float sliderStateLayerSize => _sliderStateLayerSize;
+        public readonly Vector4 textFieldPadding => _textFieldPadding;
+        public readonly float textFieldMinHeight => _textFieldMinHeight;
+        public readonly NowThemeRadiusReference fieldRadius => _fieldRadius;
+        public readonly Vector4 textAreaPadding => _textAreaPadding;
+        public readonly float selectionAlpha => _selectionAlpha;
+        public readonly float caretWidth => _caretWidth;
+        public readonly float compositionUnderlineHeight => _compositionUnderlineHeight;
+        public readonly Vector4 dropdownFieldPadding => _dropdownFieldPadding == default ? _textFieldPadding : _dropdownFieldPadding;
+        public readonly float dropdownFieldMinHeight => _dropdownFieldMinHeight;
+        public readonly float dropdownItemHeight => _dropdownItemHeight;
+        public readonly float dropdownMaxPopupHeight => _dropdownMaxPopupHeight;
+        public readonly float dropdownPopupGap => _dropdownPopupGap;
+        public readonly float dropdownArrowInset => _dropdownArrowInset <= 0f ? 28f : _dropdownArrowInset;
+        public readonly float fieldChevronSize => _fieldChevronSize <= 0f ? 16f : _fieldChevronSize;
+        public readonly float popupPadding => _popupPadding;
+        public readonly float popupItemRadius => _popupItemRadius;
+        public readonly NowThemeRadiusReference popupRadius => _popupRadius;
+        public readonly float contextMenuItemHeight => _contextMenuItemHeight;
+        public readonly float contextMenuPaddingX => _contextMenuPaddingX;
+        public readonly float contextMenuMinWidth => _contextMenuMinWidth;
+        public readonly float contextMenuRadius => _contextMenuRadius <= 0f ? 10f : _contextMenuRadius;
+        public readonly float submenuIndicatorInset => _submenuIndicatorInset <= 0f ? 18f : _submenuIndicatorInset;
+        public readonly float submenuIndicatorSize => _submenuIndicatorSize <= 0f ? 14f : _submenuIndicatorSize;
+        public readonly float scrollbarWidth => _scrollbarWidth;
+        public readonly float scrollbarPadding => _scrollbarPadding;
+        public readonly float scrollbarMinThumbSize => _scrollbarMinThumbSize;
+        public readonly float scrollWheelStep => _scrollWheelStep;
+        public readonly float switchWidth => _switchWidth <= 0f ? 44f : _switchWidth;
+        public readonly float switchHeight => _switchHeight <= 0f ? 24f : _switchHeight;
+        public readonly float switchKnobInset => _switchKnobInset <= 0f ? 3f : _switchKnobInset;
+        public readonly float progressBarHeight => _progressBarHeight <= 0f ? 8f : _progressBarHeight;
+        public readonly float progressBarSweepRatio => _progressBarSweepRatio <= 0f ? 0.3f : _progressBarSweepRatio;
+        public readonly float progressBarPeriod => _progressBarPeriod <= 0f ? 1.2f : _progressBarPeriod;
+        public readonly float badgeMinSize => _badgeMinSize <= 0f ? 20f : _badgeMinSize;
+        public readonly float badgePaddingX => _badgePaddingX <= 0f ? 8f : _badgePaddingX;
+        public readonly float chipHeight => _chipHeight <= 0f ? 28f : _chipHeight;
+        public readonly float chipPaddingX => _chipPaddingX <= 0f ? 12f : _chipPaddingX;
+        public readonly float chipRemoveSize => _chipRemoveSize <= 0f ? 16f : _chipRemoveSize;
+        public readonly float tooltipDelay => _tooltipDelay <= 0f ? 0.55f : _tooltipDelay;
+        public readonly float tooltipLongPressDelay => _tooltipLongPressDelay <= 0f ? 0.45f : _tooltipLongPressDelay;
+        public readonly float tooltipPadding => _tooltipPadding <= 0f ? 8f : _tooltipPadding;
+        public readonly float tooltipMaxWidth => _tooltipMaxWidth <= 0f ? 280f : _tooltipMaxWidth;
+        public readonly float tooltipGap => _tooltipGap <= 0f ? 6f : _tooltipGap;
+        public readonly float spinnerButtonWidth => _spinnerButtonWidth <= 0f ? 20f : _spinnerButtonWidth;
+        public readonly float tabHeight => _tabHeight <= 0f ? 40f : _tabHeight;
+        public readonly float tabPaddingX => _tabPaddingX <= 0f ? 16f : _tabPaddingX;
+        public readonly float tabIndicatorThickness => _tabIndicatorThickness <= 0f ? 2f : _tabIndicatorThickness;
+        public readonly float tabSpacing => _tabSpacing;
+        public readonly float splitterThickness => _splitterThickness <= 0f ? 4f : _splitterThickness;
+        public readonly float splitterHitOutset => _splitterHitOutset <= 0f ? 10f : _splitterHitOutset;
+        public readonly float treeRowHeight => _treeRowHeight <= 0f ? 32f : _treeRowHeight;
+        public readonly float treeIndentWidth => _treeIndentWidth <= 0f ? 18f : _treeIndentWidth;
+        public readonly float treeDisclosureSize => _treeDisclosureSize <= 0f ? 14f : _treeDisclosureSize;
+        public readonly float calendarCellSize => _calendarCellSize <= 0f ? 40f : _calendarCellSize;
+        public readonly float calendarHeaderHeight => _calendarHeaderHeight <= 0f ? 36f : _calendarHeaderHeight;
+        public readonly float calendarPadding => _calendarPadding <= 0f ? 8f : _calendarPadding;
+        public readonly float clockDialSize => _clockDialSize <= 0f ? 220f : _clockDialSize;
+        public readonly float clockHeaderHeight => _clockHeaderHeight <= 0f ? 44f : _clockHeaderHeight;
     }
 
     public readonly struct NowSliderVisualMetrics
@@ -2126,11 +2141,7 @@ namespace NowUI
         protected static float LabelHeight(NowThemeAsset themeAsset)
         {
             var text = NowControls.Text(themeAsset, NowTextStyle.Body);
-            float height = text.Measure("Ag").y;
-            if (height > 0f)
-                return height;
-
-            return text.font != null ? text.font.GetLineHeight() * text.fontSize : 20f;
+            return text.font != null ? text.font.GetLineHeight(text.fontStyle) * text.fontSize : 20f;
         }
 
         public virtual void DrawPopupBackground(NowThemeAsset themeAsset, NowRect rect, bool menu)
@@ -2289,7 +2300,7 @@ namespace NowUI
         /// <summary>Offset focus ring drawn outside the control at the themed focus color.</summary>
         protected virtual void DrawFocusRing(NowThemeAsset themeAsset, NowRect rect, Vector4 radius)
         {
-            var styles = themeAsset.controlStyles;
+            ref readonly var styles = ref themeAsset.controlStyles;
             Color color = styles.focusColor.Resolve(themeAsset);
             Vector2 transformScale = Now.currentTransform.scale;
             float scale = Mathf.Max(Mathf.Abs(transformScale.x), Mathf.Abs(transformScale.y));

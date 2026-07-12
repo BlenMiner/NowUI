@@ -455,12 +455,9 @@ namespace NowUI
 
         static float ResolveLineHeight(NowText textStyle)
         {
-            float lineHeight = textStyle.Measure("Ag").y;
-
-            if (lineHeight > 0f)
-                return lineHeight;
-
-            return textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
+            return textStyle.font != null
+                ? textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize
+                : 20f;
         }
 
         static void DrawField(

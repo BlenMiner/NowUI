@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -38,17 +39,68 @@ namespace NowUI
     /// </summary>
     public static class NowTextWrap
     {
+        /// <summary>
+        /// Last layout inputs and result for one runs list. When nothing changed,
+        /// <see cref="NowTextWrap.Layout"/> returns without rebuilding the runs, so
+        /// texts materialized by <see cref="NowTextWrap.Draw"/> survive and per-frame
+        /// re-layout (tooltips) neither re-measures nor re-allocates.
+        /// </summary>
+        sealed class LayoutMemo
+        {
+            public string text;
+
+            public NowFontAsset font;
+
+            public int fontVersion;
+
+            public float width;
+
+            public float fontSize;
+
+            public NowFontStyle fontStyle;
+
+            public float lineHeight;
+
+            public int runCount;
+
+            public Vector2 size;
+        }
+
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<List<NowTextRun>, LayoutMemo> _layoutMemos =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<List<NowTextRun>, LayoutMemo>();
+
         public static Vector2 Layout(in NowText style, string text, float width, List<NowTextRun> runs)
         {
-            runs.Clear();
-
             var fontAsset = style.font != null ? style.font : Now.font;
 
             if (fontAsset == null || string.IsNullOrEmpty(text))
+            {
+                runs.Clear();
+
+                if (_layoutMemos.TryGetValue(runs, out var staleMemo))
+                    staleMemo.text = null;
+
                 return default;
+            }
 
             float fontSize = style.fontSize;
             float lineHeight = fontAsset.GetLineHeight(style.fontStyle) * fontSize;
+            _layoutMemos.TryGetValue(runs, out var memo);
+
+            if (memo != null &&
+                ReferenceEquals(memo.font, fontAsset) &&
+                memo.fontVersion == fontAsset.layoutDataVersion &&
+                memo.width == width &&
+                memo.fontSize == fontSize &&
+                memo.fontStyle == style.fontStyle &&
+                memo.lineHeight == lineHeight &&
+                memo.runCount == runs.Count &&
+                (ReferenceEquals(memo.text, text) || string.Equals(memo.text, text, StringComparison.Ordinal)))
+            {
+                return memo.size;
+            }
+
+            runs.Clear();
             float spaceWidth = fontAsset.MeasureText(" ", fontSize, style.fontStyle).x;
 
             float x = 0f;
@@ -115,7 +167,24 @@ namespace NowUI
             if (x > maxWidth)
                 maxWidth = x;
 
-            return new Vector2(maxWidth, y + lineHeight);
+            var size = new Vector2(maxWidth, y + lineHeight);
+
+            if (memo == null)
+            {
+                memo = new LayoutMemo();
+                _layoutMemos.Add(runs, memo);
+            }
+
+            memo.text = text;
+            memo.font = fontAsset;
+            memo.fontVersion = fontAsset.layoutDataVersion;
+            memo.width = width;
+            memo.fontSize = fontSize;
+            memo.fontStyle = style.fontStyle;
+            memo.lineHeight = lineHeight;
+            memo.runCount = runs.Count;
+            memo.size = size;
+            return size;
         }
 
         /// <summary>

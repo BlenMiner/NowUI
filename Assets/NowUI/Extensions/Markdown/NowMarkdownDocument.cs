@@ -86,6 +86,8 @@ namespace NowUI.Markdown
             public int link;
         }
 
+        const int RoleCount = (int)Role.SyntaxComment + 1;
+
         readonly NowMarkdownBlock _root;
         readonly NowMarkdownStyle _style;
         readonly List<Op> _ops = new List<Op>(64);
@@ -97,7 +99,21 @@ namespace NowUI.Markdown
         readonly System.Text.StringBuilder _regionBuilder = new System.Text.StringBuilder(128);
         readonly List<NowTextSelectionLine> _documentScratch = new List<NowTextSelectionLine>(32);
         readonly List<NowRect> _exclusionScratch = new List<NowRect>(2);
+        readonly List<float> _cellWidthScratch = new List<float>(16);
+        readonly Dictionary<long, int> _decorationMerge = new Dictionary<long, int>(16);
         readonly NowRichTextLayout _richText = new NowRichTextLayout();
+        readonly Vector4[] _roleColors = new Vector4[RoleCount];
+        Vector4 _linkHoverColor;
+        NowThemeAsset _colorThemeAsset;
+        Color _colorText;
+        Color _colorTextMuted;
+        Color _colorAccent;
+        Color _colorBorder;
+        Color _colorSurfaceMuted;
+        Color _colorSurface;
+        Color _colorBackground;
+        bool _hasSelection;
+        int _selectionId;
         string _documentText = string.Empty;
         bool _regionActive;
         int _regionSegmentStart;
@@ -152,6 +168,8 @@ namespace NowUI.Markdown
             if (_layoutFont == null)
                 return result;
 
+            EnsureRoleColors(theme);
+
             if (_hasLoadingImages)
                 NowControlState.RequestRepaint();
 
@@ -164,39 +182,42 @@ namespace NowUI.Markdown
             // instead of starting a text selection.
             _linkHoverOp.Clear();
 
-            for (int i = 0; i < _links.Count; ++i)
-                _linkHoverOp.Add(-1);
-
-            for (int i = 0; i < _ops.Count; ++i)
+            if (_links.Count > 0)
             {
-                var op = _ops[i];
+                for (int i = 0; i < _links.Count; ++i)
+                    _linkHoverOp.Add(-1);
 
-                if (op.link < 0 || (op.kind != OpKind.Text && op.kind != OpKind.Image))
-                    continue;
-
-                var probe = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
-
-                if (NowInput.IsHovered(probe))
-                    _linkHoverOp[op.link] = i;
-            }
-
-            for (int i = 0; i < _ops.Count; ++i)
-            {
-                var op = _ops[i];
-
-                if (op.link < 0 || (op.kind != OpKind.Text && op.kind != OpKind.Image) ||
-                    _linkHoverOp[op.link] != i)
+                for (int i = 0; i < _ops.Count; ++i)
                 {
-                    continue;
+                    var op = _ops[i];
+
+                    if (op.link < 0 || (op.kind != OpKind.Text && op.kind != OpKind.Image))
+                        continue;
+
+                    var probe = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
+
+                    if (NowInput.IsHovered(probe))
+                        _linkHoverOp[op.link] = i;
                 }
 
-                var target = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
-                var interaction = NowInput.Interact(NowInput.CombineId(docId, op.link), target);
-                result.hoveredLink = _links[op.link];
-                NowControlState.RequestRepaint();
+                for (int i = 0; i < _ops.Count; ++i)
+                {
+                    var op = _ops[i];
 
-                if (interaction.clicked)
-                    result.clickedLink = _links[op.link];
+                    if (op.link < 0 || (op.kind != OpKind.Text && op.kind != OpKind.Image) ||
+                        _linkHoverOp[op.link] != i)
+                    {
+                        continue;
+                    }
+
+                    var target = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
+                    var interaction = NowInput.Interact(NowInput.CombineId(docId, op.link), target);
+                    result.hoveredLink = _links[op.link];
+                    NowControlState.RequestRepaint();
+
+                    if (interaction.clicked)
+                        result.clickedLink = _links[op.link];
+                }
             }
 
             InteractDocumentSelection(docId, rect);
@@ -214,7 +235,7 @@ namespace NowUI.Markdown
                         var text = theme.Text(target, _layoutFont);
                         text.fontSize = op.fontSize;
                         text.fontStyle = op.fontStyle;
-                        text.color = ResolveColor(theme, op.role, hovered);
+                        text.color = hovered && op.role == Role.Link ? _linkHoverColor : _roleColors[(int)op.role];
                         text.SetMask(target.Outset(4f)).Draw(op.text);
                         break;
                     }
@@ -222,7 +243,7 @@ namespace NowUI.Markdown
                     case OpKind.Line:
                     {
                         Now.Rectangle(target)
-                            .SetColor(ResolveColor(theme, op.role, hovered))
+                            .SetColor(hovered && op.role == Role.Link ? _linkHoverColor : _roleColors[(int)op.role])
                             .SetRadius(op.role == Role.CodePanel || op.role == Role.CheckBox ? 4f :
                                 op.role == Role.Bullet ? op.rect.width * 0.5f : 0f)
                             .Draw();
@@ -240,8 +261,8 @@ namespace NowUI.Markdown
                     }
                     case OpKind.SelectionLayer:
                     {
-                        if (op.link >= 0)
-                            DrawSelectionRegion(theme, docId, op.link, rect);
+                        if (op.link >= 0 && _hasSelection)
+                            DrawSelectionRegion(op.link, rect);
 
                         break;
                     }
@@ -253,6 +274,8 @@ namespace NowUI.Markdown
 
         void InteractDocumentSelection(int docId, NowRect origin)
         {
+            _hasSelection = false;
+
             if (_selectionRegions.Count == 0 || _documentText.Length == 0 || _layoutFont == null)
                 return;
 
@@ -299,9 +322,11 @@ namespace NowUI.Markdown
             }
 
             int selectionId = NowInput.GetId(docId, "selection");
+            _selectionId = selectionId;
             var selection = NowTextSelection.Interact(
                 selectionId, _documentText, _documentScratch, _layoutFont,
                 _style.fontSize, NowFontStyle.Regular, _exclusionScratch);
+            _hasSelection = selection.hasSelection;
 
             int menuId = NowInput.GetId(selectionId, "menu");
 
@@ -320,7 +345,7 @@ namespace NowUI.Markdown
             }
         }
 
-        void DrawSelectionRegion(NowThemeAsset themeAsset, int docId, int regionIndex, NowRect origin)
+        void DrawSelectionRegion(int regionIndex, NowRect origin)
         {
             var region = _selectionRegions[regionIndex];
             _selectionScratch.Clear();
@@ -336,11 +361,11 @@ namespace NowUI.Markdown
                 _selectionScratch.Add(line);
             }
 
-            Color highlight = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            Color highlight = _colorAccent;
             highlight.a = 0.25f;
 
             NowTextSelection.DrawHighlights(
-                NowInput.GetId(docId, "selection"), _documentText, _selectionScratch,
+                _selectionId, _documentText, _selectionScratch,
                 _layoutFont, region.fontSize, NowFontStyle.Regular, highlight);
         }
 
@@ -431,6 +456,49 @@ namespace NowUI.Markdown
                 size.y + 1f);
             text.SetMask(target.Outset(4f)).Draw(label);
             return clicked;
+        }
+
+        /// <summary>
+        /// Role colors run WCAG contrast searches (chains of pow calls), so they
+        /// resolve once into a Role-indexed table. The cache keys on the theme
+        /// reference plus every palette color the contrast math reads, so it
+        /// stays correct when a theme asset's palette is edited in place.
+        /// </summary>
+        void EnsureRoleColors(NowThemeAsset themeAsset)
+        {
+            Color text = themeAsset.GetColor(NowColorToken.Text, Color.black);
+            Color textMuted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+            Color accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            Color border = themeAsset.GetColor(NowColorToken.Border, new Color(0.886f, 0.910f, 0.941f, 1f));
+            Color surfaceMuted = themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
+            Color surface = themeAsset.GetColor(NowColorToken.Surface, Color.white);
+            Color background = themeAsset.GetColor(NowColorToken.Background, surface);
+
+            if (ReferenceEquals(_colorThemeAsset, themeAsset) &&
+                text.Equals(_colorText) &&
+                textMuted.Equals(_colorTextMuted) &&
+                accent.Equals(_colorAccent) &&
+                border.Equals(_colorBorder) &&
+                surfaceMuted.Equals(_colorSurfaceMuted) &&
+                surface.Equals(_colorSurface) &&
+                background.Equals(_colorBackground))
+            {
+                return;
+            }
+
+            _colorThemeAsset = themeAsset;
+            _colorText = text;
+            _colorTextMuted = textMuted;
+            _colorAccent = accent;
+            _colorBorder = border;
+            _colorSurfaceMuted = surfaceMuted;
+            _colorSurface = surface;
+            _colorBackground = background;
+
+            for (int i = 0; i < RoleCount; ++i)
+                _roleColors[i] = ResolveColor(themeAsset, (Role)i, false);
+
+            _linkHoverColor = ResolveColor(themeAsset, Role.Link, true);
         }
 
         static Vector4 ResolveColor(NowThemeAsset themeAsset, Role role, bool hovered)
@@ -751,7 +819,9 @@ namespace NowUI.Markdown
                     fontSize = size
                 });
 
-                string line = literal.Substring(lineStart, i - lineStart);
+                string line = lineStart == 0 && i == literal.Length
+                    ? literal
+                    : literal.Substring(lineStart, i - lineStart);
 
                 if (line.IndexOf('\t') >= 0)
                     line = line.Replace("\t", "    ");
@@ -764,7 +834,9 @@ namespace NowUI.Markdown
                     for (int t = 0; t < _tokenScratch.Count; ++t)
                     {
                         var token = _tokenScratch[t];
-                        string segment = line.Substring(token.start, token.length);
+                        string segment = token.start == 0 && token.length == line.Length
+                            ? line
+                            : line.Substring(token.start, token.length);
                         float segmentWidth = _layoutFont.MeasureText(segment, size).x;
 
                         AddText(segment, new NowRect(cx, y, segmentWidth + 1f, lineHeight), size,
@@ -882,12 +954,15 @@ namespace NowUI.Markdown
             Span<float> stackBuffer = stackalloc float[16];
             Span<float> stackWidths = columns <= 16 ? stackBuffer.Slice(0, columns) : new float[columns];
 
+            _cellWidthScratch.Clear();
+
             for (int r = 0; r < rows; ++r)
             {
                 for (int c = 0; c < columns; ++c)
                 {
                     float w = MeasureInlines(table.tableRows[r][c], _style.fontSize,
                         r == 0 ? NowFontStyle.Bold : NowFontStyle.Regular);
+                    _cellWidthScratch.Add(w);
 
                     if (w > stackWidths[c])
                         stackWidths[c] = w;
@@ -928,7 +1003,7 @@ namespace NowUI.Markdown
                 {
                     var cell = table.tableRows[r][c];
                     float cellWidth = stackWidths[c];
-                    float textWidth = MeasureInlines(cell, _style.fontSize, r == 0 ? NowFontStyle.Bold : NowFontStyle.Regular);
+                    float textWidth = _cellWidthScratch[r * columns + c];
                     float tx = cx + cellPad;
 
                     var align = table.tableAligns[c];
@@ -1083,7 +1158,9 @@ namespace NowUI.Markdown
                 while (i < text.Length && text[i] != ' ')
                     ++i;
 
-                string word = text.Substring(wordStart, i - wordStart);
+                string word = wordStart == 0 && i == text.Length
+                    ? text
+                    : text.Substring(wordStart, i - wordStart);
                 var rect = _regionActive
                     ? _richText.AddWord(ref cursor, word, _layoutFont, fontSize, style, wrap)
                     : NowRichTextFlow.AddWord(ref cursor, word, 0, word.Length, _layoutFont, fontSize, style, wrap);
@@ -1241,46 +1318,52 @@ namespace NowUI.Markdown
         /// as one link, not one per word. Strike ops carry per-instance negative
         /// tokens so separate strikethroughs never bridge. Decoration ops with
         /// negative link tokens never interact, so only underlines (link >= 0)
-        /// affect hover visuals.
+        /// affect hover visuals. Text flows left-to-right with non-decreasing y,
+        /// so one forward pass tracking the latest surviving segment per
+        /// (link, role) merges every bridgeable pair.
         /// </summary>
         void MergeDecorations(int fromOp)
         {
             float maxGap = _style.fontSize * 0.8f;
+            _decorationMerge.Clear();
+            int write = fromOp;
 
-            for (int i = fromOp; i < _ops.Count; ++i)
+            for (int read = fromOp; read < _ops.Count; ++read)
             {
-                if (_ops[i].kind != OpKind.Line)
-                    continue;
+                var op = _ops[read];
 
-                for (int j = i + 1; j < _ops.Count; ++j)
+                if (op.kind == OpKind.Line)
                 {
-                    if (_ops[j].kind != OpKind.Line)
-                        continue;
+                    long key = ((long)op.link << 8) | (byte)op.role;
 
-                    var first = _ops[i];
-                    var second = _ops[j];
-
-                    if (second.link != first.link || second.role != first.role ||
-                        Mathf.Abs(second.rect.y - first.rect.y) > 0.5f)
+                    if (_decorationMerge.TryGetValue(key, out int target))
                     {
-                        continue;
+                        var first = _ops[target];
+                        float gap = op.rect.x - (first.rect.x + first.rect.width);
+
+                        if (Mathf.Abs(op.rect.y - first.rect.y) <= 0.5f && gap >= -0.5f && gap <= maxGap)
+                        {
+                            first.rect = new NowRect(
+                                first.rect.x,
+                                first.rect.y,
+                                op.rect.x + op.rect.width - first.rect.x,
+                                first.rect.height);
+                            _ops[target] = first;
+                            continue;
+                        }
                     }
 
-                    float gap = second.rect.x - (first.rect.x + first.rect.width);
-
-                    if (gap < -0.5f || gap > maxGap)
-                        continue;
-
-                    first.rect = new NowRect(
-                        first.rect.x,
-                        first.rect.y,
-                        second.rect.x + second.rect.width - first.rect.x,
-                        first.rect.height);
-                    _ops[i] = first;
-                    _ops.RemoveAt(j);
-                    --j;
+                    _decorationMerge[key] = write;
                 }
+
+                if (write != read)
+                    _ops[write] = op;
+
+                ++write;
             }
+
+            if (write < _ops.Count)
+                _ops.RemoveRange(write, _ops.Count - write);
         }
     }
 }

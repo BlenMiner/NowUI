@@ -20,6 +20,9 @@ namespace NowUI
     {
         NowId _id;
         readonly int _site;
+
+        const int SummarySeed = 0x4e4d4653;
+
         readonly IReadOnlyList<string> _options;
         NowFocusNavigation _navigation;
         NowLayoutOptions _layoutOptions;
@@ -140,9 +143,9 @@ namespace NowUI
             pending.hasValue = 0;
 
             var textStyle = NowControls.Text(theme, NowTextStyle.Body);
-            float lineHeight = textStyle.Measure("Ag").y;
-            if (lineHeight <= 0f)
-                lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
+            float lineHeight = textStyle.font != null
+                ? textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize
+                : 20f;
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _layoutOptions, renderer.MeasureDropdownField(theme, lineHeight));
 
@@ -310,7 +313,7 @@ namespace NowUI
 
         static string Summary(int id, IReadOnlyList<string> options, int optionCount, int mask, int allBits, NowText measure, float availableWidth)
         {
-            ref var cache = ref NowControlState.Get<SummaryCache>(NowInput.GetId(id, "summary"));
+            ref var cache = ref NowControlState.Get<SummaryCache>(NowInput.CombineId(id, SummarySeed));
 
             if (cache.initialized != 0 && cache.mask == mask && cache.optionCount == optionCount &&
                 cache.width == availableWidth && cache.label != null)

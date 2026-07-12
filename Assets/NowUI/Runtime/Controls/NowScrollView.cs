@@ -19,6 +19,11 @@ namespace NowUI
     {
         NowId _id;
         readonly int _site;
+
+        const int LayoutSizeSeed = 0x4e53564c;
+        const int FollowTailSeed = 0x4e535654;
+        const int FocusRevealSeed = 0x4e535652;
+
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -126,7 +131,7 @@ namespace NowUI
             NowLayout.TryGetCachedContentSize(areaKey, out Vector2 content);
             var styles = NowTheme.themeAsset.controlStyles;
 
-            ref Vector2 measuredSize = ref NowControlState.Get<Vector2>(id, "layout-size");
+            ref Vector2 measuredSize = ref NowControlState.Get<Vector2>(NowInput.CombineId(id, LayoutSizeSeed));
 
             if (measuredSize == Vector2.zero)
                 measuredSize = new Vector2(viewport.width, viewport.height);
@@ -142,7 +147,7 @@ namespace NowUI
                 // slack tolerates sub-pixel drift without trapping a deliberate
                 // one-line scroll away from the tail.
                 const float TailSlack = 2f;
-                ref float lastMaxScrollY = ref NowControlState.Get<float>(id, "follow-tail");
+                ref float lastMaxScrollY = ref NowControlState.Get<float>(NowInput.CombineId(id, FollowTailSeed));
 
                 if (scroll.y >= lastMaxScrollY - TailSlack)
                     scroll.y = scrollLayout.maxScrollY;
@@ -245,7 +250,7 @@ namespace NowUI
                 return;
             }
 
-            ref var reveal = ref NowControlState.Get<FocusRevealState>(id, "focus-reveal");
+            ref var reveal = ref NowControlState.Get<FocusRevealState>(NowInput.CombineId(id, FocusRevealSeed));
             int focusedId = NowFocus.focusedId;
             int focusRevision = NowFocus.focusRevision;
 
@@ -306,6 +311,8 @@ namespace NowUI
         const float PanScrollSpeed = 4f;
 
         const float MaxAutoScrollDeltaTime = 0.1f;
+
+        const int PanSeed = 0x4e535650;
 
         struct AutoScrollTime
         {
@@ -568,7 +575,7 @@ namespace NowUI
         /// </summary>
         bool ApplyPanScroll(ref Vector2 scroll, out Vector2 anchor)
         {
-            int panId = NowInput.GetId(_id, "pan");
+            int panId = NowInput.CombineId(_id, PanSeed);
             var interaction = NowInput.Interact(panId, _contentViewport, NowPointerButton.Middle);
             ref var pan = ref NowControlState.Get<PanScrollState>(panId);
             var snapshot = NowInput.current;

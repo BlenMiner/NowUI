@@ -146,6 +146,8 @@ namespace NowUI
 
         [NonSerialized] readonly List<IMaterialModifier> _materialModifiers = new List<IMaterialModifier>(4);
 
+        [NonSerialized] bool _materialModifiersDirty = true;
+
         [NonSerialized] readonly List<Material> _stencilBaseMaterials = new List<Material>(4);
 
         [NonSerialized] readonly List<Material> _stencilMaterials = new List<Material>(4);
@@ -475,7 +477,19 @@ namespace NowUI
 
         protected override void UpdateMaterial()
         {
+            _materialModifiersDirty = true;
             ApplyCanvasPages();
+        }
+
+        /// <summary>
+        /// Drops the cached <see cref="IMaterialModifier"/> component list so the
+        /// next rebuild rescans this GameObject. Material rebuilds, enable, and
+        /// canvas hierarchy changes rescan automatically; call this after adding or
+        /// removing a modifier component at runtime without dirtying the material.
+        /// </summary>
+        public void InvalidateMaterialModifiers()
+        {
+            _materialModifiersDirty = true;
         }
 
         public override Material GetModifiedMaterial(Material baseMaterial)
@@ -571,6 +585,7 @@ namespace NowUI
 
         protected override void OnEnable()
         {
+            _materialModifiersDirty = true;
             base.OnEnable();
             _repaintTracker.Reset();
             EnsureCanvasChannels();
@@ -588,6 +603,7 @@ namespace NowUI
 
         protected override void OnCanvasHierarchyChanged()
         {
+            _materialModifiersDirty = true;
             base.OnCanvasHierarchyChanged();
             EnsureCanvasChannels();
         }
@@ -629,6 +645,7 @@ namespace NowUI
     #if UNITY_EDITOR
         protected override void OnValidate()
         {
+            _materialModifiersDirty = true;
             base.OnValidate();
             EnsureCanvasChannels();
             SetVerticesDirty();
@@ -797,8 +814,12 @@ namespace NowUI
 
             UpdateUGUIGlassBackdrops();
 
-            _materialModifiers.Clear();
-            GetComponents(_materialModifiers);
+            if (_materialModifiersDirty)
+            {
+                _materialModifiers.Clear();
+                GetComponents(_materialModifiers);
+                _materialModifiersDirty = false;
+            }
 
             int batchOffset = 0;
             var firstPageBatches = _drawList.GetCanvasBatches(0);
@@ -832,8 +853,6 @@ namespace NowUI
                 ApplyCanvasPage(crenderer, _drawList.GetCanvasMesh(i + 1), batches, batchOffset);
                 batchOffset += batches?.Count ?? 0;
             }
-
-            _materialModifiers.Clear();
         }
 
         void ApplyCanvasPage(CanvasRenderer crenderer, Mesh mesh, List<NowMeshBatch> batches, int batchOffset)
@@ -1047,7 +1066,10 @@ namespace NowUI
                 entry.blurStep = blurPlan.step;
                 entry.fallbackReason = capture.isCropped ? NowGlassFallbackReason.None : NowGlassFallbackReason.FullTargetCapture;
                 entry.hasExternalSource = sourceTexture != null;
-                entry.materialName = baseMaterial.name;
+
+                if (entry.materialName == null || !ReferenceEquals(entry.sourceMaterial, baseMaterial))
+                    entry.materialName = baseMaterial.name;
+
                 EnsureUGUIGlassTextures(entry, capture.width, capture.height);
                 EnsureUGUIGlassMaterial(entry, baseMaterial);
 
@@ -1371,7 +1393,12 @@ namespace NowUI
                 return null;
 
             for (int i = 0; i < _materialModifiers.Count; ++i)
+            {
+                if (_materialModifiers[i] is Component component && component == null)
+                    continue;
+
                 currentMaterial = _materialModifiers[i].GetModifiedMaterial(currentMaterial);
+            }
 
             return currentMaterial;
         }

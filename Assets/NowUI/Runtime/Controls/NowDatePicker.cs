@@ -19,6 +19,11 @@ namespace NowUI
     {
         NowId _id;
         readonly int _site;
+
+        const int PendingDateSeed = 0x4e445044;
+        const int ShownMonthSeed = 0x4e44534d;
+        const int CalendarViewSeed = 0x4e444356;
+
         NowFocusNavigation _navigation;
         NowLayoutOptions _layoutOptions;
         readonly NowRect _rect;
@@ -168,7 +173,7 @@ namespace NowUI
             var renderer = theme.controlRenderer;
             int id = NowControls.GetControlId(_id, _site);
 
-            ref var pending = ref NowControlState.Get<PendingDate>(id, "pending-date");
+            ref var pending = ref NowControlState.Get<PendingDate>(NowInput.CombineId(id, PendingDateSeed));
             bool changed = false;
 
             if (pending.has != 0)
@@ -180,15 +185,15 @@ namespace NowUI
             }
 
             var textStyle = NowControls.Text(theme, NowTextStyle.Body);
-            float lineHeight = textStyle.Measure("Ag").y;
-            if (lineHeight <= 0f)
-                lineHeight = textStyle.font != null ? textStyle.font.GetLineHeight() * textStyle.fontSize : 20f;
+            float lineHeight = textStyle.font != null
+                ? textStyle.font.GetLineHeight(textStyle.fontStyle) * textStyle.fontSize
+                : 20f;
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _layoutOptions, renderer.MeasureDropdownField(theme, lineHeight));
 
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             ref bool open = ref NowControlState.Get<bool>(id);
-            ref var shown = ref NowControlState.Get<ShownMonth>(id, "shown-month");
+            ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(id, ShownMonthSeed));
 
             if (interaction.clicked || submitted)
             {
@@ -199,7 +204,7 @@ namespace NowUI
                     shown.year = value.Year;
                     shown.month = value.Month;
                     ClampShownMonth(ref shown);
-                    NowControlState.Get<int>(id, "calendar-view") = 0;
+                    NowControlState.Get<int>(NowInput.CombineId(id, CalendarViewSeed)) = 0;
 
                     var openState = GetState(id);
                     openState.highlightTicks = value.Date.Ticks;
@@ -303,7 +308,7 @@ namespace NowUI
             var styles = theme.controlStyles;
             var popupRect = state.popupRect;
 
-            ref int view = ref NowControlState.Get<int>(state.id, "calendar-view");
+            ref int view = ref NowControlState.Get<int>(NowInput.CombineId(state.id, CalendarViewSeed));
 
             renderer.DrawPopupBackground(theme, popupRect, menu: false);
             UpdateKeyboard(state, ref view);
@@ -375,7 +380,7 @@ namespace NowUI
 
                     if (interaction.clicked && !disabled)
                     {
-                        ref var pending = ref NowControlState.Get<PendingDate>(state.pendingId, "pending-date");
+                        ref var pending = ref NowControlState.Get<PendingDate>(NowInput.CombineId(state.pendingId, PendingDateSeed));
                         pending.has = 1;
                         pending.ticks = dayTicks;
                         NowControlState.Get<bool>(state.id) = false;
@@ -422,7 +427,7 @@ namespace NowUI
 
                 if (interaction.clicked && !disabled)
                 {
-                    ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId, "shown-month");
+                    ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(state.shownMonthId, ShownMonthSeed));
                     shown.year = state.year;
                     shown.month = month;
                     ClampShownMonth(ref shown);
@@ -477,7 +482,7 @@ namespace NowUI
 
                 if (interaction.clicked && !disabled)
                 {
-                    ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId, "shown-month");
+                    ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(state.shownMonthId, ShownMonthSeed));
                     shown.year = year;
                     ClampShownMonth(ref shown);
                     view = 1;
@@ -585,7 +590,7 @@ namespace NowUI
 
             if (step != 0)
             {
-                ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId, "shown-month");
+                ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(state.shownMonthId, ShownMonthSeed));
 
                 if (view == 1)
                     StepMonths(ref shown, step);
@@ -614,7 +619,7 @@ namespace NowUI
             state.hasHighlight = true;
 
             var day = new DateTime(next);
-            ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId, "shown-month");
+            ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(state.shownMonthId, ShownMonthSeed));
 
             if (day.Year != shown.year || day.Month != shown.month)
             {
@@ -633,7 +638,7 @@ namespace NowUI
             if (state.hasRange && (ticks < state.minTicks || ticks > state.maxTicks))
                 return;
 
-            ref var pending = ref NowControlState.Get<PendingDate>(state.pendingId, "pending-date");
+            ref var pending = ref NowControlState.Get<PendingDate>(NowInput.CombineId(state.pendingId, PendingDateSeed));
             pending.has = 1;
             pending.ticks = ticks;
             NowControlState.Get<bool>(state.id) = false;
@@ -650,7 +655,7 @@ namespace NowUI
             var prev = NowInput.Interact(state.prevId, prevRect);
             var next = NowInput.Interact(state.nextId, nextRect);
 
-            ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId, "shown-month");
+            ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(state.shownMonthId, ShownMonthSeed));
             int arrowStep = view == 0 ? 1 : view == 1 ? 12 : 144;
 
             if (prev.clicked)

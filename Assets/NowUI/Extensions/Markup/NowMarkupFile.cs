@@ -19,6 +19,7 @@ namespace NowUI.Markup
         FileSystemWatcher _watcher;
         DateTime _lastWriteUtc;
         DateTime _nextPollUtc;
+        TimeSpan _pollInterval = WatcherPollFallback;
         long _lastLength;
         string _lastError;
         int _dirty = 1;
@@ -52,6 +53,18 @@ namespace NowUI.Markup
         public DateTime lastWriteTimeUtc => _lastWriteUtc;
 
         public bool watcherActive => _watcher != null;
+
+        /// <summary>
+        /// How often Draw/Refresh re-stats the file: the safety-net cadence for
+        /// missed watcher events, and the polling cadence when no watcher could
+        /// start (mobile players). Defaults to one second; external edits are
+        /// picked up within this delay. <see cref="Reload"/> bypasses the gate.
+        /// </summary>
+        public TimeSpan pollInterval
+        {
+            get => _pollInterval;
+            set => _pollInterval = value < TimeSpan.Zero ? TimeSpan.Zero : value;
+        }
 
         public NowMarkupDocument document
         {
@@ -140,9 +153,6 @@ namespace NowUI.Markup
             if (!_loaded)
                 return true;
 
-            if (_watcher == null)
-                return true;
-
             if (Interlocked.Exchange(ref _dirty, 0) != 0)
                 return true;
 
@@ -151,7 +161,7 @@ namespace NowUI.Markup
             if (now < _nextPollUtc)
                 return false;
 
-            _nextPollUtc = now.Add(WatcherPollFallback);
+            _nextPollUtc = now.Add(_pollInterval);
             return true;
         }
 

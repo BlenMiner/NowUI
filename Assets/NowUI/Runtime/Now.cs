@@ -435,6 +435,10 @@ namespace NowUI
 
         static StaticList<int> _triangles = new StaticList<int>(NowMesh.INITIAL_INDEX_CAPACITY);
 
+        static StaticList<ushort> _triangles16 = new StaticList<ushort>(NowMesh.INITIAL_INDEX_CAPACITY);
+
+        static StaticList<int> _subMeshIndexCounts = new StaticList<int>(8);
+
         static readonly List<int> _capturedMeshIndices = new List<int>(8);
 
         static int CreateMesh(Material mat, NowMeshKind kind)
@@ -496,59 +500,10 @@ namespace NowUI
         sealed class TextureMaterialEntry
         {
             public Material material;
-            public int meshId = -1;
         }
 
         static readonly Dictionary<Texture, TextureMaterialEntry> _textureMaterials =
             new Dictionary<Texture, TextureMaterialEntry>();
-
-        sealed class MaterialMeshEntry
-        {
-            public int meshId = -1;
-        }
-
-        static readonly Dictionary<Material, MaterialMeshEntry> _materialMeshes =
-            new Dictionary<Material, MaterialMeshEntry>();
-
-        readonly struct RectangleMaterialKey : IEquatable<RectangleMaterialKey>
-        {
-            readonly Material _material;
-
-            readonly Material _canvasMaterial;
-
-            readonly NowMeshKind _kind;
-
-            public RectangleMaterialKey(Material material, Material canvasMaterial, NowMeshKind kind)
-            {
-                _material = material;
-                _canvasMaterial = canvasMaterial;
-                _kind = kind;
-            }
-
-            public bool Equals(RectangleMaterialKey other)
-            {
-                return ReferenceEquals(_material, other._material) &&
-                    ReferenceEquals(_canvasMaterial, other._canvasMaterial) &&
-                    _kind == other._kind;
-            }
-
-            public override bool Equals(object obj)
-            {
-                return obj is RectangleMaterialKey other && Equals(other);
-            }
-
-            public override int GetHashCode()
-            {
-                unchecked
-                {
-                    int hash = 17;
-                    hash = hash * 31 + (_material != null ? RuntimeHelpers.GetHashCode(_material) : 0);
-                    hash = hash * 31 + (_canvasMaterial != null ? RuntimeHelpers.GetHashCode(_canvasMaterial) : 0);
-                    hash = hash * 31 + (int)_kind;
-                    return hash;
-                }
-            }
-        }
 
         readonly struct TexturedMaterialKey : IEquatable<TexturedMaterialKey>
         {
@@ -591,9 +546,6 @@ namespace NowUI
             public int lastSyncFrame = -1;
         }
 
-        static readonly Dictionary<RectangleMaterialKey, MaterialMeshEntry> _rectangleMaterialMeshes =
-            new Dictionary<RectangleMaterialKey, MaterialMeshEntry>();
-
         static readonly Dictionary<TexturedMaterialKey, TexturedMaterialEntry> _texturedMaterialCache =
             new Dictionary<TexturedMaterialKey, TexturedMaterialEntry>();
 
@@ -616,59 +568,37 @@ namespace NowUI
                 _textureMaterials[texture] = entry;
             }
 
-            return UseMaterial(entry.material, ref entry.meshId, NowMeshKind.TexturedRectangle);
+            return UseMaterial(entry.material, NowMeshKind.TexturedRectangle);
         }
 
         static NowMesh UseSdfMaterial(Material material)
         {
-            if (material == null)
-                return null;
-
-            if (!_materialMeshes.TryGetValue(material, out var entry))
-            {
-                entry = new MaterialMeshEntry();
-                _materialMeshes[material] = entry;
-            }
-
-            return UseMaterial(material, ref entry.meshId, NowMeshKind.Sdf);
+            return UseMaterial(material, NowMeshKind.Sdf);
         }
 
-        static NowMesh UseMaterial(Material material, ref int cachedMeshId, NowMeshKind kind)
+        static NowMesh UseMaterial(Material material, NowMeshKind kind)
         {
-            return UseMaterial(material, null, ref cachedMeshId, kind);
+            return UseMaterial(material, null, kind, default);
         }
 
         static NowMesh UseMaterial(Material material, Material canvasMaterial, ref int cachedMeshId, NowMeshKind kind)
         {
-            return UseMaterial(material, canvasMaterial, ref cachedMeshId, kind, default);
+            return UseMaterial(material, canvasMaterial, kind, default);
+        }
+
+        static NowMesh UseMaterial(Material material, Material canvasMaterial, ref int cachedMeshId, NowMeshKind kind, Vector4 batchData)
+        {
+            return UseMaterial(material, canvasMaterial, kind, batchData);
         }
 
         static NowMesh UseMaterial(
             Material material,
             Material canvasMaterial,
-            ref int cachedMeshId,
             NowMeshKind kind,
             Vector4 batchData)
         {
             if (material == null)
                 return null;
-
-            if (_captureMesh)
-            {
-                if (_lastUsedMeshId >= 0 &&
-                    _lastUsedMeshId < _meshes.count &&
-                    ReferenceEquals(_meshes.array[_lastUsedMeshId].material, material) &&
-                    ReferenceEquals(_meshes.array[_lastUsedMeshId].canvasMaterial, canvasMaterial) &&
-                    _meshes.array[_lastUsedMeshId].kind == kind &&
-                    _meshes.array[_lastUsedMeshId].batchData == batchData)
-                {
-                    return _meshes.array[_lastUsedMeshId];
-                }
-
-                int captureId = CreateMesh(material, canvasMaterial, kind, batchData);
-                _lastUsedMeshId = captureId;
-                return _meshes.array[captureId];
-            }
 
             if (_lastUsedMeshId >= 0 &&
                 _lastUsedMeshId < _meshes.count &&
@@ -681,33 +611,21 @@ namespace NowUI
             }
 
             int orderedId = CreateMesh(material, canvasMaterial, kind, batchData);
-            cachedMeshId = orderedId;
             _lastUsedMeshId = orderedId;
             return _meshes.array[orderedId];
         }
 
         internal static NowMesh UseEffectMaterial(Material material, ref int cachedMeshId, NowMeshKind kind)
         {
-            return UseMaterial(material, ref cachedMeshId, kind);
+            return UseMaterial(material, null, kind, default);
         }
 
         static NowMesh UseRectangleMaterial(Material material, Material canvasMaterial, NowMeshKind kind)
         {
-            if (material == null)
-                return null;
-
-            var key = new RectangleMaterialKey(material, canvasMaterial, kind);
-
-            if (!_rectangleMaterialMeshes.TryGetValue(key, out var entry))
-            {
-                entry = new MaterialMeshEntry();
-                _rectangleMaterialMeshes[key] = entry;
-            }
-
-            return UseMaterial(material, canvasMaterial, ref entry.meshId, kind);
+            return UseMaterial(material, canvasMaterial, kind, default);
         }
 
-        static Material GetTexturedMaterial(Material source, Texture texture)
+        static Material GetTexturedMaterial(Material source, Texture texture, bool syncPerFrame)
         {
             if (source == null)
                 return null;
@@ -723,26 +641,38 @@ namespace NowUI
                 _texturedMaterialCache[key] = entry;
             }
 
-            int frame = Time.frameCount;
-
-            if (entry.material == null || entry.material.shader != source.shader)
+            if (entry.material != null)
             {
-                entry.material = new Material(source)
+                if (!syncPerFrame)
+                    return entry.material;
+
+                int syncFrame = Time.frameCount;
+                bool synced = entry.lastSyncFrame == syncFrame;
+
+#if UNITY_EDITOR
+                if (synced && entry.material.shader != source.shader)
+                    synced = false;
+#endif
+
+                if (synced)
+                    return entry.material;
+
+                if (entry.material.shader == source.shader)
                 {
-                    name = source.name + " Textured",
-                    hideFlags = HideFlags.HideAndDontSave
-                };
-            }
-            else if (entry.lastSyncFrame != frame)
-            {
-                entry.material.CopyPropertiesFromMaterial(source);
-            }
-            else
-            {
-                return entry.material;
+                    entry.material.CopyPropertiesFromMaterial(source);
+                    entry.lastSyncFrame = syncFrame;
+                    entry.material.mainTexture = texture;
+                    return entry.material;
+                }
             }
 
-            entry.lastSyncFrame = frame;
+            entry.material = new Material(source)
+            {
+                name = source.name + " Textured",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            entry.lastSyncFrame = Time.frameCount;
             entry.material.mainTexture = texture;
             return entry.material;
         }
@@ -751,14 +681,15 @@ namespace NowUI
         {
             Material material = rectangle.material;
             Material canvasMaterial = rectangle.canvasMaterial;
+            bool syncPerFrame = !rectangle.staticMaterial;
 
             if (material == null)
-                material = rectangle.texture != null ? GetTexturedMaterial(_defaultMaterial, rectangle.texture) : _defaultMaterial;
+                material = rectangle.texture != null ? GetTexturedMaterial(_defaultMaterial, rectangle.texture, syncPerFrame) : _defaultMaterial;
             else if (rectangle.texture != null)
-                material = GetTexturedMaterial(material, rectangle.texture);
+                material = GetTexturedMaterial(material, rectangle.texture, syncPerFrame);
 
             if (canvasMaterial != null && rectangle.texture != null)
-                canvasMaterial = GetTexturedMaterial(canvasMaterial, rectangle.texture);
+                canvasMaterial = GetTexturedMaterial(canvasMaterial, rectangle.texture, syncPerFrame);
 
             return UseRectangleMaterial(material, canvasMaterial, NowMeshKind.CustomRectangle);
         }
@@ -1313,8 +1244,6 @@ namespace NowUI
                 return;
             }
 
-            target.indexFormat = vertexCount > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
-
             if (layout == NowMeshLayout.Canvas)
             {
                 target.SetVertexBufferParams(vertexCount, NowMesh.CanvasVertexLayout);
@@ -1341,7 +1270,8 @@ namespace NowUI
                 }
             }
 
-            target.subMeshCount = batches.Count;
+            _triangles.Clear();
+            _subMeshIndexCounts.Clear();
 
             int vertexOffset = 0;
 
@@ -1349,10 +1279,54 @@ namespace NowUI
             {
                 var mesh = _meshes.array[_capturedMeshIndices[subMesh]];
 
-                _triangles.Clear();
+                int indexStart = _triangles.count;
                 mesh.AppendTriangles(ref _triangles, vertexOffset);
-                target.SetTriangles(_triangles.array, 0, _triangles.count, subMesh, false);
+                _subMeshIndexCounts.EnsureCapacity(1);
+                _subMeshIndexCounts.array[_subMeshIndexCounts.count++] = _triangles.count - indexStart;
                 vertexOffset += mesh.vertexCount;
+            }
+
+            var indexFormat = vertexCount > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+            target.SetIndexBufferParams(_triangles.count, indexFormat);
+
+            if (indexFormat == IndexFormat.UInt16)
+            {
+                _triangles16.Clear();
+                _triangles16.EnsureCapacity(_triangles.count);
+
+                var indexSource = _triangles.array;
+                var indexDestination = _triangles16.array;
+
+                for (int i = 0; i < _triangles.count; ++i)
+                    indexDestination[i] = (ushort)indexSource[i];
+
+                _triangles16.count = _triangles.count;
+                target.SetIndexBufferData(_triangles16.array, 0, 0, _triangles.count, NowMesh.IndexUploadFlags);
+            }
+            else
+            {
+                target.SetIndexBufferData(_triangles.array, 0, 0, _triangles.count, NowMesh.IndexUploadFlags);
+            }
+
+            target.subMeshCount = batches.Count;
+
+            int submeshIndexStart = 0;
+            int submeshFirstVertex = 0;
+
+            for (int subMesh = 0; subMesh < _capturedMeshIndices.Count; ++subMesh)
+            {
+                var mesh = _meshes.array[_capturedMeshIndices[subMesh]];
+                int indexCount = _subMeshIndexCounts.array[subMesh];
+
+                var descriptor = new SubMeshDescriptor(submeshIndexStart, indexCount)
+                {
+                    firstVertex = submeshFirstVertex,
+                    vertexCount = mesh.vertexCount
+                };
+
+                target.SetSubMesh(subMesh, descriptor, NowMesh.IndexUploadFlags);
+                submeshIndexStart += indexCount;
+                submeshFirstVertex += mesh.vertexCount;
             }
 
             target.bounds = hasBounds ? NowMesh.ToUnityBounds(combinedBounds) : new Bounds(Vector3.zero, Vector3.zero);
@@ -1737,7 +1711,7 @@ namespace NowUI
             }
             else
             {
-                mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
+                mesh = UseMaterial(_defaultMaterial, NowMeshKind.Rectangle);
 
                 if (mesh == null)
                     return;
@@ -2080,9 +2054,7 @@ namespace NowUI
                         {
                             if (mesh == null || !ReferenceEquals(mesh.material, glyphMaterial))
                             {
-                                int materialId = resolvedFont.GetMaterialId(codepoint, fontSize);
-                                mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
-                                resolvedFont.SetMaterialId(codepoint, fontSize, materialId);
+                                mesh = UseMaterial(glyphMaterial, NowMeshKind.Text);
 
                                 if (mesh == null)
                                     return;
@@ -2247,9 +2219,7 @@ namespace NowUI
 
                     if (!sameMaterial)
                     {
-                        int materialId = font.GetMaterialId(prepared.codepoint, fontSize);
-                        mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
-                        font.SetMaterialId(prepared.codepoint, fontSize, materialId);
+                        mesh = UseMaterial(glyphMaterial, NowMeshKind.Text);
 
                         if (mesh == null)
                             return;
@@ -2341,9 +2311,7 @@ namespace NowUI
 
                 if (!sameMaterial)
                 {
-                    int materialId = font.GetMaterialId(prepared.codepoint, fontSize);
-                    mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
-                    font.SetMaterialId(prepared.codepoint, fontSize, materialId);
+                    mesh = UseMaterial(glyphMaterial, NowMeshKind.Text);
 
                     if (mesh == null)
                         return;
@@ -2427,10 +2395,17 @@ namespace NowUI
             var segments = segmentation.segments;
             var controls = segmentation.controls;
 
+            if (_shapedRunScratch.Length < segments.Length)
+                Array.Resize(ref _shapedRunScratch, Mathf.NextPowerOfTwo(segments.Length));
+
             for (int s = 0; s < segments.Length; ++s)
             {
-                if (segments[s] != null && !font.TryGetPreparedShapedRun(segments[s], fontSize, out _))
+                NowFont.PreparedShapedRun run = null;
+
+                if (segments[s] != null && !font.TryGetPreparedShapedRun(segments[s], fontSize, out run))
                     return false;
+
+                _shapedRunScratch[s] = run;
             }
 
             float tabAdvance = 0f;
@@ -2466,7 +2441,8 @@ namespace NowUI
 
                 if (segment != null)
                 {
-                    font.TryGetPreparedShapedRun(segment, fontSize, out var run);
+                    var run = _shapedRunScratch[s];
+                    _shapedRunScratch[s] = null;
 
                     if (!AppendShapedRun(
                         ref style,
@@ -2519,6 +2495,8 @@ namespace NowUI
 
         static readonly Dictionary<string, ShapedSegmentation> _shapedSegmentCache =
             new Dictionary<string, ShapedSegmentation>(64);
+
+        static NowFont.PreparedShapedRun[] _shapedRunScratch = new NowFont.PreparedShapedRun[8];
 
         /// <summary>
         /// Splits a multi-line shaped string once and caches the result, so repeated
@@ -2670,9 +2648,7 @@ namespace NowUI
 
                     if (!sameMaterial)
                     {
-                        int materialId = font.GetMaterialId(shaped.encodedKey, fontSize);
-                        mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
-                        font.SetMaterialId(shaped.encodedKey, fontSize, materialId);
+                        mesh = UseMaterial(glyphMaterial, NowMeshKind.Text);
 
                         if (mesh == null)
                             return false;
@@ -2763,9 +2739,7 @@ namespace NowUI
 
                 if (!sameMaterial)
                 {
-                    int materialId = font.GetMaterialId(shaped.encodedKey, fontSize);
-                    mesh = UseMaterial(glyphMaterial, ref materialId, NowMeshKind.Text);
-                    font.SetMaterialId(shaped.encodedKey, fontSize, materialId);
+                    mesh = UseMaterial(glyphMaterial, NowMeshKind.Text);
 
                     if (mesh == null)
                         return false;
@@ -2857,9 +2831,7 @@ namespace NowUI
                 return;
 
             var material = font.GetMaterial(glyph.unicode, style.fontSize);
-            int materialId = font.GetMaterialId(glyph.unicode, style.fontSize);
-            var mesh = UseMaterial(material, ref materialId, NowMeshKind.Text);
-            font.SetMaterialId(glyph.unicode, style.fontSize, materialId);
+            var mesh = UseMaterial(material, NowMeshKind.Text);
 
             if (mesh == null)
                 return;
@@ -2940,7 +2912,7 @@ namespace NowUI
             if (lottieMask.isEmpty || !lottieMask.Overlaps(drawRect))
                 return;
 
-            var mesh = UseMaterial(_defaultMaterial, ref _defaultMesh, NowMeshKind.Rectangle);
+            var mesh = UseMaterial(_defaultMaterial, NowMeshKind.Rectangle);
 
             if (mesh == null)
                 return;

@@ -118,6 +118,10 @@ namespace NowUI.CodeEditor
             public readonly List<NowTextLine> lines = new List<NowTextLine>(64);
             public readonly List<int> lineStates = new List<int>(64);
             public readonly List<float> lineWidths = new List<float>(64);
+            /// <summary>Per-line token runs (starts relative to the line start), maintained by Rebuild so repaints never retokenize.</summary>
+            public readonly List<NowCodeToken> lineTokens = new List<NowCodeToken>(256);
+            public readonly List<int> lineTokenStarts = new List<int>(64);
+            public readonly List<int> lineTokenCounts = new List<int>(64);
             public readonly List<NowCodeDiagnostic> diagnostics = new List<NowCodeDiagnostic>(4);
             public float contentWidth;
             public NowFontAsset measureFont;
@@ -156,6 +160,27 @@ namespace NowUI.CodeEditor
             public int completionWindow;
             public NowRect completionPopupRect;
             public float completionRowHeight;
+            public string occurrenceWord;
+            public string occurrenceText;
+            public int occurrenceStart = -1;
+            public int occurrenceLength;
+            /// <summary>String-seeded sub-control ids hashed once at cache creation instead of every frame.</summary>
+            public int idEditor;
+            public int idSelectionGesture;
+            public int idVScroll;
+            public int idHScroll;
+            public int idContextMenu;
+            public int idContextPress;
+            public int idEnter;
+            public int idTab;
+            public int idBackspace;
+            public int idBackspaceEdit;
+            public int idDelete;
+            public int idLeft;
+            public int idRight;
+            public int idUp;
+            public int idDown;
+            public int idRenameField;
         }
 
         struct EditorState
@@ -170,6 +195,11 @@ namespace NowUI.CodeEditor
 
         static readonly Dictionary<int, EditorCache> _caches = new Dictionary<int, EditorCache>(8);
 
+        /// <summary>Method-group conversions cached once: C# 9 allocates a fresh delegate per conversion in per-frame overlay submissions.</summary>
+        static readonly NowOverlay.DrawCallback s_drawDiagnosticTooltipOverlay = DrawDiagnosticTooltipOverlay;
+
+        static readonly NowOverlay.DrawCallback s_drawCompletionOverlay = DrawCompletionOverlay;
+
         static readonly List<NowCodeToken> _tokenScratch = new List<NowCodeToken>(32);
 
         static readonly List<string> _numberStrings = new List<string>(128);
@@ -181,6 +211,12 @@ namespace NowUI.CodeEditor
         static readonly List<int> _oldStartScratch = new List<int>(64);
 
         static readonly List<float> _oldWidthScratch = new List<float>(64);
+
+        static readonly List<NowCodeToken> _oldTokenScratch = new List<NowCodeToken>(256);
+
+        static readonly List<int> _oldTokenStartScratch = new List<int>(64);
+
+        static readonly List<int> _oldTokenCountScratch = new List<int>(64);
 
         /// <summary>Clears retained caches (undo stacks, line tables); used by tests and domain reloads.</summary>
         public static void ResetCaches()
@@ -223,12 +259,11 @@ namespace NowUI.CodeEditor
                 ? _rect
                 : NowLayout.Rect(width: _width, height: _height, stretchWidth: _width <= 0f);
 
+            var cache = GetCache(id, _language);
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
-            ref var editor = ref NowControlState.Get<EditorState>(NowInput.GetId(id, "editor"));
-            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(NowInput.GetId(id, "selection-gesture"));
-
-            var cache = GetCache(id, _language);
+            ref var editor = ref NowControlState.Get<EditorState>(cache.idEditor);
+            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(cache.idSelectionGesture);
 
             if (!ReferenceEquals(cache.text, text))
                 Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
@@ -262,7 +297,7 @@ namespace NowUI.CodeEditor
 
                 if (maxY > 0f)
                 {
-                    var vDrag = NowInput.Interact(NowInput.GetId(id, "vscroll"), vThumb);
+                    var vDrag = NowInput.Interact(cache.idVScroll, vThumb);
 
                     if (vDrag.pressed)
                         NowFocus.Focus(id);
@@ -276,7 +311,7 @@ namespace NowUI.CodeEditor
 
                 if (maxX > 0f)
                 {
-                    var hDrag = NowInput.Interact(NowInput.GetId(id, "hscroll"), hThumb);
+                    var hDrag = NowInput.Interact(cache.idHScroll, hThumb);
 
                     if (hDrag.pressed)
                         NowFocus.Focus(id);
@@ -296,7 +331,7 @@ namespace NowUI.CodeEditor
             if (!NowInput.isPassive &&
                 TryGetRenameFieldRect(cache, text, font, textStyle.fontStyle, textRect, lineHeight, in editor, out NowRect renameClaimRect))
             {
-                NowInput.Interact(RenameFieldControlId(id), renameClaimRect);
+                NowInput.Interact(cache.idRenameField, renameClaimRect);
             }
 
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
@@ -573,7 +608,7 @@ namespace NowUI.CodeEditor
                         NowControlState.RequestRepaint();
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "enter"), frame.enterHeld))
+                    if (NowControlState.Repeat(cache.idEnter, frame.enterHeld))
                     {
                         revealCaret = true;
 
@@ -600,7 +635,7 @@ namespace NowUI.CodeEditor
                         }
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "tab"), frame.tabHeld))
+                    if (NowControlState.Repeat(cache.idTab, frame.tabHeld))
                     {
                         revealCaret = true;
 
@@ -619,14 +654,14 @@ namespace NowUI.CodeEditor
                         }
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "bs"), frame.backspaceHeld) && cache.goToLineActive)
+                    if (NowControlState.Repeat(cache.idBackspace, frame.backspaceHeld) && cache.goToLineActive)
                     {
                         if (cache.goToLineBuffer.Length > 0)
                             cache.goToLineBuffer = cache.goToLineBuffer.Substring(0, cache.goToLineBuffer.Length - 1);
 
                         NowControlState.RequestRepaint();
                     }
-                    else if (NowControlState.Repeat(NowInput.GetId(id, "bs-edit"),
+                    else if (NowControlState.Repeat(cache.idBackspaceEdit,
                         frame.backspaceHeld && !cache.goToLineActive))
                     {
                         revealCaret = true;
@@ -647,7 +682,7 @@ namespace NowUI.CodeEditor
                             RefreshCompletionFilter(cache, text, state.caret);
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "del"), frame.deleteHeld))
+                    if (NowControlState.Repeat(cache.idDelete, frame.deleteHeld))
                     {
                         revealCaret = true;
                         CloseCompletions(cache);
@@ -658,7 +693,7 @@ namespace NowUI.CodeEditor
                     if (!ReferenceEquals(cache.text, text))
                         Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "left"), frame.leftHeld))
+                    if (NowControlState.Repeat(cache.idLeft, frame.leftHeld))
                     {
                         revealCaret = true;
                         CloseCompletions(cache);
@@ -669,7 +704,7 @@ namespace NowUI.CodeEditor
                             NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.wordModifier);
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "right"), frame.rightHeld))
+                    if (NowControlState.Repeat(cache.idRight, frame.rightHeld))
                     {
                         revealCaret = true;
                         CloseCompletions(cache);
@@ -688,7 +723,7 @@ namespace NowUI.CodeEditor
                         }
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "up"), frame.upHeld))
+                    if (NowControlState.Repeat(cache.idUp, frame.upHeld))
                     {
                         if (CompletionsOpen(cache))
                         {
@@ -718,7 +753,7 @@ namespace NowUI.CodeEditor
                         }
                     }
 
-                    if (NowControlState.Repeat(NowInput.GetId(id, "down"), frame.downHeld))
+                    if (NowControlState.Repeat(cache.idDown, frame.downHeld))
                     {
                         if (CompletionsOpen(cache))
                         {
@@ -786,8 +821,8 @@ namespace NowUI.CodeEditor
 
             // Right-click: the standard editing context menu. Opening notes the
             // focus hand-off so the caret survives the menu's focus layer.
-            int contextMenuId = NowInput.GetId(id, "context-menu");
-            var secondary = NowInput.Interact(NowInput.GetId(id, "context-press"), rect, NowPointerButton.Secondary);
+            int contextMenuId = cache.idContextMenu;
+            var secondary = NowInput.Interact(cache.idContextPress, rect, NowPointerButton.Secondary);
 
             if (secondary.clicked)
             {
@@ -957,8 +992,8 @@ namespace NowUI.CodeEditor
             // layer) chains back to the editor through declared ownership, so
             // selection, caret and the focus border never blink through the
             // menu's open/dismiss frames or the rename handoff.
-            if (NowContextMenu.IsOpen(NowInput.GetId(id, "context-menu")))
-                NowFocus.DeclareOwner(NowInput.GetId(id, "context-menu"), id);
+            if (NowContextMenu.IsOpen(cache.idContextMenu))
+                NowFocus.DeclareOwner(cache.idContextMenu, id);
 
             bool visualFocused = NowFocus.IsFocusedWithin(id);
 
@@ -989,7 +1024,7 @@ namespace NowUI.CodeEditor
             // cancels, and losing focus (a click elsewhere, Tab) cancels.
             if (TryGetRenameFieldRect(cache, text, font, textStyle.fontStyle, textRect, lineHeight, in editor, out NowRect fieldRect))
             {
-                int fieldControlId = RenameFieldControlId(id);
+                int fieldControlId = cache.idRenameField;
                 bool interactivePass = !NowInput.isPassive;
                 bool fieldFocused = NowFocus.focusedId == fieldControlId;
                 var inputFrame = NowTextInput.current;
@@ -1190,30 +1225,31 @@ namespace NowUI.CodeEditor
                     var line = cache.lines[i];
                     float y = textRect.y + i * lineHeight - editor.scrollY;
 
-                    _tokenScratch.Clear();
-                    _language.TokenizeLine(text, line.start, line.length, cache.lineStates[i], _tokenScratch);
+                    int runStart = cache.lineTokenStarts[i];
+                    int runCount = cache.lineTokenCounts[i];
 
                     float x = originX;
                     int cursor = line.start;
                     int lineEnd = line.start + line.length;
 
-                    for (int t = 0; t <= _tokenScratch.Count; ++t)
+                    for (int t = 0; t <= runCount; ++t)
                     {
                         int segmentStart, segmentEnd;
                         NowCodeTokenKind kind;
 
-                        if (t < _tokenScratch.Count)
+                        if (t < runCount)
                         {
-                            var token = _tokenScratch[t];
+                            var token = cache.lineTokens[runStart + t];
+                            int tokenStart = line.start + token.start;
                             segmentStart = cursor;
-                            segmentEnd = Mathf.Min(token.start, lineEnd);
+                            segmentEnd = Mathf.Min(tokenStart, lineEnd);
 
                             if (segmentEnd > segmentStart)
                                 x += DrawSegment(textStyle, themeAsset, text, segmentStart, segmentEnd - segmentStart,
                                     NowCodeTokenKind.Plain, font, fontSize, fontStyle, x, y, lineHeight);
 
-                            segmentStart = token.start;
-                            segmentEnd = Mathf.Min(token.start + token.length, lineEnd);
+                            segmentStart = tokenStart;
+                            segmentEnd = Mathf.Min(tokenStart + token.length, lineEnd);
                             kind = token.kind;
                         }
                         else
@@ -1470,23 +1506,24 @@ namespace NowUI.CodeEditor
                 if (wordEnd <= wordStart)
                     return;
 
-                // Only identifiers get caret-based highlights: retokenize the
-                // word's line and bail when it is a keyword, literal or comment.
-                // Explicit selections skip this — selecting "int" should light
-                // up every "int".
+                // Only identifiers get caret-based highlights: read the word
+                // line's cached tokens and bail when it is a keyword, literal
+                // or comment. Explicit selections skip this — selecting "int"
+                // should light up every "int".
                 int wordLine = LineOf(cache, wordStart);
                 var wordLineSpan = cache.lines[wordLine];
-                _tokenScratch.Clear();
-                _language.TokenizeLine(text, wordLineSpan.start, wordLineSpan.length, cache.lineStates[wordLine], _tokenScratch);
+                int runStart = cache.lineTokenStarts[wordLine];
+                int runCount = cache.lineTokenCounts[wordLine];
 
-                for (int t = 0; t < _tokenScratch.Count; ++t)
+                for (int t = 0; t < runCount; ++t)
                 {
-                    var token = _tokenScratch[t];
+                    var token = cache.lineTokens[runStart + t];
+                    int tokenStart = wordLineSpan.start + token.start;
 
-                    if (token.start > wordStart)
+                    if (tokenStart > wordStart)
                         break;
 
-                    if (token.start + token.length <= wordStart)
+                    if (tokenStart + token.length <= wordStart)
                         continue;
 
                     switch (token.kind)
@@ -1510,7 +1547,17 @@ namespace NowUI.CodeEditor
             if (wordLength <= 0 || wordLength > MaxWordLength)
                 return;
 
-            string word = text.Substring(wordStart, wordLength);
+            if (!ReferenceEquals(cache.occurrenceText, text) ||
+                cache.occurrenceStart != wordStart ||
+                cache.occurrenceLength != wordLength)
+            {
+                cache.occurrenceText = text;
+                cache.occurrenceStart = wordStart;
+                cache.occurrenceLength = wordLength;
+                cache.occurrenceWord = text.Substring(wordStart, wordLength);
+            }
+
+            string word = cache.occurrenceWord;
             Color highlight = themeAsset.GetColor(NowColorToken.AccentMuted, new Color(0.4f, 0.5f, 0.7f, 1f));
             highlight.a *= 0.9f;
 
@@ -1917,7 +1964,7 @@ namespace NowUI.CodeEditor
             // editor read as unfocused while the tooltip shows — on dismissal it
             // would "regain" focus and jump the caret to the end of the text.
             if (cache.tooltipAnchorStart >= 0 && !string.IsNullOrEmpty(cache.tooltipMessage))
-                NowOverlay.DeferPassive(id, DrawDiagnosticTooltipOverlay);
+                NowOverlay.DeferPassive(id, s_drawDiagnosticTooltipOverlay);
         }
 
         void OpenTooltip(EditorCache cache, string text, NowFontAsset font, float fontSize, NowFontStyle fontStyle,
@@ -2084,7 +2131,7 @@ namespace NowUI.CodeEditor
             // captures text input and preselects the name. The field keeps no
             // frames of state between sessions — it stops drawing when rename
             // closes, so its recorded focus byte can be stale from last time.
-            int fieldControlId = RenameFieldControlId(editorId);
+            int fieldControlId = cache.idRenameField;
             ref byte fieldHadFocus = ref NowControlState.Get<byte>(fieldControlId, "hadfocus");
             fieldHadFocus = 0;
             NowFocus.DeclareOwner(fieldControlId, editorId);
@@ -2425,7 +2472,7 @@ namespace NowUI.CodeEditor
 
             cache.completionPopupRect = new NowRect(x, y, width, height);
             cache.completionRowHeight = rowHeight;
-            NowOverlay.DeferPassive(id, DrawCompletionOverlay);
+            NowOverlay.DeferPassive(id, s_drawCompletionOverlay);
         }
 
         static void DrawCompletionOverlay(int id)
@@ -2489,7 +2536,25 @@ namespace NowUI.CodeEditor
         {
             if (!_caches.TryGetValue(id, out var cache))
             {
-                cache = new EditorCache();
+                cache = new EditorCache
+                {
+                    idEditor = NowInput.GetId(id, "editor"),
+                    idSelectionGesture = NowInput.GetId(id, "selection-gesture"),
+                    idVScroll = NowInput.GetId(id, "vscroll"),
+                    idHScroll = NowInput.GetId(id, "hscroll"),
+                    idContextMenu = NowInput.GetId(id, "context-menu"),
+                    idContextPress = NowInput.GetId(id, "context-press"),
+                    idEnter = NowInput.GetId(id, "enter"),
+                    idTab = NowInput.GetId(id, "tab"),
+                    idBackspace = NowInput.GetId(id, "bs"),
+                    idBackspaceEdit = NowInput.GetId(id, "bs-edit"),
+                    idDelete = NowInput.GetId(id, "del"),
+                    idLeft = NowInput.GetId(id, "left"),
+                    idRight = NowInput.GetId(id, "right"),
+                    idUp = NowInput.GetId(id, "up"),
+                    idDown = NowInput.GetId(id, "down"),
+                    idRenameField = RenameFieldControlId(id),
+                };
                 _caches[id] = cache;
             }
 
@@ -2517,6 +2582,8 @@ namespace NowUI.CodeEditor
             bool incremental = oldText != null &&
                 cache.lineStates.Count == oldCount &&
                 cache.lineWidths.Count == oldCount &&
+                cache.lineTokenStarts.Count == oldCount &&
+                cache.lineTokenCounts.Count == oldCount &&
                 ReferenceEquals(cache.measureFont, font) &&
                 cache.measureFontSize == fontSize &&
                 cache.measureFontStyle == fontStyle;
@@ -2528,6 +2595,9 @@ namespace NowUI.CodeEditor
             _oldStateScratch.Clear();
             _oldStartScratch.Clear();
             _oldWidthScratch.Clear();
+            _oldTokenScratch.Clear();
+            _oldTokenStartScratch.Clear();
+            _oldTokenCountScratch.Clear();
 
             if (incremental)
             {
@@ -2536,13 +2606,20 @@ namespace NowUI.CodeEditor
                     _oldStateScratch.Add(cache.lineStates[i]);
                     _oldStartScratch.Add(cache.lines[i].start);
                     _oldWidthScratch.Add(cache.lineWidths[i]);
+                    _oldTokenStartScratch.Add(cache.lineTokenStarts[i]);
+                    _oldTokenCountScratch.Add(cache.lineTokenCounts[i]);
                 }
+
+                _oldTokenScratch.AddRange(cache.lineTokens);
             }
 
             cache.text = text;
             cache.lines.Clear();
             cache.lineStates.Clear();
             cache.lineWidths.Clear();
+            cache.lineTokens.Clear();
+            cache.lineTokenStarts.Clear();
+            cache.lineTokenCounts.Clear();
             cache.diagnostics.Clear();
             NowTextMetrics.LayoutHardLines(text, cache.lines);
 
@@ -2572,6 +2649,7 @@ namespace NowUI.CodeEditor
             {
                 cache.lineStates.Add(_oldStateScratch[line]);
                 cache.lineWidths.Add(_oldWidthScratch[line]);
+                AppendReusedLineTokens(cache, line);
                 ++line;
             }
 
@@ -2593,6 +2671,7 @@ namespace NowUI.CodeEditor
                     {
                         cache.lineStates.Add(_oldStateScratch[k + shift]);
                         cache.lineWidths.Add(_oldWidthScratch[k + shift]);
+                        AppendReusedLineTokens(cache, k + shift);
                     }
 
                     break;
@@ -2600,8 +2679,19 @@ namespace NowUI.CodeEditor
 
                 cache.lineStates.Add(state);
                 _tokenScratch.Clear();
-                state = cache.language.TokenizeLine(text, cache.lines[line].start, cache.lines[line].length, state, _tokenScratch);
-                cache.lineWidths.Add(Advance(text, font, fontSize, fontStyle, cache.lines[line].start, cache.lines[line].length));
+                int lineStart = cache.lines[line].start;
+                state = cache.language.TokenizeLine(text, lineStart, cache.lines[line].length, state, _tokenScratch);
+                cache.lineTokenStarts.Add(cache.lineTokens.Count);
+                cache.lineTokenCounts.Add(_tokenScratch.Count);
+
+                for (int t = 0; t < _tokenScratch.Count; ++t)
+                {
+                    var token = _tokenScratch[t];
+                    token.start -= lineStart;
+                    cache.lineTokens.Add(token);
+                }
+
+                cache.lineWidths.Add(Advance(text, font, fontSize, fontStyle, lineStart, cache.lines[line].length));
             }
 
             cache.contentWidth = 0f;
@@ -2613,6 +2703,22 @@ namespace NowUI.CodeEditor
             }
 
             Revalidate(cache, text);
+        }
+
+        /// <summary>
+        /// Copies one unchanged line's cached token run from the pre-edit
+        /// scratch snapshot into the rebuilt cache; token starts are stored
+        /// relative to the line start, so no offset fixup is needed.
+        /// </summary>
+        static void AppendReusedLineTokens(EditorCache cache, int oldLine)
+        {
+            cache.lineTokenStarts.Add(cache.lineTokens.Count);
+            int from = _oldTokenStartScratch[oldLine];
+            int count = _oldTokenCountScratch[oldLine];
+            cache.lineTokenCounts.Add(count);
+
+            for (int t = 0; t < count; ++t)
+                cache.lineTokens.Add(_oldTokenScratch[from + t]);
         }
 
         /// <summary>
