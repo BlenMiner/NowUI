@@ -317,46 +317,45 @@ public class NowControlGalleryExample : MonoBehaviour
 
     void DrawDataPage()
     {
-        using (var split = NowLayout.SplitView().Begin(ref _splitRatio))
+        var split = NowLayout.SplitView().Begin(ref _splitRatio);
+
+        using (split.BeginFirst())
+        using (NowLayout.Vertical(padding: 8f, spacing: 4f))
+        using (var tree = NowLayout.TreeView(_treeState).Begin())
         {
-            using (split.BeginFirst())
-            using (NowLayout.Vertical(padding: 8f, spacing: 4f))
-            using (var tree = NowLayout.TreeView(_treeState).Begin())
+            if (tree.BeginNode("Assets"))
             {
-                if (tree.BeginNode("Assets"))
+                if (tree.BeginNode("Textures"))
                 {
-                    if (tree.BeginNode("Textures"))
-                    {
-                        tree.Node("grass.png");
-                        tree.Node("rock.png");
-                        tree.EndNode();
-                    }
-
-                    tree.Node("Readme.md");
+                    tree.Node("grass.png");
+                    tree.Node("rock.png");
                     tree.EndNode();
                 }
 
-                if (tree.BeginNode("Scenes"))
-                {
-                    tree.Node("Main.unity");
-                    tree.Node("Menu.unity");
-                    tree.EndNode();
-                }
+                tree.Node("Readme.md");
+                tree.EndNode();
             }
 
-            using (split.BeginSecond())
-            using (NowLayout.Vertical(padding: 12f, spacing: 8f))
+            if (tree.BeginNode("Scenes"))
             {
-                NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Subheading), "Details").Draw();
-                NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), "Select a row on the left; drag the divider to resize.").Draw();
+                tree.Node("Main.unity");
+                tree.Node("Menu.unity");
+                tree.EndNode();
+            }
+        }
 
-                NowLayout.Foldout("Metadata").Draw(ref _metadataExpanded);
+        using (split.BeginSecond())
+        using (NowLayout.Vertical(padding: 12f, spacing: 8f))
+        {
+            NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Subheading), "Details").Draw();
+            NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), "Select a row on the left; drag the divider to resize.").Draw();
 
-                if (_metadataExpanded)
-                {
-                    NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), "Type: Folder").Draw();
-                    NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), "Items: 5").Draw();
-                }
+            NowLayout.Foldout("Metadata").Draw(ref _metadataExpanded);
+
+            if (_metadataExpanded)
+            {
+                NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), "Type: Folder").Draw();
+                NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), "Items: 5").Draw();
             }
         }
     }

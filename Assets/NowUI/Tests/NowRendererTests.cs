@@ -485,6 +485,96 @@ public class NowRendererTests
     }
 
     [Test]
+    public void DisposingCopiedDrawScopeCannotCloseANewerCapture()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var firstList = new NowDrawList();
+        var currentList = new NowDrawList();
+        var first = firstList.Begin(new Vector2(100, 100));
+        var staleCopy = first;
+        first.Dispose();
+        var current = currentList.Begin(new Vector2(100, 100));
+
+        try
+        {
+            staleCopy.Dispose();
+            Now.Rectangle(new NowRect(4, 6, 32, 20)).SetColor(Color.white).Draw();
+            current.Dispose();
+
+            Assert.IsTrue(currentList.hasGeometry);
+        }
+        finally
+        {
+            current.Dispose();
+            firstList.Dispose();
+            currentList.Dispose();
+        }
+    }
+
+    [Test]
+    public void OutOfOrderDrawScopeDisposeThrowsWithoutCorruptingCaptures()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var outerList = new NowDrawList();
+        var innerList = new NowDrawList();
+        var outer = outerList.Begin(new Vector2(100, 100));
+        var inner = innerList.Begin(new Vector2(100, 100));
+
+        try
+        {
+            Assert.Throws<InvalidOperationException>(() => outer.Dispose());
+            Now.Rectangle(new NowRect(4, 6, 32, 20)).SetColor(Color.white).Draw();
+            inner.Dispose();
+
+            Now.Rectangle(new NowRect(10, 12, 20, 16)).SetColor(Color.red).Draw();
+            outer.Dispose();
+
+            Assert.IsTrue(innerList.hasGeometry);
+            Assert.IsTrue(outerList.hasGeometry);
+        }
+        finally
+        {
+            inner.Dispose();
+            outer.Dispose();
+            innerList.Dispose();
+            outerList.Dispose();
+        }
+    }
+
+    [Test]
+    public void ThrowingOverlayCallbackStillUnwindsDrawCapture()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        NowOverlay.Reset();
+        var scope = drawList.Begin(new Vector2(100, 100));
+
+        try
+        {
+            NowOverlay.DeferScreen(
+                new NowRect(0, 0, 10, 10),
+                () => throw new InvalidOperationException("overlay failed"));
+
+            Assert.Throws<InvalidOperationException>(() => scope.Dispose());
+            Assert.IsFalse(drawList.hasGeometry);
+
+            using (drawList.Begin(new Vector2(100, 100)))
+                Now.Rectangle(new NowRect(4, 6, 32, 20)).SetColor(Color.white).Draw();
+
+            Assert.IsTrue(drawList.hasGeometry, "A failed overlay flush must not poison the next capture.");
+        }
+        finally
+        {
+            scope.Cancel();
+            NowOverlay.Reset();
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
     public void ModifierScopeCapturesAndAppendsMeshGeometry()
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));

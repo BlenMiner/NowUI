@@ -84,4 +84,46 @@ public class NowFontStackTests
 
         Assert.AreSame(_baseFont, Now.font);
     }
+
+    [Test]
+    public void DisposingCopiedScopeCannotPopANewerScope()
+    {
+        var first = Now.Font(_contextFont);
+        var staleCopy = first;
+        first.Dispose();
+
+        var current = Now.Font(_contextFont);
+
+        try
+        {
+            staleCopy.Dispose();
+            Assert.AreSame(_contextFont, Now.font);
+        }
+        finally
+        {
+            current.Dispose();
+        }
+
+        Assert.AreSame(_baseFont, Now.font);
+    }
+
+    [Test]
+    public void OutOfOrderDisposeThrowsWithoutCorruptingFontStack()
+    {
+        var outer = Now.Font(_contextFont);
+        var inner = Now.Font(_baseFont);
+
+        try
+        {
+            Assert.Throws<InvalidOperationException>(() => outer.Dispose());
+            Assert.AreSame(_baseFont, Now.font, "a rejected dispose must leave the inner scope active");
+        }
+        finally
+        {
+            inner.Dispose();
+            outer.Dispose();
+        }
+
+        Assert.AreSame(_baseFont, Now.font);
+    }
 }

@@ -1154,7 +1154,6 @@ namespace NowUI
                 new NowThemeColorReference(color, new Color(0.059f, 0.090f, 0.165f, 1f)),
                 0f,
                 NowThemeColorReference.Fallback(Color.clear),
-                default,
                 fontStyle);
         }
 
@@ -1232,8 +1231,6 @@ namespace NowUI
 
         [SerializeField] NowThemeColorReference _outlineColor;
 
-        [SerializeField] NowThemeSpacingReference _padding;
-
         [SerializeField] NowFontStyle _fontStyle;
 
         public NowTextPreset(
@@ -1241,9 +1238,8 @@ namespace NowUI
             float fontSize,
             NowThemeColorReference color,
             float outline,
-            NowThemeColorReference outlineColor,
-            NowThemeSpacingReference padding)
-            : this(font, fontSize, color, outline, outlineColor, padding, NowFontStyle.Regular)
+            NowThemeColorReference outlineColor)
+            : this(font, fontSize, color, outline, outlineColor, NowFontStyle.Regular)
         {
         }
 
@@ -1253,7 +1249,6 @@ namespace NowUI
             NowThemeColorReference color,
             float outline,
             NowThemeColorReference outlineColor,
-            NowThemeSpacingReference padding,
             NowFontStyle fontStyle)
         {
             _font = font;
@@ -1261,7 +1256,6 @@ namespace NowUI
             _color = color;
             _outline = outline;
             _outlineColor = outlineColor;
-            _padding = padding;
             _fontStyle = fontStyle;
         }
 
@@ -1280,7 +1274,6 @@ namespace NowUI
             text.color = _color.Resolve(themeAsset);
             text.outline = _outline;
             text.outlineColor = _outlineColor.Resolve(themeAsset);
-            text.padding = _padding.Resolve(themeAsset);
             text.fontStyle = _fontStyle;
             return text;
         }

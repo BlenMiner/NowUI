@@ -7,6 +7,8 @@ namespace NowUI
 {
     public sealed class NowDrawList : IDisposable
     {
+        static readonly NowScopeGuard _scopes = new NowScopeGuard("NowDrawList.Begin", 8);
+
         readonly NowMeshLayout _layout;
 
         readonly string _meshName;
@@ -143,16 +145,37 @@ namespace NowUI
             this.size = size;
             ClearGeometry();
             var glassQualityScope = NowGlassSettings.PushBlurQuality(glassBlurQuality);
+            bool beganAmbientScope = false;
+            bool capturesMesh = size.x > 0f && size.y > 0f;
 
-            if (size.x <= 0f || size.y <= 0f)
+            try
             {
-                Now.BeginSuppressDraw();
-                return new NowDrawScope(this, positionOffset, false, glassQualityScope);
-            }
+                if (!capturesMesh)
+                    Now.BeginSuppressDraw();
+                else
+                    Now.BeginMeshCapture(new Vector4(0, 0, size.x, size.y), inheritContext);
 
-            var mask = new Vector4(0, 0, size.x, size.y);
-            Now.BeginMeshCapture(mask, inheritContext);
-            return new NowDrawScope(this, positionOffset, true, glassQualityScope);
+                beganAmbientScope = true;
+                return new NowDrawScope(
+                    this,
+                    positionOffset,
+                    capturesMesh,
+                    glassQualityScope,
+                    _scopes.Enter());
+            }
+            catch
+            {
+                if (beganAmbientScope)
+                {
+                    if (capturesMesh)
+                        Now.CancelMeshCapture();
+                    else
+                        Now.EndSuppressDraw();
+                }
+
+                glassQualityScope.Dispose();
+                throw;
+            }
         }
 
         public void Clear()
@@ -204,33 +227,76 @@ namespace NowUI
             ClearRenderReplay();
         }
 
-        internal void EndScope(Vector2 positionOffset, bool capturesMesh)
+        internal static bool IsCurrentScope(int token)
         {
-            if (capturesMesh)
-            {
-                // Popups and other deferred overlays land inside this capture; hosts
-                // that flushed earlier (with their input scope active) make this a no-op.
-                NowOverlay.Flush();
-
-                if (_layout == NowMeshLayout.Canvas)
-                    Now.EndCanvasMeshCapture(this, positionOffset);
-                else
-                    Now.EndMeshCapture(mesh, batches, positionOffset, _layout);
-
-                return;
-            }
-
-            Now.EndSuppressDraw();
+            return _scopes.IsCurrent(token);
         }
 
-        internal void CancelScope(bool capturesMesh)
-        {
-            if (capturesMesh)
-                Now.CancelMeshCapture();
-            else
-                Now.EndSuppressDraw();
+        internal static bool hasActiveScopes => _scopes.count > 0;
 
-            ClearGeometry();
+        internal static void DiscardAbandonedScopes()
+        {
+            _scopes.Clear();
+            NowGlassSettings.DiscardAbandonedQualityScopes();
+        }
+
+        internal void EndScope(Vector2 positionOffset, bool capturesMesh, int token)
+        {
+            try
+            {
+                if (capturesMesh)
+                {
+                    bool captureHandedOff = false;
+
+                    try
+                    {
+                        // Popups and other deferred overlays land inside this capture;
+                        // hosts that flushed earlier make this a no-op.
+                        NowOverlay.Flush();
+                        captureHandedOff = true;
+
+                        if (_layout == NowMeshLayout.Canvas)
+                            Now.EndCanvasMeshCapture(this, positionOffset);
+                        else
+                            Now.EndMeshCapture(mesh, batches, positionOffset, _layout);
+                    }
+                    catch
+                    {
+                        // End* owns cancellation once called. Before that point (most
+                        // notably an overlay callback failure), cancel it here.
+                        if (!captureHandedOff)
+                            Now.CancelMeshCapture();
+
+                        ClearGeometry();
+                        throw;
+                    }
+
+                    return;
+                }
+
+                Now.EndSuppressDraw();
+            }
+            finally
+            {
+                _scopes.Exit(token);
+            }
+        }
+
+        internal void CancelScope(bool capturesMesh, int token)
+        {
+            try
+            {
+                if (capturesMesh)
+                    Now.CancelMeshCapture();
+                else
+                    Now.EndSuppressDraw();
+
+                ClearGeometry();
+            }
+            finally
+            {
+                _scopes.Exit(token);
+            }
         }
 
         void ThrowIfDisposed()
@@ -265,6 +331,12 @@ namespace NowUI
         internal List<NowMeshBatch> GetCanvasBatches(int pageIndex)
         {
             return pageIndex == 0 ? batches : _extraCanvasPages[pageIndex - 1].batches;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetScopesForRuntimeLoad()
+        {
+            _scopes.Clear();
         }
 
         internal Mesh EnsureRenderReplayMesh()
@@ -342,63 +414,85 @@ namespace NowUI
 
         NowGlassQualityScope _glassQualityScope;
 
-        bool _disposed;
-
-        internal NowDrawScope(NowDrawList drawList, Vector2 positionOffset, bool capturesMesh)
-            : this(drawList, positionOffset, capturesMesh, default)
-        {
-        }
+        int _token;
 
         internal NowDrawScope(
             NowDrawList drawList,
             Vector2 positionOffset,
             bool capturesMesh,
-            NowGlassQualityScope glassQualityScope)
+            NowGlassQualityScope glassQualityScope,
+            int token)
         {
             _drawList = drawList;
             _positionOffset = positionOffset;
             _capturesMesh = capturesMesh;
             _glassQualityScope = glassQualityScope;
-            _disposed = false;
+            _token = token;
         }
 
-        public bool capturesMesh => !_disposed && _drawList != null && _capturesMesh;
+        public bool capturesMesh => _token != 0 && _drawList != null && _capturesMesh;
 
         public void Dispose()
         {
-            if (_disposed)
+            if (_token == 0)
                 return;
 
+            if (!NowDrawList.IsCurrentScope(_token))
+            {
+                _drawList = null;
+                _token = 0;
+                return;
+            }
+
             var drawList = _drawList;
-            _drawList = null;
-            _disposed = true;
 
             try
             {
-                drawList?.EndScope(_positionOffset, _capturesMesh);
+                drawList?.EndScope(_positionOffset, _capturesMesh, _token);
             }
             finally
             {
-                _glassQualityScope.Dispose();
+                try
+                {
+                    _glassQualityScope.Dispose();
+                }
+                finally
+                {
+                    _drawList = null;
+                    _token = 0;
+                }
             }
         }
 
         internal void Cancel()
         {
-            if (_disposed)
+            if (_token == 0)
                 return;
 
+            if (!NowDrawList.IsCurrentScope(_token))
+            {
+                _drawList = null;
+                _token = 0;
+                return;
+            }
+
             var drawList = _drawList;
-            _drawList = null;
-            _disposed = true;
 
             try
             {
-                drawList?.CancelScope(_capturesMesh);
+                drawList?.CancelScope(_capturesMesh, _token);
             }
             finally
             {
-                _glassQualityScope.Dispose();
+                try
+                {
+                    _glassQualityScope.Dispose();
+                }
+                finally
+                {
+                    _drawList = null;
+                    _token = 0;
+                }
             }
         }
     }

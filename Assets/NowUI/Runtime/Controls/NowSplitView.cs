@@ -12,11 +12,9 @@ namespace NowUI
     /// Two resizable panes separated by a draggable divider. The split ratio is
     /// caller-owned (0..1 fraction of the first pane):
     /// <code>
-    /// using (var split = Now.SplitView(rect).Begin(ref ratio))
-    /// {
-    ///     using (split.BeginFirst()) DrawSidebar();
-    ///     using (split.BeginSecond()) DrawContent();
-    /// }
+    /// var split = Now.SplitView(rect).Begin(ref ratio);
+    /// using (split.BeginFirst()) DrawSidebar();
+    /// using (split.BeginSecond()) DrawContent();
     /// </code>
     /// The divider is focusable; arrow navigation nudges the ratio.
     /// </summary>
@@ -77,7 +75,7 @@ namespace NowUI
             return this;
         }
 
-        public NowSplitViewScope Begin(ref float ratio)
+        public NowSplitViewResult Begin(ref float ratio)
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
@@ -160,7 +158,7 @@ namespace NowUI
             renderer.DrawSplitDivider(new NowSplitDividerRenderContext(
                 theme, dividerRect, !horizontal, interaction.dragging, focused, hoverT));
 
-            return new NowSplitViewScope(
+            return new NowSplitViewResult(
                 NowInput.CombineId(id, FirstAreaSeed),
                 NowInput.CombineId(id, SecondAreaSeed),
                 firstRect,
@@ -169,8 +167,12 @@ namespace NowUI
         }
     }
 
-    [NowScope]
-    public struct NowSplitViewScope : System.IDisposable
+    /// <summary>
+    /// Pane geometry and factories returned by <see cref="NowSplitView.Begin(ref float)"/>.
+    /// This is a result value, not a scope; only the values from
+    /// <see cref="BeginFirst"/> and <see cref="BeginSecond"/> require disposal.
+    /// </summary>
+    public readonly struct NowSplitViewResult
     {
         public readonly NowRect firstRect;
 
@@ -182,7 +184,7 @@ namespace NowUI
         readonly int _firstAreaKey;
         readonly int _secondAreaKey;
 
-        internal NowSplitViewScope(int firstAreaKey, int secondAreaKey, NowRect firstRect, NowRect secondRect, bool dragging)
+        internal NowSplitViewResult(int firstAreaKey, int secondAreaKey, NowRect firstRect, NowRect secondRect, bool dragging)
         {
             _firstAreaKey = firstAreaKey;
             _secondAreaKey = secondAreaKey;
@@ -195,20 +197,34 @@ namespace NowUI
         public NowSplitPaneScope BeginFirst()
         {
             var mask = Now.Mask(firstRect);
-            var area = NowLayout.Area(_firstAreaKey, firstRect);
-            return new NowSplitPaneScope(mask, area);
+
+            try
+            {
+                var area = NowLayout.Area(_firstAreaKey, firstRect);
+                return new NowSplitPaneScope(mask, area);
+            }
+            catch
+            {
+                mask.Dispose();
+                throw;
+            }
         }
 
         /// <summary>Opens the second (right/bottom) pane as a masked layout area.</summary>
         public NowSplitPaneScope BeginSecond()
         {
             var mask = Now.Mask(secondRect);
-            var area = NowLayout.Area(_secondAreaKey, secondRect);
-            return new NowSplitPaneScope(mask, area);
-        }
 
-        public void Dispose()
-        {
+            try
+            {
+                var area = NowLayout.Area(_secondAreaKey, secondRect);
+                return new NowSplitPaneScope(mask, area);
+            }
+            catch
+            {
+                mask.Dispose();
+                throw;
+            }
         }
     }
 
@@ -231,9 +247,9 @@ namespace NowUI
             if (_disposed)
                 return;
 
-            _disposed = true;
             _area.Dispose();
             _mask.Dispose();
+            _disposed = true;
         }
     }
 }

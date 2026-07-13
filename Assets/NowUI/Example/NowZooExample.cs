@@ -43,14 +43,13 @@ public class NowZooExample : NowGraphic
         if (_font == null)
             return;
 
-        Now.defaultFont = _font;
+        using var fontScope = Now.Font(_font);
         var theme = NowTheme.themeAsset;
         var bounds = new NowRect(0, 0, rect.width, rect.height);
 
-        // The style must carry a font — labels don't resolve one at draw time.
-        NowLayout.labelStyle = new NowText(default, _font)
+        using var labelStyleScope = NowLayout.OverrideLabelStyle(new NowText(default, _font)
             .SetFontSize(14)
-            .SetColor(theme.GetColor(NowColorToken.Text, Color.black));
+            .SetColor(theme.GetColor(NowColorToken.Text, Color.black)));
 
         theme.Rectangle(bounds, NowRectangleStyle.Surface).SetRadius(14).Draw();
 

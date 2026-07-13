@@ -3,6 +3,11 @@ using NUnit.Framework;
 using UnityEngine;
 using NowUI;
 
+// Most tests intentionally exercise the internal explicit End* primitives so
+// mismatches and cache finalization can be asserted directly. Public callers
+// only get the [NowScope] using-based API.
+#pragma warning disable NOWUI002
+
 public class NowLayoutTests
 {
     [SetUp]
@@ -441,6 +446,70 @@ public class NowLayoutTests
             NowLayout.Area(new Vector4(0, 0, 10, 10));
             NowLayout.EndArea();
         });
+    }
+
+    [Test]
+    public void DisposingCopiedLayoutScopeCannotCloseANewerArea()
+    {
+        var first = NowLayout.Area(new NowRect(0, 0, 100, 100));
+        var staleCopy = first;
+        first.Dispose();
+
+        var current = NowLayout.Area(new NowRect(0, 0, 100, 100));
+
+        try
+        {
+            staleCopy.Dispose();
+            Assert.DoesNotThrow(() => NowLayout.Rect(10, 10));
+        }
+        finally
+        {
+            current.Dispose();
+        }
+    }
+
+    [Test]
+    public void OutOfOrderLayoutDisposeThrowsWithoutCorruptingStack()
+    {
+        var area = NowLayout.Area(new NowRect(0, 0, 100, 100));
+        var row = NowLayout.Horizontal();
+
+        try
+        {
+            Assert.Throws<InvalidOperationException>(() => area.Dispose());
+            Assert.DoesNotThrow(() => NowLayout.Rect(10, 10));
+        }
+        finally
+        {
+            row.Dispose();
+            area.Dispose();
+        }
+    }
+
+    [Test]
+    public void LayoutOptionsUseLastFixedOrStretchMode()
+    {
+        var fixedLast = default(NowLayoutOptions).SetStretchWidth(2f).SetWidth(40f);
+        Assert.IsTrue(fixedLast.Has(NowLayoutOptions.Field.Width));
+        Assert.IsFalse(fixedLast.Has(NowLayoutOptions.Field.StretchWidth));
+        Assert.AreEqual(0f, fixedLast.stretchWidth);
+
+        var stretchLast = default(NowLayoutOptions).SetWidth(40f).SetStretchWidth(2f);
+        Assert.IsFalse(stretchLast.Has(NowLayoutOptions.Field.Width));
+        Assert.IsTrue(stretchLast.Has(NowLayoutOptions.Field.StretchWidth));
+        Assert.AreEqual(0f, stretchLast.width);
+        Assert.AreEqual(2f, stretchLast.stretchWidth);
+    }
+
+    [Test]
+    public void LayoutOptionsRejectInvalidValuesAndContradictoryConstraints()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => default(NowLayoutOptions).SetWidth(-1f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => default(NowLayoutOptions).SetHeight(float.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(() => default(NowLayoutOptions).SetStretchWidth(0f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => default(NowLayoutOptions).SetSpacing(float.PositiveInfinity));
+        Assert.Throws<ArgumentException>(() => default(NowLayoutOptions).SetMinWidth(20f).SetMaxWidth(10f));
+        Assert.Throws<ArgumentException>(() => default(NowLayoutOptions).SetMaxHeight(10f).SetMinHeight(20f));
     }
 
     [Test]

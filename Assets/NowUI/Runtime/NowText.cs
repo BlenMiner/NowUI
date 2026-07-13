@@ -149,8 +149,6 @@ namespace NowUI
 
         public Vector4 outlineColor;
 
-        public Vector4 padding;
-
         public float outline;
 
         public float fontSize;
@@ -162,7 +160,6 @@ namespace NowUI
         public NowText(NowRect rect, NowFontAsset font)
         {
             this.rect = rect;
-            padding = default;
             outline = default;
             mask = rect;
             fontSize = 50;
@@ -199,17 +196,6 @@ namespace NowUI
         public NowText SetFontSize(float fontSize)
         {
             this.fontSize = fontSize;
-            return this;
-        }
-
-        /// <summary>
-        /// Stores padding on the style, but no text draw path currently consumes
-        /// it — this has no visual effect today. Inset the rect you draw into
-        /// instead.
-        /// </summary>
-        public NowText SetPadding(float all)
-        {
-            padding = new Vector4(all, all, all, all);
             return this;
         }
 

@@ -213,9 +213,7 @@ public class NowNewControlsTests
     {
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-        using (Now.SplitView(SplitRect).SetId("split").SetMinPaneSize(minFirst, minSecond).Begin(ref ratio))
-        {
-        }
+            _ = Now.SplitView(SplitRect).SetId("split").SetMinPaneSize(minFirst, minSecond).Begin(ref ratio);
 
         return ratio;
     }

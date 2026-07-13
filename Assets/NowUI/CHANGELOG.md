@@ -7,6 +7,41 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Scope ownership is now explicit and fail-fast (breaking).** `StartUI`,
+  draw-list, font, mask, transform, theme, control-id, input, layout, and label-style
+  scopes share token-backed ownership: disposing a copied handle cannot close
+  a newer scope, and disposing a live outer scope before its inner scope throws
+  without corrupting ambient state. `Now.StartUI` rejects same-frame nesting,
+  and rejects starting inside a live draw-list capture, while an abandoned
+  prior-frame screen scope (including nested captures and deferred overlays)
+  is reported, unwound, and recovered.
+  Layout areas/groups are using-only; `EndArea`, `EndHorizontal`, and
+  `EndVertical` are no longer public.
+- **Layout configuration no longer has hidden state (breaking).** The values on
+  `NowLayoutOptions` are read-only; configure them through the fluent `Set...`
+  methods so the corresponding option is always enabled. Invalid non-finite or
+  negative sizes, non-positive stretch weights, contradictory min/max bounds,
+  and unknown alignment values now throw at the call site. Fixed-size and
+  stretch setters are mutually exclusive, with the last call winning.
+- **Dead or misleading APIs were removed (breaking).** The process-wide
+  `NowLayout.labelStyle` setter and `ClearLabelStyle` are internal; use
+  `NowLayout.OverrideLabelStyle(...)` for a bounded override. `NowText.padding`,
+  `NowText.SetPadding`, and the unused text-preset padding constructor argument
+  were removed because no text renderer consumed them; inset the target rect
+  instead. `NowSplitView.Begin` now returns the non-disposable
+  `NowSplitViewResult`; dispose only the pane scopes returned by `BeginFirst`
+  and `BeginSecond`.
+- **Input scopes are transactional.** Provider failures during `Begin` or
+  measurement restore the complete previous context, nested scopes restore
+  their provider, and overlay-flush failures still unwind scope state.
+- **Draw-list capture is exception-safe.** Overlay or mesh-upload failures now
+  cancel the active capture, clear partial target geometry, and leave the next
+  capture usable instead of poisoning global rendering state.
+- **The local test harness fails closed.** It resolves the repository and Unity
+  version independently of the caller's working directory, discovers matching
+  Unity Hub installs, rejects invalid editor overrides, and treats malformed,
+  failed, or empty NUnit result files as failures. Generated result XML is no
+  longer tracked.
 - **DX hardening pass (breaking).** String `NowId`s now resolve within the
   active `NowControls.IdScope` for layout groups, caches, and input
   cross-references, matching the documented contract and the control path --

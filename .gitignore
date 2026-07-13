@@ -12,6 +12,7 @@
 /[Uu]ser[Ss]ettings/
 /artifacts/
 *.log
+*-results.xml
 
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data

@@ -15,6 +15,8 @@ namespace NowUI
 
         static readonly List<NowThemeAsset> _themeStack = new List<NowThemeAsset>(4);
 
+        static readonly NowScopeGuard _themeScopes = new NowScopeGuard("NowTheme.Scope");
+
         /// <summary>
         /// Forces light or dark resolution: when set, the active theme swaps to
         /// its <see cref="NowThemeAsset.counterpart"/> when that twin matches
@@ -102,7 +104,7 @@ namespace NowUI
                 return default;
 
             _themeStack.Add(value);
-            return new ThemeScope(true);
+            return new ThemeScope(_themeScopes.Enter());
         }
 
         /// <summary>Pushes a contextual theme; dispose the scope to restore the previous one.</summary>
@@ -112,12 +114,12 @@ namespace NowUI
                 throw new ArgumentNullException(nameof(value));
 
             _themeStack.Add(value);
-            return new ThemeScope(true);
+            return new ThemeScope(_themeScopes.Enter());
         }
 
-        internal static void PopScope()
+        internal static void PopScope(int token)
         {
-            if (_themeStack.Count > 0)
+            if (_themeScopes.Exit(token) && _themeStack.Count > 0)
                 _themeStack.RemoveAt(_themeStack.Count - 1);
         }
 
@@ -137,6 +139,7 @@ namespace NowUI
             }
 
             _themeStack.Clear();
+            _themeScopes.Clear();
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (!_warnedLeakedThemeScope)
@@ -150,6 +153,7 @@ namespace NowUI
         public static void Reset()
         {
             _themeStack.Clear();
+            _themeScopes.Clear();
             _preferDark = null;
         }
 
@@ -173,20 +177,20 @@ namespace NowUI
     [NowScope]
     public struct ThemeScope : IDisposable
     {
-        bool _active;
+        int _token;
 
-        internal ThemeScope(bool active)
+        internal ThemeScope(int token)
         {
-            _active = active;
+            _token = token;
         }
 
         public void Dispose()
         {
-            if (!_active)
+            if (_token == 0)
                 return;
 
-            _active = false;
-            NowTheme.PopScope();
+            NowTheme.PopScope(_token);
+            _token = 0;
         }
     }
 }

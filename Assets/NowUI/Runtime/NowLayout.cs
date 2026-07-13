@@ -37,29 +37,55 @@ namespace NowUI
             AlignItems = 1 << 11
         }
 
-        public float width;
+        float _width;
 
-        public float height;
+        float _height;
 
-        public float minWidth;
+        float _minWidth;
 
-        public float maxWidth;
+        float _maxWidth;
 
-        public float minHeight;
+        float _minHeight;
 
-        public float maxHeight;
+        float _maxHeight;
 
-        public float stretchWidth;
+        float _stretchWidth;
 
-        public float stretchHeight;
+        float _stretchHeight;
 
-        public float spacing;
+        float _spacing;
 
-        public Vector4 padding;
+        Vector4 _padding;
 
-        public NowLayoutAlign align;
+        NowLayoutAlign _align;
 
-        public NowLayoutAlign alignItems;
+        NowLayoutAlign _alignItems;
+
+        /// <summary>Configured fixed width; meaningful only after <see cref="SetWidth"/>.</summary>
+        public readonly float width => _width;
+
+        /// <summary>Configured fixed height; meaningful only after <see cref="SetHeight"/>.</summary>
+        public readonly float height => _height;
+
+        public readonly float minWidth => _minWidth;
+
+        public readonly float maxWidth => _maxWidth;
+
+        public readonly float minHeight => _minHeight;
+
+        public readonly float maxHeight => _maxHeight;
+
+        public readonly float stretchWidth => _stretchWidth;
+
+        public readonly float stretchHeight => _stretchHeight;
+
+        public readonly float spacing => _spacing;
+
+        public readonly Vector4 padding => _padding;
+
+        public readonly NowLayoutAlign align => _align;
+
+        public readonly NowLayoutAlign alignItems => _alignItems;
 
         internal Field fields;
 
@@ -70,15 +96,19 @@ namespace NowUI
 
         public NowLayoutOptions SetWidth(float width)
         {
-            this.width = width;
-            fields |= Field.Width;
+            RequireNonNegativeFinite(width, nameof(width));
+            _width = width;
+            _stretchWidth = default;
+            fields = (fields | Field.Width) & ~Field.StretchWidth;
             return this;
         }
 
         public NowLayoutOptions SetHeight(float height)
         {
-            this.height = height;
-            fields |= Field.Height;
+            RequireNonNegativeFinite(height, nameof(height));
+            _height = height;
+            _stretchHeight = default;
+            fields = (fields | Field.Height) & ~Field.StretchHeight;
             return this;
         }
 
@@ -89,28 +119,48 @@ namespace NowUI
 
         public NowLayoutOptions SetMinWidth(float minWidth)
         {
-            this.minWidth = minWidth;
+            RequireNonNegativeFinite(minWidth, nameof(minWidth));
+
+            if (Has(Field.MaxWidth) && minWidth > _maxWidth)
+                throw new ArgumentException("minWidth cannot exceed the configured maxWidth.", nameof(minWidth));
+
+            _minWidth = minWidth;
             fields |= Field.MinWidth;
             return this;
         }
 
         public NowLayoutOptions SetMaxWidth(float maxWidth)
         {
-            this.maxWidth = maxWidth;
+            RequireNonNegativeFinite(maxWidth, nameof(maxWidth));
+
+            if (Has(Field.MinWidth) && maxWidth < _minWidth)
+                throw new ArgumentException("maxWidth cannot be less than the configured minWidth.", nameof(maxWidth));
+
+            _maxWidth = maxWidth;
             fields |= Field.MaxWidth;
             return this;
         }
 
         public NowLayoutOptions SetMinHeight(float minHeight)
         {
-            this.minHeight = minHeight;
+            RequireNonNegativeFinite(minHeight, nameof(minHeight));
+
+            if (Has(Field.MaxHeight) && minHeight > _maxHeight)
+                throw new ArgumentException("minHeight cannot exceed the configured maxHeight.", nameof(minHeight));
+
+            _minHeight = minHeight;
             fields |= Field.MinHeight;
             return this;
         }
 
         public NowLayoutOptions SetMaxHeight(float maxHeight)
         {
-            this.maxHeight = maxHeight;
+            RequireNonNegativeFinite(maxHeight, nameof(maxHeight));
+
+            if (Has(Field.MinHeight) && maxHeight < _minHeight)
+                throw new ArgumentException("maxHeight cannot be less than the configured minHeight.", nameof(maxHeight));
+
+            _maxHeight = maxHeight;
             fields |= Field.MaxHeight;
             return this;
         }
@@ -121,8 +171,10 @@ namespace NowUI
         /// </summary>
         public NowLayoutOptions SetStretchWidth(float weight = 1f)
         {
-            stretchWidth = weight;
-            fields |= Field.StretchWidth;
+            RequirePositiveFinite(weight, nameof(weight));
+            _stretchWidth = weight;
+            _width = default;
+            fields = (fields | Field.StretchWidth) & ~Field.Width;
             return this;
         }
 
@@ -132,15 +184,18 @@ namespace NowUI
         /// </summary>
         public NowLayoutOptions SetStretchHeight(float weight = 1f)
         {
-            stretchHeight = weight;
-            fields |= Field.StretchHeight;
+            RequirePositiveFinite(weight, nameof(weight));
+            _stretchHeight = weight;
+            _height = default;
+            fields = (fields | Field.StretchHeight) & ~Field.Height;
             return this;
         }
 
         /// <summary>Gap inserted between consecutive children. Only used by groups.</summary>
         public NowLayoutOptions SetSpacing(float spacing)
         {
-            this.spacing = spacing;
+            RequireFinite(spacing, nameof(spacing));
+            _spacing = spacing;
             fields |= Field.Spacing;
             return this;
         }
@@ -148,7 +203,11 @@ namespace NowUI
         /// <summary>Inner padding as (left, top, right, bottom). Only used by groups.</summary>
         public NowLayoutOptions SetPadding(Vector4 padding)
         {
-            this.padding = padding;
+            RequireFinite(padding.x, nameof(padding));
+            RequireFinite(padding.y, nameof(padding));
+            RequireFinite(padding.z, nameof(padding));
+            RequireFinite(padding.w, nameof(padding));
+            _padding = padding;
             fields |= Field.Padding;
             return this;
         }
@@ -161,7 +220,8 @@ namespace NowUI
         /// <summary>Cross-axis alignment of the element within the group.</summary>
         public NowLayoutOptions SetAlign(NowLayoutAlign align)
         {
-            this.align = align;
+            RequireAlign(align, nameof(align));
+            _align = align;
             fields |= Field.Align;
             return this;
         }
@@ -173,9 +233,34 @@ namespace NowUI
         /// </summary>
         public NowLayoutOptions SetAlignItems(NowLayoutAlign align)
         {
-            alignItems = align;
+            RequireAlign(align, nameof(align));
+            _alignItems = align;
             fields |= Field.AlignItems;
             return this;
+        }
+
+        internal static void RequireNonNegativeFinite(float value, string paramName)
+        {
+            if (value < 0f || float.IsNaN(value) || float.IsInfinity(value))
+                throw new ArgumentOutOfRangeException(paramName, "Layout sizes must be non-negative finite values.");
+        }
+
+        internal static void RequirePositiveFinite(float value, string paramName)
+        {
+            if (value <= 0f || float.IsNaN(value) || float.IsInfinity(value))
+                throw new ArgumentOutOfRangeException(paramName, "Stretch weights must be positive finite values.");
+        }
+
+        internal static void RequireFinite(float value, string paramName)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+                throw new ArgumentOutOfRangeException(paramName, "Layout values must be finite.");
+        }
+
+        internal static void RequireAlign(NowLayoutAlign align, string paramName)
+        {
+            if ((uint)align > (uint)NowLayoutAlign.End)
+                throw new ArgumentOutOfRangeException(paramName, align, "Unknown layout alignment.");
         }
     }
 
@@ -223,6 +308,7 @@ namespace NowUI
     /// mirroring the <see cref="NowInput.Begin(Vector2)"/> flow: wrap it in a using
     /// statement and the group ends when the scope is disposed.
     /// </summary>
+    [NowScope]
     public struct NowLayoutScope : IDisposable
     {
         internal enum Kind : byte
@@ -236,13 +322,13 @@ namespace NowUI
 
         readonly Kind _kind;
 
-        bool _disposed;
+        int _token;
 
-        internal NowLayoutScope(Kind kind, NowRect rect)
+        internal NowLayoutScope(Kind kind, NowRect rect, int token)
         {
             _kind = kind;
             this.rect = rect;
-            _disposed = false;
+            _token = token;
         }
 
         public float x => rect.x;
@@ -255,23 +341,11 @@ namespace NowUI
 
         public void Dispose()
         {
-            if (_disposed)
+            if (_token == 0)
                 return;
 
-            _disposed = true;
-
-            switch (_kind)
-            {
-                case Kind.Area:
-                    NowLayout.EndArea();
-                    break;
-                case Kind.Horizontal:
-                    NowLayout.EndHorizontal();
-                    break;
-                case Kind.Vertical:
-                    NowLayout.EndVertical();
-                    break;
-            }
+            NowLayout.EndScope(_kind, _token);
+            _token = 0;
         }
     }
 
@@ -835,6 +909,8 @@ namespace NowUI
 
         static bool _hasLabelStyle;
 
+        static readonly NowScopeGuard _labelStyleScopes = new NowScopeGuard("NowLayout.OverrideLabelStyle");
+
         static NowText _defaultLabelStyle;
 
         static NowThemeAsset _defaultLabelStyleTheme;
@@ -858,6 +934,8 @@ namespace NowUI
         static double _lastCleanupTime;
 
         static bool _measurePass;
+
+        static readonly NowScopeGuard _layoutScopes = new NowScopeGuard("NowLayout");
 
         public static NowLayoutOptions Width(float width)
         {
@@ -980,7 +1058,7 @@ namespace NowUI
 
             bool hasCache = _cache.TryGetValue(areaId, out var cached);
 
-            Push(new Group
+            int token = Push(new Group
             {
                 id = areaId,
                 horizontal = false,
@@ -995,7 +1073,7 @@ namespace NowUI
                 cachedFlexTotal = cached.flexTotal
             });
 
-            return new NowLayoutScope(NowLayoutScope.Kind.Area, rect);
+            return new NowLayoutScope(NowLayoutScope.Kind.Area, rect, token);
         }
 
         /// <summary>
@@ -1207,7 +1285,7 @@ namespace NowUI
             _areaCounter = areaCounterSnapshot;
         }
 
-        public static void EndArea()
+        internal static void EndArea()
         {
             if (_depth == 0)
                 throw new InvalidOperationException("EndArea called without a matching Area.");
@@ -1226,6 +1304,7 @@ namespace NowUI
             }
 
             _depth--;
+            _layoutScopes.ExitCurrent();
             CleanupCache();
         }
 
@@ -1320,6 +1399,12 @@ namespace NowUI
             float spacing, float padding, NowLayoutAlign alignItems,
             float width, float height, bool stretchWidth, bool stretchHeight)
         {
+            NowLayoutOptions.RequireFinite(spacing, nameof(spacing));
+            NowLayoutOptions.RequireFinite(padding, nameof(padding));
+            NowLayoutOptions.RequireAlign(alignItems, nameof(alignItems));
+            NowLayoutOptions.RequireNonNegativeFinite(width, nameof(width));
+            NowLayoutOptions.RequireNonNegativeFinite(height, nameof(height));
+
             var options = default(NowLayoutOptions);
 
             if (spacing != 0f)
@@ -1354,7 +1439,7 @@ namespace NowUI
                 .SetPadding(padding);
         }
 
-        public static void EndHorizontal()
+        internal static void EndHorizontal()
         {
             EndGroup(true);
         }
@@ -1424,7 +1509,7 @@ namespace NowUI
             return BeginGroup(false, id, options);
         }
 
-        public static void EndVertical()
+        internal static void EndVertical()
         {
             EndGroup(false);
         }
@@ -1441,6 +1526,10 @@ namespace NowUI
             bool stretchHeight = false,
             NowLayoutAlign align = NowLayoutAlign.Start)
         {
+            NowLayoutOptions.RequireNonNegativeFinite(width, nameof(width));
+            NowLayoutOptions.RequireNonNegativeFinite(height, nameof(height));
+            NowLayoutOptions.RequireAlign(align, nameof(align));
+
             var options = default(NowLayoutOptions);
 
             if (width > 0f)
@@ -1471,6 +1560,7 @@ namespace NowUI
         /// <summary>Advances the current group's cursor by a fixed amount.</summary>
         public static void Space(float pixels)
         {
+            NowLayoutOptions.RequireFinite(pixels, nameof(pixels));
             ref var group = ref RequireGroup();
             group.cursor += pixels;
             group.fixedMain += pixels;
@@ -1483,6 +1573,7 @@ namespace NowUI
         /// </summary>
         public static void FlexibleSpace(float weight = 1f)
         {
+            NowLayoutOptions.RequirePositiveFinite(weight, nameof(weight));
             ref var group = ref RequireGroup();
             group.cursor += FlexShare(ref group, weight);
             group.flexTotal += weight;
@@ -1493,10 +1584,10 @@ namespace NowUI
         /// explicit style. Defaults to the active theme's body text at a 16px font size.
         /// The default is cached against the resolved theme instance, the ambient font
         /// and <see cref="NowThemeAsset.contentVersion"/>, so per-label calls skip the
-        /// full preset resolution. Assigning the setter installs a process-wide
-        /// default that stops tracking the theme until <see cref="ClearLabelStyle"/>
-        /// restores it; for a temporary override use
-        /// <see cref="OverrideLabelStyle(NowText)"/> with a using statement.
+        /// full preset resolution. Use <see cref="OverrideLabelStyle(NowText)"/>
+        /// with a using statement for a temporary override; the process-wide
+        /// setter is intentionally not public, so one host cannot leak its style
+        /// into every other NowUI surface.
         /// </summary>
         public static NowText labelStyle
         {
@@ -1520,7 +1611,7 @@ namespace NowUI
 
                 return _defaultLabelStyle;
             }
-            set
+            internal set
             {
                 _labelStyle = value;
                 _hasLabelStyle = true;
@@ -1531,7 +1622,7 @@ namespace NowUI
         /// Removes a <see cref="labelStyle"/> override so implicit labels resume
         /// tracking the active theme's body text style.
         /// </summary>
-        public static void ClearLabelStyle()
+        internal static void ClearLabelStyle()
         {
             _hasLabelStyle = false;
             _labelStyle = default;
@@ -1548,14 +1639,18 @@ namespace NowUI
         /// </summary>
         public static NowLabelStyleScope OverrideLabelStyle(NowText style)
         {
-            var scope = new NowLabelStyleScope(_labelStyle, _hasLabelStyle);
+            int token = _labelStyleScopes.Enter();
+            var scope = new NowLabelStyleScope(_labelStyle, _hasLabelStyle, token);
             _labelStyle = style;
             _hasLabelStyle = true;
             return scope;
         }
 
-        internal static void RestoreLabelStyle(NowText style, bool hasStyle)
+        internal static void RestoreLabelStyle(NowText style, bool hasStyle, int token)
         {
+            if (!_labelStyleScopes.Exit(token))
+                return;
+
             _labelStyle = style;
             _hasLabelStyle = hasStyle;
         }
@@ -1729,12 +1824,14 @@ namespace NowUI
         public static void Reset()
         {
             _depth = 0;
+            _layoutScopes.Clear();
             _areaCounter = 0;
             _frame = int.MinValue;
             _cache.Clear();
             _lastCleanupTime = 0.0;
             _labelStyle = default;
             _hasLabelStyle = false;
+            _labelStyleScopes.Clear();
             _defaultLabelStyle = default;
             _defaultLabelStyleTheme = null;
             _defaultLabelStyleFont = null;
@@ -1771,7 +1868,7 @@ namespace NowUI
 
             var rect = Allocate(ref parent, options, autoSize, true, out bool mainAuto, out float mainAllocated);
 
-            Push(new Group
+            int token = Push(new Group
             {
                 id = groupId,
                 horizontal = horizontal,
@@ -1802,7 +1899,8 @@ namespace NowUI
 
             return new NowLayoutScope(
                 horizontal ? NowLayoutScope.Kind.Horizontal : NowLayoutScope.Kind.Vertical,
-                rect);
+                rect,
+                token);
         }
 
         /// <summary>Closes the current group. When the parent sized this group from stale
@@ -1828,6 +1926,7 @@ namespace NowUI
             StoreCache(ref group, out float contentWidth, out float contentHeight);
             var ended = group;
             _depth--;
+            _layoutScopes.ExitCurrent();
 
             if (_depth == 0)
                 return;
@@ -2170,12 +2269,34 @@ namespace NowUI
             return ref Top();
         }
 
-        static void Push(in Group group)
+        static int Push(in Group group)
         {
             if (_depth == _groups.Length)
                 Array.Resize(ref _groups, _groups.Length * 2);
 
             _groups[_depth++] = group;
+            return _layoutScopes.Enter();
+        }
+
+        internal static void EndScope(NowLayoutScope.Kind kind, int token)
+        {
+            if (!_layoutScopes.IsCurrent(token))
+                return;
+
+            switch (kind)
+            {
+                case NowLayoutScope.Kind.Area:
+                    EndArea();
+                    break;
+                case NowLayoutScope.Kind.Horizontal:
+                    EndHorizontal();
+                    break;
+                case NowLayoutScope.Kind.Vertical:
+                    EndVertical();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown layout scope kind.");
+            }
         }
 
         static void OnFrameBoundary()
@@ -2192,6 +2313,7 @@ namespace NowUI
             {
                 Debug.LogError("NowLayout: unbalanced Begin/End calls detected from a previous frame. Stack cleared.");
                 _depth = 0;
+                _layoutScopes.Clear();
             }
         }
 
@@ -2235,22 +2357,22 @@ namespace NowUI
 
         readonly bool _hadPrevious;
 
-        bool _active;
+        int _token;
 
-        internal NowLabelStyleScope(NowText previous, bool hadPrevious)
+        internal NowLabelStyleScope(NowText previous, bool hadPrevious, int token)
         {
             _previous = previous;
             _hadPrevious = hadPrevious;
-            _active = true;
+            _token = token;
         }
 
         public void Dispose()
         {
-            if (!_active)
+            if (_token == 0)
                 return;
 
-            _active = false;
-            NowLayout.RestoreLabelStyle(_previous, _hadPrevious);
+            NowLayout.RestoreLabelStyle(_previous, _hadPrevious, _token);
+            _token = 0;
         }
     }
 }

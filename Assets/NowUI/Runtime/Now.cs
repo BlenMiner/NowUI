@@ -67,6 +67,8 @@ namespace NowUI
 
         static readonly List<NowFontAsset> _fontStack = new List<NowFontAsset>(8);
 
+        static readonly NowScopeGuard _fontScopes = new NowScopeGuard("Now.Font", 8);
+
         /// <summary>
         /// The active font: the innermost font pushed with <see cref="Font(NowFontAsset)"/>,
         /// or <see cref="defaultFont"/> when none is pushed. Font-implicit helpers
@@ -89,16 +91,18 @@ namespace NowUI
                 throw new ArgumentNullException(nameof(font));
 
             _fontStack.Add(font);
-            return new NowFontScope(true);
+            return new NowFontScope(_fontScopes.Enter());
         }
 
-        internal static void PopFont()
+        internal static void PopFont(int token)
         {
-            if (_fontStack.Count > 0)
+            if (_fontScopes.Exit(token) && _fontStack.Count > 0)
                 _fontStack.RemoveAt(_fontStack.Count - 1);
         }
 
         static readonly List<NowRect> _maskStack = new List<NowRect>(4);
+
+        static readonly NowScopeGuard _maskScopes = new NowScopeGuard("Now.Mask");
 
         /// <summary>
         /// Pushes an ambient clip rect: every draw inside the scope is masked to the
@@ -118,12 +122,12 @@ namespace NowUI
                 mask = mask.Intersect(_maskStack[_maskStack.Count - 1]);
 
             _maskStack.Add(mask);
-            return new NowMaskScope(true);
+            return new NowMaskScope(_maskScopes.Enter());
         }
 
-        internal static void PopMask()
+        internal static void PopMask(int token)
         {
-            if (_maskStack.Count > 0)
+            if (_maskScopes.Exit(token) && _maskStack.Count > 0)
                 _maskStack.RemoveAt(_maskStack.Count - 1);
         }
 
@@ -206,6 +210,8 @@ namespace NowUI
 
         static readonly List<NowTransform> _transformStack = new List<NowTransform>(4);
 
+        static readonly NowScopeGuard _transformScopes = new NowScopeGuard("Now.Transform");
+
         /// <summary>
         /// The active transform from the transform stack, or identity if none.
         /// </summary>
@@ -233,7 +239,7 @@ namespace NowUI
                 ? NowTransform.Compose(_transformStack[_transformStack.Count - 1], local)
                 : local;
             _transformStack.Add(effective);
-            return new NowTransformScope(true);
+            return new NowTransformScope(_transformScopes.Enter());
         }
 
         /// <summary>
@@ -257,12 +263,12 @@ namespace NowUI
                 return default;
 
             _transformStack.Add(snapshot.transform);
-            return new NowTransformScope(true);
+            return new NowTransformScope(_transformScopes.Enter());
         }
 
-        internal static void PopTransform()
+        internal static void PopTransform(int token)
         {
-            if (_transformStack.Count > 0)
+            if (_transformScopes.Exit(token) && _transformStack.Count > 0)
                 _transformStack.RemoveAt(_transformStack.Count - 1);
         }
 
@@ -396,6 +402,8 @@ namespace NowUI
             public NowRect screenMask;
             public readonly List<NowRect> maskStack = new List<NowRect>(4);
             public readonly List<NowTransform> transformStack = new List<NowTransform>(4);
+            public readonly List<int> maskScopeTokens = new List<int>(4);
+            public readonly List<int> transformScopeTokens = new List<int>(4);
         }
 
         static readonly List<MeshCaptureState> _meshCaptureStack = new List<MeshCaptureState>(4);
@@ -838,7 +846,11 @@ namespace NowUI
 
         static bool _screenFrameActive;
 
-        static bool _warnedNestedStartUI;
+        static readonly NowScopeGuard _screenFrameScopes = new NowScopeGuard("Now.StartUI", 1);
+
+        static int _screenFrameStartedAt;
+
+        static bool _warnedLeakedScreenScope;
 
         static bool _warnedLeakedSuppressScope;
 
@@ -847,15 +859,44 @@ namespace NowUI
         /// state a leaked scope from a previous frame left behind, and reports
         /// misuse that would otherwise silently discard content.
         /// </summary>
-        static void BeginScreenFrame()
+        static int BeginScreenFrame()
         {
-            if (_screenFrameActive && !_warnedNestedStartUI)
+            bool recoveredAbandonedFrame = false;
+
+            if (_screenFrameActive)
             {
-                _warnedNestedStartUI = true;
-                Debug.LogError("NowUI: Now.StartUI was called while a UI frame was already open; everything drawn so far this frame was discarded. Dispose the previous NowUIScreenScope before starting a new frame.");
+                if (_screenFrameStartedAt == Time.frameCount)
+                {
+                    throw new InvalidOperationException(
+                        "Now.StartUI cannot be nested. Dispose the current NowUIScreenScope before starting another UI frame.");
+                }
+
+                _screenFrameScopes.Clear();
+                _screenFrameActive = false;
+                NowOverlay.DiscardAbandonedFrame();
+                DiscardActiveMeshCaptures();
+                NowDrawList.DiscardAbandonedScopes();
+                recoveredAbandonedFrame = true;
+
+                if (!_warnedLeakedScreenScope)
+                {
+                    _warnedLeakedScreenScope = true;
+                    Debug.LogError("NowUI: a NowUIScreenScope from a previous frame was never disposed; the abandoned frame was discarded. Wrap Now.StartUI in a using statement.");
+                }
+            }
+            else
+            {
+                _warnedLeakedScreenScope = false;
+            }
+
+            if (!recoveredAbandonedFrame && (_captureMesh || NowDrawList.hasActiveScopes))
+            {
+                throw new InvalidOperationException(
+                    "Now.StartUI cannot begin inside an active NowDrawList scope. Dispose the draw scope before starting a screen UI frame.");
             }
 
             _screenFrameActive = true;
+            _screenFrameStartedAt = Time.frameCount;
 
             if (_suppressDrawDepth != 0)
             {
@@ -879,8 +920,29 @@ namespace NowUI
             _meshes.count = 0;
             _lastUsedMeshId = -1;
             _fontStack.Clear();
+            _fontScopes.Clear();
             _maskStack.Clear();
+            _maskScopes.Clear();
             _transformStack.Clear();
+            _transformScopes.Clear();
+
+            return _screenFrameScopes.Enter();
+        }
+
+        static void DiscardActiveMeshCaptures()
+        {
+            while (_captureMesh)
+                CancelMeshCapture();
+        }
+
+        static void CancelScreenFrame(int token)
+        {
+            if (!_screenFrameScopes.Exit(token))
+                return;
+
+            _screenFrameActive = false;
+            _meshes.count = 0;
+            _lastUsedMeshId = -1;
         }
 
         public static NowUIScreenScope StartUI()
@@ -901,15 +963,24 @@ namespace NowUI
             if (uiScale <= 0f || float.IsNaN(uiScale) || float.IsInfinity(uiScale))
                 throw new ArgumentOutOfRangeException(nameof(uiScale), "uiScale must be a positive finite value.");
 
-            BeginScreenFrame();
-            _uiScale = uiScale;
+            int token = BeginScreenFrame();
 
-            screenMask = new NowRect(0f, 0f, Screen.width / uiScale, Screen.height / uiScale);
-            NowInput.Update(new NowInputSurface(
-                new Vector2(screenMask.width, screenMask.height),
-                new Rect(0f, 0f, Screen.width, Screen.height)));
-            Initialize();
-            return new NowUIScreenScope(true);
+            try
+            {
+                _uiScale = uiScale;
+
+                screenMask = new NowRect(0f, 0f, Screen.width / uiScale, Screen.height / uiScale);
+                NowInput.Update(new NowInputSurface(
+                    new Vector2(screenMask.width, screenMask.height),
+                    new Rect(0f, 0f, Screen.width, Screen.height)));
+                Initialize();
+                return new NowUIScreenScope(token);
+            }
+            catch
+            {
+                CancelScreenFrame(token);
+                throw;
+            }
         }
 
         /// <summary>
@@ -942,19 +1013,28 @@ namespace NowUI
                 screenMask.width < 0f || screenMask.height < 0f)
                 throw new ArgumentOutOfRangeException(nameof(screenMask), "screenMask must have finite coordinates and a non-negative size.");
 
-            BeginScreenFrame();
-            _uiScale = uiScale;
+            int token = BeginScreenFrame();
 
-            Now.screenMask = new NowRect(
-                screenMask.x / uiScale,
-                screenMask.y / uiScale,
-                screenMask.width / uiScale,
-                screenMask.height / uiScale);
-            NowInput.Update(new NowInputSurface(
-                new Vector2(screenMask.width / uiScale, screenMask.height / uiScale),
-                new Rect(screenMask.x, screenMask.y, screenMask.width, screenMask.height)));
-            Initialize();
-            return new NowUIScreenScope(true);
+            try
+            {
+                _uiScale = uiScale;
+
+                Now.screenMask = new NowRect(
+                    screenMask.x / uiScale,
+                    screenMask.y / uiScale,
+                    screenMask.width / uiScale,
+                    screenMask.height / uiScale);
+                NowInput.Update(new NowInputSurface(
+                    new Vector2(screenMask.width / uiScale, screenMask.height / uiScale),
+                    new Rect(screenMask.x, screenMask.y, screenMask.width, screenMask.height)));
+                Initialize();
+                return new NowUIScreenScope(token);
+            }
+            catch
+            {
+                CancelScreenFrame(token);
+                throw;
+            }
         }
 
         internal static void SetUIScale(float uiScale)
@@ -994,19 +1074,22 @@ namespace NowUI
             state.maskStack.AddRange(_maskStack);
             state.transformStack.Clear();
             state.transformStack.AddRange(_transformStack);
+            _maskScopes.CopyTo(state.maskScopeTokens);
+            _transformScopes.CopyTo(state.transformScopeTokens);
             _meshCaptureStack.Add(state);
 
             Now.screenMask = screenMask;
-            if (!inheritContext)
-            {
-                _maskStack.Clear();
-                _transformStack.Clear();
-            }
+            _maskStack.Clear();
+            _maskScopes.Clear();
+            _transformStack.Clear();
+            _transformScopes.Clear();
             Initialize();
             if (inheritContext)
             {
                 _maskStack.AddRange(state.maskStack);
+                _maskScopes.RestoreFrom(state.maskScopeTokens);
                 _transformStack.AddRange(state.transformStack);
+                _transformScopes.RestoreFrom(state.transformScopeTokens);
             }
             _captureMesh = true;
             _meshes = RentCaptureMeshes();
@@ -1110,10 +1193,14 @@ namespace NowUI
             Now.screenMask = state.screenMask;
             _maskStack.Clear();
             _maskStack.AddRange(state.maskStack);
+            _maskScopes.RestoreFrom(state.maskScopeTokens);
             _transformStack.Clear();
             _transformStack.AddRange(state.transformStack);
+            _transformScopes.RestoreFrom(state.transformScopeTokens);
             state.maskStack.Clear();
             state.transformStack.Clear();
+            state.maskScopeTokens.Clear();
+            state.transformScopeTokens.Clear();
 
             state.meshes = default;
             _meshCaptureStatePool.Push(state);
@@ -1127,8 +1214,14 @@ namespace NowUI
                 return;
             }
 
-            UploadCapturedMeshes(target, batches, positionOffset, layout, 0, int.MaxValue);
-            CancelMeshCapture();
+            try
+            {
+                UploadCapturedMeshes(target, batches, positionOffset, layout, 0, int.MaxValue);
+            }
+            finally
+            {
+                CancelMeshCapture();
+            }
         }
 
         /// <summary>
@@ -1153,78 +1246,83 @@ namespace NowUI
                 return;
             }
 
-            _pageStarts.Clear();
-            _pageCounts.Clear();
-
-            int activeIndex = 0;
-            int pageStart = 0;
-            int pageMeshes = 0;
-            int pageVertices = 0;
-            bool hasGlass = false;
-
-            for (int i = 0; i < _meshes.count; ++i)
+            try
             {
-                var mesh = _meshes.array[i];
+                _pageStarts.Clear();
+                _pageCounts.Clear();
 
-                if (!mesh.hasVertices)
-                    continue;
+                int activeIndex = 0;
+                int pageStart = 0;
+                int pageMeshes = 0;
+                int pageVertices = 0;
+                bool hasGlass = false;
 
-                hasGlass |= mesh.kind == NowMeshKind.Glass;
+                for (int i = 0; i < _meshes.count; ++i)
+                {
+                    var mesh = _meshes.array[i];
 
-                bool pageFull = pageMeshes > 0 &&
-                    (pageMeshes == MAX_MESHES_PER_CANVAS_PAGE ||
-                     pageVertices + mesh.vertexCount > MAX_VERTICES_PER_CANVAS_MESH);
+                    if (!mesh.hasVertices)
+                        continue;
 
-                if (pageFull)
+                    hasGlass |= mesh.kind == NowMeshKind.Glass;
+
+                    bool pageFull = pageMeshes > 0 &&
+                        (pageMeshes == MAX_MESHES_PER_CANVAS_PAGE ||
+                         pageVertices + mesh.vertexCount > MAX_VERTICES_PER_CANVAS_MESH);
+
+                    if (pageFull)
+                    {
+                        _pageStarts.Add(pageStart);
+                        _pageCounts.Add(pageMeshes);
+                        pageStart = activeIndex;
+                        pageMeshes = 0;
+                        pageVertices = 0;
+                    }
+
+                    ++pageMeshes;
+                    pageVertices += mesh.vertexCount;
+                    ++activeIndex;
+                }
+
+                if (pageMeshes > 0)
                 {
                     _pageStarts.Add(pageStart);
                     _pageCounts.Add(pageMeshes);
-                    pageStart = activeIndex;
-                    pageMeshes = 0;
-                    pageVertices = 0;
                 }
 
-                ++pageMeshes;
-                pageVertices += mesh.vertexCount;
-                ++activeIndex;
-            }
+                int pageCount = Mathf.Max(1, _pageStarts.Count);
+                drawList.PrepareCanvasPages(pageCount);
 
-            if (pageMeshes > 0)
+                for (int pageIndex = 0; pageIndex < pageCount; ++pageIndex)
+                {
+                    UploadCapturedMeshes(
+                        drawList.GetCanvasMesh(pageIndex),
+                        drawList.GetCanvasBatches(pageIndex),
+                        positionOffset,
+                        NowMeshLayout.Canvas,
+                        pageIndex < _pageStarts.Count ? _pageStarts[pageIndex] : 0,
+                        pageIndex < _pageCounts.Count ? _pageCounts[pageIndex] : 0);
+                }
+
+                if (hasGlass)
+                {
+                    UploadCapturedMeshes(
+                        drawList.EnsureRenderReplayMesh(),
+                        drawList.renderReplayBatches,
+                        Vector2.zero,
+                        NowMeshLayout.Render,
+                        0,
+                        int.MaxValue);
+                }
+                else
+                {
+                    drawList.ClearRenderReplay();
+                }
+            }
+            finally
             {
-                _pageStarts.Add(pageStart);
-                _pageCounts.Add(pageMeshes);
+                CancelMeshCapture();
             }
-
-            int pageCount = Mathf.Max(1, _pageStarts.Count);
-            drawList.PrepareCanvasPages(pageCount);
-
-            for (int pageIndex = 0; pageIndex < pageCount; ++pageIndex)
-            {
-                UploadCapturedMeshes(
-                    drawList.GetCanvasMesh(pageIndex),
-                    drawList.GetCanvasBatches(pageIndex),
-                    positionOffset,
-                    NowMeshLayout.Canvas,
-                    pageIndex < _pageStarts.Count ? _pageStarts[pageIndex] : 0,
-                    pageIndex < _pageCounts.Count ? _pageCounts[pageIndex] : 0);
-            }
-
-            if (hasGlass)
-            {
-                UploadCapturedMeshes(
-                    drawList.EnsureRenderReplayMesh(),
-                    drawList.renderReplayBatches,
-                    Vector2.zero,
-                    NowMeshLayout.Render,
-                    0,
-                    int.MaxValue);
-            }
-            else
-            {
-                drawList.ClearRenderReplay();
-            }
-
-            CancelMeshCapture();
         }
 
         static void UploadCapturedMeshes(
@@ -1423,8 +1521,11 @@ namespace NowUI
             target.bounds = hasBounds ? NowMesh.ToUnityBounds(combinedBounds) : new Bounds(Vector3.zero, Vector3.zero);
         }
 
-        internal static void FinishUIScreenFrame()
+        internal static void FinishUIScreenFrame(int token)
         {
+            if (!_screenFrameScopes.Exit(token))
+                return;
+
             _screenFrameActive = false;
 
             if (_captureMesh)
@@ -3087,20 +3188,20 @@ namespace NowUI
     [NowScope]
     public struct NowUIScreenScope : IDisposable
     {
-        bool _active;
+        int _token;
 
-        internal NowUIScreenScope(bool active)
+        internal NowUIScreenScope(int token)
         {
-            _active = active;
+            _token = token;
         }
 
         public void Dispose()
         {
-            if (!_active)
+            if (_token == 0)
                 return;
 
-            _active = false;
-            Now.FinishUIScreenFrame();
+            Now.FinishUIScreenFrame(_token);
+            _token = 0;
         }
     }
 
@@ -3111,20 +3212,20 @@ namespace NowUI
     [NowScope]
     public struct NowMaskScope : IDisposable
     {
-        bool _active;
+        int _token;
 
-        internal NowMaskScope(bool active)
+        internal NowMaskScope(int token)
         {
-            _active = active;
+            _token = token;
         }
 
         public void Dispose()
         {
-            if (!_active)
+            if (_token == 0)
                 return;
 
-            _active = false;
-            Now.PopMask();
+            Now.PopMask(_token);
+            _token = 0;
         }
     }
 
@@ -3135,20 +3236,20 @@ namespace NowUI
     [NowScope]
     public struct NowFontScope : IDisposable
     {
-        bool _active;
+        int _token;
 
-        internal NowFontScope(bool active)
+        internal NowFontScope(int token)
         {
-            _active = active;
+            _token = token;
         }
 
         public void Dispose()
         {
-            if (!_active)
+            if (_token == 0)
                 return;
 
-            _active = false;
-            Now.PopFont();
+            Now.PopFont(_token);
+            _token = 0;
         }
     }
 
@@ -3159,20 +3260,20 @@ namespace NowUI
     [NowScope]
     public struct NowTransformScope : IDisposable
     {
-        bool _active;
+        int _token;
 
-        internal NowTransformScope(bool active)
+        internal NowTransformScope(int token)
         {
-            _active = active;
+            _token = token;
         }
 
         public void Dispose()
         {
-            if (!_active)
+            if (_token == 0)
                 return;
 
-            _active = false;
-            Now.PopTransform();
+            Now.PopTransform(_token);
+            _token = 0;
         }
     }
 }

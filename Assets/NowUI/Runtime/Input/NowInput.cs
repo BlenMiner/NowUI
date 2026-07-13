@@ -142,6 +142,8 @@ namespace NowUI
 
         static int _scopeDepth;
 
+        static readonly NowScopeGuard _scopes = new NowScopeGuard("NowInput.Begin");
+
         static bool _scrollConsumed;
 
         static int _cancelClaimFrame = int.MinValue;
@@ -240,7 +242,8 @@ namespace NowUI
 
         public static NowInputScope Begin(INowInputProvider provider, NowInputSurface surface)
         {
-            bool topLevel = _scopeDepth == 0;
+            int previousScopeDepth = _scopeDepth;
+            bool topLevel = previousScopeDepth == 0;
 
             if (topLevel)
             {
@@ -248,18 +251,79 @@ namespace NowUI
                 CompleteFrame();
             }
 
-            var scope = new NowInputScope(_surface, _snapshot, _hasContext, _scrollConsumed, topLevel);
+            var previousProvider = _currentProvider;
+            var previousSurface = _surface;
+            var previousSnapshot = _snapshot;
+            bool previousHasContext = _hasContext;
+            bool previousScrollConsumed = _scrollConsumed;
+            int token = _scopes.Enter();
+            var scope = new NowInputScope(
+                previousProvider,
+                previousSurface,
+                previousSnapshot,
+                previousHasContext,
+                previousScrollConsumed,
+                topLevel,
+                token);
+            bool previousActiveSeenThisFrame = _activeSeenThisFrame;
             ++_scopeDepth;
-            Update(provider, surface, topLevel);
-            return scope;
+
+            try
+            {
+                Update(provider, surface, topLevel);
+                return scope;
+            }
+            catch
+            {
+                _scopes.Exit(token);
+                _scopeDepth = previousScopeDepth;
+                Restore(
+                    previousProvider,
+                    previousSurface,
+                    previousSnapshot,
+                    previousHasContext);
+                _scrollConsumed = previousScrollConsumed;
+                _activeSeenThisFrame = previousActiveSeenThisFrame;
+                throw;
+            }
         }
 
         internal static NowInputScope BeginMeasurement(INowInputProvider provider, NowInputSurface surface)
         {
-            var scope = new NowInputScope(_surface, _snapshot, _hasContext, _scrollConsumed, false);
+            int previousScopeDepth = _scopeDepth;
+            var previousProvider = _currentProvider;
+            var previousSurface = _surface;
+            var previousSnapshot = _snapshot;
+            bool previousHasContext = _hasContext;
+            bool previousScrollConsumed = _scrollConsumed;
+            int token = _scopes.Enter();
+            var scope = new NowInputScope(
+                previousProvider,
+                previousSurface,
+                previousSnapshot,
+                previousHasContext,
+                previousScrollConsumed,
+                false,
+                token);
             ++_scopeDepth;
-            Update(provider, surface, false);
-            return scope;
+
+            try
+            {
+                Update(provider, surface, false);
+                return scope;
+            }
+            catch
+            {
+                _scopes.Exit(token);
+                _scopeDepth = previousScopeDepth;
+                Restore(
+                    previousProvider,
+                    previousSurface,
+                    previousSnapshot,
+                    previousHasContext);
+                _scrollConsumed = previousScrollConsumed;
+                throw;
+            }
         }
 
         public static void Update(Vector2 size)
@@ -285,8 +349,12 @@ namespace NowUI
 
         static void Update(INowInputProvider provider, NowInputSurface surface, bool resetFrameTracking)
         {
+            NowInputSnapshot snapshot = default;
+            bool hasSnapshot = provider != null && provider.TryGetSnapshot(surface, out snapshot);
+
             _currentProvider = provider;
             _surface = surface;
+            _snapshot = hasSnapshot ? snapshot : default;
             _hasContext = true;
             NowControls.ResetControlIdOccurrences();
 
@@ -296,15 +364,8 @@ namespace NowUI
                 _activeSeenThisFrame = false;
             }
 
-            if (provider != null && provider.TryGetSnapshot(surface, out _snapshot))
-            {
-                if (resetFrameTracking)
-                    ClearStaleActiveFromMissingProvider();
-
-                return;
-            }
-
-            _snapshot = default;
+            if (hasSnapshot && resetFrameTracking)
+                ClearStaleActiveFromMissingProvider();
         }
 
         public static bool IsHovered(NowRect rect)
@@ -734,6 +795,7 @@ namespace NowUI
             _defaultProvider = NowScreenInputProvider.instance;
             _passiveDepth = 0;
             _scopeDepth = 0;
+            _scopes.Clear();
             _scrollConsumed = false;
             _cancelClaimFrame = int.MinValue;
             NowRaycastGate.InvalidateCache();
@@ -794,26 +856,53 @@ namespace NowUI
                 topLeftScreenDelta.y * surface.size.y / screenRect.height);
         }
 
-        internal static void Restore(NowInputSurface surface, NowInputSnapshot snapshot, bool hasContext)
+        internal static void Restore(
+            INowInputProvider provider,
+            NowInputSurface surface,
+            NowInputSnapshot snapshot,
+            bool hasContext)
         {
+            _currentProvider = provider;
             _surface = surface;
             _snapshot = snapshot;
             _hasContext = hasContext;
         }
 
-        internal static void EndScope(NowInputSurface previousSurface, NowInputSnapshot previousSnapshot, bool previousHasContext, bool previousScrollConsumed, bool completeFrame)
+        internal static void EndScope(
+            INowInputProvider previousProvider,
+            NowInputSurface previousSurface,
+            NowInputSnapshot previousSnapshot,
+            bool previousHasContext,
+            bool previousScrollConsumed,
+            bool completeFrame,
+            int token)
         {
-            if (completeFrame)
-                NowOverlay.Flush();
+            if (!_scopes.IsCurrent(token))
+                return;
 
-            if (_scopeDepth > 0)
-                --_scopeDepth;
+            try
+            {
+                if (completeFrame)
+                    NowOverlay.Flush();
+            }
+            finally
+            {
+                _scopes.Exit(token);
 
-            if (completeFrame)
-                EndFrame();
+                if (_scopeDepth > 0)
+                    --_scopeDepth;
 
-            Restore(previousSurface, previousSnapshot, previousHasContext);
-            _scrollConsumed |= previousScrollConsumed;
+                try
+                {
+                    if (completeFrame)
+                        EndFrame();
+                }
+                finally
+                {
+                    Restore(previousProvider, previousSurface, previousSnapshot, previousHasContext);
+                    _scrollConsumed |= previousScrollConsumed;
+                }
+            }
         }
 
         internal static void EndFrame()
@@ -882,6 +971,8 @@ namespace NowUI
     [NowScope]
     public struct NowInputScope : IDisposable
     {
+        readonly INowInputProvider _previousProvider;
+
         readonly NowInputSurface _previousSurface;
 
         readonly NowInputSnapshot _previousSnapshot;
@@ -892,20 +983,26 @@ namespace NowUI
 
         readonly bool _completeFrame;
 
+        readonly int _token;
+
         bool _disposed;
 
         internal NowInputScope(
+            INowInputProvider previousProvider,
             NowInputSurface previousSurface,
             NowInputSnapshot previousSnapshot,
             bool previousHasContext,
             bool previousScrollConsumed,
-            bool completeFrame)
+            bool completeFrame,
+            int token)
         {
+            _previousProvider = previousProvider;
             _previousSurface = previousSurface;
             _previousSnapshot = previousSnapshot;
             _previousHasContext = previousHasContext;
             _previousScrollConsumed = previousScrollConsumed;
             _completeFrame = completeFrame;
+            _token = token;
             _disposed = false;
         }
 
@@ -914,8 +1011,15 @@ namespace NowUI
             if (_disposed)
                 return;
 
+            NowInput.EndScope(
+                _previousProvider,
+                _previousSurface,
+                _previousSnapshot,
+                _previousHasContext,
+                _previousScrollConsumed,
+                _completeFrame,
+                _token);
             _disposed = true;
-            NowInput.EndScope(_previousSurface, _previousSnapshot, _previousHasContext, _previousScrollConsumed, _completeFrame);
         }
     }
 }

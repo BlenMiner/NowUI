@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 using UnityEngine;
 using NowUI;
@@ -567,12 +568,163 @@ public class NowInputTests
 
         using (NowInput.Begin(first, new Vector2(100, 100)))
         {
+            Assert.AreSame(first, NowInput.currentProvider);
             Assert.AreEqual(new Vector2(12, 12), NowInput.current.pointerPosition);
 
             using (NowInput.Begin(second, new Vector2(100, 100)))
+            {
+                Assert.AreSame(second, NowInput.currentProvider);
                 Assert.AreEqual(new Vector2(80, 80), NowInput.current.pointerPosition);
+            }
 
+            Assert.AreSame(first, NowInput.currentProvider);
             Assert.AreEqual(new Vector2(12, 12), NowInput.current.pointerPosition);
+        }
+
+        Assert.IsFalse(NowInput.hasContext);
+        Assert.IsNull(NowInput.currentProvider);
+    }
+
+    [Test]
+    public void ThrowingProviderRollsBackNestedInputScope()
+    {
+        var outer = new MockInputProvider
+        {
+            snapshot = new NowInputSnapshot(new Vector2(12, 12), false, false, false)
+        };
+
+        NowOverlay.Reset();
+
+        try
+        {
+            using (NowInput.Begin(outer, new Vector2(100, 100)))
+            {
+                Assert.Throws<InvalidOperationException>(() =>
+                {
+                    _ = NowInput.Begin(new ThrowingInputProvider(), new Vector2(50, 50));
+                });
+
+                Assert.IsTrue(NowInput.hasContext);
+                Assert.AreSame(outer, NowInput.currentProvider);
+                Assert.AreEqual(new Vector2(12, 12), NowInput.current.pointerPosition);
+            }
+
+            Assert.IsFalse(NowInput.hasContext);
+            Assert.IsNull(NowInput.currentProvider);
+
+            bool flushed = false;
+
+            using (NowInput.Begin(outer, new Vector2(100, 100)))
+                NowOverlay.DeferScreen(new NowRect(0, 0, 1, 1), () => flushed = true);
+
+            Assert.IsTrue(flushed, "The failed nested Begin must not leave the next scope nested permanently.");
+        }
+        finally
+        {
+            NowOverlay.Reset();
+        }
+    }
+
+    [Test]
+    public void ThrowingProviderRollsBackMeasurementInputScope()
+    {
+        var outer = new MockInputProvider
+        {
+            snapshot = new NowInputSnapshot(new Vector2(12, 12), false, false, false)
+        };
+
+        using (NowInput.Begin(outer, new Vector2(100, 100)))
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                _ = NowInput.BeginMeasurement(new ThrowingInputProvider(), new NowInputSurface(new Vector2(50, 50)));
+            });
+
+            Assert.IsTrue(NowInput.hasContext);
+            Assert.AreSame(outer, NowInput.currentProvider);
+            Assert.AreEqual(new Vector2(12, 12), NowInput.current.pointerPosition);
+        }
+    }
+
+    [Test]
+    public void ThrowingOverlayStillClosesTopLevelInputScope()
+    {
+        NowOverlay.Reset();
+
+        try
+        {
+            var scope = NowInput.Begin(_provider, new Vector2(100, 100));
+            NowOverlay.DeferScreen(
+                new NowRect(0, 0, 1, 1),
+                () => throw new InvalidOperationException("overlay failed"));
+
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                scope.Dispose();
+            });
+            Assert.IsFalse(NowInput.hasContext);
+            Assert.IsNull(NowInput.currentProvider);
+
+            bool flushed = false;
+
+            using (NowInput.Begin(_provider, new Vector2(100, 100)))
+                NowOverlay.DeferScreen(new NowRect(0, 0, 1, 1), () => flushed = true);
+
+            Assert.IsTrue(flushed, "An exception during Flush must not leave the next scope nested permanently.");
+        }
+        finally
+        {
+            NowOverlay.Reset();
+        }
+    }
+
+    [Test]
+    public void DisposingCopiedInputScopeCannotCloseANewerScope()
+    {
+        var first = NowInput.Begin(_provider, new Vector2(100, 100));
+        var staleCopy = first;
+        first.Dispose();
+
+        var current = NowInput.Begin(_provider, new Vector2(50, 50));
+
+        try
+        {
+            staleCopy.Dispose();
+            Assert.IsTrue(NowInput.hasContext);
+            Assert.AreEqual(new Vector2(50, 50), NowInput.surface.size);
+        }
+        finally
+        {
+            current.Dispose();
+        }
+
+        Assert.IsFalse(NowInput.hasContext);
+    }
+
+    [Test]
+    public void OutOfOrderInputDisposeThrowsWithoutCorruptingContext()
+    {
+        var outerProvider = new MockInputProvider
+        {
+            snapshot = new NowInputSnapshot(new Vector2(12, 12), false, false, false)
+        };
+        var innerProvider = new MockInputProvider
+        {
+            snapshot = new NowInputSnapshot(new Vector2(30, 30), false, false, false)
+        };
+        var outer = NowInput.Begin(outerProvider, new Vector2(100, 100));
+        var inner = NowInput.Begin(innerProvider, new Vector2(50, 50));
+
+        try
+        {
+            Assert.Throws<InvalidOperationException>(() => outer.Dispose());
+            Assert.AreSame(innerProvider, NowInput.currentProvider);
+            Assert.AreEqual(new Vector2(30, 30), NowInput.current.pointerPosition);
+        }
+        finally
+        {
+            inner.Dispose();
+            outer.Dispose();
         }
 
         Assert.IsFalse(NowInput.hasContext);
@@ -725,6 +877,15 @@ public class NowInputTests
         {
             snapshot = this.snapshot;
             return true;
+        }
+    }
+
+    sealed class ThrowingInputProvider : INowInputProvider
+    {
+        public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
+        {
+            snapshot = default;
+            throw new InvalidOperationException("input failed");
         }
     }
 }

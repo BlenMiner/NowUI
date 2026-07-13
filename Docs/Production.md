@@ -10,24 +10,16 @@ Close any open Unity editor for this project before running batchmode tests.
 Unity refuses to open the same project twice.
 
 ```powershell
-& 'C:\Program Files\Unity\Hub\Editor\6000.4.0f1\Editor\Unity.exe' `
-  -batchmode `
-  -projectPath 'C:\wkspaces\unity\Now-UI' `
-  -runTests `
-  -testPlatform EditMode `
-  -testResults 'Temp\NowUI-EditModeResults.xml' `
-  -logFile 'Temp\NowUI-EditMode.log'
+pwsh -File Tools/NowUI-Harness.ps1 -Mode EditMode
+pwsh -File Tools/NowUI-Harness.ps1 -Mode PlayMode
 ```
 
-```powershell
-& 'C:\Program Files\Unity\Hub\Editor\6000.4.0f1\Editor\Unity.exe' `
-  -batchmode `
-  -projectPath 'C:\wkspaces\unity\Now-UI' `
-  -runTests `
-  -testPlatform PlayMode `
-  -testResults 'Temp\NowUI-PlayModeResults.xml' `
-  -logFile 'Temp\NowUI-PlayMode.log'
-```
+The harness requires PowerShell 7, resolves the project relative to its own
+location, and finds the Unity Hub editor version recorded in
+`ProjectSettings/ProjectVersion.txt`. Set `UNITY_EDITOR` or pass
+`-UnityEditor` for a nonstandard install; an invalid override fails instead of
+silently selecting another editor. Test runs fail on invalid XML, failed tests,
+or zero discovered tests, and write logs/results under `artifacts/local`.
 
 For CI, `.github/workflows/unity-tests.yml` runs the same commands through
 `.github/scripts/Run-UnityTests.ps1` on a self-hosted Windows runner with Unity

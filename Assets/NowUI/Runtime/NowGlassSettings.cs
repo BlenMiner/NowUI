@@ -113,6 +113,8 @@ namespace NowUI
     {
         static readonly List<NowGlassBlurQuality> _qualityStack = new List<NowGlassBlurQuality>(8);
 
+        static readonly NowScopeGuard _qualityScopes = new NowScopeGuard("NowGlassSettings blur quality", 8);
+
         static readonly List<NowGlassDiagnosticEntry> _diagnosticEntries = new List<NowGlassDiagnosticEntry>(16);
 
         static NowGlassFrameDiagnostics _lastFrameDiagnostics =
@@ -221,15 +223,23 @@ namespace NowUI
         {
             TouchFrame();
             _qualityStack.Add(Resolve(quality));
-            return new NowGlassQualityScope(true);
+            return new NowGlassQualityScope(_qualityScopes.Enter());
         }
 
-        internal static void PopBlurQuality()
+        internal static void PopBlurQuality(int token)
         {
-            int index = _qualityStack.Count - 1;
+            if (!_qualityScopes.Exit(token))
+                return;
 
+            int index = _qualityStack.Count - 1;
             if (index >= 0)
                 _qualityStack.RemoveAt(index);
+        }
+
+        internal static void DiscardAbandonedQualityScopes()
+        {
+            _qualityStack.Clear();
+            _qualityScopes.Clear();
         }
 
         internal static NowGlassBlurQuality Resolve(NowGlassBlurQuality quality)
@@ -306,6 +316,7 @@ namespace NowUI
         static void ResetForRuntimeLoad()
         {
             _qualityStack.Clear();
+            _qualityScopes.Clear();
             _diagnosticEntries.Clear();
             _diagnosticFrame = -1;
             _diagnosticEntryLimit = 16;
@@ -317,20 +328,20 @@ namespace NowUI
 
     internal struct NowGlassQualityScope : IDisposable
     {
-        bool _active;
+        int _token;
 
-        internal NowGlassQualityScope(bool active)
+        internal NowGlassQualityScope(int token)
         {
-            _active = active;
+            _token = token;
         }
 
         public void Dispose()
         {
-            if (!_active)
+            if (_token == 0)
                 return;
 
-            _active = false;
-            NowGlassSettings.PopBlurQuality();
+            NowGlassSettings.PopBlurQuality(_token);
+            _token = 0;
         }
     }
 }

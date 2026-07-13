@@ -895,6 +895,21 @@ namespace NowUI
             }
         }
 
+        /// <summary>
+        /// Drops callbacks and pointer blocks owned by a screen frame that crossed
+        /// a frame boundary without being disposed. Host and popup-fit scopes are
+        /// left alone because their lifetime belongs to the hosting component.
+        /// </summary>
+        internal static void DiscardAbandonedFrame()
+        {
+            _deferred.Clear();
+            _blocksCurrent.Clear();
+            _blocksPrevious.Clear();
+            _drawingStack.Clear();
+            _registryFrame = -1;
+            _overlayDepth = 0;
+        }
+
         public static void Reset()
         {
             _deferred.Clear();

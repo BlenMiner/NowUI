@@ -75,6 +75,18 @@ horizontal group); `SetAlignItems` on a group sets the default for all its
 children — flexbox's `align-items` — with a child's own `SetAlign` taking
 precedence.
 
+The option values are read-only snapshots. Always use the `Set...` methods;
+they both store the value and enable that option. Sizes must be non-negative
+and finite, stretch weights must be positive, and min/max bounds cannot
+contradict each other. A fixed size and stretch on the same axis are mutually
+exclusive, so the last setter wins:
+
+```csharp
+var options = default(NowLayoutOptions)
+    .SetWidth(240)
+    .SetStretchWidth(); // stretch wins; fixed width is disabled
+```
+
 `Space(pixels)` inserts a fixed gap; `FlexibleSpace(weight)` absorbs remaining
 space like an invisible stretch element.
 

@@ -118,8 +118,9 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   with press-and-hold repeat; up/down navigation steps while focused.
 - `TabBar(labels).Draw(ref index)` is a caller-owned tab strip;
   `TabView(labels).Begin(ref index)` adds a masked page area below the bar.
-- `SplitView(rect).Begin(ref ratio)` gives two panes with a draggable,
-  focusable divider (`BeginFirst()`/`BeginSecond()` open each pane).
+- `SplitView(rect).Begin(ref ratio)` returns a plain result describing two panes
+  with a draggable, focusable divider. The result itself is not disposable;
+  `BeginFirst()`/`BeginSecond()` return the scopes that open each pane.
 - `TreeView(state).Begin()` renders collapsible rows; expansion and selection
   live in a caller-owned `NowTreeViewState`.
 - `ComboBox(options).Draw(ref index)` is a searchable dropdown: open it and
@@ -606,9 +607,9 @@ every assembly that references NowUI:
   `NowLayout.Label("Hello");` → *did you forget `.Draw()`?*
 - **NOWUI002** — a using-only scope discarded as a bare statement:
   `Now.Mask(rect);` → the scope can never be disposed, so the pushed state
-  leaks for the rest of the frame. Wrap it in `using`. (`NowLayout.Area` and
-  the other layout groups are exempt: closing them with
-  `NowLayout.EndArea()`-style calls instead of `using` is supported.)
+  leaks for the rest of the frame. Wrap it in `using`. Layout areas and groups
+  follow the same rule; their old public `EndArea`/`EndHorizontal`/`EndVertical`
+  escape hatch has been removed so every public stack API has one lifecycle.
 
 Both rules fire only when the misuse is certain — there are no heuristic
 "maybe" warnings. To discard intentionally (rare, mostly tests), assign to

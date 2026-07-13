@@ -27,6 +27,8 @@ namespace NowUI
     {
         static readonly List<int> _idStack = new List<int>(8);
 
+        static readonly NowScopeGuard _idScopes = new NowScopeGuard("NowControls.IdScope", 8);
+
         /// <summary>The active theme, provided by <see cref="NowTheme"/>.</summary>
         public static NowThemeAsset themeAsset => NowTheme.themeAsset;
 
@@ -53,7 +55,7 @@ namespace NowUI
         {
             int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
             _idStack.Add(NowInput.GetId(seed, name));
-            return new ControlIdScope(true);
+            return new ControlIdScope(_idScopes.Enter());
         }
 
         /// <summary>
@@ -64,12 +66,12 @@ namespace NowUI
         public static ControlIdScope IdScope(NowId id)
         {
             if (!id.hasValue)
-                return new ControlIdScope(false);
+                return default;
 
             if (id.isString)
             {
                 _idStack.Add(GetControlId(id.stringValue));
-                return new ControlIdScope(true);
+                return new ControlIdScope(_idScopes.Enter());
             }
 
             int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
@@ -79,7 +81,7 @@ namespace NowUI
                 resolved = NowInput.CombineId(seed, resolved);
 
             _idStack.Add(resolved != 0 ? resolved : 1);
-            return new ControlIdScope(true);
+            return new ControlIdScope(_idScopes.Enter());
         }
 
         /// <summary>
@@ -102,12 +104,12 @@ namespace NowUI
             }
 
             _idStack.Add(id != 0 ? id : 1);
-            return new ControlIdScope(true);
+            return new ControlIdScope(_idScopes.Enter());
         }
 
-        internal static void PopIdScope()
+        internal static void PopIdScope(int token)
         {
-            if (_idStack.Count > 0)
+            if (_idScopes.Exit(token) && _idStack.Count > 0)
                 _idStack.RemoveAt(_idStack.Count - 1);
         }
 
@@ -127,6 +129,7 @@ namespace NowUI
             }
 
             _idStack.Clear();
+            _idScopes.Clear();
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (!_warnedLeakedIdScope)
@@ -357,6 +360,7 @@ namespace NowUI
         {
             NowTheme.Reset();
             _idStack.Clear();
+            _idScopes.Clear();
             _labelOccurrences.Clear();
             _passiveOccurrences.Clear();
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -650,20 +654,20 @@ namespace NowUI
     [NowScope]
     public struct ControlIdScope : IDisposable
     {
-        bool _active;
+        int _token;
 
-        internal ControlIdScope(bool active)
+        internal ControlIdScope(int token)
         {
-            _active = active;
+            _token = token;
         }
 
         public void Dispose()
         {
-            if (!_active)
+            if (_token == 0)
                 return;
 
-            _active = false;
-            NowControls.PopIdScope();
+            NowControls.PopIdScope(_token);
+            _token = 0;
         }
     }
 }

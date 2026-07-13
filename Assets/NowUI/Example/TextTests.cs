@@ -13,8 +13,6 @@ public class TextTests : MonoBehaviour
 
     [SerializeField, Range(1, 200)] float _fontSize = 100;
 
-    [SerializeField, Range(-200, 200)] float _padding;
-
     [SerializeField, TextArea] string _text = "Hello World";
 
     private void DrawTextBox(Vector4 rect, string txt)
@@ -42,7 +40,6 @@ public class TextTests : MonoBehaviour
         Now.Text(rect, _font)
             .SetColor(_color)
             .SetFontSize(_fontSize + radius)
-            .SetPadding(_padding)
             .SetOutline(_outline)
             .SetOutlineColor(_outlineColor)
             .Draw(rect.ToString() + "\n" + txt);
