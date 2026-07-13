@@ -20,6 +20,8 @@ namespace NowUI
 
         readonly NowUIToolkitInputProvider _inputProvider = new NowUIToolkitInputProvider();
 
+        readonly int _scopeId = NowControls.AllocateHostScopeId();
+
         IVisualElementScheduledItem _repaintItem;
 
         NowRenderer _renderer;
@@ -29,8 +31,6 @@ namespace NowUI
         bool _rebuildEveryFrame;
 
         bool _autoRebuildOnInteraction = true;
-
-        bool _layoutMeasurePass = true;
 
         bool _usePanelScale = true;
 
@@ -102,6 +102,17 @@ namespace NowUI
             }
         }
 
+        /// <summary>Resolves a SetId value within this element's private control scope.</summary>
+        public int ResolveControlId(string id)
+        {
+            return NowControls.ResolveHostControlId(_scopeId, id);
+        }
+
+        public int ResolveControlId(int id)
+        {
+            return NowControls.ResolveHostControlId(_scopeId, id);
+        }
+
         [UxmlAttribute]
         public bool autoRebuildOnInteraction
         {
@@ -109,19 +120,8 @@ namespace NowUI
             set => _autoRebuildOnInteraction = value;
         }
 
-        [UxmlAttribute]
-        public bool layoutMeasurePass
-        {
-            get => _layoutMeasurePass;
-            set
-            {
-                if (_layoutMeasurePass == value)
-                    return;
-
-                _layoutMeasurePass = value;
-                MarkDirty();
-            }
-        }
+        /// <summary>Explicit-rect UI Toolkit hosts are one-pass; use NowLayoutVisualElement for NowLayout content.</summary>
+        internal virtual bool useLayoutMeasurePass => false;
 
         [UxmlAttribute]
         public NowGlassBlurQuality glassBlurQuality
@@ -284,18 +284,35 @@ namespace NowUI
             var nowRect = new NowRect(0f, 0f, size.x, size.y);
             renderer.glassBlurQuality = _glassBlurQuality;
             var frame = NowFrame.Begin(GetEffectiveUIScale(pixelsPerPoint), trackRepaint: true);
-            var scope = renderer.Begin(size);
+            NowDrawScope scope = default;
 
             try
             {
-                using (NowInput.Begin(_inputProvider, new NowInputSurface(size)))
+                scope = renderer.Begin(size);
+                var inputScope = NowInput.Begin(_inputProvider, new NowInputSurface(size));
+
+                try
                 {
-                    var content = new FrameContent(this);
-                    _measuredContentSize = NowFrame.DrawContent(
-                        ref content,
-                        nowRect,
-                        _layoutMeasurePass,
-                        trackContent: true);
+                    using (NowControls.RestoreIdScope(_scopeId))
+                    {
+                        var content = new FrameContent(this);
+                        _measuredContentSize = NowFrame.DrawContent(
+                            ref content,
+                            nowRect,
+                            useLayoutMeasurePass,
+                            trackContent: true);
+                    }
+                }
+                catch
+                {
+                    // Prevent input finalization from flushing overlays queued by
+                    // a retained rebuild that is about to be discarded.
+                    scope.Cancel();
+                    throw;
+                }
+                finally
+                {
+                    inputScope.Dispose();
                 }
 
                 _wantsInteractionRepaint = frame.EndRepaintTracking();
@@ -484,5 +501,12 @@ namespace NowUI
 
             evt.StopPropagation();
         }
+    }
+
+    /// <summary>UI Toolkit host with exact same-rebuild NowLayout measurement enabled.</summary>
+    [UxmlElement]
+    public partial class NowLayoutVisualElement : NowVisualElement
+    {
+        internal sealed override bool useLayoutMeasurePass => true;
     }
 }

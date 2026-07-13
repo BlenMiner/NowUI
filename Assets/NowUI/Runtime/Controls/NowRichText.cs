@@ -499,7 +499,7 @@ namespace NowUI
                     options = options.SetHeight(Mathf.Max(state.contentHeight, lineHeight));
                 }
 
-                return NowLayout.Rect(options);
+                return NowLayout.ReserveRect(options);
             }
 
             float width = ResolveLayoutWidth(document.text);

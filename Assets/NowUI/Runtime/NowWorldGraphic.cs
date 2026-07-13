@@ -78,7 +78,6 @@ namespace NowUI
         const float GlassDepthEpsilon = 0.02f;
         const float GlassSceneDepthBlurThreshold = 0.25f;
 
-        static int _nextScopeId;
         static int _inputResolverVersion;
         static readonly List<NowWorldGraphic> _instances = new List<NowWorldGraphic>(16);
         static readonly RaycastHit[] _sceneOcclusionHits = new RaycastHit[16];
@@ -350,7 +349,19 @@ namespace NowUI
             }
         }
 
-        protected virtual bool useLayoutMeasurePass => true;
+        /// <summary>Explicit-rect world hosts are one-pass; use NowWorldLayoutGraphic for NowLayout content.</summary>
+        internal virtual bool useLayoutMeasurePass => false;
+
+        /// <summary>Resolves a SetId value within this host's private control scope.</summary>
+        public int ResolveControlId(string id)
+        {
+            return NowControls.ResolveHostControlId(GetScopeId(), id);
+        }
+
+        public int ResolveControlId(int id)
+        {
+            return NowControls.ResolveHostControlId(GetScopeId(), id);
+        }
 
         struct FrameContent : INowFrameContent
         {
@@ -390,10 +401,10 @@ namespace NowUI
             _pixelsPerUnit = SanitizePixelsPerUnit(_pixelsPerUnit);
             NowDrawScope scope = default;
             var frame = NowFrame.Begin(ResolveScreenPixelsPerUIUnit(currentSize), trackRepaint: true);
-            _repaintTracker.SetWantsRepaint(false);
 
             try
             {
+                _repaintTracker.SetWantsRepaint(false);
                 if (_layoutAutoSizeAxes != NowWorldAutoSizeAxes.None)
                 {
                     currentSize = ResolveLayoutAutoSize(currentSize);
@@ -405,17 +416,34 @@ namespace NowUI
 
                 using (NowOverlay.Host(this))
                 using (NowPopupPlacement.FitProvider(this))
-                using (NowInput.Begin(GetInputProvider(), surface))
-                using (NowControls.IdScope(GetScopeId()))
                 {
-                    _repaintTracker.StoreFrameInput(NowInput.current, currentSize);
+                    var inputScope = NowInput.Begin(GetInputProvider(), surface);
 
-                    var content = new FrameContent(this);
-                    NowFrame.DrawContent(
-                        ref content,
-                        new NowRect(0f, 0f, currentSize.x, currentSize.y),
-                        useLayoutMeasurePass,
-                        trackContent: false);
+                    try
+                    {
+                        using (NowControls.RestoreIdScope(GetScopeId()))
+                        {
+                            _repaintTracker.StoreFrameInput(NowInput.current, currentSize);
+
+                            var content = new FrameContent(this);
+                            NowFrame.DrawContent(
+                                ref content,
+                                new NowRect(0f, 0f, currentSize.x, currentSize.y),
+                                useLayoutMeasurePass,
+                                trackContent: false);
+                        }
+                    }
+                    catch
+                    {
+                        // Keep failed world-host overlays from flushing while the
+                        // input scope unwinds; the capture owns their rollback.
+                        scope.Cancel();
+                        throw;
+                    }
+                    finally
+                    {
+                        inputScope.Dispose();
+                    }
                 }
 
                 _repaintTracker.SetWantsRepaint(frame.EndRepaintTracking());
@@ -815,7 +843,7 @@ namespace NowUI
             Vector2 measured;
 
             using (NowInput.BeginMeasurement(GetInputProvider(), new NowInputSurface(availableSize)))
-            using (NowControls.IdScope(GetScopeId()))
+            using (NowControls.RestoreIdScope(GetScopeId()))
             {
                 measured = MeasureLayoutContent(availableSize);
             }
@@ -953,7 +981,7 @@ namespace NowUI
             if (_scopeId != 0)
                 return _scopeId;
 
-            _scopeId = ++_nextScopeId;
+            _scopeId = NowControls.AllocateHostScopeId();
             return _scopeId;
         }
 
@@ -1810,7 +1838,6 @@ namespace NowUI
 
             _editorCallbacksRegistered = false;
 #endif
-            _nextScopeId = 0;
             _inputResolverVersion = 0;
             _instances.Clear();
             _inputRayResolution = default;
@@ -1818,4 +1845,5 @@ namespace NowUI
             _frustumPlanesFrame = -1;
         }
     }
+
 }

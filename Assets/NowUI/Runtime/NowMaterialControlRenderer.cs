@@ -199,13 +199,31 @@ namespace NowUI
 
         public override void DrawTextInputFrame(in NowControlFrameRenderContext context)
         {
+            var themeAsset = context.themeAsset;
+            var appearance = context.appearance;
+            Vector4 defaultRadius = Radius(themeAsset, themeAsset.controlStyles.fieldRadius, context.rect, 4f);
+            Vector4 radius = appearance.ResolveRadius(themeAsset, context.rect, defaultRadius);
+            Color background = appearance.ResolveBackgroundColor(
+                themeAsset,
+                themeAsset.GetColor(NowColorToken.Surface, Color.white));
+            Color border = appearance.ResolveBorderColor(
+                themeAsset,
+                themeAsset.GetColor(NowColorToken.Border, Color.gray));
+            Color focus = appearance.ResolveFocusColor(
+                themeAsset,
+                themeAsset.GetColor(NowColorToken.Accent, Color.blue));
+            float outline = context.focused
+                ? appearance.hasFocusOutlineWidth ? appearance.focusOutlineWidth : themeAsset.controlStyles.focusOutline
+                : appearance.hasOutlineWidth ? appearance.outlineWidth : 1f;
+
+            if (appearance.hasElevation && appearance.elevation != NowElevationToken.None)
+                DrawElevationShadow(themeAsset, context.rect, radius, appearance.elevation);
+
             var box = Now.Rectangle(context.rect)
-                .SetRadius(Radius(context.themeAsset, context.themeAsset.controlStyles.fieldRadius, context.rect, 4f))
-                .SetColor(context.themeAsset.GetColor(NowColorToken.Surface, Color.white))
-                .SetOutline(context.focused ? context.themeAsset.controlStyles.focusOutline : 1f)
-                .SetOutlineColor(context.focused
-                    ? context.themeAsset.GetColor(NowColorToken.Accent, Color.blue)
-                    : context.themeAsset.GetColor(NowColorToken.Border, Color.gray));
+                .SetRadius(radius)
+                .SetColor(background)
+                .SetOutline(outline)
+                .SetOutlineColor(context.focused ? focus : border);
             box.Draw();
         }
 

@@ -9,7 +9,11 @@ namespace NowUI.Markdown
     /// </summary>
     public readonly struct NowMarkdownEmbedContext
     {
-        /// <summary>Reserved rect: width is final, height is last frame's measurement (converges like all frame-late layout).</summary>
+        /// <summary>
+        /// Reserved rect: width is final; height comes from the current
+        /// measure/draw cycle in an exact layout host or the previous measurement
+        /// in a one-pass host.
+        /// </summary>
         public readonly NowRect rect;
 
         /// <summary>Verbatim fence content.</summary>

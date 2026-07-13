@@ -4,17 +4,19 @@ namespace NowUI
 {
     /// <summary>
     /// Stable explicit identity for controls, layout caches, effects and retained
-    /// extension state. Default means "use the call site"; strings are hashed with
-    /// NowUI's string id function, and integer ids avoid per-frame string work.
+    /// extension state. Default means "use the call site"; strings and integers
+    /// resolve within the active host/<see cref="NowControls.IdScope(string)"/>,
+    /// while integer ids avoid per-frame string work.
     ///
     /// Explicit ids are STABLE: resolving the same id any number of times, from
     /// any pass or code path, yields the same control id — that is what makes
     /// them cross-referenceable (focus a control from a shortcut handler,
-    /// pre-claim its presses, read its state from outside its draw). An integer
-    /// id is used verbatim — mint one with <see cref="NowInput.CombineId"/> from
-    /// a parent control id — while a string id resolves within the active
-    /// <see cref="NowControls.IdScope(string)"/>. Only call-site (default)
-    /// identity is occurrence-salted for loops.
+    /// pre-claim its presses, read its state from outside its draw). Both string
+    /// and integer ids are local to their active id scope, so reusable hosts and
+    /// panels cannot silently share state. Use <see cref="Resolved(int)"/> only
+    /// for an id that has already been fully resolved, such as a value returned
+    /// by a host's ResolveControlId method or <see cref="NowInput.CombineId"/>.
+    /// Only call-site (default) identity is occurrence-salted for loops.
     /// </summary>
     public readonly struct NowId : IEquatable<NowId>
     {
@@ -25,6 +27,7 @@ namespace NowUI
         const byte NoneKind = 0;
         const byte StringKind = 1;
         const byte IntKind = 2;
+        const byte ResolvedIntKind = 3;
 
         public static NowId None => default;
 
@@ -32,11 +35,14 @@ namespace NowUI
 
         public bool isString => _kind == StringKind;
 
-        public bool isInt => _kind == IntKind;
+        public bool isInt => _kind == IntKind || _kind == ResolvedIntKind;
+
+        /// <summary>True when this integer already contains its complete scope ancestry.</summary>
+        public bool isResolved => _kind == ResolvedIntKind;
 
         public string stringValue => _kind == StringKind ? _stringValue : null;
 
-        public int intValue => _kind == IntKind ? _intValue : 0;
+        public int intValue => isInt ? _intValue : 0;
 
         public NowId(string value)
         {
@@ -57,13 +63,28 @@ namespace NowUI
         }
 
         public NowId(int value)
+            : this(value, IntKind)
+        {
+        }
+
+        NowId(int value, byte kind)
         {
             if (value == 0)
                 throw new ArgumentException("Control id 0 is reserved.", nameof(value));
 
             _stringValue = null;
             _intValue = value;
-            _kind = IntKind;
+            _kind = kind;
+        }
+
+        /// <summary>
+        /// Wraps an integer that already contains its complete host and nested
+        /// scope ancestry. Ordinary integer ids should use <c>new NowId(value)</c>
+        /// (or the implicit conversion) so they remain local to the active host.
+        /// </summary>
+        public static NowId Resolved(int value)
+        {
+            return new NowId(value, ResolvedIntKind);
         }
 
         public static implicit operator NowId(string value)
@@ -83,26 +104,26 @@ namespace NowUI
             return _kind switch
             {
                 StringKind => NowControls.GetControlId(_stringValue),
-                IntKind => _intValue,
+                IntKind => NowControls.ResolveScopedControlId(_intValue),
+                ResolvedIntKind => _intValue,
                 _ => NowControls.GetControlId(site)
             };
         }
 
         /// <summary>
         /// Stable resolution for layout groups, caches and input cross-references.
-        /// Follows the same contract as <see cref="ResolveControlId(int)"/>: ints
-        /// verbatim, strings seeded by the active
-        /// <see cref="NowControls.IdScope(string)"/> — so the same string names
-        /// the same thing everywhere under one scope, and reusable panels under
-        /// different scopes never collide. Use int ids for identities that must
-        /// resolve identically from outside any scope.
+        /// Follows the same contract as <see cref="ResolveControlId(int)"/>:
+        /// ordinary strings and integers are seeded by the active
+        /// <see cref="NowControls.IdScope(string)"/>, while
+        /// <see cref="Resolved(int)"/> values pass through unchanged.
         /// </summary>
         internal int ResolveStableId(int fallback)
         {
             return _kind switch
             {
                 StringKind => NowControls.GetControlId(_stringValue),
-                IntKind => _intValue,
+                IntKind => NowControls.ResolveScopedControlId(_intValue),
+                ResolvedIntKind => _intValue,
                 _ => fallback != 0 ? fallback : 1
             };
         }
@@ -136,6 +157,7 @@ namespace NowUI
             {
                 StringKind => _stringValue,
                 IntKind => _intValue.ToString(),
+                ResolvedIntKind => $"Resolved({_intValue})",
                 _ => string.Empty
             };
         }

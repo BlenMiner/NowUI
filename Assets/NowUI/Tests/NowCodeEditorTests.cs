@@ -122,9 +122,9 @@ public class NowCodeEditorTests
         using (_drawList.Begin(Surface))
         using (Now.ScrollView(new NowRect(0, 0, 500, 200), "outer").Begin())
         {
-            NowLayout.Rect(height: 90f, stretchWidth: true);
+            NowLayout.ReserveRect(height: 90f, stretchWidth: true);
             NowCode.Editor(NowJsonLanguage.instance, "code").SetHeight(120f).Draw(ref text);
-            NowLayout.Rect(height: 500f, stretchWidth: true);
+            NowLayout.ReserveRect(height: 500f, stretchWidth: true);
         }
     }
 

@@ -30,52 +30,70 @@ Requirements:
 
 ## Quick Start
 
-Draw from a camera render callback, usually `OnPostRender` (built-in
-pipeline). For URP/HDRP and UGUI, see
-[Docs/RenderPipelines.md](Docs/RenderPipelines.md).
+Choose the placement API by one simple rule: use `Now` when you already have
+rects, and use `NowLayout` when you want the library to arrange rows and
+columns.
+
+For explicit placement, derive from the one-pass `NowGraphic` host and draw
+directly into known bounds:
 
 ```csharp
 using UnityEngine;
 using NowUI;
 
-public class OverlayExample : MonoBehaviour
+public sealed class ScoreOverlay : NowGraphic
 {
-    void OnPostRender()
+    protected override void DrawNowUI(NowRect view)
     {
-        using (Now.StartUI(NowScreen.recommendedUIScale))
+        var panel = new NowRect(view.x + 20, view.y + 20, 260, 80);
+        Now.Rectangle(panel)
+            .SetColor(new Color(0, 0, 0, 0.8f))
+            .SetRadius(10)
+            .Draw();
+
+        Now.Text(panel.Inset(16))
+            .SetFontSize(32)
+            .SetColor(Color.white)
+            .Draw("Score: 1200");
+    }
+}
+```
+
+For responsive placement, derive from `NowLayoutGraphic`. It owns the exact
+measure/draw cycle, so the layout code only describes intent:
+
+```csharp
+public sealed class SettingsPanel : NowLayoutGraphic
+{
+    protected override void DrawNowUI(NowRect view)
+    {
+        using (NowLayout.Column(view).Padding(16).Gap(8).Begin())
         {
-            using (NowLayout.Area(NowScreen.safeArea))
-            using (NowLayout.Vertical(padding: 16, spacing: 8))
+            NowLayout.Label("Hello Now-UI").SetFontSize(32).Draw();
+
+            using (NowLayout.Row()
+                .FillWidth()
+                .AlignChildren(NowLayoutAlign.Center)
+                .Begin())
             {
-                NowLayout.Label("Hello Now-UI", 32).Draw();
-
-                bool clicked = NowLayout.Button("Sample Button").Draw();
-
-                NowLayout.Label(clicked ? "Clicked" : "Ready", 16).Draw();
+                NowLayout.Label("Status").Draw();
+                NowLayout.Spacer();
+                NowLayout.Label("Ready").Draw();
             }
+
+            NowLayout.Button("Sample Button").Draw();
         }
     }
 }
 ```
 
-Free-form drawing works the same way without layout: rects are
-`(x, y, width, height)` in UI units from the top-left.
-
-```csharp
-Now.Rectangle(new NowRect(20, 20, 260, 80))
-    .SetColor(new Color(0, 0, 0, 0.8f))
-    .SetRadius(10)
-    .Draw();
-
-Now.Text(new NowRect(36, 26, 220, 64))
-    .SetFontSize(32)
-    .SetColor(Color.white)
-    .Draw("Score: 1200");
-
-Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
-    .SetTime(Time.time)
-    .Draw();
-```
+`NowLayout.ReserveRect(...)` bridges the two styles by reserving a layout slot
+and returning its resolved rect for a `Now` primitive. Manual hosts such as a
+camera callback use `Now.StartUI(...)` and `NowLayout.RunMeasured(...)`; the
+layout-specific hosts do not need `RunMeasured`. For URP/HDRP, UGUI, UI
+Toolkit, world-space, and manual-host examples, see
+[Docs/RenderPipelines.md](Docs/RenderPipelines.md) and
+[Docs/Layout.md](Docs/Layout.md).
 
 ## Features
 
@@ -100,8 +118,9 @@ Now.Lottie(new NowRect(280, 20, 64, 64), spinnerAsset)
   shaping for ligatures, kerning, and complex scripts where the plugin is
   present, falling back per codepoint elsewhere; contextual font stack via
   `using (Now.Font(...))`.
-- **Layout** — flexbox-style horizontal/vertical groups with fixed, min/max,
-  and weighted-stretch sizing. [Docs/Layout.md](Docs/Layout.md)
+- **Layout** — fluent `Row`/`Column` containers with gaps, padding, growth,
+  alignment, justification, and exact-measure layout hosts.
+  [Docs/Layout.md](Docs/Layout.md)
 - **Input** — immediate-mode `NowInput.Interact` with hover, press, drag,
   and click across mouse, touch, keyboard, and gamepad; pluggable providers
   for RenderTextures, tests, and remote input.
@@ -177,7 +196,10 @@ changes its bundled toolchain.
 - `Assets/NowUI/Editor` — font compiler menu, `.lottie` importer
 - `Assets/NowUI/Plugins/Native` — native wrapper sources built by CI
 - `Assets/NowUI/Example` — sample scripts, including `MailClientMockup`, a
-  Gmail-like inbox drawn entirely with immediate NowUI calls, and
+  Gmail-like inbox drawn entirely with immediate NowUI calls;
+  [NowLandingPageExample](Assets/NowUI/Example/NowLandingPageExample.cs) and
+  [NowLayoutLandingPageExample](Assets/NowUI/Example/NowLayoutLandingPageExample.cs),
+  the same search page expressed with explicit rects and layout intent; and
   `NowWorldGraphicExample`, a direct-mesh world-space label
 - `Assets/NowUI/Samples~` — customer-importable UPM samples
 - `Docs` — feature guides
@@ -193,6 +215,8 @@ changes its bundled toolchain.
   non-zero integer ids (`SetId(item.id)`, `IdScope(item.id)`,
   `NowInput.Interact(item.id, rect)`) for data-backed controls that can appear,
   disappear, or reorder; strings remain convenient for one-off named controls.
+  Both are local to the active host/id scope. Use `NowId.Resolved(...)` only
+  when reusing an already-resolved or composed integer.
 - The hot path is allocation-free once buffers, glyphs, effect textures, and
   world-space material batches are warm. First use, new ids, new material
   batches, and capacity growth may allocate.

@@ -17,7 +17,7 @@ using NowUI.Sdf;
 /// pages; external links open in the browser.
 /// </summary>
 [AddComponentMenu("NowUI/Examples/Now Docs Browser")]
-public class NowDocsExample : NowGraphic
+public class NowDocsExample : NowLayoutGraphic
 {
     enum PageId
     {
@@ -353,7 +353,7 @@ public class NowDocsExample : NowGraphic
         {
             using (NowLayout.Horizontal(height: 30f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 9f))
             {
-                NowRect badge = NowLayout.Rect(30f, 30f);
+                NowRect badge = NowLayout.ReserveRect(30f, 30f);
                 Now.Rectangle(badge)
                     .SetColor(accent)
                     .SetRadius(9f)
@@ -471,7 +471,7 @@ public class NowDocsExample : NowGraphic
                 .SetColor(muted)
                 .Draw();
 
-            NowRect rule = NowLayout.Rect(height: 1f, stretchWidth: true);
+            NowRect rule = NowLayout.ReserveRect(height: 1f, stretchWidth: true);
             Now.Rectangle(rule)
                 .SetColor(new Color(muted.r, muted.g, muted.b, 0.16f))
                 .Draw();
@@ -488,7 +488,7 @@ public class NowDocsExample : NowGraphic
         Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
         Color accent = theme.GetColor(NowColorToken.Accent, new Color(0.10f, 0.45f, 0.95f, 1f));
         Color accentText = theme.GetColor(NowColorToken.AccentText, Color.white);
-        NowRect rect = NowLayout.Rect(height: 28f, stretchWidth: true);
+        NowRect rect = NowLayout.ReserveRect(height: 28f, stretchWidth: true);
         NowRect row = rect.Inset(1f, 0f);
         int id = NowControls.GetControlId($"doc-{pageIndex}");
         var interaction = NowControls.Interact(id, row, out bool focused, out bool submitted);
@@ -758,13 +758,13 @@ public class NowDocsExample : NowGraphic
         Color border = theme.GetColor(NowColorToken.Border, Color.gray);
 
         NowLayout.Space(28f);
-        NowRect rule = NowLayout.Rect(height: 1f, stretchWidth: true);
+        NowRect rule = NowLayout.ReserveRect(height: 1f, stretchWidth: true);
         Now.Rectangle(rule)
             .SetColor(new Color(border.r, border.g, border.b, 0.45f))
             .Draw();
         NowLayout.Space(12f);
 
-        var rect = NowLayout.Rect(height: 58f, stretchWidth: true);
+        var rect = NowLayout.ReserveRect(height: 58f, stretchWidth: true);
         float half = (rect.width - 12f) * 0.5f;
 
         if (previous >= 0)
@@ -970,7 +970,7 @@ public class NowDocsExample : NowGraphic
             NowLayout.Checkbox("Grid").Draw(ref _dockDemoGrid);
         }
 
-        var panel = NowLayout.Rect(height: 430f, stretchWidth: true);
+        var panel = NowLayout.ReserveRect(height: 430f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         SubmitDockDemoWindows();
@@ -1300,7 +1300,7 @@ public class NowDocsExample : NowGraphic
 
     NowRect ReserveSdfPanel(NowThemeAsset themeAsset, float height)
     {
-        var panel = NowLayout.Rect(height: height, stretchWidth: true);
+        var panel = NowLayout.ReserveRect(height: height, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
         return panel.Inset(14f, 14f);
     }
@@ -1564,7 +1564,7 @@ public class NowDocsExample : NowGraphic
     {
         NowMarkdown.Document("# Lines demo\n\nStraight strokes, cubic Beziers, dash patterns, masks, and arrow heads are all immediate-mode draw calls.").Draw();
 
-        var panel = NowLayout.Rect(height: 280f, stretchWidth: true);
+        var panel = NowLayout.ReserveRect(height: 280f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var area = panel.Inset(24f, 18f);
@@ -1622,7 +1622,7 @@ public class NowDocsExample : NowGraphic
     {
         NowMarkdown.Document("# Shapes demo\n\nCore shapes are filled or outlined geometry submitted through the same mesh batch as other NowUI draws.").Draw();
 
-        var panel = NowLayout.Rect(height: 280f, stretchWidth: true);
+        var panel = NowLayout.ReserveRect(height: 280f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var area = panel.Inset(24f, 18f);
@@ -1702,7 +1702,7 @@ public class NowDocsExample : NowGraphic
             NowLayout.Slider(0f, 44f).SetWidth(150f).Draw(ref _customMaterialRadius);
         }
 
-        var panel = NowLayout.Rect(height: 330f, stretchWidth: true);
+        var panel = NowLayout.ReserveRect(height: 330f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var area = panel.Inset(24f, 20f);
@@ -1896,7 +1896,7 @@ public class NowDocsExample : NowGraphic
         }
 
         float debugHeight = _glassDemoDebug ? 214f : 0f;
-        var panel = NowLayout.Rect(height: 360f + debugHeight, stretchWidth: true);
+        var panel = NowLayout.ReserveRect(height: 360f + debugHeight, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var preview = panel.Inset(22f, 20f, 22f, 54f + debugHeight);
@@ -2180,7 +2180,7 @@ public class NowDocsExample : NowGraphic
             NowLayout.Label(Mathf.RoundToInt(_effectsDemoSubdivision).ToString()).SetWidth(28f).Draw();
         }
 
-        var panel = NowLayout.Rect(height: 360f, stretchWidth: true);
+        var panel = NowLayout.ReserveRect(height: 360f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         float progress = _effectsDemoAuto
@@ -2346,7 +2346,7 @@ public class NowDocsExample : NowGraphic
                 .Draw();
         }
 
-        var panel = NowLayout.Rect(height: 430f, stretchWidth: true);
+        var panel = NowLayout.ReserveRect(height: 430f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var body = panel.Inset(16f);
@@ -2422,7 +2422,7 @@ public class NowDocsExample : NowGraphic
                 }
             }
 
-            var summary = NowLayout.Rect(height: 150f, stretchWidth: true);
+            var summary = NowLayout.ReserveRect(height: 150f, stretchWidth: true);
             DrawFilePickerSummary(summary, themeAsset);
         }
     }
@@ -2532,7 +2532,7 @@ public class NowDocsExample : NowGraphic
                 .Draw();
         }
 
-        var panel = NowLayout.Rect(height: 430f, stretchWidth: true);
+        var panel = NowLayout.ReserveRect(height: 430f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var surface = panel.Inset(12f);
@@ -2613,7 +2613,7 @@ public class NowDocsExample : NowGraphic
                 NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _viewStackDemoProgress);
             }
 
-            var metrics = NowLayout.Rect(height: 78f, stretchWidth: true);
+            var metrics = NowLayout.ReserveRect(height: 78f, stretchWidth: true);
             DrawViewStackMetrics(metrics, theme);
         }
     }
@@ -2658,7 +2658,7 @@ public class NowDocsExample : NowGraphic
 
             NowLayout.Checkbox("Sync enabled").Draw(ref _viewStackDemoSync);
 
-            var details = NowLayout.Rect(height: 86f, stretchWidth: true);
+            var details = NowLayout.ReserveRect(height: 86f, stretchWidth: true);
             DrawViewStackDetailCard(details, theme);
         }
     }
@@ -3195,7 +3195,7 @@ public static class GuideControls
     {
         var theme = NowTheme.themeAsset;
 
-        NowRect rect = NowLayout.Rect(44f, 44f);
+        NowRect rect = NowLayout.ReserveRect(44f, 44f);
         var interaction = NowControls.Interact(rect, out bool focused, out bool submitted, file, line);
 
         float radius = rect.width * 0.5f;
@@ -3246,7 +3246,7 @@ public static class GuideControls
 
         var theme = NowTheme.themeAsset;
 
-        NowRect rect = NowLayout.Rect(max * Dot + (max - 1) * Gap, Dot);
+        NowRect rect = NowLayout.ReserveRect(max * Dot + (max - 1) * Gap, Dot);
         var interaction = NowControls.Interact(id, fallbackIdentity, rect, out bool focused, out bool submitted);
 
         int hoveredIndex = interaction.hovered

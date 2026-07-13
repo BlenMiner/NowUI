@@ -1,18 +1,23 @@
 # Render Pipeline Integrations
 
-NowUI supports three non-retained output paths.
+NowUI supports the following host paths. In every retained host, choose the
+base type for explicit `Now` rects and the `Layout` type for `NowLayout`:
 
-- Built-in Render Pipeline: wrap drawing in `using (Now.StartUI())` from
-  camera callbacks such as `OnPostRender`.
-- UGUI: derive from `NowGraphic` and render into `CanvasRenderer`.
-- UI Toolkit: place `NowVisualElement` in UXML/UI Builder and render into a
-  cached `RenderTexture` drawn by the element.
-- SRP: derive from `NowPipelineGraphic` and use the URP or HDRP wrapper.
+- Built-in Render Pipeline: wrap explicit drawing in `using (Now.StartUI())`
+  from a camera callback such as `OnPostRender`. For layout in this manual
+  host, call `NowLayout.RunMeasured(...)` inside that frame scope.
+- UGUI: derive from `NowGraphic` for explicit rects or `NowLayoutGraphic` for
+  layout; both render into `CanvasRenderer`.
+- UI Toolkit: place `NowVisualElement` for explicit rects or
+  `NowLayoutVisualElement` for layout in UXML/UI Builder. The element draws a
+  cached `RenderTexture`.
+- SRP: derive from `NowPipelineGraphic` for explicit rects or
+  `NowPipelineLayoutGraphic` for layout and use the URP or HDRP wrapper.
 
 For nameplates, hover tooltips, and diegetic panels that should exist as scene
-geometry, use `NowWorldGraphic` instead. It renders through a normal
-`MeshRenderer`, so it does not need a pipeline feature or custom pass; see
-[WorldSpace](WorldSpace.md).
+geometry, use `NowWorldGraphic` for explicit rects or `NowWorldLayoutGraphic`
+for layout. Both render through a normal `MeshRenderer`, so they do not need a
+pipeline feature or custom pass; see [WorldSpace](WorldSpace.md).
 
 `Now.Glass(...)` uses true backdrop blur when the host renders NowUI into a
 known command-buffer or `RenderTexture` target. URP/HDRP overlays,
@@ -31,9 +36,9 @@ tint/outline appearance without sampling the target behind it.
 
 ## Shared SRP Source
 
-`NowPipelineGraphic` is the shared source component for URP and HDRP. Attach a
-derived component to a GameObject, assign a `NowFont` or other draw data, then
-override `DrawNowUI`.
+`NowPipelineGraphic` is the one-pass source component for explicit-rect URP
+and HDRP overlays. Attach a derived component to a GameObject, assign a
+`NowFont` or other draw data, then override `DrawNowUI`.
 
 ```csharp
 using UnityEngine;
@@ -68,13 +73,21 @@ Use the component fields to choose which cameras it draws into.
 
 The included `NowPipelineOverlayExample` demonstrates this component.
 
+For an overlay that uses `NowLayout`, derive from
+`NowPipelineLayoutGraphic` instead. It owns that graphic's exact measure/draw
+cycle; other graphics targeting the same camera keep their own one-pass or
+layout-host behavior. Use ordinary layout scopes inside `DrawNowUI` and do not
+add `RunMeasured`.
+
 ## UI Toolkit
 
-`NowVisualElement` is a UI Toolkit `VisualElement` exposed to UXML and UI
-Builder. It keeps UI Toolkit responsible for retained layout, focus, clipping
-and authoring, while NowUI owns the drawing inside the element's content rect.
-The bridge renders into a cached `RenderTexture`, so rectangles, MSDF text,
-effects, Lottie and custom materials behave the same as the other NowUI hosts.
+`NowVisualElement` is the one-pass UI Toolkit host for explicit-rect drawing;
+`NowLayoutVisualElement` is its exact-measure counterpart for `NowLayout`.
+Both are exposed to UXML and UI Builder. They keep UI Toolkit responsible for
+retained layout, focus, clipping and authoring, while NowUI owns the drawing
+inside the element's content rect. The bridge renders into a cached
+`RenderTexture`, so rectangles, MSDF text, effects, Lottie and custom
+materials behave the same as the other NowUI hosts.
 
 Use it directly from code:
 
@@ -144,11 +157,13 @@ public partial class NowStatusBadge : NowVisualElement
 }
 ```
 
-The generic `NowVisualElement` can be authored in UXML, but UXML does not
-contain immediate NowUI draw commands. Put draw code in a callback or subclass.
-Call `MarkDirty()` when retained data changes. Enable `Rebuild Every Frame`
-only for continuously animated content; controls request repaint automatically
-while hover, press, caret blink, scrolling or other transient state is active.
+The generic `NowVisualElement` and `NowLayoutVisualElement` can be authored in
+UXML, but UXML does not contain immediate NowUI draw commands. Put draw code in
+a callback or subclass. Use the layout type when that draw code calls
+`NowLayout`; it owns measurement, so do not call `RunMeasured` inside it. Call
+`MarkDirty()` when retained data changes. Enable `Rebuild Every Frame` only for
+continuously animated content; controls request repaint automatically while
+hover, press, caret blink, scrolling or other transient state is active.
 
 ## URP
 
@@ -158,7 +173,8 @@ the `com.unity.render-pipelines.universal` package is installed.
 1. Install or enable URP in the project.
 2. Add `NowUniversalRendererFeature` to the active URP Renderer asset.
 3. Choose the render pass event, usually `After Rendering Post Processing`.
-4. Add one or more `NowPipelineGraphic` components in the scene.
+4. Add one or more `NowPipelineGraphic` components for explicit drawing or
+   `NowPipelineLayoutGraphic` components for layout.
 
 The renderer feature builds a `NowDrawList` for each camera that has matching
 pipeline graphics, then appends the draw commands to URP's command buffer.
@@ -176,7 +192,8 @@ the `com.unity.render-pipelines.high-definition` package is installed.
 2. Add a Custom Pass Volume.
 3. Add `NowHighDefinitionCustomPass` to the volume's custom pass list.
 4. Pick an injection point such as `After Post Process`.
-5. Add one or more `NowPipelineGraphic` components in the scene.
+5. Add one or more `NowPipelineGraphic` components for explicit drawing or
+   `NowPipelineLayoutGraphic` components for layout.
 
 The custom pass uses the `CommandBuffer` from `CustomPassContext` and draws the
 same `NowDrawList` format as URP and RenderTexture output. It exposes the

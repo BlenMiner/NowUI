@@ -1,8 +1,324 @@
+using System;
 using System.Globalization;
 using UnityEngine;
 
 namespace NowUI
 {
+    /// <summary>
+    /// Optional per-instance frame overrides for <see cref="NowTextField"/>.
+    /// A default value has no overrides, so the active control renderer and
+    /// theme keep complete control of the field's appearance. Values can use
+    /// theme tokens (and continue responding to light/dark themes) or literal
+    /// colors for branded surfaces.
+    /// </summary>
+    public struct NowTextFieldAppearance
+    {
+        [Flags]
+        enum Field : ushort
+        {
+            None = 0,
+            Radius = 1 << 0,
+            BackgroundColor = 1 << 1,
+            BorderColor = 1 << 2,
+            FocusColor = 1 << 3,
+            Padding = 1 << 4,
+            OutlineWidth = 1 << 5,
+            FocusOutlineWidth = 1 << 6,
+            Elevation = 1 << 7,
+            TextColor = 1 << 8,
+            PlaceholderColor = 1 << 9
+        }
+
+        Field _fields;
+        NowThemeRadiusReference _radius;
+        NowThemeColorReference _backgroundColor;
+        NowThemeColorReference _borderColor;
+        NowThemeColorReference _focusColor;
+        NowThemeColorReference _textColor;
+        NowThemeColorReference _placeholderColor;
+        Vector4 _padding;
+        float _outlineWidth;
+        float _focusOutlineWidth;
+        NowElevationToken _elevation;
+
+        /// <summary>True when at least one themed default is overridden.</summary>
+        public readonly bool hasOverrides => _fields != Field.None;
+
+        public readonly bool hasRadius => Has(Field.Radius);
+
+        public readonly bool hasBackgroundColor => Has(Field.BackgroundColor);
+
+        public readonly bool hasBorderColor => Has(Field.BorderColor);
+
+        public readonly bool hasFocusColor => Has(Field.FocusColor);
+
+        public readonly bool hasPadding => Has(Field.Padding);
+
+        public readonly bool hasOutlineWidth => Has(Field.OutlineWidth);
+
+        public readonly bool hasFocusOutlineWidth => Has(Field.FocusOutlineWidth);
+
+        public readonly bool hasElevation => Has(Field.Elevation);
+
+        public readonly bool hasTextColor => Has(Field.TextColor);
+
+        public readonly bool hasPlaceholderColor => Has(Field.PlaceholderColor);
+
+        /// <summary>Configured content padding as (left, top, right, bottom).</summary>
+        public readonly Vector4 padding => _padding;
+
+        /// <summary>Configured unfocused frame outline width.</summary>
+        public readonly float outlineWidth => _outlineWidth;
+
+        /// <summary>Configured focused frame outline width.</summary>
+        public readonly float focusOutlineWidth => _focusOutlineWidth;
+
+        /// <summary>Configured themed elevation level.</summary>
+        public readonly NowElevationToken elevation => _elevation;
+
+        readonly bool Has(Field field)
+        {
+            return (_fields & field) != 0;
+        }
+
+        /// <summary>Literal corner radius for every corner.</summary>
+        public NowTextFieldAppearance SetRadius(float radius)
+        {
+            RequireNonNegativeFinite(radius, nameof(radius));
+            return SetRadius(new NowCornerRadius(radius));
+        }
+
+        /// <summary>Literal per-corner radius.</summary>
+        public NowTextFieldAppearance SetRadius(NowCornerRadius radius)
+        {
+            RequireRadius(radius.topLeft, nameof(radius));
+            RequireRadius(radius.topRight, nameof(radius));
+            RequireRadius(radius.bottomRight, nameof(radius));
+            RequireRadius(radius.bottomLeft, nameof(radius));
+            _radius = NowThemeRadiusReference.Fallback(radius.packed);
+            _fields |= Field.Radius;
+            return this;
+        }
+
+        /// <summary>
+        /// Theme-driven corner radius. <see cref="NowRadiusToken.Pill"/> always
+        /// resolves to half the field's rendered height.
+        /// </summary>
+        public NowTextFieldAppearance SetRadius(NowRadiusToken radius)
+        {
+            RequireRadiusToken(radius, nameof(radius));
+            _radius = new NowThemeRadiusReference(radius, default);
+            _fields |= Field.Radius;
+            return this;
+        }
+
+        public NowTextFieldAppearance SetBackgroundColor(Color color)
+        {
+            _backgroundColor = NowThemeColorReference.Fallback(color);
+            _fields |= Field.BackgroundColor;
+            return this;
+        }
+
+        public NowTextFieldAppearance SetBackgroundColor(NowColorToken color)
+        {
+            RequireColorToken(color, nameof(color));
+            _backgroundColor = new NowThemeColorReference(color, default);
+            _fields |= Field.BackgroundColor;
+            return this;
+        }
+
+        public NowTextFieldAppearance SetBorderColor(Color color)
+        {
+            _borderColor = NowThemeColorReference.Fallback(color);
+            _fields |= Field.BorderColor;
+            return this;
+        }
+
+        public NowTextFieldAppearance SetBorderColor(NowColorToken color)
+        {
+            RequireColorToken(color, nameof(color));
+            _borderColor = new NowThemeColorReference(color, default);
+            _fields |= Field.BorderColor;
+            return this;
+        }
+
+        /// <summary>Focused border and focus-ring color.</summary>
+        public NowTextFieldAppearance SetFocusColor(Color color)
+        {
+            _focusColor = NowThemeColorReference.Fallback(color);
+            _fields |= Field.FocusColor;
+            return this;
+        }
+
+        /// <summary>Focused border and focus-ring theme color.</summary>
+        public NowTextFieldAppearance SetFocusColor(NowColorToken color)
+        {
+            RequireColorToken(color, nameof(color));
+            _focusColor = new NowThemeColorReference(color, default);
+            _fields |= Field.FocusColor;
+            return this;
+        }
+
+        /// <summary>Text color inside the field.</summary>
+        public NowTextFieldAppearance SetTextColor(Color color)
+        {
+            _textColor = NowThemeColorReference.Fallback(color);
+            _fields |= Field.TextColor;
+            return this;
+        }
+
+        /// <summary>Theme-driven text color inside the field.</summary>
+        public NowTextFieldAppearance SetTextColor(NowColorToken color)
+        {
+            RequireColorToken(color, nameof(color));
+            _textColor = new NowThemeColorReference(color, default);
+            _fields |= Field.TextColor;
+            return this;
+        }
+
+        /// <summary>Placeholder color while the field is empty.</summary>
+        public NowTextFieldAppearance SetPlaceholderColor(Color color)
+        {
+            _placeholderColor = NowThemeColorReference.Fallback(color);
+            _fields |= Field.PlaceholderColor;
+            return this;
+        }
+
+        /// <summary>Theme-driven placeholder color while the field is empty.</summary>
+        public NowTextFieldAppearance SetPlaceholderColor(NowColorToken color)
+        {
+            RequireColorToken(color, nameof(color));
+            _placeholderColor = new NowThemeColorReference(color, default);
+            _fields |= Field.PlaceholderColor;
+            return this;
+        }
+
+        public NowTextFieldAppearance SetPadding(float all)
+        {
+            return SetPadding(all, all, all, all);
+        }
+
+        public NowTextFieldAppearance SetPadding(float horizontal, float vertical)
+        {
+            return SetPadding(horizontal, vertical, horizontal, vertical);
+        }
+
+        /// <summary>Content padding in left, top, right, bottom order.</summary>
+        public NowTextFieldAppearance SetPadding(float left, float top, float right, float bottom)
+        {
+            return SetPadding(new Vector4(left, top, right, bottom));
+        }
+
+        /// <summary>Content padding as (left, top, right, bottom).</summary>
+        public NowTextFieldAppearance SetPadding(Vector4 padding)
+        {
+            RequireNonNegativeFinite(padding.x, nameof(padding));
+            RequireNonNegativeFinite(padding.y, nameof(padding));
+            RequireNonNegativeFinite(padding.z, nameof(padding));
+            RequireNonNegativeFinite(padding.w, nameof(padding));
+            _padding = padding;
+            _fields |= Field.Padding;
+            return this;
+        }
+
+        /// <summary>Unfocused frame outline width.</summary>
+        public NowTextFieldAppearance SetOutlineWidth(float width)
+        {
+            RequireNonNegativeFinite(width, nameof(width));
+            _outlineWidth = width;
+            _fields |= Field.OutlineWidth;
+            return this;
+        }
+
+        /// <summary>Unfocused and focused frame outline widths in one call.</summary>
+        public NowTextFieldAppearance SetOutlineWidth(float width, float focusWidth)
+        {
+            return SetOutlineWidth(width).SetFocusOutlineWidth(focusWidth);
+        }
+
+        /// <summary>Focused frame outline width.</summary>
+        public NowTextFieldAppearance SetFocusOutlineWidth(float width)
+        {
+            RequireNonNegativeFinite(width, nameof(width));
+            _focusOutlineWidth = width;
+            _fields |= Field.FocusOutlineWidth;
+            return this;
+        }
+
+        public NowTextFieldAppearance SetElevation(NowElevationToken elevation)
+        {
+            if ((uint)elevation > (uint)NowElevationToken.Modal)
+                throw new ArgumentOutOfRangeException(nameof(elevation), elevation, "Unknown elevation token.");
+
+            _elevation = elevation;
+            _fields |= Field.Elevation;
+            return this;
+        }
+
+        /// <summary>Resolves the configured radius, or returns <paramref name="fallback"/> when unset.</summary>
+        public readonly Vector4 ResolveRadius(NowThemeAsset themeAsset, NowRect rect, Vector4 fallback)
+        {
+            if (!hasRadius)
+                return fallback;
+
+            if (_radius.useToken && _radius.token == NowRadiusToken.Pill)
+            {
+                float pill = Mathf.Min(rect.width, rect.height) * 0.5f;
+                return new Vector4(pill, pill, pill, pill);
+            }
+
+            return _radius.Resolve(themeAsset);
+        }
+
+        public readonly Color ResolveBackgroundColor(NowThemeAsset themeAsset, Color fallback)
+        {
+            return hasBackgroundColor ? _backgroundColor.Resolve(themeAsset) : fallback;
+        }
+
+        public readonly Color ResolveBorderColor(NowThemeAsset themeAsset, Color fallback)
+        {
+            return hasBorderColor ? _borderColor.Resolve(themeAsset) : fallback;
+        }
+
+        public readonly Color ResolveFocusColor(NowThemeAsset themeAsset, Color fallback)
+        {
+            return hasFocusColor ? _focusColor.Resolve(themeAsset) : fallback;
+        }
+
+        public readonly Color ResolveTextColor(NowThemeAsset themeAsset, Color fallback)
+        {
+            return hasTextColor ? _textColor.Resolve(themeAsset) : fallback;
+        }
+
+        public readonly Color ResolvePlaceholderColor(NowThemeAsset themeAsset, Color fallback)
+        {
+            return hasPlaceholderColor ? _placeholderColor.Resolve(themeAsset) : fallback;
+        }
+
+        static void RequireRadius(float value, string paramName)
+        {
+            RequireNonNegativeFinite(value, paramName);
+        }
+
+        static void RequireNonNegativeFinite(float value, string paramName)
+        {
+            if (value < 0f || float.IsNaN(value) || float.IsInfinity(value))
+                throw new ArgumentOutOfRangeException(paramName, "Text-field appearance values must be non-negative and finite.");
+        }
+
+        static void RequireRadiusToken(NowRadiusToken value, string paramName)
+        {
+            if ((uint)value > (uint)NowRadiusToken.Xl)
+                throw new ArgumentOutOfRangeException(paramName, value, "Unknown radius token.");
+        }
+
+        static void RequireColorToken(NowColorToken value, string paramName)
+        {
+            if ((uint)value > (uint)NowColorToken.Scrim)
+                throw new ArgumentOutOfRangeException(paramName, value, "Unknown color token.");
+        }
+    }
+
     /// <summary>
     /// Single-line text field. <see cref="Draw(ref string)"/> edits the caller's
     /// string in place and returns true when it changed:
@@ -36,6 +352,7 @@ namespace NowUI
         float _spinnerStep;
         int _spinnerTicks;
         bool _selectAllOnFocus;
+        NowTextFieldAppearance _appearance;
 
         const int SpinnerUpSeed = 0x4e545355;
         const int SpinnerDownSeed = 0x4e545344;
@@ -97,6 +414,7 @@ namespace NowUI
             _spinnerStep = 1f;
             _spinnerTicks = 0;
             _selectAllOnFocus = false;
+            _appearance = default;
         }
 
         internal NowTextField(NowRect rect, NowId id, int site) : this(id, site)
@@ -111,9 +429,70 @@ namespace NowUI
 
         public NowTextField SetWidth(float width) { _options = _options.SetWidth(width); return this; }
 
+        public NowTextField SetHeight(float height) { _options = _options.SetHeight(height); return this; }
+
+        public NowTextField SetSize(float width, float height) { _options = _options.SetSize(width, height); return this; }
+
+        public NowTextField SetMinWidth(float minWidth) { _options = _options.SetMinWidth(minWidth); return this; }
+
+        public NowTextField SetMaxWidth(float maxWidth) { _options = _options.SetMaxWidth(maxWidth); return this; }
+
+        public NowTextField SetMinHeight(float minHeight) { _options = _options.SetMinHeight(minHeight); return this; }
+
+        public NowTextField SetMaxHeight(float maxHeight) { _options = _options.SetMaxHeight(maxHeight); return this; }
+
         public NowTextField SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
+        public NowTextField SetStretchHeight(float weight = 1f) { _options = _options.SetStretchHeight(weight); return this; }
+
+        public NowTextField SetAlign(NowLayoutAlign align) { _options = _options.SetAlign(align); return this; }
+
         public NowTextField SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
+
+        /// <summary>Reusable per-instance frame appearance; default keeps the active renderer's theme.</summary>
+        public NowTextField SetAppearance(NowTextFieldAppearance appearance) { _appearance = appearance; return this; }
+
+        public NowTextField SetRadius(float radius) { _appearance = _appearance.SetRadius(radius); return this; }
+
+        public NowTextField SetRadius(NowCornerRadius radius) { _appearance = _appearance.SetRadius(radius); return this; }
+
+        public NowTextField SetRadius(NowRadiusToken radius) { _appearance = _appearance.SetRadius(radius); return this; }
+
+        public NowTextField SetBackgroundColor(Color color) { _appearance = _appearance.SetBackgroundColor(color); return this; }
+
+        public NowTextField SetBackgroundColor(NowColorToken color) { _appearance = _appearance.SetBackgroundColor(color); return this; }
+
+        public NowTextField SetBorderColor(Color color) { _appearance = _appearance.SetBorderColor(color); return this; }
+
+        public NowTextField SetBorderColor(NowColorToken color) { _appearance = _appearance.SetBorderColor(color); return this; }
+
+        public NowTextField SetFocusColor(Color color) { _appearance = _appearance.SetFocusColor(color); return this; }
+
+        public NowTextField SetFocusColor(NowColorToken color) { _appearance = _appearance.SetFocusColor(color); return this; }
+
+        public NowTextField SetTextColor(Color color) { _appearance = _appearance.SetTextColor(color); return this; }
+
+        public NowTextField SetTextColor(NowColorToken color) { _appearance = _appearance.SetTextColor(color); return this; }
+
+        public NowTextField SetPlaceholderColor(Color color) { _appearance = _appearance.SetPlaceholderColor(color); return this; }
+
+        public NowTextField SetPlaceholderColor(NowColorToken color) { _appearance = _appearance.SetPlaceholderColor(color); return this; }
+
+        public NowTextField SetPadding(float all) { _appearance = _appearance.SetPadding(all); return this; }
+
+        public NowTextField SetPadding(float horizontal, float vertical) { _appearance = _appearance.SetPadding(horizontal, vertical); return this; }
+
+        public NowTextField SetPadding(float left, float top, float right, float bottom) { _appearance = _appearance.SetPadding(left, top, right, bottom); return this; }
+
+        public NowTextField SetPadding(Vector4 padding) { _appearance = _appearance.SetPadding(padding); return this; }
+
+        public NowTextField SetOutlineWidth(float width) { _appearance = _appearance.SetOutlineWidth(width); return this; }
+
+        public NowTextField SetOutlineWidth(float width, float focusWidth) { _appearance = _appearance.SetOutlineWidth(width, focusWidth); return this; }
+
+        public NowTextField SetFocusOutlineWidth(float width) { _appearance = _appearance.SetFocusOutlineWidth(width); return this; }
+
+        public NowTextField SetElevation(NowElevationToken elevation) { _appearance = _appearance.SetElevation(elevation); return this; }
 
         /// <summary>Clamp numeric Draw overloads to an inclusive range.</summary>
         public NowTextField SetRange(float min, float max)
@@ -498,12 +877,19 @@ namespace NowUI
             var renderer = theme.controlRenderer;
 
             var textStyle = NowControls.Text(theme, _textPreset);
+
+            if (_appearance.hasTextColor)
+                textStyle = textStyle.SetColor(_appearance.ResolveTextColor(theme, textStyle.color));
             var fontAsset = textStyle.font;
             float fontSize = textStyle.fontSize;
             float lineHeight = fontAsset != null ? fontAsset.GetLineHeight() * fontSize : fontSize * 1.2f;
 
-            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureTextField(theme, lineHeight));
-            var inner = renderer.TextFieldInnerRect(theme, rect, lineHeight);
+            NowRect rect = NowControls.ReserveRect(
+                _hasRect,
+                _rect,
+                _options,
+                renderer.MeasureTextField(theme, lineHeight, in _appearance));
+            var inner = renderer.TextFieldInnerRect(theme, rect, lineHeight, in _appearance);
 
             NowInteraction spinnerUp = default;
             NowInteraction spinnerDown = default;
@@ -725,7 +1111,7 @@ namespace NowUI
             if (focused && !NowInput.isPassive)
                 NowTextInput.setCompositionCursor?.Invoke(new Vector2(inner.x - state.scrollX + caretX, inner.yMax));
 
-            renderer.DrawTextInputFrame(new NowControlFrameRenderContext(theme, rect, focused));
+            renderer.DrawTextInputFrame(new NowControlFrameRenderContext(theme, rect, focused, in _appearance));
 
             using (Now.Mask(inner))
             {
@@ -746,6 +1132,10 @@ namespace NowUI
                 else if (!string.IsNullOrEmpty(_placeholder))
                 {
                     var placeholder = NowControls.Text(theme, NowTextStyle.Muted);
+
+                    if (_appearance.hasPlaceholderColor)
+                        placeholder = placeholder.SetColor(_appearance.ResolvePlaceholderColor(theme, placeholder.color));
+
                     placeholder.rect = new NowRect(inner.x, inner.y, inner.width, inner.height);
                     placeholder.SetFontSize(fontSize).SetItalic().Draw(_placeholder);
                 }

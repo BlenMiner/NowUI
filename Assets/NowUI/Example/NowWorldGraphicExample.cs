@@ -2,7 +2,7 @@ using UnityEngine;
 using NowUI;
 
 [AddComponentMenu("NowUI/Examples/Now World Graphic Example")]
-public sealed class NowWorldGraphicExample : NowWorldGraphic
+public sealed class NowWorldGraphicExample : NowWorldLayoutGraphic
 {
     [SerializeField] string _title = "Player";
     [SerializeField] string _detail = "Hover for details";

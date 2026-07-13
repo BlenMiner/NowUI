@@ -11,7 +11,7 @@ using NowUI;
 /// a Lottie asset), and poke around.
 /// </summary>
 [AddComponentMenu("NowUI/Examples/Now Zoo")]
-public class NowZooExample : NowGraphic
+public class NowZooExample : NowLayoutGraphic
 {
     [SerializeField] NowFontAsset _font;
     [SerializeField] NowLottieAsset _lottie;
@@ -108,7 +108,7 @@ public class NowZooExample : NowGraphic
     /// </summary>
     void DrawFpsCounter(NowThemeAsset themeAsset)
     {
-        var rect = NowLayout.Rect(64, 16, align: NowLayoutAlign.Center);
+        var rect = NowLayout.ReserveRect(64, 16, align: NowLayoutAlign.Center);
         int fps = Mathf.RoundToInt(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f));
 
         fps.TryFormat(_fpsBuffer, out int written);
@@ -255,7 +255,7 @@ public class NowZooExample : NowGraphic
         {
             for (int i = 0; i < SwatchStyles.Length; ++i)
             {
-                var swatch = NowLayout.Rect(54, 24);
+                var swatch = NowLayout.ReserveRect(54, 24);
                 themeAsset.Rectangle(swatch, SwatchStyles[i]).Draw();
             }
         }
@@ -265,7 +265,7 @@ public class NowZooExample : NowGraphic
     {
         SectionTitle(themeAsset, "Lines");
 
-        var panel = NowLayout.Rect(height: 90f, stretchWidth: true);
+        var panel = NowLayout.ReserveRect(height: 90f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(8f).Draw();
 
         var area = panel.Inset(12f, 10f);
@@ -293,7 +293,7 @@ public class NowZooExample : NowGraphic
     {
         SectionTitle(themeAsset, "Shapes");
 
-        var panel = NowLayout.Rect(height: 92f, stretchWidth: true);
+        var panel = NowLayout.ReserveRect(height: 92f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(8f).Draw();
 
         var area = panel.Inset(12f, 10f);
@@ -331,7 +331,7 @@ public class NowZooExample : NowGraphic
 
     void Marquee(NowThemeAsset themeAsset)
     {
-        var strip = NowLayout.Rect(height: 22, stretchWidth: true);
+        var strip = NowLayout.ReserveRect(height: 22, stretchWidth: true);
         themeAsset.Rectangle(strip, NowRectangleStyle.Muted).SetRadius(6).Draw();
 
         const string Text = "  masks * lottie * shaped text * focus * overlays * burst fonts  ";
@@ -352,7 +352,7 @@ public class NowZooExample : NowGraphic
 
     void Separator(NowThemeAsset themeAsset)
     {
-        var line = NowLayout.Rect(height: 1, stretchWidth: true);
+        var line = NowLayout.ReserveRect(height: 1, stretchWidth: true);
         themeAsset.Rectangle(line, NowRectangleStyle.Muted).Draw();
     }
 

@@ -10,9 +10,13 @@ extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
 - `NowRenderer` and `NowDrawList`: retained/offscreen draw-list construction,
   command-buffer rendering, RenderTexture rendering, and explicit warmup.
 - `NowGraphic`, `NowVisualElement`, `NowPipelineGraphic`, and
-  `NowWorldGraphic`: host integrations for UGUI, UI Toolkit, render pipelines,
-  and world-space meshes.
-- `NowLayout`: layout areas, horizontal/vertical groups, content measurement,
+  `NowWorldGraphic`: one-pass, explicit-rect host integrations for UGUI, UI
+  Toolkit, render pipelines, and world-space meshes. Their
+  `NowLayoutGraphic`, `NowLayoutVisualElement`, `NowPipelineLayoutGraphic`, and
+  `NowWorldLayoutGraphic` counterparts own exact `NowLayout` measure/draw
+  cycles.
+- `NowLayout`: fluent `Row`/`Column` containers, growth, justification,
+  `ReserveRect` bridging, manual-host `RunMeasured`, content measurement,
   labels, controls, Lottie reservations, and content rect caching.
 - `NowInput`, `NowFocus`, `NowControls`, `NowControlState`,
   `NowFilePicker`, `NowViewStack`, `INowView`, `NowViews`, and control
@@ -47,7 +51,9 @@ extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
   geometry before returning so the next measured frame starts from a clean draw
   list.
 - String IDs are allowed for convenience, but examples should prefer stable
-  integer or data-backed `NowId` values in repeated/dynamic UI.
+  integer or data-backed `NowId` values in repeated/dynamic UI. Both forms are
+  host/id-scope local; `NowId.Resolved(...)` is reserved for already-composed
+  identities.
 - Breaking changes are allowed before the next tagged release only when they
   remove ambiguous behavior, accidental allocation, or inconsistent naming; the
   changelog must call them out explicitly.

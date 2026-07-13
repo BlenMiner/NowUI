@@ -7,7 +7,7 @@ using NowUI.Markdown;
 /// inspector; clicked links open in the system browser.
 /// </summary>
 [AddComponentMenu("NowUI/Examples/Now Markdown")]
-public class NowMarkdownExample : NowGraphic
+public class NowMarkdownExample : NowLayoutGraphic
 {
     const string Sample =
         "# Now Markdown\n" +

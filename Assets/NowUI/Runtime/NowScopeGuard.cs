@@ -14,12 +14,15 @@ namespace NowUI
 
         readonly List<int> _tokens;
 
+        readonly List<int> _endingTokens;
+
         int _nextToken;
 
         internal NowScopeGuard(string name, int capacity = 4)
         {
             _name = name;
             _tokens = new List<int>(capacity);
+            _endingTokens = new List<int>(2);
         }
 
         internal int count => _tokens.Count;
@@ -46,7 +49,7 @@ namespace NowUI
             int last = _tokens.Count - 1;
 
             if (last >= 0 && _tokens[last] == token)
-                return true;
+                return !_endingTokens.Contains(token);
 
             for (int i = last - 1; i >= 0; --i)
             {
@@ -58,6 +61,44 @@ namespace NowUI
             }
 
             // The token was already disposed or invalidated at a frame boundary.
+            return false;
+        }
+
+        /// <summary>
+        /// Claims the current token for callback-capable teardown. A copied
+        /// handle disposed reentrantly while that teardown is running sees the
+        /// same token as already ending and becomes a no-op.
+        /// </summary>
+        internal bool BeginEnd(int token)
+        {
+            if (!IsCurrent(token))
+                return false;
+
+            _endingTokens.Add(token);
+            return true;
+        }
+
+        internal bool ExitEnding(int token)
+        {
+            int last = _tokens.Count - 1;
+
+            if (last >= 0 && _tokens[last] == token)
+            {
+                _tokens.RemoveAt(last);
+                _endingTokens.Remove(token);
+                return true;
+            }
+
+            for (int i = last - 1; i >= 0; --i)
+            {
+                if (_tokens[i] == token)
+                {
+                    throw new InvalidOperationException(
+                        $"{_name} scopes must be disposed in reverse order. Dispose the inner scope first.");
+                }
+            }
+
+            _endingTokens.Remove(token);
             return false;
         }
 
@@ -73,12 +114,17 @@ namespace NowUI
         internal void ExitCurrent()
         {
             if (_tokens.Count > 0)
+            {
+                int token = _tokens[_tokens.Count - 1];
                 _tokens.RemoveAt(_tokens.Count - 1);
+                _endingTokens.Remove(token);
+            }
         }
 
         internal void Clear()
         {
             _tokens.Clear();
+            _endingTokens.Clear();
         }
 
         internal void CopyTo(List<int> destination)
@@ -91,6 +137,7 @@ namespace NowUI
         {
             _tokens.Clear();
             _tokens.AddRange(source);
+            _endingTokens.Clear();
         }
     }
 }

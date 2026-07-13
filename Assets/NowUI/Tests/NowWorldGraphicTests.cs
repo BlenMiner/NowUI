@@ -11,8 +11,6 @@ public class NowWorldGraphicTests
     {
         public bool drawTextured;
 
-        protected override bool useLayoutMeasurePass => false;
-
         protected override void DrawNowUI(NowRect rect)
         {
             Now.Rectangle(new NowRect(0, 0, rect.width, rect.height))
@@ -32,8 +30,6 @@ public class NowWorldGraphicTests
     {
         public INowInputProvider provider;
         public bool clicked;
-
-        protected override bool useLayoutMeasurePass => false;
 
         protected override INowInputProvider GetInputProvider()
         {
@@ -77,7 +73,7 @@ public class NowWorldGraphicTests
         }
     }
 
-    sealed class LayoutWorldGraphic : NowWorldGraphic
+    sealed class LayoutWorldGraphic : NowWorldLayoutGraphic
     {
         public bool stretchItems;
         public int itemCount = 2;
@@ -89,13 +85,13 @@ public class NowWorldGraphicTests
                 if (stretchItems)
                 {
                     for (int i = 0; i < itemCount; ++i)
-                        NowLayout.Rect(NowLayout.StretchWidth().SetHeight(24f));
+                        NowLayout.ReserveRect(NowLayout.StretchWidth().SetHeight(24f));
 
                     return;
                 }
 
-                NowLayout.Rect(80f, 30f);
-                NowLayout.Rect(120f, 40f);
+                NowLayout.ReserveRect(80f, 30f);
+                NowLayout.ReserveRect(120f, 40f);
             }
         }
     }
@@ -103,8 +99,6 @@ public class NowWorldGraphicTests
     sealed class CountingWorldGraphic : NowWorldGraphic
     {
         public int drawCount;
-
-        protected override bool useLayoutMeasurePass => false;
 
         public void TickLateUpdate()
         {
@@ -121,10 +115,22 @@ public class NowWorldGraphicTests
         }
     }
 
+    sealed class CountingWorldLayoutGraphic : NowWorldLayoutGraphic
+    {
+        public int drawCount;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            ++drawCount;
+
+            Now.Rectangle(new NowRect(0, 0, rect.width, rect.height))
+                .SetColor(Color.white)
+                .Draw();
+        }
+    }
+
     sealed class GlassWorldGraphic : NowWorldGraphic
     {
-        protected override bool useLayoutMeasurePass => false;
-
         protected override void DrawNowUI(NowRect rect)
         {
             Now.Glass(new NowRect(0, 0, rect.width, rect.height))
@@ -136,8 +142,6 @@ public class NowWorldGraphicTests
     sealed class ScaleRecordingWorldGraphic : NowWorldGraphic
     {
         public float recordedScale;
-
-        protected override bool useLayoutMeasurePass => false;
 
         protected override void DrawNowUI(NowRect rect)
         {
@@ -163,8 +167,6 @@ public class NowWorldGraphicTests
         public int behindClicks;
         public int itemClicks;
         public bool ownsMenu = true;
-
-        protected override bool useLayoutMeasurePass => false;
 
         protected override INowInputProvider GetInputProvider()
         {
@@ -295,6 +297,31 @@ public class NowWorldGraphicTests
         finally
         {
             Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void WorldHostsDefaultToExplicitOnePassAndLayoutTwoPass()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        var explicitObject = new GameObject("Now Explicit World Graphic");
+        var layoutObject = new GameObject("Now Layout World Graphic");
+
+        try
+        {
+            var explicitGraphic = explicitObject.AddComponent<CountingWorldGraphic>();
+            var layoutGraphic = layoutObject.AddComponent<CountingWorldLayoutGraphic>();
+
+            explicitGraphic.RebuildNowUI();
+            layoutGraphic.RebuildNowUI();
+
+            Assert.AreEqual(1, explicitGraphic.drawCount);
+            Assert.AreEqual(2, layoutGraphic.drawCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(layoutObject);
+            Object.DestroyImmediate(explicitObject);
         }
     }
 

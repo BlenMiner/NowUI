@@ -7,14 +7,48 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Layout now has an intent-first API and explicit host contract (breaking).**
+  Prefer fluent `NowLayout.Row()` / `Column()` declarations with `Gap`,
+  `Padding`, `Grow`, `AlignChildren`, `Justify`, and `Begin`; `Spacer` is the
+  layout-DSL name for flexible space. `NowLayout.Rect` is renamed to
+  `ReserveRect`, which makes its advancing side effect visible, and the old
+  callback `Area` overloads are renamed to `RunMeasured`. Base
+  `NowGraphic`/`NowWorldGraphic`/`NowPipelineGraphic`/`NowVisualElement` hosts
+  are one-pass for explicit-rect UI. Their `NowLayoutGraphic`,
+  `NowWorldLayoutGraphic`, `NowPipelineLayoutGraphic`, and
+  `NowLayoutVisualElement` counterparts own an exact same-rebuild measure/draw
+  cycle; code in those hosts uses ordinary scopes and must not add its own
+  `RunMeasured`. `RunMeasured` remains the explicit bridge for manual hosts.
+  The old pipeline/UI Toolkit measurement toggles are removed; the host type
+  is now the single source of truth for one-pass versus exact layout behavior.
+  Retained hosts now isolate string and integer control IDs per instance and
+  expose `ResolveControlId(string/int)` for external focus/cache integration.
+  Raw integer `Area` and `TryGetCachedAreaContentSize` ids are host/id-scope
+  local too; pass `NowId.Resolved(...)` for an already-composed cache key.
+  Alignment intent now makes otherwise-unsized nested containers fit their
+  content, so centering a child row no longer silently stretches it edge to
+  edge; use `FillWidth` / `FillHeight` when stretching is intended.
+  Min/max-constrained `Grow` and main-axis stretch shares now redistribute
+  remaining space across unconstrained siblings, and `Justify` positions any
+  space left when every flexible child reaches its maximum.
+- **Text fields support local appearance and layout sizing.** Both
+  `Now.TextField(rect, ...)` and `NowLayout.TextField(...)` can configure
+  radius, fill, border/focus/text/placeholder colors, padding,
+  normal/focused outline widths, and elevation per instance. Layout fields also expose fixed/min/max,
+  stretching, and alignment methods, so a search field no longer needs a
+  custom renderer or global theme mutation.
 - **Scope ownership is now explicit and fail-fast (breaking).** `StartUI`,
   draw-list, font, mask, transform, theme, control-id, input, layout, and label-style
-  scopes share token-backed ownership: disposing a copied handle cannot close
-  a newer scope, and disposing a live outer scope before its inner scope throws
-  without corrupting ambient state. `Now.StartUI` rejects same-frame nesting,
-  and rejects starting inside a live draw-list capture, while an abandoned
-  prior-frame screen scope (including nested captures and deferred overlays)
-  is reported, unwound, and recovered.
+  scopes share token-backed ownership: disposing a copied or callback-reentrant
+  handle cannot close a newer scope, re-pool live state, or repeat teardown, and
+  disposing a live outer scope before its inner scope throws without corrupting
+  ambient state. `Now.StartUI` rejects same-frame nesting and starting inside a
+  live retained-host, `NowGUI`, input, layout, theme, id, or draw-list scope,
+  while abandoned prior-frame state (including nested captures and deferred
+  overlays) is reported, unwound, and recovered.
+  Retained hosts also reject synchronous recursive rebuilds with a clear error;
+  nested content should be drawn compositionally or rebuilt by Unity as a
+  separate retained surface.
   Layout areas/groups are using-only; `EndArea`, `EndHorizontal`, and
   `EndVertical` are no longer public.
 - **Layout configuration no longer has hidden state (breaking).** The values on
@@ -22,7 +56,11 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   methods so the corresponding option is always enabled. Invalid non-finite or
   negative sizes, non-positive stretch weights, contradictory min/max bounds,
   and unknown alignment values now throw at the call site. Fixed-size and
-  stretch setters are mutually exclusive, with the last call winning.
+  stretch setters are mutually exclusive; a contradictory chain now throws
+  instead of silently letting the last call win. A fixed main-axis size and
+  `Grow` are rejected for the same reason. Root areas over an explicit rect
+  reject placement-only options such as `Width`, `Grow`, and alignment instead
+  of silently ignoring them.
 - **Dead or misleading APIs were removed (breaking).** The process-wide
   `NowLayout.labelStyle` setter and `ClearLabelStyle` are internal; use
   `NowLayout.OverrideLabelStyle(...)` for a bounded override. `NowText.padding`,
@@ -30,23 +68,30 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   were removed because no text renderer consumed them; inset the target rect
   instead. `NowSplitView.Begin` now returns the non-disposable
   `NowSplitViewResult`; dispose only the pane scopes returned by `BeginFirst`
-  and `BeginSecond`.
+  and `BeginSecond`. `NowGUIScope.isRepaint` was removed: branching on it
+  skipped the non-Repaint IMGUI passes where pointer and keyboard input is
+  intentionally processed; drawing is already suppressed automatically.
 - **Input scopes are transactional.** Provider failures during `Begin` or
   measurement restore the complete previous context, nested scopes restore
   their provider, and overlay-flush failures still unwind scope state.
 - **Draw-list capture is exception-safe.** Overlay or mesh-upload failures now
-  cancel the active capture, clear partial target geometry, and leave the next
-  capture usable instead of poisoning global rendering state.
+  cancel the active capture, clear partial target geometry, roll back only the
+  deferred overlays and pointer blocks queued by that capture, and leave both
+  pre-existing overlay state and the next capture usable.
 - **The local test harness fails closed.** It resolves the repository and Unity
   version independently of the caller's working directory, discovers matching
   Unity Hub installs, rejects invalid editor overrides, and treats malformed,
   failed, or empty NUnit result files as failures. Generated result XML is no
-  longer tracked.
-- **DX hardening pass (breaking).** String `NowId`s now resolve within the
-  active `NowControls.IdScope` for layout groups, caches, and input
-  cross-references, matching the documented contract and the control path --
-  values change only under a non-empty scope; use int ids for identities that
-  must resolve identically from anywhere. `Now.screenMask` is now a read-only
+  longer tracked. Its `landing-page-now` and `landing-page-now-layout` captures
+  instantiate the public example components through their real UGUI hosts and
+  are covered by golden-image comparison.
+- **DX hardening pass (breaking).** String and integer `NowId`s now resolve
+  within the active host/`NowControls.IdScope` for controls, layout groups,
+  caches, navigation, and input cross-references. Reusable surfaces therefore
+  cannot silently share state just because both use `.SetId(1)`. Use
+  `NowId.Resolved(value)` only when `value` already includes its complete scope
+  ancestry (for example, a host `ResolveControlId(...)` result or a child id
+  made with `NowInput.CombineId`). `Now.screenMask` is now a read-only
   property (start a sub-region frame via `Now.StartUI(rect, uiScale)`
   instead). `Now.Text(rect)` honors the ambient `Now.Font(...)` scope as its
   docs promised. `SetPosition` on `NowRectangle`/`NowText`/`NowGlass`/
@@ -172,14 +217,11 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   measure-pass hosts), and a bar hides immediately when the viewport grows
   enough for content to fit. `NowScrollScope` exposes
   `verticalScrollbarVisible` / `horizontalScrollbarVisible`.
-- Pipeline-rendered UI (`NowPipelineGraphic`) now runs the NowLayout measure
-  pass like every other host, so flexible space, stretching and auto-sized
-  groups are exact every frame instead of flickering in from zero when
-  content first appears. All graphics on a camera share one build, so the
-  pass runs when any rendered graphic wants it; the new serialized
-  `layoutMeasurePass` toggle (default on, matching `NowGraphic` /
-  `NowWorldGraphic` / `NowVisualElement`) opts a graphic out to save the
-  extra pass on UIs that skip NowLayout.
+- Pipeline-rendered layout UI can use `NowPipelineLayoutGraphic` for an exact
+  measure/draw cycle, so flexible space, stretching, and auto-sized groups are
+  correct on their first frame. Measurement is decided per graphic in the
+  shared camera build; an explicit-rect `NowPipelineGraphic` remains one-pass
+  and does not inherit another graphic's layout cost.
 - Text selection highlights no longer double-blend into darker vertical bands
   where styled runs meet (a link followed by punctuation, bold inside a
   sentence): highlights bridging into a same-row segment clip to that
@@ -261,8 +303,9 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   which renders ` ```markup ` / ` ```nowui ` fences as live NowUI markup with
   shared state and event queries (`Clicked`/`Changed`/`Action`); without an
   embed set every fence stays a highlighted code block, so documents degrade
-  gracefully. `NowLayout.TryGetCachedContentSize` is now public — the
-  measured content extent of an explicit-id group or area.
+  gracefully. `NowLayout.TryGetCachedAreaContentSize` is now public — the
+  measured content extent of an explicit-id root area, named to avoid implying
+  that a nested group's parent-scoped cache key can be queried globally.
 - **DX pass additions.** `Now.StartUI(NowRect, float uiScale)` combines a
   sub-region surface with density scaling. `SetOutline(width, color)`
   overloads on `NowRectangle`, `NowCircle`, `NowTriangle`, `NowPolygon`, and
@@ -750,8 +793,8 @@ point it became installable through UPM.
   overlay flush, and the screen path's GL submission. Markers compile out
   of non-development builds. Also removed the last per-frame string
   allocation in the library (dropdown popup item ids).
-- `NowGraphic` implements `ILayoutElement`: with Drive Layout Size (on by
-  default) it reports the measured NowLayout content extent as its
+- `NowGraphic` implements `ILayoutElement`: with opt-in Drive Layout Size it
+  reports the measured NowLayout content extent as its
   preferred size, so it participates in UGUI LayoutGroups and
   ContentSizeFitters like any built-in graphic. Frame-late, like all
   NowLayout measurement; `measuredContentSize` exposes the value.

@@ -598,7 +598,7 @@ namespace NowUI
             if (browserHeight < headerHeight + 96f)
                 browserHeight = headerHeight + 96f;
 
-            using (NowLayout.Area(state.areaId, state.popupRect, spacing: spacing, padding: padding, alignItems: NowLayoutAlign.Start))
+            using (NowLayout.Area(NowId.Resolved(state.areaId), state.popupRect, spacing: spacing, padding: padding, alignItems: NowLayoutAlign.Start))
             {
                 using (NowLayout.Horizontal(height: titleHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
                 {
@@ -613,7 +613,7 @@ namespace NowUI
 
                     if (!string.IsNullOrEmpty(parent))
                     {
-                        if (NowLayout.Button("Up").SetId(state.upButtonId).SetStyle(NowRectangleStyle.Outline).SetWidth(48f).Draw())
+                        if (NowLayout.Button("Up").SetId(NowId.Resolved(state.upButtonId)).SetStyle(NowRectangleStyle.Outline).SetWidth(48f).Draw())
                             NavigateTo(state, parent);
                     }
                     else
@@ -621,7 +621,7 @@ namespace NowUI
                         NowLayout.Label("").SetWidth(48f).Draw();
                     }
 
-                    if (NowLayout.TextField(state.pathFieldId)
+                    if (NowLayout.TextField(NowId.Resolved(state.pathFieldId))
                         .SetStretchWidth()
                         .SetPlaceholder("Address")
                         .Draw(ref state.directoryText))
@@ -630,11 +630,11 @@ namespace NowUI
                         ClearError(state);
                     }
 
-                    if (NowLayout.Button("Go").SetId(state.goButtonId).SetStyle(NowRectangleStyle.Outline).SetWidth(44f).Draw())
+                    if (NowLayout.Button("Go").SetId(NowId.Resolved(state.goButtonId)).SetStyle(NowRectangleStyle.Outline).SetWidth(44f).Draw())
                         NavigateTo(state, state.directoryText);
                 }
 
-                NowRect browserRect = NowLayout.Rect(height: browserHeight, stretchWidth: true);
+                NowRect browserRect = NowLayout.ReserveRect(height: browserHeight, stretchWidth: true);
                 DrawBrowser(state, browserRect, headerHeight);
 
                 if (hasFileName)
@@ -642,7 +642,7 @@ namespace NowUI
                     using (NowLayout.Horizontal(height: fileNameHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
                     {
                         NowLayout.Label("File name:").SetWidth(78f).Draw();
-                        if (NowLayout.TextField(state.fileNameFieldId)
+                        if (NowLayout.TextField(NowId.Resolved(state.fileNameFieldId))
                             .SetStretchWidth()
                             .SetPlaceholder("File name...")
                             .Draw(ref state.fileName))
@@ -660,7 +660,7 @@ namespace NowUI
                         NowLayout.Label("File type:").SetWidth(78f).Draw();
                         int filter = state.filterIndex;
 
-                        if (NowLayout.Dropdown(state.filterId, state.filterLabels).SetStretchWidth().Draw(ref filter))
+                        if (NowLayout.Dropdown(NowId.Resolved(state.filterId), state.filterLabels).SetStretchWidth().Draw(ref filter))
                         {
                             state.filterIndex = Mathf.Clamp(filter, 0, state.filters.Length - 1);
                             SetSelectedDirectory(state, null);
@@ -684,10 +684,10 @@ namespace NowUI
                         NowLayout.FlexibleSpace();
                     }
 
-                    if (NowLayout.Button(ActionLabel(state.mode)).SetId(state.selectButtonId).SetStyle(NowRectangleStyle.Accent).Draw())
+                    if (NowLayout.Button(ActionLabel(state.mode)).SetId(NowId.Resolved(state.selectButtonId)).SetStyle(NowRectangleStyle.Accent).Draw())
                         CommitAction(state);
 
-                    if (NowLayout.Button("Cancel").SetId(state.cancelButtonId).SetStyle(NowRectangleStyle.Surface).SetWidth(78f).Draw())
+                    if (NowLayout.Button("Cancel").SetId(NowId.Resolved(state.cancelButtonId)).SetStyle(NowRectangleStyle.Surface).SetWidth(78f).Draw())
                         NowControlState.Get<bool>(state.id) = false;
                 }
             }
@@ -744,7 +744,7 @@ namespace NowUI
             DrawListHeader(state.themeAsset, headerRect);
             DrawListFrame(state.themeAsset, listRect);
 
-            using (Now.ScrollView(listRect.Inset(1f), state.scrollId).Begin())
+            using (Now.ScrollView(listRect.Inset(1f), NowId.Resolved(state.scrollId)).Begin())
                 DrawEntries(state);
         }
 
@@ -774,7 +774,7 @@ namespace NowUI
             var contentRect = new NowRect(rect.x, rect.y + headerHeight, rect.width, Mathf.Max(0f, rect.height - headerHeight));
             BuildFolderTree(state);
 
-            using (Now.ScrollView(contentRect.Inset(1f), state.treeScrollId).Begin())
+            using (Now.ScrollView(contentRect.Inset(1f), NowId.Resolved(state.treeScrollId)).Begin())
                 DrawFolderTreeEntries(state);
         }
 
@@ -791,7 +791,7 @@ namespace NowUI
 
             for (int i = 0; i < state.treeEntries.Count; ++i)
             {
-                NowRect row = NowLayout.Rect(height: 26f, stretchWidth: true);
+                NowRect row = NowLayout.ReserveRect(height: 26f, stretchWidth: true);
                 DrawFolderTreeRow(state, row, state.treeEntries[i], i);
             }
         }
@@ -921,7 +921,7 @@ namespace NowUI
             for (int i = 0; i < state.entries.Count; ++i)
             {
                 var entry = state.entries[i];
-                NowRect row = NowLayout.Rect(height: 28f, stretchWidth: true);
+                NowRect row = NowLayout.ReserveRect(height: 28f, stretchWidth: true);
                 DrawEntryRow(state, row, entry, i);
             }
         }

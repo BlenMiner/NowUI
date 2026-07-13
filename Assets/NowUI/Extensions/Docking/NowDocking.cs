@@ -812,7 +812,7 @@ namespace NowUI.Docking
 
             float ratio = node.ratio;
 
-            Now.Splitter(node.splitterRect, new NowId(splitterId))
+            Now.Splitter(node.splitterRect, NowId.Resolved(splitterId))
                 .SetColumn(node.horizontal)
                 .Draw(ref ratio, usable, style.minPaneSize);
 
@@ -849,7 +849,7 @@ namespace NowUI.Docking
                 if (contentRect.width > 0f && contentRect.height > 0f)
                 {
                     using (Now.Mask(contentRect))
-                    using (NowLayout.Area(NowInput.CombineId(NowInput.CombineId(controlId, ContentSeed), selected.idHash), contentRect))
+                    using (NowLayout.Area(NowId.Resolved(NowInput.CombineId(NowInput.CombineId(controlId, ContentSeed), selected.idHash)), contentRect))
                     {
                         InvokeDraw(selected.draw, selected.drawSimple, contentRect);
                     }
@@ -1642,7 +1642,7 @@ namespace NowUI.Docking
                     window.idHash);
 
                 using (Now.Mask(contentRect))
-                using (NowLayout.Area(dragContentId, contentRect))
+                using (NowLayout.Area(NowId.Resolved(dragContentId), contentRect))
                 {
                     InvokeDraw(_dragGhostDraw, _dragGhostDrawSimple, contentRect);
                 }
@@ -1837,7 +1837,7 @@ namespace NowUI.Docking
                 (window.frameDraw != null || window.frameDrawSimple != null))
             {
                 using (Now.Mask(contentRect))
-                using (NowLayout.Area(NowInput.CombineId(NowInput.CombineId(controlId, ContentSeed), window.idHash), contentRect))
+                using (NowLayout.Area(NowId.Resolved(NowInput.CombineId(NowInput.CombineId(controlId, ContentSeed), window.idHash)), contentRect))
                 {
                     InvokeDraw(window.frameDraw, window.frameDrawSimple, contentRect);
                 }

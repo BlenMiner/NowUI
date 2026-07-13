@@ -3,6 +3,7 @@
   "rootNamespace": "NowUI.Editor",
   "references": [
     "NowUI.Runtime",
+    "NowUI.Examples",
     "NowUI.Extensions.Markdown",
     "NowUI.Extensions.Docking",
     "NowUI.Extensions.NodeGraph"

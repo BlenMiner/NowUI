@@ -29,6 +29,79 @@ namespace NowUI
 
         static readonly NowScopeGuard _idScopes = new NowScopeGuard("NowControls.IdScope", 8);
 
+        static int _idScopeStartedAt = int.MinValue;
+
+        static int _nextHostScopeId;
+
+        const int HostScopeSeed = unchecked((int)0x4e485354);
+
+        /// <summary>Process-wide identity shared by every retained NowUI host type.</summary>
+        internal static int AllocateHostScopeId()
+        {
+            unchecked
+            {
+                ++_nextHostScopeId;
+
+                if (_nextHostScopeId == 0)
+                    ++_nextHostScopeId;
+
+                return NowInput.CombineId(HostScopeSeed, _nextHostScopeId);
+            }
+        }
+
+        internal static int ResolveHostControlId(int hostScopeId, string id)
+        {
+            if (id == null)
+                throw new ArgumentNullException(nameof(id));
+
+            // hostScopeId is already the absolute root seed. Combining it with an
+            // ambient scope would double-hash when this helper is called from a
+            // host draw callback.
+            return NowInput.GetId(hostScopeId, id);
+        }
+
+        internal static int ResolveHostControlId(int hostScopeId, int id)
+        {
+            if (id == 0)
+                throw new ArgumentException("Control id 0 is reserved.", nameof(id));
+
+            return NowInput.CombineId(hostScopeId, id);
+        }
+
+        internal static int ResolveScopedControlId(int id)
+        {
+            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
+            return seed != 0 ? NowInput.CombineId(seed, id) : id;
+        }
+
+        /// <summary>Captures the fully resolved innermost id scope for deferred drawing.</summary>
+        internal static int CaptureIdScope()
+        {
+            return _idStack.Count > 0 ? _idStack[^1] : 0;
+        }
+
+        /// <summary>
+        /// Temporarily restores an already-resolved id scope. Unlike IdScope(int),
+        /// this does not combine it with the current scope: the captured value
+        /// already contains its complete host and nested-scope ancestry.
+        /// </summary>
+        internal static ControlIdScope RestoreIdScope(int resolvedScopeId)
+        {
+            _idStack.Add(resolvedScopeId);
+            return new ControlIdScope(EnterIdScope());
+        }
+
+        static int EnterIdScope()
+        {
+            if (_idScopes.count == 0)
+                _idScopeStartedAt = Time.frameCount;
+
+            return _idScopes.Enter();
+        }
+
+        internal static bool hasActiveIdScopesThisFrame =>
+            _idScopes.count > 0 && _idScopeStartedAt == Time.frameCount;
+
         /// <summary>The active theme, provided by <see cref="NowTheme"/>.</summary>
         public static NowThemeAsset themeAsset => NowTheme.themeAsset;
 
@@ -55,7 +128,7 @@ namespace NowUI
         {
             int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
             _idStack.Add(NowInput.GetId(seed, name));
-            return new ControlIdScope(_idScopes.Enter());
+            return new ControlIdScope(EnterIdScope());
         }
 
         /// <summary>
@@ -71,17 +144,15 @@ namespace NowUI
             if (id.isString)
             {
                 _idStack.Add(GetControlId(id.stringValue));
-                return new ControlIdScope(_idScopes.Enter());
+                return new ControlIdScope(EnterIdScope());
             }
 
-            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            int resolved = id.intValue;
-
-            if (seed != 0)
-                resolved = NowInput.CombineId(seed, resolved);
+            int resolved = id.isResolved
+                ? id.intValue
+                : ResolveScopedControlId(id.intValue);
 
             _idStack.Add(resolved != 0 ? resolved : 1);
-            return new ControlIdScope(_idScopes.Enter());
+            return new ControlIdScope(EnterIdScope());
         }
 
         /// <summary>
@@ -104,7 +175,7 @@ namespace NowUI
             }
 
             _idStack.Add(id != 0 ? id : 1);
-            return new ControlIdScope(_idScopes.Enter());
+            return new ControlIdScope(EnterIdScope());
         }
 
         internal static void PopIdScope(int token)
@@ -130,6 +201,7 @@ namespace NowUI
 
             _idStack.Clear();
             _idScopes.Clear();
+            _idScopeStartedAt = int.MinValue;
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (!_warnedLeakedIdScope)
@@ -143,6 +215,8 @@ namespace NowUI
         static readonly Dictionary<int, int> _labelOccurrences = new Dictionary<int, int>(32);
 
         static readonly Dictionary<int, int> _passiveOccurrences = new Dictionary<int, int>(32);
+
+        static readonly Dictionary<int, int> _passiveReplayBase = new Dictionary<int, int>(32);
 
         const int InteractionRepaintSeed = 0x4e435249;
 
@@ -226,7 +300,8 @@ namespace NowUI
         /// <summary>
         /// Resolves an optional explicit id to a control id, falling back to the
         /// captured call-site identity when the id is default. Explicit ids are
-        /// stable (integers verbatim, strings scoped — see <see cref="NowId"/>);
+        /// stable (strings and ordinary integers scoped; resolved integers pass
+        /// through unchanged — see <see cref="NowId"/>);
         /// only the call-site fallback is occurrence-salted.
         /// </summary>
         public static int GetControlId(NowId id, int fallbackIdentity)
@@ -240,15 +315,8 @@ namespace NowUI
                 return 0;
 
             // Must mirror NowId.ResolveControlId exactly, or navigation links
-            // point at ids no control ever registers: int ids verbatim,
-            // string ids seeded by the active scope.
-            if (id.isString)
-            {
-                int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-                return NowInput.GetId(seed, id.stringValue);
-            }
-
-            return id.intValue;
+            // point at ids no control ever registers.
+            return id.ResolveStableId(1);
         }
 
         /// <summary>
@@ -284,9 +352,10 @@ namespace NowUI
 
         static int Salt(int id)
         {
-            // Measure passes draw the same controls again, so they count in their
-            // own table (cleared each time a pass begins): occurrence N during the
-            // pass resolves to the same id as occurrence N in the real pass.
+            // Measure passes draw the same controls again, so they count in a
+            // replay table seeded from the real pass's current occurrence offsets:
+            // occurrence N during measurement resolves to occurrence N again when
+            // the real replay rewinds to that same base.
             var occurrences = NowInput.isPassive ? _passiveOccurrences : _labelOccurrences;
 
             if (occurrences.TryGetValue(id, out int occurrence))
@@ -349,10 +418,50 @@ namespace NowUI
 #endif
         }
 
-        /// <summary>Starts a fresh measure-pass occurrence count; called when a passive pass begins.</summary>
+        /// <summary>
+        /// Starts a passive replay from the real pass's current occurrence offsets.
+        /// This keeps repeated measured regions called from one loop aligned with
+        /// their later real pass instead of restarting every region at occurrence 0.
+        /// </summary>
         internal static void ResetPassiveControlIdOccurrences()
         {
             _passiveOccurrences.Clear();
+
+            foreach (var pair in _labelOccurrences)
+                _passiveOccurrences.Add(pair.Key, pair.Value);
+        }
+
+        /// <summary>Snapshots passive occurrence offsets before a measured replay.</summary>
+        internal static void CapturePassiveControlIdOccurrences()
+        {
+            _passiveReplayBase.Clear();
+
+            foreach (var pair in _passiveOccurrences)
+                _passiveReplayBase.Add(pair.Key, pair.Value);
+        }
+
+        /// <summary>Rewinds measured passive occurrences so the real replay resolves identical ids.</summary>
+        internal static void RestorePassiveControlIdOccurrences()
+        {
+            _passiveOccurrences.Clear();
+
+            foreach (var pair in _passiveReplayBase)
+                _passiveOccurrences.Add(pair.Key, pair.Value);
+
+            _passiveReplayBase.Clear();
+        }
+
+        /// <summary>
+        /// Reserves every occurrence consumed by a passive-only region in the
+        /// surrounding real pass. Exact measure passes rewind their passive table
+        /// before leaving, so their suppressed replay still commits only its base.
+        /// </summary>
+        internal static void CommitPassiveControlIdOccurrences()
+        {
+            _labelOccurrences.Clear();
+
+            foreach (var pair in _passiveOccurrences)
+                _labelOccurrences.Add(pair.Key, pair.Value);
         }
 
         /// <summary>Clears id scopes, occurrence tables and theme overrides (tests/domain reloads).</summary>
@@ -361,8 +470,10 @@ namespace NowUI
             NowTheme.Reset();
             _idStack.Clear();
             _idScopes.Clear();
+            _idScopeStartedAt = int.MinValue;
             _labelOccurrences.Clear();
             _passiveOccurrences.Clear();
+            _passiveReplayBase.Clear();
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             _interactedIds.Clear();
             _duplicateWarnedIds.Clear();
@@ -555,7 +666,7 @@ namespace NowUI
             if (!options.Has(NowLayoutOptions.Field.Height) && !options.Has(NowLayoutOptions.Field.StretchHeight))
                 options = options.SetHeight(contentSize.y);
 
-            return NowLayout.Rect(options);
+            return NowLayout.ReserveRect(options);
         }
 
         static string _labelMeasureText;

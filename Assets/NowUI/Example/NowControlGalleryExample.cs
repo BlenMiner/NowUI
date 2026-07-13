@@ -61,14 +61,21 @@ public class NowControlGalleryExample : MonoBehaviour
         using (Now.StartUI(NowScreen.recommendedUIScale))
         using (_theme != null ? NowTheme.Scope(_theme) : default)
         {
-            DrawGallery();
+            var options = default(NowLayoutOptions)
+                .SetPadding(20f)
+                .SetSpacing(12f);
+
+            NowLayout.RunMeasured(
+                NowScreen.safeArea,
+                options,
+                this,
+                static self => self.DrawGallery());
         }
     }
 
     void DrawGallery()
     {
         var theme = NowTheme.themeAsset;
-        var screen = NowScreen.safeArea;
         float scale = Now.uiScale;
 
         Now.Rectangle(new NowRect(0f, 0f, Screen.width / scale, Screen.height / scale))
@@ -76,33 +83,29 @@ public class NowControlGalleryExample : MonoBehaviour
             .SetRadius(0f)
             .Draw();
 
-        using (NowLayout.Area(screen))
-        using (NowLayout.Vertical(padding: 20f, spacing: 12f))
-        {
-            DrawHeader();
+        DrawHeader();
 
-            using (var view = NowLayout.TabView(_tabPages).SetStretchWidth().SetStretchHeight().Begin(ref _page))
+        using (var view = NowLayout.TabView(_tabPages).SetStretchWidth().SetStretchHeight().Begin(ref _page))
+        {
+            using (NowLayout.Vertical(padding: 16f, spacing: 12f))
             {
-                using (NowLayout.Vertical(padding: 16f, spacing: 12f))
+                switch (view.selected)
                 {
-                    switch (view.selected)
-                    {
-                        case 0:
-                            DrawInputsPage();
-                            break;
-                        case 1:
-                            DrawPickersPage();
-                            break;
-                        case 2:
-                            DrawDataPage();
-                            break;
-                        case 3:
-                            DrawMenusPage();
-                            break;
-                        default:
-                            DrawInspectorPage();
-                            break;
-                    }
+                    case 0:
+                        DrawInputsPage();
+                        break;
+                    case 1:
+                        DrawPickersPage();
+                        break;
+                    case 2:
+                        DrawDataPage();
+                        break;
+                    case 3:
+                        DrawMenusPage();
+                        break;
+                    default:
+                        DrawInspectorPage();
+                        break;
                 }
             }
         }
@@ -114,7 +117,7 @@ public class NowControlGalleryExample : MonoBehaviour
         {
             NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Heading), "Control Gallery").Draw();
             NowLayout.Badge("v0.2").SetStyle(NowRectangleStyle.AccentSoft).Draw();
-            NowLayout.Rect(stretchWidth: true);
+            NowLayout.ReserveRect(stretchWidth: true);
             NowLayout.Switch("Dark").Draw(ref _darkMode);
         }
 
@@ -218,7 +221,7 @@ public class NowControlGalleryExample : MonoBehaviour
     {
         NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), _menuLabResult).Draw();
 
-        var playground = NowLayout.Rect(stretchWidth: true, height: 120f);
+        var playground = NowLayout.ReserveRect(stretchWidth: true, height: 120f);
         NowTheme.themeAsset.Rectangle(playground, NowRectangleStyle.Muted).Draw();
         NowTheme.themeAsset.Text(playground.Inset(16f, 50f, 16f, 16f), NowTextStyle.Muted)
             .Draw("Right-click playground (60-item menu + submenus)");

@@ -144,6 +144,38 @@ namespace NowUI
 
         static readonly NowScopeGuard _scopes = new NowScopeGuard("NowInput.Begin");
 
+        static int _scopeStartedAt = int.MinValue;
+
+        static bool _screenFrameActive;
+
+        internal static bool hasActiveScopesThisFrame =>
+            _scopes.count > 0 && _scopeStartedAt == Time.frameCount;
+
+        internal static void DiscardAbandonedScopes()
+        {
+            NowOverlay.ClearFrameTransactions();
+            _scopes.Clear();
+            _scopeDepth = 0;
+            _passiveDepth = 0;
+            _scopeStartedAt = int.MinValue;
+            _screenFrameActive = false;
+        }
+
+        internal static void BeginScreenFrame(NowInputSurface surface)
+        {
+            if (_screenFrameActive)
+                throw new InvalidOperationException("A NowInput screen frame is already active.");
+
+            Update(_defaultProvider, surface);
+            _screenFrameActive = true;
+        }
+
+        internal static void CancelScreenFrame()
+        {
+            _screenFrameActive = false;
+            NowOverlay.EndFrameTransaction();
+        }
+
         static bool _scrollConsumed;
 
         static int _cancelClaimFrame = int.MinValue;
@@ -245,10 +277,19 @@ namespace NowUI
             int previousScopeDepth = _scopeDepth;
             bool topLevel = previousScopeDepth == 0;
 
+            if (previousScopeDepth == 0)
+                _scopeStartedAt = Time.frameCount;
+
             if (topLevel)
             {
-                HealLeakedPassiveScope();
-                CompleteFrame();
+                if (!_screenFrameActive)
+                {
+                    NowOverlay.EndFrameTransaction();
+                    HealLeakedPassiveScope();
+                    CompleteFrame();
+                }
+
+                NowOverlay.BeginFrameTransaction();
             }
 
             var previousProvider = _currentProvider;
@@ -270,11 +311,18 @@ namespace NowUI
 
             try
             {
-                Update(provider, surface, topLevel);
+                Update(
+                    provider,
+                    surface,
+                    resetFrameTracking: topLevel,
+                    resetControlOccurrences: topLevel);
                 return scope;
             }
             catch
             {
+                if (topLevel)
+                    NowOverlay.EndFrameTransaction();
+
                 _scopes.Exit(token);
                 _scopeDepth = previousScopeDepth;
                 Restore(
@@ -291,6 +339,10 @@ namespace NowUI
         internal static NowInputScope BeginMeasurement(INowInputProvider provider, NowInputSurface surface)
         {
             int previousScopeDepth = _scopeDepth;
+
+            if (previousScopeDepth == 0)
+                _scopeStartedAt = Time.frameCount;
+
             var previousProvider = _currentProvider;
             var previousSurface = _surface;
             var previousSnapshot = _snapshot;
@@ -309,7 +361,11 @@ namespace NowUI
 
             try
             {
-                Update(provider, surface, false);
+                Update(
+                    provider,
+                    surface,
+                    resetFrameTracking: false,
+                    resetControlOccurrences: previousScopeDepth == 0);
                 return scope;
             }
             catch
@@ -338,16 +394,45 @@ namespace NowUI
 
         public static void Update(INowInputProvider provider, NowInputSurface surface)
         {
-            if (_scopeDepth == 0)
+            if (_screenFrameActive)
             {
-                HealLeakedPassiveScope();
-                CompleteFrame();
+                throw new InvalidOperationException(
+                    "NowInput.Update cannot replace the input context inside Now.StartUI. " +
+                    "Use a scoped NowInput.Begin(...) for a temporary custom surface.");
             }
 
-            Update(provider, surface, _scopeDepth == 0);
+            bool topLevel = _scopeDepth == 0;
+
+            if (topLevel)
+            {
+                NowOverlay.EndFrameTransaction();
+                HealLeakedPassiveScope();
+                CompleteFrame();
+                NowOverlay.BeginFrameTransaction();
+            }
+
+            try
+            {
+                Update(
+                    provider,
+                    surface,
+                    resetFrameTracking: topLevel,
+                    resetControlOccurrences: topLevel);
+            }
+            catch
+            {
+                if (topLevel)
+                    NowOverlay.EndFrameTransaction();
+
+                throw;
+            }
         }
 
-        static void Update(INowInputProvider provider, NowInputSurface surface, bool resetFrameTracking)
+        static void Update(
+            INowInputProvider provider,
+            NowInputSurface surface,
+            bool resetFrameTracking,
+            bool resetControlOccurrences)
         {
             NowInputSnapshot snapshot = default;
             bool hasSnapshot = provider != null && provider.TryGetSnapshot(surface, out snapshot);
@@ -356,7 +441,9 @@ namespace NowUI
             _surface = surface;
             _snapshot = hasSnapshot ? snapshot : default;
             _hasContext = true;
-            NowControls.ResetControlIdOccurrences();
+
+            if (resetControlOccurrences)
+                NowControls.ResetControlIdOccurrences();
 
             if (resetFrameTracking)
             {
@@ -480,7 +567,10 @@ namespace NowUI
         /// <summary>
         /// Combines two ids into one (a parent control id and a sub-element
         /// index, for example) — the blessed way to mint ids for interactive
-        /// sub-regions without strings. Never returns 0.
+        /// sub-regions without strings. Never returns 0. When passing the result
+        /// to an API that accepts <see cref="NowId"/>, wrap it in
+        /// <see cref="NowId.Resolved(int)"/> because the parent was already
+        /// resolved; int-based input/state APIs accept the result directly.
         /// </summary>
         public static int CombineId(int a, int b)
         {
@@ -778,6 +868,7 @@ namespace NowUI
 
         public static void Reset()
         {
+            NowOverlay.ClearFrameTransactions();
             _surface = default;
             _snapshot = default;
             _hasContext = false;
@@ -796,6 +887,8 @@ namespace NowUI
             _passiveDepth = 0;
             _scopeDepth = 0;
             _scopes.Clear();
+            _scopeStartedAt = int.MinValue;
+            _screenFrameActive = false;
             _scrollConsumed = false;
             _cancelClaimFrame = int.MinValue;
             NowRaycastGate.InvalidateCache();
@@ -824,8 +917,13 @@ namespace NowUI
 
         internal static void EndPassive()
         {
-            if (_passiveDepth > 0)
-                --_passiveDepth;
+            if (_passiveDepth <= 0)
+                return;
+
+            --_passiveDepth;
+
+            if (_passiveDepth == 0)
+                NowControls.CommitPassiveControlIdOccurrences();
         }
 
         internal static bool TryScreenToSurface(Vector2 topLeftScreenPosition, NowInputSurface surface, out Vector2 position)
@@ -877,9 +975,6 @@ namespace NowUI
             bool completeFrame,
             int token)
         {
-            if (!_scopes.IsCurrent(token))
-                return;
-
             try
             {
                 if (completeFrame)
@@ -887,15 +982,18 @@ namespace NowUI
             }
             finally
             {
-                _scopes.Exit(token);
+                _scopes.ExitEnding(token);
 
                 if (_scopeDepth > 0)
                     --_scopeDepth;
 
+                if (_scopeDepth == 0)
+                    _scopeStartedAt = int.MinValue;
+
                 try
                 {
                     if (completeFrame)
-                        EndFrame();
+                        EndScopedFrame();
                 }
                 finally
                 {
@@ -905,9 +1003,34 @@ namespace NowUI
             }
         }
 
+        internal static bool BeginScopeEnd(int token)
+        {
+            return _scopes.BeginEnd(token);
+        }
+
         internal static void EndFrame()
         {
-            CompleteFrame();
+            try
+            {
+                CompleteFrame();
+            }
+            finally
+            {
+                _screenFrameActive = false;
+                NowOverlay.EndFrameTransaction();
+            }
+        }
+
+        static void EndScopedFrame()
+        {
+            try
+            {
+                CompleteFrame();
+            }
+            finally
+            {
+                NowOverlay.EndFrameTransaction();
+            }
         }
 
         internal static void ClearActiveIf(int id, NowPointerButton button = NowPointerButton.Primary)
@@ -1010,6 +1133,12 @@ namespace NowUI
         {
             if (_disposed)
                 return;
+
+            if (!NowInput.BeginScopeEnd(_token))
+            {
+                _disposed = true;
+                return;
+            }
 
             NowInput.EndScope(
                 _previousProvider,

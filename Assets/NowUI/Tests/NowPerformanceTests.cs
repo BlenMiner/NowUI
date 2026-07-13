@@ -104,8 +104,6 @@ public class NowPerformanceTests
 
     sealed class PerfWorldGraphic : NowWorldGraphic
     {
-        protected override bool useLayoutMeasurePass => false;
-
         protected override void DrawNowUI(NowRect rect)
         {
             for (int i = 0; i < 24; ++i)
@@ -118,13 +116,31 @@ public class NowPerformanceTests
         }
     }
 
-    sealed class PerfNowGraphic : NowGraphic
+    interface IPerfNowGraphic
     {
-        public Action<NowRect> draw;
+        Action<NowRect> draw { set; }
 
-        public bool layoutMeasurePass = true;
+        void RebuildForTest();
+    }
 
-        protected override bool useLayoutMeasurePass => layoutMeasurePass;
+    sealed class PerfNowGraphic : NowGraphic, IPerfNowGraphic
+    {
+        public Action<NowRect> draw { private get; set; }
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            draw?.Invoke(rect);
+        }
+
+        public void RebuildForTest()
+        {
+            UpdateGeometry();
+        }
+    }
+
+    sealed class PerfNowLayoutGraphic : NowLayoutGraphic, IPerfNowGraphic
+    {
+        public Action<NowRect> draw { private get; set; }
 
         protected override void DrawNowUI(NowRect rect)
         {
@@ -172,10 +188,10 @@ public class NowPerformanceTests
         return root;
     }
 
-    static PerfNowGraphic CreatePerfGraphic(
+    static IPerfNowGraphic CreatePerfGraphic(
         Transform parent,
         Vector2 size,
-        bool layoutMeasurePass,
+        bool exactLayoutPass,
         Action<NowRect> draw)
     {
         var go = new GameObject("Now Perf Graphic", typeof(RectTransform));
@@ -188,9 +204,11 @@ public class NowPerformanceTests
         rectTransform.anchoredPosition = Vector2.zero;
         rectTransform.sizeDelta = size;
 
-        var graphic = go.AddComponent<PerfNowGraphic>();
-        graphic.raycastTarget = false;
-        graphic.layoutMeasurePass = layoutMeasurePass;
+        var component = exactLayoutPass
+            ? (Graphic)go.AddComponent<PerfNowLayoutGraphic>()
+            : go.AddComponent<PerfNowGraphic>();
+        component.raycastTarget = false;
+        var graphic = (IPerfNowGraphic)component;
         graphic.draw = draw;
         return graphic;
     }
@@ -356,7 +374,7 @@ public class NowPerformanceTests
                 NowLayout.Dropdown(choices).SetWidth(118f).Draw(ref choice);
             }
 
-            var panel = NowLayout.Rect(height: 118f, stretchWidth: true);
+            var panel = NowLayout.ReserveRect(height: 118f, stretchWidth: true);
             theme.Rectangle(panel, NowRectangleStyle.Muted).SetRadius(8f).Draw();
 
             Now.Text(panel.Inset(12f, 10f))
@@ -417,9 +435,9 @@ public class NowPerformanceTests
             using (NowLayout.Vertical(spacing: 12f))
             {
                 NowMarkdown.Document(DocsMarkdownSample).Draw();
-                DrawDocsControls(theme, NowLayout.Rect(height: 210f, stretchWidth: true));
-                DrawDocsLinesAndCurve(NowLayout.Rect(height: 180f, stretchWidth: true));
-                DrawDocsTextRows(NowLayout.Rect(height: DocsTextRows * 22f, stretchWidth: true));
+                DrawDocsControls(theme, NowLayout.ReserveRect(height: 210f, stretchWidth: true));
+                DrawDocsLinesAndCurve(NowLayout.ReserveRect(height: 180f, stretchWidth: true));
+                DrawDocsTextRows(NowLayout.ReserveRect(height: DocsTextRows * 22f, stretchWidth: true));
             }
         });
     }
@@ -585,7 +603,7 @@ public class NowPerformanceTests
             var graphic = CreatePerfGraphic(
                 root.transform,
                 new Vector2(1280, 720),
-                layoutMeasurePass: true,
+                exactLayoutPass: true,
                 rect => DrawDocsComposite(theme, font, rect));
 
             Measure.Method(() => graphic.RebuildForTest())
@@ -600,7 +618,7 @@ public class NowPerformanceTests
     }
 
     [Test, Performance]
-    public void DocsCompositeGraphicRebuildWithoutLayoutMeasurePass()
+    public void DocsCompositeGraphicRebuildOnePass()
     {
         var theme = LoadPerfTheme();
         var font = LoadPerfFont();
@@ -611,7 +629,7 @@ public class NowPerformanceTests
             var graphic = CreatePerfGraphic(
                 root.transform,
                 new Vector2(1280, 720),
-                layoutMeasurePass: false,
+                exactLayoutPass: false,
                 rect => DrawDocsComposite(theme, font, rect));
 
             Measure.Method(() => graphic.RebuildForTest())

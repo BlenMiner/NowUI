@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace NowUI
@@ -9,6 +10,15 @@ namespace NowUI
         Start,
         Center,
         End
+    }
+
+    /// <summary>Main-axis placement of children inside a layout container.</summary>
+    public enum NowLayoutJustify
+    {
+        Start,
+        Center,
+        End,
+        SpaceBetween
     }
 
     /// <summary>
@@ -34,7 +44,9 @@ namespace NowUI
             Spacing = 1 << 8,
             Padding = 1 << 9,
             Align = 1 << 10,
-            AlignItems = 1 << 11
+            AlignItems = 1 << 11,
+            Grow = 1 << 12,
+            Justify = 1 << 13
         }
 
         float _width;
@@ -60,6 +72,10 @@ namespace NowUI
         NowLayoutAlign _align;
 
         NowLayoutAlign _alignItems;
+
+        float _grow;
+
+        NowLayoutJustify _justify;
 
         /// <summary>Configured fixed width; meaningful only after <see cref="SetWidth"/>.</summary>
         public readonly float width => _width;
@@ -87,6 +103,10 @@ namespace NowUI
 
         public readonly NowLayoutAlign alignItems => _alignItems;
 
+        public readonly float grow => _grow;
+
+        public readonly NowLayoutJustify justify => _justify;
+
         internal Field fields;
 
         internal readonly bool Has(Field field)
@@ -97,18 +117,24 @@ namespace NowUI
         public NowLayoutOptions SetWidth(float width)
         {
             RequireNonNegativeFinite(width, nameof(width));
+
+            if (Has(Field.StretchWidth))
+                throw new InvalidOperationException("A layout width cannot be both fixed and stretching. Choose SetWidth or SetStretchWidth.");
+
             _width = width;
-            _stretchWidth = default;
-            fields = (fields | Field.Width) & ~Field.StretchWidth;
+            fields |= Field.Width;
             return this;
         }
 
         public NowLayoutOptions SetHeight(float height)
         {
             RequireNonNegativeFinite(height, nameof(height));
+
+            if (Has(Field.StretchHeight))
+                throw new InvalidOperationException("A layout height cannot be both fixed and stretching. Choose SetHeight or SetStretchHeight.");
+
             _height = height;
-            _stretchHeight = default;
-            fields = (fields | Field.Height) & ~Field.StretchHeight;
+            fields |= Field.Height;
             return this;
         }
 
@@ -172,9 +198,12 @@ namespace NowUI
         public NowLayoutOptions SetStretchWidth(float weight = 1f)
         {
             RequirePositiveFinite(weight, nameof(weight));
+
+            if (Has(Field.Width))
+                throw new InvalidOperationException("A layout width cannot be both fixed and stretching. Choose SetWidth or SetStretchWidth.");
+
             _stretchWidth = weight;
-            _width = default;
-            fields = (fields | Field.StretchWidth) & ~Field.Width;
+            fields |= Field.StretchWidth;
             return this;
         }
 
@@ -185,9 +214,25 @@ namespace NowUI
         public NowLayoutOptions SetStretchHeight(float weight = 1f)
         {
             RequirePositiveFinite(weight, nameof(weight));
+
+            if (Has(Field.Height))
+                throw new InvalidOperationException("A layout height cannot be both fixed and stretching. Choose SetHeight or SetStretchHeight.");
+
             _stretchHeight = weight;
-            _height = default;
-            fields = (fields | Field.StretchHeight) & ~Field.Height;
+            fields |= Field.StretchHeight;
+            return this;
+        }
+
+        /// <summary>
+        /// Takes a weighted share of the parent's remaining main-axis space. Unlike
+        /// SetStretchWidth/Height, this follows the parent direction, so the same
+        /// declaration works when a container moves between a row and a column.
+        /// </summary>
+        public NowLayoutOptions SetGrow(float weight = 1f)
+        {
+            RequirePositiveFinite(weight, nameof(weight));
+            _grow = weight;
+            fields |= Field.Grow;
             return this;
         }
 
@@ -239,6 +284,15 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Places this container's children along its main axis.</summary>
+        public NowLayoutOptions SetJustify(NowLayoutJustify justify)
+        {
+            RequireJustify(justify, nameof(justify));
+            _justify = justify;
+            fields |= Field.Justify;
+            return this;
+        }
+
         internal static void RequireNonNegativeFinite(float value, string paramName)
         {
             if (value < 0f || float.IsNaN(value) || float.IsInfinity(value))
@@ -261,6 +315,12 @@ namespace NowUI
         {
             if ((uint)align > (uint)NowLayoutAlign.End)
                 throw new ArgumentOutOfRangeException(paramName, align, "Unknown layout alignment.");
+        }
+
+        internal static void RequireJustify(NowLayoutJustify justify, string paramName)
+        {
+            if ((uint)justify > (uint)NowLayoutJustify.SpaceBetween)
+                throw new ArgumentOutOfRangeException(paramName, justify, "Unknown main-axis justification.");
         }
     }
 
@@ -806,31 +866,40 @@ namespace NowUI
 
     /// <summary>
     /// Immediate-mode automatic layout for NowUI, similar in spirit to GUILayout.
-    /// Open an area over a screen rect, nest horizontal/vertical groups, and request
-    /// rects that are stacked automatically with spacing, padding, stretching and
-    /// flexible space. Group calls return a <see cref="NowLayoutScope"/>, so groups
-    /// are closed with a using statement, mirroring the NowInput.Begin flow:
+    /// Declare a root <see cref="Column(NowRect, string, int)"/> or
+    /// <see cref="Row(NowRect, string, int)"/>, nest fluent row/column containers,
+    /// and reserve controls or rects that flow automatically with spacing, padding,
+    /// growth and alignment. Containers are closed with a using statement:
     ///
     /// <code>
-    /// using (NowLayout.Area(panelRect))
-    /// using (NowLayout.Horizontal())
+    /// using (NowLayout.Column(panelRect).Padding(16).Gap(8).Begin())
+    /// using (NowLayout.Row().FillWidth().Begin())
     /// {
     ///     NowLayout.Label("Hello").Draw();
     /// }
     /// </code>
     ///
-    /// Sizes that cannot be known up front in a single pass (auto-sized group
-    /// extents, stretch shares and flexible space) need a measurement source.
-    /// The callback form <see cref="Area(NowRect, Action)"/> runs the UI twice per
-    /// frame — a measure pass with draws suppressed and input passive, then the
-    /// real pass — so layout is exact every frame, like Unity's IMGUI Layout and
-    /// Repaint events. The scope form resolves from the previous frame's
-    /// measurements instead: cheaper, but sizes settle one frame after a layout
-    /// first appears or animates. Pass explicit ids to areas and groups whose
-    /// order or existence changes between frames to keep measurements stable.
+    /// Auto-sized groups, stretch shares, growth and flexible space need a
+    /// measurement source. <see cref="NowLayoutGraphic"/>,
+    /// <see cref="NowWorldLayoutGraphic"/>, <see cref="NowPipelineLayoutGraphic"/>,
+    /// and <see cref="NowLayoutVisualElement"/> own an exact measure/draw cycle.
+    /// Manual hosts can use
+    /// <see cref="RunMeasured(NowRect, Action, float, float, NowLayoutAlign, string, int)"/>.
+    /// Base one-pass hosts resolve from cached measurements instead, so deferred
+    /// sizes settle on a later rebuild. Set explicit ids on data-backed containers
+    /// whose order or existence can change.
     /// </summary>
     public static partial class NowLayout
     {
+        struct FlexItem
+        {
+            public float weight;
+
+            public float min;
+
+            public float max;
+        }
+
         struct Group
         {
             public int id;
@@ -851,9 +920,25 @@ namespace NowUI
 
             public NowLayoutAlign alignItems;
 
+            public bool hasAlignItems;
+
+            public NowLayoutJustify justify;
+
+            public float justifyGap;
+
             public float fixedMain;
 
-            public float flexTotal;
+            public FlexItem[] cachedFlexItems;
+
+            public int cachedFlexCount;
+
+            public FlexItem[] measuredFlexItems;
+
+            public float[] resolvedFlexSizes;
+
+            public float resolvedFlexMain;
+
+            public int flexCount;
 
             public int childCount;
 
@@ -883,18 +968,24 @@ namespace NowUI
 
             public float cachedFixedMain;
 
-            public float cachedFlexTotal;
+            public int cachedChildCount;
         }
 
         struct CachedGroup
         {
+            public bool horizontal;
+
             public float contentWidth;
 
             public float contentHeight;
 
             public float fixedMain;
 
-            public float flexTotal;
+            public FlexItem[] flexItems;
+
+            public int flexCount;
+
+            public int childCount;
 
             public double lastUsed;
         }
@@ -921,6 +1012,8 @@ namespace NowUI
 
         static Group[] _groups = new Group[16];
 
+        static Dictionary<int, int>[] _groupSiteOccurrences = new Dictionary<int, int>[16];
+
         static int _depth;
 
         static readonly Dictionary<int, CachedGroup> _cache = new Dictionary<int, CachedGroup>(64);
@@ -935,7 +1028,34 @@ namespace NowUI
 
         static bool _measurePass;
 
+        static int _measureCycleDepth;
+
         static readonly NowScopeGuard _layoutScopes = new NowScopeGuard("NowLayout");
+
+        static int _ambientStartedAt = int.MinValue;
+
+        static bool hasActiveAmbientState =>
+            _depth > 0 || _measurePass || _measureCycleDepth > 0 || _trackContent;
+
+        static void MarkAmbientStart()
+        {
+            if (!hasActiveAmbientState)
+                _ambientStartedAt = Time.frameCount;
+        }
+
+        internal static bool hasActiveScopesThisFrame =>
+            hasActiveAmbientState && _ambientStartedAt == Time.frameCount;
+
+        internal static void DiscardAbandonedScopes()
+        {
+            _depth = 0;
+            _layoutScopes.Clear();
+            _measurePass = false;
+            _measureCycleDepth = 0;
+            _trackContent = false;
+            _trackedContent = default;
+            _ambientStartedAt = int.MinValue;
+        }
 
         public static NowLayoutOptions Width(float width)
         {
@@ -962,18 +1082,19 @@ namespace NowUI
             return new NowLayoutOptions().SetStretchHeight(weight);
         }
 
-        /// <summary>True while the callback form of <see cref="Area(NowRect, Action)"/> runs its measure pass.</summary>
+        /// <summary>True during the suppressed, input-passive half of an exact measure/draw cycle.</summary>
         public static bool isMeasurePass => _measurePass;
+
+        internal static bool hasActiveMeasureCycle => _measureCycleDepth > 0;
 
         /// <summary>
         /// Opens a root layout area over an absolute rect, laying out children
         /// vertically. Dispose the returned scope (ideally with a using statement)
         /// to close the area. Deferred sizes (auto group extents, stretch shares,
-        /// flexible space) resolve from the previous frame; use the callback
-        /// overloads for exact same-frame layout.
-        /// </summary>
-        /// <summary>
-        /// Starts a root area at an explicit rect. The common settings are
+        /// flexible space) resolve from the previous frame in a one-pass host.
+        /// Layout-specific hosts resolve them in the same rebuild; manual hosts
+        /// can use <see cref="RunMeasured(NowRect, Action, float, float, NowLayoutAlign, string, int)"/>.
+        /// The common settings are
         /// optional parameters (<c>Area(rect, padding: 16, spacing: 8)</c>);
         /// pass a <see cref="NowLayoutOptions"/> for anything beyond them.
         /// </summary>
@@ -981,23 +1102,31 @@ namespace NowUI
             NowRect rect,
             float spacing = 0f,
             float padding = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
+            return BeginContainerArea(false, rect, default, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), NowControls.SiteId(file, line));
         }
 
         public static NowLayoutScope Area(
             NowRect rect,
             Vector4 padding,
             float spacing = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
+            return BeginContainerArea(false, rect, default, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Area(NowRect rect, in NowLayoutOptions options)
+        public static NowLayoutScope Area(
+            NowRect rect,
+            in NowLayoutOptions options,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return Area(default(NowId), rect, options);
+            return BeginContainerArea(false, rect, default, options, NowControls.SiteId(file, line));
         }
 
         public static NowLayoutScope Area(
@@ -1005,9 +1134,11 @@ namespace NowUI
             NowRect rect,
             float spacing = 0f,
             float padding = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
+            return BeginContainerArea(false, rect, id, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), NowControls.SiteId(file, line));
         }
 
         public static NowLayoutScope Area(
@@ -1015,18 +1146,28 @@ namespace NowUI
             NowRect rect,
             Vector4 padding,
             float spacing = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
+            return BeginContainerArea(false, rect, id, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Area(NowId id, NowRect rect, in NowLayoutOptions options)
+        public static NowLayoutScope Area(
+            NowId id,
+            NowRect rect,
+            in NowLayoutOptions options,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            OnFrameBoundary();
-            return Area(id.ResolveStableId(HashCombine(AreaSeed, _areaCounter)), rect, options);
+            return BeginContainerArea(false, rect, id, options, NowControls.SiteId(file, line));
         }
 
-        /// <summary>Area keyed by a precomputed identity hash (e.g. <see cref="NowControls.SiteId"/>).</summary>
+        /// <summary>
+        /// Area keyed by an ordinary integer identity local to the active retained
+        /// host and <see cref="NowControls.IdScope(int)"/>. Wrap an already-composed
+        /// key in <see cref="NowId.Resolved(int)"/> instead.
+        /// </summary>
         public static NowLayoutScope Area(
             int id,
             NowRect rect,
@@ -1034,10 +1175,14 @@ namespace NowUI
             float padding = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
-            return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
+            return Area((NowId)id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
         }
 
-        /// <summary>Area keyed by a precomputed identity hash (e.g. <see cref="NowControls.SiteId"/>).</summary>
+        /// <summary>
+        /// Area keyed by an ordinary integer identity local to the active retained
+        /// host and <see cref="NowControls.IdScope(int)"/>. Wrap an already-composed
+        /// key in <see cref="NowId.Resolved(int)"/> instead.
+        /// </summary>
         public static NowLayoutScope Area(
             int id,
             NowRect rect,
@@ -1045,35 +1190,75 @@ namespace NowUI
             float spacing = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start)
         {
-            return Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
+            return Area((NowId)id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false));
         }
 
-        /// <summary>Area keyed by a precomputed identity hash (e.g. <see cref="NowControls.SiteId"/>).</summary>
+        /// <summary>
+        /// Area keyed by an ordinary integer identity local to the active retained
+        /// host and <see cref="NowControls.IdScope(int)"/>. Wrap an already-composed
+        /// key in <see cref="NowId.Resolved(int)"/> instead.
+        /// </summary>
         public static NowLayoutScope Area(int id, NowRect rect, in NowLayoutOptions options)
         {
+            return Area((NowId)id, rect, options);
+        }
+
+        internal static NowLayoutScope BeginArea(int id, NowRect rect, in NowLayoutOptions options, bool horizontal)
+        {
+            ValidateRootAreaOptions(options);
             OnFrameBoundary();
 
             int areaId = id;
             _areaCounter++;
 
-            bool hasCache = _cache.TryGetValue(areaId, out var cached);
+            bool hasCache = _cache.TryGetValue(areaId, out var cached) &&
+                cached.horizontal == horizontal;
 
             int token = Push(new Group
             {
                 id = areaId,
-                horizontal = false,
+                horizontal = horizontal,
                 isArea = true,
                 rect = rect,
                 padding = options.Has(NowLayoutOptions.Field.Padding) ? options.padding : default,
                 spacing = options.Has(NowLayoutOptions.Field.Spacing) ? options.spacing : 0f,
                 alignItems = options.Has(NowLayoutOptions.Field.AlignItems) ? options.alignItems : NowLayoutAlign.Start,
+                hasAlignItems = options.Has(NowLayoutOptions.Field.AlignItems),
+                justify = options.Has(NowLayoutOptions.Field.Justify) ? options.justify : NowLayoutJustify.Start,
                 parentMainMax = float.MaxValue,
                 hasCache = hasCache,
-                cachedFixedMain = cached.fixedMain,
-                cachedFlexTotal = cached.flexTotal
+                cachedFixedMain = hasCache ? cached.fixedMain : 0f,
+                cachedChildCount = hasCache ? cached.childCount : 0,
+                cachedFlexItems = hasCache ? cached.flexItems : null,
+                cachedFlexCount = hasCache ? cached.flexCount : 0
             });
 
+            ResolveFlexShares(ref _groups[_depth - 1]);
+            ResolveJustification(ref _groups[_depth - 1]);
+
             return new NowLayoutScope(NowLayoutScope.Kind.Area, rect, token);
+        }
+
+        static void ValidateRootAreaOptions(in NowLayoutOptions options)
+        {
+            const NowLayoutOptions.Field placementFields =
+                NowLayoutOptions.Field.Width |
+                NowLayoutOptions.Field.Height |
+                NowLayoutOptions.Field.MinWidth |
+                NowLayoutOptions.Field.MaxWidth |
+                NowLayoutOptions.Field.MinHeight |
+                NowLayoutOptions.Field.MaxHeight |
+                NowLayoutOptions.Field.StretchWidth |
+                NowLayoutOptions.Field.StretchHeight |
+                NowLayoutOptions.Field.Align |
+                NowLayoutOptions.Field.Grow;
+
+            if ((options.fields & placementFields) == 0)
+                return;
+
+            throw new InvalidOperationException(
+                "Root layout areas already have explicit bounds. Their options may configure only spacing, padding, " +
+                "child alignment, and justification; put sizing, stretching, Grow, or self-alignment on a nested element.");
         }
 
         /// <summary>
@@ -1086,178 +1271,240 @@ namespace NowUI
         /// so reacting to clicks is always safe); check <see cref="isMeasurePass"/>
         /// when in doubt. A lambda that captures locals allocates a closure every
         /// rebuild — cache the delegate in a field, or pass the captured data
-        /// through the <c>Area&lt;TState&gt;</c> overloads with a static lambda.
+        /// through the <c>RunMeasured&lt;TState&gt;</c> overloads with a static lambda.
         /// </summary>
-        public static void Area(
+        public static void RunMeasured(
             NowRect rect,
             Action ui,
             float spacing = 0f,
             float padding = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
+            RunMeasured(default, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui, file, line);
         }
 
-        public static void Area(
+        public static void RunMeasured(
             NowRect rect,
             Action ui,
             Vector4 padding,
             float spacing = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
+            RunMeasured(default, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui, file, line);
         }
 
-        public static void Area(NowRect rect, in NowLayoutOptions options, Action ui)
+        public static void RunMeasured(
+            NowRect rect,
+            in NowLayoutOptions options,
+            Action ui,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            Area(default(NowId), rect, options, ui);
+            RunMeasured(default, rect, options, ui, file, line);
         }
 
-        public static void Area(
+        public static void RunMeasured(
             NowId id,
             NowRect rect,
             Action ui,
             float spacing = 0f,
             float padding = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
+            RunMeasured(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui, file, line);
         }
 
-        public static void Area(
+        public static void RunMeasured(
             NowId id,
             NowRect rect,
             Action ui,
             Vector4 padding,
             float spacing = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui);
+            RunMeasured(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), ui, file, line);
         }
 
-        public static void Area(NowId id, NowRect rect, in NowLayoutOptions options, Action ui)
+        public static void RunMeasured(
+            NowId id,
+            NowRect rect,
+            in NowLayoutOptions options,
+            Action ui,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
             if (ui == null)
                 throw new ArgumentNullException(nameof(ui));
 
-            if (_measurePass)
+            int site = NowControls.SiteId(file, line);
+
+            if (_measurePass || _measureCycleDepth > 0)
             {
-                using (Area(id, rect, options))
+                using (BeginContainerArea(false, rect, id, options, site))
                     ui();
 
                 return;
             }
 
-            int areaCounter = BeginMeasurePass();
+            BeginMeasureCycle();
 
             try
             {
-                using (Area(id, rect, options))
+                int areaCounter = BeginMeasurePass();
+
+                try
+                {
+                    using (BeginContainerArea(false, rect, id, options, site))
+                        ui();
+                }
+                finally
+                {
+                    EndMeasurePass(areaCounter);
+                }
+
+                using (BeginContainerArea(false, rect, id, options, site))
                     ui();
             }
             finally
             {
-                EndMeasurePass(areaCounter);
+                EndMeasureCycle();
             }
-
-            using (Area(id, rect, options))
-                ui();
         }
 
         /// <summary>
-        /// Two-pass callback area that threads <paramref name="state"/> into the
-        /// callback, so a static lambda can be used and no closure is allocated
-        /// per rebuild:
+        /// Two-pass measured area that threads <paramref name="state"/> into the
+        /// draw callback, so a static lambda can be used and no closure is
+        /// allocated per rebuild:
         /// <code>
-        /// NowLayout.Area(rect, this, static self => self.DrawContent());
+        /// NowLayout.RunMeasured(rect, this, static self => self.DrawContent());
         /// </code>
         /// </summary>
-        public static void Area<TState>(
+        public static void RunMeasured<TState>(
             NowRect rect,
             TState state,
             Action<TState> ui,
             float spacing = 0f,
             float padding = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui);
+            RunMeasured(default, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui, file, line);
         }
 
-        public static void Area<TState>(
+        public static void RunMeasured<TState>(
             NowRect rect,
             TState state,
             Action<TState> ui,
             Vector4 padding,
             float spacing = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            Area(default(NowId), rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui);
+            RunMeasured(default, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui, file, line);
         }
 
-        public static void Area<TState>(NowRect rect, in NowLayoutOptions options, TState state, Action<TState> ui)
+        public static void RunMeasured<TState>(
+            NowRect rect,
+            in NowLayoutOptions options,
+            TState state,
+            Action<TState> ui,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            Area(default(NowId), rect, options, state, ui);
+            RunMeasured(default, rect, options, state, ui, file, line);
         }
 
-        public static void Area<TState>(
+        public static void RunMeasured<TState>(
             NowId id,
             NowRect rect,
             TState state,
             Action<TState> ui,
             float spacing = 0f,
             float padding = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui);
+            RunMeasured(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui, file, line);
         }
 
-        public static void Area<TState>(
+        public static void RunMeasured<TState>(
             NowId id,
             NowRect rect,
             TState state,
             Action<TState> ui,
             Vector4 padding,
             float spacing = 0f,
-            NowLayoutAlign alignItems = NowLayoutAlign.Start)
+            NowLayoutAlign alignItems = NowLayoutAlign.Start,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            Area(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui);
+            RunMeasured(id, rect, GroupOptions(spacing, padding, alignItems, 0f, 0f, false, false), state, ui, file, line);
         }
 
-        public static void Area<TState>(NowId id, NowRect rect, in NowLayoutOptions options, TState state, Action<TState> ui)
+        public static void RunMeasured<TState>(
+            NowId id,
+            NowRect rect,
+            in NowLayoutOptions options,
+            TState state,
+            Action<TState> ui,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
             if (ui == null)
                 throw new ArgumentNullException(nameof(ui));
 
-            if (_measurePass)
+            int site = NowControls.SiteId(file, line);
+
+            if (_measurePass || _measureCycleDepth > 0)
             {
-                using (Area(id, rect, options))
+                using (BeginContainerArea(false, rect, id, options, site))
                     ui(state);
 
                 return;
             }
 
-            int areaCounter = BeginMeasurePass();
+            BeginMeasureCycle();
 
             try
             {
-                using (Area(id, rect, options))
+                int areaCounter = BeginMeasurePass();
+
+                try
+                {
+                    using (BeginContainerArea(false, rect, id, options, site))
+                        ui(state);
+                }
+                finally
+                {
+                    EndMeasurePass(areaCounter);
+                }
+
+                using (BeginContainerArea(false, rect, id, options, site))
                     ui(state);
             }
             finally
             {
-                EndMeasurePass(areaCounter);
+                EndMeasureCycle();
             }
-
-            using (Area(id, rect, options))
-                ui(state);
         }
 
         /// <summary>
         /// Enters measure mode: draws suppressed, input passive, layout calls record
         /// this frame's sizes. Run the UI once, call <see cref="EndMeasurePass"/> with
         /// the returned snapshot, then run the same UI again for real. Used by the
-        /// callback Area overloads and by hosts that own a draw entry point (e.g.
-        /// NowGraphic running DrawNowUI twice).
+        /// RunMeasured and exact layout hosts that own a draw entry point (for
+        /// example, NowLayoutGraphic running DrawNowUI twice).
         /// </summary>
         /// <remarks>Resolves the frame boundary before snapshotting so the counter rewind
         /// hands the real pass the same anonymous area ids the measure pass used (the
@@ -1265,11 +1512,13 @@ namespace NowUI
         internal static int BeginMeasurePass()
         {
             OnFrameBoundary();
+            MarkAmbientStart();
 
             int areaCounter = _areaCounter;
             _measurePass = true;
             Now.BeginSuppressDraw();
             NowInput.BeginPassive();
+            NowControls.CapturePassiveControlIdOccurrences();
             return areaCounter;
         }
 
@@ -1278,11 +1527,30 @@ namespace NowUI
         /// the fresh measurements).</summary>
         internal static void EndMeasurePass(int areaCounterSnapshot)
         {
+            NowControls.RestorePassiveControlIdOccurrences();
             NowInput.EndPassive();
             Now.EndSuppressDraw();
             _measurePass = false;
 
             _areaCounter = areaCounterSnapshot;
+        }
+
+        /// <summary>
+        /// Marks a complete measure/draw cycle owned by a host or RunMeasured.
+        /// Nested measured regions reuse that owner instead of replaying again.
+        /// </summary>
+        internal static void BeginMeasureCycle()
+        {
+            MarkAmbientStart();
+            ++_measureCycleDepth;
+        }
+
+        internal static void EndMeasureCycle()
+        {
+            if (_measureCycleDepth <= 0)
+                throw new InvalidOperationException("NowLayout measure cycle ended without a matching begin.");
+
+            --_measureCycleDepth;
         }
 
         internal static void EndArea()
@@ -1312,20 +1580,33 @@ namespace NowUI
 
         static Vector2 _trackedContent;
 
+        internal static bool isTrackingContent => _trackContent;
+
         /// <summary>
         /// Starts accumulating the content extent of root areas (area origin +
         /// measured content, the union across all areas ended while tracking).
-        /// Hosts use this to learn their preferred size — frame-late, like all
-        /// layout measurement.
+        /// Hosts use the most recently completed pass to learn their preferred
+        /// size. An exact layout host completes a measure pass before its real
+        /// draw; a one-pass host makes the result available to later queries.
         /// </summary>
         internal static void BeginContentTracking()
         {
+            if (_trackContent)
+            {
+                throw new InvalidOperationException(
+                    "NowLayout content tracking cannot be nested. Let the outer host finish its preferred-size pass before starting another measurement.");
+            }
+
+            MarkAmbientStart();
             _trackContent = true;
             _trackedContent = default;
         }
 
         internal static Vector2 EndContentTracking()
         {
+            if (!_trackContent)
+                throw new InvalidOperationException("NowLayout content tracking ended without a matching begin.");
+
             _trackContent = false;
             return _trackedContent;
         }
@@ -1342,9 +1623,11 @@ namespace NowUI
             float width = 0f,
             float height = 0f,
             bool stretchWidth = false,
-            bool stretchHeight = false)
+            bool stretchHeight = false,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(true, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+            return BeginGroup(true, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
         public static NowLayoutScope Horizontal(
@@ -1354,14 +1637,19 @@ namespace NowUI
             float width = 0f,
             float height = 0f,
             bool stretchWidth = false,
-            bool stretchHeight = false)
+            bool stretchHeight = false,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(true, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+            return BeginGroup(true, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Horizontal(in NowLayoutOptions options)
+        public static NowLayoutScope Horizontal(
+            in NowLayoutOptions options,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(true, default, options);
+            return BeginGroup(true, default, options, NowControls.SiteId(file, line));
         }
 
         public static NowLayoutScope Horizontal(
@@ -1372,9 +1660,11 @@ namespace NowUI
             float width = 0f,
             float height = 0f,
             bool stretchWidth = false,
-            bool stretchHeight = false)
+            bool stretchHeight = false,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(true, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+            return BeginGroup(true, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
         public static NowLayoutScope Horizontal(
@@ -1385,14 +1675,20 @@ namespace NowUI
             float width = 0f,
             float height = 0f,
             bool stretchWidth = false,
-            bool stretchHeight = false)
+            bool stretchHeight = false,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(true, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+            return BeginGroup(true, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Horizontal(NowId id, in NowLayoutOptions options)
+        public static NowLayoutScope Horizontal(
+            NowId id,
+            in NowLayoutOptions options,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(true, id, options);
+            return BeginGroup(true, id, options, NowControls.SiteId(file, line));
         }
 
         static NowLayoutOptions GroupOptions(
@@ -1456,9 +1752,11 @@ namespace NowUI
             float width = 0f,
             float height = 0f,
             bool stretchWidth = false,
-            bool stretchHeight = false)
+            bool stretchHeight = false,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(false, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+            return BeginGroup(false, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
         public static NowLayoutScope Vertical(
@@ -1468,14 +1766,19 @@ namespace NowUI
             float width = 0f,
             float height = 0f,
             bool stretchWidth = false,
-            bool stretchHeight = false)
+            bool stretchHeight = false,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(false, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+            return BeginGroup(false, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Vertical(in NowLayoutOptions options)
+        public static NowLayoutScope Vertical(
+            in NowLayoutOptions options,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(false, default, options);
+            return BeginGroup(false, default, options, NowControls.SiteId(file, line));
         }
 
         public static NowLayoutScope Vertical(
@@ -1486,9 +1789,11 @@ namespace NowUI
             float width = 0f,
             float height = 0f,
             bool stretchWidth = false,
-            bool stretchHeight = false)
+            bool stretchHeight = false,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(false, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+            return BeginGroup(false, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
         public static NowLayoutScope Vertical(
@@ -1499,14 +1804,20 @@ namespace NowUI
             float width = 0f,
             float height = 0f,
             bool stretchWidth = false,
-            bool stretchHeight = false)
+            bool stretchHeight = false,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(false, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight));
+            return BeginGroup(false, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Vertical(NowId id, in NowLayoutOptions options)
+        public static NowLayoutScope Vertical(
+            NowId id,
+            in NowLayoutOptions options,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return BeginGroup(false, id, options);
+            return BeginGroup(false, id, options, NowControls.SiteId(file, line));
         }
 
         internal static void EndVertical()
@@ -1516,10 +1827,10 @@ namespace NowUI
 
         /// <summary>
         /// Reserves a rect at the current layout position. The common settings
-        /// are optional parameters (<c>Rect(height: 22, stretchWidth: true)</c>);
+        /// are optional parameters (<c>ReserveRect(height: 22, stretchWidth: true)</c>);
         /// pass a <see cref="NowLayoutOptions"/> for anything beyond them.
         /// </summary>
-        public static NowRect Rect(
+        public static NowRect ReserveRect(
             float width = 0f,
             float height = 0f,
             bool stretchWidth = false,
@@ -1547,11 +1858,11 @@ namespace NowUI
             if (align != NowLayoutAlign.Start)
                 options = options.SetAlign(align);
 
-            return Rect(options);
+            return ReserveRect(options);
         }
 
         /// <summary>Reserves a rect sized by <paramref name="options"/> at the current layout position.</summary>
-        public static NowRect Rect(in NowLayoutOptions options)
+        public static NowRect ReserveRect(in NowLayoutOptions options)
         {
             ref var group = ref RequireGroup();
             return Allocate(ref group, options, Vector2.zero, false, out _, out _);
@@ -1568,15 +1879,15 @@ namespace NowUI
 
         /// <summary>
         /// Inserts a stretchable gap that absorbs a weighted share of the group's
-        /// remaining main-axis space. Resolved from the previous frame's measurements,
-        /// so it collapses on the first frame a layout appears.
+        /// remaining main-axis space. An exact layout host resolves the share in
+        /// its current measure/draw cycle. A one-pass host uses the previous
+        /// measurement, so a newly appearing gap initially collapses.
         /// </summary>
         public static void FlexibleSpace(float weight = 1f)
         {
             NowLayoutOptions.RequirePositiveFinite(weight, nameof(weight));
             ref var group = ref RequireGroup();
-            group.cursor += FlexShare(ref group, weight);
-            group.flexTotal += weight;
+            group.cursor += FlexShare(ref group, weight, 0f, float.MaxValue);
         }
 
         /// <summary>
@@ -1837,6 +2148,10 @@ namespace NowUI
             _defaultLabelStyleFont = null;
             _defaultLabelStyleVersion = 0;
             _measurePass = false;
+            _measureCycleDepth = 0;
+            _trackContent = false;
+            _trackedContent = default;
+            _ambientStartedAt = int.MinValue;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -1847,15 +2162,27 @@ namespace NowUI
 
         static NowLayoutScope BeginGroup(bool horizontal, NowId id, in NowLayoutOptions options)
         {
-            ref var parent = ref RequireGroup("Layout groups require an open area. Call NowLayout.Area first.");
+            return BeginGroup(horizontal, id, options, 0);
+        }
+
+        internal static NowLayoutScope BeginGroup(
+            bool horizontal,
+            NowId id,
+            in NowLayoutOptions options,
+            int site)
+        {
+            ref var parent = ref RequireGroup("Nested layout containers require a root. Begin with NowLayout.Column(rect) or NowLayout.Row(rect), or open the lower-level NowLayout.Area(rect).");
 
             int groupId = id.hasValue
                 ? HashCombine(parent.id, id.ResolveStableId(1))
-                : HashCombine(parent.id, parent.childIndex);
+                : HashCombine(
+                    parent.id,
+                    site != 0 ? ResolveGroupSiteOccurrence(_depth - 1, site) : parent.childIndex);
             parent.childIndex++;
 
             Vector2 autoSize = default;
-            bool hasCache = _cache.TryGetValue(groupId, out var cached);
+            bool hasCache = _cache.TryGetValue(groupId, out var cached) &&
+                cached.horizontal == horizontal;
 
             if (hasCache)
                 autoSize = new Vector2(cached.contentWidth, cached.contentHeight);
@@ -1876,6 +2203,8 @@ namespace NowUI
                 padding = options.Has(NowLayoutOptions.Field.Padding) ? options.padding : default,
                 spacing = options.Has(NowLayoutOptions.Field.Spacing) ? options.spacing : 0f,
                 alignItems = options.Has(NowLayoutOptions.Field.AlignItems) ? options.alignItems : NowLayoutAlign.Start,
+                hasAlignItems = options.Has(NowLayoutOptions.Field.AlignItems),
+                justify = options.Has(NowLayoutOptions.Field.Justify) ? options.justify : NowLayoutJustify.Start,
                 parentMainAuto = mainAuto,
                 parentMainAllocated = mainAllocated,
                 parentMainMin = options.Has(mainIsWidth ? NowLayoutOptions.Field.MinWidth : NowLayoutOptions.Field.MinHeight)
@@ -1893,9 +2222,14 @@ namespace NowUI
                     ? (mainIsWidth ? options.maxHeight : options.maxWidth)
                     : float.MaxValue,
                 hasCache = hasCache,
-                cachedFixedMain = cached.fixedMain,
-                cachedFlexTotal = cached.flexTotal
+                cachedFixedMain = hasCache ? cached.fixedMain : 0f,
+                cachedChildCount = hasCache ? cached.childCount : 0,
+                cachedFlexItems = hasCache ? cached.flexItems : null,
+                cachedFlexCount = hasCache ? cached.flexCount : 0
             });
+
+            ResolveFlexShares(ref _groups[_depth - 1]);
+            ResolveJustification(ref _groups[_depth - 1]);
 
             return new NowLayoutScope(
                 horizontal ? NowLayoutScope.Kind.Horizontal : NowLayoutScope.Kind.Vertical,
@@ -1965,13 +2299,8 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Last measured content size of an explicit-id group — how scroll views
-        /// learn their content extent (one frame late, like all layout measures).
-        /// </summary>
-        /// <summary>
         /// Reserves a stretch-width rect for content whose height is only known
-        /// after drawing — the standard frame-late pattern for expensive layout
-        /// (markdown documents, wrapped text):
+        /// after drawing, such as a markdown document or wrapped text:
         /// <code>
         /// var content = NowLayout.ContentRect();
         /// float height = DrawMyContent(content.rect);
@@ -1979,9 +2308,10 @@ namespace NowUI
         /// </code>
         /// The last reported height is stored per call site (loops are salted by
         /// per-frame occurrence, like control identity), so the caller manages no
-        /// state; <see cref="NowContentRect.End"/> requests a repaint while the
-        /// measurement is still converging so retained hosts settle within a few
-        /// frames.
+        /// state. In an exact layout host, the measure pass reports the height and
+        /// the real pass uses it in the same rebuild. A one-pass host uses the
+        /// reported height on a later rebuild; <see cref="NowContentRect.End"/>
+        /// requests repaint while that cached measurement is converging.
         /// </summary>
         public static NowContentRect ContentRect(
             [System.Runtime.CompilerServices.CallerFilePath] string file = "",
@@ -2001,44 +2331,51 @@ namespace NowUI
             if (!options.Has(NowLayoutOptions.Field.Width) && !options.Has(NowLayoutOptions.Field.StretchWidth))
                 options = options.SetStretchWidth();
 
-            var rect = Rect(options.SetHeight(Mathf.Max(lastHeight, 1f)));
+            var rect = ReserveRect(options.SetHeight(Mathf.Max(lastHeight, 1f)));
             return new NowContentRect(rect, slot);
         }
 
         /// <summary>
-        /// Last measured content size of an explicit-id group or area — how
-        /// scroll views and container controls learn their content extent.
-        /// Measured when the group ends, so reading it after the group's using
-        /// scope closes sees this frame's value; reading before sees last
-        /// frame's (the standard frame-late layout contract).
+        /// Most recently completed content size of an explicit-id root area —
+        /// how scroll views and container controls learn their content extent.
+        /// The area stores the value when its using scope closes. Exact layout
+        /// hosts therefore expose the measure-pass value during their real draw;
+        /// one-pass hosts expose the previous completed draw until the current
+        /// scope closes.
         /// </summary>
-        public static bool TryGetCachedContentSize(string id, out Vector2 size)
+        public static bool TryGetCachedAreaContentSize(string id, out Vector2 size)
         {
             if (id != null)
-                return TryGetCachedContentSize(NowControls.GetControlId(id), out size);
+                return TryGetCachedAreaContentSizeResolved(NowControls.GetControlId(id), out size);
 
             size = default;
             return false;
         }
 
         /// <summary>
-        /// Last measured content size of an explicit-id group or area — see
-        /// <see cref="TryGetCachedContentSize(string, out Vector2)"/>.
+        /// Last measured content size of an explicit-id root area — see
+        /// <see cref="TryGetCachedAreaContentSize(string, out Vector2)"/>.
         /// </summary>
-        public static bool TryGetCachedContentSize(NowId id, out Vector2 size)
+        public static bool TryGetCachedAreaContentSize(NowId id, out Vector2 size)
         {
             if (id.hasValue)
-                return TryGetCachedContentSize(id.ResolveStableId(1), out size);
+                return TryGetCachedAreaContentSizeResolved(id.ResolveStableId(1), out size);
 
             size = default;
             return false;
         }
 
         /// <summary>
-        /// Last measured content size of an explicit-id group or area — see
-        /// <see cref="TryGetCachedContentSize(string, out Vector2)"/>.
+        /// Last measured content size of an explicit-id root area. The integer
+        /// is local to the active retained host and id scope; wrap an
+        /// already-composed key in <see cref="NowId.Resolved(int)"/>.
         /// </summary>
-        public static bool TryGetCachedContentSize(int id, out Vector2 size)
+        public static bool TryGetCachedAreaContentSize(int id, out Vector2 size)
+        {
+            return TryGetCachedAreaContentSize((NowId)id, out size);
+        }
+
+        static bool TryGetCachedAreaContentSizeResolved(int id, out Vector2 size)
         {
             if (_cache.TryGetValue(id, out var cached))
             {
@@ -2061,19 +2398,59 @@ namespace NowUI
             contentWidth = (group.horizontal ? contentMain : contentCross) + group.padding.x + group.padding.z;
             contentHeight = (group.horizontal ? contentCross : contentMain) + group.padding.y + group.padding.w;
 
-            if (!_cache.TryGetValue(group.id, out var previous) ||
+            bool hasPrevious = _cache.TryGetValue(group.id, out var previous);
+            bool changed = !hasPrevious ||
+                previous.horizontal != group.horizontal ||
                 Mathf.Abs(previous.contentWidth - contentWidth) > 0.25f ||
-                Mathf.Abs(previous.contentHeight - contentHeight) > 0.25f)
+                Mathf.Abs(previous.contentHeight - contentHeight) > 0.25f ||
+                Mathf.Abs(previous.fixedMain - group.fixedMain) > 0.25f ||
+                previous.flexCount != group.flexCount ||
+                previous.childCount != group.childCount;
+
+            // Compare before copying: cachedFlexItems aliases the previous
+            // snapshot, so overwriting it first would hide descriptor-only
+            // changes such as Grow(1) -> Grow(3).
+            if (!changed && group.flexCount > 0 &&
+                (previous.flexItems == null || previous.flexItems.Length < group.flexCount))
             {
-                NowControlState.RequestRepaint();
+                changed = true;
             }
+
+            if (!changed)
+            {
+                for (int i = 0; i < group.flexCount; ++i)
+                {
+                    FlexItem before = previous.flexItems[i];
+                    FlexItem after = group.measuredFlexItems[i];
+
+                    if (before.weight != after.weight ||
+                        before.min != after.min ||
+                        before.max != after.max)
+                    {
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+
+            if (changed)
+                NowControlState.RequestRepaint();
+
+            FlexItem[] flexItems = group.cachedFlexItems;
+            EnsureCapacity(ref flexItems, group.flexCount);
+
+            if (group.flexCount > 0)
+                Array.Copy(group.measuredFlexItems, flexItems, group.flexCount);
 
             _cache[group.id] = new CachedGroup
             {
+                horizontal = group.horizontal,
                 contentWidth = contentWidth,
                 contentHeight = contentHeight,
                 fixedMain = group.fixedMain,
-                flexTotal = group.flexTotal,
+                flexItems = flexItems,
+                flexCount = group.flexCount,
+                childCount = group.childCount,
                 lastUsed = NowTime.realtimeSinceStartup
             };
         }
@@ -2092,24 +2469,44 @@ namespace NowUI
             float contentHeight = group.rect.height - group.padding.y - group.padding.w;
 
             bool mainIsWidth = group.horizontal;
+            bool grow = options.Has(NowLayoutOptions.Field.Grow);
+
+            if (grow && options.Has(mainIsWidth ? NowLayoutOptions.Field.Width : NowLayoutOptions.Field.Height))
+            {
+                throw new InvalidOperationException(
+                    "A growing element cannot also have a fixed size on its parent's main axis.");
+            }
+
+            if (grow && options.Has(mainIsWidth ? NowLayoutOptions.Field.StretchWidth : NowLayoutOptions.Field.StretchHeight))
+            {
+                throw new InvalidOperationException(
+                    "Grow and stretch cannot both define the same parent main-axis weight.");
+            }
+
+            bool stretchWidth = options.Has(NowLayoutOptions.Field.StretchWidth) || (grow && mainIsWidth);
+            bool stretchHeight = options.Has(NowLayoutOptions.Field.StretchHeight) || (grow && !mainIsWidth);
+            float stretchWidthWeight = grow && mainIsWidth ? options.grow : options.stretchWidth;
+            float stretchHeightWeight = grow && !mainIsWidth ? options.grow : options.stretchHeight;
+            bool implicitCrossStretch = stretchCrossByDefault &&
+                !options.Has(NowLayoutOptions.Field.Align) &&
+                !group.hasAlignItems;
 
             ResolveAxis(
                 ref group,
                 mainIsWidth,
                 options.Has(NowLayoutOptions.Field.Width),
                 options.width,
-                options.Has(NowLayoutOptions.Field.StretchWidth),
-                options.stretchWidth,
+                stretchWidth,
+                stretchWidthWeight,
                 options.Has(NowLayoutOptions.Field.MinWidth),
                 options.minWidth,
                 options.Has(NowLayoutOptions.Field.MaxWidth),
                 options.maxWidth,
                 autoSize.x,
                 contentWidth,
-                stretchCrossByDefault,
+                implicitCrossStretch,
                 out float width,
                 out bool widthFlex,
-                out float widthWeight,
                 out bool widthAuto);
 
             ResolveAxis(
@@ -2117,28 +2514,26 @@ namespace NowUI
                 !mainIsWidth,
                 options.Has(NowLayoutOptions.Field.Height),
                 options.height,
-                options.Has(NowLayoutOptions.Field.StretchHeight),
-                options.stretchHeight,
+                stretchHeight,
+                stretchHeightWeight,
                 options.Has(NowLayoutOptions.Field.MinHeight),
                 options.minHeight,
                 options.Has(NowLayoutOptions.Field.MaxHeight),
                 options.maxHeight,
                 autoSize.y,
                 contentHeight,
-                stretchCrossByDefault,
+                implicitCrossStretch,
                 out float height,
                 out bool heightFlex,
-                out float heightWeight,
                 out bool heightAuto);
 
             float main = mainIsWidth ? width : height;
             float cross = mainIsWidth ? height : width;
             bool mainFlex = mainIsWidth ? widthFlex : heightFlex;
-            float mainWeight = mainIsWidth ? widthWeight : heightWeight;
             mainAuto = mainIsWidth ? widthAuto : heightAuto;
             mainAllocated = main;
 
-            float gap = group.childCount > 0 ? group.spacing : 0f;
+            float gap = group.childCount > 0 ? group.spacing + group.justifyGap : 0f;
             float mainPos = group.cursor + gap;
 
             float crossAvail = mainIsWidth ? contentHeight : contentWidth;
@@ -2158,10 +2553,7 @@ namespace NowUI
 
             group.cursor = mainPos + main;
             group.maxCross = Mathf.Max(group.maxCross, cross);
-            group.fixedMain += gap + (mainFlex ? 0f : main);
-
-            if (mainFlex)
-                group.flexTotal += mainWeight;
+            group.fixedMain += (group.childCount > 0 ? group.spacing : 0f) + (mainFlex ? 0f : main);
 
             group.childCount++;
             return rect;
@@ -2183,11 +2575,9 @@ namespace NowUI
             bool stretchCrossByDefault,
             out float size,
             out bool isFlex,
-            out float weight,
             out bool isAuto)
         {
             isFlex = false;
-            weight = 0f;
             isAuto = false;
 
             if (hasFixed)
@@ -2199,8 +2589,11 @@ namespace NowUI
                 if (isMainAxis)
                 {
                     isFlex = true;
-                    weight = stretchWeight;
-                    size = FlexShare(ref group, weight);
+                    size = FlexShare(
+                        ref group,
+                        stretchWeight,
+                        hasMin ? min : 0f,
+                        hasMax ? max : float.MaxValue);
                 }
                 else
                 {
@@ -2240,17 +2633,167 @@ namespace NowUI
             return mask.Outset(4f);
         }
 
-        static float FlexShare(ref Group group, float weight)
+        static float FlexShare(ref Group group, float weight, float min, float max)
         {
-            if (!group.hasCache || group.cachedFlexTotal <= 0f)
-                return 0f;
+            int index = group.flexCount++;
+            float size = group.hasCache && index < group.cachedFlexCount &&
+                group.resolvedFlexSizes != null && index < group.resolvedFlexSizes.Length
+                ? group.resolvedFlexSizes[index]
+                : 0f;
 
-            float avail = group.horizontal
+            EnsureCapacity(ref group.measuredFlexItems, group.flexCount);
+            group.measuredFlexItems[index] = new FlexItem
+            {
+                weight = weight,
+                min = min,
+                max = max
+            };
+
+            return size;
+        }
+
+        static void ResolveFlexShares(ref Group group)
+        {
+            if (!group.hasCache || group.cachedFlexCount == 0 || group.cachedFlexItems == null)
+                return;
+
+            EnsureCapacity(ref group.resolvedFlexSizes, group.cachedFlexCount);
+
+            float available = group.horizontal
                 ? group.rect.width - group.padding.x - group.padding.z
                 : group.rect.height - group.padding.y - group.padding.w;
+            float remaining = Mathf.Max(0f, available - group.cachedFixedMain);
+            float activeWeight = 0f;
 
-            float remaining = avail - group.cachedFixedMain;
-            return remaining > 0f ? remaining * weight / group.cachedFlexTotal : 0f;
+            for (int i = 0; i < group.cachedFlexCount; ++i)
+            {
+                group.resolvedFlexSizes[i] = float.NaN;
+                activeWeight += group.cachedFlexItems[i].weight;
+            }
+
+            while (activeWeight > 0f)
+            {
+                float unit = remaining / activeWeight;
+                float totalViolation = 0f;
+
+                for (int i = 0; i < group.cachedFlexCount; ++i)
+                {
+                    if (!float.IsNaN(group.resolvedFlexSizes[i]))
+                        continue;
+
+                    FlexItem item = group.cachedFlexItems[i];
+                    float proposed = unit * item.weight;
+                    totalViolation += Mathf.Clamp(proposed, item.min, item.max) - proposed;
+                }
+
+                bool freezeMin = totalViolation > 0.0001f;
+                bool freezeMax = totalViolation < -0.0001f;
+
+                if (!freezeMin && !freezeMax)
+                {
+                    for (int i = 0; i < group.cachedFlexCount; ++i)
+                    {
+                        if (float.IsNaN(group.resolvedFlexSizes[i]))
+                        {
+                            FlexItem item = group.cachedFlexItems[i];
+                            group.resolvedFlexSizes[i] = Mathf.Clamp(unit * item.weight, item.min, item.max);
+                        }
+                    }
+
+                    break;
+                }
+
+                bool frozeItem = false;
+
+                for (int i = 0; i < group.cachedFlexCount; ++i)
+                {
+                    if (!float.IsNaN(group.resolvedFlexSizes[i]))
+                        continue;
+
+                    FlexItem item = group.cachedFlexItems[i];
+                    float proposed = unit * item.weight;
+                    bool violatesSelectedBound = freezeMin
+                        ? proposed < item.min
+                        : proposed > item.max;
+
+                    if (violatesSelectedBound)
+                    {
+                        float size = freezeMin ? item.min : item.max;
+                        group.resolvedFlexSizes[i] = size;
+                        remaining -= size;
+                        activeWeight -= item.weight;
+                        frozeItem = true;
+                    }
+                }
+
+                if (!frozeItem)
+                    break;
+            }
+
+            group.resolvedFlexMain = 0f;
+
+            for (int i = 0; i < group.cachedFlexCount; ++i)
+            {
+                if (float.IsNaN(group.resolvedFlexSizes[i]))
+                    group.resolvedFlexSizes[i] = 0f;
+
+                group.resolvedFlexMain += group.resolvedFlexSizes[i];
+            }
+        }
+
+        static void EnsureCapacity(ref FlexItem[] items, int count)
+        {
+            if (count == 0)
+                return;
+
+            if (items == null)
+            {
+                items = new FlexItem[Mathf.Max(4, Mathf.NextPowerOfTwo(count))];
+                return;
+            }
+
+            if (items.Length < count)
+                Array.Resize(ref items, Mathf.NextPowerOfTwo(count));
+        }
+
+        static void EnsureCapacity(ref float[] items, int count)
+        {
+            if (count == 0)
+                return;
+
+            if (items == null)
+            {
+                items = new float[Mathf.Max(4, Mathf.NextPowerOfTwo(count))];
+                return;
+            }
+
+            if (items.Length < count)
+                Array.Resize(ref items, Mathf.NextPowerOfTwo(count));
+        }
+
+        static void ResolveJustification(ref Group group)
+        {
+            if (!group.hasCache || group.cachedChildCount == 0 || group.justify == NowLayoutJustify.Start)
+                return;
+
+            float available = group.horizontal
+                ? group.rect.width - group.padding.x - group.padding.z
+                : group.rect.height - group.padding.y - group.padding.w;
+            float remaining = Mathf.Max(0f, available - group.cachedFixedMain - group.resolvedFlexMain);
+
+            switch (group.justify)
+            {
+                case NowLayoutJustify.Center:
+                    group.cursor = remaining * 0.5f;
+                    break;
+                case NowLayoutJustify.End:
+                    group.cursor = remaining;
+                    break;
+                case NowLayoutJustify.SpaceBetween:
+                    if (group.cachedChildCount > 1)
+                        group.justifyGap = remaining / (group.cachedChildCount - 1);
+                    break;
+            }
         }
 
         static ref Group Top()
@@ -2263,7 +2806,7 @@ namespace NowUI
             if (_depth == 0)
             {
                 throw new InvalidOperationException(
-                    message ?? "Layout calls require an open area. Call NowLayout.Area first.");
+                    message ?? "Layout calls require a root. Begin with NowLayout.Column(rect) or NowLayout.Row(rect), or open the lower-level NowLayout.Area(rect).");
             }
 
             return ref Top();
@@ -2271,11 +2814,48 @@ namespace NowUI
 
         static int Push(in Group group)
         {
-            if (_depth == _groups.Length)
-                Array.Resize(ref _groups, _groups.Length * 2);
+            MarkAmbientStart();
 
-            _groups[_depth++] = group;
+            if (_depth == _groups.Length)
+            {
+                Array.Resize(ref _groups, _groups.Length * 2);
+                Array.Resize(ref _groupSiteOccurrences, _groups.Length);
+            }
+
+            FlexItem[] measuredFlexItems = _groups[_depth].measuredFlexItems;
+            float[] resolvedFlexSizes = _groups[_depth].resolvedFlexSizes;
+
+            _groups[_depth] = group;
+            _groups[_depth].measuredFlexItems = measuredFlexItems;
+            _groups[_depth].resolvedFlexSizes = resolvedFlexSizes;
+
+            var occurrences = _groupSiteOccurrences[_depth];
+
+            if (occurrences != null)
+                occurrences.Clear();
+
+            _depth++;
             return _layoutScopes.Enter();
+        }
+
+        static int ResolveGroupSiteOccurrence(int parentDepth, int site)
+        {
+            var occurrences = _groupSiteOccurrences[parentDepth];
+
+            if (occurrences == null)
+            {
+                occurrences = new Dictionary<int, int>(4);
+                _groupSiteOccurrences[parentDepth] = occurrences;
+            }
+
+            if (!occurrences.TryGetValue(site, out int occurrence))
+            {
+                occurrences.Add(site, 1);
+                return site;
+            }
+
+            occurrences[site] = occurrence + 1;
+            return HashCombine(site, occurrence);
         }
 
         internal static void EndScope(NowLayoutScope.Kind kind, int token)

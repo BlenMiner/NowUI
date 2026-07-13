@@ -121,6 +121,163 @@ namespace NowUI
             return new NowRect(x + dx, y + dy, width, height);
         }
 
+        /// <summary>Creates a rect of the requested size centered inside this rect.</summary>
+        public readonly NowRect Centered(float width, float height)
+        {
+            return Align(width, height, NowLayoutAlign.Center, NowLayoutAlign.Center);
+        }
+
+        /// <summary>Creates a rect of the requested size centered inside this rect.</summary>
+        public readonly NowRect Centered(Vector2 size)
+        {
+            return Centered(size.x, size.y);
+        }
+
+        /// <summary>
+        /// Creates a rect of the requested size aligned inside this rect. A child may
+        /// be larger than its container; center and end alignment then place the
+        /// overflow symmetrically or toward the start edge, respectively.
+        /// </summary>
+        public readonly NowRect Align(
+            float width,
+            float height,
+            NowLayoutAlign horizontal,
+            NowLayoutAlign vertical)
+        {
+            RequireNonNegativeFinite(width, nameof(width));
+            RequireNonNegativeFinite(height, nameof(height));
+            RequireAlign(horizontal, nameof(horizontal));
+            RequireAlign(vertical, nameof(vertical));
+
+            return new NowRect(
+                AlignedPosition(x, this.width, width, horizontal),
+                AlignedPosition(y, this.height, height, vertical),
+                width,
+                height);
+        }
+
+        /// <summary>Creates a rect of the requested size aligned inside this rect.</summary>
+        public readonly NowRect Align(
+            Vector2 size,
+            NowLayoutAlign horizontal,
+            NowLayoutAlign vertical)
+        {
+            return Align(size.x, size.y, horizontal, vertical);
+        }
+
+        /// <summary>
+        /// Returns a slice from the top edge. The requested height is clamped to this
+        /// rect, so the returned slice never extends beyond it.
+        /// </summary>
+        public readonly NowRect TakeTop(float height)
+        {
+            return TakeTop(height, out _);
+        }
+
+        /// <summary>
+        /// Returns a slice from the top edge and the part below it. The requested
+        /// height is clamped to this rect, so neither result has a negative height.
+        /// </summary>
+        public readonly NowRect TakeTop(float height, out NowRect remainder)
+        {
+            RequireNonNegativeFinite(height, nameof(height));
+            float available = Mathf.Max(0f, this.height);
+            float taken = Mathf.Min(height, available);
+            remainder = new NowRect(x, y + taken, width, available - taken);
+            return new NowRect(x, y, width, taken);
+        }
+
+        /// <summary>
+        /// Returns a slice from the bottom edge. The requested height is clamped to
+        /// this rect, so the returned slice never extends beyond it.
+        /// </summary>
+        public readonly NowRect TakeBottom(float height)
+        {
+            return TakeBottom(height, out _);
+        }
+
+        /// <summary>
+        /// Returns a slice from the bottom edge and the part above it. The requested
+        /// height is clamped to this rect, so neither result has a negative height.
+        /// </summary>
+        public readonly NowRect TakeBottom(float height, out NowRect remainder)
+        {
+            RequireNonNegativeFinite(height, nameof(height));
+            float available = Mathf.Max(0f, this.height);
+            float taken = Mathf.Min(height, available);
+            float remaining = available - taken;
+            remainder = new NowRect(x, y, width, remaining);
+            return new NowRect(x, y + remaining, width, taken);
+        }
+
+        /// <summary>
+        /// Returns a slice from the left edge. The requested width is clamped to this
+        /// rect, so the returned slice never extends beyond it.
+        /// </summary>
+        public readonly NowRect TakeLeft(float width)
+        {
+            return TakeLeft(width, out _);
+        }
+
+        /// <summary>
+        /// Returns a slice from the left edge and the part to its right. The requested
+        /// width is clamped to this rect, so neither result has a negative width.
+        /// </summary>
+        public readonly NowRect TakeLeft(float width, out NowRect remainder)
+        {
+            RequireNonNegativeFinite(width, nameof(width));
+            float available = Mathf.Max(0f, this.width);
+            float taken = Mathf.Min(width, available);
+            remainder = new NowRect(x + taken, y, available - taken, height);
+            return new NowRect(x, y, taken, height);
+        }
+
+        /// <summary>
+        /// Returns a slice from the right edge. The requested width is clamped to this
+        /// rect, so the returned slice never extends beyond it.
+        /// </summary>
+        public readonly NowRect TakeRight(float width)
+        {
+            return TakeRight(width, out _);
+        }
+
+        /// <summary>
+        /// Returns a slice from the right edge and the part to its left. The requested
+        /// width is clamped to this rect, so neither result has a negative width.
+        /// </summary>
+        public readonly NowRect TakeRight(float width, out NowRect remainder)
+        {
+            RequireNonNegativeFinite(width, nameof(width));
+            float available = Mathf.Max(0f, this.width);
+            float taken = Mathf.Min(width, available);
+            float remaining = available - taken;
+            remainder = new NowRect(x, y, remaining, height);
+            return new NowRect(x + remaining, y, taken, height);
+        }
+
+        static float AlignedPosition(float start, float available, float requested, NowLayoutAlign align)
+        {
+            return align switch
+            {
+                NowLayoutAlign.Start => start,
+                NowLayoutAlign.Center => start + (available - requested) * 0.5f,
+                NowLayoutAlign.End => start + available - requested,
+                _ => start
+            };
+        }
+
+        static void RequireNonNegativeFinite(float value, string paramName)
+        {
+            if (value < 0f || float.IsNaN(value) || float.IsInfinity(value))
+                throw new ArgumentOutOfRangeException(paramName, "Rectangle sizes must be non-negative finite values.");
+        }
+
+        static void RequireAlign(NowLayoutAlign align, string paramName)
+        {
+            if ((uint)align > (uint)NowLayoutAlign.End)
+                throw new ArgumentOutOfRangeException(paramName, align, "Unknown rectangle alignment.");
+        }
+
         public static implicit operator Vector4(NowRect rect)
         {
             return new Vector4(rect.x, rect.y, rect.width, rect.height);

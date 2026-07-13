@@ -34,8 +34,9 @@ it.
   themes, wrapping variants, custom shapes on standard interaction, and
   building new controls from scratch (with a live demo in the docs browser
   scene).
-- [Layout](Layout.md): flexbox-style groups, sizing options, flexible space,
-  and the two measurement modes.
+- [Layout](Layout.md): choosing `Now` versus `NowLayout`, fluent rows and
+  columns, sizing and growth, dedicated layout hosts, and `RunMeasured` for
+  manual hosts.
 - [Lottie](Lottie.md): importing `.lottie` assets, the `Now.Lottie` builder,
   layout/UGUI integration, and tessellation performance notes.
 - [Mobile](Mobile.md): density-scaled UI (`Now.StartUI(uiScale)`), safe areas,

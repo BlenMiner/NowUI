@@ -39,7 +39,7 @@ coordinates (top-left origin, current UI scale). Use it as the root layout
 rect to stay clear of notches, punch-holes, and rounded corners:
 
 ```csharp
-using (NowLayout.Area(NowScreen.safeArea))
+using (NowLayout.Column(NowScreen.safeArea).Begin())
 {
     // content
 }

@@ -12,7 +12,8 @@ namespace NowUI
     /// </code>
     /// Content lays out in a vertical group clipped to the viewport; the wheel
     /// scrolls while hovered and scrollbar thumbs drag. Content size is the
-    /// group's measured extent (one frame late, like all layout measurement).
+    /// group's measured extent. Exact layout hosts resolve it in the same
+    /// measure/draw cycle; one-pass hosts use the previous measurement.
     /// </summary>
     [NowBuilder]
     public struct NowScrollView
@@ -128,7 +129,7 @@ namespace NowUI
             int id = NowControls.GetControlId(_id, _site);
             int areaKey = NowInput.CombineId(id, 0x4e535641);
 
-            NowLayout.TryGetCachedContentSize(areaKey, out Vector2 content);
+            NowLayout.TryGetCachedAreaContentSize(NowId.Resolved(areaKey), out Vector2 content);
             var styles = NowTheme.themeAsset.controlStyles;
 
             ref Vector2 measuredSize = ref NowControlState.Get<Vector2>(NowInput.CombineId(id, LayoutSizeSeed));
@@ -160,7 +161,7 @@ namespace NowUI
             EnsureFocusedControlVisible(id, scrollLayout.contentViewport, scrollLayout.maxScrollX, scrollLayout.maxScrollY, ref scroll);
 
             var mask = Now.Mask(scrollLayout.contentViewport);
-            var layout = NowLayout.Area(areaKey, new NowRect(
+            var layout = NowLayout.Area(NowId.Resolved(areaKey), new NowRect(
                 viewport.x - scroll.x,
                 viewport.y - scroll.y,
                 scrollLayout.contentViewport.width,
@@ -300,6 +301,8 @@ namespace NowUI
     [NowScope]
     public struct NowScrollScope : IDisposable
     {
+        static readonly NowScopeGuard s_scopes = new NowScopeGuard("NowScrollView.Begin", 8);
+
         const float EdgeScrollMargin = 28f;
 
         const float EdgeScrollMaxOvershoot = 112f;
@@ -336,7 +339,7 @@ namespace NowUI
         readonly float _maxScrollY;
         readonly bool _verticalBarVisible;
         readonly bool _horizontalBarVisible;
-        bool _disposed;
+        int _token;
 
         internal NowScrollScope(
             NowLayoutScope layout,
@@ -360,7 +363,7 @@ namespace NowUI
             _maxScrollY = maxScrollY;
             _verticalBarVisible = verticalBarVisible;
             _horizontalBarVisible = horizontalBarVisible;
-            _disposed = false;
+            _token = s_scopes.Enter();
         }
 
         /// <summary>The clipped viewport rect this scroll view occupies.</summary>
@@ -368,8 +371,9 @@ namespace NowUI
 
         /// <summary>
         /// Current scroll offset in pixels; setting clamps to the valid range.
-        /// Content size is measured a frame late, so on the very first frame the
-        /// range is still zero — the repaint loop settles it on the next frame.
+        /// Exact layout hosts resolve the content range in the same rebuild.
+        /// In a one-pass host, newly appearing content initially has a zero range
+        /// and the repaint loop settles it on a later rebuild.
         /// </summary>
         public Vector2 scrollOffset
         {
@@ -419,10 +423,30 @@ namespace NowUI
 
         public void Dispose()
         {
-            if (_disposed)
+            if (_token == 0)
                 return;
 
-            _disposed = true;
+            if (!s_scopes.BeginEnd(_token))
+            {
+                _token = 0;
+                return;
+            }
+
+            int token = _token;
+
+            try
+            {
+                DisposeOwnedScope();
+            }
+            finally
+            {
+                s_scopes.ExitEnding(token);
+                _token = 0;
+            }
+        }
+
+        void DisposeOwnedScope()
+        {
             _focus.Dispose();
             _layout.Dispose();
             _mask.Dispose();

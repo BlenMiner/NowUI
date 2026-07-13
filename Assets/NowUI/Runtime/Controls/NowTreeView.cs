@@ -71,21 +71,34 @@ namespace NowUI
 
         public NowTreeViewScope Begin()
         {
-            var frame = NowTreeFrame.Rent();
-            frame.state = _state ?? frame.fallbackState;
-            frame.theme = NowTheme.themeAsset;
-            frame.selectionChanged = false;
-            frame.pathIds.Clear();
-            frame.counters.Clear();
-            frame.pathIds.Add(ResolveControlId());
-            frame.counters.Add(0);
-            return new NowTreeViewScope(frame);
+            var frame = NowTreeFrame.Rent(out int token);
+
+            try
+            {
+                frame.state = _state ?? frame.fallbackState;
+                frame.theme = NowTheme.themeAsset;
+                frame.selectionChanged = false;
+                frame.pathIds.Clear();
+                frame.counters.Clear();
+                frame.pathIds.Add(ResolveControlId());
+                frame.counters.Add(0);
+                return new NowTreeViewScope(frame, token);
+            }
+            catch
+            {
+                NowTreeFrame.Return(frame, token);
+                throw;
+            }
         }
     }
 
     sealed class NowTreeFrame
     {
         static NowTreeFrame s_pooled;
+
+        static readonly NowScopeGuard s_scopes = new NowScopeGuard("NowLayout.TreeView");
+
+        int _leaseToken;
 
         public NowTreeViewState state;
         public NowThemeAsset theme;
@@ -94,24 +107,59 @@ namespace NowUI
         public readonly List<int> counters = new List<int>(8);
         public readonly NowTreeViewState fallbackState = new NowTreeViewState();
 
-        public static NowTreeFrame Rent()
+        public static NowTreeFrame Rent(out int token)
         {
             var frame = s_pooled ?? new NowTreeFrame();
             s_pooled = null;
-            return frame;
+
+            token = 0;
+
+            try
+            {
+                token = s_scopes.Enter();
+                frame._leaseToken = token;
+                return frame;
+            }
+            catch
+            {
+                if (s_pooled == null)
+                    s_pooled = frame;
+
+                throw;
+            }
         }
 
-        public static void Return(NowTreeFrame frame)
+        public static void Return(NowTreeFrame frame, int token)
         {
+            // A value-type scope may have been copied. Once the original returns
+            // this frame, a stale copy must not return it again after a newer tree
+            // has rented it. The lease token belongs to the frame as well as the
+            // handle, so reuse invalidates every old copy.
+            if (frame == null || token == 0 || frame._leaseToken != token)
+                return;
+
+            // Also gives nested tree scopes the same reverse-order guarantee as
+            // the other stack-backed NowUI scopes. A failed outer dispose leaves
+            // its token live so it can be retried after the inner tree closes.
+            if (!s_scopes.Exit(token))
+                return;
+
+            frame._leaseToken = 0;
             frame.state = null;
             frame.theme = null;
             s_pooled = frame;
+        }
+
+        public static bool IsOwned(NowTreeFrame frame, int token)
+        {
+            return frame != null && token != 0 && frame._leaseToken == token;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetForRuntimeLoad()
         {
             s_pooled = null;
+            s_scopes.Clear();
         }
     }
 
@@ -121,19 +169,20 @@ namespace NowUI
         const int DisclosureSeed = 0x4e544456;
 
         readonly NowTreeFrame _frame;
-        bool _disposed;
 
-        internal NowTreeViewScope(NowTreeFrame frame)
+        int _token;
+
+        internal NowTreeViewScope(NowTreeFrame frame, int token)
         {
             _frame = frame;
-            _disposed = false;
+            _token = token;
         }
 
         /// <summary>The selected row id after this frame's interactions.</summary>
-        public int selectedId => _frame.state.selectedId;
+        public int selectedId => RequireFrame().state.selectedId;
 
         /// <summary>True when a row changed the selection this frame.</summary>
-        public bool selectionChanged => _frame.selectionChanged;
+        public bool selectionChanged => RequireFrame().selectionChanged;
 
         /// <summary>
         /// A parent row; returns true while expanded. Draw children inside and
@@ -146,6 +195,7 @@ namespace NowUI
 
         public bool BeginNode(string label, NowId id)
         {
+            RequireFrame();
             int nodeId = NextNodeId(id);
             bool expanded = _frame.state.IsExpanded(nodeId);
 
@@ -167,6 +217,7 @@ namespace NowUI
 
         public bool Node(string label, NowId id)
         {
+            RequireFrame();
             int nodeId = NextNodeId(id);
             bool expanded = false;
             return DrawRow(label, nodeId, hasChildren: false, ref expanded);
@@ -175,6 +226,8 @@ namespace NowUI
         /// <summary>Closes the children of the last <see cref="BeginNode"/> that returned true.</summary>
         public void EndNode()
         {
+            RequireFrame();
+
             if (_frame.pathIds.Count > 1)
             {
                 _frame.pathIds.RemoveAt(_frame.pathIds.Count - 1);
@@ -200,7 +253,7 @@ namespace NowUI
             var renderer = theme.controlRenderer;
             int depth = _frame.pathIds.Count - 1;
 
-            NowRect rect = NowLayout.Rect(height: styles.treeRowHeight, stretchWidth: true);
+            NowRect rect = NowLayout.ReserveRect(height: styles.treeRowHeight, stretchWidth: true);
 
             float indent = depth * styles.treeIndentWidth;
             float disclosure = styles.treeDisclosureSize;
@@ -274,11 +327,19 @@ namespace NowUI
 
         public void Dispose()
         {
-            if (_disposed)
+            if (_token == 0)
                 return;
 
-            _disposed = true;
-            NowTreeFrame.Return(_frame);
+            NowTreeFrame.Return(_frame, _token);
+            _token = 0;
+        }
+
+        NowTreeFrame RequireFrame()
+        {
+            if (!NowTreeFrame.IsOwned(_frame, _token))
+                throw new System.ObjectDisposedException(nameof(NowTreeViewScope));
+
+            return _frame;
         }
     }
 }

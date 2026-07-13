@@ -112,7 +112,7 @@ namespace NowUI.Markdown
             int areaId = context.embedId;
 
             using (NowControls.IdScope(areaId))
-            using (NowLayout.Area(areaId, context.rect, default(NowLayoutOptions)))
+            using (NowLayout.Area(NowId.Resolved(areaId), context.rect, default(NowLayoutOptions)))
             {
                 var result = NowMarkup.Document(context.source).Draw(_state);
                 var recorded = result.events;
@@ -124,7 +124,7 @@ namespace NowUI.Markdown
                 }
             }
 
-            return NowLayout.TryGetCachedContentSize(areaId, out Vector2 size) ? size.y : 0f;
+            return NowLayout.TryGetCachedAreaContentSize(NowId.Resolved(areaId), out Vector2 size) ? size.y : 0f;
         }
     }
 }

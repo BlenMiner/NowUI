@@ -14,6 +14,10 @@ namespace NowUI
 
         static readonly List<int> _removeIds = new List<int>(8);
 
+        static readonly NowScopeGuard _scopes = new NowScopeGuard("NowGUI.Auto", 8);
+
+        static int _scopeFrame = -1;
+
         static double _lastCleanupTime;
 
         public static NowGUIScope Auto(Rect rect)
@@ -29,42 +33,128 @@ namespace NowUI
         public static NowGUIScope Auto(Rect rect, Color clearColor, float pixelsPerPoint)
         {
             if (Event.current == null)
-                return NowGUIScope.Suppress(rect);
+                return AutoWithoutEvent(rect);
 
             int controlId = GUIUtility.GetControlID(ControlHint, FocusType.Passive, rect);
-            var inputSurface = new NowInputSurface(new Vector2(rect.width, rect.height), rect);
-            var inputScope = NowInput.Begin(NowIMGUIInputProvider.instance, inputSurface);
+            return AutoForEvent(
+                controlId,
+                rect,
+                clearColor,
+                pixelsPerPoint,
+                Event.current.type == EventType.Repaint);
+        }
 
-            if (Event.current.type != EventType.Repaint)
-                return NowGUIScope.Suppress(rect, inputScope);
-
-            if (rect.width <= 0f || rect.height <= 0f)
-                return NowGUIScope.Suppress(rect, inputScope);
-
-            var entry = GetEntry(controlId);
-            entry.lastUsedTime = NowTime.realtimeSinceStartup;
-
-            pixelsPerPoint = Mathf.Max(1f, pixelsPerPoint);
-            int pixelWidth = Mathf.Max(1, Mathf.CeilToInt(rect.width * pixelsPerPoint));
-            int pixelHeight = Mathf.Max(1, Mathf.CeilToInt(rect.height * pixelsPerPoint));
-
-            RenderTexture target = entry.GetTarget(pixelWidth, pixelHeight);
-            var frameScope = NowFrame.Begin(pixelsPerPoint);
+        internal static NowGUIScope AutoWithoutEvent(Rect rect)
+        {
+            var surface = new NowInputSurface(new Vector2(rect.width, rect.height), rect);
+            var inputScope = NowInput.Begin(null, surface);
 
             try
             {
-                return NowGUIScope.Render(
-                    rect,
-                    entry,
-                    target,
-                    entry.renderer.Begin(new Vector2(rect.width, rect.height)),
-                    clearColor,
-                    inputScope,
-                    frameScope);
+                return NowGUIScope.Suppress(rect, inputScope);
             }
             catch
             {
-                frameScope.Dispose();
+                inputScope.Dispose();
+                throw;
+            }
+        }
+
+        internal static NowGUIScope AutoForEvent(
+            int controlId,
+            Rect rect,
+            Color clearColor,
+            float pixelsPerPoint,
+            bool repaint)
+        {
+            var inputSurface = new NowInputSurface(new Vector2(rect.width, rect.height), rect);
+            var inputScope = NowInput.Begin(NowIMGUIInputProvider.instance, inputSurface);
+            bool ownsInputScope = true;
+            ControlIdScope controlIdScope = default;
+            bool ownsControlIdScope = false;
+            NowFrameScope frameScope = default;
+            bool ownsFrameScope = false;
+            NowDrawScope drawScope = default;
+            bool ownsDrawScope = false;
+
+            try
+            {
+                var entry = GetEntry(controlId);
+                entry.lastUsedTime = NowTime.realtimeSinceStartup;
+                controlIdScope = NowControls.RestoreIdScope(entry.scopeId);
+                ownsControlIdScope = true;
+
+                if (!repaint)
+                {
+                    var suppressed = NowGUIScope.Suppress(rect, inputScope, controlIdScope);
+                    ownsControlIdScope = false;
+                    ownsInputScope = false;
+                    return suppressed;
+                }
+
+                if (rect.width <= 0f || rect.height <= 0f)
+                {
+                    var suppressed = NowGUIScope.Suppress(rect, inputScope, controlIdScope);
+                    ownsControlIdScope = false;
+                    ownsInputScope = false;
+                    return suppressed;
+                }
+
+                pixelsPerPoint = Mathf.Max(1f, pixelsPerPoint);
+                int pixelWidth = Mathf.Max(1, Mathf.CeilToInt(rect.width * pixelsPerPoint));
+                int pixelHeight = Mathf.Max(1, Mathf.CeilToInt(rect.height * pixelsPerPoint));
+
+                RenderTexture target = entry.GetTarget(pixelWidth, pixelHeight);
+                frameScope = NowFrame.Begin(pixelsPerPoint);
+                ownsFrameScope = true;
+                drawScope = entry.renderer.Begin(new Vector2(rect.width, rect.height));
+                ownsDrawScope = true;
+
+                var rendered = NowGUIScope.Render(
+                    rect,
+                    entry,
+                    target,
+                    drawScope,
+                    clearColor,
+                    inputScope,
+                    frameScope,
+                    controlIdScope);
+
+                ownsDrawScope = false;
+                ownsFrameScope = false;
+                ownsControlIdScope = false;
+                ownsInputScope = false;
+                return rendered;
+            }
+            catch
+            {
+                try
+                {
+                    if (ownsDrawScope)
+                        drawScope.Cancel();
+                }
+                finally
+                {
+                    try
+                    {
+                        if (ownsFrameScope)
+                            frameScope.Dispose();
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            if (ownsControlIdScope)
+                                controlIdScope.Dispose();
+                        }
+                        finally
+                        {
+                            if (ownsInputScope)
+                                inputScope.Dispose();
+                        }
+                    }
+                }
+
                 throw;
             }
         }
@@ -77,10 +167,41 @@ namespace NowUI
             _entries.Clear();
         }
 
+        internal static int BeginScope()
+        {
+            if (_scopes.count == 0)
+                _scopeFrame = Time.frameCount;
+
+            return _scopes.Enter();
+        }
+
+        internal static bool hasActiveScopesThisFrame =>
+            _scopes.count > 0 && _scopeFrame == Time.frameCount;
+
+        internal static void DiscardAbandonedScopes()
+        {
+            _scopes.Clear();
+            _scopeFrame = -1;
+        }
+
+        internal static bool BeginScopeEnd(int token)
+        {
+            return _scopes.BeginEnd(token);
+        }
+
+        internal static void EndScope(int token)
+        {
+            _scopes.ExitEnding(token);
+
+            if (_scopes.count == 0)
+                _scopeFrame = -1;
+        }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetForRuntimeLoad()
         {
             DisposeAll();
+            DiscardAbandonedScopes();
             _lastCleanupTime = 0.0;
         }
 
@@ -134,6 +255,8 @@ namespace NowUI
         internal sealed class CacheEntry : IDisposable
         {
             public readonly NowRenderer renderer = new NowRenderer();
+
+            public readonly int scopeId = NowControls.AllocateHostScopeId();
 
             public RenderTexture target;
 
@@ -196,6 +319,8 @@ namespace NowUI
 
         NowFrameScope _frameScope;
 
+        ControlIdScope _controlIdScope;
+
         bool _renders;
 
         bool _suppresses;
@@ -204,7 +329,9 @@ namespace NowUI
 
         bool _hasFrameScope;
 
-        bool _disposed;
+        bool _hasControlIdScope;
+
+        int _token;
 
         internal static NowGUIScope Render(
             Rect rect,
@@ -213,21 +340,59 @@ namespace NowUI
             NowDrawScope drawScope,
             Color clearColor,
             NowInputScope inputScope,
-            NowFrameScope frameScope)
+            NowFrameScope frameScope,
+            ControlIdScope controlIdScope)
         {
-            return new NowGUIScope(rect, entry, target, drawScope, clearColor, true, false, inputScope, true, frameScope, true);
+            return new NowGUIScope(
+                rect,
+                entry,
+                target,
+                drawScope,
+                clearColor,
+                true,
+                false,
+                inputScope,
+                true,
+                frameScope,
+                true,
+                controlIdScope,
+                true,
+                NowGUI.BeginScope());
         }
 
         internal static NowGUIScope Suppress(Rect rect)
         {
             Now.BeginSuppressDraw();
-            return new NowGUIScope(rect, null, null, default, Color.clear, false, true);
+            return new NowGUIScope(
+                rect,
+                null,
+                null,
+                default,
+                Color.clear,
+                false,
+                true,
+                token: NowGUI.BeginScope());
         }
 
-        internal static NowGUIScope Suppress(Rect rect, NowInputScope inputScope)
+        internal static NowGUIScope Suppress(
+            Rect rect,
+            NowInputScope inputScope,
+            ControlIdScope controlIdScope = default)
         {
             Now.BeginSuppressDraw();
-            return new NowGUIScope(rect, null, null, default, Color.clear, false, true, inputScope, true);
+            return new NowGUIScope(
+                rect,
+                null,
+                null,
+                default,
+                Color.clear,
+                false,
+                true,
+                inputScope,
+                true,
+                controlIdScope: controlIdScope,
+                hasControlIdScope: true,
+                token: NowGUI.BeginScope());
         }
 
         NowGUIScope(
@@ -241,7 +406,10 @@ namespace NowUI
             NowInputScope inputScope = default,
             bool hasInputScope = false,
             NowFrameScope frameScope = default,
-            bool hasFrameScope = false)
+            bool hasFrameScope = false,
+            ControlIdScope controlIdScope = default,
+            bool hasControlIdScope = false,
+            int token = 0)
         {
             _rect = rect;
             _entry = entry;
@@ -250,11 +418,13 @@ namespace NowUI
             _clearColor = clearColor;
             _inputScope = inputScope;
             _frameScope = frameScope;
+            _controlIdScope = controlIdScope;
             _renders = renders;
             _suppresses = suppresses;
             _hasInputScope = hasInputScope;
             _hasFrameScope = hasFrameScope;
-            _disposed = false;
+            _hasControlIdScope = hasControlIdScope;
+            _token = token;
         }
 
         public Rect rect => _rect;
@@ -263,36 +433,90 @@ namespace NowUI
 
         public float height => _rect.height;
 
-        public bool isRepaint => _renders && !_disposed;
-
         public void Dispose()
         {
-            if (_disposed)
+            if (_token == 0)
                 return;
 
-            _disposed = true;
-
-            if (_suppresses)
+            if (!NowGUI.BeginScopeEnd(_token))
             {
-                Now.EndSuppressDraw();
-                DisposeInputScope();
+                _token = 0;
                 return;
             }
 
-            if (!_renders)
-            {
-                DisposeInputScope();
-                return;
-            }
+            int token = _token;
 
             try
             {
-                NowGUI.CompleteScope(_entry, _target, _rect, _drawScope, _clearColor);
+                if (_suppresses)
+                {
+                    try
+                    {
+                        DisposeControlIdScope();
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            DisposeInputScope();
+                        }
+                        finally
+                        {
+                            Now.EndSuppressDraw();
+                        }
+                    }
+
+                    return;
+                }
+
+                if (!_renders)
+                {
+                    try
+                    {
+                        DisposeFrameScope();
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            DisposeControlIdScope();
+                        }
+                        finally
+                        {
+                            DisposeInputScope();
+                        }
+                    }
+
+                    return;
+                }
+
+                try
+                {
+                    NowGUI.CompleteScope(_entry, _target, _rect, _drawScope, _clearColor);
+                }
+                finally
+                {
+                    try
+                    {
+                        DisposeFrameScope();
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            DisposeControlIdScope();
+                        }
+                        finally
+                        {
+                            DisposeInputScope();
+                        }
+                    }
+                }
             }
             finally
             {
-                DisposeInputScope();
-                DisposeFrameScope();
+                NowGUI.EndScope(token);
+                _token = 0;
             }
         }
 
@@ -312,6 +536,15 @@ namespace NowUI
 
             _frameScope.Dispose();
             _hasFrameScope = false;
+        }
+
+        void DisposeControlIdScope()
+        {
+            if (!_hasControlIdScope)
+                return;
+
+            _controlIdScope.Dispose();
+            _hasControlIdScope = false;
         }
     }
 

@@ -195,6 +195,7 @@ namespace NowUI
             public int overlayId;
             public Now.NowTransformSnapshot transform;
             public NowThemeAsset theme;
+            public int controlIdScope;
         }
 
         struct OverlayBlock
@@ -216,6 +217,19 @@ namespace NowUI
             public Camera camera;
         }
 
+        internal readonly struct Checkpoint
+        {
+            internal readonly int deferredCount;
+
+            internal readonly int blockCount;
+
+            internal Checkpoint(int deferredCount, int blockCount)
+            {
+                this.deferredCount = deferredCount;
+                this.blockCount = blockCount;
+            }
+        }
+
         static readonly List<DeferredDraw> _deferred = new List<DeferredDraw>(4);
 
         static readonly List<OverlayBlock> _blocksCurrent = new List<OverlayBlock>(4);
@@ -230,8 +244,78 @@ namespace NowUI
 
         static int _overlayDepth;
 
+        static int _flushIndex = -1;
+
+        static bool _resetDuringFlush;
+
+        static int _postResetDeferredStart;
+
+        static readonly List<Checkpoint> _frameTransactions = new List<Checkpoint>(2);
+
         /// <summary>True while deferred overlay callbacks are executing.</summary>
         public static bool isDrawingOverlay => _overlayDepth > 0;
+
+        internal static Checkpoint CaptureCheckpoint()
+        {
+            BeginFrameIfNeeded();
+            return new Checkpoint(_deferred.Count, _blocksCurrent.Count);
+        }
+
+        internal static void Rollback(Checkpoint checkpoint)
+        {
+            if (_deferred.Count > checkpoint.deferredCount)
+            {
+                _deferred.RemoveRange(
+                    checkpoint.deferredCount,
+                    _deferred.Count - checkpoint.deferredCount);
+            }
+
+            if (_blocksCurrent.Count > checkpoint.blockCount)
+            {
+                _blocksCurrent.RemoveRange(
+                    checkpoint.blockCount,
+                    _blocksCurrent.Count - checkpoint.blockCount);
+            }
+        }
+
+        /// <summary>
+        /// Starts the overlay transaction owned by a top-level input/screen
+        /// frame. A throwing Flush rolls pointer registrations back to this
+        /// boundary; nested draw captures keep using their more precise local
+        /// checkpoints.
+        /// </summary>
+        internal static void BeginFrameTransaction()
+        {
+            _frameTransactions.Add(CaptureCheckpoint());
+        }
+
+        internal static void EndFrameTransaction()
+        {
+            if (_frameTransactions.Count > 0)
+                _frameTransactions.RemoveAt(_frameTransactions.Count - 1);
+        }
+
+        internal static void ClearFrameTransactions()
+        {
+            _frameTransactions.Clear();
+        }
+
+        static void RollbackFrameTransaction()
+        {
+            if (_frameTransactions.Count == 0)
+                return;
+
+            // Flush owns the global deferred queue and abandons all of it when
+            // a callback throws. Roll pointer blocks back to the oldest owner
+            // whose callbacks are being discarded as well. Using only the
+            // newest nested-input checkpoint could otherwise preserve a block
+            // registered before that nested scope while clearing its callback.
+            //
+            // Owners still end their own transactions in their finally paths.
+            // Keeping the stack intact here prevents nested cleanup from
+            // accidentally popping the outer screen transaction.
+            Rollback(_frameTransactions[0]);
+        }
 
         /// <summary>True while any overlay is registered or queued for this or the previous frame.</summary>
         public static bool hasOpenOverlay
@@ -358,7 +442,13 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _deferred.Add(new DeferredDraw { draw = draw, transform = Now.CaptureTransform(), theme = NowTheme.currentScopeTheme });
+            _deferred.Add(new DeferredDraw
+            {
+                draw = draw,
+                transform = Now.CaptureTransform(),
+                theme = NowTheme.currentScopeTheme,
+                controlIdScope = NowControls.CaptureIdScope()
+            });
             AddBlock(Now.TransformScreenRect(blockRect), 0);
         }
 
@@ -371,7 +461,12 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _deferred.Add(new DeferredDraw { draw = draw, theme = NowTheme.currentScopeTheme });
+            _deferred.Add(new DeferredDraw
+            {
+                draw = draw,
+                theme = NowTheme.currentScopeTheme,
+                controlIdScope = NowControls.CaptureIdScope()
+            });
             AddBlock(blockRect, 0);
         }
 
@@ -392,7 +487,8 @@ namespace NowUI
                 state = state,
                 overlayId = state,
                 transform = Now.CaptureTransform(),
-                theme = NowTheme.currentScopeTheme
+                theme = NowTheme.currentScopeTheme,
+                controlIdScope = NowControls.CaptureIdScope()
             });
             AddBlock(Now.TransformScreenRect(blockRect), state);
         }
@@ -406,7 +502,14 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            _deferred.Add(new DeferredDraw { drawWithState = draw, state = state, overlayId = state, theme = NowTheme.currentScopeTheme });
+            _deferred.Add(new DeferredDraw
+            {
+                drawWithState = draw,
+                state = state,
+                overlayId = state,
+                theme = NowTheme.currentScopeTheme,
+                controlIdScope = NowControls.CaptureIdScope()
+            });
             AddBlock(blockRect, state);
         }
 
@@ -427,7 +530,8 @@ namespace NowUI
                 state = state,
                 overlayId = state,
                 transform = Now.CaptureTransform(),
-                theme = NowTheme.currentScopeTheme
+                theme = NowTheme.currentScopeTheme,
+                controlIdScope = NowControls.CaptureIdScope()
             });
         }
 
@@ -841,7 +945,10 @@ namespace NowUI
         /// </summary>
         internal static void Flush()
         {
-            if (_deferred.Count == 0)
+            // A deferred callback may close a nested draw capture. That capture
+            // also flushes on dispose, but the outer loop still owns the queue
+            // (and already observes callbacks appended while it runs).
+            if (_overlayDepth > 0 || _deferred.Count == 0)
                 return;
 
             using var profile = NowProfiler.OverlayFlush.Auto();
@@ -854,11 +961,11 @@ namespace NowUI
             {
                 // Callbacks may defer more overlays (nested menus); those run within
                 // the same flush, drawn after their parents.
-                for (int i = 0; i < _deferred.Count; ++i)
+                for (_flushIndex = 0; _flushIndex < _deferred.Count; ++_flushIndex)
                 {
-                    if (i >= MaxFlushedOverlays)
+                    if (_flushIndex >= MaxFlushedOverlays)
                     {
-                        var last = _deferred[i];
+                        var last = _deferred[_flushIndex];
                         var callback = last.drawWithState?.Method ?? last.draw?.Method;
                         Debug.LogError(
                             $"NowOverlay.Flush aborted after {MaxFlushedOverlays} overlays in one frame — an overlay " +
@@ -867,11 +974,12 @@ namespace NowUI
                         break;
                     }
 
-                    var deferred = _deferred[i];
+                    var deferred = _deferred[_flushIndex];
                     _drawingStack.Add(deferred.overlayId);
 
                     try
                     {
+                        using (NowControls.RestoreIdScope(deferred.controlIdScope))
                         using (Now.ApplyTransformSnapshot(deferred.transform))
                         using (NowTheme.ScopeOrDefault(deferred.theme))
                         {
@@ -885,13 +993,38 @@ namespace NowUI
                     {
                         _drawingStack.RemoveAt(_drawingStack.Count - 1);
                     }
+
+                    if (_resetDuringFlush)
+                        break;
                 }
+            }
+            catch
+            {
+                // Deferred callbacks are user code. If one aborts a top-level
+                // screen/input frame, none of that frame's invisible pointer
+                // registrations may survive after its callbacks are abandoned.
+                RollbackFrameTransaction();
+                throw;
             }
             finally
             {
-                _deferred.Clear();
+                if (_resetDuringFlush)
+                {
+                    int prefix = Mathf.Clamp(_postResetDeferredStart, 0, _deferred.Count);
+
+                    if (prefix > 0)
+                        _deferred.RemoveRange(0, prefix);
+                }
+                else
+                {
+                    _deferred.Clear();
+                }
+
                 _drawingStack.Clear();
                 --_overlayDepth;
+                _flushIndex = -1;
+                _resetDuringFlush = false;
+                _postResetDeferredStart = 0;
             }
         }
 
@@ -902,6 +1035,7 @@ namespace NowUI
         /// </summary>
         internal static void DiscardAbandonedFrame()
         {
+            ClearFrameTransactions();
             _deferred.Clear();
             _blocksCurrent.Clear();
             _blocksPrevious.Clear();
@@ -912,6 +1046,33 @@ namespace NowUI
 
         public static void Reset()
         {
+            if (_overlayDepth > 0)
+            {
+                // The active callback and Flush finally-block still own the
+                // drawing stack/depth. Remove all queued work through the
+                // current callback, then preserve anything deferred after this
+                // reset for a fresh, non-reentrant flush.
+                int prefix = Mathf.Clamp(_flushIndex + 1, 0, _deferred.Count);
+
+                if (_deferred.Count > prefix)
+                    _deferred.RemoveRange(prefix, _deferred.Count - prefix);
+
+                _resetDuringFlush = true;
+                _postResetDeferredStart = prefix;
+                _blocksCurrent.Clear();
+                _blocksPrevious.Clear();
+                _registryFrame = -1;
+
+                for (int i = 0; i < _frameTransactions.Count; ++i)
+                    _frameTransactions[i] = default;
+
+                // Host and popup-fit stacks are ambient scopes owned by the
+                // retained host that is currently flushing. Keep them balanced
+                // so work deferred after Reset still belongs to that host and
+                // uses its view-fitting policy.
+                return;
+            }
+
             _deferred.Clear();
             _blocksCurrent.Clear();
             _blocksPrevious.Clear();
@@ -919,6 +1080,10 @@ namespace NowUI
             _hostStack.Clear();
             _registryFrame = -1;
             _overlayDepth = 0;
+            _flushIndex = -1;
+            _resetDuringFlush = false;
+            _postResetDeferredStart = 0;
+            ClearFrameTransactions();
             NowPopupPlacement.Reset();
         }
 

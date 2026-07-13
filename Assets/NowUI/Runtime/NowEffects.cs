@@ -213,6 +213,7 @@ namespace NowUI
         static readonly Dictionary<int, Entry> _entries = new Dictionary<int, Entry>(16);
         static readonly List<int> _removeIds = new List<int>(8);
         static readonly Stack<Entry> _temporaryEntryPool = new Stack<Entry>(4);
+        static readonly NowScopeGuard _effectScopes = new NowScopeGuard("NowEffects", 8);
         static double _lastCleanupTime;
 
         public static NowModifierBuilder<TDeformer> Modifier<TDeformer>(
@@ -248,11 +249,17 @@ namespace NowUI
             entry.lastUsedTime = NowTime.realtimeSinceStartup;
             NowInput.BeginPassive();
             Unity.Profiling.ProfilerMarker.AutoScope captureProfile = default;
+            int scopeToken = 0;
 
             try
             {
                 captureProfile = NowProfiler.EffectsCapture.Auto();
-                var drawScope = entry.capture.Begin(CaptureSize(), Vector2.zero, inheritContext: true);
+                var drawScope = entry.capture.Begin(
+                    CaptureSize(),
+                    Vector2.zero,
+                    inheritContext: true,
+                    flushOverlays: false);
+                scopeToken = _effectScopes.Enter();
                 return new NowModifierScope<TDeformer>(
                     id,
                     entry,
@@ -265,10 +272,14 @@ namespace NowUI
                     sourceRect,
                     time,
                     drawScope,
-                    captureProfile);
+                    captureProfile,
+                    scopeToken);
             }
             catch
             {
+                if (scopeToken != 0)
+                    _effectScopes.Exit(scopeToken);
+
                 captureProfile.Dispose();
                 entry.inUse = false;
                 NowInput.EndPassive();
@@ -287,15 +298,31 @@ namespace NowUI
             entry.lastUsedTime = NowTime.realtimeSinceStartup;
             NowInput.BeginPassive();
             Unity.Profiling.ProfilerMarker.AutoScope captureProfile = default;
+            int scopeToken = 0;
 
             try
             {
                 captureProfile = NowProfiler.EffectsCapture.Auto();
-                var drawScope = entry.capture.Begin(CaptureSize(), Vector2.zero, inheritContext: true);
-                return new NowSnapshotScope(id, entry, temporary, rect, drawScope, captureProfile);
+                var drawScope = entry.capture.Begin(
+                    CaptureSize(),
+                    Vector2.zero,
+                    inheritContext: true,
+                    flushOverlays: false);
+                scopeToken = _effectScopes.Enter();
+                return new NowSnapshotScope(
+                    id,
+                    entry,
+                    temporary,
+                    rect,
+                    drawScope,
+                    captureProfile,
+                    scopeToken);
             }
             catch
             {
+                if (scopeToken != 0)
+                    _effectScopes.Exit(scopeToken);
+
                 captureProfile.Dispose();
                 entry.inUse = false;
                 NowInput.EndPassive();
@@ -344,7 +371,11 @@ namespace NowUI
                     var target = entry.GetTarget(textureRect);
                     Now.RenderDrawListToTexture(entry.capture, textureRect, target, entry.commandBuffer);
 
-                    using (entry.surface.Begin(CaptureSize(), Vector2.zero, inheritContext: true))
+                    using (entry.surface.Begin(
+                        CaptureSize(),
+                        Vector2.zero,
+                        inheritContext: true,
+                        flushOverlays: false))
                     {
                         Now.Rectangle(textureRect)
                             .SetTexture(target)
@@ -419,6 +450,21 @@ namespace NowUI
                 else
                     CleanupUnusedEntries();
             }
+        }
+
+        internal static bool BeginEffectScopeEnd(int token)
+        {
+            return _effectScopes.BeginEnd(token);
+        }
+
+        internal static bool IsEffectScopeCurrent(int token)
+        {
+            return _effectScopes.IsCurrent(token);
+        }
+
+        internal static void EndEffectScope(int token)
+        {
+            _effectScopes.ExitEnding(token);
         }
 
         static Vector2 CaptureSize()
@@ -515,6 +561,7 @@ namespace NowUI
             while (_temporaryEntryPool.Count > 0)
                 _temporaryEntryPool.Pop().Dispose();
 
+            _effectScopes.Clear();
             _lastCleanupTime = 0.0;
         }
 
@@ -685,7 +732,7 @@ namespace NowUI
         internal float time;
         internal NowDrawScope drawScope;
         internal Unity.Profiling.ProfilerMarker.AutoScope captureProfile;
-        bool _disposed;
+        int _token;
 
         internal NowModifierScope(
             int id,
@@ -699,7 +746,8 @@ namespace NowUI
             NowRect sourceRect,
             float time,
             NowDrawScope drawScope,
-            Unity.Profiling.ProfilerMarker.AutoScope captureProfile)
+            Unity.Profiling.ProfilerMarker.AutoScope captureProfile,
+            int token)
         {
             this.id = id;
             this.entry = entry;
@@ -713,16 +761,42 @@ namespace NowUI
             this.time = time;
             this.drawScope = drawScope;
             this.captureProfile = captureProfile;
-            _disposed = false;
+            _token = token;
         }
 
         public void Dispose()
         {
-            if (_disposed)
+            if (_token == 0)
                 return;
 
-            _disposed = true;
-            NowEffects.EndModifier(ref this);
+            if (!NowEffects.IsEffectScopeCurrent(_token))
+            {
+                _token = 0;
+                return;
+            }
+
+            // Validate the owned mesh capture before claiming effect teardown.
+            // If an unrelated draw scope is still above it, the exception must
+            // leave both owners intact so disposal can be retried in order.
+            drawScope.ValidateDisposeOrder();
+
+            if (!NowEffects.BeginEffectScopeEnd(_token))
+            {
+                _token = 0;
+                return;
+            }
+
+            int token = _token;
+
+            try
+            {
+                NowEffects.EndModifier(ref this);
+            }
+            finally
+            {
+                NowEffects.EndEffectScope(token);
+                _token = 0;
+            }
         }
     }
 
@@ -762,7 +836,7 @@ namespace NowUI
         internal NowRect rect;
         internal NowDrawScope drawScope;
         internal Unity.Profiling.ProfilerMarker.AutoScope captureProfile;
-        bool _disposed;
+        int _token;
 
         public RenderTexture texture => entry?.target;
 
@@ -774,7 +848,8 @@ namespace NowUI
             bool temporaryEntry,
             NowRect rect,
             NowDrawScope drawScope,
-            Unity.Profiling.ProfilerMarker.AutoScope captureProfile)
+            Unity.Profiling.ProfilerMarker.AutoScope captureProfile,
+            int token)
         {
             this.id = id;
             this.entry = entry;
@@ -782,16 +857,41 @@ namespace NowUI
             this.rect = rect;
             this.drawScope = drawScope;
             this.captureProfile = captureProfile;
-            _disposed = false;
+            _token = token;
         }
 
         public void Dispose()
         {
-            if (_disposed)
+            if (_token == 0)
                 return;
 
-            _disposed = true;
-            NowEffects.EndSnapshot(ref this);
+            if (!NowEffects.IsEffectScopeCurrent(_token))
+            {
+                _token = 0;
+                return;
+            }
+
+            // See NowModifierScope.Dispose: cross-family out-of-order disposal
+            // must not orphan the underlying mesh capture.
+            drawScope.ValidateDisposeOrder();
+
+            if (!NowEffects.BeginEffectScopeEnd(_token))
+            {
+                _token = 0;
+                return;
+            }
+
+            int token = _token;
+
+            try
+            {
+                NowEffects.EndSnapshot(ref this);
+            }
+            finally
+            {
+                NowEffects.EndEffectScope(token);
+                _token = 0;
+            }
         }
     }
 

@@ -261,7 +261,7 @@ namespace NowUI
             for (int row = 0; row < rowCount; ++row)
             {
                 NowRect itemRect = state.scrolls
-                    ? NowLayout.Rect(height: state.itemHeight, stretchWidth: true)
+                    ? NowLayout.ReserveRect(height: state.itemHeight, stretchWidth: true)
                     : new NowRect(
                         state.itemArea.x,
                         state.itemArea.y + row * state.itemHeight,

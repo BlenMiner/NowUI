@@ -9,7 +9,7 @@ namespace NowUI
     /// never blocks the pointer. All timing comes from the input snapshot's
     /// caller-supplied time — no hidden clock.
     /// <code>
-    /// var rect = NowLayout.Rect(width: 120f, height: 36f);
+    /// var rect = NowLayout.ReserveRect(width: 120f, height: 36f);
     /// bool clicked = Now.Button(rect, "Delete").Draw();
     /// NowTooltip.For(rect, "Remove the selected item");
     /// </code>

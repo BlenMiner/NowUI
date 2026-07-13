@@ -242,7 +242,7 @@ public class NowRuntimePerformanceTests
     /// Pure layout engine overhead: one explicitly-keyed area with 75 nested
     /// horizontal/vertical groups and roughly a thousand plain rects mixing
     /// fixed sizes, stretch widths, spacing, padding and flexible space. Uses
-    /// <see cref="NowLayout.Rect(float, float, bool, bool, NowLayoutAlign)"/>
+    /// <see cref="NowLayout.ReserveRect(float, float, bool, bool, NowLayoutAlign)"/>
     /// children so no control or text cost pollutes the number.
     /// </summary>
     [Test, Performance]
@@ -259,10 +259,10 @@ public class NowRuntimePerformanceTests
                             using (NowLayout.Horizontal(spacing: 4f, stretchWidth: true))
                             {
                                 for (int c = 0; c < 18; ++c)
-                                    NowLayout.Rect(width: 20f + (c % 4) * 12f, height: 14f);
+                                    NowLayout.ReserveRect(width: 20f + (c % 4) * 12f, height: 14f);
 
                                 NowLayout.FlexibleSpace();
-                                NowLayout.Rect(height: 14f, stretchWidth: true);
+                                NowLayout.ReserveRect(height: 14f, stretchWidth: true);
                             }
 
                             using (NowLayout.Horizontal(spacing: 4f, alignItems: NowLayoutAlign.Center))
@@ -270,7 +270,7 @@ public class NowRuntimePerformanceTests
                                 NowLayout.Space(8f);
 
                                 for (int c = 0; c < 18; ++c)
-                                    NowLayout.Rect(width: 16f + (c % 3) * 10f, height: 12f + (c % 2) * 6f);
+                                    NowLayout.ReserveRect(width: 16f + (c % 3) * 10f, height: 12f + (c % 2) * 6f);
 
                                 NowLayout.FlexibleSpace(2f);
                             }

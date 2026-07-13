@@ -3,8 +3,9 @@
 NowUI's immediate-mode controls: buttons, checkboxes, radios, sliders, text
 fields, dropdowns and scroll views, built entirely on public primitives so
 custom controls are first-class citizens. Controls work identically in the
-screen path (`Now.StartUI`), inside UGUI (`NowGraphic`), and in URP/HDRP
-overlays — pointer, touch, keyboard and gamepad included.
+screen path (`Now.StartUI`), inside UGUI (`NowGraphic` for explicit rects or
+`NowLayoutGraphic` for layout), and in URP/HDRP overlays — pointer, touch,
+keyboard and gamepad included.
 
 Controls live where drawing already lives: `NowLayout.*` flows in the active
 layout group (like `NowLayout.Label`), `Now.*` takes an explicit rect (like
@@ -34,8 +35,7 @@ Layout-flowing controls reserve space sized from their themed content; values
 stay owned by you, passed by ref.
 
 ```csharp
-using (NowLayout.Area(NowScreen.safeArea))
-using (NowLayout.Vertical(padding: 16, spacing: 8))
+using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
 {
     NowLayout.Label("Settings").SetBold().SetFontSize(18).Draw();
     NowLayout.Lottie(spinnerAsset).SetTime(Time.time).SetHeight(24).Draw();
@@ -227,8 +227,9 @@ using (NowLayout.Vertical(padding: 16, spacing: 8))
   when the selected path changes; loading and saving the file contents remains
   caller-owned.
 - `ScrollView` scrolls with the wheel while hovered and with the scrollbar
-  thumb; content size is the layout group's measured extent (one frame
-  late, like all layout measurement). Bars appear per axis when content
+  thumb; content size is the layout group's measured extent. A layout host
+  resolves it in the same rebuild; a one-pass host uses the previous
+  measurement. Bars appear per axis when content
   exceeds the space it was measured against, so a vertical bar reserving
   its gutter never flashes a phantom horizontal bar. Focus navigation can
   move to clipped children and scrolls the viewport to reveal the focused
@@ -384,7 +385,7 @@ views still draw, but passively, so they keep their visual state while only the
 top view receives live input.
 
 ```csharp
-public sealed class SettingsPanel : NowGraphic
+public sealed class SettingsPanel : NowLayoutGraphic
 {
     readonly NowViewStack _views = new NowViewStack();
     readonly SettingsHomeView _home = new SettingsHomeView();
@@ -532,10 +533,11 @@ With `Begin()` no label is needed at all — identity comes from the call site
 label passed anyway is ignored visually.
 
 Checkbox toggles its ref value at `Begin`, so the updated value is also
-readable inside; `clicked` doubles as "changed this frame". In layout flow
-the control sizes to the previous frame's content, like all scope-form
-layout; the explicit-rect forms (`Now.Button(rect).Begin()`) are exact
-immediately. ScrollView's `Begin()` is the same idea applied to a viewport.
+readable inside; `clicked` doubles as "changed this frame". In layout flow,
+content-sized controls resolve in the current measure/draw cycle under a
+layout host. A one-pass host uses the previous content measurement. The
+explicit-rect forms (`Now.Button(rect).Begin()`) are exact immediately.
+ScrollView's `Begin()` is the same idea applied to a viewport.
 
 Children of different heights top-align by default. `SetAlignItems` on the
 control sets the row's cross-axis default (flexbox `align-items`), and a
@@ -576,7 +578,8 @@ item. When looped items can reorder, appear, or vanish — or when one logical
 control draws from several code paths — anchor identity to your data instead.
 `NowId` is the preferred explicit identity type: it can hold a string or a
 non-zero integer, and integer ids avoid per-frame string hashing for
-data-backed controls.
+data-backed controls. Both forms are local to the active retained host and
+`NowControls.IdScope`, so two reusable panels can safely use the same ids.
 
 ```csharp
 NowLayout.Button("Delete").SetId(item.id).Draw();
@@ -586,6 +589,12 @@ for (int i = 0; i < rows.Count; ++i)
         if (NowLayout.Button("Delete").Draw())
             Delete(rows[i]);
 ```
+
+When an integer is already fully resolved—such as a value returned by
+`graphic.ResolveControlId(item.id)` or composed from a resolved parent with
+`NowInput.CombineId`—wrap it with `NowId.Resolved(value)` before passing it
+back to `SetId`. This explicit escape hatch prevents accidental double-scoping;
+ordinary application/data ids should stay as plain integers.
 
 `TextField`, `Dropdown`, and `ScrollView` keep their optional explicit id as
 the first parameter (`TextField(player.id)` or `TextField("player-name")`) for
@@ -705,21 +714,25 @@ mid-interaction.
 
 ## Hosting in UGUI
 
-Drop a `NowGraphic` subclass on a Canvas and draw controls inside
-`DrawNowUI` — input arrives through the RectTransform provider, and the
-graphic's **Auto Rebuild On Interaction** (on by default) re-renders when
-pointer, button, scroll, or navigation input changes for the graphic, or when
-a control requests a repaint (caret blink, animations, layout settling),
-staying fully retained while idle. `raycastTarget` blocks UGUI Selectables
-underneath, so NowUI controls layer correctly with UGUI.
+Use a `NowGraphic` subclass when controls receive explicit rects. Use
+`NowLayoutGraphic` when `DrawNowUI` contains `NowLayout`: the layout-specific
+host owns an exact measure/draw cycle, so stretch, growth, flexible space, and
+content-sized controls are correct in the same rebuild. Neither host needs
+`Now.StartUI`, and layout code in `NowLayoutGraphic` does not need
+`NowLayout.RunMeasured`.
 
-The graphic is also a UGUI layout element: with **Drive Layout Size** (on by
-default) it reports the measured extent of its root `NowLayout` areas as its
-preferred width/height, so it sits inside a `VerticalLayoutGroup` or under a
-`ContentSizeFitter` like any Image or Text — sized by its NowUI content. The
-layout system refreshes that preferred size through a passive measure pass
-before geometry rebuilds; read the last value from code via
-`measuredContentSize`.
+Input arrives through the RectTransform provider, and **Auto Rebuild On
+Interaction** (on by default) re-renders when pointer, button, scroll, or
+navigation input changes for the graphic, or when a control requests a repaint
+(caret blink or animation), staying fully retained while idle.
+`raycastTarget` blocks UGUI Selectables underneath, so NowUI controls layer
+correctly with UGUI.
+
+Both hosts are also UGUI layout elements. **Drive Layout Size** is off by
+default; enable it only when the NowUI content should report a preferred
+width/height to a `VerticalLayoutGroup`, `ContentSizeFitter`, or other UGUI
+layout controller. Layout queries use a passive measure pass, and the latest
+value is available through `measuredContentSize`.
 
 ---
 
@@ -739,7 +752,7 @@ public static bool MyToggleSwitch(
     var theme = NowTheme.themeAsset;
 
     // 1. Reserve space (layout) or take a rect parameter (free-form).
-    NowRect rect = NowLayout.Rect(52f, 28f);
+    NowRect rect = NowLayout.ReserveRect(52f, 28f);
 
     // 2. The standard interaction bundle: pointer + focus + submit.
     var interaction = NowControls.Interact(rect, out bool focused, out bool submitted, file, line);
@@ -799,7 +812,7 @@ The toolkit pieces:
 | `NowTextArea.LayoutLines / LineOf` | Editing-grade line layout: every character covered, caret-exact metrics |
 | `NowTextSelection.Draw / Interact / DrawHighlights` | Browser-style text selection over positioned line segments |
 | `NowClipboard.Copy / Paste / setText / getText` | The single clipboard hook every copy/paste path uses |
-| `NowLayout.ContentRect()` → `content.End(height)` | Frame-late reserve/measure for content sized by its width |
+| `NowLayout.ContentRect()` → `content.End(height)` | Reserve/measure for width-dependent content; same-cycle in layout hosts, cached in one-pass hosts |
 | `theme.Rectangle / theme.Text / theme.ResolveText / theme.GetColor ...` | Themed visuals; `ResolveText` is the rect-free, mask-free starting point |
 | `font.MeasureText(text, start, length)` / span overloads | Allocation-free measuring for wrap engines and dynamic text |
 

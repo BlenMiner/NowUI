@@ -9,10 +9,45 @@ namespace NowUI
 
     internal static class NowFrame
     {
+        static readonly NowScopeGuard _scopes = new NowScopeGuard("NowFrame.Begin");
+
+        static int _scopeStartedAt = int.MinValue;
+
+        internal static bool hasActiveScopesThisFrame =>
+            _scopes.count > 0 && _scopeStartedAt == Time.frameCount;
+
+        internal static void DiscardAbandonedScopes()
+        {
+            _scopes.Clear();
+            _scopeStartedAt = int.MinValue;
+        }
+
         internal static NowFrameScope Begin(float uiScale, bool trackRepaint = false)
         {
-            return new NowFrameScope(uiScale, trackRepaint);
+            if (_scopes.count > 0)
+            {
+                throw new System.InvalidOperationException(
+                    "NowUI retained hosts cannot rebuild recursively. Let Unity rebuild the nested host separately, " +
+                    "or call a shared draw method directly from the outer host instead of invoking its rebuild entry point.");
+            }
+
+            _scopeStartedAt = Time.frameCount;
+            int token = _scopes.Enter();
+
+            try
+            {
+                return new NowFrameScope(uiScale, trackRepaint, token);
+            }
+            catch
+            {
+                _scopes.Exit(token);
+                throw;
+            }
         }
+
+        internal static bool IsCurrent(int token) => _scopes.IsCurrent(token);
+
+        internal static void End(int token) => _scopes.Exit(token);
 
         internal static Vector2 DrawContent<TContent>(
             ref TContent content,
@@ -22,10 +57,26 @@ namespace NowUI
             bool flushOverlays = true)
             where TContent : struct, INowFrameContent
         {
-            if (measurePass)
-                RunMeasurePass(ref content, rect);
+            Vector2 measured;
 
-            Vector2 measured = RunDrawPass(ref content, rect, trackContent);
+            if (measurePass)
+                RequireStandaloneMeasurement();
+
+            if (measurePass)
+                NowLayout.BeginMeasureCycle();
+
+            try
+            {
+                if (measurePass)
+                    RunMeasurePass(ref content, rect);
+
+                measured = RunDrawPass(ref content, rect, trackContent);
+            }
+            finally
+            {
+                if (measurePass)
+                    NowLayout.EndMeasureCycle();
+            }
 
             if (flushOverlays)
                 NowOverlay.Flush();
@@ -36,6 +87,8 @@ namespace NowUI
         internal static Vector2 MeasureContent<TContent>(ref TContent content, NowRect rect)
             where TContent : struct, INowFrameContent
         {
+            RequireStandaloneMeasurement();
+
             using var profile = NowProfiler.MeasurePass.Auto();
             int layoutCounter = NowLayout.BeginMeasurePass();
             bool tracking = false;
@@ -58,6 +111,19 @@ namespace NowUI
 
                 NowLayout.EndMeasurePass(layoutCounter);
             }
+        }
+
+        static void RequireStandaloneMeasurement()
+        {
+            if (!NowLayout.isMeasurePass &&
+                !NowLayout.hasActiveMeasureCycle &&
+                !NowLayout.isTrackingContent)
+                return;
+
+            throw new System.InvalidOperationException(
+                "An exact NowLayout measurement cannot rebuild recursively inside another measurement. " +
+                "Call the nested draw method from the outer callback so it participates in the existing measure/draw cycle " +
+                "and preferred-size tracking.");
         }
 
         static void RunMeasurePass<TContent>(ref TContent content, NowRect rect)
@@ -114,14 +180,17 @@ namespace NowUI
 
         readonly bool _trackRepaint;
 
+        readonly int _token;
+
         bool _active;
 
         bool _repaintEnded;
 
-        internal NowFrameScope(float uiScale, bool trackRepaint)
+        internal NowFrameScope(float uiScale, bool trackRepaint, int token)
         {
             _previousScale = Now.uiScale;
             _trackRepaint = trackRepaint;
+            _token = token;
             _active = true;
             _repaintEnded = false;
 
@@ -133,7 +202,7 @@ namespace NowUI
 
         internal bool EndRepaintTracking()
         {
-            if (!_active || !_trackRepaint || _repaintEnded)
+            if (!_active || !NowFrame.IsCurrent(_token) || !_trackRepaint || _repaintEnded)
                 return false;
 
             _repaintEnded = true;
@@ -145,11 +214,24 @@ namespace NowUI
             if (!_active)
                 return;
 
-            if (_trackRepaint && !_repaintEnded)
-                NowControlState.EndRepaintTracking();
+            if (!NowFrame.IsCurrent(_token))
+            {
+                _active = false;
+                return;
+            }
 
-            Now.SetUIScale(_previousScale);
-            _active = false;
+            try
+            {
+                if (_trackRepaint && !_repaintEnded)
+                    NowControlState.EndRepaintTracking();
+
+                Now.SetUIScale(_previousScale);
+            }
+            finally
+            {
+                NowFrame.End(_token);
+                _active = false;
+            }
         }
     }
 }

@@ -80,9 +80,10 @@ namespace NowUI
         /// Opens the button as a container for custom content — icons, sub-labels,
         /// anything drawn with layout calls. Interaction runs immediately, so the
         /// result is readable inside the scope; children flow in a horizontal row.
-        /// In layout flow the button sizes to the previous frame's content, like all
-        /// scope-form layout. The label is never rendered here — identity comes from
-        /// the call site, so it can simply be omitted.
+        /// An exact layout host sizes the button from content measured in the same
+        /// rebuild; a one-pass host uses the previous measurement. The label is
+        /// never rendered here — identity comes from the call site, so it can
+        /// simply be omitted.
         /// <code>
         /// using (var save = NowLayout.Button().Begin())
         /// {
@@ -105,7 +106,7 @@ namespace NowUI
             int areaKey = NowInput.CombineId(id, AreaKeySeed);
 
             Vector4 padding = theme.controlStyles.buttonPadding;
-            NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
+            NowLayout.TryGetCachedAreaContentSize(NowId.Resolved(areaKey), out Vector2 cached);
             var contentSize = renderer.MeasureButtonContent(theme, cached);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
@@ -119,7 +120,7 @@ namespace NowUI
             // frames can be smaller than the content, and oversized children should
             // never escape the control visually.
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(areaKey, rect, padding);
+            var area = NowLayout.Area(NowId.Resolved(areaKey), rect, padding);
             var row = NowLayout.Horizontal(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
@@ -427,7 +428,7 @@ namespace NowUI
             int id = ResolveControlId();
             int areaKey = NowInput.CombineId(id, AreaKeySeed);
 
-            NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
+            NowLayout.TryGetCachedAreaContentSize(NowId.Resolved(areaKey), out Vector2 cached);
             var contentSize = renderer.MeasureToggleContent(theme, cached);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
@@ -443,7 +444,7 @@ namespace NowUI
             renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, glyphRect, value, interaction, focused, hoverT));
 
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(areaKey, renderer.ToggleContentRect(theme, rect, glyphSize));
+            var area = NowLayout.Area(NowId.Resolved(areaKey), renderer.ToggleContentRect(theme, rect, glyphSize));
             var row = NowLayout.Horizontal(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, clicked);
@@ -562,7 +563,7 @@ namespace NowUI
             int id = ResolveControlId();
             int areaKey = NowInput.CombineId(id, AreaKeySeed);
 
-            NowLayout.TryGetCachedContentSize(areaKey, out Vector2 cached);
+            NowLayout.TryGetCachedAreaContentSize(NowId.Resolved(areaKey), out Vector2 cached);
             var contentSize = renderer.MeasureToggleContent(theme, cached);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
@@ -574,7 +575,7 @@ namespace NowUI
             renderer.DrawRadio(new NowToggleRenderContext(theme, rect, glyphRect, _isOn, interaction, focused, hoverT));
 
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(areaKey, renderer.ToggleContentRect(theme, rect, glyphSize));
+            var area = NowLayout.Area(NowId.Resolved(areaKey), renderer.ToggleContentRect(theme, rect, glyphSize));
             var row = NowLayout.Horizontal(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);

@@ -69,8 +69,10 @@ Useful options:
 participates in flex sizing like a label:
 
 ```csharp
-using (NowLayout.Area(NowScreen.safeArea))
-using (NowLayout.Horizontal())
+using (NowLayout.Row(NowScreen.safeArea)
+    .Gap(8)
+    .AlignChildren(NowLayoutAlign.Center)
+    .Begin())
 {
     NowLayout.Lottie(spinner).SetHeight(32).Draw();
     NowLayout.Label("Loading...").Draw();

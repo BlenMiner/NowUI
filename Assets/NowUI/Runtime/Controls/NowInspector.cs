@@ -120,7 +120,7 @@ namespace NowUI
 
             if (_hasRect)
             {
-                using (NowLayout.Area(NowInput.CombineId(id, AreaSeed), _rect))
+                using (NowLayout.Area(NowId.Resolved(NowInput.CombineId(id, AreaSeed)), _rect))
                 using (NowLayout.Vertical(new NowLayoutOptions().SetSpacing(_settings.rowSpacing).SetStretchWidth()))
                     changed = DrawRoot(id, ref boxed);
             }
@@ -366,7 +366,7 @@ namespace NowUI
                         DrawHeaderLabel(member.header);
 
                     if (member.space > 0f)
-                        NowLayout.Rect(height: member.space, stretchWidth: true);
+                        NowLayout.ReserveRect(height: member.space, stretchWidth: true);
 
                     using (NowControls.IdScope(member.name))
                     {
@@ -1010,7 +1010,7 @@ namespace NowUI
 
                     using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(settings.cellSpacing).SetStretchWidth()))
                     {
-                        NowLayout.Rect(stretchWidth: true);
+                        NowLayout.ReserveRect(stretchWidth: true);
 
                         if (NowLayout.Button("+").SetWidth(30f).Draw())
                             requestedCount = list.Count + 1;

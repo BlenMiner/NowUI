@@ -33,6 +33,22 @@ public class NowControlsAdvancedTests
         }
     }
 
+    sealed class OffsetPopupFitProvider : INowPopupFitProvider
+    {
+        public int fitCalls;
+
+        public NowRect FitPopupRectToView(NowRect rect)
+        {
+            ++fitCalls;
+            return rect.Offset(new Vector2(7f, 9f));
+        }
+
+        public NowRect ClampPopupRectToView(NowRect rect)
+        {
+            return rect;
+        }
+    }
+
     sealed class BufferedKeyboard : INowTextInputSource, INowTextInputBuffer
     {
         public string pending;
@@ -452,15 +468,15 @@ public class NowControlsAdvancedTests
         using (_drawList.Begin(Surface))
         using (Now.ScrollView(new NowRect(0, 0, 240, 140), "outer").Begin())
         {
-            NowLayout.Rect(height: 10f, stretchWidth: true);
+            NowLayout.ReserveRect(height: 10f, stretchWidth: true);
 
             using (NowLayout.ScrollView("inner").SetHeight(70f).Begin())
             {
                 for (int i = 0; i < 8; ++i)
-                    NowLayout.Rect(height: 30f, stretchWidth: true);
+                    NowLayout.ReserveRect(height: 30f, stretchWidth: true);
             }
 
-            NowLayout.Rect(height: 300f, stretchWidth: true);
+            NowLayout.ReserveRect(height: 300f, stretchWidth: true);
         }
     }
 
@@ -1223,6 +1239,61 @@ public class NowControlsAdvancedTests
         {
             Object.DestroyImmediate(hostObject);
             Object.DestroyImmediate(otherObject);
+        }
+    }
+
+    [Test]
+    public void OverlayResetDuringFlushPreservesAmbientHostAndFitProviderForFreshWork()
+    {
+        var hostObject = new GameObject("Overlay Reset Host Test", typeof(Camera));
+        var host = hostObject.GetComponent<Camera>();
+        var fitProvider = new OffsetPopupFitProvider();
+        var oldBlock = new NowRect(10f, 10f, 20f, 20f);
+        var freshBlock = new NowRect(60f, 10f, 20f, 20f);
+        var sourceRect = new NowRect(2f, 3f, 12f, 14f);
+        NowRect fitted = default;
+        bool freshRan = false;
+
+        try
+        {
+            using (NowInput.Begin(_pointer, Surface))
+            {
+                using (NowOverlay.Host(host))
+                using (NowPopupPlacement.FitProvider(fitProvider))
+                {
+                    NowOverlay.DeferScreen(oldBlock, 1, _ =>
+                    {
+                        NowOverlay.Reset();
+                        fitted = NowOverlay.FitScreenToView(sourceRect);
+                        NowOverlay.DeferScreen(freshBlock, 2, __ => freshRan = true);
+                    });
+
+                    NowOverlay.Flush();
+
+                    Assert.AreEqual(sourceRect.Offset(new Vector2(7f, 9f)), fitted,
+                        "Reset must not discard the active host's popup-fit policy.");
+                    Assert.AreEqual(1, fitProvider.fitCalls);
+                    Assert.IsFalse(freshRan,
+                        "Work queued after Reset belongs to a fresh, non-reentrant flush.");
+
+                    NowOverlay.Flush();
+                    Assert.IsTrue(freshRan);
+                }
+
+                NowOverlay.ForceNewFrame();
+
+                using (NowOverlay.Host(host))
+                {
+                    Assert.IsFalse(NowOverlay.IsPointerBlocked(oldBlock.center),
+                        "Reset must still remove pointer ownership registered before it.");
+                    Assert.IsTrue(NowOverlay.IsPointerBlocked(freshBlock.center),
+                        "Fresh work queued after Reset must retain the active host identity.");
+                }
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(hostObject);
         }
     }
 
@@ -2172,6 +2243,32 @@ public class NowControlsAdvancedTests
     }
 
     [Test]
+    public void OverlayDeferredDrawRestoresCapturedControlIdScope()
+    {
+        int expected = 0;
+        int actual = 0;
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            using (NowControls.IdScope("pipeline-host"))
+            using (NowControls.IdScope("nested-panel"))
+            {
+                expected = NowControls.GetControlId("deferred-control");
+                NowOverlay.DeferScreen(
+                    new NowRect(0f, 0f, 20f, 20f),
+                    () => actual = NowControls.GetControlId("deferred-control"));
+            }
+
+            using (NowControls.IdScope("different-host"))
+                NowOverlay.Flush();
+        }
+
+        Assert.AreEqual(expected, actual,
+            "A deferred callback must resolve controls in the host/nested id scope where it was queued.");
+    }
+
+    [Test]
     public void NestedTransformsComposeForInput()
     {
         _pointer.snapshot = new NowInputSnapshot(new Vector2(27f, 14f), false, false, false);
@@ -2311,7 +2408,7 @@ public class NowControlsAdvancedTests
         using (Now.ScrollView(new NowRect(0, 0, 200, 100), "list").Begin())
         {
             for (int i = 0; i < 10; ++i)
-                NowLayout.Rect(180, 30);
+                NowLayout.ReserveRect(180, 30);
         }
 
         _pointer.snapshot = new NowInputSnapshot(
@@ -2325,7 +2422,7 @@ public class NowControlsAdvancedTests
         using (Now.ScrollView(new NowRect(0, 0, 200, 100), "list").Begin())
         {
             for (int i = 0; i < 10; ++i)
-                NowLayout.Rect(180, 30);
+                NowLayout.ReserveRect(180, 30);
         }
 
         int scrollId;
@@ -2357,7 +2454,7 @@ public class NowControlsAdvancedTests
                 using (_drawList.Begin(Surface))
                 using (Now.ScrollView(new NowRect(0, 0, 200, 100), "wide").Begin())
                 {
-                    NowLayout.Rect(260f, 40f);
+                    NowLayout.ReserveRect(260f, 40f);
                 }
             }
 
@@ -2397,7 +2494,7 @@ public class NowControlsAdvancedTests
                 using (_drawList.Begin(Surface))
                 using (Now.ScrollView(new NowRect(0, 0, 200, 100), "coupled").Begin())
                 {
-                    NowLayout.Rect(195f, 130f);
+                    NowLayout.ReserveRect(195f, 130f);
                 }
             }
 
@@ -2430,7 +2527,7 @@ public class NowControlsAdvancedTests
         using (_drawList.Begin(Surface))
         {
             var scroll = Now.ScrollView(viewport, "stretch-flicker").Begin();
-            NowLayout.Rect(height: contentHeight, stretchWidth: true);
+            NowLayout.ReserveRect(height: contentHeight, stretchWidth: true);
             var result = (scroll.verticalScrollbarVisible, scroll.horizontalScrollbarVisible, scroll.maxScrollOffset);
             scroll.Dispose();
             return result;
@@ -2508,7 +2605,7 @@ public class NowControlsAdvancedTests
                 using (_drawList.Begin(Surface))
                 using (Now.ScrollView(new NowRect(0, 0, 200, 100), "wheel-wide").Begin())
                 {
-                    NowLayout.Rect(260f, 40f);
+                    NowLayout.ReserveRect(260f, 40f);
                 }
             }
 
@@ -2565,7 +2662,7 @@ public class NowControlsAdvancedTests
         using (_drawList.Begin(Surface))
         using (Now.ScrollView(new NowRect(0, 0, 200, 100), "drag-scroll").Begin())
         {
-            NowLayout.Rect(180f, 400f);
+            NowLayout.ReserveRect(180f, 400f);
             var content = NowInput.Interact("drag-content", new NowRect(0, 0, 200, 400));
 
             if (content.dragging)
@@ -2650,7 +2747,7 @@ public class NowControlsAdvancedTests
         using (_drawList.Begin(Surface))
         using (Now.ScrollView(new NowRect(0, 0, 200, 100), "pan-scroll").Begin())
         {
-            NowLayout.Rect(180f, 400f);
+            NowLayout.ReserveRect(180f, 400f);
         }
     }
 

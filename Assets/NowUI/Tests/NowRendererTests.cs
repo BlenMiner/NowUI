@@ -1,6 +1,8 @@
 using System;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 using NowUI;
@@ -16,6 +18,225 @@ public class NowRendererTests
         {
             result = snapshot;
             return true;
+        }
+    }
+
+    struct ReentrantDisposeDeformer : INowVertexDeformer
+    {
+        public static Action onFirstDeform;
+
+        public Vector2 Deform(in NowEffectVertex vertex, in NowEffectContext context)
+        {
+            Action callback = onFirstDeform;
+            onFirstDeform = null;
+            callback?.Invoke();
+            return vertex.position;
+        }
+    }
+
+    [Test]
+    public void NowGUIPanelsInstallDistinctAbsoluteControlIdRoots()
+    {
+        NowGUIScope first = default;
+        NowGUIScope second = default;
+
+        try
+        {
+            first = NowGUI.AutoForEvent(
+                101,
+                new Rect(0f, 0f, 120f, 40f),
+                Color.clear,
+                1f,
+                repaint: false);
+            int firstId = NowControls.GetControlId("shared-panel-control");
+            first.Dispose();
+
+            second = NowGUI.AutoForEvent(
+                202,
+                new Rect(0f, 50f, 120f, 40f),
+                Color.clear,
+                1f,
+                repaint: false);
+            int secondId = NowControls.GetControlId("shared-panel-control");
+            second.Dispose();
+
+            Assert.AreNotEqual(firstId, secondId,
+                "separate IMGUI panels must not share control focus/state for the same local id");
+        }
+        finally
+        {
+            second.Dispose();
+            first.Dispose();
+            NowGUI.DisposeAll();
+            NowInput.Reset();
+            NowControls.Reset();
+        }
+    }
+
+    [Test]
+    public void NowGUIRecursiveSetupFailureRestoresOuterInputAndFrameOwnership()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var outerInput = NowInput.Begin(null, new NowInputSurface(new Vector2(200f, 100f)));
+        var outerFrame = NowFrame.Begin(1f);
+        bool inputActive = true;
+        bool frameActive = true;
+
+        try
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+                NowGUI.AutoForEvent(
+                    303,
+                    new Rect(0f, 0f, 120f, 40f),
+                    Color.clear,
+                    1f,
+                    repaint: true));
+
+            Assert.DoesNotThrow(() => outerFrame.Dispose());
+            frameActive = false;
+            Assert.DoesNotThrow(() => outerInput.Dispose());
+            inputActive = false;
+
+            Assert.DoesNotThrow(() =>
+            {
+                using var recovered = NowFrame.Begin(1f);
+            });
+            Assert.IsFalse(NowInput.hasContext);
+        }
+        finally
+        {
+            if (frameActive)
+                outerFrame.Dispose();
+
+            if (inputActive)
+                outerInput.Dispose();
+
+            NowGUI.DisposeAll();
+            NowInput.Reset();
+            NowControls.Reset();
+        }
+    }
+
+    [Test]
+    public void NowGUIWithoutEventIsolatesAndRestoresAmbientInput()
+    {
+        var pointer = new Vector2(18f, 14f);
+        var provider = new FakeProvider
+        {
+            snapshot = new NowInputSnapshot(pointer, true, true, false)
+        };
+        var surface = new NowInputSurface(new Vector2(120f, 60f));
+        var outerInput = NowInput.Begin(provider, surface);
+        NowGUIScope guiScope = default;
+
+        try
+        {
+            guiScope = NowGUI.AutoWithoutEvent(new Rect(0f, 0f, 120f, 60f));
+
+            var hidden = NowInput.Interact(
+                new NowId("eventless-hidden-control"),
+                new NowRect(0f, 0f, 120f, 60f));
+
+            Assert.IsFalse(hidden.hasPointer);
+            Assert.IsFalse(hidden.hovered);
+            Assert.IsFalse(hidden.pressed,
+                "an eventless, draw-suppressed IMGUI panel must not consume the ambient host's pointer");
+
+            guiScope.Dispose();
+
+            Assert.IsTrue(NowInput.current.hasPointer);
+            Assert.AreEqual(pointer, NowInput.current.pointerPosition,
+                "disposing the eventless panel must restore the outer input surface");
+
+            var outer = NowInput.Interact(
+                new NowId("outer-visible-control"),
+                new NowRect(0f, 0f, 120f, 60f));
+            Assert.IsTrue(outer.pressed,
+                "the outer host must still receive the press after the eventless panel closes");
+        }
+        finally
+        {
+            guiScope.Dispose();
+            outerInput.Dispose();
+            NowGUI.DisposeAll();
+            NowOverlay.Reset();
+            NowInput.Reset();
+            NowControls.Reset();
+        }
+    }
+
+    [Test]
+    public void CopiedSuppressedNowGUIScopeCannotDropOuterDrawSuppression()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        bool outerSuppression = false;
+
+        try
+        {
+            using (drawList.Begin(new Vector2(64f, 32f)))
+            {
+                Now.BeginSuppressDraw();
+                outerSuppression = true;
+
+                var scope = NowGUIScope.Suppress(new Rect(0f, 0f, 64f, 32f));
+                var staleCopy = scope;
+                scope.Dispose();
+                staleCopy.Dispose();
+
+                Now.Rectangle(new NowRect(2f, 3f, 12f, 8f)).SetColor(Color.red).Draw();
+                Now.EndSuppressDraw();
+                outerSuppression = false;
+                Now.Rectangle(new NowRect(20f, 3f, 12f, 8f)).SetColor(Color.white).Draw();
+            }
+
+            Assert.AreEqual(4, drawList.mesh.vertexCount,
+                "the stale copy must not re-enable the rectangle drawn under the outer suppression");
+        }
+        finally
+        {
+            if (outerSuppression)
+                Now.EndSuppressDraw();
+
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void SuppressedNowGUIFinalizesInputWhileDrawingIsStillSuppressed()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        NowOverlay.Reset();
+        bool overlayRan = false;
+
+        try
+        {
+            using (drawList.Begin(new Vector2(64f, 32f)))
+            {
+                var input = NowInput.Begin(null, new NowInputSurface(new Vector2(64f, 32f)));
+                var scope = NowGUIScope.Suppress(new Rect(0f, 0f, 64f, 32f), input);
+                NowOverlay.DeferScreen(new NowRect(0f, 0f, 12f, 12f), () =>
+                {
+                    overlayRan = true;
+                    Now.Rectangle(new NowRect(2f, 3f, 12f, 8f)).SetColor(Color.white).Draw();
+                });
+
+                scope.Dispose();
+                Assert.IsTrue(overlayRan);
+            }
+
+            Assert.IsFalse(drawList.hasGeometry,
+                "the input-finalization overlay must remain suppressed instead of leaking into the ambient target");
+        }
+        finally
+        {
+            NowOverlay.Reset();
+            NowInput.Reset();
+            drawList.Dispose();
         }
     }
 
@@ -550,6 +771,8 @@ public class NowRendererTests
 
         var drawList = new NowDrawList();
         NowOverlay.Reset();
+        bool existingRan = false;
+        NowOverlay.DeferScreen(new NowRect(70, 70, 10, 10), () => existingRan = true);
         var scope = drawList.Begin(new Vector2(100, 100));
 
         try
@@ -560,6 +783,13 @@ public class NowRendererTests
 
             Assert.Throws<InvalidOperationException>(() => scope.Dispose());
             Assert.IsFalse(drawList.hasGeometry);
+            Assert.IsTrue(existingRan, "overlay state queued before the failed host should still run");
+
+            NowOverlay.ForceNewFrame();
+            Assert.IsFalse(NowOverlay.IsPointerBlocked(new Vector2(5, 5)),
+                "a failed host must not leak its pointer block into the next frame");
+            Assert.IsTrue(NowOverlay.IsPointerBlocked(new Vector2(75, 75)),
+                "a failed host must preserve pointer blocks queued before it began");
 
             using (drawList.Begin(new Vector2(100, 100)))
                 Now.Rectangle(new NowRect(4, 6, 32, 20)).SetColor(Color.white).Draw();
@@ -569,6 +799,151 @@ public class NowRendererTests
         finally
         {
             scope.Cancel();
+            NowOverlay.Reset();
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void OverlayCallbackCanCloseNestedDrawCaptureWithoutReenteringFlush()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var outer = new NowDrawList();
+        var nested = new NowDrawList();
+        NowOverlay.Reset();
+        int callbackCount = 0;
+
+        try
+        {
+            using (outer.Begin(new Vector2(100, 100)))
+            {
+                NowOverlay.DeferScreen(new NowRect(0, 0, 10, 10), () =>
+                {
+                    ++callbackCount;
+
+                    using (nested.Begin(new Vector2(32, 32)))
+                        Now.Rectangle(new NowRect(2, 3, 12, 8)).SetColor(Color.white).Draw();
+                });
+            }
+
+            Assert.AreEqual(1, callbackCount);
+            Assert.IsTrue(nested.hasGeometry);
+        }
+        finally
+        {
+            NowOverlay.Reset();
+            nested.Dispose();
+            outer.Dispose();
+        }
+    }
+
+    [Test]
+    public void DeferredCallbackCannotReenterItsOwnCopiedDrawScopeDispose()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        NowOverlay.Reset();
+        bool callbackRan = false;
+        var scope = drawList.Begin(new Vector2(100, 100));
+        var copiedScope = scope;
+
+        try
+        {
+            Now.Rectangle(new NowRect(4, 6, 32, 20)).SetColor(Color.white).Draw();
+            NowOverlay.DeferScreen(new NowRect(0, 0, 10, 10), () =>
+            {
+                callbackRan = true;
+                copiedScope.Dispose();
+            });
+
+            Assert.DoesNotThrow(() => scope.Dispose());
+            Assert.IsTrue(callbackRan);
+            Assert.IsTrue(drawList.hasGeometry);
+
+            using (drawList.Begin(new Vector2(100, 100)))
+                Now.Rectangle(new NowRect(10, 12, 20, 16)).SetColor(Color.red).Draw();
+
+            Assert.IsTrue(drawList.hasGeometry, "reentrant disposal must not poison the next capture");
+        }
+        finally
+        {
+            scope.Cancel();
+            copiedScope.Cancel();
+            NowOverlay.Reset();
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void OverlayResetInsideCallbackDefersFreshWorkToARecoverableFlush()
+    {
+        NowOverlay.Reset();
+        int resettingCallbackCount = 0;
+        int freshCallbackCount = 0;
+
+        try
+        {
+            NowOverlay.DeferPassive(1, _ =>
+            {
+                ++resettingCallbackCount;
+                NowOverlay.Reset();
+                NowOverlay.DeferPassive(2, __ => ++freshCallbackCount);
+            });
+
+            Assert.DoesNotThrow(() => NowOverlay.Flush());
+            Assert.AreEqual(1, resettingCallbackCount);
+            Assert.AreEqual(0, freshCallbackCount,
+                "work queued after Reset belongs to a fresh flush, not the callback currently unwinding");
+
+            Assert.DoesNotThrow(() => NowOverlay.Flush());
+            Assert.AreEqual(1, freshCallbackCount);
+            Assert.IsFalse(NowOverlay.isDrawingOverlay);
+        }
+        finally
+        {
+            NowOverlay.Reset();
+        }
+    }
+
+    [Test]
+    public void CancelledDrawScopeRollsBackOnlyItsDeferredOverlayState()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        NowOverlay.Reset();
+        bool existingRan = false;
+        bool cancelledRan = false;
+
+        try
+        {
+            NowOverlay.DeferScreen(new NowRect(70, 70, 10, 10), () => existingRan = true);
+
+            var cancelled = drawList.Begin(new Vector2(100, 100));
+            NowOverlay.DeferScreen(new NowRect(0, 0, 10, 10), () => cancelledRan = true);
+            cancelled.Cancel();
+
+            // Pointer ownership is intentionally read from the previous frame.
+            // Advance the test-only registry now that rollback has finalized the
+            // current frame's surviving block set.
+            NowOverlay.ForceNewFrame();
+
+            Assert.IsFalse(NowOverlay.IsPointerBlocked(new Vector2(5, 5)),
+                "a cancelled host must not leave its pointer block in the current frame");
+            Assert.IsTrue(NowOverlay.IsPointerBlocked(new Vector2(75, 75)),
+                "overlay state queued before the cancelled host must be preserved");
+
+            using (drawList.Begin(new Vector2(100, 100)))
+                Now.Rectangle(new NowRect(4, 6, 32, 20)).SetColor(Color.white).Draw();
+
+            Assert.IsTrue(existingRan);
+            Assert.IsFalse(cancelledRan, "a cancelled host's deferred callback must not leak into the next capture");
+            Assert.IsTrue(drawList.hasGeometry);
+        }
+        finally
+        {
             NowOverlay.Reset();
             drawList.Dispose();
         }
@@ -598,6 +973,238 @@ public class NowRendererTests
         finally
         {
             drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void NestedModifierLeavesDeferredOverlaysForTheOutermostCapture()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        NowOverlay.Reset();
+        bool overlayRan = false;
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            {
+                NowOverlay.DeferScreen(new NowRect(0, 0, 12, 12), () => overlayRan = true);
+
+                using (NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 16f)).Begin())
+                    Now.Rectangle(new NowRect(8, 10, 40, 20)).SetColor(Color.white).Draw();
+
+                Assert.IsFalse(overlayRan,
+                    "ending a nested effect capture must not flush its host's global overlay queue");
+            }
+
+            Assert.IsTrue(overlayRan);
+        }
+        finally
+        {
+            NowOverlay.Reset();
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void DisposingCopiedModifierScopeDoesNotEndOuterPassiveInputTwice()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        bool outerPassive = false;
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            {
+                NowInput.BeginPassive();
+                outerPassive = true;
+
+                var effect = NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 16f)).Begin();
+                var staleCopy = effect;
+                Now.Rectangle(new NowRect(8, 10, 40, 20)).SetColor(Color.white).Draw();
+
+                effect.Dispose();
+                Assert.IsTrue(NowInput.isPassive);
+                staleCopy.Dispose();
+                Assert.IsTrue(NowInput.isPassive,
+                    "a stale copied effect scope must not consume its parent's passive depth");
+
+                NowInput.EndPassive();
+                outerPassive = false;
+            }
+
+            Assert.IsFalse(NowInput.isPassive);
+        }
+        finally
+        {
+            if (outerPassive)
+                NowInput.EndPassive();
+
+            drawList.Dispose();
+            NowInput.Reset();
+        }
+    }
+
+    [Test]
+    public void ModifierDisposeCanBeRetriedAfterNestedDrawScopeCloses()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var host = new NowDrawList();
+        var nestedHost = new NowDrawList();
+        NowDrawScope hostScope = default;
+        NowDrawScope nestedScope = default;
+        NowModifierScope<NowWaveDeformer> modifier = default;
+
+        try
+        {
+            hostScope = host.Begin(new Vector2(128f, 64f));
+            modifier = NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 16f)).Begin();
+            Now.Rectangle(new NowRect(8f, 10f, 40f, 20f)).SetColor(Color.white).Draw();
+            nestedScope = nestedHost.Begin(new Vector2(32f, 24f));
+
+            Assert.Throws<InvalidOperationException>(() => modifier.Dispose());
+            Assert.IsTrue(NowInput.isPassive,
+                "a rejected cross-family dispose must retain the effect's input and capture ownership");
+
+            nestedScope.Dispose();
+            Assert.DoesNotThrow(() => modifier.Dispose());
+            Assert.IsFalse(NowInput.isPassive);
+
+            hostScope.Dispose();
+            Assert.IsTrue(host.hasGeometry,
+                "retrying after the nested draw closes must still append the captured modifier geometry");
+        }
+        finally
+        {
+            nestedScope.Dispose();
+            modifier.Dispose();
+            hostScope.Dispose();
+            nestedHost.Dispose();
+            host.Dispose();
+            NowInput.Reset();
+        }
+    }
+
+    [Test]
+    public void CustomDeformerCannotReenterItsOwnCopiedModifierDispose()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        NowModifierScope<ReentrantDisposeDeformer> copiedScope = default;
+        int callbackCount = 0;
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            {
+                var scope = NowEffects.Modifier(new ReentrantDisposeDeformer()).Begin();
+                copiedScope = scope;
+                ReentrantDisposeDeformer.onFirstDeform = () =>
+                {
+                    ++callbackCount;
+                    copiedScope.Dispose();
+                };
+
+                Now.Rectangle(new NowRect(8, 10, 40, 20)).SetColor(Color.white).Draw();
+                Assert.DoesNotThrow(() => scope.Dispose());
+            }
+
+            Assert.AreEqual(1, callbackCount);
+            Assert.IsTrue(drawList.hasGeometry);
+        }
+        finally
+        {
+            ReentrantDisposeDeformer.onFirstDeform = null;
+            copiedScope.Dispose();
+            drawList.Dispose();
+            NowInput.Reset();
+        }
+    }
+
+    [Test]
+    public void DisposingCopiedSnapshotScopeDoesNotEndOuterPassiveInputTwice()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        bool outerPassive = false;
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            {
+                NowInput.BeginPassive();
+                outerPassive = true;
+
+                var snapshot = NowEffects.Snapshot(new NowRect(4, 6, 40, 24)).Begin();
+                var staleCopy = snapshot;
+                Now.Rectangle(new NowRect(4, 6, 40, 24)).SetColor(Color.white).Draw();
+
+                snapshot.Dispose();
+                Assert.IsTrue(NowInput.isPassive);
+                staleCopy.Dispose();
+                Assert.IsTrue(NowInput.isPassive,
+                    "a stale copied snapshot scope must not consume its parent's passive depth");
+
+                NowInput.EndPassive();
+                outerPassive = false;
+            }
+
+            Assert.IsFalse(NowInput.isPassive);
+        }
+        finally
+        {
+            if (outerPassive)
+                NowInput.EndPassive();
+
+            drawList.Dispose();
+            NowInput.Reset();
+        }
+    }
+
+    [Test]
+    public void SnapshotDisposeCanBeRetriedAfterNestedDrawScopeCloses()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var host = new NowDrawList();
+        var nestedHost = new NowDrawList();
+        NowDrawScope hostScope = default;
+        NowDrawScope nestedScope = default;
+        NowSnapshotScope snapshot = default;
+
+        try
+        {
+            hostScope = host.Begin(new Vector2(128f, 64f));
+            snapshot = NowEffects.Snapshot(new NowRect(4f, 6f, 40f, 24f)).Begin();
+            Now.Rectangle(new NowRect(4f, 6f, 40f, 24f)).SetColor(Color.white).Draw();
+            nestedScope = nestedHost.Begin(new Vector2(32f, 24f));
+
+            Assert.Throws<InvalidOperationException>(() => snapshot.Dispose());
+            Assert.IsTrue(NowInput.isPassive,
+                "a rejected cross-family dispose must retain the snapshot's input and capture ownership");
+
+            nestedScope.Dispose();
+            Assert.DoesNotThrow(() => snapshot.Dispose());
+            Assert.IsFalse(NowInput.isPassive);
+            Assert.NotNull(snapshot.texture,
+                "retrying after the nested draw closes must still complete the snapshot render");
+
+            hostScope.Dispose();
+        }
+        finally
+        {
+            nestedScope.Dispose();
+            snapshot.Dispose();
+            hostScope.Dispose();
+            nestedHost.Dispose();
+            host.Dispose();
+            NowInput.Reset();
         }
     }
 
@@ -1041,7 +1648,7 @@ public class NowRendererTests
     }
 
     [Test]
-    public void PipelineGraphicBuildsDrawListForTargetCamera()
+    public void PipelineGraphicUsesOneExplicitPass()
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
 
@@ -1060,15 +1667,8 @@ public class NowRendererTests
             graphic.targetCamera = camera;
 
             Assert.IsTrue(NowPipelineGraphic.BuildDrawList(camera, drawList));
-            Assert.AreEqual(2, graphic.drawCount, "The default layout measure pass runs the UI twice per build.");
+            Assert.AreEqual(1, graphic.drawCount, "The explicit pipeline host should draw exactly once.");
             Assert.IsTrue(drawList.hasGeometry);
-            Assert.AreEqual(4, drawList.mesh.vertexCount, "The measure pass must not contribute geometry.");
-
-            graphic.drawCount = 0;
-            graphic.layoutMeasurePass = false;
-
-            Assert.IsTrue(NowPipelineGraphic.BuildDrawList(camera, drawList));
-            Assert.AreEqual(1, graphic.drawCount, "Disabling layoutMeasurePass skips the extra pass.");
             Assert.AreEqual(4, drawList.mesh.vertexCount);
         }
         finally
@@ -1081,6 +1681,259 @@ public class NowRendererTests
             Object.DestroyImmediate(targetTexture);
             Object.DestroyImmediate(graphicObject);
             Object.DestroyImmediate(cameraObject);
+        }
+    }
+
+    [Test]
+    public void PipelineBuildSetupFailureDoesNotPoisonTheNextRetainedFrame()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var cameraObject = new GameObject("Now Recovering Pipeline Camera");
+        var graphicObject = new GameObject("Now Recovering Pipeline Graphic");
+        var targetTexture = new RenderTexture(64, 32, 0);
+        var disposedList = new NowDrawList();
+        var validList = new NowDrawList();
+        Camera camera = null;
+        float previousScale = Now.uiScale;
+
+        try
+        {
+            camera = cameraObject.AddComponent<Camera>();
+            camera.targetTexture = targetTexture;
+            var graphic = graphicObject.AddComponent<TestPipelineGraphic>();
+            graphic.targetCamera = camera;
+            disposedList.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() =>
+                NowPipelineGraphic.BuildDrawList(camera, disposedList, 2f));
+            Assert.AreEqual(previousScale, Now.uiScale, 0.001f);
+
+            Assert.IsTrue(NowPipelineGraphic.BuildDrawList(camera, validList));
+            Assert.IsTrue(validList.hasGeometry);
+        }
+        finally
+        {
+            if (camera != null)
+                camera.targetTexture = null;
+
+            validList.Dispose();
+            disposedList.Dispose();
+            targetTexture.Release();
+            Object.DestroyImmediate(targetTexture);
+            Object.DestroyImmediate(graphicObject);
+            Object.DestroyImmediate(cameraObject);
+            Now.SetUIScale(previousScale);
+        }
+    }
+
+    [Test]
+    public void PipelineBuildMeasuresOnlyLayoutGraphicsInMixedHosts()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var cameraObject = new GameObject("Now Mixed Pipeline Camera");
+        var explicitObject = new GameObject("Now Explicit Pipeline Graphic");
+        var layoutObject = new GameObject("Now Layout Pipeline Graphic");
+        var targetTexture = new RenderTexture(64, 32, 0);
+        var drawList = new NowDrawList();
+        Camera camera = null;
+
+        try
+        {
+            camera = cameraObject.AddComponent<Camera>();
+            camera.targetTexture = targetTexture;
+
+            var explicitGraphic = explicitObject.AddComponent<TestPipelineGraphic>();
+            explicitGraphic.targetCamera = camera;
+
+            var layoutGraphic = layoutObject.AddComponent<TestPipelineLayoutGraphic>();
+            layoutGraphic.targetCamera = camera;
+
+            Assert.IsNotInstanceOf<NowPipelineLayoutGraphic>(explicitGraphic);
+            Assert.IsInstanceOf<NowPipelineLayoutGraphic>(layoutGraphic);
+            Assert.IsNull(typeof(NowPipelineGraphic).GetProperty("layoutMeasurePass"),
+                "Measurement is selected by the dedicated host type, not a mutable public toggle.");
+            Assert.IsTrue(NowPipelineGraphic.BuildDrawList(camera, drawList));
+            Assert.AreEqual(1, explicitGraphic.drawCount);
+            Assert.AreEqual(2, layoutGraphic.drawCount);
+            Assert.AreEqual(8, drawList.mesh.vertexCount, "Each host should contribute geometry only during its real pass.");
+        }
+        finally
+        {
+            if (camera != null)
+                camera.targetTexture = null;
+
+            drawList.Dispose();
+            targetTexture.Release();
+            Object.DestroyImmediate(targetTexture);
+            Object.DestroyImmediate(layoutObject);
+            Object.DestroyImmediate(explicitObject);
+            Object.DestroyImmediate(cameraObject);
+        }
+    }
+
+    [Test]
+    public void GraphicHostsDefaultToExplicitOnePassAndLayoutTwoPass()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var explicitObject = new GameObject("Now Explicit Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+        var layoutObject = new GameObject("Now Layout Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+
+        try
+        {
+            explicitObject.GetComponent<RectTransform>().sizeDelta = new Vector2(64f, 32f);
+            layoutObject.GetComponent<RectTransform>().sizeDelta = new Vector2(64f, 32f);
+
+            var explicitGraphic = explicitObject.AddComponent<CountingGraphic>();
+            var layoutGraphic = layoutObject.AddComponent<CountingLayoutGraphic>();
+
+            Assert.IsFalse(explicitGraphic.driveLayoutSize);
+            explicitGraphic.CalculateLayoutInputHorizontal();
+            explicitGraphic.CalculateLayoutInputVertical();
+            Assert.AreEqual(0, explicitGraphic.drawCount, "Layout queries should not execute content when driveLayoutSize is disabled.");
+            Assert.AreEqual(-1f, explicitGraphic.preferredWidth);
+            Assert.AreEqual(-1f, explicitGraphic.preferredHeight);
+
+            explicitGraphic.Rebuild(CanvasUpdate.PreRender);
+            layoutGraphic.Rebuild(CanvasUpdate.PreRender);
+
+            Assert.AreEqual(1, explicitGraphic.drawCount);
+            Assert.AreEqual(2, layoutGraphic.drawCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(layoutObject);
+            Object.DestroyImmediate(explicitObject);
+        }
+    }
+
+    [Test]
+    public void GraphicHostsIsolateControlIdentityPerInstance()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var firstObject = new GameObject("Now Scoped Graphic A", typeof(RectTransform), typeof(CanvasRenderer));
+        var secondObject = new GameObject("Now Scoped Graphic B", typeof(RectTransform), typeof(CanvasRenderer));
+
+        try
+        {
+            firstObject.GetComponent<RectTransform>().sizeDelta = new Vector2(64f, 32f);
+            secondObject.GetComponent<RectTransform>().sizeDelta = new Vector2(64f, 32f);
+            var first = firstObject.AddComponent<ScopeRecordingGraphic>();
+            var second = secondObject.AddComponent<ScopeRecordingGraphic>();
+
+            using (NowControls.IdScope("unrelated-ambient-a"))
+                first.Rebuild(CanvasUpdate.PreRender);
+
+            using (NowControls.IdScope("unrelated-ambient-b"))
+                second.Rebuild(CanvasUpdate.PreRender);
+
+            Assert.AreNotEqual(0, first.resolvedId);
+            Assert.AreNotEqual(0, second.resolvedId);
+            Assert.AreEqual(first.resolvedId, first.ResolveControlId("shared-host-control"),
+                "The public resolver must reproduce the id used inside the first host's private scope.");
+            Assert.AreEqual(first.resolvedId, first.resolvedViaHost,
+                "The resolver must not double-apply the host scope when called inside DrawNowUI.");
+            Assert.AreEqual(second.resolvedId, second.ResolveControlId("shared-host-control"),
+                "The public resolver must reproduce the id used inside the second host's private scope.");
+            Assert.AreEqual(second.resolvedId, second.resolvedViaHost,
+                "The resolver must not double-apply the host scope when called inside DrawNowUI.");
+            Assert.AreNotEqual(first.resolvedId, second.resolvedId,
+                "Identical ids in separate hosts must not share control state.");
+            Assert.AreEqual(first.resolvedIntId, first.ResolveControlId(42));
+            Assert.AreEqual(second.resolvedIntId, second.ResolveControlId(42));
+            Assert.AreNotEqual(first.resolvedIntId, second.resolvedIntId,
+                "Integer SetId values must be private to each host just like strings.");
+            Assert.AreEqual(42, first.absoluteIntId);
+            Assert.AreEqual(42, second.absoluteIntId,
+                "NowId.Resolved is the explicit escape hatch for an already-resolved integer.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(secondObject);
+            Object.DestroyImmediate(firstObject);
+        }
+    }
+
+    [Test]
+    public void HostIdRootsCannotAliasSimpleUserIdScopes()
+    {
+        int hostRoot = NowControls.AllocateHostScopeId();
+        int hostChild;
+        int userChild;
+
+        using (NowControls.RestoreIdScope(hostRoot))
+            hostChild = NowControls.GetControlId(new NowId(7), 1);
+
+        using (NowControls.IdScope(1))
+            userChild = NowControls.GetControlId(new NowId(7), 1);
+
+        Assert.AreNotEqual(1, hostRoot,
+            "retained hosts must not use raw sequence numbers as public id-scope roots");
+        Assert.AreNotEqual(userChild, hostChild,
+            "a retained host root must not alias a same-numbered user IdScope");
+    }
+
+    [Test]
+    public void FailedGraphicRebuildCancelsDeferredOverlaysBeforeInputFinalization()
+    {
+        var graphicObject = new GameObject(
+            "Now Throwing Deferred Graphic",
+            typeof(RectTransform),
+            typeof(CanvasRenderer));
+
+        NowOverlay.Reset();
+
+        try
+        {
+            var rectTransform = graphicObject.GetComponent<RectTransform>();
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 120f);
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 60f);
+
+            var graphic = graphicObject.AddComponent<ThrowingDeferredGraphic>();
+            LogAssert.Expect(
+                LogType.Exception,
+                new Regex("InvalidOperationException: retained host failed"));
+
+            graphic.Rebuild(CanvasUpdate.PreRender);
+
+            Assert.IsFalse(graphic.deferredRan,
+                "a failed retained rebuild must cancel its overlays before input disposal can flush them");
+            Assert.IsFalse(NowOverlay.hasOpenOverlay,
+                "a failed retained rebuild must roll back its deferred pointer blocks");
+        }
+        finally
+        {
+            NowOverlay.Reset();
+            NowInput.Reset();
+            NowControls.Reset();
+            Object.DestroyImmediate(graphicObject);
+        }
+    }
+
+    [Test]
+    public void LayoutGraphicRunMeasuredCallbackDoesNotCreateNestedPasses()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var graphicObject = new GameObject("Now Managed Layout Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+
+        try
+        {
+            graphicObject.GetComponent<RectTransform>().sizeDelta = new Vector2(64f, 32f);
+            var graphic = graphicObject.AddComponent<ManagedMeasuredLayoutGraphic>();
+
+            graphic.Rebuild(CanvasUpdate.PreRender);
+
+            Assert.AreEqual(2, graphic.hostDrawCount, "The layout host should execute one measure pass and one real pass.");
+            Assert.AreEqual(2, graphic.callbackDrawCount, "RunMeasured should reuse its host's cycle instead of adding a third callback.");
+            Assert.AreEqual(4, graphic.canvasRenderer.GetMesh().vertexCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(graphicObject);
         }
     }
 
@@ -1211,6 +2064,8 @@ public class NowRendererTests
             rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 32f);
 
             var graphic = graphicObject.AddComponent<LayoutSizeGraphic>();
+            Assert.IsFalse(graphic.driveLayoutSize);
+            graphic.driveLayoutSize = true;
 
             graphic.CalculateLayoutInputHorizontal();
             graphic.CalculateLayoutInputVertical();
@@ -1584,6 +2439,97 @@ public class NowRendererTests
         }
     }
 
+    sealed class TestPipelineLayoutGraphic : NowPipelineLayoutGraphic
+    {
+        public int drawCount;
+
+        protected override void DrawNowUI(Camera camera, Rect rect)
+        {
+            ++drawCount;
+
+            Now.Rectangle(new Vector4(18, 2, 12, 8))
+                .SetColor(Color.white)
+                .Draw();
+        }
+    }
+
+    sealed class CountingGraphic : NowGraphic
+    {
+        public int drawCount;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            ++drawCount;
+            Now.Rectangle(new NowRect(2f, 2f, 12f, 8f)).Draw();
+        }
+    }
+
+    sealed class ThrowingDeferredGraphic : NowGraphic
+    {
+        public bool deferredRan;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            NowOverlay.DeferScreen(new NowRect(0f, 0f, 20f, 20f), () =>
+            {
+                deferredRan = true;
+                throw new InvalidOperationException("deferred overlay should not run");
+            });
+
+            throw new InvalidOperationException("retained host failed");
+        }
+    }
+
+    sealed class CountingLayoutGraphic : NowLayoutGraphic
+    {
+        public int drawCount;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            ++drawCount;
+            Now.Rectangle(new NowRect(2f, 2f, 12f, 8f)).Draw();
+        }
+    }
+
+    sealed class ScopeRecordingGraphic : NowGraphic
+    {
+        public int resolvedId;
+
+        public int resolvedViaHost;
+
+        public int resolvedIntId;
+
+        public int absoluteIntId;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            resolvedId = NowControls.GetControlId("shared-host-control");
+            resolvedViaHost = ResolveControlId("shared-host-control");
+            resolvedIntId = NowControls.GetControlId(new NowId(42), 1);
+            absoluteIntId = NowControls.GetControlId(NowId.Resolved(42), 1);
+            Now.Rectangle(new NowRect(2f, 2f, 12f, 8f)).Draw();
+        }
+    }
+
+    sealed class ManagedMeasuredLayoutGraphic : NowLayoutGraphic
+    {
+        public int hostDrawCount;
+
+        public int callbackDrawCount;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            ++hostDrawCount;
+            NowLayout.RunMeasured(rect, this, static self => self.DrawMeasuredContent());
+        }
+
+        void DrawMeasuredContent()
+        {
+            ++callbackDrawCount;
+            Now.Rectangle(new NowRect(2f, 2f, 12f, 8f)).Draw();
+        }
+    }
+
     sealed class TestGraphic : NowGraphic
     {
         protected override void DrawNowUI(NowRect rect)
@@ -1605,7 +2551,7 @@ public class NowRendererTests
             ++drawCount;
 
             using (NowLayout.Area(new NowRect(0f, 0f, rect.width, rect.height)))
-                NowLayout.Rect(childWidth, 35f);
+                NowLayout.ReserveRect(childWidth, 35f);
         }
     }
 
@@ -1614,8 +2560,6 @@ public class NowRendererTests
         public Material materialOverride;
 
         public Material canvasMaterialOverride;
-
-        protected override bool useLayoutMeasurePass => false;
 
         protected override void DrawNowUI(NowRect rect)
         {
@@ -1629,8 +2573,6 @@ public class NowRendererTests
     {
         public Texture texture;
 
-        protected override bool useLayoutMeasurePass => false;
-
         protected override void DrawNowUI(NowRect rect)
         {
             Now.Rectangle(new NowRect(2, 2, 12, 8))
@@ -1643,8 +2585,6 @@ public class NowRendererTests
 
     sealed class GlassGraphic : NowGraphic
     {
-        protected override bool useLayoutMeasurePass => false;
-
         protected override void DrawNowUI(NowRect rect)
         {
             Now.Glass(new NowRect(2, 2, 12, 8))
@@ -1655,8 +2595,6 @@ public class NowRendererTests
 
     sealed class ReplayGlassGraphic : NowGraphic
     {
-        protected override bool useLayoutMeasurePass => false;
-
         protected override void DrawNowUI(NowRect rect)
         {
             Now.Rectangle(new NowRect(0, 0, rect.width, rect.height))
@@ -1674,8 +2612,6 @@ public class NowRendererTests
     sealed class ScaleRecordingGraphic : NowGraphic
     {
         public float recordedScale;
-
-        protected override bool useLayoutMeasurePass => false;
 
         protected override void DrawNowUI(NowRect rect)
         {

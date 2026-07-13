@@ -347,7 +347,7 @@ namespace NowUI
             for (int i = 0; i < state.optionCount; ++i)
             {
                 NowRect itemRect = state.scrolls
-                    ? NowLayout.Rect(height: state.itemHeight, stretchWidth: true)
+                    ? NowLayout.ReserveRect(height: state.itemHeight, stretchWidth: true)
                     : new NowRect(
                         state.itemArea.x,
                         state.itemArea.y + i * state.itemHeight,
@@ -395,7 +395,7 @@ namespace NowUI
 
             for (int i = first; i < end; ++i)
             {
-                NowRect itemRect = NowLayout.Rect(height: itemHeight, stretchWidth: true);
+                NowRect itemRect = NowLayout.ReserveRect(height: itemHeight, stretchWidth: true);
                 var itemInteraction = NowInput.Interact(NowInput.CombineId(state.itemSeed, i + 1), itemRect);
                 state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
                     state.themeAsset,

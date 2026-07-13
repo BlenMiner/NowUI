@@ -131,15 +131,19 @@ public class NowUIToolkitTests
     }
 
     [Test]
-    public void VisualElementExposesSafeDefaults()
+    public void VisualElementHostTypesExposeExplicitAndLayoutContracts()
     {
         var element = new NowVisualElement();
+        var layoutElement = new NowLayoutVisualElement();
 
         try
         {
             Assert.IsFalse(element.rebuildEveryFrame);
             Assert.IsTrue(element.autoRebuildOnInteraction);
-            Assert.IsTrue(element.layoutMeasurePass);
+            Assert.IsInstanceOf<NowVisualElement>(layoutElement);
+            Assert.AreNotEqual(element.GetType(), layoutElement.GetType());
+            Assert.IsNull(typeof(NowVisualElement).GetProperty("layoutMeasurePass"),
+                "Measurement is selected by the dedicated host type, not a mutable public toggle.");
             Assert.IsTrue(element.usePanelScale);
 
             element.uiScale = -5f;
@@ -150,7 +154,9 @@ public class NowUIToolkitTests
         }
         finally
         {
+            layoutElement.Dispose();
             element.Dispose();
         }
     }
+
 }

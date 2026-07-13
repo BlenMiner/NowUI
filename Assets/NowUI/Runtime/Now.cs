@@ -861,23 +861,44 @@ namespace NowUI
         /// </summary>
         static int BeginScreenFrame()
         {
-            bool recoveredAbandonedFrame = false;
+            if (_screenFrameActive && _screenFrameStartedAt == Time.frameCount)
+            {
+                throw new InvalidOperationException(
+                    "Now.StartUI cannot be nested. Dispose the current NowUIScreenScope before starting another UI frame.");
+            }
+
+            if (NowFrame.hasActiveScopesThisFrame || NowGUI.hasActiveScopesThisFrame ||
+                NowInput.hasActiveScopesThisFrame || NowLayout.hasActiveScopesThisFrame ||
+                NowTheme.hasActiveScopesThisFrame || NowControls.hasActiveIdScopesThisFrame)
+            {
+                throw new InvalidOperationException(
+                    "Now.StartUI cannot begin inside an active retained-host, NowGUI, NowInput, NowLayout, theme, or id scope. " +
+                    "Dispose the outer scope before starting a screen UI frame; nested StartUI would overwrite its input, " +
+                    "layout, id, theme, and draw-suppression state.");
+            }
+
+            if (!_screenFrameActive && (_captureMesh || NowDrawList.hasActiveScopes))
+            {
+                throw new InvalidOperationException(
+                    "Now.StartUI cannot begin inside an active NowDrawList scope. Dispose the draw scope before starting a screen UI frame.");
+            }
+
+            // Handles that survived a frame boundary are abandoned rather than
+            // live nesting. Clear their ownership guards before the normal frame
+            // reset heals the ambient input/layout/suppression state.
+            NowFrame.DiscardAbandonedScopes();
+            NowGUI.DiscardAbandonedScopes();
+            NowInput.DiscardAbandonedScopes();
+            NowLayout.DiscardAbandonedScopes();
 
             if (_screenFrameActive)
             {
-                if (_screenFrameStartedAt == Time.frameCount)
-                {
-                    throw new InvalidOperationException(
-                        "Now.StartUI cannot be nested. Dispose the current NowUIScreenScope before starting another UI frame.");
-                }
 
                 _screenFrameScopes.Clear();
                 _screenFrameActive = false;
                 NowOverlay.DiscardAbandonedFrame();
                 DiscardActiveMeshCaptures();
                 NowDrawList.DiscardAbandonedScopes();
-                recoveredAbandonedFrame = true;
-
                 if (!_warnedLeakedScreenScope)
                 {
                     _warnedLeakedScreenScope = true;
@@ -887,12 +908,6 @@ namespace NowUI
             else
             {
                 _warnedLeakedScreenScope = false;
-            }
-
-            if (!recoveredAbandonedFrame && (_captureMesh || NowDrawList.hasActiveScopes))
-            {
-                throw new InvalidOperationException(
-                    "Now.StartUI cannot begin inside an active NowDrawList scope. Dispose the draw scope before starting a screen UI frame.");
             }
 
             _screenFrameActive = true;
@@ -940,6 +955,7 @@ namespace NowUI
             if (!_screenFrameScopes.Exit(token))
                 return;
 
+            NowInput.CancelScreenFrame();
             _screenFrameActive = false;
             _meshes.count = 0;
             _lastUsedMeshId = -1;
@@ -970,7 +986,7 @@ namespace NowUI
                 _uiScale = uiScale;
 
                 screenMask = new NowRect(0f, 0f, Screen.width / uiScale, Screen.height / uiScale);
-                NowInput.Update(new NowInputSurface(
+                NowInput.BeginScreenFrame(new NowInputSurface(
                     new Vector2(screenMask.width, screenMask.height),
                     new Rect(0f, 0f, Screen.width, Screen.height)));
                 Initialize();
@@ -1024,7 +1040,7 @@ namespace NowUI
                     screenMask.y / uiScale,
                     screenMask.width / uiScale,
                     screenMask.height / uiScale);
-                NowInput.Update(new NowInputSurface(
+                NowInput.BeginScreenFrame(new NowInputSurface(
                     new Vector2(screenMask.width / uiScale, screenMask.height / uiScale),
                     new Rect(screenMask.x, screenMask.y, screenMask.width, screenMask.height)));
                 Initialize();
@@ -1523,12 +1539,20 @@ namespace NowUI
 
         internal static void FinishUIScreenFrame(int token)
         {
-            if (!_screenFrameScopes.Exit(token))
+            if (!_screenFrameScopes.IsCurrent(token))
                 return;
 
-            _screenFrameActive = false;
+            if (_captureMesh || NowDrawList.hasActiveScopes ||
+                NowInput.hasActiveScopesThisFrame || NowGUI.hasActiveScopesThisFrame ||
+                NowLayout.hasActiveScopesThisFrame || NowTheme.hasActiveScopesThisFrame ||
+                NowControls.hasActiveIdScopesThisFrame)
+            {
+                throw new InvalidOperationException(
+                    "Now.StartUI cannot finish while a nested draw/effect, NowGUI, input, layout, theme, or id scope is active. " +
+                    "Dispose the inner scope first, then dispose the NowUIScreenScope.");
+            }
 
-            if (_captureMesh)
+            if (!_screenFrameScopes.BeginEnd(token))
                 return;
 
             using var profile = NowProfiler.ScreenFrameEnd.Auto();
@@ -1584,7 +1608,15 @@ namespace NowUI
             }
             finally
             {
-                NowInput.EndFrame();
+                try
+                {
+                    NowInput.EndFrame();
+                }
+                finally
+                {
+                    _screenFrameActive = false;
+                    _screenFrameScopes.ExitEnding(token);
+                }
             }
         }
 

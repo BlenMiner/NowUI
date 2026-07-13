@@ -142,7 +142,7 @@ public class NowControlsTests
 
             using (NowInput.Begin(_provider, Surface))
             {
-                NowLayout.Area(new NowRect(0f, 0f, 100f, 100f), () =>
+                NowLayout.RunMeasured(new NowRect(0f, 0f, 100f, 100f), () =>
                 {
                     if (NowInput.isPassive)
                         passive = NowControlState.Transition(id, false, 100f);
@@ -294,7 +294,7 @@ public class NowControlsTests
     }
 
     [Test]
-    public void PassiveMeasurePassMirrorsActiveOccurrenceSalting()
+    public void ExactMeasureReplayContinuesFromTheActiveOccurrenceOffset()
     {
         int site = NowControls.SiteId("test", 253);
 
@@ -303,19 +303,101 @@ public class NowControlsTests
             int active1 = NowControls.GetControlId(site);
             int active2 = NowControls.GetControlId(site);
 
-            NowInput.BeginPassive();
-            int passive1 = NowControls.GetControlId(site);
-            int passive2 = NowControls.GetControlId(site);
-            NowInput.EndPassive();
+            int snapshot = NowLayout.BeginMeasurePass();
+            int measured1;
+            int measured2;
+
+            try
+            {
+                measured1 = NowControls.GetControlId(site);
+                measured2 = NowControls.GetControlId(site);
+            }
+            finally
+            {
+                NowLayout.EndMeasurePass(snapshot);
+            }
+
+            int drawn1 = NowControls.GetControlId(site);
+            int drawn2 = NowControls.GetControlId(site);
+
+            Assert.AreNotEqual(active1, active2, "Repeated controls at one call site must salt apart.");
+            Assert.AreEqual(drawn1, measured1,
+                "A measured region after active content must start at the active occurrence offset.");
+            Assert.AreEqual(drawn2, measured2,
+                "The real replay must preserve measured occurrence order from that offset.");
+        }
+    }
+
+    [Test]
+    public void PassiveOnlyRegionReservesItsControlIdOccurrences()
+    {
+        int site = NowControls.SiteId("test", 254);
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            int before = NowControls.GetControlId(site);
 
             NowInput.BeginPassive();
-            int secondPass1 = NowControls.GetControlId(site);
+            int passive = NowControls.GetControlId(site);
             NowInput.EndPassive();
 
-            Assert.AreNotEqual(active1, active2, "Repeated draws of one id must salt apart.");
-            Assert.AreEqual(active1, passive1, "Measure passes must resolve the same ids as the real pass.");
-            Assert.AreEqual(active2, passive2, "Measure passes must resolve the same ids as the real pass.");
-            Assert.AreEqual(active1, secondPass1, "Every measure pass restarts its occurrence count.");
+            int after = NowControls.GetControlId(site);
+
+            Assert.AreEqual(3, new HashSet<int> { before, passive, after }.Count,
+                "A passive-only subtree must reserve its logical slots in the surrounding draw.");
+        }
+    }
+
+    [Test]
+    public void NestedPassiveRegionKeepsMeasureAndDrawOccurrencesAligned()
+    {
+        int site = NowControls.SiteId("test", 255);
+        var measured = new List<int>();
+        var drawn = new List<int>();
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowLayout.RunMeasured(new NowRect(0f, 0f, 100f, 20f), () =>
+            {
+                List<int> ids = NowLayout.isMeasurePass ? measured : drawn;
+                ids.Add(NowControls.GetControlId(site));
+
+                NowInput.BeginPassive();
+                try
+                {
+                    ids.Add(NowControls.GetControlId(site));
+                }
+                finally
+                {
+                    NowInput.EndPassive();
+                }
+
+                ids.Add(NowControls.GetControlId(site));
+            });
+        }
+
+        CollectionAssert.AreEqual(measured, drawn);
+        Assert.AreEqual(3, new HashSet<int>(drawn).Count,
+            "The nested passive subtree must consume one stable occurrence in both passes.");
+    }
+
+    [Test]
+    public void NestedInputSurfaceDoesNotResetOuterControlOccurrences()
+    {
+        int site = NowControls.SiteId("test", 256);
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            int before = NowControls.GetControlId(site);
+            int nested;
+
+            using (NowInput.Begin(_provider, Surface))
+                nested = NowControls.GetControlId(site);
+
+            int after = NowControls.GetControlId(site);
+
+            Assert.AreEqual(3, new HashSet<int> { before, nested, after }.Count,
+                "A nested input surface must not restart the outer surface's occurrence sequence.");
         }
     }
 
@@ -535,6 +617,7 @@ public class NowControlsTests
         NowId none = (string)null;
         NowId stringId = "row-7";
         NowId intId = 77;
+        NowId resolvedId = NowId.Resolved(77);
 
         Assert.IsFalse(none.hasValue);
         Assert.AreEqual(123, NowInput.GetId(none, 123));
@@ -544,14 +627,24 @@ public class NowControlsTests
         Assert.AreEqual(NowInput.GetId("row-7"), NowInput.GetId(stringId, 1));
 
         Assert.IsTrue(intId.isInt);
+        Assert.IsFalse(intId.isResolved);
         Assert.AreEqual(77, intId.intValue);
         Assert.AreEqual(77, NowInput.GetId(intId, 1));
+        Assert.IsTrue(resolvedId.isInt);
+        Assert.IsTrue(resolvedId.isResolved);
+
+        using (NowControls.IdScope("panel"))
+        {
+            Assert.AreNotEqual(77, NowInput.GetId(intId, 1));
+            Assert.AreEqual(77, NowInput.GetId(resolvedId, 1));
+        }
     }
 
     [Test]
     public void NowIdRejectsReservedOrEmptyExplicitIds()
     {
         Assert.Throws<System.ArgumentException>(() => { NowId id = 0; _ = id; });
+        Assert.Throws<System.ArgumentException>(() => NowId.Resolved(0));
         Assert.Throws<System.ArgumentException>(() => { NowId id = string.Empty; _ = id; });
         Assert.Throws<System.ArgumentException>(() => NowInput.Interact(default(NowId), ButtonRect));
     }
@@ -726,14 +819,14 @@ public class NowControlsTests
                 using (var button = NowLayout.Button("Item").SetId("item").Begin())
                 {
                     small = button.rect;
-                    NowLayout.Rect(width: 40f, height: 20f);
+                    NowLayout.ReserveRect(width: 40f, height: 20f);
                 }
 
                 using (NowControls.IdScope(1002))
                 using (var button = NowLayout.Button("Item").SetId("item").Begin())
                 {
                     large = button.rect;
-                    NowLayout.Rect(width: 160f, height: 20f);
+                    NowLayout.ReserveRect(width: 160f, height: 20f);
                 }
             }
         }
@@ -741,6 +834,59 @@ public class NowControlsTests
         Assert.GreaterOrEqual(small.width, 40f);
         Assert.GreaterOrEqual(large.width, 160f);
         Assert.Less(small.width, large.width, "Scoped controls with the same child id must not share a layout cache.");
+    }
+
+    [Test]
+    public void CopiedTreeScopeCannotReturnAFrameAfterItWasRentedAgain()
+    {
+        var firstState = new NowTreeViewState { selectedId = 11 };
+        var secondState = new NowTreeViewState { selectedId = 22 };
+        var thirdState = new NowTreeViewState { selectedId = 33 };
+        var first = NowLayout.TreeView(firstState).SetId("first-tree").Begin();
+        var stale = first;
+        NowTreeViewScope second = default;
+        NowTreeViewScope third = default;
+
+        try
+        {
+            first.Dispose();
+            second = NowLayout.TreeView(secondState).SetId("second-tree").Begin();
+
+            // This copied handle refers to the frame now owned by `second`.
+            // It must not put that live frame back into the pool.
+            stale.Dispose();
+            third = NowLayout.TreeView(thirdState).SetId("third-tree").Begin();
+
+            Assert.AreEqual(22, second.selectedId);
+            Assert.AreEqual(33, third.selectedId);
+        }
+        finally
+        {
+            third.Dispose();
+            second.Dispose();
+            stale.Dispose();
+            first.Dispose();
+        }
+    }
+
+    [Test]
+    public void NestedTreeScopesRequireReverseOrderButOuterCanRetry()
+    {
+        var outerState = new NowTreeViewState { selectedId = 41 };
+        var innerState = new NowTreeViewState { selectedId = 42 };
+        var outer = NowLayout.TreeView(outerState).SetId("outer-tree").Begin();
+        var inner = NowLayout.TreeView(innerState).SetId("inner-tree").Begin();
+
+        try
+        {
+            Assert.Throws<System.InvalidOperationException>(() => outer.Dispose());
+            Assert.AreEqual(41, outer.selectedId, "A rejected out-of-order dispose must leave the outer lease usable.");
+        }
+        finally
+        {
+            inner.Dispose();
+            outer.Dispose();
+        }
     }
 
     [Test]
@@ -1230,6 +1376,51 @@ public class NowControlsTests
     }
 
     [Test]
+    public void CopiedScrollScopeCannotPopTheOuterFocusRegion()
+    {
+        _provider.snapshot = default;
+        NowScrollScope outer = default;
+        NowScrollScope inner = default;
+        NowScrollScope staleInner = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            try
+            {
+                outer = Now.ScrollView(
+                    new NowRect(0f, 0f, 220f, 140f),
+                    "copied-scroll-outer").Begin();
+                int outerRegion = NowFocus.currentScrollRegionId;
+
+                inner = Now.ScrollView(
+                    new NowRect(10f, 10f, 180f, 80f),
+                    "copied-scroll-inner").Begin();
+                int innerRegion = NowFocus.currentScrollRegionId;
+                staleInner = inner;
+
+                Assert.AreNotEqual(0, outerRegion);
+                Assert.AreNotEqual(outerRegion, innerRegion);
+
+                inner.Dispose();
+                Assert.AreEqual(outerRegion, NowFocus.currentScrollRegionId);
+
+                staleInner.Dispose();
+                Assert.AreEqual(outerRegion, NowFocus.currentScrollRegionId,
+                    "disposing a stale copy of the inner scroll scope must not pop the live outer focus region");
+            }
+            finally
+            {
+                staleInner.Dispose();
+                inner.Dispose();
+                outer.Dispose();
+            }
+
+            Assert.AreEqual(0, NowFocus.currentScrollRegionId);
+        }
+    }
+
+    [Test]
     public void CancelClearsFocus()
     {
         NowFocus.Focus(42);
@@ -1333,7 +1524,7 @@ public class NowControlsTests
             using (var button = NowLayout.Button("grow-button").Begin())
             {
                 rect = button.rect;
-                NowLayout.Rect(128, 128);
+                NowLayout.ReserveRect(128, 128);
             }
         }
 
@@ -1488,7 +1679,7 @@ public class NowControlsTests
             var scroll = Now.ScrollView(new NowRect(0, 0, 200, 100), "scroll-api").Begin();
 
             for (int i = 0; i < 10; ++i)
-                NowLayout.Rect(180f, 30f);
+                NowLayout.ReserveRect(180f, 30f);
 
             body?.Invoke(scroll);
             scroll.Dispose();

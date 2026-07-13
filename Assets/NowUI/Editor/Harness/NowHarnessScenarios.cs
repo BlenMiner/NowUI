@@ -8,6 +8,7 @@ using NowUI.Markdown;
 using NowUI.NodeGraph;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace NowUI.Editor
 {
@@ -174,8 +175,6 @@ namespace NowUI.Editor
             public NowThemeAsset theme;
             public Action<NowRect> draw;
 
-            protected override bool useLayoutMeasurePass => false;
-
             protected override INowInputProvider GetInputProvider()
             {
                 return inputProvider ?? base.GetInputProvider();
@@ -216,6 +215,8 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "glass", width = 640, height = 360, includeInGoldens = true, draw = DrawGlass },
                 new NowHarnessScenario { name = "shader-variants", width = 840, height = 420, includeInGoldens = true, draw = DrawShaderVariants },
                 new NowHarnessScenario { name = "lottie", width = 512, height = 512, includeInGoldens = true, draw = DrawLottie },
+                new NowHarnessScenario { name = "landing-page-now", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNow },
+                new NowHarnessScenario { name = "landing-page-now-layout", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNowLayout },
                 new NowHarnessScenario { name = "markdown-code", width = 960, height = 540, includeInGoldens = false, draw = DrawMarkdown },
                 new NowHarnessScenario { name = "docking-nodegraph", width = 960, height = 540, includeInGoldens = false, draw = DrawDockingAndNodeGraph }
             };
@@ -271,6 +272,123 @@ namespace NowUI.Editor
             finally
             {
                 target.Release();
+                UnityEngine.Object.DestroyImmediate(target);
+            }
+        }
+
+        static NowHarnessCapture CaptureLandingPageNow(NowHarnessScenario scenario, string outputPath)
+        {
+            return CaptureLandingPageHost(scenario, outputPath, layout: false);
+        }
+
+        static NowHarnessCapture CaptureLandingPageNowLayout(NowHarnessScenario scenario, string outputPath)
+        {
+            return CaptureLandingPageHost(scenario, outputPath, layout: true);
+        }
+
+        static NowHarnessCapture CaptureLandingPageHost(
+            NowHarnessScenario scenario,
+            string outputPath,
+            bool layout)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var target = new RenderTexture(scenario.width, scenario.height, 24, RenderTextureFormat.ARGB32)
+            {
+                name = layout ? "NowLayout Landing Harness Target" : "Now Landing Harness Target",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            target.Create();
+
+            var cameraObject = new GameObject("NowUI Landing Harness Camera") { hideFlags = HideFlags.HideAndDontSave };
+            var canvasObject = new GameObject(
+                "NowUI Landing Harness Canvas",
+                typeof(RectTransform),
+                typeof(Canvas),
+                typeof(CanvasScaler))
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            try
+            {
+                var camera = cameraObject.AddComponent<Camera>();
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = new Color(0.04f, 0.045f, 0.055f, 1f);
+                camera.orthographic = true;
+                camera.orthographicSize = scenario.height * 0.5f;
+                camera.nearClipPlane = 0.01f;
+                camera.farClipPlane = 20f;
+                camera.allowHDR = false;
+                camera.allowMSAA = false;
+                camera.targetTexture = target;
+                cameraObject.transform.position = new Vector3(0f, 0f, -10f);
+
+                var canvas = canvasObject.GetComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = camera;
+                canvas.planeDistance = 1f;
+                canvas.pixelPerfect = true;
+
+                var scaler = canvasObject.GetComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+                scaler.scaleFactor = 1f;
+
+                var panelObject = new GameObject(
+                    layout ? "NowLayout Landing Host" : "Now Landing Host",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer))
+                {
+                    hideFlags = HideFlags.HideAndDontSave
+                };
+                panelObject.transform.SetParent(canvasObject.transform, false);
+
+                var panelRect = panelObject.GetComponent<RectTransform>();
+                panelRect.anchorMin = Vector2.zero;
+                panelRect.anchorMax = Vector2.one;
+                panelRect.offsetMin = Vector2.zero;
+                panelRect.offsetMax = Vector2.zero;
+
+                NowGraphic graphic = layout
+                    ? panelObject.AddComponent<NowLayoutLandingPageExample>()
+                    : panelObject.AddComponent<NowLandingPageExample>();
+                graphic.raycastTarget = false;
+
+                int warmupFrames = Mathf.Max(1, scenario.warmupFrames);
+                for (int i = 0; i < warmupFrames; ++i)
+                {
+                    graphic.SetVerticesDirty();
+                    Canvas.ForceUpdateCanvases();
+                }
+
+                graphic.SetVerticesDirty();
+                Canvas.ForceUpdateCanvases();
+                camera.Render();
+                WritePng(target, outputPath);
+                stopwatch.Stop();
+
+                int vertexCount = 0;
+                for (int i = 0; i < graphic.canvasPageCount; ++i)
+                {
+                    var mesh = graphic.GetCanvasPageMesh(i);
+                    vertexCount += mesh != null ? mesh.vertexCount : 0;
+                }
+
+                return new NowHarnessCapture
+                {
+                    name = scenario.name,
+                    width = scenario.width,
+                    height = scenario.height,
+                    path = outputPath,
+                    batchCount = graphic.canvasRenderer.materialCount,
+                    vertexCount = vertexCount,
+                    elapsedMilliseconds = stopwatch.ElapsedMilliseconds
+                };
+            }
+            finally
+            {
+                target.Release();
+                UnityEngine.Object.DestroyImmediate(canvasObject);
+                UnityEngine.Object.DestroyImmediate(cameraObject);
                 UnityEngine.Object.DestroyImmediate(target);
             }
         }
@@ -1099,7 +1217,7 @@ namespace NowUI.Editor
             using (NowLayout.Area(rect.Inset(30f), spacing: 14f))
             {
                 Header("Markdown and Code", "GitHub-flavored document rendering with syntax-shaped text.");
-                var markdownRect = NowLayout.Rect(height: 390f, stretchWidth: true);
+                var markdownRect = NowLayout.ReserveRect(height: 390f, stretchWidth: true);
                 NowTheme.themeAsset.Rectangle(markdownRect, NowRectangleStyle.Surface).SetRadius(10f).Draw();
                 NowMarkdown.Document(MarkdownSample).SetFontSize(15f).Draw(markdownRect.Inset(18f));
             }
@@ -1115,11 +1233,11 @@ namespace NowUI.Editor
 
                 using (NowLayout.Horizontal(spacing: 14f))
                 {
-                    var dockRect = NowLayout.Rect(width: 430f, height: 390f);
+                    var dockRect = NowLayout.ReserveRect(width: 430f, height: 390f);
                     SubmitDockWindows();
                     NowDock.Space(_dock, dockRect, "harness-dock").SetMinPaneSize(120f).Draw();
 
-                    var graphRect = NowLayout.Rect(height: 390f, stretchWidth: true);
+                    var graphRect = NowLayout.ReserveRect(height: 390f, stretchWidth: true);
                     NowNodes.Canvas(_nodeGraph, graphRect, "harness-graph")
                         .SetSchema(_nodeSchema)
                         .SetHistory(_nodeHistory)
@@ -1175,7 +1293,7 @@ namespace NowUI.Editor
             using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
             {
                 NowLayout.Label(label).SetWidth(92f).Draw();
-                var sliderRect = NowLayout.Rect(190f, 30f, align: NowLayoutAlign.Center);
+                var sliderRect = NowLayout.ReserveRect(190f, 30f, align: NowLayoutAlign.Center);
                 Now.Slider(sliderRect, min, max).Draw(ref value);
                 NowLayout.Label($"{Mathf.RoundToInt(value * 100f)}%").SetWidth(46f).SetFontSize(12f).Draw();
             }

@@ -1644,12 +1644,19 @@ namespace NowUI
         public readonly NowThemeAsset themeAsset;
         public readonly NowRect rect;
         public readonly bool focused;
+        public readonly NowTextFieldAppearance appearance;
 
         public NowControlFrameRenderContext(NowThemeAsset themeAsset, NowRect rect, bool focused)
+            : this(themeAsset, rect, focused, default)
+        {
+        }
+
+        public NowControlFrameRenderContext(NowThemeAsset themeAsset, NowRect rect, bool focused, in NowTextFieldAppearance appearance)
         {
             this.themeAsset = themeAsset;
             this.rect = rect;
             this.focused = focused;
+            this.appearance = appearance;
         }
     }
 
@@ -1829,6 +1836,24 @@ namespace NowUI
             return new Vector2(200f, Mathf.Max(themeAsset.controlStyles.textFieldMinHeight, lineHeight + padding.y + padding.w));
         }
 
+        /// <summary>
+        /// Measures a text field with optional per-instance padding. The legacy
+        /// overload remains the source of renderer-specific width and minimum
+        /// height, so existing renderer subclasses keep their measurements.
+        /// </summary>
+        public virtual Vector2 MeasureTextField(NowThemeAsset themeAsset, float lineHeight, in NowTextFieldAppearance appearance)
+        {
+            Vector2 measured = MeasureTextField(themeAsset, lineHeight);
+
+            if (appearance.hasPadding)
+            {
+                measured.x = Mathf.Max(measured.x, appearance.padding.x + appearance.padding.z);
+                measured.y = Mathf.Max(measured.y, lineHeight + appearance.padding.y + appearance.padding.w);
+            }
+
+            return measured;
+        }
+
         public virtual Vector2 MeasureDropdownField(NowThemeAsset themeAsset, float lineHeight)
         {
             Vector4 padding = themeAsset.controlStyles.dropdownFieldPadding;
@@ -1846,6 +1871,26 @@ namespace NowUI
             Vector4 padding = themeAsset.controlStyles.textFieldPadding;
             float top = (rect.height - lineHeight) * 0.5f;
             return rect.Inset(padding.x, top, padding.z, top);
+        }
+
+        /// <summary>
+        /// Returns the text/caret rect after an optional per-instance padding
+        /// override. Asymmetric vertical padding shifts the centered line within
+        /// the remaining content area.
+        /// </summary>
+        public virtual NowRect TextFieldInnerRect(NowThemeAsset themeAsset, NowRect rect, float lineHeight, in NowTextFieldAppearance appearance)
+        {
+            if (!appearance.hasPadding)
+                return TextFieldInnerRect(themeAsset, rect, lineHeight);
+
+            Vector4 padding = appearance.padding;
+            NowRect content = rect.Inset(padding.x, padding.y, padding.z, padding.w);
+            float height = Mathf.Max(0f, Mathf.Min(lineHeight, content.height));
+            return new NowRect(
+                content.x,
+                content.y + (content.height - height) * 0.5f,
+                Mathf.Max(0f, content.width),
+                height);
         }
 
         public virtual NowRect DropdownFieldInnerRect(NowThemeAsset themeAsset, NowRect rect, float lineHeight)
@@ -2072,19 +2117,40 @@ namespace NowUI
 
         public virtual void DrawTextInputFrame(in NowControlFrameRenderContext context)
         {
-            Vector4 radius = ResolveRadius(context.themeAsset, context.themeAsset.controlStyles.fieldRadius, context.rect, NowRadiusToken.Md);
+            var themeAsset = context.themeAsset;
+            var appearance = context.appearance;
+            Vector4 defaultRadius = ResolveRadius(themeAsset, themeAsset.controlStyles.fieldRadius, context.rect, NowRadiusToken.Md);
+            Vector4 radius = appearance.ResolveRadius(themeAsset, context.rect, defaultRadius);
+            Color background = appearance.ResolveBackgroundColor(
+                themeAsset,
+                themeAsset.GetColor(NowColorToken.Surface));
+            Color border = appearance.ResolveBorderColor(
+                themeAsset,
+                themeAsset.GetColor(NowColorToken.BorderStrong));
+            Color focus = appearance.ResolveFocusColor(
+                themeAsset,
+                themeAsset.GetColor(NowColorToken.Accent));
+            float outline = context.focused
+                ? appearance.hasFocusOutlineWidth ? appearance.focusOutlineWidth : 1.5f
+                : appearance.hasOutlineWidth ? appearance.outlineWidth : 1f;
+
+            if (appearance.hasElevation && appearance.elevation != NowElevationToken.None)
+                DrawElevationShadow(themeAsset, context.rect, radius, appearance.elevation);
 
             Now.Rectangle(context.rect)
                 .SetRadius(radius)
-                .SetColor(context.themeAsset.GetColor(NowColorToken.Surface))
-                .SetOutline(context.focused ? 1.5f : 1f)
-                .SetOutlineColor(context.focused
-                    ? context.themeAsset.GetColor(NowColorToken.Accent)
-                    : context.themeAsset.GetColor(NowColorToken.BorderStrong))
+                .SetColor(background)
+                .SetOutline(outline)
+                .SetOutlineColor(context.focused ? focus : border)
                 .Draw();
 
             if (context.focused)
-                DrawFocusRing(context.themeAsset, context.rect, radius);
+            {
+                if (appearance.hasFocusColor)
+                    DrawFocusRing(themeAsset, context.rect, radius, focus);
+                else
+                    DrawFocusRing(themeAsset, context.rect, radius);
+            }
         }
 
         public virtual void DrawSelection(NowThemeAsset themeAsset, NowRect rect)
@@ -2295,6 +2361,13 @@ namespace NowUI
         {
             ref readonly var styles = ref themeAsset.controlStyles;
             Color color = styles.focusColor.Resolve(themeAsset);
+            DrawFocusRing(themeAsset, rect, radius, color);
+        }
+
+        /// <summary>Offset focus ring drawn with an explicit per-control color.</summary>
+        protected virtual void DrawFocusRing(NowThemeAsset themeAsset, NowRect rect, Vector4 radius, Color color)
+        {
+            ref readonly var styles = ref themeAsset.controlStyles;
             Vector2 transformScale = Now.currentTransform.scale;
             float scale = Mathf.Max(Mathf.Abs(transformScale.x), Mathf.Abs(transformScale.y));
             float offset = styles.focusRingOffset * scale;

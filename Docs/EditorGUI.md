@@ -112,7 +112,8 @@ using (var ui = NowGUI.Auto(rect, Color.white))
 - `NowGUIScope.rect`, `width`, and `height` use IMGUI point units.
 - `NowEditorGUI` accounts for editor pixel density automatically.
 - The cache is keyed by IMGUI control ID.
-- Non-Repaint events create a no-op scope so draw calls inside the block are
-  ignored instead of leaking into another NowUI target.
+- Non-Repaint events suppress drawing but still run control/input logic, so
+  MouseDown, MouseUp, and keyboard events are handled in their native IMGUI
+  pass without leaking geometry into another NowUI target.
 - Call `NowGUI.DisposeAll()` if a runtime host needs to eagerly release all
   cached render textures.

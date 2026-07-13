@@ -964,7 +964,7 @@ namespace NowUI.Sdf
             if (!options.Has(NowLayoutOptions.Field.Height) && size.y > 0f)
                 options = options.SetHeight(size.y);
 
-            return NowLayout.Rect(options);
+            return NowLayout.ReserveRect(options);
         }
     }
 

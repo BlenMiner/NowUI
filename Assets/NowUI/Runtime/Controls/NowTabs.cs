@@ -209,7 +209,7 @@ namespace NowUI
                 .Draw(ref selected);
 
             var mask = Now.Mask(pageRect);
-            var area = NowLayout.Area(areaKey, pageRect);
+            var area = NowLayout.Area(NowId.Resolved(areaKey), pageRect);
 
             return new NowTabViewScope(mask, area, selected, changed, pageRect);
         }

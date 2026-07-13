@@ -311,10 +311,10 @@ namespace NowUI
                 var pmRect = new NowRect(inner.x + chipWidth + 8f, chipY, chipWidth, styles.chipHeight);
                 bool pm = parts.hour >= 12;
 
-                if (new NowChip(amRect, "AM", 0).SetId(new NowId(state.amId)).SetSelected(!pm).Draw() && pm)
+                if (new NowChip(amRect, "AM", 0).SetId(NowId.Resolved(state.amId)).SetSelected(!pm).Draw() && pm)
                     parts.hour -= 12;
 
-                if (new NowChip(pmRect, "PM", 0).SetId(new NowId(state.pmId)).SetSelected(pm).Draw() && !pm)
+                if (new NowChip(pmRect, "PM", 0).SetId(NowId.Resolved(state.pmId)).SetSelected(pm).Draw() && !pm)
                     parts.hour += 12;
             }
 

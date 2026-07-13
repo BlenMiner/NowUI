@@ -364,7 +364,8 @@ namespace NowUI
         /// <summary>
         /// Adds a control to this frame's focus registry. Call every frame from the
         /// control's draw, after input interaction; ignored during layout measure
-        /// passes so callback-form layouts don't register twice.
+        /// passes so exact-measure hosts and <c>NowLayout.RunMeasured</c>
+        /// do not register twice.
         /// </summary>
         public static void Register(int id, NowRect rect)
         {

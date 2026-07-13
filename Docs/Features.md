@@ -75,7 +75,9 @@ if (context.clicked)
 Call-site identity is enough for one-off controls and fixed draw-order loops.
 Explicit ids use `NowId`, which accepts strings or non-zero integers. Prefer
 integer ids when you already have stable data ids and the items can appear,
-disappear, or reorder. `NowInput.current.navigation` carries keyboard/gamepad
+disappear, or reorder. Both are local to the active host/id scope; use
+`NowId.Resolved(value)` only for a value already returned by a host resolver or
+composed from a resolved parent. `NowInput.current.navigation` carries keyboard/gamepad
 navigation as a `Vector2`, while `submit*` and `cancel*` fields track action
 buttons.
 

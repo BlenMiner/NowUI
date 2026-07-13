@@ -134,7 +134,7 @@ namespace NowUI
             var panel = Center(surface, _size);
             theme.controlRenderer.DrawPopupBackground(theme, panel, menu: false);
 
-            using (NowLayout.Area(NowInput.CombineId(_id, AreaSeed), panel, spacing: 12f, padding: 18f, alignItems: NowLayoutAlign.Start))
+            using (NowLayout.Area(NowId.Resolved(NowInput.CombineId(_id, AreaSeed)), panel, spacing: 12f, padding: 18f, alignItems: NowLayoutAlign.Start))
             {
                 NowLayout.Label(NowControls.Text(theme, NowTextStyle.Title), _title)
                     .SetStretchWidth()
@@ -151,7 +151,7 @@ namespace NowUI
 
                     if (_hasSecondary &&
                         NowLayout.Button(_secondaryLabel)
-                            .SetId(NowInput.CombineId(_id, SecondarySeed))
+                            .SetId(NowId.Resolved(NowInput.CombineId(_id, SecondarySeed)))
                             .SetStyle(NowRectangleStyle.Surface)
                             .SetWidth(104f)
                             .Draw())
@@ -160,7 +160,7 @@ namespace NowUI
                     }
 
                     if (NowLayout.Button(_primaryLabel)
-                        .SetId(NowInput.CombineId(_id, PrimarySeed))
+                        .SetId(NowId.Resolved(NowInput.CombineId(_id, PrimarySeed)))
                         .SetStyle(NowRectangleStyle.Accent)
                         .SetWidth(104f)
                         .Draw())

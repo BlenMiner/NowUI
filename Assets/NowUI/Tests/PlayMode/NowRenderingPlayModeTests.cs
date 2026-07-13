@@ -762,8 +762,6 @@ public class NowRenderingPlayModeTests
     {
         public Color color = Color.red;
 
-        protected override bool useLayoutMeasurePass => false;
-
         public NowWorldInputProvider GetWorldInputProviderForTest()
         {
             return (NowWorldInputProvider)GetInputProvider();

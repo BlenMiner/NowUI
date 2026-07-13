@@ -515,7 +515,7 @@ namespace NowUI
         {
             string filter = state.filter ?? string.Empty;
 
-            bool filterChanged = new NowTextField(state.fieldLocal, new NowId(state.filterId), 0)
+            bool filterChanged = new NowTextField(state.fieldLocal, NowId.Resolved(state.filterId), 0)
                 .SetPlaceholder(state.placeholder)
                 .Draw(ref filter);
 
@@ -634,7 +634,7 @@ namespace NowUI
         static NowRect ItemRect(PopupState state, int row)
         {
             return state.scrolls
-                ? NowLayout.Rect(height: state.itemHeight, stretchWidth: true)
+                ? NowLayout.ReserveRect(height: state.itemHeight, stretchWidth: true)
                 : new NowRect(
                     state.itemArea.x,
                     state.itemArea.y + row * state.itemHeight,

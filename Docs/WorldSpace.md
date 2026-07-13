@@ -1,11 +1,15 @@
 # World Space
 
-`NowWorldGraphic` renders NowUI directly into a `MeshRenderer`, so the same
-rectangles, text, layout, controls, overlays, and effects can be used for
-nameplates, hover tooltips, and diegetic panels without a `RenderTexture`.
+World-space hosts render NowUI directly into a `MeshRenderer`, so rectangles,
+text, controls, overlays, and effects can be used for nameplates, hover
+tooltips, and diegetic panels without a `RenderTexture`.
 
-Attach a component derived from `NowWorldGraphic` to a GameObject and override
-`DrawNowUI`:
+Derive from `NowWorldGraphic` when the surface uses explicit `NowRect`
+placement. Derive from `NowWorldLayoutGraphic` when it uses `NowLayout`; the
+layout host owns the exact measure/draw cycle, so ordinary layout scopes are
+correct in the same rebuild and do not need `RunMeasured`.
+
+This explicit-rect nameplate uses `NowWorldGraphic`:
 
 ```csharp
 using UnityEngine;
@@ -130,8 +134,8 @@ public sealed class WrapAroundY : NowWorldDeformer
 The shader data for masks, rounded rectangles, text SDFs, and colors remains in
 UI coordinates, so deformers only need to return the local 3D position.
 
-`Assets/NowUI/Example/NowWorldGraphicExample.cs` shows a small billboard label
-that expands its text on hover and logs clicks.
+`Assets/NowUI/Example/NowWorldGraphicExample.cs` shows the layout-host form: a
+small billboard label that expands its text on hover and logs clicks.
 
 ## Pointer Ownership Across Surfaces
 

@@ -109,7 +109,7 @@ namespace NowUI
         bool _respectUGUIRaycast = true;
 
         [SerializeField, Tooltip("Report the measured NowLayout content extent as this graphic's preferred size, so UGUI LayoutGroups and ContentSizeFitters size it like any other layout element. Layout queries run a passive NowLayout measure pass before geometry rebuilds.")]
-        bool _driveLayoutSize = true;
+        bool _driveLayoutSize;
 
         [SerializeField, Tooltip("Allow interactive input (clicks, typing, focus) while not in Play Mode. Off renders edit mode as a pure preview — the Input System keeps devices live in the editor, so without this gate a focused control keeps reacting to the keyboard outside Play Mode.")]
         bool _editModeInteraction;
@@ -123,6 +123,8 @@ namespace NowUI
         [NonSerialized] Vector2 _preferredSize;
 
         [NonSerialized] bool _layoutSizeDirty;
+
+        [NonSerialized] int _scopeId;
 
         [NonSerialized] bool _measuringLayoutInput;
 
@@ -326,14 +328,14 @@ namespace NowUI
         }
 
         /// <summary>
-        /// When true (the default), each rebuild runs <see cref="DrawNowUI"/> twice —
+        /// When true, each rebuild runs <see cref="DrawNowUI"/> twice —
         /// a NowLayout measure pass (draws suppressed, input passive) followed by
         /// the real pass — so flexible space, stretching and auto-sized groups are
         /// exact within a single rebuild, like Unity IMGUI's Layout and Repaint
-        /// events. Override to false to skip the extra pass when the graphic does
-        /// not use NowLayout.
+        /// events. The base explicit-rect host is one-pass; derive from
+        /// <see cref="NowLayoutGraphic"/> when the graphic uses NowLayout.
         /// </summary>
-        protected virtual bool useLayoutMeasurePass => true;
+        internal virtual bool useLayoutMeasurePass => false;
 
         struct FrameContent : INowFrameContent
         {
@@ -408,45 +410,76 @@ namespace NowUI
             var positionOffset = new Vector2(rect.xMin, rect.yMax);
             var drawRect = new NowRect(0, 0, rect.width, rect.height);
             var frame = NowFrame.Begin(GetCanvasScaleFactor(), trackRepaint: true);
-            var scope = _drawList.Begin(new Vector2(rect.width, rect.height), positionOffset, false, _glassBlurQuality);
+            NowDrawScope scope = default;
             bool colorMultiplierActive = false;
+            bool passiveInputActive = false;
             bool interactive = Application.isPlaying || _editModeInteraction;
-            _repaintTracker.SetWantsRepaint(false);
             _insideGeometryRebuild = true;
 
             try
             {
+                _repaintTracker.SetWantsRepaint(false);
+                scope = _drawList.Begin(
+                    new Vector2(rect.width, rect.height),
+                    positionOffset,
+                    false,
+                    _glassBlurQuality);
+
                 Now.BeginColorMultiplier(color);
                 colorMultiplierActive = true;
 
                 var inputSurface = new NowInputSurface(new Vector2(rect.width, rect.height));
 
                 using (NowOverlay.Host(this, rectTransform, GetEventCamera()))
-                using (NowInput.Begin(interactive ? GetInputProvider() : null, inputSurface))
                 {
-                    // Edit-mode preview: no pointer (null provider) and a passive
-                    // frame, so nothing focuses, types or transitions state.
-                    if (!interactive)
-                        NowInput.BeginPassive();
+                    var inputScope = NowInput.Begin(interactive ? GetInputProvider() : null, inputSurface);
 
-                    _repaintTracker.StoreFrameInput(NowInput.current, inputSurface.size);
-
-                    var content = new FrameContent(this);
-                    Vector2 measured = NowFrame.DrawContent(
-                        ref content,
-                        drawRect,
-                        useLayoutMeasurePass,
-                        trackContent: true);
-
-                    if (_driveLayoutSize && (measured - _preferredSize).sqrMagnitude > 0.25f)
+                    try
                     {
-                        _preferredSize = measured;
-                        _layoutSizeDirty = true;
+                        using (NowControls.RestoreIdScope(GetScopeId()))
+                        {
+                            // Edit-mode preview: no pointer (null provider) and a passive
+                            // frame, so nothing focuses, types or transitions state.
+                            if (!interactive)
+                            {
+                                NowInput.BeginPassive();
+                                passiveInputActive = true;
+                            }
+
+                            _repaintTracker.StoreFrameInput(NowInput.current, inputSurface.size);
+
+                            var content = new FrameContent(this);
+                            Vector2 measured = NowFrame.DrawContent(
+                                ref content,
+                                drawRect,
+                                useLayoutMeasurePass,
+                                trackContent: _driveLayoutSize);
+
+                            if (_driveLayoutSize && (measured - _preferredSize).sqrMagnitude > 0.25f)
+                            {
+                                _preferredSize = measured;
+                                _layoutSizeDirty = true;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Roll back deferred overlays and captured geometry before
+                        // input disposal gets a chance to flush the failed frame.
+                        scope.Cancel();
+                        throw;
+                    }
+                    finally
+                    {
+                        inputScope.Dispose();
                     }
                 }
 
-                if (!interactive)
+                if (passiveInputActive)
+                {
                     NowInput.EndPassive();
+                    passiveInputActive = false;
+                }
 
                 Now.EndColorMultiplier();
                 colorMultiplierActive = false;
@@ -456,11 +489,17 @@ namespace NowUI
             }
             catch (Exception ex)
             {
-                if (!interactive)
+                if (passiveInputActive)
+                {
                     NowInput.EndPassive();
+                    passiveInputActive = false;
+                }
 
                 if (colorMultiplierActive)
+                {
                     Now.EndColorMultiplier();
+                    colorMultiplierActive = false;
+                }
 
                 scope.Cancel();
                 _drawList.Clear();
@@ -667,7 +706,7 @@ namespace NowUI
         }
 
         /// <summary>
-        /// When true (the default), the measured NowLayout content extent is
+        /// When true, the measured NowLayout content extent is
         /// reported as this graphic's preferred size, so LayoutGroups and
         /// ContentSizeFitters size it like any other layout element. Unity layout
         /// queries run a passive NowLayout measure pass before geometry rebuilds.
@@ -688,6 +727,20 @@ namespace NowUI
 
         /// <summary>The last measured content extent (origin + content of the root layout areas).</summary>
         public Vector2 measuredContentSize => _preferredSize;
+
+        /// <summary>
+        /// Resolves a SetId value inside this host for external focus,
+        /// navigation, state, or layout-cache APIs.
+        /// </summary>
+        public int ResolveControlId(string id)
+        {
+            return NowControls.ResolveHostControlId(GetScopeId(), id);
+        }
+
+        public int ResolveControlId(int id)
+        {
+            return NowControls.ResolveHostControlId(GetScopeId(), id);
+        }
 
         public virtual void CalculateLayoutInputHorizontal()
         {
@@ -739,6 +792,7 @@ namespace NowUI
                 colorMultiplierActive = true;
 
                 using (NowInput.BeginMeasurement(GetInputProvider(), new NowInputSurface(size)))
+                using (NowControls.RestoreIdScope(GetScopeId()))
                 {
                     var content = new FrameContent(this);
                     Vector2 measured = NowFrame.MeasureContent(
@@ -765,6 +819,14 @@ namespace NowUI
                 frameScope.Dispose();
                 _measuringLayoutInput = false;
             }
+        }
+
+        int GetScopeId()
+        {
+            if (_scopeId == 0)
+                _scopeId = NowControls.AllocateHostScopeId();
+
+            return _scopeId;
         }
 
         protected virtual INowInputProvider GetInputProvider()
@@ -1453,4 +1515,5 @@ namespace NowUI
                 AdditionalCanvasShaderChannels.Tangent;
         }
     }
+
 }

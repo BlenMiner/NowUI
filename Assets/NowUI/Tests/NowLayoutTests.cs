@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using NowUI;
@@ -13,6 +14,7 @@ public class NowLayoutTests
     [SetUp]
     public void SetUp()
     {
+        NowControls.Reset();
         NowLayout.Reset();
 
         // The engine falls back to a bundled default font, so pin a font-less
@@ -24,6 +26,7 @@ public class NowLayoutTests
     public void TearDown()
     {
         NowLayout.Reset();
+        NowControls.Reset();
     }
 
     static void AssertRect(Vector4 expected, Vector4 actual, float tolerance = 0.001f)
@@ -32,6 +35,39 @@ public class NowLayoutTests
         Assert.AreEqual(expected.y, actual.y, tolerance, "y");
         Assert.AreEqual(expected.z, actual.z, tolerance, "width");
         Assert.AreEqual(expected.w, actual.w, tolerance, "height");
+    }
+
+    static void DrawConditionalSiblingGroup()
+    {
+        using (NowLayout.Row().Begin())
+            NowLayout.ReserveRect(10f, 80f);
+    }
+
+    static NowRect DrawStableGroup()
+    {
+        NowRect rect;
+
+        using (var group = NowLayout.Row().Begin())
+        {
+            rect = group.rect;
+            NowLayout.ReserveRect(10f, 30f);
+        }
+
+        return rect;
+    }
+
+    static void DrawWeightedGrowRow(float secondWeight, out NowRect first, out NowRect second)
+    {
+        using (NowLayout.Row(new NowRect(0f, 0f, 400f, 20f))
+            .SetId("descriptor-only-flex-cache")
+            .Begin())
+        {
+            using (var child = NowLayout.Column().Grow().Height(20f).Begin())
+                first = child.rect;
+
+            using (var child = NowLayout.Column().Grow(secondWeight).Height(20f).Begin())
+                second = child.rect;
+        }
     }
 
     struct FrameProbeContent : INowFrameContent
@@ -54,8 +90,31 @@ public class NowLayoutTests
             lastWasMeasure = NowLayout.isMeasurePass;
 
             NowLayout.Area(rect);
-            NowLayout.Rect(40f, 20f);
+            NowLayout.ReserveRect(40f, 20f);
             NowLayout.EndArea();
+        }
+    }
+
+    struct ReentrantFrameProbeContent : INowFrameContent
+    {
+        public void Draw(NowRect rect)
+        {
+            var nested = new FrameProbeContent();
+            NowFrame.DrawContent(
+                ref nested,
+                rect,
+                measurePass: true,
+                trackContent: false,
+                flushOverlays: false);
+        }
+    }
+
+    struct ReentrantMeasureProbeContent : INowFrameContent
+    {
+        public void Draw(NowRect rect)
+        {
+            var nested = new FrameProbeContent();
+            NowFrame.MeasureContent(ref nested, rect);
         }
     }
 
@@ -64,8 +123,8 @@ public class NowLayoutTests
     {
         NowLayout.Area(new Vector4(10, 20, 300, 400));
 
-        Vector4 first = NowLayout.Rect(100, 30);
-        Vector4 second = NowLayout.Rect(50, 40);
+        Vector4 first = NowLayout.ReserveRect(100, 30);
+        Vector4 second = NowLayout.ReserveRect(50, 40);
 
         NowLayout.EndArea();
 
@@ -79,8 +138,8 @@ public class NowLayoutTests
         NowLayout.BeginContentTracking();
 
         NowLayout.Area(new Vector4(10, 10, 400, 300));
-        NowLayout.Rect(100, 30);
-        NowLayout.Rect(50, 40);
+        NowLayout.ReserveRect(100, 30);
+        NowLayout.ReserveRect(50, 40);
         NowLayout.EndArea();
 
         Vector2 size = NowLayout.EndContentTracking();
@@ -108,6 +167,103 @@ public class NowLayoutTests
         Assert.IsFalse(NowLayout.isMeasurePass);
         Assert.AreEqual(50f, measured.x, 0.001f);
         Assert.AreEqual(30f, measured.y, 0.001f);
+    }
+
+    [Test]
+    public void ExactFrameHostsRejectRecursiveMeasureCyclesWithoutLeakingState()
+    {
+        var content = new ReentrantFrameProbeContent();
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            NowFrame.DrawContent(
+                ref content,
+                new NowRect(0f, 0f, 100f, 100f),
+                measurePass: true,
+                trackContent: false,
+                flushOverlays: false));
+
+        StringAssert.Contains("cannot rebuild recursively", error.Message);
+        Assert.IsFalse(NowLayout.isMeasurePass);
+        Assert.IsFalse(NowInput.isPassive);
+        Assert.DoesNotThrow(() =>
+        {
+            var next = new FrameProbeContent();
+            NowFrame.DrawContent(
+                ref next,
+                new NowRect(0f, 0f, 100f, 100f),
+                measurePass: true,
+                trackContent: false,
+                flushOverlays: false);
+        });
+    }
+
+    [Test]
+    public void MeasureOnlyHostsRejectRecursiveExactRebuildsWithoutLeakingState()
+    {
+        var content = new ReentrantFrameProbeContent();
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            NowFrame.MeasureContent(
+                ref content,
+                new NowRect(0f, 0f, 100f, 100f)));
+
+        StringAssert.Contains("cannot rebuild recursively", error.Message);
+        Assert.IsFalse(NowLayout.isMeasurePass);
+        Assert.IsFalse(NowInput.isPassive);
+        Assert.DoesNotThrow(() =>
+        {
+            var next = new FrameProbeContent();
+            NowFrame.MeasureContent(
+                ref next,
+                new NowRect(0f, 0f, 100f, 100f));
+        });
+    }
+
+    [Test]
+    public void ExactHostsRejectRecursiveMeasureOnlyRebuildsWithoutLeakingState()
+    {
+        var content = new ReentrantMeasureProbeContent();
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            NowFrame.DrawContent(
+                ref content,
+                new NowRect(0f, 0f, 100f, 100f),
+                measurePass: true,
+                trackContent: false,
+                flushOverlays: false));
+
+        StringAssert.Contains("cannot rebuild recursively", error.Message);
+        Assert.IsFalse(NowLayout.isMeasurePass);
+        Assert.IsFalse(NowInput.isPassive);
+    }
+
+    [Test]
+    public void OnePassTrackedHostsRejectRecursiveMeasureOnlyRebuildsWithoutLosingTheirExtent()
+    {
+        var content = new ReentrantMeasureProbeContent();
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            NowFrame.DrawContent(
+                ref content,
+                new NowRect(0f, 0f, 100f, 100f),
+                measurePass: false,
+                trackContent: true,
+                flushOverlays: false));
+
+        StringAssert.Contains("cannot rebuild recursively", error.Message);
+        Assert.IsFalse(NowLayout.isTrackingContent);
+        Assert.IsFalse(NowLayout.isMeasurePass);
+        Assert.IsFalse(NowInput.isPassive);
+
+        var next = new FrameProbeContent();
+        Vector2 measured = NowFrame.DrawContent(
+            ref next,
+            new NowRect(0f, 0f, 100f, 100f),
+            measurePass: false,
+            trackContent: true,
+            flushOverlays: false);
+
+        Assert.AreEqual(new Vector2(40f, 20f), measured);
     }
 
     [Test]
@@ -139,8 +295,8 @@ public class NowLayoutTests
     {
         NowLayout.Area(new Vector4(0, 0, 300, 400), spacing: 5, padding: 10);
 
-        Vector4 first = NowLayout.Rect(100, 20);
-        Vector4 second = NowLayout.Rect(100, 20);
+        Vector4 first = NowLayout.ReserveRect(100, 20);
+        Vector4 second = NowLayout.ReserveRect(100, 20);
 
         NowLayout.EndArea();
 
@@ -153,8 +309,8 @@ public class NowLayoutTests
     {
         NowLayout.Area(new Vector4(0, 0, 300, 400), new Vector4(4, 6, 8, 10), spacing: 5);
 
-        Vector4 areaFirst = NowLayout.Rect(100, 20);
-        Vector4 areaSecond = NowLayout.Rect(100, 20);
+        Vector4 areaFirst = NowLayout.ReserveRect(100, 20);
+        Vector4 areaSecond = NowLayout.ReserveRect(100, 20);
 
         NowLayout.EndArea();
 
@@ -164,8 +320,8 @@ public class NowLayoutTests
         NowLayout.Area(new Vector4(0, 0, 300, 400));
         NowLayout.Horizontal(new Vector4(3, 4, 5, 6), spacing: 7);
 
-        Vector4 rowFirst = NowLayout.Rect(10, 8);
-        Vector4 rowSecond = NowLayout.Rect(20, 8);
+        Vector4 rowFirst = NowLayout.ReserveRect(10, 8);
+        Vector4 rowSecond = NowLayout.ReserveRect(20, 8);
 
         NowLayout.EndHorizontal();
         NowLayout.EndArea();
@@ -180,14 +336,65 @@ public class NowLayoutTests
         NowLayout.Area(new Vector4(0, 0, 400, 300));
         NowLayout.Horizontal(spacing: 8);
 
-        Vector4 first = NowLayout.Rect(60, 30);
-        Vector4 second = NowLayout.Rect(40, 30);
+        Vector4 first = NowLayout.ReserveRect(60, 30);
+        Vector4 second = NowLayout.ReserveRect(40, 30);
 
         NowLayout.EndHorizontal();
         NowLayout.EndArea();
 
         AssertRect(new Vector4(0, 0, 60, 30), first);
         AssertRect(new Vector4(68, 0, 40, 30), second);
+    }
+
+    [Test]
+    public void FluentColumnAndRowApplyConstraintsAndAlignment()
+    {
+        NowRect first = default;
+        NowRect second = default;
+        NowRect below = default;
+
+        using (NowLayout.Column(new NowRect(0f, 0f, 300f, 200f))
+            .Padding(10f)
+            .Gap(5f)
+            .Begin())
+        {
+            using (NowLayout.Row()
+                .FillWidth(160f)
+                .Height(30f)
+                .AlignSelf(NowLayoutAlign.Center)
+                .AlignChildren(NowLayoutAlign.Center)
+                .Gap(8f)
+                .Begin())
+            {
+                first = NowLayout.ReserveRect(20f, 10f);
+                second = NowLayout.ReserveRect(30f, 10f);
+            }
+
+            below = NowLayout.ReserveRect(40f, 10f);
+        }
+
+        AssertRect(new Vector4(70f, 20f, 20f, 10f), first);
+        AssertRect(new Vector4(98f, 20f, 30f, 10f), second);
+        AssertRect(new Vector4(10f, 45f, 40f, 10f), below);
+    }
+
+    [Test]
+    public void RootRowLaysOutChildrenHorizontally()
+    {
+        NowRect first;
+        NowRect second;
+
+        using (NowLayout.Row(new NowRect(10f, 20f, 200f, 80f))
+            .Padding(5f, 6f)
+            .Gap(7f)
+            .Begin())
+        {
+            first = NowLayout.ReserveRect(20f, 10f);
+            second = NowLayout.ReserveRect(30f, 10f);
+        }
+
+        AssertRect(new Vector4(15f, 26f, 20f, 10f), first);
+        AssertRect(new Vector4(42f, 26f, 30f, 10f), second);
     }
 
     [Test]
@@ -202,15 +409,33 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void AlignChildrenFitsAndPositionsAnAutoSizedChildGroup()
+    {
+        NowRect rowRect = default;
+        var options = default(NowLayoutOptions).SetAlignItems(NowLayoutAlign.Center);
+
+        NowLayout.RunMeasured("aligned-auto-group", new NowRect(0f, 0f, 300f, 100f), options, () =>
+        {
+            using (var row = NowLayout.Row().Height(20f).Begin())
+            {
+                rowRect = row.rect;
+                NowLayout.ReserveRect(40f, 20f);
+            }
+        });
+
+        AssertRect(new NowRect(130f, 0f, 40f, 20f), rowRect);
+    }
+
+    [Test]
     public void AutoSizedGroupCorrectsParentCursorOnFirstFrame()
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
         NowLayout.Horizontal();
-        NowLayout.Rect(100, 30);
+        NowLayout.ReserveRect(100, 30);
         NowLayout.EndHorizontal();
 
-        Vector4 below = NowLayout.Rect(50, 10);
+        Vector4 below = NowLayout.ReserveRect(50, 10);
 
         NowLayout.EndArea();
 
@@ -222,10 +447,11 @@ public class NowLayoutTests
     {
         for (int pass = 0; pass < 2; ++pass)
         {
+            NowControls.ResetControlIdOccurrences();
             NowLayout.Area("area", new Vector4(0, 0, 400, 300));
 
             var row = NowLayout.Horizontal();
-            NowLayout.Rect(100, 30);
+            NowLayout.ReserveRect(100, 30);
             NowLayout.EndHorizontal();
 
             NowLayout.EndArea();
@@ -236,18 +462,123 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void RetainedFrameScopesRejectRecursiveRebuildsWithoutLeakingOuterState()
+    {
+        float previousScale = Now.uiScale;
+        var outer = NowFrame.Begin(2f, trackRepaint: true);
+
+        try
+        {
+            NowControlState.RequestRepaint();
+
+            var error = Assert.Throws<InvalidOperationException>(() => NowFrame.Begin(3f, trackRepaint: true));
+
+            StringAssert.Contains("cannot rebuild recursively", error.Message);
+            Assert.AreEqual(2f, Now.uiScale, 0.001f);
+            Assert.IsTrue(outer.EndRepaintTracking(), "the failed nested frame must not clear the outer repaint request");
+        }
+        finally
+        {
+            outer.Dispose();
+            Now.SetUIScale(previousScale);
+        }
+
+        Assert.DoesNotThrow(() =>
+        {
+            using var next = NowFrame.Begin(1f);
+        });
+    }
+
+    [Test]
+    public void GroupCallSiteKeepsItsMeasurementWhenConditionalSiblingDisappears()
+    {
+        using (NowLayout.Area("call-site-area", new NowRect(0f, 0f, 300f, 300f)))
+        {
+            DrawConditionalSiblingGroup();
+            DrawStableGroup();
+        }
+
+        NowControls.ResetControlIdOccurrences();
+
+        NowRect stable;
+
+        using (NowLayout.Area("call-site-area", new NowRect(0f, 0f, 300f, 300f)))
+            stable = DrawStableGroup();
+
+        Assert.AreEqual(30f, stable.height, 0.001f,
+            "the stable group's own call-site cache must survive a preceding conditional group disappearing");
+    }
+
+    [Test]
     public void CrossStretchedGroupMeasuresContentNotAllocation()
     {
         NowLayout.Area("measure-area", new Vector4(0, 0, 60, 60));
         NowLayout.Horizontal();
-        NowLayout.Rect(128, 128);
-        NowLayout.Rect(40, 16);
+        NowLayout.ReserveRect(128, 128);
+        NowLayout.ReserveRect(40, 16);
         NowLayout.EndHorizontal();
         NowLayout.EndArea();
 
-        Assert.IsTrue(NowLayout.TryGetCachedContentSize("measure-area", out var size));
+        Assert.IsTrue(NowLayout.TryGetCachedAreaContentSize("measure-area", out var size));
         Assert.AreEqual(168f, size.x, 0.01f, "area must measure the row's content width, not the stretched allocation");
         Assert.AreEqual(128f, size.y, 0.01f);
+    }
+
+    [Test]
+    public void CachedAreaLookupDoesNotClaimParentScopedNestedGroupIds()
+    {
+        using (NowLayout.Area("root-area-cache", new NowRect(0f, 0f, 100f, 100f)))
+        {
+            using (NowLayout.Vertical("nested-group-cache"))
+                NowLayout.ReserveRect(40f, 20f);
+        }
+
+        Assert.IsTrue(NowLayout.TryGetCachedAreaContentSize("root-area-cache", out var areaSize));
+        Assert.AreEqual(new Vector2(40f, 20f), areaSize);
+        Assert.IsFalse(NowLayout.TryGetCachedAreaContentSize("nested-group-cache", out _),
+            "nested group caches are parent-scoped and are not global area ids");
+    }
+
+    [Test]
+    public void IntegerAreaIdsRemainIsolatedAcrossRetainedHostScopes()
+    {
+        const int areaId = 42;
+        int firstHost = NowControls.AllocateHostScopeId();
+        int secondHost = NowControls.AllocateHostScopeId();
+
+        using (NowControls.RestoreIdScope(firstHost))
+        {
+            using (NowLayout.Area(areaId, new NowRect(0f, 0f, 200f, 100f)))
+                NowLayout.ReserveRect(40f, 20f);
+
+            Assert.IsTrue(NowLayout.TryGetCachedAreaContentSize(areaId, out var firstSize));
+            Assert.AreEqual(new Vector2(40f, 20f), firstSize);
+        }
+
+        using (NowControls.RestoreIdScope(secondHost))
+        {
+            Assert.IsFalse(NowLayout.TryGetCachedAreaContentSize(areaId, out _),
+                "a second retained host must not observe the first host's area cache");
+
+            using (NowLayout.Area(areaId, new NowRect(0f, 0f, 200f, 100f)))
+                NowLayout.ReserveRect(90f, 35f);
+
+            Assert.IsTrue(NowLayout.TryGetCachedAreaContentSize(areaId, out var secondSize));
+            Assert.AreEqual(new Vector2(90f, 35f), secondSize);
+        }
+
+        using (NowControls.RestoreIdScope(firstHost))
+        {
+            Assert.IsTrue(NowLayout.TryGetCachedAreaContentSize(areaId, out var firstSize));
+            Assert.AreEqual(new Vector2(40f, 20f), firstSize,
+                "drawing another host must not overwrite this host's cached measurement");
+        }
+
+        int resolvedFirstArea = NowControls.ResolveHostControlId(firstHost, areaId);
+        Assert.IsTrue(NowLayout.TryGetCachedAreaContentSize(
+            NowId.Resolved(resolvedFirstArea), out var resolvedSize));
+        Assert.AreEqual(new Vector2(40f, 20f), resolvedSize,
+            "NowId.Resolved must remain the explicit escape hatch for an already-composed key");
     }
 
     [Test]
@@ -256,8 +587,8 @@ public class NowLayoutTests
         NowLayout.Area(new Vector4(0, 0, 400, 300));
         NowLayout.Horizontal(height: 100, alignItems: NowLayoutAlign.Center);
 
-        Vector4 inherited = NowLayout.Rect(50, 20);
-        Vector4 overridden = NowLayout.Rect(50, 20, align: NowLayoutAlign.End);
+        Vector4 inherited = NowLayout.ReserveRect(50, 20);
+        Vector4 overridden = NowLayout.ReserveRect(50, 20, align: NowLayoutAlign.End);
 
         NowLayout.EndHorizontal();
         NowLayout.EndArea();
@@ -304,20 +635,22 @@ public class NowLayoutTests
     {
         for (int pass = 0; pass < 2; ++pass)
         {
+            NowControls.ResetControlIdOccurrences();
             NowLayout.Area("shrink-area", new Vector4(0, 0, 300, 300));
             NowLayout.Horizontal();
-            NowLayout.Rect(200, 20);
+            NowLayout.ReserveRect(200, 20);
             NowLayout.EndHorizontal();
             NowLayout.EndArea();
         }
 
+        NowControls.ResetControlIdOccurrences();
         NowLayout.Area("shrink-area", new Vector4(0, 0, 300, 300));
         NowLayout.Horizontal();
-        NowLayout.Rect(50, 20);
+        NowLayout.ReserveRect(50, 20);
         NowLayout.EndHorizontal();
         NowLayout.EndArea();
 
-        Assert.IsTrue(NowLayout.TryGetCachedContentSize("shrink-area", out var size));
+        Assert.IsTrue(NowLayout.TryGetCachedAreaContentSize("shrink-area", out var size));
         Assert.AreEqual(50f, size.x, 0.01f, "measured width must follow content back down");
     }
 
@@ -330,9 +663,9 @@ public class NowLayoutTests
         {
             NowLayout.Area("area", new Vector4(0, 0, 200, 400));
 
-            NowLayout.Rect(100, 20);
+            NowLayout.ReserveRect(100, 20);
             NowLayout.FlexibleSpace();
-            trailing = NowLayout.Rect(100, 30);
+            trailing = NowLayout.ReserveRect(100, 30);
 
             NowLayout.EndArea();
         }
@@ -348,12 +681,13 @@ public class NowLayoutTests
 
         for (int pass = 0; pass < 2; ++pass)
         {
+            NowControls.ResetControlIdOccurrences();
             NowLayout.Area("area", new Vector4(0, 0, 400, 300));
             NowLayout.Horizontal();
 
-            NowLayout.Rect(100, 20);
-            b = NowLayout.Rect(NowLayout.StretchWidth(1).SetHeight(20));
-            c = NowLayout.Rect(NowLayout.StretchWidth(3).SetHeight(20));
+            NowLayout.ReserveRect(100, 20);
+            b = NowLayout.ReserveRect(NowLayout.StretchWidth(1).SetHeight(20));
+            c = NowLayout.ReserveRect(NowLayout.StretchWidth(3).SetHeight(20));
 
             NowLayout.EndHorizontal();
             NowLayout.EndArea();
@@ -364,11 +698,290 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void OnePassFlexCacheRequestsRepaintWhenOnlyWeightsChange()
+    {
+        DrawWeightedGrowRow(1f, out _, out _);
+        DrawWeightedGrowRow(1f, out NowRect first, out NowRect second);
+        AssertRect(new NowRect(0f, 0f, 200f, 20f), first);
+        AssertRect(new NowRect(200f, 0f, 200f, 20f), second);
+
+        NowControlState.BeginRepaintTracking();
+        DrawWeightedGrowRow(3f, out first, out second);
+        AssertRect(new NowRect(0f, 0f, 200f, 20f), first);
+        Assert.IsTrue(NowControlState.EndRepaintTracking(),
+            "a descriptor-only cache change must schedule the converging rebuild");
+
+        NowControlState.BeginRepaintTracking();
+        DrawWeightedGrowRow(3f, out first, out second);
+        AssertRect(new NowRect(0f, 0f, 100f, 20f), first);
+        AssertRect(new NowRect(100f, 0f, 300f, 20f), second);
+        Assert.IsFalse(NowControlState.EndRepaintTracking(),
+            "the converged descriptor cache must not repaint forever");
+    }
+
+    [Test]
+    public void FluentGrowSharesRemainingSpaceAlongTheParentDirection()
+    {
+        NowRect one = default;
+        NowRect three = default;
+
+        NowLayout.RunMeasured("grow-area", new NowRect(0f, 0f, 400f, 100f), () =>
+        {
+            using (NowLayout.Row().FillWidth().Height(20f).Begin())
+            {
+                NowLayout.ReserveRect(100f, 20f);
+
+                using (var growing = NowLayout.Column().Grow().Height(20f).Begin())
+                    one = growing.rect;
+
+                using (var growing = NowLayout.Column().Grow(3f).Height(20f).Begin())
+                    three = growing.rect;
+            }
+        });
+
+        AssertRect(new Vector4(100f, 0f, 75f, 20f), one);
+        AssertRect(new Vector4(175f, 0f, 225f, 20f), three);
+    }
+
+    [Test]
+    public void GrowMinRedistributesTheRemainingSpace()
+    {
+        NowRect constrained = default;
+        NowRect sibling = default;
+
+        NowLayout.RunMeasured("grow-min", new NowRect(0f, 0f, 400f, 20f), () =>
+        {
+            using (NowLayout.Row().FillWidth().Height(20f).Begin())
+            {
+                using (var child = NowLayout.Column().Grow().MinWidth(300f).Height(20f).Begin())
+                    constrained = child.rect;
+
+                using (var child = NowLayout.Column().Grow().Height(20f).Begin())
+                    sibling = child.rect;
+            }
+        });
+
+        AssertRect(new NowRect(0f, 0f, 300f, 20f), constrained);
+        AssertRect(new NowRect(300f, 0f, 100f, 20f), sibling);
+    }
+
+    [Test]
+    public void GrowMaxRedistributesTheRemainingSpace()
+    {
+        NowRect constrained = default;
+        NowRect sibling = default;
+
+        NowLayout.RunMeasured("grow-max", new NowRect(0f, 0f, 400f, 20f), () =>
+        {
+            using (NowLayout.Row().FillWidth().Height(20f).Begin())
+            {
+                using (var child = NowLayout.Column().Grow().MaxWidth(50f).Height(20f).Begin())
+                    constrained = child.rect;
+
+                using (var child = NowLayout.Column().Grow().Height(20f).Begin())
+                    sibling = child.rect;
+            }
+        });
+
+        AssertRect(new NowRect(0f, 0f, 50f, 20f), constrained);
+        AssertRect(new NowRect(50f, 0f, 350f, 20f), sibling);
+    }
+
+    [Test]
+    public void GrowConstraintsPreserveTheRemainingWeights()
+    {
+        NowRect constrained = default;
+        NowRect one = default;
+        NowRect two = default;
+
+        NowLayout.RunMeasured("grow-weighted-clamp", new NowRect(0f, 0f, 500f, 20f), () =>
+        {
+            using (NowLayout.Row().FillWidth().Height(20f).Begin())
+            {
+                using (var child = NowLayout.Column().Grow().MaxWidth(50f).Height(20f).Begin())
+                    constrained = child.rect;
+
+                using (var child = NowLayout.Column().Grow().Height(20f).Begin())
+                    one = child.rect;
+
+                using (var child = NowLayout.Column().Grow(2f).Height(20f).Begin())
+                    two = child.rect;
+            }
+        });
+
+        AssertRect(new NowRect(0f, 0f, 50f, 20f), constrained);
+        AssertRect(new NowRect(50f, 0f, 150f, 20f), one);
+        AssertRect(new NowRect(200f, 0f, 300f, 20f), two);
+    }
+
+    [Test]
+    public void GrowMixedMinAndMaxConstraintsFreezeOnlyTheRequiredBound()
+    {
+        NowRect max = default;
+        NowRect min = default;
+        NowRect free = default;
+
+        NowLayout.RunMeasured("grow-mixed-bounds", new NowRect(0f, 0f, 100f, 20f), () =>
+        {
+            using (NowLayout.Row().FillWidth().Height(20f).Begin())
+            {
+                using (var child = NowLayout.Column().Grow().MaxWidth(10f).Height(20f).Begin())
+                    max = child.rect;
+
+                using (var child = NowLayout.Column().Grow().MinWidth(40f).Height(20f).Begin())
+                    min = child.rect;
+
+                using (var child = NowLayout.Column().Grow().Height(20f).Begin())
+                    free = child.rect;
+            }
+        });
+
+        AssertRect(new NowRect(0f, 0f, 10f, 20f), max);
+        AssertRect(new NowRect(10f, 0f, 45f, 20f), min);
+        AssertRect(new NowRect(55f, 0f, 45f, 20f), free);
+    }
+
+    [Test]
+    public void GrowMixedBoundsUseAFeasibleAllocationInsteadOfOverflowing()
+    {
+        NowRect max = default;
+        NowRect min = default;
+
+        NowLayout.RunMeasured("grow-feasible-bounds", new NowRect(0f, 0f, 100f, 20f), () =>
+        {
+            using (NowLayout.Row().FillWidth().Height(20f).Begin())
+            {
+                using (var child = NowLayout.Column().Grow().MaxWidth(40f).Height(20f).Begin())
+                    max = child.rect;
+
+                using (var child = NowLayout.Column().Grow().MinWidth(70f).Height(20f).Begin())
+                    min = child.rect;
+            }
+        });
+
+        AssertRect(new NowRect(0f, 0f, 30f, 20f), max);
+        AssertRect(new NowRect(30f, 0f, 70f, 20f), min);
+    }
+
+    [Test]
+    public void JustifyPositionsSpaceLeftByMaxCappedGrowItems()
+    {
+        NowRect first = default;
+        NowRect second = default;
+
+        NowLayout.RunMeasured("grow-capped-justify", new NowRect(0f, 0f, 400f, 20f), () =>
+        {
+            using (NowLayout.Row()
+                .FillWidth()
+                .Height(20f)
+                .Justify(NowLayoutJustify.Center)
+                .Begin())
+            {
+                using (var child = NowLayout.Column().Grow().MaxWidth(50f).Height(20f).Begin())
+                    first = child.rect;
+
+                using (var child = NowLayout.Column().Grow().MaxWidth(50f).Height(20f).Begin())
+                    second = child.rect;
+            }
+        });
+
+        AssertRect(new NowRect(150f, 0f, 50f, 20f), first);
+        AssertRect(new NowRect(200f, 0f, 50f, 20f), second);
+    }
+
+    [Test]
+    public void SpacerKeepsItsPlaceAmongConstrainedGrowItems()
+    {
+        NowRect first = default;
+        NowRect last = default;
+
+        NowLayout.RunMeasured("grow-spacer-index", new NowRect(0f, 0f, 400f, 20f), () =>
+        {
+            using (NowLayout.Row().FillWidth().Height(20f).Begin())
+            {
+                using (var child = NowLayout.Column().Grow().MaxWidth(50f).Height(20f).Begin())
+                    first = child.rect;
+
+                NowLayout.Spacer();
+
+                using (var child = NowLayout.Column().Grow().Height(20f).Begin())
+                    last = child.rect;
+            }
+        });
+
+        AssertRect(new NowRect(0f, 0f, 50f, 20f), first);
+        AssertRect(new NowRect(225f, 0f, 175f, 20f), last);
+    }
+
+    [Test]
+    public void MainAxisStretchUsesTheSameConstraintRedistributionAsGrow()
+    {
+        NowRect constrained = default;
+        NowRect sibling = default;
+
+        NowLayout.RunMeasured("stretch-min", new NowRect(0f, 0f, 400f, 20f), () =>
+        {
+            using (NowLayout.Row().FillWidth().Height(20f).Begin())
+            {
+                constrained = NowLayout.ReserveRect(
+                    NowLayout.StretchWidth().SetMinWidth(300f).SetHeight(20f));
+                sibling = NowLayout.ReserveRect(
+                    NowLayout.StretchWidth().SetHeight(20f));
+            }
+        });
+
+        AssertRect(new NowRect(0f, 0f, 300f, 20f), constrained);
+        AssertRect(new NowRect(300f, 0f, 100f, 20f), sibling);
+    }
+
+    [TestCase(NowLayoutJustify.Center, 70f, 110f)]
+    [TestCase(NowLayoutJustify.End, 140f, 180f)]
+    [TestCase(NowLayoutJustify.SpaceBetween, 0f, 180f)]
+    public void FluentJustifyPlacesChildrenAlongTheMainAxis(
+        NowLayoutJustify justify,
+        float expectedFirstX,
+        float expectedSecondX)
+    {
+        NowRect first = default;
+        NowRect second = default;
+
+        NowLayout.RunMeasured("justify-area", new NowRect(0f, 0f, 200f, 100f), () =>
+        {
+            using (NowLayout.Row()
+                .FillWidth()
+                .Height(20f)
+                .Justify(justify)
+                .Begin())
+            {
+                first = NowLayout.ReserveRect(40f, 20f);
+                second = NowLayout.ReserveRect(20f, 20f);
+            }
+        });
+
+        Assert.AreEqual(expectedFirstX, first.x, 0.001f);
+        Assert.AreEqual(expectedSecondX, second.x, 0.001f);
+    }
+
+    [TestCase(NowLayoutJustify.Center, "empty-center")]
+    [TestCase(NowLayoutJustify.End, "empty-end")]
+    public void EmptyJustifiedAreaDoesNotReportPhantomContent(
+        NowLayoutJustify justify,
+        string id)
+    {
+        var options = default(NowLayoutOptions).SetJustify(justify);
+
+        NowLayout.RunMeasured(id, new NowRect(0f, 0f, 200f, 100f), options, static () => { });
+
+        Assert.IsTrue(NowLayout.TryGetCachedAreaContentSize(id, out var contentSize));
+        Assert.AreEqual(Vector2.zero, contentSize);
+    }
+
+    [Test]
     public void StretchOnCrossAxisFillsAvailableSpaceImmediately()
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
-        Vector4 rect = NowLayout.Rect(NowLayout.StretchWidth().SetHeight(20));
+        Vector4 rect = NowLayout.ReserveRect(NowLayout.StretchWidth().SetHeight(20));
 
         NowLayout.EndArea();
 
@@ -380,7 +993,7 @@ public class NowLayoutTests
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
-        Vector4 rect = NowLayout.Rect(NowLayout.StretchWidth().SetHeight(20).SetMaxWidth(150));
+        Vector4 rect = NowLayout.ReserveRect(NowLayout.StretchWidth().SetHeight(20).SetMaxWidth(150));
 
         NowLayout.EndArea();
 
@@ -392,7 +1005,7 @@ public class NowLayoutTests
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
-        Vector4 rect = NowLayout.Rect(
+        Vector4 rect = NowLayout.ReserveRect(
             NowLayout.Size(100, 20).SetAlign(NowLayoutAlign.Center));
 
         NowLayout.EndArea();
@@ -405,7 +1018,7 @@ public class NowLayoutTests
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
-        Vector4 rect = NowLayout.Rect(
+        Vector4 rect = NowLayout.ReserveRect(
             NowLayout.Size(100, 20).SetAlign(NowLayoutAlign.End));
 
         NowLayout.EndArea();
@@ -419,7 +1032,7 @@ public class NowLayoutTests
         NowLayout.Area(new Vector4(0, 0, 400, 300), padding: 10);
         NowLayout.Vertical(padding: 5, height: 100);
 
-        Vector4 inner = NowLayout.Rect(50, 20);
+        Vector4 inner = NowLayout.ReserveRect(50, 20);
 
         NowLayout.EndVertical();
         NowLayout.EndArea();
@@ -435,10 +1048,10 @@ public class NowLayoutTests
             using (var row = NowLayout.Horizontal())
             {
                 Assert.AreEqual(400f, row.width, 0.001f);
-                NowLayout.Rect(10, 10);
+                NowLayout.ReserveRect(10, 10);
             }
 
-            NowLayout.Rect(10, 10);
+            NowLayout.ReserveRect(10, 10);
         }
 
         Assert.DoesNotThrow(() =>
@@ -460,7 +1073,7 @@ public class NowLayoutTests
         try
         {
             staleCopy.Dispose();
-            Assert.DoesNotThrow(() => NowLayout.Rect(10, 10));
+            Assert.DoesNotThrow(() => NowLayout.ReserveRect(10, 10));
         }
         finally
         {
@@ -477,7 +1090,7 @@ public class NowLayoutTests
         try
         {
             Assert.Throws<InvalidOperationException>(() => area.Dispose());
-            Assert.DoesNotThrow(() => NowLayout.Rect(10, 10));
+            Assert.DoesNotThrow(() => NowLayout.ReserveRect(10, 10));
         }
         finally
         {
@@ -487,18 +1100,72 @@ public class NowLayoutTests
     }
 
     [Test]
-    public void LayoutOptionsUseLastFixedOrStretchMode()
+    public void LayoutOptionsRejectFixedAndStretchOnTheSameAxis()
     {
-        var fixedLast = default(NowLayoutOptions).SetStretchWidth(2f).SetWidth(40f);
-        Assert.IsTrue(fixedLast.Has(NowLayoutOptions.Field.Width));
-        Assert.IsFalse(fixedLast.Has(NowLayoutOptions.Field.StretchWidth));
-        Assert.AreEqual(0f, fixedLast.stretchWidth);
+        Assert.Throws<InvalidOperationException>(() =>
+            default(NowLayoutOptions).SetWidth(40f).SetStretchWidth(2f));
+        Assert.Throws<InvalidOperationException>(() =>
+            default(NowLayoutOptions).SetStretchWidth(2f).SetWidth(40f));
+        Assert.Throws<InvalidOperationException>(() =>
+            default(NowLayoutOptions).SetHeight(40f).SetStretchHeight(2f));
+        Assert.Throws<InvalidOperationException>(() =>
+            default(NowLayoutOptions).SetStretchHeight(2f).SetHeight(40f));
 
-        var stretchLast = default(NowLayoutOptions).SetWidth(40f).SetStretchWidth(2f);
-        Assert.IsFalse(stretchLast.Has(NowLayoutOptions.Field.Width));
-        Assert.IsTrue(stretchLast.Has(NowLayoutOptions.Field.StretchWidth));
-        Assert.AreEqual(0f, stretchLast.width);
-        Assert.AreEqual(2f, stretchLast.stretchWidth);
+        Assert.Throws<InvalidOperationException>(() => NowLayout.Row().Width(40f).FillWidth());
+        Assert.Throws<InvalidOperationException>(() => NowLayout.Column().FillHeight().Height(40f));
+    }
+
+    [Test]
+    public void ExplicitRootBoundsRejectSilentlyIgnoredPlacementOptions()
+    {
+        var rect = new NowRect(0f, 0f, 200f, 100f);
+        var width = default(NowLayoutOptions).SetWidth(50f);
+
+        Assert.Throws<InvalidOperationException>(() => NowLayout.Row(rect).Width(50f));
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var area = NowLayout.Area(rect, width);
+        });
+        Assert.Throws<InvalidOperationException>(() =>
+            NowLayout.RunMeasured(rect, width, () => { }));
+
+        Assert.DoesNotThrow(() =>
+        {
+            using var root = NowLayout.Column(rect)
+                .Padding(8f)
+                .Gap(4f)
+                .AlignChildren(NowLayoutAlign.Center)
+                .Justify(NowLayoutJustify.Center)
+                .Begin();
+        });
+    }
+
+    [Test]
+    public void GrowRejectsStretchOnTheParentMainAxis()
+    {
+        using (NowLayout.Row(new NowRect(0f, 0f, 200f, 100f)).Begin())
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                using var invalid = NowLayout.Column()
+                    .Grow(2f)
+                    .FillWidth()
+                    .Height(20f)
+                    .Begin();
+            });
+        }
+
+        using (NowLayout.Column(new NowRect(0f, 0f, 200f, 100f)).Begin())
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                using var invalid = NowLayout.Row()
+                    .Grow(2f)
+                    .FillHeight()
+                    .Width(20f)
+                    .Begin();
+            });
+        }
     }
 
     [Test]
@@ -507,19 +1174,22 @@ public class NowLayoutTests
         Assert.Throws<ArgumentOutOfRangeException>(() => default(NowLayoutOptions).SetWidth(-1f));
         Assert.Throws<ArgumentOutOfRangeException>(() => default(NowLayoutOptions).SetHeight(float.NaN));
         Assert.Throws<ArgumentOutOfRangeException>(() => default(NowLayoutOptions).SetStretchWidth(0f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => default(NowLayoutOptions).SetGrow(0f));
         Assert.Throws<ArgumentOutOfRangeException>(() => default(NowLayoutOptions).SetSpacing(float.PositiveInfinity));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            default(NowLayoutOptions).SetJustify((NowLayoutJustify)99));
         Assert.Throws<ArgumentException>(() => default(NowLayoutOptions).SetMinWidth(20f).SetMaxWidth(10f));
         Assert.Throws<ArgumentException>(() => default(NowLayoutOptions).SetMaxHeight(10f).SetMinHeight(20f));
     }
 
     [Test]
-    public void CallbackAreaRunsMeasureThenRealPass()
+    public void RunMeasuredRunsMeasureThenRealPass()
     {
         int calls = 0;
         bool firstWasMeasure = false;
         bool lastWasMeasure = true;
 
-        NowLayout.Area(new Vector4(0, 0, 100, 100), () =>
+        NowLayout.RunMeasured(new Vector4(0, 0, 100, 100), () =>
         {
             calls++;
 
@@ -536,30 +1206,153 @@ public class NowLayoutTests
     }
 
     [Test]
-    public void CallbackAreaResolvesFlexibleSpaceOnFirstFrame()
+    public void RepeatedRunMeasuredCallsAtOneCallSiteKeepMeasureAndDrawIdsAligned()
+    {
+        var resolvedX = new List<float>();
+
+        for (int i = 0; i < 3; ++i)
+        {
+            NowLayout.RunMeasured(new NowRect(0f, i * 30f, 100f, 20f), () =>
+            {
+                using (NowLayout.Row().FillWidth().Height(20f).Begin())
+                {
+                    NowLayout.Spacer();
+                    NowRect child = NowLayout.ReserveRect(20f, 20f);
+
+                    if (!NowLayout.isMeasurePass)
+                        resolvedX.Add(child.x);
+                }
+            });
+        }
+
+        CollectionAssert.AreEqual(new[] { 80f, 80f, 80f }, resolvedX);
+    }
+
+    [Test]
+    public void RunMeasuredRewindsIdsWhenTheOuterHostIsAlreadyPassive()
+    {
+        float resolvedX = -1f;
+        NowInput.BeginPassive();
+
+        try
+        {
+            NowLayout.RunMeasured(new NowRect(0f, 0f, 100f, 20f), () =>
+            {
+                using (NowLayout.Row().FillWidth().Height(20f).Begin())
+                {
+                    NowLayout.Spacer();
+                    NowRect child = NowLayout.ReserveRect(20f, 20f);
+
+                    if (!NowLayout.isMeasurePass)
+                        resolvedX = child.x;
+                }
+            });
+        }
+        finally
+        {
+            NowInput.EndPassive();
+        }
+
+        Assert.AreEqual(80f, resolvedX, 0.0001f);
+    }
+
+    [Test]
+    public void NestedRunMeasuredReusesTheOuterTwoPassCycle()
+    {
+        int outerCalls = 0;
+        int nestedCalls = 0;
+        bool outerFirstWasMeasure = false;
+        bool outerLastWasMeasure = true;
+        bool nestedFirstWasMeasure = false;
+        bool nestedLastWasMeasure = true;
+
+        NowLayout.RunMeasured("outer", new NowRect(0f, 0f, 200f, 200f), () =>
+        {
+            ++outerCalls;
+
+            if (outerCalls == 1)
+                outerFirstWasMeasure = NowLayout.isMeasurePass;
+
+            outerLastWasMeasure = NowLayout.isMeasurePass;
+
+            NowLayout.RunMeasured("nested", new NowRect(10f, 10f, 100f, 100f), () =>
+            {
+                ++nestedCalls;
+
+                if (nestedCalls == 1)
+                    nestedFirstWasMeasure = NowLayout.isMeasurePass;
+
+                nestedLastWasMeasure = NowLayout.isMeasurePass;
+                NowLayout.ReserveRect(20f, 20f);
+            });
+        });
+
+        Assert.AreEqual(2, outerCalls);
+        Assert.AreEqual(2, nestedCalls, "the nested region must run once per outer pass, not start two more passes");
+        Assert.IsTrue(outerFirstWasMeasure);
+        Assert.IsTrue(nestedFirstWasMeasure);
+        Assert.IsFalse(outerLastWasMeasure);
+        Assert.IsFalse(nestedLastWasMeasure);
+    }
+
+    [Test]
+    public void RunMeasuredRestoresMeasureStateAfterMeasureAndDrawExceptions()
+    {
+        var measureFailure = new InvalidOperationException("measure failed");
+        var thrownMeasureFailure = Assert.Throws<InvalidOperationException>(() =>
+            NowLayout.RunMeasured("measure-failure", new NowRect(0f, 0f, 100f, 100f), () =>
+            {
+                if (NowLayout.isMeasurePass)
+                    throw measureFailure;
+            }));
+
+        Assert.AreSame(measureFailure, thrownMeasureFailure);
+        Assert.IsFalse(NowLayout.isMeasurePass);
+        Assert.IsFalse(NowInput.isPassive);
+
+        var drawFailure = new InvalidOperationException("draw failed");
+        var thrownDrawFailure = Assert.Throws<InvalidOperationException>(() =>
+            NowLayout.RunMeasured("draw-failure", new NowRect(0f, 0f, 100f, 100f), () =>
+            {
+                if (!NowLayout.isMeasurePass)
+                    throw drawFailure;
+            }));
+
+        Assert.AreSame(drawFailure, thrownDrawFailure);
+        Assert.IsFalse(NowLayout.isMeasurePass);
+        Assert.IsFalse(NowInput.isPassive);
+
+        int recoveredCalls = 0;
+        Assert.DoesNotThrow(() =>
+            NowLayout.RunMeasured("after-failure", new NowRect(0f, 0f, 100f, 100f), () => ++recoveredCalls));
+        Assert.AreEqual(2, recoveredCalls, "a leaked nested-cycle depth would collapse this to one pass");
+    }
+
+    [Test]
+    public void RunMeasuredResolvesFlexibleSpaceOnFirstFrame()
     {
         Vector4 trailing = default;
 
-        NowLayout.Area("cb", new Vector4(0, 0, 200, 400), () =>
+        NowLayout.RunMeasured("cb", new Vector4(0, 0, 200, 400), () =>
         {
-            NowLayout.Rect(100, 20);
+            NowLayout.ReserveRect(100, 20);
             NowLayout.FlexibleSpace();
-            trailing = NowLayout.Rect(100, 30);
+            trailing = NowLayout.ReserveRect(100, 30);
         });
 
         Assert.AreEqual(370f, trailing.y, 0.001f, "two-pass layout should resolve flexible space without a warm-up frame");
     }
 
     [Test]
-    public void CallbackAreaSizesAutoGroupOnFirstFrame()
+    public void RunMeasuredSizesAutoGroupOnFirstFrame()
     {
         Vector4 rowRect = default;
 
-        NowLayout.Area(new Vector4(0, 0, 400, 300), () =>
+        NowLayout.RunMeasured(new Vector4(0, 0, 400, 300), () =>
         {
             using (var row = NowLayout.Horizontal())
             {
-                NowLayout.Rect(100, 30);
+                NowLayout.ReserveRect(100, 30);
 
                 if (!NowLayout.isMeasurePass)
                     rowRect = row.rect;
@@ -570,7 +1363,7 @@ public class NowLayoutTests
     }
 
     [Test]
-    public void CallbackAreaInteractionsAreInertDuringMeasurePass()
+    public void RunMeasuredInteractionsAreInertDuringMeasurePass()
     {
         NowInput.Reset();
         var provider = new LayoutMockInputProvider
@@ -585,9 +1378,9 @@ public class NowLayoutTests
                 NowInteraction measure = default;
                 NowInteraction real = default;
 
-                NowLayout.Area(new Vector4(0, 0, 200, 200), () =>
+                NowLayout.RunMeasured(new Vector4(0, 0, 200, 200), () =>
                 {
-                    Vector4 rect = NowLayout.Rect(100, 100);
+                    Vector4 rect = NowLayout.ReserveRect(100, 100);
                     var interaction = NowInput.Interact(1, rect);
 
                     if (NowLayout.isMeasurePass)
@@ -613,7 +1406,7 @@ public class NowLayoutTests
         NowLayout.Area(new Vector4(10, 20, 400, 300));
 
         var text = NowLayout.Label("hello").Draw();
-        Vector4 below = NowLayout.Rect(50, 30);
+        Vector4 below = NowLayout.ReserveRect(50, 30);
 
         NowLayout.EndArea();
 
@@ -694,7 +1487,7 @@ public class NowLayoutTests
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
         _ = NowLayout.Label("hello").SetFontSize(99);
-        Vector4 below = NowLayout.Rect(50, 30);
+        Vector4 below = NowLayout.ReserveRect(50, 30);
 
         NowLayout.EndArea();
 
@@ -718,7 +1511,7 @@ public class NowLayoutTests
             .Reserve();
 
         var text = label.Draw();
-        Vector4 below = NowLayout.Rect(10, 10);
+        Vector4 below = NowLayout.ReserveRect(10, 10);
 
         NowLayout.EndArea();
 
@@ -761,7 +1554,7 @@ public class NowLayoutTests
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
         NowLayout.Lottie((NowLottieAsset)null).Draw();
-        Vector4 below = NowLayout.Rect(50, 30);
+        Vector4 below = NowLayout.ReserveRect(50, 30);
 
         NowLayout.EndArea();
 
@@ -829,7 +1622,7 @@ public class NowLayoutTests
 
         var lottie = NowLayout.Lottie((NowLottieAsset)null).SetLayoutSize(60, 40).Reserve();
         lottie.Draw();
-        Vector4 below = NowLayout.Rect(10, 10);
+        Vector4 below = NowLayout.ReserveRect(10, 10);
 
         NowLayout.EndArea();
 
@@ -838,9 +1631,9 @@ public class NowLayoutTests
     }
 
     [Test]
-    public void RectOutsideAreaThrows()
+    public void ReserveRectOutsideAreaThrows()
     {
-        Assert.Throws<InvalidOperationException>(() => NowLayout.Rect(10, 10));
+        Assert.Throws<InvalidOperationException>(() => NowLayout.ReserveRect(10, 10));
     }
 
     [Test]

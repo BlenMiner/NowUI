@@ -60,7 +60,7 @@ public class LayoutExample : MonoBehaviour
             .SetRadius(16)
             .Draw();
 
-        NowLayout.Area("settings", panelRect, _drawPanelContent, padding: 20, spacing: 14);
+        NowLayout.RunMeasured("settings", panelRect, _drawPanelContent, padding: 20, spacing: 14);
     }
 
     void DrawPanelContent()
@@ -145,7 +145,7 @@ public class LayoutExample : MonoBehaviour
         NowLayoutOptions options,
         Color background)
     {
-        NowRect rect = NowLayout.Rect(options);
+        NowRect rect = NowLayout.ReserveRect(options);
         var interaction = NowInput.Interact(id, rect);
 
         if (interaction.hovered)
@@ -164,7 +164,7 @@ public class LayoutExample : MonoBehaviour
         NowId id,
         bool value)
     {
-        NowRect rect = NowLayout.Rect(
+        NowRect rect = NowLayout.ReserveRect(
             NowLayout.Size(44, 24).SetAlign(NowLayoutAlign.Center));
 
         var interaction = NowInput.Interact(id, rect);

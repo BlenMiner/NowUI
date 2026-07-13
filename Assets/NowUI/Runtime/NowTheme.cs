@@ -17,6 +17,19 @@ namespace NowUI
 
         static readonly NowScopeGuard _themeScopes = new NowScopeGuard("NowTheme.Scope");
 
+        static int _scopeStartedAt = int.MinValue;
+
+        static int EnterScope()
+        {
+            if (_themeScopes.count == 0)
+                _scopeStartedAt = Time.frameCount;
+
+            return _themeScopes.Enter();
+        }
+
+        internal static bool hasActiveScopesThisFrame =>
+            _themeScopes.count > 0 && _scopeStartedAt == Time.frameCount;
+
         /// <summary>
         /// Forces light or dark resolution: when set, the active theme swaps to
         /// its <see cref="NowThemeAsset.counterpart"/> when that twin matches
@@ -104,7 +117,7 @@ namespace NowUI
                 return default;
 
             _themeStack.Add(value);
-            return new ThemeScope(_themeScopes.Enter());
+            return new ThemeScope(EnterScope());
         }
 
         /// <summary>Pushes a contextual theme; dispose the scope to restore the previous one.</summary>
@@ -114,7 +127,7 @@ namespace NowUI
                 throw new ArgumentNullException(nameof(value));
 
             _themeStack.Add(value);
-            return new ThemeScope(_themeScopes.Enter());
+            return new ThemeScope(EnterScope());
         }
 
         internal static void PopScope(int token)
@@ -140,6 +153,7 @@ namespace NowUI
 
             _themeStack.Clear();
             _themeScopes.Clear();
+            _scopeStartedAt = int.MinValue;
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (!_warnedLeakedThemeScope)
@@ -154,6 +168,7 @@ namespace NowUI
         {
             _themeStack.Clear();
             _themeScopes.Clear();
+            _scopeStartedAt = int.MinValue;
             _preferDark = null;
         }
 

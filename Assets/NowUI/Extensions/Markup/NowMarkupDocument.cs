@@ -960,7 +960,7 @@ namespace NowUI.Markup
 
         void RenderDivider(NowMarkupNodeCache cache)
         {
-            var rect = NowLayout.Rect(cache.dividerOptions);
+            var rect = NowLayout.ReserveRect(cache.dividerOptions);
 
             if (rect.width <= 0f || rect.height <= 0f)
                 return;

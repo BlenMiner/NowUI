@@ -4661,7 +4661,7 @@ namespace NowUI.NodeGraph
 
             string query = data.query ?? string.Empty;
 
-            if (Now.TextField(field, new NowId(data.fieldId))
+            if (Now.TextField(field, NowId.Resolved(data.fieldId))
                     .SetPlaceholder("Search nodes...")
                     .Draw(ref query))
             {

@@ -279,7 +279,7 @@ namespace NowUI
 
             if (_hasRect)
             {
-                using (NowLayout.Area(NowInput.CombineId(id, 0x4e464172), _rect, spacing: _spacing))
+                using (NowLayout.Area(NowId.Resolved(NowInput.CombineId(id, 0x4e464172)), _rect, spacing: _spacing))
                     DrawFlags(id, ref bits);
             }
             else
@@ -315,7 +315,7 @@ namespace NowUI
                 ulong flag = values[i];
                 bool on = (bits & flag) == flag;
 
-                if (!NowLayout.Checkbox(names[i]).SetId(NowInput.CombineId(id, i + 1)).SetTextStyle(_textStyle).Draw(ref on))
+                if (!NowLayout.Checkbox(names[i]).SetId(NowId.Resolved(NowInput.CombineId(id, i + 1))).SetTextStyle(_textStyle).Draw(ref on))
                     continue;
 
                 if (on)
@@ -963,7 +963,7 @@ namespace NowUI
 
             string hex = state.hexText;
 
-            if (Now.TextField(state.hexRect, hexInputId)
+            if (Now.TextField(state.hexRect, NowId.Resolved(hexInputId))
                     .SetPlaceholder(settings.showAlpha ? "#RRGGBBAA" : "#RRGGBB")
                     .Draw(ref hex))
             {
@@ -980,10 +980,10 @@ namespace NowUI
             string copyLabel = state.compactHexButtons ? "C" : "Copy";
             string pasteLabel = state.compactHexButtons ? "P" : "Paste";
 
-            if (Now.Button(state.copyRect, copyLabel).SetId(NowInput.CombineId(state.id, CopySeed)).Draw())
+            if (Now.Button(state.copyRect, copyLabel).SetId(NowId.Resolved(NowInput.CombineId(state.id, CopySeed))).Draw())
                 NowClipboard.Copy(FormatColor(value, settings.showAlpha));
 
-            if (Now.Button(state.pasteRect, pasteLabel).SetId(NowInput.CombineId(state.id, PasteSeed)).Draw() &&
+            if (Now.Button(state.pasteRect, pasteLabel).SetId(NowId.Resolved(NowInput.CombineId(state.id, PasteSeed))).Draw() &&
                 TryParseHexColor(NowClipboard.Paste(), settings.showAlpha, value.a, out var pasted))
             {
                 next = pasted;
@@ -1031,7 +1031,7 @@ namespace NowUI
             var sliderRect = new NowRect(labelRect.xMax + gap, rect.y, Mathf.Max(1f, valueRect.x - labelRect.xMax - gap * 2f), rect.height);
 
             NowControls.DrawLeftLabel(theme, labelRect, label, NowTextStyle.Muted);
-            bool changed = Now.Slider(sliderRect, 0f, 1f).SetId(NowInput.CombineId(id, seed)).Draw(ref value);
+            bool changed = Now.Slider(sliderRect, 0f, 1f).SetId(NowId.Resolved(NowInput.CombineId(id, seed))).Draw(ref value);
             var valueHitRect = new NowRect(sliderRect.xMax, rect.y, Mathf.Max(1f, rect.xMax - sliderRect.xMax), rect.height);
             var valueInteraction = NowInput.Interact(NowInput.CombineId(NowInput.CombineId(id, ChannelValueHitSeed), seed), valueHitRect);
 
@@ -1804,7 +1804,7 @@ namespace NowUI
             var deleteRect = new NowRect(rect.xMax - outerPadding - deleteWidth, y, deleteWidth, rowHeight);
             NowControls.DrawLeftLabel(theme, labelRect, contentWidth < 190f ? "Loc" : "Location", NowTextStyle.Muted);
 
-            if (Now.FloatField(timeRect, NowInput.CombineId(state.id, ColorTimeFieldSeed))
+            if (Now.FloatField(timeRect, NowId.Resolved(NowInput.CombineId(state.id, ColorTimeFieldSeed)))
                     .SetRange(0f, 1f)
                     .SetFormat("0.###")
                     .Draw(ref time))
@@ -1819,7 +1819,7 @@ namespace NowUI
             if (state.colorKeys.Length > 1)
             {
                 if (Now.Button(deleteRect, DeleteGlyph)
-                        .SetId(NowInput.CombineId(state.id, DeleteColorSeed))
+                        .SetId(NowId.Resolved(NowInput.CombineId(state.id, DeleteColorSeed)))
                         .SetStyle(NowRectangleStyle.Outline)
                         .Draw())
                 {
@@ -1879,11 +1879,11 @@ namespace NowUI
             NowControls.DrawLeftLabel(theme, alphaLabelRect, contentWidth < 210f ? "A" : "Alpha", NowTextStyle.Muted);
 
             if (Now.Slider(alphaSliderRect, 0f, 1f)
-                    .SetId(NowInput.CombineId(state.id, AlphaValueSliderSeed))
+                    .SetId(NowId.Resolved(NowInput.CombineId(state.id, AlphaValueSliderSeed)))
                     .Draw(ref alpha))
                 changed = true;
 
-            if (Now.FloatField(alphaValueRect, NowInput.CombineId(state.id, AlphaValueFieldSeed))
+            if (Now.FloatField(alphaValueRect, NowId.Resolved(NowInput.CombineId(state.id, AlphaValueFieldSeed)))
                     .SetRange(0f, 1f)
                     .SetFormat("0.###")
                     .Draw(ref alpha))
@@ -1904,7 +1904,7 @@ namespace NowUI
 
                 NowControls.DrawLeftLabel(theme, locationLabelRect, contentWidth < 210f ? "Loc" : "Location", NowTextStyle.Muted);
 
-                if (Now.FloatField(timeRect, NowInput.CombineId(state.id, AlphaTimeFieldSeed))
+                if (Now.FloatField(timeRect, NowId.Resolved(NowInput.CombineId(state.id, AlphaTimeFieldSeed)))
                         .SetRange(0f, 1f)
                         .SetFormat("0.###")
                         .Draw(ref time))
@@ -1923,7 +1923,7 @@ namespace NowUI
             if (state.alphaKeys.Length > 2)
             {
                 if (Now.Button(deleteRect, DeleteGlyph)
-                        .SetId(NowInput.CombineId(state.id, DeleteAlphaSeed))
+                        .SetId(NowId.Resolved(NowInput.CombineId(state.id, DeleteAlphaSeed)))
                         .SetStyle(NowRectangleStyle.Outline)
                         .Draw())
                 {
@@ -3033,7 +3033,7 @@ namespace NowUI
             bool changed = false;
 
             NowControls.DrawLeftLabel(theme, timeLabelRect, timeLabel, NowTextStyle.Muted);
-            var timeField = Now.FloatField(timeRect, NowInput.CombineId(state.id, TimeFieldSeed))
+            var timeField = Now.FloatField(timeRect, NowId.Resolved(NowInput.CombineId(state.id, TimeFieldSeed)))
                 .SetFormat("0.###");
 
             if (state.settings.hasTimeRange)
@@ -3046,7 +3046,7 @@ namespace NowUI
             }
 
             NowControls.DrawLeftLabel(theme, valueLabelRect, valueLabel, NowTextStyle.Muted);
-            var valueField = Now.FloatField(valueRect, NowInput.CombineId(state.id, ValueFieldSeed))
+            var valueField = Now.FloatField(valueRect, NowId.Resolved(NowInput.CombineId(state.id, ValueFieldSeed)))
                 .SetFormat("0.###");
 
             if (state.settings.hasValueRange)
@@ -3068,7 +3068,7 @@ namespace NowUI
             if (state.keys.Length > 1)
             {
                 if (Now.Button(deleteRect, DeleteGlyph)
-                        .SetId(NowInput.CombineId(state.id, DeleteKeySeed))
+                        .SetId(NowId.Resolved(NowInput.CombineId(state.id, DeleteKeySeed)))
                         .SetStyle(NowRectangleStyle.Outline)
                         .Draw())
                 {
@@ -3140,7 +3140,7 @@ namespace NowUI
             var flatRect = new NowRect(stepRect.xMax + gap, rect.y, Mathf.Max(1f, rect.xMax - stepRect.xMax - gap), rect.height);
 
             if (Now.Button(smoothRect, "Smooth")
-                    .SetId(NowInput.CombineId(state.id, SmoothTangentSeed))
+                    .SetId(NowId.Resolved(NowInput.CombineId(state.id, SmoothTangentSeed)))
                     .SetStyle(NowRectangleStyle.Outline)
                     .Draw())
             {
@@ -3149,7 +3149,7 @@ namespace NowUI
             }
 
             if (Now.Button(linearRect, "Linear")
-                    .SetId(NowInput.CombineId(state.id, LinearTangentSeed))
+                    .SetId(NowId.Resolved(NowInput.CombineId(state.id, LinearTangentSeed)))
                     .SetStyle(NowRectangleStyle.Outline)
                     .Draw())
             {
@@ -3158,7 +3158,7 @@ namespace NowUI
             }
 
             if (Now.Button(stepRect, "Step")
-                    .SetId(NowInput.CombineId(state.id, StepTangentSeed))
+                    .SetId(NowId.Resolved(NowInput.CombineId(state.id, StepTangentSeed)))
                     .SetStyle(NowRectangleStyle.Outline)
                     .Draw())
             {
@@ -3167,7 +3167,7 @@ namespace NowUI
             }
 
             if (Now.Button(flatRect, "Flat")
-                    .SetId(NowInput.CombineId(state.id, FlatTangentSeed))
+                    .SetId(NowId.Resolved(NowInput.CombineId(state.id, FlatTangentSeed)))
                     .SetStyle(NowRectangleStyle.Outline)
                     .Draw())
             {
@@ -4382,7 +4382,7 @@ namespace NowUI
         {
             if (hasRect)
             {
-                var area = NowLayout.Area(NowInput.CombineId(id, 0x4e564172), rect);
+                var area = NowLayout.Area(NowId.Resolved(NowInput.CombineId(id, 0x4e564172)), rect);
                 var row = NowLayout.Horizontal(
                     spacing: settings.spacing,
                     alignItems: NowLayoutAlign.Center,
@@ -4451,7 +4451,7 @@ namespace NowUI
 
         static NowId ComponentId(int parentId, int index)
         {
-            return NowInput.CombineId(parentId, 0x4e564300 + index + 1);
+            return NowId.Resolved(NowInput.CombineId(parentId, 0x4e564300 + index + 1));
         }
 
         struct NowVectorFieldScope : IDisposable

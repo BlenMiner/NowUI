@@ -277,7 +277,7 @@ namespace NowUI.CodeEditor
 
             NowRect rect = _hasRect
                 ? _rect
-                : NowLayout.Rect(width: _width, height: _height, stretchWidth: _width <= 0f);
+                : NowLayout.ReserveRect(width: _width, height: _height, stretchWidth: _width <= 0f);
 
             var cache = GetCache(id, _language);
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
@@ -1058,7 +1058,7 @@ namespace NowUI.CodeEditor
                     ((inputFrame.escapePressed && !composing) || !fieldFocused);
 
                 NowFocus.DeclareOwner(fieldControlId, id);
-                Now.TextField(fieldRect, new NowId(fieldControlId))
+                Now.TextField(fieldRect, NowId.Resolved(fieldControlId))
                     .SetSelectAllOnFocus()
                     .Draw(ref cache.renameBuffer);
 

@@ -37,9 +37,9 @@ namespace NowUI
 
         [SerializeField] NowGlassBlurQuality _glassBlurQuality = NowGlassBlurQuality.Auto;
 
-        [SerializeField] bool _layoutMeasurePass = true;
-
         int _registrationIndex;
+
+        int _scopeId;
 
         public event Action<NowPipelineGraphic, Camera, Rect> rebuildNowUI;
 
@@ -86,18 +86,18 @@ namespace NowUI
             set => _glassBlurQuality = value;
         }
 
-        /// <summary>
-        /// When enabled, camera builds run a NowLayout measure pass (draws
-        /// suppressed, input passive) before the real pass — so flexible space,
-        /// stretching and auto-sized groups are exact every frame instead of
-        /// settling one frame late. All graphics on a camera share one build,
-        /// so the pass runs when any rendered graphic has it enabled; disable
-        /// it on every graphic that skips NowLayout to save the extra pass.
-        /// </summary>
-        public bool layoutMeasurePass
+        /// <summary>Explicit-rect pipeline hosts are one-pass; use NowPipelineLayoutGraphic for NowLayout content.</summary>
+        internal virtual bool useLayoutMeasurePass => false;
+
+        /// <summary>Resolves a SetId value within this host's private control scope.</summary>
+        public int ResolveControlId(string id)
         {
-            get => _layoutMeasurePass;
-            set => _layoutMeasurePass = value;
+            return NowControls.ResolveHostControlId(GetScopeId(), id);
+        }
+
+        public int ResolveControlId(int id)
+        {
+            return NowControls.ResolveHostControlId(GetScopeId(), id);
         }
 
         public static bool HasGraphicsFor(Camera camera)
@@ -141,21 +141,52 @@ namespace NowUI
 
             var size = new Vector2(camera.pixelWidth / uiScale, camera.pixelHeight / uiScale);
             var frame = NowFrame.Begin(uiScale);
-            var scope = drawList.Begin(size);
+            NowDrawScope scope = default;
 
             try
             {
+                scope = drawList.Begin(size);
                 var surface = NowInputSurface.FromCamera(camera);
                 surface.size /= uiScale;
 
-                using (NowInput.Begin(NowInput.defaultProvider, surface))
+                var inputScope = NowInput.Begin(NowInput.defaultProvider, surface);
+
+                try
                 {
-                    var content = new FrameContent(camera);
-                    NowFrame.DrawContent(
-                        ref content,
-                        new NowRect(0f, 0f, size.x, size.y),
-                        AnyRenderableWantsMeasurePass(camera),
-                        trackContent: false);
+                    SortGraphics();
+                    var rect = new NowRect(0f, 0f, size.x, size.y);
+
+                    for (int i = 0; i < _graphics.Count; ++i)
+                    {
+                        var graphic = _graphics[i];
+
+                        if (graphic == null || !graphic.CanRender(camera))
+                            continue;
+
+                        using (NowControls.RestoreIdScope(graphic.GetScopeId()))
+                        {
+                            var content = new FrameContent(graphic, camera);
+                            NowFrame.DrawContent(
+                                ref content,
+                                rect,
+                                graphic.useLayoutMeasurePass,
+                                trackContent: false,
+                                flushOverlays: false);
+                        }
+                    }
+
+                    NowOverlay.Flush();
+                }
+                catch
+                {
+                    // The pipeline capture must roll back before input disposal,
+                    // otherwise failed content can flush deferred side effects.
+                    scope.Cancel();
+                    throw;
+                }
+                finally
+                {
+                    inputScope.Dispose();
                 }
 
                 scope.Dispose();
@@ -173,17 +204,21 @@ namespace NowUI
             return drawList.hasGeometry;
         }
 
-        static bool AnyRenderableWantsMeasurePass(Camera camera)
+        static void SortGraphics()
         {
-            for (int i = 0; i < _graphics.Count; ++i)
-            {
-                var graphic = _graphics[i];
+            if (!_orderDirty)
+                return;
 
-                if (graphic != null && graphic._layoutMeasurePass && graphic.CanRender(camera))
-                    return true;
-            }
+            _graphics.Sort(_orderComparison);
+            _orderDirty = false;
+        }
 
-            return false;
+        int GetScopeId()
+        {
+            if (_scopeId == 0)
+                _scopeId = NowControls.AllocateHostScopeId();
+
+            return _scopeId;
         }
 
         public bool CanRender(Camera camera)
@@ -290,36 +325,20 @@ namespace NowUI
 
         struct FrameContent : INowFrameContent
         {
+            readonly NowPipelineGraphic _owner;
+
             readonly Camera _camera;
 
-            public FrameContent(Camera camera)
+            public FrameContent(NowPipelineGraphic owner, Camera camera)
             {
+                _owner = owner;
                 _camera = camera;
             }
 
             public void Draw(NowRect rect)
             {
-                DrawAll(_camera, rect);
-            }
-        }
-
-        static void DrawAll(Camera camera, Rect rect)
-        {
-            if (_orderDirty)
-            {
-                _graphics.Sort(_orderComparison);
-                _orderDirty = false;
-            }
-
-            for (int i = 0; i < _graphics.Count; ++i)
-            {
-                var graphic = _graphics[i];
-
-                if (graphic == null || !graphic.CanRender(camera))
-                    continue;
-
-                using (NowGlassSettings.PushBlurQuality(graphic._glassBlurQuality))
-                    graphic.DrawNowUI(camera, rect);
+                using (NowGlassSettings.PushBlurQuality(_owner._glassBlurQuality))
+                    _owner.DrawNowUI(_camera, rect);
             }
         }
 
@@ -338,4 +357,5 @@ namespace NowUI
             return order != 0 ? order : lhs._registrationIndex.CompareTo(rhs._registrationIndex);
         }
     }
+
 }

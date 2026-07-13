@@ -200,7 +200,7 @@ namespace NowUI
 
             try
             {
-                var area = NowLayout.Area(_firstAreaKey, firstRect);
+                var area = NowLayout.Area(NowId.Resolved(_firstAreaKey), firstRect);
                 return new NowSplitPaneScope(mask, area);
             }
             catch
@@ -217,7 +217,7 @@ namespace NowUI
 
             try
             {
-                var area = NowLayout.Area(_secondAreaKey, secondRect);
+                var area = NowLayout.Area(NowId.Resolved(_secondAreaKey), secondRect);
                 return new NowSplitPaneScope(mask, area);
             }
             catch

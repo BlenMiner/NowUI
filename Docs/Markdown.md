@@ -9,8 +9,8 @@ HTML, no JavaScript, no WebView.
 ```csharp
 using NowUI.Markdown;
 
-// In layout flow — stretches to the available width, height settles one
-// frame late like all scope-form layout:
+// In layout flow — stretches to the available width. A layout host resolves
+// height in the same rebuild; a one-pass host uses the cached measurement:
 var result = NowMarkdown.Document(changelogText).Draw();
 
 if (result.clickedLink != null)
@@ -80,9 +80,10 @@ are opt-in per draw: pass a caller-owned `NowMarkdownEmbedSet` mapping fence
 info strings to renderers, and any fence whose info string's first word
 matches renders through the registered `NowMarkdownEmbedRenderer` — drawn
 live every frame inside the document flow, with the measured height fed back
-into layout (one frame late, like images). Without a set, every fence stays
-an ordinary code block, so documents degrade gracefully on GitHub and in
-renderers that never wire embeds up.
+into layout. A layout host applies that height in the same rebuild; a one-pass
+host applies the cached measurement later. Without a set, every fence stays an
+ordinary code block, so documents degrade gracefully on GitHub and in renderers
+that never wire embeds up.
 
 The bundled `NowUI.Extensions.Markdown.Markup` bridge turns ` ```markup `
 (or ` ```nowui `) fences into live [NowUI markup](Markup.md) — controls,

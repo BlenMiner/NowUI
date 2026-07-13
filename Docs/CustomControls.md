@@ -94,7 +94,7 @@ public static bool RoundButton(
 {
     var theme = NowTheme.themeAsset;
 
-    NowRect rect = NowLayout.Rect(44f, 44f);
+    NowRect rect = NowLayout.ReserveRect(44f, 44f);
     var interaction = NowControls.Interact(rect, out bool focused, out bool submitted, file, line);
 
     // Round shape: reject pointer events that land in the rect's corners.
@@ -147,7 +147,7 @@ public static bool Rating(
 
     var theme = NowTheme.themeAsset;
 
-    NowRect rect = NowLayout.Rect(max * Dot + (max - 1) * Gap, Dot);
+    NowRect rect = NowLayout.ReserveRect(max * Dot + (max - 1) * Gap, Dot);
     var interaction = NowControls.Interact(rect, out bool focused, out bool submitted, file, line);
 
     int hoveredIndex = interaction.hovered
@@ -222,7 +222,7 @@ public struct MyRating
 
     public bool Draw(ref int value)
     {
-        NowRect rect = NowLayout.Rect(_max * 18f + (_max - 1) * 6f, 18f);
+        NowRect rect = NowLayout.ReserveRect(_max * 18f + (_max - 1) * 6f, 18f);
         var interaction = NowControls.Interact(_id, _site, rect, out bool focused, out bool submitted);
         // ... body as above, using _max ...
         return false;
@@ -247,7 +247,7 @@ hatch matters as soon as the control can draw from loops over reorderable
 data — same rules as the *Identity* section in Controls.md.
 
 For an explicit-rect twin (`MyControls.Rating(rect)`), add a second factory
-and constructor that carry a `NowRect` and skip `NowLayout.Rect` — compare
+and constructor that carry a `NowRect` and skip `NowLayout.ReserveRect` — compare
 `NowTextField`'s pair of constructors in the source.
 
 ### State, timing, and the rules
@@ -297,7 +297,7 @@ and they are the reference for the conventions above.
 
 ## Checklist
 
-- [ ] Space from `NowLayout.Rect(options)` (flow) or a rect parameter
+- [ ] Space from `NowLayout.ReserveRect(options)` (flow) or a rect parameter
       (free-form) — ideally both, as twin factories.
 - [ ] `NowControls.Interact` for call-site identity, pointer + focus + submit;
       draw a visible focus state when `focused` is true.

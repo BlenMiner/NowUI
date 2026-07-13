@@ -138,13 +138,29 @@ namespace NowUI
             Vector2 size,
             Vector2 positionOffset,
             bool inheritContext,
-            NowGlassBlurQuality glassBlurQuality)
+            bool flushOverlays)
+        {
+            return Begin(
+                size,
+                positionOffset,
+                inheritContext,
+                NowGlassBlurQuality.Auto,
+                flushOverlays);
+        }
+
+        internal NowDrawScope Begin(
+            Vector2 size,
+            Vector2 positionOffset,
+            bool inheritContext,
+            NowGlassBlurQuality glassBlurQuality,
+            bool flushOverlays = true)
         {
             ThrowIfDisposed();
 
             this.size = size;
             ClearGeometry();
             var glassQualityScope = NowGlassSettings.PushBlurQuality(glassBlurQuality);
+            var overlayCheckpoint = NowOverlay.CaptureCheckpoint();
             bool beganAmbientScope = false;
             bool capturesMesh = size.x > 0f && size.y > 0f;
 
@@ -161,6 +177,8 @@ namespace NowUI
                     positionOffset,
                     capturesMesh,
                     glassQualityScope,
+                    overlayCheckpoint,
+                    flushOverlays,
                     _scopes.Enter());
             }
             catch
@@ -232,6 +250,11 @@ namespace NowUI
             return _scopes.IsCurrent(token);
         }
 
+        internal static bool BeginScopeEnd(int token)
+        {
+            return _scopes.BeginEnd(token);
+        }
+
         internal static bool hasActiveScopes => _scopes.count > 0;
 
         internal static void DiscardAbandonedScopes()
@@ -240,7 +263,12 @@ namespace NowUI
             NowGlassSettings.DiscardAbandonedQualityScopes();
         }
 
-        internal void EndScope(Vector2 positionOffset, bool capturesMesh, int token)
+        internal void EndScope(
+            Vector2 positionOffset,
+            bool capturesMesh,
+            NowOverlay.Checkpoint overlayCheckpoint,
+            bool flushOverlays,
+            int token)
         {
             try
             {
@@ -251,8 +279,13 @@ namespace NowUI
                     try
                     {
                         // Popups and other deferred overlays land inside this capture;
-                        // hosts that flushed earlier make this a no-op.
-                        NowOverlay.Flush();
+                        // hosts that flushed earlier make this a no-op. Nested
+                        // captures (modifiers, snapshots, etc.) leave the global
+                        // queue to the outermost capture so callbacks keep the
+                        // outer host's input/transform/capture context.
+                        if (flushOverlays && _scopes.count == 1 && !NowInput.isPassive)
+                            NowOverlay.Flush();
+
                         captureHandedOff = true;
 
                         if (_layout == NowMeshLayout.Canvas)
@@ -268,6 +301,7 @@ namespace NowUI
                             Now.CancelMeshCapture();
 
                         ClearGeometry();
+                        NowOverlay.Rollback(overlayCheckpoint);
                         throw;
                     }
 
@@ -278,11 +312,14 @@ namespace NowUI
             }
             finally
             {
-                _scopes.Exit(token);
+                _scopes.ExitEnding(token);
             }
         }
 
-        internal void CancelScope(bool capturesMesh, int token)
+        internal void CancelScope(
+            bool capturesMesh,
+            NowOverlay.Checkpoint overlayCheckpoint,
+            int token)
         {
             try
             {
@@ -295,7 +332,14 @@ namespace NowUI
             }
             finally
             {
-                _scopes.Exit(token);
+                try
+                {
+                    NowOverlay.Rollback(overlayCheckpoint);
+                }
+                finally
+                {
+                    _scopes.Exit(token);
+                }
             }
         }
 
@@ -414,6 +458,10 @@ namespace NowUI
 
         NowGlassQualityScope _glassQualityScope;
 
+        readonly NowOverlay.Checkpoint _overlayCheckpoint;
+
+        readonly bool _flushOverlays;
+
         int _token;
 
         internal NowDrawScope(
@@ -421,23 +469,33 @@ namespace NowUI
             Vector2 positionOffset,
             bool capturesMesh,
             NowGlassQualityScope glassQualityScope,
+            NowOverlay.Checkpoint overlayCheckpoint,
+            bool flushOverlays,
             int token)
         {
             _drawList = drawList;
             _positionOffset = positionOffset;
             _capturesMesh = capturesMesh;
             _glassQualityScope = glassQualityScope;
+            _overlayCheckpoint = overlayCheckpoint;
+            _flushOverlays = flushOverlays;
             _token = token;
         }
 
         public bool capturesMesh => _token != 0 && _drawList != null && _capturesMesh;
+
+        internal void ValidateDisposeOrder()
+        {
+            if (_token != 0)
+                NowDrawList.IsCurrentScope(_token);
+        }
 
         public void Dispose()
         {
             if (_token == 0)
                 return;
 
-            if (!NowDrawList.IsCurrentScope(_token))
+            if (!NowDrawList.BeginScopeEnd(_token))
             {
                 _drawList = null;
                 _token = 0;
@@ -448,7 +506,12 @@ namespace NowUI
 
             try
             {
-                drawList?.EndScope(_positionOffset, _capturesMesh, _token);
+                drawList?.EndScope(
+                    _positionOffset,
+                    _capturesMesh,
+                    _overlayCheckpoint,
+                    _flushOverlays,
+                    _token);
             }
             finally
             {
@@ -480,7 +543,7 @@ namespace NowUI
 
             try
             {
-                drawList?.CancelScope(_capturesMesh, _token);
+                drawList?.CancelScope(_capturesMesh, _overlayCheckpoint, _token);
             }
             finally
             {

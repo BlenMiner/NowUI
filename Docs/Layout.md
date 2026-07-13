@@ -1,110 +1,211 @@
 # Layout
 
-`NowLayout` is a flexbox-style immediate-mode layout system: nest horizontal
-and vertical groups, mix fixed sizes with weighted stretching, and draw
-elements without computing rects by hand.
+NowUI has two complementary ways to place UI:
 
-## Basics
+- Use `Now` when you already have a `NowRect`. It draws exactly where you ask.
+- Use `NowLayout` when you want to describe rows, columns, spacing, and growth
+  and let the layout system resolve the rects.
 
-Open a screen draw pass, then open an area over a rect and nest groups. Scopes
-follow the same `using`-disposes-the-group pattern as the rest of NowUI:
+That is the whole mental model. A design with known bounds usually stays
+simpler with `Now`; a responsive panel usually stays simpler with `NowLayout`.
+They can be mixed whenever that is useful.
+
+For a complete side-by-side example, compare the same search landing page
+implemented with [explicit rects](../Assets/NowUI/Example/NowLandingPageExample.cs)
+and with [NowLayout](../Assets/NowUI/Example/NowLayoutLandingPageExample.cs).
+
+## Preferred layout API
+
+Declare the root rect with `Column(view)` or `Row(view)`, configure containers
+fluently, and finish each declaration with `Begin()` in a `using` statement:
 
 ```csharp
-using (Now.StartUI())
+public sealed class SettingsPanel : NowLayoutGraphic
 {
-    using (NowLayout.Area(NowScreen.safeArea))
-    using (NowLayout.Vertical(padding: 16, spacing: 8))
+    protected override void DrawNowUI(NowRect view)
     {
-        NowLayout.Label("Settings", 24).Draw();
-
-        using (NowLayout.Horizontal())
+        using (NowLayout.Column(view).Padding(16).Gap(12).Begin())
         {
-            NowLayout.Label("Volume").Draw();
-            NowLayout.FlexibleSpace();
-            NowLayout.Label("80%").Draw();
+            NowLayout.Label("Settings").SetFontSize(24).Draw();
+
+            using (NowLayout.Row()
+                .FillWidth()
+                .Gap(8)
+                .AlignChildren(NowLayoutAlign.Center)
+                .Begin())
+            {
+                NowLayout.Label("Volume").Draw();
+                NowLayout.Spacer();
+                NowLayout.Label("80%").Draw();
+            }
+
+            using (NowLayout.Column()
+                .Grow()
+                .Justify(NowLayoutJustify.Center)
+                .AlignChildren(NowLayoutAlign.Center)
+                .Begin())
+            {
+                NowLayout.Button("Reset").Draw();
+            }
         }
     }
 }
 ```
 
-`NowLayout.Rect(...)` reserves space and returns the resolved rect, which is
-the bridge to free-form drawing and interaction:
+The container methods cover the common cases:
+
+- `Gap` and `Padding` control space inside a row or column.
+- `Width` and `Height` set fixed dimensions; `MinWidth`, `MaxWidth`,
+  `MinHeight`, and `MaxHeight` constrain them.
+- `FillWidth` and `FillHeight` stretch on that axis.
+- `Grow(weight)` shares the parent's remaining main-axis space with sibling
+  growers. A weight of `2` receives twice the share of a weight of `1`.
+  Min/max constraints freeze only the constrained share; the remaining space
+  is redistributed among the other growers instead of overflowing or leaving
+  an avoidable gap.
+- `AlignChildren` sets the cross-axis alignment for every child;
+  `AlignSelf` overrides it for one container.
+- `Justify(Start|Center|End|SpaceBetween)` positions a group's children in
+  otherwise-unused main-axis space.
+- `Spacer(weight)` is an invisible flexible child. `Space(pixels)` inserts a
+  fixed-size gap.
+
+Nested containers keep the legacy cross-axis fill only when no alignment is
+declared. Once `AlignChildren` or `AlignSelf` expresses placement intent, an
+otherwise-unsized child container fits its content and can actually be
+centered or end-aligned; call `FillWidth` / `FillHeight` when filling is the
+intent.
+
+`Row` and `Column` capture a stable identity from their call site. For
+data-backed containers that can reorder or appear conditionally, anchor the
+identity with `.SetId(item.id)` and wrap repeated controls in
+`NowControls.IdScope(item.id)`.
+
+The older `Area`, `Horizontal`, and `Vertical` scope overloads remain available
+as lower-level forms. `NowLayoutOptions` is also available when options need
+to be built or forwarded separately, but the fluent row/column API is the
+normal starting point.
+
+## Mixing layout with explicit drawing
+
+`NowLayout.ReserveRect(...)` reserves a layout slot and returns its resolved
+`NowRect`. Pass that rect to any free-form `Now` primitive or interaction:
 
 ```csharp
-NowRect rect = NowLayout.Rect(160, 44);
-var state = NowInput.Interact(rect);
+NowRect swatch = NowLayout.ReserveRect(32, 32, align: NowLayoutAlign.Center);
+Now.Circle(swatch.center, 16)
+    .SetColor(Color.cyan)
+    .Draw();
 
-Now.Rectangle(rect)
+NowRect customButton = NowLayout.ReserveRect(height: 44, stretchWidth: true);
+var state = NowInput.Interact(customButton);
+Now.Rectangle(customButton)
     .SetColor(state.hovered ? Color.white : Color.gray)
-    .SetRadius(6)
+    .SetRadius(8)
     .Draw();
 ```
 
-## Sizing options
+`ReserveRect` replaces the old `NowLayout.Rect` name. The more explicit name
+makes it clear that calling it advances the active layout.
 
-Groups and rects take their common settings as optional parameters — no
-options struct needed for the everyday cases:
+## Measurement and hosts
+
+Choose the host that matches the placement API:
+
+| Placement | Host | Measurement behavior |
+| --- | --- | --- |
+| Explicit `Now` rects | `NowGraphic` | One draw pass |
+| UGUI `NowLayout` | `NowLayoutGraphic` | Exact measure + draw in the same rebuild |
+| World-space `NowLayout` | `NowWorldLayoutGraphic` | Exact measure + draw in the same rebuild |
+| Render-pipeline `NowLayout` | `NowPipelineLayoutGraphic` | Exact measure + draw for that graphic |
+| UI Toolkit `NowLayout` | `NowLayoutVisualElement` | Exact measure + draw in the same rebuild |
+
+The base `NowGraphic`, `NowWorldGraphic`, `NowPipelineGraphic`, and
+`NowVisualElement` hosts are intentionally one-pass. They avoid paying for a
+measurement pass when their content uses explicit rects. If layout code runs
+in one of those hosts, its cached measurements settle on a later rebuild.
+
+The layout-specific hosts own the complete two-pass cycle, so code inside
+them should use ordinary `Row`/`Column` scopes. Do not wrap that code in
+`RunMeasured`; nested measurement is unnecessary.
+
+Retained hosts reject synchronous recursive rebuilds (one host forcing another
+host to rebuild from inside its draw callback), because independent retained
+surfaces cannot safely share one immediate-mode frame. Let Unity rebuild the
+nested host separately. For compositional content, call a shared draw method
+directly from the outer callback so it participates in the current frame.
+
+Each retained host also gives string control IDs a private per-instance
+scope, so two host instances can both use `SetId("search")` without sharing
+focus or cached state. When code outside the draw callback needs that numeric
+ID, resolve it through the host first, for example
+`NowFocus.Focus(graphic.ResolveControlId("search"))`. The same
+`ResolveControlId` helper is available on all four retained host families.
+
+`NowLayout.RunMeasured` exists for a manual host, such as a camera callback,
+that has no layout-aware host class:
 
 ```csharp
-using (NowLayout.Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center)) { ... }
-using (NowLayout.Vertical(spacing: 10, stretchWidth: true)) { ... }
-using (NowLayout.Area(rect, padding: 16, spacing: 8)) { ... }
-using (NowLayout.Area(rect, new Vector4(12, 8, 12, 16))) { ... } // left, top, right, bottom
-NowLayout.Area(rect, DrawContent, padding: 16);           // callback form too
-NowRect bar = NowLayout.Rect(height: 22, stretchWidth: true);
+void OnPostRender()
+{
+    using (Now.StartUI(NowScreen.recommendedUIScale))
+        NowLayout.RunMeasured(NowScreen.safeArea, DrawOverlay);
+}
+
+void DrawOverlay()
+{
+    using (NowLayout.Column().Padding(16).Gap(8).Begin())
+    {
+        NowLayout.Label("Connected").Draw();
+        NowLayout.Button("Disconnect").Draw();
+    }
+}
 ```
 
-For everything beyond them — min/max sizes, weighted stretching, per-element
-alignment — `NowLayoutOptions` is a fluent struct; a default instance means
-"auto" (content size, stretch across the parent's cross axis). Shorthand
-factories exist on `NowLayout`:
+`RunMeasured` invokes the content once with drawing suppressed and input
+passive, then once for the real draw. Reacting to control results is safe;
+avoid unconditional state changes in the callback, or guard them with
+`NowLayout.isMeasurePass`. Use the generic state overload with a static lambda
+when a callback would otherwise capture and allocate.
+
+## Invalid combinations fail at the call site
+
+Dimensions must be finite and non-negative, growth weights must be positive,
+and min/max bounds cannot contradict each other. Fixed and stretch sizing on
+the same axis are mutually exclusive, so contradictory chains now throw
+instead of silently letting the last setter win:
 
 ```csharp
-NowLayout.Width(120)                  // fixed main-axis size
-NowLayout.Size(120, 44)
-NowLayout.StretchWidth()              // weighted share of remaining space
-NowLayout.StretchWidth(2f)            // twice the share of weight-1 siblings
-options.SetMinWidth(80).SetMaxWidth(240)
-options.SetSpacing(8).SetPadding(12)  // groups only
-options.SetAlign(NowLayoutAlign.Center)       // this element, on the parent's cross axis
-options.SetAlignItems(NowLayoutAlign.Center)  // groups only: default for the children
-```
-
-`SetAlign` positions one element on its parent's cross axis (vertical in a
-horizontal group); `SetAlignItems` on a group sets the default for all its
-children — flexbox's `align-items` — with a child's own `SetAlign` taking
-precedence.
-
-The option values are read-only snapshots. Always use the `Set...` methods;
-they both store the value and enable that option. Sizes must be non-negative
-and finite, stretch weights must be positive, and min/max bounds cannot
-contradict each other. A fixed size and stretch on the same axis are mutually
-exclusive, so the last setter wins:
-
-```csharp
+// Invalid: choose a fixed width or a stretching width.
 var options = default(NowLayoutOptions)
     .SetWidth(240)
-    .SetStretchWidth(); // stretch wins; fixed width is disabled
+    .SetStretchWidth();
 ```
 
-`Space(pixels)` inserts a fixed gap; `FlexibleSpace(weight)` absorbs remaining
-space like an invisible stretch element.
+Likewise, a container cannot combine `Grow` with a fixed or stretching size
+on its parent's main axis. These errors are deliberate: the declaration
+should communicate one sizing intent.
 
-## Two measurement modes
+## Per-instance text-field appearance
 
-- **Scope form** (`using (NowLayout.Area(rect))`): single pass; auto and
-  stretch sizes come from measurements cached on the previous frame, so a
-  brand-new layout settles on its second frame. Cheap and right for layouts
-  whose structure is stable.
-- **Callback form** (`NowLayout.Area(rect, () => { ... })`): runs the callback
-  twice in the same frame — a measure pass with drawing and input suppressed,
-  then the real pass. Exact from frame one, at twice the layout cost.
+Text fields can be styled where they are declared without mutating the theme
+or a global renderer. The same appearance methods are available on
+`Now.TextField(rect, ...)` and `NowLayout.TextField(...)`:
 
-When a layout's identity is ambiguous across frames (rows generated in a loop,
-collapsing panels), pass an explicit id. Ints are ids too, so the loop index
-alone works and allocates nothing: `NowLayout.Vertical(i)`. Interpolated
-strings (`$"row-{i}"`) also work but allocate every frame — prefer them only
-for stable, hand-named panels.
-
-During the callback form's measure pass, `NowInput.Interact` reports hover
-but never presses or drags, so interaction code is safe to run in both passes.
+```csharp
+NowLayout.TextField("search")
+    .SetPlaceholder("Search NowUI")
+    .SetStretchWidth()
+    .SetMaxWidth(584)
+    .SetHeight(50)
+    .SetRadius(NowRadiusToken.Pill)
+    .SetBackgroundColor(Color.white)
+    .SetBorderColor(new Color32(218, 220, 224, 255))
+    .SetFocusColor(new Color32(66, 133, 244, 255))
+    .SetTextColor(new Color32(32, 33, 36, 255))
+    .SetPlaceholderColor(new Color32(95, 99, 104, 255))
+    .SetPadding(24, 12)
+    .SetOutlineWidth(1, 2)
+    .SetElevation(NowElevationToken.Raised)
+    .Draw(ref query);
+```
