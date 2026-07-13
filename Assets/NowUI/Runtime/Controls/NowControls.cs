@@ -478,18 +478,36 @@ namespace NowUI
 
             if (!NowInput.isPassive)
             {
-                ref var repaint = ref NowControlState.Get<InteractionRepaintState>(NowInput.CombineId(id, InteractionRepaintSeed));
+                int repaintId = NowInput.CombineId(id, InteractionRepaintSeed);
+                bool active = interaction.hovered || interaction.held || focused;
 
-                if (repaint.hovered != interaction.hovered ||
-                    repaint.held != interaction.held ||
-                    repaint.focused != focused)
+                // Untouched controls already have the implicit all-false state,
+                // so do not allocate and update a persistent entry for each one.
+                // Once a control has been active, preserve the true -> false edge
+                // so retained hosts still repaint when hover/hold/focus leaves.
+                if (active)
+                {
+                    ref var repaint = ref NowControlState.Get<InteractionRepaintState>(repaintId);
+
+                    if (repaint.hovered != interaction.hovered ||
+                        repaint.held != interaction.held ||
+                        repaint.focused != focused)
+                    {
+                        NowControlState.RequestRepaint();
+                    }
+
+                    repaint.hovered = interaction.hovered;
+                    repaint.held = interaction.held;
+                    repaint.focused = focused;
+                }
+                else if (NowControlState.TryRead<InteractionRepaintState>(repaintId, out var repaint) &&
+                    (repaint.hovered || repaint.held || repaint.focused))
                 {
                     NowControlState.RequestRepaint();
-                }
 
-                repaint.hovered = interaction.hovered;
-                repaint.held = interaction.held;
-                repaint.focused = focused;
+                    ref var stored = ref NowControlState.Get<InteractionRepaintState>(repaintId);
+                    stored = default;
+                }
             }
 
             return interaction;
