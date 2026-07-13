@@ -861,6 +861,54 @@ public class NowNodeGraphTests
     }
 
     [Test]
+    public void CanvasCullsBuiltInNodesOutsideTheViewport()
+    {
+        var graph = new NowNodeGraph();
+        var node = graph.AddNode("outside", "Outside", new Vector2(900f, 700f));
+        node.size = new Vector2(180f, 118f);
+        node.AddOutput("out", "Out", Float);
+
+        Frame(graph, configure: canvas => canvas.SetBackground(false).SetGrid(false));
+
+        Assert.IsFalse(_drawList.hasGeometry);
+    }
+
+    [Test]
+    public void CanvasKeepsBuiltInLinksThatCrossTheViewport()
+    {
+        var graph = new NowNodeGraph();
+        var left = graph.AddNode("left", "Left", new Vector2(-420f, 100f));
+        var right = graph.AddNode("right", "Right", new Vector2(820f, 100f));
+        left.size = new Vector2(180f, 118f);
+        right.size = new Vector2(180f, 118f);
+        left.AddOutput("out", "Out", Float);
+        right.AddInput("in", "In", Float);
+        Assert.IsTrue(graph.TryAddLink("left", "out", "right", "in"));
+
+        Frame(graph, configure: canvas => canvas.SetBackground(false).SetGrid(false));
+
+        Assert.IsTrue(_drawList.hasGeometry, "A Bezier crossing the viewport must survive endpoint culling.");
+    }
+
+    [Test]
+    public void CustomRendererStillReceivesOffscreenNodes()
+    {
+        var graph = new NowNodeGraph();
+        var node = graph.AddNode("outside", "Outside", new Vector2(900f, 700f));
+        node.size = new Vector2(180f, 118f);
+        node.AddOutput("out", "Out", Float);
+        var renderer = new CountingRenderer();
+
+        Frame(
+            graph,
+            renderer: renderer,
+            configure: canvas => canvas.SetBackground(false).SetGrid(false));
+
+        Assert.AreEqual(1, renderer.nodeCount);
+        Assert.AreEqual(1, renderer.portCount);
+    }
+
+    [Test]
     public void DraggingNodeMovesPosition()
     {
         var graph = SampleGraph();

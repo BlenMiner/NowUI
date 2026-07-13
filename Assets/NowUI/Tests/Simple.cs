@@ -311,6 +311,15 @@ public class Simple
             Assert.AreEqual(6, bounds.y, 0.0001f);
             Assert.AreEqual(30, bounds.z, 0.0001f);
             Assert.AreEqual(11, bounds.w, 0.0001f);
+
+            Vector4 cached = font.MeasureTextBounds("AB", 10);
+            Assert.AreEqual(bounds, cached, "Repeated bounds measurements must preserve the exact result.");
+
+            Vector4 scaled = font.MeasureTextBounds("AB", 20);
+            Assert.AreEqual(bounds * 2f, scaled, "The bounds memo must invalidate when font size changes.");
+
+            Vector4 restored = font.MeasureTextBounds("AB", 10);
+            Assert.AreEqual(bounds, restored, "Returning to a previous size must recompute the correct bounds.");
         }
         finally
         {

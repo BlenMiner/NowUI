@@ -1878,6 +1878,99 @@ public class NowControlsAdvancedTests
     }
 
     [Test]
+    public void DropdownPopupOnlyDrawsVisibleRowsFromLargeLists()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        var options = new List<string>(1000);
+
+        for (int i = 0; i < 1000; ++i)
+            options.Add($"Option {i}");
+
+        int selected = 0;
+        var rect = new NowRect(20f, 20f, 200f, 30f);
+        int id = NowControls.ResolveNavigationTargetId("quality-large");
+        NowControlState.Get<bool>(id) = true;
+
+        void DrawFrame()
+        {
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                Now.Dropdown(rect, "quality-large", options).Draw(ref selected);
+                NowOverlay.Flush();
+            }
+        }
+
+        try
+        {
+            DrawFrame();
+            DrawFrame();
+
+            Assert.Greater(renderer.popupItems, 0);
+            Assert.Less(renderer.popupItems, 40, "Clipped rows should not be measured, hit-tested or rendered.");
+            Assert.Greater(renderer.verticalScrollbars, 0, "Virtualized rows must still reserve the full scroll extent.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void ComboBoxPopupOnlyDrawsVisibleRowsFromLargeLists()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        var options = new List<string>(1000);
+
+        for (int i = 0; i < 1000; ++i)
+            options.Add($"Option {i}");
+
+        int selected = 0;
+        var rect = new NowRect(20f, 20f, 200f, 30f);
+
+        void DrawFrame(NowInputSnapshot snapshot)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                Now.ComboBox(rect, options).SetId("combo-large").Draw(ref selected);
+                NowOverlay.Flush();
+            }
+        }
+
+        try
+        {
+            DrawFrame(new NowInputSnapshot(rect.center, true, true, false));
+            DrawFrame(new NowInputSnapshot(rect.center, false, false, true));
+            DrawFrame(default);
+            DrawFrame(default);
+
+            Assert.Greater(renderer.popupItems, 0);
+            Assert.Less(renderer.popupItems, 40, "Clipped rows should not be measured, hit-tested or rendered.");
+            Assert.Greater(renderer.verticalScrollbars, 0, "Virtualized rows must still reserve the full scroll extent.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
     public void TextFieldIgnoresTypingWhenUnfocused()
     {
         string text = "keep";
