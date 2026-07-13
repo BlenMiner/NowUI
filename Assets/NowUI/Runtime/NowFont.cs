@@ -357,9 +357,23 @@ namespace NowUI
             public float memoMaxWidth;
 
             public bool hasMemo;
+
+            public NowFont boundsMemoFont;
+
+            public int boundsMemoFontVersion;
+
+            public float boundsMemoFontSize;
+
+            public NowFontStyle boundsMemoStyle;
+
+            public int boundsMemoTabSpaces;
+
+            public Vector4 boundsMemo;
+
+            public bool hasBoundsMemo;
         }
 
-        const int MEASURE_SEGMENT_CACHE_LIMIT = 512;
+        const int MEASURE_SEGMENT_CACHE_LIMIT = 2048;
 
         static readonly Dictionary<string, ShapedMeasureSegmentation> _measureSegmentCache =
             new Dictionary<string, ShapedMeasureSegmentation>(64);
@@ -758,6 +772,19 @@ namespace NowUI
             if (!TryResolveFont(style, out var font) || font == null)
                 return false;
 
+            var segmentation = GetShapedMeasureSegmentation(value);
+
+            if (segmentation.hasBoundsMemo &&
+                ReferenceEquals(segmentation.boundsMemoFont, font) &&
+                segmentation.boundsMemoFontVersion == font.shapedDataVersion &&
+                segmentation.boundsMemoFontSize == fontSize &&
+                segmentation.boundsMemoStyle == style &&
+                segmentation.boundsMemoTabSpaces == tabSpaces)
+            {
+                bounds = segmentation.boundsMemo;
+                return true;
+            }
+
             float cursorX = 0f;
             float lineY = 0f;
             float lineHeight = GetLineHeight(style) * fontSize;
@@ -765,7 +792,6 @@ namespace NowUI
             float tabAdvance = -1f;
             float minX = 0f, minY = 0f, maxX = 0f, maxY = 0f;
             bool hasBounds = false;
-            var segmentation = GetShapedMeasureSegmentation(value);
             var segments = segmentation.segments;
             var controls = segmentation.controls;
 
@@ -842,6 +868,13 @@ namespace NowUI
             }
 
             bounds = hasBounds ? new Vector4(minX, minY, maxX - minX, maxY - minY) : default;
+            segmentation.boundsMemoFont = font;
+            segmentation.boundsMemoFontVersion = font.shapedDataVersion;
+            segmentation.boundsMemoFontSize = fontSize;
+            segmentation.boundsMemoStyle = style;
+            segmentation.boundsMemoTabSpaces = tabSpaces;
+            segmentation.boundsMemo = bounds;
+            segmentation.hasBoundsMemo = true;
             return true;
         }
 
@@ -3192,7 +3225,7 @@ namespace NowUI
             public int generation;
         }
 
-        const int SHAPE_CACHE_LIMIT = 512;
+        const int SHAPE_CACHE_LIMIT = 2048;
 
         internal readonly struct PreparedCodepointGlyph
         {
@@ -3244,6 +3277,12 @@ namespace NowUI
 
             bool _hasMeasuredSize;
 
+            float _measuredBoundsFontSize;
+
+            Vector4 _measuredBounds;
+
+            bool _hasMeasuredBounds;
+
             public int length => glyphs.Length;
 
             public PreparedCodepointRun(PreparedCodepointGlyph[] glyphs)
@@ -3271,6 +3310,19 @@ namespace NowUI
                 _measuredMaxWidth = maxWidth;
                 _measuredLineCount = lineCount;
                 _hasMeasuredSize = true;
+            }
+
+            public bool TryGetMeasuredBounds(float fontSize, out Vector4 bounds)
+            {
+                bounds = _measuredBounds;
+                return _hasMeasuredBounds && _measuredBoundsFontSize == fontSize;
+            }
+
+            public void StoreMeasuredBounds(float fontSize, Vector4 bounds)
+            {
+                _measuredBoundsFontSize = fontSize;
+                _measuredBounds = bounds;
+                _hasMeasuredBounds = true;
             }
         }
 
@@ -3668,6 +3720,9 @@ namespace NowUI
             if (run == null || run.length == 0)
                 return default;
 
+            if (run.TryGetMeasuredBounds(fontSize, out var memoBounds))
+                return memoBounds;
+
             float cursorX = 0f;
             float lineY = 0f;
             float lineHeight = GetLineHeight(style) * fontSize;
@@ -3718,7 +3773,9 @@ namespace NowUI
                 cursorX += prepared.advance * fontSize;
             }
 
-            return hasBounds ? new Vector4(minX, minY, maxX - minX, maxY - minY) : default;
+            var bounds = hasBounds ? new Vector4(minX, minY, maxX - minX, maxY - minY) : default;
+            run.StoreMeasuredBounds(fontSize, bounds);
+            return bounds;
         }
 
         /// <summary>Glyph indices map into the negative key space so codepoint and

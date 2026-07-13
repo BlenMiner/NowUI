@@ -566,6 +566,55 @@ public class NowRuntimePerformanceTests
     }
 
     /// <summary>
+    /// Repaint-state tracking for one thousand inactive controls with integer ids,
+    /// isolated from rendering, layout, and string hashing. Guards the steady-state
+    /// cost of <see cref="NowControls.Interact(int, NowRect, out bool, out bool)"/>.
+    /// </summary>
+    [Test, Performance]
+    public void InteractionRepaintTrackingStress()
+    {
+        void DrawFrame()
+        {
+            using (NowInput.Begin(_pointer, FrameSize))
+            {
+                for (int i = 0; i < 1000; ++i)
+                {
+                    var rect = new NowRect((i * 29) % 1200, (i * 17) % 680, 48f, 20f);
+                    NowControls.Interact(0x49520000 + i, rect, out _, out _);
+                }
+            }
+        }
+
+        Measure.Method(DrawFrame)
+            .WarmupCount(10)
+            .MeasurementCount(50)
+            .Run();
+
+        RecordSteadyStateAllocations(DrawFrame, SteadyStateAllocIterations);
+    }
+
+    /// <summary>
+    /// One thousand settled transition updates with stable integer ids, isolating
+    /// control-state lookup and frame-clock sampling from rendering and layout.
+    /// </summary>
+    [Test, Performance]
+    public void TransitionTimingStress()
+    {
+        void DrawFrame()
+        {
+            for (int i = 0; i < 1000; ++i)
+                NowControlState.Transition(0x54520000 + i, false);
+        }
+
+        Measure.Method(DrawFrame)
+            .WarmupCount(10)
+            .MeasurementCount(50)
+            .Run();
+
+        RecordSteadyStateAllocations(DrawFrame, SteadyStateAllocIterations);
+    }
+
+    /// <summary>
     /// Non-virtualized scroll view worst case: one thousand unique label rows
     /// laid out per rebuild. Content far outside the viewport still pays
     /// measurement and layout, which is the regression this makes visible.

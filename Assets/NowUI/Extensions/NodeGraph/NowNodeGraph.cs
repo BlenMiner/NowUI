@@ -3187,9 +3187,7 @@ namespace NowUI.NodeGraph
 
         static void DrawConnection(Vector2 from, Vector2 to, Color color, Color colorTo, float width)
         {
-            float tangent = Mathf.Max(42f, Mathf.Abs(to.x - from.x) * 0.45f);
-            Vector2 c1 = from + Vector2.right * tangent;
-            Vector2 c2 = to + Vector2.left * tangent;
+            ConnectionControlPoints(from, to, out var c1, out var c2);
 
             var line = Now.Bezier(from, c1, c2, to)
                 .SetWidth(Mathf.Max(1f, width))
@@ -3197,6 +3195,28 @@ namespace NowUI.NodeGraph
 
             line = colorTo == color ? line.SetColor(color) : line.SetGradient(color, colorTo);
             line.Draw();
+        }
+
+        internal static NowRect ConnectionBounds(Vector2 from, Vector2 to, float padding)
+        {
+            ConnectionControlPoints(from, to, out var c1, out var c2);
+            float minX = Mathf.Min(Mathf.Min(from.x, to.x), Mathf.Min(c1.x, c2.x));
+            float minY = Mathf.Min(Mathf.Min(from.y, to.y), Mathf.Min(c1.y, c2.y));
+            float maxX = Mathf.Max(Mathf.Max(from.x, to.x), Mathf.Max(c1.x, c2.x));
+            float maxY = Mathf.Max(Mathf.Max(from.y, to.y), Mathf.Max(c1.y, c2.y));
+            padding = Mathf.Max(0.5f, padding);
+            return new NowRect(
+                minX - padding,
+                minY - padding,
+                maxX - minX + padding * 2f,
+                maxY - minY + padding * 2f);
+        }
+
+        static void ConnectionControlPoints(Vector2 from, Vector2 to, out Vector2 c1, out Vector2 c2)
+        {
+            float tangent = Mathf.Max(42f, Mathf.Abs(to.x - from.x) * 0.45f);
+            c1 = from + Vector2.right * tangent;
+            c2 = to + Vector2.left * tangent;
         }
 
         static void DrawConnectionHalo(Vector2 from, Vector2 to, Color color, float width)
@@ -3888,17 +3908,33 @@ namespace NowUI.NodeGraph
                 int hoveredNodeIndex = result.hovered && NowInput.current.hasPointer && state.linkActive == 0
                     ? FindNodeAt(state.pointerLocalPosition, state, style)
                     : -1;
+                NowRect visibleGraphRect = VisibleGraphRect(state);
+                bool cullBuiltInLinks = ReferenceEquals(renderer, NowNodeGraphDefaultRenderer.Instance);
+                bool cullBuiltInNodes = cullBuiltInLinks &&
+                    schema == null &&
+                    _nodeContent == null &&
+                    _legacyNodeContent == null;
 
                 // Apply transform for graph content (links and nodes)
                 using (Now.Transform(scale: state.zoom, origin: _rect.position + state.pan))
                 {
-                    DrawLinks(state, style, renderer);
+                    DrawLinks(state, style, renderer, visibleGraphRect, cullBuiltInLinks);
 
                     if (state.linkActive != 0)
                         DrawPendingLink(state, style, renderer);
 
                     DrawNodeSnapGuide(state, style);
-                    DrawNodes(id, ref state, style, schema, history, renderer, hoveredNodeIndex, ref result);
+                    DrawNodes(
+                        id,
+                        ref state,
+                        style,
+                        schema,
+                        history,
+                        renderer,
+                        hoveredNodeIndex,
+                        visibleGraphRect,
+                        cullBuiltInNodes,
+                        ref result);
                 }
 
                 if (state.selectionActive != 0)
@@ -4862,12 +4898,24 @@ namespace NowUI.NodeGraph
                 NowControlState.RequestRepaint();
             }
 
-            for (int n = _graph.nodes.Count - 1; n >= 0; --n)
+            bool processNodeInteractions = NowInput.current.hasPointer ||
+                NowInput.activeId != 0 ||
+                state.linkActive != 0;
+
+            for (int n = processNodeInteractions ? _graph.nodes.Count - 1 : -1; n >= 0; --n)
             {
                 var node = _graph.nodes[n];
 
                 if (node == null)
                     continue;
+
+                if (NowInput.activeId == 0)
+                {
+                    float hitPadding = Mathf.Max(style.portHitRadius, 4f);
+
+                    if (!NodeScreenRect(node, _rect, state, style).Outset(hitPadding).Overlaps(_rect))
+                        continue;
+                }
 
                 InteractPorts(id, n, node, NowNodePortDirection.Input, ref state, style, history, ref result);
                 InteractPorts(id, n, node, NowNodePortDirection.Output, ref state, style, history, ref result);
@@ -5872,7 +5920,12 @@ namespace NowUI.NodeGraph
             NowControlState.RequestRepaint();
         }
 
-        void DrawLinks(CanvasState state, NowNodeGraphStyle style, INowNodeGraphRenderer renderer)
+        void DrawLinks(
+            CanvasState state,
+            NowNodeGraphStyle style,
+            INowNodeGraphRenderer renderer,
+            NowRect visibleGraphRect,
+            bool cullBuiltInLinks)
         {
             for (int i = 0; i < _graph.links.Count; ++i)
             {
@@ -5885,6 +5938,15 @@ namespace NowUI.NodeGraph
                     !TryGetPortGraphPosition(link.inputNodeId, link.inputPortId, NowNodePortDirection.Input, state, style, out var inputPort, out var to))
                 {
                     continue;
+                }
+
+                if (cullBuiltInLinks)
+                {
+                    float padding = (style.connectionWidth + 5f) * 0.5f +
+                        2f / Mathf.Max(state.zoom, 0.001f);
+
+                    if (!NowNodeGraphDefaultRenderer.ConnectionBounds(from, to, padding).Overlaps(visibleGraphRect))
+                        continue;
                 }
 
                 renderer.DrawLink(new NowNodeGraphLinkContext(
@@ -5994,6 +6056,8 @@ namespace NowUI.NodeGraph
             NowNodeGraphHistory history,
             INowNodeGraphRenderer renderer,
             int hoveredNodeIndex,
+            NowRect visibleGraphRect,
+            bool cullBuiltInNodes,
             ref NowNodeGraphResult result)
         {
             for (int i = 0; i < _graph.nodes.Count; ++i)
@@ -6001,7 +6065,8 @@ namespace NowUI.NodeGraph
                 var node = _graph.nodes[i];
 
                 if (node != null && !CachedIsNodeSelected(node.id))
-                    DrawNode(canvasId, i, node, ref state, style, schema, history, renderer, false, i == hoveredNodeIndex, ref result);
+                    DrawNode(canvasId, i, node, ref state, style, schema, history, renderer, false,
+                        i == hoveredNodeIndex, visibleGraphRect, cullBuiltInNodes, ref result);
             }
 
             for (int i = 0; i < _graph.nodes.Count; ++i)
@@ -6009,7 +6074,8 @@ namespace NowUI.NodeGraph
                 var node = _graph.nodes[i];
 
                 if (node != null && CachedIsNodeSelected(node.id))
-                    DrawNode(canvasId, i, node, ref state, style, schema, history, renderer, true, i == hoveredNodeIndex, ref result);
+                    DrawNode(canvasId, i, node, ref state, style, schema, history, renderer, true,
+                        i == hoveredNodeIndex, visibleGraphRect, cullBuiltInNodes, ref result);
             }
         }
 
@@ -6024,11 +6090,22 @@ namespace NowUI.NodeGraph
             INowNodeGraphRenderer renderer,
             bool selected,
             bool hovered,
+            NowRect visibleGraphRect,
+            bool cullBuiltInNodes,
             ref NowNodeGraphResult result)
         {
             // Compute rects in graph (local) space
             var nodeSize = ResolveNodeSize(node, style);
             var rect = new NowRect(node.position, nodeSize);
+
+            if (cullBuiltInNodes)
+            {
+                float padding = 32f + 2f / Mathf.Max(state.zoom, 0.001f);
+
+                if (!rect.Outset(padding).Overlaps(visibleGraphRect))
+                    return;
+            }
+
             bool reroute = IsRerouteNode(node);
             var titleRect = new NowRect(rect.x, rect.y, rect.width, reroute ? rect.height : style.titleHeight);
             var contentRect = reroute ? default : NodeContentGraphRect(node, rect, titleRect, style);
@@ -6742,6 +6819,13 @@ namespace NowUI.NodeGraph
         static Vector2 ScreenToGraph(Vector2 point, NowRect viewport, CanvasState state)
         {
             return (point - viewport.position - state.pan) / Mathf.Max(state.zoom, 0.001f);
+        }
+
+        NowRect VisibleGraphRect(CanvasState state)
+        {
+            Vector2 min = ScreenToGraph(_rect.position, _rect, state);
+            Vector2 max = ScreenToGraph(new Vector2(_rect.xMax, _rect.yMax), _rect, state);
+            return new NowRect(min, max - min);
         }
 
         static int NodeControlId(int canvasId, int nodeIndex, NowNode node)

@@ -208,8 +208,8 @@ namespace NowUI
 
             if (state.scrolls)
             {
-                using (new NowScrollView(state.itemArea, state.scrollId).Begin())
-                    DrawItems(state);
+                using (var scroll = new NowScrollView(state.itemArea, state.scrollId).Begin())
+                    DrawVisibleItems(state, scroll.scrollOffset.y, scroll.viewport.height);
             }
             else
             {
@@ -368,6 +368,51 @@ namespace NowUI
                     NowControlState.Get<bool>(state.id) = false;
                 }
             }
+        }
+
+        /// <summary>
+        /// Processes only rows intersecting the scrolling popup. The leading and
+        /// trailing spaces preserve the full layout extent, so scrollbar sizing,
+        /// wheel movement and keyboard-driven reveal behave exactly like the
+        /// unvirtualized list while clipped rows avoid text shaping, geometry and
+        /// interaction work.
+        /// </summary>
+        static void DrawVisibleItems(PopupState state, float scrollY, float viewportHeight)
+        {
+            float itemHeight = state.itemHeight;
+
+            if (state.optionCount <= 0 || itemHeight <= 0f)
+                return;
+
+            int first = Mathf.Clamp(Mathf.FloorToInt(scrollY / itemHeight), 0, state.optionCount);
+            int end = Mathf.Clamp(
+                Mathf.CeilToInt((scrollY + Mathf.Max(0f, viewportHeight)) / itemHeight),
+                first,
+                state.optionCount);
+
+            if (first > 0)
+                NowLayout.Space(first * itemHeight);
+
+            for (int i = first; i < end; ++i)
+            {
+                NowRect itemRect = NowLayout.Rect(height: itemHeight, stretchWidth: true);
+                var itemInteraction = NowInput.Interact(NowInput.CombineId(state.itemSeed, i + 1), itemRect);
+                state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
+                    state.themeAsset,
+                    itemRect,
+                    state.options[i],
+                    i == state.selected || i == state.highlight,
+                    itemInteraction));
+
+                if (itemInteraction.clicked)
+                {
+                    NowControlState.Get<int>(state.pendingId) = i + 1;
+                    NowControlState.Get<bool>(state.id) = false;
+                }
+            }
+
+            if (end < state.optionCount)
+                NowLayout.Space((state.optionCount - end) * itemHeight);
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

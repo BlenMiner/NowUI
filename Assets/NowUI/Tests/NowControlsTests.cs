@@ -1,4 +1,6 @@
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using NowUI;
@@ -161,6 +163,17 @@ public class NowControlsTests
     }
 
     [Test]
+    public void TransitionAdvancesOnFirstActiveFrameAfterIdle()
+    {
+        const int id = 910;
+
+        Assert.AreEqual(0f, NowControlState.Transition(id, false, 100f));
+        System.Threading.Thread.Sleep(20);
+
+        Assert.Greater(NowControlState.Transition(id, true, 100f), 0f);
+    }
+
+    [Test]
     public void PressAnimationStartsOnTriggerAndRequestsRepaint()
     {
         var origin = new Vector2(12f, 18f);
@@ -240,6 +253,37 @@ public class NowControlsTests
         Assert.IsFalse(DrawInteractionFrame(inside), "Stable hover should stay retained.");
         Assert.IsTrue(DrawInteractionFrame(outside), "Leaving hover should repaint.");
         Assert.IsFalse(DrawInteractionFrame(outside), "Stable non-hover should stay retained.");
+    }
+
+    [Test]
+    public void InteractDoesNotMaterializeRepaintStateUntilActive()
+    {
+        Vector2 inside = new Vector2(60, 36);
+        Vector2 outside = new Vector2(400, 200);
+
+        DrawInteractionFrame(outside);
+        Assert.AreEqual(0, InteractionRepaintStateCount());
+
+        DrawInteractionFrame(inside);
+        Assert.AreEqual(1, InteractionRepaintStateCount());
+
+        DrawInteractionFrame(outside);
+        Assert.AreEqual(1, InteractionRepaintStateCount(), "The cleared entry should remain cached for allocation-free reuse.");
+    }
+
+    static int InteractionRepaintStateCount()
+    {
+        var stateType = typeof(NowControls).GetNestedType("InteractionRepaintState", BindingFlags.NonPublic);
+        var storeDefinition = typeof(NowControlState).GetNestedType("Store`1", BindingFlags.NonPublic);
+
+        Assert.NotNull(stateType);
+        Assert.NotNull(storeDefinition);
+
+        var storeType = storeDefinition.MakeGenericType(stateType);
+        var entriesField = storeType.GetField("entries", BindingFlags.Static | BindingFlags.Public);
+
+        Assert.NotNull(entriesField);
+        return ((IDictionary)entriesField.GetValue(null)).Count;
     }
 
     [Test]

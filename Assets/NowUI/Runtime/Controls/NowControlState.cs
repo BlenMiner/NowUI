@@ -68,8 +68,32 @@ namespace NowUI
         /// </summary>
         public static ref T Get<T>(int id) where T : struct
         {
-            var entries = Store<T>.entries;
             float now = Time.realtimeSinceStartup;
+            var entry = GetOrCreateEntry<T>(id, now);
+            entry.lastTouch = now;
+            return ref entry.value;
+        }
+
+        /// <summary>
+        /// Reads an existing slot without creating it or extending its lifetime.
+        /// Internal hot paths use this to keep untouched controls at their
+        /// implicit zero state without populating the persistent store.
+        /// </summary>
+        internal static bool TryRead<T>(int id, out T value) where T : struct
+        {
+            if (Store<T>.entries.TryGetValue(id, out var entry))
+            {
+                value = entry.value;
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+
+        static Entry<T> GetOrCreateEntry<T>(int id, float now) where T : struct
+        {
+            var entries = Store<T>.entries;
 
             if (!entries.TryGetValue(id, out var entry))
             {
@@ -78,8 +102,7 @@ namespace NowUI
                 entries.Add(id, entry);
             }
 
-            entry.lastTouch = now;
-            return ref entry.value;
+            return entry;
         }
 
         /// <summary>
@@ -173,12 +196,20 @@ namespace NowUI
         /// </summary>
         public static float Transition(int id, bool towardOne, float speed = 10f)
         {
-            ref var state = ref Get<TransitionState>(id);
+            // Get and advance from one timestamp. Get<T> and the old transition
+            // path each sampled realtime independently, doubling the clock calls
+            // made by every animated control while adding no useful precision.
+            float now = Time.realtimeSinceStartup;
+            var entry = GetOrCreateEntry<TransitionState>(id, now);
+            entry.lastTouch = now;
+            return AdvanceTransition(ref entry.value, towardOne, speed, now);
+        }
 
+        static float AdvanceTransition(ref TransitionState state, bool towardOne, float speed, float now)
+        {
             if (NowInput.isPassive)
                 return state.t;
 
-            float now = Time.realtimeSinceStartup;
             float delta = state.lastTime > 0f ? Mathf.Min(now - state.lastTime, 0.1f) : 0f;
             state.lastTime = now;
 

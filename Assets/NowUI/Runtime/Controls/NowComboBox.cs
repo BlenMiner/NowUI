@@ -482,8 +482,8 @@ namespace NowUI
             }
             else if (state.scrolls)
             {
-                using (new NowScrollView(state.itemArea, state.scrollId).Begin())
-                    DrawItems(state);
+                using (var scroll = new NowScrollView(state.itemArea, state.scrollId).Begin())
+                    DrawVisibleItems(state, scroll.scrollOffset.y, scroll.viewport.height);
             }
             else
             {
@@ -554,11 +554,39 @@ namespace NowUI
 
         static void DrawItems(PopupState state)
         {
-            int row = 0;
+            DrawItems(state, 0, RowCount(state));
+        }
 
-            for (int i = 0; i < state.filteredIndices.Count; ++i, ++row)
+        static void DrawVisibleItems(PopupState state, float scrollY, float viewportHeight)
+        {
+            int rowCount = RowCount(state);
+            float itemHeight = state.itemHeight;
+
+            if (rowCount <= 0 || itemHeight <= 0f)
+                return;
+
+            int first = Mathf.Clamp(Mathf.FloorToInt(scrollY / itemHeight), 0, rowCount);
+            int end = Mathf.Clamp(
+                Mathf.CeilToInt((scrollY + Mathf.Max(0f, viewportHeight)) / itemHeight),
+                first,
+                rowCount);
+
+            if (first > 0)
+                NowLayout.Space(first * itemHeight);
+
+            DrawItems(state, first, end);
+
+            if (end < rowCount)
+                NowLayout.Space((rowCount - end) * itemHeight);
+        }
+
+        static void DrawItems(PopupState state, int firstRow, int endRow)
+        {
+            int optionEnd = Mathf.Min(endRow, state.filteredIndices.Count);
+
+            for (int row = Mathf.Max(0, firstRow); row < optionEnd; ++row)
             {
-                int optionIndex = state.filteredIndices[i];
+                int optionIndex = state.filteredIndices[row];
                 NowRect itemRect = ItemRect(state, row);
                 var itemInteraction = NowInput.Interact(NowInput.CombineId(state.itemSeed, optionIndex + 1), itemRect);
                 bool highlighted = row == state.highlight || optionIndex == state.selected;
@@ -578,11 +606,13 @@ namespace NowUI
                 }
             }
 
-            if (HasCustomValue(state))
+            int customRow = state.filteredIndices.Count;
+
+            if (HasCustomValue(state) && customRow >= firstRow && customRow < endRow)
             {
-                NowRect customRect = ItemRect(state, row);
+                NowRect customRect = ItemRect(state, customRow);
                 var customInteraction = NowInput.Interact(NowInput.CombineId(state.itemSeed, CustomItemSeed), customRect);
-                bool highlighted = row == state.highlight;
+                bool highlighted = customRow == state.highlight;
                 state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
                     state.themeAsset,
                     customRect,
