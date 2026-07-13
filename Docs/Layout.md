@@ -14,6 +14,33 @@ For a complete side-by-side example, compare the same search landing page
 implemented with [explicit rects](../Assets/NowUI/Example/NowLandingPageExample.cs)
 and with [NowLayout](../Assets/NowUI/Example/NowLayoutLandingPageExample.cs).
 
+## Explicit rect slicing
+
+When a design has known regions, slice a `NowRect` and keep passing the
+remainder forward:
+
+```csharp
+NowRect header = view.TakeTop(64, out NowRect body);
+NowRect footer = body.TakeBottom(52, out NowRect content);
+
+DrawHeader(header);
+DrawContent(content);
+DrawFooter(footer);
+```
+
+For a sequential stack, the remainder can safely reuse the same variable:
+
+```csharp
+NowRect remaining = content;
+NowRect title = remaining.TakeTop(48, out remaining);
+remaining.TakeTop(12, out remaining); // gap
+NowRect field = remaining.TakeTop(40, out remaining);
+```
+
+`TakeTop`, `TakeBottom`, `TakeLeft`, and `TakeRight` clamp to the available
+size, never produce negative extents, and are alias-safe in this form. Use
+`Centered`, `Align`, `Inset`, and `Outset` for placement within a region.
+
 ## Preferred layout API
 
 Declare the root rect with `Column(view)` or `Row(view)`, configure containers
@@ -127,7 +154,11 @@ in one of those hosts, its cached measurements settle on a later rebuild.
 
 The layout-specific hosts own the complete two-pass cycle, so code inside
 them should use ordinary `Row`/`Column` scopes. Do not wrap that code in
-`RunMeasured`; nested measurement is unnecessary.
+`RunMeasured`; nested measurement is unnecessary. Their `DrawNowUI` callback
+runs once with drawing suppressed and input passive, then once for the real
+draw. Reacting to a control's returned click/change/submit result is safe
+because controls are inert during measurement. Avoid unconditional state
+changes in `DrawNowUI`, or guard them with `NowLayout.isMeasurePass`.
 
 Retained hosts reject synchronous recursive rebuilds (one host forcing another
 host to rebuild from inside its draw callback), because independent retained
@@ -209,3 +240,29 @@ NowLayout.TextField("search")
     .SetElevation(NowElevationToken.Raised)
     .Draw(ref query);
 ```
+
+`TextField.Draw` returns a `NowTextFieldResult`, so a layout-flowing field can
+host custom adornments without manually reserving its slot or dropping back to
+`Now.TextField`:
+
+```csharp
+NowTextFieldResult search = NowLayout.TextField("search")
+    .SetStretchWidth()
+    .SetHeight(50)
+    .SetPadding(44, 12, 16, 12) // leave room for the leading icon
+    .Draw(ref query);
+
+var icon = new Vector2(search.rect.x + 22, search.rect.center.y);
+var iconColor = new Color32(95, 99, 104, 255);
+Now.Circle(icon, 6).SetFill(false).SetOutline(2, iconColor).Draw();
+Now.Line(icon + new Vector2(4, 4), icon + new Vector2(9, 9))
+    .SetWidth(2).SetColor(iconColor).SetCap(NowLineCap.Round).Draw();
+
+if (search.submitted)
+    RunSearch(query);
+```
+
+The result's boolean conversion tests `changed`, not `submitted`, so
+`if (NowLayout.TextField(...).Draw(ref query))` retains the usual value-control
+meaning. Submission is false during an exact host's passive measure pass and
+is reported only by the active draw pass.

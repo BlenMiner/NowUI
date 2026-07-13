@@ -24,7 +24,7 @@ extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
   file picker overlays, retained view navigation, and dialogs, including
   `NowControlState.Warmup<T>(id)` for known-id first-frame allocation control.
 - `NowText`, `NowFontAsset`, `NowFont`, `NowTextWrap`,
-  `NowTextSelection`, `NowTextEdit`, `NowTextArea`, and rich-text types:
+  `NowTextSelection`, `NowTextEdit`, `NowTextArea`, `NowTextFieldResult`, and rich-text types:
   text rendering, shaping, editing, wrapping, selection, and parser hooks.
 - `NowGlass`, `NowGlassSettings`, and diagnostics structs: backdrop pane
   drawing, quality selection, and non-alloc diagnostic reporting.

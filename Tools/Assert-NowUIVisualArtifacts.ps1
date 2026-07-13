@@ -6,7 +6,10 @@ param(
     [int] $MinCaptures = 1,
 
     [Parameter(Mandatory = $false)]
-    [int] $MinPngBytes = 1024
+    [int] $MinPngBytes = 1024,
+
+    [Parameter(Mandatory = $false)]
+    [string[]] $RequiredCaptures = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,6 +43,7 @@ function Read-PngDimension {
 }
 
 $failures = New-Object System.Collections.Generic.List[string]
+$captureNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 
 foreach ($capture in $captures) {
     if ([string]::IsNullOrWhiteSpace($capture.name)) {
@@ -47,8 +51,13 @@ foreach ($capture in $captures) {
         continue
     }
 
+    $captureName = [string] $capture.name
+    if (!$captureNames.Add($captureName)) {
+        $failures.Add("$captureName`: capture name is duplicated")
+    }
+
     if ([string]::IsNullOrWhiteSpace($capture.path)) {
-        $failures.Add("$($capture.name): capture has no path")
+        $failures.Add("$captureName`: capture has no path")
         continue
     }
 
@@ -58,13 +67,13 @@ foreach ($capture in $captures) {
     }
 
     if (!(Test-Path -LiteralPath $capturePath)) {
-        $failures.Add("$($capture.name): PNG was not found at '$capturePath'")
+        $failures.Add("$captureName`: PNG was not found at '$capturePath'")
         continue
     }
 
     $file = Get-Item -LiteralPath $capturePath
     if ($file.Length -lt $MinPngBytes) {
-        $failures.Add("$($capture.name): PNG is unexpectedly small ($($file.Length) bytes)")
+        $failures.Add("$captureName`: PNG is unexpectedly small ($($file.Length) bytes)")
         continue
     }
 
@@ -78,7 +87,7 @@ foreach ($capture in $captures) {
         $bytes[5] -ne 0x0A -or
         $bytes[6] -ne 0x1A -or
         $bytes[7] -ne 0x0A) {
-        $failures.Add("$($capture.name): file is not a PNG")
+        $failures.Add("$captureName`: file is not a PNG")
         continue
     }
 
@@ -86,15 +95,31 @@ foreach ($capture in $captures) {
     $actualHeight = Read-PngDimension -Bytes $bytes -Offset 20
 
     if ($actualWidth -ne [int] $capture.width -or $actualHeight -ne [int] $capture.height) {
-        $failures.Add("$($capture.name): PNG size is ${actualWidth}x${actualHeight}, manifest says $($capture.width)x$($capture.height)")
+        $failures.Add("$captureName`: PNG size is ${actualWidth}x${actualHeight}, manifest says $($capture.width)x$($capture.height)")
     }
 
     if ([int] $capture.batchCount -le 0) {
-        $failures.Add("$($capture.name): batchCount is $($capture.batchCount)")
+        $failures.Add("$captureName`: batchCount is $($capture.batchCount)")
     }
 
     if ([int] $capture.vertexCount -le 0) {
-        $failures.Add("$($capture.name): vertexCount is $($capture.vertexCount)")
+        $failures.Add("$captureName`: vertexCount is $($capture.vertexCount)")
+    }
+}
+
+$requiredNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($requiredArgument in $RequiredCaptures) {
+    foreach ($requiredName in ([string] $requiredArgument).Split(',')) {
+        $requiredName = $requiredName.Trim()
+        if (![string]::IsNullOrWhiteSpace($requiredName)) {
+            [void] $requiredNames.Add($requiredName)
+        }
+    }
+}
+
+foreach ($requiredName in $requiredNames) {
+    if (!$captureNames.Contains($requiredName)) {
+        $failures.Add("required capture '$requiredName' is missing")
     }
 }
 

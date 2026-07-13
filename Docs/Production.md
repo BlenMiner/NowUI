@@ -37,10 +37,15 @@ separate rendering gate:
 - Windows, macOS, and Linux self-hosted runners execute
   `Tools/NowUI-Harness.ps1 -Mode Visual`, producing PNG captures and a
   `manifest.json`.
-- `Tools/Assert-NowUIVisualArtifacts.ps1` validates the manifest, PNG headers,
-  dimensions, file sizes, and nonzero batch/vertex counts.
+- `Tools/Assert-NowUIVisualArtifacts.ps1` validates the manifest, unique capture
+  names, required scenario names, PNG headers, dimensions, file sizes, and
+  nonzero batch/vertex counts. CI requires the desktop and compact `Now` and
+  `NowLayout` landing-page captures by name, so reducing the total scenario
+  count cannot silently remove their coverage.
 - The Windows runner also executes `-Mode Golden` to compare canonical captures
-  against `Assets/NowUI/Tests/Baselines/Visual`.
+  against `Assets/NowUI/Tests/Baselines/Visual`. Landing-page scenarios use a
+  stricter per-scenario mismatch ceiling than the general harness to catch a
+  missing small control.
 - All captures are uploaded as workflow artifacts for inspection.
 
 The cross-OS jobs require Unity `6000.4.0f1` on self-hosted runners with the

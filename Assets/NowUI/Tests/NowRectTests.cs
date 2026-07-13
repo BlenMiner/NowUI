@@ -148,6 +148,30 @@ public class NowRectTests
     }
 
     [Test]
+    public void EdgeSlicesAreSafeWhenRemainderAliasesTheReceiver()
+    {
+        var topRemainder = new NowRect(10, 20, 100, 60);
+        NowRect top = topRemainder.TakeTop(15, out topRemainder);
+        AssertRect(new NowRect(10, 20, 100, 15), top);
+        AssertRect(new NowRect(10, 35, 100, 45), topRemainder);
+
+        var bottomRemainder = new NowRect(10, 20, 100, 60);
+        NowRect bottom = bottomRemainder.TakeBottom(15, out bottomRemainder);
+        AssertRect(new NowRect(10, 65, 100, 15), bottom);
+        AssertRect(new NowRect(10, 20, 100, 45), bottomRemainder);
+
+        var leftRemainder = new NowRect(10, 20, 100, 60);
+        NowRect left = leftRemainder.TakeLeft(25, out leftRemainder);
+        AssertRect(new NowRect(10, 20, 25, 60), left);
+        AssertRect(new NowRect(35, 20, 75, 60), leftRemainder);
+
+        var rightRemainder = new NowRect(10, 20, 100, 60);
+        NowRect right = rightRemainder.TakeRight(25, out rightRemainder);
+        AssertRect(new NowRect(85, 20, 25, 60), right);
+        AssertRect(new NowRect(10, 20, 75, 60), rightRemainder);
+    }
+
+    [Test]
     public void EdgeSlicesClampToAvailableSize()
     {
         var rect = new NowRect(10, 20, 100, 60);

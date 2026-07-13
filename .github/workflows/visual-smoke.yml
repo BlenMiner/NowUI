@@ -49,7 +49,8 @@ jobs:
         run: >
           ./Tools/Assert-NowUIVisualArtifacts.ps1
           -ArtifactsPath "${env:GITHUB_WORKSPACE}/artifacts/visual/${{ matrix.os_name }}/visual"
-          -MinCaptures 15
+          -MinCaptures 19
+          -RequiredCaptures "landing-page-now","landing-page-now-layout","landing-page-now-compact","landing-page-now-layout-compact"
 
       - name: Upload visual artifacts
         if: always()
@@ -84,7 +85,8 @@ jobs:
         run: >
           ./Tools/Assert-NowUIVisualArtifacts.ps1
           -ArtifactsPath "${env:GITHUB_WORKSPACE}/artifacts/golden/windows/golden"
-          -MinCaptures 13
+          -MinCaptures 17
+          -RequiredCaptures "landing-page-now","landing-page-now-layout","landing-page-now-compact","landing-page-now-layout-compact"
 
       - name: Upload golden artifacts
         if: always()

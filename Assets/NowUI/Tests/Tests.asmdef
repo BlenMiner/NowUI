@@ -5,6 +5,7 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "NowUI.Editor",
+        "NowUI.Editor.Harness",
         "NowUI.Runtime",
         "NowUI.Extensions.Markdown",
         "NowUI.Extensions.Markup",

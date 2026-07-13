@@ -320,8 +320,48 @@ namespace NowUI
     }
 
     /// <summary>
+    /// Geometry and one-frame events produced by a text-field draw.
+    /// </summary>
+    public readonly struct NowTextFieldResult
+    {
+        /// <summary>The resolved explicit or layout-flowing control rect.</summary>
+        public readonly NowRect rect;
+
+        /// <summary>True when the bound value changed this frame.</summary>
+        public readonly bool changed;
+
+        /// <summary>
+        /// True when Enter/Return or the touch keyboard's Done action submitted the
+        /// focused field this frame. Submission is separate from <see cref="changed"/>
+        /// and remains false during passive layout measurement.
+        /// </summary>
+        public readonly bool submitted;
+
+        internal NowTextFieldResult(NowRect rect, bool changed, bool submitted)
+        {
+            this.rect = rect;
+            this.changed = changed;
+            this.submitted = submitted;
+        }
+
+        internal NowTextFieldResult WithChanged(bool value)
+        {
+            return new NowTextFieldResult(rect, value, submitted);
+        }
+
+        /// <summary>
+        /// Keeps the conventional <c>if (field.Draw(ref value))</c> form: boolean
+        /// conversion tests <see cref="changed"/>, never <see cref="submitted"/>.
+        /// </summary>
+        public static implicit operator bool(NowTextFieldResult result)
+        {
+            return result.changed;
+        }
+    }
+
+    /// <summary>
     /// Single-line text field. <see cref="Draw(ref string)"/> edits the caller's
-    /// string in place and returns true when it changed:
+    /// string in place and returns its rect/change/submission result:
     /// <code>NowLayout.TextField().SetPlaceholder("Name...").Draw(ref playerName);</code>
     /// Click to place the caret (shaped-text cluster aware), drag to select,
     /// shift-click extends the selection, standard keyboard editing with key
@@ -544,14 +584,14 @@ namespace NowUI
         /// Numeric text field helper. The caller owns the float; the control keeps
         /// an edit buffer only while focused so partial text can be typed naturally.
         /// </summary>
-        public bool Draw(ref float value)
+        public NowTextFieldResult Draw(ref float value)
         {
             int id = NowControls.GetControlId(_id, _site);
             return DrawFloat(ref value, id, _numberFormat ?? "G7");
         }
 
         /// <summary>Numeric text field helper with a one-off format override.</summary>
-        public bool Draw(ref float value, string format)
+        public NowTextFieldResult Draw(ref float value, string format)
         {
             int id = NowControls.GetControlId(_id, _site);
             return DrawFloat(ref value, id, string.IsNullOrEmpty(format) ? "G7" : format);
@@ -561,7 +601,7 @@ namespace NowUI
         /// Integer text field helper. Invalid partial text is kept while focused
         /// and discarded on blur.
         /// </summary>
-        public bool Draw(ref int value)
+        public NowTextFieldResult Draw(ref int value)
         {
             int id = NowControls.GetControlId(_id, _site);
             return DrawInt(ref value, id);
@@ -571,7 +611,7 @@ namespace NowUI
         /// Double-precision numeric text field helper, mirroring
         /// <see cref="Draw(ref float)"/> with a wider default format.
         /// </summary>
-        public bool Draw(ref double value)
+        public NowTextFieldResult Draw(ref double value)
         {
             int id = NowControls.GetControlId(_id, _site);
             return DrawDouble(ref value, id, _numberFormat ?? "G15");
@@ -580,19 +620,24 @@ namespace NowUI
         /// <summary>
         /// Long integer text field helper, mirroring <see cref="Draw(ref int)"/>.
         /// </summary>
-        public bool Draw(ref long value)
+        public NowTextFieldResult Draw(ref long value)
         {
             int id = NowControls.GetControlId(_id, _site);
             return DrawLong(ref value, id);
         }
 
-        public bool Draw(ref string text)
+        /// <summary>
+        /// Draws the field and returns its resolved rect, change state, and submit
+        /// event. For an adornment, increase the field padding and draw inside
+        /// <see cref="NowTextFieldResult.rect"/>; no separate layout reservation is needed.
+        /// </summary>
+        public NowTextFieldResult Draw(ref string text)
         {
             int id = NowControls.GetControlId(_id, _site);
             return DrawText(ref text, id, out _);
         }
 
-        bool DrawFloat(ref float value, int id, string format)
+        NowTextFieldResult DrawFloat(ref float value, int id, string format)
         {
             float previous = value;
 
@@ -608,7 +653,7 @@ namespace NowUI
                 numberState.revert = value;
 
             string text = numberState.text;
-            DrawText(ref text, id, out bool reverted);
+            NowTextFieldResult result = DrawText(ref text, id, out bool reverted);
 
             bool focused = NowFocus.IsFocused(id);
 
@@ -617,7 +662,7 @@ namespace NowUI
                 value = (float)numberState.revert;
                 numberState.text = FormatFloat(ref numberState, value, format);
                 numberState.editing = focused;
-                return false;
+                return result.WithChanged(false);
             }
 
             if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed))
@@ -641,10 +686,10 @@ namespace NowUI
             }
 
             numberState.editing = focused;
-            return !Mathf.Approximately(previous, value);
+            return result.WithChanged(!Mathf.Approximately(previous, value));
         }
 
-        bool DrawInt(ref int value, int id)
+        NowTextFieldResult DrawInt(ref int value, int id)
         {
             int previous = value;
 
@@ -660,7 +705,7 @@ namespace NowUI
                 numberState.revertLong = value;
 
             string text = numberState.text;
-            DrawText(ref text, id, out bool reverted);
+            NowTextFieldResult result = DrawText(ref text, id, out bool reverted);
 
             bool focused = NowFocus.IsFocused(id);
 
@@ -669,7 +714,7 @@ namespace NowUI
                 value = (int)numberState.revertLong;
                 numberState.text = FormatLong(ref numberState, value);
                 numberState.editing = focused;
-                return false;
+                return result.WithChanged(false);
             }
 
             if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
@@ -693,10 +738,10 @@ namespace NowUI
             }
 
             numberState.editing = focused;
-            return previous != value;
+            return result.WithChanged(previous != value);
         }
 
-        bool DrawDouble(ref double value, int id, string format)
+        NowTextFieldResult DrawDouble(ref double value, int id, string format)
         {
             double previous = value;
 
@@ -712,7 +757,7 @@ namespace NowUI
                 numberState.revert = value;
 
             string text = numberState.text;
-            DrawText(ref text, id, out bool reverted);
+            NowTextFieldResult result = DrawText(ref text, id, out bool reverted);
 
             bool focused = NowFocus.IsFocused(id);
 
@@ -721,7 +766,7 @@ namespace NowUI
                 value = numberState.revert;
                 numberState.text = FormatDouble(ref numberState, value, format);
                 numberState.editing = focused;
-                return false;
+                return result.WithChanged(false);
             }
 
             if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed))
@@ -745,10 +790,10 @@ namespace NowUI
             }
 
             numberState.editing = focused;
-            return previous != value;
+            return result.WithChanged(previous != value);
         }
 
-        bool DrawLong(ref long value, int id)
+        NowTextFieldResult DrawLong(ref long value, int id)
         {
             long previous = value;
 
@@ -764,7 +809,7 @@ namespace NowUI
                 numberState.revertLong = value;
 
             string text = numberState.text;
-            DrawText(ref text, id, out bool reverted);
+            NowTextFieldResult result = DrawText(ref text, id, out bool reverted);
 
             bool focused = NowFocus.IsFocused(id);
 
@@ -773,7 +818,7 @@ namespace NowUI
                 value = numberState.revertLong;
                 numberState.text = FormatLong(ref numberState, value);
                 numberState.editing = focused;
-                return false;
+                return result.WithChanged(false);
             }
 
             if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed))
@@ -797,7 +842,7 @@ namespace NowUI
             }
 
             numberState.editing = focused;
-            return previous != value;
+            return result.WithChanged(previous != value);
         }
 
         static double ClampDouble(double value, double min, double max)
@@ -867,9 +912,10 @@ namespace NowUI
             return state.formatted;
         }
 
-        bool DrawText(ref string text, int id, out bool reverted)
+        NowTextFieldResult DrawText(ref string text, int id, out bool reverted)
         {
             reverted = false;
+            bool submitted = false;
             text ??= string.Empty;
             string original = text;
 
@@ -993,7 +1039,10 @@ namespace NowUI
                 if (composition == null)
                 {
                     if (frame.enterPressed)
+                    {
+                        submitted = true;
                         NowFocus.Clear();
+                    }
 
                     if (frame.escapePressed)
                     {
@@ -1072,7 +1121,8 @@ namespace NowUI
                         NowTextEdit.MoveEnd(ref state, text, frame.shift);
                 }
 
-                SyncTouchKeyboard(id, ref text, ref state);
+                if (SyncTouchKeyboard(id, ref text, ref state))
+                    submitted = true;
             }
             else if (s_touchKeyboardId == id)
             {
@@ -1185,20 +1235,20 @@ namespace NowUI
             if (focused && !NowInput.isPassive)
                 NowControlState.RequestRepaint();
 
-            return !reverted && text != original;
+            return new NowTextFieldResult(rect, !reverted && text != original, submitted);
         }
 
-        void SyncTouchKeyboard(int id, ref string text, ref NowTextEditState state)
+        bool SyncTouchKeyboard(int id, ref string text, ref NowTextEditState state)
         {
             if (!TouchScreenKeyboard.isSupported)
-                return;
+                return false;
 
             if (s_touchKeyboardId != id || s_touchKeyboard == null)
             {
                 CloseTouchKeyboard();
                 s_touchKeyboard = TouchScreenKeyboard.Open(text, TouchScreenKeyboardType.Default);
                 s_touchKeyboardId = id;
-                return;
+                return false;
             }
 
             if (s_touchKeyboard.status == TouchScreenKeyboard.Status.Visible)
@@ -1208,18 +1258,20 @@ namespace NowUI
                     text = s_touchKeyboard.text;
                     NowTextEdit.MoveEnd(ref state, text, false);
                 }
-            }
-            else
-            {
-                if (s_touchKeyboard.status == TouchScreenKeyboard.Status.Done && s_touchKeyboard.text != text)
-                {
-                    text = s_touchKeyboard.text;
-                    NowTextEdit.MoveEnd(ref state, text, false);
-                }
 
-                NowFocus.Clear();
-                CloseTouchKeyboard();
+                return false;
             }
+
+            bool submitted = s_touchKeyboard.status == TouchScreenKeyboard.Status.Done;
+            if (submitted && s_touchKeyboard.text != text)
+            {
+                text = s_touchKeyboard.text;
+                NowTextEdit.MoveEnd(ref state, text, false);
+            }
+
+            NowFocus.Clear();
+            CloseTouchKeyboard();
+            return submitted;
         }
 
         static void CloseTouchKeyboard()

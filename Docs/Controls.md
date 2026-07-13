@@ -29,6 +29,14 @@ them:
   never stores your data — state you can't see stays limited to ephemeral
   interaction details (caret position, open popups, hover fades).
 
+`TextField.Draw` returns a `NowTextFieldResult` because text fields also have a
+useful resolved rect and a distinct Enter/Return (or touch-keyboard Done)
+submission event. The result
+converts to `bool` as `changed`, so existing `if (field.Draw(ref value))` code
+keeps exactly the convention above. Read `result.submitted` when committing an
+unchanged value should still perform an action, and `result.rect` when drawing
+an adornment inside a layout-flowing field.
+
 ## Using the built-in controls
 
 Layout-flowing controls reserve space sized from their themed content; values

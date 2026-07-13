@@ -1,16 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using UnityEditor;
 using UnityEngine;
+
+[assembly: InternalsVisibleTo("Tests")]
 
 namespace NowUI.Editor
 {
     public static class NowVisualHarnessRunner
     {
         const string BaselineRoot = "Assets/NowUI/Tests/Baselines/Visual";
-        const int ChannelTolerance = 8;
-        const float AllowedMismatchRatio = 0.01f;
+        static readonly GoldenComparisonTolerance DefaultTolerance = new GoldenComparisonTolerance(8, 0.01f);
+        static readonly GoldenComparisonTolerance LandingPageTolerance = new GoldenComparisonTolerance(4, 0.0001f);
 
         public static void Capture()
         {
@@ -65,7 +68,12 @@ namespace NowUI.Editor
                     continue;
                 }
 
-                if (!ImagesMatch(File.ReadAllBytes(baselinePath), File.ReadAllBytes(actualPath), out string difference))
+                GoldenComparisonTolerance tolerance = ToleranceForScenario(scenario.name);
+                if (!ImagesMatch(
+                        File.ReadAllBytes(baselinePath),
+                        File.ReadAllBytes(actualPath),
+                        tolerance,
+                        out string difference))
                     failures.Add($"{scenario.name}: {difference}");
             }
 
@@ -84,7 +92,25 @@ namespace NowUI.Editor
             Debug.Log($"NowUI golden comparison passed for {captures.Count} captures.");
         }
 
-        static bool ImagesMatch(byte[] expectedBytes, byte[] actualBytes, out string difference)
+        internal static GoldenComparisonTolerance ToleranceForScenario(string scenarioName)
+        {
+            switch (scenarioName)
+            {
+                case "landing-page-now":
+                case "landing-page-now-layout":
+                case "landing-page-now-compact":
+                case "landing-page-now-layout-compact":
+                    return LandingPageTolerance;
+                default:
+                    return DefaultTolerance;
+            }
+        }
+
+        static bool ImagesMatch(
+            byte[] expectedBytes,
+            byte[] actualBytes,
+            GoldenComparisonTolerance tolerance,
+            out string difference)
         {
             var expected = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             var actual = new Texture2D(2, 2, TextureFormat.RGBA32, false);
@@ -109,41 +135,58 @@ namespace NowUI.Editor
                     return false;
                 }
 
-                var expectedPixels = expected.GetPixels32();
-                var actualPixels = actual.GetPixels32();
-                int mismatched = 0;
-                long totalError = 0;
-
-                for (int i = 0; i < expectedPixels.Length; ++i)
-                {
-                    int error =
-                        Math.Abs(expectedPixels[i].r - actualPixels[i].r) +
-                        Math.Abs(expectedPixels[i].g - actualPixels[i].g) +
-                        Math.Abs(expectedPixels[i].b - actualPixels[i].b) +
-                        Math.Abs(expectedPixels[i].a - actualPixels[i].a);
-
-                    totalError += error;
-
-                    if (error > ChannelTolerance * 4)
-                        ++mismatched;
-                }
-
-                float mismatchRatio = expectedPixels.Length > 0 ? mismatched / (float)expectedPixels.Length : 0f;
-                if (mismatchRatio > AllowedMismatchRatio)
-                {
-                    float averageError = expectedPixels.Length > 0 ? totalError / (float)expectedPixels.Length : 0f;
-                    difference = $"{mismatched} pixels differ ({mismatchRatio:P2}, average error {averageError:0.00})";
-                    return false;
-                }
-
-                difference = null;
-                return true;
+                return PixelsMatch(expected.GetPixels32(), actual.GetPixels32(), tolerance, out difference);
             }
             finally
             {
                 UnityEngine.Object.DestroyImmediate(expected);
                 UnityEngine.Object.DestroyImmediate(actual);
             }
+        }
+
+        internal static bool PixelsMatch(
+            Color32[] expectedPixels,
+            Color32[] actualPixels,
+            GoldenComparisonTolerance tolerance,
+            out string difference)
+        {
+            if (expectedPixels == null || actualPixels == null)
+                throw new ArgumentNullException(expectedPixels == null ? nameof(expectedPixels) : nameof(actualPixels));
+
+            if (expectedPixels.Length != actualPixels.Length)
+            {
+                difference = $"pixel count changed from {expectedPixels.Length} to {actualPixels.Length}";
+                return false;
+            }
+
+            int mismatched = 0;
+            long totalError = 0;
+
+            for (int i = 0; i < expectedPixels.Length; ++i)
+            {
+                int error =
+                    Math.Abs(expectedPixels[i].r - actualPixels[i].r) +
+                    Math.Abs(expectedPixels[i].g - actualPixels[i].g) +
+                    Math.Abs(expectedPixels[i].b - actualPixels[i].b) +
+                    Math.Abs(expectedPixels[i].a - actualPixels[i].a);
+
+                totalError += error;
+
+                if (error > tolerance.channelTolerance * 4)
+                    ++mismatched;
+            }
+
+            float mismatchRatio = expectedPixels.Length > 0 ? mismatched / (float)expectedPixels.Length : 0f;
+            if (mismatchRatio > tolerance.allowedMismatchRatio)
+            {
+                float averageError = expectedPixels.Length > 0 ? totalError / (float)expectedPixels.Length : 0f;
+                difference = $"{mismatched} pixels differ ({mismatchRatio:P4}, average error {averageError:0.00}; " +
+                    $"allowed {tolerance.allowedMismatchRatio:P4} at channel tolerance {tolerance.channelTolerance})";
+                return false;
+            }
+
+            difference = null;
+            return true;
         }
 
         static string ToProjectRelativePath(string path)
@@ -153,6 +196,24 @@ namespace NowUI.Editor
             return full.StartsWith(project + "/", StringComparison.OrdinalIgnoreCase)
                 ? full.Substring(project.Length + 1)
                 : full;
+        }
+    }
+
+    internal readonly struct GoldenComparisonTolerance
+    {
+        public readonly int channelTolerance;
+        public readonly float allowedMismatchRatio;
+
+        public GoldenComparisonTolerance(int channelTolerance, float allowedMismatchRatio)
+        {
+            if (channelTolerance < 0)
+                throw new ArgumentOutOfRangeException(nameof(channelTolerance));
+
+            if (allowedMismatchRatio < 0f || allowedMismatchRatio > 1f)
+                throw new ArgumentOutOfRangeException(nameof(allowedMismatchRatio));
+
+            this.channelTolerance = channelTolerance;
+            this.allowedMismatchRatio = allowedMismatchRatio;
         }
     }
 }

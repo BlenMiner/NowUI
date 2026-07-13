@@ -2,6 +2,7 @@ using System;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UI;
 using NowUI;
 
 /// <summary>
@@ -11,6 +12,38 @@ using NowUI;
 /// </summary>
 public class NowTextFieldEditingTests
 {
+    sealed class ResultRecordingLayoutGraphic : NowLayoutGraphic
+    {
+        public INowInputProvider inputProvider;
+        public string value = "query";
+        public int drawCount;
+        public NowTextFieldResult measureResult;
+        public NowTextFieldResult drawResult;
+
+        protected override INowInputProvider GetInputProvider()
+        {
+            return inputProvider;
+        }
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            using (NowLayout.Column(rect).Begin())
+            {
+                NowTextFieldResult result = NowLayout.TextField("host-field")
+                    .SetStretchWidth()
+                    .SetHeight(40f)
+                    .Draw(ref value);
+
+                ++drawCount;
+
+                if (NowLayout.isMeasurePass)
+                    measureResult = result;
+                else
+                    drawResult = result;
+            }
+        }
+    }
+
     sealed class AppearanceRecordingRenderer : NowControlRenderer
     {
         public int legacyMeasureCalls;
@@ -152,11 +185,11 @@ public class NowTextFieldEditingTests
         return ref NowControlState.Get<NowTextEditState>(Id);
     }
 
-    bool Frame(ref string text, NowTextInputFrame keys = default, string placeholder = null)
+    NowTextFieldResult FrameResult(ref string text, NowTextInputFrame keys = default, string placeholder = null)
     {
         _keyboard.frame = keys;
         NowTextInput.Invalidate();
-        bool changed;
+        NowTextFieldResult result;
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
@@ -166,10 +199,15 @@ public class NowTextFieldEditingTests
             if (placeholder != null)
                 field = field.SetPlaceholder(placeholder);
 
-            changed = field.Draw(ref text);
+            result = field.Draw(ref text);
         }
 
-        return changed;
+        return result;
+    }
+
+    bool Frame(ref string text, NowTextInputFrame keys = default, string placeholder = null)
+    {
+        return FrameResult(ref text, keys, placeholder);
     }
 
     bool FloatFrame(ref float value, NowTextInputFrame keys = default)
@@ -267,11 +305,45 @@ public class NowTextFieldEditingTests
 
         Frame(ref text);
         Frame(ref text, new NowTextInputFrame { characters = "!" });
-        bool changed = Frame(ref text, new NowTextInputFrame { enterPressed = true });
+        NowTextFieldResult result = FrameResult(ref text, new NowTextInputFrame { enterPressed = true });
+        bool changed = result;
 
         Assert.IsFalse(changed, "Enter without new characters reports no change.");
+        Assert.IsTrue(result.submitted, "Enter is exposed separately from value changes.");
         Assert.AreEqual("hello!", text, "Enter commits instead of reverting.");
         Assert.AreEqual(0, NowFocus.focusedId, "Enter blurs the field.");
+    }
+
+    [Test]
+    public void PassiveMeasureDoesNotReportFocusedEnterSubmission()
+    {
+        string text = "hello";
+        NowTextFieldResult result = default;
+        Focus();
+        _keyboard.frame = new NowTextInputFrame { enterPressed = true };
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            int snapshot = NowLayout.BeginMeasurePass();
+
+            try
+            {
+                using (NowLayout.Area(new NowRect(0f, 0f, 320f, 80f)))
+                    result = NowLayout.TextField("name").SetHeight(40f).Draw(ref text);
+            }
+            finally
+            {
+                NowLayout.EndMeasurePass(snapshot);
+            }
+        }
+
+        Assert.IsTrue(NowFocus.IsFocused(Id),
+            "A passive pass must not blur the focused field.");
+        Assert.IsFalse(result.submitted,
+            "A passive pass must not expose Enter as an actionable event.");
+        Assert.IsFalse(result.changed);
     }
 
     [Test]
@@ -570,6 +642,86 @@ public class NowTextFieldEditingTests
         {
             UnityEngine.Object.DestroyImmediate(renderer);
             UnityEngine.Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void LayoutTextFieldResultExposesItsResolvedRectWithoutAnotherReservation()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<AppearanceRecordingRenderer>();
+        string text = "query";
+        NowTextFieldResult result = default;
+        NowRect following = default;
+
+        SetRenderer(theme, renderer);
+
+        try
+        {
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            using (NowLayout.Area(new NowRect(0f, 0f, 400f, 200f)))
+            {
+                result = NowLayout.TextField("decorated-field")
+                    .SetWidth(240f)
+                    .SetHeight(48f)
+                    .SetPadding(44f, 12f, 16f, 12f)
+                    .Draw(ref text);
+
+                following = NowLayout.ReserveRect(20f, 10f);
+            }
+
+            Assert.AreEqual(renderer.lastFrame.rect, result.rect,
+                "The result should report the exact rect used by the renderer.");
+            Assert.AreEqual(new NowRect(0f, 0f, 240f, 48f), result.rect);
+            Assert.AreEqual(48f, following.y, 0.0001f,
+                "Reading the control rect must not consume a second layout slot.");
+            Assert.IsFalse(result.changed);
+            Assert.IsFalse(result.submitted);
+
+            bool changed = result;
+            Assert.IsFalse(changed,
+                "The bool-compatible result must retain Draw's changed-value convention.");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(renderer);
+            UnityEngine.Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void ExactLayoutHostSuppressesSubmitDuringMeasurePass()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var graphicObject = new GameObject(
+            "Now Text Field Result Host",
+            typeof(RectTransform),
+            typeof(CanvasRenderer));
+
+        try
+        {
+            graphicObject.GetComponent<RectTransform>().sizeDelta = new Vector2(320f, 80f);
+            var graphic = graphicObject.AddComponent<ResultRecordingLayoutGraphic>();
+            graphic.inputProvider = _pointer;
+
+            _keyboard.frame = new NowTextInputFrame { enterPressed = true };
+            NowTextInput.Invalidate();
+
+            graphic.Rebuild(CanvasUpdate.PreRender);
+
+            Assert.AreEqual(2, graphic.drawCount,
+                "The exact layout host should run one passive measure and one real draw.");
+            Assert.IsFalse(graphic.measureResult.submitted,
+                "The passive measure pass must never consume or report submission.");
+            Assert.AreEqual(graphic.measureResult.rect, graphic.drawResult.rect,
+                "Exact-host measurement and drawing should resolve the same control rect.");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(graphicObject);
         }
     }
 

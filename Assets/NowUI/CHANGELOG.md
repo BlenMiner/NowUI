@@ -36,7 +36,25 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   radius, fill, border/focus/text/placeholder colors, padding,
   normal/focused outline widths, and elevation per instance. Layout fields also expose fixed/min/max,
   stretching, and alignment methods, so a search field no longer needs a
-  custom renderer or global theme mutation.
+  custom renderer or global theme mutation. `Draw` now returns a
+  `NowTextFieldResult` with the resolved `rect`, `changed`, and `submitted`
+  state. Its implicit boolean conversion maps only to `changed`, preserving
+  existing `if (Draw(...))` behavior, while layout callers can place
+  adornments without a separate `ReserveRect` and can react to Enter/Return or
+  the touch keyboard's Done action even when the value itself did not change.
+  Passive measure passes never report submission.
+- **Explicit rect slicing is safe to use sequentially.** `NowRect.TakeTop`,
+  `TakeBottom`, `TakeLeft`, and `TakeRight` now snapshot their returned slice
+  before assigning the remainder. The natural
+  `var row = remaining.TakeTop(height, out remaining)` form therefore returns
+  the requested row instead of observing the aliased remainder, while all
+  slices remain clamped to non-negative extents.
+- **The landing-page examples are responsive and interactive.** The explicit
+  and `NowLayout` versions share presentation-only helpers, use symmetric
+  centering, degrade through compact and very-short viewports, and wire search
+  submission, both actions, and link-like controls to visible state. Desktop
+  and compact variants are required by name in visual CI and use stricter
+  golden-image tolerances.
 - **Scope ownership is now explicit and fail-fast (breaking).** `StartUI`,
   draw-list, font, mask, transform, theme, control-id, input, layout, and label-style
   scopes share token-backed ownership: disposing a copied or callback-reentrant

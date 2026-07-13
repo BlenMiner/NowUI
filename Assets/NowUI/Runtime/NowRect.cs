@@ -177,14 +177,17 @@ namespace NowUI
         /// <summary>
         /// Returns a slice from the top edge and the part below it. The requested
         /// height is clamped to this rect, so neither result has a negative height.
+        /// The remainder may safely be assigned back to the receiver variable:
+        /// <c>var top = rect.TakeTop(height, out rect)</c>.
         /// </summary>
         public readonly NowRect TakeTop(float height, out NowRect remainder)
         {
             RequireNonNegativeFinite(height, nameof(height));
             float available = Mathf.Max(0f, this.height);
             float taken = Mathf.Min(height, available);
+            var slice = new NowRect(x, y, width, taken);
             remainder = new NowRect(x, y + taken, width, available - taken);
-            return new NowRect(x, y, width, taken);
+            return slice;
         }
 
         /// <summary>
@@ -206,8 +209,9 @@ namespace NowUI
             float available = Mathf.Max(0f, this.height);
             float taken = Mathf.Min(height, available);
             float remaining = available - taken;
+            var slice = new NowRect(x, y + remaining, width, taken);
             remainder = new NowRect(x, y, width, remaining);
-            return new NowRect(x, y + remaining, width, taken);
+            return slice;
         }
 
         /// <summary>
@@ -228,8 +232,9 @@ namespace NowUI
             RequireNonNegativeFinite(width, nameof(width));
             float available = Mathf.Max(0f, this.width);
             float taken = Mathf.Min(width, available);
+            var slice = new NowRect(x, y, taken, height);
             remainder = new NowRect(x + taken, y, available - taken, height);
-            return new NowRect(x, y, taken, height);
+            return slice;
         }
 
         /// <summary>
@@ -251,8 +256,9 @@ namespace NowUI
             float available = Mathf.Max(0f, this.width);
             float taken = Mathf.Min(width, available);
             float remaining = available - taken;
+            var slice = new NowRect(x + remaining, y, taken, height);
             remainder = new NowRect(x, y, remaining, height);
-            return new NowRect(x + remaining, y, taken, height);
+            return slice;
         }
 
         static float AlignedPosition(float start, float available, float requested, NowLayoutAlign align)
