@@ -141,6 +141,7 @@ namespace NowUI
 
             var size = new Vector2(camera.pixelWidth / uiScale, camera.pixelHeight / uiScale);
             var frame = NowFrame.Begin(uiScale);
+            NowModelPreviewManager.BeginPipelineBuild();
             NowDrawScope scope = default;
 
             try
@@ -198,7 +199,14 @@ namespace NowUI
             }
             finally
             {
-                frame.Dispose();
+                try
+                {
+                    frame.Dispose();
+                }
+                finally
+                {
+                    NowModelPreviewManager.EndPipelineBuild();
+                }
             }
 
             return drawList.hasGeometry;
@@ -223,7 +231,7 @@ namespace NowUI
 
         public bool CanRender(Camera camera)
         {
-            if (camera == null || !isActiveAndEnabled)
+            if (camera == null || !isActiveAndEnabled || NowModelPreview.IsPreviewCamera(camera))
                 return false;
 
             if (_targetCamera != null)

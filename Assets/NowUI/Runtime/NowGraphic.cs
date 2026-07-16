@@ -85,8 +85,10 @@ namespace NowUI
     [AddComponentMenu("NowUI/Now Graphic")]
     [ExecuteAlways]
     [RequireComponent(typeof(CanvasRenderer))]
-    public class NowGraphic : MaskableGraphic, ILayoutElement
+    public class NowGraphic : MaskableGraphic, ILayoutElement, INowDynamicTextureHost
     {
+        static readonly HashSet<NowGraphic> _liveGraphics = new HashSet<NowGraphic>();
+
         static readonly int _mainTexProp = Shader.PropertyToID("_MainTex");
 
         static readonly int _nowCanvasLayoutProp = Shader.PropertyToID("_NowCanvasLayout");
@@ -98,6 +100,8 @@ namespace NowUI
         static readonly int _nowUGUIBackdropOriginProp = Shader.PropertyToID("_NowUGUIBackdropOrigin");
 
         static readonly int _nowGlassUseBackdropProp = Shader.PropertyToID("_NowUGUIGlassUseBackdrop");
+
+        static readonly int _premultipliedTextureProp = Shader.PropertyToID("_NowPremultipliedTexture");
 
         [Header("NowUI")]
         [SerializeField] bool _rebuildEveryFrame;
@@ -135,6 +139,8 @@ namespace NowUI
         [NonSerialized] Vector2 _layoutInputMeasurementSize;
 
         [NonSerialized] NowInteractionRepaintTracker _repaintTracker;
+
+        [NonSerialized] int _dynamicTextureBuildVersion;
 
         [NonSerialized] bool _insideGeometryRebuild;
 
@@ -357,6 +363,26 @@ namespace NowUI
             SetVerticesDirty();
         }
 
+        int INowDynamicTextureHost.dynamicTextureBuildVersion => _dynamicTextureBuildVersion;
+
+        bool INowDynamicTextureHost.isDynamicTextureHostValid => this != null && IsActive();
+
+        void INowDynamicTextureHost.BeginDynamicTextureBuild()
+        {
+            unchecked
+            {
+                ++_dynamicTextureBuildVersion;
+
+                if (_dynamicTextureBuildVersion == 0)
+                    ++_dynamicTextureBuildVersion;
+            }
+        }
+
+        void INowDynamicTextureHost.RequestDynamicTextureRebuild()
+        {
+            SetVerticesDirty();
+        }
+
         public override void SetVerticesDirty()
         {
             // From inside this graphic's own draw pass (a DrawNowUI handler
@@ -409,7 +435,10 @@ namespace NowUI
 
             var positionOffset = new Vector2(rect.xMin, rect.yMax);
             var drawRect = new NowRect(0, 0, rect.width, rect.height);
-            var frame = NowFrame.Begin(GetCanvasScaleFactor(), trackRepaint: true);
+            var frame = NowFrame.Begin(
+                GetCanvasScaleFactor(),
+                trackRepaint: true,
+                dynamicTextureHost: this);
             NowDrawScope scope = default;
             bool colorMultiplierActive = false;
             bool passiveInputActive = false;
@@ -624,6 +653,7 @@ namespace NowUI
 
         protected override void OnEnable()
         {
+            _liveGraphics.Add(this);
             _materialModifiersDirty = true;
             base.OnEnable();
             _repaintTracker.Reset();
@@ -649,6 +679,7 @@ namespace NowUI
 
         protected override void OnDestroy()
         {
+            _liveGraphics.Remove(this);
             ReleaseStencilMaterials();
             ReleaseUGUIGlassBackdrops();
 
@@ -1315,7 +1346,7 @@ namespace NowUI
             _extraCanvasRenderers.Clear();
         }
 
-        Material GetCanvasMaterial(NowMeshBatch batch)
+        internal Material GetCanvasMaterial(NowMeshBatch batch)
         {
             if (batch.kind == NowMeshKind.CustomRectangle)
                 return batch.canvasMaterial != null ? batch.canvasMaterial : batch.material;
@@ -1346,6 +1377,8 @@ namespace NowUI
                     if (!ReferenceEquals(texturedRect.mainTexture, sourceTexture))
                         texturedRect.mainTexture = sourceTexture;
 
+                    CopyPremultipliedTextureMode(batch.material, texturedRect);
+
                     return texturedRect;
                 }
 
@@ -1361,6 +1394,8 @@ namespace NowUI
                     hideFlags = HideFlags.HideAndDontSave,
                     mainTexture = batch.material.mainTexture
                 };
+
+                CopyPremultipliedTextureMode(batch.material, texturedRect);
 
                 _textMaterials[batch.material] = texturedRect;
                 return texturedRect;
@@ -1401,6 +1436,49 @@ namespace NowUI
 
             _textMaterials[batch.material] = textMaterial;
             return textMaterial;
+        }
+
+        static void CopyPremultipliedTextureMode(Material source, Material destination)
+        {
+            if (source == null || destination == null ||
+                !source.HasProperty(_premultipliedTextureProp) ||
+                !destination.HasProperty(_premultipliedTextureProp))
+                return;
+
+            destination.SetFloat(
+                _premultipliedTextureProp,
+                source.GetFloat(_premultipliedTextureProp));
+        }
+
+        internal int cachedCanvasMaterialCount => _textMaterials.Count;
+
+        /// <summary>
+        /// Removes UGUI clones whose source material is about to be destroyed.
+        /// This keeps long-lived inventory hosts from retaining one material
+        /// and render texture for every disposed dynamic preview.
+        /// </summary>
+        internal static void ReleaseCachedMaterial(Material source)
+        {
+            if (source == null)
+                return;
+
+            foreach (var graphic in _liveGraphics)
+            {
+                if (graphic == null || !graphic._textMaterials.TryGetValue(source, out var cached))
+                    continue;
+
+                graphic.ReleaseStencilMaterials();
+                graphic._textMaterials.Remove(source);
+                graphic.SetVerticesDirty();
+
+                if (cached == null)
+                    continue;
+
+                if (Application.isPlaying)
+                    Destroy(cached);
+                else
+                    DestroyImmediate(cached);
+            }
         }
 
         Material GetTextMaterialTemplate(Material material)

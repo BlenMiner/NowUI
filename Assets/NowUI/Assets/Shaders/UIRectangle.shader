@@ -3,6 +3,7 @@ Shader "NowUI/UI Rectangle"
     Properties
     {
         _MainTex ("Texture", 2D) = "white" {}
+        [HideInInspector] _NowPremultipliedTexture ("Premultiplied Texture", Float) = 0
         _ZTest ("ZTest", Float) = 8
     }
     SubShader
@@ -58,6 +59,7 @@ Shader "NowUI/UI Rectangle"
             sampler2D _MainTex;
             float4 _MainTex_ST;
             float4 _Color;
+            float _NowPremultipliedTexture;
 
             float sdRoundedBox(float2 p, float2 b, float4 r )
             {
@@ -107,7 +109,7 @@ Shader "NowUI/UI Rectangle"
                 float blur = data.x;
                 float outline = data.y;
 
-                half4 graphic = tex2D(_MainTex, i.uv) * color;
+                half4 textureSample = tex2D(_MainTex, i.uv);
 
                 // Texture UVs can point into an atlas; the shape SDF must stay in
                 // full-quad space so sprites and custom UVs keep the same corners.
@@ -135,11 +137,14 @@ Shader "NowUI/UI Rectangle"
                 // transparent pixels while keeping the existing inside-outline
                 // behavior.
                 float outlineCoverage = i.outlineColor.a * outlineAlpha * graphicAlpha;
-                float fillCoverage = graphic.a * graphicAlpha;
+                float fillCoverage = textureSample.a * color.a * graphicAlpha;
+                half3 fillColor = _NowPremultipliedTexture > 0.5
+                    ? textureSample.rgb * color.rgb * color.a * graphicAlpha
+                    : textureSample.rgb * color.rgb * fillCoverage;
 
                 half4 col;
                 col.rgb = i.outlineColor.rgb * outlineCoverage
-                    + graphic.rgb * fillCoverage * (1 - outlineCoverage);
+                    + fillColor * (1 - outlineCoverage);
                 col.a = outlineCoverage + fillCoverage * (1 - outlineCoverage);
                 clip(col.a - 0.001);
 

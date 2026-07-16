@@ -110,6 +110,10 @@ Toolkit, world-space, and manual-host examples, see
   array/list-backed polygons. [Docs/Shapes.md](Docs/Shapes.md)
 - **Effects** — scoped mesh and texture-backed visual modifiers with custom
   vertex deformers and explicit subdivision. [Docs/Effects.md](Docs/Effects.md)
+- **Model Previews** — reusable 3D models rendered into transparent textures,
+  from isolated raw meshes or caller-owned scene objects, with automatic
+  framing, dirty/continuous updates, masks, corners, materials, and effects.
+  [Docs/ModelPreviews.md](Docs/ModelPreviews.md)
 - **World Space** — direct-mesh nameplates, hover tooltips and diegetic
   panels with ray-mapped input, configurable depth, and vertex deformation.
   [Docs/WorldSpace.md](Docs/WorldSpace.md)

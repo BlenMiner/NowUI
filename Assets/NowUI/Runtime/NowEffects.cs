@@ -215,6 +215,9 @@ namespace NowUI
         static readonly Stack<Entry> _temporaryEntryPool = new Stack<Entry>(4);
         static readonly NowScopeGuard _effectScopes = new NowScopeGuard("NowEffects", 8);
         static double _lastCleanupTime;
+        static int _textureCaptureDepth;
+
+        internal static bool isCapturingToTexture => _textureCaptureDepth > 0;
 
         public static NowModifierBuilder<TDeformer> Modifier<TDeformer>(
             TDeformer deformer,
@@ -260,6 +263,10 @@ namespace NowUI
                     inheritContext: true,
                     flushOverlays: false);
                 scopeToken = _effectScopes.Enter();
+
+                if (renderToTexture)
+                    ++_textureCaptureDepth;
+
                 return new NowModifierScope<TDeformer>(
                     id,
                     entry,
@@ -309,6 +316,7 @@ namespace NowUI
                     inheritContext: true,
                     flushOverlays: false);
                 scopeToken = _effectScopes.Enter();
+                ++_textureCaptureDepth;
                 return new NowSnapshotScope(
                     id,
                     entry,
@@ -378,7 +386,7 @@ namespace NowUI
                         flushOverlays: false))
                     {
                         Now.Rectangle(textureRect)
-                            .SetTexture(target)
+                            .SetTexture(target, premultipliedAlpha: true)
                             .Draw();
                     }
 
@@ -406,6 +414,9 @@ namespace NowUI
             }
             finally
             {
+                if (scope.renderToTexture)
+                    _textureCaptureDepth = Mathf.Max(0, _textureCaptureDepth - 1);
+
                 entry.capture.Clear();
                 entry.surface.Clear();
                 entry.inUse = false;
@@ -442,6 +453,7 @@ namespace NowUI
             }
             finally
             {
+                _textureCaptureDepth = Mathf.Max(0, _textureCaptureDepth - 1);
                 entry.capture.Clear();
                 entry.inUse = false;
 
@@ -563,6 +575,7 @@ namespace NowUI
 
             _effectScopes.Clear();
             _lastCleanupTime = 0.0;
+            _textureCaptureDepth = 0;
         }
 
         internal sealed class Entry : IDisposable
@@ -611,6 +624,7 @@ namespace NowUI
                 if (target == null)
                     return;
 
+                Now.ReleaseTextureMaterials(target);
                 target.Release();
 
                 if (Application.isPlaying)

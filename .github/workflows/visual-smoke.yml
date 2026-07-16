@@ -49,8 +49,8 @@ jobs:
         run: >
           ./Tools/Assert-NowUIVisualArtifacts.ps1
           -ArtifactsPath "${env:GITHUB_WORKSPACE}/artifacts/visual/${{ matrix.os_name }}/visual"
-          -MinCaptures 19
-          -RequiredCaptures "landing-page-now","landing-page-now-layout","landing-page-now-compact","landing-page-now-layout-compact"
+          -MinCaptures 21
+          -RequiredCaptures "model-preview-effects","docs-model-preview-demo","landing-page-now","landing-page-now-layout","landing-page-now-compact","landing-page-now-layout-compact"
 
       - name: Upload visual artifacts
         if: always()

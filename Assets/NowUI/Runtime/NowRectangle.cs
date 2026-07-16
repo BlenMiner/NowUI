@@ -93,6 +93,13 @@ namespace NowUI
         /// <summary>Optional texture; sampled across <see cref="uvRect"/>.</summary>
         public Texture texture;
 
+        /// <summary>
+        /// Internal sampling contract for render-target content whose RGB is
+        /// already multiplied by alpha. Camera-backed model previews use this;
+        /// ordinary textures keep the straight-alpha default.
+        /// </summary>
+        internal bool premultipliedTexture;
+
         /// <summary>Texture sub-region as (u, v, width, height), default full.</summary>
         public Vector4 uvRect;
 
@@ -133,6 +140,7 @@ namespace NowUI
             color = new Vector4(1, 1, 1, 1);
             outlineColor = default;
             texture = null;
+            premultipliedTexture = false;
             uvRect = new Vector4(0f, 0f, 1f, 1f);
             spriteBorder = default;
             spritePixelSize = default;
@@ -304,6 +312,20 @@ namespace NowUI
         public NowRectangle SetTexture(Texture texture)
         {
             this.texture = texture;
+            premultipliedTexture = false;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets a texture and declares whether its RGB channels are already
+        /// multiplied by alpha. Camera and effect render targets normally use
+        /// premultiplied alpha; imported image assets normally do not.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NowRectangle SetTexture(Texture texture, bool premultipliedAlpha)
+        {
+            this.texture = texture;
+            premultipliedTexture = premultipliedAlpha;
             return this;
         }
 
@@ -329,6 +351,7 @@ namespace NowUI
                 return this;
 
             texture = sprite.texture;
+            premultipliedTexture = false;
             var textureRect = sprite.textureRect;
             float textureWidth = sprite.texture.width;
             float textureHeight = sprite.texture.height;

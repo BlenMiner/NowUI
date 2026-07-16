@@ -2,6 +2,9 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if NOWUI_URP_RENDER_GRAPH_ONLY
+using UnityEngine.Rendering.RenderGraphModule;
+#endif
 
 namespace NowUI
 {
@@ -65,6 +68,10 @@ namespace NowUI
 
             if (hasWorldGlass || needsWorldGlassDepth)
             {
+#if NOWUI_URP_RENDER_GRAPH_ONLY
+                _worldGlassPass.requiresIntermediateTexture = hasWorldGlass;
+                _worldGlassPass.needsSceneDepth = needsWorldGlassDepth;
+#endif
                 _worldGlassPass.ConfigureInput(
                     needsWorldGlassDepth ? ScriptableRenderPassInput.Depth : ScriptableRenderPassInput.None);
                 renderer.EnqueuePass(_worldGlassPass);
@@ -87,6 +94,55 @@ namespace NowUI
 
         sealed class NowUniversalWorldGlassPass : ScriptableRenderPass
         {
+#if NOWUI_URP_RENDER_GRAPH_ONLY
+            sealed class PassData
+            {
+                public TextureHandle source;
+                public Camera camera;
+                public int width;
+                public int height;
+            }
+
+            public bool needsSceneDepth;
+
+            public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
+            {
+                var resources = frameData.Get<UniversalResourceData>();
+                var cameraData = frameData.Get<UniversalCameraData>();
+                var source = resources.activeColorTexture;
+
+                if (!source.IsValid())
+                    return;
+
+                using (var builder = renderGraph.AddUnsafePass<PassData>(
+                    "Now URP World Glass",
+                    out var passData,
+                    profilingSampler))
+                {
+                    passData.source = source;
+                    passData.camera = cameraData.camera;
+                    passData.width = cameraData.cameraTargetDescriptor.width;
+                    passData.height = cameraData.cameraTargetDescriptor.height;
+                    builder.UseTexture(source, AccessFlags.Read);
+
+                    if (needsSceneDepth && resources.cameraDepthTexture.IsValid())
+                        builder.UseTexture(resources.cameraDepthTexture, AccessFlags.Read);
+
+                    builder.AllowPassCulling(false);
+                    builder.AllowGlobalStateModification(true);
+                    builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) =>
+                    {
+                        var commandBuffer = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
+                        NowWorldGlassBackdrop.PopulateCommandBuffer(
+                            commandBuffer,
+                            data.camera,
+                            data.source,
+                            data.width,
+                            data.height);
+                    });
+                }
+            }
+#else
             // Compatibility Mode path (Render Graph disabled). The attribute
             // mirrors the obsolete base member, which is how URP's own samples
             // silence CS0672 while still supporting this mode; Render Graph
@@ -114,6 +170,7 @@ namespace NowUI
                     CommandBufferPool.Release(commandBuffer);
                 }
             }
+#endif
         }
 
         sealed class NowUniversalRenderPass : ScriptableRenderPass
@@ -122,6 +179,54 @@ namespace NowUI
 
             public float uiScale = 1f;
 
+#if NOWUI_URP_RENDER_GRAPH_ONLY
+            sealed class PassData
+            {
+                public TextureHandle target;
+                public NowDrawList drawList;
+                public int width;
+                public int height;
+            }
+
+            public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
+            {
+                var resources = frameData.Get<UniversalResourceData>();
+                var cameraData = frameData.Get<UniversalCameraData>();
+                var camera = cameraData.camera;
+
+                if (!NowPipelineGraphic.BuildDrawList(camera, _drawList, uiScale))
+                    return;
+
+                var target = resources.activeColorTexture;
+
+                if (!target.IsValid())
+                    return;
+
+                using (var builder = renderGraph.AddUnsafePass<PassData>(
+                    "Now URP",
+                    out var passData,
+                    profilingSampler))
+                {
+                    passData.target = target;
+                    passData.drawList = _drawList;
+                    passData.width = cameraData.cameraTargetDescriptor.width;
+                    passData.height = cameraData.cameraTargetDescriptor.height;
+                    builder.UseTexture(target, AccessFlags.ReadWrite);
+                    builder.AllowPassCulling(false);
+                    builder.AllowGlobalStateModification(true);
+                    builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) =>
+                    {
+                        var commandBuffer = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
+                        NowRenderer.Draw(
+                            commandBuffer,
+                            data.drawList,
+                            data.target,
+                            data.width,
+                            data.height);
+                    });
+                }
+            }
+#else
             // Compatibility Mode path (Render Graph disabled) — see above.
             [System.Obsolete("Compatibility Mode rendering path (Render Graph disabled).", false)]
             public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
@@ -148,6 +253,7 @@ namespace NowUI
                     CommandBufferPool.Release(commandBuffer);
                 }
             }
+#endif
 
             public void Dispose()
             {

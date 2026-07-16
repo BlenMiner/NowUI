@@ -28,6 +28,11 @@ extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
   text rendering, shaping, editing, wrapping, selection, and parser hooks.
 - `NowGlass`, `NowGlassSettings`, and diagnostics structs: backdrop pane
   drawing, quality selection, and non-alloc diagnostic reporting.
+- `NowModel`, `NowModelPreview`, `NowModelPreviewSourceMode`, and
+  `NowModelPreviewUpdateMode`: isolated raw-mesh or caller-owned scene-object
+  model-to-texture previews
+  drawing, explicit preview resource ownership, deferred refresh scheduling,
+  framing, and resolution control.
 
 ## Extension Surface
 

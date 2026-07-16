@@ -49,6 +49,9 @@ namespace NowUI
         /// <summary>Rendering an effect capture into a texture backend.</summary>
         public static readonly ProfilerMarker EffectsRenderTexture = new ProfilerMarker("Now.Effects.RenderTexture");
 
+        /// <summary>Rendering a deferred 3D model preview into its persistent texture.</summary>
+        public static readonly ProfilerMarker ModelPreviewRender = new ProfilerMarker("Now.ModelPreview.Render");
+
         /// <summary>Building a world-space NowUI mesh and renderer state.</summary>
         public static readonly ProfilerMarker WorldRebuild = new ProfilerMarker("Now.World.Rebuild");
 

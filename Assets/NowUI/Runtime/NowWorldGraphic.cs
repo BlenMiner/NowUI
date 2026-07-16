@@ -64,7 +64,7 @@ namespace NowUI
     [AddComponentMenu("NowUI/Now World Graphic")]
     [ExecuteAlways]
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
-    public class NowWorldGraphic : MonoBehaviour, INowPopupFitProvider
+    public class NowWorldGraphic : MonoBehaviour, INowPopupFitProvider, INowDynamicTextureHost
     {
         static readonly int _zTestId = Shader.PropertyToID("_ZTest");
         static readonly int _nowMaterialGlassModeId = Shader.PropertyToID("_NowMaterialGlassMode");
@@ -80,6 +80,7 @@ namespace NowUI
 
         static int _inputResolverVersion;
         static readonly List<NowWorldGraphic> _instances = new List<NowWorldGraphic>(16);
+        static readonly HashSet<NowWorldGraphic> _materialHosts = new HashSet<NowWorldGraphic>();
         static readonly RaycastHit[] _sceneOcclusionHits = new RaycastHit[16];
         static readonly Plane[] _frustumPlanes = new Plane[6];
         static Camera _frustumPlanesCamera;
@@ -120,6 +121,7 @@ namespace NowUI
         [NonSerialized] Camera _fallbackCamera;
         [NonSerialized] bool _dirty = true;
         [NonSerialized] NowInteractionRepaintTracker _repaintTracker;
+        [NonSerialized] int _dynamicTextureBuildVersion;
         [NonSerialized] bool _hasGlassBatches;
         [NonSerialized] float _maxGlassBlurRadius;
         [NonSerialized] NowGlassBlurQuality _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
@@ -389,6 +391,27 @@ namespace NowUI
             _dirty = true;
         }
 
+        int INowDynamicTextureHost.dynamicTextureBuildVersion => _dynamicTextureBuildVersion;
+
+        bool INowDynamicTextureHost.isDynamicTextureHostValid =>
+            this != null && isActiveAndEnabled;
+
+        void INowDynamicTextureHost.BeginDynamicTextureBuild()
+        {
+            unchecked
+            {
+                ++_dynamicTextureBuildVersion;
+
+                if (_dynamicTextureBuildVersion == 0)
+                    ++_dynamicTextureBuildVersion;
+            }
+        }
+
+        void INowDynamicTextureHost.RequestDynamicTextureRebuild()
+        {
+            MarkDirty();
+        }
+
         public void RebuildNowUI()
         {
             using var profile = NowProfiler.WorldRebuild.Auto();
@@ -400,7 +423,10 @@ namespace NowUI
             _size = currentSize;
             _pixelsPerUnit = SanitizePixelsPerUnit(_pixelsPerUnit);
             NowDrawScope scope = default;
-            var frame = NowFrame.Begin(ResolveScreenPixelsPerUIUnit(currentSize), trackRepaint: true);
+            var frame = NowFrame.Begin(
+                ResolveScreenPixelsPerUIUnit(currentSize),
+                trackRepaint: true,
+                dynamicTextureHost: this);
 
             try
             {
@@ -878,6 +904,7 @@ namespace NowUI
 
         protected virtual void OnEnable()
         {
+            _materialHosts.Add(this);
             _glassBackdropMode = NowWorldGlassBackdrop.NormalizeMode(_glassBackdropMode);
 
             if (!_instances.Contains(this))
@@ -905,6 +932,7 @@ namespace NowUI
 
         protected virtual void OnDestroy()
         {
+            _materialHosts.Remove(this);
             CancelEditorRebuild();
 
             if (_instances.Remove(this))
@@ -1317,7 +1345,7 @@ namespace NowUI
             return rhsDepth.CompareTo(lhsDepth);
         }
 
-        Material GetMaterial(NowMeshBatch batch)
+        internal Material GetMaterial(NowMeshBatch batch)
         {
             var source = batch.material;
 
@@ -1727,6 +1755,47 @@ namespace NowUI
             ReleaseMaterialCache(_overlayMaterials);
             _sharedMaterials.Clear();
             _sharedMaterialsAssigned = false;
+        }
+
+        internal int cachedMaterialCount => _materials.Count + _overlayMaterials.Count;
+
+        internal static void ReleaseCachedMaterial(Material source)
+        {
+            if (source == null)
+                return;
+
+            foreach (var host in _materialHosts)
+            {
+                if (host == null)
+                    continue;
+
+                bool removed = ReleaseCachedMaterial(host._materials, source);
+                removed |= ReleaseCachedMaterial(host._overlayMaterials, source);
+
+                if (!removed)
+                    continue;
+
+                host.ClearRendererState();
+                host.MarkDirty();
+            }
+        }
+
+        static bool ReleaseCachedMaterial(Dictionary<Material, Material> cache, Material source)
+        {
+            if (!cache.TryGetValue(source, out var cached))
+                return false;
+
+            cache.Remove(source);
+
+            if (cached != null)
+            {
+                if (Application.isPlaying)
+                    Destroy(cached);
+                else
+                    DestroyImmediate(cached);
+            }
+
+            return true;
         }
 
         static void ReleaseMaterialCache(Dictionary<Material, Material> cache)

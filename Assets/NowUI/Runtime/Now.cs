@@ -519,25 +519,61 @@ namespace NowUI
             public Material material;
         }
 
-        static readonly Dictionary<Texture, TextureMaterialEntry> _textureMaterials =
-            new Dictionary<Texture, TextureMaterialEntry>();
+        readonly struct TextureMaterialKey : IEquatable<TextureMaterialKey>
+        {
+            public readonly Texture texture;
+
+            public readonly bool premultiplied;
+
+            public TextureMaterialKey(Texture texture, bool premultiplied)
+            {
+                this.texture = texture;
+                this.premultiplied = premultiplied;
+            }
+
+            public bool Equals(TextureMaterialKey other)
+            {
+                return ReferenceEquals(texture, other.texture) && premultiplied == other.premultiplied;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is TextureMaterialKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((texture != null ? RuntimeHelpers.GetHashCode(texture) : 0) * 397) ^
+                        (premultiplied ? 1 : 0);
+                }
+            }
+        }
+
+        static readonly Dictionary<TextureMaterialKey, TextureMaterialEntry> _textureMaterials =
+            new Dictionary<TextureMaterialKey, TextureMaterialEntry>();
 
         readonly struct TexturedMaterialKey : IEquatable<TexturedMaterialKey>
         {
             readonly Material _material;
 
-            readonly Texture _texture;
+            public readonly Texture texture;
 
-            public TexturedMaterialKey(Material material, Texture texture)
+            readonly bool _premultiplied;
+
+            public TexturedMaterialKey(Material material, Texture texture, bool premultiplied)
             {
                 _material = material;
-                _texture = texture;
+                this.texture = texture;
+                _premultiplied = premultiplied;
             }
 
             public bool Equals(TexturedMaterialKey other)
             {
                 return ReferenceEquals(_material, other._material) &&
-                    ReferenceEquals(_texture, other._texture);
+                    ReferenceEquals(texture, other.texture) &&
+                    _premultiplied == other._premultiplied;
             }
 
             public override bool Equals(object obj)
@@ -551,7 +587,8 @@ namespace NowUI
                 {
                     int hash = 17;
                     hash = hash * 31 + (_material != null ? RuntimeHelpers.GetHashCode(_material) : 0);
-                    hash = hash * 31 + (_texture != null ? RuntimeHelpers.GetHashCode(_texture) : 0);
+                    hash = hash * 31 + (texture != null ? RuntimeHelpers.GetHashCode(texture) : 0);
+                    hash = hash * 31 + (_premultiplied ? 1 : 0);
                     return hash;
                 }
             }
@@ -566,12 +603,22 @@ namespace NowUI
         static readonly Dictionary<TexturedMaterialKey, TexturedMaterialEntry> _texturedMaterialCache =
             new Dictionary<TexturedMaterialKey, TexturedMaterialEntry>();
 
-        static NowMesh UseTextureMaterial(Texture texture)
+        static readonly List<TextureMaterialKey> _releasedTextureMaterialKeys =
+            new List<TextureMaterialKey>(2);
+
+        static readonly List<TexturedMaterialKey> _releasedTexturedMaterialKeys =
+            new List<TexturedMaterialKey>(2);
+
+        static readonly int _premultipliedTextureId = Shader.PropertyToID("_NowPremultipliedTexture");
+
+        static NowMesh UseTextureMaterial(Texture texture, bool premultiplied)
         {
             if (_defaultMaterial == null)
                 return null;
 
-            if (!_textureMaterials.TryGetValue(texture, out var entry) || entry.material == null)
+            var key = new TextureMaterialKey(texture, premultiplied);
+
+            if (!_textureMaterials.TryGetValue(key, out var entry) || entry.material == null)
             {
                 entry = new TextureMaterialEntry
                 {
@@ -582,7 +629,8 @@ namespace NowUI
                         mainTexture = texture
                     }
                 };
-                _textureMaterials[texture] = entry;
+                SetPremultipliedTexture(entry.material, premultiplied);
+                _textureMaterials[key] = entry;
             }
 
             return UseMaterial(entry.material, NowMeshKind.TexturedRectangle);
@@ -632,7 +680,7 @@ namespace NowUI
             return _meshes.array[orderedId];
         }
 
-        internal static NowMesh UseEffectMaterial(Material material, ref int cachedMeshId, NowMeshKind kind)
+        internal static NowMesh UseEffectMaterial(Material material, NowMeshKind kind)
         {
             return UseMaterial(material, null, kind, default);
         }
@@ -642,7 +690,11 @@ namespace NowUI
             return UseMaterial(material, canvasMaterial, kind, default);
         }
 
-        static Material GetTexturedMaterial(Material source, Texture texture, bool syncPerFrame)
+        static Material GetTexturedMaterial(
+            Material source,
+            Texture texture,
+            bool syncPerFrame,
+            bool premultiplied = false)
         {
             if (source == null)
                 return null;
@@ -650,7 +702,7 @@ namespace NowUI
             if (texture == null)
                 return source;
 
-            var key = new TexturedMaterialKey(source, texture);
+            var key = new TexturedMaterialKey(source, texture, premultiplied);
 
             if (!_texturedMaterialCache.TryGetValue(key, out var entry))
             {
@@ -679,6 +731,7 @@ namespace NowUI
                     entry.material.CopyPropertiesFromMaterial(source);
                     entry.lastSyncFrame = syncFrame;
                     entry.material.mainTexture = texture;
+                    SetPremultipliedTexture(entry.material, premultiplied);
                     return entry.material;
                 }
             }
@@ -691,7 +744,14 @@ namespace NowUI
 
             entry.lastSyncFrame = Time.frameCount;
             entry.material.mainTexture = texture;
+            SetPremultipliedTexture(entry.material, premultiplied);
             return entry.material;
+        }
+
+        static void SetPremultipliedTexture(Material material, bool premultiplied)
+        {
+            if (material != null && material.HasProperty(_premultipliedTextureId))
+                material.SetFloat(_premultipliedTextureId, premultiplied ? 1f : 0f);
         }
 
         static NowMesh UseCustomRectangleMaterial(in NowRectangle rectangle)
@@ -701,14 +761,85 @@ namespace NowUI
             bool syncPerFrame = !rectangle.staticMaterial;
 
             if (material == null)
-                material = rectangle.texture != null ? GetTexturedMaterial(_defaultMaterial, rectangle.texture, syncPerFrame) : _defaultMaterial;
+                material = rectangle.texture != null
+                    ? GetTexturedMaterial(_defaultMaterial, rectangle.texture, syncPerFrame, rectangle.premultipliedTexture)
+                    : _defaultMaterial;
             else if (rectangle.texture != null)
-                material = GetTexturedMaterial(material, rectangle.texture, syncPerFrame);
+                material = GetTexturedMaterial(material, rectangle.texture, syncPerFrame, rectangle.premultipliedTexture);
 
             if (canvasMaterial != null && rectangle.texture != null)
-                canvasMaterial = GetTexturedMaterial(canvasMaterial, rectangle.texture, syncPerFrame);
+                canvasMaterial = GetTexturedMaterial(canvasMaterial, rectangle.texture, syncPerFrame, rectangle.premultipliedTexture);
 
             return UseRectangleMaterial(material, canvasMaterial, NowMeshKind.CustomRectangle);
+        }
+
+        /// <summary>
+        /// Drops cached material instances which retain a caller-owned dynamic
+        /// texture. Long-lived ordinary assets stay cached; explicitly disposed
+        /// producers such as model previews call this before destroying the texture.
+        /// </summary>
+        internal static void ReleaseTextureMaterials(Texture texture)
+        {
+            if (texture == null)
+                return;
+
+            _releasedTextureMaterialKeys.Clear();
+
+            foreach (var pair in _textureMaterials)
+            {
+                if (ReferenceEquals(pair.Key.texture, texture))
+                    _releasedTextureMaterialKeys.Add(pair.Key);
+            }
+
+            for (int i = 0; i < _releasedTextureMaterialKeys.Count; ++i)
+            {
+                var key = _releasedTextureMaterialKeys[i];
+
+                if (_textureMaterials.TryGetValue(key, out var entry))
+                {
+                    NowGraphic.ReleaseCachedMaterial(entry.material);
+                    NowWorldGraphic.ReleaseCachedMaterial(entry.material);
+                    DestroyCachedMaterial(entry.material);
+                }
+
+                _textureMaterials.Remove(key);
+            }
+
+            _releasedTexturedMaterialKeys.Clear();
+
+            foreach (var pair in _texturedMaterialCache)
+            {
+                if (ReferenceEquals(pair.Key.texture, texture))
+                    _releasedTexturedMaterialKeys.Add(pair.Key);
+            }
+
+            for (int i = 0; i < _releasedTexturedMaterialKeys.Count; ++i)
+            {
+                var key = _releasedTexturedMaterialKeys[i];
+
+                if (_texturedMaterialCache.TryGetValue(key, out var entry))
+                {
+                    NowGraphic.ReleaseCachedMaterial(entry.material);
+                    NowWorldGraphic.ReleaseCachedMaterial(entry.material);
+                    DestroyCachedMaterial(entry.material);
+                }
+
+                _texturedMaterialCache.Remove(key);
+            }
+
+            _releasedTextureMaterialKeys.Clear();
+            _releasedTexturedMaterialKeys.Clear();
+        }
+
+        static void DestroyCachedMaterial(Material material)
+        {
+            if (material == null)
+                return;
+
+            if (Application.isPlaying)
+                UnityEngine.Object.Destroy(material);
+            else
+                UnityEngine.Object.DestroyImmediate(material);
         }
 
         static Matrix4x4 GetProjectionMatrix()
@@ -1931,7 +2062,7 @@ namespace NowUI
             }
             else if (rectangle.texture != null)
             {
-                mesh = UseTextureMaterial(rectangle.texture);
+                mesh = UseTextureMaterial(rectangle.texture, rectangle.premultipliedTexture);
 
                 if (mesh == null)
                     return;

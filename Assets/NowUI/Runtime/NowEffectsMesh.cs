@@ -8,11 +8,6 @@ namespace NowUI
 {
     internal static class NowEffectsMesh
     {
-        sealed class MaterialMeshEntry
-        {
-            public int meshId = -1;
-        }
-
         static readonly List<Vector3> _vertices = new List<Vector3>(256);
         static readonly List<Vector2> _uv0 = new List<Vector2>(256);
         static readonly List<Vector4> _rect = new List<Vector4>(256);
@@ -23,8 +18,6 @@ namespace NowUI
         static readonly List<Vector4> _mask = new List<Vector4>(256);
         static readonly List<Vector4> _rawUv = new List<Vector4>(256);
         static readonly List<int> _triangles = new List<int>(512);
-        static readonly Dictionary<Material, MaterialMeshEntry> _materialMeshes =
-            new Dictionary<Material, MaterialMeshEntry>(16);
         static int[] _indexMap = new int[256];
         static int[] _grid = new int[256];
 
@@ -190,13 +183,7 @@ namespace NowUI
             if (material == null)
                 return null;
 
-            if (!_materialMeshes.TryGetValue(material, out var entry))
-            {
-                entry = new MaterialMeshEntry();
-                _materialMeshes[material] = entry;
-            }
-
-            return Now.UseEffectMaterial(material, ref entry.meshId, kind);
+            return Now.UseEffectMaterial(material, kind);
         }
 
         static bool ShouldSubdivideBatch(NowMeshKind kind, bool subdivideText)

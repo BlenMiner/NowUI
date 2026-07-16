@@ -312,6 +312,28 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **3D model previews compose as ordinary NowUI textures.**
+  `NowModelPreview` owns a preview camera, stable responsive `RenderTexture`,
+  automatic framing, fixed or draw-sized resolution, and
+  `WhenDirty`/`EveryFrame`/`Manual` refresh modes. The default isolated source
+  path submits static meshes and CPU-baked skinned snapshots directly without
+  instantiating or mutating the caller's source. `FromSceneObject(...)` instead
+  borrows a user-owned loaded hierarchy so Unity retains normal GPU skinning,
+  LOD, particles, Animator, dressing, placement, and culling behavior.
+  `Now.Model(rect, preview)` preserves masks, rounded corners, tint, outlines,
+  custom materials, and effect scopes. Preview renders are deferred outside UI
+  rebuilds, stop scheduling when clean or explicitly paused without mutating
+  caller-owned simulation, reuse warmed draw-list and resource bookkeeping
+  without GC, and use premultiplied-alpha sampling without dark silhouette
+  fringes. A shared private Unity scene isolates raw-preview lighting and
+  environment with no per-frame scene scan; loaded-scene lighting is an
+  isolated-mode opt-in and URP/HDRP volume post-processing remains independent.
+  Each preview retains only one hidden Camera GameObject; the disabled key
+  light, SRP request, directional scratch state, and discovery buffers are
+  shared across serialized preview work. Raw object matrices and bounds stay
+  cached until their presentation transform or hierarchy changes.
+  URP 17.3+ uses the native RenderGraph renderer-pass path, while earlier URP
+  versions retain the compatibility execution path.
 - **Live embeds in Markdown, including inline NowUI markup.** Fenced code
   blocks can now render as live content: pass a caller-owned
   `NowMarkdownEmbedSet` to `NowMarkdown.Document(text).SetEmbeds(...)` and

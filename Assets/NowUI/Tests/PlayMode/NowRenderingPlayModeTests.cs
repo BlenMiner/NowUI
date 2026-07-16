@@ -1,6 +1,7 @@
 using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.TestTools;
 using NowUI;
 using Object = UnityEngine.Object;
@@ -64,6 +65,56 @@ public class NowRenderingPlayModeTests
         return count;
     }
 
+    static GameObject CreateSkinnedCube(
+        Material material,
+        out Transform animatedBone,
+        out Mesh ownedMesh)
+    {
+        var primitive = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        var cubeMesh = primitive.GetComponent<MeshFilter>().sharedMesh;
+        Object.DestroyImmediate(primitive);
+
+        var root = new GameObject("Skinned Preview Pixel Source");
+        var boneRoot = new GameObject("Bone Root").transform;
+        boneRoot.SetParent(root.transform, false);
+        var boneTip = new GameObject("Bone Tip").transform;
+        boneTip.SetParent(boneRoot, false);
+        boneTip.localPosition = Vector3.up * 0.5f;
+        var rendererObject = new GameObject("Skinned Cube");
+        rendererObject.transform.SetParent(root.transform, false);
+        var renderer = rendererObject.AddComponent<SkinnedMeshRenderer>();
+
+        ownedMesh = Object.Instantiate(cubeMesh);
+        ownedMesh.name = "Now Preview Pixel Skinned Cube";
+        var vertices = ownedMesh.vertices;
+        var weights = new BoneWeight[vertices.Length];
+
+        for (int i = 0; i < vertices.Length; ++i)
+        {
+            weights[i] = new BoneWeight
+            {
+                boneIndex0 = vertices[i].y > 0f ? 1 : 0,
+                weight0 = 1f
+            };
+        }
+
+        ownedMesh.boneWeights = weights;
+        ownedMesh.bindposes = new[]
+        {
+            boneRoot.worldToLocalMatrix * rendererObject.transform.localToWorldMatrix,
+            boneTip.worldToLocalMatrix * rendererObject.transform.localToWorldMatrix
+        };
+        ownedMesh.RecalculateBounds();
+        renderer.sharedMesh = ownedMesh;
+        renderer.sharedMaterial = material;
+        renderer.bones = new[] { boneRoot, boneTip };
+        renderer.rootBone = boneRoot;
+        renderer.localBounds = ownedMesh.bounds;
+        renderer.updateWhenOffscreen = true;
+        animatedBone = boneTip;
+        return root;
+    }
+
     static void AssertTargetOpaque(Color32[] pixels, string message)
     {
         for (int y = 0; y < Side; ++y)
@@ -107,6 +158,599 @@ public class NowRenderingPlayModeTests
 
         Assert.Greater(pixels[(Side / 2) * Side + Side / 2].r, 200);
         Assert.AreEqual(0, pixels[4 * Side + 4].a);
+    }
+
+    [Test]
+    public void PremultipliedTextureAvoidsMultiplyingAlphaTwice()
+    {
+        var source = new Texture2D(1, 1, TextureFormat.RGBA32, false, true);
+
+        try
+        {
+            source.SetPixel(0, 0, new Color(0.5f, 0f, 0f, 0.5f));
+            source.Apply(false, false);
+
+            using (_renderer.Begin(_target))
+            {
+                Now.Rectangle(new NowRect(8f, 32f, 48f, 64f))
+                    .SetTexture(source, premultipliedAlpha: false)
+                    .Draw();
+                Now.Rectangle(new NowRect(72f, 32f, 48f, 64f))
+                    .SetTexture(source, premultipliedAlpha: true)
+                    .Draw();
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            var pixels = ReadPixels(_target);
+            Color32 straight = pixels[64 * Side + 32];
+            Color32 premultiplied = pixels[64 * Side + 96];
+
+            Assert.AreEqual(straight.a, premultiplied.a, 4);
+            Assert.Greater(
+                premultiplied.r,
+                straight.r + 30,
+                $"PMA branch did not preserve RGB (straight {straight}, PMA {premultiplied}).");
+        }
+        finally
+        {
+            Now.ReleaseTextureMaterials(source);
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator ModelPreviewRendersThroughTextureBackedEffect()
+    {
+        var source = GameObject.CreatePrimitive(PrimitiveType.Cube);
+
+        try
+        {
+            using var preview = new NowModelPreview(source)
+                .SetFixedResolution(64, 64);
+
+            Assert.IsTrue(preview.RenderNow(), "The preview camera request did not render.");
+            yield return null;
+
+            using (_renderer.Begin(_target))
+                Now.Model(new NowRect(32f, 32f, 64f, 64f), preview).Draw();
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            yield return null;
+
+            var direct = ReadPixels(_target);
+            Assert.Greater(direct[64 * Side + 64].a, 150);
+            Assert.Greater(
+                CountPixels(direct, pixel => pixel.a < 20),
+                Side * Side / 2,
+                $"Direct model draw did not preserve transparency; corners were " +
+                $"{direct[0]}, {direct[Side - 1]}, {direct[(Side - 1) * Side]}, {direct[^1]}.");
+            _renderer.Clear();
+
+            using (_renderer.Begin(_target))
+            {
+                using (NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 32f))
+                    .SetRenderToTexture()
+                    .SetSourceRect(new NowRect(32f, 32f, 64f, 64f))
+                    .Begin())
+                {
+                    Now.Model(new NowRect(32f, 32f, 64f, 64f), preview).Draw();
+                }
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            yield return null;
+
+            var output = ReadPixels(_target);
+            Assert.Greater(output[64 * Side + 64].a, 150);
+            Assert.Greater(CountPixels(output, pixel => pixel.a < 20), Side * Side / 2);
+        }
+        finally
+        {
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator IsolatedRenderMeshMatchesCloneBaselineCoverage()
+    {
+        var source = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        source.transform.localPosition = new Vector3(3f, -2f, 5f);
+        source.transform.localRotation = Quaternion.Euler(17f, 31f, -8f);
+        source.transform.localScale = new Vector3(2.5f, 0.8f, 1.4f);
+
+        try
+        {
+            using var clone = new NowModelPreview(
+                    source,
+                    31,
+                    NowModelPreviewBackend.RendererClone)
+                .SetFixedResolution(96, 96);
+            using var raw = new NowModelPreview(source)
+                .SetFixedResolution(96, 96);
+
+            Assert.IsTrue(clone.RenderNow(), "The clone preview did not render.");
+            Assert.IsTrue(raw.RenderNow(), "The RenderMesh preview did not render.");
+            yield return null;
+
+            var clonePixels = ReadPixels(clone.texture);
+            var rawPixels = ReadPixels(raw.texture);
+            int cloneCoverage = CountPixels(clonePixels, pixel => pixel.a > 32);
+            int rawCoverage = CountPixels(rawPixels, pixel => pixel.a > 32);
+            Color32 cloneCenter = clonePixels[48 * 96 + 48];
+            Color32 rawCenter = rawPixels[48 * 96 + 48];
+
+            Assert.Greater(rawCoverage, 500, "RenderMesh produced no useful model coverage.");
+            Assert.AreEqual(cloneCoverage, rawCoverage, 96,
+                "RenderMesh and clone framing diverged by more than about one scanline.");
+            Assert.AreEqual(cloneCenter.r, rawCenter.r, 12);
+            Assert.AreEqual(cloneCenter.g, rawCenter.g, 12);
+            Assert.AreEqual(cloneCenter.b, rawCenter.b, 12);
+            Assert.AreEqual(cloneCenter.a, rawCenter.a, 4);
+        }
+        finally
+        {
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator IsolatedRenderMeshSubmissionIsRestrictedToItsPreviewCamera()
+    {
+        var source = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        var cameraObject = new GameObject("RenderMesh Leak Probe Camera");
+        var gameTarget = new RenderTexture(96, 96, 24, RenderTextureFormat.ARGB32);
+
+        try
+        {
+            gameTarget.Create();
+
+            using var raw = new NowModelPreview(source)
+                .SetFixedResolution(96, 96);
+            Assert.IsTrue(raw.RenderNow(), "The RenderMesh preview did not render.");
+
+            var gameCamera = cameraObject.AddComponent<Camera>();
+            gameCamera.CopyFrom(raw.camera);
+            gameCamera.cameraType = CameraType.Game;
+            gameCamera.scene = default;
+            gameCamera.clearFlags = CameraClearFlags.SolidColor;
+            gameCamera.backgroundColor = Color.magenta;
+            gameCamera.targetTexture = gameTarget;
+            gameCamera.Render();
+            yield return null;
+
+            var pixels = ReadPixels(gameTarget);
+            int changed = CountPixels(
+                pixels,
+                pixel => pixel.r < 240 || pixel.b < 240 || pixel.g > 20 || pixel.a < 240);
+
+            Assert.Less(changed, 32,
+                "A camera-targeted RenderMesh submission became visible to a gameplay camera.");
+        }
+        finally
+        {
+            var gameCamera = cameraObject != null ? cameraObject.GetComponent<Camera>() : null;
+
+            if (gameCamera != null)
+                gameCamera.targetTexture = null;
+
+            gameTarget.Release();
+            Object.DestroyImmediate(gameTarget);
+            Object.DestroyImmediate(cameraObject);
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator SceneObjectPreviewBorrowsInPlaceAndLeavesGameCameraCullingToCaller()
+    {
+        var source = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        source.name = "Caller-Owned Scene Preview";
+        source.layer = 30;
+        source.transform.position = new Vector3(123f, 7f, -41f);
+        var sourceRenderer = source.GetComponent<Renderer>();
+        var originalPosition = source.transform.position;
+        var cameraObject = new GameObject("Scene Preview Culling Probe");
+        var gameTarget = new RenderTexture(96, 96, 24, RenderTextureFormat.ARGB32);
+
+        try
+        {
+            gameTarget.Create();
+
+            using (var preview = NowModelPreview.FromSceneObject(source, 1 << 30)
+                .SetFixedResolution(96, 96))
+            {
+                Assert.IsTrue(preview.RenderNow(), "The borrowed scene-object preview did not render.");
+                yield return null;
+
+                int previewCoverage = CountPixels(ReadPixels(preview.texture), pixel => pixel.a > 32);
+                Assert.Greater(previewCoverage, 500, "The scene object produced no useful preview coverage.");
+                Assert.AreEqual(originalPosition, source.transform.position);
+                Assert.AreEqual(30, source.layer);
+                Assert.IsFalse(sourceRenderer.forceRenderingOff);
+
+                var gameCamera = cameraObject.AddComponent<Camera>();
+                gameCamera.CopyFrom(preview.camera);
+                gameCamera.cameraType = CameraType.Game;
+                gameCamera.scene = default;
+                gameCamera.cullingMask = 0;
+                gameCamera.clearFlags = CameraClearFlags.SolidColor;
+                gameCamera.backgroundColor = Color.magenta;
+                gameCamera.targetTexture = gameTarget;
+                gameCamera.Render();
+                yield return null;
+
+                var pixels = ReadPixels(gameTarget);
+                int changed = CountPixels(
+                    pixels,
+                    pixel => pixel.r < 240 || pixel.b < 240 || pixel.g > 20 || pixel.a < 240);
+                Assert.Less(changed, 32,
+                    "The caller's game-camera culling mask should remain authoritative.");
+            }
+
+            Assert.IsTrue(source != null);
+            Assert.AreEqual(originalPosition, source.transform.position);
+            Assert.AreEqual(30, source.layer);
+            Assert.IsFalse(sourceRenderer.forceRenderingOff);
+        }
+        finally
+        {
+            var gameCamera = cameraObject != null ? cameraObject.GetComponent<Camera>() : null;
+
+            if (gameCamera != null)
+                gameCamera.targetTexture = null;
+
+            gameTarget.Release();
+            Object.DestroyImmediate(gameTarget);
+            Object.DestroyImmediate(cameraObject);
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator IsolatedSkinnedSnapshotMatchesCloneBaselineCoverage()
+    {
+        var shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Color");
+        Assert.NotNull(shader);
+        var material = new Material(shader) { color = Color.white };
+        var source = CreateSkinnedCube(material, out var bone, out var mesh);
+
+        try
+        {
+            bone.localRotation = Quaternion.Euler(0f, 0f, 18f);
+
+            using var clone = new NowModelPreview(
+                    source,
+                    31,
+                    NowModelPreviewBackend.RendererClone)
+                .SetFixedResolution(96, 96);
+            using var snapshot = new NowModelPreview(source)
+                .SetFixedResolution(96, 96);
+
+            Assert.AreEqual(1, snapshot.ownedBakedMeshCount);
+            Assert.AreEqual(0, snapshot.unsupportedRendererCount);
+            Assert.IsTrue(clone.RenderNow());
+            Assert.IsTrue(snapshot.RenderNow());
+            yield return null;
+
+            int cloneCoverage = CountPixels(ReadPixels(clone.texture), pixel => pixel.a > 32);
+            int snapshotCoverage = CountPixels(ReadPixels(snapshot.texture), pixel => pixel.a > 32);
+
+            Assert.Greater(snapshotCoverage, 500, "The CPU-baked snapshot rendered no visible mesh.");
+            Assert.AreEqual(cloneCoverage, snapshotCoverage, Mathf.CeilToInt(cloneCoverage * 0.15f),
+                "The baked pose uses its exact mesh bounds while SkinnedMeshRenderer framing uses localBounds; " +
+                "coverage should remain comparable even though those bounds are not pixel-identical.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(source);
+            Object.DestroyImmediate(mesh);
+            Object.DestroyImmediate(material);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator ModelPreviewSourceModesRenderUnderInstalledUrp()
+    {
+        var assetType = System.Type.GetType(
+            "UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset, " +
+            "Unity.RenderPipelines.Universal.Runtime",
+            throwOnError: false);
+        var rendererDataType = System.Type.GetType(
+            "UnityEngine.Rendering.Universal.ScriptableRendererData, " +
+            "Unity.RenderPipelines.Universal.Runtime",
+            throwOnError: false);
+
+        if (assetType == null || rendererDataType == null)
+        {
+            Assert.Ignore("URP is not installed in this validation project.");
+            yield break;
+        }
+
+        var create = assetType.GetMethod(
+            "Create",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+            null,
+            new[] { rendererDataType },
+            null);
+        Assert.NotNull(create, "URP no longer exposes its runtime pipeline-asset factory.");
+
+        var previousDefault = GraphicsSettings.defaultRenderPipeline;
+        var previousQuality = QualitySettings.renderPipeline;
+        var pipeline = (RenderPipelineAsset)create.Invoke(null, new object[] { null });
+        GameObject source = null;
+        Material material = null;
+
+        try
+        {
+            GraphicsSettings.defaultRenderPipeline = pipeline;
+            QualitySettings.renderPipeline = pipeline;
+            yield return null;
+            yield return null;
+            Assert.AreSame(pipeline, GraphicsSettings.currentRenderPipeline);
+
+            var shader = Shader.Find("Universal Render Pipeline/Lit");
+            Assert.NotNull(shader, "URP Lit shader was not available after installing URP.");
+            material = new Material(shader) { color = Color.white };
+            source = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            source.GetComponent<Renderer>().sharedMaterial = material;
+
+            using var clone = new NowModelPreview(
+                    source,
+                    31,
+                    NowModelPreviewBackend.RendererClone)
+                .SetFixedResolution(96, 96);
+            using var raw = new NowModelPreview(source)
+                .SetFixedResolution(96, 96);
+            Assert.IsTrue(clone.RenderNow(), "URP rejected the clone preview request.");
+            Assert.IsTrue(raw.RenderNow(), "URP rejected the RenderMesh preview request.");
+            yield return null;
+
+            int cloneCoverage = CountPixels(ReadPixels(clone.texture), pixel => pixel.a > 32);
+            int rawCoverage = CountPixels(ReadPixels(raw.texture), pixel => pixel.a > 32);
+            Assert.Greater(rawCoverage, 500, "URP rendered no camera-targeted mesh coverage.");
+            Assert.AreEqual(cloneCoverage, rawCoverage, 128,
+                "URP clone and RenderMesh framing diverged.");
+
+            source.layer = 30;
+            using var scene = NowModelPreview.FromSceneObject(source, 1 << 30)
+                .SetFixedResolution(96, 96);
+            Assert.IsTrue(scene.RenderNow(), "URP rejected the borrowed scene-object request.");
+            yield return null;
+            int sceneCoverage = CountPixels(ReadPixels(scene.texture), pixel => pixel.a > 32);
+            Assert.Greater(sceneCoverage, 500, "URP rendered no borrowed scene-object coverage.");
+        }
+        finally
+        {
+            GraphicsSettings.defaultRenderPipeline = previousDefault;
+            QualitySettings.renderPipeline = previousQuality;
+            Object.DestroyImmediate(source);
+            Object.DestroyImmediate(material);
+            Object.DestroyImmediate(pipeline);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator InstalledUrpRendererFeatureDrawsNowUi()
+    {
+        var assetType = System.Type.GetType(
+            "UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset, " +
+            "Unity.RenderPipelines.Universal.Runtime",
+            throwOnError: false);
+        var rendererDataType = System.Type.GetType(
+            "UnityEngine.Rendering.Universal.ScriptableRendererData, " +
+            "Unity.RenderPipelines.Universal.Runtime",
+            throwOnError: false);
+        var featureType = System.Type.GetType(
+            "NowUI.NowUniversalRendererFeature, NowUI.URP",
+            throwOnError: false);
+
+        if (assetType == null || rendererDataType == null || featureType == null)
+        {
+            Assert.Ignore("URP and NowUI.URP are not installed in this validation project.");
+            yield break;
+        }
+
+        var create = assetType.GetMethod(
+            "Create",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+            null,
+            new[] { rendererDataType },
+            null);
+        Assert.NotNull(create);
+
+        var previousDefault = GraphicsSettings.defaultRenderPipeline;
+        var previousQuality = QualitySettings.renderPipeline;
+        var pipeline = (RenderPipelineAsset)create.Invoke(null, new object[] { null });
+        var rendererDataField = assetType.GetField(
+            "m_RendererDataList",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(rendererDataField);
+        var rendererDataArray = (System.Array)rendererDataField.GetValue(pipeline);
+        var rendererData = (ScriptableObject)rendererDataArray.GetValue(0);
+        var feature = (ScriptableObject)ScriptableObject.CreateInstance(featureType);
+        var features = (System.Collections.IList)rendererDataType
+            .GetProperty("rendererFeatures")
+            .GetValue(rendererData);
+        features.Add(feature);
+        rendererDataType.GetMethod("SetDirty").Invoke(rendererData, null);
+        var cameraObject = new GameObject("URP NowUI Feature Test Camera");
+        var graphicObject = new GameObject("URP NowUI Feature Test Graphic");
+        var target = new RenderTexture(96, 96, 24, RenderTextureFormat.ARGB32);
+
+        try
+        {
+            GraphicsSettings.defaultRenderPipeline = pipeline;
+            QualitySettings.renderPipeline = pipeline;
+            yield return null;
+            yield return null;
+
+            target.Create();
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.enabled = false;
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = Color.clear;
+            camera.cullingMask = 0;
+            var graphic = graphicObject.AddComponent<NowPipelineGraphic>();
+            graphic.targetCamera = camera;
+            graphic.rebuildNowUI += (_, _, rect) =>
+                Now.Rectangle(rect).SetColor(Color.green).Draw();
+
+            var request = new RenderPipeline.StandardRequest
+            {
+                destination = target,
+                mipLevel = 0,
+                slice = 0,
+                face = CubemapFace.Unknown
+            };
+            Assert.IsTrue(RenderPipeline.SupportsRenderRequest(camera, request));
+            RenderPipeline.SubmitRenderRequest(camera, request);
+            yield return null;
+
+            var pixels = ReadPixels(target);
+            int green = CountPixels(
+                pixels,
+                pixel => pixel.g > 180 && pixel.r < 80 && pixel.b < 80 && pixel.a > 180);
+            Assert.Greater(green, 96 * 96 - 500,
+                "The installed NowUI URP renderer feature did not composite its RenderGraph pass.");
+        }
+        finally
+        {
+            GraphicsSettings.defaultRenderPipeline = previousDefault;
+            QualitySettings.renderPipeline = previousQuality;
+            target.Release();
+            Object.DestroyImmediate(target);
+            Object.DestroyImmediate(graphicObject);
+            Object.DestroyImmediate(cameraObject);
+            Object.DestroyImmediate(feature);
+            Object.DestroyImmediate(rendererData);
+            Object.DestroyImmediate(pipeline);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator ModelPreviewSceneLightingIsOptIn()
+    {
+        var source = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        var sceneLightObject = new GameObject("Scene Directional Light");
+        var sceneLight = sceneLightObject.AddComponent<Light>();
+        sceneLight.type = LightType.Directional;
+        sceneLight.color = Color.red;
+        sceneLight.intensity = 4f;
+        sceneLight.cullingMask = 1 << 31;
+        sceneLight.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+        sceneLight.enabled = false;
+
+        try
+        {
+            using var preview = new NowModelPreview(source)
+                .SetFixedResolution(64, 64)
+                .SetBackground(Color.black)
+                .SetLight(Quaternion.identity, 0f, Color.white);
+
+            Assert.IsTrue(preview.RenderNow());
+            yield return null;
+            Color32 noSceneLight = ReadPixels(preview.texture)[32 * 64 + 32];
+
+            sceneLight.enabled = true;
+            preview.MarkDirty();
+            Assert.IsTrue(preview.RenderNow());
+            yield return null;
+            Color32 isolated = ReadPixels(preview.texture)[32 * 64 + 32];
+
+            preview.SetSceneLightingEnabled();
+            Assert.IsTrue(preview.RenderNow());
+            yield return null;
+            Color32 sceneLit = ReadPixels(preview.texture)[32 * 64 + 32];
+
+            Assert.AreEqual(
+                noSceneLight.r,
+                isolated.r,
+                4,
+                $"A scene directional crossed into the private preview scene ({noSceneLight} -> {isolated}).");
+            Assert.Greater(
+                sceneLit.r,
+                isolated.r + 40,
+                $"Scene light did not stay behind the opt-in (isolated {isolated}, scene {sceneLit}).");
+            Assert.Greater(sceneLit.r, sceneLit.g + 40);
+        }
+        finally
+        {
+            Object.DestroyImmediate(sceneLightObject);
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator SharedPreviewLightReappliesSettingsWhenPreviewsAlternate()
+    {
+        var source = GameObject.CreatePrimitive(PrimitiveType.Cube);
+
+        try
+        {
+            using var redPreview = new NowModelPreview(source)
+                .SetFixedResolution(64, 64)
+                .SetBackground(Color.black)
+                .SetLight(Quaternion.Euler(35f, 145f, 0f), 3f, Color.red);
+            using var bluePreview = new NowModelPreview(source)
+                .SetFixedResolution(64, 64)
+                .SetBackground(Color.black)
+                .SetLight(Quaternion.Euler(35f, 145f, 0f), 3f, Color.blue);
+
+            Assert.IsTrue(redPreview.RenderNow());
+            yield return null;
+            Color32 firstRed = ReadPixels(redPreview.texture)[32 * 64 + 32];
+
+            Assert.IsTrue(bluePreview.RenderNow());
+            yield return null;
+            Color32 blue = ReadPixels(bluePreview.texture)[32 * 64 + 32];
+
+            Assert.IsTrue(redPreview.RenderNow());
+            yield return null;
+            Color32 secondRed = ReadPixels(redPreview.texture)[32 * 64 + 32];
+
+            Assert.Greater(firstRed.r, firstRed.b + 20, $"First red render was {firstRed}.");
+            Assert.Greater(blue.b, blue.r + 20, $"Blue render inherited another preview's light: {blue}.");
+            Assert.Greater(secondRed.r, secondRed.b + 20,
+                $"Alternating back to red did not restore its light settings: {secondRed}.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [Test]
+    public void ModelPreviewNeverOwnsCallerParticleSimulation()
+    {
+        var source = new GameObject("Particle Preview Source");
+        var sourceParticles = source.AddComponent<ParticleSystem>();
+        var main = sourceParticles.main;
+        main.playOnAwake = true;
+        sourceParticles.Play();
+        bool originallyPlaying = sourceParticles.isPlaying;
+
+        try
+        {
+            using (var preview = new NowModelPreview(source)
+                .SetUpdateMode(NowModelPreviewUpdateMode.EveryFrame))
+            {
+                preview.Prepare(32f, 32f);
+                preview.SetRenderingEnabled(false);
+                Assert.AreEqual(originallyPlaying, sourceParticles.isPlaying);
+            }
+
+            using (var preview = NowModelPreview.FromSceneObject(source)
+                .SetUpdateMode(NowModelPreviewUpdateMode.EveryFrame))
+            {
+                preview.Prepare(32f, 32f);
+                preview.SetRenderingEnabled(false);
+                Assert.AreEqual(originallyPlaying, sourceParticles.isPlaying);
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(source);
+        }
     }
 
     [Test]

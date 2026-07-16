@@ -2,6 +2,17 @@ using UnityEngine;
 
 namespace NowUI
 {
+    internal interface INowDynamicTextureHost
+    {
+        int dynamicTextureBuildVersion { get; }
+
+        bool isDynamicTextureHostValid { get; }
+
+        void BeginDynamicTextureBuild();
+
+        void RequestDynamicTextureRebuild();
+    }
+
     internal interface INowFrameContent
     {
         void Draw(NowRect rect);
@@ -12,6 +23,9 @@ namespace NowUI
         static readonly NowScopeGuard _scopes = new NowScopeGuard("NowFrame.Begin");
 
         static int _scopeStartedAt = int.MinValue;
+        static INowDynamicTextureHost _dynamicTextureHost;
+
+        internal static INowDynamicTextureHost dynamicTextureHost => _dynamicTextureHost;
 
         internal static bool hasActiveScopesThisFrame =>
             _scopes.count > 0 && _scopeStartedAt == Time.frameCount;
@@ -20,9 +34,13 @@ namespace NowUI
         {
             _scopes.Clear();
             _scopeStartedAt = int.MinValue;
+            _dynamicTextureHost = null;
         }
 
-        internal static NowFrameScope Begin(float uiScale, bool trackRepaint = false)
+        internal static NowFrameScope Begin(
+            float uiScale,
+            bool trackRepaint = false,
+            INowDynamicTextureHost dynamicTextureHost = null)
         {
             if (_scopes.count > 0)
             {
@@ -36,10 +54,13 @@ namespace NowUI
 
             try
             {
+                dynamicTextureHost?.BeginDynamicTextureBuild();
+                _dynamicTextureHost = dynamicTextureHost;
                 return new NowFrameScope(uiScale, trackRepaint, token);
             }
             catch
             {
+                _dynamicTextureHost = null;
                 _scopes.Exit(token);
                 throw;
             }
@@ -47,7 +68,11 @@ namespace NowUI
 
         internal static bool IsCurrent(int token) => _scopes.IsCurrent(token);
 
-        internal static void End(int token) => _scopes.Exit(token);
+        internal static void End(int token)
+        {
+            _dynamicTextureHost = null;
+            _scopes.Exit(token);
+        }
 
         internal static Vector2 DrawContent<TContent>(
             ref TContent content,

@@ -20,6 +20,11 @@
             "name": "com.unity.render-pipelines.universal",
             "expression": "0.0.0",
             "define": "NOWUI_URP"
+        },
+        {
+            "name": "com.unity.render-pipelines.universal",
+            "expression": "17.3.0",
+            "define": "NOWUI_URP_RENDER_GRAPH_ONLY"
         }
     ],
     "noEngineReferences": false

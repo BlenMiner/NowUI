@@ -54,6 +54,8 @@ public class NowDocsExample : NowLayoutGraphic
         CustomMaterialsDemo,
         Effects,
         EffectsDemo,
+        ModelPreviews,
+        ModelPreviewsDemo,
         WorldSpace,
         RenderPipelines,
         Docking,
@@ -80,6 +82,7 @@ public class NowDocsExample : NowLayoutGraphic
         CustomMaterialsDemo,
         GlassDemo,
         EffectsDemo,
+        ModelPreviewsDemo,
         ViewStackDemo,
         FilePickerDemo,
     }
@@ -136,6 +139,8 @@ public class NowDocsExample : NowLayoutGraphic
         new Page { title = "Custom material demo", icon = "🧪", kind = PageKind.CustomMaterialsDemo },
         new Page { title = "Effects", file = "Effects.md", icon = "🌊" },
         new Page { title = "Effects demo", icon = "🧪", kind = PageKind.EffectsDemo },
+        new Page { title = "Model previews", file = "ModelPreviews.md", icon = "🧍" },
+        new Page { title = "Model previews demo", icon = "🧪", kind = PageKind.ModelPreviewsDemo },
         new Page { title = "World space", file = "WorldSpace.md", icon = "🌍" },
         new Page { title = "Render pipelines", file = "RenderPipelines.md", icon = "🎛️" },
         new Page { title = "Docking", file = "Docking.md", icon = "🧲" },
@@ -187,6 +192,8 @@ public class NowDocsExample : NowLayoutGraphic
         Link(PageId.CustomMaterialsDemo, 1),
         Link(PageId.Effects),
         Link(PageId.EffectsDemo, 1),
+        Link(PageId.ModelPreviews),
+        Link(PageId.ModelPreviewsDemo, 1),
         Link(PageId.WorldSpace),
         Link(PageId.RenderPipelines),
 
@@ -262,6 +269,14 @@ public class NowDocsExample : NowLayoutGraphic
     bool _effectsDemoWave = true;
     float _effectsDemoProgress = 0.55f;
     float _effectsDemoSubdivision = 4f;
+    bool _modelPreviewDemoAutoRotate = true;
+    bool _modelPreviewDemoPaused;
+    bool _modelPreviewDemoSceneLighting;
+    bool _modelPreviewDemoPostProcessing;
+    int _modelPreviewDemoUpdateMode;
+    float _modelPreviewDemoAngle = 18f;
+    float _modelPreviewDemoResolutionScale = 0.8f;
+    float _modelPreviewDemoWaveAmplitude = 6f;
     bool _customMaterialAnimate = true;
     float _customMaterialFrost = 0.72f;
     float _customMaterialRadius = 28f;
@@ -296,9 +311,12 @@ public class NowDocsExample : NowLayoutGraphic
     Texture2D _sdfDemoTexture;
     Texture2D _customMaterialTexture;
     Material _customMaterialCanvas;
+    NowModelPreviewDemoRig _modelPreviewDemoRig;
+    string _modelPreviewDemoError;
     readonly NowSdfGraph _sdfDemoIdle = NowSdf.Graph();
     readonly NowSdfGraph _sdfDemoActive = NowSdf.Graph();
     static readonly string[] GlassQualityLabels = { "Auto", "Fast", "Balanced", "High", "Ultra" };
+    static readonly string[] ModelPreviewUpdateLabels = { "When dirty", "Every frame", "Manual" };
     readonly NowSdfGraph _sdfDemoGlow = NowSdf.Graph();
     readonly NowSdfGraph _sdfDemoStreaks = NowSdf.Graph();
     readonly NowSdfGraph _sdfDemoOrbit = NowSdf.Graph();
@@ -306,6 +324,64 @@ public class NowDocsExample : NowLayoutGraphic
     readonly NowSdfGraph _sdfDemoTextActive = NowSdf.Graph();
     readonly Vector2[] _shapeDemoPolygon = new Vector2[6];
     readonly Dictionary<string, string> _docs = new Dictionary<string, string>();
+
+    protected override void OnEnable()
+    {
+        base.OnEnable();
+        EnsureModelPreviewDemo();
+    }
+
+    protected override void OnDisable()
+    {
+        ReleaseModelPreviewDemo();
+        base.OnDisable();
+    }
+
+    void EnsureModelPreviewDemo()
+    {
+        if (_modelPreviewDemoRig != null || !string.IsNullOrEmpty(_modelPreviewDemoError))
+            return;
+
+        try
+        {
+            _modelPreviewDemoRig = new NowModelPreviewDemoRig();
+            _modelPreviewDemoRig.preview
+                .SetMaxResolution(512)
+                .SetBackground(new Color(0.012f, 0.028f, 0.052f, 1f));
+        }
+        catch (System.Exception exception)
+        {
+            _modelPreviewDemoError = exception.Message;
+            Debug.LogException(exception, this);
+        }
+    }
+
+    void ReleaseModelPreviewDemo()
+    {
+        _modelPreviewDemoRig?.Dispose();
+        _modelPreviewDemoRig = null;
+    }
+
+    internal void ConfigureModelPreviewsDemoHarness(NowThemeAsset theme, NowFontAsset font)
+    {
+        _themeAsset = theme;
+        _font = font;
+        _selected = (int)PageId.ModelPreviewsDemo;
+        _modelPreviewDemoAutoRotate = false;
+        _modelPreviewDemoPaused = false;
+        _modelPreviewDemoSceneLighting = false;
+        _modelPreviewDemoPostProcessing = false;
+        _modelPreviewDemoUpdateMode = (int)NowModelPreviewUpdateMode.WhenDirty;
+        _modelPreviewDemoAngle = 18f;
+        _modelPreviewDemoResolutionScale = 0.8f;
+        _modelPreviewDemoWaveAmplitude = 6f;
+        EnsureModelPreviewDemo();
+    }
+
+    internal bool RenderModelPreviewsDemoNowForHarness()
+    {
+        return _modelPreviewDemoRig?.preview.RenderNow() ?? false;
+    }
 
     string LoadDoc(string file)
     {
@@ -697,6 +773,10 @@ public class NowDocsExample : NowLayoutGraphic
 
             case PageKind.EffectsDemo:
                 DrawEffectsDemo(theme);
+                break;
+
+            case PageKind.ModelPreviewsDemo:
+                DrawModelPreviewsDemo(theme);
                 break;
 
             case PageKind.ViewStackDemo:
@@ -1339,6 +1419,8 @@ public class NowDocsExample : NowLayoutGraphic
 
     protected override void OnDestroy()
     {
+        ReleaseModelPreviewDemo();
+
         if (_sdfDemoTexture != null)
         {
             if (Application.isPlaying)
@@ -2321,6 +2403,278 @@ public class NowDocsExample : NowLayoutGraphic
             .SetDash(12f, 8f, Time.time * 28f)
             .SetColor(accent)
             .Draw();
+    }
+
+    void DrawModelPreviewsDemo(NowThemeAsset themeAsset)
+    {
+        NowMarkdown.Document(
+            "# Model previews demo\n\n" +
+            "One isolated raw-mesh preview is shared by three ordinary `Now.Model` draws. " +
+            "Change its scheduling and resolution policy here, then compare a direct texture, " +
+            "rectangle styling, and a texture-backed modifier. No presentation GameObject is instantiated.").Draw();
+
+        EnsureModelPreviewDemo();
+
+        if (_modelPreviewDemoRig == null)
+        {
+            NowLayout.Label("The procedural preview could not be created.")
+                .SetFontSize(14f)
+                .SetBold()
+                .SetColor(themeAsset.GetColor(NowColorToken.Danger, Color.red))
+                .Draw();
+            NowLayout.Label(_modelPreviewDemoError ?? "No presentation shader is available.")
+                .SetFontSize(12f)
+                .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+                .SetStretchWidth()
+                .Draw();
+            return;
+        }
+
+        bool queueRender = false;
+
+        using (NowLayout.Horizontal(spacing: 12f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Checkbox("Auto rotate").Draw(ref _modelPreviewDemoAutoRotate);
+            NowLayout.Checkbox("Pause rendering").Draw(ref _modelPreviewDemoPaused);
+            NowLayout.Label("Update").SetWidth(52f).Draw();
+            NowLayout.Dropdown(ModelPreviewUpdateLabels)
+                .SetWidth(132f)
+                .Draw(ref _modelPreviewDemoUpdateMode);
+
+            if (NowLayout.Button("Queue render").SetWidth(112f).Draw())
+                queueRender = true;
+        }
+
+        using (NowLayout.Horizontal(spacing: 10f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Label("Angle").SetWidth(46f).Draw();
+
+            if (_modelPreviewDemoAutoRotate)
+            {
+                NowLayout.Label("Driven by the docs repaint loop")
+                    .SetFontSize(12f)
+                    .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+                    .SetWidth(190f)
+                    .Draw();
+            }
+            else
+            {
+                NowLayout.Slider(-180f, 180f)
+                    .SetWidth(190f)
+                    .Draw(ref _modelPreviewDemoAngle);
+            }
+
+            NowLayout.Label("Resolution").SetWidth(72f).Draw();
+            NowLayout.Slider(0.25f, 1f)
+                .SetWidth(130f)
+                .Draw(ref _modelPreviewDemoResolutionScale);
+            NowLayout.Label($"{_modelPreviewDemoResolutionScale:0.00}x").SetWidth(40f).Draw();
+
+            NowLayout.Label("Wave").SetWidth(42f).Draw();
+            NowLayout.Slider(0f, 12f)
+                .SetStretchWidth()
+                .Draw(ref _modelPreviewDemoWaveAmplitude);
+        }
+
+        using (NowLayout.Horizontal(spacing: 14f, alignItems: NowLayoutAlign.Center))
+        {
+            NowLayout.Checkbox("Use scene lighting").Draw(ref _modelPreviewDemoSceneLighting);
+            NowLayout.Checkbox("Post processing").Draw(ref _modelPreviewDemoPostProcessing);
+            NowLayout.Label("Both are opt-in; the default preview renders in a private scene.")
+                .SetFontSize(12f)
+                .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+                .SetStretchWidth()
+                .Draw();
+        }
+
+        var preview = _modelPreviewDemoRig.preview;
+        var updateMode = (NowModelPreviewUpdateMode)Mathf.Clamp(
+            _modelPreviewDemoUpdateMode,
+            (int)NowModelPreviewUpdateMode.WhenDirty,
+            (int)NowModelPreviewUpdateMode.Manual);
+
+        preview
+            .SetUpdateMode(updateMode)
+            .SetResolutionScale(_modelPreviewDemoResolutionScale)
+            .SetSceneLightingEnabled(_modelPreviewDemoSceneLighting)
+            .SetPostProcessingEnabled(_modelPreviewDemoPostProcessing)
+            .SetRenderingEnabled(!_modelPreviewDemoPaused);
+
+        if (_modelPreviewDemoAutoRotate)
+            _modelPreviewDemoAngle = Mathf.Repeat(Time.time * 28f, 360f) - 180f;
+
+        if (updateMode != NowModelPreviewUpdateMode.Manual || queueRender)
+        {
+            preview.SetRotation(Quaternion.Euler(-6f, _modelPreviewDemoAngle, 0f));
+        }
+
+        if (queueRender)
+            preview.RequestRender();
+
+        var panel = NowLayout.ReserveRect(height: 338f, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted)
+            .SetRadius(18f)
+            .Draw();
+
+        var area = panel.Inset(18f);
+        const float Gap = 14f;
+        float cardWidth = Mathf.Max(1f, (area.width - Gap * 2f) / 3f);
+        var directCard = new NowRect(area.x, area.y, cardWidth, area.height);
+        var styledCard = new NowRect(directCard.xMax + Gap, area.y, cardWidth, area.height);
+        var effectCard = new NowRect(styledCard.xMax + Gap, area.y, cardWidth, area.height);
+
+        DrawModelPreviewDemoCard(
+            themeAsset,
+            directCard,
+            preview,
+            "DIRECT TEXTURE",
+            "Live RenderTexture binding",
+            new Color(0.08f, 0.62f, 1f, 1f),
+            styled: false,
+            textureEffect: false,
+            _modelPreviewDemoWaveAmplitude);
+        DrawModelPreviewDemoCard(
+            themeAsset,
+            styledCard,
+            preview,
+            "MASK + STYLE",
+            "Tint, radius and outline",
+            new Color(0.2f, 0.82f, 0.66f, 1f),
+            styled: true,
+            textureEffect: false,
+            _modelPreviewDemoWaveAmplitude);
+        DrawModelPreviewDemoCard(
+            themeAsset,
+            effectCard,
+            preview,
+            "TEXTURE EFFECT",
+            "Captured, then deformed",
+            new Color(1f, 0.32f, 0.08f, 1f),
+            styled: true,
+            textureEffect: true,
+            _modelPreviewDemoWaveAmplitude);
+
+        string targetSize = preview.texture != null
+            ? $"{preview.texture.width} × {preview.texture.height}"
+            : "waiting for first visible draw";
+        string schedule = _modelPreviewDemoPaused
+            ? "paused; the current texture is retained"
+            : updateMode == NowModelPreviewUpdateMode.Manual
+                ? "manual; pose changes wait for Queue render"
+                : updateMode == NowModelPreviewUpdateMode.EveryFrame
+                    ? "continuous; follows a caller-owned live source"
+                    : "dirty-driven; idle camera cost is zero";
+
+        NowLayout.Label($"Target: {targetSize}   •   {schedule}")
+            .SetFontSize(12f)
+            .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+            .SetStretchWidth()
+            .Draw();
+
+        NowMarkdown.Document(
+            "## Core pattern\n\n" +
+            "```csharp\n" +
+            "preview = new NowModelPreview(characterPrefab)\n" +
+            "    .SetMaxResolution(512)\n" +
+            "    .SetSceneLightingEnabled(false) // default: private preview scene\n" +
+            "    .SetUpdateMode(NowModelPreviewUpdateMode.WhenDirty);\n\n" +
+            "Now.Model(rect, preview).SetRadius(24f).Draw();\n" +
+            "```\n\n" +
+            "For Unity's normal Renderer path, borrow a dressed scene object and keep its " +
+            "presentation layer excluded from gameplay cameras:\n\n" +
+            "```csharp\n" +
+            "preview = NowModelPreview.FromSceneObject(\n" +
+            "    presentationCharacter,\n" +
+            "    presentationCameraMask);\n" +
+            "```\n\n" +
+            "## Texture-backed effects\n\n" +
+            "```csharp\n" +
+            "using (NowEffects.Modifier(NowDeformers.Wave(phase, 6f, 52f))\n" +
+            "    .SetRenderToTexture()\n" +
+            "    .SetSourceRect(rect)\n" +
+            "    .Begin())\n" +
+            "{\n" +
+            "    Now.Model(rect, preview).SetRadius(24f).Draw();\n" +
+            "}\n" +
+            "```\n\n" +
+            "The preview is intentionally shared across all three cards. Dispose it with the " +
+            "screen or inventory item that owns it; pause hidden animated panels explicitly.").Draw();
+
+        if (!_modelPreviewDemoPaused &&
+            (_modelPreviewDemoAutoRotate || updateMode == NowModelPreviewUpdateMode.EveryFrame))
+        {
+            NowControlState.RequestRepaint();
+        }
+    }
+
+    static void DrawModelPreviewDemoCard(
+        NowThemeAsset themeAsset,
+        NowRect cardRect,
+        NowModelPreview preview,
+        string title,
+        string subtitle,
+        Color accent,
+        bool styled,
+        bool textureEffect,
+        float waveAmplitude)
+    {
+        Color text = themeAsset.GetColor(NowColorToken.Text, Color.white);
+        Color muted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+        Color border = themeAsset.GetColor(NowColorToken.Border, Color.gray);
+
+        themeAsset.Rectangle(cardRect, NowRectangleStyle.Surface)
+            .SetRadius(16f)
+            .SetOutline(1f, new Color(border.r, border.g, border.b, 0.6f))
+            .Draw();
+        Now.Circle(new Vector2(cardRect.x + 20f, cardRect.y + 22f), 4f)
+            .SetColor(accent)
+            .Draw();
+        Now.Text(new NowRect(cardRect.x + 32f, cardRect.y + 12f, cardRect.width - 44f, 20f))
+            .SetFontSize(12f)
+            .SetBold()
+            .SetColor(text)
+            .Draw(title);
+        Now.Text(new NowRect(cardRect.x + 14f, cardRect.y + 36f, cardRect.width - 28f, 18f))
+            .SetFontSize(11f)
+            .SetColor(muted)
+            .Draw(subtitle);
+
+        var modelRect = cardRect.Inset(14f, 62f, 14f, 14f);
+
+        using (Now.Mask(cardRect.Inset(8f)))
+        {
+            if (textureEffect)
+            {
+                using (NowEffects.Modifier(NowDeformers.Wave(Time.time * 0.35f, waveAmplitude, 52f, NowWaveAxis.Y))
+                    .SetId(3001)
+                    .SetSubdivision(10)
+                    .SetRenderToTexture()
+                    .SetSourceRect(modelRect)
+                    .Begin())
+                {
+                    DrawPreview();
+                }
+            }
+            else
+            {
+                DrawPreview();
+            }
+        }
+
+        void DrawPreview()
+        {
+            var model = Now.Model(modelRect, preview);
+
+            if (styled)
+            {
+                model = model
+                    .SetColor(new Color(0.82f, 0.94f, 1f, 1f))
+                    .SetRadius(28f)
+                    .SetOutline(1.5f, new Color(accent.r, accent.g, accent.b, 0.82f));
+            }
+
+            model.Draw();
+        }
     }
 
     void DrawFilePickerDemo(NowThemeAsset themeAsset)

@@ -152,7 +152,7 @@ using (snapshot)
 }
 
 Now.Rectangle(previewRect)
-    .SetTexture(snapshot.texture)
+    .SetTexture(snapshot.texture, premultipliedAlpha: true)
     .Draw();
 ```
 

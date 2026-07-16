@@ -12,7 +12,7 @@ namespace NowUI
     /// it and override <see cref="DrawNowUI"/>.
     /// </summary>
     [UxmlElement]
-    public partial class NowVisualElement : VisualElement, IDisposable
+    public partial class NowVisualElement : VisualElement, IDisposable, INowDynamicTextureHost
     {
         static readonly ushort[] s_indices = { 0, 1, 2, 2, 3, 0 };
 
@@ -45,6 +45,7 @@ namespace NowUI
         Vector2 _measuredContentSize;
 
         bool _disposed;
+        int _dynamicTextureBuildVersion;
 
         static NowVisualElement()
         {
@@ -196,6 +197,26 @@ namespace NowUI
             MarkDirtyRepaint();
         }
 
+        int INowDynamicTextureHost.dynamicTextureBuildVersion => _dynamicTextureBuildVersion;
+
+        bool INowDynamicTextureHost.isDynamicTextureHostValid => !_disposed && panel != null;
+
+        void INowDynamicTextureHost.BeginDynamicTextureBuild()
+        {
+            unchecked
+            {
+                ++_dynamicTextureBuildVersion;
+
+                if (_dynamicTextureBuildVersion == 0)
+                    ++_dynamicTextureBuildVersion;
+            }
+        }
+
+        void INowDynamicTextureHost.RequestDynamicTextureRebuild()
+        {
+            MarkDirty();
+        }
+
         public void Dispose()
         {
             if (_disposed)
@@ -283,7 +304,10 @@ namespace NowUI
             var size = new Vector2(rect.width, rect.height);
             var nowRect = new NowRect(0f, 0f, size.x, size.y);
             renderer.glassBlurQuality = _glassBlurQuality;
-            var frame = NowFrame.Begin(GetEffectiveUIScale(pixelsPerPoint), trackRepaint: true);
+            var frame = NowFrame.Begin(
+                GetEffectiveUIScale(pixelsPerPoint),
+                trackRepaint: true,
+                dynamicTextureHost: this);
             NowDrawScope scope = default;
 
             try

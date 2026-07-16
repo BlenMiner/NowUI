@@ -215,6 +215,8 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "glass", width = 640, height = 360, includeInGoldens = true, draw = DrawGlass },
                 new NowHarnessScenario { name = "shader-variants", width = 840, height = 420, includeInGoldens = true, draw = DrawShaderVariants },
                 new NowHarnessScenario { name = "lottie", width = 512, height = 512, includeInGoldens = true, draw = DrawLottie },
+                new NowHarnessScenario { name = "model-preview-effects", width = 720, height = 420, includeInGoldens = false, warmupFrames = 2, capture = CaptureModelPreviewEffects },
+                new NowHarnessScenario { name = "docs-model-preview-demo", width = 1280, height = 720, includeInGoldens = false, warmupFrames = 3, capture = CaptureDocsModelPreviewDemo },
                 new NowHarnessScenario { name = "landing-page-now", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNow },
                 new NowHarnessScenario { name = "landing-page-now-layout", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNowLayout },
                 new NowHarnessScenario { name = "landing-page-now-compact", width = 360, height = 640, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNow },
@@ -286,6 +288,307 @@ namespace NowUI.Editor
         static NowHarnessCapture CaptureLandingPageNowLayout(NowHarnessScenario scenario, string outputPath)
         {
             return CaptureLandingPageHost(scenario, outputPath, layout: true);
+        }
+
+        static NowHarnessCapture CaptureModelPreviewEffects(
+            NowHarnessScenario scenario,
+            string outputPath)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            using var renderer = new NowRenderer();
+            var target = new RenderTexture(scenario.width, scenario.height, 0, RenderTextureFormat.ARGB32)
+            {
+                name = "NowUI Model Preview Harness Target",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            NowModelPreviewDemoRig demoRig = null;
+
+            try
+            {
+                target.Create();
+                demoRig = new NowModelPreviewDemoRig();
+                var preview = demoRig.preview
+                    .SetFixedResolution(256, 224)
+                    .SetBackground(Color.clear);
+
+                if (!preview.RenderNow())
+                    throw new InvalidOperationException("The model-preview harness camera did not complete its offscreen render.");
+
+                Now.defaultFont = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+                var surface = new NowInputSurface(new Vector2(scenario.width, scenario.height));
+                int warmupFrames = Mathf.Max(1, scenario.warmupFrames);
+
+                for (int i = 0; i < warmupFrames; ++i)
+                    renderer.Warmup(surface, Input, () => DrawModelPreviewEffectsFrame(scenario, preview));
+
+                for (int renderPass = 0; renderPass < 2; ++renderPass)
+                {
+                    if (renderPass > 0)
+                        renderer.Clear();
+
+                    using (NowInput.Begin(Input, surface))
+                    using (renderer.Begin(target))
+                    {
+                        DrawModelPreviewEffectsFrame(scenario, preview);
+                    }
+
+                    // The first submitted frame warms actual GPU variants. The
+                    // captured frame rebuilds the effect commands and temporary
+                    // targets exactly as a normal subsequent UI frame would.
+                    renderer.Render(target, clear: true, clearColor: new Color(0.025f, 0.03f, 0.045f, 1f));
+                }
+
+                WritePng(target, outputPath);
+                stopwatch.Stop();
+
+                return new NowHarnessCapture
+                {
+                    name = scenario.name,
+                    width = scenario.width,
+                    height = scenario.height,
+                    path = outputPath,
+                    batchCount = renderer.batchCount,
+                    vertexCount = renderer.mesh != null ? renderer.mesh.vertexCount : 0,
+                    elapsedMilliseconds = stopwatch.ElapsedMilliseconds
+                };
+            }
+            finally
+            {
+                demoRig?.Dispose();
+                target.Release();
+                UnityEngine.Object.DestroyImmediate(target);
+            }
+        }
+
+        // Captures the actual in-app docs page, including its first deferred
+        // model render and the retained texture-effect copy.
+        static NowHarnessCapture CaptureDocsModelPreviewDemo(
+            NowHarnessScenario scenario,
+            string outputPath)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var target = new RenderTexture(scenario.width, scenario.height, 24, RenderTextureFormat.ARGB32)
+            {
+                name = "NowUI Docs Model Preview Target",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            var cameraObject = new GameObject("NowUI Docs Model Preview Camera")
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            var canvasObject = new GameObject(
+                "NowUI Docs Model Preview Canvas",
+                typeof(RectTransform),
+                typeof(Canvas),
+                typeof(CanvasScaler))
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            try
+            {
+                target.Create();
+
+                var camera = cameraObject.AddComponent<Camera>();
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = new Color(0.04f, 0.045f, 0.055f, 1f);
+                camera.orthographic = true;
+                camera.orthographicSize = scenario.height * 0.5f;
+                camera.nearClipPlane = 0.01f;
+                camera.farClipPlane = 20f;
+                camera.allowHDR = false;
+                camera.allowMSAA = false;
+                camera.targetTexture = target;
+                cameraObject.transform.position = new Vector3(0f, 0f, -10f);
+
+                var canvas = canvasObject.GetComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = camera;
+                canvas.planeDistance = 1f;
+                canvas.pixelPerfect = true;
+
+                var scaler = canvasObject.GetComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+                scaler.scaleFactor = 1f;
+
+                var panelObject = new GameObject(
+                    "NowUI Docs Model Preview Host",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer))
+                {
+                    hideFlags = HideFlags.HideAndDontSave
+                };
+                panelObject.transform.SetParent(canvasObject.transform, false);
+
+                var panelRect = panelObject.GetComponent<RectTransform>();
+                panelRect.anchorMin = Vector2.zero;
+                panelRect.anchorMax = Vector2.one;
+                panelRect.offsetMin = Vector2.zero;
+                panelRect.offsetMax = Vector2.zero;
+
+                var graphic = panelObject.AddComponent<NowDocsExample>();
+                graphic.raycastTarget = false;
+                graphic.ConfigureModelPreviewsDemoHarness(
+                    AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/DefaultDark.asset"),
+                    Resources.Load<NowFontAsset>("NowUI/NotoSans"));
+
+                int warmupFrames = Mathf.Max(2, scenario.warmupFrames);
+
+                for (int i = 0; i < warmupFrames; ++i)
+                {
+                    graphic.SetVerticesDirty();
+                    Canvas.ForceUpdateCanvases();
+
+                    if (i == 0 && !graphic.RenderModelPreviewsDemoNowForHarness())
+                    {
+                        throw new InvalidOperationException(
+                            "The docs model-preview target was not prepared by its first UI rebuild.");
+                    }
+                }
+
+                graphic.SetVerticesDirty();
+                Canvas.ForceUpdateCanvases();
+                camera.Render();
+                WritePng(target, outputPath);
+                stopwatch.Stop();
+
+                int vertexCount = 0;
+                for (int i = 0; i < graphic.canvasPageCount; ++i)
+                {
+                    var mesh = graphic.GetCanvasPageMesh(i);
+                    vertexCount += mesh != null ? mesh.vertexCount : 0;
+                }
+
+                return new NowHarnessCapture
+                {
+                    name = scenario.name,
+                    width = scenario.width,
+                    height = scenario.height,
+                    path = outputPath,
+                    batchCount = graphic.canvasRenderer.materialCount,
+                    vertexCount = vertexCount,
+                    elapsedMilliseconds = stopwatch.ElapsedMilliseconds
+                };
+            }
+            finally
+            {
+                target.Release();
+                UnityEngine.Object.DestroyImmediate(canvasObject);
+                UnityEngine.Object.DestroyImmediate(cameraObject);
+                UnityEngine.Object.DestroyImmediate(target);
+            }
+        }
+
+        static void DrawModelPreviewEffectsFrame(
+            NowHarnessScenario scenario,
+            NowModelPreview preview)
+        {
+            var rect = new NowRect(0f, 0f, scenario.width, scenario.height);
+            var background = new Color(0.025f, 0.032f, 0.052f, 1f);
+            var card = new Color(0.055f, 0.072f, 0.108f, 1f);
+            var line = new Color(0.3f, 0.42f, 0.62f, 0.34f);
+            var text = new Color(0.93f, 0.96f, 1f, 1f);
+            var muted = new Color(0.54f, 0.63f, 0.76f, 1f);
+            var blue = new Color(0.08f, 0.62f, 1f, 1f);
+            var orange = new Color(1f, 0.32f, 0.08f, 1f);
+
+            Now.Rectangle(rect).SetColor(background).Draw();
+            Now.Rectangle(new NowRect(0f, 0f, rect.width, 112f))
+                .SetColor(new Color(0.045f, 0.06f, 0.095f, 1f))
+                .Draw();
+            Now.Text(new NowRect(36f, 24f, rect.width - 72f, 34f))
+                .SetFontSize(26f)
+                .SetBold()
+                .SetColor(text)
+                .Draw("3D models, composed like textures");
+            Now.Text(new NowRect(36f, 66f, rect.width - 72f, 24f))
+                .SetFontSize(14f)
+                .SetColor(muted)
+                .Draw("Same camera-backed preview • rounded mask • texture-backed deformation");
+
+            DrawModelPreviewCard(
+                new NowRect(38f, 128f, 304f, 256f),
+                preview,
+                "LIVE RENDER TEXTURE",
+                "Direct Now.Model draw",
+                blue,
+                textureEffect: false);
+            DrawModelPreviewCard(
+                new NowRect(378f, 128f, 304f, 256f),
+                preview,
+                "TEXTURE-BACKED WAVE",
+                "Captured, then deformed",
+                orange,
+                textureEffect: true);
+
+            void DrawModelPreviewCard(
+                NowRect cardRect,
+                NowModelPreview modelPreview,
+                string title,
+                string subtitle,
+                Color accent,
+                bool textureEffect)
+            {
+                Now.Rectangle(cardRect)
+                    .SetColor(card)
+                    .SetRadius(22f)
+                    .SetOutline(1f, line)
+                    .Draw();
+                Now.Circle(new Vector2(cardRect.x + 24f, cardRect.y + 25f), 5f)
+                    .SetColor(accent)
+                    .Draw();
+                Now.Text(new NowRect(cardRect.x + 38f, cardRect.y + 14f, cardRect.width - 54f, 22f))
+                    .SetFontSize(14f)
+                    .SetBold()
+                    .SetColor(text)
+                    .Draw(title);
+                Now.Text(new NowRect(cardRect.x + 20f, cardRect.y + 40f, cardRect.width - 40f, 20f))
+                    .SetFontSize(12f)
+                    .SetColor(muted)
+                    .Draw(subtitle);
+
+                var modelRect = new NowRect(cardRect.x + 44f, cardRect.y + 64f, 216f, 168f);
+                Now.Rectangle(modelRect)
+                    .SetColor(new Color(accent.r * 0.08f, accent.g * 0.08f, accent.b * 0.08f, 1f))
+                    .SetRadius(28f)
+                    .Draw();
+                Now.Circle(modelRect.center, 70f)
+                    .SetColor(new Color(accent.r, accent.g, accent.b, 0.12f))
+                    .Draw();
+
+                using (Now.Mask(cardRect.Inset(12f)))
+                {
+                    if (textureEffect)
+                    {
+                        using (NowEffects.Modifier(NowDeformers.Wave(0.08f, 6f, 52f, NowWaveAxis.Y))
+                            .SetId(0x4D504556)
+                            .SetSubdivision(12)
+                            .SetRenderToTexture()
+                            .SetSourceRect(modelRect)
+                            .Begin())
+                        {
+                            DrawPreview();
+                        }
+                    }
+                    else
+                    {
+                        DrawPreview();
+                    }
+                }
+
+                Now.Rectangle(new NowRect(cardRect.x + 20f, cardRect.yMax - 12f, 72f, 4f))
+                    .SetColor(accent)
+                    .SetRadius(2f)
+                    .Draw();
+
+                void DrawPreview()
+                {
+                    Now.Model(modelRect, modelPreview)
+                        .SetRadius(28f)
+                        .SetOutline(1f, new Color(1f, 1f, 1f, 0.18f))
+                        .Draw();
+                }
+            }
         }
 
         static NowHarnessCapture CaptureLandingPageHost(

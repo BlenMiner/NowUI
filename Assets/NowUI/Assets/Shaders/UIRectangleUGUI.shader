@@ -3,6 +3,7 @@ Shader "NowUI/UI Rectangle UGUI"
     Properties
     {
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
+        [HideInInspector] _NowPremultipliedTexture ("Premultiplied Texture", Float) = 0
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
         _StencilOp ("Stencil Operation", Float) = 0
@@ -81,6 +82,7 @@ Shader "NowUI/UI Rectangle UGUI"
             float4 _ClipRect;
             float _UIMaskSoftnessX;
             float _UIMaskSoftnessY;
+            float _NowPremultipliedTexture;
 
             float sdRoundedBox(float2 p, float2 b, float4 r)
             {
@@ -127,7 +129,7 @@ Shader "NowUI/UI Rectangle UGUI"
                 float4 rad = float4(i.radiusXYZ, i.uv.z);
                 float blur = i.extras.x;
                 float outline = i.extras.y;
-                half4 graphic = tex2D(_MainTex, i.uv.xy) * i.color;
+                half4 textureSample = tex2D(_MainTex, i.uv.xy);
 
                 float2 position = (rawUV - 0.5) * rect.zw;
                 float2 halfSize = rect.zw * 0.5;
@@ -150,16 +152,21 @@ Shader "NowUI/UI Rectangle UGUI"
                 // transparent pixels while keeping the existing inside-outline
                 // behavior.
                 float outlineCoverage = i.outlineColor.a * outlineAlpha * graphicAlpha;
-                float fillCoverage = graphic.a * graphicAlpha;
+                float fillCoverage = textureSample.a * i.color.a * graphicAlpha;
+                half3 fillColor = _NowPremultipliedTexture > 0.5
+                    ? textureSample.rgb * i.color.rgb * i.color.a * graphicAlpha
+                    : textureSample.rgb * i.color.rgb * fillCoverage;
 
                 half4 col;
                 col.rgb = i.outlineColor.rgb * outlineCoverage
-                    + graphic.rgb * fillCoverage * (1 - outlineCoverage);
+                    + fillColor * (1 - outlineCoverage);
                 col.a = outlineCoverage + fillCoverage * (1 - outlineCoverage);
 
                 #ifdef UNITY_UI_CLIP_RECT
                 float2 uiMask = saturate((_ClipRect.zw - _ClipRect.xy - abs(i.uiMask.xy)) * i.uiMask.zw);
-                col.a *= uiMask.x * uiMask.y;
+                // Blend One expects premultiplied output, so soft-mask
+                // coverage must attenuate RGB together with alpha.
+                col *= uiMask.x * uiMask.y;
                 #endif
 
                 #ifdef UNITY_UI_ALPHACLIP

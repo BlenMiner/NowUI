@@ -22,6 +22,9 @@ it.
   live frost material demo.
 - [Effects](Effects.md): scoped mesh and texture-backed visual modifiers,
   deformers, subdivision, snapshots, and performance notes.
+- [Model Previews](ModelPreviews.md): disposable 3D-to-texture previews,
+  isolated raw or borrowed scene-object sources, automatic framing/resolution,
+  update modes, masking, effects, and lifecycle.
 - [World Space](WorldSpace.md): direct-mesh nameplates, hover tooltips,
   diegetic panels, ray-mapped input, depth modes, and surface deformers.
 - [Controls](Controls.md): buttons, checkboxes, radios, switches, sliders,
