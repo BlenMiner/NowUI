@@ -3686,8 +3686,13 @@ namespace NowUI
         {
             ++_sceneDirectionalRefreshCount;
             _sceneDirectionalLights.Clear();
+            // Unity 6000.4.0f1 marks this overload obsolete but does not expose
+            // the suggested FindObjectsByType<T>(FindObjectsInactive) replacement.
+#pragma warning disable CS0618
             var lights = UnityEngine.Object.FindObjectsByType<Light>(
-                FindObjectsInactive.Include);
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+#pragma warning restore CS0618
 
             for (int i = 0; i < lights.Length; ++i)
             {
