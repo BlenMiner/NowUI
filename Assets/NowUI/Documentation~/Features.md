@@ -178,7 +178,7 @@ batches into temporary textures, so glass still blurs NowUI when no readable
 screen target was provided. Use `SetBlurQuality(...)`, host `glassBlurQuality`,
 or `NowGlassSettings.defaultBlurQuality` to trade cost for quality; quality
 levels do not disable blur. See [Glass](Glass.md) for the full builder API and
-the docs-scene demo.
+the packaged example source.
 
 Custom rectangle materials draw the same quad geometry as the built-in
 rectangle shader:
@@ -204,7 +204,7 @@ hosts keep the normal rectangle material. A custom material receives NowUI's
 rectangle vertex streams; for UGUI it should include Unity UI stencil and clip
 properties if it needs to work under `Mask`, `RectMask2D`, or material
 modifiers. See [Custom Materials](CustomMaterials.md) for the full shader
-contract and the live docs-scene demo.
+contract and the packaged example source.
 
 ## Lines
 
@@ -541,7 +541,7 @@ so HarfBuzz is the only native dependency in the shaped path.
 
 ## Example Scenes And Scripts
 
-Current example scripts live under `Assets/NowUI/Example`.
+Current example scripts live under [`Example`](../Example).
 
 - `ShapedRectangles.cs`: stress-tests rectangle radius, outline, blur, and
   padding.

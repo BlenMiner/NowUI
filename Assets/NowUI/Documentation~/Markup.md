@@ -68,12 +68,12 @@ Paths can be absolute or project-relative. In the Unity editor, project-relative
 paths such as `Assets/UI/main.nowui` are the normal choice. This is a developer
 workflow feature; deployed players still need the target file to exist on disk.
 
-## Docs Scene Demo
+## Example
 
-Open `Assets/Scenes/DocsScene.unity` and select **Markup demo**. The page
-renders a live markup-authored panel, shows the `NowMarkupState` keys that
-drive visibility and gallery movement, reports the latest markup event, and
-includes the source markup beside the rendered UI.
+The packaged [docs browser source](../Example/NowDocsExample.cs) contains a
+live markup-authored panel, shows the `NowMarkupState` keys that drive
+visibility and gallery movement, reports the latest event, and displays the
+source beside the rendered UI.
 
 ## Supported Tags
 

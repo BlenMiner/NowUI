@@ -1,0 +1,4 @@
+interface:
+  display_name: "NowUI for Unity"
+  short_description: "Build Unity interfaces with installed NowUI"
+  default_prompt: "Use $nowui to build this Unity interface with the installed NowUI package."

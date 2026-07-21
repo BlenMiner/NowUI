@@ -10,5 +10,6 @@ that show the production setup paths:
 - `NowUIRenderTextureGlassSample.cs`: allocation-conscious `NowRenderer` usage
   with explicit warmup and glass diagnostics recording.
 
-The full docs live in the repository:
-<https://github.com/BlenMiner/NowUI/tree/main/Docs>.
+The version-matched docs ship in this package under `Documentation~` and are
+also available online:
+<https://github.com/BlenMiner/NowUI/tree/main/Assets/NowUI/Documentation~>.

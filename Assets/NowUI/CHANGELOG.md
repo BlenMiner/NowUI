@@ -7,6 +7,13 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Package guidance is now version-matched and agent-ready.** Public guides
+  ship under `Documentation~` with a package `README.md`, a concise
+  `AGENTS.md`, and an AI task router. The package also includes an opt-in
+  `nowui` coding-agent skill plus Unity menu actions to install it into the
+  current project's `.agents/skills` directory or copy a project-level
+  `AGENTS.md` snippet. Cached package contents remain read-only and no setup
+  runs automatically on import.
 - **Layout now has an intent-first API and explicit host contract (breaking).**
   Prefer fluent `NowLayout.Row()` / `Column()` declarations with `Gap`,
   `Padding`, `Grow`, `AlignChildren`, `Justify`, and `Begin`; `Spacer` is the
@@ -659,7 +666,7 @@ point it became installable through UPM.
   editing input (`NowTextInput`) and a headless single-line editing
   engine (`NowTextEdit`, surrogate-safe, shaped-cluster caret hit-testing).
   Custom controls build on the same public primitives — see
-  Docs/Controls.md. UGUI hosting is first-class: `NowGraphic`
+  Documentation~/Controls.md. UGUI hosting is first-class: `NowGraphic`
   auto-rebuilds while hovered or when a control requests a repaint,
   staying fully retained otherwise.
 - Multi-line text editing: `NowLayout.TextArea()` / `Now.TextArea(rect)` with
@@ -686,7 +693,7 @@ point it became installable through UPM.
   markdown-source profile that delegates fenced blocks to the registered
   language of their info string — one system, two languages, extensible via
   `NowCodeLanguage.Register`. The text input frame gained Tab and
-  undo/redo keys. See Docs/CodeEditor.md and the docs browser's
+  undo/redo keys. See Documentation~/CodeEditor.md and the docs browser's
   "Code editor" page.
 - Layout groups and rects take their common settings as optional parameters:
   `NowLayout.Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center)`,
@@ -702,11 +709,11 @@ point it became installable through UPM.
   also takes identity from its caller, so several markdown blocks can
   interleave with other layout content (this is what the docs browser's
   live demo page does).
-- Custom-controls guide (Docs/CustomControls.md): restyle via themes, wrap
+- Custom-controls guide (Documentation~/CustomControls.md): restyle via themes, wrap
   variants (forwarding caller info so identity stays per call site), reshape
   with custom hit shapes on the standard interaction bundle, and build from
   scratch — plus a docs browser scene (`Assets/Scenes/DocsScene.unity`) that
-  renders the Docs folder through the markdown extension with a side menu,
+  renders the package Documentation~ folder through the markdown extension with a side menu,
   relative-link navigation, a live demo page running the guide's code, and
   a Lottie demo page (gallery, scrubbing via `SetNormalizedTime`, sizes,
   tinting) fed by an inspector-assignable asset array.
@@ -733,7 +740,7 @@ point it became installable through UPM.
   and images (downloaded asynchronously, aspect-scaled to width) — rendered
   through Now/NowLayout with theme colors, word wrap, width-cached layout
   (steady-state draws allocate nothing) and clickable links reported via
-  `NowMarkdownResult`. No HTML, no JavaScript. See Docs/Markdown.md.
+  `NowMarkdownResult`. No HTML, no JavaScript. See Documentation~/Markdown.md.
 - Extension-author DX round (lessons from building the markdown extension):
   `NowTextWrap` brings word wrap to the core (layout once into positioned
   runs measured straight off the source string, draw for many frames);

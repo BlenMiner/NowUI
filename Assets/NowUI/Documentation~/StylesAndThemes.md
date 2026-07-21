@@ -8,7 +8,7 @@ explicitly.
 Create a theme from Unity with `Create > NowUI > Theme`.
 
 The package includes built-in `Default`, `DefaultDark`, `Material`, and
-`MaterialDark` theme assets under `Assets/NowUI/Assets/Themes`. They share the
+`MaterialDark` theme assets under [`Assets/Themes`](../Assets/Themes). They share the
 same enum tokens and presets, so UI code can switch between them without
 changing call sites. `Default`/`DefaultDark` use the built-in control renderer
 (soft shadows, line-drawn glyphs, offset focus rings, pressed scale); the

@@ -1,7 +1,7 @@
 # Public API
 
 NowUI's supported API surface is the `NowUI` namespace exposed by the runtime,
-extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
+extension, editor, URP, and HDRP assemblies in the installed package.
 
 ## Primary Runtime Surface
 
@@ -46,10 +46,8 @@ extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
 - `NowUI.NodeGraph`: node-graph data, ports, links, and graph view drawing.
 - `NowUI.Sdf`: SDF graph and builder APIs.
 
-## Compatibility Rules
+## Runtime guarantees
 
-- Public fluent builders should remain value types unless there is a concrete
-  ownership reason to switch.
 - APIs used inside a frame must avoid hidden managed allocation after warmup.
 - Debug and diagnostics APIs must use caller-owned buffers or indexed access.
 - Warmup APIs may allocate while preparing state, but must clear captured
@@ -59,6 +57,3 @@ extension, editor, URP, and HDRP assemblies under `Assets/NowUI`.
   integer or data-backed `NowId` values in repeated/dynamic UI. Both forms are
   host/id-scope local; `NowId.Resolved(...)` is reserved for already-composed
   identities.
-- Breaking changes are allowed before the next tagged release only when they
-  remove ambiguous behavior, accidental allocation, or inconsistent naming; the
-  changelog must call them out explicitly.

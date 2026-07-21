@@ -31,10 +31,10 @@ Now.Rectangle(rect)
     .Draw();
 ```
 
-The docs browser includes a live example in
-`Assets/Scenes/DocsScene.unity`: open the **Custom material demo** page. It
-uses `Assets/NowUI/Assets/Shaders/DocsFrostRectangleUGUI.shader` through
-`SetCanvasMaterial(...)`.
+The packaged [docs browser source](../Example/NowDocsExample.cs) includes a
+custom-material example. It uses
+[`DocsFrostRectangleUGUI.shader`](../Assets/Shaders/DocsFrostRectangleUGUI.shader)
+through `SetCanvasMaterial(...)`.
 
 ## Material Lifetime
 

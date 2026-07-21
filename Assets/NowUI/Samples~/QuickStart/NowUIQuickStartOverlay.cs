@@ -7,7 +7,7 @@ public sealed class NowUIQuickStartOverlay : MonoBehaviour
     void OnEnable()
     {
         if (GraphicsSettings.currentRenderPipeline != null)
-            Debug.LogWarning("NowUIQuickStartOverlay draws from OnPostRender, which only runs on the Built-in Render Pipeline. On URP/HDRP use the NowUniversalRendererFeature / HDRP custom pass with a NowPipelineLayoutGraphic, or a NowLayoutGraphic under a Canvas — see Docs/RenderPipelines.md.", this);
+            Debug.LogWarning("NowUIQuickStartOverlay draws from OnPostRender, which only runs on the Built-in Render Pipeline. On URP/HDRP use the NowUniversalRendererFeature / HDRP custom pass with a NowPipelineLayoutGraphic, or a NowLayoutGraphic under a Canvas — see the package's Documentation~/RenderPipelines.md guide.", this);
 
         if (!TryGetComponent<Camera>(out var cam) || !cam.enabled)
             Debug.LogWarning("NowUIQuickStartOverlay must live on an enabled Camera for OnPostRender to fire.", this);

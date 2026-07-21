@@ -28,6 +28,15 @@ Requirements:
 - Dependencies (installed automatically): Burst, Collections, Mathematics,
   Input System, UGUI
 
+## AI coding agents
+
+The UPM package ships version-matched documentation, a scoped `AGENTS.md`, and
+an installable `nowui` skill. After installation, use **NowUI > AI > Install
+Agent Skill** in Unity, or have the agent begin with
+[`Assets/NowUI/Documentation~/AI_GUIDE.md`](Assets/NowUI/Documentation~/AI_GUIDE.md).
+The package also provides **Copy Project AGENTS.md Snippet** for projects or
+agents that use repository instructions without skills.
+
 ## Quick Start
 
 Choose the placement API by one simple rule: use `Now` when you already have
@@ -92,31 +101,31 @@ and returning its resolved rect for a `Now` primitive. Manual hosts such as a
 camera callback use `Now.StartUI(...)` and `NowLayout.RunMeasured(...)`; the
 layout-specific hosts do not need `RunMeasured`. For URP/HDRP, UGUI, UI
 Toolkit, world-space, and manual-host examples, see
-[Docs/RenderPipelines.md](Docs/RenderPipelines.md) and
-[Docs/Layout.md](Docs/Layout.md).
+[Documentation~/RenderPipelines.md](Assets/NowUI/Documentation~/RenderPipelines.md) and
+[Documentation~/Layout.md](Assets/NowUI/Documentation~/Layout.md).
 
 ## Features
 
 - **Rectangles** — rounded corners (per-corner radii), outlines, blur,
   padding, masks, textures, sprites, and custom materials.
-  [Docs/Features.md](Docs/Features.md), [Docs/CustomMaterials.md](Docs/CustomMaterials.md)
+  [Documentation~/Features.md](Assets/NowUI/Documentation~/Features.md), [Documentation~/CustomMaterials.md](Assets/NowUI/Documentation~/CustomMaterials.md)
 - **Glass** — rounded backdrop panes that blur previously rendered target
   content on command-buffer and RenderTexture-backed hosts, plus automatic UGUI
   replay blur for NowUI content, with tint, outline, and radius controls.
-  [Docs/Glass.md](Docs/Glass.md)
+  [Documentation~/Glass.md](Assets/NowUI/Documentation~/Glass.md)
 - **Lines** — anti-aliased straight lines, cubic Beziers, dashed strokes,
-  rounded caps, masks, and arrow heads. [Docs/Lines.md](Docs/Lines.md)
+  rounded caps, masks, and arrow heads. [Documentation~/Lines.md](Assets/NowUI/Documentation~/Lines.md)
 - **Shapes** — filled or outlined circles, ellipses, triangles, and reusable
-  array/list-backed polygons. [Docs/Shapes.md](Docs/Shapes.md)
+  array/list-backed polygons. [Documentation~/Shapes.md](Assets/NowUI/Documentation~/Shapes.md)
 - **Effects** — scoped mesh and texture-backed visual modifiers with custom
-  vertex deformers and explicit subdivision. [Docs/Effects.md](Docs/Effects.md)
+  vertex deformers and explicit subdivision. [Documentation~/Effects.md](Assets/NowUI/Documentation~/Effects.md)
 - **Model Previews** — reusable 3D models rendered into transparent textures,
   from isolated raw meshes or caller-owned scene objects, with automatic
   framing, dirty/continuous updates, masks, corners, materials, and effects.
-  [Docs/ModelPreviews.md](Docs/ModelPreviews.md)
+  [Documentation~/ModelPreviews.md](Assets/NowUI/Documentation~/ModelPreviews.md)
 - **World Space** — direct-mesh nameplates, hover tooltips and diegetic
   panels with ray-mapped input, configurable depth, and vertex deformation.
-  [Docs/WorldSpace.md](Docs/WorldSpace.md)
+  [Documentation~/WorldSpace.md](Assets/NowUI/Documentation~/WorldSpace.md)
 - **Text** — SDF atlases baked on demand by a Burst-compiled managed
   compiler (native plugin covers CFF and color emoji fonts); HarfBuzz
   shaping for ligatures, kerning, and complex scripts where the plugin is
@@ -124,39 +133,39 @@ Toolkit, world-space, and manual-host examples, see
   `using (Now.Font(...))`.
 - **Layout** — fluent `Row`/`Column` containers with gaps, padding, growth,
   alignment, justification, and exact-measure layout hosts.
-  [Docs/Layout.md](Docs/Layout.md)
+  [Documentation~/Layout.md](Assets/NowUI/Documentation~/Layout.md)
 - **Input** — immediate-mode `NowInput.Interact` with hover, press, drag,
   and click across mouse, touch, keyboard, and gamepad; pluggable providers
   for RenderTextures, tests, and remote input.
 - **Controls** — buttons, checkboxes, radios, sliders, text fields,
   dropdowns, and scroll views with focus navigation, theming, and a public
-  toolkit for building custom controls. [Docs/Controls.md](Docs/Controls.md)
+  toolkit for building custom controls. [Documentation~/Controls.md](Assets/NowUI/Documentation~/Controls.md)
 - **Lottie** — vector animations tessellated live on the CPU, never
-  rasterized to textures. [Docs/Lottie.md](Docs/Lottie.md)
+  rasterized to textures. [Documentation~/Lottie.md](Assets/NowUI/Documentation~/Lottie.md)
 - **Themes** — ScriptableObject color/spacing/radius tokens and presets.
-  [Docs/StylesAndThemes.md](Docs/StylesAndThemes.md)
+  [Documentation~/StylesAndThemes.md](Assets/NowUI/Documentation~/StylesAndThemes.md)
 - **Mobile** — density-scaled units (`Now.StartUI(uiScale)`), safe-area
   helpers, touch input, Android/iOS native plugins.
-  [Docs/Mobile.md](Docs/Mobile.md)
+  [Documentation~/Mobile.md](Assets/NowUI/Documentation~/Mobile.md)
 - **Analyzer** — a bundled Roslyn analyzer warns at compile time when a
   builder is missing its `.Draw()` or a `using`-only scope is discarded,
   in the Unity console and your IDE. No heuristics — it only flags provably
-  dead code. [Docs/Controls.md](Docs/Controls.md#compile-time-misuse-warnings)
+  dead code. [Documentation~/Controls.md](Assets/NowUI/Documentation~/Controls.md#compile-time-misuse-warnings)
 - **Markdown** — GitHub-flavored Markdown rendered through NowUI primitives
   (headings, emphasis, code, quotes, lists, tables, links) with theme colors
   and zero steady-state allocation. No HTML, no JavaScript.
-  [Docs/Markdown.md](Docs/Markdown.md)
+  [Documentation~/Markdown.md](Assets/NowUI/Documentation~/Markdown.md)
 - **Docking** — dockable tabbed windows with side splits, splitter resizing,
   floating windows, tab-drag dock guides, and tab reordering via the
   `NowDockSpace` extension.
-  [Docs/Docking.md](Docs/Docking.md)
+  [Documentation~/Docking.md](Assets/NowUI/Documentation~/Docking.md)
 - **SDF Shapes** — composable SDF circles, boxes, rounded boxes, ellipses and
   capsules with union/subtract/intersect operations, smooth blends, colors, and
   texture fills, plus scene-level outlines, shadows, glow, embossing, contours,
-  and warp. [Docs/SDF.md](Docs/SDF.md)
+  and warp. [Documentation~/SDF.md](Assets/NowUI/Documentation~/SDF.md)
 
 API compatibility and allocation rules are tracked in
-[Docs/API.md](Docs/API.md); release and Asset Store validation gates are in
+[Documentation~/API.md](Assets/NowUI/Documentation~/API.md); release and Asset Store validation gates are in
 [Docs/Production.md](Docs/Production.md).
 
 ## Platform support
@@ -206,7 +215,8 @@ changes its bundled toolchain.
   the same search page expressed with explicit rects and layout intent; and
   `NowWorldGraphicExample`, a direct-mesh world-space label
 - `Assets/NowUI/Samples~` — customer-importable UPM samples
-- `Docs` — feature guides
+- `Assets/NowUI/Documentation~` — public, version-matched package guides
+- `Docs` — maintainer-only design, benchmark, and release notes
 
 ## Notes
 

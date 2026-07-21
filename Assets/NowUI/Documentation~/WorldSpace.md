@@ -134,7 +134,7 @@ public sealed class WrapAroundY : NowWorldDeformer
 The shader data for masks, rounded rectangles, text SDFs, and colors remains in
 UI coordinates, so deformers only need to return the local 3D position.
 
-`Assets/NowUI/Example/NowWorldGraphicExample.cs` shows the layout-host form: a
+[`NowWorldGraphicExample.cs`](../Example/NowWorldGraphicExample.cs) shows the layout-host form: a
 small billboard label that expands its text on hover and logs clicks.
 
 ## Pointer Ownership Across Surfaces

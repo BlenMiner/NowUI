@@ -11,8 +11,8 @@ simpler with `Now`; a responsive panel usually stays simpler with `NowLayout`.
 They can be mixed whenever that is useful.
 
 For a complete side-by-side example, compare the same search landing page
-implemented with [explicit rects](../Assets/NowUI/Example/NowLandingPageExample.cs)
-and with [NowLayout](../Assets/NowUI/Example/NowLayoutLandingPageExample.cs).
+implemented with [explicit rects](../Example/NowLandingPageExample.cs)
+and with [NowLayout](../Example/NowLayoutLandingPageExample.cs).
 
 ## Explicit rect slicing
 

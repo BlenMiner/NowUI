@@ -11,7 +11,7 @@ using NowUI.Markdown;
 using NowUI.Sdf;
 
 /// <summary>
-/// Browses the repository's Docs/ folder: a tree menu of pages, the selected
+/// Browses the package's Documentation~/ folder: a tree menu of pages, the selected
 /// page rendered through the markdown extension, and live demo pages for
 /// extension/runtime examples. Relative .md links navigate between
 /// pages; external links open in the browser.
@@ -24,7 +24,7 @@ public class NowDocsExample : NowLayoutGraphic
         Overview,
         Features,
         Api,
-        Production,
+        Performance,
         Layout,
         Controls,
         ControlsGallery,
@@ -109,7 +109,7 @@ public class NowDocsExample : NowLayoutGraphic
         new Page { title = "Overview", file = "README.md", icon = "🏠" },
         new Page { title = "Features", file = "Features.md", icon = "✨" },
         new Page { title = "Public API", file = "API.md", icon = "🧩" },
-        new Page { title = "Production gates", file = "Production.md", icon = "🚢" },
+        new Page { title = "Performance", file = "Performance.md", icon = "🚢" },
         new Page { title = "Layout", file = "Layout.md", icon = "📐" },
         new Page { title = "Controls", file = "Controls.md", icon = "🎛️" },
         new Page { title = "Controls gallery", icon = "🧪", kind = PageKind.ControlsGalleryDemo },
@@ -156,7 +156,7 @@ public class NowDocsExample : NowLayoutGraphic
         Link(PageId.Overview),
         Link(PageId.Features),
         Link(PageId.Api),
-        Link(PageId.Production),
+        Link(PageId.Performance),
 
         Section("Core UI", "🧱"),
         Link(PageId.Layout),
@@ -324,6 +324,8 @@ public class NowDocsExample : NowLayoutGraphic
     readonly NowSdfGraph _sdfDemoTextActive = NowSdf.Graph();
     readonly Vector2[] _shapeDemoPolygon = new Vector2[6];
     readonly Dictionary<string, string> _docs = new Dictionary<string, string>();
+    static bool _documentationRootResolved;
+    static string _documentationRoot;
 
     protected override void OnEnable()
     {
@@ -390,16 +392,75 @@ public class NowDocsExample : NowLayoutGraphic
 
         try
         {
-            text = File.ReadAllText(Path.Combine(Application.dataPath, "..", "Docs", file));
+            string root = ResolveDocumentationRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not locate the installed NowUI Documentation~ directory.");
+
+            text = File.ReadAllText(Path.Combine(root, file));
         }
         catch (System.Exception exception)
         {
-            text = $"# {file}\n\nCould not read `Docs/{file}` (the browser loads the repository's" +
-                $" Docs folder, so it only works inside the project):\n\n```\n{exception.Message}\n```";
+            text = $"# {file}\n\nCould not read the installed package's" +
+                $" `Documentation~/{file}` file:\n\n```\n{exception.Message}\n```";
         }
 
         _docs[file] = text;
         return text;
+    }
+
+    static string ResolveDocumentationRoot()
+    {
+        if (_documentationRootResolved)
+            return _documentationRoot;
+
+        _documentationRootResolved = true;
+
+#if UNITY_EDITOR
+        var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(Now).Assembly);
+        if (package != null)
+        {
+            string resolved = Path.Combine(package.resolvedPath, "Documentation~");
+            if (Directory.Exists(resolved))
+                return _documentationRoot = resolved;
+        }
+#endif
+
+        try
+        {
+            string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            string[] directCandidates =
+            {
+                Path.Combine(projectRoot, "Assets", "NowUI", "Documentation~"),
+                Path.Combine(projectRoot, "Packages", "com.blenminer.nowui", "Documentation~"),
+            };
+
+            for (int i = 0; i < directCandidates.Length; ++i)
+            {
+                if (Directory.Exists(directCandidates[i]))
+                    return _documentationRoot = directCandidates[i];
+            }
+
+            string cacheRoot = Path.Combine(projectRoot, "Library", "PackageCache");
+            if (Directory.Exists(cacheRoot))
+            {
+                string[] packageRoots = Directory.GetDirectories(cacheRoot, "com.blenminer.nowui@*");
+                for (int i = 0; i < packageRoots.Length; ++i)
+                {
+                    string candidate = Path.Combine(packageRoots[i], "Documentation~");
+                    if (Directory.Exists(candidate))
+                        return _documentationRoot = candidate;
+                }
+            }
+        }
+        catch (System.Exception exception) when (
+            exception is IOException ||
+            exception is System.UnauthorizedAccessException ||
+            exception is System.ArgumentException ||
+            exception is System.NotSupportedException)
+        {
+        }
+
+        return null;
     }
 
     void NavigateLink(string link)
@@ -1771,7 +1832,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawCustomMaterialsDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# Custom material demo\n\nThis page is rendered by `Assets/Scenes/DocsScene.unity`. The large panel below is an ordinary `Now.Rectangle` using a generated noise texture and a custom UGUI material via `SetCanvasMaterial(...)`.").Draw();
+        NowMarkdown.Document("# Custom material demo\n\nThis demo is rendered through the active NowUI host. The large panel below is an ordinary `Now.Rectangle` using a generated noise texture and a custom UGUI material via `SetCanvasMaterial(...)`.").Draw();
 
         using (NowLayout.Horizontal(spacing: 12f, alignItems: NowLayoutAlign.Center))
         {
@@ -2704,7 +2765,7 @@ public class NowDocsExample : NowLayoutGraphic
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var body = panel.Inset(16f);
-        string docsDirectory = FilePickerDemoDirectory("Docs");
+        string docsDirectory = ResolveDocumentationRoot() ?? FilePickerDemoDirectory("Assets");
         string assetsDirectory = FilePickerDemoDirectory("Assets");
         string saveDirectory = FilePickerDemoDirectory("Library");
 
@@ -3531,7 +3592,7 @@ public class NowDocsExample : NowLayoutGraphic
     }
 }
 
-/// <summary>The example code from Docs/CustomControls.md, compiled and runnable.</summary>
+/// <summary>The example code from Documentation~/CustomControls.md, compiled and runnable.</summary>
 public static class GuideControls
 {
     public static NowButton DangerButton(
@@ -3643,7 +3704,7 @@ public static class GuideControls
     }
 }
 
-/// <summary>The builder-form rating from Docs/CustomControls.md.</summary>
+/// <summary>The builder-form rating from Documentation~/CustomControls.md.</summary>
 [NowBuilder]
 public struct MyRating
 {

@@ -1,7 +1,7 @@
 # Code editor
 
 `NowUI.Extensions.CodeEditor` (its own assembly under
-`Assets/NowUI/Extensions/`) is an embeddable code editor: syntax
+[`Extensions/CodeEditor`](../Extensions/CodeEditor)) is an embeddable code editor: syntax
 highlighting, validation squiggles, auto-closing pairs and the rest of the
 IDE sugar that makes editing a config file painless — drawn entirely through
 `Now`/`NowLayout` primitives.
@@ -31,12 +31,12 @@ Builder options: `SetHeight` / `SetWidth` (stretch width by default in
 layout flow), `SetFontSize` (default 14), `SetLineNumbers(false)`,
 `SetStatusBar(false)`.
 
-## Docs Scene Demo
+## Example
 
-Open `Assets/Scenes/DocsScene.unity` and select **Editor demo**. The page is
-rendered through NowUI and includes live JSON, Markdown and Markup editors. The
-Markup section also renders the edited source through `NowMarkup` below the
-editor, so tag completions and validation can be checked against a live UI.
+The packaged [docs browser source](../Example/NowDocsExample.cs) includes live
+JSON, Markdown, and Markup editors. Its Markup section also renders the edited
+source through `NowMarkup`, so completions and validation can be compared with
+the resulting UI.
 
 ## What the editor does
 

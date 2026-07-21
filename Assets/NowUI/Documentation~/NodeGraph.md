@@ -363,7 +363,7 @@ keyed by `node.id`. `userId` and keyed node data both round-trip through
 history snapshots, copy/paste, and duplicate, so undo/redo restores values
 edited through node content controls.
 
-`NowMathGraphExample` (`Assets/Scenes/MathGraph.unity`) is a live math
+[`NowMathGraphExample`](../Example/NowMathGraphExample.cs) is a live math
 playground built on the evaluator: an `X` variable node, constant sliders, and
 arithmetic nodes feed a plot node that samples `f(x)` across its domain and
 draws the curve with sample points, an axis cross, and a scrubbable preview

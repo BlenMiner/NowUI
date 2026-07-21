@@ -32,7 +32,7 @@ void DrawCharacter(NowRect rect)
 ```
 
 A complete component lifecycle is available in
-`Assets/NowUI/Example/NowModelPreviewExample.cs`. The example avoids creating a
+[`NowModelPreviewExample.cs`](../Example/NowModelPreviewExample.cs). The example avoids creating a
 rig until a source model is assigned.
 
 For a live comparison, open **Rendering > Model previews demo** in

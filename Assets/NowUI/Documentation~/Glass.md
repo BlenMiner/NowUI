@@ -128,10 +128,9 @@ The built-in `Now.StartUI()` GL path preserves frame draw order and replays
 earlier NowUI batches into temporary textures for glass panes. It still cannot
 blur arbitrary scene or native UI content already on the screen.
 
-## Docs Scene Demo
+## Example
 
-Open `Assets/Scenes/DocsScene.unity` and select **Glass demo**. The docs
-browser itself is UGUI, so the page enables replay-backed UGUI glass. The demo
-blurs the NowUI stripes and shapes drawn before the pane while keeping labels
-drawn after the pane sharp. Toggle **Debug RTs** to see the baked source,
-blurred crop, quality, fallback reason, and per-frame pixel/pass counts.
+The packaged [docs browser source](../Example/NowDocsExample.cs) contains a
+UGUI replay-backed glass example. It blurs NowUI content drawn before the pane
+while keeping later labels sharp and exposes the diagnostic render targets,
+quality, fallback reason, and per-frame pixel/pass counts.

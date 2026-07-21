@@ -1,6 +1,7 @@
 # Markdown
 
-`NowUI.Extensions.Markdown` (its own assembly under `Assets/NowUI/Extensions/`)
+`NowUI.Extensions.Markdown` (its own assembly under
+[`Extensions/Markdown`](../Extensions/Markdown))
 renders GitHub-flavored Markdown through `Now`/`NowLayout` primitives — no
 HTML, no JavaScript, no WebView.
 

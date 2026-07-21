@@ -380,8 +380,8 @@ using (NowLayout.Area(NowScreen.safeArea, padding: 16f, spacing: 8f))
   placement.
 - Selection is delivered on the next `Draw(ref path)` after the popup commits,
   matching dropdown popup behavior.
-- Open `Assets/Scenes/DocsScene.unity` and select **File picker demo** for a
-  runnable example.
+- See the file-picker section in the packaged
+  [docs browser source](../Example/NowDocsExample.cs) for a complete example.
 
 ## View stacks and dialogs
 
@@ -473,8 +473,8 @@ sealed class DetailsView : INowView
   `SlideFromRight`) and can be replaced with a custom transition delegate.
 - `NowViews.MessageBox(...)` and `NowViews.Confirm(...)` are ready-made dialog
   views you can push on any stack.
-- Open `Assets/Scenes/DocsScene.unity` and select **View stack demo** for a
-  runnable example.
+- See the view-stack section in the packaged
+  [docs browser source](../Example/NowDocsExample.cs) for a complete example.
 
 ## Explicit rects
 
@@ -640,7 +640,7 @@ The detection is attribute-driven and works for your own controls too:
   in a consumer call are never flagged.
 - `[NowScope]` on a disposable struct marks it as using-only (NOWUI002).
 
-Analyzer sources live in `Assets/NowUI/Analyzers~` (ignored by Unity);
+Analyzer sources live in [`Analyzers~`](../Analyzers~) (ignored by Unity);
 rebuild with `dotnet build -c Release` and copy the DLL over
 `Runtime/Analyzers/NowUI.Analyzers.dll`.
 
