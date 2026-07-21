@@ -12,7 +12,7 @@ namespace NowUI.Editor
     {
         const string ThemesFolder = "Assets/NowUI/Assets/Themes";
 
-        [MenuItem("NowUI/Regenerate Default Themes")]
+        [MenuItem("Tools/NowUI/Regenerate Default Themes")]
         public static void RegenerateDefaultThemes()
         {
             var light = LoadOrCreate($"{ThemesFolder}/Default.asset");

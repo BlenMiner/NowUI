@@ -16,8 +16,8 @@ namespace NowUI.Editor
     /// </summary>
     internal static class NowUIAgentSkillInstaller
     {
-        const string MenuPath = "NowUI/AI/Install Agent Skill";
-        const string CopyInstructionsMenuPath = "NowUI/AI/Copy Project AGENTS.md Snippet";
+        const string MenuPath = "Tools/NowUI/AI/Install Agent Skill";
+        const string CopyInstructionsMenuPath = "Tools/NowUI/AI/Copy Project AGENTS.md Snippet";
         const string PackageName = "com.blenminer.nowui";
         const string SkillRelativePath = "AI~/skills/nowui";
         const string InstructionsRelativePath = "AI~/AGENTS.snippet.md";

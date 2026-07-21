@@ -31,11 +31,12 @@ Requirements:
 ## AI coding agents
 
 The UPM package ships version-matched documentation, a scoped `AGENTS.md`, and
-an installable `nowui` skill. After installation, use **NowUI > AI > Install
-Agent Skill** in Unity, or have the agent begin with
+an installable `nowui` skill. After installation, use **Tools > NowUI > AI >
+Install Agent Skill** in Unity, or have the agent begin with
 [`Assets/NowUI/Documentation~/AI_GUIDE.md`](Assets/NowUI/Documentation~/AI_GUIDE.md).
-The package also provides **Copy Project AGENTS.md Snippet** for projects or
-agents that use repository instructions without skills.
+The package also provides **Tools > NowUI > AI > Copy Project AGENTS.md
+Snippet** for projects or agents that use repository instructions without
+skills.
 
 ## Quick Start
 

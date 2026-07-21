@@ -16,7 +16,7 @@ namespace NowUI.Editor
             window.Focus();
         }
 
-        [MenuItem("Window/NowUI/Glyph Explorer")]
+        [MenuItem("Tools/NowUI/Glyph Explorer")]
         public static void ShowWindow()
         {
             Show(null);

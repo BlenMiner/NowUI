@@ -82,11 +82,11 @@ This package ships three complementary layers:
 3. `AI~/skills/nowui` is an installable skill that locates the active package
    and loads the local guide on demand.
 
-In Unity, choose **NowUI > AI > Install Agent Skill** to install the skill into
+In Unity, choose **Tools > NowUI > AI > Install Agent Skill** to install the skill into
 the current project's `.agents/skills/nowui` directory. The action is explicit,
 will not run on package import, and protects locally modified installations.
 For project-level instructions usable without a skill, choose
-**NowUI > AI > Copy Project AGENTS.md Snippet** and paste the copied block into
+**Tools > NowUI > AI > Copy Project AGENTS.md Snippet** and paste the copied block into
 the consuming project's root `AGENTS.md`.
 
 ## Important rules
