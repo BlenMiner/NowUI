@@ -1372,6 +1372,7 @@ namespace NowUI
             {
                 pending.hasValue = 0;
                 ApplyGradient(value, pending.colorKeys, pending.alphaKeys, pending.mode);
+                Now.InvalidateGradient(value);
                 changed = true;
             }
 

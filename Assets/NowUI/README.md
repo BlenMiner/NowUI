@@ -1,9 +1,9 @@
 # NowUI
 
 NowUI is an immediate-mode UI renderer for Unity. It provides explicit and
-measured layout APIs, controls, MSDF text, themes, effects, vector animation,
-and hosts for UGUI, UI Toolkit, render pipelines, RenderTextures, IMGUI, and
-world-space meshes.
+measured layout APIs, controls, MSDF text, gradients, themes, effects, vector
+animation, and hosts for UGUI, UI Toolkit, render pipelines, RenderTextures,
+IMGUI, and world-space meshes.
 
 ## Start here
 

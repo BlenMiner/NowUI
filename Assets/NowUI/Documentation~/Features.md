@@ -141,6 +141,29 @@ Now.Rectangle(new Vector4(24, 24, 180, 48))
 The rectangle API covers fill color, radius, padding, outline, outline color,
 blur, mask, position, textures, sprites, and custom materials.
 
+## Gradients
+
+`Now.Gradient(...)` is a separate paint primitive, so richer fills do not add
+state or branches to `NowRectangle`. It supports directional linear, circular
+or elliptical radial, and conic gradients with two colors or all keys from a
+Unity `Gradient`.
+
+```csharp
+Now.Gradient(new NowRect(24, 24, 240, 96), cool, warm)
+    .SetLinear(120f)
+    .SetRadius(16f)
+    .Draw();
+
+Now.Gradient(new NowRect(24, 136, 240, 96), glowRamp)
+    .SetRadial(new Vector2(0.5f, 0.45f), radius: 0.55f)
+    .SetSpread(NowGradientSpread.Mirror)
+    .SetRepetitions(2f)
+    .Draw();
+```
+
+See [Gradients](Gradients.md) for geometry, Unity ramp invalidation, spread
+modes, styling, batching, and warmup behavior.
+
 ## Glass
 
 `Now.Glass(...)` draws a rounded translucent pane that samples and blurs what

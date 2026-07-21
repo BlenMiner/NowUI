@@ -161,6 +161,75 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void GradientKindsRenderExpectedColorRegions()
+    {
+        var rect = new NowRect(16f, 16f, 96f, 96f);
+
+        using (_renderer.Begin(_target))
+        {
+            Now.Gradient(rect, Color.red, Color.blue)
+                .SetLinear(90f)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+        Color32 linearLeft = pixels[64 * Side + 24];
+        Color32 linearRight = pixels[64 * Side + 104];
+        Assert.Greater(linearLeft.r, linearLeft.b + 80, $"Linear start was {linearLeft}.");
+        Assert.Greater(linearRight.b, linearRight.r + 80, $"Linear end was {linearRight}.");
+
+        _renderer.Clear();
+        using (_renderer.Begin(_target))
+        {
+            Now.Gradient(rect, Color.white, Color.black)
+                .SetRadial(NowGradientShape.Circle)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        pixels = ReadPixels(_target);
+        Color32 radialCenter = pixels[64 * Side + 64];
+        Color32 radialEdge = pixels[64 * Side + 18];
+        Assert.Greater(radialCenter.r, radialEdge.r + 100,
+            $"Radial center {radialCenter} was not brighter than edge {radialEdge}.");
+
+        _renderer.Clear();
+        using (_renderer.Begin(_target))
+        {
+            Now.Gradient(rect, Color.red, Color.blue)
+                .SetConic()
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        pixels = ReadPixels(_target);
+        Color32 conicTop = pixels[104 * Side + 64];
+        Color32 conicBottom = pixels[24 * Side + 64];
+        Assert.Greater(
+            Mathf.Abs(conicTop.r - conicBottom.r) + Mathf.Abs(conicTop.b - conicBottom.b),
+            100,
+            $"Conic samples did not vary: {conicTop} and {conicBottom}.");
+
+        _renderer.Clear();
+        using (_renderer.Begin(_target))
+        {
+            Now.Gradient(rect, Color.clear, Color.clear)
+                .SetTint(Color.clear)
+                .SetRadius(10f)
+                .SetOutline(6f, Color.green)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        pixels = ReadPixels(_target);
+        Color32 outlineEdge = pixels[64 * Side + 18];
+        Color32 outlineCenter = pixels[64 * Side + 64];
+        Assert.Greater(outlineEdge.g, 180, $"Gradient outline edge was {outlineEdge}.");
+        Assert.Less(outlineCenter.a, 20, $"Transparent gradient center was {outlineCenter}.");
+    }
+
+    [Test]
     public void PremultipliedTextureAvoidsMultiplyingAlphaTwice()
     {
         var source = new Texture2D(1, 1, TextureFormat.RGBA32, false, true);

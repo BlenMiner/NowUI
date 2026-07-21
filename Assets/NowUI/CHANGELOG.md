@@ -5,6 +5,19 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **CSS-inspired gradient paints are a standalone primitive.**
+  `Now.Gradient(rect)` draws one-quad linear, circular/elliptical radial, and
+  conic gradients with named directions or CSS-style angles, clamp/repeat/
+  mirror spread, repetitions, tint, masks, rounded corners, blur, and solid
+  outlines. Ramps accept two colors or every color/alpha key from a Unity
+  `Gradient`; a shared ramp atlas keeps different gradients on one material
+  and steady-state drawing allocation-free after warmup. Mutable Unity ramps
+  support caller revisions and `Now.InvalidateGradient(...)`, while
+  `GradientField` invalidates automatically after edits. The dedicated builder,
+  shaders, and batch kind leave `NowRectangle` and its solid path unchanged.
+
 ### Changed
 
 - **Package guidance is now version-matched and agent-ready.** Public guides

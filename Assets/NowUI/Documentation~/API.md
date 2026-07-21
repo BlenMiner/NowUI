@@ -28,6 +28,9 @@ extension, editor, URP, and HDRP assemblies in the installed package.
   text rendering, shaping, editing, wrapping, selection, and parser hooks.
 - `NowGlass`, `NowGlassSettings`, and diagnostics structs: backdrop pane
   drawing, quality selection, and non-alloc diagnostic reporting.
+- `NowGradient`, `NowGradientKind`, `NowGradientDirection`,
+  `NowGradientShape`, and `NowGradientSpread`: CSS-inspired linear, radial,
+  and conic paints backed by two-color or Unity `Gradient` ramps.
 - `NowModel`, `NowModelPreview`, `NowModelPreviewSourceMode`, and
   `NowModelPreviewUpdateMode`: isolated raw-mesh or caller-owned scene-object
   model-to-texture previews

@@ -3,8 +3,8 @@
 Now-UI is an immediate-mode UI renderer for Unity. You call the drawing API
 each frame and flush — no GameObject hierarchy, no retained UI tree — but the
 toolbox is complete: batched rectangles, MSDF text with runtime font
-compilation, a flexbox-style layout system, pointer/touch/gamepad interaction,
-themes, and Lottie vector animation.
+compilation, CSS-inspired gradients, a flexbox-style layout system,
+pointer/touch/gamepad interaction, themes, and Lottie vector animation.
 
 It renders through the built-in pipeline (`GL`/`Graphics.DrawMeshNow`), URP,
 HDRP, a UGUI `CanvasRenderer`, UI Toolkit/UXML, a world-space `MeshRenderer`,
@@ -110,6 +110,9 @@ Toolkit, world-space, and manual-host examples, see
 - **Rectangles** — rounded corners (per-corner radii), outlines, blur,
   padding, masks, textures, sprites, and custom materials.
   [Documentation~/Features.md](Assets/NowUI/Documentation~/Features.md), [Documentation~/CustomMaterials.md](Assets/NowUI/Documentation~/CustomMaterials.md)
+- **Gradients** — directional linear, circular/elliptical radial, and conic
+  paints with repeating spread modes and Unity `Gradient` ramps.
+  [Documentation~/Gradients.md](Assets/NowUI/Documentation~/Gradients.md)
 - **Glass** — rounded backdrop panes that blur previously rendered target
   content on command-buffer and RenderTexture-backed hosts, plus automatic UGUI
   replay blur for NowUI content, with tint, outline, and radius controls.

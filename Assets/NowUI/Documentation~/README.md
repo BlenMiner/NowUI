@@ -10,6 +10,8 @@ installed NowUI revision. AI coding agents should begin with the
   correctness rules, ownership, performance, and verification.
 - [Feature Usage](Features.md): core drawing lifecycle, rectangles, text, UGUI,
   and font compilation examples.
+- [Gradients](Gradients.md): directional linear, radial, and conic paints,
+  Unity ramps, spread modes, styling, batching, and warmup behavior.
 - [Public API](API.md): supported runtime/extension surfaces, compatibility
   rules, and allocation expectations for public APIs.
 - [Lines](Lines.md): anti-aliased straight lines, cubic Beziers, dashed

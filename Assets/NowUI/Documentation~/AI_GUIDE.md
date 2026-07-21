@@ -96,6 +96,7 @@ Host lifecycle rules:
 | New or restyled controls | Control builders and interaction primitives | [Custom Controls](CustomControls.md) |
 | Themes and reusable style tokens | `NowThemeAsset` | [Styles and Themes](StylesAndThemes.md) |
 | Lines, Beziers, dashes, arrows | `Now.Line`, `Now.Bezier` | [Lines](Lines.md) |
+| Linear, radial, and conic fills | `Now.Gradient` | [Gradients](Gradients.md) |
 | Circles, triangles, polygons | Shape builders | [Shapes](Shapes.md) |
 | Backdrop blur panes | `Now.Glass` | [Glass](Glass.md) |
 | Custom rectangle shaders/materials | `SetMaterial` | [Custom Materials](CustomMaterials.md) |

@@ -28,6 +28,15 @@ public sealed class NowUIQuickStartOverlay : MonoBehaviour
     {
         NowLayout.Label("NowUI", 28f).Draw();
 
+        var gradientRect = NowLayout.ReserveRect(width: 180f, height: 36f);
+        Now.Gradient(
+                gradientRect,
+                new Color(0.12f, 0.5f, 1f),
+                new Color(0.72f, 0.22f, 0.95f))
+            .SetLinear(110f)
+            .SetRadius(10f)
+            .Draw();
+
         var buttonRect = NowLayout.ReserveRect(width: 180f, height: 44f);
         bool clicked = Now.Button(buttonRect, "Sample Button").Draw();
 

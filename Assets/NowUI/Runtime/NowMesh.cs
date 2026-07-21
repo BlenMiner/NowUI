@@ -13,7 +13,8 @@ namespace NowUI.Internal
         Ripple,
         Sdf,
         Glass,
-        Bezier
+        Bezier,
+        Gradient
     }
 
     internal struct NowMeshBatch
@@ -540,6 +541,30 @@ namespace NowUI.Internal
             triArr[triCount + 5] = indexOffset + 3;
 
             _tris.count += 6;
+        }
+
+        /// <summary>
+        /// Emits the ordinary rounded-rectangle quad but reserves UV0.xy for the
+        /// gradient shader's packed per-instance tint. Raw UV, SDF, mask, outline,
+        /// and padding streams stay identical to rectangles.
+        /// </summary>
+        internal void AddGradientRect(
+            in NowRectVertex vertexData,
+            Vector4 extra,
+            float geometryPadding,
+            Vector2 packedTint)
+        {
+            int uvStart = _uvs.count;
+            AddRect(vertexData, extra, geometryPadding);
+
+            if (_uvs.count == uvStart)
+                return;
+
+            var uvs = _uvs.array;
+            uvs[uvStart] = packedTint;
+            uvs[uvStart + 1] = packedTint;
+            uvs[uvStart + 2] = packedTint;
+            uvs[uvStart + 3] = packedTint;
         }
 
         internal void EnsureRawCapacity(int vertexCount, int indexCount)
@@ -1529,6 +1554,7 @@ namespace NowUI.Internal
                 kind == NowMeshKind.Rectangle ||
                 kind == NowMeshKind.TexturedRectangle ||
                 kind == NowMeshKind.CustomRectangle ||
+                kind == NowMeshKind.Gradient ||
                 kind == NowMeshKind.Ripple;
             int count = _verts.count;
 
