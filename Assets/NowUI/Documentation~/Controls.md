@@ -688,6 +688,13 @@ changes by pointer, Tab, or an explicit link). Tab and Shift+Tab cycle
 through controls in draw order. Submit (enter/space/gamepad south) activates the focused
 control; cancel clears focus (and closes popups). Clicking a control focuses
 it. Focused controls draw a focus outline.
+Focused `TextField` and `TextArea` controls own directional input while
+editing: W/A/S/D, arrows, the d-pad, and the left stick cannot move focus away
+or steal a character/caret action. Tab and Shift+Tab remain focus traversal for
+those fields. `CodeEditor` owns all navigation, including Tab for indentation.
+Focused editors also receive cancel before the global focus fallback; while an
+IME composition is active, Escape belongs to the composition first.
+
 
 Override individual focus hops with `SetNavigation`. Targets should be stable
 control ids, usually from `SetId`; unset links keep using the default spatial
@@ -733,6 +740,10 @@ Input arrives through the RectTransform provider, and **Auto Rebuild On
 Interaction** (on by default) re-renders when pointer, button, scroll, or
 navigation input changes for the graphic, or when a control requests a repaint
 (caret blink or animation), staying fully retained while idle.
+Keyboard and gamepad snapshots remain available when the graphic has no usable
+pointer—for example when the pointer is absent, outside its RectTransform, or
+occluded by another UGUI element—so W/A/S/D, arrows, Tab, submit, and cancel
+still wake and operate retained controls after an idle frame.
 `raycastTarget` blocks UGUI Selectables underneath, so NowUI controls layer
 correctly with UGUI.
 
@@ -802,6 +813,7 @@ The toolkit pieces:
 | --- | --- |
 | `NowControls.Interact(rect, out focused, out submitted, file, line)` | Call-site identity + pointer interaction + focus registration + click-to-focus + submit |
 | `NowControls.Interact(id, fallback, rect, out focused, out submitted)` | Builder-style identity with optional explicit `NowId` |
+| `NowControls.Interact(id, rect, navigation, navigationLock, consumesCancel, out focused, out submitted)` | Register a custom control's directional/full navigation and cancel ownership while focused |
 | `NowInput.Interact(rect)` | Id-less interaction: identity from the call site |
 | `interaction.GetId("slot")` / `interaction.State<T>("slot")` | Sub-state keys derived from the resolved control id |
 | `NowInput.CombineId(a, b)` | Mint sub-element ids (rows, links, items) without strings |
@@ -809,7 +821,7 @@ The toolkit pieces:
 | `NowControlState.Get<T>(id)` / `Get<T>(id, "slot")` | Persistent ephemeral slot (struct), evicted when stale |
 | `NowControlState.Transition / Repeat / DetectDoubleClick / ClickStreak / Blink` | The standard timing behaviors; common animation/repeat helpers also accept `NowInteraction` |
 | `NowControlState.RequestRepaint()` | Tell retained hosts (UGUI) to render another frame |
-| `NowFocus.IsFocused / Focus / Clear / LockNavigation` | Focus queries, explicit control, nav suppression while editing |
+| `NowFocus.IsFocused / Focus / Clear / LockDirectionalNavigation / LockNavigation` | Focus queries, explicit control, directional-only or full navigation ownership while editing |
 | `Now.Mask(rect)` | Ambient clipping scope (what ScrollView uses) |
 | `NowOverlay.Defer(blockRect, draw)` | Draw above everything; input beneath is blocked |
 | `NowContextMenu.Open / Begin / Item / End` | Modal right-click menus on the overlay layer |

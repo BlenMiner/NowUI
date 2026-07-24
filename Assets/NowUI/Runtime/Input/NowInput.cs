@@ -523,7 +523,7 @@ namespace NowUI
         /// <summary>
         /// Claims cancel presses for the calling control — a key-capture field
         /// swallowing Escape, for example. Call every frame the claim should
-        /// hold, like <see cref="NowFocus.LockNavigation"/>: dismissal paths
+        /// hold, like the <see cref="NowFocus"/> navigation locks: dismissal paths
         /// that run later in the frame (popups, dialogs, menus) skip a claimed
         /// cancel via <see cref="cancelConsumed"/>, and the focus swap — which
         /// processes input before the claimant draws — honours the previous

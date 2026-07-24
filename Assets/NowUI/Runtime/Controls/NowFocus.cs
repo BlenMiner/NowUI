@@ -171,6 +171,16 @@ namespace NowUI
         }
     }
 
+    /// <summary>
+    /// Describes which focus-navigation inputs a control owns while focused.
+    /// </summary>
+    public enum NowFocusNavigationLock
+    {
+        None = 0,
+        Directional = 1,
+        All = 2
+    }
+
     internal struct NowFocusScrollRegionScope : System.IDisposable
     {
         bool _active;
@@ -218,6 +228,8 @@ namespace NowUI
             public int scrollRegionId;
             public int overlayLayerId;
             public ResolvedFocusNavigation navigation;
+            public NowFocusNavigationLock navigationLock;
+            public bool consumesCancel;
         }
 
         static readonly List<int> _scrollRegionStack = new List<int>(4);
@@ -232,9 +244,23 @@ namespace NowUI
 
         static int _registryFrame = -1;
 
-        static int _navigationLockFrame = -1;
+        static NowFocusNavigationLock _navigationLockCurrent;
 
-        static int _retainFocusFrame = -1;
+        static int _navigationLockCurrentFocusRevision;
+
+        static NowFocusNavigationLock _navigationLockPrevious;
+
+        static int _navigationLockPreviousFocusRevision;
+
+        static int _explicitFocusRequestId;
+
+        static int _pendingCancelOwnerId;
+
+        static bool _preserveInputClaimsOnNextSwap;
+
+        static bool _retainFocusCurrent;
+
+        static bool _retainFocusPrevious;
 
         static Vector2 _lastNavigation;
 
@@ -329,7 +355,10 @@ namespace NowUI
 
         public static void Focus(int id)
         {
-            SetFocused(id);
+            if (_focusedId != id)
+                SetFocused(id);
+
+            _explicitFocusRequestId = id;
 
             if (respectEventSystem && id != 0)
             {
@@ -342,6 +371,7 @@ namespace NowUI
 
         public static void Clear()
         {
+            _explicitFocusRequestId = 0;
             SetFocused(0);
         }
 
@@ -378,6 +408,15 @@ namespace NowUI
         /// </summary>
         public static void Register(int id, NowRect rect, NowFocusNavigation navigation)
         {
+            Register(id, rect, navigation, NowFocusNavigationLock.None);
+        }
+
+        /// <summary>
+        /// Adds a control with the navigation and cancel inputs it owns while focused.
+        /// </summary>
+        public static void Register(int id, NowRect rect, NowFocusNavigation navigation,
+            NowFocusNavigationLock navigationLock, bool consumesCancel = false)
+        {
             if (id == 0 || NowInput.isPassive || rect.isEmpty)
                 return;
 
@@ -395,7 +434,9 @@ namespace NowUI
                 visibleRect = (Rect)visibleRect,
                 scrollRegionId = scrollRegionId,
                 overlayLayerId = NowOverlay.currentFocusLayerId,
-                navigation = navigation.Resolve()
+                navigation = navigation.Resolve(),
+                navigationLock = navigationLock,
+                consumesCancel = consumesCancel
             });
         }
 
@@ -466,19 +507,49 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Suppresses focus navigation while the focused control consumes
-        /// keyboard/gamepad input itself — a text field's arrows move the caret
-        /// and WASD types characters, neither should move focus. Call every
-        /// frame from the focused control's draw; effective on the next frame
-        /// swap, like registration.
+        /// Suppresses all focus navigation, including Tab, while the focused
+        /// control consumes it itself. Call every frame from the focused
+        /// control's draw; effective on the next frame swap, like registration.
         /// </summary>
         public static void LockNavigation()
+        {
+            ClaimNavigationLock(NowFocusNavigationLock.All);
+        }
+
+        /// <summary>
+        /// Suppresses directional focus navigation (arrows, W/A/S/D, d-pad and
+        /// stick) while leaving Tab traversal available. Call every frame from
+        /// the focused control's draw; effective on the next frame swap, like
+        /// registration.
+        /// </summary>
+        public static void LockDirectionalNavigation()
+        {
+            ClaimNavigationLock(NowFocusNavigationLock.Directional);
+        }
+
+        static void ClaimNavigationLock(NowFocusNavigationLock navigationLock)
         {
             if (NowInput.isPassive)
                 return;
 
+            int focusRevision = _focusRevision;
+            ClaimNavigationLock(navigationLock, focusRevision);
             BeginFrameIfNeeded();
-            _navigationLockFrame = Time.frameCount;
+
+            if (_focusRevision == focusRevision)
+                ClaimNavigationLock(navigationLock, focusRevision);
+        }
+
+        static void ClaimNavigationLock(NowFocusNavigationLock navigationLock, int focusRevision)
+        {
+            if (_navigationLockCurrentFocusRevision != focusRevision)
+            {
+                _navigationLockCurrentFocusRevision = focusRevision;
+                _navigationLockCurrent = NowFocusNavigationLock.None;
+            }
+
+            if (navigationLock > _navigationLockCurrent)
+                _navigationLockCurrent = navigationLock;
         }
 
         /// <summary>
@@ -494,8 +565,9 @@ namespace NowUI
             if (NowInput.isPassive)
                 return;
 
+            _retainFocusCurrent = true;
             BeginFrameIfNeeded();
-            _retainFocusFrame = Time.frameCount;
+            _retainFocusCurrent = true;
         }
 
         static void BeginFrameIfNeeded()
@@ -506,6 +578,37 @@ namespace NowUI
                 return;
 
             _registryFrame = frame;
+            bool preserveInputClaims = _preserveInputClaimsOnNextSwap;
+            _preserveInputClaimsOnNextSwap = false;
+            if (!preserveInputClaims)
+                FinalizePendingCancelOwner();
+
+
+            if (preserveInputClaims)
+            {
+                if (_navigationLockCurrentFocusRevision == _navigationLockPreviousFocusRevision)
+                {
+                    if (_navigationLockCurrent > _navigationLockPrevious)
+                        _navigationLockPrevious = _navigationLockCurrent;
+                }
+                else if (_navigationLockCurrent != NowFocusNavigationLock.None)
+                {
+                    _navigationLockPrevious = _navigationLockCurrent;
+                    _navigationLockPreviousFocusRevision = _navigationLockCurrentFocusRevision;
+                }
+
+                _retainFocusPrevious |= _retainFocusCurrent;
+            }
+            else
+            {
+                _navigationLockPrevious = _navigationLockCurrent;
+                _navigationLockPreviousFocusRevision = _navigationLockCurrentFocusRevision;
+                _retainFocusPrevious = _retainFocusCurrent;
+            }
+
+            _navigationLockCurrent = NowFocusNavigationLock.None;
+            _navigationLockCurrentFocusRevision = 0;
+            _retainFocusCurrent = false;
 
             _previous.Clear();
             _previous.AddRange(_current);
@@ -519,18 +622,48 @@ namespace NowUI
             ProcessNavigation();
         }
 
+        static void FinalizePendingCancelOwner()
+        {
+            if (_pendingCancelOwnerId == 0)
+                return;
+
+            bool ownerRegistered = false;
+
+            for (int i = 0; i < _current.Count; ++i)
+            {
+                if (_current[i].id == _pendingCancelOwnerId && _current[i].consumesCancel)
+                {
+                    ownerRegistered = true;
+                    break;
+                }
+            }
+
+            if (_focusedId == _pendingCancelOwnerId && !ownerRegistered)
+                Clear();
+
+            _pendingCancelOwnerId = 0;
+        }
+
         /// <summary>Forces the frame swap; used by tests where frameCount is static.</summary>
         internal static void ForceNewFrame()
         {
+            _preserveInputClaimsOnNextSwap = false;
             _registryFrame = -1;
             BeginFrameIfNeeded();
             _registryFrame = -1;
+            _preserveInputClaimsOnNextSwap = true;
         }
 
         static void ProcessNavigation()
         {
             var snapshot = NowInput.current;
             int activeLayerId = NowOverlay.activeFocusLayerId;
+            bool focusedWasRegistered = TryGetFocusedInputPolicy(activeLayerId,
+                out NowFocusNavigationLock focusedNavigationLock, out bool focusedConsumesCancel);
+
+            if (_navigationLockPreviousFocusRevision == _focusRevision &&
+                _navigationLockPrevious > focusedNavigationLock)
+                focusedNavigationLock = _navigationLockPrevious;
 
             if (respectEventSystem)
             {
@@ -544,15 +677,19 @@ namespace NowUI
                 }
             }
 
-            if (snapshot.cancelPressed && !NowInput.cancelConsumedForFrameSwap)
+            if (snapshot.cancelPressed)
             {
-                Clear();
+                if (focusedConsumesCancel)
+                    _pendingCancelOwnerId = _focusedId;
+                else if (!NowInput.cancelConsumedForFrameSwap)
+                    Clear();
+
                 _lastNavigation = snapshot.navigation;
                 ResetNavigationRepeat();
                 return;
             }
 
-            if (snapshot.primaryPressed && _focusedId != 0 && _retainFocusFrame < Time.frameCount - 1)
+            if (snapshot.primaryPressed && _focusedId != 0 && !_retainFocusPrevious)
             {
                 bool overControl = false;
 
@@ -578,9 +715,20 @@ namespace NowUI
             }
 
             Vector2 navigation = snapshot.navigation;
-            bool navigationLocked = _navigationLockFrame >= Time.frameCount - 1;
+            bool protectExplicitFocus = _explicitFocusRequestId != 0 &&
+                _explicitFocusRequestId == _focusedId && !focusedWasRegistered;
+            _explicitFocusRequestId = 0;
 
-            if (navigationLocked)
+            if (protectExplicitFocus &&
+                (snapshot.focusPreviousPressed || snapshot.focusNextPressed ||
+                 ResolveNavigationDirection(navigation) != default))
+            {
+                _lastNavigation = navigation;
+                ResetNavigationRepeat();
+                return;
+            }
+
+            if (focusedNavigationLock == NowFocusNavigationLock.All)
             {
                 _lastNavigation = navigation;
                 ResetNavigationRepeat();
@@ -595,12 +743,47 @@ namespace NowUI
                 return;
             }
 
+            if (focusedNavigationLock == NowFocusNavigationLock.Directional)
+            {
+                _lastNavigation = navigation;
+                ResetNavigationRepeat();
+                return;
+            }
+
             Vector2 direction = GetNavigationPulse(navigation, snapshot.time);
 
             if (direction == default || !HasFocusableInLayer(activeLayerId))
                 return;
 
             MoveFocus(direction, activeLayerId);
+        }
+
+        static bool TryGetFocusedInputPolicy(int activeLayerId,
+            out NowFocusNavigationLock navigationLock, out bool consumesCancel)
+        {
+            navigationLock = NowFocusNavigationLock.None;
+            consumesCancel = false;
+            bool found = false;
+
+            for (int i = 0; i < _previous.Count; ++i)
+            {
+                Focusable focusable = _previous[i];
+
+                if (focusable.id != _focusedId)
+                    continue;
+
+                found = true;
+
+                if (!IsFocusableInLayer(focusable, activeLayerId))
+                    continue;
+
+                if (focusable.navigationLock > navigationLock)
+                    navigationLock = focusable.navigationLock;
+
+                consumesCancel |= focusable.consumesCancel;
+            }
+
+            return found;
         }
 
         static Vector2 GetNavigationPulse(Vector2 navigation, float time)
@@ -929,8 +1112,15 @@ namespace NowUI
             _focusedId = 0;
             _focusRevision = 0;
             _registryFrame = -1;
-            _navigationLockFrame = -1;
-            _retainFocusFrame = -1;
+            _navigationLockCurrent = NowFocusNavigationLock.None;
+            _navigationLockCurrentFocusRevision = 0;
+            _navigationLockPrevious = NowFocusNavigationLock.None;
+            _navigationLockPreviousFocusRevision = 0;
+            _explicitFocusRequestId = 0;
+            _pendingCancelOwnerId = 0;
+            _preserveInputClaimsOnNextSwap = false;
+            _retainFocusCurrent = false;
+            _retainFocusPrevious = false;
             _lastNavigation = default;
             _navigationMemory = default;
             _navigationMemoryFocusedCenter = default;

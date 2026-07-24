@@ -239,6 +239,14 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Text editing now has durable focus-input ownership across retained UGUI idle
+  frames: TextField and TextArea consume W/A/S/D, arrows, d-pad/stick navigation
+  without losing focus while still allowing Tab traversal, and CodeEditor owns
+  Tab as well. Cancel reaches the focused editor before the global focus fallback
+  (with IME composition retaining first claim on Escape). RectTransform input
+  providers also preserve keyboard/gamepad-only snapshots when no usable pointer
+  is present, so navigation, submit, and cancel reliably wake `NowGraphic` hosts.
+
 - Retained UGUI and world-space hosts now repaint for text editing keys and
   keyboard shortcuts as well as pointer/navigation changes. Combo-box typing,
   clipboard commands, undo/redo, and other keyboard-only interactions no

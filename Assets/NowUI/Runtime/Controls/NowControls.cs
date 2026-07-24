@@ -581,9 +581,18 @@ namespace NowUI
         /// </summary>
         public static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation, out bool focused, out bool submitted)
         {
+            return Interact(id, rect, navigation, NowFocusNavigationLock.None, false, out focused, out submitted);
+        }
+
+        /// <summary>
+        /// The standard interaction bundle with focused-input ownership metadata.
+        /// </summary>
+        public static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation,
+            NowFocusNavigationLock navigationLock, bool consumesCancel, out bool focused, out bool submitted)
+        {
             CheckDuplicateControlId(id);
             var interaction = NowInput.Interact(id, rect);
-            NowFocus.Register(id, rect, navigation);
+            NowFocus.Register(id, rect, navigation, navigationLock, consumesCancel);
 
             if (interaction.pressed)
                 NowFocus.Focus(id);

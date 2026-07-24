@@ -555,6 +555,57 @@ public class NowInputTests
     }
 
     [Test]
+    public void RectTransformProviderReturnsNavigationOnlySnapshotAsAvailable()
+    {
+        var gameObject = new GameObject("NowUI RectTransform input test", typeof(RectTransform));
+
+        try
+        {
+            var provider = new NowRectTransformInputProvider(gameObject.GetComponent<RectTransform>());
+            var raw = new NowMouseInput
+            {
+                hasPointer = false,
+                pointerButtonsDown = NowPointerButtons.Primary,
+                pointerButtonsPressed = NowPointerButtons.Primary,
+                pointerButtonsReleased = NowPointerButtons.Primary,
+                scrollDelta = new Vector2(2f, 3f),
+                navigation = new Vector2(-1f, 1f),
+                focusPreviousPressed = true,
+                focusNextPressed = true,
+                submitDown = true,
+                submitPressed = true,
+                submitReleased = true,
+                cancelDown = true,
+                cancelPressed = true,
+                cancelReleased = true
+            };
+
+            bool available = provider.TryGetSnapshot(
+                new NowInputSurface(new Vector2(100f, 100f)), raw, out var snapshot);
+
+            Assert.IsTrue(available);
+            Assert.IsFalse(snapshot.hasPointer);
+            Assert.AreEqual(raw.navigation, snapshot.navigation);
+            Assert.IsTrue(snapshot.focusPreviousPressed);
+            Assert.IsTrue(snapshot.focusNextPressed);
+            Assert.IsTrue(snapshot.submitDown);
+            Assert.IsTrue(snapshot.submitPressed);
+            Assert.IsTrue(snapshot.submitReleased);
+            Assert.IsTrue(snapshot.cancelDown);
+            Assert.IsTrue(snapshot.cancelPressed);
+            Assert.IsTrue(snapshot.cancelReleased);
+            Assert.AreEqual(NowPointerButtons.None, snapshot.pointerButtonsDown);
+            Assert.AreEqual(NowPointerButtons.None, snapshot.pointerButtonsPressed);
+            Assert.AreEqual(NowPointerButtons.None, snapshot.pointerButtonsReleased);
+            Assert.AreEqual(Vector2.zero, snapshot.scrollDelta);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(gameObject);
+        }
+    }
+
+    [Test]
     public void InputScopeRestoresPreviousContext()
     {
         var first = new MockInputProvider

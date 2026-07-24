@@ -198,31 +198,33 @@ namespace NowUI
 
         public bool KeyDown(KeyCode keyCode, bool shift)
         {
+            var navigationKeys = NowInput.navigationKeys;
+
             switch (keyCode)
             {
-                case KeyCode.LeftArrow:
-                case KeyCode.A:
+                case KeyCode.LeftArrow when (navigationKeys & NowNavigationKeys.Arrows) != 0:
+                case KeyCode.A when (navigationKeys & NowNavigationKeys.Wasd) != 0:
                     _leftDown = true;
                     UpdateKeyNavigation();
                     return true;
-                case KeyCode.RightArrow:
-                case KeyCode.D:
+                case KeyCode.RightArrow when (navigationKeys & NowNavigationKeys.Arrows) != 0:
+                case KeyCode.D when (navigationKeys & NowNavigationKeys.Wasd) != 0:
                     _rightDown = true;
                     UpdateKeyNavigation();
                     return true;
-                case KeyCode.UpArrow:
-                case KeyCode.W:
+                case KeyCode.UpArrow when (navigationKeys & NowNavigationKeys.Arrows) != 0:
+                case KeyCode.W when (navigationKeys & NowNavigationKeys.Wasd) != 0:
                     _upDown = true;
                     UpdateKeyNavigation();
                     return true;
-                case KeyCode.DownArrow:
-                case KeyCode.S:
+                case KeyCode.DownArrow when (navigationKeys & NowNavigationKeys.Arrows) != 0:
+                case KeyCode.S when (navigationKeys & NowNavigationKeys.Wasd) != 0:
                     _downDown = true;
                     UpdateKeyNavigation();
                     return true;
-                case KeyCode.Return:
-                case KeyCode.KeypadEnter:
-                case KeyCode.Space:
+                case KeyCode.Return when (navigationKeys & NowNavigationKeys.EnterSubmit) != 0:
+                case KeyCode.KeypadEnter when (navigationKeys & NowNavigationKeys.EnterSubmit) != 0:
+                case KeyCode.Space when (navigationKeys & NowNavigationKeys.SpaceSubmit) != 0:
                     _submitDown = true;
                     _submitPressed = true;
                     return true;
@@ -230,7 +232,7 @@ namespace NowUI
                     _cancelDown = true;
                     _cancelPressed = true;
                     return true;
-                case KeyCode.Tab:
+                case KeyCode.Tab when (navigationKeys & NowNavigationKeys.TabFocus) != 0:
                     if (shift)
                         _focusPreviousPressed = true;
                     else

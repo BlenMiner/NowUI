@@ -354,7 +354,8 @@ namespace NowUI.CodeEditor
                 NowInput.Interact(cache.idRenameField, renameClaimRect);
             }
 
-            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
+            var interaction = NowControls.Interact(id, rect, _navigation,
+                NowFocusNavigationLock.All, true, out bool focused, out _);
             bool verticalMove = false;
             bool revealCaret = false;
 
@@ -467,6 +468,7 @@ namespace NowUI.CodeEditor
             if (focused && !NowInput.isPassive)
             {
                 NowFocus.LockNavigation();
+                NowInput.ConsumeCancel();
                 NowTextInput.RequestTextCapture();
                 var frame = NowTextInput.current;
                 composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
@@ -520,7 +522,7 @@ namespace NowUI.CodeEditor
                 // While composing the IME owns the editing keys.
                 if (composition == null)
                 {
-                    if (frame.escapePressed)
+                    if (frame.escapePressed || NowInput.current.cancelPressed)
                     {
                         if (cache.goToLineActive)
                             cache.goToLineActive = false;
@@ -1053,9 +1055,10 @@ namespace NowUI.CodeEditor
                 // conversion and Escape cancels it — both belong to the IME,
                 // not to the rename.
                 bool composing = !string.IsNullOrEmpty(inputFrame.composition);
+                bool cancelPressed = (inputFrame.escapePressed || NowInput.current.cancelPressed) && !composing;
                 bool commit = interactivePass && fieldFocused && inputFrame.enterPressed && !composing;
                 bool cancel = interactivePass && !commit &&
-                    ((inputFrame.escapePressed && !composing) || !fieldFocused);
+                    (cancelPressed || !fieldFocused);
 
                 NowFocus.DeclareOwner(fieldControlId, id);
                 Now.TextField(fieldRect, NowId.Resolved(fieldControlId))
@@ -1084,7 +1087,7 @@ namespace NowUI.CodeEditor
 
                     // Escape hands focus back to the editor; a click away
                     // leaves focus where the user put it.
-                    if (inputFrame.escapePressed)
+                    if (cancelPressed)
                     {
                         cache.suppressCaretJump = true;
                         NowFocus.Focus(id);

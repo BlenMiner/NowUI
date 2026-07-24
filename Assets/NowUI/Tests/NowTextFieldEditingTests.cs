@@ -121,11 +121,15 @@ public class NowTextFieldEditingTests
 
     static readonly Vector2 Surface = new Vector2(512, 256);
     static readonly NowRect FieldRect = new NowRect(20, 20, 240, 30);
+    static readonly NowRect NavigationBeforeRect = new NowRect(20, 70, 90, 30);
+    static readonly NowRect NavigationFieldRect = new NowRect(130, 70, 240, 30);
+    static readonly NowRect NavigationAfterRect = new NowRect(390, 70, 90, 30);
 
     NowFontAsset _font;
     FakePointer _pointer;
     FakeKeyboard _keyboard;
     NowDrawList _drawList;
+    int _snapshotFrame;
 
     [OneTimeSetUp]
     public void LoadFont()
@@ -150,6 +154,7 @@ public class NowTextFieldEditingTests
         _keyboard = new FakeKeyboard();
         NowTextInput.source = _keyboard;
         _drawList = new NowDrawList();
+        _snapshotFrame = 0;
     }
 
     [TearDown]
@@ -174,6 +179,10 @@ public class NowTextFieldEditingTests
     }
 
     static int Id => NowInput.GetId("name");
+
+    static int BeforeId => NowInput.GetId("before-name");
+
+    static int AfterId => NowInput.GetId("after-name");
 
     void Focus()
     {
@@ -208,6 +217,64 @@ public class NowTextFieldEditingTests
     bool Frame(ref string text, NowTextInputFrame keys = default, string placeholder = null)
     {
         return FrameResult(ref text, keys, placeholder);
+    }
+
+    NowInputSnapshot NavigationSnapshot(
+        Vector2 navigation = default,
+        bool focusPrevious = false,
+        bool focusNext = false,
+        bool cancel = false)
+    {
+        int frame = ++_snapshotFrame;
+
+        return new NowInputSnapshot(
+            false,
+            default,
+            default,
+            default,
+            NowPointerButtons.None,
+            NowPointerButtons.None,
+            NowPointerButtons.None,
+            default,
+            navigation,
+            focusPrevious,
+            focusNext,
+            false,
+            false,
+            false,
+            cancel,
+            cancel,
+            false,
+            frame,
+            frame);
+    }
+
+    NowTextFieldResult NavigationFrame(
+        ref string text,
+        NowTextInputFrame keys = default,
+        Vector2 navigation = default,
+        bool focusPrevious = false,
+        bool focusNext = false,
+        bool cancel = false,
+        bool advanceFocusFrame = false)
+    {
+        _keyboard.frame = keys;
+        NowTextInput.Invalidate();
+        _pointer.snapshot = NavigationSnapshot(navigation, focusPrevious, focusNext, cancel);
+        NowTextFieldResult result;
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            if (advanceFocusFrame)
+                NowFocus.ForceNewFrame();
+
+            NowControls.Interact(BeforeId, NavigationBeforeRect, out _, out _);
+            result = Now.TextField(NavigationFieldRect, "name").Draw(ref text);
+            NowControls.Interact(AfterId, NavigationAfterRect, out _, out _);
+        }
+
+        return result;
     }
 
     bool FloatFrame(ref float value, NowTextInputFrame keys = default)
@@ -280,17 +347,121 @@ public class NowTextFieldEditingTests
             "Dragging after a shift-click keeps the original anchor.");
     }
 
+    [TestCase("a", -1f, 0f)]
+    [TestCase("d", 1f, 0f)]
+    [TestCase("w", 0f, 1f)]
+    [TestCase("s", 0f, -1f)]
+    public void FocusedTextFieldTypesWasdWithoutMovingFocus(string character, float x, float y)
+    {
+        string text = string.Empty;
+        Focus();
+        NavigationFrame(ref text);
+
+        NowTextFieldResult result = NavigationFrame(
+            ref text,
+            new NowTextInputFrame { characters = character },
+            new Vector2(x, y),
+            advanceFocusFrame: true);
+
+        Assert.IsTrue(result.changed);
+        Assert.AreEqual(character, text);
+        Assert.AreEqual(Id, NowFocus.focusedId);
+    }
+
+    [TestCase("left", 0)]
+    [TestCase("right", 2)]
+    [TestCase("up", 1)]
+    [TestCase("down", 1)]
+    public void FocusedTextFieldArrowKeysDoNotMoveFocus(string direction, int expectedCaret)
+    {
+        string text = "ab";
+        Focus();
+        NavigationFrame(ref text);
+        State().caret = 1;
+        State().anchor = 1;
+        var keys = new NowTextInputFrame();
+        Vector2 navigation;
+
+        switch (direction)
+        {
+            case "left":
+                keys.leftHeld = true;
+                navigation = Vector2.left;
+                break;
+            case "right":
+                keys.rightHeld = true;
+                navigation = Vector2.right;
+                break;
+            case "up":
+                keys.upHeld = true;
+                navigation = Vector2.up;
+                break;
+            default:
+                keys.downHeld = true;
+                navigation = Vector2.down;
+                break;
+        }
+
+        NavigationFrame(ref text, keys, navigation, advanceFocusFrame: true);
+
+        Assert.AreEqual(expectedCaret, State().caret);
+        Assert.AreEqual(Id, NowFocus.focusedId);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void FocusedTextFieldAllowsTabTraversal(bool previous)
+    {
+        string text = "hello";
+        Focus();
+        NavigationFrame(ref text);
+
+        NavigationFrame(
+            ref text,
+            focusPrevious: previous,
+            focusNext: !previous,
+            advanceFocusFrame: true);
+
+        Assert.AreEqual(previous ? BeforeId : AfterId, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void ImeCompositionOwnsDeviceCancelWithoutBlurring()
+    {
+        string text = "hello";
+        Focus();
+        NavigationFrame(ref text);
+
+        NavigationFrame(
+            ref text,
+            new NowTextInputFrame { composition = "か", escapePressed = true },
+            cancel: true,
+            advanceFocusFrame: true);
+
+        Assert.AreEqual("hello", text);
+        Assert.AreEqual(Id, NowFocus.focusedId);
+    }
+
     [Test]
     public void EscapeRevertsToTheFocusGainText()
     {
         string text = "hello";
         Focus();
 
-        Frame(ref text);
-        Assert.IsTrue(Frame(ref text, new NowTextInputFrame { characters = "!!" }));
+        NavigationFrame(ref text);
+        Assert.IsTrue(NavigationFrame(
+            ref text,
+            new NowTextInputFrame { characters = "!!" },
+            advanceFocusFrame: true).changed);
         Assert.AreEqual("hello!!", text);
 
-        bool changed = Frame(ref text, new NowTextInputFrame { escapePressed = true });
+        NowTextFieldResult result = NavigationFrame(
+            ref text,
+            new NowTextInputFrame { escapePressed = true },
+            focusNext: true,
+            cancel: true,
+            advanceFocusFrame: true);
+        bool changed = result.changed;
 
         Assert.IsFalse(changed, "The revert frame must not report a change.");
         Assert.AreEqual("hello", text, "Escape restores the text captured on focus gain.");

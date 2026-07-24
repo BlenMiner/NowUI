@@ -77,7 +77,7 @@ public class NowTextAreaTests
         NowControls.Reset();
     }
 
-    bool Frame(ref string text, NowTextInputFrame keys = default)
+    bool Frame(ref string text, NowTextInputFrame keys = default, bool advanceFocusFrame = false)
     {
         _keyboard.frame = keys;
         NowTextInput.Invalidate();
@@ -85,11 +85,25 @@ public class NowTextAreaTests
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
+        {
+            if (advanceFocusFrame)
+                NowFocus.ForceNewFrame();
+
             changed = Now.TextArea(AreaRect, "notes").Draw(ref text);
+        }
 
         return changed;
     }
 
+    static NowInputSnapshot CancelSnapshot()
+    {
+        return new NowInputSnapshot(
+            false, default, default, default,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            default, default,
+            false, false, false,
+            true, true, false, 1, 1f);
+    }
     static int Id => NowInput.GetId("notes");
 
     static int AreaStateId => NowInput.GetId(Id, "area");
@@ -433,7 +447,8 @@ public class NowTextAreaTests
         Assert.AreEqual("ab\n", text);
         Assert.AreEqual(Id, NowFocus.focusedId, "Enter must not blur a text area.");
 
-        Frame(ref text, new NowTextInputFrame { escapePressed = true });
+        _pointer.snapshot = CancelSnapshot();
+        Frame(ref text, new NowTextInputFrame { escapePressed = true }, advanceFocusFrame: true);
         Assert.AreEqual(0, NowFocus.focusedId, "Escape blurs.");
     }
 
@@ -532,13 +547,14 @@ public class NowTextAreaTests
         Frame(ref text);
         Assert.AreEqual(2, State().caret);
 
+        _pointer.snapshot = CancelSnapshot();
         bool changed = Frame(ref text, new NowTextInputFrame
         {
             composition = "か",
             backspaceHeld = true,
             enterHeld = true,
             escapePressed = true
-        });
+        }, advanceFocusFrame: true);
 
         Assert.IsFalse(changed, "Composition must not edit the text.");
         Assert.AreEqual("ab", text);

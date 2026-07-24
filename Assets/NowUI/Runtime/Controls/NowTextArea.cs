@@ -177,7 +177,8 @@ namespace NowUI
                     scrollbarId, NowScrollbarAxis.Vertical, in preMetrics, ref area.scrollY);
             }
 
-            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
+            var interaction = NowControls.Interact(id, rect, _navigation,
+                NowFocusNavigationLock.Directional, true, out bool focused, out _);
             bool verticalMove = false;
             bool revealCaret = false;
 
@@ -242,7 +243,8 @@ namespace NowUI
 
             if (focused && !NowInput.isPassive)
             {
-                NowFocus.LockNavigation();
+                NowFocus.LockDirectionalNavigation();
+                NowInput.ConsumeCancel();
                 NowTextInput.RequestTextCapture();
                 var frame = NowTextInput.current;
                 var undo = NowTextUndoRegistry.Get(id);
@@ -261,7 +263,7 @@ namespace NowUI
                 // While composing the IME owns the editing keys.
                 if (composition == null)
                 {
-                    if (frame.escapePressed)
+                    if (frame.escapePressed || NowInput.current.cancelPressed)
                         NowFocus.Clear();
 
                     if (frame.undoPressed)

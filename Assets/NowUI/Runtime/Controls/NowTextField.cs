@@ -954,7 +954,8 @@ namespace NowUI
                 spinnerDown = NowInput.Interact(NowInput.CombineId(id, SpinnerDownSeed), spinnerDownRect);
             }
 
-            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
+            var interaction = NowControls.Interact(id, rect, _navigation,
+                NowFocusNavigationLock.Directional, true, out bool focused, out _);
 
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
@@ -1023,7 +1024,8 @@ namespace NowUI
 
             if (focused && !NowInput.isPassive)
             {
-                NowFocus.LockNavigation();
+                NowFocus.LockDirectionalNavigation();
+                NowInput.ConsumeCancel();
                 NowTextInput.RequestTextCapture();
                 var frame = NowTextInput.current;
                 var undo = NowTextUndoRegistry.Get(id);
@@ -1044,7 +1046,7 @@ namespace NowUI
                         NowFocus.Clear();
                     }
 
-                    if (frame.escapePressed)
+                    if (frame.escapePressed || NowInput.current.cancelPressed)
                     {
                         text = revert.text ?? original;
                         NowTextEdit.Clamp(ref state, text);

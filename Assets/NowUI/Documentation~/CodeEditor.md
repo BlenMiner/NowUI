@@ -54,7 +54,8 @@ the resulting UI.
   Enter between matching block delimiters expands with an indented middle line,
   including between markup opening and closing tags.
 - **Tab** inserts four spaces; with a multi-line selection it indents the
-  lines, Shift+Tab dedents.
+  lines, Shift+Tab dedents. The focused editor owns Tab, so it never traverses
+  focus while performing these actions.
 - **Smart Home** jumps to the first non-space character, then column zero.
 - **Line shortcuts**: Ctrl+D duplicates the current line (or the selected
   lines) below; Ctrl+C / Ctrl+X with no selection copy / cut the whole line
@@ -67,7 +68,10 @@ the resulting UI.
 - Line numbers, current-line highlight, two-axis scrolling with the caret
   kept in view, click/drag selection (double-click a word, triple-click or
   click the gutter for a line), clipboard, IME composition, focus
-  integration — the same conventions as TextField and TextArea.
+  integration — the same conventions as TextField and TextArea. Escape first
+  closes the active go-to-line or completion layer, then leaves the editor;
+  while an IME composition is active, Escape belongs to the composition
+  instead.
 
 ## Languages
 

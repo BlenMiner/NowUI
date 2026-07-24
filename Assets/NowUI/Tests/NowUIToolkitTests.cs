@@ -56,6 +56,34 @@ public class NowUIToolkitTests
     }
 
     [Test]
+    public void UIToolkitInputProviderHonorsNavigationKeyMask()
+    {
+        var previous = NowInput.navigationKeys;
+        var provider = new NowUIToolkitInputProvider();
+
+        try
+        {
+            NowInput.navigationKeys = NowNavigationKeys.Arrows;
+
+            Assert.IsFalse(provider.KeyDown(KeyCode.A));
+            Assert.IsFalse(provider.KeyDown(KeyCode.D));
+            Assert.IsFalse(provider.KeyDown(KeyCode.W));
+            Assert.IsFalse(provider.KeyDown(KeyCode.S));
+            Assert.IsFalse(provider.KeyDown(KeyCode.Tab));
+            Assert.IsFalse(provider.KeyDown(KeyCode.Return));
+            Assert.IsFalse(provider.KeyDown(KeyCode.Space));
+            Assert.IsTrue(provider.KeyDown(KeyCode.LeftArrow));
+            Assert.IsTrue(provider.TryGetSnapshot(Surface, out var snapshot));
+            Assert.AreEqual(Vector2.left, snapshot.navigation);
+        }
+        finally
+        {
+            NowInput.navigationKeys = previous;
+            provider.Reset();
+        }
+    }
+
+    [Test]
     public void UIToolkitInputProviderReportsTabFocusPulses()
     {
         var provider = new NowUIToolkitInputProvider();

@@ -15,6 +15,7 @@ namespace NowUI
         Vector2 _previousPosition;
 
         NowInputSnapshot _snapshot;
+        bool _rawInputAvailable;
 
         NowPointerButtons _previousButtonsDown;
 
@@ -64,11 +65,23 @@ namespace NowUI
 
         public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
-            if (_lastFrame != Time.frameCount)
-                UpdateSnapshot();
+            int frame = Time.frameCount;
+
+            if (_lastFrame != frame)
+            {
+                _lastFrame = frame;
+
+                if (NowMouseInput.TryGet(out var input))
+                    _rawInputAvailable = TryGetSnapshot(surface, input, out _snapshot);
+                else
+                {
+                    _snapshot = default;
+                    _rawInputAvailable = false;
+                }
+            }
 
             snapshot = _snapshot;
-            return snapshot.hasPointer;
+            return _rawInputAvailable;
         }
 
         public void ResetPosition()
@@ -77,31 +90,28 @@ namespace NowUI
             _hasPreviousPosition = false;
             _previousPosition = default;
             _snapshot = default;
+            _rawInputAvailable = false;
+            _previousButtonsDown = NowPointerButtons.None;
+            _pressAllowed = true;
             NowInputSystemInput.Invalidate();
         }
 
-        void UpdateSnapshot()
+        internal bool TryGetSnapshot(NowInputSurface surface, NowMouseInput mouseInput, out NowInputSnapshot snapshot)
         {
-            _lastFrame = Time.frameCount;
-
-            if (!NowMouseInput.TryGet(out var mouseInput))
-            {
-                _snapshot = default;
-                return;
-            }
-
             if (_rectTransform == null)
             {
-                _snapshot = CreateNavigationOnlySnapshot(mouseInput);
-                return;
+                _hasPreviousPosition = false;
+                _previousButtonsDown = NowPointerButtons.None;
+                snapshot = CreateNavigationOnlySnapshot(mouseInput);
+                return true;
             }
 
             if (!mouseInput.hasPointer)
             {
                 _hasPreviousPosition = false;
                 _previousButtonsDown = NowPointerButtons.None;
-                _snapshot = CreateNavigationOnlySnapshot(mouseInput);
-                return;
+                snapshot = CreateNavigationOnlySnapshot(mouseInput);
+                return true;
             }
 
             bool buttonsWereDown = _previousButtonsDown != NowPointerButtons.None;
@@ -114,8 +124,8 @@ namespace NowUI
                     out var localPosition))
             {
                 _hasPreviousPosition = false;
-                _snapshot = CreateNavigationOnlySnapshot(mouseInput);
-                return;
+                snapshot = CreateNavigationOnlySnapshot(mouseInput);
+                return true;
             }
 
             Rect rect = _rectTransform.rect;
@@ -142,8 +152,8 @@ namespace NowUI
                 !NowPointerArbiter.IsOwner(this))
             {
                 _hasPreviousPosition = false;
-                _snapshot = CreateNavigationOnlySnapshot(mouseInput);
-                return;
+                snapshot = CreateNavigationOnlySnapshot(mouseInput);
+                return true;
             }
 
             Vector2 previousPosition = _hasPreviousPosition ? _previousPosition : position;
@@ -152,7 +162,7 @@ namespace NowUI
             _previousPosition = position;
             _hasPreviousPosition = true;
 
-            _snapshot = new NowInputSnapshot(
+            snapshot = new NowInputSnapshot(
                 true,
                 position,
                 previousPosition,
@@ -172,6 +182,7 @@ namespace NowUI
                 mouseInput.cancelReleased,
                 Time.frameCount,
                 Time.realtimeSinceStartup);
+            return true;
         }
 
         static NowInputSnapshot CreateNavigationOnlySnapshot(NowMouseInput input)

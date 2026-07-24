@@ -123,6 +123,18 @@ public class NowControlsTests
             false, false, false, false, false, false,
             1, time);
     }
+    void RegisterFocusPolicyRow(NowFocusNavigationLock navigationLock, bool consumesCancel = false)
+    {
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, new NowRect(10, 10, 80, 30));
+            NowFocus.Register(2, new NowRect(110, 10, 80, 30), default, navigationLock, consumesCancel);
+            NowFocus.Register(3, new NowRect(210, 10, 80, 30));
+            NowFocus.Focus(2);
+        }
+    }
 
     [Test]
     public void TransitionDoesNotAdvanceDuringPassiveMeasurePass()
@@ -908,6 +920,125 @@ public class NowControlsTests
             NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
             Vector2.zero, new Vector2(1f, 0f),
             false, false, false, false, false, false, 2, 2f);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(2, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void DirectionalNavigationLockBlocksSpatialMovement()
+    {
+        RegisterFocusPolicyRow(NowFocusNavigationLock.Directional);
+        _provider.snapshot = NavigationSnapshot(Vector2.right);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(2, NowFocus.focusedId);
+    }
+
+    [TestCase(false, 3)]
+    [TestCase(true, 1)]
+    public void DirectionalNavigationLockAllowsTabTraversal(bool previous, int expected)
+    {
+        RegisterFocusPolicyRow(NowFocusNavigationLock.Directional);
+        _provider.snapshot = NavigationSnapshot(Vector2.zero, previous: previous, next: !previous);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(expected, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void FullNavigationLockBlocksTabTraversal()
+    {
+        RegisterFocusPolicyRow(NowFocusNavigationLock.All);
+        _provider.snapshot = NavigationSnapshot(Vector2.zero, next: true);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(2, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void NavigationLockDoesNotFollowFocusToAnotherControl()
+    {
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, new NowRect(10, 10, 80, 30));
+            NowFocus.Register(2, new NowRect(110, 10, 80, 30));
+            NowFocus.Register(3, new NowRect(210, 10, 80, 30));
+            NowFocus.Focus(2);
+            NowFocus.LockNavigation();
+            NowFocus.Focus(3);
+        }
+
+        _provider.snapshot = NavigationSnapshot(Vector2.zero, previous: true);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(2, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void CancelOwnerReceivesCancelBeforeGlobalFocusClear()
+    {
+        RegisterFocusPolicyRow(NowFocusNavigationLock.Directional, consumesCancel: true);
+        _provider.snapshot = new NowInputSnapshot(
+            true, default, default, default,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            false, true, false, false, false,
+            cancelDown: true, cancelPressed: true, cancelReleased: false, frame: 2, time: 2f);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(2, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void CancelOwnerThatDisappearsDoesNotLeaveGhostFocus()
+    {
+        RegisterFocusPolicyRow(NowFocusNavigationLock.Directional, consumesCancel: true);
+        _provider.snapshot = new NowInputSnapshot(
+            true, default, default, default,
+            NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None,
+            Vector2.zero, Vector2.zero,
+            false, false, false,
+            cancelDown: true, cancelPressed: true, cancelReleased: false, frame: 2, time: 2f);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ForceNewFrame();
+
+        Assert.AreEqual(0, NowFocus.focusedId);
+    }
+
+    [Test]
+    public void ExplicitFocusSurvivesSimultaneousNavigationBeforeRegistration()
+    {
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, new NowRect(10, 10, 80, 30));
+            NowFocus.Register(3, new NowRect(210, 10, 80, 30));
+        }
+
+        NowFocus.Focus(2);
+        _provider.snapshot = NavigationSnapshot(Vector2.right);
 
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
