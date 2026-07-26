@@ -1,0 +1,60 @@
+{
+  "branches": [
+    "main"
+  ],
+  "tagFormat": "nowui-v${version}",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    [
+      "@semantic-release/changelog",
+      {
+        "changelogFile": "Assets/NowUI/CHANGELOG.md"
+      }
+    ],
+    [
+      "semantic-release-replace-plugin",
+      {
+        "replacements": [
+          {
+            "files": [
+              "Assets/NowUI/package.json"
+            ],
+            "from": "\\\"version\\\": \\\".*?\\\"",
+            "to": "\\\"version\\\": \\\"${nextRelease.version}\\\"",
+            "countMatches": true
+          }
+        ]
+      }
+    ],
+    [
+      "@iam1337/create-unitypackage",
+      {
+        "packageRoot": "Assets/NowUI",
+        "projectRoot": "./",
+        "output": "NowUI_${nextRelease.version}.unitypackage"
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": [
+          "Assets/NowUI/package.json",
+          "Assets/NowUI/CHANGELOG.md"
+        ],
+        "message": "chore(release): ${nextRelease.version} [skip ci]\\n\\n${nextRelease.notes}"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          {
+            "path": "NowUI_${nextRelease.version}.unitypackage",
+            "label": "NowUI_${nextRelease.version}.unitypackage"
+          }
+        ]
+      }
+    ]
+  ]
+}
