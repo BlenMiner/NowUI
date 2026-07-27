@@ -314,6 +314,13 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Composite UGUI navigation now defers directional and Tab routing until a
+  dirty retained host has committed its current focus registry, so a newly
+  enabled final control is selected instead of being skipped. UGUI handoff is
+  queued outside Canvas rebuilds, direct proxy-to-proxy selection seeds the
+  destination, and directional return restores the yielding internal control
+  when it remains focusable.
+
 - Text editing now has durable focus-input ownership across retained UGUI idle
   frames: TextField and TextArea consume W/A/S/D, arrows, d-pad/stick navigation
   without losing focus while still allowing Tab traversal, and CodeEditor owns

@@ -728,8 +728,15 @@ EventSystem selection and routes each UGUI Move event through NowUI first:
 - only a true NowUI edge delegates the move to the proxy's UGUI Navigation
   target.
 
-Entering the proxy from UGUI seeds the NowUI control on the matching edge.
-Selecting it without a direction seeds the first focusable control.
+The first directional entry into a proxy seeds the NowUI control on the
+matching edge. After a directional boundary handoff, returning through the
+proxy restores the internal control that yielded when it is still focusable;
+if it disappeared or became disabled, matching-edge seeding applies instead.
+Selecting the proxy without a direction seeds the first focusable control.
+When a host has a pending retained repaint, directional and Tab navigation wait
+for the normal Canvas pass to commit the current control registry. This ensures
+a newly enabled final control is selected before a later move can leave the
+host. Any resulting UGUI handoff is dispatched outside the Canvas rebuild.
 `NowGraphic.hasFocusedControl` reports whether that host currently owns NowUI
 focus. Tab and Shift+Tab traverse NowUI without wrapping; at an edge,
 `tabNext`/`tabPrevious` receive selection, falling back to the proxy's Select On

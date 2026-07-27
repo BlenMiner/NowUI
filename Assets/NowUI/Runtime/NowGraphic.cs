@@ -144,6 +144,10 @@ namespace NowUI
 
         [NonSerialized] bool _insideGeometryRebuild;
 
+        [NonSerialized] bool _focusRegistryDirty = true;
+
+        [NonSerialized] bool _focusRegistryDeferralBlocked;
+
         [NonSerialized] readonly List<CanvasRenderer> _extraCanvasRenderers = new List<CanvasRenderer>(2);
 
         [NonSerialized] bool _extraRendererStateValid;
@@ -387,6 +391,8 @@ namespace NowUI
 
         public override void SetVerticesDirty()
         {
+            _focusRegistryDirty = true;
+
             // From inside this graphic's own draw pass (a DrawNowUI handler
             // mutating state), dirtying is illegal mid-canvas-rebuild — UGUI
             // rejects registrations while rebuilding. Convert to a repaint
@@ -398,6 +404,7 @@ namespace NowUI
                 return;
             }
 
+            _focusRegistryDeferralBlocked = false;
             _hasLayoutInputMeasurement = false;
             base.SetVerticesDirty();
 
@@ -422,6 +429,9 @@ namespace NowUI
             if (!IsActive())
                 return;
 
+            _focusRegistryDirty = false;
+            _focusRegistryDeferralBlocked = false;
+
             using var profile = NowProfiler.GraphicRebuild.Auto();
             EnsureDrawList();
 
@@ -429,6 +439,7 @@ namespace NowUI
 
             if (rect.width <= 0 || rect.height <= 0)
             {
+                _repaintTracker.SetWantsRepaint(false);
                 _drawList.Clear();
                 ReleaseUGUIGlassBackdrops();
                 ApplyCanvasPages();
@@ -512,7 +523,14 @@ namespace NowUI
                         {
                             // Roll back deferred overlays and captured geometry before
                             // input disposal gets a chance to flush the failed frame.
+                            // Mark the focus transaction for removal before its using
+                            // scope unwinds, so deferred boundary actions cannot resolve
+                            // against a partially registered control list.
                             scope.Cancel();
+
+                            if (_scopeId != 0)
+                                NowFocus.UnregisterHost(_scopeId);
+
                             throw;
                         }
                         finally
@@ -536,6 +554,10 @@ namespace NowUI
             }
             catch (Exception ex)
             {
+                _focusRegistryDirty = true;
+                _focusRegistryDeferralBlocked = true;
+                _uguiNavigationProxy?.CancelPendingYield();
+
                 if (_scopeId != 0)
                 {
                     // A registration scope disposes while exceptions unwind,
@@ -624,6 +646,13 @@ namespace NowUI
         public override void Cull(Rect clipRect, bool validRect)
         {
             base.Cull(clipRect, validRect);
+
+            if (canvasRenderer.cull)
+            {
+                CancelDeferredUGUINavigationBoundary();
+                _uguiNavigationProxy?.CancelPendingYield();
+            }
+
             ApplyCullToExtraCanvasRenderers();
         }
 
@@ -845,10 +874,112 @@ namespace NowUI
 
         internal NowFocusMoveResult RouteUGUINavigation(Vector2 direction)
         {
-            if (_scopeId == 0)
+            Rect rect = rectTransform.rect;
+
+            if (_scopeId == 0 ||
+                canvasRenderer.cull ||
+                rect.width <= 0f ||
+                rect.height <= 0f)
+            {
                 return NowFocusMoveResult.Unavailable;
+            }
 
             return NowFocus.RouteUGUINavigation(_scopeId, direction);
+        }
+
+        internal NowFocusMoveResult RouteUGUITab(int step)
+        {
+            Rect rect = rectTransform.rect;
+
+            if (_scopeId == 0 ||
+                canvasRenderer.cull ||
+                rect.width <= 0f ||
+                rect.height <= 0f)
+            {
+                return NowFocusMoveResult.Unavailable;
+            }
+
+            return NowFocus.RouteUGUITab(_scopeId, step);
+        }
+
+        internal bool hasDirtyFocusRegistry => _focusRegistryDirty;
+
+        internal bool wantsFocusRegistryConvergence =>
+            _repaintTracker.wantsRepaint;
+
+        internal void ScheduleFocusRegistryCommit()
+        {
+            SetVerticesDirty();
+        }
+
+        internal bool TryDeferUGUINavigation(Vector2 direction)
+        {
+            Rect rect = rectTransform.rect;
+
+            if (_scopeId == 0 ||
+                !IsActive() ||
+                canvasRenderer.cull ||
+                rect.width <= 0f ||
+                rect.height <= 0f ||
+                _focusRegistryDeferralBlocked ||
+                (!_focusRegistryDirty && !_repaintTracker.wantsRepaint) ||
+                NowFocus.IsUGUIDirectionalNavigationLocked(_scopeId))
+            {
+                return false;
+            }
+
+            if (!NowFocus.DeferUGUIDirectionalBoundary(_scopeId, direction))
+                return false;
+
+            // Route only after Unity's normal canvas pass has applied layout,
+            // culling, and the retained draw. Calling SetVerticesDirty even
+            // when our own flag is already set repairs the case where a dirty
+            // request made inside the previous draw could not touch UGUI's
+            // private vertex-dirty flag.
+            SetVerticesDirty();
+            return true;
+        }
+
+        internal bool ShouldDeferUGUIEntry()
+        {
+            Rect rect = rectTransform.rect;
+
+            return _scopeId != 0 &&
+                IsActive() &&
+                !canvasRenderer.cull &&
+                rect.width > 0f &&
+                rect.height > 0f &&
+                !_focusRegistryDeferralBlocked &&
+                (_insideGeometryRebuild ||
+                 _focusRegistryDirty ||
+                 _repaintTracker.wantsRepaint);
+        }
+
+        internal void PrepareUGUIEntry()
+        {
+            NowFocus.PrepareUGUIEntry(GetScopeId());
+        }
+
+        internal void DeferUGUINavigationEntry(Vector2 direction)
+        {
+            NowFocus.DeferUGUINavigationEntry(GetScopeId(), direction);
+        }
+
+        internal void DeferUGUITabEntry(int step)
+        {
+            NowFocus.DeferUGUITabEntry(GetScopeId(), step);
+        }
+
+        internal void CancelPendingUGUIEntry()
+        {
+            if (_scopeId != 0)
+                NowFocus.CancelPendingUGUIEntry(_scopeId);
+        }
+
+        internal void CancelDeferredUGUINavigationBoundary()
+        {
+            if (_scopeId != 0)
+                NowFocus.CancelDeferredUGUIDirectionalBoundary(_scopeId);
         }
 
         internal NowFocusMoveResult EnterUGUINavigation(Vector2 direction)
@@ -865,6 +996,18 @@ namespace NowUI
         {
             if (_scopeId != 0)
                 NowFocus.ExitUGUINavigation(_scopeId);
+        }
+
+        internal void ExitUGUINavigationAtDirectionalBoundary()
+        {
+            if (_scopeId != 0)
+                NowFocus.ExitUGUINavigationAtDirectionalBoundary(_scopeId);
+        }
+
+        internal void DiscardUGUIDirectionalReturn()
+        {
+            if (_scopeId != 0)
+                NowFocus.DiscardUGUIDirectionalReturn(_scopeId);
         }
 
         public virtual void CalculateLayoutInputHorizontal()

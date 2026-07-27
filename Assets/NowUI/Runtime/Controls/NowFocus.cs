@@ -293,6 +293,26 @@ namespace NowUI
 
             public int pendingEntryOrderStep;
 
+            public int pendingTabBoundaryStep;
+
+            public int pendingTabFocusId;
+
+            public int pendingTabFocusRevision;
+
+            public bool hasPendingDirectionalBoundary;
+
+            public Vector2 pendingDirectionalBoundary;
+
+            public int pendingDirectionalBoundaryFocusId;
+
+            public int pendingDirectionalBoundaryFocusRevision;
+
+            public ulong pendingDirectionalBoundaryRegistrationVersion;
+
+            public ulong registrationVersion;
+
+            public int directionalReturnId;
+
             public bool retainFocus;
 
             public bool buildingRetainFocus;
@@ -338,6 +358,7 @@ namespace NowUI
                 claimedNavigationLockFocusRevision = buildingNavigationLockFocusRevision;
                 retainFocus = buildingRetainFocus;
                 isRegistering = false;
+                ++registrationVersion;
             }
         }
 
@@ -414,6 +435,38 @@ namespace NowUI
         internal static bool IsFocusedInHost(int hostId)
         {
             return hostId != 0 && _focusedId != 0 && _focusedHostId == hostId;
+        }
+
+        internal static bool IsFocusedOutsideHost(int hostId)
+        {
+            return _focusedId != 0 && _focusedHostId != hostId;
+        }
+
+        internal static void PrepareUGUIEntry(int hostId)
+        {
+            if (!IsFocusedOutsideHost(hostId))
+                return;
+
+            bool preserveExplicitTransfer =
+                _explicitFocusRequestId != 0 &&
+                _explicitFocusRequestId == _focusedId &&
+                _explicitFocusRequestHostId == _focusedHostId;
+            HostRegistry focusedHost = GetHostRegistry(_focusedHostId);
+
+            // A focus request made by another OnSelect handler cannot select
+            // its owning proxy reentrantly. Keep that explicit request until
+            // the proxy's queued LateUpdate transfer can complete. Otherwise
+            // the foreign focus belongs to the previously selected proxy and
+            // must not prevent this host from seeding its own control.
+            if (preserveExplicitTransfer &&
+                focusedHost != null &&
+                focusedHost.proxy != null &&
+                focusedHost.proxy.hasPendingSelection)
+            {
+                return;
+            }
+
+            Clear();
         }
 
         public static bool IsFocused(int id)
@@ -856,6 +909,8 @@ namespace NowUI
                 else
                 {
                     CompletePendingHostEntry(host);
+                    ResolvePendingHostTabBoundary(host);
+                    ResolvePendingHostDirectionalBoundary(host);
                     FinalizeHostPendingCancelOwner(host);
                 }
             }
@@ -889,8 +944,112 @@ namespace NowUI
 
         internal static void ExitUGUINavigation(int hostId)
         {
+            HostRegistry host = GetHostRegistry(hostId);
+
+            if (host != null)
+                host.directionalReturnId = 0;
+
             if (hostId != 0 && _focusedHostId == hostId)
                 Clear();
+        }
+
+        internal static void ExitUGUINavigationAtDirectionalBoundary(int hostId)
+        {
+            HostRegistry host = GetHostRegistry(hostId);
+
+            if (host != null)
+            {
+                int activeLayerId = NowOverlay.activeFocusLayerId;
+                host.directionalReturnId =
+                    _focusedHostId == hostId &&
+                    ContainsFocusableInLayer(
+                        host.focusables,
+                        _focusedId,
+                        activeLayerId)
+                        ? _focusedId
+                        : 0;
+            }
+
+            if (hostId != 0 && _focusedHostId == hostId)
+                Clear();
+        }
+
+        internal static void DiscardUGUIDirectionalReturn(int hostId)
+        {
+            HostRegistry host = GetHostRegistry(hostId);
+
+            if (host != null)
+                host.directionalReturnId = 0;
+        }
+
+        internal static bool DeferUGUIDirectionalBoundary(
+            int hostId,
+            Vector2 direction)
+        {
+            HostRegistry host = GetHostRegistry(hostId);
+
+            if (host == null ||
+                !TryResolveUGUIDirection(direction, out _))
+            {
+                return false;
+            }
+
+            host.hasPendingDirectionalBoundary = true;
+            host.pendingDirectionalBoundary = direction;
+            host.pendingDirectionalBoundaryFocusId =
+                _focusedHostId == hostId ? _focusedId : 0;
+            host.pendingDirectionalBoundaryFocusRevision = _focusRevision;
+            host.pendingDirectionalBoundaryRegistrationVersion =
+                host.registrationVersion + (host.isRegistering ? 2UL : 1UL);
+            return true;
+        }
+
+        internal static void CancelDeferredUGUIDirectionalBoundary(int hostId)
+        {
+            HostRegistry host = GetHostRegistry(hostId);
+
+            if (host != null)
+                ClearPendingHostDirectionalBoundary(host);
+        }
+
+        internal static void DeferUGUINavigationEntry(
+            int hostId,
+            Vector2 direction)
+        {
+            if (hostId == 0)
+                return;
+
+            HostRegistry host = GetOrCreateHostRegistry(hostId);
+            host.hasPendingEntry = true;
+            host.pendingEntryDirection = direction;
+            host.pendingEntryOrderStep = 0;
+
+            if (!TryResolveUGUIDirection(direction, out _))
+                host.directionalReturnId = 0;
+        }
+
+        internal static void DeferUGUITabEntry(int hostId, int step)
+        {
+            if (hostId == 0 || step == 0)
+                return;
+
+            HostRegistry host = GetOrCreateHostRegistry(hostId);
+            host.directionalReturnId = 0;
+            host.hasPendingEntry = true;
+            host.pendingEntryDirection = default;
+            host.pendingEntryOrderStep = step < 0 ? -1 : 1;
+        }
+
+        internal static void CancelPendingUGUIEntry(int hostId)
+        {
+            HostRegistry host = GetHostRegistry(hostId);
+
+            if (host == null)
+                return;
+
+            host.hasPendingEntry = false;
+            host.pendingEntryDirection = default;
+            host.pendingEntryOrderStep = 0;
         }
 
         static HostRegistry ActiveHostRegistry()
@@ -1045,8 +1204,10 @@ namespace NowUI
             host.pendingEntryOrderStep = 0;
 
             if (!IsOwningProxySelected(host.proxy) ||
-                IsFocusedInHost(host.hostId))
+                IsFocusedInHost(host.hostId) ||
+                IsFocusedOutsideHost(host.hostId))
             {
+                host.directionalReturnId = 0;
                 return;
             }
 
@@ -1062,6 +1223,102 @@ namespace NowUI
                 // input capture, and caret ownership observe the seeded id.
                 NowControlState.RequestRepaint();
             }
+        }
+
+        static void ResolvePendingHostTabBoundary(HostRegistry host)
+        {
+            int step = host.pendingTabBoundaryStep;
+            int expectedFocusId = host.pendingTabFocusId;
+            int expectedFocusRevision = host.pendingTabFocusRevision;
+            host.pendingTabBoundaryStep = 0;
+            host.pendingTabFocusId = 0;
+            host.pendingTabFocusRevision = 0;
+
+            if (step == 0 ||
+                !IsOwningProxySelected(host.proxy) ||
+                _focusRevision != expectedFocusRevision ||
+                (_focusedHostId == host.hostId ? _focusedId : 0) !=
+                    expectedFocusId)
+            {
+                return;
+            }
+
+            NowFocusMoveResult result = MoveFocusInRegistrationOrder(
+                host.focusables,
+                host.hostId,
+                step,
+                NowOverlay.activeFocusLayerId,
+                wrap: false);
+
+            if (result == NowFocusMoveResult.Moved ||
+                result == NowFocusMoveResult.Seeded)
+            {
+                // Registration has already drawn this frame using the previous
+                // focus. Schedule one retained repaint for the resolved target.
+                NowControlState.RequestRepaint();
+                return;
+            }
+
+            if ((result == NowFocusMoveResult.Boundary ||
+                 result == NowFocusMoveResult.Unavailable) &&
+                host.proxy != null &&
+                host.proxy.QueueYieldTab(step))
+            {
+                return;
+            }
+        }
+
+        static void ResolvePendingHostDirectionalBoundary(HostRegistry host)
+        {
+            if (!host.hasPendingDirectionalBoundary ||
+                host.registrationVersion <
+                    host.pendingDirectionalBoundaryRegistrationVersion)
+            {
+                return;
+            }
+
+            Vector2 direction = host.pendingDirectionalBoundary;
+            int expectedFocusId = host.pendingDirectionalBoundaryFocusId;
+            int expectedFocusRevision =
+                host.pendingDirectionalBoundaryFocusRevision;
+            ClearPendingHostDirectionalBoundary(host);
+
+            if (!IsOwningProxySelected(host.proxy) ||
+                _focusRevision != expectedFocusRevision ||
+                (_focusedHostId == host.hostId ? _focusedId : 0) !=
+                    expectedFocusId)
+            {
+                return;
+            }
+
+            NowFocusMoveResult result = RouteUGUINavigation(
+                host.hostId,
+                direction);
+
+            if (result == NowFocusMoveResult.Moved ||
+                result == NowFocusMoveResult.Seeded)
+            {
+                // The newly committed draw used the previous focus. Schedule a
+                // retained repaint so its visuals observe the resolved target.
+                NowControlState.RequestRepaint();
+                return;
+            }
+
+            if ((result == NowFocusMoveResult.Boundary ||
+                 result == NowFocusMoveResult.Unavailable) &&
+                host.proxy != null)
+            {
+                host.proxy.QueueYieldDirection(direction);
+            }
+        }
+
+        static void ClearPendingHostDirectionalBoundary(HostRegistry host)
+        {
+            host.hasPendingDirectionalBoundary = false;
+            host.pendingDirectionalBoundary = default;
+            host.pendingDirectionalBoundaryFocusId = 0;
+            host.pendingDirectionalBoundaryFocusRevision = 0;
+            host.pendingDirectionalBoundaryRegistrationVersion = 0;
         }
 
         static void BeginFrameIfNeeded()
@@ -1150,10 +1407,17 @@ namespace NowUI
 
         static void ProcessNavigation()
         {
+            int ignoredPendingTabBoundaryStep = 0;
+            int ignoredPendingTabFocusId = 0;
+            int ignoredPendingTabFocusRevision = 0;
             ProcessNavigation(
                 _previous,
                 0,
                 null,
+                false,
+                ref ignoredPendingTabBoundaryStep,
+                ref ignoredPendingTabFocusId,
+                ref ignoredPendingTabFocusRevision,
                 NowInput.current,
                 _navigationLockPrevious,
                 _navigationLockPreviousFocusRevision,
@@ -1180,10 +1444,17 @@ namespace NowUI
                 return;
 
             host.lastProcessedInputFrame = snapshot.frame;
+            host.pendingTabBoundaryStep = 0;
+            host.pendingTabFocusId = 0;
+            host.pendingTabFocusRevision = 0;
             ProcessNavigation(
                 host.focusables,
                 host.hostId,
                 host.proxy,
+                true,
+                ref host.pendingTabBoundaryStep,
+                ref host.pendingTabFocusId,
+                ref host.pendingTabFocusRevision,
                 snapshot,
                 host.claimedNavigationLock,
                 host.claimedNavigationLockFocusRevision,
@@ -1198,6 +1469,10 @@ namespace NowUI
             List<Focusable> focusables,
             int hostId,
             NowUGUINavigationProxy proxy,
+            bool deferProxyTabBoundary,
+            ref int pendingTabBoundaryStep,
+            ref int pendingTabFocusId,
+            ref int pendingTabFocusRevision,
             NowInputSnapshot snapshot,
             NowFocusNavigationLock claimedNavigationLock,
             int claimedNavigationLockFocusRevision,
@@ -1317,18 +1592,28 @@ namespace NowUI
             if (snapshot.focusPreviousPressed || snapshot.focusNextPressed)
             {
                 int step = snapshot.focusPreviousPressed ? -1 : 1;
-                NowFocusMoveResult result = MoveFocusInRegistrationOrder(
-                    focusables,
-                    hostId,
-                    step,
-                    activeLayerId,
-                    wrap: proxy == null);
 
-                if (result == NowFocusMoveResult.Boundary &&
-                    proxy != null &&
-                    proxy.TryYieldTab(step))
+                if (proxy != null && deferProxyTabBoundary)
                 {
-                    ExitUGUINavigation(hostId);
+                    pendingTabBoundaryStep = step;
+                    pendingTabFocusId =
+                        _focusedHostId == hostId ? _focusedId : 0;
+                    pendingTabFocusRevision = _focusRevision;
+                }
+                else
+                {
+                    NowFocusMoveResult result = MoveFocusInRegistrationOrder(
+                        focusables,
+                        hostId,
+                        step,
+                        activeLayerId,
+                        wrap: proxy == null);
+
+                    if (result == NowFocusMoveResult.Boundary &&
+                        proxy != null)
+                    {
+                        proxy.TryYieldTab(step);
+                    }
                 }
 
                 lastNavigation = navigation;
@@ -1410,13 +1695,91 @@ namespace NowUI
             return MoveFocus(host.focusables, host.hostId, resolvedDirection, activeLayerId);
         }
 
+        internal static bool IsUGUIDirectionalNavigationLocked(int hostId)
+        {
+            HostRegistry host = GetHostRegistry(hostId);
+
+            if (host == null || _focusedHostId != hostId)
+                return false;
+
+            int activeLayerId = NowOverlay.activeFocusLayerId;
+            TryGetFocusedInputPolicy(
+                host.focusables,
+                hostId,
+                activeLayerId,
+                out NowFocusNavigationLock navigationLock,
+                out _);
+
+            if (host.claimedNavigationLockFocusRevision == _focusRevision &&
+                host.claimedNavigationLock > navigationLock)
+            {
+                navigationLock = host.claimedNavigationLock;
+            }
+
+            return navigationLock == NowFocusNavigationLock.Directional ||
+                navigationLock == NowFocusNavigationLock.All;
+        }
+
+        internal static NowFocusMoveResult RouteUGUITab(int hostId, int step)
+        {
+            HostRegistry host = GetHostRegistry(hostId);
+
+            if (host == null || step == 0)
+                return NowFocusMoveResult.Unavailable;
+
+            int activeLayerId = NowOverlay.activeFocusLayerId;
+
+            if (!HasFocusableInLayer(host.focusables, activeLayerId))
+                return NowFocusMoveResult.Unavailable;
+
+            if (_focusedHostId == hostId)
+            {
+                TryGetFocusedInputPolicy(
+                    host.focusables,
+                    hostId,
+                    activeLayerId,
+                    out NowFocusNavigationLock navigationLock,
+                    out _);
+
+                if (host.claimedNavigationLockFocusRevision == _focusRevision &&
+                    host.claimedNavigationLock > navigationLock)
+                {
+                    navigationLock = host.claimedNavigationLock;
+                }
+
+                if (navigationLock == NowFocusNavigationLock.All)
+                    return NowFocusMoveResult.Consumed;
+            }
+
+            return MoveFocusInRegistrationOrder(
+                host.focusables,
+                hostId,
+                step < 0 ? -1 : 1,
+                activeLayerId,
+                wrap: false);
+        }
+
         internal static NowFocusMoveResult EnterUGUINavigation(int hostId, Vector2 direction)
         {
             if (hostId == 0)
                 return NowFocusMoveResult.Unavailable;
 
             HostRegistry host = GetOrCreateHostRegistry(hostId);
+            bool hasDirection =
+                TryResolveUGUIDirection(direction, out Vector2 resolvedDirection);
+
+            if (!hasDirection)
+                host.directionalReturnId = 0;
+
             int activeLayerId = NowOverlay.activeFocusLayerId;
+
+            if (IsFocusedOutsideHost(hostId))
+            {
+                host.hasPendingEntry = false;
+                host.pendingEntryDirection = default;
+                host.pendingEntryOrderStep = 0;
+                return NowFocusMoveResult.Consumed;
+            }
 
             if (!HasFocusableInLayer(host.focusables, activeLayerId))
             {
@@ -1431,14 +1794,40 @@ namespace NowUI
             host.pendingEntryOrderStep = 0;
 
             if (_focusedHostId == hostId &&
-                ContainsFocusableInLayer(host.focusables, _focusedId, activeLayerId))
+                (ContainsFocusableInLayer(
+                     host.focusables,
+                     _focusedId,
+                     activeLayerId) ||
+                 (host.isRegistering &&
+                  ContainsFocusableInLayer(
+                      host.buildingFocusables,
+                      _focusedId,
+                      activeLayerId))))
             {
+                host.directionalReturnId = 0;
                 return NowFocusMoveResult.Consumed;
+            }
+
+            int directionalReturnId = host.directionalReturnId;
+            host.directionalReturnId = 0;
+
+            if (directionalReturnId != 0)
+            {
+                if (hasDirection &&
+                    TryFocusRegistered(
+                        host.focusables,
+                        hostId,
+                        directionalReturnId,
+                        activeLayerId,
+                        out _))
+                {
+                    return NowFocusMoveResult.Seeded;
+                }
             }
 
             int id;
 
-            if (TryResolveUGUIDirection(direction, out Vector2 resolvedDirection))
+            if (hasDirection)
                 id = FindEdgeFocus(host.focusables, resolvedDirection, activeLayerId);
             else
                 id = FindFirstFocus(host.focusables, activeLayerId);
@@ -1456,7 +1845,21 @@ namespace NowUI
                 return NowFocusMoveResult.Unavailable;
 
             HostRegistry host = GetOrCreateHostRegistry(hostId);
+            host.directionalReturnId = 0;
             int activeLayerId = NowOverlay.activeFocusLayerId;
+
+            if (IsFocusedOutsideHost(hostId))
+                return NowFocusMoveResult.Consumed;
+
+            if (_explicitFocusRequestHostId == hostId &&
+                _explicitFocusRequestId != 0 &&
+                _explicitFocusRequestId == _focusedId)
+            {
+                host.hasPendingEntry = false;
+                host.pendingEntryDirection = default;
+                host.pendingEntryOrderStep = 0;
+                return NowFocusMoveResult.Consumed;
+            }
 
             if (!HasFocusableInLayer(host.focusables, activeLayerId))
             {
