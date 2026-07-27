@@ -711,12 +711,37 @@ NowLayout.TextField("email").SetId("email").Draw(ref email);
 NowLayout.Button("Save").SetId("save").Draw();
 ```
 
-NowUI focus and Unity's EventSystem stay mutually exclusive by default:
-selecting a UGUI control (clicking a classic Button, for example) clears
-NowUI focus and pauses NowUI navigation until that selection clears, and
-focusing a NowUI control deselects the EventSystem. Disable with
-`NowFocus.respectEventSystem = false`. Seamless navigation handoff between
-the two systems is not attempted.
+Without a navigation proxy, NowUI focus and Unity's EventSystem stay mutually
+exclusive by default: selecting a UGUI control (clicking a classic Button, for
+example) clears NowUI focus and pauses NowUI navigation until that selection
+clears, and focusing a NowUI control deselects the EventSystem. Disable this
+legacy coordination with `NowFocus.respectEventSystem = false`.
+
+For a mixed NowUI/UGUI navigation graph, add `NowUGUINavigationProxy` to the
+same GameObject as the `NowGraphic`. The proxy represents the whole graphic as
+one UGUI `Selectable`. While a NowUI control is focused it remains the
+EventSystem selection and routes each UGUI Move event through NowUI first:
+
+- a focused editor consumes its owned directions, so W/A/S/D and arrow keys
+  edit instead of changing selection;
+- a valid internal neighbor receives focus without leaving the proxy; and
+- only a true NowUI edge delegates the move to the proxy's UGUI Navigation
+  target.
+
+Entering the proxy from UGUI seeds the NowUI control on the matching edge.
+Selecting it without a direction seeds the first focusable control.
+`NowGraphic.hasFocusedControl` reports whether that host currently owns NowUI
+focus. Tab and Shift+Tab traverse NowUI without wrapping; at an edge,
+`tabNext`/`tabPrevious` receive selection, falling back to the proxy's Select On
+Down/Up targets when those fields are unset.
+
+Configure explicit UGUI Navigation links for full-screen graphics, whose large
+RectTransform makes Automatic selection ambiguous, and use the proxy GameObject
+as the EventSystem's first selected object when the screen should start inside
+NowUI. Leave EventSystem navigation enabled, and include every intended
+directional binding (W/A/S/D, arrows, d-pad, or stick) in the UI module's
+Navigate action: while the proxy is selected, that Move event is the sole
+directional authority and prevents a second move from NowUI's input snapshot.
 
 Pointer occlusion is mutual too: a `NowGraphic`'s Raycast Target blocks
 UGUI beneath it, and UGUI drawn above NowUI blocks NowUI's pointer — the
@@ -746,6 +771,11 @@ occluded by another UGUI element—so W/A/S/D, arrows, Tab, submit, and cancel
 still wake and operate retained controls after an idle frame.
 `raycastTarget` blocks UGUI Selectables underneath, so NowUI controls layer
 correctly with UGUI.
+
+When `NowUGUINavigationProxy` is present, the graphic participates in the
+surrounding UGUI graph as one composite selectable. Its `Navigation` links
+control directional exits and entries; `tabPrevious` and `tabNext` optionally
+provide separate draw-order exits.
 
 Both hosts are also UGUI layout elements. **Drive Layout Size** is off by
 default; enable it only when the NowUI content should report a preferred

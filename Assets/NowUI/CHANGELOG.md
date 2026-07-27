@@ -74,6 +74,14 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Composite UGUI navigation for `NowGraphic`.**
+  Add `NowUGUINavigationProxy` beside a graphic to keep editor-owned keys and
+  internal focus moves inside NowUI, then yield to explicitly linked UGUI
+  Selectables only at a real boundary. Directional re-entry seeds the matching
+  edge, Tab supports separate previous/next exits, multiple retained graphics
+  keep independent focus registries, and `NowGraphic.hasFocusedControl`
+  exposes host ownership.
+
 - **CSS-inspired gradient paints are a standalone primitive.**
   `Now.Gradient(rect)` draws one-quad linear, circular/elliptical radial, and
   conic gradients with named directions or CSS-style angles, clamp/repeat/

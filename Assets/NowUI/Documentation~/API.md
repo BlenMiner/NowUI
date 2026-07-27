@@ -11,7 +11,10 @@ extension, editor, URP, and HDRP assemblies in the installed package.
   command-buffer rendering, RenderTexture rendering, and explicit warmup.
 - `NowGraphic`, `NowVisualElement`, `NowPipelineGraphic`, and
   `NowWorldGraphic`: one-pass, explicit-rect host integrations for UGUI, UI
-  Toolkit, render pipelines, and world-space meshes. Their
+  Toolkit, render pipelines, and world-space meshes. `NowGraphic` exposes
+  `hasFocusedControl`; the optional `NowUGUINavigationProxy` represents its
+  internal controls as one UGUI `Selectable` and yields directional or Tab
+  navigation only at the host boundary. Their
   `NowLayoutGraphic`, `NowLayoutVisualElement`, `NowPipelineLayoutGraphic`, and
   `NowWorldLayoutGraphic` counterparts own exact `NowLayout` measure/draw
   cycles.

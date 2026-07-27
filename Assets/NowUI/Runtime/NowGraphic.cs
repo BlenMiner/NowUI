@@ -178,6 +178,8 @@ namespace NowUI
 
         [NonSerialized] NowRectTransformInputProvider _inputProvider;
 
+        [NonSerialized] NowUGUINavigationProxy _uguiNavigationProxy;
+
         Rect _clipRect;
 
         Vector2 _clipSoftness;
@@ -430,6 +432,17 @@ namespace NowUI
                 _drawList.Clear();
                 ReleaseUGUIGlassBackdrops();
                 ApplyCanvasPages();
+
+                if (_scopeId != 0)
+                {
+                    NowFocus.UnregisterHost(_scopeId);
+
+                    // Keep a selected proxy ready to seed again if layout
+                    // restores this host without another OnSelect callback.
+                    if (_uguiNavigationProxy != null)
+                        NowFocus.EnterUGUINavigation(_scopeId, default);
+                }
+
                 return;
             }
 
@@ -463,44 +476,49 @@ namespace NowUI
                 {
                     var inputScope = NowInput.Begin(interactive ? GetInputProvider() : null, inputSurface);
 
-                    try
+                    using (NowFocus.BeginHostRegistration(GetScopeId(), _uguiNavigationProxy))
                     {
-                        using (NowControls.RestoreIdScope(GetScopeId()))
+                        try
                         {
-                            // Edit-mode preview: no pointer (null provider) and a passive
-                            // frame, so nothing focuses, types or transitions state.
-                            if (!interactive)
+                            int hostId = GetScopeId();
+
+                            using (NowControls.RestoreIdScope(hostId))
                             {
-                                NowInput.BeginPassive();
-                                passiveInputActive = true;
-                            }
+                                // Edit-mode preview: no pointer (null provider) and a passive
+                                // frame, so nothing focuses, types or transitions state.
+                                if (!interactive)
+                                {
+                                    NowInput.BeginPassive();
+                                    passiveInputActive = true;
+                                }
 
-                            _repaintTracker.StoreFrameInput(NowInput.current, inputSurface.size);
+                                _repaintTracker.StoreFrameInput(NowInput.current, inputSurface.size);
 
-                            var content = new FrameContent(this);
-                            Vector2 measured = NowFrame.DrawContent(
-                                ref content,
-                                drawRect,
-                                useLayoutMeasurePass,
-                                trackContent: _driveLayoutSize);
+                                var content = new FrameContent(this);
+                                Vector2 measured = NowFrame.DrawContent(
+                                    ref content,
+                                    drawRect,
+                                    useLayoutMeasurePass,
+                                    trackContent: _driveLayoutSize);
 
-                            if (_driveLayoutSize && (measured - _preferredSize).sqrMagnitude > 0.25f)
-                            {
-                                _preferredSize = measured;
-                                _layoutSizeDirty = true;
+                                if (_driveLayoutSize && (measured - _preferredSize).sqrMagnitude > 0.25f)
+                                {
+                                    _preferredSize = measured;
+                                    _layoutSizeDirty = true;
+                                }
                             }
                         }
-                    }
-                    catch
-                    {
-                        // Roll back deferred overlays and captured geometry before
-                        // input disposal gets a chance to flush the failed frame.
-                        scope.Cancel();
-                        throw;
-                    }
-                    finally
-                    {
-                        inputScope.Dispose();
+                        catch
+                        {
+                            // Roll back deferred overlays and captured geometry before
+                            // input disposal gets a chance to flush the failed frame.
+                            scope.Cancel();
+                            throw;
+                        }
+                        finally
+                        {
+                            inputScope.Dispose();
+                        }
                     }
                 }
 
@@ -518,6 +536,18 @@ namespace NowUI
             }
             catch (Exception ex)
             {
+                if (_scopeId != 0)
+                {
+                    // A registration scope disposes while exceptions unwind,
+                    // so it may have committed only the controls reached before
+                    // the failure. Drop that transaction before the proxy can
+                    // route into invisible partial geometry.
+                    NowFocus.UnregisterHost(_scopeId);
+
+                    if (_uguiNavigationProxy != null)
+                        NowFocus.EnterUGUINavigation(_scopeId, default);
+                }
+
                 if (passiveInputActive)
                 {
                     NowInput.EndPassive();
@@ -662,6 +692,9 @@ namespace NowUI
 
         protected override void OnDisable()
         {
+            if (_scopeId != 0)
+                NowFocus.UnregisterHost(_scopeId);
+
             _repaintTracker.Reset();
             ReleaseStencilMaterials();
             ReleaseUGUIGlassBackdrops();
@@ -680,6 +713,10 @@ namespace NowUI
         protected override void OnDestroy()
         {
             _liveGraphics.Remove(this);
+
+            if (_scopeId != 0)
+                NowFocus.UnregisterHost(_scopeId);
+
             ReleaseStencilMaterials();
             ReleaseUGUIGlassBackdrops();
 
@@ -760,6 +797,14 @@ namespace NowUI
         public Vector2 measuredContentSize => _preferredSize;
 
         /// <summary>
+        /// True when keyboard/gamepad focus currently belongs to a control
+        /// registered by this graphic.
+        /// </summary>
+        public bool hasFocusedControl => _scopeId != 0 && NowFocus.IsFocusedInHost(_scopeId);
+
+        internal int focusHostId => GetScopeId();
+
+        /// <summary>
         /// Resolves a SetId value inside this host for external focus,
         /// navigation, state, or layout-cache APIs.
         /// </summary>
@@ -771,6 +816,55 @@ namespace NowUI
         public int ResolveControlId(int id)
         {
             return NowControls.ResolveHostControlId(GetScopeId(), id);
+        }
+
+        internal void AttachUGUINavigationProxy(NowUGUINavigationProxy proxy)
+        {
+            if (_uguiNavigationProxy == proxy)
+                return;
+
+            if (_scopeId != 0)
+                NowFocus.UnregisterHost(_scopeId);
+
+            _uguiNavigationProxy = proxy;
+            SetVerticesDirty();
+        }
+
+        internal void DetachUGUINavigationProxy(NowUGUINavigationProxy proxy)
+        {
+            if (_uguiNavigationProxy != proxy)
+                return;
+
+            _uguiNavigationProxy = null;
+
+            if (_scopeId != 0)
+                NowFocus.UnregisterHost(_scopeId);
+
+            SetVerticesDirty();
+        }
+
+        internal NowFocusMoveResult RouteUGUINavigation(Vector2 direction)
+        {
+            if (_scopeId == 0)
+                return NowFocusMoveResult.Unavailable;
+
+            return NowFocus.RouteUGUINavigation(_scopeId, direction);
+        }
+
+        internal NowFocusMoveResult EnterUGUINavigation(Vector2 direction)
+        {
+            return NowFocus.EnterUGUINavigation(GetScopeId(), direction);
+        }
+
+        internal NowFocusMoveResult EnterUGUITab(int step)
+        {
+            return NowFocus.EnterUGUITab(GetScopeId(), step);
+        }
+
+        internal void ExitUGUINavigation()
+        {
+            if (_scopeId != 0)
+                NowFocus.ExitUGUINavigation(_scopeId);
         }
 
         public virtual void CalculateLayoutInputHorizontal()
