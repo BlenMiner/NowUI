@@ -20,8 +20,8 @@
             "files": [
               "Assets/NowUI/package.json"
             ],
-            "from": "\\\"version\\\": \\\".*?\\\"",
-            "to": "\\\"version\\\": \\\"${nextRelease.version}\\\"",
+            "from": "\"version\": \".*?\"",
+            "to": "\"version\": \"${nextRelease.version}\"",
             "countMatches": true
           }
         ]
