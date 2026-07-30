@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.3...nowui-v1.0.4) (2026-07-30)
+
+
+### Bug Fixes
+
+* render speed ([d30c903](https://github.com/BlenMiner/NowUI/commit/d30c9034e788ad4625e23a1868f15961e0a95cdf))
+
 ## [1.0.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.2...nowui-v1.0.3) (2026-07-30)
 
 
