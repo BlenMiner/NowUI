@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.2...nowui-v1.0.3) (2026-07-30)
+
+
+### Bug Fixes
+
+* editor gui shit ([ddd50c6](https://github.com/BlenMiner/NowUI/commit/ddd50c699cf7fef113f5644bf96047b83e09bedd))
+
 ## [1.0.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.1...nowui-v1.0.2) (2026-07-27)
 
 
