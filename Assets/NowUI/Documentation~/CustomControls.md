@@ -306,7 +306,10 @@ before writing one:
   `NowTextInput.current` the normalized keyboard frame (including IME
   composition), `NowTextWrap` display word-wrap, `NowTextArea.LayoutLines`
   editing-grade line layout, `NowTextSelection` browser-style selection over
-  positioned segments.
+  positioned segments. A custom focused keyboard consumer should call
+  `NowTextInput.ClaimActivity()` during its active input pass; this spends
+  characters and pressed-edge shortcuts when the pass ends while preserving
+  held keys, modifiers, and ongoing IME composition.
 - **Popups**: `NowOverlay.Defer(blockRect, draw)` draws above everything
   and blocks input beneath; `NowContextMenu` is the ready-made modal menu.
   Remember overlay blocks apply one frame late — deliver results the frame

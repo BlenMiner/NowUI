@@ -294,6 +294,7 @@ namespace NowUI
             if (string.IsNullOrEmpty(typed) || state.optionCount == 0)
                 return;
 
+            NowTextInput.ClaimActivity();
             char first = char.ToUpperInvariant(typed[0]);
             int start = state.highlight >= 0 && state.highlight < state.optionCount ? state.highlight : -1;
 

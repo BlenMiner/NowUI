@@ -105,7 +105,7 @@ namespace NowUI
                 int pixelHeight = Mathf.Max(1, Mathf.CeilToInt(rect.height * pixelsPerPoint));
 
                 RenderTexture target = entry.GetTarget(pixelWidth, pixelHeight);
-                frameScope = NowFrame.Begin(pixelsPerPoint);
+                frameScope = NowFrame.Begin(pixelsPerPoint, trackRepaint: true);
                 ownsFrameScope = true;
                 drawScope = entry.renderer.Begin(new Vector2(rect.width, rect.height));
                 ownsDrawScope = true;
@@ -534,8 +534,12 @@ namespace NowUI
             if (!_hasFrameScope)
                 return;
 
+            bool wantsRepaint = _frameScope.EndRepaintTracking();
             _frameScope.Dispose();
             _hasFrameScope = false;
+
+            if (wantsRepaint)
+                NowIMGUIInputProvider.RequestRepaint();
         }
 
         void DisposeControlIdScope()

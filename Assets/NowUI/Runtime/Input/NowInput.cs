@@ -451,6 +451,7 @@ namespace NowUI
 
             if (resetFrameTracking)
             {
+                NowTextInput.BeginInputPass();
                 _scrollConsumed = false;
                 _focusClaimedByPrimaryPress = false;
                 _activeSeenThisFrame = false;
@@ -1062,30 +1063,37 @@ namespace NowUI
 
         static void CompleteFrame()
         {
-            if (_activeId != 0 &&
-                !_activeSeenThisFrame &&
-                ReferenceEquals(_currentProvider, _activeProvider) &&
-                _hasContext &&
-                (!_snapshot.hasPointer ||
-                 !_snapshot.IsPointerDown(_activeButton) ||
-                 _snapshot.WasPointerReleased(_activeButton)))
+            try
             {
-                ClearActive();
-            }
+                if (_activeId != 0 &&
+                    !_activeSeenThisFrame &&
+                    ReferenceEquals(_currentProvider, _activeProvider) &&
+                    _hasContext &&
+                    (!_snapshot.hasPointer ||
+                     !_snapshot.IsPointerDown(_activeButton) ||
+                     _snapshot.WasPointerReleased(_activeButton)))
+                {
+                    ClearActive();
+                }
 
-            if (_passiveDepth > 0 ||
-                !_hasContext ||
-                !_snapshot.hasPointer ||
-                !_snapshot.primaryPressed ||
-                _focusClaimedByPrimaryPress)
-            {
-                return;
-            }
+                if (_passiveDepth > 0 ||
+                    !_hasContext ||
+                    !_snapshot.hasPointer ||
+                    !_snapshot.primaryPressed ||
+                    _focusClaimedByPrimaryPress)
+                {
+                    return;
+                }
 
-            if (NowFocus.ClearOnUnhandledPrimaryPress() &&
-                _currentProvider is NowIMGUIInputProvider imgui)
+                if (NowFocus.ClearOnUnhandledPrimaryPress() &&
+                    _currentProvider is NowIMGUIInputProvider imgui)
+                {
+                    imgui.NotifyFocusCleared();
+                }
+            }
+            finally
             {
-                imgui.NotifyFocusCleared();
+                NowTextInput.EndInputPass();
             }
         }
 

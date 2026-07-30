@@ -107,6 +107,10 @@ namespace NowUI
 
         static int _frameStamp = -1;
 
+        static bool _inputPassActive;
+
+        static bool _activityClaimed;
+
         public static INowTextInputSource source
         {
             get => _source ??= NowKeyboardTextInputSource.instance;
@@ -160,6 +164,54 @@ namespace NowUI
             }
         }
 
+        internal static void BeginInputPass()
+        {
+            _inputPassActive = true;
+            _activityClaimed = false;
+        }
+
+        /// <summary>
+        /// Claims this input pass's one-shot text and shortcut activity for the
+        /// focused consumer. When the pass ends, printable characters and
+        /// pressed-edge flags are spent so another IMGUI/Layout/Repaint pass in
+        /// the same Unity frame cannot apply them again. Held keys, modifiers,
+        /// and IME composition remain available.
+        /// </summary>
+        public static void ClaimActivity()
+        {
+            if (_inputPassActive && !NowInput.isPassive)
+                _activityClaimed = true;
+        }
+
+        internal static void EndInputPass()
+        {
+            if (!_inputPassActive)
+                return;
+
+            _inputPassActive = false;
+
+            if (!_activityClaimed)
+                return;
+
+            _activityClaimed = false;
+            _frame.characters = null;
+            _frame.homePressed = false;
+            _frame.endPressed = false;
+            _frame.enterPressed = false;
+            _frame.escapePressed = false;
+            _frame.tabPressed = false;
+            _frame.copyPressed = false;
+            _frame.pastePressed = false;
+            _frame.cutPressed = false;
+            _frame.selectAllPressed = false;
+            _frame.undoPressed = false;
+            _frame.redoPressed = false;
+            _frame.duplicatePressed = false;
+            _frame.commentPressed = false;
+            _frame.goToLinePressed = false;
+            _frame.renamePressed = false;
+        }
+
         static int _captureRequestFrame = -1;
 
         static bool _captureActive;
@@ -211,6 +263,7 @@ namespace NowUI
             if (NowInput.isPassive)
                 return;
 
+            ClaimActivity();
             _captureRequestFrame = Time.frameCount;
 
             if (!_captureActive)
@@ -323,6 +376,8 @@ namespace NowUI
             _source = null;
             _frame = default;
             _frameStamp = -1;
+            _inputPassActive = false;
+            _activityClaimed = false;
             _captureRequestFrame = -1;
             _captureActive = false;
             _enterConsumed = false;

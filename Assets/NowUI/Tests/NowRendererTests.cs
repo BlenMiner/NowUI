@@ -74,6 +74,45 @@ public class NowRendererTests
     }
 
     [Test]
+    public void TrackedImmediateFrameForwardsOneAnimationRepaintAtCompletion()
+    {
+        Action previousRepaint = NowIMGUIInputProvider.repaintRequested;
+        bool previousChanged = GUI.changed;
+        int repaintCount = 0;
+        NowFrameScope frame = default;
+
+        try
+        {
+            GUI.changed = false;
+            NowIMGUIInputProvider.repaintRequested = () => ++repaintCount;
+            frame = NowFrame.Begin(1f, trackRepaint: true);
+
+            NowControlState.RequestRepaint();
+            NowControlState.RequestRepaint();
+            bool wantsRepaint = frame.EndRepaintTracking();
+            frame.Dispose();
+
+            if (wantsRepaint)
+                NowIMGUIInputProvider.RequestRepaint();
+
+            Assert.IsTrue(GUI.changed);
+            Assert.AreEqual(
+                1,
+                repaintCount,
+                "A repainting IMGUI scope should forward one host request even when several controls animate.");
+        }
+        finally
+        {
+            frame.Dispose();
+            NowIMGUIInputProvider.repaintRequested = previousRepaint;
+            GUI.changed = previousChanged;
+            NowGUI.DisposeAll();
+            NowInput.Reset();
+            NowControls.Reset();
+        }
+    }
+
+    [Test]
     public void NowGUIRecursiveSetupFailureRestoresOuterInputAndFrameOwnership()
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));

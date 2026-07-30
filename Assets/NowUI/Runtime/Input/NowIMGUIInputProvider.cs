@@ -130,8 +130,7 @@ namespace NowUI
 
         internal void NotifyFocusCleared()
         {
-            GUI.changed = true;
-            repaintRequested?.Invoke();
+            RequestRepaint();
         }
 
         internal static void ConsumeScrollEvent(Event current)
@@ -139,8 +138,13 @@ namespace NowUI
             if (current == null || current.type != EventType.ScrollWheel)
                 return;
 
-            GUI.changed = true;
             current.Use();
+            RequestRepaint();
+        }
+
+        internal static void RequestRepaint()
+        {
+            GUI.changed = true;
             repaintRequested?.Invoke();
         }
 

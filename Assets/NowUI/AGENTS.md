@@ -43,6 +43,13 @@ not infer APIs from feature names or internal design notes.
 - Empty primary presses clear focus by default. Call `NowFocus.RetainFocus()`
   only for overlays that must preserve focus-owned state while selecting or
   dismissing them.
+- Custom focused keyboard consumers that read `NowTextInput.current` must call
+  `NowTextInput.ClaimActivity()` so one-shot characters and shortcuts are not
+  replayed by another IMGUI pass in the same Unity frame.
+- Treat a consuming project as a reproduction fixture when diagnosing NowUI.
+  If documented public usage exposes a bug, fix the package and leave the
+  consumer unchanged. Change consumer code only when it violates a documented
+  host/control contract, and identify that correction separately.
 - Supply theme and builder colors as authored display/sRGB values. Do not
   pre-convert them with `.linear`; NowUI's render paths perform their own
   working-space conversion.
@@ -65,6 +72,13 @@ not infer APIs from feature names or internal design notes.
 - Finalize unclaimed primary presses at input-scope completion so empty-space
   clicks clear focus even when several IMGUI events share one Unity frame;
   preserve explicit focus claims and `NowFocus.RetainFocus()`.
+- Keep one-shot text and shortcut delivery input-pass-scoped. Do not rely on
+  `Time.frameCount` alone because editor IMGUI can run several input/draw
+  passes before it advances.
+- Coalesce and rate-limit editor repaint requests until the current IMGUI
+  dispatch completes, and let immediate-mode controls forward tracked animation
+  demand. Do not pair that bridge with an unconditional editor-update repaint
+  loop unless the host displays genuinely live data; bound live refresh rates.
 - Keep color-space conversion in the renderer/shader path rather than theme
   accessors so direct, RenderTexture, world-space, and IMGUI output agree.
 - Preserve readable popup selection contrast independently of accent color

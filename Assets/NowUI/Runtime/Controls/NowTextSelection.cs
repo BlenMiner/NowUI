@@ -186,6 +186,7 @@ namespace NowUI
 
             if (focused && !NowInput.isPassive)
             {
+                NowTextInput.ClaimActivity();
                 var frame = NowTextInput.current;
 
                 if (frame.selectAllPressed)

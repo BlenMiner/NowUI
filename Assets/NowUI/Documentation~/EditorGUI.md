@@ -118,8 +118,17 @@ using (var ui = NowGUI.Auto(rect, Color.white))
 - A primary MouseDown on empty NowUI space clears control focus at input-scope
   completion, including when IMGUI dispatches several events in one Unity
   frame.
+- Focused text editors claim one-shot characters and shortcut edges for their
+  input pass, so a later Layout/Repaint pass in the same `Time.frameCount`
+  cannot type or invoke the same event again.
 - Wheel events consumed by a NowUI scrollable are marked used and explicitly
-  repaint the editor window, preventing enclosing IMGUI scroll views from
-  handling the same wheel tick.
+  request an editor repaint, preventing enclosing IMGUI scroll views from
+  handling the same wheel tick. Editor repaint requests are coalesced, bounded
+  to 60 Hz, and deferred until the current IMGUI dispatch finishes, avoiding
+  nested repaint feedback in windows that also update live content.
+- Immediate-mode controls forward their tracked animation repaint demand to the
+  editor host. Idle editor windows therefore do not need an unconditional
+  `EditorApplication.update => Repaint()` loop; reserve a bounded update loop
+  for genuinely live data.
 - Call `NowGUI.DisposeAll()` if a runtime host needs to eagerly release all
   cached render textures.

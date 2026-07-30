@@ -447,8 +447,8 @@ namespace NowUI
         /// <summary>
         /// Tells a retained host (a UGUI <see cref="NowGraphic"/>) that this
         /// control needs another frame — call while animating, focused with a
-        /// blinking caret, or otherwise time-dependent. The immediate-mode screen
-        /// path repaints every frame anyway, so calling it there is free.
+        /// blinking caret, or otherwise time-dependent. Immediate-mode IMGUI
+        /// hosts forward tracked requests through their coalesced repaint bridge.
         /// </summary>
         public static void RequestRepaint()
         {

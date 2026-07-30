@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -6,6 +7,14 @@ namespace NowUI.Editor
     [InitializeOnLoad]
     public static class NowEditorGUI
     {
+        static readonly HashSet<EditorWindow> PendingRepaints = new HashSet<EditorWindow>();
+
+        const double RepaintInterval = 1.0 / 60.0;
+
+        static bool _repaintFlushQueued;
+
+        static double _nextRepaintAt;
+
         static NowEditorGUI()
         {
             NowIMGUIInputProvider.repaintRequested = RepaintCurrentWindow;
@@ -16,7 +25,50 @@ namespace NowUI.Editor
         static void RepaintCurrentWindow()
         {
             var window = EditorWindow.mouseOverWindow ?? EditorWindow.focusedWindow;
-            window?.Repaint();
+
+            if (!window)
+                return;
+
+            PendingRepaints.Add(window);
+
+            if (_repaintFlushQueued)
+                return;
+
+            _repaintFlushQueued = true;
+            EditorApplication.update += FlushQueuedRepaints;
+        }
+
+        static void FlushQueuedRepaints()
+        {
+            double now = EditorApplication.timeSinceStartup;
+
+            if (now < _nextRepaintAt)
+                return;
+
+            EditorApplication.update -= FlushQueuedRepaints;
+            _repaintFlushQueued = false;
+            _nextRepaintAt = now + RepaintInterval;
+
+            try
+            {
+                foreach (var window in PendingRepaints)
+                {
+                    if (window)
+                        window.Repaint();
+                }
+            }
+            finally
+            {
+                PendingRepaints.Clear();
+            }
+        }
+
+        static void CancelQueuedRepaints()
+        {
+            EditorApplication.update -= FlushQueuedRepaints;
+            _repaintFlushQueued = false;
+            _nextRepaintAt = 0.0;
+            PendingRepaints.Clear();
         }
 
         public static NowGUIScope Auto()
@@ -56,6 +108,7 @@ namespace NowUI.Editor
 
         public static void DisposeAll()
         {
+            CancelQueuedRepaints();
             NowGUI.DisposeAll();
         }
     }

@@ -871,7 +871,7 @@ The toolkit pieces:
 | `Now.Mask(rect)` | Ambient clipping scope (what ScrollView uses) |
 | `NowOverlay.Defer(blockRect, draw)` | Draw above everything; input beneath is blocked |
 | `NowContextMenu.Open / Begin / Item / End` | Modal right-click menus on the overlay layer |
-| `NowTextInput.current` | Frame-sampled keyboard text/editing input, including IME composition |
+| `NowTextInput.current` / `ClaimActivity()` | Frame-sampled keyboard text/editing input, including IME composition; custom focused consumers claim one-shot activity so later IMGUI passes cannot replay it |
 | `NowTextInput.setImeEnabled / setCompositionCursor` | IME hooks: editors toggle on focus and report the caret for the candidate window |
 | `NowTextEdit` | Headless caret/selection/editing engine for custom editors |
 | `NowTextWrap.Layout / Draw` | Word wrap: lay out once into positioned runs, draw many frames |

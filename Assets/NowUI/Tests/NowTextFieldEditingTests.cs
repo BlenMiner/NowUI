@@ -219,6 +219,64 @@ public class NowTextFieldEditingTests
         return FrameResult(ref text, keys, placeholder);
     }
 
+    [Test]
+    public void TextActivityIsConsumedAfterOneInputPassWithinSameUnityFrame()
+    {
+        string text = string.Empty;
+        Focus();
+        _keyboard.frame = new NowTextInputFrame { characters = "a" };
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            Now.TextField(FieldRect, "name").Draw(ref text);
+
+        Assert.AreEqual("a", text);
+
+        // IMGUI can immediately draw Layout/Repaint again without advancing
+        // Time.frameCount. The already-delivered character must be spent.
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            Now.TextField(FieldRect, "name").Draw(ref text);
+
+        Assert.AreEqual("a", text,
+            "A cached KeyDown character must not be replayed by another IMGUI pass in the same Unity frame.");
+    }
+
+    [Test]
+    public void ClaimedTextActivityKeepsHeldModifiersAndComposition()
+    {
+        _keyboard.frame = new NowTextInputFrame
+        {
+            characters = "x",
+            composition = "か",
+            backspaceHeld = true,
+            enterPressed = true,
+            shift = true,
+            command = true
+        };
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        {
+            NowTextInput.ClaimActivity();
+            var first = NowTextInput.current;
+            Assert.AreEqual("x", first.characters);
+            Assert.IsTrue(first.enterPressed);
+        }
+
+        using (NowInput.Begin(_pointer, Surface))
+        {
+            var nextPass = NowTextInput.current;
+            Assert.IsNull(nextPass.characters);
+            Assert.IsFalse(nextPass.enterPressed);
+            Assert.IsTrue(nextPass.backspaceHeld);
+            Assert.IsTrue(nextPass.shift);
+            Assert.IsTrue(nextPass.command);
+            Assert.AreEqual("か", nextPass.composition);
+        }
+    }
+
     NowInputSnapshot NavigationSnapshot(
         Vector2 navigation = default,
         bool focusPrevious = false,

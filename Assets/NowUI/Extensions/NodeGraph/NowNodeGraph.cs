@@ -3968,10 +3968,11 @@ namespace NowUI.NodeGraph
             if (NowInput.isPassive || !NowFocus.IsFocused(focusId))
                 return;
 
-            var frame = NowTextInput.current;
-
             if (state.searchOpen != 0)
                 return;
+
+            NowTextInput.ClaimActivity();
+            var frame = NowTextInput.current;
 
             if (frame.escapePressed && (state.linkActive != 0 || state.selectionActive != 0))
             {
@@ -4257,6 +4258,7 @@ namespace NowUI.NodeGraph
                 return;
 
             var snapshot = NowInput.current;
+            NowTextInput.ClaimActivity();
             var frame = NowTextInput.current;
             bool suppressInput = state.searchSuppressInput != 0;
             state.searchSuppressInput = 0;
