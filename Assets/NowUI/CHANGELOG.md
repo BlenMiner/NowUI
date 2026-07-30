@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.1...nowui-v1.0.2) (2026-07-27)
+
+
+### Bug Fixes
+
+* focus ([4c8f929](https://github.com/BlenMiner/NowUI/commit/4c8f92990ae2a4931b6e730a1d82a65d6ed753f6))
+
 ## [1.0.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.0...nowui-v1.0.1) (2026-07-27)
 
 
