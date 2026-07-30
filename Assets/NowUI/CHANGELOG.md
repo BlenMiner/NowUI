@@ -1,3 +1,10 @@
+## [1.0.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.4...nowui-v1.0.5) (2026-07-30)
+
+
+### Bug Fixes
+
+* editor IMGUI input handling ([83f558a](https://github.com/BlenMiner/NowUI/commit/83f558a2cf5b25006c1724e328fe18a3b2e4410c))
+
 ## [1.0.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.3...nowui-v1.0.4) (2026-07-30)
 
 
