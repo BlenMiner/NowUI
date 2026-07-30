@@ -28,6 +28,7 @@ Shader "NowUI/Text Renderer RGBA"
             #pragma fragment frag
 
             #include "UnityCG.cginc"
+            #include "NowUIColorSpace.cginc"
 
             struct appdata
             {
@@ -61,7 +62,7 @@ Shader "NowUI/Text Renderer RGBA"
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 o.rect = v.rect;
-                o.color = v.color;
+                o.color = NowUIColorToWorkingSpace(v.color);
                 o.mask = v.mask;
                 o.rawUV = v.rawUV;
                 return o;

@@ -509,6 +509,12 @@ public class NowControlsAdvancedTests
             Now.TextField(FieldRect, "name").Draw(ref text);
     }
 
+    static void DrawCompositeTextField(NowRect rect, ref string text)
+    {
+        using (NowControls.ControlScope())
+            Now.TextField(rect, "input").Draw(ref text);
+    }
+
     [Test]
     public void TextFieldTypesCharactersWhileFocused()
     {
@@ -520,6 +526,42 @@ public class NowControlsAdvancedTests
 
         Assert.IsTrue(DrawTextFieldFrame(ref text, new NowTextInputFrame { characters = "!" }));
         Assert.AreEqual("Hi!", text);
+    }
+
+    [Test]
+    public void RepeatedCompositeControlOnlyTypesOnceIntoItsFocusedChild()
+    {
+        const int fieldCount = 7;
+        const float fieldHeight = 26f;
+        const float gap = 6f;
+        string text = string.Empty;
+
+        void Frame(NowInputSnapshot pointer, string characters = null)
+        {
+            _pointer.snapshot = pointer;
+            _keyboard.frame = new NowTextInputFrame { characters = characters };
+            NowTextInput.Invalidate();
+
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                for (int i = 0; i < fieldCount; ++i)
+                {
+                    var rect = new NowRect(20f, 8f + i * (fieldHeight + gap), 180f, fieldHeight);
+                    DrawCompositeTextField(rect, ref text);
+                }
+            }
+        }
+
+        var focusedRect = new NowRect(20f, 8f + 3f * (fieldHeight + gap), 180f, fieldHeight);
+        Frame(new NowInputSnapshot(focusedRect.center, true, true, false));
+        Frame(new NowInputSnapshot(focusedRect.center, false, false, true));
+        Frame(new NowInputSnapshot(new Vector2(400f, 240f), false, false, false), "a");
+
+        Assert.AreEqual(
+            "a",
+            text,
+            "Each composite instance must give its local input a distinct id; shared focus would insert the character once per instance.");
     }
 
     [Test]

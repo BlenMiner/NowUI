@@ -33,6 +33,7 @@ Shader "NowUI/UI Glass"
             #pragma fragment frag
 
             #include "UnityCG.cginc"
+            #include "NowUIColorSpace.cginc"
 
             struct appdata
             {
@@ -91,8 +92,8 @@ Shader "NowUI/UI Glass"
                 o.screenPos = ComputeScreenPos(o.vertex);
                 o.rect = v.rect;
                 o.radius = v.radius;
-                o.color = v.color;
-                o.outlineColor = v.outlineColor;
+                o.color = NowUIColorToWorkingSpace(v.color);
+                o.outlineColor = NowUIColorToWorkingSpace(v.outlineColor);
                 o.extras = v.extras;
                 o.mask = v.mask;
                 o.rawUV = v.rawUV;

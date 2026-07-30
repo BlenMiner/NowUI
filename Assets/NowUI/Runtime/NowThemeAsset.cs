@@ -2241,9 +2241,7 @@ namespace NowUI
                     .Draw();
             }
 
-            Color textColor = context.selected
-                ? context.themeAsset.GetColor(NowColorToken.Accent)
-                : context.themeAsset.GetColor(NowColorToken.Text);
+            Color textColor = context.themeAsset.GetColor(NowColorToken.Text);
             NowRect content = context.rect.Inset(8f, 0f, 4f, 0f);
 
             if (string.IsNullOrEmpty(context.detail))

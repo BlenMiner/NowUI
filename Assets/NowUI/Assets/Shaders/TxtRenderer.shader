@@ -28,6 +28,7 @@ Shader "NowUI/Text Renderer"
             #pragma fragment frag
 
             #include "UnityCG.cginc"
+            #include "NowUIColorSpace.cginc"
 
             struct appdata
             {
@@ -65,8 +66,8 @@ Shader "NowUI/Text Renderer"
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 o.rect = v.rect;
                 o.radius = v.radius;
-                o.color = v.color;
-                o.outlineColor = v.outlineColor;
+                o.color = NowUIColorToWorkingSpace(v.color);
+                o.outlineColor = NowUIColorToWorkingSpace(v.outlineColor);
                 o.extras = v.extras;
                 o.mask = v.mask;
                 o.rawUV = v.rawUV;

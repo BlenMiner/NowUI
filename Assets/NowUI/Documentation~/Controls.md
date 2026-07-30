@@ -612,6 +612,12 @@ through `NowControls.Interact(...)`. Builder-style custom controls can store
 `NowControls.SiteId(file, line)` in the factory and pass that fallback identity
 to `NowControls.Interact(id, fallbackIdentity, rect, ...)`.
 
+A composite custom control that draws several child controls should wrap its
+body in `NowControls.ControlScope(id, file, line)`. The scope mixes the custom
+control invocation into every descendant id, allowing reusable local child ids
+without shared focus or state. Its default identity is occurrence-salted; use a
+stable explicit id when repeated instances can reorder.
+
 ## Compile-time misuse warnings
 
 Builders are inert until consumed, so `NowLayout.Label("Hello");` without
@@ -687,7 +693,10 @@ has one offset control, until you deliberately move sideways (or focus
 changes by pointer, Tab, or an explicit link). Tab and Shift+Tab cycle
 through controls in draw order. Submit (enter/space/gamepad south) activates the focused
 control; cancel clears focus (and closes popups). Clicking a control focuses
-it. Focused controls draw a focus outline.
+it, while a primary click on empty NowUI space clears focus. Overlays that act
+on focus-owned state can call `NowFocus.RetainFocus()` while open to preserve
+the owner's focus during row selection or outside-click dismissal. Focused
+controls draw a focus outline.
 Focused `TextField` and `TextArea` controls own directional input while
 editing: W/A/S/D, arrows, the d-pad, and the left stick cannot move focus away
 or steal a character/caret action. Tab and Shift+Tab remain focus traversal for

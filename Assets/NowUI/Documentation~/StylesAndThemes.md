@@ -15,6 +15,11 @@ changing call sites. `Default`/`DefaultDark` use the built-in control renderer
 Material themes assign `MaterialControlRenderer` for a state-layer/ripple
 design language.
 
+Theme palettes and colors passed to NowUI builders are authored as display
+(sRGB) UI colors. Direct, RenderTexture, world-space, and IMGUI rendering
+convert them to the project's working color space in shaders, so the same
+palette retains its intended appearance in Gamma and Linear projects.
+
 Light and dark twins are cross-linked through each asset's counterpart slot,
 so one flag switches the whole UI:
 

@@ -117,6 +117,24 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Pushes one identity boundary for a composite custom-control invocation.
+        /// Descendant control ids are mixed with this invocation, so reusable
+        /// controls can safely use local child ids such as "label" and "input".
+        /// When <paramref name="id"/> is default, repeated calls from one site are
+        /// occurrence-salted in draw order; provide a stable id for reorderable
+        /// data and forward the caller-info parameters from wrapper APIs.
+        /// </summary>
+        public static ControlIdScope ControlScope(
+            NowId id = default,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            int resolved = GetControlId(id, SiteId(file, line));
+            _idStack.Add(resolved);
+            return new ControlIdScope(EnterIdScope());
+        }
+
+        /// <summary>
         /// Disambiguates controls with the same label drawn in loops or repeated
         /// panels: ids derive from the label hashed against the innermost scope.
         /// <code>

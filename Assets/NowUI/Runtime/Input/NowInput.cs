@@ -178,6 +178,8 @@ namespace NowUI
 
         static bool _scrollConsumed;
 
+        static bool _focusClaimedByPrimaryPress;
+
         static int _cancelClaimFrame = int.MinValue;
 
         public static INowInputProvider defaultProvider
@@ -198,6 +200,8 @@ namespace NowUI
         public static int activeId => _activeId;
 
         public static NowPointerButton activeButton => _activeButton;
+
+        internal static bool focusClaimedByPrimaryPress => _focusClaimedByPrimaryPress;
 
         /// <summary>
         /// Distance in surface units a press may travel before it becomes a drag
@@ -448,6 +452,7 @@ namespace NowUI
             if (resetFrameTracking)
             {
                 _scrollConsumed = false;
+                _focusClaimedByPrimaryPress = false;
                 _activeSeenThisFrame = false;
             }
 
@@ -458,6 +463,17 @@ namespace NowUI
         public static bool IsHovered(NowRect rect)
         {
             return IsHovered((Rect)rect);
+        }
+
+        internal static void ClaimFocusForCurrentPrimaryPress()
+        {
+            if (_passiveDepth == 0 &&
+                _hasContext &&
+                _snapshot.hasPointer &&
+                _snapshot.primaryPressed)
+            {
+                _focusClaimedByPrimaryPress = true;
+            }
         }
 
         public static bool IsHovered(Rect rect)
@@ -517,6 +533,10 @@ namespace NowUI
             }
 
             _scrollConsumed = true;
+
+            if (_currentProvider is NowIMGUIInputProvider imgui)
+                imgui.NotifyScrollConsumed();
+
             return scroll;
         }
 
@@ -890,6 +910,7 @@ namespace NowUI
             _scopeStartedAt = int.MinValue;
             _screenFrameActive = false;
             _scrollConsumed = false;
+            _focusClaimedByPrimaryPress = false;
             _cancelClaimFrame = int.MinValue;
             NowRaycastGate.InvalidateCache();
             NowPointerArbiter.Reset();
@@ -1041,20 +1062,30 @@ namespace NowUI
 
         static void CompleteFrame()
         {
-            if (_activeId == 0 || _activeSeenThisFrame)
-                return;
-
-            if (!ReferenceEquals(_currentProvider, _activeProvider))
-                return;
-
-            if (!_hasContext)
-                return;
-
-            if (!_snapshot.hasPointer ||
-                !_snapshot.IsPointerDown(_activeButton) ||
-                _snapshot.WasPointerReleased(_activeButton))
+            if (_activeId != 0 &&
+                !_activeSeenThisFrame &&
+                ReferenceEquals(_currentProvider, _activeProvider) &&
+                _hasContext &&
+                (!_snapshot.hasPointer ||
+                 !_snapshot.IsPointerDown(_activeButton) ||
+                 _snapshot.WasPointerReleased(_activeButton)))
             {
                 ClearActive();
+            }
+
+            if (_passiveDepth > 0 ||
+                !_hasContext ||
+                !_snapshot.hasPointer ||
+                !_snapshot.primaryPressed ||
+                _focusClaimedByPrimaryPress)
+            {
+                return;
+            }
+
+            if (NowFocus.ClearOnUnhandledPrimaryPress() &&
+                _currentProvider is NowIMGUIInputProvider imgui)
+            {
+                imgui.NotifyFocusCleared();
             }
         }
 

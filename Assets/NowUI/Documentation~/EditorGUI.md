@@ -115,5 +115,11 @@ using (var ui = NowGUI.Auto(rect, Color.white))
 - Non-Repaint events suppress drawing but still run control/input logic, so
   MouseDown, MouseUp, and keyboard events are handled in their native IMGUI
   pass without leaking geometry into another NowUI target.
+- A primary MouseDown on empty NowUI space clears control focus at input-scope
+  completion, including when IMGUI dispatches several events in one Unity
+  frame.
+- Wheel events consumed by a NowUI scrollable are marked used and explicitly
+  repaint the editor window, preventing enclosing IMGUI scroll views from
+  handling the same wheel tick.
 - Call `NowGUI.DisposeAll()` if a runtime host needs to eagerly release all
   cached render textures.

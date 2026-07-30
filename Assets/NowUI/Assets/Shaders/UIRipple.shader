@@ -26,6 +26,7 @@ Shader "NowUI/UI Ripple"
             #pragma fragment frag
 
             #include "UnityCG.cginc"
+            #include "NowUIColorSpace.cginc"
 
             struct appdata
             {
@@ -64,7 +65,7 @@ Shader "NowUI/UI Ripple"
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.rect = v.rect;
                 o.radius = v.radius;
-                o.color = v.color;
+                o.color = NowUIColorToWorkingSpace(v.color);
                 o.extras = v.extras;
                 o.mask = v.mask;
                 o.rawUV = v.rawUV;

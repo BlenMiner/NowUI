@@ -262,9 +262,7 @@ namespace NowUI
                     .Draw();
             }
 
-            Color textColor = context.selected
-                ? context.themeAsset.GetColor(NowColorToken.Accent, Color.blue)
-                : context.themeAsset.GetColor(NowColorToken.Text, Color.black);
+            Color textColor = context.themeAsset.GetColor(NowColorToken.Text, Color.black);
             DrawItemLabel(context.themeAsset, context.rect, context.label, textColor);
         }
 

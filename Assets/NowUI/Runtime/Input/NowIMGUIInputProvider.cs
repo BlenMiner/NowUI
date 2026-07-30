@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace NowUI
@@ -5,6 +6,8 @@ namespace NowUI
     public sealed class NowIMGUIInputProvider : INowInputProvider
     {
         public static readonly NowIMGUIInputProvider instance = new NowIMGUIInputProvider();
+
+        internal static Action repaintRequested;
 
         NowPointerButtons _buttonsDown;
 
@@ -118,6 +121,27 @@ namespace NowUI
                 Time.frameCount,
                 Time.realtimeSinceStartup);
             return true;
+        }
+
+        internal void NotifyScrollConsumed()
+        {
+            ConsumeScrollEvent(Event.current);
+        }
+
+        internal void NotifyFocusCleared()
+        {
+            GUI.changed = true;
+            repaintRequested?.Invoke();
+        }
+
+        internal static void ConsumeScrollEvent(Event current)
+        {
+            if (current == null || current.type != EventType.ScrollWheel)
+                return;
+
+            GUI.changed = true;
+            current.Use();
+            repaintRequested?.Invoke();
         }
 
         void ApplyKeyDown(

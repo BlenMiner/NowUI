@@ -27,6 +27,7 @@ Shader "NowUI/UI Bezier"
             #pragma fragment frag
 
             #include "UnityCG.cginc"
+            #include "NowUIColorSpace.cginc"
 
             struct appdata
             {
@@ -58,7 +59,7 @@ Shader "NowUI/UI Bezier"
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.cp01 = v.cp01;
                 o.cp23 = v.cp23;
-                o.color = v.color;
+                o.color = NowUIColorToWorkingSpace(v.color);
                 o.params = v.params;
                 o.mask = v.mask;
                 o.pixel = v.pixel.xy;

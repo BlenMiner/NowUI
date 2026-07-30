@@ -1,8 +1,10 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 using NowUI;
 using NowUI.Editor;
+using NowUI.Internal;
 
 public class NowThemeAssetTests
 {
@@ -202,6 +204,59 @@ public class NowThemeAssetTests
         Assert.AreEqual(new Vector4(999f, 999f, 999f, 999f), theme.controlStyles.buttonRadius.Resolve(theme));
         Assert.AreEqual(new Vector4(4f, 4f, 4f, 4f), theme.controlStyles.fieldRadius.Resolve(theme));
         Assert.AreEqual(40f, theme.controlRenderer.MeasureDropdownField(theme, 20f).y, 0.0001f);
+    }
+
+    [TestCase("Assets/NowUI/Assets/Themes/DefaultDark.asset")]
+    [TestCase("Assets/NowUI/Assets/Themes/MaterialDark.asset")]
+    public void SelectedPopupItemKeepsReadableBodyTextColor(string themePath)
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+
+            using (drawList.Begin(new Vector2(240f, 80f)))
+            {
+                theme.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
+                    theme,
+                    new NowRect(8f, 8f, 200f, 40f),
+                    "Selected option",
+                    true,
+                    default));
+            }
+
+            var colors = new List<Vector4>();
+            drawList.mesh.GetUVs(3, colors);
+            Color expected = theme.GetColor(NowColorToken.Text);
+            bool foundText = false;
+
+            for (int i = 0; i < drawList.batches.Count; ++i)
+            {
+                if (drawList.batches[i].kind != NowMeshKind.Text)
+                    continue;
+
+                var indices = drawList.mesh.GetIndices(i);
+
+                if (indices.Length == 0)
+                    continue;
+
+                Color actual = colors[indices[0]];
+                Assert.AreEqual(expected.r, actual.r, 0.0001f);
+                Assert.AreEqual(expected.g, actual.g, 0.0001f);
+                Assert.AreEqual(expected.b, actual.b, 0.0001f);
+                Assert.AreEqual(expected.a, actual.a, 0.0001f);
+                foundText = true;
+                break;
+            }
+
+            Assert.IsTrue(foundText, "Selected popup item did not emit text geometry.");
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
     }
 
     [Test]

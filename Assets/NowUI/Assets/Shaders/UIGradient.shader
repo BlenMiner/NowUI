@@ -29,6 +29,7 @@ Shader "NowUI/UI Gradient"
             #pragma fragment frag
 
             #include "UnityCG.cginc"
+            #include "NowUIColorSpace.cginc"
 
             struct appdata
             {
@@ -155,7 +156,7 @@ Shader "NowUI/UI Gradient"
                 o.rect = v.rect;
                 o.radius = v.radius;
                 o.gradient = v.gradient;
-                o.outlineColor = v.outlineColor;
+                o.outlineColor = NowUIColorToWorkingSpace(v.outlineColor);
                 o.extras = v.extras;
                 o.mask = v.mask;
                 o.rawUV = v.rawUV.xy;
@@ -193,7 +194,10 @@ Shader "NowUI/UI Gradient"
 
                 float outlineCoverage = i.outlineColor.a * outlineAlpha * graphicAlpha;
                 float fillCoverage = ramp.a * tint.a * graphicAlpha;
-                half3 fillColor = ramp.rgb * tint.rgb * fillCoverage;
+                half3 fillColor =
+                    NowUIColorToWorkingSpace(ramp.rgb) *
+                    NowUIColorToWorkingSpace(tint.rgb) *
+                    fillCoverage;
 
                 half4 col;
                 col.rgb = i.outlineColor.rgb * outlineCoverage + fillColor * (1.0 - outlineCoverage);

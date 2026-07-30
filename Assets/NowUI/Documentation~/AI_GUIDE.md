@@ -124,6 +124,9 @@ Host lifecycle rules:
 - Id-less controls are suitable for fixed one-off call sites. Prefer stable
   non-zero integer IDs for data-backed, conditional, repeated, or reorderable
   controls.
+- Wrap composite custom-control bodies in `NowControls.ControlScope(...)` so
+  their local child IDs resolve within the invocation instead of sharing focus
+  and state with another instance.
 - IDs are local to the active host and ID scope. Use `NowId.Resolved(...)` only
   for an identity that is already resolved or composed.
 - Preserve draw order. Glass samples prior content, and material changes can

@@ -554,6 +554,9 @@ namespace NowUI
 
         public static void Focus(int id)
         {
+            if (id != 0)
+                NowInput.ClaimFocusForCurrentPrimaryPress();
+
             int hostId = ResolveFocusHost(id);
 
             if (_focusedId != id || _focusedHostId != hostId)
@@ -581,6 +584,32 @@ namespace NowUI
             _explicitFocusRequestId = 0;
             _explicitFocusRequestHostId = 0;
             SetFocused(0, 0);
+        }
+
+        internal static bool ClearOnUnhandledPrimaryPress()
+        {
+            if (_focusedId == 0)
+                return false;
+
+            HostRegistry host = ActiveHostRegistry();
+            int inputHostId = host != null ? host.hostId : 0;
+
+            // An input surface may finish while another retained host owns
+            // focus. Only the owning host (or the shared immediate-mode host)
+            // may clear it.
+            if (_focusedHostId != inputHostId)
+                return false;
+
+            bool retainFocus = host != null
+                ? host.retainFocus || host.buildingRetainFocus
+                : _retainFocusPrevious || _retainFocusCurrent;
+
+            if (retainFocus)
+                return false;
+
+            Clear();
+            NowControlState.RequestRepaint();
+            return true;
         }
 
         static void SetFocused(int id)
@@ -633,6 +662,9 @@ namespace NowUI
         {
             if (id == 0 || NowInput.isPassive || rect.isEmpty)
                 return;
+
+            if (NowInput.current.primaryPressed && NowInput.IsHovered(rect))
+                NowInput.ClaimFocusForCurrentPrimaryPress();
 
             NowRect visibleRect = Now.ApplyAmbientMask(rect);
             int scrollRegionId = CurrentScrollRegionId();
@@ -1536,7 +1568,10 @@ namespace NowUI
                 return;
             }
 
-            if (snapshot.primaryPressed && ownsFocus && !retainFocus)
+            if (snapshot.primaryPressed &&
+                ownsFocus &&
+                !retainFocus &&
+                !NowInput.focusClaimedByPrimaryPress)
             {
                 bool overControl = false;
 

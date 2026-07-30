@@ -27,6 +27,7 @@ Shader "NowUI/Color Picker"
             #pragma fragment frag
 
             #include "UnityCG.cginc"
+            #include "NowUIColorSpace.cginc"
 
             struct appdata
             {
@@ -106,7 +107,7 @@ Shader "NowUI/Color Picker"
                     rgb = HsvToRgb(i.color.r, rawUV.x, rawUV.y);
                 }
 
-                return fixed4(rgb, 1.0);
+                return fixed4(NowUIColorToWorkingSpace(rgb), 1.0);
             }
             ENDCG
         }

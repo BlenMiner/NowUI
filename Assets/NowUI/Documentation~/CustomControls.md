@@ -80,6 +80,32 @@ using (var save = NowLayout.Button().SetAlignItems(NowLayoutAlign.Center).Begin(
 }
 ```
 
+When one reusable function composes several independent controls, give each
+function invocation one identity boundary with `NowControls.ControlScope`.
+Child ids are local to that invocation, so seven instances may all contain an
+`"input"` field without sharing focus or inserting a typed character seven
+times:
+
+```csharp
+public static bool LabeledField(
+    string label,
+    ref string value,
+    NowId id = default,
+    [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+{
+    using (NowControls.ControlScope(id, file, line))
+    {
+        NowLayout.Label(label).Draw();
+        return NowLayout.TextField("input").Draw(ref value);
+    }
+}
+```
+
+The default id follows the same draw-order occurrence rules as built-in
+controls. Pass a stable `id` when instances can reorder, appear, or disappear.
+For a private helper with fixed draw order, a parameterless
+`NowControls.ControlScope()` is sufficient even without caller-info parameters.
+
 ## 3. Reshape: your own shape on standard interaction
 
 `NowControls.Interact` gives you the full standard bundle — pointer phases,

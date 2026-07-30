@@ -8,8 +8,15 @@ namespace NowUI.Editor
     {
         static NowEditorGUI()
         {
+            NowIMGUIInputProvider.repaintRequested = RepaintCurrentWindow;
             AssemblyReloadEvents.beforeAssemblyReload += DisposeAll;
             EditorApplication.quitting += DisposeAll;
+        }
+
+        static void RepaintCurrentWindow()
+        {
+            var window = EditorWindow.mouseOverWindow ?? EditorWindow.focusedWindow;
+            window?.Repaint();
         }
 
         public static NowGUIScope Auto()

@@ -928,6 +928,74 @@ public class NowControlsTests
     }
 
     [Test]
+    public void EmptyPrimaryPressClearsFocusWhenInputPassesShareUnityFrame()
+    {
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+            NowControls.Interact(1, ButtonRect, out _, out _);
+
+        NowFocus.Focus(1);
+        Assert.AreEqual(1, NowFocus.focusedId);
+
+        _provider.snapshot = new NowInputSnapshot(
+            new Vector2(400f, 200f),
+            primaryDown: true,
+            primaryPressed: true,
+            primaryReleased: false);
+        NowControlState.BeginRepaintTracking();
+
+        using (NowInput.Begin(_provider, Surface))
+            NowControls.Interact(1, ButtonRect, out _, out _);
+
+        Assert.AreEqual(0, NowFocus.focusedId,
+            "An unclaimed press must blur focus even when IMGUI already registered controls during another event in the same Unity frame.");
+        Assert.IsTrue(NowControlState.EndRepaintTracking(),
+            "Background defocus must request a repaint so the stale focus and caret visuals disappear.");
+    }
+
+    [Test]
+    public void FocusableRegionClaimsPrimaryPressWhenNestedInteractionOwnsCapture()
+    {
+        NowFocus.Focus(1);
+        _provider.snapshot = new NowInputSnapshot(
+            ButtonRect.center,
+            primaryDown: true,
+            primaryPressed: true,
+            primaryReleased: false);
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            var nested = NowInput.Interact(2, ButtonRect);
+            Assert.IsTrue(nested.pressed);
+            NowFocus.Register(1, ButtonRect);
+        }
+
+        Assert.AreEqual(1, NowFocus.focusedId,
+            "A raw nested interaction inside the focused parent must not make the parent region look like empty space.");
+    }
+
+    [Test]
+    public void RetainFocusProtectsBackgroundPrimaryPress()
+    {
+        NowFocus.Focus(1);
+        _provider.snapshot = new NowInputSnapshot(
+            new Vector2(400f, 200f),
+            primaryDown: true,
+            primaryPressed: true,
+            primaryReleased: false);
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.RetainFocus();
+            NowControls.Interact(1, ButtonRect, out _, out _);
+        }
+
+        Assert.AreEqual(1, NowFocus.focusedId,
+            "Focus-retaining overlays must preserve their owner's selection when a press dismisses them.");
+    }
+
+    [Test]
     public void DirectionalNavigationLockBlocksSpatialMovement()
     {
         RegisterFocusPolicyRow(NowFocusNavigationLock.Directional);

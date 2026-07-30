@@ -107,6 +107,69 @@ public class NowInputTests
     }
 
     [Test]
+    public void IMGUIScrollConsumptionUsesTheEventAndMarksGUIChanged()
+    {
+        bool previousChanged = GUI.changed;
+        Action previousRepaint = NowIMGUIInputProvider.repaintRequested;
+        int repaintCount = 0;
+        var scrollEvent = new Event
+        {
+            type = EventType.ScrollWheel,
+            mousePosition = new Vector2(24f, 22f),
+            delta = new Vector2(0f, 3f)
+        };
+
+        try
+        {
+            GUI.changed = false;
+            NowIMGUIInputProvider.repaintRequested = () => ++repaintCount;
+            NowIMGUIInputProvider.ConsumeScrollEvent(scrollEvent);
+
+            Assert.AreEqual(
+                EventType.Used,
+                scrollEvent.type,
+                "A NowUI scroll view must own the wheel event it consumed so an enclosing IMGUI control cannot also handle it.");
+            Assert.IsTrue(
+                GUI.changed,
+                "Consuming wheel input must mark IMGUI changed so the editor schedules a repaint for the updated scroll offset.");
+            Assert.AreEqual(1, repaintCount, "The editor bridge must explicitly repaint the window that consumed the wheel event.");
+        }
+        finally
+        {
+            NowIMGUIInputProvider.repaintRequested = previousRepaint;
+            GUI.changed = previousChanged;
+        }
+    }
+
+    [Test]
+    public void IMGUIFocusClearMarksGUIChangedAndRequestsRepaint()
+    {
+        bool previousChanged = GUI.changed;
+        Action previousRepaint = NowIMGUIInputProvider.repaintRequested;
+        int repaintCount = 0;
+
+        try
+        {
+            GUI.changed = false;
+            NowIMGUIInputProvider.repaintRequested = () => ++repaintCount;
+            NowIMGUIInputProvider.instance.NotifyFocusCleared();
+
+            Assert.IsTrue(
+                GUI.changed,
+                "Background defocus must mark IMGUI changed so stale focus visuals are not retained.");
+            Assert.AreEqual(
+                1,
+                repaintCount,
+                "The editor bridge must repaint after background defocus.");
+        }
+        finally
+        {
+            NowIMGUIInputProvider.repaintRequested = previousRepaint;
+            GUI.changed = previousChanged;
+        }
+    }
+
+    [Test]
     public void InteractionClicksWhenPressedAndReleasedInsideRect()
     {
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);

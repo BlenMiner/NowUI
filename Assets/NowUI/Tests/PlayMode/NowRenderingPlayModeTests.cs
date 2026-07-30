@@ -161,6 +161,27 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void AuthoredUiColorsRenderConsistentlyAcrossProjectColorSpaces()
+    {
+        var authoredSrgb = new Color(15f / 255f, 23f / 255f, 42f / 255f, 1f);
+
+        using (_renderer.Begin(_target))
+        {
+            Now.Rectangle(new NowRect(16f, 16f, 96f, 96f))
+                .SetColor(authoredSrgb)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        Color32 sample = ReadPixels(_target)[64 * Side + 64];
+
+        Assert.AreEqual(15, sample.r, 3, $"Authored sRGB red changed in {QualitySettings.activeColorSpace} space.");
+        Assert.AreEqual(23, sample.g, 3, $"Authored sRGB green changed in {QualitySettings.activeColorSpace} space.");
+        Assert.AreEqual(42, sample.b, 3, $"Authored sRGB blue changed in {QualitySettings.activeColorSpace} space.");
+        Assert.GreaterOrEqual(sample.a, 250);
+    }
+
+    [Test]
     public void GradientKindsRenderExpectedColorRegions()
     {
         var rect = new NowRect(16f, 16f, 96f, 96f);

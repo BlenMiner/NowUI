@@ -22,6 +22,7 @@ Shader "Hidden/NowUI/Lottie Preview"
             #pragma fragment frag
 
             #include "UnityCG.cginc"
+            #include "NowUIColorSpace.cginc"
 
             struct appdata
             {
@@ -39,7 +40,7 @@ Shader "Hidden/NowUI/Lottie Preview"
             {
                 v2f o;
                 o.vertex = UnityObjectToClipPos(v.vertex);
-                o.color = v.color;
+                o.color = NowUIColorToWorkingSpace(v.color);
                 return o;
             }
 
