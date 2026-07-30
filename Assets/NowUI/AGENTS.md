@@ -74,7 +74,11 @@ not infer APIs from feature names or internal design notes.
   preserve explicit focus claims and `NowFocus.RetainFocus()`.
 - Keep one-shot text and shortcut delivery input-pass-scoped. Do not rely on
   `Time.frameCount` alone because editor IMGUI can run several input/draw
-  passes before it advances.
+  passes before it advances. Refresh cached text input on native IMGUI keyboard
+  events, and consume a claimed KeyDown so another panel cannot replay it.
+- Keep hostless IMGUI focus registration bounded across repeated event passes,
+  and process/consume Tab or Shift+Tab while its native key event is current;
+  focus traversal must not depend on `Time.frameCount` advancing.
 - Coalesce and rate-limit editor repaint requests until the current IMGUI
   dispatch completes, and let immediate-mode controls forward tracked animation
   demand. Do not pair that bridge with an unconditional editor-update repaint

@@ -366,6 +366,9 @@ namespace NowUI
 
         static readonly List<Focusable> _current = new List<Focusable>(32);
 
+        static readonly Dictionary<int, int> _currentIndices =
+            new Dictionary<int, int>(32);
+
         static readonly List<Focusable> _previous = new List<Focusable>(32);
 
         static readonly Dictionary<int, HostRegistry> _hostRegistries =
@@ -431,6 +434,8 @@ namespace NowUI
         public static int focusedId => _focusedId;
 
         internal static int focusRevision => _focusRevision;
+
+        internal static int immediateRegistrationCount => _current.Count;
 
         internal static bool IsFocusedInHost(int hostId)
         {
@@ -704,6 +709,18 @@ namespace NowUI
             }
 
             BeginFrameIfNeeded();
+            UpsertCurrentFocusable(focusable);
+        }
+
+        static void UpsertCurrentFocusable(Focusable focusable)
+        {
+            if (_currentIndices.TryGetValue(focusable.id, out int index))
+            {
+                _current[index] = focusable;
+                return;
+            }
+
+            _currentIndices.Add(focusable.id, _current.Count);
             _current.Add(focusable);
         }
 
@@ -1396,6 +1413,7 @@ namespace NowUI
             _previous.Clear();
             _previous.AddRange(_current);
             _current.Clear();
+            _currentIndices.Clear();
 
             _ownersPrevious.Clear();
             foreach (var owner in _ownersCurrent)
@@ -1435,6 +1453,21 @@ namespace NowUI
             BeginFrameIfNeeded();
             _registryFrame = -1;
             _preserveInputClaimsOnNextSwap = true;
+        }
+
+        /// <summary>
+        /// Processes a hostless IMGUI Tab pulse while its native key event is
+        /// still current. Editor IMGUI can dispatch several passes without
+        /// advancing <see cref="Time.frameCount"/>.
+        /// </summary>
+        internal static void ProcessImmediateTabNavigationPass()
+        {
+            if (NowInput.isPassive || ActiveHostRegistry() != null)
+                return;
+
+            _preserveInputClaimsOnNextSwap = false;
+            _registryFrame = -1;
+            BeginFrameIfNeeded();
         }
 
         static void ProcessNavigation()
@@ -2395,6 +2428,7 @@ namespace NowUI
         public static void Reset()
         {
             _current.Clear();
+            _currentIndices.Clear();
             _previous.Clear();
             _ownersCurrent.Clear();
             _ownersPrevious.Clear();

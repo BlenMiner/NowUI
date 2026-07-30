@@ -1043,6 +1043,7 @@ namespace NowUI
                     if (frame.enterPressed)
                     {
                         submitted = true;
+                        NowTextInput.ConsumeEnterUntilReleased();
                         NowFocus.Clear();
                     }
 

@@ -120,7 +120,12 @@ using (var ui = NowGUI.Auto(rect, Color.white))
   frame.
 - Focused text editors claim one-shot characters and shortcut edges for their
   input pass, so a later Layout/Repaint pass in the same `Time.frameCount`
-  cannot type or invoke the same event again.
+  cannot type or invoke the same event again. Native IMGUI KeyDown/KeyUp passes
+  refresh the cached text-input sample even when `Time.frameCount` is unchanged,
+  and a focused text consumer marks its KeyDown used.
+- Tab and Shift+Tab traverse the most recently registered NowUI controls during
+  their native IMGUI key pass. The key event is consumed once and requests an
+  editor repaint; traversal does not wait for `Time.frameCount` to advance.
 - Wheel events consumed by a NowUI scrollable are marked used and explicitly
   request an editor repaint, preventing enclosing IMGUI scroll views from
   handling the same wheel tick. Editor repaint requests are coalesced, bounded

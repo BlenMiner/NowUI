@@ -342,6 +342,16 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Editor IMGUI now processes Tab and Shift+Tab during the native key pass
+  instead of waiting for `Time.frameCount` to advance. The consumed key
+  requests a repaint, and repeated Layout/Repaint passes update a bounded
+  immediate focus registry rather than accumulating duplicate entries.
+
+- Editor IMGUI keyboard passes now refresh same-frame text-input samples and
+  consume claimed KeyDown events once. Enter therefore reliably submits and
+  blurs a single-line `TextField` without leaking the held key to a later
+  control; multiline text areas and code editors keep their existing behavior.
+
 - Composite UGUI navigation now defers directional and Tab routing until a
   dirty retained host has committed its current focus registry, so a newly
   enabled final control is selected instead of being skipped. UGUI handoff is

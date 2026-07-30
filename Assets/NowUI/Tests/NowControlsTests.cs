@@ -1178,6 +1178,52 @@ public class NowControlsTests
     }
 
     [Test]
+    public void ImmediateTabNavigationDoesNotWaitForUnityFrameCount()
+    {
+        var first = new NowRect(10, 10, 80, 30);
+        var second = new NowRect(10, 50, 80, 30);
+
+        _provider.snapshot = default;
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, first);
+            NowFocus.Register(2, second);
+            NowFocus.Focus(1);
+        }
+
+        // Repeated editor IMGUI passes may all share one Time.frameCount.
+        // Re-registering must update the pass registry rather than grow it.
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.Register(1, first);
+            NowFocus.Register(2, second);
+        }
+
+        Assert.AreEqual(2, NowFocus.immediateRegistrationCount,
+            "Repeated IMGUI passes in one Unity frame must not grow the focus registry.");
+
+        _provider.snapshot = NavigationSnapshot(Vector2.zero, next: true);
+
+        using (NowInput.Begin(_provider, Surface))
+        {
+            NowFocus.ProcessImmediateTabNavigationPass();
+            NowFocus.Register(1, first);
+            NowFocus.Register(2, second);
+        }
+
+        Assert.AreEqual(2, NowFocus.focusedId,
+            "An IMGUI Tab pulse must traverse the latest registry even when Time.frameCount has not advanced.");
+
+        _provider.snapshot = NavigationSnapshot(Vector2.zero, previous: true);
+
+        using (NowInput.Begin(_provider, Surface))
+            NowFocus.ProcessImmediateTabNavigationPass();
+
+        Assert.AreEqual(1, NowFocus.focusedId);
+    }
+
+    [Test]
     public void OverlayNavigationIgnoresBaseLayerControls()
     {
         var baseRect = new NowRect(10, 10, 80, 30);

@@ -133,9 +133,23 @@ namespace NowUI
             RequestRepaint();
         }
 
+        internal void NotifyTextActivityClaimed()
+        {
+            ConsumeClaimedTextEvent(Event.current);
+        }
+
         internal static void ConsumeScrollEvent(Event current)
         {
             if (current == null || current.type != EventType.ScrollWheel)
+                return;
+
+            current.Use();
+            RequestRepaint();
+        }
+
+        internal static void ConsumeClaimedTextEvent(Event current)
+        {
+            if (current == null || current.type != EventType.KeyDown)
                 return;
 
             current.Use();
@@ -148,13 +162,14 @@ namespace NowUI
             repaintRequested?.Invoke();
         }
 
-        void ApplyKeyDown(
+        internal void ApplyKeyDown(
             Event current,
             ref bool focusPreviousPressed,
             ref bool focusNextPressed,
             ref bool submitPressed,
             ref bool cancelPressed)
         {
+            NowTextInput.Invalidate();
             var navigationKeys = NowInput.navigationKeys;
 
             switch (current.keyCode)
@@ -180,6 +195,9 @@ namespace NowUI
                         focusPreviousPressed = true;
                     else
                         focusNextPressed = true;
+
+                    current.Use();
+                    RequestRepaint();
                     break;
                 case KeyCode.Return when (navigationKeys & NowNavigationKeys.EnterSubmit) != 0:
                 case KeyCode.KeypadEnter when (navigationKeys & NowNavigationKeys.EnterSubmit) != 0:
@@ -198,8 +216,10 @@ namespace NowUI
             }
         }
 
-        void ApplyKeyUp(Event current, ref bool submitReleased, ref bool cancelReleased)
+        internal void ApplyKeyUp(Event current, ref bool submitReleased, ref bool cancelReleased)
         {
+            NowTextInput.Invalidate();
+
             switch (current.keyCode)
             {
                 case KeyCode.LeftArrow:

@@ -170,6 +170,80 @@ public class NowInputTests
     }
 
     [Test]
+    public void IMGUIClaimedTextEventIsConsumedAndRequestsRepaint()
+    {
+        bool previousChanged = GUI.changed;
+        Action previousRepaint = NowIMGUIInputProvider.repaintRequested;
+        int repaintCount = 0;
+        var keyEvent = new Event
+        {
+            type = EventType.KeyDown,
+            keyCode = KeyCode.Return
+        };
+
+        try
+        {
+            GUI.changed = false;
+            NowIMGUIInputProvider.repaintRequested = () => ++repaintCount;
+            NowIMGUIInputProvider.ConsumeClaimedTextEvent(keyEvent);
+
+            Assert.AreEqual(EventType.Used, keyEvent.type,
+                "A focused text consumer must own its native IMGUI key event.");
+            Assert.IsTrue(GUI.changed);
+            Assert.AreEqual(1, repaintCount);
+        }
+        finally
+        {
+            NowIMGUIInputProvider.repaintRequested = previousRepaint;
+            GUI.changed = previousChanged;
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void IMGUITabIsConsumedAndRequestsRepaint(bool shift)
+    {
+        bool previousChanged = GUI.changed;
+        Action previousRepaint = NowIMGUIInputProvider.repaintRequested;
+        int repaintCount = 0;
+        bool focusPreviousPressed = false;
+        bool focusNextPressed = false;
+        bool submitPressed = false;
+        bool cancelPressed = false;
+        var tabEvent = new Event
+        {
+            type = EventType.KeyDown,
+            keyCode = KeyCode.Tab,
+            shift = shift
+        };
+
+        try
+        {
+            GUI.changed = false;
+            NowIMGUIInputProvider.repaintRequested = () => ++repaintCount;
+            NowIMGUIInputProvider.instance.ApplyKeyDown(
+                tabEvent,
+                ref focusPreviousPressed,
+                ref focusNextPressed,
+                ref submitPressed,
+                ref cancelPressed);
+
+            Assert.AreEqual(shift, focusPreviousPressed);
+            Assert.AreEqual(!shift, focusNextPressed);
+            Assert.AreEqual(EventType.Used, tabEvent.type,
+                "The NowUI IMGUI surface must consume Tab so another panel cannot traverse on the same key event.");
+            Assert.IsTrue(GUI.changed,
+                "Tab traversal must mark IMGUI changed so focus visuals repaint immediately.");
+            Assert.AreEqual(1, repaintCount);
+        }
+        finally
+        {
+            NowIMGUIInputProvider.repaintRequested = previousRepaint;
+            GUI.changed = previousChanged;
+        }
+    }
+
+    [Test]
     public void InteractionClicksWhenPressedAndReleasedInsideRect()
     {
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);

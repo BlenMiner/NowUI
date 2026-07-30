@@ -457,6 +457,14 @@ namespace NowUI
                 _activeSeenThisFrame = false;
             }
 
+            if (hasSnapshot &&
+                resetFrameTracking &&
+                provider is NowIMGUIInputProvider &&
+                (snapshot.focusPreviousPressed || snapshot.focusNextPressed))
+            {
+                NowFocus.ProcessImmediateTabNavigationPass();
+            }
+
             if (hasSnapshot && resetFrameTracking)
                 ClearStaleActiveFromMissingProvider();
         }

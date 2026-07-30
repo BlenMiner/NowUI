@@ -541,6 +541,62 @@ public class NowTextFieldEditingTests
         Assert.IsTrue(result.submitted, "Enter is exposed separately from value changes.");
         Assert.AreEqual("hello!", text, "Enter commits instead of reverting.");
         Assert.AreEqual(0, NowFocus.focusedId, "Enter blurs the field.");
+
+        _keyboard.frame = new NowTextInputFrame { enterPressed = true, enterHeld = true };
+        NowTextInput.Invalidate();
+        var spentEnter = NowTextInput.current;
+        Assert.IsFalse(spentEnter.enterPressed,
+            "The Enter that committed a field must not submit the next focused control.");
+        Assert.IsFalse(spentEnter.enterHeld);
+    }
+
+    [Test]
+    public void IMGUIEnterResamplesAndBlursWithinTheSameUnityFrame()
+    {
+        string text = "hello";
+        Focus();
+        Frame(ref text);
+
+        _keyboard.frame = new NowTextInputFrame { enterPressed = true };
+        bool focusPreviousPressed = false;
+        bool focusNextPressed = false;
+        bool submitPressed = false;
+        bool cancelPressed = false;
+        var enterEvent = new Event
+        {
+            type = EventType.KeyDown,
+            keyCode = KeyCode.Return
+        };
+
+        try
+        {
+            NowIMGUIInputProvider.instance.ApplyKeyDown(
+                enterEvent,
+                ref focusPreviousPressed,
+                ref focusNextPressed,
+                ref submitPressed,
+                ref cancelPressed);
+
+            NowTextFieldResult result;
+
+            // Deliberately do not call NowTextInput.Invalidate here: the
+            // native IMGUI key pass must refresh a stale same-frame sample.
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+                result = Now.TextField(FieldRect, "name").Draw(ref text);
+
+            Assert.IsTrue(result.submitted);
+            Assert.AreEqual(0, NowFocus.focusedId);
+        }
+        finally
+        {
+            bool submitReleased = false;
+            bool cancelReleased = false;
+            NowIMGUIInputProvider.instance.ApplyKeyUp(
+                new Event { type = EventType.KeyUp, keyCode = KeyCode.Return },
+                ref submitReleased,
+                ref cancelReleased);
+        }
     }
 
     [Test]

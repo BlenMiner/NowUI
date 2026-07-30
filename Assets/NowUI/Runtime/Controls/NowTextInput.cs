@@ -179,8 +179,13 @@ namespace NowUI
         /// </summary>
         public static void ClaimActivity()
         {
-            if (_inputPassActive && !NowInput.isPassive)
-                _activityClaimed = true;
+            if (!_inputPassActive || NowInput.isPassive || _activityClaimed)
+                return;
+
+            _activityClaimed = true;
+
+            if (NowInput.currentProvider is NowIMGUIInputProvider imgui)
+                imgui.NotifyTextActivityClaimed();
         }
 
         internal static void EndInputPass()
