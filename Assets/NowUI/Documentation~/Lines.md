@@ -25,6 +25,33 @@ Now.Line(24, 64, 260, 64)
     .Draw();
 ```
 
+## Connected Polylines
+
+Use `Now.DrawPolyline(...)` for charts, sparklines, and other sampled paths.
+It emits one connected stroke with shared joins. Do not draw each adjacent pair
+as a separate butt-capped `Now.Line`: independent segment ends can leave tiny
+anti-aliasing seams at bends.
+
+```csharp
+Span<Vector2> samples = stackalloc Vector2[]
+{
+    new Vector2(24, 112),
+    new Vector2(72, 76),
+    new Vector2(138, 88),
+    new Vector2(220, 42)
+};
+
+Now.DrawPolyline(
+    samples,
+    width: 2.5f,
+    cap: NowLineCap.Round,
+    color: new Color(0.2f, 0.9f, 0.6f, 1f));
+```
+
+`cap` affects only the first and last point; interior points use connected
+mitered joins. Consecutive duplicate points are ignored. The span is consumed
+immediately, so stack-allocated sample buffers remain allocation-free.
+
 ## Bezier Curves
 
 `Now.Bezier` draws a cubic Bezier stroke. The curve is flattened with a small
@@ -45,10 +72,10 @@ Now.Bezier(
 ## Gradients
 
 `SetGradient(from, to)` blends the stroke color from the start of the line to
-its end. Straight lines, polylines, and Beziers interpolate by distance along
-the stroke; dashes pick up the slice of the gradient that matches their
-position, and arrow heads take their endpoint's color. `SetColor` switches
-back to a solid stroke.
+its end. Straight lines and Beziers interpolate by distance along the stroke;
+dashes pick up the slice of the gradient that matches their position, and
+arrow heads take their endpoint's color. `SetColor` switches back to a solid
+stroke.
 
 ```csharp
 Now.Bezier(from, c1, c2, to)

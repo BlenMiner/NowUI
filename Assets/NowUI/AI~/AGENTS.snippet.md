@@ -51,7 +51,10 @@ diagnosing NowUI from a consuming project, treat that project as a reproduction
 fixture: valid public usage is fixed in the package, while consumer edits are
 reserved for documented-contract violations and called out separately. Pass
 theme and builder colors as authored display/sRGB values rather than
-pre-converting with `.linear`. If popup rendering or palette roles are
-customized, keep selected-row text visibly distinct from its background; the
-built-in renderer uses `Text` over `AccentMuted`.
+pre-converting with `.linear`. Draw charts and sampled paths with one
+`Now.DrawPolyline(...)` call; repeated butt-capped `Now.Line` calls are
+independent strokes and can leave anti-aliasing seams at bends. If popup
+rendering or palette roles are customized, keep selected-row text visibly
+distinct from its background; the built-in renderer uses `Text` over
+`AccentMuted`.
 <!-- nowui-agent-guidance:end -->

@@ -1616,6 +1616,79 @@ public class NowRendererTests
     }
 
     [Test]
+    public void DrawListBuildCapturesConnectedPolylineWithSharedJoinGeometry()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var publicMethod = typeof(Now).GetMethod(
+            nameof(Now.DrawPolyline),
+            new[]
+            {
+                typeof(System.ReadOnlySpan<Vector2>),
+                typeof(float),
+                typeof(NowLineCap),
+                typeof(Vector4),
+                typeof(NowRect)
+            });
+        Assert.NotNull(publicMethod, "DrawPolyline must remain available to consumer assemblies.");
+        Assert.IsTrue(publicMethod.IsPublic);
+
+        var drawList = new NowDrawList();
+        var points = new[]
+        {
+            new Vector2(8, 48),
+            new Vector2(48, 12),
+            new Vector2(96, 48)
+        };
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+                Now.DrawPolyline(points, 4f, NowLineCap.Butt, Color.white);
+
+            Assert.IsTrue(drawList.hasGeometry);
+            Assert.AreEqual(1, drawList.batchCount);
+            Assert.AreEqual(1, drawList.mesh.subMeshCount);
+            Assert.AreEqual(12, drawList.mesh.vertexCount,
+                "A three-point polyline should share one four-vertex stroke ring at its join.");
+            Assert.AreEqual(36u, drawList.mesh.GetIndexCount(0));
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void DrawListPolylineDropsConsecutiveDuplicatePointsWithoutSplittingTheStroke()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        var points = new[]
+        {
+            new Vector2(8, 48),
+            new Vector2(8, 48),
+            new Vector2(48, 12),
+            new Vector2(48, 12),
+            new Vector2(96, 48)
+        };
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+                Now.DrawPolyline(points, 4f, NowLineCap.Butt, Color.white);
+
+            Assert.AreEqual(12, drawList.mesh.vertexCount);
+            Assert.AreEqual(36u, drawList.mesh.GetIndexCount(0));
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
     public void DrawListBuildCapturesBezierDashAndArrowGeometry()
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));

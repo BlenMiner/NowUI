@@ -363,7 +363,17 @@ namespace NowUI
             mesh.AddGeometry(_lineBuffer, Vector2.zero, 1f, Vector4.one, mask);
         }
 
-        internal static void DrawPolyline(ReadOnlySpan<Vector2> points, float width, NowLineCap cap, Vector4 color, NowRect mask = default)
+        /// <summary>
+        /// Draws one connected anti-aliased stroke through <paramref name="points"/>.
+        /// Adjacent segments share join geometry; <paramref name="cap"/> applies only
+        /// to the two endpoints. Use this for charts and sampled paths instead of
+        /// drawing every edge as a separate <see cref="Line(Vector2, Vector2)"/>.
+        /// </summary>
+        /// <remarks>
+        /// Consecutive duplicate points are ignored. The span is consumed immediately
+        /// and is not retained after this call.
+        /// </remarks>
+        public static void DrawPolyline(ReadOnlySpan<Vector2> points, float width, NowLineCap cap, Vector4 color, NowRect mask = default)
         {
             if (_suppressDrawDepth > 0 || _defaultMaterial == null || width <= 0f || points.Length < 2)
                 return;

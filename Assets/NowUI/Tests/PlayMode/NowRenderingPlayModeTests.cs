@@ -161,6 +161,40 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void PolylineTurnRendersWithoutAnOuterJoinGap()
+    {
+        var points = new[]
+        {
+            new Vector2(16f, 80f),
+            new Vector2(64f, 32f),
+            new Vector2(112f, 80f)
+        };
+
+        using (_renderer.Begin(_target))
+            Now.DrawPolyline(points, 8f, NowLineCap.Butt, Color.white);
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+
+        // RenderTexture orientation differs between graphics APIs. Sample both
+        // possible rows at the outside of the V's shared miter; the opposite row
+        // is empty for this path. Independent butt-capped segments leave both
+        // candidates transparent here.
+        int uiY = 28;
+        int flippedY = Side - 1 - uiY;
+        byte joinAlpha = 0;
+
+        for (int x = 63; x <= 65; ++x)
+        {
+            joinAlpha = System.Math.Max(joinAlpha, pixels[uiY * Side + x].a);
+            joinAlpha = System.Math.Max(joinAlpha, pixels[flippedY * Side + x].a);
+        }
+
+        Assert.Greater(joinAlpha, 180,
+            "The connected stroke did not cover the outside of its shared turn join.");
+    }
+
+    [Test]
     public void AuthoredUiColorsRenderConsistentlyAcrossProjectColorSpaces()
     {
         var authoredSrgb = new Color(15f / 255f, 23f / 255f, 42f / 255f, 1f);

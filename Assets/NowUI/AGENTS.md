@@ -70,6 +70,9 @@ not infer APIs from feature names or internal design notes.
 - Supply theme and builder colors as authored display/sRGB values. Do not
   pre-convert them with `.linear`; NowUI's render paths perform their own
   working-space conversion.
+- Draw charts and sampled paths with one `Now.DrawPolyline(...)` call. Repeated
+  butt-capped `Now.Line` calls are independent strokes and can leave
+  anti-aliasing seams where adjacent segments turn.
 - When customizing popup rendering, keep selected-row text and background
   roles distinct and readable. The built-in renderer uses `Text` over
   `AccentMuted`; a custom palette is responsible for equivalent contrast.
