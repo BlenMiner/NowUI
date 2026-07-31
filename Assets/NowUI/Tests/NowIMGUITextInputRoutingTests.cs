@@ -16,6 +16,10 @@ public class NowIMGUITextInputRoutingTests
         "_snapshot",
         BindingFlags.NonPublic | BindingFlags.Static);
 
+    static readonly MethodInfo GetEntryMethod = typeof(NowGUI).GetMethod(
+        "GetEntry",
+        BindingFlags.NonPublic | BindingFlags.Static);
+
     static readonly Vector2 SurfaceSize = new Vector2(320f, 120f);
     static readonly NowInputSurface Surface = new NowInputSurface(SurfaceSize);
     static readonly NowRect FieldRect = new NowRect(20f, 20f, 240f, 32f);
@@ -181,6 +185,115 @@ public class NowIMGUITextInputRoutingTests
         Assert.AreEqual(0, NowFocus.focusedId,
             "Submitting a single-line field must leave editing mode so its caret disappears.");
         Assert.AreEqual(EventType.Used, keyDown.type);
+
+        Draw(ref text, KeyEvent(EventType.KeyUp, keyCode), EventType.Ignore);
+        Draw(ref text, NativeEvent(EventType.Layout), EventType.Layout);
+        Draw(ref text, NativeEvent(EventType.Repaint), EventType.Repaint);
+
+        Assert.AreEqual(0, NowFocus.focusedId,
+            "Following IMGUI passes must not silently reacquire the submitted field.");
+
+        var character = KeyEvent(EventType.KeyDown, KeyCode.X, 'x');
+        NowTextFieldResult blurred = Draw(ref text, character, EventType.Ignore);
+
+        Assert.IsFalse(blurred.changed);
+        Assert.AreEqual("ready", text);
+        Assert.AreEqual(EventType.KeyDown, character.type,
+            "A blurred field must leave later native keys available to the Editor host.");
+    }
+
+    [TestCase(KeyCode.Return)]
+    [TestCase(KeyCode.KeypadEnter)]
+    public void NativeEnterBlursNumericFieldAndKeepsItBlurred(KeyCode keyCode)
+    {
+        float value = 1200f;
+        NowFocus.Focus(FieldId);
+        DrawFloat(ref value, NativeEvent(EventType.Layout), EventType.Layout);
+        var keyDown = KeyEvent(EventType.KeyDown, keyCode, '\n');
+
+        NowTextFieldResult submitted = DrawFloat(ref value, keyDown, EventType.Ignore);
+
+        Assert.IsTrue(submitted.submitted);
+        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(EventType.Used, keyDown.type);
+
+        DrawFloat(ref value, KeyEvent(EventType.KeyUp, keyCode), EventType.Ignore);
+        DrawFloat(ref value, NativeEvent(EventType.Repaint), EventType.Repaint);
+
+        Assert.AreEqual(0, NowFocus.focusedId,
+            "Numeric overloads must preserve Enter blur across the following Editor pass.");
+        Assert.AreEqual(1200f, value);
+    }
+
+    [Test]
+    public void NativeEnterBlurPersistsAcrossRetainedHostPasses()
+    {
+        const int HostControlId = 18102;
+        var context = new object();
+        string text = "ready";
+        int fieldId = 0;
+
+        Assert.NotNull(GetEntryMethod, "NowGUI cache lookup test seam was not found.");
+        var entry = (NowGUI.CacheEntry)GetEntryMethod.Invoke(
+            null,
+            new object[] { context, HostControlId });
+
+        NowTextFieldResult HostPass(Event inputEvent, EventType routedType)
+        {
+            Event.current = null;
+
+            using (NowGUI.AutoForEvent(
+                context,
+                HostControlId,
+                new Rect(0f, 0f, SurfaceSize.x, SurfaceSize.y),
+                Color.clear,
+                1f,
+                repaint: false,
+                hostFocused: true,
+                trackInputRepaint: true))
+            {
+                Assert.IsTrue(entry.inputProvider.TryGetSnapshot(
+                    Surface,
+                    inputEvent,
+                    routedType,
+                    ownsCapture: false,
+                    out var snapshot));
+                InputSnapshotField.SetValue(null, snapshot);
+                fieldId = NowControls.GetControlId("retained-native-field");
+                return Now.TextField(FieldRect, NowId.Resolved(fieldId)).Draw(ref text);
+            }
+        }
+
+        try
+        {
+            HostPass(NativeEvent(EventType.Layout), EventType.Layout);
+            NowFocus.Focus(fieldId);
+
+            var enter = KeyEvent(EventType.KeyDown, KeyCode.Return, '\n');
+            NowTextFieldResult submitted = HostPass(enter, EventType.Ignore);
+
+            Assert.IsTrue(submitted.submitted);
+            Assert.AreEqual(0, NowFocus.focusedId);
+            Assert.AreEqual(EventType.Used, enter.type);
+
+            HostPass(KeyEvent(EventType.KeyUp, KeyCode.Return), EventType.Ignore);
+            HostPass(NativeEvent(EventType.Layout), EventType.Layout);
+            HostPass(NativeEvent(EventType.Repaint), EventType.Repaint);
+
+            Assert.AreEqual(0, NowFocus.focusedId,
+                "The retained host must not restore a field after Enter blurred it.");
+
+            var character = KeyEvent(EventType.KeyDown, KeyCode.X, 'x');
+            NowTextFieldResult blurred = HostPass(character, EventType.Ignore);
+
+            Assert.IsFalse(blurred.changed);
+            Assert.AreEqual("ready", text);
+            Assert.AreEqual(EventType.KeyDown, character.type);
+        }
+        finally
+        {
+            NowGUI.DisposeAll();
+        }
     }
 
     [Test]
@@ -432,6 +545,25 @@ public class NowIMGUITextInputRoutingTests
             return Now.TextArea(FieldRect, "native-area")
                 .SetLines(2, 2)
                 .Draw(ref text);
+        }
+    }
+
+    NowTextFieldResult DrawFloat(ref float value, Event inputEvent, EventType routedType)
+    {
+        Event.current = null;
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(SurfaceSize))
+        {
+            Assert.NotNull(InputSnapshotField, "NowInput snapshot test seam was not found.");
+            Assert.IsTrue(_provider.TryGetSnapshot(
+                Surface,
+                inputEvent,
+                routedType,
+                ownsCapture: false,
+                out var snapshot));
+            InputSnapshotField.SetValue(null, snapshot);
+            return Now.TextField(FieldRect, "native-field").Draw(ref value);
         }
     }
 

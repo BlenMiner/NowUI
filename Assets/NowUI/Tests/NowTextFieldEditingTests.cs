@@ -577,6 +577,52 @@ public class NowTextFieldEditingTests
     }
 
     [Test]
+    public void EnterImmediatelyRendersBlurredAndRequestsRepaint()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<AppearanceRecordingRenderer>();
+        SetRenderer(theme, renderer);
+        string text = "hello";
+
+        try
+        {
+            Focus();
+
+            using (NowTheme.Scope(theme))
+                Frame(ref text);
+
+            renderer.frameCalls = 0;
+            NowControlState.BeginRepaintTracking();
+
+            NowTextFieldResult result;
+            bool repaintRequested;
+
+            try
+            {
+                using (NowTheme.Scope(theme))
+                    result = FrameResult(ref text, new NowTextInputFrame { enterPressed = true });
+            }
+            finally
+            {
+                repaintRequested = NowControlState.EndRepaintTracking();
+            }
+
+            Assert.IsTrue(result.submitted);
+            Assert.AreEqual(0, NowFocus.focusedId);
+            Assert.AreEqual(1, renderer.frameCalls);
+            Assert.IsFalse(renderer.lastFrame.focused,
+                "The submit draw must not render one stale focused/caret frame after focus was cleared.");
+            Assert.IsTrue(repaintRequested,
+                "A retained Editor host must redraw immediately instead of keeping its cached focused frame.");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(renderer);
+            UnityEngine.Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
     public void IMGUIEnterResamplesAndBlursWithinTheSameUnityFrame()
     {
         string text = "hello";

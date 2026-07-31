@@ -1135,6 +1135,19 @@ namespace NowUI
                 CloseTouchKeyboard();
             }
 
+            // Enter, Escape, and touch-keyboard completion can clear focus after
+            // Interact captured it for this draw. Refresh the local snapshot so
+            // an immediate renderer does not draw one more focused frame, and so
+            // a retained Editor host invalidates its cached focused surface.
+            bool focusedAfterInput = NowFocus.IsFocused(id);
+
+            if (focused != focusedAfterInput)
+            {
+                focused = focusedAfterInput;
+                hadFocus = focused ? (byte)1 : (byte)0;
+                NowControlState.RequestRepaint();
+            }
+
             ref float blinkAnchor = ref NowControlState.Get<float>(NowInput.CombineId(id, BlinkSeed));
             ref int lastCaret = ref NowControlState.Get<int>(NowInput.CombineId(id, LastCaretSeed));
 
