@@ -1,3 +1,10 @@
+## [1.0.6](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.5...nowui-v1.0.6) (2026-07-31)
+
+
+### Bug Fixes
+
+* stabilize editor GUI input and repainting ([95b3a5c](https://github.com/BlenMiner/NowUI/commit/95b3a5c88dcab9c62f9cb7d524efbe66f2cf327e))
+
 ## [1.0.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.4...nowui-v1.0.5) (2026-07-30)
 
 
