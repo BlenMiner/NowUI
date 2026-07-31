@@ -43,6 +43,12 @@ namespace NowUI
 
         public readonly bool dragEnded;
 
+        /// <summary>True when native pointer capture was lost without a normal release.</summary>
+        public readonly bool cancelled;
+
+        /// <summary>True when a drag was active when native pointer capture was lost.</summary>
+        public readonly bool dragCancelled;
+
         internal NowInteraction(
             int id,
             Rect rect,
@@ -59,7 +65,9 @@ namespace NowUI
             bool active,
             bool dragging,
             bool dragStarted,
-            bool dragEnded)
+            bool dragEnded,
+            bool cancelled,
+            bool dragCancelled)
         {
             this.id = id;
             this.rect = rect;
@@ -77,6 +85,8 @@ namespace NowUI
             this.dragging = dragging;
             this.dragStarted = dragStarted;
             this.dragEnded = dragEnded;
+            this.cancelled = cancelled;
+            this.dragCancelled = dragCancelled;
         }
 
         /// <summary>Derives a stable sub-id from this interaction's resolved control id.</summary>
@@ -180,7 +190,11 @@ namespace NowUI
 
         static bool _focusClaimedByPrimaryPress;
 
+        static int _cancelClaimInputPass = int.MinValue;
+
         static int _cancelClaimFrame = int.MinValue;
+
+        static INowInputProvider _cancelClaimProvider;
 
         public static INowInputProvider defaultProvider
         {
@@ -200,6 +214,18 @@ namespace NowUI
         public static int activeId => _activeId;
 
         public static NowPointerButton activeButton => _activeButton;
+
+        internal static bool hasActiveInteraction =>
+            _activeId != 0 && ReferenceEquals(_currentProvider, _activeProvider);
+
+        internal static bool IsActiveControl(
+            int id,
+            NowPointerButton button = NowPointerButton.Primary)
+        {
+            return _activeId == id &&
+                _activeButton == button &&
+                ReferenceEquals(_currentProvider, _activeProvider);
+        }
 
         internal static bool focusClaimedByPrimaryPress => _focusClaimedByPrimaryPress;
 
@@ -280,6 +306,7 @@ namespace NowUI
         {
             int previousScopeDepth = _scopeDepth;
             bool topLevel = previousScopeDepth == 0;
+            bool beganOverlayTransaction = false;
 
             if (previousScopeDepth == 0)
                 _scopeStartedAt = Time.frameCount;
@@ -293,7 +320,6 @@ namespace NowUI
                     CompleteFrame();
                 }
 
-                NowOverlay.BeginFrameTransaction();
             }
 
             var previousProvider = _currentProvider;
@@ -320,11 +346,18 @@ namespace NowUI
                     surface,
                     resetFrameTracking: topLevel,
                     resetControlOccurrences: topLevel);
+
+                if (topLevel)
+                {
+                    NowOverlay.BeginFrameTransaction(provider);
+                    beganOverlayTransaction = true;
+                }
+
                 return scope;
             }
             catch
             {
-                if (topLevel)
+                if (beganOverlayTransaction)
                     NowOverlay.EndFrameTransaction();
 
                 _scopes.Exit(token);
@@ -406,13 +439,13 @@ namespace NowUI
             }
 
             bool topLevel = _scopeDepth == 0;
+            bool beganOverlayTransaction = false;
 
             if (topLevel)
             {
                 NowOverlay.EndFrameTransaction();
                 HealLeakedPassiveScope();
                 CompleteFrame();
-                NowOverlay.BeginFrameTransaction();
             }
 
             try
@@ -422,10 +455,16 @@ namespace NowUI
                     surface,
                     resetFrameTracking: topLevel,
                     resetControlOccurrences: topLevel);
+
+                if (topLevel)
+                {
+                    NowOverlay.BeginFrameTransaction(provider);
+                    beganOverlayTransaction = true;
+                }
             }
             catch
             {
-                if (topLevel)
+                if (beganOverlayTransaction)
                     NowOverlay.EndFrameTransaction();
 
                 throw;
@@ -452,6 +491,7 @@ namespace NowUI
             if (resetFrameTracking)
             {
                 NowTextInput.BeginInputPass();
+                NowKeyInput.BeginInputPass();
                 _scrollConsumed = false;
                 _focusClaimedByPrimaryPress = false;
                 _activeSeenThisFrame = false;
@@ -459,7 +499,8 @@ namespace NowUI
 
             if (hasSnapshot &&
                 resetFrameTracking &&
-                provider is NowIMGUIInputProvider &&
+                provider is NowIMGUIInputProvider imguiProvider &&
+                !imguiProvider.isHostBacked &&
                 (snapshot.focusPreviousPressed || snapshot.focusNextPressed))
             {
                 NowFocus.ProcessImmediateTabNavigationPass();
@@ -536,7 +577,7 @@ namespace NowUI
             if (scroll == Vector2.zero ||
                 !rect.Contains(_snapshot.pointerPosition) ||
                 !Now.IsInsideAmbientMask(_snapshot.pointerPosition) ||
-                NowOverlay.IsPointerBlocked(_snapshot.pointerPosition))
+                NowOverlay.IsPointerBlockedForScroll(_snapshot.pointerPosition))
             {
                 return default;
             }
@@ -547,6 +588,27 @@ namespace NowUI
                 imgui.NotifyScrollConsumed();
 
             return scroll;
+        }
+
+        /// <summary>
+        /// Claims wheel input reserved by a popup even when its inner scroll
+        /// view is already at an edge. This prevents an enclosing NowUI or
+        /// native IMGUI scroll view from moving the popup's background.
+        /// </summary>
+        internal static void ConsumeRemainingOverlayScroll()
+        {
+            if (_passiveDepth > 0 ||
+                _scrollConsumed ||
+                !_hasContext ||
+                _snapshot.scrollDelta == Vector2.zero)
+            {
+                return;
+            }
+
+            _scrollConsumed = true;
+
+            if (_currentProvider is NowIMGUIInputProvider imgui)
+                imgui.NotifyScrollConsumed();
         }
 
         /// <summary>
@@ -563,12 +625,50 @@ namespace NowUI
             if (_passiveDepth > 0 || !_hasContext)
                 return;
 
+            _cancelClaimInputPass = _snapshot.inputPass;
             _cancelClaimFrame = _snapshot.frame;
+            _cancelClaimProvider = _currentProvider;
+
+            if (_snapshot.cancelPressed)
+                ConsumeKeyActivity();
+        }
+
+        /// <summary>
+        /// Claims a keyboard action that NowUI actually handled so a native
+        /// IMGUI control outside the panel cannot process the same KeyDown.
+        /// </summary>
+        public static void ConsumeKeyActivity()
+        {
+            if (_passiveDepth > 0 || !_hasContext)
+                return;
+
+            if (_currentProvider is NowIMGUIInputProvider imgui)
+                imgui.NotifyKeyActivityClaimed();
+        }
+
+        /// <summary>
+        /// Claims a pointer-down that NowUI handled without turning it into a
+        /// draggable control capture, such as modal popup dismissal.
+        /// </summary>
+        public static void ConsumePointerPress()
+        {
+            if (_passiveDepth > 0 ||
+                !_hasContext ||
+                !_snapshot.anyPointerPressed)
+            {
+                return;
+            }
+
+            if (_currentProvider is NowIMGUIInputProvider imgui)
+                imgui.NotifyPointerPressConsumed();
         }
 
         /// <summary>True when a control claimed this frame's cancel press, so
         /// cancel-driven dismissal consumers must stand down.</summary>
-        public static bool cancelConsumed => _hasContext && _cancelClaimFrame == _snapshot.frame;
+        public static bool cancelConsumed =>
+            _hasContext &&
+            ReferenceEquals(_cancelClaimProvider, _currentProvider) &&
+            _cancelClaimInputPass == _snapshot.inputPass;
 
         /// <summary>
         /// Cancel-claim check for consumers that process input at the frame
@@ -576,7 +676,10 @@ namespace NowUI
         /// previous frame's claim too.
         /// </summary>
         internal static bool cancelConsumedForFrameSwap =>
-            _hasContext && _cancelClaimFrame != int.MinValue && _cancelClaimFrame >= _snapshot.frame - 1;
+            _hasContext &&
+            ReferenceEquals(_cancelClaimProvider, _currentProvider) &&
+            _cancelClaimFrame != int.MinValue &&
+            _cancelClaimFrame >= _snapshot.frame - 1;
 
         public static bool IsPointerDown(NowPointerButton button)
         {
@@ -731,8 +834,12 @@ namespace NowUI
             Rect localRect = rect;
             Rect screenRect = Now.TransformScreenRect(rect);
 
-            if (_passiveDepth == 0 && _currentProvider != null)
+            if (_passiveDepth == 0 &&
+                _currentProvider != null &&
+                _currentProvider is not NowIMGUIInputProvider)
+            {
                 NowPointerArbiter.NoteContent(_currentProvider, screenRect);
+            }
 
             ref readonly var snapshot = ref _snapshot;
             bool hasPointer = _hasContext && snapshot.hasPointer;
@@ -757,7 +864,9 @@ namespace NowUI
                     false,
                     false,
                     false,
-                    _activeId == id && _activeButton == button,
+                    IsActiveControl(id, button),
+                    false,
+                    false,
                     false,
                     false,
                     false);
@@ -765,10 +874,39 @@ namespace NowUI
 
             NowTextInput.MaintainCapture();
 
-            bool pressed =
+            bool freshPress =
                 hovered &&
-                snapshot.WasPointerPressed(button) &&
-                (_activeId == 0 || (_activeId == id && _activeButton == button));
+                snapshot.WasPointerPressed(button);
+
+            if (freshPress && snapshot.pointerCaptureCancelled)
+            {
+                if (_activeProvider is NowIMGUIInputProvider staleCapture)
+                    staleCapture.CancelTrackedCapture(releaseNativeCapture: false);
+
+                ClearActive();
+                _snapshot.pointerCaptureCancelled = false;
+            }
+
+            if (freshPress &&
+                _activeId != 0 &&
+                _activeButton == button &&
+                !ReferenceEquals(_activeProvider, _currentProvider))
+            {
+                if (_activeProvider is NowIMGUIInputProvider staleIMGUI)
+                    staleIMGUI.CancelTrackedCapture(releaseNativeCapture: false);
+
+                ClearActive();
+            }
+
+            bool pressed = freshPress &&
+                (_activeId == 0 || IsActiveControl(id, button));
+
+            if (pressed &&
+                _currentProvider is NowIMGUIInputProvider imgui &&
+                !imgui.NotifyPointerCaptured(button))
+            {
+                pressed = false;
+            }
 
             if (pressed)
             {
@@ -778,9 +916,10 @@ namespace NowUI
                 _dragId = 0;
                 _activeDragged = false;
                 _pressPosition = snapshot.pointerPosition;
+
             }
 
-            bool active = _activeId == id && _activeButton == button;
+            bool active = IsActiveControl(id, button);
 
             if (_passiveDepth == 0 && active)
             {
@@ -793,9 +932,19 @@ namespace NowUI
             bool dragging = false;
             bool dragStarted = false;
             bool dragEnded = false;
+            bool cancelled = active &&
+                (snapshot.pointerCaptureCancelled ||
+                 (!snapshot.IsPointerDown(button) && !snapshot.WasPointerReleased(button)));
+            bool dragCancelled = cancelled && _dragId == id;
             Vector2 dragDelta = default;
 
-            if (held)
+            if (cancelled)
+            {
+                active = false;
+                held = false;
+                ClearActive();
+            }
+            else if (held)
             {
                 Vector2 dragOffset = snapshot.pointerPosition - _pressPosition;
                 float threshold = dragThreshold;
@@ -834,7 +983,9 @@ namespace NowUI
                 active,
                 dragging,
                 dragStarted,
-                dragEnded);
+                dragEnded,
+                cancelled,
+                dragCancelled);
 
             if (released)
                 ClearActive();
@@ -920,10 +1071,14 @@ namespace NowUI
             _screenFrameActive = false;
             _scrollConsumed = false;
             _focusClaimedByPrimaryPress = false;
+            _cancelClaimInputPass = int.MinValue;
             _cancelClaimFrame = int.MinValue;
+            _cancelClaimProvider = null;
             NowRaycastGate.InvalidateCache();
             NowPointerArbiter.Reset();
             NowInputSystemInput.Invalidate();
+            NowIMGUIInputProvider.instance.ResetState();
+            NowGUI.ResetInputProviders();
         }
 
         /// <summary>
@@ -1065,8 +1220,13 @@ namespace NowUI
 
         internal static void ClearActiveIf(int id, NowPointerButton button = NowPointerButton.Primary)
         {
-            if (_activeId == id && _activeButton == button)
+            if (IsActiveControl(id, button))
+            {
+                if (_activeProvider is NowIMGUIInputProvider imgui)
+                    imgui.CancelTrackedCapture(releaseNativeCapture: true);
+
                 ClearActive();
+            }
         }
 
         static void CompleteFrame()
@@ -1074,12 +1234,14 @@ namespace NowUI
             try
             {
                 if (_activeId != 0 &&
-                    !_activeSeenThisFrame &&
                     ReferenceEquals(_currentProvider, _activeProvider) &&
                     _hasContext &&
-                    (!_snapshot.hasPointer ||
-                     !_snapshot.IsPointerDown(_activeButton) ||
-                     _snapshot.WasPointerReleased(_activeButton)))
+                    (_snapshot.pointerCaptureCancelled ||
+                     (!_snapshot.IsPointerDown(_activeButton) &&
+                      !_snapshot.WasPointerReleased(_activeButton)) ||
+                     (!_activeSeenThisFrame &&
+                      (!_snapshot.hasPointer ||
+                       _snapshot.WasPointerReleased(_activeButton)))))
                 {
                     ClearActive();
                 }
@@ -1101,6 +1263,7 @@ namespace NowUI
             }
             finally
             {
+                NowKeyInput.EndInputPass();
                 NowTextInput.EndInputPass();
             }
         }
@@ -1134,7 +1297,12 @@ namespace NowUI
             // Let another provider draw earlier in the next frame; clear only
             // after the capture owner has missed a whole input frame.
             if (_snapshot.frame > _activeLastSeenFrame + 1)
+            {
+                if (_activeProvider is NowIMGUIInputProvider imgui)
+                    imgui.CancelTrackedCapture(releaseNativeCapture: false);
+
                 ClearActive();
+            }
         }
     }
 

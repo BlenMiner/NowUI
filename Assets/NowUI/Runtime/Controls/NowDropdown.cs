@@ -40,7 +40,7 @@ namespace NowUI
             public float itemHeight;
             public int highlight = -1;
             public bool highlightMovedByKeyboard;
-            public int openedFrame;
+            public int openedInputPass;
             public NowRect field;
             public NowRect popupRect;
             public NowRect itemArea;
@@ -119,7 +119,7 @@ namespace NowUI
                     var openState = GetState(id);
                     openState.highlight = selected >= 0 && selected < optionCount ? selected : -1;
                     openState.highlightMovedByKeyboard = false;
-                    openState.openedFrame = NowInput.current.frame;
+                    openState.openedInputPass = NowInput.current.inputPass;
                 }
             }
 
@@ -134,7 +134,6 @@ namespace NowUI
             if (!open)
                 return changed;
 
-            NowControlState.RequestRepaint();
             DeferPopup(theme, _options, id, rect, selected, optionCount, _fitToView);
             return changed;
         }
@@ -210,6 +209,13 @@ namespace NowUI
             {
                 using (var scroll = new NowScrollView(state.itemArea, state.scrollId).Begin())
                     DrawVisibleItems(state, scroll.scrollOffset.y, scroll.viewport.height);
+
+                // A modal popup contains wheel input even at its own scroll
+                // edge. Ordinary nested scroll views still fall through at an
+                // edge, but moving the background beneath an open selector
+                // destabilizes its anchor and lets enclosing IMGUI scroll views
+                // process the same native wheel event.
+                NowInput.ConsumeScrollDelta(popupRect);
             }
             else
             {
@@ -218,7 +224,7 @@ namespace NowUI
 
             var snapshot = NowInput.current;
             bool fieldPressClaimedByField = state.field.Contains(snapshot.pointerPosition) &&
-                NowInput.activeId == state.id;
+                NowInput.IsActiveControl(state.id);
             bool pressedOutside = snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
                 !fieldPressClaimedByField;
@@ -226,6 +232,12 @@ namespace NowUI
             if (pressedOutside ||
                 (snapshot.cancelPressed && !NowInput.cancelConsumed && !NowOverlay.HasNestedOverlay(state.id)))
             {
+                if (pressedOutside)
+                    NowInput.ConsumePointerPress();
+
+                if (snapshot.cancelPressed)
+                    NowInput.ConsumeKeyActivity();
+
                 NowControlState.Get<bool>(state.id) = false;
             }
         }
@@ -251,15 +263,17 @@ namespace NowUI
                 state.optionCount > 0)
             {
                 MoveHighlight(state, navY < 0f ? 1 : -1);
+                NowInput.ConsumeKeyActivity();
             }
 
             TypeToSelect(state);
 
             if (snapshot.submitPressed &&
-                snapshot.frame != state.openedFrame &&
+                snapshot.inputPass != state.openedInputPass &&
                 state.highlight >= 0 &&
                 state.highlight < state.optionCount)
             {
+                NowInput.ConsumeKeyActivity();
                 NowControlState.Get<int>(state.pendingId) = state.highlight + 1;
                 NowControlState.Get<bool>(state.id) = false;
             }

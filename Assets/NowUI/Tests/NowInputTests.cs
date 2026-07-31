@@ -1,17 +1,34 @@
 using System;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using NowUI;
 
 public class NowInputTests
 {
+    static readonly FieldInfo InputSnapshotField = typeof(NowInput).GetField(
+        "_snapshot",
+        BindingFlags.NonPublic | BindingFlags.Static);
+
     readonly Rect _rect = new Rect(10, 10, 40, 30);
 
     MockInputProvider _provider;
 
+    Action _previousRepaintRequested;
+
+    Action<NowIMGUIInputProvider> _previousHostRepaintRequested;
+
+    Action<NowIMGUIInputProvider, float> _previousHostRepaintAfterRequested;
+
     [SetUp]
     public void SetUp()
     {
+        _previousRepaintRequested = NowIMGUIInputProvider.repaintRequested;
+        _previousHostRepaintRequested = NowIMGUIInputProvider.hostRepaintRequested;
+        _previousHostRepaintAfterRequested = NowIMGUIInputProvider.hostRepaintAfterRequested;
+        NowIMGUIInputProvider.repaintRequested = () => { };
+        NowIMGUIInputProvider.hostRepaintRequested = null;
+        NowIMGUIInputProvider.hostRepaintAfterRequested = null;
         NowInput.Reset();
         _provider = new MockInputProvider();
     }
@@ -20,6 +37,9 @@ public class NowInputTests
     public void TearDown()
     {
         NowInput.Reset();
+        NowIMGUIInputProvider.repaintRequested = _previousRepaintRequested;
+        NowIMGUIInputProvider.hostRepaintRequested = _previousHostRepaintRequested;
+        NowIMGUIInputProvider.hostRepaintAfterRequested = _previousHostRepaintAfterRequested;
     }
 
     [Test]
@@ -142,6 +162,53 @@ public class NowInputTests
     }
 
     [Test]
+    public void IMGUIBlockOnlyOverlayConsumesTheNativeScrollEvent()
+    {
+        var provider = new NowIMGUIInputProvider();
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+        var scrollEvent = new Event
+        {
+            type = EventType.ScrollWheel,
+            mousePosition = new Vector2(24f, 22f),
+            delta = new Vector2(0f, 3f)
+        };
+        Event previousEvent = Event.current;
+        bool previousChanged = GUI.changed;
+
+        try
+        {
+            Event.current = null;
+            GUI.changed = false;
+
+            using (NowInput.Begin(provider, surface))
+            {
+                InstallIMGUISnapshot(
+                    provider,
+                    surface,
+                    scrollEvent,
+                    EventType.ScrollWheel,
+                    ownsCapture: false);
+                NowOverlay.BlockScreen(new NowRect(10f, 10f, 40f, 30f));
+                NowOverlay.Flush();
+            }
+
+            Assert.AreEqual(
+                EventType.Used,
+                scrollEvent.type,
+                "A manually drawn overlay block must contain wheel input before native IMGUI can scroll its parent.");
+            Assert.IsTrue(
+                GUI.changed,
+                "Consuming the block-owned native wheel event must schedule the editor repaint.");
+        }
+        finally
+        {
+            provider.ResetState(releaseNativeCapture: false);
+            Event.current = previousEvent;
+            GUI.changed = previousChanged;
+        }
+    }
+
+    [Test]
     public void IMGUIFocusClearMarksGUIChangedAndRequestsRepaint()
     {
         bool previousChanged = GUI.changed;
@@ -190,50 +257,6 @@ public class NowInputTests
             Assert.AreEqual(EventType.Used, keyEvent.type,
                 "A focused text consumer must own its native IMGUI key event.");
             Assert.IsTrue(GUI.changed);
-            Assert.AreEqual(1, repaintCount);
-        }
-        finally
-        {
-            NowIMGUIInputProvider.repaintRequested = previousRepaint;
-            GUI.changed = previousChanged;
-        }
-    }
-
-    [TestCase(false)]
-    [TestCase(true)]
-    public void IMGUITabIsConsumedAndRequestsRepaint(bool shift)
-    {
-        bool previousChanged = GUI.changed;
-        Action previousRepaint = NowIMGUIInputProvider.repaintRequested;
-        int repaintCount = 0;
-        bool focusPreviousPressed = false;
-        bool focusNextPressed = false;
-        bool submitPressed = false;
-        bool cancelPressed = false;
-        var tabEvent = new Event
-        {
-            type = EventType.KeyDown,
-            keyCode = KeyCode.Tab,
-            shift = shift
-        };
-
-        try
-        {
-            GUI.changed = false;
-            NowIMGUIInputProvider.repaintRequested = () => ++repaintCount;
-            NowIMGUIInputProvider.instance.ApplyKeyDown(
-                tabEvent,
-                ref focusPreviousPressed,
-                ref focusNextPressed,
-                ref submitPressed,
-                ref cancelPressed);
-
-            Assert.AreEqual(shift, focusPreviousPressed);
-            Assert.AreEqual(!shift, focusNextPressed);
-            Assert.AreEqual(EventType.Used, tabEvent.type,
-                "The NowUI IMGUI surface must consume Tab so another panel cannot traverse on the same key event.");
-            Assert.IsTrue(GUI.changed,
-                "Tab traversal must mark IMGUI changed so focus visuals repaint immediately.");
             Assert.AreEqual(1, repaintCount);
         }
         finally
@@ -835,6 +858,27 @@ public class NowInputTests
     }
 
     [Test]
+    public void ThrowingProvidersDoNotAccumulateOverlayRegistrationOwners()
+    {
+        NowOverlay.Reset();
+
+        for (int i = 0; i < 100; ++i)
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                _ = NowInput.Begin(
+                    new ThrowingInputProvider(),
+                    new Vector2(50f, 50f));
+            });
+        }
+
+        Assert.AreEqual(
+            0,
+            NowOverlay.registrationOwnerCount,
+            "Provider sampling fails before an overlay transaction exists.");
+    }
+
+    [Test]
     public void ThrowingOverlayStillClosesTopLevelInputScope()
     {
         NowOverlay.Reset();
@@ -1005,6 +1049,941 @@ public class NowInputTests
 
         NowInput.Reset();
         Assert.AreEqual(NowNavigationKeys.All, NowInput.navigationKeys);
+    }
+
+    [Test]
+    public void ActiveCaptureCancelsWhenButtonStateDropsWithoutRelease()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+            NowInput.Interact(1, _rect);
+
+        _provider.snapshot = new NowInputSnapshot(
+            new Vector2(28, 20),
+            new Vector2(10, 0),
+            true,
+            false,
+            false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+            Assert.IsTrue(NowInput.Interact(1, _rect).dragging);
+
+        _provider.snapshot = new NowInputSnapshot(
+            new Vector2(28, 20),
+            Vector2.zero,
+            false,
+            false,
+            false);
+
+        using (NowInput.Begin(_provider, new Vector2(100, 100)))
+        {
+            var cancelled = NowInput.Interact(1, _rect);
+
+            Assert.IsTrue(cancelled.cancelled);
+            Assert.IsTrue(cancelled.dragCancelled);
+            Assert.IsFalse(cancelled.released);
+            Assert.IsFalse(cancelled.dragEnded);
+            Assert.IsFalse(cancelled.clicked);
+        }
+
+        Assert.AreEqual(0, NowInput.activeId);
+    }
+
+    [Test]
+    public void CollidingControlIdFromAnotherProviderCannotDriveOrCancelActiveCapture()
+    {
+        var other = new MockInputProvider();
+        var pressed = new NowInputSnapshot(new Vector2(18f, 20f), true, true, false)
+        {
+            frame = 50,
+            inputPass = 1
+        };
+        _provider.snapshot = pressed;
+
+        using (NowInput.Begin(_provider, new Vector2(100f, 100f)))
+            Assert.IsTrue(NowInput.Interact(1, _rect).pressed);
+
+        other.snapshot = new NowInputSnapshot(new Vector2(18f, 20f), false, false, false)
+        {
+            frame = 50,
+            inputPass = 2
+        };
+
+        using (NowInput.Begin(other, new Vector2(100f, 100f)))
+        {
+            var collision = NowInput.Interact(1, _rect);
+
+            Assert.IsFalse(collision.active);
+            Assert.IsFalse(collision.cancelled);
+            Assert.IsFalse(collision.clicked);
+        }
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18f, 20f), true, false, false)
+        {
+            frame = 50,
+            inputPass = 3
+        };
+
+        using (NowInput.Begin(_provider, new Vector2(100f, 100f)))
+        {
+            var owner = NowInput.Interact(1, _rect);
+
+            Assert.IsTrue(owner.active);
+            Assert.IsTrue(owner.held);
+        }
+    }
+
+    [Test]
+    public void FreshSameFramePressTransfersFromAnOmittedProvider()
+    {
+        var other = new MockInputProvider();
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18f, 20f), true, true, false)
+        {
+            frame = 60,
+            inputPass = 1
+        };
+
+        using (NowInput.Begin(_provider, new Vector2(100f, 100f)))
+            Assert.IsTrue(NowInput.Interact(1, _rect).pressed);
+
+        other.snapshot = new NowInputSnapshot(new Vector2(18f, 20f), true, true, false)
+        {
+            frame = 60,
+            inputPass = 2
+        };
+
+        using (NowInput.Begin(other, new Vector2(100f, 100f)))
+        {
+            var transferred = NowInput.Interact(2, _rect);
+
+            Assert.IsTrue(
+                transferred.pressed,
+                "A new native press must not wait for Time.frameCount to clear a capture whose panel disappeared.");
+            Assert.IsTrue(transferred.active);
+            Assert.AreEqual(2, NowInput.activeId);
+        }
+    }
+
+    [Test]
+    public void CancelClaimsAreInputPassAndProviderScoped()
+    {
+        var other = new MockInputProvider();
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18f, 20f), false, false, false)
+        {
+            frame = 80,
+            inputPass = 10
+        };
+
+        using (NowInput.Begin(_provider, new Vector2(100f, 100f)))
+        {
+            NowInput.ConsumeCancel();
+            Assert.IsTrue(NowInput.cancelConsumed);
+        }
+
+        other.snapshot = new NowInputSnapshot(new Vector2(18f, 20f), false, false, false)
+        {
+            frame = 80,
+            inputPass = 11
+        };
+
+        using (NowInput.Begin(other, new Vector2(100f, 100f)))
+        {
+            Assert.IsFalse(
+                NowInput.cancelConsumed,
+                "A claim in one panel must not suppress Escape handling in another panel.");
+            Assert.IsFalse(NowInput.cancelConsumedForFrameSwap);
+        }
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(18f, 20f), false, false, false)
+        {
+            frame = 81,
+            inputPass = 99
+        };
+
+        using (NowInput.Begin(_provider, new Vector2(100f, 100f)))
+        {
+            Assert.IsFalse(NowInput.cancelConsumed);
+            Assert.IsTrue(
+                NowInput.cancelConsumedForFrameSwap,
+                "Frame-swap consumers keep the owning provider's previous-frame claim even after many IMGUI passes.");
+        }
+    }
+
+    [Test]
+    public void IMGUIButtonStateSurvivesSameFrameLayoutAndRepaintUntilMouseUp()
+    {
+        var provider = new NowIMGUIInputProvider();
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+
+        try
+        {
+            Assert.IsTrue(provider.TryGetSnapshot(
+                surface,
+                new Event
+                {
+                    type = EventType.MouseDown,
+                    button = 0,
+                    mousePosition = new Vector2(20f, 20f)
+                },
+                EventType.MouseDown,
+                false,
+                out var pressed));
+            Assert.IsTrue(provider.TryGetSnapshot(
+                surface,
+                new Event
+                {
+                    type = EventType.Layout,
+                    mousePosition = new Vector2(20f, 20f)
+                },
+                EventType.Layout,
+                false,
+                out var layout));
+            Assert.IsTrue(provider.TryGetSnapshot(
+                surface,
+                new Event
+                {
+                    type = EventType.Repaint,
+                    mousePosition = new Vector2(20f, 20f)
+                },
+                EventType.Repaint,
+                false,
+                out var repaint));
+            Assert.IsTrue(provider.TryGetSnapshot(
+                surface,
+                new Event
+                {
+                    type = EventType.MouseDrag,
+                    button = 0,
+                    mousePosition = new Vector2(32f, 20f),
+                    delta = new Vector2(12f, 0f)
+                },
+                EventType.MouseDrag,
+                false,
+                out var dragged));
+            Assert.IsTrue(provider.TryGetSnapshot(
+                surface,
+                new Event
+                {
+                    type = EventType.MouseUp,
+                    button = 0,
+                    mousePosition = new Vector2(32f, 20f)
+                },
+                EventType.MouseUp,
+                false,
+                out var released));
+
+            Assert.IsTrue(pressed.primaryDown);
+            Assert.IsTrue(layout.primaryDown);
+            Assert.IsTrue(repaint.primaryDown);
+            Assert.IsTrue(dragged.primaryDown);
+            Assert.IsFalse(released.primaryDown);
+
+            int pressedEdges =
+                (pressed.primaryPressed ? 1 : 0) +
+                (layout.primaryPressed ? 1 : 0) +
+                (repaint.primaryPressed ? 1 : 0) +
+                (dragged.primaryPressed ? 1 : 0) +
+                (released.primaryPressed ? 1 : 0);
+            int releasedEdges =
+                (pressed.primaryReleased ? 1 : 0) +
+                (layout.primaryReleased ? 1 : 0) +
+                (repaint.primaryReleased ? 1 : 0) +
+                (dragged.primaryReleased ? 1 : 0) +
+                (released.primaryReleased ? 1 : 0);
+
+            Assert.AreEqual(1, pressedEdges, "The native MouseDown edge must not replay on Layout or Repaint.");
+            Assert.AreEqual(1, releasedEdges, "Only the native MouseUp pass may report the release edge.");
+            Assert.AreEqual(pressed.frame, layout.frame);
+            Assert.AreEqual(pressed.frame, repaint.frame);
+            Assert.AreEqual(pressed.frame, dragged.frame);
+            Assert.AreEqual(pressed.frame, released.frame);
+            Assert.Greater(layout.inputPass, pressed.inputPass);
+            Assert.Greater(repaint.inputPass, layout.inputPass);
+            Assert.Greater(dragged.inputPass, repaint.inputPass);
+            Assert.Greater(released.inputPass, dragged.inputPass);
+        }
+        finally
+        {
+            provider.ResetState();
+        }
+    }
+
+    [Test]
+    public void IMGUIFocusLossClearsLatchedKeyboardState()
+    {
+        var provider = new NowIMGUIInputProvider(9101, new object());
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+
+        try
+        {
+            Assert.IsFalse(provider.NotifyHostFocusChanged(true, releaseNativeCapture: false));
+
+            var keyDown = new Event
+            {
+                type = EventType.KeyDown,
+                keyCode = KeyCode.Return,
+                mousePosition = new Vector2(20f, 20f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(
+                surface,
+                keyDown,
+                EventType.KeyDown,
+                ownsCapture: false,
+                out var pressed));
+            Assert.IsTrue(pressed.submitDown);
+
+            var leftDown = new Event
+            {
+                type = EventType.KeyDown,
+                keyCode = KeyCode.LeftArrow,
+                mousePosition = new Vector2(20f, 20f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(
+                surface,
+                leftDown,
+                EventType.KeyDown,
+                ownsCapture: false,
+                out var navigated));
+            Assert.IsTrue(navigated.submitDown);
+            Assert.AreEqual(Vector2.left, navigated.navigation);
+
+            Assert.IsTrue(provider.NotifyHostFocusChanged(false, releaseNativeCapture: false));
+            Assert.IsFalse(provider.NotifyHostFocusChanged(true, releaseNativeCapture: false));
+
+            var layout = new Event
+            {
+                type = EventType.Layout,
+                mousePosition = new Vector2(20f, 20f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(
+                surface,
+                layout,
+                EventType.Layout,
+                ownsCapture: false,
+                out var afterFocusReturn));
+            Assert.IsFalse(
+                afterFocusReturn.submitDown,
+                "A missed native KeyUp while the window is unfocused must not leave submit latched.");
+            Assert.AreEqual(Vector2.zero, afterFocusReturn.navigation);
+        }
+        finally
+        {
+            provider.ResetState(releaseNativeCapture: false);
+        }
+    }
+
+    [Test]
+    public void IMGUIFreshPressAfterFocusLossIsNotEatenByPendingCancellation()
+    {
+        const int HostControlId = 9111;
+        const int FirstControlId = 9112;
+        const int SecondControlId = 9113;
+        var provider = new NowIMGUIInputProvider(HostControlId, new object());
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+        Event previousEvent = Event.current;
+        int previousHotControl = GUIUtility.hotControl;
+        bool previousChanged = GUI.changed;
+
+        try
+        {
+            Event.current = null;
+            GUIUtility.hotControl = 0;
+            GUI.changed = false;
+            Assert.IsFalse(provider.NotifyHostFocusChanged(true, releaseNativeCapture: false));
+
+            using (NowInput.Begin(provider, surface))
+            {
+                InstallIMGUISnapshot(
+                    provider,
+                    surface,
+                    new Event
+                    {
+                        type = EventType.MouseDown,
+                        button = 0,
+                        mousePosition = new Vector2(20f, 20f)
+                    },
+                    EventType.MouseDown,
+                    ownsCapture: false);
+                Assert.IsTrue(NowInput.Interact(FirstControlId, _rect).pressed);
+            }
+
+            Assert.AreEqual(FirstControlId, NowInput.activeId);
+            Assert.AreEqual(HostControlId, GUIUtility.hotControl);
+            Assert.IsTrue(provider.NotifyHostFocusChanged(false, releaseNativeCapture: false));
+            Assert.IsFalse(provider.NotifyHostFocusChanged(true, releaseNativeCapture: false));
+
+            using (NowInput.Begin(provider, surface))
+            {
+                var freshSnapshot = InstallIMGUISnapshot(
+                    provider,
+                    surface,
+                    new Event
+                    {
+                        type = EventType.MouseDown,
+                        button = 0,
+                        mousePosition = new Vector2(20f, 20f)
+                    },
+                    EventType.MouseDown,
+                    ownsCapture: true);
+                Assert.IsTrue(freshSnapshot.pointerCaptureCancelled);
+                Assert.IsTrue(
+                    freshSnapshot.hasPointer,
+                    "A real MouseDown must remain actionable while it also reports stale capture cancellation.");
+
+                var fresh = NowInput.Interact(SecondControlId, _rect);
+                Assert.IsTrue(fresh.pressed, "The first click after focus returns must not be discarded.");
+                Assert.IsTrue(fresh.active);
+                Assert.IsFalse(fresh.cancelled);
+            }
+
+            Assert.AreEqual(SecondControlId, NowInput.activeId);
+            Assert.AreEqual(HostControlId, GUIUtility.hotControl);
+        }
+        finally
+        {
+            provider.ResetState(releaseNativeCapture: false);
+            GUIUtility.hotControl = previousHotControl;
+            GUI.changed = previousChanged;
+            Event.current = previousEvent;
+        }
+    }
+
+    [Test]
+    public void IMGUIInteractRejectsCaptureWhenNativeHotControlChangesAfterSampling()
+    {
+        const int HostControlId = 9121;
+        const int ForeignControlId = 9122;
+        const int NowControlId = 9123;
+        var provider = new NowIMGUIInputProvider(HostControlId, new object());
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+        var down = new Event
+        {
+            type = EventType.MouseDown,
+            button = 0,
+            mousePosition = new Vector2(20f, 20f)
+        };
+        Event previousEvent = Event.current;
+        int previousHotControl = GUIUtility.hotControl;
+        bool previousChanged = GUI.changed;
+
+        try
+        {
+            Event.current = null;
+            GUIUtility.hotControl = 0;
+            GUI.changed = false;
+
+            using (NowInput.Begin(provider, surface))
+            {
+                InstallIMGUISnapshot(
+                    provider,
+                    surface,
+                    down,
+                    EventType.MouseDown,
+                    ownsCapture: false);
+                Assert.IsTrue(
+                    NowInput.current.primaryPressed,
+                    "The provider must sample the native press before the competing control acquires capture.");
+
+                GUIUtility.hotControl = ForeignControlId;
+                var interaction = NowInput.Interact(NowControlId, _rect);
+
+                Assert.IsFalse(
+                    interaction.pressed,
+                    "A NowUI control must not activate after another native control wins hotControl.");
+                Assert.IsFalse(interaction.active);
+                Assert.AreEqual(0, NowInput.activeId);
+            }
+
+            Assert.AreEqual(
+                ForeignControlId,
+                GUIUtility.hotControl,
+                "Rejecting the press must not steal capture from the native control that won the race.");
+        }
+        finally
+        {
+            provider.ResetState(releaseNativeCapture: false);
+            GUIUtility.hotControl = previousHotControl;
+            GUI.changed = previousChanged;
+            Event.current = previousEvent;
+        }
+    }
+
+    [Test]
+    public void IMGUIInteractCaptureIsCancelledByIgnoreAndCannotResumeOnReentry()
+    {
+        const int HostControlId = 9141;
+        const int NowControlId = 9142;
+        var provider = new NowIMGUIInputProvider(HostControlId, new object());
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+        Event previousEvent = Event.current;
+        int previousHotControl = GUIUtility.hotControl;
+        bool previousChanged = GUI.changed;
+
+        NowInteraction Draw(Event inputEvent, EventType routedType, bool ownsCapture)
+        {
+            Event.current = null;
+
+            using (NowInput.Begin(provider, surface))
+            {
+                InstallIMGUISnapshot(
+                    provider,
+                    surface,
+                    inputEvent,
+                    routedType,
+                    ownsCapture);
+                return NowInput.Interact(NowControlId, _rect);
+            }
+        }
+
+        try
+        {
+            GUIUtility.hotControl = 0;
+            GUI.changed = false;
+            var down = new Event
+            {
+                type = EventType.MouseDown,
+                button = 0,
+                mousePosition = new Vector2(18f, 20f)
+            };
+
+            var pressed = Draw(down, EventType.MouseDown, ownsCapture: false);
+
+            Assert.IsTrue(pressed.pressed);
+            Assert.IsTrue(pressed.active);
+            Assert.AreEqual(NowControlId, NowInput.activeId);
+            Assert.AreEqual(HostControlId, GUIUtility.hotControl);
+            Assert.AreEqual(
+                EventType.Used,
+                down.type,
+                "Acquiring the NowUI interaction must consume the native MouseDown.");
+
+            var drag = new Event
+            {
+                type = EventType.MouseDrag,
+                button = 0,
+                mousePosition = new Vector2(40f, 20f),
+                delta = new Vector2(22f, 0f)
+            };
+            var dragged = Draw(drag, EventType.MouseDrag, ownsCapture: true);
+
+            Assert.IsTrue(dragged.dragging);
+            Assert.IsTrue(dragged.active);
+            Assert.AreEqual(NowControlId, NowInput.activeId);
+            Assert.AreEqual(EventType.Used, drag.type);
+
+            var ignored = new Event
+            {
+                type = EventType.Ignore,
+                button = 0,
+                mousePosition = new Vector2(40f, 20f)
+            };
+            var cancelled = Draw(ignored, EventType.Ignore, ownsCapture: true);
+
+            Assert.IsTrue(cancelled.cancelled);
+            Assert.IsTrue(cancelled.dragCancelled);
+            Assert.IsFalse(cancelled.clicked);
+            Assert.AreEqual(0, NowInput.activeId);
+            Assert.AreEqual(
+                0,
+                GUIUtility.hotControl,
+                "Capture loss must release the panel's native hotControl immediately.");
+
+            var reentryDrag = new Event
+            {
+                type = EventType.MouseDrag,
+                button = 0,
+                mousePosition = new Vector2(24f, 20f),
+                delta = new Vector2(-16f, 0f)
+            };
+            var afterReentry = Draw(reentryDrag, EventType.MouseDrag, ownsCapture: false);
+
+            Assert.IsFalse(afterReentry.active);
+            Assert.IsFalse(afterReentry.dragging);
+            Assert.IsFalse(afterReentry.clicked);
+            Assert.AreEqual(0, NowInput.activeId);
+        }
+        finally
+        {
+            provider.ResetState(releaseNativeCapture: false);
+            GUIUtility.hotControl = previousHotControl;
+            GUI.changed = previousChanged;
+            Event.current = previousEvent;
+        }
+    }
+
+    [Test]
+    public void IMGUIReleaseOutsidePanelEndsCapturedDrag()
+    {
+        const int HostControlId = 9151;
+        const int NowControlId = 9152;
+        var provider = new NowIMGUIInputProvider(HostControlId, new object());
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+        Event previousEvent = Event.current;
+        int previousHotControl = GUIUtility.hotControl;
+        bool previousChanged = GUI.changed;
+
+        NowInteraction Draw(Event inputEvent, EventType routedType, bool ownsCapture)
+        {
+            Event.current = null;
+
+            using (NowInput.Begin(provider, surface))
+            {
+                InstallIMGUISnapshot(
+                    provider,
+                    surface,
+                    inputEvent,
+                    routedType,
+                    ownsCapture);
+                return NowInput.Interact(NowControlId, _rect);
+            }
+        }
+
+        try
+        {
+            GUIUtility.hotControl = 0;
+            GUI.changed = false;
+            var down = new Event
+            {
+                type = EventType.MouseDown,
+                button = 0,
+                mousePosition = new Vector2(18f, 20f)
+            };
+
+            NowInteraction pressed = Draw(
+                down,
+                EventType.MouseDown,
+                ownsCapture: false);
+
+            Assert.IsTrue(pressed.pressed);
+            Assert.AreEqual(HostControlId, GUIUtility.hotControl);
+            Assert.AreEqual(EventType.Used, down.type);
+
+            var drag = new Event
+            {
+                type = EventType.MouseDrag,
+                button = 0,
+                mousePosition = new Vector2(140f, 20f),
+                delta = new Vector2(122f, 0f)
+            };
+
+            NowInteraction dragged = Draw(
+                drag,
+                EventType.MouseDrag,
+                ownsCapture: true);
+
+            Assert.IsTrue(dragged.dragging);
+            Assert.IsFalse(dragged.hovered);
+            Assert.AreEqual(EventType.Used, drag.type);
+
+            var up = new Event
+            {
+                type = EventType.MouseUp,
+                button = 0,
+                mousePosition = new Vector2(140f, 20f)
+            };
+
+            NowInteraction released = Draw(
+                up,
+                EventType.MouseUp,
+                ownsCapture: true);
+
+            Assert.IsTrue(released.released);
+            Assert.IsTrue(released.dragEnded);
+            Assert.IsFalse(released.clicked);
+            Assert.IsFalse(released.cancelled);
+            Assert.AreEqual(EventType.Used, up.type);
+            Assert.AreEqual(0, NowInput.activeId);
+            Assert.AreEqual(
+                0,
+                GUIUtility.hotControl,
+                "Releasing outside the EditorWindow must end native and NowUI capture together.");
+        }
+        finally
+        {
+            provider.ResetState(releaseNativeCapture: false);
+            GUIUtility.hotControl = previousHotControl;
+            GUI.changed = previousChanged;
+            Event.current = previousEvent;
+        }
+    }
+
+    [TestCase(EventType.Ignore)]
+    [TestCase(EventType.MouseLeaveWindow)]
+    public void IMGUICaptureLossCancelsDraggedScrollbarAndReentryCannotResumeIt(EventType lossType)
+    {
+        const int scrollbarId = 9137;
+        var provider = new NowIMGUIInputProvider();
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+        var track = new NowRect(80f, 10f, 12f, 80f);
+        Action previousRepaint = NowIMGUIInputProvider.repaintRequested;
+        bool previousChanged = GUI.changed;
+        float value = 0f;
+
+        bool DrawScrollbar()
+        {
+            var metrics = NowScrollbar.Calculate(
+                NowScrollbarAxis.Vertical,
+                track,
+                20f,
+                100f,
+                value,
+                10f);
+
+            using (NowInput.Begin(_provider, surface))
+                return NowScrollbar.Interact(scrollbarId, NowScrollbarAxis.Vertical, metrics, ref value);
+        }
+
+        try
+        {
+            NowIMGUIInputProvider.repaintRequested = () => { };
+            GUI.changed = false;
+
+            var down = new Event
+            {
+                type = EventType.MouseDown,
+                button = 0,
+                mousePosition = new Vector2(86f, 18f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(surface, down, EventType.MouseDown, false, out _provider.snapshot));
+            Assert.IsTrue(DrawScrollbar());
+            provider.NotifyPointerCaptured(NowPointerButton.Primary);
+            Assert.AreEqual(scrollbarId, NowInput.activeId);
+
+            var drag = new Event
+            {
+                type = EventType.MouseDrag,
+                button = 0,
+                mousePosition = new Vector2(86f, 130f),
+                delta = new Vector2(0f, 112f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(surface, drag, EventType.MouseDrag, true, out _provider.snapshot));
+            Assert.IsTrue(DrawScrollbar());
+            Assert.AreEqual(scrollbarId, NowInput.activeId);
+            Assert.Greater(value, 0f, "The fixture must establish an active scrollbar drag before capture is lost.");
+
+            var lost = new Event
+            {
+                type = lossType,
+                button = 0,
+                mousePosition = new Vector2(86f, 130f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(surface, lost, lossType, true, out _provider.snapshot));
+            Assert.IsTrue(_provider.snapshot.pointerCaptureCancelled);
+            Assert.IsFalse(DrawScrollbar());
+            Assert.AreEqual(0, NowInput.activeId, "Capture loss must cancel the active scrollbar immediately.");
+            float valueAfterCancellation = value;
+
+            var reentryDrag = new Event
+            {
+                type = EventType.MouseDrag,
+                button = 0,
+                mousePosition = new Vector2(86f, 22f),
+                delta = new Vector2(0f, -108f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(
+                surface,
+                reentryDrag,
+                EventType.MouseDrag,
+                false,
+                out _provider.snapshot));
+            Assert.IsFalse(DrawScrollbar());
+            Assert.AreEqual(0, NowInput.activeId);
+            Assert.AreEqual(
+                valueAfterCancellation,
+                value,
+                0.001f,
+                "A stray drag after pointer re-entry must not resume the cancelled scrollbar.");
+        }
+        finally
+        {
+            provider.ResetState();
+            NowIMGUIInputProvider.repaintRequested = previousRepaint;
+            GUI.changed = previousChanged;
+        }
+    }
+
+    [Test]
+    public void IMGUIIgnoreWithoutTrackedCaptureDoesNotInventCancellation()
+    {
+        var provider = new NowIMGUIInputProvider();
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+        Action previousRepaint = NowIMGUIInputProvider.repaintRequested;
+        int repaintCount = 0;
+
+        try
+        {
+            NowIMGUIInputProvider.repaintRequested = () => ++repaintCount;
+            var ignored = new Event
+            {
+                type = EventType.Ignore,
+                button = 0,
+                mousePosition = new Vector2(20f, 20f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(
+                surface,
+                ignored,
+                EventType.Ignore,
+                false,
+                out var snapshot));
+
+            Assert.IsFalse(snapshot.pointerCaptureCancelled);
+            Assert.AreEqual(NowPointerButtons.None, snapshot.pointerButtonsDown);
+            Assert.AreEqual(NowPointerButtons.None, snapshot.pointerButtonsPressed);
+            Assert.AreEqual(NowPointerButtons.None, snapshot.pointerButtonsReleased);
+            Assert.AreEqual(0, repaintCount, "An ignored event from another native control is not capture loss for this panel.");
+        }
+        finally
+        {
+            provider.ResetState();
+            NowIMGUIInputProvider.repaintRequested = previousRepaint;
+        }
+    }
+
+    [TestCase(EventType.Ignore)]
+    [TestCase(EventType.MouseLeaveWindow)]
+    public void IMGUICaptureLossCancelsLatchedButtonsAndAdvancesInputPass(EventType lossType)
+    {
+        var provider = new NowIMGUIInputProvider();
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+        Action previousRepaint = NowIMGUIInputProvider.repaintRequested;
+        int repaintCount = 0;
+
+        try
+        {
+            NowIMGUIInputProvider.repaintRequested = () => ++repaintCount;
+            var down = new Event
+            {
+                type = EventType.MouseDown,
+                button = 0,
+                mousePosition = new Vector2(20f, 20f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(surface, down, EventType.MouseDown, false, out var pressed));
+            Assert.IsTrue(pressed.primaryDown);
+            Assert.IsTrue(pressed.primaryPressed);
+
+            var drag = new Event
+            {
+                type = EventType.MouseDrag,
+                button = 0,
+                mousePosition = new Vector2(140f, 20f),
+                delta = new Vector2(120f, 0f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(surface, drag, EventType.MouseDrag, true, out var held));
+            Assert.IsTrue(held.primaryDown);
+
+            var lost = new Event
+            {
+                type = lossType,
+                button = 0,
+                mousePosition = new Vector2(140f, 20f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(surface, lost, lossType, true, out var cancelled));
+            Assert.IsTrue(cancelled.pointerCaptureCancelled);
+            Assert.IsFalse(cancelled.hasPointer);
+            Assert.IsFalse(cancelled.primaryDown);
+            Assert.Greater(cancelled.inputPass, held.inputPass);
+
+            var move = new Event
+            {
+                type = EventType.MouseMove,
+                mousePosition = new Vector2(20f, 20f)
+            };
+
+            Assert.IsTrue(provider.TryGetSnapshot(surface, move, EventType.MouseMove, false, out var after));
+            Assert.IsFalse(after.primaryDown);
+            Assert.IsFalse(after.pointerCaptureCancelled);
+            Assert.Greater(after.inputPass, cancelled.inputPass);
+            Assert.GreaterOrEqual(repaintCount, 1);
+        }
+        finally
+        {
+            provider.ResetState();
+            NowIMGUIInputProvider.repaintRequested = previousRepaint;
+        }
+    }
+
+    [Test]
+    public void IMGUIProviderDoesNotEnterCrossSurfacePointerArbitration()
+    {
+        var provider = new NowIMGUIInputProvider();
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+        var move = new Event
+        {
+            type = EventType.MouseMove,
+            mousePosition = new Vector2(20f, 20f)
+        };
+
+        for (int i = 0; i < 100; ++i)
+        {
+            Assert.IsTrue(provider.TryGetSnapshot(surface, move, EventType.MouseMove, false, out _));
+            Assert.AreEqual(
+                0,
+                NowPointerArbiter.currentContentCount,
+                "Native IMGUI contexts own unrelated local coordinate spaces and must not compete in the runtime surface arbiter.");
+        }
+    }
+
+    [Test]
+    public void IMGUIPanelReceivesMouseDownDespiteAnUnrelatedArbiterWinner()
+    {
+        var previousWinner = new object();
+        var provider = new NowIMGUIInputProvider();
+        var surface = new NowInputSurface(new Vector2(100f, 100f));
+
+        NowPointerArbiter.Claim(
+            previousWinner,
+            NowPointerArbiter.TierCanvas,
+            0f,
+            hit: true,
+            buttonsDown: false);
+        NowPointerArbiter.ForceNewFrame();
+        Assert.IsTrue(NowPointerArbiter.IsOwner(previousWinner));
+
+        var down = new Event
+        {
+            type = EventType.MouseDown,
+            button = 0,
+            mousePosition = new Vector2(20f, 20f)
+        };
+
+        Assert.IsTrue(provider.TryGetSnapshot(
+            surface,
+            down,
+            EventType.MouseDown,
+            false,
+            out var snapshot));
+        Assert.IsTrue(snapshot.hasPointer);
+        Assert.IsTrue(snapshot.primaryPressed);
+    }
+
+    static NowInputSnapshot InstallIMGUISnapshot(
+        NowIMGUIInputProvider provider,
+        NowInputSurface surface,
+        Event inputEvent,
+        EventType routedType,
+        bool ownsCapture)
+    {
+        Assert.NotNull(InputSnapshotField, "NowInput snapshot test seam was not found.");
+        Assert.IsTrue(provider.TryGetSnapshot(
+            surface,
+            inputEvent,
+            routedType,
+            ownsCapture,
+            out var snapshot));
+        InputSnapshotField.SetValue(null, snapshot);
+        return snapshot;
     }
 
     static NowInputSnapshot ScrollSnapshot(Vector2 position, Vector2 scrollDelta)

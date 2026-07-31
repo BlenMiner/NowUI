@@ -114,6 +114,21 @@ namespace NowUI
 
         public int frame;
 
+        /// <summary>
+        /// Monotonic input-dispatch token. Most providers use <see cref="frame"/>;
+        /// IMGUI providers advance this for every native GUI pass because several
+        /// keyboard, pointer, layout, and repaint passes may share one Unity frame.
+        /// Use this for one-pass guards, not for elapsed-time calculations.
+        /// </summary>
+        public int inputPass;
+
+        /// <summary>
+        /// True when the host lost native pointer capture without receiving a
+        /// normal button release. Active controls cancel instead of clicking or
+        /// committing a drag.
+        /// </summary>
+        public bool pointerCaptureCancelled;
+
         public float time;
 
         public NowInputSnapshot(
@@ -337,6 +352,8 @@ namespace NowUI
             this.cancelPressed = cancelPressed;
             this.cancelReleased = cancelReleased;
             this.frame = frame;
+            inputPass = frame;
+            pointerCaptureCancelled = false;
             this.time = time;
         }
 

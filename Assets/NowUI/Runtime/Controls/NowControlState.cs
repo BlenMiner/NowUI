@@ -62,6 +62,8 @@ namespace NowUI
 
         static bool s_repaintRequested;
 
+        static float s_nextRepaintAt = float.PositiveInfinity;
+
         /// <summary>
         /// Returns a persistent slot for this control id, created zeroed on first
         /// use. The reference stays valid for the current frame; re-fetch each frame.
@@ -445,6 +447,30 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Anchored caret blink that schedules only the next phase boundary.
+        /// This preserves blinking without forcing an idle host to rebuild on
+        /// every update tick.
+        /// </summary>
+        public static bool ScheduledBlink(float period, float anchor)
+        {
+            if (period > 0f)
+            {
+                float halfPeriod = period * 0.5f;
+                float now = Time.realtimeSinceStartup;
+                float elapsed = Mathf.Max(0f, now - anchor);
+                float completedPhases = Mathf.Floor(elapsed / halfPeriod);
+                float nextBoundary = anchor + (completedPhases + 1f) * halfPeriod;
+
+                if (nextBoundary <= now + 0.0001f)
+                    nextBoundary += halfPeriod;
+
+                RequestRepaintAt(nextBoundary);
+            }
+
+            return Blink(period, anchor);
+        }
+
+        /// <summary>
         /// Tells a retained host (a UGUI <see cref="NowGraphic"/>) that this
         /// control needs another frame — call while animating, focused with a
         /// blinking caret, or otherwise time-dependent. Immediate-mode IMGUI
@@ -455,13 +481,34 @@ namespace NowUI
             s_repaintRequested = true;
         }
 
+        /// <summary>
+        /// Requests a host repaint no earlier than an absolute
+        /// <see cref="Time.realtimeSinceStartup"/> timestamp.
+        /// </summary>
+        public static void RequestRepaintAt(float realtime)
+        {
+            if (!float.IsNaN(realtime) &&
+                !float.IsInfinity(realtime) &&
+                realtime < s_nextRepaintAt)
+            {
+                s_nextRepaintAt = realtime;
+            }
+        }
+
         internal static void BeginRepaintTracking()
         {
             s_repaintRequested = false;
+            s_nextRepaintAt = float.PositiveInfinity;
         }
 
         internal static bool EndRepaintTracking()
         {
+            return s_repaintRequested;
+        }
+
+        internal static bool EndRepaintTracking(out float nextRepaintAt)
+        {
+            nextRepaintAt = s_nextRepaintAt;
             return s_repaintRequested;
         }
 
@@ -472,6 +519,7 @@ namespace NowUI
 
             s_sweepScratch.Clear();
             s_repaintRequested = false;
+            s_nextRepaintAt = float.PositiveInfinity;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

@@ -205,6 +205,7 @@ namespace NowUI
             public int parentId;
             public bool modal;
             public int modalInteractiveRootId;
+            public object registrationOwner;
             public Component host;
             public RectTransform hostRectTransform;
             public Camera hostCamera;
@@ -215,6 +216,12 @@ namespace NowUI
             public Component host;
             public RectTransform rectTransform;
             public Camera camera;
+        }
+
+        struct RegistrationOwnerState
+        {
+            public object owner;
+            public int registryVersion;
         }
 
         internal readonly struct Checkpoint
@@ -240,7 +247,11 @@ namespace NowUI
 
         static readonly List<OverlayHostContext> _hostStack = new List<OverlayHostContext>(2);
 
+        static readonly List<RegistrationOwnerState> _registrationOwners = new List<RegistrationOwnerState>(4);
+
         static int _registryFrame = -1;
+
+        static int _registryVersion;
 
         static int _overlayDepth;
 
@@ -251,6 +262,8 @@ namespace NowUI
         static int _postResetDeferredStart;
 
         static readonly List<Checkpoint> _frameTransactions = new List<Checkpoint>(2);
+
+        static readonly List<object> _frameTransactionOwners = new List<object>(2);
 
         /// <summary>True while deferred overlay callbacks are executing.</summary>
         public static bool isDrawingOverlay => _overlayDepth > 0;
@@ -284,20 +297,193 @@ namespace NowUI
         /// boundary; nested draw captures keep using their more precise local
         /// checkpoints.
         /// </summary>
-        internal static void BeginFrameTransaction()
+        internal static void BeginFrameTransaction(INowInputProvider provider)
         {
+            BeginFrameIfNeeded();
+            PruneRegistrationOwners();
+            object owner = RegistrationOwner(provider);
+            int ownerIndex = FindRegistrationOwner(owner);
+
+            if (ownerIndex < 0)
+            {
+                _registrationOwners.Add(new RegistrationOwnerState
+                {
+                    owner = owner,
+                    registryVersion = _registryVersion
+                });
+            }
+            else if (_registrationOwners[ownerIndex].registryVersion == _registryVersion)
+            {
+                PromoteRegistrationOwner(owner);
+            }
+            else
+            {
+                var state = _registrationOwners[ownerIndex];
+                state.registryVersion = _registryVersion;
+                _registrationOwners[ownerIndex] = state;
+            }
+
             _frameTransactions.Add(CaptureCheckpoint());
+            _frameTransactionOwners.Add(owner);
         }
 
         internal static void EndFrameTransaction()
         {
             if (_frameTransactions.Count > 0)
+            {
                 _frameTransactions.RemoveAt(_frameTransactions.Count - 1);
+                _frameTransactionOwners.RemoveAt(_frameTransactionOwners.Count - 1);
+                PruneRegistrationOwners();
+            }
         }
 
         internal static void ClearFrameTransactions()
         {
             _frameTransactions.Clear();
+            _frameTransactionOwners.Clear();
+        }
+
+        internal static void ReleaseRegistrationOwner(object owner)
+        {
+            if (owner == null)
+                return;
+
+            for (int i = _blocksCurrent.Count - 1; i >= 0; --i)
+            {
+                if (!ReferenceEquals(_blocksCurrent[i].registrationOwner, owner))
+                    continue;
+
+                RemoveCurrentBlockAt(i);
+            }
+
+            for (int i = _blocksPrevious.Count - 1; i >= 0; --i)
+            {
+                if (ReferenceEquals(_blocksPrevious[i].registrationOwner, owner))
+                    _blocksPrevious.RemoveAt(i);
+            }
+
+            for (int i = _registrationOwners.Count - 1; i >= 0; --i)
+            {
+                if (ReferenceEquals(_registrationOwners[i].owner, owner))
+                    _registrationOwners.RemoveAt(i);
+            }
+        }
+
+        /// <summary>
+        /// Owner state exists only to replace one provider/host's prior popup
+        /// footprint on a later pass. Owners with no surviving footprint no
+        /// longer need tracking, and destroyed runtime hosts must release their
+        /// last blocks immediately instead of remaining rooted by this static
+        /// registry for the rest of the session.
+        /// </summary>
+        static void PruneRegistrationOwners()
+        {
+            for (int i = _registrationOwners.Count - 1; i >= 0; --i)
+            {
+                object owner = _registrationOwners[i].owner;
+
+                if (HasActiveFrameTransaction(owner))
+                    continue;
+
+                bool destroyedUnityOwner =
+                    owner is UnityEngine.Object unityOwner &&
+                    !unityOwner;
+
+                if (destroyedUnityOwner)
+                {
+                    ReleaseRegistrationOwner(owner);
+                    i = _registrationOwners.Count;
+                    continue;
+                }
+
+                if (!HasRegistrationBlocks(owner))
+                    _registrationOwners.RemoveAt(i);
+            }
+        }
+
+        static bool HasActiveFrameTransaction(object owner)
+        {
+            for (int i = 0; i < _frameTransactionOwners.Count; ++i)
+            {
+                if (ReferenceEquals(_frameTransactionOwners[i], owner))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool HasRegistrationBlocks(object owner)
+        {
+            for (int i = 0; i < _blocksCurrent.Count; ++i)
+            {
+                if (ReferenceEquals(_blocksCurrent[i].registrationOwner, owner))
+                    return true;
+            }
+
+            for (int i = 0; i < _blocksPrevious.Count; ++i)
+            {
+                if (ReferenceEquals(_blocksPrevious[i].registrationOwner, owner))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static object RegistrationOwner(INowInputProvider provider)
+        {
+            var host = CurrentHostContext().host;
+            return host ? (object)host : provider;
+        }
+
+        static int FindRegistrationOwner(object owner)
+        {
+            for (int i = 0; i < _registrationOwners.Count; ++i)
+            {
+                if (ReferenceEquals(_registrationOwners[i].owner, owner))
+                    return i;
+            }
+
+            return -1;
+        }
+
+        static void PromoteRegistrationOwner(object owner)
+        {
+            for (int i = _blocksPrevious.Count - 1; i >= 0; --i)
+            {
+                if (ReferenceEquals(_blocksPrevious[i].registrationOwner, owner))
+                    _blocksPrevious.RemoveAt(i);
+            }
+
+            for (int i = 0; i < _blocksCurrent.Count;)
+            {
+                var block = _blocksCurrent[i];
+
+                if (!ReferenceEquals(block.registrationOwner, owner))
+                {
+                    ++i;
+                    continue;
+                }
+
+                _blocksPrevious.Add(block);
+                RemoveCurrentBlockAt(i);
+            }
+        }
+
+        static void RemoveCurrentBlockAt(int index)
+        {
+            _blocksCurrent.RemoveAt(index);
+
+            for (int i = 0; i < _frameTransactions.Count; ++i)
+            {
+                var checkpoint = _frameTransactions[i];
+
+                if (index < checkpoint.blockCount)
+                {
+                    _frameTransactions[i] = new Checkpoint(
+                        checkpoint.deferredCount,
+                        checkpoint.blockCount - 1);
+                }
+            }
         }
 
         static void RollbackFrameTransaction()
@@ -315,6 +501,22 @@ namespace NowUI
             // Keeping the stack intact here prevents nested cleanup from
             // accidentally popping the outer screen transaction.
             Rollback(_frameTransactions[0]);
+
+            // A failed pass never produced an authoritative current
+            // registration. Keep each active owner's previous successful
+            // footprint alive on its next pass instead of promoting (and
+            // clearing) it as though this pass had completed.
+            for (int i = 0; i < _frameTransactionOwners.Count; ++i)
+            {
+                int ownerIndex = FindRegistrationOwner(_frameTransactionOwners[i]);
+
+                if (ownerIndex < 0)
+                    continue;
+
+                var state = _registrationOwners[ownerIndex];
+                state.registryVersion = 0;
+                _registrationOwners[ownerIndex] = state;
+            }
         }
 
         /// <summary>True while any overlay is registered or queued for this or the previous frame.</summary>
@@ -334,12 +536,14 @@ namespace NowUI
             get
             {
                 BeginFrameIfNeeded();
+                var host = CurrentHostContext().host;
+                object owner = RegistrationOwner(NowInput.currentProvider);
 
-                int current = FindTopOverlayId(_blocksCurrent);
-                int previous = FindTopOverlayId(_blocksPrevious);
+                int current = FindTopOverlayId(_blocksCurrent, host, owner);
+                int previous = FindTopOverlayId(_blocksPrevious, host, owner);
 
                 if (current != 0 && previous != 0 && current != previous &&
-                    OverlayIdBelongsToTree(previous, current, _blocksPrevious))
+                    OverlayIdBelongsToTree(previous, current, _blocksPrevious, owner))
                 {
                     return previous;
                 }
@@ -585,6 +789,7 @@ namespace NowUI
                 parentId = CurrentOverlayId(),
                 modal = true,
                 modalInteractiveRootId = interactiveRootId,
+                registrationOwner = RegistrationOwner(NowInput.currentProvider),
                 host = host.host,
                 hostRectTransform = host.rectTransform,
                 hostCamera = host.camera
@@ -605,17 +810,97 @@ namespace NowUI
                 return IsOverlayContentBlocked();
 
             var host = CurrentHostContext().host;
+            object owner = RegistrationOwner(NowInput.currentProvider);
 
             for (int i = 0; i < _blocksPrevious.Count; ++i)
             {
-                if (_blocksPrevious[i].modal)
+                if (ModalBlocksDomain(_blocksPrevious[i], host, owner))
                     return true;
 
-                if (BlockBelongsToHost(_blocksPrevious[i], host) &&
+                if (BlockBelongsToDomain(_blocksPrevious[i], host, owner) &&
                     _blocksPrevious[i].rect.Contains(pointerPosition))
                 {
                     return true;
                 }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Scroll-specific ownership also honors overlays declared earlier in
+        /// the active input transaction. Deferred popup content runs after an
+        /// enclosing scroll scope, so waiting for the next Unity frame would let
+        /// the parent consume the popup's wheel event first in editor IMGUI.
+        /// Stale registrations from earlier same-frame passes are excluded by
+        /// the transaction checkpoint.
+        /// </summary>
+        internal static bool IsPointerBlockedForScroll(Vector2 pointerPosition)
+        {
+            BeginFrameIfNeeded();
+
+            if (_overlayDepth > 0)
+                return IsOverlayContentBlocked();
+
+            var host = CurrentHostContext().host;
+            object owner = RegistrationOwner(NowInput.currentProvider);
+
+            for (int i = 0; i < _blocksPrevious.Count; ++i)
+            {
+                if (BlocksBasePointer(_blocksPrevious[i], host, owner, pointerPosition))
+                    return true;
+            }
+
+            if (_frameTransactions.Count == 0)
+                return false;
+
+            int start = Mathf.Clamp(
+                _frameTransactions[_frameTransactions.Count - 1].blockCount,
+                0,
+                _blocksCurrent.Count);
+
+            for (int i = start; i < _blocksCurrent.Count; ++i)
+            {
+                if (BlocksBasePointer(_blocksCurrent[i], host, owner, pointerPosition))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool BlocksBasePointer(
+            OverlayBlock block,
+            Component host,
+            object owner,
+            Vector2 pointerPosition)
+        {
+            return ModalBlocksDomain(block, host, owner) ||
+                (BlockBelongsToDomain(block, host, owner) && block.rect.Contains(pointerPosition));
+        }
+
+        static bool OwnsRemainingScroll(Vector2 pointerPosition)
+        {
+            var host = CurrentHostContext().host;
+            object owner = RegistrationOwner(NowInput.currentProvider);
+
+            for (int i = 0; i < _blocksPrevious.Count; ++i)
+            {
+                if (BlocksBasePointer(_blocksPrevious[i], host, owner, pointerPosition))
+                    return true;
+            }
+
+            if (_frameTransactions.Count == 0)
+                return false;
+
+            int start = Mathf.Clamp(
+                _frameTransactions[_frameTransactions.Count - 1].blockCount,
+                0,
+                _blocksCurrent.Count);
+
+            for (int i = start; i < _blocksCurrent.Count; ++i)
+            {
+                if (BlocksBasePointer(_blocksCurrent[i], host, owner, pointerPosition))
+                    return true;
             }
 
             return false;
@@ -631,19 +916,29 @@ namespace NowUI
         static bool IsOverlayContentBlocked()
         {
             int drawing = CurrentOverlayId();
+            var host = CurrentHostContext().host;
+            object owner = RegistrationOwner(NowInput.currentProvider);
 
             for (int i = 0; i < _blocksPrevious.Count; ++i)
             {
                 var block = _blocksPrevious[i];
 
-                if (!block.modal)
+                if (!ModalBlocksDomain(block, host, owner))
                     continue;
 
                 if (block.modalInteractiveRootId != 0 &&
                     drawing != 0 &&
                     (drawing == block.modalInteractiveRootId ||
-                     OverlayIdBelongsToTree(drawing, block.modalInteractiveRootId, _blocksPrevious) ||
-                     OverlayIdBelongsToTree(drawing, block.modalInteractiveRootId, _blocksCurrent)))
+                     OverlayIdBelongsToTree(
+                         drawing,
+                         block.modalInteractiveRootId,
+                         _blocksPrevious,
+                         owner) ||
+                     OverlayIdBelongsToTree(
+                         drawing,
+                         block.modalInteractiveRootId,
+                         _blocksCurrent,
+                         owner)))
                 {
                     continue;
                 }
@@ -662,12 +957,29 @@ namespace NowUI
         public static bool IsPointerInsideOverlayTree(int rootId, Vector2 pointerPosition)
         {
             BeginFrameIfNeeded();
+            var host = CurrentHostContext().host;
+            object owner = RegistrationOwner(NowInput.currentProvider);
 
             if (_overlayDepth > 0)
-                return IsPointerInsideOverlayTree(rootId, pointerPosition, _blocksCurrent);
+                return IsPointerInsideOverlayTree(
+                    rootId,
+                    pointerPosition,
+                    _blocksCurrent,
+                    host,
+                    owner);
 
-            return IsPointerInsideOverlayTree(rootId, pointerPosition, _blocksCurrent) ||
-                IsPointerInsideOverlayTree(rootId, pointerPosition, _blocksPrevious);
+            return IsPointerInsideOverlayTree(
+                    rootId,
+                    pointerPosition,
+                    _blocksCurrent,
+                    host,
+                    owner) ||
+                IsPointerInsideOverlayTree(
+                    rootId,
+                    pointerPosition,
+                    _blocksPrevious,
+                    host,
+                    owner);
         }
 
         /// <summary>
@@ -677,12 +989,14 @@ namespace NowUI
         internal static bool IsPointerInsideOverlay(Vector2 pointerPosition)
         {
             BeginFrameIfNeeded();
+            var host = CurrentHostContext().host;
+            object owner = RegistrationOwner(NowInput.currentProvider);
 
             if (_overlayDepth > 0)
-                return IsPointerInsideOverlay(pointerPosition, _blocksCurrent);
+                return IsPointerInsideOverlay(pointerPosition, _blocksCurrent, host, owner);
 
-            return IsPointerInsideOverlay(pointerPosition, _blocksCurrent) ||
-                IsPointerInsideOverlay(pointerPosition, _blocksPrevious);
+            return IsPointerInsideOverlay(pointerPosition, _blocksCurrent, host, owner) ||
+                IsPointerInsideOverlay(pointerPosition, _blocksPrevious, host, owner);
         }
 
         internal static bool IsPointerInsideOverlay(Component host, Vector2 pointerPosition)
@@ -715,15 +1029,21 @@ namespace NowUI
         public static bool HasNestedOverlay(int rootId)
         {
             BeginFrameIfNeeded();
+            var host = CurrentHostContext().host;
+            object owner = RegistrationOwner(NowInput.currentProvider);
 
             if (_overlayDepth > 0)
-                return HasNestedOverlay(rootId, _blocksCurrent);
+                return HasNestedOverlay(rootId, _blocksCurrent, host, owner);
 
-            return HasNestedOverlay(rootId, _blocksCurrent) ||
-                HasNestedOverlay(rootId, _blocksPrevious);
+            return HasNestedOverlay(rootId, _blocksCurrent, host, owner) ||
+                HasNestedOverlay(rootId, _blocksPrevious, host, owner);
         }
 
-        static bool HasNestedOverlay(int rootId, List<OverlayBlock> blocks)
+        static bool HasNestedOverlay(
+            int rootId,
+            List<OverlayBlock> blocks,
+            Component host,
+            object owner)
         {
             if (rootId == 0)
                 return false;
@@ -733,21 +1053,7 @@ namespace NowUI
                 if (blocks[i].id == 0 || blocks[i].id == rootId)
                     continue;
 
-                if (BlockBelongsToTree(blocks[i], rootId, blocks))
-                    return true;
-            }
-
-            return false;
-        }
-
-        static bool IsPointerInsideOverlayTree(int rootId, Vector2 pointerPosition, List<OverlayBlock> blocks)
-        {
-            if (rootId == 0)
-                return false;
-
-            for (int i = 0; i < blocks.Count; ++i)
-            {
-                if (!blocks[i].rect.Contains(pointerPosition))
+                if (!BlockBelongsToDomain(blocks[i], host, owner))
                     continue;
 
                 if (BlockBelongsToTree(blocks[i], rootId, blocks))
@@ -757,12 +1063,45 @@ namespace NowUI
             return false;
         }
 
-        static bool IsPointerInsideOverlay(Vector2 pointerPosition, List<OverlayBlock> blocks)
+        static bool IsPointerInsideOverlayTree(
+            int rootId,
+            Vector2 pointerPosition,
+            List<OverlayBlock> blocks,
+            Component host,
+            object owner)
+        {
+            if (rootId == 0)
+                return false;
+
+            for (int i = 0; i < blocks.Count; ++i)
+            {
+                if (!BlockBelongsToDomain(blocks[i], host, owner) ||
+                    !blocks[i].rect.Contains(pointerPosition))
+                {
+                    continue;
+                }
+
+                if (BlockBelongsToTree(blocks[i], rootId, blocks))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool IsPointerInsideOverlay(
+            Vector2 pointerPosition,
+            List<OverlayBlock> blocks,
+            Component host,
+            object owner)
         {
             for (int i = 0; i < blocks.Count; ++i)
             {
-                if (blocks[i].id != 0 && blocks[i].rect.Contains(pointerPosition))
+                if (blocks[i].id != 0 &&
+                    BlockBelongsToDomain(blocks[i], host, owner) &&
+                    blocks[i].rect.Contains(pointerPosition))
+                {
                     return true;
+                }
             }
 
             return false;
@@ -773,7 +1112,7 @@ namespace NowUI
             for (int i = 0; i < blocks.Count; ++i)
             {
                 if (blocks[i].id != 0 &&
-                    BlockBelongsToHost(blocks[i], host) &&
+                    blocks[i].host == host &&
                     blocks[i].rect.Contains(pointerPosition))
                 {
                     return true;
@@ -802,12 +1141,38 @@ namespace NowUI
             return false;
         }
 
-        static bool BlockBelongsToHost(OverlayBlock block, Component host)
+        static bool BlockBelongsToDomain(
+            OverlayBlock block,
+            Component host,
+            object registrationOwner)
         {
-            if (host == null)
-                return block.host == null;
+            if (host != null)
+                return block.host == host;
 
-            return block.host == host;
+            return block.host == null &&
+                ReferenceEquals(block.registrationOwner, registrationOwner);
+        }
+
+        static bool ModalBlocksDomain(
+            OverlayBlock block,
+            Component host,
+            object registrationOwner)
+        {
+            if (!block.modal)
+                return false;
+
+            // IMGUI control ids and coordinates are local to one native GUI
+            // context. A modal popup in one EditorWindow must not block a
+            // different window that happens to use the same local coordinates.
+            if (block.registrationOwner is NowIMGUIInputProvider ||
+                registrationOwner is NowIMGUIInputProvider)
+            {
+                return ReferenceEquals(block.registrationOwner, registrationOwner);
+            }
+
+            // Runtime modal overlays retain their documented all-surface
+            // behavior across screen, canvas, and world hosts.
+            return true;
         }
 
         static bool BlockContainsScreenPoint(OverlayBlock block, Vector2 screenPosition)
@@ -838,6 +1203,7 @@ namespace NowUI
                 rect = rect,
                 id = id,
                 parentId = CurrentOverlayId(),
+                registrationOwner = RegistrationOwner(NowInput.currentProvider),
                 host = host.host,
                 hostRectTransform = host.rectTransform,
                 hostCamera = host.camera
@@ -855,38 +1221,49 @@ namespace NowUI
                 return true;
 
             int parentId = block.parentId;
+            object owner = block.registrationOwner;
 
             for (int guard = 0; guard < blocks.Count && parentId != 0; ++guard)
             {
                 if (parentId == rootId)
                     return true;
 
-                parentId = FindParentId(parentId, blocks);
+                parentId = FindParentId(parentId, blocks, owner);
             }
 
             return false;
         }
 
-        static bool OverlayIdBelongsToTree(int id, int rootId, List<OverlayBlock> blocks)
+        static bool OverlayIdBelongsToTree(
+            int id,
+            int rootId,
+            List<OverlayBlock> blocks,
+            object owner)
         {
             if (id == 0 || rootId == 0)
                 return false;
 
             for (int i = blocks.Count - 1; i >= 0; --i)
             {
-                if (blocks[i].id == id)
+                if (blocks[i].id == id &&
+                    ReferenceEquals(blocks[i].registrationOwner, owner))
+                {
                     return BlockBelongsToTree(blocks[i], rootId, blocks);
+                }
             }
 
             return false;
         }
 
-        static int FindParentId(int id, List<OverlayBlock> blocks)
+        static int FindParentId(int id, List<OverlayBlock> blocks, object owner)
         {
             for (int i = blocks.Count - 1; i >= 0; --i)
             {
-                if (blocks[i].id == id)
+                if (blocks[i].id == id &&
+                    ReferenceEquals(blocks[i].registrationOwner, owner))
+                {
                     return blocks[i].parentId;
+                }
             }
 
             return 0;
@@ -903,12 +1280,18 @@ namespace NowUI
             return 0;
         }
 
-        static int FindTopOverlayId(List<OverlayBlock> blocks)
+        static int FindTopOverlayId(
+            List<OverlayBlock> blocks,
+            Component host,
+            object owner)
         {
             for (int i = blocks.Count - 1; i >= 0; --i)
             {
-                if (blocks[i].id != 0)
+                if (blocks[i].id != 0 &&
+                    BlockBelongsToDomain(blocks[i], host, owner))
+                {
                     return blocks[i].id;
+                }
             }
 
             return 0;
@@ -922,9 +1305,18 @@ namespace NowUI
                 return;
 
             _registryFrame = frame;
+            unchecked
+            {
+                ++_registryVersion;
+
+                if (_registryVersion == 0)
+                    _registryVersion = 1;
+            }
+
             _blocksPrevious.Clear();
             _blocksPrevious.AddRange(_blocksCurrent);
             _blocksCurrent.Clear();
+            PruneRegistrationOwners();
         }
 
         /// <summary>
@@ -948,8 +1340,18 @@ namespace NowUI
             // A deferred callback may close a nested draw capture. That capture
             // also flushes on dispose, but the outer loop still owns the queue
             // (and already observes callbacks appended while it runs).
-            if (_overlayDepth > 0 || _deferred.Count == 0)
+            if (_overlayDepth > 0)
                 return;
+
+            // A manually drawn scrim can register only Block/BlockScreen or
+            // BlockAllSurfaces. It still owns wheel input over that block, and
+            // IMGUI needs the native ScrollWheel event consumed even though
+            // there is no deferred callback to flush.
+            if (_deferred.Count == 0)
+            {
+                ConsumeRemainingOwnedScroll();
+                return;
+            }
 
             using var profile = NowProfiler.OverlayFlush.Auto();
             Now.MarkOverlayBatchStart();
@@ -971,6 +1373,7 @@ namespace NowUI
                             $"NowOverlay.Flush aborted after {MaxFlushedOverlays} overlays in one frame — an overlay " +
                             $"is re-deferring itself every pass. Last overlay id {last.overlayId}, callback " +
                             $"{callback?.DeclaringType?.Name}.{callback?.Name}.");
+                        RollbackFrameTransaction();
                         break;
                     }
 
@@ -997,6 +1400,8 @@ namespace NowUI
                     if (_resetDuringFlush)
                         break;
                 }
+
+                ConsumeRemainingOwnedScroll();
             }
             catch
             {
@@ -1028,6 +1433,18 @@ namespace NowUI
             }
         }
 
+        static void ConsumeRemainingOwnedScroll()
+        {
+            var snapshot = NowInput.current;
+
+            if (snapshot.hasPointer &&
+                snapshot.scrollDelta != Vector2.zero &&
+                OwnsRemainingScroll(snapshot.pointerPosition))
+            {
+                NowInput.ConsumeRemainingOverlayScroll();
+            }
+        }
+
         /// <summary>
         /// Drops callbacks and pointer blocks owned by a screen frame that crossed
         /// a frame boundary without being disposed. Host and popup-fit scopes are
@@ -1040,7 +1457,9 @@ namespace NowUI
             _blocksCurrent.Clear();
             _blocksPrevious.Clear();
             _drawingStack.Clear();
+            _registrationOwners.Clear();
             _registryFrame = -1;
+            _registryVersion = 0;
             _overlayDepth = 0;
         }
 
@@ -1061,10 +1480,15 @@ namespace NowUI
                 _postResetDeferredStart = prefix;
                 _blocksCurrent.Clear();
                 _blocksPrevious.Clear();
+                _registrationOwners.Clear();
                 _registryFrame = -1;
+                _registryVersion = 0;
 
                 for (int i = 0; i < _frameTransactions.Count; ++i)
+                {
                     _frameTransactions[i] = default;
+                    _frameTransactionOwners[i] = null;
+                }
 
                 // Host and popup-fit stacks are ambient scopes owned by the
                 // retained host that is currently flushing. Keep them balanced
@@ -1078,7 +1502,9 @@ namespace NowUI
             _blocksPrevious.Clear();
             _drawingStack.Clear();
             _hostStack.Clear();
+            _registrationOwners.Clear();
             _registryFrame = -1;
+            _registryVersion = 0;
             _overlayDepth = 0;
             _flushIndex = -1;
             _resetDuringFlush = false;
@@ -1086,6 +1512,12 @@ namespace NowUI
             ClearFrameTransactions();
             NowPopupPlacement.Reset();
         }
+
+        internal static int currentBlockCount => _blocksCurrent.Count;
+
+        internal static int previousBlockCount => _blocksPrevious.Count;
+
+        internal static int registrationOwnerCount => _registrationOwners.Count;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetForRuntimeLoad()

@@ -197,6 +197,7 @@ namespace NowUI
 
                 if (snapshot.submitPressed && state.filteredIndices.Count > 0)
                 {
+                    NowInput.ConsumeKeyActivity();
                     int row = state.highlight >= 0 && state.highlight < state.filteredIndices.Count
                         ? state.highlight
                         : 0;
@@ -207,6 +208,7 @@ namespace NowUI
 
                 if (snapshot.cancelPressed && !NowInput.cancelConsumed && !NowOverlay.HasNestedOverlay(id))
                 {
+                    NowInput.ConsumeKeyActivity();
                     open = false;
                     NowFocus.Clear();
                 }
@@ -215,7 +217,6 @@ namespace NowUI
             if (!open)
                 return changed;
 
-            NowControlState.RequestRepaint();
             DeferPopup(theme, _options, _optionDetails, id, filterId, rect, selected, optionCount, _fitToView, _popupMinWidth, _placeholder, false);
             return changed;
         }
@@ -299,6 +300,7 @@ namespace NowUI
 
                 if (snapshot.submitPressed && rowCount > 0)
                 {
+                    NowInput.ConsumeKeyActivity();
                     int row = state.highlight >= 0 && state.highlight < rowCount
                         ? state.highlight
                         : 0;
@@ -309,6 +311,7 @@ namespace NowUI
 
                 if (snapshot.cancelPressed && !NowInput.cancelConsumed && !NowOverlay.HasNestedOverlay(id))
                 {
+                    NowInput.ConsumeKeyActivity();
                     open = false;
                     NowFocus.Clear();
                 }
@@ -317,7 +320,6 @@ namespace NowUI
             if (!open)
                 return changed;
 
-            NowControlState.RequestRepaint();
             DeferPopup(theme, _options, _optionDetails, id, filterId, rect, IndexOfOption(_options, value), optionCount, _fitToView, _popupMinWidth, _placeholder, _allowCustomValue);
             return changed;
         }
@@ -497,6 +499,7 @@ namespace NowUI
 
             if (pressedOutside)
             {
+                NowInput.ConsumePointerPress();
                 NowControlState.Get<bool>(state.id) = false;
 
                 if (NowFocus.focusedId == state.filterId)

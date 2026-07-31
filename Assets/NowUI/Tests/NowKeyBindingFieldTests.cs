@@ -101,6 +101,7 @@ public class NowKeyBindingFieldTests
             ++_frame;
 
         snapshot.frame = _frame;
+        snapshot.inputPass = _frame;
         _pointer.snapshot = snapshot;
         _keys.frame = new NowKeyInputFrame { pressedKey = pressed };
         NowKeyInput.Invalidate();

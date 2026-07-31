@@ -22,7 +22,11 @@ namespace NowUI
 
         readonly int _scopeId = NowControls.AllocateHostScopeId();
 
-        IVisualElementScheduledItem _repaintItem;
+        const long ContinuousRepaintIntervalMilliseconds = 16;
+
+        IVisualElementScheduledItem _continuousRepaintItem;
+
+        IVisualElementScheduledItem _interactionRepaintItem;
 
         NowRenderer _renderer;
 
@@ -40,7 +44,9 @@ namespace NowUI
 
         Color _clearColor = Color.clear;
 
-        bool _wantsInteractionRepaint;
+        NowInteractionRepaintTracker _interactionRepaintTracker;
+
+        float _nextInteractionRepaintAt = float.PositiveInfinity;
 
         Vector2 _measuredContentSize;
 
@@ -83,8 +89,13 @@ namespace NowUI
             RegisterCallback<KeyDownEvent>(OnKeyDown);
             RegisterCallback<KeyUpEvent>(OnKeyUp);
 
-            _repaintItem = schedule.Execute(ScheduledRepaint).Every(16);
-            _repaintItem.Pause();
+            _continuousRepaintItem = schedule
+                .Execute(ScheduledContinuousRepaint)
+                .Every(ContinuousRepaintIntervalMilliseconds);
+            _continuousRepaintItem.Pause();
+
+            _interactionRepaintItem = schedule.Execute(ScheduledInteractionRepaint);
+            _interactionRepaintItem.Pause();
         }
 
         public event Action<NowVisualElement, NowRect> rebuildNowUI;
@@ -99,6 +110,8 @@ namespace NowUI
                     return;
 
                 _rebuildEveryFrame = value;
+                RefreshContinuousRepaintSchedule();
+                RefreshInteractionRepaintSchedule();
                 MarkDirty();
             }
         }
@@ -118,8 +131,19 @@ namespace NowUI
         public bool autoRebuildOnInteraction
         {
             get => _autoRebuildOnInteraction;
-            set => _autoRebuildOnInteraction = value;
+            set
+            {
+                if (_autoRebuildOnInteraction == value)
+                    return;
+
+                _autoRebuildOnInteraction = value;
+                RefreshInteractionRepaintSchedule();
+            }
         }
+
+        internal bool interactionRepaintDue => _interactionRepaintTracker.wantsRepaint;
+
+        internal float nextInteractionRepaintAt => _nextInteractionRepaintAt;
 
         /// <summary>Explicit-rect UI Toolkit hosts are one-pass; use NowLayoutVisualElement for NowLayout content.</summary>
         internal virtual bool useLayoutMeasurePass => false;
@@ -223,7 +247,8 @@ namespace NowUI
                 return;
 
             _disposed = true;
-            _repaintItem?.Pause();
+            _continuousRepaintItem?.Pause();
+            ClearInteractionRepaintRequest();
             ReleaseTarget();
 
             if (_renderer != null)
@@ -257,7 +282,8 @@ namespace NowUI
         {
             _disposed = false;
             _inputProvider.Reset();
-            _repaintItem?.Resume();
+            ClearInteractionRepaintRequest();
+            RefreshContinuousRepaintSchedule();
             MarkDirty();
         }
 
@@ -273,13 +299,29 @@ namespace NowUI
                 MarkDirty();
         }
 
-        void ScheduledRepaint()
+        void ScheduledContinuousRepaint()
         {
-            if (panel == null)
+            if (panel == null || !_rebuildEveryFrame)
                 return;
 
-            if (_rebuildEveryFrame || (_autoRebuildOnInteraction && _wantsInteractionRepaint))
-                MarkDirty();
+            MarkDirty();
+        }
+
+        void ScheduledInteractionRepaint()
+        {
+            if (_disposed || panel == null || !_autoRebuildOnInteraction || _rebuildEveryFrame)
+                return;
+
+            if (!_interactionRepaintTracker.wantsRepaint)
+            {
+                // The scheduler may wake a millisecond early. Retain the
+                // original absolute deadline and wait only for the remainder.
+                RefreshInteractionRepaintSchedule();
+                return;
+            }
+
+            _interactionRepaintItem?.Pause();
+            MarkDirty();
         }
 
         void OnGenerateVisualContent(MeshGenerationContext context)
@@ -339,14 +381,15 @@ namespace NowUI
                     inputScope.Dispose();
                 }
 
-                _wantsInteractionRepaint = frame.EndRepaintTracking();
+                bool wantsRepaint = frame.EndRepaintTracking(out float nextRepaintAt);
+                SetInteractionRepaintRequest(wantsRepaint, nextRepaintAt);
 
                 scope.Dispose();
                 renderer.Render(target, true, _clearColor);
             }
             catch (Exception ex)
             {
-                _wantsInteractionRepaint = false;
+                ClearInteractionRepaintRequest();
                 scope.Cancel();
                 renderer.Clear();
                 Debug.LogException(ex);
@@ -355,6 +398,81 @@ namespace NowUI
             {
                 frame.Dispose();
             }
+        }
+
+        internal void SetInteractionRepaintRequest(bool immediate, float nextRepaintAt)
+        {
+            _interactionRepaintTracker.SetRepaintRequest(immediate, nextRepaintAt);
+            _nextInteractionRepaintAt = IsFinite(nextRepaintAt)
+                ? nextRepaintAt
+                : float.PositiveInfinity;
+            RefreshInteractionRepaintSchedule();
+        }
+
+        void ClearInteractionRepaintRequest()
+        {
+            _interactionRepaintTracker.Reset();
+            _nextInteractionRepaintAt = float.PositiveInfinity;
+            _interactionRepaintItem?.Pause();
+        }
+
+        void RefreshContinuousRepaintSchedule()
+        {
+            if (_continuousRepaintItem == null)
+                return;
+
+            if (!_disposed && panel != null && _rebuildEveryFrame)
+                _continuousRepaintItem.Resume();
+            else
+                _continuousRepaintItem.Pause();
+        }
+
+        void RefreshInteractionRepaintSchedule()
+        {
+            if (_interactionRepaintItem == null)
+                return;
+
+            long delay = InteractionRepaintDelayMilliseconds(
+                _interactionRepaintTracker.wantsRepaint,
+                _nextInteractionRepaintAt,
+                Time.realtimeSinceStartup);
+
+            if (_disposed ||
+                panel == null ||
+                !_autoRebuildOnInteraction ||
+                _rebuildEveryFrame ||
+                delay < 0)
+            {
+                _interactionRepaintItem.Pause();
+                return;
+            }
+
+            _interactionRepaintItem.Pause();
+            _interactionRepaintItem.ExecuteLater(delay);
+        }
+
+        internal static long InteractionRepaintDelayMilliseconds(
+            bool immediate,
+            float nextRepaintAt,
+            float realtime)
+        {
+            if (immediate)
+                return 0;
+
+            if (!IsFinite(nextRepaintAt))
+                return -1;
+
+            double milliseconds = Math.Ceiling(
+                Math.Max(0d, ((double)nextRepaintAt - realtime) * 1000d));
+
+            // UI Toolkit's scheduler accepts a long, but its platform timer
+            // need not. A very distant deadline can wake and reschedule safely.
+            return (long)Math.Min(milliseconds, int.MaxValue);
+        }
+
+        static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
         }
 
         RenderTexture GetTarget(int width, int height)

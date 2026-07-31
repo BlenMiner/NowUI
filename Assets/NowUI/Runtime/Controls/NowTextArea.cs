@@ -543,7 +543,10 @@ namespace NowUI
                     DrawCompositionUnderline(theme, display, lines, fontAsset, fontSize, textStyle.fontStyle,
                         inner, lineHeight, area.scrollY, state.caret, displayCaret, firstVisible, lastVisible);
 
-                if (focused && NowControlState.Blink(1f, area.blinkAnchor))
+                if (focused &&
+                    (NowInput.isPassive
+                        ? NowControlState.Blink(1f, area.blinkAnchor)
+                        : NowControlState.ScheduledBlink(1f, area.blinkAnchor)))
                 {
                     renderer.DrawCaret(theme, new NowRect(
                             inner.x + caretX,
@@ -561,9 +564,6 @@ namespace NowUI
                 renderer.DrawScrollbar(new NowScrollbarRenderContext(
                     theme, NowScrollbarAxis.Vertical, metrics, scrollbarDragging, hoverT));
             }
-
-            if (focused)
-                NowControlState.RequestRepaint();
 
             return text != original;
         }

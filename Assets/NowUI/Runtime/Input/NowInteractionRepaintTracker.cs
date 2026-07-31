@@ -15,16 +15,34 @@ namespace NowUI
     {
         bool _wantsRepaint;
 
+        bool _hasScheduledRepaint;
+
+        float _nextRepaintAt;
+
         bool _hasLastInput;
 
         NowInteractionInputState _lastInput;
 
         /// <summary>True when a hosted control asked for a repaint during the last rebuild.</summary>
-        public bool wantsRepaint => _wantsRepaint;
+        public bool wantsRepaint =>
+            _wantsRepaint ||
+            (_hasScheduledRepaint && Time.realtimeSinceStartup >= _nextRepaintAt);
 
         public void SetWantsRepaint(bool value)
         {
             _wantsRepaint = value;
+
+            if (!value)
+                _hasScheduledRepaint = false;
+        }
+
+        public void SetRepaintRequest(bool immediate, float nextRepaintAt)
+        {
+            _wantsRepaint = immediate;
+            _hasScheduledRepaint =
+                !float.IsNaN(nextRepaintAt) &&
+                !float.IsInfinity(nextRepaintAt);
+            _nextRepaintAt = nextRepaintAt;
         }
 
         /// <summary>Records the input state the host just rebuilt with.</summary>
@@ -63,6 +81,7 @@ namespace NowUI
         public bool ShouldRepaint(INowInputProvider provider, NowInputSurface surface)
         {
             return _wantsRepaint ||
+                (_hasScheduledRepaint && Time.realtimeSinceStartup >= _nextRepaintAt) ||
                 HasInputChanged(provider, surface) ||
                 NowTextInput.current.hasActivity;
         }
@@ -71,6 +90,8 @@ namespace NowUI
         public void Reset()
         {
             _hasLastInput = false;
+            _wantsRepaint = false;
+            _hasScheduledRepaint = false;
         }
     }
 }

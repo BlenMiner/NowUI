@@ -75,8 +75,14 @@ namespace NowUI
                 ? interaction.pointerPosition.y - metrics.track.y - metrics.thumb.height * 0.5f
                 : interaction.pointerPosition.x - metrics.track.x - metrics.thumb.width * 0.5f;
             float t = Mathf.Clamp01(pointer / metrics.travel);
-            value = t * metrics.maxValue;
-            NowControlState.RequestRepaint();
+            float next = t * metrics.maxValue;
+
+            if (!Mathf.Approximately(value, next))
+            {
+                value = next;
+                NowControlState.RequestRepaint();
+            }
+
             return true;
         }
 

@@ -102,7 +102,7 @@ namespace NowUI
         {
             if (s_dragScrollRegionId != id ||
                 s_dragScrollFrame != NowInput.current.frame ||
-                NowInput.activeId == 0)
+                !NowInput.hasActiveInteraction)
             {
                 return false;
             }
@@ -586,9 +586,29 @@ namespace NowUI
             if (vx == 0f && vy == 0f)
                 return;
 
-            scroll.x += vx * dt;
-            scroll.y += vy * dt;
-            NowControlState.RequestRepaint();
+            float previousX = _maxScrollX > 0f
+                ? Mathf.Clamp(scroll.x, 0f, _maxScrollX)
+                : 0f;
+            float previousY = _maxScrollY > 0f
+                ? Mathf.Clamp(scroll.y, 0f, _maxScrollY)
+                : 0f;
+            scroll.x = _maxScrollX > 0f
+                ? Mathf.Clamp(previousX + vx * dt, 0f, _maxScrollX)
+                : 0f;
+            scroll.y = _maxScrollY > 0f
+                ? Mathf.Clamp(previousY + vy * dt, 0f, _maxScrollY)
+                : 0f;
+
+            bool moved =
+                !Mathf.Approximately(previousX, scroll.x) ||
+                !Mathf.Approximately(previousY, scroll.y);
+
+            if (moved ||
+                CanAutoScroll(scroll.x, _maxScrollX, vx) ||
+                CanAutoScroll(scroll.y, _maxScrollY, vy))
+            {
+                NowControlState.RequestRepaint();
+            }
         }
 
         /// <summary>
@@ -638,14 +658,33 @@ namespace NowUI
 
             float dt = ConsumeDeltaTime("pan-scroll-time", snapshot.time);
             Vector2 offset = snapshot.pointerPosition - pan.anchor;
+            float vx = _maxScrollX > 0f ? PanVelocity(offset.x) : 0f;
+            float vy = _maxScrollY > 0f ? PanVelocity(offset.y) : 0f;
 
-            if (_maxScrollX > 0f)
-                scroll.x += PanVelocity(offset.x) * dt;
+            float previousX = _maxScrollX > 0f
+                ? Mathf.Clamp(scroll.x, 0f, _maxScrollX)
+                : 0f;
+            float previousY = _maxScrollY > 0f
+                ? Mathf.Clamp(scroll.y, 0f, _maxScrollY)
+                : 0f;
+            scroll.x = _maxScrollX > 0f
+                ? Mathf.Clamp(previousX + vx * dt, 0f, _maxScrollX)
+                : 0f;
+            scroll.y = _maxScrollY > 0f
+                ? Mathf.Clamp(previousY + vy * dt, 0f, _maxScrollY)
+                : 0f;
 
-            if (_maxScrollY > 0f)
-                scroll.y += PanVelocity(offset.y) * dt;
+            bool moved =
+                !Mathf.Approximately(previousX, scroll.x) ||
+                !Mathf.Approximately(previousY, scroll.y);
 
-            NowControlState.RequestRepaint();
+            if (moved ||
+                CanAutoScroll(scroll.x, _maxScrollX, vx) ||
+                CanAutoScroll(scroll.y, _maxScrollY, vy))
+            {
+                NowControlState.RequestRepaint();
+            }
+
             return true;
         }
 
@@ -683,6 +722,13 @@ namespace NowUI
                 return 0f;
 
             return Mathf.Sign(distance) * (magnitude - PanDeadZone) * PanScrollSpeed;
+        }
+
+        static bool CanAutoScroll(float value, float maxValue, float velocity)
+        {
+            return maxValue > 0f &&
+                ((velocity < 0f && value > 0f) ||
+                 (velocity > 0f && value < maxValue));
         }
 
         static bool WouldWheelMove(Vector2 scroll, float maxScrollX, float maxScrollY, Vector2 wheel)

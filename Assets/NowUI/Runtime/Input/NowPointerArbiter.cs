@@ -89,6 +89,26 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Starts a fresh immediate-provider pass. IMGUI may rebuild the same
+        /// panel several times without advancing <see cref="Time.frameCount"/>;
+        /// replace that panel's current footprint instead of appending another
+        /// copy of every interactive rect.
+        /// </summary>
+        internal static void BeginProviderPass(object key)
+        {
+            if (key == null)
+                return;
+
+            BeginFrameIfNeeded();
+
+            for (int i = _contentCurrent.Count - 1; i >= 0; --i)
+            {
+                if (ReferenceEquals(_contentCurrent[i].key, key))
+                    _contentCurrent.RemoveAt(i);
+            }
+        }
+
+        /// <summary>
         /// True when this surface may treat the pointer as its own: either it
         /// won last frame's arbitration, or nothing claimed the pointer at all.
         /// </summary>
@@ -262,6 +282,8 @@ namespace NowUI
             _winner = null;
             _registryFrame = -1;
         }
+
+        internal static int currentContentCount => _contentCurrent.Count;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetForRuntimeLoad()

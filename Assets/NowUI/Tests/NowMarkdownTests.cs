@@ -784,7 +784,7 @@ public class NowMarkdownTests
             var rect = new NowRect(0, 0, 400f, 300f);
             NowMarkdownResult last = default;
 
-            void Frame(NowInputSnapshot snapshot, bool forceOverlayFrame = false)
+            void Frame(NowInputSnapshot snapshot)
             {
                 keyboard.frame = default;
                 NowTextInput.Invalidate();
@@ -793,9 +793,6 @@ public class NowMarkdownTests
                 using (NowInput.Begin(_provider, Surface))
                 using (_drawList.Begin(Surface))
                 {
-                    if (forceOverlayFrame)
-                        NowOverlay.ForceNewFrame();
-
                     last = document.Draw(rect);
                     NowOverlay.Flush();
                 }
@@ -809,15 +806,15 @@ public class NowMarkdownTests
             Frame(new NowInputSnapshot(overCode, NowPointerButtons.Secondary, NowPointerButtons.Secondary, NowPointerButtons.None));
             Assert.IsTrue(NowContextMenu.isOpen, "right-clicking the code block must open the menu");
 
-            Frame(new NowInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
+            Frame(new NowInputSnapshot(overLink, false, false, false));
             Assert.IsNull(last.hoveredLink, "an open context menu must block hover beneath it");
             Assert.IsTrue(NowContextMenu.isOpen, "hovering elsewhere must not dismiss the menu");
 
             Frame(new NowInputSnapshot(true, overLink, overLink, Vector2.zero, false, false, false, new Vector2(0f, 1f), 1, 1f));
             Assert.IsFalse(NowContextMenu.isOpen, "scrolling must dismiss the menu");
 
-            Frame(new NowInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
-            Frame(new NowInputSnapshot(overLink, false, false, false), forceOverlayFrame: true);
+            Frame(new NowInputSnapshot(overLink, false, false, false));
+            Frame(new NowInputSnapshot(overLink, false, false, false));
             Assert.AreEqual("https://example.com/x", last.hoveredLink,
                 "closing the menu must release the pointer block");
         }

@@ -1216,7 +1216,9 @@ public class NowWorldGraphicTests
                 pointerButtonsPressed = NowPointerButtons.Primary
             }, out var pressSnapshot);
 
-            using (NowInput.Begin(new FakeProvider { snapshot = pressSnapshot }, surface))
+            var replayProvider = new FakeProvider { snapshot = pressSnapshot };
+
+            using (NowInput.Begin(replayProvider, surface))
                 Assert.IsTrue(NowInput.Interact(7, new NowRect(0, 0, 100, 50)).pressed);
 
             Assert.AreEqual(7, NowInput.activeId);
@@ -1228,7 +1230,9 @@ public class NowWorldGraphicTests
                 pointerButtonsReleased = NowPointerButtons.Primary
             }, out var releaseSnapshot);
 
-            using (NowInput.Begin(new FakeProvider { snapshot = releaseSnapshot }, surface))
+            replayProvider.snapshot = releaseSnapshot;
+
+            using (NowInput.Begin(replayProvider, surface))
                 Assert.IsTrue(NowInput.Interact(7, new NowRect(0, 0, 100, 50)).released);
 
             Assert.AreEqual(0, NowInput.activeId);

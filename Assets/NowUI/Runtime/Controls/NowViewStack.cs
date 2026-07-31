@@ -1114,6 +1114,7 @@ namespace NowUI
 
             if (entry.options.closeOnCancel && snapshot.cancelPressed && !NowInput.cancelConsumed)
             {
+                NowInput.ConsumeKeyActivity();
                 Pop(entry);
                 return;
             }
@@ -1124,6 +1125,7 @@ namespace NowUI
             if (snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(entry.overlayId, snapshot.pointerPosition))
             {
+                NowInput.ConsumePointerPress();
                 Pop(entry);
             }
         }

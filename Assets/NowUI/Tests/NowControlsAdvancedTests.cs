@@ -2381,13 +2381,13 @@ public class NowControlsAdvancedTests
 
         NowOverlay.ForceNewFrame();
 
-        Assert.IsTrue(NowOverlay.IsPointerBlocked(new Vector2(50, 50)));
-        Assert.IsFalse(NowOverlay.IsPointerBlocked(new Vector2(200, 200)));
-
         _pointer.snapshot = new NowInputSnapshot(new Vector2(50, 50), false, false, false);
 
         using (NowInput.Begin(_pointer, Surface))
         {
+            Assert.IsTrue(NowOverlay.IsPointerBlocked(new Vector2(50, 50)));
+            Assert.IsFalse(NowOverlay.IsPointerBlocked(new Vector2(200, 200)));
+
             var interaction = NowInput.Interact(99, new NowRect(0, 0, 100, 100));
             Assert.IsFalse(interaction.hovered);
         }
@@ -2691,7 +2691,7 @@ public class NowControlsAdvancedTests
             false, false, false, false, false, false, 1, time);
     }
 
-    void DrawDragScrollFrame(Vector2 pointer, bool down, bool pressed, bool released, float time)
+    Vector2 DrawDragScrollFrame(Vector2 pointer, bool down, bool pressed, bool released, float time)
     {
         _pointer.snapshot = ButtonSnapshot(
             pointer,
@@ -2702,13 +2702,15 @@ public class NowControlsAdvancedTests
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-        using (Now.ScrollView(new NowRect(0, 0, 200, 100), "drag-scroll").Begin())
+        using (var scroll = Now.ScrollView(new NowRect(0, 0, 200, 100), "drag-scroll").Begin())
         {
             NowLayout.ReserveRect(180f, 400f);
             var content = NowInput.Interact("drag-content", new NowRect(0, 0, 200, 400));
 
             if (content.dragging)
                 NowScrollView.RequestDragScroll();
+
+            return scroll.maxScrollOffset;
         }
     }
 
@@ -2775,7 +2777,87 @@ public class NowControlsAdvancedTests
         }
     }
 
-    void DrawPanScrollFrame(Vector2 pointer, bool middleDown, bool middlePressed, bool middleReleased, bool primaryPressed, float time)
+    [Test]
+    public void ScrollViewDragScrollAtClampedEdgeDoesNotRequestContinuousRepaint()
+    {
+        NowLayout.Reset();
+
+        try
+        {
+            DrawDragScrollFrame(new Vector2(100f, 50f), false, false, false, 0.00f);
+            DrawDragScrollFrame(new Vector2(100f, 50f), false, false, false, 0.05f);
+            DrawDragScrollFrame(new Vector2(100f, 50f), true, true, false, 0.10f);
+            Vector2 maxScroll = DrawDragScrollFrame(
+                new Vector2(100f, 92f),
+                true,
+                false,
+                false,
+                0.15f);
+
+            int scrollId;
+
+            using (NowInput.Begin(_pointer, Surface))
+                scrollId = NowControls.GetControlId("drag-scroll");
+
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(scrollId);
+            scroll.y = maxScroll.y;
+
+            NowControlState.BeginRepaintTracking();
+            DrawDragScrollFrame(new Vector2(100f, 92f), true, false, false, 0.20f);
+            bool wantsRepaint = NowControlState.EndRepaintTracking();
+
+            Assert.IsFalse(
+                wantsRepaint,
+                "Drag auto-scroll pushing against a clamped edge must wait for pointer input instead of rebuilding continuously.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+        }
+    }
+
+    [Test]
+    public void ScrollViewDragScrollRequestsFinalRepaintWhenItReachesEdge()
+    {
+        NowLayout.Reset();
+
+        try
+        {
+            DrawDragScrollFrame(new Vector2(100f, 50f), false, false, false, 0.00f);
+            DrawDragScrollFrame(new Vector2(100f, 50f), false, false, false, 0.05f);
+            DrawDragScrollFrame(new Vector2(100f, 50f), true, true, false, 0.10f);
+            Vector2 maxScroll = DrawDragScrollFrame(
+                new Vector2(100f, 92f),
+                true,
+                false,
+                false,
+                0.15f);
+
+            int scrollId;
+
+            using (NowInput.Begin(_pointer, Surface))
+                scrollId = NowControls.GetControlId("drag-scroll");
+
+            Assert.Greater(maxScroll.y, 1f);
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(scrollId);
+            scroll.y = maxScroll.y - 1f;
+
+            NowControlState.BeginRepaintTracking();
+            DrawDragScrollFrame(new Vector2(100f, 92f), true, false, false, 0.20f);
+            bool wantsRepaint = NowControlState.EndRepaintTracking();
+
+            Assert.AreEqual(maxScroll.y, scroll.y, 0.001f);
+            Assert.IsTrue(
+                wantsRepaint,
+                "The pass that first reaches the clamp must render the final scroll position once.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+        }
+    }
+
+    Vector2 DrawPanScrollFrame(Vector2 pointer, bool middleDown, bool middlePressed, bool middleReleased, bool primaryPressed, float time)
     {
         _pointer.snapshot = ButtonSnapshot(
             pointer,
@@ -2787,9 +2869,10 @@ public class NowControlsAdvancedTests
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-        using (Now.ScrollView(new NowRect(0, 0, 200, 100), "pan-scroll").Begin())
+        using (var scroll = Now.ScrollView(new NowRect(0, 0, 200, 100), "pan-scroll").Begin())
         {
             NowLayout.ReserveRect(180f, 400f);
+            return scroll.maxScrollOffset;
         }
     }
 
@@ -2820,6 +2903,123 @@ public class NowControlsAdvancedTests
             float afterStop = scroll.y;
             DrawPanScrollFrame(new Vector2(100f, 90f), false, false, false, false, 0.35f);
             Assert.AreEqual(afterStop, scroll.y, 0.001f, "Any button press must end sticky pan mode.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+        }
+    }
+
+    [Test]
+    public void ScrollViewIdleStickyPanDoesNotRequestContinuousRepaint()
+    {
+        NowLayout.Reset();
+
+        try
+        {
+            var anchor = new Vector2(100f, 50f);
+            DrawPanScrollFrame(anchor, false, false, false, false, 0.00f);
+            DrawPanScrollFrame(anchor, false, false, false, false, 0.05f);
+            DrawPanScrollFrame(anchor, true, true, false, false, 0.10f);
+            DrawPanScrollFrame(anchor, false, false, true, false, 0.15f);
+
+            NowControlState.BeginRepaintTracking();
+            DrawPanScrollFrame(anchor, false, false, false, false, 0.20f);
+            bool wantsRepaint = NowControlState.EndRepaintTracking();
+
+            Assert.IsFalse(
+                wantsRepaint,
+                "Sticky pan inside its dead zone must wait for pointer input instead of rebuilding continuously.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+        }
+    }
+
+    [Test]
+    public void ScrollViewStickyPanAtClampedEdgeDoesNotRequestContinuousRepaint()
+    {
+        NowLayout.Reset();
+
+        try
+        {
+            var anchor = new Vector2(100f, 50f);
+            DrawPanScrollFrame(anchor, false, false, false, false, 0.00f);
+            DrawPanScrollFrame(anchor, false, false, false, false, 0.05f);
+            DrawPanScrollFrame(anchor, true, true, false, false, 0.10f);
+            Vector2 maxScroll = DrawPanScrollFrame(
+                anchor,
+                false,
+                false,
+                true,
+                false,
+                0.15f);
+
+            int scrollId;
+
+            using (NowInput.Begin(_pointer, Surface))
+                scrollId = NowControls.GetControlId("pan-scroll");
+
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(scrollId);
+            scroll.y = maxScroll.y;
+
+            NowControlState.BeginRepaintTracking();
+            DrawPanScrollFrame(new Vector2(100f, 90f), false, false, false, false, 0.20f);
+            bool wantsRepaint = NowControlState.EndRepaintTracking();
+
+            Assert.IsFalse(
+                wantsRepaint,
+                "Sticky pan pushing against a clamped edge must wait for pointer input instead of rebuilding continuously.");
+        }
+        finally
+        {
+            NowLayout.Reset();
+        }
+    }
+
+    [Test]
+    public void ScrollViewStickyPanRequestsFinalRepaintWhenItReachesEdge()
+    {
+        NowLayout.Reset();
+
+        try
+        {
+            var anchor = new Vector2(100f, 50f);
+            DrawPanScrollFrame(anchor, false, false, false, false, 0.00f);
+            DrawPanScrollFrame(anchor, false, false, false, false, 0.05f);
+            DrawPanScrollFrame(anchor, true, true, false, false, 0.10f);
+            Vector2 maxScroll = DrawPanScrollFrame(
+                anchor,
+                false,
+                false,
+                true,
+                false,
+                0.15f);
+
+            int scrollId;
+
+            using (NowInput.Begin(_pointer, Surface))
+                scrollId = NowControls.GetControlId("pan-scroll");
+
+            Assert.Greater(maxScroll.y, 1f);
+            ref Vector2 scroll = ref NowControlState.Get<Vector2>(scrollId);
+            scroll.y = maxScroll.y - 1f;
+
+            NowControlState.BeginRepaintTracking();
+            DrawPanScrollFrame(
+                new Vector2(100f, 90f),
+                false,
+                false,
+                false,
+                false,
+                0.20f);
+            bool wantsRepaint = NowControlState.EndRepaintTracking();
+
+            Assert.AreEqual(maxScroll.y, scroll.y, 0.001f);
+            Assert.IsTrue(
+                wantsRepaint,
+                "The pass that first reaches the clamp must render the final scroll position once.");
         }
         finally
         {

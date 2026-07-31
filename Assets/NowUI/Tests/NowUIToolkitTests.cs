@@ -187,4 +187,74 @@ public class NowUIToolkitTests
         }
     }
 
+    [Test]
+    public void VisualElementRetainsCaretBlinkDeadlineWithoutImmediateRepaint()
+    {
+        var element = new NowVisualElement();
+
+        try
+        {
+            float anchor = Time.realtimeSinceStartup;
+
+            NowControlState.BeginRepaintTracking();
+            NowControlState.ScheduledBlink(100f, anchor);
+            bool immediate = NowControlState.EndRepaintTracking(out float nextRepaintAt);
+
+            element.SetInteractionRepaintRequest(immediate, nextRepaintAt);
+
+            Assert.IsFalse(immediate);
+            Assert.IsFalse(element.interactionRepaintDue,
+                "A future caret phase boundary must not turn into a continuous immediate repaint.");
+            Assert.AreEqual(nextRepaintAt, element.nextInteractionRepaintAt, 0.0001f,
+                "The UI Toolkit host must retain the absolute caret deadline emitted by the frame.");
+            Assert.Greater(
+                NowVisualElement.InteractionRepaintDelayMilliseconds(
+                    element.interactionRepaintDue,
+                    element.nextInteractionRepaintAt,
+                    Time.realtimeSinceStartup),
+                0L,
+                "A future caret phase should be represented by a one-shot delay.");
+
+            element.SetInteractionRepaintRequest(
+                immediate: false,
+                nextRepaintAt: Time.realtimeSinceStartup - 0.01f);
+            Assert.IsTrue(element.interactionRepaintDue,
+                "Once its retained deadline passes, the caret phase must request exactly the next rebuild.");
+        }
+        finally
+        {
+            element.Dispose();
+        }
+    }
+
+    [Test]
+    public void VisualElementDeadlineDelayIsDueOnceAndIdleWithoutARequest()
+    {
+        Assert.AreEqual(
+            750L,
+            NowVisualElement.InteractionRepaintDelayMilliseconds(
+                immediate: false,
+                nextRepaintAt: 10.75f,
+                realtime: 10f));
+        Assert.AreEqual(
+            0L,
+            NowVisualElement.InteractionRepaintDelayMilliseconds(
+                immediate: false,
+                nextRepaintAt: 10f,
+                realtime: 10.25f));
+        Assert.AreEqual(
+            0L,
+            NowVisualElement.InteractionRepaintDelayMilliseconds(
+                immediate: true,
+                nextRepaintAt: float.PositiveInfinity,
+                realtime: 10f));
+        Assert.AreEqual(
+            -1L,
+            NowVisualElement.InteractionRepaintDelayMilliseconds(
+                immediate: false,
+                nextRepaintAt: float.PositiveInfinity,
+                realtime: 10f),
+            "An idle retained host must leave its one-shot interaction scheduler paused.");
+    }
+
 }

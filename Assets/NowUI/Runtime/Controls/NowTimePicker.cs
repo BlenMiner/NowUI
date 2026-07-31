@@ -48,7 +48,7 @@ namespace NowUI
             public int pmId;
             public bool twentyFourHour;
             public int minuteStep;
-            public int openedFrame;
+            public int openedInputPass;
             public NowRect field;
             public NowRect popupRect;
         }
@@ -169,7 +169,7 @@ namespace NowUI
                     parts.minute = value.Minutes;
                     parts.initialized = 1;
                     NowControlState.Get<int>(NowInput.CombineId(id, ClockModeSeed)) = 0;
-                    GetState(id).openedFrame = NowInput.current.frame;
+                    GetState(id).openedInputPass = NowInput.current.inputPass;
                 }
             }
 
@@ -180,7 +180,6 @@ namespace NowUI
             if (!open)
                 return changed;
 
-            NowControlState.RequestRepaint();
             DeferPopup(theme, id, rect);
             return changed;
         }
@@ -299,6 +298,7 @@ namespace NowUI
             {
                 mode = 1;
                 NowControlState.RequestRepaint();
+                NowInput.ConsumeKeyActivity();
             }
 
             renderer.DrawClockDial(BuildDialContext(state, dialRect, in metrics, in parts, mode));
@@ -320,7 +320,7 @@ namespace NowUI
 
             var snapshot = NowInput.current;
             bool fieldPressClaimedByField = state.field.Contains(snapshot.pointerPosition) &&
-                NowInput.activeId == state.id;
+                NowInput.IsActiveControl(state.id);
             bool pressedOutside = snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
                 !fieldPressClaimedByField;
@@ -328,6 +328,12 @@ namespace NowUI
             if (pressedOutside ||
                 (snapshot.cancelPressed && !NowInput.cancelConsumed && !NowOverlay.HasNestedOverlay(state.id)))
             {
+                if (pressedOutside)
+                    NowInput.ConsumePointerPress();
+
+                if (snapshot.cancelPressed)
+                    NowInput.ConsumeKeyActivity();
+
                 NowControlState.Get<bool>(state.id) = false;
             }
         }
@@ -537,10 +543,12 @@ namespace NowUI
                 }
 
                 NowControlState.RequestRepaint();
+                NowInput.ConsumeKeyActivity();
             }
 
-            if (snapshot.submitPressed && snapshot.frame != state.openedFrame)
+            if (snapshot.submitPressed && snapshot.inputPass != state.openedInputPass)
             {
+                NowInput.ConsumeKeyActivity();
                 if (mode == 0)
                 {
                     mode = 1;

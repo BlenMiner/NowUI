@@ -168,6 +168,9 @@ namespace NowUI
 
         public static void Close()
         {
+            if (_openId != 0)
+                NowControlState.RequestRepaint();
+
             _openId = 0;
             ClearHoverIntent();
             ClearHighlight();
@@ -441,7 +444,6 @@ namespace NowUI
                 root.scrolls = root.height < root.contentHeight - 0.5f;
             }
 
-            NowControlState.RequestRepaint();
             NowOverlay.BlockAllSurfaces(root.overlayId);
             NowOverlay.DeferScreen(root.popupRect, root.overlayId, DrawDeferred);
         }
@@ -470,6 +472,12 @@ namespace NowUI
                 (snapshot.cancelPressed && !NowInput.cancelConsumed) ||
                 (snapshot.scrollDelta != Vector2.zero && !pointerInsideTree))
             {
+                if (pressed && !pointerInsideTree)
+                    NowInput.ConsumePointerPress();
+
+                if (snapshot.cancelPressed)
+                    NowInput.ConsumeKeyActivity();
+
                 Close();
             }
         }
@@ -497,6 +505,10 @@ namespace NowUI
             _navRightPulse = NavPulse(root, NavRightSeed, snapshot.navigation.x > NavThreshold);
             _navUpPulse = NavPulse(root, NavUpSeed, snapshot.navigation.y > NavThreshold);
             _navDownPulse = NavPulse(root, NavDownSeed, snapshot.navigation.y < -NavThreshold);
+
+            if (_navLeftPulse || _navRightPulse || _navUpPulse || _navDownPulse)
+                NowInput.ConsumeKeyActivity();
+
             NowFocus.LockNavigation();
             NowFocus.RetainFocus();
 
@@ -962,6 +974,10 @@ namespace NowUI
 
             bool highlighted = _highlightMenuOverlay == menu.overlayId && _highlightEntryIndex == entry.localIndex;
             bool submitted = entry.enabled && highlighted && NowInput.current.submitPressed;
+
+            if (submitted)
+                NowInput.ConsumeKeyActivity();
+
             bool submenuOpen = entry.kind == EntryKind.Submenu && IsPathOpen(menu.depth, entry.pathId);
             bool selected = entry.selected || submenuOpen || highlighted;
 

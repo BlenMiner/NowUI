@@ -510,7 +510,6 @@ namespace NowUI
 
             if (open)
             {
-                NowControlState.RequestRepaint();
                 DeferPopup(theme, id, pendingId, rect, displayValue, _settings);
             }
 
@@ -749,7 +748,15 @@ namespace NowUI
                 !state.fieldRect.Contains(snapshot.pointerPosition);
 
             if (pressedOutside || (snapshot.cancelPressed && !NowOverlay.HasNestedOverlay(state.id)))
+            {
+                if (pressedOutside)
+                    NowInput.ConsumePointerPress();
+
+                if (snapshot.cancelPressed)
+                    NowInput.ConsumeKeyActivity();
+
                 NowControlState.Get<bool>(state.id) = false;
+            }
         }
 
         static bool DrawEditorContent(PopupState state, Color value, out Color next)
@@ -1402,7 +1409,6 @@ namespace NowUI
 
             if (open)
             {
-                NowControlState.RequestRepaint();
                 DeferPopup(theme, id, pendingId, rect, value, _settings, changed);
             }
 
@@ -1689,7 +1695,15 @@ namespace NowUI
                 !state.fieldRect.Contains(snapshot.pointerPosition);
 
             if (pressedOutside || (snapshot.cancelPressed && !NowOverlay.HasNestedOverlay(state.id)))
+            {
+                if (pressedOutside)
+                    NowInput.ConsumePointerPress();
+
+                if (snapshot.cancelPressed)
+                    NowInput.ConsumeKeyActivity();
+
                 NowControlState.Get<bool>(state.id) = false;
+            }
         }
 
         static bool DrawKeyInspector(PopupState state, ref int selectedColor, ref int selectedAlpha, ref int selectedKind)
@@ -2795,7 +2809,6 @@ namespace NowUI
 
             if (open)
             {
-                NowControlState.RequestRepaint();
                 DeferPopup(theme, id, pendingId, rect, value, _settings, changed);
             }
 
@@ -2985,7 +2998,15 @@ namespace NowUI
                 !state.fieldRect.Contains(snapshot.pointerPosition);
 
             if (pressedOutside || (snapshot.cancelPressed && !NowOverlay.HasNestedOverlay(state.id)))
+            {
+                if (pressedOutside)
+                    NowInput.ConsumePointerPress();
+
+                if (snapshot.cancelPressed)
+                    NowInput.ConsumeKeyActivity();
+
                 NowControlState.Get<bool>(state.id) = false;
+            }
         }
 
         static bool DrawKeyInspector(PopupState state, ref int selected)

@@ -30,7 +30,7 @@ namespace NowUI
         struct ListenState
         {
             public byte listening;
-            public int armFrame;
+            public int armInputPass;
         }
 
         internal NowKeyBindingField(NowId id, int site)
@@ -121,7 +121,7 @@ namespace NowUI
                 return false;
             }
 
-            if (snapshot.frame == state.armFrame)
+            if (snapshot.inputPass == state.armInputPass)
                 return false;
 
             var key = NowKeyInput.current.pressedKey;
@@ -129,6 +129,7 @@ namespace NowUI
             if (key == Key.None)
                 return false;
 
+            NowKeyInput.ClaimActivity();
             state.listening = 0;
 
             if (key == Key.Escape)
@@ -149,7 +150,8 @@ namespace NowUI
         static void BeginListening(int id, ref ListenState state)
         {
             state.listening = 1;
-            state.armFrame = NowInput.current.frame;
+            state.armInputPass = NowInput.current.inputPass;
+            NowKeyInput.DiscardPending();
             NowFocus.Focus(id);
             NowControlState.RequestRepaint();
         }

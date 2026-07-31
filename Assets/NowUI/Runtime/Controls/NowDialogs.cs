@@ -176,6 +176,7 @@ namespace NowUI
                 !NowInput.cancelConsumed &&
                 !NowOverlay.HasNestedOverlay(NowOverlay.currentFocusLayerId))
             {
+                NowInput.ConsumeKeyActivity();
                 Close(context, primary: !_hasSecondary);
             }
         }

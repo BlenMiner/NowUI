@@ -349,10 +349,54 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Editor IMGUI panels now use their native control identity for pointer
+  capture. Drags keep receiving routed events outside the panel, and lost
+  capture cancels the active interaction without synthesizing a click or
+  leaving a scrollbar latched. Cached panels are isolated by owning
+  `EditorWindow` plus native control ID (with a GUI-context fallback for
+  non-window hosts), so docked HostView reuse and equal control numbers cannot
+  share rendering, input, control state, or the per-panel focus/Tab registry.
+  Losing application/window focus also clears panel focus and resets held
+  pointer, navigation, submit, and cancel latches.
+
+- Modal popups now own wheel input before their deferred content draws and
+  contain unhandled wheel ticks at their own scroll limits, so an enclosing
+  NowUI or native IMGUI scroll view does not move behind them. Ordinary nested
+  scroll views retain edge fall-through.
+
+- IMGUI one-shot state now uses a monotonic input-pass token rather than
+  `Time.frameCount` as event identity. Raw key capture, text/shortcut claims,
+  cancel claims, focus traversal, and popup/pointer registration remain
+  distinct and bounded when Unity dispatches several events in one frame.
+  Claimed native KeyDown and handled pointer events are consumed at their
+  owning panel so sibling IMGUI controls cannot replay them.
+
+- Static open popups now converge to idle instead of perpetually repainting
+  editor RenderTextures. Immediate and deadline requests target the owning
+  `EditorWindow`; carets schedule only their next blink-phase boundary rather
+  than continuously repainting, including in UI Toolkit hosts whose 16 ms loop
+  now stays paused unless continuous rebuilding is requested. Temporal repaint
+  demand no longer marks `GUI.changed`.
+
+- Live idle EditorWindows retain their cached panel state, while a resumed,
+  continuously active window reclaims obsolete sibling panel IDs after a grace
+  interval and disposes their renderer, RenderTexture, focus/input state, and
+  repaint deadline. Closing a window still releases its remaining cache
+  immediately.
+
+- Drag and middle-button auto-scroll now request the final repaint that reaches
+  a scroll clamp, then stop rebuilding while motion only pushes against that
+  edge.
+
+- Failed deferred overlay passes now roll back their provisional pointer
+  blocks while preserving the same owner's last completed footprint. A
+  throwing popup callback therefore cannot leave either a new invisible hit
+  region or a transient hole in the prior valid one.
+
 - Editor IMGUI now processes Tab and Shift+Tab during the native key pass
   instead of waiting for `Time.frameCount` to advance. The consumed key
   requests a repaint, and repeated Layout/Repaint passes update a bounded
-  immediate focus registry rather than accumulating duplicate entries.
+  per-panel focus registry rather than accumulating duplicate entries.
 
 - Editor IMGUI keyboard passes now refresh same-frame text-input samples and
   consume claimed KeyDown events once. Enter therefore reliably submits and

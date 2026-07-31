@@ -245,7 +245,6 @@ namespace NowUI
 
             if (open)
             {
-                NowControlState.RequestRepaint();
                 DeferPopup(theme, id, rect, _settings);
             }
 
@@ -1641,13 +1640,21 @@ namespace NowUI
 
             var snapshot = NowInput.current;
             bool fieldPressClaimedByField = state.fieldRect.Contains(snapshot.pointerPosition) &&
-                NowInput.activeId == state.id;
+                NowInput.IsActiveControl(state.id);
             bool pressedOutside = snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
                 !fieldPressClaimedByField;
 
             if (pressedOutside || (snapshot.cancelPressed && !NowInput.cancelConsumed))
+            {
+                if (pressedOutside)
+                    NowInput.ConsumePointerPress();
+
+                if (snapshot.cancelPressed)
+                    NowInput.ConsumeKeyActivity();
+
                 NowControlState.Get<bool>(state.id) = false;
+            }
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace NowUI
@@ -10,15 +11,68 @@ namespace NowUI
 
         const double CacheLifetimeSeconds = 10.0;
 
-        static readonly Dictionary<int, CacheEntry> _entries = new Dictionary<int, CacheEntry>();
+        const double CacheCleanupIntervalSeconds = 1.0;
 
-        static readonly List<int> _removeIds = new List<int>(8);
+        readonly struct CacheKey : IEquatable<CacheKey>
+        {
+            readonly object _context;
+
+            readonly int _controlId;
+
+            public CacheKey(object context, int controlId)
+            {
+                _context = context;
+                _controlId = controlId;
+            }
+
+            public bool Equals(CacheKey other)
+            {
+                return _controlId == other._controlId &&
+                    ReferenceEquals(_context, other._context);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is CacheKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int contextHash = _context != null
+                        ? RuntimeHelpers.GetHashCode(_context)
+                        : 0;
+                    return contextHash * 397 ^ _controlId;
+                }
+            }
+
+            public bool MatchesContext(object context)
+            {
+                return ReferenceEquals(_context, context);
+            }
+
+            public bool hasLiveUnityContext =>
+                _context is UnityEngine.Object unityContext &&
+                unityContext;
+
+            public bool hasDestroyedUnityContext =>
+                _context is UnityEngine.Object unityContext &&
+                !unityContext;
+        }
+
+        static readonly Dictionary<CacheKey, CacheEntry> _entries =
+            new Dictionary<CacheKey, CacheEntry>();
+
+        static readonly List<CacheKey> _removeKeys = new List<CacheKey>(8);
 
         static readonly NowScopeGuard _scopes = new NowScopeGuard("NowGUI.Auto", 8);
 
         static int _scopeFrame = -1;
 
         static double _lastCleanupTime;
+
+        internal static Action<NowIMGUIInputProvider> hostRepaintDeadlineInvalidated;
 
         public static NowGUIScope Auto(Rect rect)
         {
@@ -36,12 +90,50 @@ namespace NowUI
                 return AutoWithoutEvent(rect);
 
             int controlId = GUIUtility.GetControlID(ControlHint, FocusType.Passive, rect);
+            EventType eventType = Event.current.type;
             return AutoForEvent(
+                null,
                 controlId,
                 rect,
                 clearColor,
                 pixelsPerPoint,
-                Event.current.type == EventType.Repaint);
+                eventType == EventType.Repaint,
+                true,
+                eventType != EventType.Layout &&
+                    eventType != EventType.Repaint);
+        }
+
+        internal static NowGUIScope AutoInContext(
+            object context,
+            Rect rect,
+            Color clearColor,
+            float pixelsPerPoint)
+        {
+            return AutoInContext(context, rect, clearColor, pixelsPerPoint, true);
+        }
+
+        internal static NowGUIScope AutoInContext(
+            object context,
+            Rect rect,
+            Color clearColor,
+            float pixelsPerPoint,
+            bool hostFocused)
+        {
+            if (Event.current == null)
+                return AutoWithoutEvent(rect);
+
+            int controlId = GUIUtility.GetControlID(ControlHint, FocusType.Passive, rect);
+            EventType eventType = Event.current.type;
+            return AutoForEvent(
+                context,
+                controlId,
+                rect,
+                clearColor,
+                pixelsPerPoint,
+                eventType == EventType.Repaint,
+                hostFocused,
+                eventType != EventType.Layout &&
+                    eventType != EventType.Repaint);
         }
 
         internal static NowGUIScope AutoWithoutEvent(Rect rect)
@@ -67,9 +159,66 @@ namespace NowUI
             float pixelsPerPoint,
             bool repaint)
         {
+            return AutoForEvent(null, controlId, rect, clearColor, pixelsPerPoint, repaint);
+        }
+
+        internal static NowGUIScope AutoForEvent(
+            object hostKey,
+            int controlId,
+            Rect rect,
+            Color clearColor,
+            float pixelsPerPoint,
+            bool repaint)
+        {
+            return AutoForEvent(
+                hostKey,
+                controlId,
+                rect,
+                clearColor,
+                pixelsPerPoint,
+                repaint,
+                true,
+                false);
+        }
+
+        internal static NowGUIScope AutoForEvent(
+            object hostKey,
+            int controlId,
+            Rect rect,
+            Color clearColor,
+            float pixelsPerPoint,
+            bool repaint,
+            bool hostFocused)
+        {
+            return AutoForEvent(
+                hostKey,
+                controlId,
+                rect,
+                clearColor,
+                pixelsPerPoint,
+                repaint,
+                hostFocused,
+                false);
+        }
+
+        internal static NowGUIScope AutoForEvent(
+            object hostKey,
+            int controlId,
+            Rect rect,
+            Color clearColor,
+            float pixelsPerPoint,
+            bool repaint,
+            bool hostFocused,
+            bool trackInputRepaint)
+        {
+            var entry = GetEntry(hostKey, controlId);
+
+            entry.NotifyHostFocus(hostFocused, releaseNativeCapture: true);
             var inputSurface = new NowInputSurface(new Vector2(rect.width, rect.height), rect);
-            var inputScope = NowInput.Begin(NowIMGUIInputProvider.instance, inputSurface);
+            var inputScope = NowInput.Begin(entry.inputProvider, inputSurface);
             bool ownsInputScope = true;
+            NowFocusHostRegistrationScope focusScope = default;
+            bool ownsFocusScope = false;
             ControlIdScope controlIdScope = default;
             bool ownsControlIdScope = false;
             NowFrameScope frameScope = default;
@@ -79,28 +228,49 @@ namespace NowUI
 
             try
             {
-                var entry = GetEntry(controlId);
-                entry.lastUsedTime = NowTime.realtimeSinceStartup;
+                entry.MarkUsed(NowTime.realtimeSinceStartup);
+                focusScope = NowFocus.BeginHostRegistration(entry.focusHostId, null);
+                ownsFocusScope = true;
                 controlIdScope = NowControls.RestoreIdScope(entry.scopeId);
                 ownsControlIdScope = true;
+                pixelsPerPoint = Mathf.Max(1f, pixelsPerPoint);
 
                 if (!repaint)
                 {
-                    var suppressed = NowGUIScope.Suppress(rect, inputScope, controlIdScope);
+                    if (trackInputRepaint)
+                    {
+                        frameScope = NowFrame.Begin(pixelsPerPoint, trackRepaint: true);
+                        ownsFrameScope = true;
+                    }
+
+                    var suppressed = NowGUIScope.Suppress(
+                        rect,
+                        entry,
+                        inputScope,
+                        focusScope,
+                        frameScope,
+                        ownsFrameScope,
+                        controlIdScope);
                     ownsControlIdScope = false;
+                    ownsFrameScope = false;
+                    ownsFocusScope = false;
                     ownsInputScope = false;
                     return suppressed;
                 }
 
                 if (rect.width <= 0f || rect.height <= 0f)
                 {
-                    var suppressed = NowGUIScope.Suppress(rect, inputScope, controlIdScope);
+                    var suppressed = NowGUIScope.Suppress(
+                        rect,
+                        inputScope,
+                        focusScope,
+                        controlIdScope);
                     ownsControlIdScope = false;
+                    ownsFocusScope = false;
                     ownsInputScope = false;
                     return suppressed;
                 }
 
-                pixelsPerPoint = Mathf.Max(1f, pixelsPerPoint);
                 int pixelWidth = Mathf.Max(1, Mathf.CeilToInt(rect.width * pixelsPerPoint));
                 int pixelHeight = Mathf.Max(1, Mathf.CeilToInt(rect.height * pixelsPerPoint));
 
@@ -117,17 +287,21 @@ namespace NowUI
                     drawScope,
                     clearColor,
                     inputScope,
+                    focusScope,
                     frameScope,
                     controlIdScope);
 
                 ownsDrawScope = false;
                 ownsFrameScope = false;
                 ownsControlIdScope = false;
+                ownsFocusScope = false;
                 ownsInputScope = false;
                 return rendered;
             }
             catch
             {
+                NowFocus.UnregisterHost(entry.focusHostId);
+
                 try
                 {
                     if (ownsDrawScope)
@@ -149,8 +323,16 @@ namespace NowUI
                         }
                         finally
                         {
-                            if (ownsInputScope)
-                                inputScope.Dispose();
+                            try
+                            {
+                                if (ownsInputScope)
+                                    inputScope.Dispose();
+                            }
+                            finally
+                            {
+                                if (ownsFocusScope)
+                                    focusScope.Dispose();
+                            }
                         }
                     }
                 }
@@ -161,10 +343,60 @@ namespace NowUI
 
         public static void DisposeAll()
         {
-            foreach (var entry in _entries.Values)
-                entry.Dispose();
+            try
+            {
+                foreach (var entry in _entries.Values)
+                    entry.Dispose();
+            }
+            finally
+            {
+                _entries.Clear();
+                _removeKeys.Clear();
+                _lastCleanupTime = 0.0;
+            }
+        }
 
-            _entries.Clear();
+        internal static void DisposeContext(object context)
+        {
+            _removeKeys.Clear();
+
+            try
+            {
+                foreach (var pair in _entries)
+                {
+                    if (pair.Key.MatchesContext(context))
+                        _removeKeys.Add(pair.Key);
+                }
+
+                for (int i = 0; i < _removeKeys.Count; ++i)
+                {
+                    CacheKey key = _removeKeys[i];
+                    _entries[key].Dispose();
+                    _entries.Remove(key);
+                }
+            }
+            finally
+            {
+                _removeKeys.Clear();
+            }
+        }
+
+        internal static void ResetInputProviders()
+        {
+            foreach (var entry in _entries.Values)
+                entry.inputProvider.ResetState(releaseNativeCapture: false);
+        }
+
+        internal static void NotifyContextFocus(
+            object context,
+            bool focused,
+            bool releaseNativeCapture)
+        {
+            foreach (var pair in _entries)
+            {
+                if (pair.Key.MatchesContext(context))
+                    pair.Value.NotifyHostFocus(focused, releaseNativeCapture);
+            }
         }
 
         internal static int BeginScope()
@@ -205,37 +437,89 @@ namespace NowUI
             _lastCleanupTime = 0.0;
         }
 
-        static CacheEntry GetEntry(int controlId)
+        static CacheEntry GetEntry(object hostKey, int controlId)
         {
-            if (_entries.TryGetValue(controlId, out var entry))
+            var key = new CacheKey(hostKey, controlId);
+
+            if (_entries.TryGetValue(key, out var entry))
                 return entry;
 
-            entry = new CacheEntry();
-            _entries.Add(controlId, entry);
+            CacheContextActivity contextActivity = null;
+
+            foreach (var pair in _entries)
+            {
+                if (pair.Key.MatchesContext(hostKey))
+                {
+                    contextActivity = pair.Value.contextActivity;
+                    break;
+                }
+            }
+
+            entry = new CacheEntry(
+                controlId,
+                hostKey,
+                contextActivity ?? new CacheContextActivity());
+            _entries.Add(key, entry);
             return entry;
         }
 
         static void CleanupUnusedEntries()
         {
+            CleanupUnusedEntriesCore(null, false);
+        }
+
+        static void CleanupUnusedEntriesForActiveContext(object activeContext)
+        {
+            CleanupUnusedEntriesCore(activeContext, true);
+        }
+
+        static void CleanupUnusedEntriesCore(
+            object activeContext,
+            bool hasActiveContext)
+        {
             double now = NowTime.realtimeSinceStartup;
 
-            if (now - _lastCleanupTime < 1.0)
+            if (now - _lastCleanupTime < CacheCleanupIntervalSeconds)
                 return;
 
             _lastCleanupTime = now;
-            _removeIds.Clear();
+            _removeKeys.Clear();
 
-            foreach (var kvp in _entries)
+            try
             {
-                if (now - kvp.Value.lastUsedTime > CacheLifetimeSeconds)
-                    _removeIds.Add(kvp.Key);
+                foreach (var pair in _entries)
+                {
+                    bool expired =
+                        now - pair.Value.lastUsedTime > CacheLifetimeSeconds;
+                    bool expiredNonUnityContext =
+                        !pair.Key.hasLiveUnityContext &&
+                        !pair.Key.hasDestroyedUnityContext &&
+                        expired;
+                    bool expiredActiveUnityContextEntry =
+                        hasActiveContext &&
+                        pair.Key.hasLiveUnityContext &&
+                        pair.Key.MatchesContext(activeContext) &&
+                        now >= pair.Value.contextActivity.cleanupEligibleTime &&
+                        expired;
+
+                    if (pair.Key.hasDestroyedUnityContext ||
+                        expiredNonUnityContext ||
+                        expiredActiveUnityContextEntry)
+                    {
+                        _removeKeys.Add(pair.Key);
+                    }
+                }
+
+                for (int i = 0; i < _removeKeys.Count; ++i)
+                {
+                    CacheKey key = _removeKeys[i];
+                    _entries[key].Dispose();
+                    _entries.Remove(key);
+                }
             }
-
-            for (int i = 0; i < _removeIds.Count; ++i)
+            finally
             {
-                var id = _removeIds[i];
-                _entries[id].Dispose();
-                _entries.Remove(id);
+                _removeKeys.Clear();
             }
         }
 
@@ -249,7 +533,14 @@ namespace NowUI
             drawScope.Dispose();
             entry.renderer.Render(target, true, clearColor);
             GUI.DrawTexture(rect, target, ScaleMode.StretchToFill, true);
-            CleanupUnusedEntries();
+            CleanupUnusedEntriesForActiveContext(entry.inputProvider.hostContext);
+        }
+
+        internal sealed class CacheContextActivity
+        {
+            public double lastUsedTime = double.NegativeInfinity;
+
+            public double cleanupEligibleTime = double.NegativeInfinity;
         }
 
         internal sealed class CacheEntry : IDisposable
@@ -258,9 +549,42 @@ namespace NowUI
 
             public readonly int scopeId = NowControls.AllocateHostScopeId();
 
+            public readonly int focusHostId = NowControls.AllocateHostScopeId();
+
+            public readonly NowIMGUIInputProvider inputProvider;
+
+            public readonly CacheContextActivity contextActivity;
+
             public RenderTexture target;
 
             public double lastUsedTime;
+
+            public CacheEntry(
+                int controlId,
+                object hostContext,
+                CacheContextActivity contextActivity)
+            {
+                inputProvider = new NowIMGUIInputProvider(controlId, hostContext);
+                this.contextActivity = contextActivity;
+            }
+
+            public void MarkUsed(double now)
+            {
+                if (now - contextActivity.lastUsedTime > CacheLifetimeSeconds)
+                {
+                    contextActivity.cleanupEligibleTime =
+                        now + CacheCleanupIntervalSeconds;
+                }
+
+                contextActivity.lastUsedTime = now;
+                lastUsedTime = now;
+            }
+
+            public void NotifyHostFocus(bool focused, bool releaseNativeCapture)
+            {
+                if (inputProvider.NotifyHostFocusChanged(focused, releaseNativeCapture))
+                    NowFocus.ClearHostFocus(focusHostId);
+            }
 
             public RenderTexture GetTarget(int width, int height)
             {
@@ -281,6 +605,10 @@ namespace NowUI
 
             public void Dispose()
             {
+                hostRepaintDeadlineInvalidated?.Invoke(inputProvider);
+                NowOverlay.ReleaseRegistrationOwner(inputProvider);
+                inputProvider.ResetState(releaseNativeCapture: false);
+                NowFocus.UnregisterHost(focusHostId);
                 ReleaseTarget();
                 renderer.Dispose();
             }
@@ -317,6 +645,8 @@ namespace NowUI
 
         NowInputScope _inputScope;
 
+        NowFocusHostRegistrationScope _focusScope;
+
         NowFrameScope _frameScope;
 
         ControlIdScope _controlIdScope;
@@ -326,6 +656,8 @@ namespace NowUI
         bool _suppresses;
 
         bool _hasInputScope;
+
+        bool _hasFocusScope;
 
         bool _hasFrameScope;
 
@@ -340,6 +672,7 @@ namespace NowUI
             NowDrawScope drawScope,
             Color clearColor,
             NowInputScope inputScope,
+            NowFocusHostRegistrationScope focusScope,
             NowFrameScope frameScope,
             ControlIdScope controlIdScope)
         {
@@ -352,6 +685,8 @@ namespace NowUI
                 true,
                 false,
                 inputScope,
+                true,
+                focusScope,
                 true,
                 frameScope,
                 true,
@@ -395,6 +730,51 @@ namespace NowUI
                 token: NowGUI.BeginScope());
         }
 
+        internal static NowGUIScope Suppress(
+            Rect rect,
+            NowInputScope inputScope,
+            NowFocusHostRegistrationScope focusScope,
+            ControlIdScope controlIdScope = default)
+        {
+            return Suppress(
+                rect,
+                null,
+                inputScope,
+                focusScope,
+                default,
+                false,
+                controlIdScope);
+        }
+
+        internal static NowGUIScope Suppress(
+            Rect rect,
+            NowGUI.CacheEntry entry,
+            NowInputScope inputScope,
+            NowFocusHostRegistrationScope focusScope,
+            NowFrameScope frameScope,
+            bool hasFrameScope,
+            ControlIdScope controlIdScope)
+        {
+            Now.BeginSuppressDraw();
+            return new NowGUIScope(
+                rect,
+                entry,
+                null,
+                default,
+                Color.clear,
+                false,
+                true,
+                inputScope,
+                true,
+                focusScope,
+                true,
+                frameScope,
+                hasFrameScope,
+                controlIdScope: controlIdScope,
+                hasControlIdScope: true,
+                token: NowGUI.BeginScope());
+        }
+
         NowGUIScope(
             Rect rect,
             NowGUI.CacheEntry entry,
@@ -405,6 +785,8 @@ namespace NowUI
             bool suppresses = false,
             NowInputScope inputScope = default,
             bool hasInputScope = false,
+            NowFocusHostRegistrationScope focusScope = default,
+            bool hasFocusScope = false,
             NowFrameScope frameScope = default,
             bool hasFrameScope = false,
             ControlIdScope controlIdScope = default,
@@ -417,11 +799,13 @@ namespace NowUI
             _drawScope = drawScope;
             _clearColor = clearColor;
             _inputScope = inputScope;
+            _focusScope = focusScope;
             _frameScope = frameScope;
             _controlIdScope = controlIdScope;
             _renders = renders;
             _suppresses = suppresses;
             _hasInputScope = hasInputScope;
+            _hasFocusScope = hasFocusScope;
             _hasFrameScope = hasFrameScope;
             _hasControlIdScope = hasControlIdScope;
             _token = token;
@@ -462,7 +846,21 @@ namespace NowUI
                         }
                         finally
                         {
-                            Now.EndSuppressDraw();
+                            try
+                            {
+                                DisposeFocusScope();
+                            }
+                            finally
+                            {
+                                try
+                                {
+                                    DisposeFrameScope();
+                                }
+                                finally
+                                {
+                                    Now.EndSuppressDraw();
+                                }
+                            }
                         }
                     }
 
@@ -483,7 +881,14 @@ namespace NowUI
                         }
                         finally
                         {
-                            DisposeInputScope();
+                            try
+                            {
+                                DisposeInputScope();
+                            }
+                            finally
+                            {
+                                DisposeFocusScope();
+                            }
                         }
                     }
 
@@ -508,7 +913,14 @@ namespace NowUI
                         }
                         finally
                         {
-                            DisposeInputScope();
+                            try
+                            {
+                                DisposeInputScope();
+                            }
+                            finally
+                            {
+                                DisposeFocusScope();
+                            }
                         }
                     }
                 }
@@ -529,17 +941,35 @@ namespace NowUI
             _hasInputScope = false;
         }
 
+        void DisposeFocusScope()
+        {
+            if (!_hasFocusScope)
+                return;
+
+            _focusScope.Dispose();
+            _hasFocusScope = false;
+        }
+
         void DisposeFrameScope()
         {
             if (!_hasFrameScope)
                 return;
 
-            bool wantsRepaint = _frameScope.EndRepaintTracking();
+            bool wantsRepaint = _frameScope.EndRepaintTracking(out float nextRepaintAt);
             _frameScope.Dispose();
             _hasFrameScope = false;
+            NowGUI.hostRepaintDeadlineInvalidated?.Invoke(_entry.inputProvider);
 
             if (wantsRepaint)
-                NowIMGUIInputProvider.RequestRepaint();
+            {
+                _entry.inputProvider.RequestHostRepaint(markGUIChanged: false);
+            }
+            else if (!float.IsInfinity(nextRepaintAt) &&
+                     !float.IsNaN(nextRepaintAt))
+            {
+                _entry.inputProvider.RequestHostRepaintAfter(
+                    Mathf.Max(0f, nextRepaintAt - Time.realtimeSinceStartup));
+            }
         }
 
         void DisposeControlIdScope()

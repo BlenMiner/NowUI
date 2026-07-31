@@ -321,7 +321,7 @@ namespace NowUI
 
             public bool unregisterPending;
 
-            public int lastProcessedInputFrame = int.MinValue;
+            public int lastProcessedInputPass = int.MinValue;
 
             public Vector2 lastNavigation;
 
@@ -591,6 +591,12 @@ namespace NowUI
             SetFocused(0, 0);
         }
 
+        internal static void ClearHostFocus(int hostId)
+        {
+            if (hostId != 0 && _focusedHostId == hostId)
+                Clear();
+        }
+
         internal static bool ClearOnUnhandledPrimaryPress()
         {
             if (_focusedId == 0)
@@ -806,7 +812,15 @@ namespace NowUI
         /// </summary>
         public static bool SubmitPressed(int id)
         {
-            return IsFocused(id) && !NowInput.isPassive && NowInput.current.submitPressed;
+            bool submitted =
+                IsFocused(id) &&
+                !NowInput.isPassive &&
+                NowInput.current.submitPressed;
+
+            if (submitted)
+                NowInput.ConsumeKeyActivity();
+
+            return submitted;
         }
 
         /// <summary>
@@ -1505,10 +1519,10 @@ namespace NowUI
 
             NowInputSnapshot snapshot = NowInput.current;
 
-            if (host.lastProcessedInputFrame == snapshot.frame)
+            if (host.lastProcessedInputPass == snapshot.inputPass)
                 return;
 
-            host.lastProcessedInputFrame = snapshot.frame;
+            host.lastProcessedInputPass = snapshot.inputPass;
             host.pendingTabBoundaryStep = 0;
             host.pendingTabFocusId = 0;
             host.pendingTabFocusRevision = 0;
@@ -1596,6 +1610,9 @@ namespace NowUI
                 else if (ownsFocus && !NowInput.cancelConsumedForFrameSwap)
                     Clear();
 
+                if (ownsFocus)
+                    NowInput.ConsumeKeyActivity();
+
                 lastNavigation = snapshot.navigation;
                 ResetNavigationRepeat(ref repeatDirection, ref nextNavigationRepeatTime);
                 return;
@@ -1645,6 +1662,9 @@ namespace NowUI
                 (snapshot.focusPreviousPressed || snapshot.focusNextPressed ||
                  ResolveNavigationDirection(navigation) != default))
             {
+                if (snapshot.focusPreviousPressed || snapshot.focusNextPressed)
+                    NowInput.ConsumeKeyActivity();
+
                 lastNavigation = navigation;
                 ResetNavigationRepeat(ref repeatDirection, ref nextNavigationRepeatTime);
                 return;
@@ -1652,6 +1672,9 @@ namespace NowUI
 
             if (focusedNavigationLock == NowFocusNavigationLock.All)
             {
+                if (snapshot.focusPreviousPressed || snapshot.focusNextPressed)
+                    NowInput.ConsumeKeyActivity();
+
                 lastNavigation = navigation;
                 ResetNavigationRepeat(ref repeatDirection, ref nextNavigationRepeatTime);
                 return;
@@ -1684,6 +1707,7 @@ namespace NowUI
                     }
                 }
 
+                NowInput.ConsumeKeyActivity();
                 lastNavigation = navigation;
                 ResetNavigationRepeat(ref repeatDirection, ref nextNavigationRepeatTime);
                 return;
@@ -1724,6 +1748,7 @@ namespace NowUI
             }
 
             MoveFocus(focusables, hostId, direction, activeLayerId);
+            NowInput.ConsumeKeyActivity();
         }
 
         internal static NowFocusMoveResult RouteUGUINavigation(int hostId, Vector2 direction)

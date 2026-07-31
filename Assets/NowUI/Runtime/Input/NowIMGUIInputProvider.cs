@@ -3,13 +3,34 @@ using UnityEngine;
 
 namespace NowUI
 {
+    /// <summary>
+    /// Native IMGUI event adapter. Host-backed instances route pointer events
+    /// through one IMGUI control id so Unity can preserve drag ownership outside
+    /// the panel and report capture loss without leaving NowUI controls active.
+    /// </summary>
     public sealed class NowIMGUIInputProvider : INowInputProvider
     {
         public static readonly NowIMGUIInputProvider instance = new NowIMGUIInputProvider();
 
         internal static Action repaintRequested;
 
+        internal static Action<NowIMGUIInputProvider> hostRepaintRequested;
+
+        internal static Action<NowIMGUIInputProvider, float> hostRepaintAfterRequested;
+
+        static int s_inputPass;
+
+        readonly int _hostControlId;
+
+        readonly object _hostContext;
+
+        Event _sampledEvent;
+
+        EventType _sampledType;
+
         NowPointerButtons _buttonsDown;
+
+        NowPointerButtons _capturedButtons;
 
         bool _leftDown;
 
@@ -23,6 +44,32 @@ namespace NowUI
 
         bool _cancelDown;
 
+        bool _hostFocusKnown;
+
+        bool _hostFocused;
+
+        bool _pendingCaptureCancelled;
+
+        public NowIMGUIInputProvider()
+            : this(0, null)
+        {
+        }
+
+        internal NowIMGUIInputProvider(int hostControlId)
+            : this(hostControlId, null)
+        {
+        }
+
+        internal NowIMGUIInputProvider(int hostControlId, object hostContext)
+        {
+            _hostControlId = hostControlId;
+            _hostContext = hostContext;
+        }
+
+        internal object hostContext => _hostContext;
+
+        internal bool isHostBacked => _hostControlId != 0;
+
         public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
             Event current = Event.current;
@@ -33,37 +80,108 @@ namespace NowUI
                 return false;
             }
 
-            if (!NowInput.TryScreenToSurface(current.mousePosition, surface, out var position))
+            EventType routedType = _hostControlId != 0
+                ? current.GetTypeForControl(_hostControlId)
+                : current.type;
+            bool ownsCapture = _hostControlId != 0 && GUIUtility.hotControl == _hostControlId;
+            return TryGetSnapshot(surface, current, routedType, ownsCapture, out snapshot);
+        }
+
+        /// <summary>
+        /// Deterministic sampling seam for replaying native IMGUI event
+        /// sequences in tests without depending on Event.current or a live
+        /// EditorWindow.
+        /// </summary>
+        internal bool TryGetSnapshot(
+            NowInputSurface surface,
+            Event current,
+            EventType routedType,
+            bool ownsCapture,
+            out NowInputSnapshot snapshot)
+        {
+            if (current == null ||
+                !NowInput.TryScreenToSurface(current.mousePosition, surface, out var position))
             {
                 snapshot = default;
                 return false;
             }
 
+            _sampledEvent = current;
+            _sampledType = routedType;
+            bool inside = position.x >= 0f && position.y >= 0f &&
+                position.x <= surface.size.x && position.y <= surface.size.y;
+
+            // Stale global interaction state can be cleared while another GUI
+            // context is active, where touching GUIUtility.hotControl would
+            // target that other context. The next event in this panel is the
+            // safe point to release an orphaned native capture.
+            if (ownsCapture &&
+                _capturedButtons == NowPointerButtons.None &&
+                _buttonsDown == NowPointerButtons.None)
+            {
+                ReleaseNativeCapture();
+                ownsCapture = false;
+
+                if (routedType == EventType.MouseDrag || routedType == EventType.MouseUp)
+                    routedType = EventType.Ignore;
+            }
+
             NowPointerButtons pressed = NowPointerButtons.None;
             NowPointerButtons released = NowPointerButtons.None;
+            bool captureCancelled = _pendingCaptureCancelled;
+            _pendingCaptureCancelled = false;
+            bool captureLossEvent =
+                routedType == EventType.Ignore ||
+                routedType == EventType.MouseLeaveWindow;
 
-            if (TryGetIMGUIButton(current.button, out var button))
+            if (captureLossEvent)
+            {
+                bool hadCapture =
+                    _capturedButtons != NowPointerButtons.None ||
+                    ownsCapture;
+                captureCancelled |= hadCapture;
+                _buttonsDown = NowPointerButtons.None;
+                _capturedButtons = NowPointerButtons.None;
+
+                if (ownsCapture)
+                    ReleaseNativeCapture();
+
+                if (hadCapture)
+                    RequestHostRepaint();
+            }
+            else if (TryGetIMGUIButton(current.button, out var button))
             {
                 var buttonMask = NowInputSnapshot.ToButtonMask(button);
 
-                if (current.type == EventType.MouseDown)
+                if (routedType == EventType.MouseDown && inside)
                 {
                     pressed = buttonMask;
                     _buttonsDown |= buttonMask;
                 }
-                else if (current.type == EventType.MouseUp)
+                else if (routedType == EventType.MouseUp ||
+                         (ownsCapture && current.rawType == EventType.MouseUp))
                 {
                     released = buttonMask;
                     _buttonsDown &= ~buttonMask;
+                    _capturedButtons &= ~buttonMask;
+
+                    if (ownsCapture)
+                    {
+                        ConsumePointerEvent(current);
+
+                        if (_capturedButtons == NowPointerButtons.None)
+                            ReleaseNativeCapture();
+                    }
                 }
-                else if (current.type == EventType.MouseDrag)
+                else if (routedType == EventType.MouseDrag)
                 {
-                    _buttonsDown |= buttonMask;
+                    if (ownsCapture)
+                    {
+                        _buttonsDown |= buttonMask;
+                        ConsumePointerEvent(current);
+                    }
                 }
             }
-
-            if (current.type == EventType.MouseLeaveWindow)
-                _buttonsDown = NowPointerButtons.None;
 
             bool focusPreviousPressed = false;
             bool focusNextPressed = false;
@@ -72,7 +190,7 @@ namespace NowUI
             bool cancelPressed = false;
             bool cancelReleased = false;
 
-            if (current.type == EventType.KeyDown)
+            if (routedType == EventType.KeyDown)
             {
                 ApplyKeyDown(
                     current,
@@ -81,27 +199,20 @@ namespace NowUI
                     ref submitPressed,
                     ref cancelPressed);
             }
-            else if (current.type == EventType.KeyUp)
+            else if (routedType == EventType.KeyUp)
             {
                 ApplyKeyUp(current, ref submitReleased, ref cancelReleased);
             }
 
             Vector2 delta = NowInput.ScaleScreenDelta(current.delta, surface);
-            Vector2 scrollDelta = current.type == EventType.ScrollWheel
+            Vector2 scrollDelta = routedType == EventType.ScrollWheel
                 ? new Vector2(current.delta.x, -current.delta.y) / 3f
                 : Vector2.zero;
 
-            bool inside = position.x >= 0f && position.y >= 0f &&
-                position.x <= surface.size.x && position.y <= surface.size.y;
-            NowPointerArbiter.Claim(
-                this,
-                NowPointerArbiter.TierCanvas,
-                0f,
-                inside,
-                _buttonsDown != NowPointerButtons.None);
-
             snapshot = new NowInputSnapshot(
-                NowPointerArbiter.IsOwner(this),
+                (!captureCancelled || routedType == EventType.MouseDown) &&
+                    routedType != EventType.MouseLeaveWindow &&
+                    (ownsCapture || inside),
                 position,
                 position - delta,
                 delta,
@@ -119,23 +230,70 @@ namespace NowUI
                 cancelPressed,
                 cancelReleased,
                 Time.frameCount,
-                Time.realtimeSinceStartup);
+                Time.realtimeSinceStartup)
+            {
+                inputPass = NextInputPass(),
+                pointerCaptureCancelled = captureCancelled
+            };
+            return true;
+        }
+
+        internal bool NotifyPointerCaptured(NowPointerButton button)
+        {
+            if (_sampledEvent == null || _sampledType != EventType.MouseDown)
+                return false;
+
+            if (_hostControlId != 0 &&
+                GUIUtility.hotControl != 0 &&
+                GUIUtility.hotControl != _hostControlId)
+            {
+                return false;
+            }
+
+            var buttonMask = NowInputSnapshot.ToButtonMask(button);
+            _capturedButtons |= buttonMask;
+            _buttonsDown |= buttonMask;
+
+            if (_hostControlId != 0)
+                GUIUtility.hotControl = _hostControlId;
+
+            ConsumePointerEvent(_sampledEvent);
             return true;
         }
 
         internal void NotifyScrollConsumed()
         {
-            ConsumeScrollEvent(Event.current);
+            Event current = _sampledEvent ?? Event.current;
+
+            if (current == null || current.type != EventType.ScrollWheel)
+                return;
+
+            current.Use();
+            RequestHostRepaint();
         }
 
         internal void NotifyFocusCleared()
         {
-            RequestRepaint();
+            if (_sampledType == EventType.MouseDown)
+                ConsumePointerEvent(_sampledEvent ?? Event.current);
+            else
+                RequestHostRepaint();
+        }
+
+        internal void NotifyPointerPressConsumed()
+        {
+            if (_sampledType == EventType.MouseDown)
+                ConsumePointerEvent(_sampledEvent ?? Event.current);
         }
 
         internal void NotifyTextActivityClaimed()
         {
-            ConsumeClaimedTextEvent(Event.current);
+            ConsumeClaimedKeyEventForHost(_sampledEvent ?? Event.current);
+        }
+
+        internal void NotifyKeyActivityClaimed()
+        {
+            ConsumeClaimedKeyEventForHost(_sampledEvent ?? Event.current);
         }
 
         internal static void ConsumeScrollEvent(Event current)
@@ -149,6 +307,11 @@ namespace NowUI
 
         internal static void ConsumeClaimedTextEvent(Event current)
         {
+            ConsumeClaimedKeyEvent(current);
+        }
+
+        static void ConsumeClaimedKeyEvent(Event current)
+        {
             if (current == null || current.type != EventType.KeyDown)
                 return;
 
@@ -156,10 +319,55 @@ namespace NowUI
             RequestRepaint();
         }
 
+        void ConsumeClaimedKeyEventForHost(Event current)
+        {
+            if (current == null || current.type != EventType.KeyDown)
+                return;
+
+            current.Use();
+            RequestHostRepaint();
+        }
+
+        void ConsumePointerEvent(Event current)
+        {
+            if (current != null && current.type != EventType.Used)
+                current.Use();
+
+            RequestHostRepaint();
+        }
+
         internal static void RequestRepaint()
         {
-            GUI.changed = true;
+            RequestRepaint(markGUIChanged: true);
+        }
+
+        internal static void RequestRepaint(bool markGUIChanged)
+        {
+            if (markGUIChanged)
+                GUI.changed = true;
+
             repaintRequested?.Invoke();
+        }
+
+        internal void RequestHostRepaint(bool markGUIChanged = true)
+        {
+            if (markGUIChanged)
+                GUI.changed = true;
+
+            hostRepaintRequested?.Invoke(this);
+            repaintRequested?.Invoke();
+        }
+
+        internal void RequestHostRepaintAfter(float delaySeconds)
+        {
+            if (delaySeconds <= 0f)
+            {
+                RequestHostRepaint(markGUIChanged: false);
+                return;
+            }
+
+            if (hostRepaintAfterRequested != null)
+                hostRepaintAfterRequested(this, delaySeconds);
         }
 
         internal void ApplyKeyDown(
@@ -170,6 +378,7 @@ namespace NowUI
             ref bool cancelPressed)
         {
             NowTextInput.Invalidate();
+            NowKeyInput.Invalidate();
             var navigationKeys = NowInput.navigationKeys;
 
             switch (current.keyCode)
@@ -196,8 +405,6 @@ namespace NowUI
                     else
                         focusNextPressed = true;
 
-                    current.Use();
-                    RequestRepaint();
                     break;
                 case KeyCode.Return when (navigationKeys & NowNavigationKeys.EnterSubmit) != 0:
                 case KeyCode.KeypadEnter when (navigationKeys & NowNavigationKeys.EnterSubmit) != 0:
@@ -219,6 +426,7 @@ namespace NowUI
         internal void ApplyKeyUp(Event current, ref bool submitReleased, ref bool cancelReleased)
         {
             NowTextInput.Invalidate();
+            NowKeyInput.Invalidate();
 
             switch (current.keyCode)
             {
@@ -259,6 +467,69 @@ namespace NowUI
             }
         }
 
+        internal void ResetState()
+        {
+            ResetState(releaseNativeCapture: true);
+        }
+
+        internal void ResetState(bool releaseNativeCapture)
+        {
+            CancelTrackedCapture(releaseNativeCapture);
+            _sampledEvent = null;
+            _sampledType = EventType.Ignore;
+            _pendingCaptureCancelled = false;
+            ResetKeyboardLatches();
+        }
+
+        internal void CancelTrackedCapture(bool releaseNativeCapture)
+        {
+            _buttonsDown = NowPointerButtons.None;
+            _capturedButtons = NowPointerButtons.None;
+
+            if (releaseNativeCapture)
+                ReleaseNativeCapture();
+        }
+
+        internal bool NotifyHostFocusChanged(bool focused, bool releaseNativeCapture)
+        {
+            if (!_hostFocusKnown)
+            {
+                _hostFocusKnown = true;
+                _hostFocused = focused;
+                return false;
+            }
+
+            if (_hostFocused == focused)
+                return false;
+
+            bool lostFocus = _hostFocused && !focused;
+            _hostFocused = focused;
+
+            if (!lostFocus)
+                return false;
+
+            if (_buttonsDown != NowPointerButtons.None ||
+                _capturedButtons != NowPointerButtons.None)
+            {
+                _pendingCaptureCancelled = true;
+            }
+
+            CancelTrackedCapture(releaseNativeCapture);
+            ResetKeyboardLatches();
+            RequestHostRepaint(markGUIChanged: false);
+            return true;
+        }
+
+        void ResetKeyboardLatches()
+        {
+            _leftDown = false;
+            _rightDown = false;
+            _upDown = false;
+            _downDown = false;
+            _submitDown = false;
+            _cancelDown = false;
+        }
+
         Vector2 ReadNavigation()
         {
             float x = 0f;
@@ -277,6 +548,25 @@ namespace NowUI
                 y += 1f;
 
             return Vector2.ClampMagnitude(new Vector2(x, y), 1f);
+        }
+
+        void ReleaseNativeCapture()
+        {
+            if (_hostControlId != 0 && GUIUtility.hotControl == _hostControlId)
+                GUIUtility.hotControl = 0;
+        }
+
+        static int NextInputPass()
+        {
+            unchecked
+            {
+                ++s_inputPass;
+
+                if (s_inputPass <= 0)
+                    s_inputPass = 1;
+
+                return s_inputPass;
+            }
         }
 
         static bool TryGetIMGUIButton(int button, out NowPointerButton pointerButton)

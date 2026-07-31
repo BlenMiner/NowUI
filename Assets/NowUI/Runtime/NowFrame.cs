@@ -227,11 +227,19 @@ namespace NowUI
 
         internal bool EndRepaintTracking()
         {
+            return EndRepaintTracking(out _);
+        }
+
+        internal bool EndRepaintTracking(out float nextRepaintAt)
+        {
             if (!_active || !NowFrame.IsCurrent(_token) || !_trackRepaint || _repaintEnded)
+            {
+                nextRepaintAt = float.PositiveInfinity;
                 return false;
+            }
 
             _repaintEnded = true;
-            return NowControlState.EndRepaintTracking();
+            return NowControlState.EndRepaintTracking(out nextRepaintAt);
         }
 
         public void Dispose()

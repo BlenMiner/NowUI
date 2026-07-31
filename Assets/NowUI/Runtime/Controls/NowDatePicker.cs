@@ -71,7 +71,7 @@ namespace NowUI
             public bool hasRange;
             public long highlightTicks;
             public bool hasHighlight;
-            public int openedFrame;
+            public int openedInputPass;
             public NowRect field;
             public NowRect popupRect;
             public int cachedLabelYear;
@@ -209,7 +209,7 @@ namespace NowUI
                     var openState = GetState(id);
                     openState.highlightTicks = value.Date.Ticks;
                     openState.hasHighlight = true;
-                    openState.openedFrame = NowInput.current.frame;
+                    openState.openedInputPass = NowInput.current.inputPass;
                 }
             }
 
@@ -220,7 +220,6 @@ namespace NowUI
             if (!open)
                 return changed;
 
-            NowControlState.RequestRepaint();
             DeferPopup(theme, id, rect, value, ref shown);
             return changed;
         }
@@ -331,11 +330,14 @@ namespace NowUI
 
             var snapshot = NowInput.current;
             bool fieldPressClaimedByField = state.field.Contains(snapshot.pointerPosition) &&
-                NowInput.activeId == state.id;
+                NowInput.IsActiveControl(state.id);
             bool pressedOutside = snapshot.anyPointerPressed &&
                 !NowOverlay.IsPointerInsideOverlayTree(state.id, snapshot.pointerPosition) &&
                 !fieldPressClaimedByField;
             bool cancelled = snapshot.cancelPressed && !NowInput.cancelConsumed && !NowOverlay.HasNestedOverlay(state.id);
+
+            if (cancelled)
+                NowInput.ConsumeKeyActivity();
 
             if (cancelled && view > 0)
             {
@@ -344,6 +346,9 @@ namespace NowUI
             }
             else if (pressedOutside || cancelled)
             {
+                if (pressedOutside)
+                    NowInput.ConsumePointerPress();
+
                 NowControlState.Get<bool>(state.id) = false;
             }
         }
@@ -572,10 +577,16 @@ namespace NowUI
                     dayStep += navigation.y > 0f ? -7 : 7;
 
                 if (dayStep != 0)
+                {
                     MoveHighlight(state, dayStep);
+                    NowInput.ConsumeKeyActivity();
+                }
 
-                if (snapshot.submitPressed && snapshot.frame != state.openedFrame && state.hasHighlight)
+                if (snapshot.submitPressed && snapshot.inputPass != state.openedInputPass && state.hasHighlight)
+                {
+                    NowInput.ConsumeKeyActivity();
                     CommitHighlight(state);
+                }
 
                 return;
             }
@@ -598,10 +609,12 @@ namespace NowUI
                     StepYears(ref shown, step);
 
                 NowControlState.RequestRepaint();
+                NowInput.ConsumeKeyActivity();
             }
 
-            if (snapshot.submitPressed && snapshot.frame != state.openedFrame)
+            if (snapshot.submitPressed && snapshot.inputPass != state.openedInputPass)
             {
+                NowInput.ConsumeKeyActivity();
                 --view;
                 NowControlState.RequestRepaint();
             }

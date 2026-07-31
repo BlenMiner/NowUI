@@ -31,6 +31,10 @@ namespace NowUI
 
         static int _frameStamp = -1;
 
+        static bool _inputPassActive;
+
+        static bool _activityClaimed;
+
         public static INowKeyInputSource source
         {
             get => _source ??= NowKeyboardKeyInputSource.instance;
@@ -59,11 +63,58 @@ namespace NowUI
             _frameStamp = -1;
         }
 
+        internal static void BeginInputPass()
+        {
+            _inputPassActive = true;
+            _activityClaimed = false;
+        }
+
+        /// <summary>
+        /// Claims the current raw key press for this input pass. IMGUI consumes
+        /// the native KeyDown so another panel cannot bind the same press.
+        /// </summary>
+        public static void ClaimActivity()
+        {
+            if (!_inputPassActive || NowInput.isPassive || _activityClaimed)
+                return;
+
+            _activityClaimed = true;
+
+            if (NowInput.currentProvider is NowIMGUIInputProvider imgui)
+                imgui.NotifyKeyActivityClaimed();
+        }
+
+        internal static void EndInputPass()
+        {
+            if (!_inputPassActive)
+                return;
+
+            _inputPassActive = false;
+
+            if (!_activityClaimed)
+                return;
+
+            _activityClaimed = false;
+            _frame.pressedKey = Key.None;
+        }
+
+        /// <summary>
+        /// Discards a key edge that armed a capture control. The next native
+        /// IMGUI KeyDown invalidates the cache and remains eligible.
+        /// </summary>
+        public static void DiscardPending()
+        {
+            _frame = default;
+            _frameStamp = Time.frameCount;
+        }
+
         public static void Reset()
         {
             _source = null;
             _frame = default;
             _frameStamp = -1;
+            _inputPassActive = false;
+            _activityClaimed = false;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

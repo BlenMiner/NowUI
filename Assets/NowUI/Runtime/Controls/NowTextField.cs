@@ -1205,7 +1205,10 @@ namespace NowUI
                         underlineHeight));
                 }
 
-                if (focused && NowControlState.Blink(1f, blinkAnchor))
+                if (focused &&
+                    (NowInput.isPassive
+                        ? NowControlState.Blink(1f, blinkAnchor)
+                        : NowControlState.ScheduledBlink(1f, blinkAnchor)))
                 {
                     renderer.DrawCaret(theme, new NowRect(textX + caretX, inner.y, theme.controlStyles.caretWidth, inner.height));
                 }
@@ -1234,9 +1237,6 @@ namespace NowUI
                     theme, rect, spinnerUpRect, spinnerDownRect,
                     spinnerUp.hovered, spinnerUp.held, spinnerDown.hovered, spinnerDown.held, focused));
             }
-
-            if (focused && !NowInput.isPassive)
-                NowControlState.RequestRepaint();
 
             return new NowTextFieldResult(rect, !reverted && text != original, submitted);
         }

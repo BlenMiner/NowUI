@@ -74,9 +74,94 @@ public class NowRendererTests
     }
 
     [Test]
-    public void TrackedImmediateFrameForwardsOneAnimationRepaintAtCompletion()
+    public void NowGUIPanelsInDistinctGUIContextsDoNotAliasTheSameNativeControlId()
+    {
+        var firstContext = new object();
+        var secondContext = new object();
+        NowGUIScope first = default;
+        NowGUIScope second = default;
+
+        try
+        {
+            first = NowGUI.AutoForEvent(
+                firstContext,
+                101,
+                new Rect(0f, 0f, 120f, 40f),
+                Color.clear,
+                1f,
+                repaint: false);
+            int firstId = NowControls.GetControlId("shared-window-control");
+            first.Dispose();
+
+            second = NowGUI.AutoForEvent(
+                secondContext,
+                101,
+                new Rect(0f, 0f, 120f, 40f),
+                Color.clear,
+                1f,
+                repaint: false);
+            int secondId = NowControls.GetControlId("shared-window-control");
+            second.Dispose();
+
+            Assert.AreNotEqual(
+                firstId,
+                secondId,
+                "IMGUI control ids are local to a GUI context; two EditorWindows may both receive 101 without sharing NowUI state.");
+        }
+        finally
+        {
+            second.Dispose();
+            first.Dispose();
+            NowGUI.DisposeAll();
+            NowInput.Reset();
+            NowControls.Reset();
+        }
+    }
+
+    [Test]
+    public void DisposedNowGUIPanelsReleaseTheirOverlayRegistrationOwners()
+    {
+        NowOverlay.Reset();
+        NowGUIScope panel = default;
+
+        try
+        {
+            panel = NowGUI.AutoForEvent(
+                3030,
+                new Rect(0f, 0f, 120f, 40f),
+                Color.clear,
+                1f,
+                repaint: false);
+            NowOverlay.BlockAllSurfaces(3031);
+            panel.Dispose();
+
+            Assert.AreEqual(1, NowOverlay.registrationOwnerCount);
+
+            NowGUI.DisposeAll();
+
+            Assert.AreEqual(
+                0,
+                NowOverlay.registrationOwnerCount,
+                "Panel cache disposal must not leave a strong overlay-owner registration behind.");
+            Assert.AreEqual(0, NowOverlay.currentBlockCount);
+            Assert.AreEqual(0, NowOverlay.previousBlockCount);
+        }
+        finally
+        {
+            panel.Dispose();
+            NowGUI.DisposeAll();
+            NowOverlay.Reset();
+            NowInput.Reset();
+            NowControls.Reset();
+        }
+    }
+
+    [Test]
+    public void TrackedImmediateFrameForwardsOneAnimationRepaintWithoutMarkingGUIChanged()
     {
         Action previousRepaint = NowIMGUIInputProvider.repaintRequested;
+        Action<NowIMGUIInputProvider> previousHostRepaint =
+            NowIMGUIInputProvider.hostRepaintRequested;
         bool previousChanged = GUI.changed;
         int repaintCount = 0;
         NowFrameScope frame = default;
@@ -85,6 +170,7 @@ public class NowRendererTests
         {
             GUI.changed = false;
             NowIMGUIInputProvider.repaintRequested = () => ++repaintCount;
+            NowIMGUIInputProvider.hostRepaintRequested = null;
             frame = NowFrame.Begin(1f, trackRepaint: true);
 
             NowControlState.RequestRepaint();
@@ -93,9 +179,11 @@ public class NowRendererTests
             frame.Dispose();
 
             if (wantsRepaint)
-                NowIMGUIInputProvider.RequestRepaint();
+                NowIMGUIInputProvider.instance.RequestHostRepaint(markGUIChanged: false);
 
-            Assert.IsTrue(GUI.changed);
+            Assert.IsFalse(
+                GUI.changed,
+                "A temporal animation repaint is not an IMGUI value change and must not feed GUI.changed repaint loops.");
             Assert.AreEqual(
                 1,
                 repaintCount,
@@ -105,6 +193,7 @@ public class NowRendererTests
         {
             frame.Dispose();
             NowIMGUIInputProvider.repaintRequested = previousRepaint;
+            NowIMGUIInputProvider.hostRepaintRequested = previousHostRepaint;
             GUI.changed = previousChanged;
             NowGUI.DisposeAll();
             NowInput.Reset();

@@ -548,7 +548,8 @@ namespace NowUI
 
                 Now.EndColorMultiplier();
                 colorMultiplierActive = false;
-                _repaintTracker.SetWantsRepaint(frame.EndRepaintTracking());
+                bool wantsRepaint = frame.EndRepaintTracking(out float nextRepaintAt);
+                _repaintTracker.SetRepaintRequest(wantsRepaint, nextRepaintAt);
 
                 scope.Dispose();
             }

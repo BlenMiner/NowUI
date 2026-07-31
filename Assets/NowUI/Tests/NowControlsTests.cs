@@ -201,6 +201,35 @@ public class NowControlsTests
     }
 
     [Test]
+    public void ScheduledCaretBlinkRequestsOnlyItsNextPhaseBoundary()
+    {
+        float anchor = Time.realtimeSinceStartup;
+
+        NowControlState.BeginRepaintTracking();
+        NowControlState.ScheduledBlink(1f, anchor);
+        bool immediate = NowControlState.EndRepaintTracking(out float nextRepaintAt);
+
+        Assert.IsFalse(immediate);
+        Assert.IsFalse(float.IsInfinity(nextRepaintAt));
+        Assert.That(
+            nextRepaintAt - Time.realtimeSinceStartup,
+            Is.InRange(0f, 0.51f));
+    }
+
+    [Test]
+    public void RepaintTrackerWaitsForScheduledDeadline()
+    {
+        var tracker = new NowInteractionRepaintTracker();
+        float now = Time.realtimeSinceStartup;
+
+        tracker.SetRepaintRequest(false, now + 10f);
+        Assert.IsFalse(tracker.wantsRepaint);
+
+        tracker.SetRepaintRequest(false, now - 0.01f);
+        Assert.IsTrue(tracker.wantsRepaint);
+    }
+
+    [Test]
     public void PressAnimationDoesNotStartDuringPassiveMeasurePass()
     {
         var animation = new NowPressAnimation();
@@ -1248,7 +1277,6 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowOverlay.ForceNewFrame();
             NowFocus.ForceNewFrame();
         }
 
@@ -1282,16 +1310,17 @@ public class NowControlsTests
             frame: 2, time: 2f);
 
         bool submitted;
+        bool baseFocused;
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowOverlay.ForceNewFrame();
             NowFocus.ForceNewFrame();
             submitted = NowFocus.SubmitPressed(1);
+            baseFocused = NowFocus.IsFocused(1);
         }
 
         Assert.IsFalse(submitted);
-        Assert.IsFalse(NowFocus.IsFocused(1));
+        Assert.IsFalse(baseFocused);
     }
 
     [Test]
@@ -1318,7 +1347,6 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowOverlay.ForceNewFrame();
             NowFocus.ForceNewFrame();
         }
 
