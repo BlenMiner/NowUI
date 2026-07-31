@@ -1,3 +1,12 @@
+## [1.0.7](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.6...nowui-v1.0.7) (2026-07-31)
+
+
+### Bug Fixes
+
+* blur text fields on submit ([f17b992](https://github.com/BlenMiner/NowUI/commit/f17b992a6c610a6c8f400589a4ee40bd4352eca9))
+* expose seamless polyline rendering ([9b08e8a](https://github.com/BlenMiner/NowUI/commit/9b08e8a8159233a82a311e03d704542f6e598114))
+* stabilize editor GUI input routing ([65acb3b](https://github.com/BlenMiner/NowUI/commit/65acb3b65805a640f2100ae1f49243e5ad9aec0a))
+
 ## [1.0.6](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.5...nowui-v1.0.6) (2026-07-31)
 
 
