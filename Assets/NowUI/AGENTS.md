@@ -54,9 +54,12 @@ not infer APIs from feature names or internal design notes.
   dismissing them.
 - Enter/Return submits and blurs a single-line `TextField`; `TextArea` keeps
   Enter as a newline. Tab and Shift+Tab use the registered focus order.
-- Custom focused keyboard consumers that read `NowTextInput.current` must call
-  `NowTextInput.ClaimActivity()` so one-shot characters and shortcuts are not
-  replayed by another IMGUI pass in the same Unity frame. Use
+- Custom focused keyboard consumers must read `NowTextInput.current` before
+  calling `NowTextInput.ClaimActivity()`, and claim only activity they own.
+  Use `NowTextInput.RequestTextCapture(claimActivity: false)` for that flow;
+  the parameterless overload retains its legacy capture-and-claim behavior.
+  A claim prevents one-shot characters and shortcuts from replaying in another
+  IMGUI pass in the same Unity frame. Use
   `NowInput.current.inputPass`, not `Time.frameCount`, for custom one-pass
   guards in IMGUI. Claim handled key and pointer activity through NowUI so the
   native IMGUI event is consumed instead of reaching a sibling panel/control.
@@ -106,9 +109,14 @@ not infer APIs from feature names or internal design notes.
 - Keep one-shot text, raw-key, cancel, and shortcut delivery
   input-pass-scoped. Never use `Time.frameCount` as IMGUI event identity:
   editor IMGUI can run several keyboard, pointer, layout, and repaint passes
-  before it advances. Refresh cached input on native keyboard events and
-  consume claimed KeyDown and handled pointer events so native IMGUI cannot
-  replay them into another panel or control.
+  before it advances. Copy each panel's native KeyDown/KeyUp text semantics and
+  raw binding key into its provider packet before any control can use the
+  event; do not recover editor keys from a later global Input System sample.
+  Unity's filtered
+  `GetTypeForControl` route governs pointer capture, while focused NowUI
+  ownership governs keyboard delivery. Sample a packet before claiming it,
+  keep text/IME capture separate from ownership, and consume claimed KeyDown
+  plus handled pointer events so native IMGUI cannot replay them elsewhere.
 - Keep each IMGUI panel's focus registration plus popup and pointer registries
   bounded across repeated event passes. Replace a host's registrations for the
   current pass instead of appending until `Time.frameCount` changes. Process

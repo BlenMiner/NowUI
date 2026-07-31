@@ -1349,6 +1349,10 @@ public class NowInputTests
                 out var navigated));
             Assert.IsTrue(navigated.submitDown);
             Assert.AreEqual(Vector2.left, navigated.navigation);
+            Assert.IsTrue(provider.TryGetTextInputFrame(
+                navigated.inputPass,
+                out var textBeforeFocusLoss));
+            Assert.IsTrue(textBeforeFocusLoss.leftHeld);
 
             Assert.IsTrue(provider.NotifyHostFocusChanged(false, releaseNativeCapture: false));
             Assert.IsFalse(provider.NotifyHostFocusChanged(true, releaseNativeCapture: false));
@@ -1369,6 +1373,11 @@ public class NowInputTests
                 afterFocusReturn.submitDown,
                 "A missed native KeyUp while the window is unfocused must not leave submit latched.");
             Assert.AreEqual(Vector2.zero, afterFocusReturn.navigation);
+            Assert.IsTrue(provider.TryGetTextInputFrame(
+                afterFocusReturn.inputPass,
+                out var textAfterFocusReturn));
+            Assert.IsFalse(textAfterFocusReturn.leftHeld,
+                "A missed text-editing KeyUp must not keep caret repeat or editor repaints alive.");
         }
         finally
         {

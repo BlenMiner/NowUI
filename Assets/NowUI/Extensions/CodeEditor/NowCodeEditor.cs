@@ -355,7 +355,7 @@ namespace NowUI.CodeEditor
             }
 
             var interaction = NowControls.Interact(id, rect, _navigation,
-                NowFocusNavigationLock.All, true, out bool focused, out _);
+                NowFocusNavigationLock.All, true, false, out bool focused, out _);
             bool verticalMove = false;
             bool revealCaret = false;
 
@@ -469,7 +469,7 @@ namespace NowUI.CodeEditor
             {
                 NowFocus.LockNavigation();
                 NowInput.ConsumeCancel();
-                NowTextInput.RequestTextCapture();
+                NowTextInput.RequestTextCapture(claimActivity: false);
                 var frame = NowTextInput.current;
                 composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
 
@@ -839,6 +839,9 @@ namespace NowUI.CodeEditor
                         }
                     }
                 }
+
+                if (frame.hasActivity)
+                    NowTextInput.ClaimActivity();
             }
 
             // Right-click: the standard editing context menu. Opening notes the

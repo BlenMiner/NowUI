@@ -277,6 +277,32 @@ public class NowTextFieldEditingTests
         }
     }
 
+    [Test]
+    public void TextCaptureCanDeferClaimWithoutBreakingLegacyCaptureAndClaim()
+    {
+        _keyboard.frame = new NowTextInputFrame { characters = "x" };
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        {
+            NowTextInput.RequestTextCapture(claimActivity: false);
+            Assert.AreEqual("x", NowTextInput.current.characters);
+        }
+
+        using (NowInput.Begin(_pointer, Surface))
+        {
+            NowTextInput.RequestTextCapture();
+            Assert.AreEqual("x", NowTextInput.current.characters,
+                "The compatible overload may claim before sampling without hiding the current pass.");
+        }
+
+        using (NowInput.Begin(_pointer, Surface))
+        {
+            Assert.IsNull(NowTextInput.current.characters,
+                "The parameterless overload must retain its legacy capture-and-claim behavior.");
+        }
+    }
+
     NowInputSnapshot NavigationSnapshot(
         Vector2 navigation = default,
         bool focusPrevious = false,

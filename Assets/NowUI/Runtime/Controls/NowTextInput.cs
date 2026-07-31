@@ -94,10 +94,10 @@ namespace NowUI
     }
 
     /// <summary>
-    /// Frame-sampled text-editing input for text fields and custom editors.
-    /// Reads the Input System keyboard (legacy input as fallback); replace
-    /// <see cref="source"/> with a fake in tests, the same seam the pointer
-    /// providers use.
+    /// Text-editing input for text fields and custom editors. Editor IMGUI uses
+    /// the current provider/input-pass packet; other hosts read the Input System
+    /// keyboard (legacy input as fallback). Replace <see cref="source"/> with a
+    /// fake in tests, the same seam the pointer providers use.
     /// </summary>
     public static class NowTextInput
     {
@@ -106,6 +106,10 @@ namespace NowUI
         static NowTextInputFrame _frame;
 
         static int _frameStamp = -1;
+
+        static NowIMGUIInputProvider _frameProvider;
+
+        static int _inputPassStamp = int.MinValue;
 
         static bool _inputPassActive;
 
@@ -134,33 +138,65 @@ namespace NowUI
         {
             get
             {
-                if (_frameStamp != Time.frameCount)
+                NowIMGUIInputProvider imgui =
+                    NowInput.hasContext
+                        ? NowInput.currentProvider as NowIMGUIInputProvider
+                        : null;
+                int inputPass = imgui != null ? NowInput.current.inputPass : int.MinValue;
+                bool usesDefaultSource = _source == null ||
+                    object.ReferenceEquals(_source, NowKeyboardTextInputSource.instance);
+
+                if (usesDefaultSource && imgui != null &&
+                    imgui.TryGetTextInputFrame(inputPass, out NowTextInputFrame nativeFrame))
                 {
+                    if (!ReferenceEquals(_frameProvider, imgui) ||
+                        _inputPassStamp != inputPass)
+                    {
+                        nativeFrame.composition =
+                            NowKeyboardTextInputSource.instance.GetComposition();
+                        NowKeyboardTextInputSource.instance.DiscardPendingCharacters();
+                        _frameProvider = imgui;
+                        _inputPassStamp = inputPass;
+                        _frameStamp = -1;
+                        _frame = nativeFrame;
+                        MaintainCapture();
+                        ApplyEnterConsumption();
+                    }
+                }
+                else if (_frameProvider != null || _frameStamp != Time.frameCount)
+                {
+                    _frameProvider = null;
+                    _inputPassStamp = int.MinValue;
                     _frameStamp = Time.frameCount;
                     MaintainCapture();
 
                     if (!source.TryGetFrame(out _frame))
                         _frame = default;
 
-                    if (_enterConsumed)
-                    {
-                        if (Time.realtimeSinceStartup - _enterConsumedTime > EnterConsumedTimeout)
-                        {
-                            _enterConsumed = false;
-                        }
-                        else if (_frame.enterPressed || _frame.enterHeld)
-                        {
-                            _frame.enterPressed = false;
-                            _frame.enterHeld = false;
-                        }
-                        else
-                        {
-                            _enterConsumed = false;
-                        }
-                    }
+                    ApplyEnterConsumption();
                 }
 
                 return _frame;
+            }
+        }
+
+        static void ApplyEnterConsumption()
+        {
+            if (!_enterConsumed)
+                return;
+
+            if (Time.realtimeSinceStartup - _enterConsumedTime > EnterConsumedTimeout)
+            {
+                _enterConsumed = false;
+            }
+            else if (_frame.enterPressed || _frame.enterHeld)
+            {
+                _frame.enterPressed = false;
+                _frame.enterHeld = false;
+            }
+            else
+            {
+                _enterConsumed = false;
             }
         }
 
@@ -199,22 +235,27 @@ namespace NowUI
                 return;
 
             _activityClaimed = false;
-            _frame.characters = null;
-            _frame.homePressed = false;
-            _frame.endPressed = false;
-            _frame.enterPressed = false;
-            _frame.escapePressed = false;
-            _frame.tabPressed = false;
-            _frame.copyPressed = false;
-            _frame.pastePressed = false;
-            _frame.cutPressed = false;
-            _frame.selectAllPressed = false;
-            _frame.undoPressed = false;
-            _frame.redoPressed = false;
-            _frame.duplicatePressed = false;
-            _frame.commentPressed = false;
-            _frame.goToLinePressed = false;
-            _frame.renamePressed = false;
+            SpendOneShotActivity(ref _frame);
+        }
+
+        internal static void SpendOneShotActivity(ref NowTextInputFrame frame)
+        {
+            frame.characters = null;
+            frame.homePressed = false;
+            frame.endPressed = false;
+            frame.enterPressed = false;
+            frame.escapePressed = false;
+            frame.tabPressed = false;
+            frame.copyPressed = false;
+            frame.pastePressed = false;
+            frame.cutPressed = false;
+            frame.selectAllPressed = false;
+            frame.undoPressed = false;
+            frame.redoPressed = false;
+            frame.duplicatePressed = false;
+            frame.commentPressed = false;
+            frame.goToLinePressed = false;
+            frame.renamePressed = false;
         }
 
         static int _captureRequestFrame = -1;
@@ -247,7 +288,7 @@ namespace NowUI
             _enterConsumed = true;
             _enterConsumedTime = Time.realtimeSinceStartup;
 
-            if (_frameStamp == Time.frameCount)
+            if (_frameProvider != null || _frameStamp == Time.frameCount)
             {
                 _frame.enterPressed = false;
                 _frame.enterHeld = false;
@@ -255,26 +296,39 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Declares that the calling control consumes text input this frame.
-        /// Focused text editors call this every interactive frame; the platform
-        /// IME turns on with the first request and off once a full frame passes
-        /// with none. Centralizing the transitions here means focus handoffs
-        /// between text controls can never race an enable against a disable,
-        /// and a control that stops being drawn mid-focus cannot leave text
-        /// input dead — the old per-control on/off calls did both.
+        /// Requests text/IME delivery and claims this pass's key activity. This
+        /// preserves the original custom-editor convenience behavior; controls
+        /// that classify input before claiming use the overload instead.
         /// </summary>
         public static void RequestTextCapture()
+        {
+            RequestTextCapture(claimActivity: true);
+        }
+
+        /// <summary>
+        /// Requests text/IME delivery. Focused text editors call this every
+        /// interactive frame; the platform IME turns on with the first request
+        /// and off once a full frame passes with none. Pass false when the
+        /// caller will read <see cref="current"/> first and explicitly claim only
+        /// handled activity.
+        /// </summary>
+        public static void RequestTextCapture(bool claimActivity)
         {
             if (NowInput.isPassive)
                 return;
 
-            ClaimActivity();
             _captureRequestFrame = Time.frameCount;
 
             if (!_captureActive)
             {
                 _captureActive = true;
                 setImeEnabled?.Invoke(true);
+            }
+
+            if (claimActivity)
+            {
+                _ = current;
+                ClaimActivity();
             }
         }
 
@@ -301,6 +355,8 @@ namespace NowUI
         public static void Invalidate()
         {
             _frameStamp = -1;
+            _frameProvider = null;
+            _inputPassStamp = int.MinValue;
         }
 
         /// <summary>Discards characters captured before an editor became active.</summary>
@@ -309,7 +365,7 @@ namespace NowUI
             if (source is INowTextInputBuffer buffer)
                 buffer.DiscardPendingText();
 
-            if (_frameStamp == Time.frameCount)
+            if (_frameProvider != null || _frameStamp == Time.frameCount)
             {
                 _frame.characters = null;
                 _frame.composition = null;
@@ -381,6 +437,8 @@ namespace NowUI
             _source = null;
             _frame = default;
             _frameStamp = -1;
+            _frameProvider = null;
+            _inputPassStamp = int.MinValue;
             _inputPassActive = false;
             _activityClaimed = false;
             _captureRequestFrame = -1;
@@ -450,6 +508,35 @@ namespace NowUI
 #if ENABLE_INPUT_SYSTEM
             _composition = null;
 #endif
+        }
+
+        internal void DiscardPendingCharacters()
+        {
+            _pending.Clear();
+        }
+
+        internal string GetComposition()
+        {
+#if ENABLE_INPUT_SYSTEM
+            var keyboard = Keyboard.current;
+            EnsureSubscribed(keyboard);
+
+            if (keyboard != null)
+                return _composition;
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+            try
+            {
+                string composing = Input.compositionString;
+                return string.IsNullOrEmpty(composing) ? null : composing;
+            }
+            catch (System.InvalidOperationException)
+            {
+            }
+#endif
+
+            return null;
         }
 
         public bool TryGetFrame(out NowTextInputFrame frame)

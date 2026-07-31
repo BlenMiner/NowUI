@@ -146,9 +146,18 @@ using (var ui = NowEditorGUI.Auto(rect, Color.white))
   frame.
 - Focused text editors claim one-shot characters and shortcut edges for their
   input pass, so a later Layout/Repaint pass in the same `Time.frameCount`
-  cannot type or invoke the same event again. Native IMGUI KeyDown/KeyUp passes
-  refresh the cached text-input sample even when `Time.frameCount` is unchanged,
-  and a focused text consumer marks its KeyDown used.
+  cannot type or invoke the same event again. Each editor panel copies native
+  IMGUI KeyDown/KeyUp text semantics and the raw key used by `KeyBindingField`
+  into a provider-owned packet before a control can mark the event used. This
+  remains reliable when Unity's passive native host control filters the
+  keyboard route to `Ignore`, and does not depend on a later global Input
+  System sample. Pointer capture still follows Unity's filtered
+  `GetTypeForControl` route.
+- Custom keyboard consumers read `NowTextInput.current` first and call
+  `NowTextInput.ClaimActivity()` only for activity they handle. Calling
+  `NowTextInput.RequestTextCapture(claimActivity: false)` keeps text and IME
+  delivery active without claiming the current key. The parameterless overload
+  retains its legacy capture-and-claim behavior for existing custom editors.
 - NowUI consumes handled native events at the ownership point: claimed KeyDown,
   captured/claimed pointer presses and their routed drag/release, empty-space
   focus-clearing presses, Tab, and owned wheel ticks are marked used so a

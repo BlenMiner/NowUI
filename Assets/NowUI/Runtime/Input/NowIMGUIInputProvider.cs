@@ -50,6 +50,32 @@ namespace NowUI
 
         bool _pendingCaptureCancelled;
 
+        NowTextInputFrame _textInputFrame;
+
+        int _textInputPass = int.MinValue;
+
+        int _keyboardClaimedPass = int.MinValue;
+
+        NowKeyInputFrame _keyInputFrame;
+
+        int _keyInputPass = int.MinValue;
+
+        bool _textBackspaceDown;
+
+        bool _textDeleteDown;
+
+        bool _textLeftDown;
+
+        bool _textRightDown;
+
+        bool _textUpDown;
+
+        bool _textDownDown;
+
+        bool _textEnterDown;
+
+        bool _textTabDown;
+
         public NowIMGUIInputProvider()
             : this(0, null)
         {
@@ -70,6 +96,51 @@ namespace NowUI
 
         internal bool isHostBacked => _hostControlId != 0;
 
+        /// <summary>
+        /// Returns the immutable text-editing packet captured from the native
+        /// IMGUI event for this provider pass. The packet is copied before a
+        /// focused control can mark the Event as Used.
+        /// </summary>
+        internal bool TryGetTextInputFrame(int inputPass, out NowTextInputFrame frame)
+        {
+            if (inputPass == _textInputPass)
+            {
+                frame = _textInputFrame;
+
+                if (inputPass == _keyboardClaimedPass)
+                    NowTextInput.SpendOneShotActivity(ref frame);
+
+                return true;
+            }
+
+            frame = default;
+            return false;
+        }
+
+        /// <summary>
+        /// Returns the raw binding key captured from the native IMGUI event for
+        /// this provider pass. Custom key sources remain authoritative.
+        /// </summary>
+        internal bool TryGetKeyInputFrame(int inputPass, out NowKeyInputFrame frame)
+        {
+            if (inputPass == _keyInputPass)
+            {
+                frame = inputPass == _keyboardClaimedPass
+                    ? default
+                    : _keyInputFrame;
+                return true;
+            }
+
+            frame = default;
+            return false;
+        }
+
+        internal void DiscardKeyInputFrame(int inputPass)
+        {
+            if (inputPass == _keyInputPass)
+                _keyboardClaimedPass = inputPass;
+        }
+
         public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
             Event current = Event.current;
@@ -80,9 +151,14 @@ namespace NowUI
                 return false;
             }
 
-            EventType routedType = _hostControlId != 0
+            EventType dispatchType = current.type;
+            EventType nativeType = current.rawType;
+            bool nativeKeyboardAvailable =
+                dispatchType != EventType.Used &&
+                IsKeyboardEvent(nativeType);
+            EventType routedType = _hostControlId != 0 && !nativeKeyboardAvailable
                 ? current.GetTypeForControl(_hostControlId)
-                : current.type;
+                : nativeKeyboardAvailable ? nativeType : dispatchType;
             bool ownsCapture = _hostControlId != 0 && GUIUtility.hotControl == _hostControlId;
             return TryGetSnapshot(surface, current, routedType, ownsCapture, out snapshot);
         }
@@ -105,6 +181,18 @@ namespace NowUI
                 snapshot = default;
                 return false;
             }
+
+            EventType dispatchType = current.type;
+            EventType nativeType = current.rawType;
+
+            // A panel uses a passive native control ID because NowFocus owns
+            // keyboard focus internally. GetTypeForControl therefore filters
+            // KeyDown/KeyUp to Ignore even when this panel owns the focused
+            // NowUI field. Preserve native keyboard events and let the focused
+            // NowUI host claim them; pointer events still use Unity's routed
+            // type for hot-control capture.
+            if (dispatchType != EventType.Used && IsKeyboardEvent(nativeType))
+                routedType = nativeType;
 
             _sampledEvent = current;
             _sampledType = routedType;
@@ -130,9 +218,14 @@ namespace NowUI
             NowPointerButtons released = NowPointerButtons.None;
             bool captureCancelled = _pendingCaptureCancelled;
             _pendingCaptureCancelled = false;
+            bool lostNativeCapture =
+                _hostControlId != 0 &&
+                _capturedButtons != NowPointerButtons.None &&
+                !ownsCapture;
             bool captureLossEvent =
-                routedType == EventType.Ignore ||
-                routedType == EventType.MouseLeaveWindow;
+                nativeType == EventType.Ignore ||
+                nativeType == EventType.MouseLeaveWindow ||
+                lostNativeCapture;
 
             if (captureLossEvent)
             {
@@ -190,6 +283,14 @@ namespace NowUI
             bool cancelPressed = false;
             bool cancelReleased = false;
 
+            if (routedType == EventType.MouseDown)
+                ResetTextKeyLatches();
+
+            int inputPass = NextInputPass();
+            _keyboardClaimedPass = int.MinValue;
+            CaptureTextInput(current, routedType, inputPass);
+            CaptureKeyInput(current, routedType, inputPass);
+
             if (routedType == EventType.KeyDown)
             {
                 ApplyKeyDown(
@@ -232,7 +333,7 @@ namespace NowUI
                 Time.frameCount,
                 Time.realtimeSinceStartup)
             {
-                inputPass = NextInputPass(),
+                inputPass = inputPass,
                 pointerCaptureCancelled = captureCancelled
             };
             return true;
@@ -288,11 +389,13 @@ namespace NowUI
 
         internal void NotifyTextActivityClaimed()
         {
+            _keyboardClaimedPass = _textInputPass;
             ConsumeClaimedKeyEventForHost(_sampledEvent ?? Event.current);
         }
 
         internal void NotifyKeyActivityClaimed()
         {
+            _keyboardClaimedPass = _keyInputPass;
             ConsumeClaimedKeyEventForHost(_sampledEvent ?? Event.current);
         }
 
@@ -467,6 +570,138 @@ namespace NowUI
             }
         }
 
+        void CaptureTextInput(Event current, EventType eventType, int inputPass)
+        {
+            if (eventType == EventType.KeyDown)
+                ApplyTextKeyDown(current.keyCode);
+            else if (eventType == EventType.KeyUp)
+                ApplyTextKeyUp(current.keyCode);
+
+            var frame = new NowTextInputFrame
+            {
+                backspaceHeld = _textBackspaceDown,
+                deleteHeld = _textDeleteDown,
+                leftHeld = _textLeftDown,
+                rightHeld = _textRightDown,
+                upHeld = _textUpDown,
+                downHeld = _textDownDown,
+                enterHeld = _textEnterDown,
+                tabHeld = _textTabDown,
+                shift = current.shift,
+                command = NowTextInput.isMacPlatform ? current.command : current.control,
+                option = current.alt
+            };
+
+            if (eventType == EventType.KeyDown)
+            {
+                frame.homePressed = current.keyCode == KeyCode.Home;
+                frame.endPressed = current.keyCode == KeyCode.End;
+                frame.enterPressed = current.keyCode == KeyCode.Return ||
+                    current.keyCode == KeyCode.KeypadEnter;
+                frame.escapePressed = current.keyCode == KeyCode.Escape;
+                frame.tabPressed = current.keyCode == KeyCode.Tab;
+                frame.renamePressed = current.keyCode == KeyCode.F2;
+
+                bool shortcutModifier = frame.command && !frame.option;
+
+                if (shortcutModifier)
+                {
+                    frame.copyPressed = current.keyCode == KeyCode.C;
+                    frame.pastePressed = current.keyCode == KeyCode.V;
+                    frame.cutPressed = current.keyCode == KeyCode.X;
+                    frame.selectAllPressed = current.keyCode == KeyCode.A;
+                    frame.undoPressed = current.keyCode == KeyCode.Z && !frame.shift;
+                    frame.redoPressed = current.keyCode == KeyCode.Y ||
+                        (current.keyCode == KeyCode.Z && frame.shift);
+                    frame.duplicatePressed = current.keyCode == KeyCode.D;
+                    frame.commentPressed = current.keyCode == KeyCode.Slash;
+                    frame.goToLinePressed = current.keyCode == KeyCode.G;
+                }
+                else if (current.character != '\0' && !char.IsControl(current.character))
+                {
+                    frame.characters = current.character.ToString();
+                }
+            }
+
+            _textInputFrame = frame;
+            _textInputPass = inputPass;
+        }
+
+        void CaptureKeyInput(Event current, EventType eventType, int inputPass)
+        {
+            _keyInputFrame = new NowKeyInputFrame
+            {
+                pressedKey = eventType == EventType.KeyDown
+                    ? NowKeyInput.FromIMGUIKeyCode(current.keyCode)
+                    : UnityEngine.InputSystem.Key.None
+            };
+            _keyInputPass = inputPass;
+        }
+
+        void ApplyTextKeyDown(KeyCode keyCode)
+        {
+            switch (keyCode)
+            {
+                case KeyCode.Backspace:
+                    _textBackspaceDown = true;
+                    break;
+                case KeyCode.Delete:
+                    _textDeleteDown = true;
+                    break;
+                case KeyCode.LeftArrow:
+                    _textLeftDown = true;
+                    break;
+                case KeyCode.RightArrow:
+                    _textRightDown = true;
+                    break;
+                case KeyCode.UpArrow:
+                    _textUpDown = true;
+                    break;
+                case KeyCode.DownArrow:
+                    _textDownDown = true;
+                    break;
+                case KeyCode.Return:
+                case KeyCode.KeypadEnter:
+                    _textEnterDown = true;
+                    break;
+                case KeyCode.Tab:
+                    _textTabDown = true;
+                    break;
+            }
+        }
+
+        void ApplyTextKeyUp(KeyCode keyCode)
+        {
+            switch (keyCode)
+            {
+                case KeyCode.Backspace:
+                    _textBackspaceDown = false;
+                    break;
+                case KeyCode.Delete:
+                    _textDeleteDown = false;
+                    break;
+                case KeyCode.LeftArrow:
+                    _textLeftDown = false;
+                    break;
+                case KeyCode.RightArrow:
+                    _textRightDown = false;
+                    break;
+                case KeyCode.UpArrow:
+                    _textUpDown = false;
+                    break;
+                case KeyCode.DownArrow:
+                    _textDownDown = false;
+                    break;
+                case KeyCode.Return:
+                case KeyCode.KeypadEnter:
+                    _textEnterDown = false;
+                    break;
+                case KeyCode.Tab:
+                    _textTabDown = false;
+                    break;
+            }
+        }
+
         internal void ResetState()
         {
             ResetState(releaseNativeCapture: true);
@@ -528,6 +763,29 @@ namespace NowUI
             _downDown = false;
             _submitDown = false;
             _cancelDown = false;
+            _textInputFrame = default;
+            _textInputPass = int.MinValue;
+            _keyboardClaimedPass = int.MinValue;
+            _keyInputFrame = default;
+            _keyInputPass = int.MinValue;
+            ResetTextKeyLatches();
+        }
+
+        void ResetTextKeyLatches()
+        {
+            _textBackspaceDown = false;
+            _textDeleteDown = false;
+            _textLeftDown = false;
+            _textRightDown = false;
+            _textUpDown = false;
+            _textDownDown = false;
+            _textEnterDown = false;
+            _textTabDown = false;
+        }
+
+        static bool IsKeyboardEvent(EventType type)
+        {
+            return type == EventType.KeyDown || type == EventType.KeyUp;
         }
 
         Vector2 ReadNavigation()

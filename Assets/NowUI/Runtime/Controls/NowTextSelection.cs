@@ -186,7 +186,6 @@ namespace NowUI
 
             if (focused && !NowInput.isPassive)
             {
-                NowTextInput.ClaimActivity();
                 var frame = NowTextInput.current;
 
                 if (frame.selectAllPressed)
@@ -194,6 +193,9 @@ namespace NowUI
 
                 if (frame.copyPressed && state.hasSelection)
                     NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
+
+                if (frame.selectAllPressed || frame.copyPressed)
+                    NowTextInput.ClaimActivity();
 
                 NowControlState.RequestRepaint();
             }

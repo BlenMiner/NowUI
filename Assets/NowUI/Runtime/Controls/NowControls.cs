@@ -608,6 +608,26 @@ namespace NowUI
         public static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation,
             NowFocusNavigationLock navigationLock, bool consumesCancel, out bool focused, out bool submitted)
         {
+            return Interact(
+                id,
+                rect,
+                navigation,
+                navigationLock,
+                consumesCancel,
+                acceptsSubmit: true,
+                out focused,
+                out submitted);
+        }
+
+        /// <summary>
+        /// Standard interaction with an explicit submit policy. Text editors
+        /// disable generic button-style submit so Space remains text and Enter
+        /// is classified by the editor before the native key is claimed.
+        /// </summary>
+        internal static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation,
+            NowFocusNavigationLock navigationLock, bool consumesCancel, bool acceptsSubmit,
+            out bool focused, out bool submitted)
+        {
             CheckDuplicateControlId(id);
             var interaction = NowInput.Interact(id, rect);
             NowFocus.Register(id, rect, navigation, navigationLock, consumesCancel);
@@ -616,7 +636,7 @@ namespace NowUI
                 NowFocus.Focus(id);
 
             focused = NowFocus.IsFocused(id);
-            submitted = NowFocus.SubmitPressed(id);
+            submitted = acceptsSubmit && NowFocus.SubmitPressed(id);
 
             if (!NowInput.isPassive)
             {

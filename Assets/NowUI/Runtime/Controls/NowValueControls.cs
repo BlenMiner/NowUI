@@ -1984,6 +1984,10 @@ namespace NowUI
                 return false;
 
             var frame = NowTextInput.current;
+
+            if (frame.deleteHeld)
+                NowTextInput.ClaimActivity();
+
             return NowControlState.Repeat(id, frame.deleteHeld);
         }
 
@@ -3145,6 +3149,10 @@ namespace NowUI
                 return false;
 
             var frame = NowTextInput.current;
+
+            if (frame.deleteHeld)
+                NowTextInput.ClaimActivity();
+
             return NowControlState.Repeat(id, frame.deleteHeld);
         }
 

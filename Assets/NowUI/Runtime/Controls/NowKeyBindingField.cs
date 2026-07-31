@@ -76,8 +76,17 @@ namespace NowUI
             var theme = NowTheme.themeAsset;
             int id = NowControls.GetControlId(_id, _site);
             var rect = NowControls.ReserveRect(_hasRect, _rect, _options, new Vector2(120f, 30f));
-            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
+            var interaction = NowControls.Interact(
+                id,
+                rect,
+                _navigation,
+                NowFocusNavigationLock.None,
+                consumesCancel: false,
+                acceptsSubmit: false,
+                out bool focused,
+                out _);
             ref var state = ref NowControlState.Get<ListenState>(id);
+            bool submitted = state.listening == 0 && NowFocus.SubmitPressed(id);
             bool changed = false;
 
             if (!NowInput.isPassive)
@@ -110,6 +119,7 @@ namespace NowUI
         {
             NowControlState.RequestRepaint();
             NowFocus.LockNavigation();
+            var key = NowKeyInput.current.pressedKey;
             NowInput.ConsumeCancel();
             var snapshot = NowInput.current;
 
@@ -123,8 +133,6 @@ namespace NowUI
 
             if (snapshot.inputPass == state.armInputPass)
                 return false;
-
-            var key = NowKeyInput.current.pressedKey;
 
             if (key == Key.None)
                 return false;

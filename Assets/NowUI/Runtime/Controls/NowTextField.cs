@@ -955,7 +955,7 @@ namespace NowUI
             }
 
             var interaction = NowControls.Interact(id, rect, _navigation,
-                NowFocusNavigationLock.Directional, true, out bool focused, out _);
+                NowFocusNavigationLock.Directional, true, false, out bool focused, out _);
 
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
@@ -1026,7 +1026,7 @@ namespace NowUI
             {
                 NowFocus.LockDirectionalNavigation();
                 NowInput.ConsumeCancel();
-                NowTextInput.RequestTextCapture();
+                NowTextInput.RequestTextCapture(claimActivity: false);
                 var frame = NowTextInput.current;
                 var undo = NowTextUndoRegistry.Get(id);
                 composition = string.IsNullOrEmpty(frame.composition) ? null : frame.composition;
@@ -1126,6 +1126,9 @@ namespace NowUI
 
                 if (SyncTouchKeyboard(id, ref text, ref state))
                     submitted = true;
+
+                if (frame.hasActivity)
+                    NowTextInput.ClaimActivity();
             }
             else if (s_touchKeyboardId == id)
             {

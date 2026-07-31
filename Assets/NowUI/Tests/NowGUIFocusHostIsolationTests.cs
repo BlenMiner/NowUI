@@ -209,7 +209,10 @@ public class NowGUIFocusHostIsolationTests
             mousePosition = new Vector2(20f, 20f)
         };
 
-        DrawIMGUIHostPass(ref panel, tabEvent, EventType.KeyDown);
+        DrawIMGUIHostPass(
+            ref panel,
+            tabEvent,
+            EventType.Ignore);
 
         Assert.AreEqual(expectedId, NowFocus.focusedId);
         Assert.AreEqual(
@@ -254,7 +257,10 @@ public class NowGUIFocusHostIsolationTests
             mousePosition = new Vector2(20f, 20f)
         };
 
-        DrawIMGUIHostPass(ref first, tabEvent, EventType.KeyDown);
+        DrawIMGUIHostPass(
+            ref first,
+            tabEvent,
+            EventType.Ignore);
 
         Assert.AreEqual(
             EventType.KeyDown,
@@ -264,7 +270,10 @@ public class NowGUIFocusHostIsolationTests
         Assert.AreEqual(0, firstRepaints);
         Assert.AreEqual(0, secondRepaints);
 
-        DrawIMGUIHostPass(ref second, tabEvent, EventType.KeyDown);
+        DrawIMGUIHostPass(
+            ref second,
+            tabEvent,
+            EventType.Ignore);
 
         Assert.AreEqual(second.secondId, NowFocus.focusedId);
         Assert.AreEqual(EventType.Used, tabEvent.type);

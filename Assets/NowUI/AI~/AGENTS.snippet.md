@@ -28,9 +28,12 @@ wheel tick fall through when it cannot move farther. Empty primary presses
 clear focus; overlays should call `NowFocus.RetainFocus()` only when dismissing
 or selecting them must preserve focus-owned state. Enter submits and blurs a
 single-line `TextField`, while Tab/Shift+Tab follows the panel's registered
-focus order. Custom focused keyboard consumers reading
-`NowTextInput.current` must call `NowTextInput.ClaimActivity()` so another
-IMGUI pass cannot replay one-shot text or shortcuts. Use
+focus order. Custom focused keyboard consumers must read
+`NowTextInput.current` before calling `NowTextInput.ClaimActivity()` and claim
+only activity they handle. Use
+`NowTextInput.RequestTextCapture(claimActivity: false)` for that flow; the
+parameterless overload retains its legacy capture-and-claim behavior. A claim
+prevents another IMGUI pass from replaying one-shot text or shortcuts. Use
 `NowInput.current.inputPass`, never `Time.frameCount`, as IMGUI event identity.
 Claimed KeyDown and handled pointer events are consumed natively. Focus, popup,
 and pointer registries stay bounded across repeated same-frame passes, and a
