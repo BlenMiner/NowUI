@@ -17,7 +17,8 @@
     "com.unity.ugui": "2.0.0",
     "com.unity.modules.unitywebrequest": "1.0.0",
     "com.unity.modules.unitywebrequesttexture": "1.0.0",
-    "com.unity.modules.uielements": "1.0.0"
+    "com.unity.modules.uielements": "1.0.0",
+    "com.unity.collections": "6.4.0"
   },
   "keywords": [
     "ui",
