@@ -156,7 +156,7 @@ public class NowControlGalleryExample : MonoBehaviour
         {
             for (int i = 0; i < _qualityOptions.Length; ++i)
             {
-                using (NowControls.IdScope(i))
+                using (NowControls.IdScope(i + 1))
                 {
                     if (NowLayout.Radio(_qualityOptions[i], _quality == i).Draw())
                         _quality = i;
