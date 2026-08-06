@@ -2,6 +2,10 @@ Shader "NowUI/Text Renderer UGUI"
 {
     Properties
     {
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
@@ -43,6 +47,7 @@ Shader "NowUI/Text Renderer UGUI"
         Pass
         {
             CGPROGRAM
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_local _ UNITY_UI_CLIP_RECT
@@ -50,6 +55,7 @@ Shader "NowUI/Text Renderer UGUI"
 
             #include "UnityCG.cginc"
             #include "UnityUI.cginc"
+            #include "NowUIMask.cginc"
 
             struct appdata
             {
@@ -112,11 +118,9 @@ Shader "NowUI/Text Renderer UGUI"
                 float4 mask = i.mask;
                 float2 rawUV = i.uv.zw;
                 float2 pos = rect.xy + rawUV * rect.zw;
+                float2 uiPosition = float2(pos.x, -pos.y);
 
-                clip(min(
-                    min(pos.x - mask.x, (mask.x + mask.z) - pos.x),
-                    min(-pos.y - mask.y, (mask.y + mask.w) + pos.y)
-                ));
+                NowUIClipLegacyRect(uiPosition, mask);
 
                 float outline = i.extras.x;
                 float4 msd = tex2D(_MainTex, i.uv.xy);
@@ -136,6 +140,7 @@ Shader "NowUI/Text Renderer UGUI"
                 float4 color = outline == 0 ? i.color : lerp(i.outlineColor, i.color, outline < 0 ? outlineOp : opacity);
 
                 color.a *= max(opacity, outlineOp);
+                color.a *= NowUIMaskCoverage(uiPosition);
 
                 #ifdef UNITY_UI_CLIP_RECT
                 float2 uiMask = saturate((_ClipRect.zw - _ClipRect.xy - abs(i.uiMask.xy)) * i.uiMask.zw);

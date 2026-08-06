@@ -7,6 +7,7 @@ using UnityEngine.UI;
 using Object = UnityEngine.Object;
 using NowUI;
 using NowUI.Internal;
+using NowUI.Sdf;
 
 public class NowRendererTests
 {
@@ -825,6 +826,50 @@ public class NowRendererTests
 
             Assert.IsTrue(inner.hasGeometry, "Inner capture should render without inheriting the outer mask.");
             Assert.IsFalse(outer.hasGeometry, "Outer mask should be restored after nested capture.");
+        }
+        finally
+        {
+            inner.Dispose();
+            outer.Dispose();
+        }
+    }
+
+    [Test]
+    public void NestedDrawListCaptureRestoresAmbientAnalyticMask()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var outer = new NowDrawList();
+        var inner = new NowDrawList();
+        var outsideCircle = new Vector2(50f, 50f);
+
+        try
+        {
+            using (outer.Begin(new Vector2(100f, 100f)))
+            using (Now.Mask(NowMaskShape.Circle(new Vector2(10f, 10f), 8f)))
+            {
+                Assert.IsFalse(Now.IsInsideAmbientMask(outsideCircle));
+
+                using (inner.Begin(new Vector2(100f, 100f)))
+                {
+                    Assert.IsTrue(
+                        Now.IsInsideAmbientMask(outsideCircle),
+                        "Nested capture inherited the caller's analytic mask.");
+                    Now.Rectangle(new NowRect(48f, 48f, 4f, 4f))
+                        .SetColor(Color.white)
+                        .Draw();
+                }
+
+                Assert.IsFalse(
+                    Now.IsInsideAmbientMask(outsideCircle),
+                    "Disposing the nested capture did not restore the outer analytic boundary.");
+                Now.Rectangle(new NowRect(48f, 48f, 4f, 4f))
+                    .SetColor(Color.white)
+                    .Draw();
+            }
+
+            Assert.IsTrue(inner.hasGeometry, "Nested capture should draw without the caller's analytic mask.");
+            Assert.IsFalse(outer.hasGeometry, "Restored analytic mask should cull the outside rectangle.");
         }
         finally
         {
@@ -2329,6 +2374,62 @@ public class NowRendererTests
         AssertUguiMaskProperties(Resources.Load<Material>("NowUI/TxtMaterialRGBAUGUI"));
     }
 
+    [TestCase("NowUI/UIMaterial")]
+    [TestCase("NowUI/UIMaterialUGUI")]
+    [TestCase("NowUI/GradientMaterial")]
+    [TestCase("NowUI/GradientMaterialUGUI")]
+    [TestCase("NowUI/GlassMaterial")]
+    [TestCase("NowUI/GlassMaterialUGUI")]
+    [TestCase("NowUI/RippleMaterial")]
+    [TestCase("NowUI/RippleMaterialUGUI")]
+    [TestCase("NowUI/BezierMaterial")]
+    [TestCase("NowUI/TxtMaterial")]
+    [TestCase("NowUI/TxtMaterialUGUI")]
+    [TestCase("NowUI/TxtMaterialRGBA")]
+    [TestCase("NowUI/TxtMaterialRGBAUGUI")]
+    [TestCase("NowUI/SdfMaterial")]
+    public void PackagedDrawMaterialsExposeShaderMaskBindingProperties(string resourcePath)
+    {
+        var material = Resources.Load<Material>(resourcePath);
+
+        Assert.NotNull(material, resourcePath);
+        Assert.IsTrue(material.HasProperty("_NowUIMaskCount"), $"{resourcePath} cannot receive analytic masks.");
+        Assert.IsTrue(material.HasProperty("_NowUITextureMaskCount"), $"{resourcePath} cannot receive texture masks.");
+        Assert.IsTrue(material.HasProperty("_NowUITextureMask0"), $"{resourcePath} has no first coverage sampler.");
+        Assert.IsTrue(material.HasProperty("_NowUITextureMask1"), $"{resourcePath} has no second coverage sampler.");
+    }
+
+    [Test]
+    public void GraphicBindsSdfCoverageToItsPerBatchCanvasMaterial()
+    {
+        var baseCanvasMaterial = Resources.Load<Material>("NowUI/UIMaterialUGUI");
+        Assert.NotNull(baseCanvasMaterial);
+        var graphicObject = new GameObject("Now SDF Mask Graphic", typeof(RectTransform), typeof(CanvasRenderer));
+
+        try
+        {
+            var rectTransform = graphicObject.GetComponent<RectTransform>();
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 80f);
+            rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 48f);
+
+            var graphic = graphicObject.AddComponent<SdfMaskGraphic>();
+            graphic.Rebuild(CanvasUpdate.PreRender);
+
+            var material = graphic.canvasRenderer.GetMaterial(0);
+            Assert.NotNull(material);
+            Assert.AreNotSame(baseCanvasMaterial, material);
+            Assert.AreEqual(1f, material.GetFloat("_NowUITextureMaskCount"));
+            Assert.IsInstanceOf<RenderTexture>(material.GetTexture("_NowUITextureMask0"));
+            Assert.AreSame(Texture2D.blackTexture, material.GetTexture("_NowUITextureMask1"));
+            Assert.AreEqual(0f, baseCanvasMaterial.GetFloat("_NowUITextureMaskCount"));
+        }
+        finally
+        {
+            Object.DestroyImmediate(graphicObject);
+            NowSdf.Reset();
+        }
+    }
+
     [Test]
     public void GraphicUsesReplayBackedGlassMaterialAutomatically()
     {
@@ -2817,6 +2918,23 @@ public class NowRendererTests
         protected override void DrawNowUI(NowRect rect)
         {
             recordedScale = Now.uiScale;
+        }
+    }
+
+    sealed class SdfMaskGraphic : NowGraphic
+    {
+        protected override void DrawNowUI(NowRect rect)
+        {
+            var surface = new NowRect(0f, 0f, rect.width, rect.height);
+
+            using (NowSdf.Scene(surface, "ugui-sdf-mask-binding")
+                .Circle(surface.center, Mathf.Min(rect.width, rect.height) * 0.4f)
+                .BeginMask())
+            {
+                Now.Rectangle(surface)
+                    .SetColor(Color.white)
+                    .Draw();
+            }
         }
     }
 }

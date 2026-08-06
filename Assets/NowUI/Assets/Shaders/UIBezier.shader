@@ -2,6 +2,10 @@ Shader "NowUI/UI Bezier"
 {
     Properties
     {
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         _ZTest ("ZTest", Float) = 8
     }
     SubShader
@@ -23,11 +27,13 @@ Shader "NowUI/UI Bezier"
         Pass
         {
             CGPROGRAM
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
+            #include "NowUIMask.cginc"
 
             struct appdata
             {
@@ -109,8 +115,7 @@ Shader "NowUI/UI Bezier"
 
                 // Mask clip (UI space, y-down): mask = (x, y, width, height).
                 float4 mask = i.mask;
-                clip(min(min(pixel.x - mask.x, mask.x + mask.z - pixel.x),
-                         min(pixel.y - mask.y, mask.y + mask.w - pixel.y)));
+                NowUIClipLegacyRect(pixel, mask);
 
                 clip(coverage - 0.001);
 
@@ -118,6 +123,7 @@ Shader "NowUI/UI Bezier"
                 fixed4 col;
                 col.rgb = i.color.rgb * alpha;
                 col.a = alpha;
+                col *= NowUIMaskCoverage(pixel);
                 return col;
             }
             ENDCG

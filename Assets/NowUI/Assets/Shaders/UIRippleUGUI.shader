@@ -2,6 +2,10 @@ Shader "NowUI/UI Ripple UGUI"
 {
     Properties
     {
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
@@ -42,6 +46,7 @@ Shader "NowUI/UI Ripple UGUI"
         Pass
         {
             CGPROGRAM
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_local _ UNITY_UI_CLIP_RECT
@@ -49,6 +54,7 @@ Shader "NowUI/UI Ripple UGUI"
 
             #include "UnityCG.cginc"
             #include "UnityUI.cginc"
+            #include "NowUIMask.cginc"
 
             struct appdata
             {
@@ -112,11 +118,9 @@ Shader "NowUI/UI Ripple UGUI"
                 float4 mask = i.mask;
                 float2 rawUV = float2(i.uv.w, i.extras.z);
                 float2 pos = rect.xy + rawUV * rect.zw;
+                float2 uiPosition = float2(pos.x, -pos.y);
 
-                clip(min(
-                    min(pos.x - mask.x, (mask.x + mask.z) - pos.x),
-                    min(-pos.y - mask.y, (mask.y + mask.w) + pos.y)
-                ));
+                NowUIClipLegacyRect(uiPosition, mask);
 
                 float4 radius = float4(i.radiusXYZ, i.uv.z);
                 float2 centered = (rawUV - 0.5) * rect.zw;
@@ -124,8 +128,7 @@ Shader "NowUI/UI Ripple UGUI"
                 float shapeDelta = max(length(float2(ddx(shapeDist), ddy(shapeDist))), 0.0001);
                 float shapeAlpha = 1.0 - smoothstep(-0.5 * shapeDelta, 0.5 * shapeDelta, shapeDist);
 
-                float2 screenPos = float2(pos.x, -pos.y);
-                float circleDist = length(screenPos - i.extras.xy) - i.extras.w;
+                float circleDist = length(uiPosition - i.extras.xy) - i.extras.w;
                 float circleDelta = max(length(float2(ddx(circleDist), ddy(circleDist))), 0.0001);
                 float circleAlpha = 1.0 - smoothstep(-0.5 * circleDelta, 0.5 * circleDelta, circleDist);
 
@@ -133,10 +136,11 @@ Shader "NowUI/UI Ripple UGUI"
                 fixed4 col;
                 col.rgb = i.color.rgb * alpha;
                 col.a = alpha;
+                col *= NowUIMaskCoverage(uiPosition);
 
                 #ifdef UNITY_UI_CLIP_RECT
                 float2 uiMask = saturate((_ClipRect.zw - _ClipRect.xy - abs(i.uiMask.xy)) * i.uiMask.zw);
-                col.a *= uiMask.x * uiMask.y;
+                col *= uiMask.x * uiMask.y;
                 #endif
 
                 #ifdef UNITY_UI_ALPHACLIP

@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.Rendering;
 using NowUI;
+using NowUI.Sdf;
 using Object = UnityEngine.Object;
 
 public class NowWorldGraphicTests
@@ -146,6 +147,36 @@ public class NowWorldGraphicTests
         protected override void DrawNowUI(NowRect rect)
         {
             recordedScale = Now.uiScale;
+        }
+    }
+
+    sealed class SdfMaskWorldGraphic : NowWorldGraphic
+    {
+        public bool drawPlainBeforeMask;
+        public bool drawMask = true;
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            var surface = new NowRect(0f, 0f, rect.width, rect.height);
+
+            if (drawPlainBeforeMask)
+            {
+                Now.Rectangle(surface)
+                    .SetColor(Color.gray)
+                    .Draw();
+            }
+
+            if (!drawMask)
+                return;
+
+            using (NowSdf.Scene(surface, "world-sdf-mask-binding")
+                .RoundedBox(surface.Inset(4f), 10f)
+                .BeginMask())
+            {
+                Now.Rectangle(surface)
+                    .SetColor(Color.white)
+                    .Draw();
+            }
         }
     }
 
@@ -347,6 +378,79 @@ public class NowWorldGraphicTests
         finally
         {
             Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void WorldGraphicBindsSdfCoverageThroughIndexedPropertyBlock()
+    {
+        var go = new GameObject("Now World SDF Mask");
+
+        try
+        {
+            var graphic = go.AddComponent<SdfMaskWorldGraphic>();
+            graphic.size = new Vector2(80f, 48f);
+            graphic.RebuildNowUI();
+
+            var renderer = go.GetComponent<MeshRenderer>();
+            var properties = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(properties, 0);
+
+            Assert.AreEqual(1f, properties.GetFloat("_NowUITextureMaskCount"));
+            Assert.IsInstanceOf<RenderTexture>(properties.GetTexture("_NowUITextureMask0"));
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+            NowSdf.Reset();
+        }
+    }
+
+    [Test]
+    public void WorldGraphicClearsRemovedIndexedMaskPropertyBlocks()
+    {
+        var go = new GameObject("Now World SDF Mask Cleanup");
+
+        try
+        {
+            var graphic = go.AddComponent<SdfMaskWorldGraphic>();
+            graphic.size = new Vector2(80f, 48f);
+            graphic.drawPlainBeforeMask = true;
+            graphic.RebuildNowUI();
+
+            var renderer = go.GetComponent<MeshRenderer>();
+            var properties = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(properties, 1);
+
+            Assert.AreEqual(2, renderer.sharedMaterials.Length);
+            Assert.AreEqual(1f, properties.GetFloat("_NowUITextureMaskCount"));
+            Assert.IsTrue(renderer.HasPropertyBlock());
+
+            graphic.drawMask = false;
+            graphic.RebuildNowUI();
+
+            Assert.AreEqual(1, renderer.sharedMaterials.Length);
+            Assert.IsFalse(
+                renderer.HasPropertyBlock(),
+                "Shrinking the material list retained the removed mask slot's indexed property block.");
+
+            graphic.drawPlainBeforeMask = false;
+            graphic.drawMask = true;
+            graphic.RebuildNowUI();
+            Assert.IsTrue(renderer.HasPropertyBlock());
+
+            graphic.drawMask = false;
+            graphic.RebuildNowUI();
+
+            Assert.AreEqual(0, renderer.sharedMaterials.Length);
+            Assert.IsFalse(
+                renderer.HasPropertyBlock(),
+                "The empty host retained its previous indexed mask property block.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+            NowSdf.Reset();
         }
     }
 

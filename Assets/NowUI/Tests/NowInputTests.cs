@@ -98,6 +98,38 @@ public class NowInputTests
     }
 
     [Test]
+    public void InteractionUsesAnalyticMaskInteriorAndIgnoresFeather()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(45f, 20f), true, true, false);
+        var mask = NowMaskShape.Circle(new Vector2(30f, 25f), 10f)
+            .SetFeather(24f);
+
+        using (NowInput.Begin(_provider, new Vector2(100f, 100f)))
+        using (Now.Mask(mask))
+        {
+            var interaction = NowInput.Interact(1, _rect);
+
+            Assert.IsFalse(interaction.hovered);
+            Assert.IsFalse(interaction.pressed);
+            Assert.IsFalse(interaction.held);
+        }
+
+        Assert.AreEqual(0, NowInput.activeId);
+    }
+
+    [Test]
+    public void InteractionAcceptsPointerInsideAnalyticMask()
+    {
+        _provider.snapshot = new NowInputSnapshot(new Vector2(30f, 25f), false, false, false);
+
+        using (NowInput.Begin(_provider, new Vector2(100f, 100f)))
+        using (Now.Mask(NowMaskShape.Ellipse(new NowRect(20f, 15f, 20f, 20f))))
+        {
+            Assert.IsTrue(NowInput.IsHovered(_rect));
+        }
+    }
+
+    [Test]
     public void ScrollDeltaIgnoresPointerOutsideAmbientMask()
     {
         _provider.snapshot = new NowInputSnapshot(

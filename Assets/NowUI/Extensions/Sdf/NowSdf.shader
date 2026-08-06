@@ -3,6 +3,10 @@ Shader "NowUI/SDF Scene"
     Properties
     {
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         _NowCanvasLayout ("Now Canvas Layout", Float) = 0
         _SdfShapeCount ("Shape Count", Float) = 0
         _SdfLayerCount ("Layer Count", Float) = 0
@@ -20,6 +24,7 @@ Shader "NowUI/SDF Scene"
         _SdfContourColor ("Contour Color", Color) = (0, 0, 0, 0)
         _SdfContourMask ("Contour Mask", Vector) = (0, 0, 0, 0)
         _SdfWarp ("Warp", Vector) = (0, 1, 0, 0)
+        [HideInInspector] _SdfMaskOutput ("SDF Mask Output", Float) = 0
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
         _StencilOp ("Stencil Operation", Float) = 0
@@ -70,6 +75,7 @@ Shader "NowUI/SDF Scene"
 
             #include "UnityCG.cginc"
             #include "UnityUI.cginc"
+            #include "../../Assets/Shaders/NowUIMask.cginc"
 
             #define NOW_SDF_MAX_SHAPES 64
             #define NOW_SDF_MAX_LAYERS 16
@@ -118,6 +124,7 @@ Shader "NowUI/SDF Scene"
             float4 _SdfContourColor;
             float4 _SdfContourMask;
             float4 _SdfWarp;
+            float _SdfMaskOutput;
             float4 _ClipRect;
             float _UIMaskSoftnessX;
             float _UIMaskSoftnessY;
@@ -568,12 +575,10 @@ Shader "NowUI/SDF Scene"
                 float2 scenePosBase = float2(quadPos.x, i.rect.w - quadPos.y);
                 float2 scenePos = warpScenePos(scenePosBase);
                 float2 meshPos = i.rect.xy + quadPos;
+                float2 uiPosition = float2(meshPos.x, -meshPos.y);
                 float4 mask = i.mask;
 
-                clip(min(
-                    min(meshPos.x - mask.x, (mask.x + mask.z) - meshPos.x),
-                    min(-meshPos.y - mask.y, (mask.y + mask.w) + meshPos.y)
-                ));
+                NowUIClipLegacyRect(uiPosition, mask);
 
                 float dist = 100000.0;
                 float4 fill = 0.0;
@@ -673,6 +678,14 @@ Shader "NowUI/SDF Scene"
                 float2 uiMask = saturate((_ClipRect.zw - _ClipRect.xy - abs(i.uiMask.xy)) * i.uiMask.zw);
                 col.a *= uiMask.x * uiMask.y;
                 #endif
+
+                col.a *= NowUIMaskCoverage(uiPosition);
+
+                // Force source alpha to one so the existing SrcAlpha blend writes
+                // the final composed coverage to RGB without squaring soft edges.
+                // The cache samples red from its linear R8/ARGB target.
+                if (_SdfMaskOutput > 0.5)
+                    return float4(col.a, col.a, col.a, 1.0);
 
                 #ifdef UNITY_UI_ALPHACLIP
                 clip(col.a - 0.001);

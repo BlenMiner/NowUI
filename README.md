@@ -110,6 +110,9 @@ Toolkit, world-space, and manual-host examples, see
 - **Rectangles** — rounded corners (per-corner radii), outlines, blur,
   padding, masks, textures, sprites, and custom materials.
   [Documentation~/Features.md](Assets/NowUI/Documentation~/Features.md), [Documentation~/CustomMaterials.md](Assets/NowUI/Documentation~/CustomMaterials.md)
+- **Masks** — exact rectangular clips plus anti-aliased analytic rectangles,
+  rounded rectangles, circles, ellipses, and capsules with soft screen-pixel
+  feathers. [Documentation~/Masks.md](Assets/NowUI/Documentation~/Masks.md)
 - **Gradients** — directional linear, circular/elliptical radial, and conic
   paints with repeating spread modes and Unity `Gradient` ramps.
   [Documentation~/Gradients.md](Assets/NowUI/Documentation~/Gradients.md)

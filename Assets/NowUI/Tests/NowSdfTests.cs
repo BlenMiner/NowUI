@@ -7,10 +7,13 @@ using NowUI.Sdf;
 public class NowSdfTests
 {
     NowDrawList _drawList;
+    float _previousUiScale;
 
     [SetUp]
     public void SetUp()
     {
+        _previousUiScale = Now.uiScale;
+        Now.SetUIScale(1f);
         NowSdf.Reset();
         _drawList = new NowDrawList();
     }
@@ -20,6 +23,7 @@ public class NowSdfTests
     {
         _drawList.Dispose();
         NowSdf.Reset();
+        Now.SetUIScale(_previousUiScale);
     }
 
     [Test]
@@ -44,6 +48,25 @@ public class NowSdfTests
         Assert.AreEqual(1, _drawList.batchCount);
         Assert.AreEqual(NowMeshKind.Sdf, _drawList.batches[0].kind);
         Assert.AreEqual(4, _drawList.mesh.vertexCount);
+    }
+
+    [Test]
+    public void SdfMaskCaptureGeometryPreservesSubpixelBounds()
+    {
+        var material = Resources.Load<Material>("NowUI/SdfMaterial");
+        Assert.NotNull(material);
+
+        var rect = new NowRect(0f, 0f, 0.25f, 0.375f);
+
+        using (_drawList.Begin(rect.size))
+            Now.DrawSdfUnsnapped(rect, rect, material, Vector4.one);
+
+        Assert.AreEqual(4, _drawList.mesh.vertexCount);
+        var vertices = _drawList.mesh.vertices;
+        Assert.AreEqual(new Vector3(0f, -rect.height, 0f), vertices[0]);
+        Assert.AreEqual(new Vector3(0f, 0f, 0f), vertices[1]);
+        Assert.AreEqual(new Vector3(rect.width, 0f, 0f), vertices[2]);
+        Assert.AreEqual(new Vector3(rect.width, -rect.height, 0f), vertices[3]);
     }
 
     [Test]
@@ -179,5 +202,252 @@ public class NowSdfTests
         Assert.AreEqual(1f, material.GetFloat("_SdfLayerCount"), 0.0001f);
         Assert.AreEqual(2f, material.GetFloat("_SdfShapeCount"), 0.0001f);
         Assert.AreEqual(4, _drawList.mesh.vertexCount);
+    }
+
+    [Test]
+    public void SdfMaskCapturesLinearRedCoverageTextureInChildBatch()
+    {
+        var rect = new NowRect(12f, 18f, 64f, 32f);
+
+        using (_drawList.Begin(new Vector2(128f, 96f)))
+        using (NowSdf.Scene(rect, "sdf-mask-state")
+            .Circle(new Vector2(32f, 16f), 14f)
+            .BeginMask())
+        {
+            Now.Rectangle(rect)
+                .SetColor(Color.white)
+                .Draw();
+        }
+
+        Assert.AreEqual(1, _drawList.batchCount);
+        var state = _drawList.batches[0].maskState;
+        Assert.AreEqual(0, state.count);
+        Assert.AreEqual(1, state.textureCount);
+
+        var descriptor = state.GetTexture(0);
+        var target = descriptor.texture as RenderTexture;
+        Assert.NotNull(target);
+        Assert.AreEqual(64, target.width);
+        Assert.AreEqual(32, target.height);
+        Assert.IsFalse(target.sRGB, "SDF mask coverage must be sampled in linear space.");
+        Assert.AreEqual(FilterMode.Bilinear, target.filterMode);
+        Assert.AreEqual(TextureWrapMode.Clamp, target.wrapMode);
+        Assert.IsFalse(target.useMipMap);
+        Assert.IsTrue(
+            target.format == RenderTextureFormat.R8 || target.format == RenderTextureFormat.ARGB32,
+            $"Unexpected SDF mask target format: {target.format}.");
+        Assert.AreEqual(new Vector4(rect.x, rect.y, rect.width, rect.height), descriptor.rect);
+        Assert.AreEqual((float)NowMaskTextureChannel.Red, descriptor.parameters.x);
+        Assert.AreEqual(0f, descriptor.parameters.y);
+        Assert.AreEqual(1f, descriptor.parameters.z);
+        Assert.AreEqual(new Vector4(0f, 0f, 1f, 1f), descriptor.transform);
+    }
+
+    [Test]
+    public void SdfMaskReusesStableTargetAndResizesForCapturedTransform()
+    {
+        var rect = new NowRect(0f, 0f, 30f, 20f);
+        var id = new NowId("sdf-mask-reuse");
+
+        RenderTexture Capture(Vector2 scale)
+        {
+            using (_drawList.Begin(new Vector2(160f, 120f)))
+            using (Now.Transform(scale, new Vector2(100f, 10f)))
+            using (NowSdf.Scene(rect, id)
+                .RoundedBox(new NowRect(2f, 2f, 26f, 16f), 6f)
+                .BeginMask())
+            {
+                Now.Rectangle(rect)
+                    .SetColor(Color.white)
+                    .Draw();
+            }
+
+            return _drawList.batches[0].maskState.GetTexture(0).texture as RenderTexture;
+        }
+
+        var first = Capture(Vector2.one);
+        var reused = Capture(Vector2.one);
+
+        Assert.NotNull(first);
+        Assert.AreSame(first, reused, "A stable mask id and transformed size should reuse its coverage target.");
+        Assert.AreEqual(30, reused.width);
+        Assert.AreEqual(20, reused.height);
+
+        var resized = Capture(new Vector2(-2f, 3f));
+
+        Assert.NotNull(resized);
+        Assert.AreNotSame(reused, resized);
+        Assert.AreEqual(60, resized.width);
+        Assert.AreEqual(60, resized.height);
+
+        var descriptor = _drawList.batches[0].maskState.GetTexture(0);
+        Assert.AreEqual(new Vector4(100f, 10f, -2f, 3f), descriptor.transform);
+    }
+
+    [Test]
+    public void TwoSdfMasksAreIndependentOfAnalyticAndHardMaskLimits()
+    {
+        var surface = new NowRect(0f, 0f, 100f, 100f);
+
+        using (_drawList.Begin(surface.size))
+        using (Now.Mask(surface))
+        using (Now.Mask(NowMaskShape.Circle(surface.center, 48f)))
+        {
+            var first = NowSdf.Scene(surface, "sdf-mask-capacity-first")
+                .Circle(surface.center, 46f)
+                .BeginMask();
+
+            try
+            {
+                var second = NowSdf.Scene(surface, "sdf-mask-capacity-second")
+                    .RoundedBox(new NowRect(4f, 4f, 92f, 92f), 12f)
+                    .BeginMask();
+
+                try
+                {
+                    Assert.Throws<System.InvalidOperationException>(() =>
+                    {
+                        var overflow = NowSdf.Scene(surface, "sdf-mask-capacity-overflow")
+                            .Box(surface)
+                            .BeginMask();
+                        overflow.Dispose();
+                    });
+
+                    Now.Rectangle(new NowRect(45f, 45f, 4f, 4f)).SetColor(Color.red).Draw();
+                }
+                finally
+                {
+                    second.Dispose();
+                }
+
+                Now.Rectangle(new NowRect(50f, 45f, 4f, 4f)).SetColor(Color.green).Draw();
+            }
+            finally
+            {
+                first.Dispose();
+            }
+
+            Now.Rectangle(new NowRect(55f, 45f, 4f, 4f)).SetColor(Color.blue).Draw();
+        }
+
+        Assert.AreEqual(3, _drawList.batchCount);
+        Assert.AreEqual(1, _drawList.batches[0].maskState.count);
+        Assert.AreEqual(2, _drawList.batches[0].maskState.textureCount);
+        Assert.AreEqual(1, _drawList.batches[1].maskState.count);
+        Assert.AreEqual(1, _drawList.batches[1].maskState.textureCount);
+        Assert.AreEqual(1, _drawList.batches[2].maskState.count);
+        Assert.AreEqual(0, _drawList.batches[2].maskState.textureCount);
+    }
+
+    [Test]
+    public void SdfMaskInputUsesConservativeSceneRect()
+    {
+        var surface = new NowRect(10f, 20f, 100f, 80f);
+
+        using (_drawList.Begin(new Vector2(160f, 140f)))
+        using (NowSdf.Scene(surface, "sdf-mask-input-bounds")
+            .Circle(new Vector2(50f, 40f), 10f)
+            .BeginMask())
+        {
+            Assert.IsTrue(
+                Now.IsInsideAmbientMask(new Vector2(14f, 24f)),
+                "A point inside the scene rect remains eligible even when its SDF coverage is transparent.");
+            Assert.IsFalse(Now.IsInsideAmbientMask(new Vector2(9f, 24f)));
+            Assert.IsFalse(Now.IsInsideAmbientMask(new Vector2(14f, 101f)));
+        }
+
+        Assert.IsTrue(Now.IsInsideAmbientMask(new Vector2(9f, 24f)), "Disposing the SDF mask did not restore input bounds.");
+    }
+
+    [Test]
+    public void EmptySdfMaskAllocatesNoTextureAndCullsAllInput()
+    {
+        var surface = new NowRect(10f, 20f, 60f, 40f);
+
+        using (_drawList.Begin(new Vector2(100f, 80f)))
+        using (NowSdf.Scene(surface, "empty-sdf-mask").BeginMask())
+        {
+            Assert.IsFalse(Now.IsInsideAmbientMask(surface.center));
+
+            Now.Rectangle(surface)
+                .SetColor(Color.white)
+                .Draw();
+        }
+
+        Assert.AreEqual(1, _drawList.batchCount);
+        var state = _drawList.batches[0].maskState;
+        Assert.AreEqual(1, state.textureCount);
+        var descriptor = state.GetTexture(0);
+        Assert.IsNull(descriptor.texture);
+        Assert.AreEqual(0f, descriptor.parameters.z, "A missing coverage texture must use the shader's cull-all path.");
+    }
+
+    [Test]
+    public void ParameterlessBeginMaskRequiresExplicitSceneRect()
+    {
+        var exception = Assert.Throws<System.InvalidOperationException>(() =>
+        {
+            var scope = NowSdf.Scene("rectless-sdf-mask")
+                .Circle(new Vector2(20f, 20f), 16f)
+                .BeginMask();
+            scope.Dispose();
+        });
+
+        StringAssert.Contains("explicit scene rect", exception.Message);
+        StringAssert.Contains("BeginMask(rect)", exception.Message);
+    }
+
+    [Test]
+    public void BeginMaskIsNoOpDuringMeasuredLayoutPass()
+    {
+        var surface = new NowRect(0f, 0f, 80f, 48f);
+        int measureMaskCount = -1;
+        int drawMaskCount = -1;
+
+        using (_drawList.Begin(new Vector2(100f, 64f)))
+        {
+            NowLayout.RunMeasured(surface, () =>
+            {
+                using (NowSdf.Scene(surface, "measured-sdf-mask")
+                    .Circle(surface.center, 20f)
+                    .BeginMask())
+                {
+                    if (NowLayout.isMeasurePass)
+                    {
+                        measureMaskCount = Now.ambientMaskCount;
+                        return;
+                    }
+
+                    drawMaskCount = Now.ambientMaskCount;
+                    Now.Rectangle(surface).SetColor(Color.white).Draw();
+                }
+            });
+        }
+
+        Assert.AreEqual(0, measureMaskCount, "The measure pass installed a real ambient texture mask.");
+        Assert.AreEqual(1, drawMaskCount, "The draw pass did not install the SDF mask.");
+        Assert.AreEqual(1, _drawList.batches[0].maskState.textureCount);
+        Assert.NotNull(_drawList.batches[0].maskState.GetTexture(0).texture);
+    }
+
+    [Test]
+    public void ResetReleasesSdfMaskCoverageTexture()
+    {
+        var surface = new NowRect(0f, 0f, 48f, 32f);
+
+        using (_drawList.Begin(surface.size))
+        using (NowSdf.Scene(surface, "sdf-mask-reset")
+            .Ellipse(surface)
+            .BeginMask())
+        {
+            Now.Rectangle(surface).SetColor(Color.white).Draw();
+        }
+
+        var target = _drawList.batches[0].maskState.GetTexture(0).texture as RenderTexture;
+        Assert.IsTrue(target);
+
+        NowSdf.Reset();
+
+        Assert.IsFalse(target, "NowSdf.Reset() did not destroy its cache-owned mask target.");
     }
 }

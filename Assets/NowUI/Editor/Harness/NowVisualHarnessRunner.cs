@@ -14,6 +14,7 @@ namespace NowUI.Editor
         const string BaselineRoot = "Assets/NowUI/Tests/Baselines/Visual";
         static readonly GoldenComparisonTolerance DefaultTolerance = new GoldenComparisonTolerance(8, 0.01f);
         static readonly GoldenComparisonTolerance LandingPageTolerance = new GoldenComparisonTolerance(4, 0.0001f);
+        static readonly GoldenComparisonTolerance MaskTolerance = new GoldenComparisonTolerance(8, 0.0025f);
 
         public static void Capture()
         {
@@ -101,6 +102,9 @@ namespace NowUI.Editor
                 case "landing-page-now-compact":
                 case "landing-page-now-layout-compact":
                     return LandingPageTolerance;
+                case "sdf-mask-glow-clip":
+                case "sdf-mask-gallery":
+                    return MaskTolerance;
                 default:
                     return DefaultTolerance;
             }

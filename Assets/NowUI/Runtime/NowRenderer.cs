@@ -87,8 +87,18 @@ namespace NowUI
 
         public NowDrawScope Begin(Vector2 size)
         {
+            return Begin(size, flushOverlays: true);
+        }
+
+        internal NowDrawScope Begin(Vector2 size, bool flushOverlays)
+        {
             ThrowIfDisposed();
-            return _drawList.Begin(size, glassBlurQuality);
+            return _drawList.Begin(
+                size,
+                Vector2.zero,
+                inheritContext: false,
+                glassBlurQuality: glassBlurQuality,
+                flushOverlays: flushOverlays);
         }
 
         public NowDrawScope Begin(RenderTexture target)
@@ -401,7 +411,13 @@ namespace NowUI
                         batch.bounds);
                 }
 
-                commandBuffer.DrawMesh(mesh, drawMatrix, batch.material, i, 0);
+                commandBuffer.DrawMesh(
+                    mesh,
+                    drawMatrix,
+                    batch.material,
+                    i,
+                    0,
+                    NowMaskShader.GetPropertyBlock(batch.maskState));
             }
 
             if (accumulationAllocated)
@@ -461,7 +477,13 @@ namespace NowUI
                         batch.bounds);
                 }
 
-                commandBuffer.DrawMesh(mesh, drawMatrix, batch.material, i, 0);
+                commandBuffer.DrawMesh(
+                    mesh,
+                    drawMatrix,
+                    batch.material,
+                    i,
+                    0,
+                    NowMaskShader.GetPropertyBlock(batch.maskState));
             }
         }
 

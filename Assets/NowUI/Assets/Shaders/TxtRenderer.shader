@@ -2,6 +2,10 @@ Shader "NowUI/Text Renderer"
 {
     Properties
     {
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         _MainTex ("Texture", 2D) = "white" {}
         _ZTest ("ZTest", Float) = 8
     }
@@ -24,11 +28,13 @@ Shader "NowUI/Text Renderer"
         Pass
         {
             CGPROGRAM
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
+            #include "NowUIMask.cginc"
 
             struct appdata
             {
@@ -84,17 +90,10 @@ Shader "NowUI/Text Renderer"
                 float4 mask = i.mask;
 
                 float2 pos = rect.xy + i.rawUV * rect.zw;
+                float2 uiPosition = float2(pos.x, -pos.y);
 
                 // Mask
-                clip(min(
-                    min(pos.x - mask.x,
-                        (mask.x + mask.z) - pos.x
-                    ),
-                    min(
-                        -pos.y - mask.y,
-                        (mask.y + mask.w) + pos.y
-                    )
-                ));
+                NowUIClipLegacyRect(uiPosition, mask);
 
 
                 float outline = i.extras.x;
@@ -118,6 +117,7 @@ Shader "NowUI/Text Renderer"
                 float4 color = outline == 0 ? i.color : lerp(i.outlineColor, i.color, outline < 0 ? outlineOp : opacity);
 
                 color.a *= max(opacity, outlineOp);
+                color.a *= NowUIMaskCoverage(uiPosition);
 
                 return color;
             }

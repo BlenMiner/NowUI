@@ -43,6 +43,64 @@ Edges are anti-aliased in screen space. `SetFeather(0)` gives the crisp default
 one-pixel ramp; `SetFeather(1)` widens that transition by roughly one extra
 screen pixel, independent of Canvas Scaler changes.
 
+## Use A Scene As A Mask
+
+Finish a scene with `BeginMask()` instead of `Draw()` when its composited alpha
+should clip ordinary NowUI content:
+
+```csharp
+var mask = NowSdf.Scene(cardRect, "status-card-mask")
+    .SetFeather(1f)
+    .Circle(new Vector2(44f, 48f), 38f)
+    .SmoothUnion(10f)
+    .RoundedBox(new NowRect(38f, 14f, 150f, 68f), 22f)
+    .Subtract()
+    .Circle(new Vector2(162f, 48f), 13f);
+
+using (mask.BeginMask())
+{
+    Now.Gradient(cardRect, Color.cyan, Color.blue)
+        .SetLinear(90f)
+        .Draw();
+
+    Now.Text(cardRect.Inset(14f))
+        .SetColor(Color.white)
+        .Draw("Composed SDF mask");
+}
+```
+
+`BeginMask()` requires the `Scene(rect, id)` form. If the builder was created
+without a rect, pass the resolved rect to `BeginMask(rect)`. Prefer reserving a
+layout rect explicitly before building the scene: during a measure pass mask
+creation performs no GPU work and installs no ambient mask.
+
+The mask uses final output alpha, not shape distance alone. RGB is ignored;
+shape and tint alpha, sampled texture alpha, SDF glyphs, outlines, shadows,
+glows, contours, and warp all contribute. The extension writes that coverage
+unsquared into a linear red-channel texture. An empty scene binds no coverage
+texture and clips all content in its scope. A previously warmed cache may retain
+its unused target until a later resize or `NowSdf.Reset()`.
+
+The coverage target is cached by the scene's `NowId`. Use a stable, unique id
+for each mask in a repeated or reorderable collection. The target persists
+until its transformed physical dimensions change or `NowSdf.Reset()` releases
+the cache; callers do not own it. A retained host must call `MarkDirty()` when
+an animated mask changes.
+
+Two SDF or other texture-backed masks may nest and intersect. Their limit is
+independent of hard rectangles and eight analytic `NowMaskShape` masks. A third
+texture-backed mask throws `InvalidOperationException` before doing GPU work.
+
+Pointer input is conservatively clipped to the scene rect, not to sampled SDF
+alpha. This avoids synchronous GPU readback and stays deterministic for
+textures, glyphs, warp, and effects. Add an analytic interaction boundary when
+controls require exact non-rectangular hit testing.
+
+`BeginMask()` captures `Now.Transform`. The persistent target is pixel-snapped
+at the active physical UI scale and accounts for nonuniform scale; signed
+mirroring is preserved while sampling. Outer masks are not baked into it, so
+nesting does not apply an outer soft edge twice.
+
 ## Effects
 
 Effects are applied to the final composed scene field. They work on primitives,
@@ -90,6 +148,11 @@ Available scene effects:
 Outlines, shadows, and glows can only render inside the scene quad and mask. If
 an effect should extend beyond a shape, give the scene rect enough empty space
 around the drawn primitives.
+
+An SDF draw also consumes ambient hard, analytic, and texture-backed mask
+scopes after its own scene and contour masks are evaluated. This lets the
+composited result share clipping with ordinary NowUI content; see
+[Masks](Masks.md).
 
 Scene effects measure against a locally normalized field distance, so stroke,
 shadow, emboss, and contour sizes stay close to scene-pixel units even through

@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.TestTools;
 using NowUI;
+using NowUI.Sdf;
 using Object = UnityEngine.Object;
 
 /// <summary>
@@ -24,6 +25,7 @@ public class NowRenderingPlayModeTests
         _target = new RenderTexture(Side, Side, 0, RenderTextureFormat.ARGB32);
         _target.Create();
         _renderer = new NowRenderer();
+        NowSdf.Reset();
         NowFontCompiler.forceManagedCompiler = false;
     }
 
@@ -32,6 +34,7 @@ public class NowRenderingPlayModeTests
     {
         NowFontCompiler.forceManagedCompiler = false;
         _renderer.Dispose();
+        NowSdf.Reset();
         _target.Release();
         Object.DestroyImmediate(_target);
     }
@@ -63,6 +66,37 @@ public class NowRenderingPlayModeTests
         }
 
         return count;
+    }
+
+    static Color32 PixelAtUi(Color32[] pixels, int x, int y)
+    {
+        return pixels[(Side - 1 - y) * Side + x];
+    }
+
+    static RectInt FindAlphaBounds(Color32[] pixels, byte minimumAlpha = 12)
+    {
+        int xMin = Side;
+        int yMin = Side;
+        int xMax = -1;
+        int yMax = -1;
+
+        for (int y = 0; y < Side; ++y)
+        {
+            for (int x = 0; x < Side; ++x)
+            {
+                if (PixelAtUi(pixels, x, y).a <= minimumAlpha)
+                    continue;
+
+                xMin = Mathf.Min(xMin, x);
+                yMin = Mathf.Min(yMin, y);
+                xMax = Mathf.Max(xMax, x);
+                yMax = Mathf.Max(yMax, y);
+            }
+        }
+
+        return xMax >= xMin && yMax >= yMin
+            ? new RectInt(xMin, yMin, xMax - xMin + 1, yMax - yMin + 1)
+            : default;
     }
 
     static GameObject CreateSkinnedCube(
@@ -158,6 +192,533 @@ public class NowRenderingPlayModeTests
 
         Assert.Greater(pixels[(Side / 2) * Side + Side / 2].r, 200);
         Assert.AreEqual(0, pixels[4 * Side + 4].a);
+    }
+
+    [Test]
+    public void AnalyticCircleMaskProducesAntialiasedCoverage()
+    {
+        var pixels = RenderWhiteCircleMask(feather: 0f);
+
+        Assert.Greater(pixels[(Side / 2) * Side + Side / 2].a, 250, "Mask center was not opaque.");
+        Assert.Less(pixels[4 * Side + 4].a, 5, "Pixels far outside the mask were not transparent.");
+
+        int partial = CountMaskTransitionPixels(pixels);
+        Assert.Greater(partial, 40, "The analytic boundary produced no measurable anti-aliasing ramp.");
+    }
+
+    [Test]
+    public void AdditionalAnalyticMaskFeatherWidensTransition()
+    {
+        var crisp = RenderWhiteCircleMask(feather: 0f);
+        var soft = RenderWhiteCircleMask(feather: 6f);
+
+        int crispPartial = CountMaskTransitionPixels(crisp);
+        int softPartial = CountMaskTransitionPixels(soft);
+
+        Assert.Greater(crispPartial, 40, "The default derivative anti-aliasing ramp was missing.");
+        Assert.Greater(
+            softPartial,
+            crispPartial * 2,
+            $"Six additional screen pixels of feather did not widen the transition ({crispPartial} -> {softPartial}).");
+    }
+
+    [Test]
+    public void RenderToTextureModifierDoesNotApplyAnalyticFeatherTwice()
+    {
+        const float feather = 6f;
+        var direct = RenderWhiteCircleMask(feather);
+        _renderer.Clear();
+        var replayed = RenderWhiteCircleMaskThroughTextureModifier(feather);
+        long directTransitionAlpha = 0;
+        long replayedTransitionAlpha = 0;
+        int transitionPixels = 0;
+
+        for (int i = 0; i < direct.Length; ++i)
+        {
+            byte directAlpha = direct[i].a;
+            if (directAlpha < 24 || directAlpha > 231)
+                continue;
+
+            directTransitionAlpha += directAlpha;
+            replayedTransitionAlpha += replayed[i].a;
+            ++transitionPixels;
+        }
+
+        Assert.Greater(transitionPixels, 40, "The direct mask had no stable feather samples to compare.");
+        Assert.Greater(
+            replayedTransitionAlpha,
+            directTransitionAlpha * 0.82f,
+            "Render-to-texture replay reduced the feather as if its coverage was multiplied a second time.");
+        Assert.Greater(replayed[(Side / 2) * Side + Side / 2].a, 245, "Modifier replay lost opaque center coverage.");
+        Assert.Less(replayed[4 * Side + 4].a, 5, "Modifier capture failed to bake the ambient analytic mask.");
+    }
+
+    [Test]
+    public void SiblingAnalyticMasksSplitBatchesAndKeepCommandPropertiesIsolated()
+    {
+        var fullSurface = new NowRect(0f, 0f, Side, Side);
+        var leftCenter = new Vector2(32f, Side * 0.5f);
+        var rightCenter = new Vector2(Side - 32f, Side * 0.5f);
+
+        using (_renderer.Begin(_target))
+        {
+            using (Now.Mask(NowMaskShape.Circle(leftCenter, 18f)))
+            {
+                Now.Rectangle(fullSurface)
+                    .SetColor(Color.red)
+                    .Draw();
+            }
+
+            using (Now.Mask(NowMaskShape.Circle(rightCenter, 18f)))
+            {
+                // This is the same rectangle material and geometry as the first
+                // draw. Only vertex color and ambient analytic mask state differ.
+                Now.Rectangle(fullSurface)
+                    .SetColor(Color.blue)
+                    .Draw();
+            }
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+        Color32 left = pixels[(Side / 2) * Side + (int)leftCenter.x];
+        Color32 right = pixels[(Side / 2) * Side + (int)rightCenter.x];
+        Color32 gap = pixels[(Side / 2) * Side + Side / 2];
+
+        Assert.Greater(left.r, 240, $"First batch lost its red mask state: {left}.");
+        Assert.Less(left.g, 12, $"First batch picked up an unexpected green channel: {left}.");
+        Assert.Less(left.b, 12, $"First batch reused the blue sibling's properties: {left}.");
+        Assert.Greater(left.a, 240, $"First circle center was not opaque: {left}.");
+
+        Assert.Less(right.r, 12, $"Second batch reused the red sibling's properties: {right}.");
+        Assert.Less(right.g, 12, $"Second batch picked up an unexpected green channel: {right}.");
+        Assert.Greater(right.b, 240, $"Second batch lost its blue mask state: {right}.");
+        Assert.Greater(right.a, 240, $"Second circle center was not opaque: {right}.");
+
+        Assert.Less(gap.a, 8, $"Sibling circle masks leaked into their disjoint gap: {gap}.");
+    }
+
+    [Test]
+    public void SdfMaskRendersSubtractiveFieldWithAntialiasedCoverage()
+    {
+        var surface = new NowRect(0f, 0f, Side, Side);
+        var center = surface.center;
+
+        using (_renderer.Begin(_target))
+        using (NowSdf.Scene(surface, "playmode-sdf-donut-mask")
+            .Circle(center, 40f)
+            .Subtract()
+            .Circle(center, 16f)
+            .BeginMask())
+        {
+            Now.Rectangle(surface)
+                .SetColor(Color.white)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+        Color32 hole = PixelAtUi(pixels, Side / 2, Side / 2);
+        Color32 ring = PixelAtUi(pixels, 92, Side / 2);
+        Color32 outside = PixelAtUi(pixels, 8, Side / 2);
+
+        Assert.Less(hole.a, 8, $"The subtracted SDF hole was not transparent: {hole}.");
+        Assert.Greater(ring.a, 245, $"The composed SDF ring was not opaque: {ring}.");
+        Assert.Less(outside.a, 8, $"The SDF mask leaked beyond its outer field: {outside}.");
+        Assert.Greater(
+            CountMaskTransitionPixels(pixels),
+            100,
+            "The rasterized SDF mask lost its antialiased inner or outer boundary.");
+    }
+
+    [Test]
+    public void SdfMaskFeatherWidensTransitionWithoutSquaringCoverage()
+    {
+        var analytic = RenderWhiteCircleMask(feather: 6f);
+        var crisp = RenderWhiteSdfCircleMask(feather: 0f, "playmode-sdf-crisp-mask");
+        var soft = RenderWhiteSdfCircleMask(feather: 6f, "playmode-sdf-soft-mask");
+
+        int crispPartial = CountMaskTransitionPixels(crisp);
+        int softPartial = CountMaskTransitionPixels(soft);
+        long analyticTransitionAlpha = 0;
+        long sdfTransitionAlpha = 0;
+        int comparableSamples = 0;
+
+        for (int i = 0; i < analytic.Length; ++i)
+        {
+            byte alpha = analytic[i].a;
+            if (alpha < 24 || alpha > 231)
+                continue;
+
+            analyticTransitionAlpha += alpha;
+            sdfTransitionAlpha += soft[i].a;
+            ++comparableSamples;
+        }
+
+        Assert.Greater(crispPartial, 40, "The default SDF mask AA ramp was missing.");
+        Assert.Greater(
+            softPartial,
+            crispPartial * 2,
+            $"Six SDF feather pixels did not widen the texture-mask transition ({crispPartial} -> {softPartial}).");
+        Assert.Greater(comparableSamples, 40, "The analytic reference had too few transition samples.");
+        Assert.Greater(
+            sdfTransitionAlpha,
+            analyticTransitionAlpha * 0.78f,
+            "The SDF mask capture darkened its transition as if coverage alpha had been multiplied by itself.");
+    }
+
+    [Test]
+    public void SdfMaskClipsOrdinaryTextMaterial()
+    {
+        var font = ResolveDefaultNowFont();
+        var surface = new NowRect(0f, 0f, Side, Side);
+
+        using (_renderer.Begin(_target))
+        using (NowSdf.Scene(surface, "playmode-sdf-text-mask")
+            .Box(new NowRect(48f, 0f, 32f, Side))
+            .BeginMask())
+        {
+            Now.Text(new NowRect(0f, 24f, Side, 80f), font)
+                .SetFontSize(56f)
+                .SetColor(Color.white)
+                .Draw("MMMM");
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+        int insideInk = 0;
+        int leakedInk = 0;
+
+        for (int y = 0; y < Side; ++y)
+        {
+            for (int x = 0; x < Side; ++x)
+            {
+                if (pixels[y * Side + x].a <= 12)
+                    continue;
+
+                if (x >= 48 && x < 80)
+                    ++insideInk;
+                else if (x < 45 || x >= 83)
+                    ++leakedInk;
+            }
+        }
+
+        Assert.Greater(insideInk, 80, "Text produced no visible ink inside the SDF mask.");
+        Assert.AreEqual(0, leakedInk, "The ordinary text shader leaked beyond the SDF coverage texture.");
+    }
+
+    [Test]
+    public void SdfCircleMaskClipsOversizedGlowFromProgressBar()
+    {
+        var surface = new NowRect(0f, 0f, Side, Side);
+        var bar = new NowRect(14f, 56f, 100f, 16f);
+        var fill = new NowRect(bar.x, bar.y, bar.width * 0.74f, bar.height);
+        var cyan = new Color(0.08f, 0.86f, 1f, 1f);
+
+        Color32[] RenderProgress(bool clipToCircle)
+        {
+            using (_renderer.Begin(_target))
+            {
+                if (clipToCircle)
+                {
+                    using (NowSdf.Scene(surface, "playmode-sdf-progress-parent")
+                        .SetColor(Color.white)
+                        .Circle(surface.center, 46f)
+                        .BeginMask())
+                    {
+                        DrawProgress();
+                    }
+                }
+                else
+                {
+                    DrawProgress();
+                }
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            return ReadPixels(_target);
+        }
+
+        void DrawProgress()
+        {
+            Now.Rectangle(bar)
+                .SetColor(new Color(0.08f, 0.12f, 0.20f, 0.82f))
+                .SetRadius(bar.height * 0.5f)
+                .Draw();
+            NowSdf.Scene(surface, "playmode-sdf-progress-halo")
+                .SetColor(cyan)
+                .SetGlow(28f, new Color(0.02f, 0.78f, 1f, 0.90f), 1.1f)
+                .RoundedBox(fill, fill.height * 0.5f)
+                .Draw();
+        }
+
+        var unmasked = RenderProgress(clipToCircle: false);
+        _renderer.Clear();
+        var masked = RenderProgress(clipToCircle: true);
+        Color32 unmaskedHalo = PixelAtUi(unmasked, 10, 64);
+        Color32 clippedHalo = PixelAtUi(masked, 10, 64);
+        Color32 filledCore = PixelAtUi(masked, 64, 64);
+
+        Assert.Greater(
+            unmaskedHalo.a,
+            80,
+            $"The reference progress halo did not reach beyond the parent circle: {unmaskedHalo}.");
+        Assert.Less(
+            clippedHalo.a,
+            8,
+            $"The glowing progress bar leaked outside its SDF circle parent: {clippedHalo}.");
+        Assert.Greater(
+            filledCore.a,
+            240,
+            $"The SDF circle mask removed the progress fill inside its parent: {filledCore}.");
+    }
+
+    [Test]
+    public void TwoSdfMasksIntersectWithAnalyticAndHardMasks()
+    {
+        var surface = new NowRect(0f, 0f, Side, Side);
+
+        using (_renderer.Begin(_target))
+        using (Now.Mask(new NowRect(32f, 0f, 80f, Side)))
+        using (Now.Mask(NowMaskShape.Circle(surface.center, 40f)))
+        using (NowSdf.Scene(surface, "playmode-sdf-left-mask")
+            .Box(new NowRect(0f, 0f, 72f, Side))
+            .BeginMask())
+        using (NowSdf.Scene(surface, "playmode-sdf-bottom-mask")
+            .Box(new NowRect(0f, 56f, Side, 72f))
+            .BeginMask())
+        {
+            Now.Rectangle(surface)
+                .SetColor(Color.white)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+
+        Assert.Greater(PixelAtUi(pixels, 60, 64).a, 240, "The four-way mask intersection lost its opaque interior.");
+        Assert.Less(PixelAtUi(pixels, 84, 64).a, 8, "The first SDF mask did not reject its outside region.");
+        Assert.Less(PixelAtUi(pixels, 60, 40).a, 8, "The second SDF mask did not reject its outside region.");
+        Assert.Less(PixelAtUi(pixels, 40, 100).a, 8, "The analytic mask did not intersect the SDF masks.");
+        Assert.Less(PixelAtUi(pixels, 30, 64).a, 8, "The hard rectangle did not intersect the SDF masks.");
+    }
+
+    [Test]
+    public void SiblingSdfMasksKeepCoverageTexturesIsolated()
+    {
+        var surface = new NowRect(0f, 0f, Side, Side);
+        var leftCenter = new Vector2(32f, Side * 0.5f);
+        var rightCenter = new Vector2(Side - 32f, Side * 0.5f);
+
+        using (_renderer.Begin(_target))
+        {
+            using (NowSdf.Scene(surface, "playmode-sdf-sibling-left")
+                .Circle(leftCenter, 18f)
+                .BeginMask())
+            {
+                Now.Rectangle(surface)
+                    .SetColor(Color.red)
+                    .Draw();
+            }
+
+            using (NowSdf.Scene(surface, "playmode-sdf-sibling-right")
+                .Circle(rightCenter, 18f)
+                .BeginMask())
+            {
+                Now.Rectangle(surface)
+                    .SetColor(Color.blue)
+                    .Draw();
+            }
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+        Color32 left = PixelAtUi(pixels, (int)leftCenter.x, (int)leftCenter.y);
+        Color32 right = PixelAtUi(pixels, (int)rightCenter.x, (int)rightCenter.y);
+        Color32 gap = PixelAtUi(pixels, Side / 2, Side / 2);
+
+        Assert.Greater(left.r, 240, $"The first SDF batch lost its red coverage texture: {left}.");
+        Assert.Less(left.b, 12, $"The first SDF batch reused its blue sibling's state: {left}.");
+        Assert.Greater(right.b, 240, $"The second SDF batch lost its blue coverage texture: {right}.");
+        Assert.Less(right.r, 12, $"The second SDF batch reused its red sibling's state: {right}.");
+        Assert.Less(gap.a, 8, $"Sibling SDF masks leaked into their disjoint gap: {gap}.");
+    }
+
+    [Test]
+    public void SdfMaskPreservesMirroredTransformMapping()
+    {
+        var localSurface = new NowRect(0f, 0f, 40f, 40f);
+        var scale = new Vector2(-2f, 1.5f);
+        var origin = new Vector2(100f, 20f);
+        NowMaskScope mask = default;
+
+        using (_renderer.Begin(_target))
+        {
+            var transform = Now.Transform(scale, origin);
+            NowRect screenSurface;
+
+            try
+            {
+                screenSurface = Now.TransformScreenRect(localSurface);
+                mask = NowSdf.Scene(localSurface, "playmode-sdf-mirrored-mask")
+                    .Circle(new Vector2(10f, 20f), 8f)
+                    .BeginMask();
+            }
+            finally
+            {
+                // Keep the captured mask active but draw an ordinary screen-space
+                // quad. This isolates signed texture-mask sampling from the older
+                // mirrored-quad emission path used by drawing primitives.
+                transform.Dispose();
+            }
+
+            using (mask)
+            {
+                Now.Rectangle(screenSurface)
+                    .SetColor(Color.white)
+                    .Draw();
+            }
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+        RectInt alphaBounds = FindAlphaBounds(pixels);
+
+        Assert.Greater(
+            PixelAtUi(pixels, 80, 50).a,
+            240,
+            $"The mirrored SDF mask lost its transformed center; visible UI bounds were {alphaBounds}.");
+        Assert.Less(PixelAtUi(pixels, 40, 50).a, 8, "The SDF mask ignored the sign of its captured horizontal transform.");
+        Assert.Less(PixelAtUi(pixels, 80, 20).a, 8, "The SDF mask ignored its nonuniform vertical scale.");
+    }
+
+    [Test]
+    public void RenderToTextureModifierDoesNotApplySdfMaskTwice()
+    {
+        const float feather = 6f;
+        var direct = RenderWhiteSdfCircleMask(feather, "playmode-sdf-direct-replay-reference");
+        _renderer.Clear();
+        var replayed = RenderWhiteSdfCircleMaskThroughTextureModifier(
+            feather,
+            "playmode-sdf-texture-modifier-mask");
+        long directTransitionAlpha = 0;
+        long replayedTransitionAlpha = 0;
+        int transitionPixels = 0;
+
+        for (int i = 0; i < direct.Length; ++i)
+        {
+            byte directAlpha = direct[i].a;
+            if (directAlpha < 24 || directAlpha > 231)
+                continue;
+
+            directTransitionAlpha += directAlpha;
+            replayedTransitionAlpha += replayed[i].a;
+            ++transitionPixels;
+        }
+
+        Assert.Greater(transitionPixels, 40, "The direct SDF mask had no stable feather samples to compare.");
+        Assert.Greater(
+            replayedTransitionAlpha,
+            directTransitionAlpha * 0.82f,
+            "Render-to-texture replay reduced SDF coverage as if the mask was multiplied a second time.");
+        Assert.Greater(PixelAtUi(replayed, Side / 2, Side / 2).a, 245, "Modifier replay lost the SDF mask center.");
+        Assert.Less(replayed[4 * Side + 4].a, 5, "Modifier capture failed to bake the SDF mask.");
+    }
+
+    Color32[] RenderWhiteCircleMask(float feather)
+    {
+        using (_renderer.Begin(_target))
+        using (Now.Mask(NowMaskShape.Circle(new Vector2(Side * 0.5f, Side * 0.5f), 32f).SetFeather(feather)))
+        {
+            Now.Rectangle(new NowRect(0f, 0f, Side, Side))
+                .SetColor(Color.white)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    Color32[] RenderWhiteCircleMaskThroughTextureModifier(float feather)
+    {
+        var surface = new NowRect(0f, 0f, Side, Side);
+
+        using (_renderer.Begin(_target))
+        using (Now.Mask(NowMaskShape.Circle(surface.center, 32f).SetFeather(feather)))
+        using (NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 32f))
+            .SetRenderToTexture()
+            .SetSourceRect(surface)
+            .Begin())
+        {
+            Now.Rectangle(surface)
+                .SetColor(Color.white)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    Color32[] RenderWhiteSdfCircleMask(float feather, NowId id)
+    {
+        var surface = new NowRect(0f, 0f, Side, Side);
+
+        using (_renderer.Begin(_target))
+        using (NowSdf.Scene(surface, id)
+            .SetFeather(feather)
+            .Circle(surface.center, 32f)
+            .BeginMask())
+        {
+            Now.Rectangle(surface)
+                .SetColor(Color.white)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    Color32[] RenderWhiteSdfCircleMaskThroughTextureModifier(float feather, NowId id)
+    {
+        var surface = new NowRect(0f, 0f, Side, Side);
+
+        using (_renderer.Begin(_target))
+        using (NowSdf.Scene(surface, id)
+            .SetFeather(feather)
+            .Circle(surface.center, 32f)
+            .BeginMask())
+        using (NowEffects.Modifier(NowDeformers.Wave(0f, 0f, 32f))
+            .SetId("playmode-sdf-mask-texture-modifier")
+            .SetRenderToTexture()
+            .SetSourceRect(surface)
+            .Begin())
+        {
+            Now.Rectangle(surface)
+                .SetColor(Color.white)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    static int CountMaskTransitionPixels(Color32[] pixels)
+    {
+        int count = 0;
+
+        // Ignore the render-target boundary so only the centered circle's edge
+        // contributes partially covered pixels.
+        for (int y = 8; y < Side - 8; ++y)
+        {
+            for (int x = 8; x < Side - 8; ++x)
+            {
+                byte alpha = pixels[y * Side + x].a;
+                if (alpha >= 8 && alpha <= 247)
+                    ++count;
+            }
+        }
+
+        return count;
     }
 
     [Test]
@@ -282,6 +843,28 @@ public class NowRenderingPlayModeTests
         Color32 outlineCenter = pixels[64 * Side + 64];
         Assert.Greater(outlineEdge.g, 180, $"Gradient outline edge was {outlineEdge}.");
         Assert.Less(outlineCenter.a, 20, $"Transparent gradient center was {outlineCenter}.");
+    }
+
+    [Test]
+    public void AnalyticCapsuleMaskClipsGradientMaterial()
+    {
+        using (_renderer.Begin(_target))
+        using (Now.Mask(NowMaskShape.Capsule(
+            new Vector2(30f, Side * 0.5f),
+            new Vector2(Side - 30f, Side * 0.5f),
+            18f).SetFeather(2f)))
+        {
+            Now.Gradient(new NowRect(0f, 0f, Side, Side), Color.red, Color.blue)
+                .SetLinear(90f)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+
+        Assert.Greater(pixels[(Side / 2) * Side + Side / 2].a, 240, "Gradient vanished inside the capsule.");
+        Assert.Less(pixels[12 * Side + Side / 2].a, 8, "Gradient leaked outside the capsule.");
+        Assert.Greater(CountMaskTransitionPixels(pixels), 40, "Gradient shader did not preserve soft mask coverage.");
     }
 
     [Test]
@@ -1072,6 +1655,43 @@ public class NowRenderingPlayModeTests
         {
             Object.DestroyImmediate(managedFont);
         }
+    }
+
+    [Test]
+    public void AnalyticMaskClipsTextMaterial()
+    {
+        var font = ResolveDefaultNowFont();
+
+        using (_renderer.Begin(_target))
+        using (Now.Mask(NowMaskShape.Rectangle(new NowRect(48f, 0f, 32f, Side))))
+        {
+            Now.Text(new NowRect(0f, 24f, Side, 80f), font)
+                .SetFontSize(56f)
+                .SetColor(Color.white)
+                .Draw("MMMM");
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+        int insideInk = 0;
+        int leakedInk = 0;
+
+        for (int y = 0; y < Side; ++y)
+        {
+            for (int x = 0; x < Side; ++x)
+            {
+                if (pixels[y * Side + x].a <= 12)
+                    continue;
+
+                if (x >= 48 && x < 80)
+                    ++insideInk;
+                else if (x < 45 || x >= 83)
+                    ++leakedInk;
+            }
+        }
+
+        Assert.Greater(insideInk, 80, "Text produced no visible ink inside the analytic mask.");
+        Assert.AreEqual(0, leakedInk, "Text shader leaked well beyond the analytic mask feather.");
     }
 
     void AssertTextRendersInk(NowFontAsset font)

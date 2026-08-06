@@ -92,7 +92,9 @@ self-intersecting point sets unless that winding behavior is what you want.
 
 ## Masks And Performance
 
-`SetMask` clips shapes, and ambient `Now.Mask(...)` scopes apply as usual.
+`SetMask` clips shapes to an explicit rectangle, and ambient `Now.Mask(...)`
+scopes apply as usual. Use `Now.Mask(NowMaskShape)` for a non-rectangular or
+soft shared clip; see [Masks](Masks.md).
 
 ```csharp
 using (Now.Mask(viewport))

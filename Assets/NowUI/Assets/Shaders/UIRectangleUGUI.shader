@@ -2,6 +2,10 @@ Shader "NowUI/UI Rectangle UGUI"
 {
     Properties
     {
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
         [HideInInspector] _NowPremultipliedTexture ("Premultiplied Texture", Float) = 0
         _StencilComp ("Stencil Comparison", Float) = 8
@@ -44,6 +48,7 @@ Shader "NowUI/UI Rectangle UGUI"
         Pass
         {
             CGPROGRAM
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_local _ UNITY_UI_CLIP_RECT
@@ -51,6 +56,7 @@ Shader "NowUI/UI Rectangle UGUI"
 
             #include "UnityCG.cginc"
             #include "UnityUI.cginc"
+            #include "NowUIMask.cginc"
 
             struct appdata
             {
@@ -120,11 +126,9 @@ Shader "NowUI/UI Rectangle UGUI"
                 float4 mask = i.mask;
                 float2 rawUV = float2(i.uv.w, i.extras.z);
                 float2 pos = rect.xy + rawUV * rect.zw;
+                float2 uiPosition = float2(pos.x, -pos.y);
 
-                clip(min(
-                    min(pos.x - mask.x, (mask.x + mask.z) - pos.x),
-                    min(-pos.y - mask.y, (mask.y + mask.w) + pos.y)
-                ));
+                NowUIClipLegacyRect(uiPosition, mask);
 
                 float4 rad = float4(i.radiusXYZ, i.uv.z);
                 float blur = i.extras.x;
@@ -161,6 +165,7 @@ Shader "NowUI/UI Rectangle UGUI"
                 col.rgb = i.outlineColor.rgb * outlineCoverage
                     + fillColor * (1 - outlineCoverage);
                 col.a = outlineCoverage + fillCoverage * (1 - outlineCoverage);
+                col *= NowUIMaskCoverage(uiPosition);
 
                 #ifdef UNITY_UI_CLIP_RECT
                 float2 uiMask = saturate((_ClipRect.zw - _ClipRect.xy - abs(i.uiMask.xy)) * i.uiMask.zw);

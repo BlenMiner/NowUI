@@ -134,6 +134,9 @@ still have a solid head at the endpoint.
 Use `SetMask` or an ambient `using (Now.Mask(rect))` scope to clip line
 geometry like other NowUI draws.
 
+For an anti-aliased rounded, circular, elliptical, or capsule boundary, wrap
+the line in `Now.Mask(NowMaskShape)`; see [Masks](Masks.md).
+
 ```csharp
 using (Now.Mask(viewport))
 {

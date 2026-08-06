@@ -2,6 +2,10 @@ Shader "NowUI/UI Glass"
 {
     Properties
     {
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         _ZTest ("ZTest", Float) = 8
         [HideInInspector] _NowMaterialGlassMode ("Material Glass Mode", Float) = 0
         [HideInInspector] _NowMaterialBackdropTex ("Material Backdrop", 2D) = "black" {}
@@ -29,11 +33,13 @@ Shader "NowUI/UI Glass"
         Pass
         {
             CGPROGRAM
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
+            #include "NowUIMask.cginc"
 
             struct appdata
             {
@@ -107,11 +113,9 @@ Shader "NowUI/UI Glass"
                 float4 mask = i.mask;
                 float2 rawUV = i.rawUV.xy;
                 float2 pos = rect.xy + rawUV * rect.zw;
+                float2 uiPosition = float2(pos.x, -pos.y);
 
-                clip(min(
-                    min(pos.x - mask.x, (mask.x + mask.z) - pos.x),
-                    min(-pos.y - mask.y, (mask.y + mask.w) + pos.y)
-                ));
+                NowUIClipLegacyRect(uiPosition, mask);
 
                 float2 size = rect.zw;
                 float2 position = (rawUV - 0.5) * size;
@@ -181,6 +185,7 @@ Shader "NowUI/UI Glass"
                     rgb = (i.outlineColor.rgb * outlineCoverage + fillRgb * fillCoverage * (1 - outlineCoverage)) / coverage;
 
                 fixed4 col = fixed4(rgb, coverage * graphicAlpha);
+                col.a *= NowUIMaskCoverage(uiPosition);
                 clip(col.a - 0.001);
                 return col;
             }

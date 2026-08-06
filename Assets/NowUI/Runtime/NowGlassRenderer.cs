@@ -162,7 +162,13 @@ namespace NowUI
             commandBuffer.SetGlobalTexture(_backdropTexId, _sourceId);
             commandBuffer.SetGlobalVector(_backdropUvTransformId, capture.backdropUvTransform);
             commandBuffer.SetGlobalFloat(_useBackdropId, 1f);
-            commandBuffer.DrawMesh(mesh, Matrix4x4.identity, material, subMesh, 0);
+            commandBuffer.DrawMesh(
+                mesh,
+                Matrix4x4.identity,
+                material,
+                subMesh,
+                0,
+                NowMaskShader.GetPropertyBlock(batch.maskState));
             commandBuffer.SetGlobalFloat(_useBackdropId, 0f);
             commandBuffer.SetGlobalVector(_backdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
 
@@ -235,7 +241,13 @@ namespace NowUI
             commandBuffer.SetGlobalTexture(_backdropTexId, _sourceId);
             commandBuffer.SetGlobalVector(_backdropUvTransformId, capture.backdropUvTransform);
             commandBuffer.SetGlobalFloat(_useBackdropId, 1f);
-            commandBuffer.DrawMesh(mesh, drawMatrix, material, subMesh, 0);
+            commandBuffer.DrawMesh(
+                mesh,
+                drawMatrix,
+                material,
+                subMesh,
+                0,
+                NowMaskShader.GetPropertyBlock(batch.maskState));
             commandBuffer.SetGlobalFloat(_useBackdropId, 0f);
             commandBuffer.SetGlobalVector(_backdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
 

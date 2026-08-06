@@ -2,6 +2,10 @@ Shader "NowUI/UI Gradient"
 {
     Properties
     {
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         _MainTex ("Ramp Atlas", 2D) = "white" {}
         _ZTest ("ZTest", Float) = 8
     }
@@ -30,6 +34,7 @@ Shader "NowUI/UI Gradient"
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
+            #include "NowUIMask.cginc"
 
             struct appdata
             {
@@ -166,10 +171,9 @@ Shader "NowUI/UI Gradient"
             fixed4 frag(v2f i) : SV_Target
             {
                 float2 pos = i.rect.xy + i.rawUV * i.rect.zw;
+                float2 uiPosition = float2(pos.x, -pos.y);
 
-                clip(min(
-                    min(pos.x - i.mask.x, (i.mask.x + i.mask.z) - pos.x),
-                    min(-pos.y - i.mask.y, (i.mask.y + i.mask.w) + pos.y)));
+                NowUIClipLegacyRect(uiPosition, i.mask);
 
                 float2 uiUV = float2(i.rawUV.x, 1.0 - i.rawUV.y);
                 float2 position = (i.rawUV - 0.5) * i.rect.zw;
@@ -202,6 +206,7 @@ Shader "NowUI/UI Gradient"
                 half4 col;
                 col.rgb = i.outlineColor.rgb * outlineCoverage + fillColor * (1.0 - outlineCoverage);
                 col.a = outlineCoverage + fillCoverage * (1.0 - outlineCoverage);
+                col *= NowUIMaskCoverage(uiPosition);
                 clip(col.a - 0.001);
                 return col;
             }

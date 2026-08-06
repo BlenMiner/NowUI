@@ -314,8 +314,9 @@ before writing one:
   and blocks input beneath; `NowContextMenu` is the ready-made modal menu.
   Remember overlay blocks apply one frame late — deliver results the frame
   after closing, the way `NowDropdown` and `NowContextMenu` do.
-- **Clipping**: `using (Now.Mask(rect))` is all a viewport is; ScrollView is
-  a mask plus a stored offset.
+- **Clipping**: `using (Now.Mask(rect))` is all a rectangular viewport is;
+  ScrollView is a mask plus a stored offset. Use `Now.Mask(NowMaskShape)` for
+  an analytic non-rectangular or soft boundary; see [Masks](Masks.md).
 - **Clipboard**: route copy/paste through `NowClipboard` so platform
   swaps stay one-line.
 

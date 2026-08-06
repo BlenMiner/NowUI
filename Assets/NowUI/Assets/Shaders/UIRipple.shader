@@ -2,6 +2,10 @@ Shader "NowUI/UI Ripple"
 {
     Properties
     {
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         _ZTest ("ZTest", Float) = 8
     }
     SubShader
@@ -22,11 +26,13 @@ Shader "NowUI/UI Ripple"
         Pass
         {
             CGPROGRAM
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
+            #include "NowUIMask.cginc"
 
             struct appdata
             {
@@ -78,19 +84,16 @@ Shader "NowUI/UI Ripple"
                 float4 mask = i.mask;
                 float2 rawUV = i.rawUV.xy;
                 float2 pos = rect.xy + rawUV * rect.zw;
+                float2 uiPosition = float2(pos.x, -pos.y);
 
-                clip(min(
-                    min(pos.x - mask.x, (mask.x + mask.z) - pos.x),
-                    min(-pos.y - mask.y, (mask.y + mask.w) + pos.y)
-                ));
+                NowUIClipLegacyRect(uiPosition, mask);
 
                 float2 centered = (rawUV - 0.5) * rect.zw;
                 float shapeDist = sdRoundedBox(centered, rect.zw * 0.5, i.radius);
                 float shapeDelta = max(length(float2(ddx(shapeDist), ddy(shapeDist))), 0.0001);
                 float shapeAlpha = 1.0 - smoothstep(-0.5 * shapeDelta, 0.5 * shapeDelta, shapeDist);
 
-                float2 screenPos = float2(pos.x, -pos.y);
-                float circleDist = length(screenPos - i.extras.xy) - i.extras.w;
+                float circleDist = length(uiPosition - i.extras.xy) - i.extras.w;
                 float circleDelta = max(length(float2(ddx(circleDist), ddy(circleDist))), 0.0001);
                 float circleAlpha = 1.0 - smoothstep(-0.5 * circleDelta, 0.5 * circleDelta, circleDist);
 
@@ -98,6 +101,7 @@ Shader "NowUI/UI Ripple"
                 fixed4 col;
                 col.rgb = i.color.rgb * alpha;
                 col.a = alpha;
+                col *= NowUIMaskCoverage(uiPosition);
                 clip(col.a - 0.001);
                 return col;
             }

@@ -32,12 +32,22 @@ namespace NowUI.Internal
         /// <summary>Deferred overlay geometry (popups, menus, tooltips) drawn after regular content.</summary>
         public readonly bool overlay;
 
+        /// <summary>Analytic masks active when this ordered material batch was emitted.</summary>
+        public readonly NowMaskShaderState maskState;
+
         public NowMeshBatch(Material material, NowMeshKind kind)
             : this(material, null, kind, default)
         {
         }
 
-        public NowMeshBatch(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 data, NowRect bounds = default, bool overlay = false)
+        public NowMeshBatch(
+            Material material,
+            Material canvasMaterial,
+            NowMeshKind kind,
+            Vector4 data,
+            NowRect bounds = default,
+            bool overlay = false,
+            NowMaskShaderState maskState = default)
         {
             this.material = material;
             this.canvasMaterial = canvasMaterial;
@@ -45,6 +55,7 @@ namespace NowUI.Internal
             this.data = data;
             this.bounds = bounds;
             this.overlay = overlay;
+            this.maskState = maskState;
         }
     }
 
@@ -260,17 +271,30 @@ namespace NowUI.Internal
 
         public Vector4 batchData;
 
+        internal NowMaskShaderState maskState;
+
         public NowMesh(Material mat, NowMeshKind kind)
             : this(mat, null, kind)
         {
         }
 
         public NowMesh(Material mat, Material canvasMaterial, NowMeshKind kind, Vector4 batchData = default)
+            : this(mat, canvasMaterial, kind, batchData, default)
+        {
+        }
+
+        internal NowMesh(
+            Material mat,
+            Material canvasMaterial,
+            NowMeshKind kind,
+            Vector4 batchData,
+            NowMaskShaderState maskState)
         {
             material = mat;
             this.canvasMaterial = canvasMaterial;
             this.kind = kind;
             this.batchData = batchData;
+            this.maskState = maskState;
 
             _radius = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
             _rect = new StaticList<Vector4>(INITIAL_VERTEX_CAPACITY);
@@ -292,11 +316,22 @@ namespace NowUI.Internal
 
         public void SetMaterial(Material material, Material canvasMaterial, NowMeshKind kind, Vector4 batchData = default)
         {
+            SetMaterial(material, canvasMaterial, kind, batchData, default);
+        }
+
+        internal void SetMaterial(
+            Material material,
+            Material canvasMaterial,
+            NowMeshKind kind,
+            Vector4 batchData,
+            NowMaskShaderState maskState)
+        {
+            ClearVertices();
             this.material = material;
             this.canvasMaterial = canvasMaterial;
             this.kind = kind;
             this.batchData = batchData;
-            ClearVertices();
+            this.maskState = maskState;
         }
 
         static readonly Vector2 _uv0 = new Vector2(0, 0);
@@ -1450,6 +1485,7 @@ namespace NowUI.Internal
             _rawuv.Clear();
             _renderVertices.Clear();
             ClearBounds();
+            maskState = default;
         }
 
         public void AppendVertices(

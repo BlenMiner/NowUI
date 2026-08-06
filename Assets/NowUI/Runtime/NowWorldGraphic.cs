@@ -118,6 +118,7 @@ namespace NowUI
         [NonSerialized] readonly Dictionary<Material, Material> _overlayMaterials = new Dictionary<Material, Material>(4);
         [NonSerialized] readonly List<Material> _sharedMaterials = new List<Material>(8);
         [NonSerialized] bool _sharedMaterialsAssigned;
+        [NonSerialized] int _shaderMaskPropertyBlockCount;
         [NonSerialized] Camera _fallbackCamera;
         [NonSerialized] bool _dirty = true;
         [NonSerialized] NowInteractionRepaintTracker _repaintTracker;
@@ -1077,12 +1078,20 @@ namespace NowUI
                 _maxGlassBlurRadius = 0f;
                 _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
 
+                // Indexed property blocks survive both the renderer-level clear
+                // and a shorter shared-material list. Release them while their
+                // old material slots still exist so texture-mask RTs cannot stay
+                // referenced by an empty host.
+                ClearShaderMaskPropertyBlocksFrom(0);
+
                 if (_sharedMaterials.Count > 0 || !_sharedMaterialsAssigned)
                 {
                     _sharedMaterials.Clear();
                     _meshRenderer.SetSharedMaterials(_sharedMaterials);
                     _sharedMaterialsAssigned = true;
                 }
+
+                _meshRenderer.SetPropertyBlock(null);
 
                 return;
             }
@@ -1092,6 +1101,12 @@ namespace NowUI
             _hasGlassBatches = false;
             _maxGlassBlurRadius = 0f;
             _maxGlassBlurQuality = NowGlassBlurQuality.Balanced;
+
+            // Unity keeps per-material-index property blocks independently of
+            // Renderer.SetPropertyBlock(null). Clear removed slots before
+            // SetSharedMaterials can shrink the renderer's material array.
+            ClearShaderMaskPropertyBlocksFrom(count);
+
             bool materialsChanged = !_sharedMaterialsAssigned || _sharedMaterials.Count != count;
 
             if (_sharedMaterials.Count > count)
@@ -1125,6 +1140,46 @@ namespace NowUI
                 _meshRenderer.SetSharedMaterials(_sharedMaterials);
                 _sharedMaterialsAssigned = true;
             }
+
+            ApplyShaderMaskPropertyBlocks();
+        }
+
+        void ApplyShaderMaskPropertyBlocks()
+        {
+            if (!_meshRenderer || _drawList is not { hasGeometry: true })
+                return;
+
+            // Drop texture references from material indices that disappeared or
+            // changed from masked to unmasked before applying the active batches.
+            _meshRenderer.SetPropertyBlock(null);
+
+            var batches = _drawList.batches;
+            int count = Mathf.Min(batches.Count, _sharedMaterials.Count);
+
+            ClearShaderMaskPropertyBlocksFrom(count);
+
+            for (int i = 0; i < count; ++i)
+            {
+                _meshRenderer.SetPropertyBlock(
+                    NowMaskShader.GetPropertyBlock(batches[i].maskState),
+                    i);
+            }
+
+            _shaderMaskPropertyBlockCount = count;
+        }
+
+        void ClearShaderMaskPropertyBlocksFrom(int firstIndex)
+        {
+            int previousCount = Mathf.Max(0, _shaderMaskPropertyBlockCount);
+            int start = Mathf.Clamp(firstIndex, 0, previousCount);
+
+            if (_meshRenderer)
+            {
+                for (int i = start; i < previousCount; ++i)
+                    _meshRenderer.SetPropertyBlock(null, i);
+            }
+
+            _shaderMaskPropertyBlockCount = start;
         }
 
         void RegisterGlassBackdropIfNeeded()
@@ -1311,6 +1366,8 @@ namespace NowUI
                 material.SetFloat(_nowGlassUseBackdropId, batchUsesBackdrop ? 1f : 0f);
                 ApplyGlassDepthProperties(material);
             }
+
+            ApplyShaderMaskPropertyBlocks();
         }
 
         static NowGlassBlurQuality MaxQuality(NowGlassBlurQuality lhs, NowGlassBlurQuality rhs)
@@ -1740,11 +1797,20 @@ namespace NowUI
             _appliedGlassStateValid = false;
             _appliedGlassTexture = null;
             _appliedGlassSharpTexture = null;
+
+            // Clear indexed blocks before removing the material slots they belong
+            // to. Renderer.SetPropertyBlock(null) only clears the renderer-wide
+            // block and cannot release per-index texture references.
+            ClearShaderMaskPropertyBlocksFrom(0);
+
             _sharedMaterials.Clear();
             _sharedMaterialsAssigned = false;
 
             if (_meshRenderer != null)
+            {
+                _meshRenderer.SetPropertyBlock(null);
                 _meshRenderer.SetSharedMaterials(_sharedMaterials);
+            }
 
             if (_meshFilter != null && _meshFilter.sharedMesh == _drawList?.mesh)
                 _meshFilter.sharedMesh = null;

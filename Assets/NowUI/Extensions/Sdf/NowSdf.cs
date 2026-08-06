@@ -953,6 +953,42 @@ namespace NowUI.Sdf
             return this;
         }
 
+        /// <summary>
+        /// Rasterizes this SDF scene into a cache-owned coverage texture and pushes
+        /// it as an ambient mask. The scene must have been created with an explicit
+        /// rect; layout callers should reserve a rect first or use
+        /// <see cref="BeginMask(NowRect)"/>.
+        /// </summary>
+        [NowConsumer]
+        public NowMaskScope BeginMask()
+        {
+            if (!_hasRect)
+            {
+                throw new InvalidOperationException(
+                    "NowSdfBuilder.BeginMask() requires an explicit scene rect. " +
+                    "Reserve a layout rect first and pass it to BeginMask(rect), or create the scene with NowSdf.Scene(rect).");
+            }
+
+            return BeginMask(_rect);
+        }
+
+        /// <summary>
+        /// Rasterizes this SDF scene into a cache-owned coverage texture and pushes
+        /// it as an ambient mask over <paramref name="rect"/>. Dispose the returned
+        /// scope to restore the previous ambient mask.
+        /// </summary>
+        [NowConsumer]
+        public NowMaskScope BeginMask(NowRect rect)
+        {
+            // Measured layout invokes drawing code once with all rendering
+            // suppressed. Do not allocate or execute a render texture in that pass;
+            // the real pass rebuilds this call-site cache before using it.
+            if (NowLayout.isMeasurePass)
+                return default;
+
+            return _cache.BeginMask(rect, _hasMask ? _mask : rect, _tint);
+        }
+
         NowRect ReserveLayoutRect()
         {
             var options = _options;
@@ -996,6 +1032,7 @@ namespace NowUI.Sdf
         static readonly int _contourColorProp = Shader.PropertyToID("_SdfContourColor");
         static readonly int _contourMaskProp = Shader.PropertyToID("_SdfContourMask");
         static readonly int _warpProp = Shader.PropertyToID("_SdfWarp");
+        static readonly int _maskOutputProp = Shader.PropertyToID("_SdfMaskOutput");
 
         readonly Vector4[] _data0 = new Vector4[NowSdf.MaxShapes];
         readonly Vector4[] _data1 = new Vector4[NowSdf.MaxShapes];
@@ -1011,8 +1048,13 @@ namespace NowUI.Sdf
         readonly Dictionary<NowSdfGraph, int> _graphIds = new Dictionary<NowSdfGraph, int>(8);
 
         Material _material;
+        Material _maskMaterial;
+        NowRenderer _maskRenderer;
+        RenderTexture _maskTexture;
         ulong _uploadedHash;
         bool _hasUploadedHash;
+        ulong _maskUploadedHash;
+        bool _hasMaskUploadedHash;
         NowSdfGraph _activeGraph;
         int _inlineGraphCursor;
         NowSdfOperation _pendingOperation;
@@ -1082,16 +1124,27 @@ namespace NowUI.Sdf
 
         public void Release()
         {
-            if (_material == null)
+            _maskRenderer?.Dispose();
+            _maskRenderer = null;
+            ReleaseMaskTexture();
+
+            ReleaseMaterial(ref _maskMaterial);
+            ReleaseMaterial(ref _material);
+            _hasUploadedHash = false;
+            _hasMaskUploadedHash = false;
+        }
+
+        static void ReleaseMaterial(ref Material material)
+        {
+            if (material == null)
                 return;
 
             if (Application.isPlaying)
-                UnityEngine.Object.Destroy(_material);
+                UnityEngine.Object.Destroy(material);
             else
-                UnityEngine.Object.DestroyImmediate(_material);
+                UnityEngine.Object.DestroyImmediate(material);
 
-            _material = null;
-            _hasUploadedHash = false;
+            material = null;
         }
 
         public void SetColor(Vector4 color)
@@ -1292,8 +1345,58 @@ namespace NowUI.Sdf
             if (material == null)
                 return;
 
-            Upload(material);
+            Upload(material, ref _uploadedHash, ref _hasUploadedHash);
             Now.DrawSdf(rect, mask, material, tint);
+        }
+
+        public NowMaskScope BeginMask(NowRect rect, NowRect mask, Vector4 tint)
+        {
+            // Fail before material creation or RT execution when the ambient
+            // texture-mask stack is already full.
+            Now.EnsureCanPushTextureMask();
+            FlushActiveGraph();
+
+            if (_layers.Count == 0 || !IsFiniteRect(rect) || rect.isEmpty)
+                return EmptyMask(rect);
+
+            var material = GetMaskMaterial();
+            if (material == null)
+                return EmptyMask(rect);
+
+            NowRect transformedRect = Now.TransformScreenRect(rect);
+            if (!IsFiniteRect(transformedRect) || transformedRect.isEmpty)
+                return EmptyMask(rect);
+
+            int width = PhysicalSize(transformedRect.width);
+            int height = PhysicalSize(transformedRect.height);
+            var target = GetMaskTexture(width, height);
+            if (target == null)
+                return EmptyMask(rect);
+
+            Upload(material, ref _maskUploadedHash, ref _hasMaskUploadedHash);
+
+            _maskRenderer ??= new NowRenderer();
+            var localRect = new NowRect(0f, 0f, rect.width, rect.height);
+            var localMask = new NowRect(
+                mask.x - rect.x,
+                mask.y - rect.y,
+                mask.width,
+                mask.height);
+
+            // Capture without inherited context or flushing the caller's deferred
+            // overlays. The SDF texture contains only this scene's coverage;
+            // enclosing masks remain attached to child batches and are not
+            // multiplied twice.
+            using (_maskRenderer.Begin(localRect.size, flushOverlays: false))
+                Now.DrawSdfUnsnapped(localRect, localMask, material, tint);
+
+            _maskRenderer.Render(target, clear: true, clearColor: Color.clear);
+            return Now.Mask(NowMaskTexture.Red(target, rect));
+        }
+
+        static NowMaskScope EmptyMask(NowRect rect)
+        {
+            return Now.Mask(NowMaskTexture.Empty(IsFiniteRect(rect) ? rect : default));
         }
 
         void PrepareActivePrimitive()
@@ -1405,8 +1508,114 @@ namespace NowUI.Sdf
             return _material;
         }
 
-        void Upload(Material material)
+        Material GetMaskMaterial()
         {
+            if (_maskMaterial != null)
+                return _maskMaterial;
+
+            var template = Resources.Load<Material>("NowUI/SdfMaterial");
+
+            if (template != null)
+            {
+                _maskMaterial = new Material(template);
+            }
+            else
+            {
+                var shader = Shader.Find("NowUI/SDF Scene");
+
+                if (shader == null)
+                    return null;
+
+                _maskMaterial = new Material(shader);
+            }
+
+            _maskMaterial.name = "Now SDF Mask";
+            _maskMaterial.hideFlags = HideFlags.HideAndDontSave;
+            _maskMaterial.SetFloat(_maskOutputProp, 1f);
+            _hasMaskUploadedHash = false;
+            return _maskMaterial;
+        }
+
+        RenderTexture GetMaskTexture(int width, int height)
+        {
+            if (_maskTexture != null && _maskTexture.width == width && _maskTexture.height == height)
+                return _maskTexture;
+
+            ReleaseMaskTexture();
+
+            RenderTextureFormat format = SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.R8)
+                ? RenderTextureFormat.R8
+                : RenderTextureFormat.ARGB32;
+
+            _maskTexture = new RenderTexture(
+                width,
+                height,
+                0,
+                format,
+                RenderTextureReadWrite.Linear)
+            {
+                name = "Now SDF Mask Coverage",
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                useMipMap = false,
+                autoGenerateMips = false,
+                antiAliasing = 1
+            };
+
+            if (!_maskTexture.Create())
+            {
+                ReleaseMaskTexture();
+                return null;
+            }
+
+            return _maskTexture;
+        }
+
+        void ReleaseMaskTexture()
+        {
+            if (_maskTexture == null)
+                return;
+
+            Now.ReleaseTextureMaterials(_maskTexture);
+            _maskTexture.Release();
+
+            if (Application.isPlaying)
+                UnityEngine.Object.Destroy(_maskTexture);
+            else
+                UnityEngine.Object.DestroyImmediate(_maskTexture);
+
+            _maskTexture = null;
+        }
+
+        static int PhysicalSize(float transformedUiSize)
+        {
+            float pixels = Now.UiUnitsToScreenPixels(transformedUiSize);
+            if (float.IsNaN(pixels) || float.IsInfinity(pixels) || pixels <= 0f)
+                return 1;
+
+            int maximum = Mathf.Max(1, SystemInfo.maxTextureSize);
+            return Mathf.Clamp(Mathf.CeilToInt(Mathf.Min(pixels, maximum)), 1, maximum);
+        }
+
+        static bool IsFiniteRect(NowRect rect)
+        {
+            return IsFinite(rect.x) && IsFinite(rect.y) &&
+                IsFinite(rect.width) && IsFinite(rect.height) &&
+                IsFinite(rect.xMax) && IsFinite(rect.yMax);
+        }
+
+        static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+
+        void Upload(Material material, ref ulong uploadedHash, ref bool hasUploadedHash)
+        {
+            // Upload can target both the normal and mask material for the same
+            // built scene. Rebuild this per-upload lookup so a prior material
+            // upload cannot make the second one report zero shapes.
+            _graphIds.Clear();
             int shapeCount = 0;
             int layerCount = Mathf.Min(_layers.Count, NowSdf.MaxLayers);
 
@@ -1426,11 +1635,11 @@ namespace NowUI.Sdf
 
             ulong contentHash = ComputeUploadHash(shapeCount, layerCount);
 
-            if (_hasUploadedHash && contentHash == _uploadedHash)
+            if (hasUploadedHash && contentHash == uploadedHash)
                 return;
 
-            _uploadedHash = contentHash;
-            _hasUploadedHash = true;
+            uploadedHash = contentHash;
+            hasUploadedHash = true;
 
             material.SetFloat(_shapeCountProp, shapeCount);
             material.SetFloat(_layerCountProp, layerCount);

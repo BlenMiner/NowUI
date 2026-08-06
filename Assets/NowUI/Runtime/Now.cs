@@ -100,7 +100,76 @@ namespace NowUI
                 _fontStack.RemoveAt(_fontStack.Count - 1);
         }
 
-        static readonly List<NowRect> _maskStack = new List<NowRect>(4);
+        internal enum AmbientMaskKind : byte
+        {
+            Rectangle,
+            Analytic,
+            Texture
+        }
+
+        internal readonly struct AmbientMaskState
+        {
+            /// <summary>Intersection of this entry's bounds with every outer entry.</summary>
+            public readonly NowRect bounds;
+
+            /// <summary>
+            /// Authored local-space analytic shape, or the already-transformed hard
+            /// rectangle used by the legacy <see cref="Mask(NowRect)"/> fast path.
+            /// </summary>
+            public readonly NowMaskShape shape;
+
+            /// <summary>Authored texture coverage when <see cref="kind"/> is Texture.</summary>
+            public readonly NowMaskTexture textureMask;
+
+            /// <summary>Effective transform active when a shader-evaluated mask was pushed.</summary>
+            public readonly NowTransformSnapshot transform;
+
+            public readonly AmbientMaskKind kind;
+
+            public bool analytic => kind == AmbientMaskKind.Analytic;
+
+            public bool texture => kind == AmbientMaskKind.Texture;
+
+            public AmbientMaskState(
+                NowRect bounds,
+                NowMaskShape shape,
+                NowMaskTexture textureMask,
+                NowTransformSnapshot transform,
+                AmbientMaskKind kind)
+            {
+                this.bounds = bounds;
+                this.shape = shape;
+                this.textureMask = textureMask;
+                this.transform = transform;
+                this.kind = kind;
+            }
+
+            public bool Contains(Vector2 position)
+            {
+                if (kind == AmbientMaskKind.Rectangle)
+                    return shape.bounds.Contains(position);
+
+                Vector2 local = position;
+
+                if (transform.active)
+                {
+                    Vector2 scale = transform.transform.scale;
+                    if (Mathf.Approximately(scale.x, 0f) || Mathf.Approximately(scale.y, 0f))
+                        return false;
+
+                    Vector2 origin = transform.transform.origin;
+                    local = new Vector2(
+                        (position.x - origin.x) / scale.x,
+                        (position.y - origin.y) / scale.y);
+                }
+
+                return kind == AmbientMaskKind.Texture
+                    ? textureMask.Contains(local)
+                    : shape.Contains(local);
+            }
+        }
+
+        static readonly List<AmbientMaskState> _maskStack = new List<AmbientMaskState>(4);
 
         static readonly NowScopeGuard _maskScopes = new NowScopeGuard("Now.Mask");
 
@@ -118,11 +187,105 @@ namespace NowUI
             if (_transformStack.Count > 0)
                 mask = ApplyTransformRect(mask);
 
-            if (_maskStack.Count > 0)
-                mask = mask.Intersect(_maskStack[_maskStack.Count - 1]);
+            NowRect accumulatedBounds = _maskStack.Count > 0
+                ? mask.Intersect(_maskStack[_maskStack.Count - 1].bounds)
+                : mask;
 
-            _maskStack.Add(mask);
+            _maskStack.Add(new AmbientMaskState(
+                accumulatedBounds,
+                NowMaskShape.Rectangle(mask),
+                default,
+                default,
+                AmbientMaskKind.Rectangle));
             return new NowMaskScope(_maskScopes.Enter());
+        }
+
+        /// <summary>
+        /// Pushes an ambient analytic mask. Every draw and input query inside the
+        /// scope is clipped by this shape and every outer mask. Dispose the returned
+        /// scope, preferably with a using statement.
+        /// </summary>
+        public static NowMaskScope Mask(NowMaskShape shape)
+        {
+            int analyticCount = 0;
+            for (int i = 0; i < _maskStack.Count; ++i)
+            {
+                if (_maskStack[i].analytic)
+                    ++analyticCount;
+            }
+
+            if (analyticCount >= NowMaskShaderState.Capacity)
+            {
+                throw new InvalidOperationException(
+                    $"NowUI supports at most {NowMaskShaderState.Capacity} simultaneously nested analytic masks. " +
+                    "Rectangular Now.Mask(NowRect) scopes do not count toward this limit.");
+            }
+
+            NowTransformSnapshot transform = CaptureTransform();
+            NowRect bounds = _transformStack.Count > 0
+                ? ApplyTransformRect(shape.bounds)
+                : shape.bounds;
+
+            if (!bounds.isEmpty)
+            {
+                float halfTransitionPixels = 0.5f * (1f + Mathf.Max(0f, shape.feather));
+                bounds = bounds.Outset(ScreenPixelsToUiUnits(halfTransitionPixels));
+            }
+
+            NowRect accumulatedBounds = _maskStack.Count > 0
+                ? bounds.Intersect(_maskStack[_maskStack.Count - 1].bounds)
+                : bounds;
+
+            _maskStack.Add(new AmbientMaskState(
+                accumulatedBounds,
+                shape,
+                default,
+                transform,
+                AmbientMaskKind.Analytic));
+            return new NowMaskScope(_maskScopes.Enter());
+        }
+
+        /// <summary>
+        /// Pushes an ambient texture-coverage mask. The full texture maps to the
+        /// mask's authored bounds, captures the current transform, and intersects
+        /// with every outer mask. Texture masks use their rect for input bounds.
+        /// </summary>
+        public static NowMaskScope Mask(NowMaskTexture mask)
+        {
+            EnsureCanPushTextureMask();
+
+            NowTransformSnapshot transform = CaptureTransform();
+            NowRect bounds = _transformStack.Count > 0
+                ? ApplyTransformRect(mask.bounds)
+                : mask.bounds;
+            NowRect accumulatedBounds = _maskStack.Count > 0
+                ? bounds.Intersect(_maskStack[_maskStack.Count - 1].bounds)
+                : bounds;
+
+            _maskStack.Add(new AmbientMaskState(
+                accumulatedBounds,
+                default,
+                mask,
+                transform,
+                AmbientMaskKind.Texture));
+            return new NowMaskScope(_maskScopes.Enter());
+        }
+
+        internal static void EnsureCanPushTextureMask()
+        {
+            int textureCount = 0;
+            for (int i = 0; i < _maskStack.Count; ++i)
+            {
+                if (_maskStack[i].texture)
+                    ++textureCount;
+            }
+
+            if (textureCount >= NowMaskShaderState.TextureCapacity)
+            {
+                throw new InvalidOperationException(
+                    $"NowUI supports at most {NowMaskShaderState.TextureCapacity} simultaneously nested texture masks. " +
+                    "Rectangular and analytic mask scopes do not count toward this limit.");
+            }
         }
 
         internal static void PopMask(int token)
@@ -141,12 +304,40 @@ namespace NowUI
             if (mask.isEmpty)
                 mask = UnboundedMask;
 
-            return _maskStack.Count > 0 ? mask.Intersect(_maskStack[_maskStack.Count - 1]) : mask;
+            return _maskStack.Count > 0
+                ? mask.Intersect(_maskStack[_maskStack.Count - 1].bounds)
+                : mask;
         }
 
         internal static bool IsInsideAmbientMask(Vector2 position)
         {
-            return _maskStack.Count == 0 || _maskStack[_maskStack.Count - 1].Contains(position);
+            int count = _maskStack.Count;
+            if (count == 0)
+                return true;
+
+            if (!ContainsInclusive(_maskStack[count - 1].bounds, position))
+                return false;
+
+            for (int i = 0; i < count; ++i)
+            {
+                if (!_maskStack[i].Contains(position))
+                    return false;
+            }
+
+            return true;
+        }
+
+        internal static int ambientMaskCount => _maskStack.Count;
+
+        internal static AmbientMaskState GetAmbientMask(int index)
+        {
+            return _maskStack[index];
+        }
+
+        static bool ContainsInclusive(NowRect rect, Vector2 position)
+        {
+            return position.x >= rect.x && position.x <= rect.xMax &&
+                   position.y >= rect.y && position.y <= rect.yMax;
         }
 
         #region Transform System
@@ -400,7 +591,7 @@ namespace NowUI
             public int overlayStartMesh;
             public bool captureMesh;
             public NowRect screenMask;
-            public readonly List<NowRect> maskStack = new List<NowRect>(4);
+            public readonly List<AmbientMaskState> maskStack = new List<AmbientMaskState>(4);
             public readonly List<NowTransform> transformStack = new List<NowTransform>(4);
             public readonly List<int> maskScopeTokens = new List<int>(4);
             public readonly List<int> transformScopeTokens = new List<int>(4);
@@ -468,15 +659,20 @@ namespace NowUI
             return CreateMesh(mat, canvasMaterial, kind, default);
         }
 
-        static int CreateMesh(Material mat, Material canvasMaterial, NowMeshKind kind, Vector4 batchData)
+        static int CreateMesh(
+            Material mat,
+            Material canvasMaterial,
+            NowMeshKind kind,
+            Vector4 batchData,
+            NowMaskShaderState maskState = default)
         {
             _meshes.EnsureCapacity(1);
             int id = _meshes.count;
 
             if (_meshes.array[id] == null)
-                _meshes.array[id] = new NowMesh(mat, canvasMaterial, kind, batchData);
+                _meshes.array[id] = new NowMesh(mat, canvasMaterial, kind, batchData, maskState);
             else
-                _meshes.array[id].SetMaterial(mat, canvasMaterial, kind, batchData);
+                _meshes.array[id].SetMaterial(mat, canvasMaterial, kind, batchData, maskState);
 
             _meshes.count = id + 1;
             return id;
@@ -500,7 +696,7 @@ namespace NowUI
             if (mesh.vertexCount + incomingVertices <= MAX_VERTICES_PER_MESH)
                 return mesh;
 
-            int id = CreateMesh(material, mesh.canvasMaterial, kind, mesh.batchData);
+            int id = CreateMesh(material, mesh.canvasMaterial, kind, mesh.batchData, mesh.maskState);
             _lastUsedMeshId = id;
             return _meshes.array[id];
         }
@@ -662,6 +858,17 @@ namespace NowUI
             NowMeshKind kind,
             Vector4 batchData)
         {
+            var maskState = CaptureMaskShaderState();
+            return UseMaterial(material, canvasMaterial, kind, batchData, maskState);
+        }
+
+        static NowMesh UseMaterial(
+            Material material,
+            Material canvasMaterial,
+            NowMeshKind kind,
+            Vector4 batchData,
+            in NowMaskShaderState maskState)
+        {
             if (material == null)
                 return null;
 
@@ -670,12 +877,13 @@ namespace NowUI
                 ReferenceEquals(_meshes.array[_lastUsedMeshId].material, material) &&
                 ReferenceEquals(_meshes.array[_lastUsedMeshId].canvasMaterial, canvasMaterial) &&
                 _meshes.array[_lastUsedMeshId].kind == kind &&
-                _meshes.array[_lastUsedMeshId].batchData == batchData)
+                _meshes.array[_lastUsedMeshId].batchData == batchData &&
+                _meshes.array[_lastUsedMeshId].maskState.Equals(maskState))
             {
                 return _meshes.array[_lastUsedMeshId];
             }
 
-            int orderedId = CreateMesh(material, canvasMaterial, kind, batchData);
+            int orderedId = CreateMesh(material, canvasMaterial, kind, batchData, maskState);
             _lastUsedMeshId = orderedId;
             return _meshes.array[orderedId];
         }
@@ -683,6 +891,14 @@ namespace NowUI
         internal static NowMesh UseEffectMaterial(Material material, NowMeshKind kind)
         {
             return UseMaterial(material, null, kind, default);
+        }
+
+        internal static NowMesh UseEffectMaterial(
+            Material material,
+            NowMeshKind kind,
+            in NowMaskShaderState maskState)
+        {
+            return UseMaterial(material, null, kind, default, maskState);
         }
 
         static NowMesh UseRectangleMaterial(Material material, Material canvasMaterial, NowMeshKind kind)
@@ -900,9 +1116,23 @@ namespace NowUI
                     mesh.GetBounds(Vector2.zero));
             }
 
-            mesh.material.SetPass(0);
-            Graphics.DrawMeshNow(mesh.unityMesh, drawMatrix);
-            mesh.ClearVertices();
+            bool hasShaderMask = !mesh.maskState.isEmpty;
+
+            if (hasShaderMask)
+                NowMaskShader.Apply(mesh.material, mesh.maskState);
+
+            try
+            {
+                mesh.material.SetPass(0);
+                Graphics.DrawMeshNow(mesh.unityMesh, drawMatrix);
+            }
+            finally
+            {
+                if (hasShaderMask)
+                    NowMaskShader.Clear(mesh.material);
+
+                mesh.ClearVertices();
+            }
         }
 
         static void FlushMesh(int meshId)
@@ -1542,7 +1772,8 @@ namespace NowUI
                     mesh.kind,
                     mesh.batchData,
                     bounds,
-                    i >= _overlayStartMesh));
+                    i >= _overlayStartMesh,
+                    mesh.maskState));
 
                 if (layout == NowMeshLayout.Canvas)
                 {
@@ -1909,8 +2140,21 @@ namespace NowUI
                 }
             }
 
-            batch.material.SetPass(0);
-            Graphics.DrawMeshNow(_legacyGlassReplayMesh, drawMatrix, batchIndex);
+            bool hasShaderMask = !batch.maskState.isEmpty;
+
+            if (hasShaderMask)
+                NowMaskShader.Apply(batch.material, batch.maskState);
+
+            try
+            {
+                batch.material.SetPass(0);
+                Graphics.DrawMeshNow(_legacyGlassReplayMesh, drawMatrix, batchIndex);
+            }
+            finally
+            {
+                if (hasShaderMask)
+                    NowMaskShader.Clear(batch.material);
+            }
         }
 
         static void ClearImmediateMeshes(int count)
@@ -2114,6 +2358,26 @@ namespace NowUI
         /// </summary>
         internal static void DrawSdf(NowRect rect, NowRect mask, Material material, Vector4 color)
         {
+            DrawSdf(rect, mask, material, color, snapToPixels: true);
+        }
+
+        /// <summary>
+        /// Emits SDF geometry at its authored floating-point bounds. Intended for
+        /// offscreen captures whose projection maps the full logical rect to the
+        /// target texture, including rects smaller than one UI unit.
+        /// </summary>
+        internal static void DrawSdfUnsnapped(NowRect rect, NowRect mask, Material material, Vector4 color)
+        {
+            DrawSdf(rect, mask, material, color, snapToPixels: false);
+        }
+
+        static void DrawSdf(
+            NowRect rect,
+            NowRect mask,
+            Material material,
+            Vector4 color,
+            bool snapToPixels)
+        {
             if (_suppressDrawDepth > 0 || material == null || rect.width <= 0f || rect.height <= 0f)
                 return;
 
@@ -2121,9 +2385,9 @@ namespace NowUI
 
             float x0, y0, rectWidth, rectHeight;
 
-            if (hasTransform)
+            if (hasTransform || !snapToPixels)
             {
-                // When transform is active, use float positions for smooth scaling
+                // Transforms and offscreen captures retain authored float bounds.
                 x0 = rect.x;
                 y0 = rect.y;
                 rectWidth = rect.width;
@@ -3369,8 +3633,9 @@ namespace NowUI
     }
 
     /// <summary>
-    /// Disposable handle returned by <see cref="Now.Mask(NowRect)"/>; disposing
-    /// restores the previous ambient mask.
+    /// Disposable handle returned by <see cref="Now.Mask(NowRect)"/> or
+    /// <see cref="Now.Mask(NowMaskShape)"/> or <see cref="Now.Mask(NowMaskTexture)"/>;
+    /// disposing restores the previous ambient mask.
     /// </summary>
     [NowScope]
     public struct NowMaskScope : IDisposable

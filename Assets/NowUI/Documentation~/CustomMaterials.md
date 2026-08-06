@@ -55,7 +55,7 @@ Normal render paths receive the same streams as `NowUI/UI Rectangle`:
 | Position | `POSITION` | Quad vertex in NowUI space |
 | UV0 | `TEXCOORD0` | Texture UV |
 | UV1 | `TEXCOORD1` | Rect as `(x, y, width, height)` |
-| UV2 | `TEXCOORD2` | Radius as `(topLeft, bottomLeft, bottomRight, topRight)` |
+| UV2 | `TEXCOORD2` | `NowCornerRadius.packed` as `(topRight, bottomRight, topLeft, bottomLeft)` |
 | UV3 | `TEXCOORD3` | Vertex color |
 | UV4 | `TEXCOORD4` | Outline color |
 | UV5 | `TEXCOORD5` | Extra data: blur in `x`, outline width in `y` |
@@ -78,6 +78,44 @@ UGUI render paths use the compact canvas layout from `NowUI/UI Rectangle UGUI`:
 UGUI shaders should also include the usual Unity UI stencil, color mask, clip
 rect, softness, and alpha clip properties if they need to work under `Mask`,
 `RectMask2D`, or material modifiers.
+
+## Shader Mask Opt-In
+
+The mask rect in these vertex layouts is the legacy rectangular clip. Packaged
+NowUI shaders additionally evaluate ambient analytic and texture-backed masks
+created with `Now.Mask(NowMaskShape)`, `Now.Mask(NowMaskTexture)`, or an SDF
+scene's `BeginMask()`, but caller-provided custom materials must opt in. Reading
+UV6 or UGUI UV2 alone does not apply rounded, circular, elliptical, capsule,
+feathered, or texture-coverage boundaries.
+
+Follow the corresponding packaged shader, or the complete
+[`DocsFrostRectangleUGUI.shader`](../Assets/Shaders/DocsFrostRectangleUGUI.shader)
+example. The essential pieces are:
+
+```hlsl
+Properties
+{
+    [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+    [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+    [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+    [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
+}
+
+// In the program block:
+#include "Packages/com.blenminer.nowui/Assets/Shaders/NowUIMask.cginc"
+
+// In the fragment function, after reconstructing the top-left-origin NowUI
+// position used by the packaged shader:
+col.a *= NowUIMaskCoverage(uiPosition); // straight-alpha output
+```
+
+Multiply the whole output color for a premultiplied-alpha shader. The hidden
+count properties are how NowUI detects support before binding active mask data;
+texture support also requires both hidden sampler properties. The include
+declares the remaining arrays and coverage helpers. A shader may intentionally
+support analytic masks only by declaring `_NowUIMaskCount` and calling
+`NowUIAnalyticMaskCoverage`, but texture and SDF masks then do not affect it.
+See [Masks](Masks.md) for coverage and nesting behavior.
 
 ## Notes
 

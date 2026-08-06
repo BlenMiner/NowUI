@@ -98,6 +98,7 @@ Host lifecycle rules:
 | Lines, Beziers, dashes, arrows | `Now.Line`, `Now.Bezier` | [Lines](Lines.md) |
 | Linear, radial, and conic fills | `Now.Gradient` | [Gradients](Gradients.md) |
 | Circles, triangles, polygons | Shape builders | [Shapes](Shapes.md) |
+| Non-rectangular or soft clipping | `NowMaskShape` and `Now.Mask` | [Masks](Masks.md) |
 | Backdrop blur panes | `Now.Glass` | [Glass](Glass.md) |
 | Custom rectangle shaders/materials | `SetMaterial` | [Custom Materials](CustomMaterials.md) |
 | Mesh or texture visual modifiers | `NowEffects` | [Effects](Effects.md) |

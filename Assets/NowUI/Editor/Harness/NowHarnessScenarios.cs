@@ -6,6 +6,7 @@ using System.Text;
 using NowUI.Docking;
 using NowUI.Markdown;
 using NowUI.NodeGraph;
+using NowUI.Sdf;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -214,6 +215,8 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "text-layout", width = 960, height = 540, includeInGoldens = true, draw = DrawTextLayout },
                 new NowHarnessScenario { name = "glass", width = 640, height = 360, includeInGoldens = true, draw = DrawGlass },
                 new NowHarnessScenario { name = "shader-variants", width = 840, height = 420, includeInGoldens = true, draw = DrawShaderVariants },
+                new NowHarnessScenario { name = "sdf-mask-glow-clip", width = 640, height = 640, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGlowClip },
+                new NowHarnessScenario { name = "sdf-mask-gallery", width = 960, height = 520, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGallery },
                 new NowHarnessScenario { name = "lottie", width = 512, height = 512, includeInGoldens = true, draw = DrawLottie },
                 new NowHarnessScenario { name = "model-preview-effects", width = 720, height = 420, includeInGoldens = false, warmupFrames = 2, capture = CaptureModelPreviewEffects },
                 new NowHarnessScenario { name = "docs-model-preview-demo", width = 1280, height = 720, includeInGoldens = false, warmupFrames = 3, capture = CaptureDocsModelPreviewDemo },
@@ -1436,6 +1439,245 @@ namespace NowUI.Editor
             DrawGlassVariant(glassTiles[3], "clear tint", 2f, new Color(0.45f, 0.88f, 1f, 0.72f), 0f);
         }
 
+        static void DrawSdfMaskGlowClip(NowRect rect)
+        {
+            var background = new Color(0.018f, 0.024f, 0.045f, 1f);
+            var grid = new Color(0.18f, 0.42f, 0.62f, 0.10f);
+            var cyan = new Color(0.10f, 0.88f, 1f, 1f);
+
+            Now.Rectangle(rect).SetColor(background).Draw();
+
+            for (float x = rect.x; x < rect.xMax; x += 32f)
+                Now.Rectangle(new NowRect(x, rect.y, 1f, rect.height)).SetColor(grid).Draw();
+
+            for (float y = rect.y; y < rect.yMax; y += 32f)
+                Now.Rectangle(new NowRect(rect.x, y, rect.width, 1f)).SetColor(grid).Draw();
+
+            Now.Text(new NowRect(28f, 20f, rect.width - 56f, 30f))
+                .SetFontSize(22f)
+                .SetBold()
+                .SetColor(Color.white)
+                .Draw("SDF parent mask · glowing progress");
+            Now.Text(new NowRect(28f, 52f, rect.width - 56f, 22f))
+                .SetFontSize(13f)
+                .SetColor(new Color(0.66f, 0.76f, 0.88f, 1f))
+                .Draw("The oversized cyan halo must stop exactly at the circle boundary.");
+
+            var circleRect = new NowRect(64f, 88f, 512f, 512f);
+            var localCenter = circleRect.size * 0.5f;
+            const float circleRadius = 244f;
+            const float progress = 0.92f;
+            var bar = new NowRect(circleRect.x - 28f, circleRect.y + 312f, circleRect.width + 56f, 44f);
+            var fill = new NowRect(bar.x, bar.y, bar.width * progress, bar.height);
+
+            using (NowSdf.Scene(circleRect, "visual-sdf-glow-parent")
+                .SetColor(Color.white)
+                .SetFeather(1f)
+                .Circle(localCenter, circleRadius)
+                .BeginMask())
+            {
+                Now.Gradient(
+                        circleRect,
+                        new Color(0.025f, 0.075f, 0.14f, 1f),
+                        new Color(0.13f, 0.035f, 0.20f, 1f))
+                    .SetRadial(circleRect.center, circleRadius * 1.15f)
+                    .Draw();
+
+                for (float x = circleRect.x - 48f; x < circleRect.xMax + 48f; x += 28f)
+                {
+                    Now.Line(
+                            new Vector2(x, circleRect.y - 12f),
+                            new Vector2(x + 170f, circleRect.yMax + 12f))
+                        .SetWidth(1f)
+                        .SetColor(new Color(0.32f, 0.78f, 1f, 0.10f))
+                        .Draw();
+                }
+
+                Now.Text(new NowRect(circleRect.x + 120f, circleRect.y + 98f, 280f, 80f))
+                    .SetFontSize(62f)
+                    .SetBold()
+                    .SetColor(Color.white)
+                    .Draw("92%");
+                Now.Text(new NowRect(circleRect.x + 164f, circleRect.y + 176f, 240f, 24f))
+                    .SetFontSize(14f)
+                    .SetColor(new Color(0.68f, 0.82f, 0.94f, 1f))
+                    .Draw("GPU mask coverage");
+
+                // This halo is intentionally much wider than the progress bar.
+                // Its full-scene SDF quad can reach beyond the parent circle, so
+                // the clean circular cutoff is produced by BeginMask(), not by
+                // the child's geometry bounds.
+                NowSdf.Scene(rect, "visual-sdf-glowing-progress")
+                    .SetColor(cyan)
+                    .SetGlow(72f, new Color(0.02f, 0.78f, 1f, 0.94f), 1.25f)
+                    .SetOutline(2f, new Color(0.72f, 0.98f, 1f, 1f), 0f)
+                    .RoundedBox(fill, bar.height * 0.5f)
+                    .Draw();
+
+                Now.ProgressBar(bar, progress)
+                    .SetId("visual-sdf-glow-progress-control")
+                    .Draw();
+
+                Now.Text(new NowRect(circleRect.x + 104f, circleRect.y + 392f, 330f, 42f))
+                    .SetFontSize(13f)
+                    .SetColor(new Color(0.72f, 0.84f, 0.96f, 1f))
+                    .Draw("Glow, control, text, gradient, and lines\nshare the same soft circular clip.");
+            }
+
+            Now.Circle(circleRect.center, circleRadius)
+                .SetColor(Color.clear)
+                .SetOutline(2f, new Color(0.22f, 0.86f, 1f, 0.82f))
+                .Draw();
+        }
+
+        static void DrawSdfMaskGallery(NowRect rect)
+        {
+            Now.Rectangle(rect).SetColor(new Color(0.022f, 0.028f, 0.048f, 1f)).Draw();
+            Now.Text(new NowRect(28f, 20f, rect.width - 56f, 30f))
+                .SetFontSize(22f)
+                .SetBold()
+                .SetColor(Color.white)
+                .Draw("SDF mask visual regression gallery");
+            Now.Text(new NowRect(28f, 52f, rect.width - 56f, 22f))
+                .SetFontSize(13f)
+                .SetColor(new Color(0.66f, 0.76f, 0.88f, 1f))
+                .Draw("Boolean cutouts · SDF text masks · crisp and feathered coverage");
+
+            var booleanCard = new NowRect(28f, 96f, 284f, 388f);
+            var textCard = new NowRect(338f, 96f, 284f, 388f);
+            var edgeCard = new NowRect(648f, 96f, 284f, 388f);
+            DrawSdfGalleryCard(booleanCard, "BOOLEAN + MIXED CONTENT");
+            DrawSdfGalleryCard(textCard, "TEXT-SHAPED MASK");
+            DrawSdfGalleryCard(edgeCard, "EDGE COVERAGE");
+
+            var ticket = new NowRect(booleanCard.x + 20f, booleanCard.y + 66f, booleanCard.width - 40f, 274f);
+            var ticketShape = new NowRect(8f, 8f, ticket.width - 16f, ticket.height - 16f);
+
+            using (NowSdf.Scene(ticket, "visual-sdf-boolean-ticket")
+                .SetColor(Color.white)
+                .SetFeather(1f)
+                .RoundedBox(ticketShape, 22f)
+                .Subtract()
+                .Circle(new Vector2(8f, ticket.height * 0.5f), 14f)
+                .Subtract()
+                .Circle(new Vector2(ticket.width - 8f, ticket.height * 0.5f), 14f)
+                .BeginMask())
+            {
+                Now.Gradient(
+                        ticket,
+                        new Color(1f, 0.28f, 0.12f, 1f),
+                        new Color(0.72f, 0.08f, 0.82f, 1f))
+                    .SetLinear(110f)
+                    .Draw();
+                Now.Circle(new Vector2(ticket.x + 54f, ticket.y + 62f), 28f)
+                    .SetColor(new Color(1f, 1f, 1f, 0.22f))
+                    .Draw();
+                Now.Line(
+                        new Vector2(ticket.x - 12f, ticket.center.y),
+                        new Vector2(ticket.xMax + 12f, ticket.center.y))
+                    .SetWidth(2f)
+                    .SetDash(8f, 6f)
+                    .SetColor(new Color(1f, 1f, 1f, 0.76f))
+                    .Draw();
+                Now.Text(new NowRect(ticket.x + 28f, ticket.y + 34f, ticket.width - 56f, 42f))
+                    .SetFontSize(25f)
+                    .SetBold()
+                    .SetColor(Color.white)
+                    .Draw("BOARDING");
+                Now.Text(new NowRect(ticket.x + 28f, ticket.y + 178f, ticket.width - 56f, 52f))
+                    .SetFontSize(14f)
+                    .SetColor(new Color(1f, 1f, 1f, 0.92f))
+                    .Draw("Gradient · circle · dashed line\n· ordinary text");
+            }
+
+            var wordRect = new NowRect(textCard.x + 22f, textCard.y + 90f, textCard.width - 44f, 126f);
+
+            using (NowSdf.Scene(wordRect, "visual-sdf-word-mask")
+                .SetColor(Color.white)
+                .SetFeather(0.75f)
+                .Text(new Vector2(8f, 18f), "MASK", 64f, NowFontStyle.Bold)
+                .BeginMask())
+            {
+                Now.Gradient(
+                        wordRect,
+                        new Color(0.05f, 0.92f, 1f, 1f),
+                        new Color(1f, 0.12f, 0.72f, 1f))
+                    .SetConic(wordRect.center, 28f)
+                    .SetSpread(NowGradientSpread.Repeat)
+                    .SetRepetitions(2f)
+                    .Draw();
+
+                for (float y = wordRect.y; y < wordRect.yMax; y += 14f)
+                {
+                    Now.Line(new Vector2(wordRect.x, y), new Vector2(wordRect.xMax, y + 24f))
+                        .SetWidth(2f)
+                        .SetColor(new Color(1f, 1f, 1f, 0.48f))
+                        .Draw();
+                }
+            }
+
+            Now.Text(new NowRect(textCard.x + 30f, textCard.y + 246f, textCard.width - 60f, 84f))
+                .SetFontSize(13f)
+                .SetColor(new Color(0.74f, 0.84f, 0.96f, 1f))
+                .Draw("SDF glyph coverage masks a conic\ngradient and crossing line primitives.");
+
+            var crispRect = new NowRect(edgeCard.x + 24f, edgeCard.y + 68f, 112f, 112f);
+            var softRect = new NowRect(edgeCard.x + 148f, edgeCard.y + 68f, 112f, 112f);
+            DrawSdfCoverageSwatch(crispRect, 0f, "visual-sdf-crisp-edge");
+            DrawSdfCoverageSwatch(softRect, 10f, "visual-sdf-soft-edge");
+            Now.Text(new NowRect(crispRect.x + 24f, crispRect.yMax + 12f, 84f, 20f))
+                .SetFontSize(12f)
+                .SetColor(Color.white)
+                .Draw("1px AA");
+            Now.Text(new NowRect(softRect.x + 12f, softRect.yMax + 12f, 100f, 20f))
+                .SetFontSize(12f)
+                .SetColor(Color.white)
+                .Draw("10px feather");
+
+            var donutRect = new NowRect(edgeCard.x + 72f, edgeCard.y + 240f, 140f, 116f);
+            using (NowSdf.Scene(donutRect, "visual-sdf-donut-edge")
+                .SetColor(Color.white)
+                .SetFeather(1.5f)
+                .Circle(donutRect.size * 0.5f, 52f)
+                .Subtract()
+                .Circle(donutRect.size * 0.5f, 25f)
+                .BeginMask())
+            {
+                Now.Gradient(
+                        donutRect,
+                        new Color(0.18f, 0.92f, 0.55f, 1f),
+                        new Color(0.10f, 0.42f, 1f, 1f))
+                    .SetLinear(35f)
+                    .Draw();
+            }
+        }
+
+        static void DrawSdfGalleryCard(NowRect rect, string title)
+        {
+            Now.Rectangle(rect)
+                .SetColor(new Color(0.055f, 0.068f, 0.108f, 1f))
+                .SetRadius(18f)
+                .SetOutline(1f, new Color(0.32f, 0.48f, 0.70f, 0.34f))
+                .Draw();
+            Now.Text(new NowRect(rect.x + 18f, rect.y + 18f, rect.width - 36f, 22f))
+                .SetFontSize(12f)
+                .SetBold()
+                .SetColor(new Color(0.56f, 0.82f, 1f, 1f))
+                .Draw(title);
+        }
+
+        static void DrawSdfCoverageSwatch(NowRect rect, float feather, NowId id)
+        {
+            using (NowSdf.Scene(rect, id)
+                .SetColor(Color.white)
+                .SetFeather(feather)
+                .Circle(rect.size * 0.5f, 49f)
+                .BeginMask())
+            {
+                DrawCheckerboard(rect, 14f);
+            }
+        }
+
         static void DrawVariantTile(NowRect rect, string label)
         {
             DrawCheckerboard(rect, 18f);
@@ -1678,6 +1920,7 @@ namespace NowUI.Editor
 
         static void ResetFrameState()
         {
+            NowSdf.Reset();
             NowInput.Reset();
             NowFocus.Reset();
             NowControlState.Reset();

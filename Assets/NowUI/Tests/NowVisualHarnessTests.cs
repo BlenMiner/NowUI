@@ -25,6 +25,16 @@ public class NowVisualHarnessTests
         Assert.AreEqual(0.01f, tolerance.allowedMismatchRatio);
     }
 
+    [TestCase("sdf-mask-glow-clip")]
+    [TestCase("sdf-mask-gallery")]
+    public void SdfMaskScenariosUseFocusedGoldenTolerance(string scenarioName)
+    {
+        GoldenComparisonTolerance tolerance = NowVisualHarnessRunner.ToleranceForScenario(scenarioName);
+
+        Assert.AreEqual(8, tolerance.channelTolerance);
+        Assert.AreEqual(0.0025f, tolerance.allowedMismatchRatio);
+    }
+
     [Test]
     public void StrictToleranceRejectsSmallLocalizedRegression()
     {

@@ -166,6 +166,12 @@ namespace NowUI
 
         [NonSerialized] readonly Dictionary<Material, Material> _textMaterials = new Dictionary<Material, Material>();
 
+        /// <summary>
+        /// CanvasRenderer has no per-submesh MaterialPropertyBlock API, so each
+        /// shaped-mask batch gets a bounded, batch-indexed material copy.
+        /// </summary>
+        [NonSerialized] readonly List<Material> _shaderMaskMaterials = new List<Material>(8);
+
         [NonSerialized] readonly List<UguiGlassBackdropEntry> _uguiGlassBackdrops = new List<UguiGlassBackdropEntry>(2);
 
         [NonSerialized] NowDrawList _drawList;
@@ -776,6 +782,7 @@ namespace NowUI
             }
 
             _textMaterials.Clear();
+            ReleaseShaderMaskMaterials();
             base.OnDestroy();
         }
 
@@ -1140,6 +1147,7 @@ namespace NowUI
                 ClearCanvasRenderer(canvasRenderer);
                 ClearExtraCanvasRenderers();
                 ReleaseUGUIGlassBackdrops();
+                ClearUnusedShaderMaskMaterials(0);
                 return;
             }
 
@@ -1184,6 +1192,8 @@ namespace NowUI
                 ApplyCanvasPage(crenderer, _drawList.GetCanvasMesh(i + 1), batches, batchOffset);
                 batchOffset += batches?.Count ?? 0;
             }
+
+            ClearUnusedShaderMaskMaterials(batchOffset);
         }
 
         void ApplyCanvasPage(CanvasRenderer crenderer, Mesh mesh, List<NowMeshBatch> batches, int batchOffset)
@@ -1705,12 +1715,21 @@ namespace NowUI
 
             foreach (var graphic in _liveGraphics)
             {
-                if (graphic == null || !graphic._textMaterials.TryGetValue(source, out var cached))
+                if (graphic == null)
+                    continue;
+
+                // Analytic clones can be based on direct gradient/custom canvas
+                // materials as well as entries in _textMaterials. Without source
+                // tracking, invalidate every clone on this rare release path and
+                // always rebuild the CanvasRenderer that may still reference it.
+                graphic.ReleaseShaderMaskMaterials();
+                graphic.SetVerticesDirty();
+
+                if (!graphic._textMaterials.TryGetValue(source, out var cached))
                     continue;
 
                 graphic.ReleaseStencilMaterials();
                 graphic._textMaterials.Remove(source);
-                graphic.SetVerticesDirty();
 
                 if (cached == null)
                     continue;
@@ -1781,7 +1800,75 @@ namespace NowUI
                 currentMaterial = _materialModifiers[i].GetModifiedMaterial(currentMaterial);
             }
 
-            return currentMaterial;
+            return GetShaderMaskMaterial(currentMaterial, batchIndex, batch.maskState);
+        }
+
+        Material GetShaderMaskMaterial(
+            Material source,
+            int batchIndex,
+            in NowMaskShaderState maskState)
+        {
+            if (source == null || maskState.isEmpty || !NowMaskShader.Supports(source, maskState))
+            {
+                ClearShaderMaskMaterial(batchIndex);
+                return source;
+            }
+
+            while (_shaderMaskMaterials.Count <= batchIndex)
+                _shaderMaskMaterials.Add(null);
+
+            var material = _shaderMaskMaterials[batchIndex];
+
+            if (material == null || material.shader != source.shader)
+            {
+                DestroyOwnedMaterial(material);
+                material = new Material(source)
+                {
+                    name = source.name + " Shader Mask",
+                    hideFlags = HideFlags.HideAndDontSave
+                };
+                _shaderMaskMaterials[batchIndex] = material;
+            }
+            else
+            {
+                material.CopyPropertiesFromMaterial(source);
+            }
+
+            NowMaskShader.Apply(material, maskState);
+            return material;
+        }
+
+        void ClearShaderMaskMaterial(int batchIndex)
+        {
+            if (batchIndex < 0 || batchIndex >= _shaderMaskMaterials.Count)
+                return;
+
+            NowMaskShader.Clear(_shaderMaskMaterials[batchIndex]);
+        }
+
+        void ClearUnusedShaderMaskMaterials(int activeCount)
+        {
+            for (int i = Mathf.Max(0, activeCount); i < _shaderMaskMaterials.Count; ++i)
+                NowMaskShader.Clear(_shaderMaskMaterials[i]);
+        }
+
+        void ReleaseShaderMaskMaterials()
+        {
+            for (int i = 0; i < _shaderMaskMaterials.Count; ++i)
+                DestroyOwnedMaterial(_shaderMaskMaterials[i]);
+
+            _shaderMaskMaterials.Clear();
+        }
+
+        static void DestroyOwnedMaterial(Material material)
+        {
+            if (material == null)
+                return;
+
+            if (Application.isPlaying)
+                UnityEngine.Object.Destroy(material);
+            else
+                UnityEngine.Object.DestroyImmediate(material);
         }
 
         Material GetStencilMaterial(Material baseMaterial)

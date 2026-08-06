@@ -2,6 +2,10 @@ Shader "NowUI/UI Gradient UGUI"
 {
     Properties
     {
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         [PerRendererData] _MainTex ("Ramp Atlas", 2D) = "white" {}
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
@@ -51,6 +55,7 @@ Shader "NowUI/UI Gradient UGUI"
 
             #include "UnityCG.cginc"
             #include "UnityUI.cginc"
+            #include "NowUIMask.cginc"
 
             struct appdata
             {
@@ -197,10 +202,9 @@ Shader "NowUI/UI Gradient UGUI"
             {
                 float2 rawUV = float2(i.uv.w, i.extras.z);
                 float2 pos = i.rect.xy + rawUV * i.rect.zw;
+                float2 uiPosition = float2(pos.x, -pos.y);
 
-                clip(min(
-                    min(pos.x - i.mask.x, (i.mask.x + i.mask.z) - pos.x),
-                    min(-pos.y - i.mask.y, (i.mask.y + i.mask.w) + pos.y)));
+                NowUIClipLegacyRect(uiPosition, i.mask);
 
                 float4 radius = float4(i.radiusXYZ, i.uv.z);
                 float2 position = (rawUV - 0.5) * i.rect.zw;
@@ -231,6 +235,7 @@ Shader "NowUI/UI Gradient UGUI"
                 half4 col;
                 col.rgb = i.outlineColor.rgb * outlineCoverage + fillColor * (1.0 - outlineCoverage);
                 col.a = outlineCoverage + fillCoverage * (1.0 - outlineCoverage);
+                col *= NowUIMaskCoverage(uiPosition);
 
                 #ifdef UNITY_UI_CLIP_RECT
                 float2 uiMask = saturate((_ClipRect.zw - _ClipRect.xy - abs(i.uiMask.xy)) * i.uiMask.zw);

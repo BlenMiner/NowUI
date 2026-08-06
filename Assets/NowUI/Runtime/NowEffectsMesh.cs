@@ -76,7 +76,15 @@ namespace NowUI
             {
                 var batch = batches[i];
                 if (batch.material != null)
-                    commandBuffer.DrawMesh(drawList.mesh, matrix, batch.material, i, 0);
+                {
+                    commandBuffer.DrawMesh(
+                        drawList.mesh,
+                        matrix,
+                        batch.material,
+                        i,
+                        0,
+                        NowMaskShader.GetPropertyBlock(batch.maskState));
+                }
             }
 
             Graphics.ExecuteCommandBuffer(commandBuffer);
@@ -121,7 +129,7 @@ namespace NowUI
                 if (_triangles.Count == 0)
                     continue;
 
-                var targetMesh = UseEffectMaterial(batch.material, batch.kind);
+                var targetMesh = UseEffectMaterial(batch.material, batch.kind, batch.maskState);
                 if (targetMesh == null)
                     continue;
 
@@ -178,12 +186,15 @@ namespace NowUI
             mesh.GetUVs(7, _rawUv);
         }
 
-        static NowMesh UseEffectMaterial(Material material, NowMeshKind kind)
+        static NowMesh UseEffectMaterial(
+            Material material,
+            NowMeshKind kind,
+            in NowMaskShaderState maskState)
         {
             if (material == null)
                 return null;
 
-            return Now.UseEffectMaterial(material, kind);
+            return Now.UseEffectMaterial(material, kind, maskState);
         }
 
         static bool ShouldSubdivideBatch(NowMeshKind kind, bool subdivideText)

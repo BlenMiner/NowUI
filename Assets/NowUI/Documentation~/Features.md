@@ -141,6 +141,30 @@ Now.Rectangle(new Vector4(24, 24, 180, 48))
 The rectangle API covers fill color, radius, padding, outline, outline color,
 blur, mask, position, textures, sprites, and custom materials.
 
+## Masks
+
+Use the existing `Now.Mask(NowRect)` scope for an exact rectangular clip. Use
+`NowMaskShape` when the boundary should be rounded, circular, elliptical, or
+capsule-shaped, or when it needs a soft anti-aliased edge.
+
+```csharp
+var mask = NowMaskShape.RoundedRect(new NowRect(24, 24, 240, 96), 24f)
+    .SetFeather(1f);
+
+using (Now.Mask(mask))
+{
+    Now.Rectangle(new NowRect(8, 8, 272, 128)).SetTexture(photo).Draw();
+    Now.Text(new NowRect(40, 48, 208, 32)).Draw("Softly clipped");
+}
+```
+
+Analytic feather widths are physical screen pixels. The same ambient scope
+clips supported built-in rectangles, images, gradients, lines, shapes, text,
+Lottie, glass, ripples, color pickers, model-preview surfaces, and the optional
+`NowUI.Sdf` extension. Pointer interaction follows the geometric interior and
+ignores visual feather. See [Masks](Masks.md) for shape factories, nesting,
+host behavior, custom-material limits, and performance notes.
+
 ## Gradients
 
 `Now.Gradient(...)` is a separate paint primitive, so richer fills do not add

@@ -379,6 +379,7 @@ namespace NowUI
                     var target = entry.GetTarget(textureRect);
                     Now.RenderDrawListToTexture(entry.capture, textureRect, target, entry.commandBuffer);
 
+                    using (Now.SuppressShaderMaskCapture())
                     using (entry.surface.Begin(
                         CaptureSize(),
                         Vector2.zero,

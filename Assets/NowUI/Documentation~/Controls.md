@@ -868,7 +868,7 @@ The toolkit pieces:
 | `NowControlState.Transition / Repeat / DetectDoubleClick / ClickStreak / Blink` | The standard timing behaviors; common animation/repeat helpers also accept `NowInteraction` |
 | `NowControlState.RequestRepaint()` | Tell retained hosts (UGUI) to render another frame |
 | `NowFocus.IsFocused / Focus / Clear / LockDirectionalNavigation / LockNavigation` | Focus queries, explicit control, directional-only or full navigation ownership while editing |
-| `Now.Mask(rect)` | Ambient clipping scope (what ScrollView uses) |
+| `Now.Mask(rect)` / `Now.Mask(shape)` | Ambient exact-rectangle or analytic/soft clipping scope; ScrollView uses the rectangular form |
 | `NowOverlay.Defer(blockRect, draw)` | Draw above everything; input beneath is blocked |
 | `NowContextMenu.Open / Begin / Item / End` | Modal right-click menus on the overlay layer |
 | `NowTextInput.current` / `ClaimActivity()` | Frame-sampled keyboard text/editing input, including IME composition; custom focused consumers claim one-shot activity so later IMGUI passes cannot replay it |

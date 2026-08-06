@@ -2,6 +2,10 @@ Shader "NowUI/Text Renderer RGBA"
 {
     Properties
     {
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         _MainTex ("Texture", 2D) = "white" {}
         _ZTest ("ZTest", Float) = 8
     }
@@ -24,11 +28,13 @@ Shader "NowUI/Text Renderer RGBA"
         Pass
         {
             CGPROGRAM
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
+            #include "NowUIMask.cginc"
 
             struct appdata
             {
@@ -72,14 +78,13 @@ Shader "NowUI/Text Renderer RGBA"
             {
                 float2 pos = i.rect.xy + i.rawUV * i.rect.zw;
                 float4 mask = i.mask;
+                float2 uiPosition = float2(pos.x, -pos.y);
 
-                clip(min(
-                    min(pos.x - mask.x, (mask.x + mask.z) - pos.x),
-                    min(-pos.y - mask.y, (mask.y + mask.w) + pos.y)
-                ));
+                NowUIClipLegacyRect(uiPosition, mask);
 
                 float4 col = tex2D(_MainTex, i.uv) * i.color;
                 col.rgb = col.a > 0 ? saturate(col.rgb / col.a) : col.rgb;
+                col.a *= NowUIMaskCoverage(uiPosition);
                 clip(col.a - 0.01);
                 return col;
             }

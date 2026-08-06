@@ -6,7 +6,8 @@
     "NowUI.Examples",
     "NowUI.Extensions.Markdown",
     "NowUI.Extensions.Docking",
-    "NowUI.Extensions.NodeGraph"
+    "NowUI.Extensions.NodeGraph",
+    "NowUI.Extensions.Sdf"
   ],
   "includePlatforms": [
     "Editor"

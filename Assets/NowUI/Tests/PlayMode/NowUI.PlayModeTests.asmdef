@@ -4,6 +4,7 @@
     "references": [
         "UnityEngine.TestRunner",
         "NowUI.Runtime",
+        "NowUI.Extensions.Sdf",
         "UnityEngine.UI"
     ],
     "includePlatforms": [],

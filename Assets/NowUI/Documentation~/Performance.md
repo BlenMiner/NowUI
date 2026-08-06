@@ -16,9 +16,9 @@ representative warmup. First use is not the same as steady state.
 - For data-backed controls with known stable IDs, call
   `NowControlState.Warmup<T>(id)` during initialization to create the slot
   outside the first interactive frame.
-- Warm dynamic font glyphs, Lottie geometry, effect render textures, material
-  batches, world-space material instances, and caller-owned buffers used by the
-  real frame.
+- Warm dynamic font glyphs, Lottie geometry, effect render textures, SDF mask
+  coverage textures, material batches, world-space material instances, and
+  caller-owned buffers used by the real frame.
 - When glass diagnostics are enabled, call
   `NowGlassSettings.ReserveDiagnostics(maxPanesPerFrame)` during initialization
   and read entries with `TryGetLastFrameDiagnostic` or
@@ -27,3 +27,11 @@ representative warmup. First use is not the same as steady state.
 Measure the actual host and feature combination after warmup. A smaller
 synthetic frame can miss glyph, ID, material, input, or effect state used by the
 real interface.
+
+SDF masks cache one linear, single-channel coverage target per stable scene id.
+First use and a transformed physical-size change can allocate or resize it;
+stable ids, dimensions, transforms, and UI scale reuse it. Warm the actual
+`BeginMask()` scene before measuring. Retained hosts only rebuild it when the
+host is dirtied, so call `MarkDirty()` when animated field data changes.
+`NowSdf.Reset()` releases these extension-owned targets together with the SDF
+material cache.

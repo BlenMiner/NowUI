@@ -6,7 +6,15 @@ extension, editor, URP, and HDRP assemblies in the installed package.
 ## Primary Runtime Surface
 
 - `Now`: immediate drawing factories, frame lifecycle, ambient mask/font/color
-  scopes, and explicit free-form controls.
+  scopes, and explicit free-form controls. `Now.Mask(NowRect)` preserves exact
+  rectangular clipping, while `Now.Mask(NowMaskShape)` applies an analytic
+  clip to all supported built-in draws in the scope.
+- `NowMaskShape`: value-type analytic rectangle, rounded-rectangle, circle,
+  ellipse, and capsule masks with physical-pixel feathering and conservative
+  bounds. See [Masks](Masks.md).
+- `NowMaskTexture` and `NowMaskTextureChannel`: caller-owned alpha- or
+  red-channel texture coverage mapped to an authored rect, with optional
+  inversion and conservative rectangle input. See [Masks](Masks.md).
 - `NowRenderer` and `NowDrawList`: retained/offscreen draw-list construction,
   command-buffer rendering, RenderTexture rendering, and explicit warmup.
 - `NowGraphic`, `NowVisualElement`, `NowPipelineGraphic`, and
@@ -50,7 +58,10 @@ extension, editor, URP, and HDRP assemblies in the installed package.
   diagnostics, completion hooks, and bundled JSON/Markdown/Markup profiles.
 - `NowUI.Docking`: dock-space builder and retained docking state.
 - `NowUI.NodeGraph`: node-graph data, ports, links, and graph view drawing.
-- `NowUI.Sdf`: SDF graph and builder APIs.
+- `NowUI.Sdf`: SDF graph and scene-builder APIs. A scene can end in `Draw()`
+  or `BeginMask()`; the latter returns an ambient `NowMaskScope` backed by
+  cached, single-channel SDF coverage. See [SDF Shapes](SDF.md) and
+  [Masks](Masks.md).
 
 ## Runtime guarantees
 

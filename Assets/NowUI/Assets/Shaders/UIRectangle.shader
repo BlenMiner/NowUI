@@ -2,6 +2,10 @@ Shader "NowUI/UI Rectangle"
 {
     Properties
     {
+        [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
+        [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
+        [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         _MainTex ("Texture", 2D) = "white" {}
         [HideInInspector] _NowPremultipliedTexture ("Premultiplied Texture", Float) = 0
         _ZTest ("ZTest", Float) = 8
@@ -25,11 +29,13 @@ Shader "NowUI/UI Rectangle"
         Pass
         {
             CGPROGRAM
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
+            #include "NowUIMask.cginc"
 
             struct appdata
             {
@@ -92,17 +98,10 @@ Shader "NowUI/UI Rectangle"
 
                 float2 size = rect.zw;
                 float2 pos = rect.xy + i.rawUV * rect.zw;
+                float2 uiPosition = float2(pos.x, -pos.y);
 
                 // Mask
-                clip(min(
-                    min(pos.x - mask.x,
-                        (mask.x + mask.z) - pos.x
-                    ),
-                    min(
-                        -pos.y - mask.y,
-                        (mask.y + mask.w) + pos.y
-                    )
-                ));
+                NowUIClipLegacyRect(uiPosition, mask);
 
                 float4 rad = i.radius;
                 float4 color = i.color;
@@ -147,6 +146,7 @@ Shader "NowUI/UI Rectangle"
                 col.rgb = i.outlineColor.rgb * outlineCoverage
                     + fillColor * (1 - outlineCoverage);
                 col.a = outlineCoverage + fillCoverage * (1 - outlineCoverage);
+                col *= NowUIMaskCoverage(uiPosition);
                 clip(col.a - 0.001);
 
                 return col;
