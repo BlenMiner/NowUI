@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.7...nowui-v1.1.0) (2026-08-06)
+
+
+### Features
+
+* add soft and SDF mask support ([455198f](https://github.com/BlenMiner/NowUI/commit/455198f1d69a98c48f0fe71b245b15a4f07898ff))
+
 ## [1.0.7](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.6...nowui-v1.0.7) (2026-07-31)
 
 
