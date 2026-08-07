@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.1.0...nowui-v1.1.1) (2026-08-07)
+
+
+### Performance Improvements
+
+* optimize UI rendering hot paths ([b11874d](https://github.com/BlenMiner/NowUI/commit/b11874d3b10cd7f5abab5357a6d8e2acc617b8bf))
+
 # [1.1.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.0.7...nowui-v1.1.0) (2026-08-06)
 
 
