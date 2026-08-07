@@ -6067,14 +6067,29 @@ namespace NowUI.NodeGraph
             bool cullBuiltInNodes,
             ref NowNodeGraphResult result)
         {
+            bool hasSelectedNodes = GraphHasSelectedNodes();
+            bool selectionCanChangeDuringDraw = !cullBuiltInNodes;
+
             for (int i = 0; i < _graph.nodes.Count; ++i)
             {
                 var node = _graph.nodes[i];
 
-                if (node != null && !CachedIsNodeSelected(node.id))
+                if (node != null && (!hasSelectedNodes || !CachedIsNodeSelected(node.id)))
+                {
                     DrawNode(canvasId, i, node, ref state, style, schema, history, renderer, false,
                         i == hoveredNodeIndex, visibleGraphRect, cullBuiltInNodes, ref result);
+
+                    // Custom render/content callbacks receive the graph and may
+                    // select a node while it is being drawn. Preserve the old
+                    // selected-last behavior from that point onward without
+                    // charging the built-in no-selection fast path for probes.
+                    if (!hasSelectedNodes && selectionCanChangeDuringDraw)
+                        hasSelectedNodes = GraphHasSelectedNodes();
+                }
             }
+
+            if (!hasSelectedNodes)
+                return;
 
             for (int i = 0; i < _graph.nodes.Count; ++i)
             {
@@ -6082,8 +6097,14 @@ namespace NowUI.NodeGraph
 
                 if (node != null && CachedIsNodeSelected(node.id))
                     DrawNode(canvasId, i, node, ref state, style, schema, history, renderer, true,
-                        i == hoveredNodeIndex, visibleGraphRect, cullBuiltInNodes, ref result);
+                    i == hoveredNodeIndex, visibleGraphRect, cullBuiltInNodes, ref result);
             }
+        }
+
+        bool GraphHasSelectedNodes()
+        {
+            return (_graph.selectedNodeIds != null && _graph.selectedNodeIds.Count > 0) ||
+                !string.IsNullOrEmpty(_graph.selectedNodeId);
         }
 
         void DrawNode(

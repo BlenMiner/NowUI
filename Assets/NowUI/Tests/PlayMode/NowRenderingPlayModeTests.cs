@@ -1001,6 +1001,43 @@ public class NowRenderingPlayModeTests
     }
 
     [UnityTest]
+    public IEnumerator IsolatedRenderMeshPreservesIndexedMaterialPropertyBlock()
+    {
+        var source = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        Material material = null;
+
+        try
+        {
+            var shader = Shader.Find("Unlit/Color");
+            Assert.NotNull(shader);
+            material = new Material(shader) { color = Color.white };
+            var renderer = source.GetComponent<Renderer>();
+            renderer.sharedMaterial = material;
+            var properties = new MaterialPropertyBlock();
+            properties.SetColor("_Color", new Color(0.9f, 0.1f, 0.05f, 1f));
+            renderer.SetPropertyBlock(properties, 0);
+
+            using var preview = new NowModelPreview(source)
+                .SetFixedResolution(64, 64)
+                .SetBackground(Color.black);
+
+            Assert.IsTrue(preview.RenderNow(), "The RenderMesh preview did not render.");
+            yield return null;
+
+            Color32 center = ReadPixels(preview.texture)[32 * 64 + 32];
+            Assert.Greater(center.r, center.g + 80,
+                $"The cached indexed property block did not tint the preview red: {center}.");
+            Assert.Greater(center.r, center.b + 80,
+                $"The cached indexed property block did not tint the preview red: {center}.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(source);
+            Object.DestroyImmediate(material);
+        }
+    }
+
+    [UnityTest]
     public IEnumerator IsolatedRenderMeshSubmissionIsRestrictedToItsPreviewCamera()
     {
         var source = GameObject.CreatePrimitive(PrimitiveType.Cube);

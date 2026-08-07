@@ -115,6 +115,10 @@ public class NowMaskTextureTests
             Assert.AreEqual(1f, state.GetTexture(0).parameters.z);
         }
 
+        var livePropertyBlock = NowMaskShader.GetPropertyBlock(state);
+        var liveParameters = livePropertyBlock.GetVectorArray(parametersProperty);
+        Assert.AreEqual(1f, liveParameters[0].z);
+
         Object.DestroyImmediate(texture);
 
         var propertyBlock = NowMaskShader.GetPropertyBlock(state);
@@ -137,6 +141,33 @@ public class NowMaskTextureTests
         {
             Object.DestroyImmediate(material);
         }
+    }
+
+    [Test]
+    public void DestroyedTextureInvalidatesCachedAmbientSnapshotAndHitTesting()
+    {
+        var bounds = new NowRect(0f, 0f, 20f, 20f);
+        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+        var mask = NowMaskTexture.Alpha(texture, bounds).SetInverted();
+
+        using (Now.Mask(mask))
+        {
+            Assert.AreEqual(1, Now.currentTextureMaskCount);
+            var live = Now.CaptureMaskShaderState();
+            Assert.AreEqual(1f, live.GetTexture(0).parameters.z);
+            Assert.IsTrue(Now.IsInsideAmbientMask(bounds.center));
+
+            Object.DestroyImmediate(texture);
+
+            var destroyed = Now.CaptureMaskShaderState();
+            Assert.AreEqual(1, Now.currentTextureMaskCount);
+            Assert.AreNotEqual(live.identity, destroyed.identity);
+            Assert.AreEqual(0f, destroyed.GetTexture(0).parameters.z);
+            Assert.IsFalse(Now.IsInsideAmbientMask(bounds.center));
+        }
+
+
+        Assert.AreEqual(0, Now.currentTextureMaskCount);
     }
 
     [Test]

@@ -8,7 +8,9 @@ shipped public API:
 
 - [Production gates](Production.md): source-checkout validation, CI, visual
   baselines, allocation gates, and release preparation.
-- [Performance report](PerformanceReport-2026-07-13.md): dated benchmark
-  evidence and artifact paths.
+- [Performance and abuse report](PerformanceReport-2026-08-06.md): current
+  scaling guidance, dated benchmark evidence, and artifact paths.
+- [July performance report](PerformanceReport-2026-07-13.md): prior isolated
+  optimization evidence and artifact paths.
 - [Transform system design](TransformDesign.md): an internal proposal for
   unshipped work.

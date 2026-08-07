@@ -280,8 +280,6 @@ namespace NowUI
             if (color.w <= 0.0005f && colorEnd.w <= 0.0005f)
                 return;
 
-            _linePoints.Clear();
-
             // Transform line positions if transform is active
             Vector2 from = hasTransform ? ApplyTransform(line.from) : line.from;
             Vector2 to = hasTransform ? ApplyTransform(line.to) : line.to;
@@ -290,6 +288,28 @@ namespace NowUI
 
             // Scale width by transform
             float scaledWidth = hasTransform ? ApplyTransformScalar(line.width) : line.width;
+
+            var mask = line.mask;
+
+            if (hasTransform && !mask.isEmpty)
+                mask = ApplyTransformRect(mask);
+
+            mask = ApplyAmbientMask(mask);
+
+            if (mask.isEmpty || !LineBoundsOverlapMask(
+                    from,
+                    control1,
+                    control2,
+                    to,
+                    line,
+                    scaledWidth,
+                    hasTransform,
+                    mask))
+            {
+                return;
+            }
+
+            _linePoints.Clear();
 
             // Solid cubic Beziers use a dedicated shader that AA's against the true
             // curve. It's immediate-mode only, so skip it during canvas/capture builds.
@@ -301,15 +321,7 @@ namespace NowUI
 
             if (solidCubic && GetBezierMaterial() != null)
             {
-                var bezierMask = line.mask;
-
-                if (hasTransform && !bezierMask.isEmpty)
-                    bezierMask = ApplyTransformRect(bezierMask);
-
-                bezierMask = ApplyAmbientMask(bezierMask);
-
-                if (!bezierMask.isEmpty)
-                    DrawBezierStroke(from, control1, control2, to, scaledWidth, color, colorEnd, bezierMask, line.cap);
+                DrawBezierStroke(from, control1, control2, to, scaledWidth, color, colorEnd, mask, line.cap);
 
                 return;
             }
@@ -344,16 +356,6 @@ namespace NowUI
             if (_lineBuffer.positions.count == 0 || _lineBuffer.indices.count == 0)
                 return;
 
-            var mask = line.mask;
-
-            if (hasTransform && !mask.isEmpty)
-                mask = ApplyTransformRect(mask);
-
-            mask = ApplyAmbientMask(mask);
-
-            if (mask.isEmpty)
-                return;
-
             var mesh = UseMaterial(_defaultMaterial, NowMeshKind.Rectangle);
 
             if (mesh == null)
@@ -361,6 +363,75 @@ namespace NowUI
 
             mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, _lineBuffer.positions.count);
             mesh.AddGeometry(_lineBuffer, Vector2.zero, 1f, Vector4.one, mask);
+        }
+
+        /// <summary>
+        /// Conservatively rejects a whole stroke before Bezier flattening or
+        /// dash/arrow tessellation. A cubic Bezier stays inside the convex hull
+        /// of its four control points, and the extra padding covers caps,
+        /// antialiasing, and either arrowhead. Analytic/texture ambient masks use
+        /// their rectangular bounds here; the shader still performs their exact
+        /// coverage test for surviving geometry.
+        /// </summary>
+        static bool LineBoundsOverlapMask(
+            Vector2 from,
+            Vector2 control1,
+            Vector2 control2,
+            Vector2 to,
+            in NowLine line,
+            float scaledWidth,
+            bool hasTransform,
+            NowRect mask)
+        {
+            float minX = Mathf.Min(from.x, to.x);
+            float minY = Mathf.Min(from.y, to.y);
+            float maxX = Mathf.Max(from.x, to.x);
+            float maxY = Mathf.Max(from.y, to.y);
+
+            if (line.cubic)
+            {
+                minX = Mathf.Min(minX, Mathf.Min(control1.x, control2.x));
+                minY = Mathf.Min(minY, Mathf.Min(control1.y, control2.y));
+                maxX = Mathf.Max(maxX, Mathf.Max(control1.x, control2.x));
+                maxY = Mathf.Max(maxY, Mathf.Max(control1.y, control2.y));
+            }
+
+            // Tessellated cubic joins can reach the emitter's 1 / 0.35 miter
+            // limit beyond the centerline. Use the same UI-scale conversion as
+            // stroke emission, plus its two-pixel analytic-Bezier overdraw, so
+            // this coarse reject remains conservative at every host scale.
+            float strokeExtent =
+                (scaledWidth * 0.5f + ScreenPixelsToUiUnits(LineAaWidth + 2f)) / 0.35f;
+            float padding = strokeExtent;
+
+            if (line.arrows != NowLineArrow.None)
+            {
+                float arrowLength = line.arrowLength > LineEpsilon
+                    ? line.arrowLength
+                    : Mathf.Max(line.width * 4f, 10f);
+                float arrowWidth = line.arrowWidth > LineEpsilon
+                    ? line.arrowWidth
+                    : Mathf.Max(line.width * 3f, arrowLength * 0.6f);
+
+                if (hasTransform)
+                {
+                    float averageScale =
+                        (Mathf.Abs(currentTransform.scale.x) + Mathf.Abs(currentTransform.scale.y)) * 0.5f;
+                    arrowLength *= averageScale;
+                    arrowWidth *= averageScale;
+                }
+
+                // A diagonal arrow's base corner combines its backward length
+                // and half-width along two rotated axes. Their sum is a cheap
+                // conservative AABB extent (the hypotenuse would also work).
+                padding += arrowLength + arrowWidth * 0.5f;
+            }
+
+            return mask.Overlaps(new NowRect(
+                minX - padding,
+                minY - padding,
+                maxX - minX + padding * 2f,
+                maxY - minY + padding * 2f));
         }
 
         /// <summary>

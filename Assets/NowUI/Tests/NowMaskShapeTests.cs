@@ -156,6 +156,75 @@ public class NowMaskShapeTests
     }
 
     [Test]
+    public void ShaderMaskSnapshotIsCachedUntilShaderMaskStackChanges()
+    {
+        var outer = NowMaskShape.Circle(new Vector2(20f, 20f), 12f);
+        var inner = NowMaskShape.RoundedRect(new NowRect(12f, 12f, 16f, 16f), 4f);
+        Assert.AreEqual(0, Now.currentAnalyticMaskCount);
+
+        using (Now.Mask(outer))
+        {
+            Assert.AreEqual(1, Now.currentAnalyticMaskCount);
+            var first = Now.CaptureMaskShaderState();
+            var repeated = Now.CaptureMaskShaderState();
+
+            Assert.AreNotEqual(0UL, first.identity);
+            Assert.AreEqual(first.identity, repeated.identity);
+            Assert.IsTrue(first.Equals(repeated));
+
+            using (Now.Mask(new NowRect(5f, 5f, 30f, 30f)))
+            {
+                Assert.AreEqual(1, Now.currentAnalyticMaskCount);
+                var underRect = Now.CaptureMaskShaderState();
+                Assert.AreEqual(
+                    first.identity,
+                    underRect.identity,
+                    "A legacy rectangle changed the shader-only mask snapshot.");
+            }
+
+            using (Now.Mask(inner))
+            {
+                Assert.AreEqual(2, Now.currentAnalyticMaskCount);
+                var nested = Now.CaptureMaskShaderState();
+                Assert.AreEqual(2, nested.count);
+                Assert.AreNotEqual(first.identity, nested.identity);
+            }
+
+            var restored = Now.CaptureMaskShaderState();
+            Assert.AreEqual(1, Now.currentAnalyticMaskCount);
+            Assert.AreEqual(1, restored.count);
+            Assert.AreNotEqual(first.identity, restored.identity);
+            Assert.IsTrue(
+                first.Equals(restored),
+                "A rebuilt but structurally identical snapshot did not compare equal.");
+
+            using (Now.SuppressShaderMaskCapture())
+                Assert.IsTrue(Now.CaptureMaskShaderState().isEmpty);
+
+            Assert.AreEqual(
+                restored.identity,
+                Now.CaptureMaskShaderState().identity,
+                "Suppression poisoned the underlying ambient snapshot cache.");
+        }
+
+        Assert.AreEqual(0, Now.currentAnalyticMaskCount);
+    }
+
+    [Test]
+    public void EmptyAccumulatedRectBoundsRejectBoundaryHitTests()
+    {
+        using (Now.Mask(new NowRect(10f, 10f, 0f, 20f)))
+            Assert.IsFalse(Now.IsInsideAmbientMask(new Vector2(10f, 15f)));
+
+        using (Now.Mask(new NowRect(10f, 10f, 20f, 0f)))
+            Assert.IsFalse(Now.IsInsideAmbientMask(new Vector2(15f, 10f)));
+
+        using (Now.Mask(new NowRect(0f, 0f, 5f, 5f)))
+        using (Now.Mask(new NowRect(10f, 10f, 5f, 5f)))
+            Assert.IsFalse(Now.IsInsideAmbientMask(new Vector2(10f, 10f)));
+    }
+
+    [Test]
     public void AnalyticMaskNestingLimitDoesNotCountLegacyRectangles()
     {
         var shape = NowMaskShape.Circle(new Vector2(20f, 20f), 10f);

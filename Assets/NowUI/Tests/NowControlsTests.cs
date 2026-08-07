@@ -190,14 +190,54 @@ public class NowControlsTests
     {
         var origin = new Vector2(12f, 18f);
 
+        Assert.AreEqual(0, NowControlState.pressAnimationStateCount);
         NowControlState.BeginRepaintTracking();
         var animation = NowControlState.PressAnimation(707, true, origin, 1f);
         bool repaint = NowControlState.EndRepaintTracking();
 
         Assert.IsTrue(animation.active);
         Assert.AreEqual(origin, animation.origin);
-        Assert.LessOrEqual(animation.progress, 0.05f);
+        Assert.AreEqual(0f, animation.progress);
+        Assert.AreEqual(1, NowControlState.pressAnimationStateCount);
         Assert.IsTrue(repaint);
+    }
+
+    [Test]
+    public void PressAnimationAdvancesAndRequestsRepaintWhileActive()
+    {
+        const int id = 708;
+        var origin = new Vector2(3f, 7f);
+
+        NowControlState.PressAnimation(id, true, origin, 10f);
+        System.Threading.Thread.Sleep(20);
+
+        NowControlState.BeginRepaintTracking();
+        var animation = NowControlState.PressAnimation(id, false, default, 10f);
+        bool repaint = NowControlState.EndRepaintTracking();
+
+        Assert.IsTrue(animation.active);
+        Assert.AreEqual(origin, animation.origin);
+        Assert.Greater(animation.progress, 0f);
+        Assert.Less(animation.progress, 1f);
+        Assert.IsTrue(repaint);
+    }
+
+    [Test]
+    public void IdlePressAnimationDoesNotCreateStateOrRequestRepaint()
+    {
+        Assert.AreEqual(0, NowControlState.pressAnimationStateCount);
+        NowControlState.BeginRepaintTracking();
+
+        for (int i = 0; i < 100; ++i)
+        {
+            var animation = NowControlState.PressAnimation(8000 + i, false, default, 1f);
+            Assert.IsFalse(animation.active);
+        }
+
+        bool repaint = NowControlState.EndRepaintTracking();
+
+        Assert.AreEqual(0, NowControlState.pressAnimationStateCount);
+        Assert.IsFalse(repaint);
     }
 
     [Test]

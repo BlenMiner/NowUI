@@ -106,7 +106,25 @@ The mask is the scene's final composited alpha. RGB is ignored; per-shape and
 tint alpha, textures, SDF glyphs, outlines, shadows, glows, contours, and warp
 all participate. An empty scene binds no coverage texture and clips all
 children. A previously warmed cache may retain its unused target until a later
-resize or `NowSdf.Reset()`.
+resize, `NowSdf.Release(id)`, or `NowSdf.Reset()`.
+
+An unchanged static scene reuses the coverage already in that target. The
+scene operations and effects, effective tint, local scene and mask geometry,
+source texture version, and transformed physical target size must all match.
+Translation and mirroring alone can reuse coverage when the local content and
+physical size stay the same. Shape/effect/tint/mask changes and
+`Texture2D.Apply()` rerasterize it. A nonzero-speed warp or a
+`RenderTexture`-backed fill remains live and rerasterizes on every
+`BeginMask()` call.
+
+SDF caches are not evicted automatically because retained batches may still
+sample their targets. Do not generate a fresh id every frame. When an item with
+a dynamic explicit id leaves, call `NowSdf.Release(id)` under the same host and
+`NowControls.IdScope`; rebuild or discard any retained batch that sampled it
+first. `NowSdf.Reset()` remains the whole-extension cleanup operation.
+Builders backed by a released cache are invalid and throw
+`ObjectDisposedException` from `Measure()`, `Draw()`, or `BeginMask()`; create a
+fresh scene builder before drawing that id again.
 
 ## Analytic Shapes
 
@@ -236,16 +254,27 @@ code across those hosts.
 
 ## Performance
 
-Analytic shapes are evaluated by the built-in shaders and do not require a
-temporary mask texture. Keep mask scopes as tight as practical: each nested
-shape adds another boundary evaluation to the covered fragments. As with other
-NowUI frame data, warm the representative masked UI before measuring steady
-state, especially when its content introduces new glyphs, material batches,
-Lottie geometry, effects, or model-preview textures.
+Stable mask stacks are captured once when the stack changes and reused by all
+compatible child draws. The remaining costs differ by backend:
 
-An SDF mask renders into a persistent, single-channel target owned by its
-call-site cache. First use and a transformed pixel-size change can allocate or
-resize that target; stable ids and stable dimensions reuse it. Retained hosts
-must call `MarkDirty()` when an animated or otherwise changed mask needs a
-rebuild. `NowSdf.Reset()` releases extension-owned cached materials and mask
-textures.
+| Path | Cheap pattern | Remaining limit |
+| --- | --- | --- |
+| Hard rectangle | Deep shared viewport/layout clipping | Nested rectangles collapse into one per-vertex clip; scope setup still scales with depth. |
+| Analytic | One stable scope around many draws | Each active mask adds a fragment SDF/AA evaluation; at most eight. |
+| Texture | One stable texture state around many draws | Each active mask adds a texture sample; at most two. |
+| SDF | Stable id, static content, fixed physical size | One persistent target per id; dirty coverage must rasterize, then samples as a texture mask. |
+
+Hard rectangles do not add fragment work as nesting grows and do not split an
+otherwise compatible batch. Analytic and texture states also stay cheap on the
+CPU while one scope is shared across many draws, but alternating different
+states can create ordered batches. Each analytic mask still adds shader work
+for covered fragments, and each texture-backed mask still adds a sample; CPU
+benchmarks cannot make either cost disappear.
+
+An SDF mask renders into a persistent, usually single-channel target owned by
+its stable-id cache. First use and transformed pixel-size changes can allocate
+or resize it; unchanged static coverage skips the render entirely. Continuously
+changing the physical size is the expensive path, so prefer a fixed capture
+rect and animate shapes inside it. Retained hosts must still call `MarkDirty()`
+before changed mask code can run. Warm representative content before measuring,
+and measure GPU time on target hardware for large/full-screen masks.

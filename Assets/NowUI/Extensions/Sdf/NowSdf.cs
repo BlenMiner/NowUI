@@ -499,6 +499,41 @@ namespace NowUI.Sdf
 
         static readonly Dictionary<int, NowSdfCache> _caches = new Dictionary<int, NowSdfCache>(16);
 
+        static int _maskRasterizationCount;
+
+        internal static int cacheCount => _caches.Count;
+
+        internal static int maskRasterizationCount => _maskRasterizationCount;
+
+        internal static int maskTextureCount
+        {
+            get
+            {
+                int count = 0;
+
+                foreach (var cache in _caches.Values)
+                {
+                    if (cache.hasMaskTexture)
+                        ++count;
+                }
+
+                return count;
+            }
+        }
+
+        internal static long cachedMaskPixels
+        {
+            get
+            {
+                long pixels = 0;
+
+                foreach (var cache in _caches.Values)
+                    pixels += cache.maskTexturePixels;
+
+                return pixels;
+            }
+        }
+
         public static NowSdfGraph Graph()
         {
             return new NowSdfGraph();
@@ -541,12 +576,44 @@ namespace NowUI.Sdf
             return new NowSdfBuilder(GetCache(ControlId(id, file, line)), default, false, options);
         }
 
+        /// <summary>
+        /// Releases the cache owned by an explicit stable id in the current
+        /// <see cref="NowControls.IdScope(string)"/>. Use this when dynamically
+        /// generated ids leave a long-lived collection so their materials and mask
+        /// render texture do not remain cached until <see cref="Reset"/>.
+        /// Any retained batch still sampling this cache's mask texture becomes
+        /// invalid, just as it does after <see cref="Reset"/>; rebuild or discard
+        /// those batches before releasing the id. Builders previously returned for
+        /// this id are invalidated and throw <see cref="ObjectDisposedException"/>
+        /// when measured, drawn, or used as a mask.
+        /// </summary>
+        /// <returns>True when a cache existed and was released.</returns>
+        public static bool Release(NowId id)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("NowSdf.Release requires an explicit stable NowId.", nameof(id));
+
+            int resolvedId = id.ResolveStableId(0);
+            if (!_caches.TryGetValue(resolvedId, out var cache))
+                return false;
+
+            _caches.Remove(resolvedId);
+            cache.Release();
+            return true;
+        }
+
         public static void Reset()
         {
             foreach (var cache in _caches.Values)
                 cache.Release();
 
             _caches.Clear();
+            _maskRasterizationCount = 0;
+        }
+
+        internal static void RecordMaskRasterization()
+        {
+            ++_maskRasterizationCount;
         }
 
         static int ControlId(NowId id, string file, int line)
@@ -937,6 +1004,7 @@ namespace NowUI.Sdf
 
         public Vector2 Measure()
         {
+            _cache.ThrowIfReleased();
             return _cache.measureSize;
         }
 
@@ -962,6 +1030,8 @@ namespace NowUI.Sdf
         [NowConsumer]
         public NowMaskScope BeginMask()
         {
+            _cache.ThrowIfReleased();
+
             if (!_hasRect)
             {
                 throw new InvalidOperationException(
@@ -980,6 +1050,8 @@ namespace NowUI.Sdf
         [NowConsumer]
         public NowMaskScope BeginMask(NowRect rect)
         {
+            _cache.ThrowIfReleased();
+
             // Measured layout invokes drawing code once with all rendering
             // suppressed. Do not allocate or execute a render texture in that pass;
             // the real pass rebuilds this call-site cache before using it.
@@ -1006,6 +1078,73 @@ namespace NowUI.Sdf
 
     sealed class NowSdfCache
     {
+        readonly struct MaskRenderSignature : IEquatable<MaskRenderSignature>
+        {
+            readonly ulong _sceneHash;
+            readonly Texture _sourceTexture;
+            readonly uint _sourceTextureUpdateCount;
+            readonly Vector4 _effectiveTint;
+            readonly Vector2 _localSize;
+            readonly NowRect _localMask;
+            readonly int _targetWidth;
+            readonly int _targetHeight;
+
+            public MaskRenderSignature(
+                ulong sceneHash,
+                Texture sourceTexture,
+                uint sourceTextureUpdateCount,
+                Vector4 effectiveTint,
+                Vector2 localSize,
+                NowRect localMask,
+                int targetWidth,
+                int targetHeight)
+            {
+                _sceneHash = sceneHash;
+                _sourceTexture = sourceTexture;
+                _sourceTextureUpdateCount = sourceTextureUpdateCount;
+                _effectiveTint = effectiveTint;
+                _localSize = localSize;
+                _localMask = localMask;
+                _targetWidth = targetWidth;
+                _targetHeight = targetHeight;
+            }
+
+            public bool Equals(MaskRenderSignature other)
+            {
+                return _sceneHash == other._sceneHash &&
+                    ReferenceEquals(_sourceTexture, other._sourceTexture) &&
+                    _sourceTextureUpdateCount == other._sourceTextureUpdateCount &&
+                    _effectiveTint.Equals(other._effectiveTint) &&
+                    _localSize.Equals(other._localSize) &&
+                    _localMask == other._localMask &&
+                    _targetWidth == other._targetWidth &&
+                    _targetHeight == other._targetHeight;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is MaskRenderSignature other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = _sceneHash.GetHashCode();
+                    hash = hash * 397 ^ (!ReferenceEquals(_sourceTexture, null)
+                        ? RuntimeHelpers.GetHashCode(_sourceTexture)
+                        : 0);
+                    hash = hash * 397 ^ _sourceTextureUpdateCount.GetHashCode();
+                    hash = hash * 397 ^ _effectiveTint.GetHashCode();
+                    hash = hash * 397 ^ _localSize.GetHashCode();
+                    hash = hash * 397 ^ _localMask.GetHashCode();
+                    hash = hash * 397 ^ _targetWidth;
+                    hash = hash * 397 ^ _targetHeight;
+                    return hash;
+                }
+            }
+        }
+
         static readonly int _mainTexProp = Shader.PropertyToID("_MainTex");
         static readonly int _shapeCountProp = Shader.PropertyToID("_SdfShapeCount");
         static readonly int _layerCountProp = Shader.PropertyToID("_SdfLayerCount");
@@ -1055,6 +1194,8 @@ namespace NowUI.Sdf
         bool _hasUploadedHash;
         ulong _maskUploadedHash;
         bool _hasMaskUploadedHash;
+        MaskRenderSignature _maskRenderSignature;
+        bool _hasMaskRenderSignature;
         NowSdfGraph _activeGraph;
         int _inlineGraphCursor;
         NowSdfOperation _pendingOperation;
@@ -1079,6 +1220,14 @@ namespace NowUI.Sdf
         NowRect _bounds;
         bool _hasBounds;
 
+        bool _released;
+
+        internal bool hasMaskTexture => _maskTexture != null;
+
+        internal long maskTexturePixels => _maskTexture != null
+            ? (long)_maskTexture.width * _maskTexture.height
+            : 0L;
+
         public Vector2 measureSize => _hasBounds
             ? new Vector2(_bounds.xMax, _bounds.yMax)
             : _activeGraph != null
@@ -1087,6 +1236,7 @@ namespace NowUI.Sdf
 
         public void Begin()
         {
+            ThrowIfReleased();
             _layers.Clear();
             _graphIds.Clear();
             _inlineGraphCursor = 0;
@@ -1124,6 +1274,10 @@ namespace NowUI.Sdf
 
         public void Release()
         {
+            if (_released)
+                return;
+
+            _released = true;
             _maskRenderer?.Dispose();
             _maskRenderer = null;
             ReleaseMaskTexture();
@@ -1132,6 +1286,16 @@ namespace NowUI.Sdf
             ReleaseMaterial(ref _material);
             _hasUploadedHash = false;
             _hasMaskUploadedHash = false;
+        }
+
+        internal void ThrowIfReleased()
+        {
+            if (_released)
+            {
+                throw new ObjectDisposedException(
+                    nameof(NowSdfBuilder),
+                    "This SDF builder's cache was released. Create a new builder with NowSdf.Scene(...).");
+            }
         }
 
         static void ReleaseMaterial(ref Material material)
@@ -1335,6 +1499,7 @@ namespace NowUI.Sdf
 
         public void Draw(NowRect rect, NowRect mask, Vector4 tint)
         {
+            ThrowIfReleased();
             FlushActiveGraph();
 
             if (_layers.Count == 0)
@@ -1351,6 +1516,8 @@ namespace NowUI.Sdf
 
         public NowMaskScope BeginMask(NowRect rect, NowRect mask, Vector4 tint)
         {
+            ThrowIfReleased();
+
             // Fail before material creation or RT execution when the ambient
             // texture-mask stack is already full.
             Now.EnsureCanPushTextureMask();
@@ -1373,24 +1540,56 @@ namespace NowUI.Sdf
             if (target == null)
                 return EmptyMask(rect);
 
-            Upload(material, ref _maskUploadedHash, ref _hasMaskUploadedHash);
-
-            _maskRenderer ??= new NowRenderer();
+            ulong sceneHash = Upload(material, ref _maskUploadedHash, ref _hasMaskUploadedHash);
             var localRect = new NowRect(0f, 0f, rect.width, rect.height);
             var localMask = new NowRect(
                 mask.x - rect.x,
                 mask.y - rect.y,
                 mask.width,
                 mask.height);
+            Texture sourceTexture = _texture ? _texture : null;
+            uint sourceTextureUpdateCount = sourceTexture != null ? sourceTexture.updateCount : 0u;
+            var signature = new MaskRenderSignature(
+                sceneHash,
+                sourceTexture,
+                sourceTextureUpdateCount,
+                Now.ApplyCurrentColorMultiplier(tint),
+                localRect.size,
+                localMask,
+                width,
+                height);
 
-            // Capture without inherited context or flushing the caller's deferred
-            // overlays. The SDF texture contains only this scene's coverage;
-            // enclosing masks remain attached to child batches and are not
-            // multiplied twice.
-            using (_maskRenderer.Begin(localRect.size, flushOverlays: false))
-                Now.DrawSdfUnsnapped(localRect, localMask, material, tint);
+            // RenderTexture-backed fills can be updated by pending GPU work which
+            // has not necessarily advanced Texture.updateCount yet. Animated warp
+            // reads shader _Time. Both cases must remain live rather than reusing
+            // an apparently identical coverage image.
+            bool dynamicCoverage = sourceTexture is RenderTexture ||
+                (_warp.x > 0f && _warp.z != 0f);
+            bool reuseCoverage = !dynamicCoverage &&
+                _hasMaskRenderSignature &&
+                _maskRenderSignature.Equals(signature);
 
-            _maskRenderer.Render(target, clear: true, clearColor: Color.clear);
+            if (!reuseCoverage)
+            {
+                _maskRenderer ??= new NowRenderer();
+
+                // Capture without inherited context or flushing the caller's deferred
+                // overlays. The SDF texture contains only this scene's coverage;
+                // enclosing masks remain attached to child batches and are not
+                // multiplied twice.
+                using (_maskRenderer.Begin(localRect.size, flushOverlays: false))
+                    Now.DrawSdfUnsnapped(localRect, localMask, material, tint);
+
+                // Do not publish the signature before rendering succeeds. A failed
+                // command buffer execution leaves the target contents undefined and
+                // the next BeginMask must try again.
+                InvalidateMaskCoverage();
+                _maskRenderer.Render(target, clear: true, clearColor: Color.clear);
+                _maskRenderSignature = signature;
+                _hasMaskRenderSignature = true;
+                NowSdf.RecordMaskRasterization();
+            }
+
             return Now.Mask(NowMaskTexture.Red(target, rect));
         }
 
@@ -1533,13 +1732,25 @@ namespace NowUI.Sdf
             _maskMaterial.hideFlags = HideFlags.HideAndDontSave;
             _maskMaterial.SetFloat(_maskOutputProp, 1f);
             _hasMaskUploadedHash = false;
+            InvalidateMaskCoverage();
             return _maskMaterial;
         }
 
         RenderTexture GetMaskTexture(int width, int height)
         {
             if (_maskTexture != null && _maskTexture.width == width && _maskTexture.height == height)
-                return _maskTexture;
+            {
+                if (_maskTexture.IsCreated())
+                    return _maskTexture;
+
+                // Render textures lose their contents across device/context loss.
+                // Recreate the same object when possible so already-captured
+                // descriptors keep a valid reference, but never trust its pixels.
+                InvalidateMaskCoverage();
+
+                if (_maskTexture.Create())
+                    return _maskTexture;
+            }
 
             ReleaseMaskTexture();
 
@@ -1574,8 +1785,15 @@ namespace NowUI.Sdf
 
         void ReleaseMaskTexture()
         {
+            InvalidateMaskCoverage();
+
             if (_maskTexture == null)
+            {
+                // Unity's destroyed-object null can leave a managed reference in
+                // the field. Clear it before a replacement is assigned.
+                _maskTexture = null;
                 return;
+            }
 
             Now.ReleaseTextureMaterials(_maskTexture);
             _maskTexture.Release();
@@ -1586,6 +1804,12 @@ namespace NowUI.Sdf
                 UnityEngine.Object.DestroyImmediate(_maskTexture);
 
             _maskTexture = null;
+        }
+
+        void InvalidateMaskCoverage()
+        {
+            _maskRenderSignature = default;
+            _hasMaskRenderSignature = false;
         }
 
         static int PhysicalSize(float transformedUiSize)
@@ -1610,7 +1834,7 @@ namespace NowUI.Sdf
             return !float.IsNaN(value) && !float.IsInfinity(value);
         }
 
-        void Upload(Material material, ref ulong uploadedHash, ref bool hasUploadedHash)
+        ulong Upload(Material material, ref ulong uploadedHash, ref bool hasUploadedHash)
         {
             // Upload can target both the normal and mask material for the same
             // built scene. Rebuild this per-upload lookup so a prior material
@@ -1636,7 +1860,7 @@ namespace NowUI.Sdf
             ulong contentHash = ComputeUploadHash(shapeCount, layerCount);
 
             if (hasUploadedHash && contentHash == uploadedHash)
-                return;
+                return contentHash;
 
             uploadedHash = contentHash;
             hasUploadedHash = true;
@@ -1667,6 +1891,7 @@ namespace NowUI.Sdf
             material.SetVector(_contourColorProp, _contourColor);
             material.SetVector(_contourMaskProp, _contourMask);
             material.SetVector(_warpProp, _warp);
+            return contentHash;
         }
 
         /// <summary>

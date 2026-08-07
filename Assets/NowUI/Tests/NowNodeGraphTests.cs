@@ -56,6 +56,11 @@ public class NowNodeGraphTests
         public NowNodeGraphNodeContext lastNode;
         public NowNodeGraphPortContext lastPort;
         public NowNodeGraphLinkContext lastLink;
+        public Action<NowNodeGraphNodeContext> onDrawNode;
+        public readonly System.Collections.Generic.List<string> nodeOrder =
+            new System.Collections.Generic.List<string>();
+        public readonly System.Collections.Generic.List<bool> nodeSelection =
+            new System.Collections.Generic.List<bool>();
 
         public void DrawBackground(in NowNodeGraphBackgroundContext context)
         {
@@ -77,6 +82,9 @@ public class NowNodeGraphTests
         {
             ++nodeCount;
             lastNode = context;
+            nodeOrder.Add(context.node.id);
+            nodeSelection.Add(context.selected);
+            onDrawNode?.Invoke(context);
         }
 
         public void DrawPort(in NowNodeGraphPortContext context)
@@ -813,6 +821,49 @@ public class NowNodeGraphTests
         Assert.AreSame(graph, renderer.lastNode.graph);
         Assert.AreSame(graph, renderer.lastPort.graph);
         Assert.AreEqual("b", renderer.lastNode.node.id);
+    }
+
+    [Test]
+    public void CanvasPreservesNodeDrawOrderWithAndWithoutSelection()
+    {
+        var graph = new NowNodeGraph();
+        graph.AddNode("a", "A", new Vector2(20f, 20f));
+        graph.AddNode("b", "B", new Vector2(220f, 20f));
+        graph.AddNode("c", "C", new Vector2(420f, 20f));
+
+        var unselectedRenderer = new CountingRenderer();
+        Frame(graph, renderer: unselectedRenderer);
+
+        CollectionAssert.AreEqual(new[] { "a", "b", "c" }, unselectedRenderer.nodeOrder);
+        CollectionAssert.AreEqual(new[] { false, false, false }, unselectedRenderer.nodeSelection);
+
+        graph.SelectNode("b");
+        var selectedRenderer = new CountingRenderer();
+        Frame(graph, renderer: selectedRenderer);
+
+        CollectionAssert.AreEqual(new[] { "a", "c", "b" }, selectedRenderer.nodeOrder);
+        CollectionAssert.AreEqual(new[] { false, false, true }, selectedRenderer.nodeSelection);
+    }
+
+    [Test]
+    public void CanvasHonorsSelectionChangedByRendererDuringNodePass()
+    {
+        var graph = new NowNodeGraph();
+        graph.AddNode("a", "A", new Vector2(20f, 20f));
+        graph.AddNode("b", "B", new Vector2(220f, 20f));
+        graph.AddNode("c", "C", new Vector2(420f, 20f));
+
+        var renderer = new CountingRenderer();
+        renderer.onDrawNode = context =>
+        {
+            if (context.node.id == "a")
+                graph.SelectNode("c");
+        };
+
+        Frame(graph, renderer: renderer);
+
+        CollectionAssert.AreEqual(new[] { "a", "b", "c" }, renderer.nodeOrder);
+        CollectionAssert.AreEqual(new[] { false, false, true }, renderer.nodeSelection);
     }
 
     [Test]

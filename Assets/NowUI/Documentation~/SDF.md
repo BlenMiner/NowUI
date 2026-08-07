@@ -82,10 +82,22 @@ texture and clips all content in its scope. A previously warmed cache may retain
 its unused target until a later resize or `NowSdf.Reset()`.
 
 The coverage target is cached by the scene's `NowId`. Use a stable, unique id
-for each mask in a repeated or reorderable collection. The target persists
-until its transformed physical dimensions change or `NowSdf.Reset()` releases
-the cache; callers do not own it. A retained host must call `MarkDirty()` when
-an animated mask changes.
+for each mask in a repeated or reorderable collection. When scene operations,
+effects, effective tint, local mask, source texture version, and physical size
+are unchanged, `BeginMask()` reuses the already-rasterized coverage. Translation
+and mirroring alone can reuse it. A shape/effect/tint/mask change,
+`Texture2D.Apply()`, or size change rerasterizes; nonzero-speed warp and
+`RenderTexture` fills rerasterize every call.
+
+The target persists until resize, `NowSdf.Release(id)`, or `NowSdf.Reset()`;
+callers do not own it. Caches are not automatically evicted because retained
+batches may still reference them. Never generate a new id every frame. Release
+a departed dynamic item's explicit id under the same host/`IdScope`, after
+rebuilding or discarding retained batches that sample it. A retained host must
+still call `MarkDirty()` before changed mask code runs.
+`Release(id)` and `Reset()` also invalidate existing builders for the released
+cache. Their `Measure()`, `Draw()`, and `BeginMask()` consumers throw
+`ObjectDisposedException`; obtain a fresh builder from `NowSdf.Scene(...)`.
 
 Two SDF or other texture-backed masks may nest and intersect. Their limit is
 independent of hard rectangles and eight analytic `NowMaskShape` masks. A third

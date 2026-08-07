@@ -270,6 +270,7 @@ public class NowSdfTests
 
         Assert.NotNull(first);
         Assert.AreSame(first, reused, "A stable mask id and transformed size should reuse its coverage target.");
+        Assert.AreEqual(1, NowSdf.maskRasterizationCount, "An identical stable mask was rasterized again.");
         Assert.AreEqual(30, reused.width);
         Assert.AreEqual(20, reused.height);
 
@@ -279,9 +280,213 @@ public class NowSdfTests
         Assert.AreNotSame(reused, resized);
         Assert.AreEqual(60, resized.width);
         Assert.AreEqual(60, resized.height);
+        Assert.AreEqual(2, NowSdf.maskRasterizationCount, "A physical target resize did not rerasterize coverage.");
 
         var descriptor = _drawList.batches[0].maskState.GetTexture(0);
         Assert.AreEqual(new Vector4(100f, 10f, -2f, 3f), descriptor.transform);
+    }
+
+    [Test]
+    public void StableSdfMaskReusesCoverageAcrossTranslationAndMirroring()
+    {
+        var id = new NowId("sdf-mask-position-independent-reuse");
+
+        RenderTexture Capture(NowRect rect, Vector2 scale, Vector2 origin)
+        {
+            using (_drawList.Begin(new Vector2(160f, 120f)))
+            using (Now.Transform(scale, origin))
+            using (NowSdf.Scene(rect, id)
+                .Circle(new Vector2(15f, 10f), 8f)
+                .BeginMask())
+            {
+                Now.Rectangle(rect).SetColor(Color.white).Draw();
+            }
+
+            return _drawList.batches[0].maskState.GetTexture(0).texture as RenderTexture;
+        }
+
+        var first = Capture(new NowRect(10f, 12f, 30f, 20f), Vector2.one, Vector2.zero);
+        var mirrored = Capture(
+            new NowRect(50f, 20f, 30f, 20f),
+            new Vector2(-1f, 1f),
+            new Vector2(100f, 0f));
+
+        Assert.AreSame(first, mirrored);
+        Assert.AreEqual(1, NowSdf.maskRasterizationCount);
+        Assert.AreEqual(
+            new Vector4(100f, 0f, -1f, 1f),
+            _drawList.batches[0].maskState.GetTexture(0).transform);
+    }
+
+    [Test]
+    public void SdfMaskRerasterizesForShapeTintAndLocalMaskChanges()
+    {
+        var rect = new NowRect(8f, 12f, 64f, 40f);
+        var id = new NowId("sdf-mask-signature-inputs");
+
+        void Capture(float radius, float alpha, NowRect mask)
+        {
+            using (_drawList.Begin(new Vector2(96f, 72f)))
+            using (NowSdf.Scene(rect, id)
+                .SetTint(new Vector4(1f, 1f, 1f, alpha))
+                .SetMask(mask)
+                .Circle(new Vector2(32f, 20f), radius)
+                .BeginMask())
+            {
+                Now.Rectangle(rect).SetColor(Color.white).Draw();
+            }
+        }
+
+        Capture(14f, 1f, rect);
+        Capture(14f, 1f, rect);
+        Assert.AreEqual(1, NowSdf.maskRasterizationCount);
+
+        Capture(15f, 1f, rect);
+        Assert.AreEqual(2, NowSdf.maskRasterizationCount, "Shape content was omitted from the coverage signature.");
+
+        Capture(15f, 0.5f, rect);
+        Assert.AreEqual(3, NowSdf.maskRasterizationCount, "Effective tint was omitted from the coverage signature.");
+
+        Capture(15f, 0.5f, new NowRect(rect.x + 4f, rect.y, rect.width - 4f, rect.height));
+        Assert.AreEqual(4, NowSdf.maskRasterizationCount, "The local capture mask was omitted from the coverage signature.");
+    }
+
+    [Test]
+    public void SdfMaskSignatureIncludesAmbientColorMultiplier()
+    {
+        var rect = new NowRect(0f, 0f, 48f, 32f);
+        var id = new NowId("sdf-mask-ambient-tint");
+
+        void Capture(float alpha)
+        {
+            Now.BeginColorMultiplier(new Color(1f, 1f, 1f, alpha));
+
+            try
+            {
+                using (_drawList.Begin(new Vector2(64f, 48f)))
+                using (NowSdf.Scene(rect, id)
+                    .Circle(rect.center, 12f)
+                    .BeginMask())
+                {
+                    Now.Rectangle(rect).SetColor(Color.white).Draw();
+                }
+            }
+            finally
+            {
+                Now.EndColorMultiplier();
+            }
+        }
+
+        Capture(1f);
+        Capture(1f);
+        Assert.AreEqual(1, NowSdf.maskRasterizationCount);
+
+        Capture(0.5f);
+        Assert.AreEqual(2, NowSdf.maskRasterizationCount);
+    }
+
+    [Test]
+    public void SdfMaskRerasterizesWhenSourceTextureIsApplied()
+    {
+        var texture = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+        var rect = new NowRect(0f, 0f, 40f, 32f);
+        var id = new NowId("sdf-mask-source-texture-version");
+
+        try
+        {
+            var pixels = new Color32[16];
+            for (int i = 0; i < pixels.Length; ++i)
+                pixels[i] = new Color32(255, 255, 255, 255);
+
+            texture.SetPixels32(pixels);
+            texture.Apply();
+
+            void Capture()
+            {
+                using (_drawList.Begin(new Vector2(64f, 48f)))
+                using (NowSdf.Scene(rect, id)
+                    .SetTexture(texture)
+                    .Box(rect)
+                    .BeginMask())
+                {
+                    Now.Rectangle(rect).SetColor(Color.white).Draw();
+                }
+            }
+
+            Capture();
+            Capture();
+            Assert.AreEqual(1, NowSdf.maskRasterizationCount);
+
+            uint previousUpdateCount = texture.updateCount;
+            texture.SetPixel(0, 0, Color.clear);
+            texture.Apply();
+            Assert.Greater(texture.updateCount, previousUpdateCount);
+
+            Capture();
+            Assert.AreEqual(2, NowSdf.maskRasterizationCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+        }
+    }
+
+    [Test]
+    public void AnimatedWarpRerasterizesWhileStaticWarpReusesCoverage()
+    {
+        var rect = new NowRect(0f, 0f, 48f, 32f);
+        var id = new NowId("sdf-mask-animated-warp");
+
+        void Capture(float speed)
+        {
+            using (_drawList.Begin(new Vector2(64f, 48f)))
+            using (NowSdf.Scene(rect, id)
+                .SetWarp(3f, 20f, speed, 7f)
+                .Circle(rect.center, 12f)
+                .BeginMask())
+            {
+                Now.Rectangle(rect).SetColor(Color.white).Draw();
+            }
+        }
+
+        Capture(0f);
+        Capture(0f);
+        Assert.AreEqual(1, NowSdf.maskRasterizationCount);
+
+        Capture(1f);
+        Capture(1f);
+        Assert.AreEqual(3, NowSdf.maskRasterizationCount);
+    }
+
+    [Test]
+    public void LostSdfMaskTargetIsRecreatedAndRerasterized()
+    {
+        var rect = new NowRect(0f, 0f, 48f, 32f);
+        var id = new NowId("sdf-mask-lost-target");
+
+        RenderTexture Capture()
+        {
+            using (_drawList.Begin(new Vector2(64f, 48f)))
+            using (NowSdf.Scene(rect, id)
+                .Ellipse(rect)
+                .BeginMask())
+            {
+                Now.Rectangle(rect).SetColor(Color.white).Draw();
+            }
+
+            return _drawList.batches[0].maskState.GetTexture(0).texture as RenderTexture;
+        }
+
+        var target = Capture();
+        Assert.IsTrue(target.IsCreated());
+        target.Release();
+        Assert.IsFalse(target.IsCreated());
+
+        var recreated = Capture();
+
+        Assert.AreSame(target, recreated);
+        Assert.IsTrue(recreated.IsCreated());
+        Assert.AreEqual(2, NowSdf.maskRasterizationCount);
     }
 
     [Test]
@@ -449,5 +654,74 @@ public class NowSdfTests
         NowSdf.Reset();
 
         Assert.IsFalse(target, "NowSdf.Reset() did not destroy its cache-owned mask target.");
+    }
+
+    [Test]
+    public void ReleaseDropsOneExplicitScopedSdfCache()
+    {
+        var surface = new NowRect(0f, 0f, 48f, 32f);
+        var id = new NowId("released-sdf-mask");
+        RenderTexture target;
+
+        using (_drawList.Begin(surface.size))
+        using (NowControls.IdScope("release-owner"))
+        using (NowSdf.Scene(surface, id)
+            .Ellipse(surface)
+            .BeginMask())
+        {
+            Now.Rectangle(surface).SetColor(Color.white).Draw();
+        }
+
+        target = _drawList.batches[0].maskState.GetTexture(0).texture as RenderTexture;
+
+        Assert.IsTrue(target);
+        Assert.AreEqual(1, NowSdf.cacheCount);
+        Assert.AreEqual(1, NowSdf.maskTextureCount);
+        Assert.AreEqual((long)target.width * target.height, NowSdf.cachedMaskPixels);
+
+        using (NowControls.IdScope("release-owner"))
+        {
+            Assert.IsTrue(NowSdf.Release(id));
+            Assert.IsFalse(NowSdf.Release(id));
+        }
+
+        Assert.AreEqual(0, NowSdf.cacheCount);
+        Assert.AreEqual(0, NowSdf.maskTextureCount);
+        Assert.AreEqual(0, NowSdf.cachedMaskPixels);
+        Assert.IsFalse(target, "Releasing an explicit SDF cache did not destroy its mask target.");
+        Assert.Throws<System.ArgumentException>(() => NowSdf.Release(default));
+    }
+
+    [Test]
+    public void ReleaseInvalidatesOutstandingBuilderWithoutOrphaningResources()
+    {
+        var surface = new NowRect(0f, 0f, 48f, 32f);
+        var id = new NowId("released-builder");
+        NowSdfBuilder builder;
+
+        using (NowControls.IdScope("release-builder-owner"))
+        {
+            builder = NowSdf.Scene(surface, id)
+                .Ellipse(surface);
+
+            Assert.AreEqual(1, NowSdf.cacheCount);
+            Assert.IsTrue(NowSdf.Release(id));
+        }
+
+        Assert.AreEqual(0, NowSdf.cacheCount);
+        Assert.AreEqual(0, NowSdf.maskTextureCount);
+        Assert.AreEqual(0, NowSdf.cachedMaskPixels);
+
+        Assert.Throws<System.ObjectDisposedException>(() => builder.Measure());
+        Assert.Throws<System.ObjectDisposedException>(() => builder.Draw(surface));
+        Assert.Throws<System.ObjectDisposedException>(() =>
+        {
+            var scope = builder.BeginMask();
+            scope.Dispose();
+        });
+
+        Assert.AreEqual(0, NowSdf.cacheCount);
+        Assert.AreEqual(0, NowSdf.maskTextureCount);
+        Assert.AreEqual(0, NowSdf.cachedMaskPixels);
     }
 }

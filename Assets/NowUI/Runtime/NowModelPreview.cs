@@ -351,11 +351,7 @@ namespace NowUI
         {
             public int sourceIndex;
             public int submeshIndex;
-            public Material material;
-            public MaterialPropertyBlock properties;
-            public ShadowCastingMode shadowCastingMode;
-            public bool receiveShadows;
-            public int rendererPriority;
+            public RenderParams renderParams;
         }
 
         internal struct SharedLightSettings
@@ -1938,15 +1934,22 @@ namespace NowUI
 
                     // Unity applies surplus material slots to the final
                     // submesh as additional passes; preserve that behavior.
+                    var renderParams = new RenderParams(material)
+                    {
+                        layer = _previewLayer,
+                        matProps = properties,
+                        shadowCastingMode = renderer.shadowCastingMode,
+                        receiveShadows = renderer.receiveShadows,
+                        lightProbeUsage = LightProbeUsage.Off,
+                        reflectionProbeUsage = ReflectionProbeUsage.Off,
+                        motionVectorMode = MotionVectorGenerationMode.ForceNoMotion,
+                        rendererPriority = renderer.rendererPriority
+                    };
                     draws.Add(new RawMeshDraw
                     {
                         sourceIndex = sourceIndex,
                         submeshIndex = Mathf.Min(materialIndex, subMeshCount - 1),
-                        material = material,
-                        properties = properties,
-                        shadowCastingMode = renderer.shadowCastingMode,
-                        receiveShadows = renderer.receiveShadows,
-                        rendererPriority = renderer.rendererPriority
+                        renderParams = renderParams
                     });
                 }
             }
@@ -1978,8 +1981,9 @@ namespace NowUI
             for (int i = 0; i < _rawMeshDraws.Length; ++i)
             {
                 ref var draw = ref _rawMeshDraws[i];
+                ref var parameters = ref draw.renderParams;
 
-                if (draw.material == null)
+                if (parameters.material == null)
                     continue;
 
                 ref var source = ref _rawMeshSources[draw.sourceIndex];
@@ -1990,20 +1994,11 @@ namespace NowUI
                 if (mesh == null)
                     continue;
 
-                var parameters = new RenderParams(draw.material)
-                {
-                    camera = camera,
-                    layer = _previewLayer,
-                    renderingLayerMask = renderingLayerMask,
-                    worldBounds = source.worldBounds,
-                    matProps = draw.properties,
-                    shadowCastingMode = draw.shadowCastingMode,
-                    receiveShadows = draw.receiveShadows,
-                    lightProbeUsage = LightProbeUsage.Off,
-                    reflectionProbeUsage = ReflectionProbeUsage.Off,
-                    motionVectorMode = MotionVectorGenerationMode.ForceNoMotion,
-                    rendererPriority = draw.rendererPriority
-                };
+                // Keep the immutable renderer state cached while refreshing
+                // values that can change without rebuilding the hierarchy.
+                parameters.camera = camera;
+                parameters.renderingLayerMask = renderingLayerMask;
+                parameters.worldBounds = source.worldBounds;
 
                 Graphics.RenderMesh(parameters, mesh, draw.submeshIndex, source.objectToWorld);
             }

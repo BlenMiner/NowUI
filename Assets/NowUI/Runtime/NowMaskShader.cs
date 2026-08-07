@@ -105,9 +105,9 @@ namespace NowUI.Internal
 
         public const int TextureCapacity = 2;
 
-        public int count;
+        int _count;
 
-        public int textureCount;
+        int _textureCount;
 
         NowMaskShaderDescriptor _mask0;
         NowMaskShaderDescriptor _mask1;
@@ -121,19 +121,34 @@ namespace NowUI.Internal
         NowTextureMaskShaderDescriptor _textureMask0;
         NowTextureMaskShaderDescriptor _textureMask1;
 
-        public readonly bool isEmpty => count <= 0 && textureCount <= 0;
+        // Snapshots rebuilt from the same ambient stack share an identity. This
+        // lets the overwhelmingly common same-scope batch comparison avoid
+        // walking up to ten descriptors, while snapshots produced independently
+        // still fall back to exact structural equality.
+        ulong _identity;
+
+        public readonly int count => _count;
+
+        public readonly int textureCount => _textureCount;
+
+        public readonly bool isEmpty => _count <= 0 && _textureCount <= 0;
+
+        internal readonly ulong identity => _identity;
 
         public void Clear()
         {
-            count = 0;
-            textureCount = 0;
+            _count = 0;
+            _textureCount = 0;
             _textureMask0 = default;
             _textureMask1 = default;
+            _identity = 0;
         }
 
         public void Add(in NowMaskShaderDescriptor descriptor)
         {
-            switch (count)
+            _identity = 0;
+
+            switch (_count)
             {
                 case 0: _mask0 = descriptor; break;
                 case 1: _mask1 = descriptor; break;
@@ -149,12 +164,14 @@ namespace NowUI.Internal
                         "Rectangular Now.Mask(NowRect) scopes do not count toward this limit.");
             }
 
-            ++count;
+            ++_count;
         }
 
         public void AddTexture(in NowTextureMaskShaderDescriptor descriptor)
         {
-            switch (textureCount)
+            _identity = 0;
+
+            switch (_textureCount)
             {
                 case 0: _textureMask0 = descriptor; break;
                 case 1: _textureMask1 = descriptor; break;
@@ -164,7 +181,12 @@ namespace NowUI.Internal
                         "Rectangular and analytic mask scopes do not count toward this limit.");
             }
 
-            ++textureCount;
+            ++_textureCount;
+        }
+
+        internal void SetIdentity(ulong identity)
+        {
+            _identity = identity;
         }
 
         public readonly NowMaskShaderDescriptor Get(int index)
@@ -195,8 +217,11 @@ namespace NowUI.Internal
 
         public readonly bool Equals(NowMaskShaderState other)
         {
-            int safeCount = Mathf.Clamp(count, 0, Capacity);
-            if (safeCount != Mathf.Clamp(other.count, 0, Capacity))
+            if (_identity != 0 && _identity == other._identity)
+                return true;
+
+            int safeCount = Mathf.Clamp(_count, 0, Capacity);
+            if (safeCount != Mathf.Clamp(other._count, 0, Capacity))
                 return false;
 
             for (int i = 0; i < safeCount; ++i)
@@ -205,8 +230,8 @@ namespace NowUI.Internal
                     return false;
             }
 
-            int safeTextureCount = Mathf.Clamp(textureCount, 0, TextureCapacity);
-            if (safeTextureCount != Mathf.Clamp(other.textureCount, 0, TextureCapacity))
+            int safeTextureCount = Mathf.Clamp(_textureCount, 0, TextureCapacity);
+            if (safeTextureCount != Mathf.Clamp(other._textureCount, 0, TextureCapacity))
                 return false;
 
             for (int i = 0; i < safeTextureCount; ++i)
@@ -227,13 +252,13 @@ namespace NowUI.Internal
         {
             unchecked
             {
-                int safeCount = Mathf.Clamp(count, 0, Capacity);
+                int safeCount = Mathf.Clamp(_count, 0, Capacity);
                 int hash = safeCount;
 
                 for (int i = 0; i < safeCount; ++i)
                     hash = hash * 397 ^ Get(i).GetHashCode();
 
-                int safeTextureCount = Mathf.Clamp(textureCount, 0, TextureCapacity);
+                int safeTextureCount = Mathf.Clamp(_textureCount, 0, TextureCapacity);
                 hash = hash * 397 ^ safeTextureCount;
 
                 for (int i = 0; i < safeTextureCount; ++i)
@@ -267,6 +292,9 @@ namespace NowUI.Internal
         static readonly Vector4[] _textureParameters = new Vector4[NowMaskShaderState.TextureCapacity];
         static readonly Vector4[] _textureTransforms = new Vector4[NowMaskShaderState.TextureCapacity];
         static readonly MaterialPropertyBlock _propertyBlock = new MaterialPropertyBlock();
+        static NowMaskShaderState _propertyBlockState;
+        static int _propertyBlockTextureValidity;
+        static bool _hasPropertyBlockState;
 
         internal static bool Supports(Material material)
         {
@@ -358,6 +386,15 @@ namespace NowUI.Internal
             if (state.isEmpty)
                 return null;
 
+            int textureValidity = TextureValidityBits(state);
+
+            if (_hasPropertyBlockState &&
+                textureValidity == _propertyBlockTextureValidity &&
+                _propertyBlockState.Equals(state))
+            {
+                return _propertyBlock;
+            }
+
             _propertyBlock.Clear();
             int analyticCount = Mathf.Clamp(state.count, 0, NowMaskShaderState.Capacity);
             int textureCount = Mathf.Clamp(state.textureCount, 0, NowMaskShaderState.TextureCapacity);
@@ -385,7 +422,25 @@ namespace NowUI.Internal
                     _propertyBlock.SetTexture(_texture1Id, TextureOrBlack(state.GetTexture(1).texture));
             }
 
+            _propertyBlockState = state;
+            _propertyBlockTextureValidity = textureValidity;
+            _hasPropertyBlockState = true;
+
             return _propertyBlock;
+        }
+
+        internal static int TextureValidityBits(in NowMaskShaderState state)
+        {
+            int count = Mathf.Clamp(state.textureCount, 0, NowMaskShaderState.TextureCapacity);
+            int bits = 0;
+
+            for (int i = 0; i < count; ++i)
+            {
+                if (state.GetTexture(i).texture)
+                    bits |= 1 << i;
+            }
+
+            return bits;
         }
 
         static void FillAnalyticArrays(in NowMaskShaderState state, int count)
@@ -432,6 +487,12 @@ namespace NowUI
     {
         static int _suppressShaderMaskCaptureDepth;
 
+        static NowUI.Internal.NowMaskShaderState _cachedMaskShaderState;
+        static readonly NowUI.Internal.NowMaskShaderState _emptyMaskShaderState;
+        static bool _maskShaderStateDirty;
+        static int _cachedMaskTextureValidity;
+        static ulong _nextMaskShaderStateIdentity;
+
         internal readonly ref struct ShaderMaskCaptureSuppressionScope
         {
             public void Dispose()
@@ -452,14 +513,36 @@ namespace NowUI
             return default;
         }
 
-        /// <summary>
-        /// Freezes shader-evaluated portions of the ambient mask stack into
-        /// batch-owned data. Legacy rect entries already travel per vertex.
-        /// </summary>
-        internal static NowUI.Internal.NowMaskShaderState CaptureMaskShaderState()
+        internal static void InvalidateMaskShaderState()
         {
-            if (_suppressShaderMaskCaptureDepth > 0)
-                return default;
+            _maskShaderStateDirty = true;
+        }
+
+        internal static void ResetMaskShaderState()
+        {
+            // Assigning default also releases any caller-owned textures retained
+            // by the previous cached descriptors at a frame/context reset.
+            _cachedMaskShaderState = default;
+            _cachedMaskTextureValidity = 0;
+            _maskShaderStateDirty = false;
+        }
+
+        static ulong NextMaskShaderStateIdentity()
+        {
+            do
+            {
+                _nextMaskShaderStateIdentity = unchecked(_nextMaskShaderStateIdentity + 1UL);
+            }
+            while (_nextMaskShaderStateIdentity == 0UL);
+
+            return _nextMaskShaderStateIdentity;
+        }
+
+        static void EnsureMaskShaderState()
+        {
+            int textureValidity = NowUI.Internal.NowMaskShader.TextureValidityBits(_cachedMaskShaderState);
+            if (!_maskShaderStateDirty && textureValidity == _cachedMaskTextureValidity)
+                return;
 
             NowUI.Internal.NowMaskShaderState state = default;
 
@@ -503,7 +586,44 @@ namespace NowUI
                     transform));
             }
 
-            return state;
+            if (!state.isEmpty)
+                state.SetIdentity(NextMaskShaderStateIdentity());
+
+            _cachedMaskShaderState = state;
+            _cachedMaskTextureValidity = NowUI.Internal.NowMaskShader.TextureValidityBits(state);
+            _maskShaderStateDirty = false;
+        }
+
+        internal static ref readonly NowUI.Internal.NowMaskShaderState CurrentMaskShaderState()
+        {
+            if (_suppressShaderMaskCaptureDepth > 0)
+                return ref _emptyMaskShaderState;
+
+            EnsureMaskShaderState();
+            return ref _cachedMaskShaderState;
+        }
+
+        internal static int currentAnalyticMaskCount
+        {
+            get => _ambientAnalyticMaskCount;
+        }
+
+        internal static int currentTextureMaskCount
+        {
+            get => _ambientTextureMaskCount;
+        }
+
+        /// <summary>
+        /// Freezes shader-evaluated portions of the ambient mask stack into
+        /// batch-owned data. Legacy rect entries already travel per vertex.
+        /// </summary>
+        internal static NowUI.Internal.NowMaskShaderState CaptureMaskShaderState()
+        {
+            if (_suppressShaderMaskCaptureDepth > 0)
+                return default;
+
+            EnsureMaskShaderState();
+            return _cachedMaskShaderState;
         }
     }
 }

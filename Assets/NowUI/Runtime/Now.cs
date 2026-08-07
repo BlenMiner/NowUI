@@ -171,6 +171,13 @@ namespace NowUI
 
         static readonly List<AmbientMaskState> _maskStack = new List<AmbientMaskState>(4);
 
+        // Capacity checks must not force the lazily cached shader snapshot to
+        // rebuild. These counters mirror only shader-evaluated stack entries;
+        // rectangular masks deliberately leave them unchanged.
+        static int _ambientAnalyticMaskCount;
+
+        static int _ambientTextureMaskCount;
+
         static readonly NowScopeGuard _maskScopes = new NowScopeGuard("Now.Mask");
 
         /// <summary>
@@ -207,14 +214,7 @@ namespace NowUI
         /// </summary>
         public static NowMaskScope Mask(NowMaskShape shape)
         {
-            int analyticCount = 0;
-            for (int i = 0; i < _maskStack.Count; ++i)
-            {
-                if (_maskStack[i].analytic)
-                    ++analyticCount;
-            }
-
-            if (analyticCount >= NowMaskShaderState.Capacity)
+            if (currentAnalyticMaskCount >= NowMaskShaderState.Capacity)
             {
                 throw new InvalidOperationException(
                     $"NowUI supports at most {NowMaskShaderState.Capacity} simultaneously nested analytic masks. " +
@@ -242,6 +242,8 @@ namespace NowUI
                 default,
                 transform,
                 AmbientMaskKind.Analytic));
+            ++_ambientAnalyticMaskCount;
+            InvalidateMaskShaderState();
             return new NowMaskScope(_maskScopes.Enter());
         }
 
@@ -268,19 +270,14 @@ namespace NowUI
                 mask,
                 transform,
                 AmbientMaskKind.Texture));
+            ++_ambientTextureMaskCount;
+            InvalidateMaskShaderState();
             return new NowMaskScope(_maskScopes.Enter());
         }
 
         internal static void EnsureCanPushTextureMask()
         {
-            int textureCount = 0;
-            for (int i = 0; i < _maskStack.Count; ++i)
-            {
-                if (_maskStack[i].texture)
-                    ++textureCount;
-            }
-
-            if (textureCount >= NowMaskShaderState.TextureCapacity)
+            if (currentTextureMaskCount >= NowMaskShaderState.TextureCapacity)
             {
                 throw new InvalidOperationException(
                     $"NowUI supports at most {NowMaskShaderState.TextureCapacity} simultaneously nested texture masks. " +
@@ -291,7 +288,22 @@ namespace NowUI
         internal static void PopMask(int token)
         {
             if (_maskScopes.Exit(token) && _maskStack.Count > 0)
-                _maskStack.RemoveAt(_maskStack.Count - 1);
+            {
+                int last = _maskStack.Count - 1;
+                var removed = _maskStack[last];
+                _maskStack.RemoveAt(last);
+
+                if (removed.analytic)
+                {
+                    --_ambientAnalyticMaskCount;
+                    InvalidateMaskShaderState();
+                }
+                else if (removed.texture)
+                {
+                    --_ambientTextureMaskCount;
+                    InvalidateMaskShaderState();
+                }
+            }
         }
 
         static readonly NowRect UnboundedMask = new NowRect(-100000f, -100000f, 200000f, 200000f);
@@ -315,12 +327,26 @@ namespace NowUI
             if (count == 0)
                 return true;
 
-            if (!ContainsInclusive(_maskStack[count - 1].bounds, position))
+            NowRect accumulatedBounds = _maskStack[count - 1].bounds;
+            if (accumulatedBounds.isEmpty || !ContainsInclusive(accumulatedBounds, position))
                 return false;
 
-            for (int i = 0; i < count; ++i)
+            // Accumulated bounds already prove containment in every rectangular
+            // entry and in every texture mask's input rect. Only analytic
+            // geometry needs an exact test; texture masks need a live source.
+            for (int i = count - 1; i >= 0; --i)
             {
-                if (!_maskStack[i].Contains(position))
+                var ambient = _maskStack[i];
+
+                if (ambient.texture)
+                {
+                    if (!ambient.textureMask.hasTexture)
+                        return false;
+
+                    continue;
+                }
+
+                if (ambient.analytic && !ambient.Contains(position))
                     return false;
             }
 
@@ -591,6 +617,8 @@ namespace NowUI
             public int overlayStartMesh;
             public bool captureMesh;
             public NowRect screenMask;
+            public int analyticMaskCount;
+            public int textureMaskCount;
             public readonly List<AmbientMaskState> maskStack = new List<AmbientMaskState>(4);
             public readonly List<NowTransform> transformStack = new List<NowTransform>(4);
             public readonly List<int> maskScopeTokens = new List<int>(4);
@@ -858,8 +886,8 @@ namespace NowUI
             NowMeshKind kind,
             Vector4 batchData)
         {
-            var maskState = CaptureMaskShaderState();
-            return UseMaterial(material, canvasMaterial, kind, batchData, maskState);
+            ref readonly var maskState = ref CurrentMaskShaderState();
+            return UseMaterial(material, canvasMaterial, kind, batchData, in maskState);
         }
 
         static NowMesh UseMaterial(
@@ -1299,6 +1327,9 @@ namespace NowUI
             _fontScopes.Clear();
             _maskStack.Clear();
             _maskScopes.Clear();
+            _ambientAnalyticMaskCount = 0;
+            _ambientTextureMaskCount = 0;
+            ResetMaskShaderState();
             _transformStack.Clear();
             _transformScopes.Clear();
 
@@ -1447,6 +1478,8 @@ namespace NowUI
             state.overlayStartMesh = _overlayStartMesh;
             state.captureMesh = _captureMesh;
             state.screenMask = Now.screenMask;
+            state.analyticMaskCount = _ambientAnalyticMaskCount;
+            state.textureMaskCount = _ambientTextureMaskCount;
             state.maskStack.Clear();
             state.maskStack.AddRange(_maskStack);
             state.transformStack.Clear();
@@ -1468,6 +1501,9 @@ namespace NowUI
                 _transformStack.AddRange(state.transformStack);
                 _transformScopes.RestoreFrom(state.transformScopeTokens);
             }
+            _ambientAnalyticMaskCount = inheritContext ? state.analyticMaskCount : 0;
+            _ambientTextureMaskCount = inheritContext ? state.textureMaskCount : 0;
+            InvalidateMaskShaderState();
             _captureMesh = true;
             _meshes = RentCaptureMeshes();
             _lastUsedMeshId = -1;
@@ -1557,6 +1593,7 @@ namespace NowUI
                 _captureMesh = false;
                 _lastUsedMeshId = -1;
                 _overlayStartMesh = int.MaxValue;
+                InvalidateMaskShaderState();
                 return;
             }
 
@@ -1571,13 +1608,18 @@ namespace NowUI
             _maskStack.Clear();
             _maskStack.AddRange(state.maskStack);
             _maskScopes.RestoreFrom(state.maskScopeTokens);
+            _ambientAnalyticMaskCount = state.analyticMaskCount;
+            _ambientTextureMaskCount = state.textureMaskCount;
             _transformStack.Clear();
             _transformStack.AddRange(state.transformStack);
             _transformScopes.RestoreFrom(state.transformScopeTokens);
+            InvalidateMaskShaderState();
             state.maskStack.Clear();
             state.transformStack.Clear();
             state.maskScopeTokens.Clear();
             state.transformScopeTokens.Clear();
+            state.analyticMaskCount = 0;
+            state.textureMaskCount = 0;
 
             state.meshes = default;
             _meshCaptureStatePool.Push(state);
@@ -2178,6 +2220,11 @@ namespace NowUI
             return color;
         }
 
+        internal static Vector4 ApplyCurrentColorMultiplier(Vector4 color)
+        {
+            return ApplyColorMultiplier(color);
+        }
+
         static float RectangleVisualPadding(float blur, float outline)
         {
             return 2f + Mathf.Max(0f, blur) + Mathf.Max(0f, outline);
@@ -2286,6 +2333,42 @@ namespace NowUI
             _tmpVertex.outlineColor = ApplyColorMultiplier(rectangle.outlineColor);
             _tmpVertex.uvwh = rectangle.uvRect;
 
+            // Resolve screen-space geometry before selecting a material. The
+            // mesh-level guard still protects every AddRect caller, but doing
+            // the same conservative rejection here avoids material/batch
+            // lookup and capacity work for the many clipped controls in a
+            // scroll view. Include the exact blur/outline geometry padding so
+            // an edge effect that reaches into the mask is never discarded.
+            if (hasTransform)
+            {
+                Vector2 transformedPos = ApplyTransform(new Vector2(x0, y0));
+                Vector2 scaledSize = ApplyTransformSize(new Vector2(rectWidth, rectHeight));
+                _tmpVertex.position.x = transformedPos.x;
+                _tmpVertex.position.y = -transformedPos.y - scaledSize.y;
+                _tmpVertex.position.z = scaledSize.x;
+                _tmpVertex.position.w = scaledSize.y;
+            }
+            else
+            {
+                _tmpVertex.position.x = x0;
+                _tmpVertex.position.y = -y0 - rectHeight;
+                _tmpVertex.position.z = rectWidth;
+                _tmpVertex.position.w = rectHeight;
+            }
+
+            Vector4 paddedGeometry = _tmpVertex.position;
+
+            if (geometryPadding > 0f)
+            {
+                paddedGeometry.x -= geometryPadding;
+                paddedGeometry.y -= geometryPadding;
+                paddedGeometry.z += geometryPadding * 2f;
+                paddedGeometry.w += geometryPadding * 2f;
+            }
+
+            if (_tmpVertex.IsOutsideMask(paddedGeometry))
+                return;
+
             NowMesh mesh;
 
             if (rectangle.material != null || rectangle.canvasMaterial != null)
@@ -2328,24 +2411,6 @@ namespace NowUI
                     return;
 
                 mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, 4);
-            }
-
-            // Apply transform to position and scale to size
-            if (hasTransform)
-            {
-                Vector2 transformedPos = ApplyTransform(new Vector2(x0, y0));
-                Vector2 scaledSize = ApplyTransformSize(new Vector2(rectWidth, rectHeight));
-                _tmpVertex.position.x = transformedPos.x;
-                _tmpVertex.position.y = -transformedPos.y - scaledSize.y;
-                _tmpVertex.position.z = scaledSize.x;
-                _tmpVertex.position.w = scaledSize.y;
-            }
-            else
-            {
-                _tmpVertex.position.x = x0;
-                _tmpVertex.position.y = -y0 - rectHeight;
-                _tmpVertex.position.z = rectWidth;
-                _tmpVertex.position.w = rectHeight;
             }
 
             mesh.AddRect(_tmpVertex, blur, outline, geometryPadding);

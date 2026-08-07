@@ -389,8 +389,28 @@ namespace NowUI
             if (id == 0 || duration <= 0f)
                 return default;
 
-            ref var state = ref Get<PressAnimationState>(id);
+            var entries = Store<PressAnimationState>.entries;
+
+            // An animation that has never started has an implicit inactive state.
+            // Keep idle controls out of the store and avoid sampling Unity's clock;
+            // inactive retained entries are likewise left untouched so they can age out.
+            if (!entries.TryGetValue(id, out var entry))
+            {
+                if (!triggered)
+                    return default;
+            }
+            else if (!triggered && !entry.value.active)
+            {
+                return default;
+            }
+
             float now = Time.realtimeSinceStartup;
+
+            if (entry == null)
+                entry = GetOrCreateEntry<PressAnimationState>(id, now);
+
+            entry.lastTouch = now;
+            ref var state = ref entry.value;
 
             if (!NowInput.isPassive && triggered)
             {
@@ -416,6 +436,8 @@ namespace NowUI
 
             return new NowPressAnimation(state.active, state.origin, progress);
         }
+
+        internal static int pressAnimationStateCount => Store<PressAnimationState>.entries.Count;
 
         /// <summary>
         /// Tracks a press-triggered animation under a named sub-state of this interaction.

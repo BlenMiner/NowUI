@@ -60,8 +60,11 @@ extension, editor, URP, and HDRP assemblies in the installed package.
 - `NowUI.NodeGraph`: node-graph data, ports, links, and graph view drawing.
 - `NowUI.Sdf`: SDF graph and scene-builder APIs. A scene can end in `Draw()`
   or `BeginMask()`; the latter returns an ambient `NowMaskScope` backed by
-  cached, single-channel SDF coverage. See [SDF Shapes](SDF.md) and
-  [Masks](Masks.md).
+  cached, single-channel SDF coverage. `NowSdf.Release(id)` releases one
+  explicit stable-id cache; `NowSdf.Reset()` releases them all. Both invalidate
+  builders backed by a released cache, whose consumer calls then throw
+  `ObjectDisposedException`. See
+  [SDF Shapes](SDF.md) and [Masks](Masks.md).
 
 ## Runtime guarantees
 

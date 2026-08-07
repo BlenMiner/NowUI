@@ -459,6 +459,101 @@ public class NowRendererTests
     }
 
     [Test]
+    public void FullyMaskedLineDoesNotEmitGeometry()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(100f, 100f)))
+            using (Now.Mask(new NowRect(0f, 0f, 20f, 20f)))
+            {
+                Now.Line(new Vector2(50f, 50f), new Vector2(90f, 80f))
+                    .SetWidth(4f)
+                    .SetCap(NowLineCap.Round)
+                    .Draw();
+            }
+
+            Assert.IsFalse(drawList.hasGeometry);
+            Assert.AreEqual(0, drawList.batchCount);
+            Assert.AreEqual(0, drawList.mesh.vertexCount);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void CubicControlHullOverlappingMaskIsNotRejected()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(100f, 100f)))
+            using (Now.Mask(new NowRect(0f, 0f, 20f, 20f)))
+            {
+                Now.Bezier(
+                        new Vector2(-12f, -8f),
+                        new Vector2(0f, 38f),
+                        new Vector2(20f, 38f),
+                        new Vector2(32f, -8f))
+                    .SetWidth(3f)
+                    .SetCap(NowLineCap.Round)
+                    .Draw();
+            }
+
+            Assert.IsTrue(drawList.hasGeometry,
+                "A curve whose control hull and stroke cross the mask was rejected by the coarse cull.");
+            Assert.Greater(drawList.mesh.vertexCount, 0);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void DiagonalArrowCornerOverlappingMaskIsNotRejected()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var drawList = new NowDrawList();
+        float previousScale = Now.uiScale;
+
+        try
+        {
+            // At a high host scale the AA allowance is deliberately tiny, so
+            // the diagonal arrow base corner—not the centerline—decides whether
+            // this mask overlaps the submitted geometry.
+            Now.SetUIScale(100f);
+
+            using (drawList.Begin(new Vector2(100f, 100f)))
+            using (Now.Mask(new NowRect(39.25f, 46.3f, 0.3f, 0.3f)))
+            {
+                Now.Line(new Vector2(49.9993f, 49.9993f), new Vector2(50f, 50f))
+                    .SetWidth(0.01f)
+                    .SetArrow(NowLineArrow.End, 10f, 10f)
+                    .Draw();
+            }
+
+            Assert.IsTrue(drawList.hasGeometry,
+                "A rotated arrow base corner that crosses the mask was rejected by the coarse cull.");
+            Assert.Greater(drawList.mesh.vertexCount, 0);
+        }
+        finally
+        {
+            Now.SetUIScale(previousScale);
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
     public void RectangleMeshIncludesVisualPaddingForEdgeEffects()
     {
         Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
@@ -874,6 +969,66 @@ public class NowRendererTests
         finally
         {
             inner.Dispose();
+            outer.Dispose();
+        }
+    }
+
+    [Test]
+    public void NestedDrawListCaptureInvalidatesAndRestoresMixedMaskSnapshot()
+    {
+        var outer = new NowDrawList();
+        var isolated = new NowDrawList();
+        var inherited = new NowDrawList();
+        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+
+        try
+        {
+            var shape = NowMaskShape.Circle(new Vector2(20f, 20f), 12f);
+            var coverage = NowMaskTexture.Alpha(texture, new NowRect(0f, 0f, 40f, 40f));
+
+            using (outer.Begin(new Vector2(100f, 100f)))
+            using (Now.Mask(shape))
+            using (Now.Mask(coverage))
+            {
+                Assert.AreEqual(1, Now.currentAnalyticMaskCount);
+                Assert.AreEqual(1, Now.currentTextureMaskCount);
+                var before = Now.CaptureMaskShaderState();
+                Assert.AreEqual(1, before.count);
+                Assert.AreEqual(1, before.textureCount);
+
+                using (isolated.Begin(new Vector2(100f, 100f)))
+                {
+                    Assert.AreEqual(0, Now.currentAnalyticMaskCount);
+                    Assert.AreEqual(0, Now.currentTextureMaskCount);
+                    Assert.IsTrue(Now.CaptureMaskShaderState().isEmpty);
+                }
+
+                var restored = Now.CaptureMaskShaderState();
+                Assert.AreEqual(1, Now.currentAnalyticMaskCount);
+                Assert.AreEqual(1, Now.currentTextureMaskCount);
+                Assert.AreEqual(1, restored.count);
+                Assert.AreEqual(1, restored.textureCount);
+                Assert.AreNotEqual(before.identity, restored.identity);
+                Assert.IsTrue(before.Equals(restored));
+
+                using (inherited.Begin(new Vector2(100f, 100f), Vector2.zero, inheritContext: true))
+                {
+                    Assert.AreEqual(1, Now.currentAnalyticMaskCount);
+                    Assert.AreEqual(1, Now.currentTextureMaskCount);
+                    var inheritedState = Now.CaptureMaskShaderState();
+                    Assert.AreEqual(1, inheritedState.count);
+                    Assert.AreEqual(1, inheritedState.textureCount);
+                    Assert.IsTrue(restored.Equals(inheritedState));
+                }
+
+                Assert.IsTrue(restored.Equals(Now.CaptureMaskShaderState()));
+            }
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(texture);
+            inherited.Dispose();
+            isolated.Dispose();
             outer.Dispose();
         }
     }
