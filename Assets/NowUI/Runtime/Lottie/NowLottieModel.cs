@@ -32,7 +32,10 @@ namespace NowUI.Internal
 
         public static NowLottieComposition Parse(string json)
         {
-            var root = NowJsonValue.Parse(json);
+            var root = NowJsonValue.Parse(
+                json,
+                Mathf.Max(1, NowLottieAsset.maxJsonDepth),
+                Mathf.Max(1, NowLottieAsset.maxJsonNodes));
 
             if (root.kind != NowJsonKind.Object)
                 throw new FormatException("Lottie document root must be a JSON object.");

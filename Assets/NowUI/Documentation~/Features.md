@@ -111,6 +111,32 @@ using (renderer.Begin(target))
 }
 ```
 
+Focused text editors also use the active input surface to position the
+platform IME candidate window. Screen/camera surfaces use
+`NowInputSurface.screenRect`; `NowGraphic` and `NowWorldGraphic` project the
+caret through their RectTransform or camera automatically. For a
+RenderTexture presented in an axis-aligned part of the player window, pass
+that top-left-origin pixel rectangle with the logical texture size:
+
+```csharp
+var size = new Vector2(target.width, target.height);
+var displayRect = new Rect(80, 40, 640, 360); // player-window pixels, top-left origin
+
+using (NowInput.Begin(myInputProvider, new NowInputSurface(size, displayRect)))
+using (renderer.Begin(target))
+{
+    Now.TextField(new NowRect(16, 16, 240, 36)).Draw(ref query);
+}
+```
+
+Providers for a rotated, perspective, remote, or otherwise non-linear
+surface can additionally implement `INowSurfaceToScreenMapper`. Its
+`TrySurfaceToScreen` result is authoritative; returning false leaves the OS
+candidate window at its last valid position instead of guessing. Replacing
+`NowTextInput.setCompositionCursor` remains supported and bypasses all
+automatic mapping, preserving custom host IME flows. IMGUI retains its native
+cursor-coordinate path unchanged.
+
 Mock providers only need to return a `NowInputSnapshot`, which makes immediate
 mode controls testable without Unity's live input devices.
 

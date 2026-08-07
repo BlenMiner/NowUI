@@ -103,3 +103,9 @@ the consuming project's root `AGENTS.md`.
 
 The complete feature list and topic routes are in the
 [documentation index](Documentation~/README.md).
+
+## License
+
+NowUI is available under the [MIT License](LICENSE.md). Bundled third-party
+components remain under their respective licenses; see
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

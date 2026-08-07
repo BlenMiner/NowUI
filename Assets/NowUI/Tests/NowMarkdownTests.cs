@@ -446,6 +446,17 @@ public class NowMarkdownTests
     [TearDown]
     public void TearDown()
     {
+        NowMarkdownImages.Reset();
+        NowMarkdownImages.requestTimeoutSeconds = 30;
+        NowMarkdownImages.maxDownloadBytes = 64L * 1024L * 1024L;
+        NowMarkdownImages.maxTextureDimension = 16384;
+        NowMarkdownImages.maxTexturePixels = 100L * 1024L * 1024L;
+        NowMarkdownImages.maxConcurrentDownloads = 4;
+        NowMarkdownImages.maxCacheEntries = 128;
+        NowMarkdownImages.maxCachedTexturePixels = 128L * 1024L * 1024L;
+        NowMarkdownImages.maxRedirects = 8;
+        NowMarkdownImages.allowInsecureHttp = true;
+        NowMarkdownImages.remoteUrlPolicy = null;
         _drawList.Dispose();
         Now.defaultFont = null;
         NowInput.Reset();
@@ -492,6 +503,98 @@ public class NowMarkdownTests
             Object.DestroyImmediate(texture);
             NowMarkdownImages.Reset();
         }
+    }
+
+    [Test]
+    public void RemoteImageDecodeRejectsOversizedEncodedDimensions()
+    {
+        var source = new Texture2D(8, 4, TextureFormat.RGBA32, false);
+        Texture2D decoded = null;
+
+        try
+        {
+            byte[] png = source.EncodeToPNG();
+            NowMarkdownImages.maxTextureDimension = 4;
+
+            bool loaded = NowMarkdownImages.TryDecodeDownloadedTexture(
+                png,
+                "oversized.png",
+                out decoded,
+                out var error);
+
+            Assert.IsFalse(loaded);
+            Assert.IsNull(decoded);
+            StringAssert.Contains("dimension", error);
+        }
+        finally
+        {
+            if (decoded != null)
+                Object.DestroyImmediate(decoded);
+
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [Test]
+    public void ImageCacheStaysWithinEntryAndPixelBudgets()
+    {
+        var first = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+        var second = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+        var third = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+
+        try
+        {
+            NowMarkdownImages.maxCacheEntries = 10;
+            NowMarkdownImages.maxCachedTexturePixels = 32;
+            NowMarkdownImages.SetTexture("local/first", first);
+            NowMarkdownImages.SetTexture("local/second", second);
+            NowMarkdownImages.SetTexture("local/third", third);
+
+            Assert.AreEqual(2, NowMarkdownImages.cachedEntryCount);
+            Assert.AreEqual(NowMarkdownImageState.Loaded,
+                NowMarkdownImages.GetState("local/second", out var cachedSecond));
+            Assert.AreSame(second, cachedSecond);
+            Assert.AreEqual(NowMarkdownImageState.Loaded,
+                NowMarkdownImages.GetState("local/third", out var cachedThird));
+            Assert.AreSame(third, cachedThird);
+        }
+        finally
+        {
+            Object.DestroyImmediate(first);
+            Object.DestroyImmediate(second);
+            Object.DestroyImmediate(third);
+        }
+    }
+
+    [Test]
+    public void RemoteImagePolicyRejectsBeforeARequestStarts()
+    {
+        NowMarkdownImages.allowInsecureHttp = false;
+
+        Assert.AreEqual(
+            NowMarkdownImageState.Failed,
+            NowMarkdownImages.GetState("http://example.com/image.png", out _));
+        Assert.AreEqual(0, NowMarkdownImages.activeDownloadCount);
+        Assert.AreEqual(0, NowMarkdownImages.cachedEntryCount);
+
+        NowMarkdownImages.remoteUrlPolicy = _ => false;
+
+        Assert.AreEqual(
+            NowMarkdownImageState.Failed,
+            NowMarkdownImages.GetState("https://example.com/image.png", out _));
+        Assert.AreEqual(0, NowMarkdownImages.activeDownloadCount);
+        Assert.AreEqual(0, NowMarkdownImages.cachedEntryCount);
+    }
+
+    [Test]
+    public void RemoteImageDefaultsAreBoundedAndHttpCompatible()
+    {
+        Assert.IsTrue(NowMarkdownImages.allowInsecureHttp);
+        Assert.AreEqual(8, NowMarkdownImages.maxRedirects);
+        Assert.Greater(NowMarkdownImages.maxDownloadBytes, 0L);
+        Assert.Greater(NowMarkdownImages.requestTimeoutSeconds, 0);
+        Assert.Greater(NowMarkdownImages.maxCacheEntries, 0);
+        Assert.Greater(NowMarkdownImages.maxConcurrentDownloads, 0);
     }
 
     [Test]

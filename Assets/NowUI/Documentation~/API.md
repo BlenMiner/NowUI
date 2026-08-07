@@ -29,10 +29,12 @@ extension, editor, URP, and HDRP assemblies in the installed package.
 - `NowLayout`: fluent `Row`/`Column` containers, growth, justification,
   `ReserveRect` bridging, manual-host `RunMeasured`, content measurement,
   labels, controls, Lottie reservations, and content rect caching.
-- `NowInput`, `NowFocus`, `NowControls`, `NowControlState`,
+- `NowInput`, `INowInputProvider`, `INowSurfaceToScreenMapper`, `NowFocus`,
+  `NowControls`, `NowControlState`,
   `NowFilePicker`, `NowViewStack`, `INowView`, `NowViews`, and control
   builders: immediate interaction, navigation, focus, reusable control state,
-  file picker overlays, retained view navigation, and dialogs, including
+  optional surface-to-screen projection for IME candidate placement, file
+  picker overlays, retained view navigation, and dialogs, including
   `NowControlState.Warmup<T>(id)` for known-id first-frame allocation control.
 - `NowText`, `NowFontAsset`, `NowFont`, `NowTextWrap`,
   `NowTextSelection`, `NowTextEdit`, `NowTextArea`, `NowTextFieldResult`, and rich-text types:
@@ -60,10 +62,11 @@ extension, editor, URP, and HDRP assemblies in the installed package.
 - `NowUI.NodeGraph`: node-graph data, ports, links, and graph view drawing.
 - `NowUI.Sdf`: SDF graph and scene-builder APIs. A scene can end in `Draw()`
   or `BeginMask()`; the latter returns an ambient `NowMaskScope` backed by
-  cached, single-channel SDF coverage. `NowSdf.Release(id)` releases one
-  explicit stable-id cache; `NowSdf.Reset()` releases them all. Both invalidate
-  builders backed by a released cache, whose consumer calls then throw
-  `ObjectDisposedException`. See
+  cached, single-channel SDF coverage. `SetMaskResolutionScale(scale)` can
+  reduce that coverage target's resolution without changing its authored
+  bounds. `NowSdf.Release(id)` releases one explicit stable-id cache;
+  `NowSdf.Reset()` releases them all. Both invalidate builders backed by a
+  released cache, whose consumer calls then throw `ObjectDisposedException`. See
   [SDF Shapes](SDF.md) and [Masks](Masks.md).
 
 ## Runtime guarantees

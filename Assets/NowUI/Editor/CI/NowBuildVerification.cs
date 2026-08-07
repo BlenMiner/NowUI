@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
@@ -27,6 +28,7 @@ namespace NowUI.EditorCI
             try
             {
                 BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
+                ConfigureTarget(target);
 
                 string output = Environment.GetEnvironmentVariable("NOWUI_BUILD_OUTPUT");
                 if (string.IsNullOrEmpty(output))
@@ -55,6 +57,43 @@ namespace NowUI.EditorCI
                 Debug.LogError($"Build verification threw: {exception}");
                 EditorApplication.Exit(1);
             }
+        }
+
+        static void ConfigureTarget(BuildTarget target)
+        {
+            switch (target)
+            {
+                case BuildTarget.StandaloneWindows64:
+                case BuildTarget.StandaloneLinux64:
+                    PlayerSettings.SetScriptingBackend(
+                        NamedBuildTarget.Standalone,
+                        ScriptingImplementation.IL2CPP);
+                    Debug.Log($"Build verification: configured {target} with IL2CPP.");
+                    return;
+
+                case BuildTarget.StandaloneOSX:
+                    // Do not inherit a runner/project preference that verifies
+                    // only Intel or only Apple Silicon. Unity uses 2 for the
+                    // universal standalone macOS architecture.
+                    PlayerSettings.SetArchitecture(NamedBuildTarget.Standalone, 2);
+                    PlayerSettings.SetScriptingBackend(
+                        NamedBuildTarget.Standalone,
+                        ScriptingImplementation.IL2CPP);
+                    Debug.Log("Build verification: configured macOS Universal with IL2CPP.");
+                    return;
+
+                case BuildTarget.Android:
+                    // The distributed Android plugins are arm64-only. An ARMv7
+                    // smoke build would succeed without exercising them.
+                    PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+                    PlayerSettings.SetScriptingBackend(
+                        NamedBuildTarget.Android,
+                        ScriptingImplementation.IL2CPP);
+                    Debug.Log("Build verification: configured Android ARM64 with IL2CPP.");
+                    return;
+            }
+
+            // WebGL and iOS use IL2CPP by platform design.
         }
 
         /// <summary>

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine;
@@ -55,6 +56,8 @@ namespace NowUI.CodeEditor
         const int MaxVisibleCompletions = 8;
 
         const float CompletionPadding = 4f;
+
+        const int DefaultCacheCapacity = 128;
 
         /// <summary>Payload of the last no-selection line copy/cut, so paste can re-insert it as a whole line.</summary>
         static string s_lineClipboard;
@@ -181,6 +184,7 @@ namespace NowUI.CodeEditor
             public int idUp;
             public int idDown;
             public int idRenameField;
+            public long lastUse;
         }
 
         struct EditorState
@@ -194,6 +198,10 @@ namespace NowUI.CodeEditor
         }
 
         static readonly Dictionary<int, EditorCache> _caches = new Dictionary<int, EditorCache>(8);
+
+        static int s_cacheCapacity = DefaultCacheCapacity;
+
+        static long s_cacheUse;
 
         /// <summary>Method-group conversions cached once: C# 9 allocates a fresh delegate per conversion in per-frame overlay submissions.</summary>
         static readonly NowOverlay.DrawCallback s_drawDiagnosticTooltipOverlay = DrawDiagnosticTooltipOverlay;
@@ -218,15 +226,49 @@ namespace NowUI.CodeEditor
 
         static readonly List<int> _oldTokenCountScratch = new List<int>(64);
 
-        /// <summary>Clears retained caches (undo stacks, line tables); used by tests and domain reloads.</summary>
+        /// <summary>
+        /// Maximum number of editor instances whose parsed text and undo history
+        /// are retained. The least recently drawn editor is discarded when this
+        /// capacity is exceeded. The default is 128.
+        /// </summary>
+        public static int cacheCapacity
+        {
+            get => s_cacheCapacity;
+            set
+            {
+                if (value <= 0)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Code-editor cache capacity must be positive.");
+
+                s_cacheCapacity = value;
+                TrimCaches(value);
+            }
+        }
+
+        /// <summary>
+        /// Releases the parsed text and undo history retained for an explicitly
+        /// identified editor. Call this from the same host/id scope used to draw
+        /// the editor, or pass a fully resolved id.
+        /// </summary>
+        /// <returns>True when a retained editor cache was removed.</returns>
+        public static bool ReleaseCache(NowId id)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("A cache can only be released by an explicit editor id.", nameof(id));
+
+            return _caches.Remove(id.ResolveStableId(1));
+        }
+
+        /// <summary>Clears all retained editor caches, including undo history and line tables.</summary>
         public static void ResetCaches()
         {
             _caches.Clear();
+            s_cacheUse = 0;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetForRuntimeLoad()
         {
+            s_cacheCapacity = DefaultCacheCapacity;
             ResetCaches();
         }
 
@@ -2562,6 +2604,9 @@ namespace NowUI.CodeEditor
         {
             if (!_caches.TryGetValue(id, out var cache))
             {
+                if (_caches.Count >= s_cacheCapacity)
+                    TrimCaches(s_cacheCapacity - 1);
+
                 cache = new EditorCache
                 {
                     idEditor = NowInput.GetId(id, "editor"),
@@ -2584,6 +2629,8 @@ namespace NowUI.CodeEditor
                 _caches[id] = cache;
             }
 
+            cache.lastUse = ++s_cacheUse;
+
             if (cache.language != language)
             {
                 cache.language = language;
@@ -2592,6 +2639,29 @@ namespace NowUI.CodeEditor
             }
 
             return cache;
+        }
+
+        static void TrimCaches(int targetCount)
+        {
+            while (_caches.Count > targetCount)
+            {
+                int oldestId = 0;
+                long oldestUse = long.MaxValue;
+
+                foreach (var pair in _caches)
+                {
+                    if (pair.Value.lastUse >= oldestUse)
+                        continue;
+
+                    oldestId = pair.Key;
+                    oldestUse = pair.Value.lastUse;
+                }
+
+                if (oldestUse == long.MaxValue)
+                    break;
+
+                _caches.Remove(oldestId);
+            }
         }
 
         /// <summary>

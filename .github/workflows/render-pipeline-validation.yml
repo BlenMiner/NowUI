@@ -1,0 +1,76 @@
+name: Render Pipeline Validation
+
+# The main validation project intentionally stays on the Built-in Render
+# Pipeline. These jobs install one SRP package into the disposable checkout at
+# a time, compile NowUI's optional assembly, and run focused runtime coverage.
+# NOWUI_EXPECT_RENDER_PIPELINE makes a missing package/integration a failure
+# instead of allowing the optional tests to pass as ignored.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Assets/NowUI/Runtime/**'
+      - 'Assets/NowUI/Assets/Shaders/**'
+      - 'Assets/NowUI/Tests/PlayMode/**'
+      - 'Assets/NowUI/package.json'
+      - 'Packages/**'
+      - 'ProjectSettings/**'
+      - 'Tools/NowUI-Harness.ps1'
+      - '.github/scripts/Set-RenderPipelineValidation.ps1'
+      - '.github/workflows/render-pipeline-validation.yml'
+
+concurrency:
+  group: render-pipeline-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: ${{ matrix.label }} 17.4
+    runs-on:
+      - self-hosted
+      - Windows
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pipeline: urp
+            label: URP
+            test_filter: 'NowRenderPipelineValidationTests;NowRenderingPlayModeTests.ModelPreviewSourceModesRenderUnderInstalledUrp;NowRenderingPlayModeTests.InstalledUrpRendererFeatureDrawsNowUi'
+          - pipeline: hdrp
+            label: HDRP
+            test_filter: 'NowRenderPipelineValidationTests'
+    env:
+      UNITY_EDITOR: 'C:\Program Files\Unity\Hub\Editor\6000.4.0f1\Editor\Unity.exe'
+      NOWUI_EXPECT_RENDER_PIPELINE: ${{ matrix.pipeline }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ${{ matrix.label }} validation package
+        shell: pwsh
+        run: >
+          ./.github/scripts/Set-RenderPipelineValidation.ps1
+          -Pipeline "${{ matrix.pipeline }}"
+          -PackageVersion "17.4.0"
+          -ProjectPath "${env:GITHUB_WORKSPACE}"
+
+      - name: Run focused ${{ matrix.label }} tests
+        shell: pwsh
+        run: >
+          ./Tools/NowUI-Harness.ps1
+          -Mode PlayMode
+          -Filter "${{ matrix.test_filter }}"
+          -UnityEditor "${env:UNITY_EDITOR}"
+          -ProjectPath "${env:GITHUB_WORKSPACE}"
+          -ArtifactsPath "${env:GITHUB_WORKSPACE}/artifacts/render-pipelines/${{ matrix.pipeline }}"
+          -CleanScriptAssemblies
+
+      - name: Upload ${{ matrix.label }} test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowui-${{ matrix.pipeline }}-validation
+          path: artifacts/render-pipelines/${{ matrix.pipeline }}

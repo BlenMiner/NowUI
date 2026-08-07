@@ -2033,7 +2033,24 @@ namespace NowUI
             return new NowLottieBuilder(Now.Lottie(default, asset), options, key);
         }
 
-        static readonly Dictionary<int, string> _lottieUrlCache = new Dictionary<int, string>(16);
+        sealed class LottieUrlCacheEntry
+        {
+            public int hash;
+            public string url;
+            public long lastAccess;
+        }
+
+        static readonly List<LottieUrlCacheEntry> _lottieUrlCache = new List<LottieUrlCacheEntry>(16);
+
+        static long _lottieUrlAccessClock;
+
+        /// <summary>
+        /// Maximum URL strings retained for allocation-free repeated
+        /// <see cref="Lottie(ReadOnlySpan{char})"/> calls.
+        /// </summary>
+        public static int maxCachedLottieUrls = 128;
+
+        internal static int cachedLottieUrlCount => _lottieUrlCache.Count;
 
         /// <summary>
         /// Resolves a URL span to its cached string via a content hash, so repeated
@@ -2041,14 +2058,64 @@ namespace NowUI
         /// </summary>
         static string ResolveLottieUrl(ReadOnlySpan<char> url)
         {
+            TrimLottieUrlCache();
             int hash = HashChars(url);
 
-            if (_lottieUrlCache.TryGetValue(hash, out var cached) && url.SequenceEqual(cached))
-                return cached;
+            for (int i = 0; i < _lottieUrlCache.Count; ++i)
+            {
+                var entry = _lottieUrlCache[i];
+
+                if (entry.hash != hash || !url.SequenceEqual(entry.url))
+                    continue;
+
+                entry.lastAccess = NextLottieUrlAccess();
+                return entry.url;
+            }
 
             string key = url.ToString();
-            _lottieUrlCache[hash] = key;
+            _lottieUrlCache.Add(new LottieUrlCacheEntry
+            {
+                hash = hash,
+                url = key,
+                lastAccess = NextLottieUrlAccess()
+            });
+            TrimLottieUrlCache();
             return key;
+        }
+
+        static void TrimLottieUrlCache()
+        {
+            int limit = Mathf.Max(1, maxCachedLottieUrls);
+
+            while (_lottieUrlCache.Count > limit)
+            {
+                int oldestIndex = 0;
+                long oldestAccess = _lottieUrlCache[0].lastAccess;
+
+                for (int i = 1; i < _lottieUrlCache.Count; ++i)
+                {
+                    if (_lottieUrlCache[i].lastAccess >= oldestAccess)
+                        continue;
+
+                    oldestIndex = i;
+                    oldestAccess = _lottieUrlCache[i].lastAccess;
+                }
+
+                _lottieUrlCache.RemoveAt(oldestIndex);
+            }
+        }
+
+        static long NextLottieUrlAccess()
+        {
+            if (_lottieUrlAccessClock == long.MaxValue)
+            {
+                _lottieUrlAccessClock = 0L;
+
+                for (int i = 0; i < _lottieUrlCache.Count; ++i)
+                    _lottieUrlCache[i].lastAccess = 0L;
+            }
+
+            return ++_lottieUrlAccessClock;
         }
 
         static int HashChars(ReadOnlySpan<char> value)
@@ -2152,6 +2219,8 @@ namespace NowUI
             _trackContent = false;
             _trackedContent = default;
             _ambientStartedAt = int.MinValue;
+            _lottieUrlCache.Clear();
+            _lottieUrlAccessClock = 0L;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

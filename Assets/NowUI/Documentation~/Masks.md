@@ -82,6 +82,7 @@ the scope returned by `BeginMask()` alive around its child draws:
 using NowUI.Sdf;
 
 var mask = NowSdf.Scene(card, "profile-cutout-mask")
+    .SetMaskResolutionScale(0.5f)
     .SetFeather(1f)
     .Circle(new Vector2(52f, 52f), 46f)
     .SmoothUnion(12f)
@@ -108,12 +109,23 @@ all participate. An empty scene binds no coverage texture and clips all
 children. A previously warmed cache may retain its unused target until a later
 resize, `NowSdf.Release(id)`, or `NowSdf.Reset()`.
 
+The coverage target defaults to one texel per transformed physical pixel.
+Call `SetMaskResolutionScale(0.5f)` to quarter its approximate texel count and
+capture fragment work. It is still sampled across the full authored rect with
+bilinear filtering. This setting affects `BeginMask()` only: ordinary SDF
+`Draw()` scenes are evaluated directly at the destination resolution and have
+no intermediate texture. Lower mask scales trade sharper edges and fine detail
+for lower rasterization cost and persistent texture memory; values above `1`
+supersample instead.
+
 An unchanged static scene reuses the coverage already in that target. The
 scene operations and effects, effective tint, local scene and mask geometry,
 source texture version, and transformed physical target size must all match.
 Translation and mirroring alone can reuse coverage when the local content and
 physical size stay the same. Shape/effect/tint/mask changes and
-`Texture2D.Apply()` rerasterize it. A nonzero-speed warp or a
+`Texture2D.Apply()` rerasterize it. Changing the resolution scale enough to
+change the rounded target dimensions resizes and rerasterizes it, so keep the
+scale stable for each stable id. A nonzero-speed warp or a
 `RenderTexture`-backed fill remains live and rerasterizes on every
 `BeginMask()` call.
 
@@ -177,6 +189,12 @@ Content well inside the shape remains unchanged, content outside remains
 transparent, and only the edge transitions between them. Because the value is
 in physical pixels, `Now.StartUI(uiScale)`, pipeline UI scale, and UGUI canvas
 scale do not make a high-density display look more aliased.
+
+For an SDF mask captured below full resolution, the coverage texture cannot
+represent a one-destination-pixel transition: its minimum AA ramp and feather
+are magnified roughly by the inverse mask resolution scale. This is an explicit
+quality tradeoff of `SetMaskResolutionScale(...)`; direct SDF draws and masks at
+the default scale of `1` retain the normal physical-pixel convention.
 
 ## Nesting And Input
 
@@ -262,7 +280,7 @@ compatible child draws. The remaining costs differ by backend:
 | Hard rectangle | Deep shared viewport/layout clipping | Nested rectangles collapse into one per-vertex clip; scope setup still scales with depth. |
 | Analytic | One stable scope around many draws | Each active mask adds a fragment SDF/AA evaluation; at most eight. |
 | Texture | One stable texture state around many draws | Each active mask adds a texture sample; at most two. |
-| SDF | Stable id, static content, fixed physical size | One persistent target per id; dirty coverage must rasterize, then samples as a texture mask. |
+| SDF | Stable id, static content, fixed physical size and resolution scale | One persistent target per id; dirty coverage must rasterize, then samples as a texture mask. |
 
 Hard rectangles do not add fragment work as nesting grows and do not split an
 otherwise compatible batch. Analytic and texture states also stay cheap on the
@@ -275,6 +293,11 @@ An SDF mask renders into a persistent, usually single-channel target owned by
 its stable-id cache. First use and transformed pixel-size changes can allocate
 or resize it; unchanged static coverage skips the render entirely. Continuously
 changing the physical size is the expensive path, so prefer a fixed capture
-rect and animate shapes inside it. Retained hosts must still call `MarkDirty()`
-before changed mask code can run. Warm representative content before measuring,
-and measure GPU time on target hardware for large/full-screen masks.
+rect and animate shapes inside it. `SetMaskResolutionScale(0.5f)` reduces each
+target axis by half, yielding roughly one quarter of the cached pixels and SDF
+capture fragments. Child rendering still performs one mask sample per output
+fragment, and static masks already skip repeat captures, so the recurring gain
+is largest for animated warp, `RenderTexture` fills, frequently changing scenes,
+and large masks. Retained hosts must still call `MarkDirty()` before changed mask
+code can run. Warm representative content before measuring, and measure GPU
+time on target hardware for large/full-screen masks.

@@ -1,24 +1,9 @@
 name: Build Verification
 
-# Builds an actual player per platform so integration problems surface in CI
-# instead of on someone's machine. This is the only check that exercises the
-# full platform pipeline: IL2CPP over the whole managed surface, the platform
-# linker consuming every native plugin (a WebGL build is what catches wasm-ld
-# duplicate-symbol collisions between our plugins and Unity's player
-# libraries), and player-side code stripping.
-#
-# Runs on the self-hosted runners (licensed editor, platform modules managed
-# by hand) — no GameCI licensing dance needed. Manual dispatch only: player
-# builds take minutes and switching build targets churns the runner's
-# Library, so run it when platform-risky things changed (native plugins, the
-# WebGL toolchain, a Unity upgrade), not on every push.
-#
-# Extending the matrix:
-#   - Android: install the Android module + SDK/NDK on the Windows runner and
-#     add Android to the target choices below.
-#   - iOS: needs the macOS runner (iOS module generates an Xcode project; a
-#     follow-up xcodebuild step is what actually verifies the static link,
-#     where libnowui-msdf.a has the same latent collision class as WebGL had).
+# Builds real players so platform linker, native-plugin importer, stripping,
+# and AOT problems surface in CI. The scheduled run covers the whole claimed
+# first-class matrix; manual dispatch can isolate one target while provisioning
+# or diagnosing a runner. Missing editors/modules are hard failures.
 
 on:
   workflow_dispatch:
@@ -32,51 +17,69 @@ on:
           - all
           - WebGL
           - StandaloneWindows64
+          - StandaloneLinux64
+          - StandaloneOSX
+          - Android
+          - iOS
+  schedule:
+    - cron: '17 3 * * 0'
 
 concurrency:
   group: build-verification-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  plan:
+    name: Plan target matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select targets
+        id: matrix
+        shell: pwsh
+        env:
+          REQUESTED_TARGET: ${{ inputs.target || 'all' }}
+        run: |
+          $matrix = ./.github/scripts/Get-BuildVerificationMatrix.ps1 -Target $env:REQUESTED_TARGET
+          "matrix=$matrix" >> $env:GITHUB_OUTPUT
+          Write-Host $matrix
+
   build:
     name: ${{ matrix.target }}
-    runs-on:
-      - self-hosted
-      - Windows
-    timeout-minutes: 120
+    needs: plan
+    runs-on: ${{ fromJSON(matrix.runs_on) }}
+    timeout-minutes: 180
     strategy:
       fail-fast: false
-      matrix:
-        target:
-          - WebGL
-          - StandaloneWindows64
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
-      UNITY_EDITOR: 'C:\Program Files\Unity\Hub\Editor\6000.4.0f1\Editor\Unity.exe'
+      UNITY_EDITOR: ${{ matrix.unity_editor }}
 
     steps:
       - name: Checkout
-        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
         uses: actions/checkout@v4
 
-      - name: Check platform module is installed
-        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
+      - name: Check Unity editor and platform module
         shell: pwsh
         run: |
-          $editorRoot = Split-Path -Parent $env:UNITY_EDITOR
-          $module = switch ("${{ matrix.target }}") {
-            "WebGL" { Join-Path $editorRoot "Data\PlaybackEngines\WebGLSupport" }
-            "StandaloneWindows64" { Join-Path $editorRoot "Data\PlaybackEngines\WindowsStandaloneSupport" }
-            "Android" { Join-Path $editorRoot "Data\PlaybackEngines\AndroidPlayer" }
-            default { $null }
-          }
-
-          if ($module -and -not (Test-Path $module)) {
-            Write-Host "::error::The ${{ matrix.target }} build module is not installed for $env:UNITY_EDITOR. Install it via Unity Hub on the runner."
+          if (!(Test-Path -LiteralPath $env:UNITY_EDITOR -PathType Leaf)) {
+            Write-Host "::error::Unity editor was not found at '$env:UNITY_EDITOR'."
             exit 1
           }
 
+          $module = Join-Path '${{ matrix.playback_engines }}' '${{ matrix.module }}'
+          if (!(Test-Path -LiteralPath $module -PathType Container)) {
+            Write-Host "::error::The ${{ matrix.target }} module was not found at '$module'. Install it through Unity Hub on this runner."
+            exit 1
+          }
+
+          Write-Host "Using Unity '$env:UNITY_EDITOR' with module '$module'."
+
       - name: Build player
-        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
         shell: pwsh
         run: |
           $artifacts = Join-Path $env:GITHUB_WORKSPACE "artifacts"
@@ -97,21 +100,55 @@ jobs:
 
           if ($process.ExitCode -ne 0) {
             Write-Host "::error::Unity build for ${{ matrix.target }} failed with exit code $($process.ExitCode). Last log lines:"
-            if (Test-Path $logFile) {
-              Get-Content $logFile -Tail 120
+            if (Test-Path -LiteralPath $logFile) {
+              Get-Content -LiteralPath $logFile -Tail 120
             }
             exit $process.ExitCode
           }
 
-          Write-Host "Build for ${{ matrix.target }} succeeded."
-          if (Test-Path $logFile) {
-            Select-String -Path $logFile -Pattern "Build verification:" | ForEach-Object { $_.Line }
+          if (!(Test-Path -LiteralPath $env:NOWUI_BUILD_OUTPUT)) {
+            Write-Host "::error::Unity reported success but produced no output at '$env:NOWUI_BUILD_OUTPUT'."
+            exit 1
           }
 
-      - name: Upload build log
-        if: ${{ always() && (inputs.target == 'all' || inputs.target == matrix.target) }}
+          Write-Host "Build for ${{ matrix.target }} succeeded."
+          Select-String -LiteralPath $logFile -Pattern "Build verification:" | ForEach-Object { $_.Line }
+
+      - name: Link generated iOS player with Xcode
+        if: matrix.target == 'iOS'
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:GITHUB_WORKSPACE "artifacts/player-iOS/Unity-iPhone.xcodeproj"
+          $derivedData = Join-Path $env:GITHUB_WORKSPACE "artifacts/ios-derived-data"
+          $logFile = Join-Path $env:GITHUB_WORKSPACE "artifacts/xcodebuild-iOS.log"
+
+          if (!(Test-Path -LiteralPath $project -PathType Container)) {
+            Write-Host "::error::Unity did not generate '$project'."
+            exit 1
+          }
+
+          & xcodebuild `
+            -project $project `
+            -scheme Unity-iPhone `
+            -configuration Release `
+            -sdk iphoneos `
+            -derivedDataPath $derivedData `
+            CODE_SIGNING_ALLOWED=NO `
+            CODE_SIGNING_REQUIRED=NO `
+            build 2>&1 | Tee-Object -FilePath $logFile
+          $xcodeExitCode = $LASTEXITCODE
+
+          if ($xcodeExitCode -ne 0) {
+            Write-Host "::error::xcodebuild failed with exit code $xcodeExitCode."
+            exit $xcodeExitCode
+          }
+
+      - name: Upload build logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-verification-${{ matrix.target }}-log
-          path: artifacts/build-${{ matrix.target }}.log
+          name: build-verification-${{ matrix.target }}-logs
+          path: |
+            artifacts/build-${{ matrix.target }}.log
+            artifacts/xcodebuild-${{ matrix.target }}.log
           if-no-files-found: ignore

@@ -216,14 +216,13 @@ namespace NowUI
             if (string.IsNullOrWhiteSpace(_animationUrl))
                 return;
 
-            if (_animation != null && _activeUrl == _animationUrl)
-                return;
-
             var state = NowLottieCache.GetState(_animationUrl, out var asset, out _);
 
             if (state == NowLottieCacheState.Loaded && asset != null)
             {
-                SetAnimation(asset, true);
+                if (_animation != asset || _activeUrl != _animationUrl)
+                    SetAnimation(asset, true);
+
                 return;
             }
 

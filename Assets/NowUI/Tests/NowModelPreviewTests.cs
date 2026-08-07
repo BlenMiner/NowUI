@@ -171,6 +171,43 @@ public class NowModelPreviewTests
     }
 
     [Test]
+    public void AutomaticVisibilityCullingIsOptInAndHonorsItsGraceWindow()
+    {
+        using var preview = new NowModelPreview()
+            .SetUpdateMode(NowModelPreviewUpdateMode.EveryFrame);
+
+        using (_drawList.Begin(new Vector2(256f, 128f)))
+            Now.Model(new NowRect(16f, 16f, 64f, 32f), preview).Draw();
+
+        int visibleFrame = Time.frameCount;
+        Assert.IsFalse(preview.automaticVisibilityCulling);
+        Assert.IsTrue(preview.ShouldRefreshContinuouslyAtFrame(visibleFrame + 1000));
+
+        preview.SetAutomaticVisibilityCulling(graceFrames: 2);
+
+        Assert.IsTrue(preview.automaticVisibilityCulling);
+        Assert.AreEqual(2, preview.visibilityGraceFrames);
+        Assert.IsTrue(preview.ShouldRefreshContinuouslyAtFrame(visibleFrame));
+        Assert.IsTrue(preview.ShouldRefreshContinuouslyAtFrame(visibleFrame + 2));
+        Assert.IsFalse(preview.ShouldRefreshContinuouslyAtFrame(visibleFrame + 3));
+        Assert.IsFalse(preview.RequiresDeferredTickAtFrame(visibleFrame + 3));
+
+        preview.RequestRender();
+        Assert.IsTrue(
+            preview.RequiresDeferredTickAtFrame(visibleFrame + 3),
+            "An explicit refresh must bypass automatic visibility culling.");
+    }
+
+    [Test]
+    public void AutomaticVisibilityCullingRejectsNegativeGraceFrames()
+    {
+        using var preview = new NowModelPreview();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            preview.SetAutomaticVisibilityCulling(graceFrames: -1));
+    }
+
+    [Test]
     public void ManualPreviewSchedulesOnlyExplicitRequests()
     {
         using var preview = new NowModelPreview()

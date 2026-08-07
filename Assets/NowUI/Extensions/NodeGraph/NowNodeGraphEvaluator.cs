@@ -72,10 +72,30 @@ namespace NowUI.NodeGraph
     /// </summary>
     public sealed class NowNodeGraphEvaluator<T>
     {
+        const int DefaultMaximumDepth = 256;
+
         readonly Dictionary<int, NowNodeEvalHandler<T>> _handlers = new Dictionary<int, NowNodeEvalHandler<T>>(8);
         readonly Dictionary<(string nodeId, string portId), T> _memo = new Dictionary<(string, string), T>(32);
         readonly HashSet<(string nodeId, string portId)> _visiting = new HashSet<(string, string)>();
         int _batchDepth;
+        int _maximumDepth = DefaultMaximumDepth;
+
+        /// <summary>
+        /// Maximum number of nested output ports evaluated in one dependency
+        /// chain. Inputs beyond the limit resolve to their local fallback, just
+        /// like cycles and missing links. The default is 256.
+        /// </summary>
+        public int maximumDepth
+        {
+            get => _maximumDepth;
+            set
+            {
+                if (value <= 0)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Node evaluation depth must be positive.");
+
+                _maximumDepth = value;
+            }
+        }
 
         /// <summary>
         /// Starts a caller-owned evaluation batch: every Evaluate/TryEvaluate call
@@ -224,6 +244,9 @@ namespace NowUI.NodeGraph
 
             if (_memo.TryGetValue(key, out var cached))
                 return cached;
+
+            if (_visiting.Count >= _maximumDepth)
+                return fallback;
 
             if (!_visiting.Add(key))
                 return fallback;

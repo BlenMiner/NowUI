@@ -243,6 +243,126 @@ public class NowSdfTests
         Assert.AreEqual(new Vector4(0f, 0f, 1f, 1f), descriptor.transform);
     }
 
+    [TestCase(0.001f, 1, 1)]
+    [TestCase(0.5f, 33, 17)]
+    [TestCase(2f, 130, 66)]
+    public void SdfMaskResolutionScaleControlsCachedCoverageTexture(
+        float resolutionScale,
+        int expectedWidth,
+        int expectedHeight)
+    {
+        var rect = new NowRect(0f, 0f, 65f, 33f);
+
+        using (_drawList.Begin(new Vector2(96f, 64f)))
+        using (NowSdf.Scene(rect, "sdf-mask-scaled-resolution")
+            .SetMaskResolutionScale(resolutionScale)
+            .Circle(rect.center, 14f)
+            .BeginMask())
+        {
+            Now.Rectangle(rect)
+                .SetColor(Color.white)
+                .Draw();
+        }
+
+        var target = _drawList.batches[0].maskState.GetTexture(0).texture as RenderTexture;
+        Assert.NotNull(target);
+        Assert.AreEqual(expectedWidth, target.width);
+        Assert.AreEqual(expectedHeight, target.height);
+        Assert.AreEqual((long)expectedWidth * expectedHeight, NowSdf.cachedMaskPixels);
+
+        var descriptor = _drawList.batches[0].maskState.GetTexture(0);
+        Assert.AreEqual(new Vector4(rect.x, rect.y, rect.width, rect.height), descriptor.rect);
+    }
+
+    [Test]
+    public void SdfMaskResolutionScaleMustBePositiveAndFinite()
+    {
+        var rect = new NowRect(0f, 0f, 64f, 32f);
+
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            NowSdf.Scene(rect, "sdf-mask-zero-resolution")
+                .SetMaskResolutionScale(0f));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            NowSdf.Scene(rect, "sdf-mask-negative-resolution")
+                .SetMaskResolutionScale(-0.5f));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            NowSdf.Scene(rect, "sdf-mask-nan-resolution")
+                .SetMaskResolutionScale(float.NaN));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            NowSdf.Scene(rect, "sdf-mask-infinite-resolution")
+                .SetMaskResolutionScale(float.PositiveInfinity));
+    }
+
+    [Test]
+    public void SdfMaskResolutionScaleComposesWithTransformAndInvalidatesOnResize()
+    {
+        var rect = new NowRect(0f, 0f, 31f, 21f);
+        var id = new NowId("sdf-mask-transformed-resolution");
+
+        RenderTexture Capture(float? resolutionScale)
+        {
+            using (_drawList.Begin(new Vector2(160f, 120f)))
+            using (Now.Transform(new Vector2(-2f, 3f), new Vector2(90f, 7f)))
+            {
+                var mask = NowSdf.Scene(rect, id)
+                    .Circle(rect.center, 9f);
+
+                if (resolutionScale.HasValue)
+                    mask = mask.SetMaskResolutionScale(resolutionScale.Value);
+
+                using (mask.BeginMask())
+                {
+                    Now.Rectangle(rect)
+                        .SetColor(Color.white)
+                        .Draw();
+                }
+            }
+
+            return _drawList.batches[0].maskState.GetTexture(0).texture as RenderTexture;
+        }
+
+        var half = Capture(0.5f);
+        Assert.AreEqual(31, half.width);
+        Assert.AreEqual(32, half.height);
+
+        var reused = Capture(0.5f);
+        Assert.AreSame(half, reused);
+        Assert.AreEqual(1, NowSdf.maskRasterizationCount);
+
+        var quarter = Capture(0.25f);
+        Assert.AreNotSame(reused, quarter);
+        Assert.AreEqual(16, quarter.width);
+        Assert.AreEqual(16, quarter.height);
+        Assert.AreEqual(2, NowSdf.maskRasterizationCount);
+
+        var defaultScale = Capture(null);
+        Assert.AreNotSame(quarter, defaultScale);
+        Assert.AreEqual(62, defaultScale.width);
+        Assert.AreEqual(63, defaultScale.height);
+        Assert.AreEqual(3, NowSdf.maskRasterizationCount);
+        Assert.AreEqual(
+            new Vector4(90f, 7f, -2f, 3f),
+            _drawList.batches[0].maskState.GetTexture(0).transform);
+    }
+
+    [Test]
+    public void MaskResolutionScaleDoesNotTextureBackDirectSdfDraw()
+    {
+        var rect = new NowRect(0f, 0f, 64f, 32f);
+
+        using (_drawList.Begin(new Vector2(96f, 64f)))
+        {
+            NowSdf.Scene(rect, "direct-sdf-resolution-scale")
+                .SetMaskResolutionScale(0.25f)
+                .Circle(rect.center, 14f)
+                .Draw();
+        }
+
+        Assert.AreEqual(0, NowSdf.maskTextureCount);
+        Assert.AreEqual(0, NowSdf.cachedMaskPixels);
+        Assert.AreEqual(NowMeshKind.Sdf, _drawList.batches[0].kind);
+    }
+
     [Test]
     public void SdfMaskReusesStableTargetAndResizesForCapturedTransform()
     {

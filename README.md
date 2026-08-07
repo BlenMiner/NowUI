@@ -197,6 +197,13 @@ The managed font fallback covers TrueType (glyf) outlines; CFF-flavored
 OpenType and color emoji fonts still need the native compiler. WebGL and iOS
 link the plugins statically, so those files must be present at build time.
 
+CI installs URP and HDRP independently and requires each optional NowUI
+integration assembly to compile and load; URP additionally has focused pixel
+coverage. A scheduled player-build matrix covers Windows, Linux, macOS,
+Android arm64, iOS arm64 (including an unsigned Xcode device link), and WebGL.
+See [Production Gates](Docs/Production.md#render-pipeline-validation) for the
+exact coverage and the remaining HDRP runtime-fixture gap.
+
 ## Native plugin CI
 
 A single workflow, `.github/workflows/build-native-libraries.yml`, builds both
@@ -252,7 +259,6 @@ changes its bundled toolchain.
 
 ## License
 
-Not yet licensed — all rights reserved while distribution (Asset Store or an
-open-source license) is being decided. Third-party notices for the native
-plugins are in
+NowUI is available under the [MIT License](LICENSE.md). Bundled third-party
+components remain under their respective licenses; their notices are in
 [Assets/NowUI/THIRD_PARTY_LICENSES.md](Assets/NowUI/THIRD_PARTY_LICENSES.md).

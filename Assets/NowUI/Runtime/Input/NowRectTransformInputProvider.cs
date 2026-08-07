@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace NowUI
 {
-    public sealed class NowRectTransformInputProvider : INowInputProvider
+    public sealed class NowRectTransformInputProvider : INowInputProvider, INowSurfaceToScreenMapper
     {
         RectTransform _rectTransform;
 
@@ -94,6 +94,39 @@ namespace NowUI
             _previousButtonsDown = NowPointerButtons.None;
             _pressAllowed = true;
             NowInputSystemInput.Invalidate();
+        }
+
+        /// <summary>
+        /// Projects a top-left-origin surface point through the configured
+        /// RectTransform into upper-left-origin player-window pixels.
+        /// </summary>
+        public bool TrySurfaceToScreen(
+            NowInputSurface surface,
+            Vector2 surfacePosition,
+            out Vector2 screenPosition)
+        {
+            screenPosition = default;
+
+            if (_rectTransform == null ||
+                (_eventCamera != null && _eventCamera.targetTexture != null) ||
+                !NowSurfaceToScreenMapper.IsFinite(surfacePosition) ||
+                !NowSurfaceToScreenMapper.IsFinite(surface.size) ||
+                surface.size.x <= 0f ||
+                surface.size.y <= 0f)
+            {
+                return false;
+            }
+
+            Rect rect = _rectTransform.rect;
+            var localPosition = new Vector3(
+                rect.xMin + surfacePosition.x * rect.width / surface.size.x,
+                rect.yMax - surfacePosition.y * rect.height / surface.size.y,
+                0f);
+            Vector2 bottomLeft = RectTransformUtility.WorldToScreenPoint(
+                _eventCamera,
+                _rectTransform.TransformPoint(localPosition));
+            screenPosition = NowSurfaceToScreenMapper.BottomLeftToTopLeft(bottomLeft);
+            return NowSurfaceToScreenMapper.IsFinite(screenPosition);
         }
 
         internal bool TryGetSnapshot(NowInputSurface surface, NowMouseInput mouseInput, out NowInputSnapshot snapshot)

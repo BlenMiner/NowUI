@@ -50,6 +50,7 @@ should clip ordinary NowUI content:
 
 ```csharp
 var mask = NowSdf.Scene(cardRect, "status-card-mask")
+    .SetMaskResolutionScale(0.5f)
     .SetFeather(1f)
     .Circle(new Vector2(44f, 48f), 38f)
     .SmoothUnion(10f)
@@ -81,13 +82,28 @@ unsquared into a linear red-channel texture. An empty scene binds no coverage
 texture and clips all content in its scope. A previously warmed cache may retain
 its unused target until a later resize or `NowSdf.Reset()`.
 
+By default the coverage target uses one texel per transformed physical pixel.
+`SetMaskResolutionScale(scale)` changes only the target rasterized by
+`BeginMask()`: `0.5` uses approximately one quarter as many texels and capture
+fragments, while values above `1` supersample. The scale is applied after the
+active UI and transform scales; target dimensions are rounded up and clamped
+to at least one texel and the device texture limit. The target remains mapped
+over the full authored rect and is sampled bilinearly. Derivative AA and
+feather are evaluated at the capture resolution, so a scale below `1` widens
+their visible transition roughly in inverse proportion to the scale. Because
+the texture stores final coverage rather than distance, low scales can also
+remove thin strokes, holes, contours, and glyph details. `Draw()` is unaffected
+because a direct scene has no intermediate texture to resize.
+
 The coverage target is cached by the scene's `NowId`. Use a stable, unique id
 for each mask in a repeated or reorderable collection. When scene operations,
 effects, effective tint, local mask, source texture version, and physical size
 are unchanged, `BeginMask()` reuses the already-rasterized coverage. Translation
 and mirroring alone can reuse it. A shape/effect/tint/mask change,
-`Texture2D.Apply()`, or size change rerasterizes; nonzero-speed warp and
-`RenderTexture` fills rerasterize every call.
+`Texture2D.Apply()`, physical size change, or mask-resolution change that
+produces different target dimensions rerasterizes; nonzero-speed warp and
+`RenderTexture` fills rerasterize every call. Keep the resolution scale stable
+for a stable id to avoid target resize churn.
 
 The target persists until resize, `NowSdf.Release(id)`, or `NowSdf.Reset()`;
 callers do not own it. Caches are not automatically evicted because retained

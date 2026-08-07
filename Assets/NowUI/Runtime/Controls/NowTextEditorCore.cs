@@ -17,22 +17,57 @@ namespace NowUI
     /// </summary>
     internal static class NowTextUndoRegistry
     {
-        static readonly Dictionary<int, NowTextUndoStack> _stacks = new Dictionary<int, NowTextUndoStack>(8);
+        internal const int Capacity = 256;
+
+        sealed class Entry
+        {
+            public readonly NowTextUndoStack stack = new NowTextUndoStack();
+            public long lastUse;
+        }
+
+        static readonly Dictionary<int, Entry> _stacks = new Dictionary<int, Entry>(8);
+
+        static long s_use;
+
+        internal static int count => _stacks.Count;
 
         public static NowTextUndoStack Get(int id)
         {
-            if (!_stacks.TryGetValue(id, out var stack))
+            if (!_stacks.TryGetValue(id, out var entry))
             {
-                stack = new NowTextUndoStack();
-                _stacks[id] = stack;
+                if (_stacks.Count >= Capacity)
+                    EvictLeastRecentlyUsed();
+
+                entry = new Entry();
+                _stacks[id] = entry;
             }
 
-            return stack;
+            entry.lastUse = ++s_use;
+            return entry.stack;
         }
 
         public static void Reset()
         {
             _stacks.Clear();
+            s_use = 0;
+        }
+
+        static void EvictLeastRecentlyUsed()
+        {
+            int oldestId = 0;
+            long oldestUse = long.MaxValue;
+
+            foreach (var pair in _stacks)
+            {
+                if (pair.Value.lastUse >= oldestUse)
+                    continue;
+
+                oldestId = pair.Key;
+                oldestUse = pair.Value.lastUse;
+            }
+
+            if (oldestUse != long.MaxValue)
+                _stacks.Remove(oldestId);
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

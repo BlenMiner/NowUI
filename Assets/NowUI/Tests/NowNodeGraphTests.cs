@@ -3148,6 +3148,22 @@ public class NowNodeGraphTests
     }
 
     [Test]
+    public void EvaluatorBoundsDeepDependencyChains()
+    {
+        var (graph, schema) = EvaluatorGraph();
+        graph.AddNode(schema, EvalRelay, default, id: "leaf");
+        graph.AddNode(schema, EvalRelay, default, id: "middle");
+        graph.AddNode(schema, EvalRelay, default, id: "root");
+        Assert.IsTrue(graph.TryAddLink("leaf", EvalOut, "middle", EvalA));
+        Assert.IsTrue(graph.TryAddLink("middle", EvalOut, "root", EvalA));
+
+        var evaluator = FloatEvaluator();
+        evaluator.maximumDepth = 2;
+
+        Assert.AreEqual(9f, evaluator.Evaluate(graph, "root"));
+    }
+
+    [Test]
     public void EvaluatorMemoizesSharedUpstreamNodesPerCall()
     {
         var (graph, schema) = EvaluatorGraph();

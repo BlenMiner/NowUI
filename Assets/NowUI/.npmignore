@@ -1,2 +1,11 @@
 Analyzers~/**/bin/
 Analyzers~/**/obj/
+
+# Repository-only validation and showcase code. Customer-facing examples live
+# in Samples~; these folders remain in source checkouts for CI and development.
+Tests/
+Tests.meta
+Example/
+Example.meta
+Editor/Harness/
+Editor/Harness.meta

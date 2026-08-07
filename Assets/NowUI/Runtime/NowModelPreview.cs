@@ -434,6 +434,8 @@ namespace NowUI
         bool[] _animationOriginallyEnabled = Array.Empty<bool>();
         ParticleSystem[] _particleSystems = Array.Empty<ParticleSystem>();
         bool[] _particlePausedByPolicy = Array.Empty<bool>();
+        bool _animationPolicyInitialized;
+        bool _animationPolicyContinuous;
 #endif
 
         NowModelPreviewUpdateMode _updateMode = NowModelPreviewUpdateMode.WhenDirty;
@@ -462,6 +464,9 @@ namespace NowUI
         bool _fixedResolution;
         bool _orthographic;
         bool _renderingEnabled = true;
+        bool _automaticVisibilityCulling;
+        int _visibilityGraceFrames = 2;
+        int _lastVisibleFrame = -1;
         bool _sceneLightingEnabled;
 #if UNITY_INCLUDE_TESTS
         bool _rendererLightingLayersDirty;
@@ -664,6 +669,16 @@ namespace NowUI
         public bool isDisposed => _disposed || _disposeRequested;
 
         public bool renderingEnabled => _renderingEnabled;
+
+        /// <summary>
+        /// Whether an EveryFrame preview pauses after it has not appeared in a
+        /// visible Now.Model draw for <see cref="visibilityGraceFrames"/>.
+        /// Disabled by default so retained hosts keep their historical behavior.
+        /// </summary>
+        public bool automaticVisibilityCulling => _automaticVisibilityCulling;
+
+        /// <summary>Frames an automatically culled preview may go without a visible draw before pausing.</summary>
+        public int visibilityGraceFrames => _visibilityGraceFrames;
 
         public int previewLayer => _previewLayer;
 
@@ -1144,6 +1159,45 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Opts an EveryFrame preview into draw-driven visibility culling. A
+        /// visible <see cref="Now.Model(NowRect, NowModelPreview)"/> draw keeps
+        /// continuous refreshes active; after <paramref name="graceFrames"/>
+        /// frames without one, refreshes pause until the preview is drawn again.
+        /// Use this for immediate-mode or virtualized lists that redraw visible
+        /// items every frame. Leave it disabled for retained hosts whose geometry
+        /// can stay visible without invoking the draw callback.
+        /// </summary>
+        public NowModelPreview SetAutomaticVisibilityCulling(
+            bool enabled = true,
+            int graceFrames = 2)
+        {
+            ThrowIfDisposed();
+
+            if (graceFrames < 0)
+                throw new ArgumentOutOfRangeException(nameof(graceFrames), "Grace frames cannot be negative.");
+
+            if (_automaticVisibilityCulling == enabled &&
+                _visibilityGraceFrames == graceFrames)
+                return this;
+
+            _automaticVisibilityCulling = enabled;
+            _visibilityGraceFrames = graceFrames;
+
+            // Enabling the policy on an already visible preview should not
+            // produce a one-frame blank or require another draw to establish
+            // the initial visibility window.
+            if (enabled && _hasDrawn)
+                _lastVisibleFrame = Time.frameCount;
+
+            ApplyAnimationPolicy();
+
+            if (_renderingEnabled && _hasDrawn && _updateMode == NowModelPreviewUpdateMode.EveryFrame)
+                NowModelPreviewManager.Wake();
+
+            return this;
+        }
+
+        /// <summary>
         /// Marks pixels stale without moving the camera. Use <see cref="Reframe"/>
         /// when renderer bounds or the desired fit changed.
         /// </summary>
@@ -1249,31 +1303,48 @@ namespace NowUI
 
         internal bool requiresDeferredTick
         {
-            get
-            {
-                if (_disposed)
-                    return false;
+            get => RequiresDeferredTickAtFrame(Time.frameCount);
+        }
 
-                if (_disposeRequested || _hasPendingSource || _refreshHierarchyPending ||
-                    _pendingTargetWidth > 0)
-                    return true;
+        internal bool RequiresDeferredTickAtFrame(int frameCount)
+        {
+            if (_disposed)
+                return false;
 
-                if (!_renderingEnabled || !_prepared || _target == null)
-                    return false;
+            if (_disposeRequested || _hasPendingSource || _refreshHierarchyPending ||
+                _pendingTargetWidth > 0)
+                return true;
 
-                if (_unsupportedPipeline != null &&
-                    ReferenceEquals(_unsupportedPipeline, GraphicsSettings.currentRenderPipeline))
-                    return false;
+            if (!_renderingEnabled || !_prepared || _target == null)
+                return false;
 
-                if (_renderQueued)
-                    return true;
+            if (_unsupportedPipeline != null &&
+                ReferenceEquals(_unsupportedPipeline, GraphicsSettings.currentRenderPipeline))
+                return false;
 
-                if (!_hasDrawn)
-                    return false;
+            if (_renderQueued)
+                return true;
 
-                return _updateMode == NowModelPreviewUpdateMode.EveryFrame ||
-                    (_updateMode == NowModelPreviewUpdateMode.WhenDirty && _dirty);
-            }
+            if (!_hasDrawn)
+                return false;
+
+            return ShouldRefreshContinuouslyAtFrame(frameCount) ||
+                (_updateMode == NowModelPreviewUpdateMode.WhenDirty && _dirty);
+        }
+
+        internal bool ShouldRefreshContinuouslyAtFrame(int frameCount)
+        {
+            if (_updateMode != NowModelPreviewUpdateMode.EveryFrame)
+                return false;
+
+            if (!_automaticVisibilityCulling)
+                return true;
+
+            if (_lastVisibleFrame < 0)
+                return false;
+
+            long elapsed = (long)frameCount - _lastVisibleFrame;
+            return elapsed >= 0 && elapsed <= _visibilityGraceFrames;
         }
 
         void PrepareResolution(float pixelWidth, float pixelHeight, bool reportVisible)
@@ -1294,9 +1365,13 @@ namespace NowUI
 
             _prepared = true;
 
-            if (reportVisible && !_hasDrawn)
+            if (reportVisible)
             {
-                _hasDrawn = true;
+                _lastVisibleFrame = Time.frameCount;
+
+                if (!_hasDrawn)
+                    _hasDrawn = true;
+
                 ApplyAnimationPolicy();
             }
 
@@ -1310,6 +1385,7 @@ namespace NowUI
                 return;
 
             ApplyDeferredMutations();
+            ApplyAnimationPolicy();
 
             if (_disposed || !_renderingEnabled || !_prepared || _target == null)
                 return;
@@ -2106,6 +2182,7 @@ namespace NowUI
             ParticleSystem[] previousParticles = null,
             bool[] previousParticlePolicy = null)
         {
+            _animationPolicyInitialized = false;
             _animators = _instance != null
                 ? _instance.GetComponentsInChildren<Animator>(true)
                 : Array.Empty<Animator>();
@@ -2175,8 +2252,14 @@ namespace NowUI
         void ApplyAnimationPolicy()
         {
 #if UNITY_INCLUDE_TESTS
-            bool continuous = _updateMode == NowModelPreviewUpdateMode.EveryFrame &&
-                _renderingEnabled && _hasDrawn;
+            bool continuous = _renderingEnabled && _hasDrawn &&
+                ShouldRefreshContinuouslyAtFrame(Time.frameCount);
+
+            if (_animationPolicyInitialized && _animationPolicyContinuous == continuous)
+                return;
+
+            _animationPolicyInitialized = true;
+            _animationPolicyContinuous = continuous;
 
             for (int i = 0; i < _animators.Length; ++i)
             {

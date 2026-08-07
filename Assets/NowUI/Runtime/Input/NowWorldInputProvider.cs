@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace NowUI
 {
-    public sealed class NowWorldInputProvider : INowInputProvider
+    public sealed class NowWorldInputProvider : INowInputProvider, INowSurfaceToScreenMapper
     {
         NowWorldGraphic _graphic;
         Transform _transform;
@@ -181,6 +181,46 @@ namespace NowUI
         public bool TryScreenPointToSurface(Vector2 screenPosition, out Vector2 surfacePosition)
         {
             return TryScreenPointToSurface(screenPosition, out surfacePosition, out _);
+        }
+
+        /// <summary>
+        /// Projects a top-left-origin surface point into upper-left-origin
+        /// player-window pixels using the same camera and panel geometry as
+        /// pointer input.
+        /// </summary>
+        public bool TrySurfaceToScreen(
+            NowInputSurface surface,
+            Vector2 surfacePosition,
+            out Vector2 screenPosition)
+        {
+            screenPosition = default;
+
+            if (!NowSurfaceToScreenMapper.IsFinite(surfacePosition))
+                return false;
+
+            if (_graphic)
+                return _graphic.TrySurfacePointToScreen(surfacePosition, out screenPosition);
+
+            var targetTransform = _transform;
+            var targetCamera = ResolveCamera();
+
+            if (!targetTransform || !targetCamera || targetCamera.targetTexture != null)
+                return false;
+
+            float ppu = SanitizePixelsPerUnit(_pixelsPerUnit);
+            Vector2 targetSize = SanitizeSize(_size);
+            var localPosition = new Vector3(
+                (surfacePosition.x - targetSize.x * _pivot.x) / ppu,
+                (targetSize.y * (1f - _pivot.y) - surfacePosition.y) / ppu,
+                0f);
+            Vector3 projected = targetCamera.WorldToScreenPoint(
+                targetTransform.TransformPoint(localPosition));
+
+            if (projected.z <= 0f || !NowSurfaceToScreenMapper.IsFinite(projected))
+                return false;
+
+            screenPosition = NowSurfaceToScreenMapper.BottomLeftToTopLeft(projected);
+            return NowSurfaceToScreenMapper.IsFinite(screenPosition);
         }
 
         internal bool TryScreenPointToSurface(Vector2 screenPosition, out Vector2 surfacePosition, out float distance)

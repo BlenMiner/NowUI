@@ -57,6 +57,7 @@ public sealed class NowUIQuickStartOverlay : MonoBehaviour
 
         var sdfMaskRect = NowLayout.ReserveRect(width: 180f, height: 44f);
         var sdfMask = NowSdf.Scene(sdfMaskRect, 4101)
+            .SetMaskResolutionScale(0.5f)
             .SetFeather(1f)
             .Circle(new Vector2(30f, 22f), 21f)
             .SmoothUnion(10f)

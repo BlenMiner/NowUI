@@ -89,6 +89,21 @@ several hosts. Pause a hidden panel explicitly with
 `SetRenderingEnabled(false)`, or dispose the preview with its owner. `Manual`
 renders only after `RequestRender()` or `RenderNow()`.
 
+Immediate-mode and virtualized lists that redraw their visible items every
+frame can opt into automatic visibility culling:
+
+```csharp
+preview
+    .SetUpdateMode(NowModelPreviewUpdateMode.EveryFrame)
+    .SetAutomaticVisibilityCulling(graceFrames: 2);
+```
+
+After two frames without a visible `Now.Model` draw, continuous refreshes pause;
+the next visible draw wakes them again. Explicit `RequestRender()` calls still
+run while culled. This policy is off by default and should stay off for retained
+hosts, where an already-built preview may remain onscreen without calling the
+draw callback each frame.
+
 The shared late-update driver sleeps when no preview has pending work. A clean
 grid of `WhenDirty` or `Manual` previews therefore has no per-frame camera or
 manager pass. If another preview is actively using `EveryFrame`, the shared
@@ -289,7 +304,9 @@ light data is initialized before the first request.
 
 Each refresh is a real camera render. Prefer `WhenDirty` for grids of inventory
 items, cap their resolution, share static lighting/material assets, and reserve
-`EveryFrame` for the small number of previews that truly animate.
+`EveryFrame` for the small number of previews that truly animate. For a scrolling
+immediate-mode grid of animated previews, enable automatic visibility culling so
+offscreen entries do not keep submitting cameras.
 
 Each live preview retains one hidden Camera GameObject. The shadowless key
 light, SRP request, directional-light scratch storage, and raw hierarchy-

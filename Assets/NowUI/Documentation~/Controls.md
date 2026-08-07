@@ -222,7 +222,8 @@ using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
 - `Dropdown` opens an overlay popup that blocks input underneath, scrolls when
   long (clamped to the visible view), and closes on selection, outside press,
   or cancel — the dismissing press is consumed and never activates the control
-  beneath. While open, arrow keys move the highlight, Return commits,
+  beneath. While open, keyboard/gamepad directional input moves the highlight,
+  Return or gamepad submit commits,
   and typing jumps to the first option starting with that letter. Selection
   applies on the next frame's Draw.
 - `EnumDropdown<TEnum>` wraps dropdown selection for enum values, and
@@ -897,11 +898,11 @@ Conventions that keep custom controls consistent:
 - ScrollView does not yet capture touch flick-drags that start on child
   controls (wheel, scrollbar thumbs, and scroll-aware drags via
   `NowScrollView.RequestDragScroll()` work everywhere).
-- IME composition renders inline with the default screen-space cursor
-  reporting; hosts whose surface is not the screen (UGUI canvases, render
-  textures) should replace `NowTextInput.setCompositionCursor` to transform
-  the caret point.
-- Dropdown popups are pointer-driven; focus navigation inside the popup is
-  not yet wired.
+- IME candidate placement is automatic for screen/camera, UGUI, and world
+  hosts. An interactive RenderTexture must describe its top-left-origin player
+  display rectangle in `NowInputSurface.screenRect`, or its input provider must
+  implement `INowSurfaceToScreenMapper` when the projection is non-linear.
+  Replacing `NowTextInput.setCompositionCursor` still bypasses this mapping for
+  hosts with a custom IME flow.
 - File picker popups are built-in NowUI controls, not native OS dialogs, and
   currently use emoji placeholders for file/folder/action icons.

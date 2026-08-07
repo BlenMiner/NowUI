@@ -347,8 +347,10 @@ float result = evaluator.Evaluate(_graph, "sum");
   port, and handler exist.
 - `ctx.Input(portId, fallback)` follows the link into that input port and
   evaluates the upstream node. Unconnected ports, unregistered upstream kinds,
-  and cycles all resolve to the fallback instead of failing, so a graph stays
-  evaluable while the user is mid-edit.
+  cycles, and dependency chains deeper than `evaluator.maximumDepth` (256 by
+  default) all resolve to the fallback instead of failing, so a graph stays
+  evaluable while the user is mid-edit. Raise the depth only for intentionally
+  deep generated graphs.
 - Each top-level `Evaluate` call memoizes every visited output port, so
   diamond-shaped graphs evaluate shared upstream nodes once. The memo resets
   on the next top-level call — mutate your value state (sliders, fields) and

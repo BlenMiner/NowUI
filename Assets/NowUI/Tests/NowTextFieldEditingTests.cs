@@ -189,6 +189,19 @@ public class NowTextFieldEditingTests
         NowFocus.Focus(Id);
     }
 
+    [Test]
+    public void UndoRegistryEvictsLeastRecentlyUsedStackAtCapacity()
+    {
+        var oldest = NowTextUndoRegistry.Get(1);
+
+        for (int id = 2; id <= NowTextUndoRegistry.Capacity + 1; ++id)
+            NowTextUndoRegistry.Get(id);
+
+        Assert.AreEqual(NowTextUndoRegistry.Capacity, NowTextUndoRegistry.count);
+        Assert.AreNotSame(oldest, NowTextUndoRegistry.Get(1));
+        Assert.AreEqual(NowTextUndoRegistry.Capacity, NowTextUndoRegistry.count);
+    }
+
     ref NowTextEditState State()
     {
         return ref NowControlState.Get<NowTextEditState>(Id);

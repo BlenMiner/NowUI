@@ -649,6 +649,7 @@ namespace NowUI.Sdf
         NowLayoutOptions _options;
         NowRect _mask;
         bool _hasMask;
+        float _maskResolutionScale;
         Vector4 _tint;
 
         internal NowSdfBuilder(NowSdfCache cache, NowRect rect, bool hasRect, NowLayoutOptions options)
@@ -659,6 +660,7 @@ namespace NowUI.Sdf
             _options = options;
             _mask = default;
             _hasMask = false;
+            _maskResolutionScale = 1f;
             _tint = Vector4.one;
         }
 
@@ -688,6 +690,35 @@ namespace NowUI.Sdf
         {
             _mask = mask;
             _hasMask = true;
+            return this;
+        }
+
+        /// <summary>
+        /// Scales the cached coverage texture rasterized by <see cref="BeginMask()"/>.
+        /// The default is 1, matching the scene's transformed physical pixel size.
+        /// Values below 1 reduce mask rasterization work and persistent texture memory,
+        /// while values above 1 supersample up to the device texture-size limit. Because the
+        /// target stores final coverage, downsampling widens its minimum AA ramp and can
+        /// remove fine detail. Keep the scale stable for each stable scene id to avoid
+        /// target resize churn.
+        /// This setting does not affect <see cref="Draw()"/>, which evaluates the SDF
+        /// directly at the destination resolution.
+        /// </summary>
+        /// <param name="scale">Positive, finite linear scale applied to both target axes.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when <paramref name="scale"/> is not finite and greater than zero.
+        /// </exception>
+        public NowSdfBuilder SetMaskResolutionScale(float scale)
+        {
+            if (float.IsNaN(scale) || float.IsInfinity(scale) || scale <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(scale),
+                    scale,
+                    "SDF mask resolution scale must be finite and greater than zero.");
+            }
+
+            _maskResolutionScale = scale;
             return this;
         }
 
@@ -1058,7 +1089,7 @@ namespace NowUI.Sdf
             if (NowLayout.isMeasurePass)
                 return default;
 
-            return _cache.BeginMask(rect, _hasMask ? _mask : rect, _tint);
+            return _cache.BeginMask(rect, _hasMask ? _mask : rect, _tint, _maskResolutionScale);
         }
 
         NowRect ReserveLayoutRect()
@@ -1514,7 +1545,7 @@ namespace NowUI.Sdf
             Now.DrawSdf(rect, mask, material, tint);
         }
 
-        public NowMaskScope BeginMask(NowRect rect, NowRect mask, Vector4 tint)
+        public NowMaskScope BeginMask(NowRect rect, NowRect mask, Vector4 tint, float resolutionScale)
         {
             ThrowIfReleased();
 
@@ -1534,8 +1565,8 @@ namespace NowUI.Sdf
             if (!IsFiniteRect(transformedRect) || transformedRect.isEmpty)
                 return EmptyMask(rect);
 
-            int width = PhysicalSize(transformedRect.width);
-            int height = PhysicalSize(transformedRect.height);
+            int width = PhysicalSize(transformedRect.width, resolutionScale);
+            int height = PhysicalSize(transformedRect.height, resolutionScale);
             var target = GetMaskTexture(width, height);
             if (target == null)
                 return EmptyMask(rect);
@@ -1812,14 +1843,22 @@ namespace NowUI.Sdf
             _hasMaskRenderSignature = false;
         }
 
-        static int PhysicalSize(float transformedUiSize)
+        static int PhysicalSize(float transformedUiSize, float resolutionScale)
         {
             float pixels = Now.UiUnitsToScreenPixels(transformedUiSize);
-            if (float.IsNaN(pixels) || float.IsInfinity(pixels) || pixels <= 0f)
+            if (float.IsNaN(pixels) || pixels <= 0f)
                 return 1;
 
             int maximum = Mathf.Max(1, SystemInfo.maxTextureSize);
-            return Mathf.Clamp(Mathf.CeilToInt(Mathf.Min(pixels, maximum)), 1, maximum);
+            double scaledPixels = (double)pixels * resolutionScale;
+
+            if (double.IsNaN(scaledPixels) || scaledPixels <= 0d)
+                return 1;
+
+            if (double.IsPositiveInfinity(scaledPixels) || scaledPixels >= maximum)
+                return maximum;
+
+            return Mathf.Clamp((int)Math.Ceiling(scaledPixels), 1, maximum);
         }
 
         static bool IsFiniteRect(NowRect rect)

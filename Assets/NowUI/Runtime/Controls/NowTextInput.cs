@@ -411,6 +411,9 @@ namespace NowUI
 
         static void DefaultSetCompositionCursor(Vector2 position)
         {
+            if (!NowSurfaceToScreenMapper.TryResolveCompositionCursor(position, out position))
+                return;
+
 #if ENABLE_INPUT_SYSTEM
             var keyboard = Keyboard.current;
 

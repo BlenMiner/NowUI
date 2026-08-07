@@ -74,6 +74,44 @@ Links are not opened automatically: the result reports `clickedLink` /
   numbers and comments, with multiline comment/verbatim-string state carried
   across lines; unknown languages render plain
 
+## Remote image limits
+
+The automatic image loader is bounded but deliberately roomy: by default it
+allows four concurrent downloads, 64 MiB per response chain, 30 seconds per
+request hop, eight redirects, 16,384 pixels on either decoded dimension, and
+100 Mi pixels per decoded texture. Its least-recently-used cache keeps at most
+128 entries and 128 Mi pixels. Redirects are followed manually and every hop
+is checked by the same URL policy before the next request starts.
+
+Applications normally do not need to change these values. They are public
+static fields on `NowMarkdownImages` for products with known content budgets:
+
+```csharp
+NowMarkdownImages.maxDownloadBytes = 24L * 1024 * 1024;
+NowMarkdownImages.maxTextureDimension = 8192;
+NowMarkdownImages.maxTexturePixels = 48L * 1024 * 1024;
+NowMarkdownImages.maxConcurrentDownloads = 3;
+NowMarkdownImages.maxCacheEntries = 96;
+NowMarkdownImages.maxCachedTexturePixels = 96L * 1024 * 1024;
+```
+
+Plain HTTP remains enabled for compatibility with existing local and intranet
+content. Set `NowMarkdownImages.allowInsecureHttp = false` for HTTPS-only
+loading. `remoteUrlPolicy` can additionally allow-list hosts or reject URL
+ranges and is applied to the original URL plus every redirect:
+
+```csharp
+NowMarkdownImages.allowInsecureHttp = false;
+NowMarkdownImages.remoteUrlPolicy = uri => uri.Host == "cdn.example.com";
+```
+
+The delegate sees the URL, not the resolved network endpoint, so it is not a
+DNS/network sandbox. Applications with an SSRF threat model should also
+enforce destination policy in their networking layer. Call
+`NowMarkdownImages.Reset()` after changing policy when already-cached results
+must be discarded; reset aborts queued/in-flight requests and destroys only
+textures owned by the downloader.
+
 ## Live embeds
 
 Fenced blocks can render as live content instead of highlighted code. Embeds

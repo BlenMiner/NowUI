@@ -86,6 +86,49 @@ a `RectTransform` like any other graphic. Assign either an imported Animation
 asset or an Animation Url. At runtime, a non-empty URL downloads a transient
 `NowLottieAsset` and supports both plain Lottie JSON and dotLottie archives.
 
+## Remote and parser limits
+
+Runtime loading is bounded with defaults intended to stay invisible in normal
+animation work: 64 MiB for a download/archive/animation JSON, 30 seconds per
+request hop, and eight redirects. Redirects are followed manually so the URL
+policy is applied to every hop. dotLottie inspection accepts up to 512 entries,
+256 MiB declared uncompressed content, and a 1000:1 compression ratio. JSON is
+limited to 256 levels and two million values.
+
+The automatic `NowLottieCache` allows four concurrent downloads and retains at
+most 64 URL entries or approximately 256 MiB of UTF-16 JSON source, evicting
+least-recently-used entries first. `NowLayout` separately retains at most 128
+URL strings for allocation-free `ReadOnlySpan<char>` calls. All limits are
+configurable:
+
+```csharp
+NowLottieAsset.maxDownloadBytes = 32L * 1024 * 1024;
+NowLottieAsset.maxJsonBytes = 32L * 1024 * 1024;
+NowLottieAsset.maxJsonDepth = 192;
+NowLottieAsset.maxJsonNodes = 1_000_000;
+
+NowLottieCache.maxConcurrentDownloads = 3;
+NowLottieCache.maxEntries = 48;
+NowLottieCache.maxCachedSourceBytes = 128L * 1024 * 1024;
+NowLayout.maxCachedLottieUrls = 96;
+```
+
+Plain HTTP remains enabled for compatibility. Applications loading untrusted
+content can require HTTPS and allow-list hosts; both checks also apply to
+redirect targets:
+
+```csharp
+NowLottieAsset.allowInsecureHttp = false;
+NowLottieAsset.remoteUrlPolicy = uri => uri.Host == "assets.example.com";
+```
+
+The policy delegate sees URLs, not resolved network endpoints, and therefore
+is not a DNS/network sandbox. Enforce destination policy in the networking
+layer when SSRF is in scope. `NowLottieCache.Reset()` aborts automatic queued
+and active loads and destroys cache-owned transient assets. Direct
+`LoadFromUrl`/`SetSourceFromUrl` coroutines remain caller-owned and are
+cancelled by stopping their coroutine.
+
 ## Performance notes
 
 - Tessellation results are cached per composition + frame + size (32-entry

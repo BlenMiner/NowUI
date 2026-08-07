@@ -16,6 +16,7 @@ public class NowLayoutTests
     {
         NowControls.Reset();
         NowLayout.Reset();
+        NowLayout.maxCachedLottieUrls = 128;
 
         // The engine falls back to a bundled default font, so pin a font-less
         // label style: these tests rely on labels measuring zero.
@@ -26,6 +27,7 @@ public class NowLayoutTests
     public void TearDown()
     {
         NowLayout.Reset();
+        NowLayout.maxCachedLottieUrls = 128;
         NowControls.Reset();
     }
 
@@ -35,6 +37,22 @@ public class NowLayoutTests
         Assert.AreEqual(expected.y, actual.y, tolerance, "y");
         Assert.AreEqual(expected.z, actual.z, tolerance, "width");
         Assert.AreEqual(expected.w, actual.w, tolerance, "height");
+    }
+
+    [Test]
+    public void LottieUrlStringCacheIsBoundedAndClearedByReset()
+    {
+        NowLayout.maxCachedLottieUrls = 2;
+
+        _ = NowLayout.Lottie("not-a-url/one".AsSpan());
+        _ = NowLayout.Lottie("not-a-url/two".AsSpan());
+        _ = NowLayout.Lottie("not-a-url/three".AsSpan());
+
+        Assert.AreEqual(2, NowLayout.cachedLottieUrlCount);
+
+        NowLayout.Reset();
+
+        Assert.AreEqual(0, NowLayout.cachedLottieUrlCount);
     }
 
     static void DrawConditionalSiblingGroup()

@@ -7,3 +7,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("NowUI.Extensions.Sdf")]
 [assembly: InternalsVisibleTo("NowUI.Extensions.Docking")]
 [assembly: InternalsVisibleTo("NowUI.Extensions.CodeEditor")]
+[assembly: InternalsVisibleTo("NowUI.Extensions.Markdown")]

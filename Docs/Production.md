@@ -53,6 +53,47 @@ standard GitHub runner OS labels (`Windows`, `macOS`, `Linux`). Linux visual
 runners must provide a graphics-capable session or virtual display; do not run
 the visual harness with `-nographics`.
 
+## Render-Pipeline Validation
+
+The repository remains a Built-in Render Pipeline project so optional SRP
+dependencies do not become mandatory for package users.
+`.github/workflows/render-pipeline-validation.yml` creates disposable URP and
+HDRP validation workspaces instead:
+
+- `.github/scripts/Set-RenderPipelineValidation.ps1` installs the matching
+  `17.4.x` package for Unity `6000.4` and removes the other SRP package.
+- Each job requires `NowUI.URP` or `NowUI.HDRP` to compile and load. The
+  `NOWUI_EXPECT_RENDER_PIPELINE` assertion fails if an optional assembly is
+  absent, so package resolution cannot turn into an ignored success.
+- The URP job also renders model previews and a renderer-feature frame and
+  checks the resulting pixels. The HDRP job currently provides compile/load
+  compatibility coverage for its thin custom-pass wrapper; a deterministic
+  HDRP frame fixture remains future work.
+
+The workflow runs for pull requests that touch SRP integration, shared model or
+pipeline rendering, play-mode coverage, packages, or its own automation. It can
+also be dispatched manually.
+
+## Player-Build Matrix
+
+`.github/workflows/build-verification.yml` builds the full first-class player
+matrix every Sunday and supports manual per-target runs:
+
+| Target | Runner | What the build verifies |
+| --- | --- | --- |
+| Windows x64 | Windows | IL2CPP player and Windows native plugin import |
+| Linux x64 | Linux | IL2CPP player and Linux native plugin import |
+| macOS | macOS | IL2CPP player and universal native plugin import |
+| Android arm64 | Windows | ARM64 IL2CPP APK and Android `.so` packaging/linking |
+| iOS arm64 | macOS | Xcode project generation plus unsigned device `xcodebuild` static link |
+| WebGL | Windows | WebAssembly player and static wasm linker compatibility |
+
+The matrix planner schedules only the requested manual target instead of
+allocating no-op jobs on every runner. Every selected job verifies the exact
+Unity editor and playback-engine module before building and fails if either is
+missing. Provision all listed Unity `6000.4.0f1` modules before relying on the
+scheduled full-matrix signal.
+
 ## Allocation Bar
 
 Normal frame paths must allocate no managed memory after explicit warmup:

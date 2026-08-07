@@ -511,6 +511,34 @@ namespace NowUI
                 currentSize.y * (1f - _pivot.y) - localPosition.y * ppu);
         }
 
+        internal bool TrySurfacePointToScreen(
+            Vector2 uiPosition,
+            out Vector2 screenPosition)
+        {
+            screenPosition = default;
+            var cmr = ResolveCamera();
+
+            // A camera target texture has no inherent player-window position;
+            // its eventual presenter must provide that mapping instead.
+            if (!cmr || cmr.targetTexture != null || !NowSurfaceToScreenMapper.IsFinite(uiPosition))
+                return false;
+
+            Vector2 currentSize = SanitizeSize(_size);
+            float ppu = SanitizePixelsPerUnit(_pixelsPerUnit);
+            Vector3 local = UIToLocal(uiPosition, currentSize, ppu);
+            var normalized = new Vector2(
+                currentSize.x > 0f ? Mathf.Clamp01(uiPosition.x / currentSize.x) : 0f,
+                currentSize.y > 0f ? Mathf.Clamp01(uiPosition.y / currentSize.y) : 0f);
+            local = DeformVertex(new NowWorldVertex(-1, uiPosition, normalized, local));
+            Vector3 projected = cmr.WorldToScreenPoint(transform.TransformPoint(local));
+
+            if (projected.z <= 0f || !IsFinite(projected))
+                return false;
+
+            screenPosition = NowSurfaceToScreenMapper.BottomLeftToTopLeft(projected);
+            return NowSurfaceToScreenMapper.IsFinite(screenPosition);
+        }
+
         NowRect INowPopupFitProvider.FitPopupRectToView(NowRect rect)
         {
             return FitPopupRectToCameraView(rect);

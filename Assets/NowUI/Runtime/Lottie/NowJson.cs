@@ -120,11 +120,27 @@ namespace NowUI.Internal
 
         public static NowJsonValue Parse(string text)
         {
+            return Parse(text, int.MaxValue, int.MaxValue);
+        }
+
+        /// <summary>
+        /// Parses JSON while bounding recursive nesting and the number of values in
+        /// the resulting DOM. The root value has depth one and counts as one node.
+        /// </summary>
+        public static NowJsonValue Parse(string text, int maxDepth, int maxNodes)
+        {
             if (string.IsNullOrEmpty(text))
                 throw new FormatException("JSON text is empty.");
 
+            if (maxDepth < 1)
+                throw new ArgumentOutOfRangeException(nameof(maxDepth), "JSON depth limit must be positive.");
+
+            if (maxNodes < 1)
+                throw new ArgumentOutOfRangeException(nameof(maxNodes), "JSON node limit must be positive.");
+
             int position = 0;
-            var result = ParseValue(text, ref position);
+            int nodes = 0;
+            var result = ParseValue(text, ref position, 1, maxDepth, ref nodes, maxNodes);
             SkipWhitespace(text, ref position);
 
             if (position < text.Length)
@@ -133,21 +149,35 @@ namespace NowUI.Internal
             return result;
         }
 
-        static NowJsonValue ParseValue(string text, ref int position)
+        static NowJsonValue ParseValue(
+            string text,
+            ref int position,
+            int depth,
+            int maxDepth,
+            ref int nodes,
+            int maxNodes)
         {
             SkipWhitespace(text, ref position);
 
             if (position >= text.Length)
                 throw new FormatException("Unexpected end of JSON.");
 
+            if (depth > maxDepth)
+                throw new FormatException($"JSON nesting exceeds the configured depth limit of {maxDepth}.");
+
+            ++nodes;
+
+            if (nodes > maxNodes)
+                throw new FormatException($"JSON value count exceeds the configured node limit of {maxNodes}.");
+
             char c = text[position];
 
             switch (c)
             {
                 case '{':
-                    return ParseObject(text, ref position);
+                    return ParseObject(text, ref position, depth, maxDepth, ref nodes, maxNodes);
                 case '[':
-                    return ParseArray(text, ref position);
+                    return ParseArray(text, ref position, depth, maxDepth, ref nodes, maxNodes);
                 case '"':
                     return new NowJsonValue { _kind = NowJsonKind.String, _string = ParseString(text, ref position) };
                 case 't':
@@ -164,7 +194,13 @@ namespace NowUI.Internal
             }
         }
 
-        static NowJsonValue ParseObject(string text, ref int position)
+        static NowJsonValue ParseObject(
+            string text,
+            ref int position,
+            int depth,
+            int maxDepth,
+            ref int nodes,
+            int maxNodes)
         {
             ++position;
             var result = new NowJsonValue
@@ -195,7 +231,13 @@ namespace NowUI.Internal
                     throw new FormatException($"Expected ':' at character {position}.");
 
                 ++position;
-                result._object[key] = ParseValue(text, ref position);
+                result._object[key] = ParseValue(
+                    text,
+                    ref position,
+                    depth + 1,
+                    maxDepth,
+                    ref nodes,
+                    maxNodes);
                 SkipWhitespace(text, ref position);
 
                 if (position >= text.Length)
@@ -219,7 +261,13 @@ namespace NowUI.Internal
             }
         }
 
-        static NowJsonValue ParseArray(string text, ref int position)
+        static NowJsonValue ParseArray(
+            string text,
+            ref int position,
+            int depth,
+            int maxDepth,
+            ref int nodes,
+            int maxNodes)
         {
             ++position;
             var result = new NowJsonValue
@@ -238,7 +286,13 @@ namespace NowUI.Internal
 
             while (true)
             {
-                result._array.Add(ParseValue(text, ref position));
+                result._array.Add(ParseValue(
+                    text,
+                    ref position,
+                    depth + 1,
+                    maxDepth,
+                    ref nodes,
+                    maxNodes));
                 SkipWhitespace(text, ref position);
 
                 if (position >= text.Length)

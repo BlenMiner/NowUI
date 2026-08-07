@@ -332,6 +332,33 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void DownsampledSdfMaskStillMapsAcrossFullAuthoredRect()
+    {
+        var surface = new NowRect(0f, 0f, Side, Side);
+
+        using (_renderer.Begin(_target))
+        using (NowSdf.Scene(surface, "playmode-sdf-quarter-resolution-mask")
+            .SetMaskResolutionScale(0.25f)
+            .Box(new NowRect(16f, 24f, 96f, 80f))
+            .BeginMask())
+        {
+            Now.Rectangle(surface)
+                .SetColor(Color.white)
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+
+        Assert.Greater(PixelAtUi(pixels, 32, 40).a, 245, "The downsampled mask lost its upper-left interior.");
+        Assert.Greater(PixelAtUi(pixels, 96, 88).a, 245, "The downsampled mask lost its lower-right interior.");
+        Assert.Less(PixelAtUi(pixels, 8, 64).a, 8, "The downsampled mask leaked left of its authored field.");
+        Assert.Less(PixelAtUi(pixels, 120, 64).a, 8, "The downsampled mask leaked right of its authored field.");
+        Assert.Less(PixelAtUi(pixels, 64, 8).a, 8, "The downsampled mask leaked above its authored field.");
+        Assert.Less(PixelAtUi(pixels, 64, 116).a, 8, "The downsampled mask leaked below its authored field.");
+    }
+
+    [Test]
     public void SdfMaskFeatherWidensTransitionWithoutSquaringCoverage()
     {
         var analytic = RenderWhiteCircleMask(feather: 6f);

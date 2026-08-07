@@ -14,3 +14,7 @@ shipped public API:
   optimization evidence and artifact paths.
 - [Transform system design](TransformDesign.md): an internal proposal for
   unshipped work.
+- [Touch scroll gesture arbitration](TouchScrollGestureDesign.md): the
+  maintainer design for safe child-to-scroll touch capture and flicking.
+- [Package footprint plan](PackageFootprintPlan.md): measured packaging cuts
+  and the native/font package seams needed for a materially smaller install.

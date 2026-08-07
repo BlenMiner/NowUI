@@ -35,3 +35,12 @@ stable ids, dimensions, transforms, and UI scale reuse it. Warm the actual
 host is dirtied, so call `MarkDirty()` when animated field data changes.
 `NowSdf.Reset()` releases these extension-owned targets together with the SDF
 material cache.
+
+`NowSdfBuilder.SetMaskResolutionScale(scale)` trades SDF-mask capture quality
+for rasterization cost and persistent texture memory. The default `1` captures
+at transformed physical resolution; `0.5` reduces both axes by half and thus
+uses roughly one quarter of the pixels. It does not reduce the child draw's one
+mask sample per output fragment, and unchanged static masks already skip the
+capture pass. Profile dynamic, frequently dirty, or large masks on target
+hardware; keep each stable id at a stable scale to avoid resize churn. Direct
+SDF `Draw()` scenes have no intermediate texture and are unaffected.

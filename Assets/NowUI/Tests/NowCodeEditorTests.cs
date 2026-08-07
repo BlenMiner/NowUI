@@ -79,6 +79,16 @@ public class NowCodeEditorTests
         return FrameLanguage(ref text, NowJsonLanguage.instance, keys);
     }
 
+    NowCodeEditorResult FrameId(ref string text, string id)
+    {
+        _keyboard.frame = default;
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            return NowCode.Editor(EditorRect, NowJsonLanguage.instance, id).Draw(ref text);
+    }
+
     NowCodeEditorResult FrameLanguage(ref string text, NowCodeLanguage language, NowTextInputFrame keys = default)
     {
         _keyboard.frame = keys;
@@ -164,6 +174,13 @@ public class NowCodeEditorTests
         return (float)editorType.GetField("scrollY", BindingFlags.Instance | BindingFlags.Public).GetValue(value);
     }
 
+    static int EditorCacheCount()
+    {
+        var field = typeof(NowCodeEditor).GetField("_caches", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return ((IDictionary)field.GetValue(null)).Count;
+    }
+
     static List<NowCodeToken> Tokenize(NowCodeLanguage language, string line, int state = 0)
     {
         var tokens = new List<NowCodeToken>();
@@ -195,6 +212,43 @@ public class NowCodeEditorTests
         lines.Add("  \"last\": true");
         lines.Add("}");
         return string.Join("\n", lines);
+    }
+
+    [Test]
+    public void ExplicitEditorCacheCanBeReleased()
+    {
+        string text = "{}";
+        Frame(ref text);
+
+        Assert.AreEqual(1, EditorCacheCount());
+        Assert.IsTrue(NowCodeEditor.ReleaseCache(NowId.Resolved(Id)));
+        Assert.AreEqual(0, EditorCacheCount());
+        Assert.IsFalse(NowCodeEditor.ReleaseCache(NowId.Resolved(Id)));
+    }
+
+    [Test]
+    public void EditorCacheEvictsLeastRecentlyDrawnEntryAtCapacity()
+    {
+        int previousCapacity = NowCodeEditor.cacheCapacity;
+
+        try
+        {
+            NowCodeEditor.cacheCapacity = 2;
+            string text = "{}";
+            FrameId(ref text, "first");
+            FrameId(ref text, "second");
+            FrameId(ref text, "first");
+            FrameId(ref text, "third");
+
+            Assert.AreEqual(2, EditorCacheCount());
+            Assert.IsTrue(NowCodeEditor.ReleaseCache("first"));
+            Assert.IsFalse(NowCodeEditor.ReleaseCache("second"));
+            Assert.IsTrue(NowCodeEditor.ReleaseCache("third"));
+        }
+        finally
+        {
+            NowCodeEditor.cacheCapacity = previousCapacity;
+        }
     }
 
     [Test]
