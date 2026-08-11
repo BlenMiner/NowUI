@@ -1618,6 +1618,9 @@ namespace NowUI.Internal
                 if (isRectangleLike)
                     PatchRectangleCanvasVertices(destination.array, destinationBase, count);
 
+                if (kind == NowMeshKind.Gradient)
+                    PatchGradientCanvasColors(destination.array, destinationBase, count);
+
                 destination.count += count;
                 return;
             }
@@ -1662,7 +1665,61 @@ namespace NowUI.Internal
                 output[destinationBase + i] = vertex;
             }
 
+            if (kind == NowMeshKind.Gradient)
+                PatchGradientCanvasColors(output, destinationBase, count);
+
             destination.count += count;
+        }
+
+        /// <summary>
+        /// Gradient geometry parameters ride the canvas COLOR channel, which UGUI
+        /// stores as a Color32: values clamp to 0..1, quantize to 8 bits, and (unless
+        /// the canvas forces gamma vertex colors) are converted gamma to linear on
+        /// the way to the shader. Raw parameters do not survive that — every
+        /// direction with a negative component collapses to zero and repetition
+        /// counts above one clamp. Fold them into 0..1 here and pre-apply the
+        /// inverse of the canvas conversion so <c>UIGradientUGUI</c> receives the
+        /// authored values back. The non-canvas render layout keeps full float
+        /// parameters in TEXCOORD3 and needs none of this.
+        /// </summary>
+        static void PatchGradientCanvasColors(NowCanvasVertex[] output, int destinationBase, int count)
+        {
+            bool compensateCanvasGamma = QualitySettings.activeColorSpace == ColorSpace.Linear;
+
+            for (int i = 0; i < count; ++i)
+            {
+                int index = destinationBase + i;
+                var parameters = output[index].color;
+
+                float x = EncodeGradientParameter(parameters.r);
+                float y = EncodeGradientParameter(parameters.g);
+                float z = EncodeGradientParameter(parameters.b);
+                float w = EncodeGradientParameter(parameters.a);
+
+                // The canvas converts rgb only, so alpha stays as encoded.
+                if (compensateCanvasGamma)
+                {
+                    x = Mathf.LinearToGammaSpace(x);
+                    y = Mathf.LinearToGammaSpace(y);
+                    z = Mathf.LinearToGammaSpace(z);
+                }
+
+                output[index].color = new Color(x, y, z, w);
+            }
+        }
+
+        /// <summary>
+        /// Folds an unbounded gradient parameter into 0..1 with a signed reciprocal
+        /// mapping so sign survives a normalized vertex channel. Zero maps to the
+        /// midpoint. <c>UIGradientUGUI</c> applies the exact inverse.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static float EncodeGradientParameter(float value)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+                value = 0f;
+
+            return 0.5f + 0.5f * (value / (1f + Mathf.Abs(value)));
         }
 
         /// <summary>
