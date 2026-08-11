@@ -22,7 +22,8 @@ namespace NowUI.Sdf
         RoundedBox = 2,
         Ellipse = 3,
         Capsule = 4,
-        Glyph = 5
+        Glyph = 5,
+        Arc = 6
     }
 
     enum NowSdfLayerKind
@@ -299,6 +300,19 @@ namespace NowUI.Sdf
             return Capsule(from, to, radius);
         }
 
+        public NowSdfGraph Arc(Vector2 center, float radius, float thickness, float from, float sweep)
+        {
+            radius = Mathf.Max(0f, radius);
+            thickness = Mathf.Max(0f, thickness);
+            float outer = radius + thickness;
+            Add(
+                NowSdfShapeType.Arc,
+                new Vector4(center.x, center.y, radius, thickness),
+                RadialData(from, sweep),
+                new NowRect(center.x - outer, center.y - outer, outer * 2f, outer * 2f));
+            return this;
+        }
+
         public NowSdfGraph Text(Vector2 position, string value, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
         {
             return Text(position, value, Now.font, fontSize, fontStyle, tabSpaces);
@@ -466,6 +480,13 @@ namespace NowUI.Sdf
         static Vector4 RectData(NowRect rect)
         {
             return new Vector4(rect.x + rect.width * 0.5f, rect.y + rect.height * 0.5f, rect.width, rect.height);
+        }
+
+        static Vector4 RadialData(float from, float sweep)
+        {
+            float half = Mathf.Abs(sweep) * 0.5f;
+            float rotation = Mathf.PI * 0.5f - (from + sweep * 0.5f);
+            return new Vector4(Mathf.Sin(half), Mathf.Cos(half), Mathf.Cos(rotation), Mathf.Sin(rotation));
         }
 
         void Encapsulate(NowRect rect)
@@ -1011,6 +1032,12 @@ namespace NowUI.Sdf
             return this;
         }
 
+        public NowSdfBuilder Arc(Vector2 center, float radius, float thickness, float from, float sweep)
+        {
+            _cache.Arc(center, radius, thickness, from, sweep);
+            return this;
+        }
+
         public NowSdfBuilder Text(Vector2 position, string value, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
         {
             _cache.Text(position, value, Now.font, fontSize, fontStyle, tabSpaces);
@@ -1518,6 +1545,14 @@ namespace NowUI.Sdf
             _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Capsule(rect);
             ResetPendingOperation();
             Encapsulate(rect);
+        }
+
+        public void Arc(Vector2 center, float radius, float thickness, float from, float sweep)
+        {
+            PrepareActivePrimitive();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Arc(center, radius, thickness, from, sweep);
+            ResetPendingOperation();
+            Encapsulate(_activeGraph.measureSize);
         }
 
         public void Text(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle, int tabSpaces)
