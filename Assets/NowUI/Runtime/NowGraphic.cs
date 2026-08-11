@@ -473,6 +473,7 @@ namespace NowUI
             bool colorMultiplierActive = false;
             bool passiveInputActive = false;
             bool interactive = Application.isPlaying || _editModeInteraction;
+            var targetCanvas = canvas;
             _insideGeometryRebuild = true;
 
             try
@@ -482,7 +483,9 @@ namespace NowUI
                     new Vector2(rect.width, rect.height),
                     positionOffset,
                     false,
-                    _glassBlurQuality);
+                    _glassBlurQuality,
+                    canvasVertexColorAlwaysGammaSpace:
+                        targetCanvas != null && targetCanvas.vertexColorAlwaysGammaSpace);
 
                 Now.BeginColorMultiplier(color);
                 colorMultiplierActive = true;

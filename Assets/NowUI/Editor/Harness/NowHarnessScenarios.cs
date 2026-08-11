@@ -215,6 +215,7 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "text-layout", width = 960, height = 540, includeInGoldens = true, draw = DrawTextLayout },
                 new NowHarnessScenario { name = "glass", width = 640, height = 360, includeInGoldens = true, draw = DrawGlass },
                 new NowHarnessScenario { name = "shader-variants", width = 840, height = 420, includeInGoldens = true, draw = DrawShaderVariants },
+                new NowHarnessScenario { name = "quick-start-overlay", width = 500, height = 400, includeInGoldens = true, draw = DrawQuickStartOverlay, capture = CaptureQuickStartOverlay },
                 new NowHarnessScenario { name = "sdf-mask-glow-clip", width = 640, height = 640, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGlowClip },
                 new NowHarnessScenario { name = "sdf-mask-gallery", width = 960, height = 520, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGallery },
                 new NowHarnessScenario { name = "lottie", width = 512, height = 512, includeInGoldens = true, draw = DrawLottie },
@@ -285,12 +286,17 @@ namespace NowUI.Editor
 
         static NowHarnessCapture CaptureLandingPageNow(NowHarnessScenario scenario, string outputPath)
         {
-            return CaptureLandingPageHost(scenario, outputPath, layout: false);
+            return CaptureCanvasHost(scenario, outputPath, layout: false);
         }
 
         static NowHarnessCapture CaptureLandingPageNowLayout(NowHarnessScenario scenario, string outputPath)
         {
-            return CaptureLandingPageHost(scenario, outputPath, layout: true);
+            return CaptureCanvasHost(scenario, outputPath, layout: true);
+        }
+
+        static NowHarnessCapture CaptureQuickStartOverlay(NowHarnessScenario scenario, string outputPath)
+        {
+            return CaptureCanvasHost(scenario, outputPath, layout: false, draw: _ => DrawScenarioFrame(scenario));
         }
 
         static NowHarnessCapture CaptureModelPreviewEffects(
@@ -594,22 +600,23 @@ namespace NowUI.Editor
             }
         }
 
-        static NowHarnessCapture CaptureLandingPageHost(
+        static NowHarnessCapture CaptureCanvasHost(
             NowHarnessScenario scenario,
             string outputPath,
-            bool layout)
+            bool layout,
+            Action<NowRect> draw = null)
         {
             var stopwatch = Stopwatch.StartNew();
             var target = new RenderTexture(scenario.width, scenario.height, 24, RenderTextureFormat.ARGB32)
             {
-                name = layout ? "NowLayout Landing Harness Target" : "Now Landing Harness Target",
+                name = $"NowUI Canvas Harness Target ({scenario.name})",
                 hideFlags = HideFlags.HideAndDontSave
             };
             target.Create();
 
-            var cameraObject = new GameObject("NowUI Landing Harness Camera") { hideFlags = HideFlags.HideAndDontSave };
+            var cameraObject = new GameObject("NowUI Canvas Harness Camera") { hideFlags = HideFlags.HideAndDontSave };
             var canvasObject = new GameObject(
-                "NowUI Landing Harness Canvas",
+                "NowUI Canvas Harness Canvas",
                 typeof(RectTransform),
                 typeof(Canvas),
                 typeof(CanvasScaler))
@@ -642,7 +649,7 @@ namespace NowUI.Editor
                 scaler.scaleFactor = 1f;
 
                 var panelObject = new GameObject(
-                    layout ? "NowLayout Landing Host" : "Now Landing Host",
+                    $"NowUI Canvas Harness Host ({scenario.name})",
                     typeof(RectTransform),
                     typeof(CanvasRenderer))
                 {
@@ -656,9 +663,22 @@ namespace NowUI.Editor
                 panelRect.offsetMin = Vector2.zero;
                 panelRect.offsetMax = Vector2.zero;
 
-                NowGraphic graphic = layout
-                    ? panelObject.AddComponent<NowLayoutLandingPageExample>()
-                    : panelObject.AddComponent<NowLandingPageExample>();
+                NowGraphic graphic;
+
+                if (draw != null)
+                {
+                    graphic = panelObject.AddComponent<NowGraphic>();
+                    graphic.rebuildNowUI += (_, hostRect) => draw(hostRect);
+                }
+                else if (layout)
+                {
+                    graphic = panelObject.AddComponent<NowLayoutLandingPageExample>();
+                }
+                else
+                {
+                    graphic = panelObject.AddComponent<NowLandingPageExample>();
+                }
+
                 graphic.raycastTarget = false;
 
                 int warmupFrames = Mathf.Max(1, scenario.warmupFrames);
@@ -1437,6 +1457,74 @@ namespace NowUI.Editor
             DrawGlassVariant(glassTiles[1], "thin outline", 1f, new Color(1f, 1f, 1f, 0.58f), 0.18f);
             DrawGlassVariant(glassTiles[2], "thick outline", 4f, new Color(1f, 0.74f, 0.24f, 0.72f), 0.16f);
             DrawGlassVariant(glassTiles[3], "clear tint", 2f, new Color(0.45f, 0.88f, 1f, 0.72f), 0f);
+        }
+
+        static void DrawQuickStartOverlay(NowRect rect)
+        {
+            DrawSurface(rect);
+            HeaderBlock(rect, "Quick Start Overlay", "Sample layout with gradients, masks, SDF cutout, text, and a button.");
+
+            using var area = NowLayout.Area(rect.TakeBottom(310f).Centered(width: 180f, height: 240f));
+
+            DrawCheckerboard(area.rect, 6f);
+
+            NowLayout.Label("NowUI", 28f).Draw();
+
+            var gradientRect = NowLayout.ReserveRect(width: 180f, height: 36f);
+            Now.Gradient(
+                    gradientRect,
+                    new Color(0.12f, 0.5f, 1f),
+                    new Color(0.72f, 0.22f, 0.95f))
+                .SetLinear(110f)
+                .SetRadius(10f)
+                .Draw();
+
+            var maskRect = NowLayout.ReserveRect(width: 180f, height: 44f);
+            var softMask = NowMaskShape.Capsule(maskRect).SetFeather(1f);
+            using (Now.Mask(softMask))
+            {
+                Now.Gradient(
+                        new NowRect(maskRect.x - 24f, maskRect.y, maskRect.width + 48f, maskRect.height),
+                        new Color(0.1f, 0.72f, 0.62f),
+                        new Color(0.08f, 0.28f, 0.55f))
+                    .SetLinear(90f)
+                    .Draw();
+
+                Now.Text(new NowRect(maskRect.x + 14f, maskRect.y + 8f, maskRect.width - 28f, 28f))
+                    .SetFontSize(18f)
+                    .SetColor(Color.white)
+                    .Draw("Soft capsule mask");
+            }
+
+            var sdfMaskRect = NowLayout.ReserveRect(width: 180f, height: 44f);
+            var sdfMask = NowSdf.Scene(sdfMaskRect, 4101)
+                .SetMaskResolutionScale(0.5f)
+                .SetFeather(1f)
+                .Circle(new Vector2(30f, 22f), 21f)
+                .SmoothUnion(10f)
+                .RoundedBox(new NowRect(28f, 2f, 146f, 40f), 18f)
+                .Subtract()
+                .Circle(new Vector2(154f, 22f), 8f);
+
+            using (sdfMask.BeginMask())
+            {
+                Now.Gradient(
+                        sdfMaskRect,
+                        new Color(0.96f, 0.42f, 0.18f),
+                        new Color(0.68f, 0.16f, 0.76f))
+                    .SetLinear(90f)
+                    .Draw();
+
+                Now.Text(new NowRect(sdfMaskRect.x + 14f, sdfMaskRect.y + 8f, sdfMaskRect.width - 28f, 28f))
+                    .SetFontSize(18f)
+                    .SetColor(Color.white)
+                    .Draw("SDF cutout mask");
+            }
+
+            var buttonRect = NowLayout.ReserveRect(width: 180f, height: 44f);
+            bool clicked = Now.Button(buttonRect, "Sample Button").Draw();
+
+            NowLayout.Label(clicked ? "Clicked" : "Ready", 16f).Draw();
         }
 
         static void DrawSdfMaskGlowClip(NowRect rect)

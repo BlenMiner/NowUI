@@ -6,6 +6,7 @@ Shader "NowUI/UI Gradient"
         [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
         [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
         [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
+        [HideInInspector] _NowGradientRampTexelSize ("Ramp Atlas Texel Size", Vector) = (0.00390625, 0.00390625, 256, 256)
         _MainTex ("Ramp Atlas", 2D) = "white" {}
         _ZTest ("ZTest", Float) = 8
     }
@@ -63,7 +64,7 @@ Shader "NowUI/UI Gradient"
             };
 
             sampler2D _MainTex;
-            float4 _MainTex_TexelSize;
+            float4 _NowGradientRampTexelSize;
 
             float sdRoundedBox(float2 p, float2 b, float4 r)
             {
@@ -138,18 +139,18 @@ Shader "NowUI/UI Gradient"
 
                 if (fixedMode > 0.5)
                 {
-                    float index = floor(t * (_MainTex_TexelSize.z - 1.0) + 0.5);
-                    x = (index + 0.5) * _MainTex_TexelSize.x;
+                    float index = floor(t * (_NowGradientRampTexelSize.z - 1.0) + 0.5);
+                    x = (index + 0.5) * _NowGradientRampTexelSize.x;
                 }
                 else
                 {
                     x = lerp(
-                        0.5 * _MainTex_TexelSize.x,
-                        1.0 - 0.5 * _MainTex_TexelSize.x,
+                        0.5 * _NowGradientRampTexelSize.x,
+                        1.0 - 0.5 * _NowGradientRampTexelSize.x,
                         t);
                 }
 
-                float y = (row + 0.5) * _MainTex_TexelSize.y;
+                float y = (row + 0.5) * _NowGradientRampTexelSize.y;
                 return tex2D(_MainTex, float2(x, y));
             }
 

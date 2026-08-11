@@ -1657,7 +1657,10 @@ namespace NowUI
 
         static readonly List<int> _pageCounts = new List<int>(4);
 
-        internal static void EndCanvasMeshCapture(NowDrawList drawList, Vector2 positionOffset)
+        internal static void EndCanvasMeshCapture(
+            NowDrawList drawList,
+            Vector2 positionOffset,
+            bool canvasVertexColorAlwaysGammaSpace)
         {
             if (drawList == null)
             {
@@ -1720,7 +1723,8 @@ namespace NowUI
                         positionOffset,
                         NowMeshLayout.Canvas,
                         pageIndex < _pageStarts.Count ? _pageStarts[pageIndex] : 0,
-                        pageIndex < _pageCounts.Count ? _pageCounts[pageIndex] : 0);
+                        pageIndex < _pageCounts.Count ? _pageCounts[pageIndex] : 0,
+                        canvasVertexColorAlwaysGammaSpace);
                 }
 
                 if (hasGlass)
@@ -1750,7 +1754,8 @@ namespace NowUI
             Vector2 positionOffset,
             NowMeshLayout layout,
             int activeStart,
-            int activeLimit)
+            int activeLimit,
+            bool canvasVertexColorAlwaysGammaSpace = false)
         {
             if (target == null || batches == null)
                 return;
@@ -1819,7 +1824,10 @@ namespace NowUI
 
                 if (layout == NowMeshLayout.Canvas)
                 {
-                    mesh.AppendCanvasVertices(ref _canvasVertices, positionOffset);
+                    mesh.AppendCanvasVertices(
+                        ref _canvasVertices,
+                        positionOffset,
+                        canvasVertexColorAlwaysGammaSpace);
                     continue;
                 }
 
