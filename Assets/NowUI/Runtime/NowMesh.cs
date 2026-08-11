@@ -1583,7 +1583,10 @@ namespace NowUI.Internal
         /// Appends this mesh's vertices in the interleaved canvas layout (one
         /// SetVertexBufferData upload instead of eight channel setters).
         /// </summary>
-        public void AppendCanvasVertices(ref StaticList<NowCanvasVertex> destination, Vector2 positionOffset)
+        public void AppendCanvasVertices(
+            ref StaticList<NowCanvasVertex> destination,
+            Vector2 positionOffset,
+            bool canvasVertexColorAlwaysGammaSpace = false)
         {
             bool isText = kind == NowMeshKind.Text;
             bool isRectangleLike =
@@ -1619,7 +1622,11 @@ namespace NowUI.Internal
                     PatchRectangleCanvasVertices(destination.array, destinationBase, count);
 
                 if (kind == NowMeshKind.Gradient)
-                    PatchGradientCanvasColors(destination.array, destinationBase, count);
+                    PatchGradientCanvasColors(
+                        destination.array,
+                        destinationBase,
+                        count,
+                        canvasVertexColorAlwaysGammaSpace);
 
                 destination.count += count;
                 return;
@@ -1666,7 +1673,11 @@ namespace NowUI.Internal
             }
 
             if (kind == NowMeshKind.Gradient)
-                PatchGradientCanvasColors(output, destinationBase, count);
+                PatchGradientCanvasColors(
+                    output,
+                    destinationBase,
+                    count,
+                    canvasVertexColorAlwaysGammaSpace);
 
             destination.count += count;
         }
@@ -1677,14 +1688,21 @@ namespace NowUI.Internal
         /// the canvas forces gamma vertex colors) are converted gamma to linear on
         /// the way to the shader. Raw parameters do not survive that — every
         /// direction with a negative component collapses to zero and repetition
-        /// counts above one clamp. Fold them into 0..1 here and pre-apply the
-        /// inverse of the canvas conversion so <c>UIGradientUGUI</c> receives the
-        /// authored values back. The non-canvas render layout keeps full float
-        /// parameters in TEXCOORD3 and needs none of this.
+        /// counts above one clamp. Fold them into 0..1 here and, when the Canvas
+        /// performs that conversion, pre-apply its inverse so
+        /// <c>UIGradientUGUI</c> receives the authored values back. The non-canvas
+        /// render layout keeps full float parameters in TEXCOORD3 and needs none
+        /// of this.
         /// </summary>
-        static void PatchGradientCanvasColors(NowCanvasVertex[] output, int destinationBase, int count)
+        static void PatchGradientCanvasColors(
+            NowCanvasVertex[] output,
+            int destinationBase,
+            int count,
+            bool canvasVertexColorAlwaysGammaSpace)
         {
-            bool compensateCanvasGamma = QualitySettings.activeColorSpace == ColorSpace.Linear;
+            bool compensateCanvasGamma = ShouldCompensateGradientCanvasGamma(
+                QualitySettings.activeColorSpace,
+                canvasVertexColorAlwaysGammaSpace);
 
             for (int i = 0; i < count; ++i)
             {
@@ -1706,6 +1724,14 @@ namespace NowUI.Internal
 
                 output[index].color = new Color(x, y, z, w);
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool ShouldCompensateGradientCanvasGamma(
+            ColorSpace activeColorSpace,
+            bool canvasVertexColorAlwaysGammaSpace)
+        {
+            return activeColorSpace == ColorSpace.Linear && !canvasVertexColorAlwaysGammaSpace;
         }
 
         /// <summary>

@@ -192,6 +192,47 @@ public class NowGradientTests
         Assert.Less(uv3[0].z, 0f, "geometry padding should preserve extrapolated raw y");
     }
 
+    [TestCase(ColorSpace.Gamma, false, false)]
+    [TestCase(ColorSpace.Gamma, true, false)]
+    [TestCase(ColorSpace.Linear, false, true)]
+    [TestCase(ColorSpace.Linear, true, false)]
+    public void CanvasGradientGammaCompensationHonorsCanvasColorMode(
+        ColorSpace colorSpace,
+        bool vertexColorAlwaysGammaSpace,
+        bool expected)
+    {
+        Assert.AreEqual(
+            expected,
+            NowMesh.ShouldCompensateGradientCanvasGamma(
+                colorSpace,
+                vertexColorAlwaysGammaSpace));
+    }
+
+    [Test]
+    public void GradientMaterialsPublishRampAtlasTexelSize()
+    {
+        using (_drawList.Begin(Surface))
+            Now.Gradient(new NowRect(8f, 8f, 120f, 48f), Color.red, Color.blue).Draw();
+
+        var batch = _drawList.batches[0];
+        var atlas = batch.material.mainTexture;
+        Assert.NotNull(atlas);
+
+        var expected = new Vector4(
+            1f / atlas.width,
+            1f / atlas.height,
+            atlas.width,
+            atlas.height);
+        var renderTexelSize = batch.material.GetVector("_NowGradientRampTexelSize");
+        var canvasTexelSize = batch.canvasMaterial.GetVector("_NowGradientRampTexelSize");
+
+        for (int i = 0; i < 4; ++i)
+        {
+            Assert.AreEqual(expected[i], renderTexelSize[i], 0.000001f);
+            Assert.AreEqual(expected[i], canvasTexelSize[i], 0.000001f);
+        }
+    }
+
     [Test]
     public void ModifierSubdivisionSplitsGradientQuad()
     {
