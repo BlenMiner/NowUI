@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.1.1...nowui-v1.1.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* honor canvas gamma vertex colors ([94c96cb](https://github.com/BlenMiner/NowUI/commit/94c96cbab08049dfea30e149396eb69d512a19f5))
+
 ## [1.1.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.1.0...nowui-v1.1.1) (2026-08-07)
 
 
