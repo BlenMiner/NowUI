@@ -23,7 +23,8 @@ namespace NowUI.Sdf
         Ellipse = 3,
         Capsule = 4,
         Glyph = 5,
-        Arc = 6
+        Arc = 6,
+        Pie = 7
     }
 
     enum NowSdfLayerKind
@@ -310,6 +311,17 @@ namespace NowUI.Sdf
                 new Vector4(center.x, center.y, radius, thickness),
                 RadialData(from, sweep),
                 new NowRect(center.x - outer, center.y - outer, outer * 2f, outer * 2f));
+            return this;
+        }
+
+        public NowSdfGraph Pie(Vector2 center, float radius, float from, float sweep)
+        {
+            radius = Mathf.Max(0f, radius);
+            Add(
+                NowSdfShapeType.Pie,
+                new Vector4(center.x, center.y, radius, 0f),
+                RadialData(from, sweep),
+                new NowRect(center.x - radius, center.y - radius, radius * 2f, radius * 2f));
             return this;
         }
 
@@ -1038,6 +1050,12 @@ namespace NowUI.Sdf
             return this;
         }
 
+        public NowSdfBuilder Pie(Vector2 center, float radius, float from, float sweep)
+        {
+            _cache.Pie(center, radius, from, sweep);
+            return this;
+        }
+
         public NowSdfBuilder Text(Vector2 position, string value, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
         {
             _cache.Text(position, value, Now.font, fontSize, fontStyle, tabSpaces);
@@ -1551,6 +1569,14 @@ namespace NowUI.Sdf
         {
             PrepareActivePrimitive();
             _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Arc(center, radius, thickness, from, sweep);
+            ResetPendingOperation();
+            Encapsulate(_activeGraph.measureSize);
+        }
+
+        public void Pie(Vector2 center, float radius, float from, float sweep)
+        {
+            PrepareActivePrimitive();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Pie(center, radius, from, sweep);
             ResetPendingOperation();
             Encapsulate(_activeGraph.measureSize);
         }

@@ -184,6 +184,14 @@ Shader "NowUI/SDF Scene"
                 return ((sc.y * p.x > sc.x * p.y) ? length(p - sc * ra) : abs(length(p) - ra)) - rb;
             }
 
+            float sdPie(float2 p, float2 sc, float r)
+            {
+                p.x = abs(p.x);
+                float l = length(p) - r;
+                float m = length(p - sc * clamp(dot(p, sc), 0.0, r));
+                return max(l, m * sign(sc.y * p.x - sc.x * p.y));
+            }
+
             float median(float r, float g, float b)
             {
                 return max(min(r, g), min(max(r, g), b));
@@ -226,7 +234,11 @@ Shader "NowUI/SDF Scene"
                     return sdGlyph(scenePos, data1, data2, _SdfUvs[index]);
 
                 float2 q = sdRadialLocal(scenePos, data1, data2);
-                return sdArc(q, data2.xy, data1.z, data1.w);
+
+                if (type < 6.5)
+                    return sdArc(q, data2.xy, data1.z, data1.w);
+
+                return sdPie(q, data2.xy, data1.z);
             }
 
             float2 shapeUv(float type, float4 data1, float4 data2, float2 scenePos)
