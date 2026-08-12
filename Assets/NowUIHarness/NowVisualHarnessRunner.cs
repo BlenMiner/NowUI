@@ -11,10 +11,10 @@ namespace NowUI.Editor
 {
     public static class NowVisualHarnessRunner
     {
-        const string BaselineRoot = "Assets/NowUI/Tests/Baselines/Visual";
+        const string BaselineRoot = "Assets/NowUITests/Baselines/Visual";
         static readonly GoldenComparisonTolerance DefaultTolerance = new GoldenComparisonTolerance(8, 0.01f);
         static readonly GoldenComparisonTolerance LandingPageTolerance = new GoldenComparisonTolerance(4, 0.0001f);
-        static readonly GoldenComparisonTolerance MaskTolerance = new GoldenComparisonTolerance(8, 0.0025f);
+        static readonly GoldenComparisonTolerance SdfTolerance = new GoldenComparisonTolerance(8, 0.0025f);
 
         public static void Capture()
         {
@@ -104,7 +104,8 @@ namespace NowUI.Editor
                     return LandingPageTolerance;
                 case "sdf-mask-glow-clip":
                 case "sdf-mask-gallery":
-                    return MaskTolerance;
+                case "sdf-radial-primitives":
+                    return SdfTolerance;
                 default:
                     return DefaultTolerance;
             }

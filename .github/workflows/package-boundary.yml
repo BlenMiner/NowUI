@@ -1,0 +1,35 @@
+name: Package Boundary
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Assets/NowUI/**'
+      - 'Assets/NowUIHarness/**'
+      - 'Assets/NowUIHarness.meta'
+      - 'Assets/NowUITests/**'
+      - 'Assets/NowUITests.meta'
+      - 'Tools/Assert-NowUIPackageBoundary.ps1'
+      - '.releaserc'
+      - '.github/workflows/package-boundary.yml'
+      - '.github/workflows/release.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify repository-only validation content is not packaged
+        shell: pwsh
+        run: ./Tools/Assert-NowUIPackageBoundary.ps1

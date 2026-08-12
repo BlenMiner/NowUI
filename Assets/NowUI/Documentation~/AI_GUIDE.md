@@ -22,7 +22,8 @@ Prefer information in this order:
 
 1. Documentation and package metadata beside this file.
 2. XML comments and public source in the same installed package.
-3. Packaged samples and tests from the same installed package.
+3. Packaged samples from the same installed package, plus repository tests
+   when working in a NowUI source checkout.
 4. Documentation for the exact installed tag or revision.
 
 Do not use documentation from GitHub `main` to guess APIs in an older cached

@@ -27,7 +27,8 @@ public class NowVisualHarnessTests
 
     [TestCase("sdf-mask-glow-clip")]
     [TestCase("sdf-mask-gallery")]
-    public void SdfMaskScenariosUseFocusedGoldenTolerance(string scenarioName)
+    [TestCase("sdf-radial-primitives")]
+    public void SdfScenariosUseFocusedGoldenTolerance(string scenarioName)
     {
         GoldenComparisonTolerance tolerance = NowVisualHarnessRunner.ToleranceForScenario(scenarioName);
 

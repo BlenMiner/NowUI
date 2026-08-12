@@ -21,44 +21,35 @@ location, and finds the Unity Hub editor version recorded in
 silently selecting another editor. Test runs fail on invalid XML, failed tests,
 or zero discovered tests, and write logs/results under `artifacts/local`.
 
-For CI, `.github/workflows/unity-tests.yml` runs the same commands through
-`.github/scripts/Run-UnityTests.ps1` on a self-hosted Windows runner with Unity
-`6000.4.0f1`. Do not pass `-quit` to Unity test runs here; the Unity Test
-Framework exits batchmode after writing results. The script also fails the job
-if Unity exits without producing the expected XML. CI passes
-`-CleanScriptAssemblies` so stale generated assemblies from a reused workspace
-cannot pollute logs.
+Unity editor validation is a local release gate. The repository does not queue
+Unity jobs in GitHub Actions because standard GitHub-hosted runners do not
+provide the licensed editor and platform modules required by these tests. The
+`.github/scripts/Run-UnityTests.ps1` helper remains available for local or
+externally provisioned automation. Do not pass `-quit` to Unity test runs; the
+Unity Test Framework exits batchmode after writing results.
 
 ## Visual Validation
 
-`.github/workflows/visual-smoke.yml` runs the editor visual harness as a
-separate rendering gate:
+Run the editor visual harness locally as a separate rendering gate:
 
-- Windows, macOS, and Linux self-hosted runners execute
-  `Tools/NowUI-Harness.ps1 -Mode Visual`, producing PNG captures and a
-  `manifest.json`.
+- `Tools/NowUI-Harness.ps1 -Mode Visual` produces PNG captures and a
+  `manifest.json` under `artifacts/local/visual`.
 - `Tools/Assert-NowUIVisualArtifacts.ps1` validates the manifest, unique capture
   names, required scenario names, PNG headers, dimensions, file sizes, and
-  nonzero batch/vertex counts. CI requires the desktop and compact `Now` and
-  `NowLayout` landing-page captures by name, so reducing the total scenario
-  count cannot silently remove their coverage.
-- The Windows runner also executes `-Mode Golden` to compare canonical captures
-  against `Assets/NowUI/Tests/Baselines/Visual`. Landing-page scenarios use a
+  nonzero batch/vertex counts.
+- `Tools/NowUI-Harness.ps1 -Mode Golden` compares canonical captures
+  against `Assets/NowUITests/Baselines/Visual`. Landing-page scenarios use a
   stricter per-scenario mismatch ceiling than the general harness to catch a
   missing small control.
-- All captures are uploaded as workflow artifacts for inspection.
 
-The cross-OS jobs require Unity `6000.4.0f1` on self-hosted runners with the
-standard GitHub runner OS labels (`Windows`, `macOS`, `Linux`). Linux visual
-runners must provide a graphics-capable session or virtual display; do not run
-the visual harness with `-nographics`.
+Cross-OS visual validation requires Unity `6000.4.0f1` and a graphics-capable
+session or virtual display. Do not run the visual harness with `-nographics`.
 
 ## Render-Pipeline Validation
 
 The repository remains a Built-in Render Pipeline project so optional SRP
-dependencies do not become mandatory for package users.
-`.github/workflows/render-pipeline-validation.yml` creates disposable URP and
-HDRP validation workspaces instead:
+dependencies do not become mandatory for package users. For local release
+validation, use disposable URP and HDRP workspaces:
 
 - `.github/scripts/Set-RenderPipelineValidation.ps1` installs the matching
   `17.4.x` package for Unity `6000.4` and removes the other SRP package.
@@ -70,14 +61,10 @@ HDRP validation workspaces instead:
   compatibility coverage for its thin custom-pass wrapper; a deterministic
   HDRP frame fixture remains future work.
 
-The workflow runs for pull requests that touch SRP integration, shared model or
-pipeline rendering, play-mode coverage, packages, or its own automation. It can
-also be dispatched manually.
-
 ## Player-Build Matrix
 
-`.github/workflows/build-verification.yml` builds the full first-class player
-matrix every Sunday and supports manual per-target runs:
+Player builds are a local release gate and require the matching Unity editor
+platform modules:
 
 | Target | Runner | What the build verifies |
 | --- | --- | --- |
@@ -88,11 +75,8 @@ matrix every Sunday and supports manual per-target runs:
 | iOS arm64 | macOS | Xcode project generation plus unsigned device `xcodebuild` static link |
 | WebGL | Windows | WebAssembly player and static wasm linker compatibility |
 
-The matrix planner schedules only the requested manual target instead of
-allocating no-op jobs on every runner. Every selected job verifies the exact
-Unity editor and playback-engine module before building and fails if either is
-missing. Provision all listed Unity `6000.4.0f1` modules before relying on the
-scheduled full-matrix signal.
+Use `NowUI.EditorCI.NowBuildVerification.Build` in batch mode for each target.
+Provision all listed Unity `6000.4.0f1` modules before relying on the result.
 
 ## Allocation Bar
 
@@ -115,6 +99,10 @@ Normal frame paths must allocate no managed memory after explicit warmup:
 
 ## Asset Store Prep
 
+- Run `pwsh -File Tools/Assert-NowUIPackageBoundary.ps1` to verify repository
+  tests and harness code remain outside `Assets/NowUI`, the npm manifest, and
+  the configured `.unitypackage` root. GitHub runs this on pull requests and
+  again before semantic-release creates a release.
 - Keep customer examples under `Samples~`; avoid shipping internal tests as
   imported sample content.
 - Validate with Unity's Asset Store Publishing Tools before upload.

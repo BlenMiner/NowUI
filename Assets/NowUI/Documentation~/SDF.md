@@ -330,8 +330,8 @@ In a source checkout, the
 loads the corresponding materials and draws the same graph with all three.
 Open `Assets/Scenes/DocsScene.unity`, enter Play mode, then select
 **Extensions > SDF demo** in the docs browser. The repository-only example and
-test harness are not included in the packed UPM package. From the repository
-root, a repeatable off-screen preview can also be generated with:
+test harness are not included in the npm tarball. From the repository root, a
+repeatable off-screen preview can also be generated with:
 
 ```powershell
 pwsh Tools/NowUI-Harness.ps1 -Mode Visual

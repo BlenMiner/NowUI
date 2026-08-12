@@ -21,7 +21,7 @@ Then read only the feature guides relevant to the task. Use this precedence:
 
 1. This installed package's documentation.
 2. XML documentation and public source in this installed package.
-3. Packaged samples and tests.
+3. Packaged samples, plus repository tests when working in a source checkout.
 4. Version-matched remote documentation only when local material is missing.
 
 Do not use GitHub `main` as authority for a different installed revision and do
