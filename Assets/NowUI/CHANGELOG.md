@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.1.2...nowui-v1.2.0) (2026-08-12)
+
+
+### Features
+
+* **sdf:** add custom shader hooks and optimize graph evaluation ([56f08b1](https://github.com/BlenMiner/NowUI/commit/56f08b16ea9fe4952d7a9bea704ba6035e0a3647))
+
 ## [1.1.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.1.1...nowui-v1.1.2) (2026-08-11)
 
 
