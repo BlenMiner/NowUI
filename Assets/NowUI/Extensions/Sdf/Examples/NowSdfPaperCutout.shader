@@ -1,9 +1,18 @@
-Shader "NowUI/SDF Scene"
+Shader "NowUI/SDF Examples/Paper Cutout"
 {
     Properties
     {
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
         [HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 1
+        _PaperColor ("Paper", Color) = (0.95, 0.8, 0.48, 1)
+        _PaperBackColor ("Edge Shade", Color) = (0.38, 0.12, 0.12, 1)
+        [HDR] _PaperHighlightColor ("Edge Highlight", Color) = (1.3, 0.9, 0.52, 0.8)
+        _PaperShadowColor ("Custom Shadow", Color) = (0.02, 0.01, 0.04, 0.72)
+        _PaperLightDirection ("Light Direction", Vector) = (-0.65, -0.75, 0, 0)
+        _PaperBevel ("Bevel Width", Float) = 10
+        _PaperShadowOffset ("Shadow Offset", Vector) = (10, 12, 0, 0)
+        _PaperShadowSoftness ("Shadow Softness", Float) = 10
+        _PaperShadowSpread ("Shadow Spread", Float) = 1
         [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
         [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
         [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
@@ -74,7 +83,54 @@ Shader "NowUI/SDF Scene"
             #pragma multi_compile_local _ UNITY_UI_CLIP_RECT
             #pragma multi_compile_local _ UNITY_UI_ALPHACLIP
 
-            #include "NowSdfShaderV1.cginc"
+            float4 _PaperColor;
+            float4 _PaperBackColor;
+            float4 _PaperHighlightColor;
+            float4 _PaperShadowColor;
+            float4 _PaperLightDirection;
+            float4 _PaperShadowOffset;
+            float _PaperBevel;
+            float _PaperShadowSoftness;
+            float _PaperShadowSpread;
+
+            #define NOW_SDF_CUSTOM_FINAL_SHADE NowSdfPaperCutoutShadeV1
+            #include "../NowSdfShaderV1.cginc"
+
+            float4 NowSdfPaperCutoutShadeV1(
+                float4 stockColor,
+                float4 fill,
+                float4 tint,
+                float2 quadUv,
+                float2 scenePosition,
+                float2 sourceScenePosition,
+                float2 sceneSize,
+                float signedDistance,
+                float coverage,
+                float pixelWidth,
+                float edge)
+            {
+                float2 gradient = float2(ddx(signedDistance), ddy(signedDistance));
+                float2 normal2 = normalize(gradient + 0.0001);
+                float2 light = normalize(_PaperLightDirection.xy + 0.0001);
+                float facing = dot(normal2, light) * 0.5 + 0.5;
+                float bevel = 1.0 - smoothstep(0.0, max(_PaperBevel, pixelWidth), abs(signedDistance));
+
+                float3 paper = lerp(_PaperBackColor.rgb, _PaperColor.rgb, 0.56 + facing * 0.44);
+                paper *= lerp(1.0, saturate(fill.rgb), 0.22);
+                paper += _PaperHighlightColor.rgb * pow(saturate(facing), 5.0) * bevel * _PaperHighlightColor.a;
+                float4 inside = float4(saturate(paper), _PaperColor.a * fill.a * coverage);
+
+                float shadowDistance = NowSdfEvaluateDistanceV1(
+                    sourceScenePosition - _PaperShadowOffset.xy) - _PaperShadowSpread;
+                float shadowAlpha = smoothstep(
+                    max(_PaperShadowSoftness, pixelWidth) + edge,
+                    -edge,
+                    shadowDistance) * (1.0 - coverage);
+                float4 shadow = _PaperShadowColor;
+                shadow.a *= shadowAlpha * tint.a;
+
+                return NowSdfAlphaOverV1(shadow, inside);
+            }
             ENDCG
         }
     }

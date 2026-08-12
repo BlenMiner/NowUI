@@ -1,9 +1,15 @@
-Shader "NowUI/SDF Scene"
+Shader "NowUI/SDF Examples/Aurora"
 {
     Properties
     {
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
         [HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 1
+        [HDR] _AuroraColorA ("Aurora Color A", Color) = (0.04, 1.1, 1.5, 1)
+        [HDR] _AuroraColorB ("Aurora Color B", Color) = (1.4, 0.12, 0.9, 1)
+        [HDR] _AuroraHaloColor ("Aurora Halo", Color) = (0.1, 0.7, 1.8, 0.65)
+        _AuroraScale ("Band Scale", Float) = 0.055
+        _AuroraSpeed ("Band Speed", Float) = 1.2
+        _AuroraHaloRadius ("Halo Radius", Float) = 22
         [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
         [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
         [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
@@ -74,7 +80,48 @@ Shader "NowUI/SDF Scene"
             #pragma multi_compile_local _ UNITY_UI_CLIP_RECT
             #pragma multi_compile_local _ UNITY_UI_ALPHACLIP
 
-            #include "NowSdfShaderV1.cginc"
+            float4 _AuroraColorA;
+            float4 _AuroraColorB;
+            float4 _AuroraHaloColor;
+            float _AuroraScale;
+            float _AuroraSpeed;
+            float _AuroraHaloRadius;
+
+            #define NOW_SDF_CUSTOM_FINAL_SHADE NowSdfAuroraShadeV1
+            #include "../NowSdfShaderV1.cginc"
+
+            float4 NowSdfAuroraShadeV1(
+                float4 stockColor,
+                float4 fill,
+                float4 tint,
+                float2 quadUv,
+                float2 scenePosition,
+                float2 sourceScenePosition,
+                float2 sceneSize,
+                float signedDistance,
+                float coverage,
+                float pixelWidth,
+                float edge)
+            {
+                float phase =
+                    sourceScenePosition.x * _AuroraScale +
+                    sourceScenePosition.y * (_AuroraScale * 0.73) +
+                    _Time.y * _AuroraSpeed;
+                float wave = sin(phase + sin(phase * 0.47) * 1.7) * 0.5 + 0.5;
+                float pulse = 0.82 + 0.18 * sin(_Time.y * _AuroraSpeed * 1.9);
+
+                float4 inside = lerp(_AuroraColorA, _AuroraColorB, wave);
+                inside.rgb *= lerp(1.0, saturate(fill.rgb), 0.28);
+                inside.a *= fill.a * coverage;
+
+                float haloDistance = max(signedDistance, 0.0);
+                float halo = saturate(1.0 - haloDistance / max(_AuroraHaloRadius, 0.0001));
+                halo = halo * halo * (1.0 - coverage) * pulse;
+                float4 haloColor = _AuroraHaloColor;
+                haloColor.a *= halo * tint.a;
+
+                return NowSdfAlphaOverV1(haloColor, inside);
+            }
             ENDCG
         }
     }

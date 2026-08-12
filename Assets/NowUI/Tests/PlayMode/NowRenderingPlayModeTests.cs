@@ -332,6 +332,66 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void SdfGraphRangesRenderFillAndEffectDistancePasses()
+    {
+        var surface = new NowRect(0f, 0f, Side, Side);
+        var graphA = NowSdf.Graph()
+            .SetColor(Color.red)
+            .Circle(new Vector2(32f, 36f), 12f)
+            .Circle(new Vector2(32f, 92f), 10f);
+        var graphB = NowSdf.Graph()
+            .SetColor(Color.blue)
+            .Box(new NowRect(78f, 24f, 24f, 24f))
+            .Ellipse(new NowRect(82f, 62f, 20f, 24f))
+            .Capsule(new NowRect(78f, 96f, 28f, 12f));
+
+        void Draw(bool effects)
+        {
+            using (_renderer.Begin(_target))
+            {
+                var scene = NowSdf.Scene(surface, "playmode-sdf-packed-graph-ranges");
+
+                if (effects)
+                {
+                    scene = scene
+                        .SetShadow(new Vector2(12f, 0f), 2f, Color.white)
+                        .SetInnerShadow(new Vector2(-4f, 0f), 3f, new Color(0f, 0f, 0f, 0.8f));
+                }
+
+                scene
+                    .Graph(graphA)
+                    .Union()
+                    .Graph(graphB)
+                    .Draw();
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        }
+
+        Draw(effects: false);
+        var plain = ReadPixels(_target);
+        Color32 red = PixelAtUi(plain, 32, 36);
+        Color32 blue = PixelAtUi(plain, 90, 36);
+        Color32 gap = PixelAtUi(plain, 60, 60);
+
+        Assert.Greater(red.r, 240, $"The first packed graph lost its red fill: {red}.");
+        Assert.Less(red.b, 12, $"The first packed graph sampled the second graph's fill: {red}.");
+        Assert.Greater(blue.b, 240, $"The second packed graph lost its blue fill: {blue}.");
+        Assert.Less(blue.r, 12, $"The second packed graph sampled the first graph's fill: {blue}.");
+        Assert.Less(gap.a, 8, $"Disjoint packed graph ranges leaked into their gap: {gap}.");
+
+        _renderer.Clear();
+        Draw(effects: true);
+        var effected = ReadPixels(_target);
+        Color32 shadow = PixelAtUi(effected, 48, 36);
+
+        Assert.Greater(
+            shadow.a,
+            200,
+            $"The shadow distance pass did not evaluate the packed graph range: {shadow}.");
+    }
+
+    [Test]
     public void DownsampledSdfMaskStillMapsAcrossFullAuthoredRect()
     {
         var surface = new NowRect(0f, 0f, Side, Side);

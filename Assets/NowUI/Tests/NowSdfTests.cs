@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using NowUI;
 using NowUI.Internal;
@@ -182,6 +183,83 @@ public class NowSdfTests
     }
 
     [Test]
+    public void SdfScenePacksContiguousGraphRangesAndReusesThem()
+    {
+        var a = NowSdf.Graph()
+            .Circle(new Vector2(24f, 24f), 16f)
+            .Circle(new Vector2(46f, 24f), 12f);
+        var b = NowSdf.Graph()
+            .Box(new NowRect(10f, 12f, 22f, 18f))
+            .Ellipse(new NowRect(34f, 10f, 24f, 22f))
+            .Capsule(new NowRect(62f, 12f, 28f, 18f));
+
+        using (_drawList.Begin(new Vector2(110f, 56f)))
+        {
+            NowSdf.Scene(new NowRect(0f, 0f, 110f, 56f))
+                .Graph(a)
+                .Union()
+                .Graph(b)
+                .Intersect()
+                .Graph(a)
+                .Draw();
+        }
+
+        var material = _drawList.batches[0].material;
+        Assert.AreEqual(5f, material.GetFloat("_SdfShapeCount"));
+        Assert.AreEqual(3f, material.GetFloat("_SdfLayerCount"));
+
+        var layer0 = material.GetVectorArray("_SdfLayerData0");
+        var layer1 = material.GetVectorArray("_SdfLayerData1");
+        Assert.AreEqual(0f, layer0[0].x, "The first graph keeps graph id zero.");
+        Assert.AreEqual(1f, layer0[1].x, "The second graph keeps graph id one.");
+        Assert.AreEqual(0f, layer0[2].x, "A repeated graph reuses its original id.");
+        Assert.AreEqual(2f, layer1[0].z, "Graph A packs start 0 and count 2.");
+        Assert.AreEqual(259f, layer1[1].z, "Graph B packs start 2 and count 3.");
+        Assert.AreEqual(2f, layer1[2].z, "The repeated graph reuses its original range.");
+
+        var shapeMeta = material.GetVectorArray("_SdfShapeMeta");
+        Assert.AreEqual(0f, shapeMeta[0].x);
+        Assert.AreEqual(0f, shapeMeta[1].x);
+        Assert.AreEqual(1f, shapeMeta[2].x);
+        Assert.AreEqual(1f, shapeMeta[3].x);
+        Assert.AreEqual(1f, shapeMeta[4].x);
+    }
+
+    [Test]
+    public void SdfScenePackedGraphRangesPreserveTruncationOrder()
+    {
+        var a = NowSdf.Graph();
+        var b = NowSdf.Graph();
+        var c = NowSdf.Graph();
+
+        for (int i = 0; i < 63; ++i)
+            a.Circle(new Vector2(i + 0.5f, 8f), 0.4f);
+
+        for (int i = 0; i < 3; ++i)
+            b.Circle(new Vector2(i + 0.5f, 16f), 0.4f);
+
+        c.Circle(new Vector2(0.5f, 24f), 0.4f);
+
+        using (_drawList.Begin(new Vector2(64f, 32f)))
+        {
+            NowSdf.Scene(new NowRect(0f, 0f, 64f, 32f))
+                .Graph(a)
+                .Union()
+                .Graph(b)
+                .Union()
+                .Graph(c)
+                .Draw();
+        }
+
+        var material = _drawList.batches[0].material;
+        var layerData = material.GetVectorArray("_SdfLayerData1");
+        Assert.AreEqual((float)NowSdf.MaxShapes, material.GetFloat("_SdfShapeCount"));
+        Assert.AreEqual(63f, layerData[0].z, "Graph A should retain its complete 63-shape range.");
+        Assert.AreEqual(8065f, layerData[1].z, "Graph B should retain only its first uploaded shape.");
+        Assert.AreEqual(8192f, layerData[2].z, "Graph C should retain an empty range at capacity.");
+    }
+
+    [Test]
     public void SdfSceneMorphUploadsBothGraphsAsOneLayer()
     {
         var from = NowSdf.Graph()
@@ -201,7 +279,251 @@ public class NowSdfTests
         var material = _drawList.batches[0].material;
         Assert.AreEqual(1f, material.GetFloat("_SdfLayerCount"), 0.0001f);
         Assert.AreEqual(2f, material.GetFloat("_SdfShapeCount"), 0.0001f);
+        var layerData = material.GetVectorArray("_SdfLayerData1");
+        Assert.AreEqual(1f, layerData[0].z, "The source graph packs start 0 and count 1.");
+        Assert.AreEqual(129f, layerData[0].w, "The target graph packs start 1 and count 1.");
         Assert.AreEqual(4, _drawList.mesh.vertexCount);
+    }
+
+    [Test]
+    public void BuiltInSdfMaterialDeclaresCurrentAbi()
+    {
+        var material = Resources.Load<Material>("NowUI/SdfMaterial");
+
+        Assert.NotNull(material);
+        Assert.IsTrue(material.HasProperty(NowSdf.MaterialAbiProperty));
+        Assert.AreEqual(
+            NowSdf.MaterialAbiVersion,
+            material.GetFloat(NowSdf.MaterialAbiProperty),
+            0.0001f);
+        AssertShaderHasNoErrors(material.shader);
+    }
+
+    [TestCase("Aurora", "NowUI/SDF Examples/Aurora")]
+    [TestCase("Topographic", "NowUI/SDF Examples/Topographic")]
+    [TestCase("PaperCutout", "NowUI/SDF Examples/Paper Cutout")]
+    public void SdfExampleMaterialsAreLoadableAndDeclareCurrentAbi(
+        string materialName,
+        string shaderName)
+    {
+        var material = Resources.Load<Material>($"NowUI/SdfExamples/{materialName}");
+
+        Assert.NotNull(material, $"The {materialName} SDF example material was not found.");
+        Assert.NotNull(material.shader);
+        Assert.AreEqual(shaderName, material.shader.name);
+        Assert.IsTrue(material.HasProperty(NowSdf.MaterialAbiProperty));
+        Assert.AreEqual(
+            NowSdf.MaterialAbiVersion,
+            material.GetFloat(NowSdf.MaterialAbiProperty),
+            0.0001f);
+        AssertShaderHasNoErrors(material.shader);
+    }
+
+    static void AssertShaderHasNoErrors(Shader shader)
+    {
+        if (!ShaderUtil.ShaderHasError(shader))
+            return;
+
+        var messages = ShaderUtil.GetShaderMessages(shader);
+        var details = System.Array.ConvertAll(
+            messages,
+            message => $"{message.severity}: {message.message} ({message.file}:{message.line})");
+        Assert.Fail($"Shader '{shader.name}' has compiler errors:\n{string.Join("\n", details)}");
+    }
+
+    [Test]
+    public void SdfSceneRejectsMaterialsWithoutTheCurrentAbi()
+    {
+        var stock = Resources.Load<Material>("NowUI/SdfMaterial");
+        var uiShader = Shader.Find("UI/Default");
+        Assert.NotNull(stock);
+        Assert.NotNull(uiShader);
+
+        var missingAbi = new Material(uiShader);
+        var wrongAbi = new Material(stock);
+        wrongAbi.SetFloat(NowSdf.MaterialAbiProperty, NowSdf.MaterialAbiVersion + 1);
+
+        try
+        {
+            Assert.Throws<System.ArgumentException>(() =>
+                NowSdf.Scene(new NowRect(0f, 0f, 32f, 32f), "missing-sdf-abi")
+                    .SetMaterial(missingAbi));
+            Assert.Throws<System.ArgumentException>(() =>
+                NowSdf.Scene(new NowRect(0f, 0f, 32f, 32f), "wrong-sdf-abi")
+                    .SetMaterial(wrongAbi));
+
+            Assert.AreEqual(0, _drawList.batchCount);
+            Assert.AreEqual(0, NowSdf.maskTextureCount);
+            Assert.AreEqual(0, NowSdf.maskRasterizationCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(missingAbi);
+            Object.DestroyImmediate(wrongAbi);
+        }
+    }
+
+    [Test]
+    public void SdfSceneOwnsAndSynchronizesCustomMaterialClones()
+    {
+        var stock = Resources.Load<Material>("NowUI/SdfMaterial");
+        Assert.NotNull(stock);
+
+        var template = new Material(stock);
+        template.SetFloat("_ColorMask", 7f);
+        template.SetFloat("_SdfShapeCount", 23f);
+        var rect = new NowRect(0f, 0f, 48f, 32f);
+        var id = new NowId("custom-sdf-material");
+
+        Material Draw(bool? syncPerFrame)
+        {
+            using (_drawList.Begin(rect.size))
+            {
+                var scene = NowSdf.Scene(rect, id);
+                scene = syncPerFrame.HasValue
+                    ? scene.SetMaterial(template, syncPerFrame.Value)
+                    : scene.SetMaterial(template);
+                scene.Circle(rect.center, 12f).Draw();
+            }
+
+            return _drawList.batches[0].material;
+        }
+
+        try
+        {
+            var clone = Draw(null);
+            Assert.AreNotSame(template, clone);
+            Assert.AreEqual(7f, clone.GetFloat("_ColorMask"));
+            Assert.AreEqual(1f, clone.GetFloat("_SdfShapeCount"));
+            Assert.AreEqual(0f, clone.GetFloat("_SdfMaskOutput"));
+            Assert.AreEqual(23f, template.GetFloat("_SdfShapeCount"), "The caller's template was mutated.");
+
+            template.SetFloat("_ColorMask", 3f);
+            var staticClone = Draw(false);
+            Assert.AreSame(clone, staticClone);
+            Assert.AreEqual(7f, staticClone.GetFloat("_ColorMask"), "A static template was recopied.");
+
+            var synchronizedClone = Draw(true);
+            Assert.AreSame(clone, synchronizedClone);
+            Assert.AreEqual(3f, synchronizedClone.GetFloat("_ColorMask"));
+            Assert.AreEqual(1f, synchronizedClone.GetFloat("_SdfShapeCount"), "ABI arrays were not restored after property synchronization.");
+            Assert.AreEqual(
+                1f,
+                synchronizedClone.GetVectorArray("_SdfLayerData1")[0].z,
+                "Packed graph ranges were not restored after property synchronization.");
+            Assert.AreEqual(23f, template.GetFloat("_SdfShapeCount"), "Synchronization mutated the template.");
+
+            using (_drawList.Begin(rect.size))
+            {
+                NowSdf.Scene(rect, id)
+                    .SetMaterial(null)
+                    .Circle(rect.center, 12f)
+                    .Draw();
+            }
+
+            Assert.IsTrue(clone, "Switching templates destroyed a clone still usable by queued batches.");
+            Assert.IsTrue(template, "Switching materials destroyed the caller's template.");
+            Assert.AreNotSame(template, _drawList.batches[0].material);
+
+            Assert.IsTrue(NowSdf.Release(id));
+            Assert.IsFalse(clone, "Releasing the scene cache did not destroy its owned clone.");
+            Assert.IsTrue(template, "Releasing the scene cache destroyed the caller's template.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(template);
+        }
+    }
+
+    [Test]
+    public void SdfSceneRetainsMaterialClonesReferencedByQueuedBatches()
+    {
+        var stock = Resources.Load<Material>("NowUI/SdfMaterial");
+        Assert.NotNull(stock);
+
+        var templateA = new Material(stock);
+        var templateB = new Material(stock);
+        templateA.SetFloat("_ColorMask", 7f);
+        templateB.SetFloat("_ColorMask", 3f);
+        var rect = new NowRect(0f, 0f, 48f, 32f);
+        var id = new NowId("queued-sdf-material-switch");
+
+        try
+        {
+            using (_drawList.Begin(rect.size))
+            {
+                var scene = NowSdf.Scene(rect, id)
+                    .SetMaterial(templateA)
+                    .Circle(rect.center, 12f);
+
+                scene.Draw();
+                scene.SetMaterial(templateB).Draw();
+                scene.SetMaterial(templateA).Draw();
+            }
+
+            Assert.AreEqual(3, _drawList.batchCount);
+            var first = _drawList.batches[0].material;
+            var second = _drawList.batches[1].material;
+            var reused = _drawList.batches[2].material;
+            Assert.IsTrue(first);
+            Assert.IsTrue(second);
+            Assert.AreNotSame(first, second);
+            Assert.AreSame(first, reused, "Returning to a template did not reuse its retained clone.");
+            Assert.AreEqual(7f, first.GetFloat("_ColorMask"));
+            Assert.AreEqual(3f, second.GetFloat("_ColorMask"));
+
+            Assert.IsTrue(NowSdf.Release(id));
+            Assert.IsFalse(first);
+            Assert.IsFalse(second);
+            Assert.IsTrue(templateA);
+            Assert.IsTrue(templateB);
+        }
+        finally
+        {
+            Object.DestroyImmediate(templateA);
+            Object.DestroyImmediate(templateB);
+        }
+    }
+
+    [Test]
+    public void SdfCustomMaterialSynchronizationControlsMaskReuse()
+    {
+        var stock = Resources.Load<Material>("NowUI/SdfMaterial");
+        Assert.NotNull(stock);
+
+        var template = new Material(stock);
+        var rect = new NowRect(0f, 0f, 48f, 32f);
+        var id = new NowId("custom-sdf-mask-material");
+
+        void Capture(bool syncPerFrame)
+        {
+            using (_drawList.Begin(rect.size))
+            using (NowSdf.Scene(rect, id)
+                .SetMaterial(template, syncPerFrame)
+                .Circle(rect.center, 12f)
+                .BeginMask())
+            {
+                Now.Rectangle(rect).SetColor(Color.white).Draw();
+            }
+        }
+
+        try
+        {
+            Capture(false);
+            Capture(false);
+            Assert.AreEqual(1, NowSdf.maskRasterizationCount, "An immutable custom template disabled mask reuse.");
+
+            Capture(true);
+            Capture(true);
+            Assert.AreEqual(3, NowSdf.maskRasterizationCount, "A synchronized custom template reused stale mask coverage.");
+
+            NowSdf.Reset();
+            Assert.IsTrue(template, "Reset destroyed the caller's custom material template.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(template);
+        }
     }
 
     [Test]

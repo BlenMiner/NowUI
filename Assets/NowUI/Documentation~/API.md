@@ -64,10 +64,18 @@ extension, editor, URP, and HDRP assemblies in the installed package.
   or `BeginMask()`; the latter returns an ambient `NowMaskScope` backed by
   cached, single-channel SDF coverage. `SetMaskResolutionScale(scale)` can
   reduce that coverage target's resolution without changing its authored
-  bounds. `NowSdf.Release(id)` releases one explicit stable-id cache;
+  bounds. `SetMaterial(Material[, bool])` selects a compatible, compiled HLSL
+  material template; `NowSdf.MaterialAbiVersion` and
+  `NowSdf.MaterialAbiProperty` describe the current ABI-v1 declaration. The
+  cache owns direct and mask material clones per distinct template, while the
+  caller retains the templates. Static templates preserve upload and mask
+  reuse; per-frame synchronization recopies template properties and
+  rerasterizes custom masks.
+  There is no C# distance-function delegate or runtime shader injection.
+  `NowSdf.Release(id)` releases one explicit stable-id cache;
   `NowSdf.Reset()` releases them all. Both invalidate builders backed by a
-  released cache, whose consumer calls then throw `ObjectDisposedException`. See
-  [SDF Shapes](SDF.md) and [Masks](Masks.md).
+  released cache, whose consumer calls then throw `ObjectDisposedException`.
+  See [SDF Shapes](SDF.md) and [Masks](Masks.md).
 
 ## Runtime guarantees
 

@@ -1254,6 +1254,14 @@ public class NowDocsExample : NowLayoutGraphic
         NowMarkdown.Document("# SDF demo\n\nHover the specimen to steer the light, warp, and contour field. Click it to switch into cutaway mode.").Draw();
 
         DrawSdfPlaygroundPanel(themeAsset);
+        NowMarkdown.Document(
+            "## Custom final-shade gallery\n\n" +
+            "Each card below renders the same shared five-shape graph. Only the material changes: " +
+            "animated emissive bands, a two-sided distance field, and a bevel shader that samples " +
+            "the graph once more for its shadow.").Draw();
+
+        var gallery = NowLayout.ReserveRect(height: NowSdfShaderExamples.PreferredHeight, stretchWidth: true);
+        NowSdfShaderExamples.DrawGallery(gallery, themeAsset, "docs-sdf-custom-shader-gallery");
         NowControlState.RequestRepaint();
     }
 

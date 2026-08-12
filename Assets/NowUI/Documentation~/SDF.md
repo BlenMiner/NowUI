@@ -101,9 +101,17 @@ effects, effective tint, local mask, source texture version, and physical size
 are unchanged, `BeginMask()` reuses the already-rasterized coverage. Translation
 and mirroring alone can reuse it. A shape/effect/tint/mask change,
 `Texture2D.Apply()`, physical size change, or mask-resolution change that
-produces different target dimensions rerasterizes; nonzero-speed warp and
-`RenderTexture` fills rerasterize every call. Keep the resolution scale stable
-for a stable id to avoid target resize churn.
+produces different target dimensions rerasterizes; nonzero-speed warp,
+`RenderTexture` fills, and synchronized custom materials rerasterize every
+call. Switching a custom material template also invalidates the cached
+coverage. Keep the resolution scale stable for a stable id to avoid target
+resize churn.
+
+A resolved id owns exactly one coverage target. Do not call `BeginMask()` for
+two different captures with the same resolved id while batches consuming the
+first capture are still queued: the later capture overwrites that target. Use
+distinct ids for concurrently queued masks, including masks that select
+different custom material templates.
 
 The target persists until resize, `NowSdf.Release(id)`, or `NowSdf.Reset()`;
 callers do not own it. Caches are not automatically evicted because retained
@@ -186,6 +194,183 @@ Scene effects measure against a locally normalized field distance, so stroke,
 shadow, emboss, and contour sizes stay close to scene-pixel units even through
 smooth blends, morphs, and warped organic fields.
 
+## Custom SDF Materials
+
+`SetMaterial(...)` replaces the final SDF shader for one scene. Use it for a
+project-specific fill, lighting model, contour treatment, or shadow strategy
+while retaining the graph builder and one-quad submission path:
+
+```csharp
+NowSdf.Scene(rect, "lit-logo")
+    .SetMaterial(litSdfMaterial)
+    .SetColor(Color.white)
+    .RoundedBox(new NowRect(12f, 12f, 132f, 72f), 18f)
+    .Subtract()
+    .Circle(new Vector2(78f, 48f), 20f)
+    .Draw();
+```
+
+An SDF material is not an arbitrary rectangle material. Its shader must keep
+the built-in scene arrays, packed graph ranges, vertex streams, UGUI
+canvas-layout switch, ambient mask handling, and mask-output behavior. The
+supported way to retain that plumbing while changing the pixels is the
+versioned [`NowSdfShaderV1.cginc`](../Extensions/Sdf/NowSdfShaderV1.cginc)
+implementation. Start from a complete example below: its ShaderLab properties,
+render state, stencil block, pragmas, and include are part of the contract.
+
+The current material ABI is version 1. `NowSdf.MaterialAbiVersion` exposes the
+numeric version, and `NowSdf.MaterialAbiProperty` exposes the required shader
+property name, `_NowSdfAbiVersion`. A compatible shader declares it in its
+`Properties` block:
+
+```shaderlab
+[HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 1
+```
+
+`SetMaterial` throws `ArgumentException` when this property is absent or does
+not equal the current ABI version. Declaring it is a compatibility assertion;
+the shader still has to include the matching implementation and keep its
+required ShaderLab declarations.
+
+Define `NOW_SDF_CUSTOM_FINAL_SHADE` to the name of an HLSL function before the
+include. The include declares the function and calls it later, so define the
+body after the include. This is the smallest useful callback block to copy into
+one of the complete example shaders (also add `_StripeColor` to `Properties`):
+
+```hlsl
+float4 _StripeColor;
+
+#define NOW_SDF_CUSTOM_FINAL_SHADE ProjectStripeShadeV1
+#include "Packages/com.blenminer.nowui/Extensions/Sdf/NowSdfShaderV1.cginc"
+
+float4 ProjectStripeShadeV1(
+    float4 stockColor,
+    float4 fill,
+    float4 tint,
+    float2 quadUv,
+    float2 scenePosition,
+    float2 sourceScenePosition,
+    float2 sceneSize,
+    float signedDistance,
+    float coverage,
+    float pixelWidth,
+    float edge)
+{
+    float stripe = step(0.5, frac(sourceScenePosition.x / 12.0));
+    float4 overlay = _StripeColor;
+    overlay.a *= fill.a * coverage * stripe;
+    return NowSdfAlphaOverV1(stockColor, overlay);
+}
+```
+
+That include path is for a normal UPM installation. If the package was copied
+or checked out at `Assets/NowUI`, use
+`Assets/NowUI/Extensions/Sdf/NowSdfShaderV1.cginc`. Shaders living beside the
+packaged examples can use their relative `../NowSdfShaderV1.cginc` path. Do not
+mix an ABI-v1 property with an implementation from another installed package
+version.
+
+The callback receives:
+
+| Input | Meaning |
+| --- | --- |
+| `stockColor` | Straight-alpha result after the stock drop shadow, glow, outline, fill/emboss, inner shadow, and contours have been composed. Return it unchanged to keep stock rendering. |
+| `fill` | Evaluated scene fill before coverage and emboss; it already includes shape color, scene tint, and the scene's sampled `_MainTex` where applicable. |
+| `tint` | Effective per-draw scene tint. |
+| `quadUv` | Raw 0..1 scene-quad UV. |
+| `scenePosition` | Warped scene-local position used by the stock distance evaluation. |
+| `sourceScenePosition` | Unwarped, top-left-origin/y-down scene-local position. |
+| `sceneSize` | Scene-quad size in local scene units. |
+| `signedDistance` | Final composed distance at `scenePosition`; negative is inside. |
+| `coverage` | Stock feathered shape coverage before any visual effects. |
+| `pixelWidth` | Screen derivative width of `signedDistance`. |
+| `edge` | Stock AA/feather half-width derived from `pixelWidth`. |
+
+The hook runs after stock effects and contours but before Unity UI clipping,
+ambient NowUI masks, `_SdfMaskOutput`, and alpha clipping. Consequently its
+returned alpha contributes to `BeginMask()`, while later masks can still clip
+it. Output must remain straight alpha because the pass uses
+`Blend SrcAlpha OneMinusSrcAlpha`. `NowSdfAlphaOverV1(base, top)` composes two
+straight-alpha colors without changing that convention.
+
+ABI v1 also exposes
+`NowSdfEvaluateDistanceV1(sourceScenePosition)`. It applies the configured warp
+and evaluates the complete scene distance at another unwarped point, which is
+useful for a displaced shadow. It repeats the scene-distance work, so prefer
+the supplied `signedDistance` when one sample is sufficient.
+
+Three complete shaders demonstrate different tradeoffs:
+
+- [Aurora](../Extensions/Sdf/Examples/NowSdfAurora.shader) uses scene position
+  and `_Time` for animated color bands plus a custom outside halo.
+- [Topographic](../Extensions/Sdf/Examples/NowSdfTopographic.shader) draws
+  arithmetic distance contours on both sides of the boundary without an extra
+  scene evaluation.
+- [Paper Cutout](../Extensions/Sdf/Examples/NowSdfPaperCutout.shader) derives a
+  bevel normal and performs one extra displaced distance evaluation for its
+  shadow.
+
+In a source checkout, the
+[repository gallery helper](https://github.com/BlenMiner/NowUI/blob/main/Assets/NowUI/Example/NowSdfShaderExamples.cs)
+loads the corresponding materials and draws the same graph with all three.
+Open `Assets/Scenes/DocsScene.unity`, enter Play mode, then select
+**Extensions > SDF demo** in the docs browser. The repository-only example and
+test harness are not included in the packed UPM package. From the repository
+root, a repeatable off-screen preview can also be generated with:
+
+```powershell
+pwsh Tools/NowUI-Harness.ps1 -Mode Visual
+```
+
+The local, git-ignored gallery image is written to
+`artifacts/local/visual/sdf-custom-shaders.png`.
+
+### Custom-shader costs and boundaries
+
+The builder still submits one quad, but the callback runs for fragments across
+that quad, including its transparent padding. A larger scene rect, more custom
+texture samples, loops, and extra calls to `NowSdfEvaluateDistanceV1` therefore
+increase GPU work. Stock effects are evaluated before the callback; leave
+effects disabled when the custom shader replaces them. Different material
+templates also split draw batches. Reuse a small, stable material set and keep
+scene rects only as large as their shapes plus the padding needed by outside
+halos, contours, or shadows.
+
+The hook changes shading, not geometry. It cannot draw outside the scene quad
+or the builder's explicit mask. `_MainTex` is reserved for the scene's source
+texture or SDF glyph atlas and is overwritten by NowUI; declare a separate
+sampler such as `_ProjectNoiseTex` for custom textures.
+
+Custom distance and shading functions are ordinary HLSL compiled into the
+project shader. There is no C# per-pixel delegate, function registry, runtime
+shader-source injection, or custom graph-node opcode in ABI v1. New reusable
+primitive kinds still require a future node contract.
+
+The passed material is a caller-owned template. A resolved scene cache lazily
+creates its own direct-draw clone and, when needed, a separate mask clone for
+each distinct template it uses. Clones remain alive until `NowSdf.Release(id)`
+or `NowSdf.Reset()` so queued direct SDF batches survive a later template
+switch; those calls destroy the clones but never the templates. Mask capture
+still follows the one-coverage-target-per-id rule above. Keep templates alive
+while scenes use them, reuse a bounded template set, and do not construct a new
+material every frame for a stable scene id. The one-argument
+`SetMaterial(material)` overload treats its properties as immutable. Do not
+mutate that template after first use: direct and mask clones are created lazily,
+and each captures the template when its rendering path is first used. Later
+changes are not synchronized into an existing clone. This keeps unchanged
+material and mask uploads reusable.
+
+Use `SetMaterial(material, syncPerFrame: true)` when project-defined material
+properties change. Also use it when a custom shader clock changes output alpha
+captured by `BeginMask()`; this forces that cached coverage to rerasterize.
+It recopies template properties before each draw, then reuploads the SDF ABI
+data that the copy replaced. Direct `Draw()` has no intermediate mask texture,
+so `_Time` animation does not itself require a property copy, but the host must
+still repaint. Any retained host must be dirtied before changed builder or
+template state can run again. Synchronization makes custom masks rerasterize on
+every `BeginMask()` because arbitrary shader properties have no reliable change
+version.
+
 ## Reusable Graphs
 
 Use `NowSdf.Graph()` when a shape set should be reused or combined as one
@@ -242,6 +427,16 @@ NowSdf.Scene(rect)
     .Graph(mask)
     .Draw();
 ```
+
+Each distinct graph is uploaded as one contiguous shape range, and repeated
+references reuse that range. The layer metadata packs the range's start and
+count into components that were already present, so this optimization adds no
+uniform array. On the GPU, a layer now loops only over its referenced graph's
+shapes instead of scanning every shape in the scene and skipping unrelated
+graph ids. Morphs evaluate their source and target ranges; enabled drop and
+inner shadows still perform their additional scene-distance evaluations. GPU
+cost therefore still grows with covered pixels, referenced shapes, morphs,
+and effects, but multi-graph scenes avoid the former all-shapes-per-graph scan.
 
 ## Morphs
 

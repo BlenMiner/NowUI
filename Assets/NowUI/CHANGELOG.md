@@ -165,7 +165,28 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `GradientField` invalidates automatically after edits. The dedicated builder,
   shaders, and batch kind leave `NowRectangle` and its solid path unchanged.
 
+- **SDF scenes accept compatible custom material templates.**
+  `NowSdfBuilder.SetMaterial(Material[, bool])` selects a compiled HLSL shader
+  implementing material ABI v1, declared through `_NowSdfAbiVersion` and the
+  public `NowSdf.MaterialAbiVersion` / `MaterialAbiProperty` constants. Scene
+  caches retain separate direct and mask clones per template without mutating
+  caller-owned materials, so queued direct SDF batches remain valid across
+  template switches. Static snapshots retain upload and mask reuse; explicit
+  per-frame synchronization recopies project properties and rerasterizes custom
+  masks. A versioned shared shader include exposes an optional final-shading
+  callback while preserving SDF evaluation, effects, UGUI clipping, ambient
+  masks, and mask capture. Aurora, topographic-field, and paper-cutout shaders
+  plus a live docs gallery demonstrate animated fills, custom contours, bevels,
+  and a displaced distance-field shadow.
+
 ### Changed
+
+- **SDF graph layers use packed contiguous shape ranges on the GPU.** Each
+  distinct graph is uploaded once, repeated references reuse its range, and a
+  layer or morph endpoint iterates only that graph's shapes instead of scanning
+  every scene shape. The range reuses existing layer-vector components rather
+  than adding another uniform array. Releasing an SDF cache now also evicts
+  UGUI and world-host material clones derived from its owned source material.
 
 - **Package guidance is now version-matched and agent-ready.** Public guides
   ship under `Documentation~` with a package `README.md`, a concise

@@ -497,6 +497,15 @@ namespace NowUI.Sdf
         public const int MaxShapes = 64;
         public const int MaxLayers = 16;
 
+        /// <summary>
+        /// Version of the material/shader data contract consumed by
+        /// <see cref="NowSdfBuilder.SetMaterial(Material, bool)"/>.
+        /// </summary>
+        public const int MaterialAbiVersion = 1;
+
+        /// <summary>Shader property that declares the supported SDF material ABI.</summary>
+        public const string MaterialAbiProperty = "_NowSdfAbiVersion";
+
         static readonly Dictionary<int, NowSdfCache> _caches = new Dictionary<int, NowSdfCache>(16);
 
         static int _maskRasterizationCount;
@@ -719,6 +728,38 @@ namespace NowUI.Sdf
             }
 
             _maskResolutionScale = scale;
+            return this;
+        }
+
+        /// <summary>
+        /// Uses a caller-provided SDF material as a template for this scene. The
+        /// template must declare <see cref="NowSdf.MaterialAbiProperty"/> with
+        /// value <see cref="NowSdf.MaterialAbiVersion"/> and implement the same
+        /// scene-array and vertex-stream contract as the built-in SDF shader.
+        /// NowUI creates and owns separate direct and mask clones as needed for
+        /// each distinct template in a resolved scene cache; it never mutates or
+        /// destroys <paramref name="material"/>. This overload treats the template
+        /// as an immutable snapshot so static upload and mask caches remain reusable.
+        /// </summary>
+        /// <param name="material">Compatible template, or null to use the built-in material.</param>
+        public NowSdfBuilder SetMaterial(Material material)
+        {
+            return SetMaterial(material, syncPerFrame: false);
+        }
+
+        /// <summary>
+        /// Uses a compatible caller-provided material template and explicitly
+        /// controls whether its project-defined properties are recopied each frame.
+        /// </summary>
+        /// <param name="material">Compatible template, or null to use the built-in material.</param>
+        /// <param name="syncPerFrame">
+        /// When true, copy template properties before each draw. A synchronized
+        /// custom mask rerasterizes because arbitrary shader properties cannot be
+        /// versioned reliably.
+        /// </param>
+        public NowSdfBuilder SetMaterial(Material material, bool syncPerFrame)
+        {
+            _cache.SetMaterial(material, syncPerFrame);
             return this;
         }
 
@@ -1109,11 +1150,38 @@ namespace NowUI.Sdf
 
     sealed class NowSdfCache
     {
+        readonly struct GraphUpload
+        {
+            public readonly int id;
+            public readonly int start;
+            public readonly int count;
+
+            public GraphUpload(int id, int start, int count)
+            {
+                this.id = id;
+                this.start = start;
+                this.count = count;
+            }
+        }
+
+        readonly struct OwnedMaterial
+        {
+            public readonly Material source;
+            public readonly Material material;
+
+            public OwnedMaterial(Material source, Material material)
+            {
+                this.source = source;
+                this.material = material;
+            }
+        }
+
         readonly struct MaskRenderSignature : IEquatable<MaskRenderSignature>
         {
             readonly ulong _sceneHash;
             readonly Texture _sourceTexture;
             readonly uint _sourceTextureUpdateCount;
+            readonly Material _materialTemplate;
             readonly Vector4 _effectiveTint;
             readonly Vector2 _localSize;
             readonly NowRect _localMask;
@@ -1124,6 +1192,7 @@ namespace NowUI.Sdf
                 ulong sceneHash,
                 Texture sourceTexture,
                 uint sourceTextureUpdateCount,
+                Material materialTemplate,
                 Vector4 effectiveTint,
                 Vector2 localSize,
                 NowRect localMask,
@@ -1133,6 +1202,7 @@ namespace NowUI.Sdf
                 _sceneHash = sceneHash;
                 _sourceTexture = sourceTexture;
                 _sourceTextureUpdateCount = sourceTextureUpdateCount;
+                _materialTemplate = materialTemplate;
                 _effectiveTint = effectiveTint;
                 _localSize = localSize;
                 _localMask = localMask;
@@ -1145,6 +1215,7 @@ namespace NowUI.Sdf
                 return _sceneHash == other._sceneHash &&
                     ReferenceEquals(_sourceTexture, other._sourceTexture) &&
                     _sourceTextureUpdateCount == other._sourceTextureUpdateCount &&
+                    ReferenceEquals(_materialTemplate, other._materialTemplate) &&
                     _effectiveTint.Equals(other._effectiveTint) &&
                     _localSize.Equals(other._localSize) &&
                     _localMask == other._localMask &&
@@ -1166,6 +1237,9 @@ namespace NowUI.Sdf
                         ? RuntimeHelpers.GetHashCode(_sourceTexture)
                         : 0);
                     hash = hash * 397 ^ _sourceTextureUpdateCount.GetHashCode();
+                    hash = hash * 397 ^ (!ReferenceEquals(_materialTemplate, null)
+                        ? RuntimeHelpers.GetHashCode(_materialTemplate)
+                        : 0);
                     hash = hash * 397 ^ _effectiveTint.GetHashCode();
                     hash = hash * 397 ^ _localSize.GetHashCode();
                     hash = hash * 397 ^ _localMask.GetHashCode();
@@ -1177,6 +1251,7 @@ namespace NowUI.Sdf
         }
 
         static readonly int _mainTexProp = Shader.PropertyToID("_MainTex");
+        static readonly int _materialAbiProp = Shader.PropertyToID(NowSdf.MaterialAbiProperty);
         static readonly int _shapeCountProp = Shader.PropertyToID("_SdfShapeCount");
         static readonly int _layerCountProp = Shader.PropertyToID("_SdfLayerCount");
         static readonly int _featherProp = Shader.PropertyToID("_SdfFeather");
@@ -1204,6 +1279,8 @@ namespace NowUI.Sdf
         static readonly int _warpProp = Shader.PropertyToID("_SdfWarp");
         static readonly int _maskOutputProp = Shader.PropertyToID("_SdfMaskOutput");
 
+        static Material _builtInMaterialTemplate;
+
         readonly Vector4[] _data0 = new Vector4[NowSdf.MaxShapes];
         readonly Vector4[] _data1 = new Vector4[NowSdf.MaxShapes];
         readonly Vector4[] _data2 = new Vector4[NowSdf.MaxShapes];
@@ -1215,10 +1292,17 @@ namespace NowUI.Sdf
 
         readonly List<NowSdfLayer> _layers = new List<NowSdfLayer>(4);
         readonly List<NowSdfGraph> _inlineGraphs = new List<NowSdfGraph>(4);
-        readonly Dictionary<NowSdfGraph, int> _graphIds = new Dictionary<NowSdfGraph, int>(8);
+        readonly Dictionary<NowSdfGraph, GraphUpload> _graphUploads =
+            new Dictionary<NowSdfGraph, GraphUpload>(8);
+        readonly List<OwnedMaterial> _ownedMaterials = new List<OwnedMaterial>(2);
+        readonly List<OwnedMaterial> _ownedMaskMaterials = new List<OwnedMaterial>(2);
 
         Material _material;
         Material _maskMaterial;
+        Material _materialSource;
+        Material _maskMaterialSource;
+        Material _materialTemplate;
+        bool _syncMaterialTemplate;
         NowRenderer _maskRenderer;
         RenderTexture _maskTexture;
         ulong _uploadedHash;
@@ -1269,7 +1353,7 @@ namespace NowUI.Sdf
         {
             ThrowIfReleased();
             _layers.Clear();
-            _graphIds.Clear();
+            _graphUploads.Clear();
             _inlineGraphCursor = 0;
             _activeGraph = RentInlineGraph();
             _pendingOperation = NowSdfOperation.Union;
@@ -1291,6 +1375,8 @@ namespace NowUI.Sdf
             _contourMask = default;
             _warp = default;
             _texture = null;
+            _materialTemplate = null;
+            _syncMaterialTemplate = true;
             _bounds = default;
             _hasBounds = false;
         }
@@ -1313,8 +1399,13 @@ namespace NowUI.Sdf
             _maskRenderer = null;
             ReleaseMaskTexture();
 
-            ReleaseMaterial(ref _maskMaterial);
-            ReleaseMaterial(ref _material);
+            ReleaseMaterials(_ownedMaskMaterials);
+            ReleaseMaterials(_ownedMaterials);
+            _maskMaterial = null;
+            _maskMaterialSource = null;
+            _material = null;
+            _materialSource = null;
+            _materialTemplate = null;
             _hasUploadedHash = false;
             _hasMaskUploadedHash = false;
         }
@@ -1329,17 +1420,43 @@ namespace NowUI.Sdf
             }
         }
 
-        static void ReleaseMaterial(ref Material material)
+        public void SetMaterial(Material material, bool syncPerFrame)
+        {
+            if (material != null &&
+                (!material.HasProperty(_materialAbiProp) ||
+                 !Mathf.Approximately(material.GetFloat(_materialAbiProp), NowSdf.MaterialAbiVersion)))
+            {
+                throw new ArgumentException(
+                    $"SDF material '{material.name}' does not implement material ABI " +
+                    $"{NowSdf.MaterialAbiVersion}. Declare {NowSdf.MaterialAbiProperty} with that value " +
+                    "and implement the built-in SDF scene data contract.",
+                    nameof(material));
+            }
+
+            _materialTemplate = material;
+            _syncMaterialTemplate = syncPerFrame;
+        }
+
+        static void ReleaseMaterials(List<OwnedMaterial> materials)
+        {
+            for (int i = 0; i < materials.Count; ++i)
+                ReleaseMaterial(materials[i].material);
+
+            materials.Clear();
+        }
+
+        static void ReleaseMaterial(Material material)
         {
             if (material == null)
                 return;
+
+            NowGraphic.ReleaseCachedMaterial(material);
+            NowWorldGraphic.ReleaseCachedMaterial(material);
 
             if (Application.isPlaying)
                 UnityEngine.Object.Destroy(material);
             else
                 UnityEngine.Object.DestroyImmediate(material);
-
-            material = null;
         }
 
         public void SetColor(Vector4 color)
@@ -1584,6 +1701,7 @@ namespace NowUI.Sdf
                 sceneHash,
                 sourceTexture,
                 sourceTextureUpdateCount,
+                _materialTemplate != null ? _materialTemplate : null,
                 Now.ApplyCurrentColorMultiplier(tint),
                 localRect.size,
                 localMask,
@@ -1595,7 +1713,8 @@ namespace NowUI.Sdf
             // reads shader _Time. Both cases must remain live rather than reusing
             // an apparently identical coverage image.
             bool dynamicCoverage = sourceTexture is RenderTexture ||
-                (_warp.x > 0f && _warp.z != 0f);
+                (_warp.x > 0f && _warp.z != 0f) ||
+                (_materialTemplate != null && _syncMaterialTemplate);
             bool reuseCoverage = !dynamicCoverage &&
                 _hasMaskRenderSignature &&
                 _maskRenderSignature.Equals(signature);
@@ -1713,58 +1832,113 @@ namespace NowUI.Sdf
 
         Material GetMaterial()
         {
-            if (_material != null)
-                return _material;
-
-            var template = Resources.Load<Material>("NowUI/SdfMaterial");
-
-            if (template != null)
-            {
-                _material = new Material(template);
-            }
-            else
-            {
-                var shader = Shader.Find("NowUI/SDF Scene");
-
-                if (shader == null)
-                    return null;
-
-                _material = new Material(shader);
-            }
-
-            _material.name = "Now SDF Scene";
-            _material.hideFlags = HideFlags.HideAndDontSave;
-            _hasUploadedHash = false;
-            return _material;
+            return GetMaterial(
+                ref _material,
+                ref _materialSource,
+                _ownedMaterials,
+                false,
+                ref _hasUploadedHash);
         }
 
         Material GetMaskMaterial()
         {
-            if (_maskMaterial != null)
-                return _maskMaterial;
+            return GetMaterial(
+                ref _maskMaterial,
+                ref _maskMaterialSource,
+                _ownedMaskMaterials,
+                true,
+                ref _hasMaskUploadedHash);
+        }
 
-            var template = Resources.Load<Material>("NowUI/SdfMaterial");
+        Material GetMaterial(
+            ref Material material,
+            ref Material source,
+            List<OwnedMaterial> ownedMaterials,
+            bool maskOutput,
+            ref bool hasUploadedHash)
+        {
+            bool customTemplate = _materialTemplate != null;
+            Material template = customTemplate
+                ? _materialTemplate
+                : GetBuiltInMaterialTemplate();
+            bool sourceChanged = !ReferenceEquals(source, template);
 
-            if (template != null)
+            if (material != null &&
+                !sourceChanged &&
+                (!customTemplate || !_syncMaterialTemplate))
             {
-                _maskMaterial = new Material(template);
+                return material;
             }
-            else
+
+            if (material == null || sourceChanged)
             {
-                var shader = Shader.Find("NowUI/SDF Scene");
+                Material resolved = FindOwnedMaterial(ownedMaterials, template);
+                bool retained = resolved != null;
 
-                if (shader == null)
-                    return null;
+                if (resolved == null && template != null)
+                {
+                    resolved = new Material(template);
+                }
+                else if (resolved == null)
+                {
+                    var shader = Shader.Find("NowUI/SDF Scene");
 
-                _maskMaterial = new Material(shader);
+                    if (shader == null)
+                        return null;
+
+                    resolved = new Material(shader);
+                }
+
+                if (!retained)
+                    ownedMaterials.Add(new OwnedMaterial(template, resolved));
+
+                material = resolved;
+                source = template;
+                hasUploadedHash = false;
+
+                if (maskOutput)
+                    InvalidateMaskCoverage();
+            }
+            if (customTemplate && _syncMaterialTemplate)
+            {
+                // The template can contain arbitrary project-defined properties.
+                // Copying all of them also overwrites the SDF arrays, so force the
+                // standard ABI upload to run immediately afterwards.
+                material.CopyPropertiesFromMaterial(template);
+                hasUploadedHash = false;
             }
 
-            _maskMaterial.name = "Now SDF Mask";
-            _maskMaterial.hideFlags = HideFlags.HideAndDontSave;
-            _maskMaterial.SetFloat(_maskOutputProp, 1f);
-            _hasMaskUploadedHash = false;
-            InvalidateMaskCoverage();
-            return _maskMaterial;
+            material.name = maskOutput ? "Now SDF Mask" : "Now SDF Scene";
+            material.hideFlags = HideFlags.HideAndDontSave;
+            material.SetFloat(_maskOutputProp, maskOutput ? 1f : 0f);
+            return material;
+        }
+
+        static Material FindOwnedMaterial(List<OwnedMaterial> materials, Material source)
+        {
+            for (int i = 0; i < materials.Count; ++i)
+            {
+                var entry = materials[i];
+
+                if (!ReferenceEquals(entry.source, source))
+                    continue;
+
+                if (entry.material != null)
+                    return entry.material;
+
+                materials.RemoveAt(i);
+                return null;
+            }
+
+            return null;
+        }
+
+        static Material GetBuiltInMaterialTemplate()
+        {
+            if (_builtInMaterialTemplate == null)
+                _builtInMaterialTemplate = Resources.Load<Material>("NowUI/SdfMaterial");
+
+            return _builtInMaterialTemplate;
         }
 
         RenderTexture GetMaskTexture(int width, int height)
@@ -1878,22 +2052,28 @@ namespace NowUI.Sdf
             // Upload can target both the normal and mask material for the same
             // built scene. Rebuild this per-upload lookup so a prior material
             // upload cannot make the second one report zero shapes.
-            _graphIds.Clear();
+            _graphUploads.Clear();
             int shapeCount = 0;
             int layerCount = Mathf.Min(_layers.Count, NowSdf.MaxLayers);
 
             for (int i = 0; i < layerCount; ++i)
             {
                 var layer = _layers[i];
-                int graphId = GetGraphId(layer.graph, ref shapeCount);
-                int targetId = layer.targetGraph != null ? GetGraphId(layer.targetGraph, ref shapeCount) : -1;
+                GraphUpload graph = GetGraphUpload(layer.graph, ref shapeCount);
+                GraphUpload target = layer.targetGraph != null
+                    ? GetGraphUpload(layer.targetGraph, ref shapeCount)
+                    : new GraphUpload(-1, -1, 0);
 
                 _layerData0[i] = new Vector4(
-                    graphId,
+                    graph.id,
                     i == 0 ? (float)NowSdfOperation.Union : (float)layer.operation,
                     i == 0 ? 0f : layer.smoothing,
                     (float)layer.kind);
-                _layerData1[i] = new Vector4(targetId, layer.morph, 0f, 0f);
+                _layerData1[i] = new Vector4(
+                    target.id,
+                    layer.morph,
+                    PackGraphRange(graph),
+                    PackGraphRange(target));
             }
 
             ulong contentHash = ComputeUploadHash(shapeCount, layerCount);
@@ -1931,6 +2111,16 @@ namespace NowUI.Sdf
             material.SetVector(_contourMaskProp, _contourMask);
             material.SetVector(_warpProp, _warp);
             return contentHash;
+        }
+
+        // Start and count are both in the inclusive 0..64 range. Packing them
+        // into one small integer-valued float keeps the existing graph-id ABI and
+        // uses the two previously-empty layer-vector components instead of adding
+        // another uniform array. All possible values are represented exactly by
+        // an IEEE-754 float.
+        static float PackGraphRange(GraphUpload graph)
+        {
+            return graph.id >= 0 ? graph.start * 128 + graph.count : 0f;
         }
 
         /// <summary>
@@ -2006,15 +2196,17 @@ namespace NowUI.Sdf
             return hash;
         }
 
-        int GetGraphId(NowSdfGraph graph, ref int shapeCount)
+        GraphUpload GetGraphUpload(NowSdfGraph graph, ref int shapeCount)
         {
-            if (_graphIds.TryGetValue(graph, out int graphId))
-                return graphId;
+            if (_graphUploads.TryGetValue(graph, out GraphUpload upload))
+                return upload;
 
-            graphId = _graphIds.Count;
-            _graphIds[graph] = graphId;
+            int graphId = _graphUploads.Count;
+            int start = shapeCount;
             AppendGraph(graph, graphId, ref shapeCount);
-            return graphId;
+            upload = new GraphUpload(graphId, start, shapeCount - start);
+            _graphUploads[graph] = upload;
+            return upload;
         }
 
         void AppendGraph(NowSdfGraph graph, int graphId, ref int shapeCount)

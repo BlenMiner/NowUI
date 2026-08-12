@@ -56,6 +56,9 @@ namespace NowUI.Editor
         static NowNodeGraph _nodeGraph;
         static NowNodeGraphHistory _nodeHistory;
         static NowLottieAsset _lottie;
+        static Material _sdfAuroraMaterial;
+        static Material _sdfTopographicMaterial;
+        static Material _sdfPaperCutoutMaterial;
 
         sealed class IdleInputProvider : INowInputProvider
         {
@@ -218,6 +221,7 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "quick-start-overlay", width = 500, height = 400, includeInGoldens = true, draw = DrawQuickStartOverlay, capture = CaptureQuickStartOverlay },
                 new NowHarnessScenario { name = "sdf-mask-glow-clip", width = 640, height = 640, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGlowClip },
                 new NowHarnessScenario { name = "sdf-mask-gallery", width = 960, height = 520, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGallery },
+                new NowHarnessScenario { name = "sdf-custom-shaders", width = 960, height = 430, includeInGoldens = false, warmupFrames = 2, draw = DrawSdfCustomShaders },
                 new NowHarnessScenario { name = "lottie", width = 512, height = 512, includeInGoldens = true, draw = DrawLottie },
                 new NowHarnessScenario { name = "model-preview-effects", width = 720, height = 420, includeInGoldens = false, warmupFrames = 2, capture = CaptureModelPreviewEffects },
                 new NowHarnessScenario { name = "docs-model-preview-demo", width = 1280, height = 720, includeInGoldens = false, warmupFrames = 3, capture = CaptureDocsModelPreviewDemo },
@@ -1740,6 +1744,148 @@ namespace NowUI.Editor
             }
         }
 
+        static void DrawSdfCustomShaders(NowRect rect)
+        {
+            var background = new Color(0.018f, 0.026f, 0.050f, 1f);
+            var grid = new Color(0.30f, 0.58f, 0.82f, 0.055f);
+            Now.Rectangle(rect).SetColor(background).Draw();
+
+            for (float x = rect.x + 24f; x < rect.xMax; x += 48f)
+                Now.Rectangle(new NowRect(x, rect.y, 1f, rect.height)).SetColor(grid).Draw();
+
+            Now.Text(new NowRect(26f, 15f, rect.width - 52f, 30f))
+                .SetFontSize(23f)
+                .SetBold()
+                .SetColor(Color.white)
+                .Draw("Custom SDF shader gallery");
+            Now.Text(new NowRect(26f, 48f, rect.width - 52f, 21f))
+                .SetFontSize(13f)
+                .SetColor(new Color(0.65f, 0.76f, 0.89f, 1f))
+                .Draw("One shape upload contract, three final-shading functions — animation, distance fields, and relighting.");
+
+            var auroraCard = new NowRect(26f, 86f, 290f, 318f);
+            var topoCard = new NowRect(335f, 86f, 290f, 318f);
+            var paperCard = new NowRect(644f, 86f, 290f, 318f);
+            DrawSdfCustomShaderCard(
+                auroraCard,
+                "AURORA",
+                "ANIMATED",
+                "Procedural bands and a distance halo\nwithout additional UI geometry.",
+                new Color(0.18f, 0.94f, 1f, 1f));
+            DrawSdfCustomShaderCard(
+                topoCard,
+                "TOPOGRAPHIC",
+                "FIELD",
+                "Repeating signed-distance contours\nrender both inside and outside.",
+                new Color(0.32f, 1f, 0.68f, 1f));
+            DrawSdfCustomShaderCard(
+                paperCard,
+                "PAPER CUTOUT",
+                "RELIT",
+                "Derivative bevel lighting plus a second\nSDF evaluation for the soft shadow.",
+                new Color(1f, 0.68f, 0.30f, 1f));
+
+            var auroraScene = new NowRect(auroraCard.x + 14f, auroraCard.y + 52f, auroraCard.width - 28f, 176f);
+            DrawSdfCustomShaderCanvas(
+                auroraScene,
+                new Color(0.035f, 0.050f, 0.110f, 1f),
+                new Color(0.075f, 0.020f, 0.115f, 1f));
+            NowSdf.Scene(auroraScene, "visual-sdf-custom-aurora")
+                .SetMaterial(_sdfAuroraMaterial)
+                .SetColor(Color.white)
+                .SetFeather(1f)
+                .Circle(new Vector2(80f, 91f), 46f)
+                .SmoothUnion(22f)
+                .Circle(new Vector2(132f, 75f), 43f)
+                .SmoothUnion(20f)
+                .Circle(new Vector2(183f, 94f), 47f)
+                .Draw();
+
+            var topoScene = new NowRect(topoCard.x + 14f, topoCard.y + 52f, topoCard.width - 28f, 176f);
+            DrawSdfCustomShaderCanvas(
+                topoScene,
+                new Color(0.020f, 0.075f, 0.085f, 1f),
+                new Color(0.080f, 0.025f, 0.105f, 1f));
+            NowSdf.Scene(topoScene, "visual-sdf-custom-topographic")
+                .SetMaterial(_sdfTopographicMaterial)
+                .SetColor(new Color(0.75f, 1f, 0.92f, 1f))
+                .SetFeather(0.8f)
+                .RoundedBox(new NowRect(42f, 43f, 178f, 92f), 34f)
+                .SmoothUnion(16f)
+                .Circle(new Vector2(76f, 104f), 36f)
+                .Subtract(8f)
+                .Circle(new Vector2(132f, 89f), 27f)
+                .Subtract(5f)
+                .RoundedBox(new NowRect(164f, 68f, 31f, 43f), 10f)
+                .Draw();
+
+            var paperScene = new NowRect(paperCard.x + 14f, paperCard.y + 52f, paperCard.width - 28f, 176f);
+            DrawSdfCustomShaderCanvas(
+                paperScene,
+                new Color(0.110f, 0.042f, 0.045f, 1f),
+                new Color(0.045f, 0.025f, 0.055f, 1f));
+            NowSdf.Scene(paperScene, "visual-sdf-custom-paper-cutout")
+                .SetMaterial(_sdfPaperCutoutMaterial)
+                .SetColor(Color.white)
+                .SetFeather(1f)
+                .RoundedBox(new NowRect(40f, 31f, 181f, 110f), 20f)
+                .Subtract()
+                .Circle(new Vector2(40f, 86f), 11f)
+                .Subtract()
+                .Circle(new Vector2(221f, 86f), 11f)
+                .Subtract()
+                .Circle(new Vector2(131f, 86f), 27f)
+                .Draw();
+        }
+
+        static void DrawSdfCustomShaderCard(
+            NowRect rect,
+            string title,
+            string tag,
+            string description,
+            Color accent)
+        {
+            Now.Rectangle(rect)
+                .SetColor(new Color(0.044f, 0.055f, 0.086f, 0.98f))
+                .SetRadius(17f)
+                .SetOutline(1f, new Color(accent.r, accent.g, accent.b, 0.26f))
+                .Draw();
+            Now.Text(new NowRect(rect.x + 15f, rect.y + 16f, rect.width - 112f, 21f))
+                .SetFontSize(13f)
+                .SetBold()
+                .SetColor(new Color(0.90f, 0.95f, 1f, 1f))
+                .Draw(title);
+
+            var tagRect = new NowRect(rect.xMax - 90f, rect.y + 13f, 74f, 22f);
+            Now.Rectangle(tagRect)
+                .SetColor(new Color(accent.r, accent.g, accent.b, 0.12f))
+                .SetRadius(7f)
+                .SetOutline(1f, new Color(accent.r, accent.g, accent.b, 0.30f))
+                .Draw();
+            Now.Text(new NowRect(tagRect.x + 7f, tagRect.y + 4f, tagRect.width - 14f, 14f))
+                .SetFontSize(9f)
+                .SetBold()
+                .SetColor(accent)
+                .Draw(tag);
+            Now.Text(new NowRect(rect.x + 16f, rect.y + 247f, rect.width - 32f, 48f))
+                .SetFontSize(12f)
+                .SetColor(new Color(0.68f, 0.78f, 0.90f, 1f))
+                .Draw(description);
+        }
+
+        static void DrawSdfCustomShaderCanvas(NowRect rect, Color top, Color bottom)
+        {
+            Now.Gradient(rect, top, bottom)
+                .SetLinear(90f)
+                .SetRadius(12f)
+                .Draw();
+            Now.Rectangle(rect)
+                .SetColor(Color.clear)
+                .SetRadius(12f)
+                .SetOutline(1f, new Color(0.55f, 0.76f, 1f, 0.16f))
+                .Draw();
+        }
+
         static void DrawSdfGalleryCard(NowRect rect, string title)
         {
             Now.Rectangle(rect)
@@ -1972,6 +2118,9 @@ namespace NowUI.Editor
         static void EnsureSharedState()
         {
             _lottie ??= AssetDatabase.LoadAssetAtPath<NowLottieAsset>("Assets/NowUI/Assets/AnimatedEmoji/2764.lottie");
+            _sdfAuroraMaterial ??= Resources.Load<Material>("NowUI/SdfExamples/Aurora");
+            _sdfTopographicMaterial ??= Resources.Load<Material>("NowUI/SdfExamples/Topographic");
+            _sdfPaperCutoutMaterial ??= Resources.Load<Material>("NowUI/SdfExamples/PaperCutout");
 
             if (_dock == null)
             {

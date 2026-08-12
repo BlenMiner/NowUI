@@ -36,6 +36,11 @@ custom-material example. It uses
 [`DocsFrostRectangleUGUI.shader`](../Assets/Shaders/DocsFrostRectangleUGUI.shader)
 through `SetCanvasMaterial(...)`.
 
+SDF scenes use a different, versioned material contract. Do not apply the
+rectangle vertex-layout recipe below to `NowSdfBuilder.SetMaterial(...)`; use
+the shared final-shading hook and complete examples in
+[SDF Shapes > Custom SDF Materials](SDF.md#custom-sdf-materials).
+
 ## Material Lifetime
 
 NowUI does not take ownership of materials passed to `SetMaterial` or
