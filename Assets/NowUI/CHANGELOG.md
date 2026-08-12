@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.3.0...nowui-v1.4.0) (2026-08-12)
+
+
+### Features
+
+* **sdf:** finish Arc and Pie primitives ([028695f](https://github.com/BlenMiner/NowUI/commit/028695fd063fefe09acff0890a2496f72b3e8e06))
+
 # [1.3.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.2.0...nowui-v1.3.0) (2026-08-12)
 
 
