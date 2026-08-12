@@ -22,7 +22,9 @@ namespace NowUI.Sdf
         RoundedBox = 2,
         Ellipse = 3,
         Capsule = 4,
-        Glyph = 5
+        Glyph = 5,
+        Arc = 6,
+        Pie = 7
     }
 
     enum NowSdfLayerKind
@@ -61,6 +63,8 @@ namespace NowUI.Sdf
     /// </summary>
     public sealed class NowSdfGraph
     {
+        const float FullTurnRadians = Mathf.PI * 2f;
+
         readonly List<NowSdfNode> _nodes = new List<NowSdfNode>(8);
 
         Vector4 _color = Vector4.one;
@@ -299,6 +303,72 @@ namespace NowUI.Sdf
             return Capsule(from, to, radius);
         }
 
+        /// <summary>
+        /// Adds a circular band over a signed angular sweep. Angles are radians;
+        /// zero points right and positive sweeps turn clockwise in UI space.
+        /// </summary>
+        /// <param name="thickness">Half-width of the band around <paramref name="radius"/>.</param>
+        /// <param name="from">Start angle in radians.</param>
+        /// <param name="sweep">Signed sweep in radians, clamped to one full turn.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when an argument is not finite or the resulting bounds cannot be represented.
+        /// </exception>
+        public NowSdfGraph Arc(Vector2 center, float radius, float thickness, float from, float sweep)
+        {
+            ValidateFinite(center, nameof(center));
+            ValidateFinite(radius, nameof(radius));
+            ValidateFinite(thickness, nameof(thickness));
+            ValidateFinite(from, nameof(from));
+            ValidateFinite(sweep, nameof(sweep));
+
+            radius = Mathf.Max(0f, radius);
+            thickness = Mathf.Max(0f, thickness);
+            float outer = radius + thickness;
+            ValidateArcBounds(center, radius, thickness, outer);
+
+            sweep = Mathf.Clamp(sweep, -FullTurnRadians, FullTurnRadians);
+            if (sweep == 0f)
+                return SkipPrimitive();
+
+            Add(
+                NowSdfShapeType.Arc,
+                new Vector4(center.x, center.y, radius, thickness),
+                RadialData(from, sweep),
+                new NowRect(center.x - outer, center.y - outer, outer * 2f, outer * 2f));
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a filled circular sector over a signed angular sweep. Angles are
+        /// radians; zero points right and positive sweeps turn clockwise in UI space.
+        /// </summary>
+        /// <param name="from">Start angle in radians.</param>
+        /// <param name="sweep">Signed sweep in radians, clamped to one full turn.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when an argument is not finite or the resulting bounds cannot be represented.
+        /// </exception>
+        public NowSdfGraph Pie(Vector2 center, float radius, float from, float sweep)
+        {
+            ValidateFinite(center, nameof(center));
+            ValidateFinite(radius, nameof(radius));
+            ValidateFinite(from, nameof(from));
+            ValidateFinite(sweep, nameof(sweep));
+
+            radius = Mathf.Max(0f, radius);
+            ValidatePieBounds(center, radius);
+
+            sweep = Mathf.Clamp(sweep, -FullTurnRadians, FullTurnRadians);
+            if (sweep == 0f)
+                return SkipPrimitive();
+
+            Add(
+                NowSdfShapeType.Pie,
+                new Vector4(center.x, center.y, radius, 0f),
+                RadialData(from, sweep),
+                new NowRect(center.x - radius, center.y - radius, radius * 2f, radius * 2f));
+            return this;
+        }
+
         public NowSdfGraph Text(Vector2 position, string value, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
         {
             return Text(position, value, Now.font, fontSize, fontStyle, tabSpaces);
@@ -466,6 +536,77 @@ namespace NowUI.Sdf
         static Vector4 RectData(NowRect rect)
         {
             return new Vector4(rect.x + rect.width * 0.5f, rect.y + rect.height * 0.5f, rect.width, rect.height);
+        }
+
+        static Vector4 RadialData(float from, float sweep)
+        {
+            if (Mathf.Abs(sweep) >= FullTurnRadians)
+                return new Vector4(0f, -1f, 0f, 0f);
+
+            from %= FullTurnRadians;
+            float half = Mathf.Abs(sweep) * 0.5f;
+            float rotation = Mathf.PI * 0.5f - (from + sweep * 0.5f);
+            return new Vector4(Mathf.Sin(half), Mathf.Cos(half), Mathf.Cos(rotation), Mathf.Sin(rotation));
+        }
+
+        NowSdfGraph SkipPrimitive()
+        {
+            _operation = NowSdfOperation.Union;
+            _smoothing = 0f;
+            return this;
+        }
+
+        static void ValidateArcBounds(Vector2 center, float radius, float thickness, float outer)
+        {
+            if (!IsFinite(radius * 2f))
+                throw new ArgumentOutOfRangeException(
+                    nameof(radius),
+                    "Arc radius is too large to produce representable bounds.");
+
+            if (!IsFinite(outer) || !IsFinite(outer * 2f))
+                throw new ArgumentOutOfRangeException(
+                    nameof(thickness),
+                    "Arc radius and thickness are too large to produce representable bounds.");
+
+            ValidateRadialPlacement(center, outer);
+        }
+
+        static void ValidatePieBounds(Vector2 center, float radius)
+        {
+            if (!IsFinite(radius * 2f))
+                throw new ArgumentOutOfRangeException(
+                    nameof(radius),
+                    "Pie radius is too large to produce representable bounds.");
+
+            ValidateRadialPlacement(center, radius);
+        }
+
+        static void ValidateRadialPlacement(Vector2 center, float extent)
+        {
+            if (IsFinite(center.x - extent) && IsFinite(center.x + extent) &&
+                IsFinite(center.y - extent) && IsFinite(center.y + extent))
+                return;
+
+            throw new ArgumentOutOfRangeException(
+                nameof(center),
+                "Radial shape center and extent must produce finite bounds.");
+        }
+
+        static void ValidateFinite(Vector2 value, string parameterName)
+        {
+            if (!IsFinite(value.x) || !IsFinite(value.y))
+                throw new ArgumentOutOfRangeException(parameterName, "Radial shape coordinates must be finite.");
+        }
+
+        static void ValidateFinite(float value, string parameterName)
+        {
+            if (!IsFinite(value))
+                throw new ArgumentOutOfRangeException(parameterName, "Radial shape values must be finite.");
+        }
+
+        static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
         }
 
         void Encapsulate(NowRect rect)
@@ -1049,6 +1190,27 @@ namespace NowUI.Sdf
         public NowSdfBuilder Capsule(NowRect rect)
         {
             _cache.Capsule(rect);
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a circular band. Angles are radians; zero points right, positive
+        /// sweeps turn clockwise in UI space, and sweeps clamp to one full turn.
+        /// </summary>
+        /// <param name="thickness">Half-width of the band around <paramref name="radius"/>.</param>
+        public NowSdfBuilder Arc(Vector2 center, float radius, float thickness, float from, float sweep)
+        {
+            _cache.Arc(center, radius, thickness, from, sweep);
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a filled circular sector. Angles are radians; zero points right,
+        /// positive sweeps turn clockwise in UI space, and sweeps clamp to one full turn.
+        /// </summary>
+        public NowSdfBuilder Pie(Vector2 center, float radius, float from, float sweep)
+        {
+            _cache.Pie(center, radius, from, sweep);
             return this;
         }
 
@@ -1637,6 +1799,22 @@ namespace NowUI.Sdf
             _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Capsule(rect);
             ResetPendingOperation();
             Encapsulate(rect);
+        }
+
+        public void Arc(Vector2 center, float radius, float thickness, float from, float sweep)
+        {
+            PrepareActivePrimitive();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Arc(center, radius, thickness, from, sweep);
+            ResetPendingOperation();
+            Encapsulate(_activeGraph.measureSize);
+        }
+
+        public void Pie(Vector2 center, float radius, float from, float sweep)
+        {
+            PrepareActivePrimitive();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Pie(center, radius, from, sweep);
+            ResetPendingOperation();
+            Encapsulate(_activeGraph.measureSize);
         }
 
         public void Text(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle, int tabSpaces)

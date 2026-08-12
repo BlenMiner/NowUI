@@ -52,6 +52,77 @@ public class NowSdfTests
     }
 
     [Test]
+    public void SdfRadialPrimitivesPackAnglesAndConservativeBounds()
+    {
+        const float invSqrtTwo = 0.70710678f;
+        var scene = NowSdf.Scene("sdf-radial-packing")
+            .Arc(new Vector2(20f, 24f), 10f, 3f, 0f, Mathf.PI * 0.5f)
+            .Pie(new Vector2(50f, 18f), 8f, 0f, -Mathf.PI * 0.5f);
+
+        Assert.AreEqual(new Vector2(58f, 37f), scene.Measure(),
+            "Arc bounds must include its half-width; Pie bounds include its radius.");
+
+        using (_drawList.Begin(new Vector2(64f, 48f)))
+            scene.Draw(new NowRect(0f, 0f, 64f, 48f));
+
+        var material = _drawList.batches[0].material;
+        var data0 = material.GetVectorArray("_SdfData0");
+        var data1 = material.GetVectorArray("_SdfData1");
+        var data2 = material.GetVectorArray("_SdfData2");
+
+        Assert.AreEqual((float)NowSdfShapeType.Arc, data0[0].x);
+        Assert.AreEqual((float)NowSdfShapeType.Pie, data0[1].x);
+        Assert.AreEqual(new Vector4(20f, 24f, 10f, 3f), data1[0]);
+        Assert.AreEqual(new Vector4(50f, 18f, 8f, 0f), data1[1]);
+
+        Assert.AreEqual(invSqrtTwo, data2[0].x, 0.00001f);
+        Assert.AreEqual(invSqrtTwo, data2[0].y, 0.00001f);
+        Assert.AreEqual(invSqrtTwo, data2[0].z, 0.00001f);
+        Assert.AreEqual(invSqrtTwo, data2[0].w, 0.00001f);
+        Assert.AreEqual(invSqrtTwo, data2[1].x, 0.00001f);
+        Assert.AreEqual(invSqrtTwo, data2[1].y, 0.00001f);
+        Assert.AreEqual(-invSqrtTwo, data2[1].z, 0.00001f);
+        Assert.AreEqual(invSqrtTwo, data2[1].w, 0.00001f);
+    }
+
+    [Test]
+    public void SdfRadialFullTurnsClampAndZeroSweepConsumesOperation()
+    {
+        var graph = NowSdf.Graph()
+            .Circle(new Vector2(8f, 8f), 4f)
+            .Subtract()
+            .Arc(new Vector2(20f, 20f), 12f, 3f, 0f, 0f)
+            .Circle(new Vector2(16f, 8f), 4f)
+            .Pie(new Vector2(24f, 24f), 10f, 1f, Mathf.PI * 4f)
+            .Arc(new Vector2(48f, 24f), 9f, 2f, -1f, -Mathf.PI * 4f);
+
+        Assert.AreEqual(4, graph.nodes.Count, "A zero sweep must not consume a shape slot.");
+        Assert.AreEqual(NowSdfOperation.Union, graph.nodes[1].operation,
+            "A skipped radial primitive must not leak its pending operation.");
+        Assert.AreEqual(new Vector4(0f, -1f, 0f, 0f), graph.nodes[2].data2,
+            "A positive over-turn must pack the explicit full-turn sentinel.");
+        Assert.AreEqual(new Vector4(0f, -1f, 0f, 0f), graph.nodes[3].data2,
+            "A negative over-turn must pack the same full-turn sentinel.");
+    }
+
+    [Test]
+    public void SdfRadialPrimitivesRejectNonFiniteArgumentsWithoutMutation()
+    {
+        var graph = NowSdf.Graph().Circle(new Vector2(8f, 8f), 4f);
+
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.Arc(Vector2.zero, 12f, 3f, float.PositiveInfinity, Mathf.PI));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.Pie(new Vector2(float.NaN, 0f), 12f, 0f, Mathf.PI));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.Arc(Vector2.zero, float.MaxValue, float.MaxValue, 0f, Mathf.PI));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.Pie(Vector2.zero, float.MaxValue, 0f, Mathf.PI));
+
+        Assert.AreEqual(1, graph.nodes.Count, "Invalid radial inputs mutated the graph.");
+    }
+
+    [Test]
     public void SdfMaskCaptureGeometryPreservesSubpixelBounds()
     {
         var material = Resources.Load<Material>("NowUI/SdfMaterial");

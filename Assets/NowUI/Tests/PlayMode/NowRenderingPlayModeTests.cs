@@ -391,6 +391,108 @@ public class NowRenderingPlayModeTests
             $"The shadow distance pass did not evaluate the packed graph range: {shadow}.");
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SdfRadialPrimitivesHonorSignedSweepDirection(bool arc)
+    {
+        var positive = RenderSdfRadial(arc, Mathf.PI * 0.5f);
+        var negative = RenderSdfRadial(arc, -Mathf.PI * 0.5f);
+        int offset = arc ? 25 : 20;
+        var downRight = new Vector2Int(64 + offset, 64 + offset);
+        var upRight = new Vector2Int(64 + offset, 64 - offset);
+
+        Assert.Greater(PixelAtUi(positive, downRight.x, downRight.y).a, 220,
+            "A positive sweep from zero radians must turn clockwise in UI space.");
+        Assert.Less(PixelAtUi(positive, upRight.x, upRight.y).a, 16);
+        Assert.Greater(PixelAtUi(negative, upRight.x, upRight.y).a, 220,
+            "A negative sweep from zero radians must turn counter-clockwise.");
+        Assert.Less(PixelAtUi(negative, downRight.x, downRight.y).a, 16);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SdfRadialPrimitivesClampOverTurnsToASeamlessFullTurn(bool arc)
+    {
+        var full = RenderSdfRadial(arc, Mathf.PI * 2f);
+        var positiveOverTurn = RenderSdfRadial(arc, Mathf.PI * 4f);
+        var negativeOverTurn = RenderSdfRadial(arc, -Mathf.PI * 4f);
+
+        CollectionAssert.AreEqual(full, positiveOverTurn,
+            "A positive over-turn must render exactly like one full turn.");
+        CollectionAssert.AreEqual(full, negativeOverTurn,
+            "A negative over-turn must render exactly like one full turn.");
+
+        var samples = arc
+            ? new[]
+            {
+                new Vector2Int(100, 64), new Vector2Int(28, 64),
+                new Vector2Int(64, 100), new Vector2Int(64, 28)
+            }
+            : new[]
+            {
+                new Vector2Int(64, 64), new Vector2Int(88, 64),
+                new Vector2Int(40, 64), new Vector2Int(64, 88), new Vector2Int(64, 40)
+            };
+
+        foreach (var sample in samples)
+        {
+            Assert.Greater(PixelAtUi(full, sample.x, sample.y).a, 220,
+                $"Full-turn {(arc ? "Arc" : "Pie")} has a seam or missing quadrant at {sample}.");
+        }
+
+        Assert.Less(PixelAtUi(full, 116, 64).a, 16,
+            "A full-turn radial shape leaked beyond its outer radius.");
+
+        if (arc)
+            Assert.Less(PixelAtUi(full, 64, 64).a, 16, "A full Arc filled its hollow center.");
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SdfRadialPrimitivesSampleTextureAcrossConservativeBounds(bool arc)
+    {
+        var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+
+        try
+        {
+            var red = new Color32(255, 0, 0, 255);
+            var blue = new Color32(0, 0, 255, 255);
+            texture.SetPixels32(new[] { red, blue, red, blue });
+            texture.Apply(false, false);
+
+            var surface = new NowRect(0f, 0f, Side, Side);
+            using (_renderer.Begin(_target))
+            {
+                var scene = NowSdf.Scene(surface, "playmode-sdf-radial-texture")
+                    .SetTexture(texture);
+                scene = arc
+                    ? scene.Arc(surface.center, 36f, 8f, 0f, Mathf.PI * 2f)
+                    : scene.Pie(surface.center, 36f, 0f, Mathf.PI * 2f);
+                scene.Draw();
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            var pixels = ReadPixels(_target);
+            int leftX = arc ? 28 : 48;
+            int rightX = arc ? 100 : 80;
+            Color32 left = PixelAtUi(pixels, leftX, 64);
+            Color32 right = PixelAtUi(pixels, rightX, 64);
+
+            Assert.Greater(left.r, 220, $"The left side lost the texture's red texel: {left}.");
+            Assert.Less(left.b, 16, $"The left side sampled the texture's blue texel: {left}.");
+            Assert.Greater(right.b, 220, $"The right side lost the texture's blue texel: {right}.");
+            Assert.Less(right.r, 16, $"The right side sampled the texture's red texel: {right}.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+        }
+    }
+
     [Test]
     public void DownsampledSdfMaskStillMapsAcrossFullAuthoredRect()
     {
@@ -710,6 +812,26 @@ public class NowRenderingPlayModeTests
             "Render-to-texture replay reduced SDF coverage as if the mask was multiplied a second time.");
         Assert.Greater(PixelAtUi(replayed, Side / 2, Side / 2).a, 245, "Modifier replay lost the SDF mask center.");
         Assert.Less(replayed[4 * Side + 4].a, 5, "Modifier capture failed to bake the SDF mask.");
+    }
+
+    Color32[] RenderSdfRadial(bool arc, float sweep)
+    {
+        _renderer.Clear();
+        var surface = new NowRect(0f, 0f, Side, Side);
+
+        using (_renderer.Begin(_target))
+        {
+            var scene = NowSdf.Scene(surface, "playmode-sdf-radial")
+                .SetColor(Color.white)
+                .SetFeather(0f);
+            scene = arc
+                ? scene.Arc(surface.center, 36f, 10f, 0f, sweep)
+                : scene.Pie(surface.center, 36f, 0f, sweep);
+            scene.Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
     }
 
     Color32[] RenderWhiteCircleMask(float feather)

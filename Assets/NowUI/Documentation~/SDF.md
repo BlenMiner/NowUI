@@ -27,6 +27,21 @@ Available primitives:
 - `RoundedBox(rect, radius)` / `RoundRect(rect, radius)`
 - `Ellipse(rect)`
 - `Capsule(from, to, radius)` or `Capsule(rect)`
+- `Arc(center, radius, thickness, from, sweep)`
+- `Pie(center, radius, from, sweep)`
+
+Arc and pie angles are radians. An angle of `0` points right; positive sweeps
+turn clockwise in NowUI's top-left-origin UI space, and negative sweeps turn
+counter-clockwise. A zero sweep adds no primitive. Sweeps whose absolute value
+is at least `2 * Mathf.PI` are clamped to one seamless full ring or disc rather
+than wrapped back toward zero. Arc `thickness` is the half-width around its
+ring radius, so the complete band is twice that value. Radial arguments must be
+finite; negative radii and thicknesses are clamped to zero.
+
+Texture fills use the same axis-aligned planar mapping as other primitives.
+Arc UVs cover the conservative outer-ring square and pie UVs cover the full
+disc square, even when only part of that area lies inside the angular sweep.
+Inputs must also produce finite, representable conservative bounds.
 
 Operations apply to the next primitive only, then reset to `Union`:
 
