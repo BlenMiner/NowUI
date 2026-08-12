@@ -1,3 +1,5 @@
+#if NOWUI_INPUT_SYSTEM
+using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -20,7 +22,8 @@ namespace NowUI
 
     /// <summary>
     /// Raw key presses for key-binding capture. Editor IMGUI uses the current
-    /// provider/input-pass packet; other hosts read the Input System keyboard.
+    /// provider/input-pass packet; other hosts prefer the Input System keyboard
+    /// and fall back to the legacy Input Manager when that backend is enabled.
     /// Replace <see cref="source"/> with a fake in tests, the same seam
     /// <see cref="NowTextInput"/> uses.
     /// </summary>
@@ -261,31 +264,69 @@ namespace NowUI
     {
         public static readonly NowKeyboardKeyInputSource instance = new NowKeyboardKeyInputSource();
 
+#if ENABLE_LEGACY_INPUT_MANAGER
+        static readonly KeyCode[] s_legacyKeyCodes = (KeyCode[])Enum.GetValues(typeof(KeyCode));
+#endif
+
         public bool TryGetFrame(out NowKeyInputFrame frame)
         {
             frame = default;
+#if ENABLE_INPUT_SYSTEM
             var keyboard = Keyboard.current;
 
-            if (keyboard == null)
-                return false;
-
-            if (!keyboard.anyKey.wasPressedThisFrame)
-                return true;
-
-            var keys = keyboard.allKeys;
-
-            for (int i = 0; i < keys.Count; ++i)
+            if (keyboard != null)
             {
-                var key = keys[i];
-
-                if (key != null && key.wasPressedThisFrame)
-                {
-                    frame.pressedKey = key.keyCode;
+                if (!keyboard.anyKey.wasPressedThisFrame)
                     return true;
-                }
-            }
 
-            return true;
+                var keys = keyboard.allKeys;
+
+                for (int i = 0; i < keys.Count; ++i)
+                {
+                    var key = keys[i];
+
+                    if (key != null && key.wasPressedThisFrame)
+                    {
+                        frame.pressedKey = key.keyCode;
+                        return true;
+                    }
+                }
+
+                return true;
+            }
+#endif
+#if ENABLE_LEGACY_INPUT_MANAGER
+            try
+            {
+                if (!Input.anyKeyDown)
+                    return true;
+
+                Key pressed = Key.None;
+
+                for (int i = 0; i < s_legacyKeyCodes.Length; ++i)
+                {
+                    KeyCode keyCode = s_legacyKeyCodes[i];
+
+                    if (!Input.GetKeyDown(keyCode))
+                        continue;
+
+                    Key mapped = NowKeyInput.FromIMGUIKeyCode(keyCode);
+
+                    if (mapped != Key.None && (pressed == Key.None || (int)mapped < (int)pressed))
+                        pressed = mapped;
+                }
+
+                frame.pressedKey = pressed;
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+#else
+            return false;
+#endif
         }
     }
 }
+#endif

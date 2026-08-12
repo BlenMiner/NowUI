@@ -2,7 +2,9 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
+#if NOWUI_INPUT_SYSTEM
 using UnityEngine.InputSystem;
+#endif
 using UnityEngine.TestTools;
 using NowUI;
 
@@ -37,6 +39,7 @@ public class NowPopupUXTests
         }
     }
 
+#if NOWUI_INPUT_SYSTEM
     sealed class FakeKeys : INowKeyInputSource
     {
         public NowKeyInputFrame frame;
@@ -47,6 +50,7 @@ public class NowPopupUXTests
             return true;
         }
     }
+#endif
 
     static readonly Vector2 Surface = new Vector2(600, 600);
     static readonly NowRect FieldRect = new NowRect(20, 20, 160, 30);
@@ -56,7 +60,9 @@ public class NowPopupUXTests
 
     FakePointer _pointer;
     FakeKeyboard _keyboard;
+#if NOWUI_INPUT_SYSTEM
     FakeKeys _keys;
+#endif
     NowDrawList _drawList;
     int _frame;
 
@@ -70,14 +76,20 @@ public class NowPopupUXTests
         NowOverlay.Reset();
         NowContextMenu.Reset();
         NowTextInput.Reset();
+#if NOWUI_INPUT_SYSTEM
         NowKeyInput.Reset();
+#endif
         NowLayout.Reset();
 
         _pointer = new FakePointer();
         _keyboard = new FakeKeyboard();
+#if NOWUI_INPUT_SYSTEM
         _keys = new FakeKeys();
+#endif
         NowTextInput.source = _keyboard;
+#if NOWUI_INPUT_SYSTEM
         NowKeyInput.source = _keys;
+#endif
         _drawList = new NowDrawList();
         _frame = 10;
     }
@@ -86,7 +98,9 @@ public class NowPopupUXTests
     public void TearDown()
     {
         _drawList.Dispose();
+#if NOWUI_INPUT_SYSTEM
         NowKeyInput.Reset();
+#endif
         NowTextInput.Reset();
         NowOverlay.Reset();
         NowContextMenu.Reset();
@@ -1063,6 +1077,7 @@ public class NowPopupUXTests
         Assert.AreEqual(0, stack.count, "The next outside press must close the popup view.");
     }
 
+#if NOWUI_INPUT_SYSTEM
     sealed class KeyBindingView : INowView
     {
         public Key value = Key.E;
@@ -1151,4 +1166,5 @@ public class NowPopupUXTests
             "A native key event in a later IMGUI pass must not be rejected merely because Time.frameCount is unchanged.");
         Assert.AreEqual(Key.Q, value);
     }
+#endif
 }

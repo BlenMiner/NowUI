@@ -493,7 +493,7 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Tells a retained host (a UGUI <see cref="NowGraphic"/>) that this
+        /// Tells a retained host (a UGUI <c>NowGraphic</c>) that this
         /// control needs another frame — call while animating, focused with a
         /// blinking caret, or otherwise time-dependent. Immediate-mode IMGUI
         /// hosts forward tracked requests through their coalesced repaint bridge.

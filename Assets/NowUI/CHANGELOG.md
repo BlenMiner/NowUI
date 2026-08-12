@@ -1,3 +1,24 @@
+# [1.3.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.2.0...nowui-v1.3.0) (2026-08-12)
+
+
+### Features
+
+* **deps:** make Unity integrations optional ([ed36f56](https://github.com/BlenMiner/NowUI/commit/ed36f56b3d964ab27a1ee79c2e5147e6b8e4b5dc))
+
+# [1.2.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.1.2...nowui-v1.2.0) (2026-08-12)
+
+
+### Features
+
+* **sdf:** add custom shader hooks and optimize graph evaluation ([56f08b1](https://github.com/BlenMiner/NowUI/commit/56f08b16ea9fe4952d7a9bea704ba6035e0a3647))
+
+## [1.1.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.1.1...nowui-v1.1.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* honor canvas gamma vertex colors ([94c96cb](https://github.com/BlenMiner/NowUI/commit/94c96cbab08049dfea30e149396eb69d512a19f5))
+
 ## [1.1.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.1.0...nowui-v1.1.1) (2026-08-07)
 
 
@@ -158,7 +179,28 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `GradientField` invalidates automatically after edits. The dedicated builder,
   shaders, and batch kind leave `NowRectangle` and its solid path unchanged.
 
+- **SDF scenes accept compatible custom material templates.**
+  `NowSdfBuilder.SetMaterial(Material[, bool])` selects a compiled HLSL shader
+  implementing material ABI v1, declared through `_NowSdfAbiVersion` and the
+  public `NowSdf.MaterialAbiVersion` / `MaterialAbiProperty` constants. Scene
+  caches retain separate direct and mask clones per template without mutating
+  caller-owned materials, so queued direct SDF batches remain valid across
+  template switches. Static snapshots retain upload and mask reuse; explicit
+  per-frame synchronization recopies project properties and rerasterizes custom
+  masks. A versioned shared shader include exposes an optional final-shading
+  callback while preserving SDF evaluation, effects, UGUI clipping, ambient
+  masks, and mask capture. Aurora, topographic-field, and paper-cutout shaders
+  plus a live docs gallery demonstrate animated fills, custom contours, bevels,
+  and a displaced distance-field shadow.
+
 ### Changed
+
+- **SDF graph layers use packed contiguous shape ranges on the GPU.** Each
+  distinct graph is uploaded once, repeated references reuse its range, and a
+  layer or morph endpoint iterates only that graph's shapes instead of scanning
+  every scene shape. The range reuses existing layer-vector components rather
+  than adding another uniform array. Releasing an SDF cache now also evicts
+  UGUI and world-host material clones derived from its owned source material.
 
 - **Package guidance is now version-matched and agent-ready.** Public guides
   ship under `Documentation~` with a package `README.md`, a concise
@@ -533,11 +575,13 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `SurfaceHover`/`AccentHover`/`*Pressed` tokens.
 - `NowHeroUIControlRenderer` and the `White`/`Dark`/`Night`/`HeroUI`/
   `HeroUIDark` theme assets: the HeroUI look is now the built-in default.
-- Legacy Input Manager fallback. The Input System package has always been a
-  hard dependency of NowUI; the dead `ENABLE_LEGACY_INPUT_MANAGER` code path
-  (used only when the Input System reported zero devices) is gone. Projects
-  with Active Input Handling set to "Both" and no Input System devices must
-  switch to the Input System.
+- Hard dependencies on the Input System, Unity UI, and UI Toolkit. NowUI
+  detects each package when Unity resolves it, including transitively. The
+  default input provider prefers an enabled Input System and falls back to an
+  enabled legacy Input Manager for mouse, touch, keyboard, text, and IME.
+  Existing projects that relied on NowUI to install an optional package must
+  add that package to their own manifest. Without the Input System package,
+  the key-binding APIs that expose `UnityEngine.InputSystem.Key` are omitted.
 
 ### Added
 

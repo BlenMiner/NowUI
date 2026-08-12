@@ -1,7 +1,9 @@
-using System.Collections.Generic;
 using UnityEngine;
+#if NOWUI_UGUI
+using System.Collections.Generic;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+#endif
 
 namespace NowUI
 {
@@ -12,6 +14,7 @@ namespace NowUI
     /// </summary>
     internal static class NowRaycastGate
     {
+#if NOWUI_UGUI
         static PointerEventData s_pointerData;
 
         static EventSystem s_eventSystem;
@@ -91,21 +94,6 @@ namespace NowUI
             s_results.Clear();
             s_canvasRaycasters.Clear();
             s_resolvedGraphics.Clear();
-        }
-
-        /// <summary>
-        /// Press-latched visibility: the gate is evaluated while idle (including the
-        /// frame a press begins), and that verdict is latched for as long as buttons
-        /// stay down — so a press that starts on occluding UGUI stays blocked through
-        /// its release, while a drag that started on NowUI keeps tracking even when
-        /// the pointer crosses occluding UGUI.
-        /// </summary>
-        public static bool UpdatePressGate(ref bool pressAllowed, bool buttonsWereDown, bool allowedNow)
-        {
-            if (!buttonsWereDown)
-                pressAllowed = allowedNow;
-
-            return pressAllowed;
         }
 
         internal static bool IsHostAbove(Component candidateHost, Component targetHost, Vector2 screenPosition)
@@ -336,6 +324,46 @@ namespace NowUI
 
             distance = Vector3.Dot(worldPosition - ray.origin, ray.direction);
             return distance >= 0f;
+        }
+#else
+        public static bool IsPointerAllowed(Component host, Vector2 screenPosition)
+        {
+            return true;
+        }
+
+        public static bool IsPointerAllowed(Component host, Vector2 screenPosition, bool allowHostOwnedOverlay)
+        {
+            return true;
+        }
+
+        public static bool IsPointerOverUGUI(Vector2 screenPosition)
+        {
+            return false;
+        }
+
+        public static void InvalidateCache()
+        {
+        }
+
+        internal static bool IsHostAbove(Component candidateHost, Component targetHost, Vector2 screenPosition)
+        {
+            return false;
+        }
+#endif
+
+        /// <summary>
+        /// Press-latched visibility: the gate is evaluated while idle (including the
+        /// frame a press begins), and that verdict is latched for as long as buttons
+        /// stay down — so a press that starts on occluding UGUI stays blocked through
+        /// its release, while a drag that started on NowUI keeps tracking even when
+        /// the pointer crosses occluding UGUI.
+        /// </summary>
+        public static bool UpdatePressGate(ref bool pressAllowed, bool buttonsWereDown, bool allowedNow)
+        {
+            if (!buttonsWereDown)
+                pressAllowed = allowedNow;
+
+            return pressAllowed;
         }
     }
 }

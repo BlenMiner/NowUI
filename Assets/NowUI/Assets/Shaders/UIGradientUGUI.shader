@@ -7,6 +7,7 @@ Shader "NowUI/UI Gradient UGUI"
         [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
         [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
         [PerRendererData] _MainTex ("Ramp Atlas", 2D) = "white" {}
+        [HideInInspector] _NowGradientRampTexelSize ("Ramp Atlas Texel Size", Vector) = (0.00390625, 0.00390625, 256, 256)
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
         _StencilOp ("Stencil Operation", Float) = 0
@@ -55,6 +56,7 @@ Shader "NowUI/UI Gradient UGUI"
 
             #include "UnityCG.cginc"
             #include "UnityUI.cginc"
+            #include "NowUIColorSpace.cginc"
             #include "NowUIMask.cginc"
 
             struct appdata
@@ -83,7 +85,7 @@ Shader "NowUI/UI Gradient UGUI"
             };
 
             sampler2D _MainTex;
-            float4 _MainTex_TexelSize;
+            float4 _NowGradientRampTexelSize;
             float4 _ClipRect;
             float _UIMaskSoftnessX;
             float _UIMaskSoftnessY;
@@ -94,6 +96,26 @@ Shader "NowUI/UI Gradient UGUI"
                 r.x = (p.y > 0.0) ? r.x : r.y;
                 float2 q = abs(p) - b + r.x;
                 return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r.x;
+            }
+
+            // UGUI stores canvas COLOR as a Color32, so NowMesh folds the gradient's
+            // geometry parameters into 0..1 before upload rather than losing every
+            // negative direction and every repetition count above one. This is the
+            // exact inverse of NowMesh.EncodeGradientParameter; the non-canvas
+            // shader reads the same parameters as raw floats and skips this.
+            float decodeGradientParameter(float encoded)
+            {
+                float signedValue = encoded * 2.0 - 1.0;
+                return signedValue / max(1.0 - abs(signedValue), 0.00001);
+            }
+
+            float4 decodeGradientParameters(float4 encoded)
+            {
+                return float4(
+                    decodeGradientParameter(encoded.x),
+                    decodeGradientParameter(encoded.y),
+                    decodeGradientParameter(encoded.z),
+                    decodeGradientParameter(encoded.w));
             }
 
             float2 decodePair8(float packed)
@@ -161,18 +183,18 @@ Shader "NowUI/UI Gradient UGUI"
 
                 if (fixedMode > 0.5)
                 {
-                    float index = floor(t * (_MainTex_TexelSize.z - 1.0) + 0.5);
-                    x = (index + 0.5) * _MainTex_TexelSize.x;
+                    float index = floor(t * (_NowGradientRampTexelSize.z - 1.0) + 0.5);
+                    x = (index + 0.5) * _NowGradientRampTexelSize.x;
                 }
                 else
                 {
                     x = lerp(
-                        0.5 * _MainTex_TexelSize.x,
-                        1.0 - 0.5 * _MainTex_TexelSize.x,
+                        0.5 * _NowGradientRampTexelSize.x,
+                        1.0 - 0.5 * _NowGradientRampTexelSize.x,
                         t);
                 }
 
-                float y = (row + 0.5) * _MainTex_TexelSize.y;
+                float y = (row + 0.5) * _NowGradientRampTexelSize.y;
                 return tex2D(_MainTex, float2(x, y));
             }
 
@@ -193,8 +215,8 @@ Shader "NowUI/UI Gradient UGUI"
                 o.mask = v.mask;
                 o.extras = v.extras;
                 o.radiusXYZ = v.radiusXYZ;
-                o.outlineColor = v.outlineColor;
-                o.gradient = v.gradient;
+                o.outlineColor = NowUIColorToWorkingSpace(v.outlineColor);
+                o.gradient = decodeGradientParameters(v.gradient);
                 return o;
             }
 
@@ -230,7 +252,11 @@ Shader "NowUI/UI Gradient UGUI"
 
                 float outlineCoverage = i.outlineColor.a * outlineAlpha * graphicAlpha;
                 float fillCoverage = ramp.a * tint.a * graphicAlpha;
-                half3 fillColor = ramp.rgb * tint.rgb * fillCoverage;
+
+                half3 fillColor =
+                    NowUIColorToWorkingSpace(ramp.rgb) *
+                    NowUIColorToWorkingSpace(tint.rgb) *
+                    fillCoverage;
 
                 half4 col;
                 col.rgb = i.outlineColor.rgb * outlineCoverage + fillColor * (1.0 - outlineCoverage);

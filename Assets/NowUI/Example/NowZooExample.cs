@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -364,3 +365,4 @@ public class NowZooExample : NowLayoutGraphic
             _log.RemoveAt(0);
     }
 }
+#endif

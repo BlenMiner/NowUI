@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using NowUI;
 using UnityEngine;
 
@@ -73,3 +74,4 @@ public sealed class NowModelPreviewExample : NowLayoutGraphic
             .Draw();
     }
 }
+#endif

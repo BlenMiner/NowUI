@@ -1,6 +1,8 @@
 using System;
 using UnityEngine;
+#if NOWUI_INPUT_SYSTEM
 using UnityEngine.InputSystem;
+#endif
 using NowUI;
 
 /// <summary>
@@ -43,8 +45,10 @@ public class NowControlGalleryExample : MonoBehaviour
     float _splitRatio = 0.35f;
     DateTime _dueDate = new DateTime(2026, 7, 2);
     TimeSpan _alarm = new TimeSpan(7, 30, 0);
+#if NOWUI_INPUT_SYSTEM
     Key _jumpKey = Key.Space;
     Key _sprintKey = Key.LeftShift;
+#endif
     int _channelMask = 0b0101;
     LayerMask _cameraLayers = ~0;
     bool _metadataExpanded = true;
@@ -172,6 +176,7 @@ public class NowControlGalleryExample : MonoBehaviour
         NowLayout.IntField().SetRange(0, 10).SetSpinner().SetWidth(160f).Draw(ref _retries);
         NowLayout.TextArea().SetPlaceholder("Notes...").SetLines(2, 4).SetStretchWidth().Draw(ref _notes);
 
+#if NOWUI_INPUT_SYSTEM
         using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Body), "Jump").Draw();
@@ -179,6 +184,7 @@ public class NowControlGalleryExample : MonoBehaviour
             NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Body), "Sprint").Draw();
             NowLayout.KeyBindingField().SetWidth(120f).Draw(ref _sprintKey);
         }
+#endif
     }
 
     void DrawPickersPage()

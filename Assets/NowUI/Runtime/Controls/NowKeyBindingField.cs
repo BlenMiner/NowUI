@@ -1,3 +1,4 @@
+#if NOWUI_INPUT_SYSTEM
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -187,6 +188,7 @@ namespace NowUI
             if (key == Key.None)
                 return "None";
 
+#if ENABLE_INPUT_SYSTEM
             var keyboard = Keyboard.current;
 
             if (keyboard != null)
@@ -202,6 +204,7 @@ namespace NowUI
                         return FormatDisplayName(key, control.displayName);
                 }
             }
+#endif
 
             return FallbackName(key);
         }
@@ -266,3 +269,4 @@ namespace NowUI
         }
     }
 }
+#endif

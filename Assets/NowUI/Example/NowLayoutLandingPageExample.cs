@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using NowUI;
 using UnityEngine;
 
@@ -333,3 +334,4 @@ public sealed class NowLayoutLandingPageExample : NowLayoutGraphic
         return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "…";
     }
 }
+#endif

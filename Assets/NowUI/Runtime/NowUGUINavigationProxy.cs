@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -45,7 +46,11 @@ namespace NowUI
 
         int _pendingInboundTabStep;
 
+        FocusAdapter _focusAdapter;
+
         internal bool hasPendingSelection => _selectionPending;
+
+        internal INowFocusNavigationProxy focusAdapter => _focusAdapter ??= new FocusAdapter(this);
 
         /// <summary>
         /// UGUI selectable that receives focus when Shift+Tab reaches the first
@@ -68,6 +73,30 @@ namespace NowUI
         }
 
         internal GameObject owningSelection => gameObject;
+
+        sealed class FocusAdapter : INowFocusNavigationProxy
+        {
+            readonly NowUGUINavigationProxy _owner;
+
+            public FocusAdapter(NowUGUINavigationProxy owner)
+            {
+                _owner = owner;
+            }
+
+            public bool hasPendingSelection => _owner.hasPendingSelection;
+
+            public GameObject owningSelection => _owner.owningSelection;
+
+            public bool isActiveAndInteractable => _owner.IsActive() && _owner.IsInteractable();
+
+            public void RequestSelection() => _owner.RequestSelection();
+
+            public bool QueueYieldTab(int step) => _owner.QueueYieldTab(step);
+
+            public bool QueueYieldDirection(Vector2 direction) => _owner.QueueYieldDirection(direction);
+
+            public bool TryYieldTab(int step) => _owner.TryYieldTab(step);
+        }
 
         protected override void Awake()
         {
@@ -560,3 +589,4 @@ namespace NowUI
         }
     }
 }
+#endif

@@ -880,9 +880,9 @@ namespace NowUI
     /// </code>
     ///
     /// Auto-sized groups, stretch shares, growth and flexible space need a
-    /// measurement source. <see cref="NowLayoutGraphic"/>,
+    /// measurement source. <c>NowLayoutGraphic</c>,
     /// <see cref="NowWorldLayoutGraphic"/>, <see cref="NowPipelineLayoutGraphic"/>,
-    /// and <see cref="NowLayoutVisualElement"/> own an exact measure/draw cycle.
+    /// and <c>NowLayoutVisualElement</c> own an exact measure/draw cycle.
     /// Manual hosts can use
     /// <see cref="RunMeasured(NowRect, Action, float, float, NowLayoutAlign, string, int)"/>.
     /// Base one-pass hosts resolve from cached measurements instead, so deferred

@@ -118,7 +118,7 @@ namespace NowUI
         /// <summary>Optional material used by non-UGUI renderers instead of the built-in rectangle material.</summary>
         public Material material;
 
-        /// <summary>Optional UGUI-specific material used by <see cref="NowGraphic"/>.</summary>
+        /// <summary>Optional UGUI-specific material used by <c>NowGraphic</c>.</summary>
         public Material canvasMaterial;
 
         /// <summary>
@@ -403,7 +403,7 @@ namespace NowUI
 
         /// <summary>
         /// Uses one material for normal render paths and a separate UGUI-compatible
-        /// material when the rectangle is drawn inside <see cref="NowGraphic"/>.
+        /// material when the rectangle is drawn inside <c>NowGraphic</c>.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle SetMaterial(Material material, Material canvasMaterial)

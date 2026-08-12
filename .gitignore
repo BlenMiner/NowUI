@@ -30,6 +30,7 @@
 # Visual Studio cache directory
 .vs/
 .idea/
+.vscode/
 
 # Gradle cache directory
 .gradle/
@@ -44,6 +45,7 @@ Assets/NowUI/Analyzers~/**/bin/
 Assets/NowUI/Analyzers~/**/obj/
 *.unityproj
 *.sln
+*.slnx
 *.suo
 *.tmp
 *.user

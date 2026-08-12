@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -254,7 +255,9 @@ public class NowDocsExample : NowLayoutGraphic
     GalleryChannels _galleryChannelFlags = GalleryChannels.Music | GalleryChannels.Effects;
     System.DateTime _galleryDate;
     System.TimeSpan _galleryAlarm = new System.TimeSpan(7, 30, 0);
+#if NOWUI_INPUT_SYSTEM
     UnityEngine.InputSystem.Key _galleryJumpKey = UnityEngine.InputSystem.Key.Space;
+#endif
     bool _lottieScrub;
     float _lottieProgress = 0.35f;
     bool _sdfDemoLocked;
@@ -1254,6 +1257,14 @@ public class NowDocsExample : NowLayoutGraphic
         NowMarkdown.Document("# SDF demo\n\nHover the specimen to steer the light, warp, and contour field. Click it to switch into cutaway mode.").Draw();
 
         DrawSdfPlaygroundPanel(themeAsset);
+        NowMarkdown.Document(
+            "## Custom final-shade gallery\n\n" +
+            "Each card below renders the same shared five-shape graph. Only the material changes: " +
+            "animated emissive bands, a two-sided distance field, and a bevel shader that samples " +
+            "the graph once more for its shadow.").Draw();
+
+        var gallery = NowLayout.ReserveRect(height: NowSdfShaderExamples.PreferredHeight, stretchWidth: true);
+        NowSdfShaderExamples.DrawGallery(gallery, themeAsset, "docs-sdf-custom-shader-gallery");
         NowControlState.RequestRepaint();
     }
 
@@ -3529,11 +3540,13 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.TimePicker().SetStretchWidth().Draw(ref _galleryAlarm);
         }
 
+#if NOWUI_INPUT_SYSTEM
         using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Jump key");
             NowLayout.KeyBindingField("gallery-jump").SetStretchWidth().Draw(ref _galleryJumpKey);
         }
+#endif
 
         NowMarkdown.Document("## Disclosure").Draw();
 
@@ -3558,7 +3571,12 @@ public class NowDocsExample : NowLayoutGraphic
         }
 
         NowLayout.Space(6f);
-        NowLayout.Label($"Saves: {_gallerySaves}   Name: {(string.IsNullOrEmpty(_galleryName) ? "—" : _galleryName)}   Due: {_galleryDate:yyyy-MM-dd}   Key: {_galleryJumpKey}")
+#if NOWUI_INPUT_SYSTEM
+        string keySummary = $"   Key: {_galleryJumpKey}";
+#else
+        const string keySummary = "";
+#endif
+        NowLayout.Label($"Saves: {_gallerySaves}   Name: {(string.IsNullOrEmpty(_galleryName) ? "—" : _galleryName)}   Due: {_galleryDate:yyyy-MM-dd}{keySummary}")
             .SetFontSize(12f)
             .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
             .SetStretchWidth()
@@ -3728,3 +3746,4 @@ public struct MyRating
         return GuideControls.DrawRating(_id, _site, ref value, _max);
     }
 }
+#endif

@@ -81,15 +81,21 @@ composed from a resolved parent. `NowInput.current.navigation` carries keyboard/
 navigation as a `Vector2`, while `submit*` and `cancel*` fields track action
 buttons.
 
-The built-in render paths set up input where they already own a surface:
+The built-in render paths set up input where they already own a surface.
+`com.unity.inputsystem` is optional: NowUI detects it whether it is a direct or
+transitive dependency, so consumers never need to set a NowUI scripting define.
 
 - `Now.StartUI(...)` uses `NowInput.defaultProvider`, which reads screen-space
-  mouse and touch input from the Unity Input System (the package is a
-  required dependency). When no Input System devices are present, it returns
-  no pointer. The provider reads primary, secondary, middle, back, and
-  forward mouse buttons, maps the active touch to the primary pointer while
-  a finger is in contact (surviving multi-finger handoffs), and reads
-  keyboard arrows/WASD, gamepad left stick/D-pad, submit, and cancel.
+  input from the Input System when its package resolves and that backend is
+  enabled. The provider reads primary, secondary, middle, back, and forward
+  mouse buttons, maps the active touch to the primary pointer while a finger
+  is in contact (surviving multi-finger handoffs), and reads keyboard
+  arrows/WASD, gamepad left stick/D-pad, submit, and cancel. If the Input
+  System is unavailable or disabled, the provider falls back to the legacy
+  Input Manager when enabled; that path covers mouse, touch, keyboard
+  navigation, text, and IME. Reliable default gamepad navigation is
+  Input-System-only because legacy axis and button names are configured per
+  project. If neither backend is enabled, use a custom `INowInputProvider`.
   `NowInput.navigationKeys` disables individual keyboard bindings (WASD,
   arrows, Tab focus, space/enter submit) for games that need those keys, and
   `NowInput.dragThreshold` overrides the default click-vs-drag distance,
@@ -99,6 +105,10 @@ The built-in render paths set up input where they already own a surface:
 - `NowWorldGraphic` uses a ray-to-surface provider for world-space meshes.
 - `NowPipelineGraphic.BuildDrawList(...)` maps screen mouse input into the
   camera pixel rect.
+
+`KeyBindingField`, `NowKeyInput`, and `NowKeyNames` are available only when
+`com.unity.inputsystem` resolves because those APIs expose
+`UnityEngine.InputSystem.Key`.
 
 For RenderTexture previews, remote input, or tests, scope a custom provider
 around the draw code.

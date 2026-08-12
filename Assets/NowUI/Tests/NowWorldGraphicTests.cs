@@ -1243,6 +1243,7 @@ public class NowWorldGraphicTests
         }
     }
 
+#if NOWUI_PHYSICS
     [Test]
     public void WorldInputSceneOccludedRejectsSceneBlockedRay()
     {
@@ -1287,6 +1288,7 @@ public class NowWorldGraphicTests
             Object.DestroyImmediate(cameraObject);
         }
     }
+#endif
 
     [Test]
     public void WorldInputReleaseOutsideSurfaceClearsActiveInteraction()

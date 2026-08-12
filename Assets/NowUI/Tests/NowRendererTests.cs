@@ -3,7 +3,9 @@ using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+#if NOWUI_UGUI
 using UnityEngine.UI;
+#endif
 using Object = UnityEngine.Object;
 using NowUI;
 using NowUI.Internal;
@@ -2174,6 +2176,7 @@ public class NowRendererTests
         }
     }
 
+#if NOWUI_UGUI
     [Test]
     public void GraphicHostsDefaultToExplicitOnePassAndLayoutTwoPass()
     {
@@ -2519,6 +2522,7 @@ public class NowRendererTests
             Object.DestroyImmediate(canvasObject);
         }
     }
+#endif
 
     [Test]
     public void UguiMaterialsExposeRectMaskSoftnessProperties()
@@ -2554,6 +2558,7 @@ public class NowRendererTests
         Assert.IsTrue(material.HasProperty("_NowUITextureMask1"), $"{resourcePath} has no second coverage sampler.");
     }
 
+#if NOWUI_UGUI
     [Test]
     public void GraphicBindsSdfCoverageToItsPerBatchCanvasMaterial()
     {
@@ -2657,6 +2662,7 @@ public class NowRendererTests
             Object.DestroyImmediate(graphicObject);
         }
     }
+#endif
 
     [Test]
     public void GlassDiagnosticsUseBoundedNonAllocEntryStorage()
@@ -2767,6 +2773,7 @@ public class NowRendererTests
         }
     }
 
+#if NOWUI_UGUI
     [Test]
     public void GraphicCanUseReplayBackedGlassMaterial()
     {
@@ -2840,6 +2847,7 @@ public class NowRendererTests
             Object.DestroyImmediate(material);
         }
     }
+#endif
 
     static void AssertUguiMaskProperties(Material material)
     {
@@ -2910,6 +2918,7 @@ public class NowRendererTests
         }
     }
 
+#if NOWUI_UGUI
     sealed class CountingGraphic : NowGraphic
     {
         public int drawCount;
@@ -3092,4 +3101,5 @@ public class NowRendererTests
             }
         }
     }
+#endif
 }

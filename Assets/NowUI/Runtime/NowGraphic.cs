@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using System;
 using System.Collections.Generic;
 using NowUI.Internal;
@@ -473,6 +474,7 @@ namespace NowUI
             bool colorMultiplierActive = false;
             bool passiveInputActive = false;
             bool interactive = Application.isPlaying || _editModeInteraction;
+            var targetCanvas = canvas;
             _insideGeometryRebuild = true;
 
             try
@@ -482,7 +484,9 @@ namespace NowUI
                     new Vector2(rect.width, rect.height),
                     positionOffset,
                     false,
-                    _glassBlurQuality);
+                    _glassBlurQuality,
+                    canvasVertexColorAlwaysGammaSpace:
+                        targetCanvas != null && targetCanvas.vertexColorAlwaysGammaSpace);
 
                 Now.BeginColorMultiplier(color);
                 colorMultiplierActive = true;
@@ -493,7 +497,9 @@ namespace NowUI
                 {
                     var inputScope = NowInput.Begin(interactive ? GetInputProvider() : null, inputSurface);
 
-                    using (NowFocus.BeginHostRegistration(GetScopeId(), _uguiNavigationProxy))
+                    using (NowFocus.BeginHostRegistration(
+                        GetScopeId(),
+                        _uguiNavigationProxy != null ? _uguiNavigationProxy.focusAdapter : null))
                     {
                         try
                         {
@@ -1923,3 +1929,4 @@ namespace NowUI
     }
 
 }
+#endif

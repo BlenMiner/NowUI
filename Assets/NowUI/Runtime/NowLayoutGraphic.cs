@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using UnityEngine;
 
 namespace NowUI
@@ -16,3 +17,4 @@ namespace NowUI
         internal sealed override bool useLayoutMeasurePass => true;
     }
 }
+#endif

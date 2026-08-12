@@ -14,6 +14,20 @@ base type for explicit `Now` rects and the `Layout` type for `NowLayout`:
 - SRP: derive from `NowPipelineGraphic` for explicit rects or
   `NowPipelineLayoutGraphic` for layout and use the URP or HDRP wrapper.
 
+UGUI and UI Toolkit are optional host integrations:
+
+| Resolved package or module | Types compiled by NowUI |
+| --- | --- |
+| `com.unity.ugui` | `NowGraphic`, `NowLayoutGraphic`, `NowLottieGraphic`, `NowUGUINavigationProxy` |
+| `com.unity.modules.uielements` | `NowVisualElement`, `NowLayoutVisualElement` |
+
+Assembly version defines detect either dependency anywhere in Unity's resolved
+graph, including through another package. Do not add `NOWUI_UGUI` or
+`NOWUI_UITOOLKIT` manually. A project that uses one of these hosts only needs to
+ensure the corresponding package is resolved, adding it to its own manifest if
+no other dependency supplies it. Other NowUI hosts and the core drawing APIs
+remain available without it.
+
 For nameplates, hover tooltips, and diegetic panels that should exist as scene
 geometry, use `NowWorldGraphic` for explicit rects or `NowWorldLayoutGraphic`
 for layout. Both render through a normal `MeshRenderer`, so they do not need a

@@ -59,6 +59,23 @@ without an explicit reason.
 | Runtime IMGUI | `NowGUI` / `NowGUILayout` | Same helper scope | Helper |
 | Editor IMGUI | `NowEditorGUI` / `NowEditorGUILayout` | Same helper scope | Helper |
 
+Before choosing UGUI or UI Toolkit, confirm that Unity resolves
+`com.unity.ugui` or `com.unity.modules.uielements`, respectively. NowUI's
+assembly version defines detect direct and transitive dependencies; never ask a
+consumer to set `NOWUI_UGUI` or `NOWUI_UITOOLKIT` manually. If the project uses
+one of these hosts and no other dependency supplies its package, add that
+package to the project manifest.
+
+Input System support is optional and follows the same direct-or-transitive
+detection. Never ask a consumer to add a NowUI input define. The default
+provider prefers the Input System when its package is resolved and the backend
+is enabled, then falls back to the legacy Input Manager when enabled. That
+fallback covers mouse, touch, keyboard navigation, text, and IME, but reliable
+default gamepad navigation requires the Input System because legacy mappings
+are project-defined. Only use `KeyBindingField`, `NowKeyInput`, or
+`NowKeyNames` after confirming `com.unity.inputsystem` resolves; their public
+API uses `UnityEngine.InputSystem.Key`.
+
 Read [Render Pipeline Integrations](RenderPipelines.md) before creating UGUI,
 UI Toolkit, URP, or HDRP integration. Read [World Space](WorldSpace.md) for
 mesh surfaces and ray-mapped input, and [IMGUI](EditorGUI.md) for `OnGUI`.

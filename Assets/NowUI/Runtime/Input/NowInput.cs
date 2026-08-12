@@ -491,7 +491,9 @@ namespace NowUI
             if (resetFrameTracking)
             {
                 NowTextInput.BeginInputPass();
+#if NOWUI_INPUT_SYSTEM
                 NowKeyInput.BeginInputPass();
+#endif
                 _scrollConsumed = false;
                 _focusClaimedByPrimaryPress = false;
                 _activeSeenThisFrame = false;
@@ -1263,7 +1265,9 @@ namespace NowUI
             }
             finally
             {
+#if NOWUI_INPUT_SYSTEM
                 NowKeyInput.EndInputPass();
+#endif
                 NowTextInput.EndInputPass();
             }
         }

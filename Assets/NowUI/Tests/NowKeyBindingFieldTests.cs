@@ -1,3 +1,4 @@
+#if NOWUI_INPUT_SYSTEM
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -290,3 +291,4 @@ public class NowKeyBindingFieldTests
         Assert.AreEqual("Space", NowKeyNames.GetName(Key.Space));
     }
 }
+#endif

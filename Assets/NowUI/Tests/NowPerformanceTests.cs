@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using System;
 using System.Reflection;
 using NUnit.Framework;
@@ -1125,3 +1126,4 @@ public class NowPerformanceTests
         }
     }
 }
+#endif

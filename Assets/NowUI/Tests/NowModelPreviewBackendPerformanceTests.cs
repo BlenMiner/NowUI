@@ -1,3 +1,4 @@
+#if NOWUI_ANIMATION && NOWUI_PARTICLE_SYSTEM && NOWUI_PHYSICS2D && NOWUI_PHYSICS
 using NUnit.Framework;
 using NowUI;
 using Unity.PerformanceTesting;
@@ -619,3 +620,4 @@ public class NowModelPreviewBackendPerformanceTests
             SetLayerRecursively(root.transform.GetChild(i).gameObject, layer);
     }
 }
+#endif

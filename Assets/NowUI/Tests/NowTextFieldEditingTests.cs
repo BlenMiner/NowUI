@@ -2,7 +2,9 @@ using System;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+#if NOWUI_UGUI
 using UnityEngine.UI;
+#endif
 using NowUI;
 
 /// <summary>
@@ -12,6 +14,7 @@ using NowUI;
 /// </summary>
 public class NowTextFieldEditingTests
 {
+#if NOWUI_UGUI
     sealed class ResultRecordingLayoutGraphic : NowLayoutGraphic
     {
         public INowInputProvider inputProvider;
@@ -43,6 +46,7 @@ public class NowTextFieldEditingTests
             }
         }
     }
+#endif
 
     sealed class AppearanceRecordingRenderer : NowControlRenderer
     {
@@ -1061,6 +1065,7 @@ public class NowTextFieldEditingTests
         }
     }
 
+#if NOWUI_UGUI
     [Test]
     public void ExactLayoutHostSuppressesSubmitDuringMeasurePass()
     {
@@ -1094,6 +1099,7 @@ public class NowTextFieldEditingTests
             UnityEngine.Object.DestroyImmediate(graphicObject);
         }
     }
+#endif
 
     [Test]
     public void AppearanceRejectsInvalidGeometryAndTokens()

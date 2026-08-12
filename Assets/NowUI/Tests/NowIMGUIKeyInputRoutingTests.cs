@@ -1,3 +1,4 @@
+#if NOWUI_INPUT_SYSTEM
 using System;
 using System.Reflection;
 using NowUI;
@@ -239,3 +240,4 @@ public class NowIMGUIKeyInputRoutingTests
         };
     }
 }
+#endif

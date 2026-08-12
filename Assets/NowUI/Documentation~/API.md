@@ -3,6 +3,16 @@
 NowUI's supported API surface is the `NowUI` namespace exposed by the runtime,
 extension, editor, URP, and HDRP assemblies in the installed package.
 
+UGUI host types are compiled when Unity resolves `com.unity.ugui`; UI Toolkit
+host types are compiled when it resolves `com.unity.modules.uielements`. These
+packages can be direct or transitive dependencies, and no manual scripting
+define is required.
+
+Input System integration is also optional and is detected as a direct or
+transitive `com.unity.inputsystem` dependency. The default provider prefers it
+when installed and enabled, otherwise falling back to the legacy Input Manager
+when enabled. No manual NowUI input define is required.
+
 ## Primary Runtime Surface
 
 - `Now`: immediate drawing factories, frame lifecycle, ambient mask/font/color
@@ -17,15 +27,17 @@ extension, editor, URP, and HDRP assemblies in the installed package.
   inversion and conservative rectangle input. See [Masks](Masks.md).
 - `NowRenderer` and `NowDrawList`: retained/offscreen draw-list construction,
   command-buffer rendering, RenderTexture rendering, and explicit warmup.
-- `NowGraphic`, `NowVisualElement`, `NowPipelineGraphic`, and
-  `NowWorldGraphic`: one-pass, explicit-rect host integrations for UGUI, UI
-  Toolkit, render pipelines, and world-space meshes. `NowGraphic` exposes
-  `hasFocusedControl`; the optional `NowUGUINavigationProxy` represents its
+- `NowPipelineGraphic` and `NowWorldGraphic`: one-pass, explicit-rect host
+  integrations for render pipelines and world-space meshes. Their
+  `NowPipelineLayoutGraphic` and `NowWorldLayoutGraphic` counterparts own exact
+  `NowLayout` measure/draw cycles.
+- When `com.unity.ugui` is resolved, `NowGraphic`, `NowLayoutGraphic`,
+  `NowLottieGraphic`, and `NowUGUINavigationProxy` provide the UGUI integration.
+  `NowGraphic` exposes `hasFocusedControl`; the navigation proxy represents its
   internal controls as one UGUI `Selectable` and yields directional or Tab
-  navigation only at the host boundary. Their
-  `NowLayoutGraphic`, `NowLayoutVisualElement`, `NowPipelineLayoutGraphic`, and
-  `NowWorldLayoutGraphic` counterparts own exact `NowLayout` measure/draw
-  cycles.
+  navigation only at the host boundary.
+- When `com.unity.modules.uielements` is resolved, `NowVisualElement` and
+  `NowLayoutVisualElement` provide the UI Toolkit integration.
 - `NowLayout`: fluent `Row`/`Column` containers, growth, justification,
   `ReserveRect` bridging, manual-host `RunMeasured`, content measurement,
   labels, controls, Lottie reservations, and content rect caching.
@@ -36,6 +48,10 @@ extension, editor, URP, and HDRP assemblies in the installed package.
   optional surface-to-screen projection for IME candidate placement, file
   picker overlays, retained view navigation, and dialogs, including
   `NowControlState.Warmup<T>(id)` for known-id first-frame allocation control.
+- When `com.unity.inputsystem` is resolved, `NowKeyBindingField`,
+  `NowKeyInput`, and `NowKeyNames` provide keyboard-binding capture and display
+  names over `UnityEngine.InputSystem.Key`. These types are not compiled into
+  configurations without that package.
 - `NowText`, `NowFontAsset`, `NowFont`, `NowTextWrap`,
   `NowTextSelection`, `NowTextEdit`, `NowTextArea`, `NowTextFieldResult`, and rich-text types:
   text rendering, shaping, editing, wrapping, selection, and parser hooks.
@@ -64,10 +80,18 @@ extension, editor, URP, and HDRP assemblies in the installed package.
   or `BeginMask()`; the latter returns an ambient `NowMaskScope` backed by
   cached, single-channel SDF coverage. `SetMaskResolutionScale(scale)` can
   reduce that coverage target's resolution without changing its authored
-  bounds. `NowSdf.Release(id)` releases one explicit stable-id cache;
+  bounds. `SetMaterial(Material[, bool])` selects a compatible, compiled HLSL
+  material template; `NowSdf.MaterialAbiVersion` and
+  `NowSdf.MaterialAbiProperty` describe the current ABI-v1 declaration. The
+  cache owns direct and mask material clones per distinct template, while the
+  caller retains the templates. Static templates preserve upload and mask
+  reuse; per-frame synchronization recopies template properties and
+  rerasterizes custom masks.
+  There is no C# distance-function delegate or runtime shader injection.
+  `NowSdf.Release(id)` releases one explicit stable-id cache;
   `NowSdf.Reset()` releases them all. Both invalidate builders backed by a
-  released cache, whose consumer calls then throw `ObjectDisposedException`. See
-  [SDF Shapes](SDF.md) and [Masks](Masks.md).
+  released cache, whose consumer calls then throw `ObjectDisposedException`.
+  See [SDF Shapes](SDF.md) and [Masks](Masks.md).
 
 ## Runtime guarantees
 

@@ -629,6 +629,8 @@ namespace NowUI
 
     internal static class NowGradientMaterials
     {
+        static readonly int RampTexelSizeProperty = Shader.PropertyToID("_NowGradientRampTexelSize");
+
         static Material _material;
 
         static Material _canvasMaterial;
@@ -671,6 +673,21 @@ namespace NowUI
             if (_canvasMaterial != null && !ReferenceEquals(_canvasMaterial.mainTexture, atlas))
                 _canvasMaterial.mainTexture = atlas;
 
+            if (atlas != null)
+            {
+                var texelSize = new Vector4(
+                    1f / atlas.width,
+                    1f / atlas.height,
+                    atlas.width,
+                    atlas.height);
+
+                if (_material != null)
+                    _material.SetVector(RampTexelSizeProperty, texelSize);
+
+                if (_canvasMaterial != null)
+                    _canvasMaterial.SetVector(RampTexelSizeProperty, texelSize);
+            }
+
             material = _material;
             canvasMaterial = _canvasMaterial;
             return material != null && canvasMaterial != null;
@@ -687,7 +704,9 @@ namespace NowUI
             if (material == null)
                 return;
 
+#if NOWUI_UGUI
             NowGraphic.ReleaseCachedMaterial(material);
+#endif
             NowWorldGraphic.ReleaseCachedMaterial(material);
 
             if (Application.isPlaying)

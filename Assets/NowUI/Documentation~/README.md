@@ -51,8 +51,8 @@ installed NowUI revision. AI coding agents should begin with the
   touch input, and the Android/iOS native plugin story.
 - [IMGUI](EditorGUI.md): static APIs for drawing NowUI inside runtime or editor
   `OnGUI` without inheriting a NowUI-specific base class.
-- [Render Pipeline Integrations](RenderPipelines.md): Built-in, UGUI, URP, and
-  HDRP integration patterns.
+- [Render Pipeline Integrations](RenderPipelines.md): Built-in, optional UGUI
+  and UI Toolkit hosts, URP, and HDRP integration patterns.
 - [Performance](Performance.md): warmup, allocation expectations, control
   state, glyphs, effects, material batches, and diagnostics storage.
 - [Styles And Themes](StylesAndThemes.md): ScriptableObject themes, palette

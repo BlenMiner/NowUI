@@ -3,7 +3,7 @@ using UnityEngine;
 namespace NowUI
 {
     /// <summary>
-    /// Event-buffered input provider used by <see cref="NowVisualElement"/> and
+    /// Event-buffered input provider used by <c>NowVisualElement</c> and
     /// available for tests/custom UI Toolkit hosts.
     /// </summary>
     public sealed class NowUIToolkitInputProvider : INowInputProvider
