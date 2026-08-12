@@ -81,7 +81,9 @@ namespace NowUI
         static int _inputResolverVersion;
         static readonly List<NowWorldGraphic> _instances = new List<NowWorldGraphic>(16);
         static readonly HashSet<NowWorldGraphic> _materialHosts = new HashSet<NowWorldGraphic>();
+#if NOWUI_PHYSICS
         static readonly RaycastHit[] _sceneOcclusionHits = new RaycastHit[16];
+#endif
         static readonly Plane[] _frustumPlanes = new Plane[6];
         static Camera _frustumPlanesCamera;
         static int _frustumPlanesFrame = -1;
@@ -1675,6 +1677,7 @@ namespace NowUI
 
         static float FindSceneBlockDistance(Camera cmr, Ray ray)
         {
+#if NOWUI_PHYSICS
             int hitCount = Physics.RaycastNonAlloc(
                 ray,
                 _sceneOcclusionHits,
@@ -1701,6 +1704,9 @@ namespace NowUI
             }
 
             return nearest;
+#else
+            return float.PositiveInfinity;
+#endif
         }
 
         bool IsVisibleForRebuild()

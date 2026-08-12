@@ -122,7 +122,7 @@ namespace NowUI
                 rect.xMin + surfacePosition.x * rect.width / surface.size.x,
                 rect.yMax - surfacePosition.y * rect.height / surface.size.y,
                 0f);
-            Vector2 bottomLeft = RectTransformUtility.WorldToScreenPoint(
+            Vector2 bottomLeft = NowRectTransformProjection.WorldToScreenPoint(
                 _eventCamera,
                 _rectTransform.TransformPoint(localPosition));
             screenPosition = NowSurfaceToScreenMapper.BottomLeftToTopLeft(bottomLeft);
@@ -150,7 +150,7 @@ namespace NowUI
             bool buttonsWereDown = _previousButtonsDown != NowPointerButtons.None;
             _previousButtonsDown = mouseInput.pointerButtonsDown;
 
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            if (!NowRectTransformProjection.ScreenPointToLocalPointInRectangle(
                     _rectTransform,
                     mouseInput.screenPosition,
                     _eventCamera,
@@ -240,6 +240,63 @@ namespace NowUI
                 input.cancelReleased,
                 Time.frameCount,
                 Time.realtimeSinceStartup);
+        }
+    }
+
+    /// <summary>
+    /// CoreModule-only equivalent of the two RectTransformUtility projections
+    /// NowUI needs. Keeping the math here avoids forcing Unity's low-level UI
+    /// module on projects that do not use a Canvas host.
+    /// </summary>
+    internal static class NowRectTransformProjection
+    {
+        public static Vector2 WorldToScreenPoint(Camera camera, Vector3 worldPoint)
+        {
+            if (camera == null)
+                return new Vector2(worldPoint.x, worldPoint.y);
+
+            Vector3 screenPoint = camera.WorldToScreenPoint(worldPoint);
+            return new Vector2(screenPoint.x, screenPoint.y);
+        }
+
+        public static bool ScreenPointToLocalPointInRectangle(
+            RectTransform rectTransform,
+            Vector2 screenPoint,
+            Camera camera,
+            out Vector2 localPoint)
+        {
+            localPoint = default;
+
+            if (rectTransform == null)
+                return false;
+
+            Ray ray;
+
+            if (camera != null)
+            {
+                ray = camera.ScreenPointToRay(screenPoint);
+            }
+            else
+            {
+                var origin = new Vector3(screenPoint.x, screenPoint.y, -100f);
+                ray = new Ray(origin, Vector3.forward);
+            }
+
+            var plane = new Plane(rectTransform.rotation * Vector3.back, rectTransform.position);
+            float distance = 0f;
+            float originPlaneDot = Vector3.Dot(
+                Vector3.Normalize(rectTransform.position - ray.origin),
+                plane.normal);
+
+            // Match RectTransformUtility: a ray whose origin is already on
+            // the RectTransform plane succeeds at distance zero. Plane.Raycast
+            // alone reports that case as no forward intersection.
+            if (originPlaneDot != 0f && !plane.Raycast(ray, out distance))
+                return false;
+
+            Vector3 local = rectTransform.InverseTransformPoint(ray.GetPoint(distance));
+            localPoint = new Vector2(local.x, local.y);
+            return true;
         }
     }
 }

@@ -377,10 +377,12 @@ public class NowIMGUITextInputRoutingTests
             InputSnapshotField.SetValue(null, snapshot);
             NowTextInput.RequestTextCapture();
             Assert.AreEqual("a", NowTextInput.current.characters);
+#if NOWUI_INPUT_SYSTEM
             Assert.AreEqual(
                 UnityEngine.InputSystem.Key.None,
                 NowKeyInput.current.pressedKey,
                 "Claiming the text packet must also spend the raw-key view of the same native event.");
+#endif
             NowTextInput.Invalidate();
 
             NowTextInputFrame reloaded = NowTextInput.current;

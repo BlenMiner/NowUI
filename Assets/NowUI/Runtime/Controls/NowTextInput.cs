@@ -1,6 +1,6 @@
 using System.Text;
 using UnityEngine;
-#if ENABLE_INPUT_SYSTEM
+#if NOWUI_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
 
@@ -388,7 +388,7 @@ namespace NowUI
 
         static void DefaultSetImeEnabled(bool enabled)
         {
-#if ENABLE_INPUT_SYSTEM
+#if NOWUI_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
             var keyboard = Keyboard.current;
 
             if (keyboard != null)
@@ -397,7 +397,6 @@ namespace NowUI
                 return;
             }
 #endif
-
 #if ENABLE_LEGACY_INPUT_MANAGER
             try
             {
@@ -414,7 +413,7 @@ namespace NowUI
             if (!NowSurfaceToScreenMapper.TryResolveCompositionCursor(position, out position))
                 return;
 
-#if ENABLE_INPUT_SYSTEM
+#if NOWUI_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
             var keyboard = Keyboard.current;
 
             if (keyboard != null)
@@ -423,7 +422,6 @@ namespace NowUI
                 return;
             }
 #endif
-
 #if ENABLE_LEGACY_INPUT_MANAGER
             try
             {
@@ -466,7 +464,7 @@ namespace NowUI
 
         readonly StringBuilder _pending = new StringBuilder(16);
 
-#if ENABLE_INPUT_SYSTEM
+#if NOWUI_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
         Keyboard _subscribed;
 
         string _composition;
@@ -508,7 +506,7 @@ namespace NowUI
         {
             _pending.Clear();
 
-#if ENABLE_INPUT_SYSTEM
+#if NOWUI_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
             _composition = null;
 #endif
         }
@@ -520,14 +518,13 @@ namespace NowUI
 
         internal string GetComposition()
         {
-#if ENABLE_INPUT_SYSTEM
+#if NOWUI_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
             var keyboard = Keyboard.current;
             EnsureSubscribed(keyboard);
 
             if (keyboard != null)
                 return _composition;
 #endif
-
 #if ENABLE_LEGACY_INPUT_MANAGER
             try
             {
@@ -546,7 +543,7 @@ namespace NowUI
         {
             frame = default;
 
-#if ENABLE_INPUT_SYSTEM
+#if NOWUI_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
             var keyboard = Keyboard.current;
             EnsureSubscribed(keyboard);
 
@@ -601,7 +598,6 @@ namespace NowUI
                 return true;
             }
 #endif
-
 #if ENABLE_LEGACY_INPUT_MANAGER
             try
             {

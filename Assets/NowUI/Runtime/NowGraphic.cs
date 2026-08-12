@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using System;
 using System.Collections.Generic;
 using NowUI.Internal;
@@ -496,7 +497,9 @@ namespace NowUI
                 {
                     var inputScope = NowInput.Begin(interactive ? GetInputProvider() : null, inputSurface);
 
-                    using (NowFocus.BeginHostRegistration(GetScopeId(), _uguiNavigationProxy))
+                    using (NowFocus.BeginHostRegistration(
+                        GetScopeId(),
+                        _uguiNavigationProxy != null ? _uguiNavigationProxy.focusAdapter : null))
                     {
                         try
                         {
@@ -1926,3 +1929,4 @@ namespace NowUI
     }
 
 }
+#endif

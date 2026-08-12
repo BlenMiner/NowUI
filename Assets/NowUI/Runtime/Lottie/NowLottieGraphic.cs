@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using UnityEngine;
 
 namespace NowUI
@@ -257,3 +258,4 @@ namespace NowUI
         }
     }
 }
+#endif

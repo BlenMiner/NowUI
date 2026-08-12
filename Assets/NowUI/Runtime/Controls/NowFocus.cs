@@ -1,9 +1,25 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.EventSystems;
 
 namespace NowUI
 {
+    internal interface INowFocusNavigationProxy
+    {
+        bool hasPendingSelection { get; }
+
+        GameObject owningSelection { get; }
+
+        bool isActiveAndInteractable { get; }
+
+        void RequestSelection();
+
+        bool QueueYieldTab(int step);
+
+        bool QueueYieldDirection(Vector2 direction);
+
+        bool TryYieldTab(int step);
+    }
+
     /// <summary>
     /// Optional per-control focus links. Set only the directions you need; any
     /// unset or currently unregistered target falls back to the default resolver.
@@ -275,7 +291,7 @@ namespace NowUI
 
             public Dictionary<int, int> buildingOwners = new Dictionary<int, int>(16);
 
-            public NowUGUINavigationProxy proxy;
+            public INowFocusNavigationProxy proxy;
 
             public NowFocusNavigationLock claimedNavigationLock;
 
@@ -425,7 +441,7 @@ namespace NowUI
         /// <summary>
         /// Coordinates NowUI focus with Unity's EventSystem (default on).
         /// Without a navigation proxy the systems are mutually exclusive. A
-        /// <see cref="NowUGUINavigationProxy"/> instead remains selected while
+        /// A <c>NowUGUINavigationProxy</c> instead remains selected while
         /// its host owns focus and delegates only true boundary moves to UGUI.
         /// </summary>
         public static bool respectEventSystem = true;
@@ -571,17 +587,7 @@ namespace NowUI
             _explicitFocusRequestHostId = hostId;
 
             if (respectEventSystem && id != 0)
-            {
-                var eventSystem = EventSystem.current;
-
-                if (!TrySelectOwningProxy(hostId, eventSystem) &&
-                    eventSystem != null &&
-                    eventSystem.currentSelectedGameObject != null &&
-                    !IsOwningProxySelection(hostId, eventSystem.currentSelectedGameObject))
-                {
-                    eventSystem.SetSelectedGameObject(null);
-                }
-            }
+                NowEventSystemFocusBridge.SynchronizeFocus(hostId);
         }
 
         public static void Clear()
@@ -707,7 +713,7 @@ namespace NowUI
                         _explicitFocusRequestHostId = host.hostId;
 
                     if (respectEventSystem)
-                        TrySelectOwningProxy(host.hostId, EventSystem.current);
+                        NowEventSystemFocusBridge.SynchronizeFocus(host.hostId);
                 }
 
                 host.buildingFocusables.Add(focusable);
@@ -920,7 +926,7 @@ namespace NowUI
 
         internal static NowFocusHostRegistrationScope BeginHostRegistration(
             int hostId,
-            NowUGUINavigationProxy proxy)
+            INowFocusNavigationProxy proxy)
         {
             if (hostId == 0)
                 throw new System.ArgumentException("Focus host id 0 is reserved.", nameof(hostId));
@@ -1179,7 +1185,7 @@ namespace NowUI
             return false;
         }
 
-        static bool IsOwningProxySelection(int hostId, GameObject selection)
+        internal static bool IsOwningProxySelection(int hostId, GameObject selection)
         {
             HostRegistry host = GetHostRegistry(hostId);
             return host != null &&
@@ -1187,45 +1193,15 @@ namespace NowUI
                 host.proxy.owningSelection == selection;
         }
 
-        static bool TrySelectOwningProxy(int hostId, EventSystem eventSystem)
+        internal static INowFocusNavigationProxy GetHostProxy(int hostId)
         {
             HostRegistry host = GetHostRegistry(hostId);
-            NowUGUINavigationProxy proxy = host != null ? host.proxy : null;
-
-            if (proxy == null || !proxy.IsActive() || !proxy.IsInteractable())
-                return false;
-
-            if (eventSystem == null ||
-                eventSystem.currentSelectedGameObject == proxy.owningSelection)
-            {
-                if (eventSystem == null)
-                    proxy.RequestSelection();
-
-                return true;
-            }
-
-            // Unity rejects SetSelectedGameObject while dispatching another
-            // selection callback. The in-flight proxy OnSelect already owns the
-            // handoff; otherwise the next host pass will reject a foreign
-            // selection without making a reentrant EventSystem call.
-            if (eventSystem.alreadySelecting)
-            {
-                proxy.RequestSelection();
-                return true;
-            }
-
-            eventSystem.SetSelectedGameObject(proxy.owningSelection);
-            return eventSystem.currentSelectedGameObject == proxy.owningSelection;
+            return host != null ? host.proxy : null;
         }
 
-        static bool IsOwningProxySelected(NowUGUINavigationProxy proxy)
+        static bool IsOwningProxySelected(INowFocusNavigationProxy proxy)
         {
-            if (proxy == null)
-                return false;
-
-            EventSystem eventSystem = EventSystem.current;
-            return eventSystem != null &&
-                eventSystem.currentSelectedGameObject == proxy.owningSelection;
+            return NowEventSystemFocusBridge.IsOwningProxySelected(proxy);
         }
 
         static void FinalizeHostPendingCancelOwner(HostRegistry host)
@@ -1547,7 +1523,7 @@ namespace NowUI
         static void ProcessNavigation(
             List<Focusable> focusables,
             int hostId,
-            NowUGUINavigationProxy proxy,
+            INowFocusNavigationProxy proxy,
             bool deferProxyTabBoundary,
             ref int pendingTabBoundaryStep,
             ref int pendingTabFocusId,
@@ -1578,22 +1554,15 @@ namespace NowUI
 
             bool owningProxySelected = IsOwningProxySelected(proxy);
 
-            if (respectEventSystem)
+            if (respectEventSystem &&
+                NowEventSystemFocusBridge.HasForeignSelection(proxy))
             {
-                EventSystem eventSystem = EventSystem.current;
-                GameObject selection = eventSystem != null
-                    ? eventSystem.currentSelectedGameObject
-                    : null;
+                if (ownsFocus)
+                    Clear();
 
-                if (selection != null && !owningProxySelected)
-                {
-                    if (ownsFocus)
-                        Clear();
-
-                    lastNavigation = snapshot.navigation;
-                    ResetNavigationRepeat(ref repeatDirection, ref nextNavigationRepeatTime);
-                    return;
-                }
+                lastNavigation = snapshot.navigation;
+                ResetNavigationRepeat(ref repeatDirection, ref nextNavigationRepeatTime);
+                return;
             }
 
             if (_focusedId != 0 && _focusedHostId != hostId)

@@ -73,9 +73,15 @@ The source package materials are never mutated.
 Scene occlusion applies to panel content only: overlay batches (context
 menus, dropdown popups, tooltips) always render above scene geometry, so a
 menu that extends past the panel is never sliced by a floor or wall crossing
-the panel's plane. Input is already blocked while scene geometry covers a
-`SceneOccluded` panel, so overlays can only be open while the panel itself is
-unobstructed.
+the panel's plane. When collider-based blocking is available, input is blocked
+while scene geometry covers a `SceneOccluded` panel, so overlays can only be
+open while the panel itself is unobstructed.
+
+Collider-based input blocking is enabled when Unity resolves
+`com.unity.modules.physics`. Without that optional module, `SceneOccluded`
+still uses depth testing for rendering, but NowUI cannot raycast scene
+colliders and therefore does not suppress input behind them; a visually
+occluded panel can remain interactive.
 
 ## Glass Backdrops
 

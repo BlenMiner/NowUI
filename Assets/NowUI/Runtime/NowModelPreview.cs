@@ -1,3 +1,10 @@
+#if UNITY_INCLUDE_TESTS && (!NOWUI_ANIMATION || !NOWUI_PARTICLE_SYSTEM || !NOWUI_PHYSICS2D || !NOWUI_PHYSICS)
+// The legacy clone backend exists only as an internal benchmark baseline. Keep
+// its optional engine-module types out of ordinary consumers that happen to
+// compile the runtime with UNITY_INCLUDE_TESTS.
+#undef UNITY_INCLUDE_TESTS
+#endif
+
 using System;
 using System.Collections.Generic;
 using System.Reflection;

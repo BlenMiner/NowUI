@@ -37,11 +37,31 @@ Then choose the host:
 | World-space mesh | `NowWorldGraphic` | `NowWorldLayoutGraphic` |
 | Manual/Built-in callback | `Now.StartUI(...)` | `Now.StartUI(...)` + `NowLayout.RunMeasured(...)` |
 
+The UGUI row is available when Unity resolves `com.unity.ugui`; the UI Toolkit
+row is available when it resolves `com.unity.modules.uielements`. NowUI detects
+either package whether it is a direct or transitive dependency, so consumers do
+not need to add scripting defines. Projects that use one of these optional hosts
+only need to ensure the corresponding package is resolved, adding it to their
+own manifest when no other dependency supplies it. NowUI no longer installs
+either package itself.
+
+`com.unity.inputsystem` is optional and is detected the same way. The default
+provider prefers it when installed and enabled, then falls back to the legacy
+Input Manager when that backend is enabled. The legacy path covers mouse,
+touch, keyboard navigation, text, and IME; reliable default gamepad navigation
+requires the Input System because legacy axes and buttons are project-defined.
+`KeyBindingField`, `NowKeyInput`, and `NowKeyNames` are compiled only when the
+Input System package resolves because their public API uses
+`UnityEngine.InputSystem.Key`.
+
 See [Render Pipelines](Documentation~/RenderPipelines.md),
 [World Space](Documentation~/WorldSpace.md), and
 [Layout](Documentation~/Layout.md) before implementing a new host.
 
 ## Minimal layout example
+
+This example uses the optional UGUI integration and requires
+`com.unity.ugui` to be resolved.
 
 ```csharp
 using NowUI;

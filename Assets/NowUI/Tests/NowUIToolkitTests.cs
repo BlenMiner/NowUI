@@ -158,6 +158,7 @@ public class NowUIToolkitTests
         Assert.AreEqual(Vector2.zero, cleared.scrollDelta);
     }
 
+#if NOWUI_UITOOLKIT
     [Test]
     public void VisualElementHostTypesExposeExplicitAndLayoutContracts()
     {
@@ -256,5 +257,6 @@ public class NowUIToolkitTests
                 realtime: 10f),
             "An idle retained host must leave its one-shot interaction scheduler paused.");
     }
+#endif
 
 }

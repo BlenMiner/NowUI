@@ -9,7 +9,9 @@ using NowUI.NodeGraph;
 using NowUI.Sdf;
 using UnityEditor;
 using UnityEngine;
+#if NOWUI_UGUI
 using UnityEngine.UI;
+#endif
 
 namespace NowUI.Editor
 {
@@ -218,17 +220,21 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "text-layout", width = 960, height = 540, includeInGoldens = true, draw = DrawTextLayout },
                 new NowHarnessScenario { name = "glass", width = 640, height = 360, includeInGoldens = true, draw = DrawGlass },
                 new NowHarnessScenario { name = "shader-variants", width = 840, height = 420, includeInGoldens = true, draw = DrawShaderVariants },
+#if NOWUI_UGUI
                 new NowHarnessScenario { name = "quick-start-overlay", width = 500, height = 400, includeInGoldens = true, draw = DrawQuickStartOverlay, capture = CaptureQuickStartOverlay },
+#endif
                 new NowHarnessScenario { name = "sdf-mask-glow-clip", width = 640, height = 640, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGlowClip },
                 new NowHarnessScenario { name = "sdf-mask-gallery", width = 960, height = 520, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGallery },
                 new NowHarnessScenario { name = "sdf-custom-shaders", width = 960, height = 430, includeInGoldens = false, warmupFrames = 2, draw = DrawSdfCustomShaders },
                 new NowHarnessScenario { name = "lottie", width = 512, height = 512, includeInGoldens = true, draw = DrawLottie },
                 new NowHarnessScenario { name = "model-preview-effects", width = 720, height = 420, includeInGoldens = false, warmupFrames = 2, capture = CaptureModelPreviewEffects },
+#if NOWUI_UGUI
                 new NowHarnessScenario { name = "docs-model-preview-demo", width = 1280, height = 720, includeInGoldens = false, warmupFrames = 3, capture = CaptureDocsModelPreviewDemo },
                 new NowHarnessScenario { name = "landing-page-now", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNow },
                 new NowHarnessScenario { name = "landing-page-now-layout", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNowLayout },
                 new NowHarnessScenario { name = "landing-page-now-compact", width = 360, height = 640, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNow },
                 new NowHarnessScenario { name = "landing-page-now-layout-compact", width = 360, height = 640, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNowLayout },
+#endif
                 new NowHarnessScenario { name = "markdown-code", width = 960, height = 540, includeInGoldens = false, draw = DrawMarkdown },
                 new NowHarnessScenario { name = "docking-nodegraph", width = 960, height = 540, includeInGoldens = false, draw = DrawDockingAndNodeGraph }
             };
@@ -288,6 +294,7 @@ namespace NowUI.Editor
             }
         }
 
+#if NOWUI_UGUI
         static NowHarnessCapture CaptureLandingPageNow(NowHarnessScenario scenario, string outputPath)
         {
             return CaptureCanvasHost(scenario, outputPath, layout: false);
@@ -302,6 +309,7 @@ namespace NowUI.Editor
         {
             return CaptureCanvasHost(scenario, outputPath, layout: false, draw: _ => DrawScenarioFrame(scenario));
         }
+#endif
 
         static NowHarnessCapture CaptureModelPreviewEffects(
             NowHarnessScenario scenario,
@@ -373,6 +381,7 @@ namespace NowUI.Editor
             }
         }
 
+#if NOWUI_UGUI
         // Captures the actual in-app docs page, including its first deferred
         // model render and the retained texture-effect copy.
         static NowHarnessCapture CaptureDocsModelPreviewDemo(
@@ -491,6 +500,7 @@ namespace NowUI.Editor
                 UnityEngine.Object.DestroyImmediate(target);
             }
         }
+#endif
 
         static void DrawModelPreviewEffectsFrame(
             NowHarnessScenario scenario,
@@ -604,6 +614,7 @@ namespace NowUI.Editor
             }
         }
 
+#if NOWUI_UGUI
         static NowHarnessCapture CaptureCanvasHost(
             NowHarnessScenario scenario,
             string outputPath,
@@ -724,6 +735,7 @@ namespace NowUI.Editor
                 UnityEngine.Object.DestroyImmediate(target);
             }
         }
+#endif
 
         static NowHarnessCapture CaptureWorldContextPingPongSubmenus(NowHarnessScenario scenario, string outputPath)
         {

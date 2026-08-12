@@ -1044,6 +1044,7 @@ public class NowRenderingPlayModeTests
         }
     }
 
+#if NOWUI_ANIMATION && NOWUI_PARTICLE_SYSTEM && NOWUI_PHYSICS2D && NOWUI_PHYSICS
     [UnityTest]
     public IEnumerator IsolatedRenderMeshMatchesCloneBaselineCoverage()
     {
@@ -1086,6 +1087,7 @@ public class NowRenderingPlayModeTests
             Object.DestroyImmediate(source);
         }
     }
+#endif
 
     [UnityTest]
     public IEnumerator IsolatedRenderMeshPreservesIndexedMaterialPropertyBlock()
@@ -1237,6 +1239,7 @@ public class NowRenderingPlayModeTests
         }
     }
 
+#if NOWUI_ANIMATION && NOWUI_PARTICLE_SYSTEM && NOWUI_PHYSICS2D && NOWUI_PHYSICS
     [UnityTest]
     public IEnumerator IsolatedSkinnedSnapshotMatchesCloneBaselineCoverage()
     {
@@ -1359,6 +1362,7 @@ public class NowRenderingPlayModeTests
             Object.DestroyImmediate(pipeline);
         }
     }
+#endif
 
     [UnityTest]
     public IEnumerator InstalledUrpRendererFeatureDrawsNowUi()
@@ -1550,6 +1554,7 @@ public class NowRenderingPlayModeTests
         }
     }
 
+#if NOWUI_PARTICLE_SYSTEM
     [Test]
     public void ModelPreviewNeverOwnsCallerParticleSimulation()
     {
@@ -1583,6 +1588,7 @@ public class NowRenderingPlayModeTests
             Object.DestroyImmediate(source);
         }
     }
+#endif
 
     [Test]
     public void RoundedCornersClipPixels()
@@ -1893,6 +1899,7 @@ public class NowRenderingPlayModeTests
         }
     }
 
+#if NOWUI_UGUI
     [UnityTest]
     public IEnumerator UGUIElementsOccludeNowUIPointer()
     {
@@ -2219,6 +2226,7 @@ public class NowRenderingPlayModeTests
             Object.DestroyImmediate(eventSystemObject);
         }
     }
+#endif
 
     /// <summary>Draws through the legacy GL/DrawMeshNow camera path on OnPostRender.</summary>
     class GLPathDriver : MonoBehaviour

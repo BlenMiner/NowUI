@@ -704,7 +704,9 @@ namespace NowUI
             if (material == null)
                 return;
 
+#if NOWUI_UGUI
             NowGraphic.ReleaseCachedMaterial(material);
+#endif
             NowWorldGraphic.ReleaseCachedMaterial(material);
 
             if (Application.isPlaying)

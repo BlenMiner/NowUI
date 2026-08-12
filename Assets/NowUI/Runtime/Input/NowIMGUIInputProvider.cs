@@ -56,9 +56,11 @@ namespace NowUI
 
         int _keyboardClaimedPass = int.MinValue;
 
+#if NOWUI_INPUT_SYSTEM
         NowKeyInputFrame _keyInputFrame;
 
         int _keyInputPass = int.MinValue;
+#endif
 
         bool _textBackspaceDown;
 
@@ -117,6 +119,7 @@ namespace NowUI
             return false;
         }
 
+#if NOWUI_INPUT_SYSTEM
         /// <summary>
         /// Returns the raw binding key captured from the native IMGUI event for
         /// this provider pass. Custom key sources remain authoritative.
@@ -140,6 +143,7 @@ namespace NowUI
             if (inputPass == _keyInputPass)
                 _keyboardClaimedPass = inputPass;
         }
+#endif
 
         public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
         {
@@ -289,7 +293,9 @@ namespace NowUI
             int inputPass = NextInputPass();
             _keyboardClaimedPass = int.MinValue;
             CaptureTextInput(current, routedType, inputPass);
+#if NOWUI_INPUT_SYSTEM
             CaptureKeyInput(current, routedType, inputPass);
+#endif
 
             if (routedType == EventType.KeyDown)
             {
@@ -395,7 +401,11 @@ namespace NowUI
 
         internal void NotifyKeyActivityClaimed()
         {
+#if NOWUI_INPUT_SYSTEM
             _keyboardClaimedPass = _keyInputPass;
+#else
+            _keyboardClaimedPass = _textInputPass;
+#endif
             ConsumeClaimedKeyEventForHost(_sampledEvent ?? Event.current);
         }
 
@@ -481,7 +491,9 @@ namespace NowUI
             ref bool cancelPressed)
         {
             NowTextInput.Invalidate();
+#if NOWUI_INPUT_SYSTEM
             NowKeyInput.Invalidate();
+#endif
             var navigationKeys = NowInput.navigationKeys;
 
             switch (current.keyCode)
@@ -529,7 +541,9 @@ namespace NowUI
         internal void ApplyKeyUp(Event current, ref bool submitReleased, ref bool cancelReleased)
         {
             NowTextInput.Invalidate();
+#if NOWUI_INPUT_SYSTEM
             NowKeyInput.Invalidate();
+#endif
 
             switch (current.keyCode)
             {
@@ -627,6 +641,7 @@ namespace NowUI
             _textInputPass = inputPass;
         }
 
+#if NOWUI_INPUT_SYSTEM
         void CaptureKeyInput(Event current, EventType eventType, int inputPass)
         {
             _keyInputFrame = new NowKeyInputFrame
@@ -637,6 +652,7 @@ namespace NowUI
             };
             _keyInputPass = inputPass;
         }
+#endif
 
         void ApplyTextKeyDown(KeyCode keyCode)
         {
@@ -766,8 +782,10 @@ namespace NowUI
             _textInputFrame = default;
             _textInputPass = int.MinValue;
             _keyboardClaimedPass = int.MinValue;
+#if NOWUI_INPUT_SYSTEM
             _keyInputFrame = default;
             _keyInputPass = int.MinValue;
+#endif
             ResetTextKeyLatches();
         }
 

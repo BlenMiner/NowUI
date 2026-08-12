@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using System;
 using System.Collections;
 using System.Text.RegularExpressions;
@@ -363,7 +364,7 @@ public class NowUGUINavigationProxyTests
         _provider.snapshot = NavigationSnapshot(frame: 2);
 
         using (NowInput.Begin(_provider, Surface))
-        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy))
+        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy.focusAdapter))
         {
             NowFocus.Register(
                 RightId,
@@ -910,7 +911,7 @@ public class NowUGUINavigationProxyTests
         _proxy.OnMove(Move(MoveDirection.Right));
 
         using (NowInput.Begin(_provider, Surface))
-        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy))
+        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy.focusAdapter))
         {
             NowFocus.Register(LeftId, new NowRect(10f, 10f, 60f, 30f));
             NowFocus.Register(RightId, new NowRect(110f, 10f, 60f, 30f));
@@ -1130,7 +1131,7 @@ public class NowUGUINavigationProxyTests
             using (NowInput.Begin(_provider, Surface))
             using (NowFocus.BeginHostRegistration(
                 sourceGraphic.focusHostId,
-                sourceProxy))
+                sourceProxy.focusAdapter))
             {
                 NowFocus.Register(201, new NowRect(10f, 10f, 60f, 30f));
             }
@@ -1174,7 +1175,7 @@ public class NowUGUINavigationProxyTests
             using (NowInput.Begin(_provider, Surface))
             using (NowFocus.BeginHostRegistration(
                 sourceGraphic.focusHostId,
-                sourceProxy))
+                sourceProxy.focusAdapter))
             {
                 NowFocus.Register(201, new NowRect(10f, 10f, 60f, 30f));
             }
@@ -1232,7 +1233,7 @@ public class NowUGUINavigationProxyTests
             using (NowInput.Begin(_provider, Surface))
             using (NowFocus.BeginHostRegistration(
                 destinationGraphic.focusHostId,
-                destinationProxy))
+                destinationProxy.focusAdapter))
             {
                 NowFocus.Register(201, new NowRect(10f, 10f, 60f, 30f));
             }
@@ -1316,7 +1317,7 @@ public class NowUGUINavigationProxyTests
         _provider.snapshot = NavigationSnapshot(next: true, frame: 2);
 
         using (NowInput.Begin(_provider, Surface))
-        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy))
+        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy.focusAdapter))
         {
             NowFocus.Register(LeftId, new NowRect(10f, 10f, 60f, 30f));
             NowFocus.Register(RightId, new NowRect(110f, 10f, 60f, 30f));
@@ -1518,7 +1519,7 @@ public class NowUGUINavigationProxyTests
         _provider.snapshot = NavigationSnapshot(next: true, frame: 2);
 
         using (NowInput.Begin(_provider, Surface))
-        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy))
+        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy.focusAdapter))
         {
             NowFocus.Register(LeftId, new NowRect(10f, 10f, 60f, 30f));
             NowFocus.Register(RightId, new NowRect(110f, 10f, 60f, 30f));
@@ -1575,7 +1576,7 @@ public class NowUGUINavigationProxyTests
             using (NowInput.Begin(_provider, Surface))
             using (NowFocus.BeginHostRegistration(
                 sourceGraphic.focusHostId,
-                sourceProxy))
+                sourceProxy.focusAdapter))
             {
                 NowFocus.Register(201, new NowRect(10f, 10f, 60f, 30f));
             }
@@ -1602,7 +1603,7 @@ public class NowUGUINavigationProxyTests
         _provider.snapshot = NavigationSnapshot(frame: frame);
 
         using (NowInput.Begin(_provider, Surface))
-        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy))
+        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy.focusAdapter))
         {
             NowFocus.Register(
                 LeftId,
@@ -1642,7 +1643,7 @@ public class NowUGUINavigationProxyTests
             : new NowRect(10f, lastAlong, 60f, 30f);
 
         using (NowInput.Begin(_provider, Surface))
-        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy))
+        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy.focusAdapter))
         {
             NowFocus.Register(LeftId, first);
             NowFocus.Register(RightId, middle);
@@ -1713,7 +1714,7 @@ public class NowUGUINavigationProxyTests
         _provider.snapshot = NavigationSnapshot(frame: 1);
 
         using (NowInput.Begin(_provider, Surface))
-        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy))
+        using (NowFocus.BeginHostRegistration(_graphic.focusHostId, _proxy.focusAdapter))
         {
         }
     }
@@ -1755,3 +1756,4 @@ public class NowUGUINavigationProxyTests
             frame, frame);
     }
 }
+#endif

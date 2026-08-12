@@ -1909,6 +1909,7 @@ public class NowControlsTests
         Assert.IsTrue(sawClick);
     }
 
+#if NOWUI_UGUI
     [Test]
     public void EventSystemSelectionSuspendsNowFocus()
     {
@@ -1944,6 +1945,7 @@ public class NowControlsTests
             Object.DestroyImmediate(eventSystemObject);
         }
     }
+#endif
 
     [Test]
     public void DefaultThemeIsAvailable()

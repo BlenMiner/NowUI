@@ -5,7 +5,7 @@ fields, dropdowns and scroll views, built entirely on public primitives so
 custom controls are first-class citizens. Controls work identically in the
 screen path (`Now.StartUI`), inside UGUI (`NowGraphic` for explicit rects or
 `NowLayoutGraphic` for layout), and in URP/HDRP overlays — pointer, touch,
-keyboard and gamepad included.
+and keyboard included, with gamepad support through the optional Input System.
 
 Controls live where drawing already lives: `NowLayout.*` flows in the active
 layout group (like `NowLayout.Label`), `Now.*` takes an explicit rect (like
@@ -104,8 +104,6 @@ using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
 
     NowLayout.DatePicker().SetToday(DateTime.Today).Draw(ref dueDate);
     NowLayout.TimePicker().Set24Hour(false).Draw(ref alarmTime);
-
-    NowLayout.KeyBindingField().Draw(ref jumpKey);
 }
 ```
 
@@ -194,12 +192,19 @@ using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
   handles, add-key-on-double-click, selected-key Time/Value fields, Smooth/Linear/
   Step/Flat tangent commands, exact step preview, trash/Delete-key removal, and
   optional `SetTimeRange(...)` / `SetValueRange(...)` bounds.
-- `KeyBindingField` edits an Input System `Key` (game-settings rebinding):
+- When `com.unity.inputsystem` resolves, `KeyBindingField` edits an Input
+  System `Key` (game-settings rebinding):
   click it (or press Enter while focused) to capture, and the next key pressed
   becomes the binding. Escape cancels, Delete/Backspace clears to `Key.None`
   (disable via `SetAllowClear(false)`), and a pointer press outside cancels.
   Key names come from the active keyboard layout via `NowKeyNames.GetName`,
-  which is public for building your own binding lists.
+  which is public for building your own binding lists. `KeyBindingField`,
+  `NowKeyInput`, and `NowKeyNames` are not compiled without that package because
+  their public API uses `UnityEngine.InputSystem.Key`; direct and transitive
+  dependencies are detected automatically, with no manual scripting define.
+  With `using UnityEngine.InputSystem`, call
+  `NowLayout.KeyBindingField().Draw(ref jumpKey)` or its explicit-rect
+  `Now.KeyBindingField(...)` twin.
 - `Radio(label, isOn).Draw()` returns true when clicked; set your selection in
   response.
 - `TextField` supports click/drag selection (shaped-text cluster aware),
@@ -493,7 +498,6 @@ Now.ColorPicker(new NowRect(20, 140, 180, 30)).Draw(ref tint);
 Now.GradientField(new NowRect(20, 180, 180, 30)).Draw(ref ramp);
 Now.AnimationCurveField(new NowRect(20, 220, 180, 34)).Draw(ref falloff);
 Now.OpenFileField(new NowRect(20, 264, 260, 30)).SetFilter("Text", "txt", "md").Draw(ref loadPath);
-Now.KeyBindingField(new NowRect(20, 300, 140, 30)).Draw(ref jumpKey);
 ```
 
 Use `NowCornerRadius` or the four-float `SetRadius(topLeft, topRight,
@@ -684,6 +688,14 @@ custom `NowControlRenderer` on the active theme.
 
 ## Focus, keyboard and gamepad
 
+Keyboard focus and navigation work through either input backend. The default
+provider prefers the optional Input System when installed and enabled, then
+falls back to the legacy Input Manager when enabled. The legacy path covers
+mouse, touch, keyboard navigation, text, and IME. D-pad, stick, and gamepad
+submit/cancel are reliably mapped only by the Input System; legacy gamepad axes
+and buttons are project-defined, so use a custom provider if those mappings
+must be supported without it.
+
 Focusable controls register with `NowFocus` every frame. Arrows, WASD, the
 d-pad or left stick move focus spatially, including held-input repeat after
 a short delay; when nothing is focused, directional navigation starts from
@@ -782,10 +794,11 @@ Input arrives through the RectTransform provider, and **Auto Rebuild On
 Interaction** (on by default) re-renders when pointer, button, scroll, or
 navigation input changes for the graphic, or when a control requests a repaint
 (caret blink or animation), staying fully retained while idle.
-Keyboard and gamepad snapshots remain available when the graphic has no usable
-pointer—for example when the pointer is absent, outside its RectTransform, or
-occluded by another UGUI element—so W/A/S/D, arrows, Tab, submit, and cancel
-still wake and operate retained controls after an idle frame.
+Keyboard snapshots remain available when the graphic has no usable pointer—for
+example when the pointer is absent, outside its RectTransform, or occluded by
+another UGUI element—so W/A/S/D, arrows, Tab, submit, and cancel still wake and
+operate retained controls after an idle frame. The Input System backend also
+provides gamepad snapshots in that situation.
 `raycastTarget` blocks UGUI Selectables underneath, so NowUI controls layer
 correctly with UGUI.
 

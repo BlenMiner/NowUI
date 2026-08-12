@@ -568,11 +568,13 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `SurfaceHover`/`AccentHover`/`*Pressed` tokens.
 - `NowHeroUIControlRenderer` and the `White`/`Dark`/`Night`/`HeroUI`/
   `HeroUIDark` theme assets: the HeroUI look is now the built-in default.
-- Legacy Input Manager fallback. The Input System package has always been a
-  hard dependency of NowUI; the dead `ENABLE_LEGACY_INPUT_MANAGER` code path
-  (used only when the Input System reported zero devices) is gone. Projects
-  with Active Input Handling set to "Both" and no Input System devices must
-  switch to the Input System.
+- Hard dependencies on the Input System, Unity UI, and UI Toolkit. NowUI
+  detects each package when Unity resolves it, including transitively. The
+  default input provider prefers an enabled Input System and falls back to an
+  enabled legacy Input Manager for mouse, touch, keyboard, text, and IME.
+  Existing projects that relied on NowUI to install an optional package must
+  add that package to their own manifest. Without the Input System package,
+  the key-binding APIs that expose `UnityEngine.InputSystem.Key` are omitted.
 
 ### Added
 

@@ -1180,7 +1180,7 @@ namespace NowUI
             if (block.hostRectTransform == null)
                 return false;
 
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            if (!NowRectTransformProjection.ScreenPointToLocalPointInRectangle(
                     block.hostRectTransform,
                     screenPosition,
                     block.hostCamera,

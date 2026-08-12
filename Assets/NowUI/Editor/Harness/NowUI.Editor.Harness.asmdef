@@ -18,6 +18,12 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.unity.ugui",
+      "expression": "0.0.0",
+      "define": "NOWUI_UGUI"
+    }
+  ],
   "noEngineReferences": false
 }

@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using UnityEngine;
 using NowUI;
 
@@ -83,3 +84,4 @@ public class NowGraphicExample : NowLayoutGraphic
         }
     }
 }
+#endif

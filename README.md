@@ -25,8 +25,26 @@ itself.
 Requirements:
 
 - Unity `6000.4` or newer
-- Dependencies (installed automatically): Burst, Collections, Mathematics,
-  Input System, UGUI
+- Dependencies (installed automatically): Burst, Collections, and Mathematics
+- Optional input backend: add `com.unity.inputsystem` for the Input System
+- Optional host integrations: add `com.unity.ugui` for `NowGraphic`,
+  `NowLayoutGraphic`, `NowLottieGraphic`, and `NowUGUINavigationProxy`; add
+  `com.unity.modules.uielements` for `NowVisualElement` and
+  `NowLayoutVisualElement`
+
+NowUI detects those optional packages anywhere in Unity's resolved dependency
+graph, including transitive dependencies. No manual scripting define is
+required. Projects using an optional integration only need to ensure its
+package is present; add it to the project manifest if no other dependency
+supplies it.
+
+When the Input System is installed and enabled, NowUI's default provider
+prefers it. Otherwise it falls back to the legacy Input Manager when that
+backend is enabled, including mouse, touch, keyboard navigation, text, and IME
+input. Reliable default gamepad navigation remains Input-System-only because
+legacy axes and buttons are project-defined. `KeyBindingField`, `NowKeyInput`,
+and `NowKeyNames` are also available only when `com.unity.inputsystem` resolves;
+their public API uses `UnityEngine.InputSystem.Key`.
 
 ## AI coding agents
 
@@ -39,6 +57,9 @@ Snippet** for projects or agents that use repository instructions without
 skills.
 
 ## Quick Start
+
+The examples below use the optional UGUI hosts, so `com.unity.ugui` must be
+present in the project's resolved dependency graph.
 
 Choose the placement API by one simple rule: use `Now` when you already have
 rects, and use `NowLayout` when you want the library to arrange rows and
@@ -142,8 +163,9 @@ Toolkit, world-space, and manual-host examples, see
   alignment, justification, and exact-measure layout hosts.
   [Documentation~/Layout.md](Assets/NowUI/Documentation~/Layout.md)
 - **Input** — immediate-mode `NowInput.Interact` with hover, press, drag,
-  and click across mouse, touch, keyboard, and gamepad; pluggable providers
-  for RenderTextures, tests, and remote input.
+  and click across mouse, touch, and keyboard on either built-in backend, plus
+  gamepad support through the optional Input System; pluggable providers for
+  RenderTextures, tests, and remote input.
 - **Controls** — buttons, checkboxes, radios, sliders, text fields,
   dropdowns, and scroll views with focus navigation, theming, and a public
   toolkit for building custom controls. [Documentation~/Controls.md](Assets/NowUI/Documentation~/Controls.md)

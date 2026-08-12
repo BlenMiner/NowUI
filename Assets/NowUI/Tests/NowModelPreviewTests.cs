@@ -1,3 +1,4 @@
+#if NOWUI_ANIMATION && NOWUI_PARTICLE_SYSTEM && NOWUI_PHYSICS2D && NOWUI_PHYSICS
 using System;
 using NUnit.Framework;
 using NowUI;
@@ -7,6 +8,10 @@ using UnityEngine.SceneManagement;
 
 public class NowModelPreviewTests
 {
+    sealed class PreviewSanitizedBehaviour : MonoBehaviour
+    {
+    }
+
     sealed class FakeDynamicTextureHost : INowDynamicTextureHost
     {
         public int dynamicTextureBuildVersion { get; private set; }
@@ -633,7 +638,7 @@ public class NowModelPreviewTests
         var animator = source.AddComponent<Animator>();
         animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
         var collider = source.AddComponent<BoxCollider>();
-        var listener = source.AddComponent<AudioListener>();
+        var behaviour = source.AddComponent<PreviewSanitizedBehaviour>();
 
         try
         {
@@ -648,9 +653,9 @@ public class NowModelPreviewTests
                 AnimatorCullingMode.AlwaysAnimate,
                 preview.presentationInstance.GetComponent<Animator>().cullingMode);
             Assert.IsFalse(preview.presentationInstance.GetComponent<BoxCollider>().enabled);
-            Assert.IsFalse(preview.presentationInstance.GetComponent<AudioListener>().enabled);
+            Assert.IsFalse(preview.presentationInstance.GetComponent<PreviewSanitizedBehaviour>().enabled);
             Assert.IsTrue(collider.enabled, "The caller-owned source must stay untouched.");
-            Assert.IsTrue(listener.enabled, "The caller-owned source must stay untouched.");
+            Assert.IsTrue(behaviour.enabled, "The caller-owned source must stay untouched.");
 
             preview.SetUpdateMode(NowModelPreviewUpdateMode.EveryFrame);
 
@@ -753,6 +758,7 @@ public class NowModelPreviewTests
         Assert.AreEqual(warmed + 1, NowModelPreviewManager.sceneDirectionalRefreshCount);
     }
 
+#if NOWUI_UGUI
     [Test]
     public void DisposingPreviewReleasesHostLocalUguiMaterial()
     {
@@ -782,6 +788,7 @@ public class NowModelPreviewTests
             UnityEngine.Object.DestroyImmediate(hostObject);
         }
     }
+#endif
 
     [Test]
     public void DisposingPreviewReleasesWorldHostMaterialClone()
@@ -1083,3 +1090,4 @@ public class NowModelPreviewTests
     }
 
 }
+#endif

@@ -1,3 +1,4 @@
+#if NOWUI_UGUI
 using UnityEngine;
 using NowUI;
 using NowUI.Markdown;
@@ -81,3 +82,4 @@ public class NowMarkdownExample : NowLayoutGraphic
         }
     }
 }
+#endif

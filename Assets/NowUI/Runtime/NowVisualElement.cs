@@ -1,3 +1,4 @@
+#if NOWUI_UITOOLKIT
 using System;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -652,3 +653,4 @@ namespace NowUI
         internal sealed override bool useLayoutMeasurePass => true;
     }
 }
+#endif

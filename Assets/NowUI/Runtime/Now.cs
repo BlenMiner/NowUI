@@ -1041,7 +1041,9 @@ namespace NowUI
 
                 if (_textureMaterials.TryGetValue(key, out var entry))
                 {
+#if NOWUI_UGUI
                     NowGraphic.ReleaseCachedMaterial(entry.material);
+#endif
                     NowWorldGraphic.ReleaseCachedMaterial(entry.material);
                     DestroyCachedMaterial(entry.material);
                 }
@@ -1063,7 +1065,9 @@ namespace NowUI
 
                 if (_texturedMaterialCache.TryGetValue(key, out var entry))
                 {
+#if NOWUI_UGUI
                     NowGraphic.ReleaseCachedMaterial(entry.material);
+#endif
                     NowWorldGraphic.ReleaseCachedMaterial(entry.material);
                     DestroyCachedMaterial(entry.material);
                 }
