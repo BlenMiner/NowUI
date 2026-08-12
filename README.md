@@ -239,8 +239,12 @@ changes its bundled toolchain.
 
 ## Project Layout
 
-- `Assets/NowUI` — the UPM package (runtime, editor, tests, examples, native
-  plugin sources and binaries)
+- `Assets/NowUI` — the UPM package (runtime, editor, examples, native plugin
+  sources and binaries)
+- `Assets/NowUITests` — repository-only EditMode/PlayMode tests and visual
+  golden baselines; excluded from package exports
+- `Assets/NowUIHarness` — repository-only visual and performance harness;
+  excluded from package exports
 - `Assets/NowUI/Runtime` — drawing API, layout, input, text, Lottie, themes,
   and host integrations including UGUI, UI Toolkit, IMGUI, and world space
 - `Assets/NowUI/Editor` — font compiler menu, `.lottie` importer

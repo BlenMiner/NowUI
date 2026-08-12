@@ -12,7 +12,8 @@ on:
     paths:
       - 'Assets/NowUI/Runtime/**'
       - 'Assets/NowUI/Assets/Shaders/**'
-      - 'Assets/NowUI/Tests/PlayMode/**'
+      - 'Assets/NowUITests/PlayMode/**'
+      - 'Assets/NowUITests.meta'
       - 'Assets/NowUI/package.json'
       - 'Packages/**'
       - 'ProjectSettings/**'

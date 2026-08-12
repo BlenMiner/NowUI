@@ -1,20 +1,22 @@
 # Package Footprint Plan
 
-> Internal design note for unshipped packaging work. It does not change the
-> runtime feature set or the current Git/unitypackage layout.
+> Internal design note for packaging work. It does not change the runtime
+> feature set.
 
 ## Measured baseline
 
-`npm pack Assets/NowUI --dry-run --json` on 2026-08-07 reports:
+`npm pack ./Assets/NowUI --dry-run --json --ignore-scripts` on 2026-08-12
+reports:
 
 | Package shape | Packed | Unpacked | Entries |
 | --- | ---: | ---: | ---: |
 | Before repository-only exclusions | 19.35 MiB | 39.29 MiB | 872 |
-| Current npm package | 18.15 MiB | 36.50 MiB | 657 |
+| Current npm package | 18.17 MiB | 36.57 MiB | 675 |
 
-The current `.npmignore` excludes internal tests, the source-checkout showcase,
-and the visual harness while retaining customer-facing `Samples~`. This is a
-no-behavior-change saving of about 1.20 MiB packed and 2.79 MiB unpacked.
+Internal tests and the visual harness live in repository-owned folders outside
+the package root. The current `.npmignore` excludes the source-checkout
+showcase while retaining customer-facing `Samples~`. Together these are a
+no-behavior-change saving of about 1.18 MiB packed and 2.72 MiB unpacked.
 
 The remaining payload is dominated by two deliberate feature bundles:
 
@@ -25,15 +27,12 @@ The remaining payload is dominated by two deliberate feature bundles:
 
 ## Phase 1: make every export omit development payload
 
-Npm publication now has the correct exclusions. Git URL installs and the
-generated `.unitypackage` still see the repository layout under
-`Assets/NowUI`, so they can retain `Tests`, `Example`, and `Editor/Harness`.
-
-Unify the result by either moving those assemblies to repository-owned folders
-outside the package root or building releases from a staging directory. Keep
-their assembly names and asset GUIDs stable so source-checkout validation and
-scenes continue to work. Verify all three install routes from a clean consumer
-project before changing the release export.
+Internal tests and the visual harness now live in `Assets/NowUITests` and
+`Assets/NowUIHarness`. Their assembly names and asset GUIDs remain stable, but
+npm, Git URL, and generated `.unitypackage` exports rooted at `Assets/NowUI`
+cannot include them. The source-checkout showcase under `Assets/NowUI/Example`
+remains excluded from npm publication only; moving it or staging release
+exports is the remaining work for a uniform package shape.
 
 ## Phase 2: split native binaries by target
 

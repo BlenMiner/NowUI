@@ -1,11 +1,8 @@
 Analyzers~/**/bin/
 Analyzers~/**/obj/
 
-# Repository-only validation and showcase code. Customer-facing examples live
-# in Samples~; these folders remain in source checkouts for CI and development.
-Tests/
-Tests.meta
+# The repository-only validation assemblies live outside this package root.
+# Keep the source-checkout showcase out of registry releases; customer-facing
+# examples live in Samples~.
 Example/
 Example.meta
-Editor/Harness/
-Editor/Harness.meta

@@ -5,6 +5,10 @@ on:
   pull_request:
     paths:
       - 'Assets/NowUI/**'
+      - 'Assets/NowUIHarness/**'
+      - 'Assets/NowUIHarness.meta'
+      - 'Assets/NowUITests/**'
+      - 'Assets/NowUITests.meta'
       - 'Packages/**'
       - 'ProjectSettings/**'
       - '.github/scripts/Run-UnityTests.ps1'

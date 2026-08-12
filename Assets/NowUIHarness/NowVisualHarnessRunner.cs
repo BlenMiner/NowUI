@@ -11,7 +11,7 @@ namespace NowUI.Editor
 {
     public static class NowVisualHarnessRunner
     {
-        const string BaselineRoot = "Assets/NowUI/Tests/Baselines/Visual";
+        const string BaselineRoot = "Assets/NowUITests/Baselines/Visual";
         static readonly GoldenComparisonTolerance DefaultTolerance = new GoldenComparisonTolerance(8, 0.01f);
         static readonly GoldenComparisonTolerance LandingPageTolerance = new GoldenComparisonTolerance(4, 0.0001f);
         static readonly GoldenComparisonTolerance SdfTolerance = new GoldenComparisonTolerance(8, 0.0025f);

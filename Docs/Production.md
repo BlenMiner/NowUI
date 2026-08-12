@@ -43,7 +43,7 @@ separate rendering gate:
   `NowLayout` landing-page captures by name, so reducing the total scenario
   count cannot silently remove their coverage.
 - The Windows runner also executes `-Mode Golden` to compare canonical captures
-  against `Assets/NowUI/Tests/Baselines/Visual`. Landing-page scenarios use a
+  against `Assets/NowUITests/Baselines/Visual`. Landing-page scenarios use a
   stricter per-scenario mismatch ceiling than the general harness to catch a
   missing small control.
 - All captures are uploaded as workflow artifacts for inspection.
@@ -115,6 +115,10 @@ Normal frame paths must allocate no managed memory after explicit warmup:
 
 ## Asset Store Prep
 
+- Run `pwsh -File Tools/Assert-NowUIPackageBoundary.ps1` to verify repository
+  tests and harness code remain outside `Assets/NowUI`, the npm manifest, and
+  the configured `.unitypackage` root. GitHub runs this on pull requests and
+  again before semantic-release creates a release.
 - Keep customer examples under `Samples~`; avoid shipping internal tests as
   imported sample content.
 - Validate with Unity's Asset Store Publishing Tools before upload.

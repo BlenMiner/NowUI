@@ -33,8 +33,9 @@ skill focused on discovery and workflow; do not rely on copied API details.
 3. Follow its host and placement routers.
 4. Read only the linked feature guides relevant to the task.
 5. Search the installed public source and XML comments for uncertain signatures.
-6. Use packaged examples and tests to confirm behavior, not as permission to
-   call internal APIs.
+6. Use packaged examples to confirm behavior. In a NowUI source checkout,
+   repository tests under `Assets/NowUITests` provide additional evidence;
+   neither is permission to call internal APIs.
 
 Prefer local, installed documentation over GitHub `main` or model memory.
 
