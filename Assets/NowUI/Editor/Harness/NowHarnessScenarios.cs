@@ -225,6 +225,7 @@ namespace NowUI.Editor
 #endif
                 new NowHarnessScenario { name = "sdf-mask-glow-clip", width = 640, height = 640, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGlowClip },
                 new NowHarnessScenario { name = "sdf-mask-gallery", width = 960, height = 520, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGallery },
+                new NowHarnessScenario { name = "sdf-radial-primitives", width = 840, height = 360, includeInGoldens = false, warmupFrames = 2, draw = DrawSdfRadialPrimitives },
                 new NowHarnessScenario { name = "sdf-custom-shaders", width = 960, height = 430, includeInGoldens = false, warmupFrames = 2, draw = DrawSdfCustomShaders },
                 new NowHarnessScenario { name = "lottie", width = 512, height = 512, includeInGoldens = true, draw = DrawLottie },
                 new NowHarnessScenario { name = "model-preview-effects", width = 720, height = 420, includeInGoldens = false, warmupFrames = 2, capture = CaptureModelPreviewEffects },
@@ -1754,6 +1755,69 @@ namespace NowUI.Editor
                     .SetLinear(35f)
                     .Draw();
             }
+        }
+
+        static void DrawSdfRadialPrimitives(NowRect rect)
+        {
+            Now.Rectangle(rect).SetColor(new Color(0.018f, 0.026f, 0.050f, 1f)).Draw();
+            Now.Text(new NowRect(26f, 18f, rect.width - 52f, 30f))
+                .SetFontSize(23f)
+                .SetBold()
+                .SetColor(Color.white)
+                .Draw("SDF radial primitives");
+            Now.Text(new NowRect(26f, 50f, rect.width - 52f, 21f))
+                .SetFontSize(13f)
+                .SetColor(new Color(0.65f, 0.76f, 0.89f, 1f))
+                .Draw("Signed quarter turns, a seamless full ring, and a clamped over-turn disc.");
+
+            DrawSdfRadialCard(new NowRect(26f, 92f, 184f, 238f), "+90° PIE", 0);
+            DrawSdfRadialCard(new NowRect(228f, 92f, 184f, 238f), "-90° PIE", 1);
+            DrawSdfRadialCard(new NowRect(430f, 92f, 184f, 238f), "360° ARC", 2);
+            DrawSdfRadialCard(new NowRect(632f, 92f, 182f, 238f), "720° PIE", 3);
+        }
+
+        static void DrawSdfRadialCard(NowRect card, string label, int variant)
+        {
+            Now.Rectangle(card)
+                .SetColor(new Color(0.045f, 0.060f, 0.095f, 1f))
+                .SetRadius(16f)
+                .SetOutline(1f, new Color(0.24f, 0.42f, 0.62f, 0.55f))
+                .Draw();
+
+            var shapeRect = new NowRect(card.x + 14f, card.y + 14f, card.width - 28f, 162f);
+            var center = shapeRect.size * 0.5f;
+            var scene = NowSdf.Scene(shapeRect, 4600 + variant)
+                .SetFeather(0.5f);
+
+            switch (variant)
+            {
+                case 0:
+                    scene.SetColor(new Color(0.15f, 0.86f, 1f, 1f))
+                        .Pie(center, 62f, 0f, Mathf.PI * 0.5f)
+                        .Draw();
+                    break;
+                case 1:
+                    scene.SetColor(new Color(1f, 0.35f, 0.72f, 1f))
+                        .Pie(center, 62f, 0f, -Mathf.PI * 0.5f)
+                        .Draw();
+                    break;
+                case 2:
+                    scene.SetColor(new Color(0.32f, 1f, 0.62f, 1f))
+                        .Arc(center, 48f, 10f, 0f, Mathf.PI * 2f)
+                        .Draw();
+                    break;
+                default:
+                    scene.SetColor(new Color(1f, 0.66f, 0.18f, 1f))
+                        .Pie(center, 62f, 1.2f, Mathf.PI * 4f)
+                        .Draw();
+                    break;
+            }
+
+            Now.Text(new NowRect(card.x + 16f, card.yMax - 44f, card.width - 32f, 24f))
+                .SetFontSize(14f)
+                .SetBold()
+                .SetColor(Color.white)
+                .Draw(label);
         }
 
         static void DrawSdfCustomShaders(NowRect rect)

@@ -1,12 +1,45 @@
 # Third-Party Notices
 
-NowUI's native font compiler plugin (`nowui-msdf`) links the following
-third-party libraries. They are compiled into the prebuilt binaries under
-`Plugins/` but their sources are not part of this repository; CI fetches them
-at build time (see `.github/workflows/build-native-libraries.yml`).
+NowUI includes or adapts the third-party software listed below.
+
+The native font compiler plugin (`nowui-msdf`) links third-party libraries
+compiled into the prebuilt binaries under `Plugins/`. Their sources are not
+part of this repository; CI fetches them at build time (see
+`.github/workflows/build-native-libraries.yml`).
 
 The `nowui-vg` vector tessellator is original NowUI code with no third-party
 dependencies.
+
+## Inigo Quilez 2D signed-distance functions
+
+NowUI's Arc and Pie shader distance functions are adapted from Inigo Quilez's
+`sdArc` and `sdPie` 2D signed-distance functions.
+
+- Author: Inigo Quilez
+- Source: https://iquilezles.org/articles/distfunctions2d/
+- Arc demo/source: https://www.shadertoy.com/view/wl23RK
+- Pie demo/source: https://www.shadertoy.com/view/3l23RK
+- License: MIT
+
+> Copyright © 2019 Inigo Quilez
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in
+> all copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
 
 ## msdf-atlas-gen and msdfgen
 

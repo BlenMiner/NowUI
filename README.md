@@ -188,10 +188,11 @@ Toolkit, world-space, and manual-host examples, see
   floating windows, tab-drag dock guides, and tab reordering via the
   `NowDockSpace` extension.
   [Documentation~/Docking.md](Assets/NowUI/Documentation~/Docking.md)
-- **SDF Shapes** — composable SDF circles, boxes, rounded boxes, ellipses and
-  capsules with union/subtract/intersect operations, smooth blends, colors, and
-  texture fills, plus scene-level outlines, shadows, glow, embossing, contours,
-  and warp. [Documentation~/SDF.md](Assets/NowUI/Documentation~/SDF.md)
+- **SDF Shapes** — composable SDF circles, boxes, rounded boxes, ellipses,
+  capsules, arcs, and pies with union/subtract/intersect operations, smooth
+  blends, colors, and texture fills, plus scene-level outlines, shadows, glow,
+  embossing, contours, and warp.
+  [Documentation~/SDF.md](Assets/NowUI/Documentation~/SDF.md)
 
 API compatibility and allocation rules are tracked in
 [Documentation~/API.md](Assets/NowUI/Documentation~/API.md); release and Asset Store validation gates are in

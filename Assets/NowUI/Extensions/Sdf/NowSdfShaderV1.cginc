@@ -104,19 +104,23 @@ float sdCapsule(float2 p, float2 a, float2 b, float r)
     return length(pa - ba * h) - r;
 }
 
-float2 sdRadialLocal(float2 p, float4 data1, float4 data2)
+float2 NowSdfRotateRadialV1(float2 p, float2 rotation)
 {
-    float2 d = p - data1.xy;
-    return float2(d.x * data2.z - d.y * data2.w, d.x * data2.w + d.y * data2.z);
+    return float2(
+        p.x * rotation.x - p.y * rotation.y,
+        p.x * rotation.y + p.y * rotation.x);
 }
 
-float sdArc(float2 p, float2 sc, float ra, float rb)
+// Arc and pie SDFs adapted from Inigo Quilez's 2D distance functions (MIT).
+// https://iquilezles.org/articles/distfunctions2d/
+// Copyright © 2019 Inigo Quilez. See THIRD_PARTY_LICENSES.md.
+float NowSdfArcDistanceV1(float2 p, float2 sc, float ra, float rb)
 {
     p.x = abs(p.x);
     return ((sc.y * p.x > sc.x * p.y) ? length(p - sc * ra) : abs(length(p) - ra)) - rb;
 }
 
-float sdPie(float2 p, float2 sc, float r)
+float NowSdfPieDistanceV1(float2 p, float2 sc, float r)
 {
     p.x = abs(p.x);
     float l = length(p) - r;
@@ -165,12 +169,24 @@ float shapeDistance(int index, float type, float4 data1, float4 data2, float2 sc
     if (type < 5.5)
         return sdGlyph(scenePos, data1, data2, _SdfUvs[index]);
 
-    float2 q = sdRadialLocal(scenePos, data1, data2);
+    float2 radial = scenePos - data1.xy;
+
+    // A zero rotation vector is the explicit full-turn sentinel. Bypass the
+    // aperture formula so exact and clamped full pies cannot develop a sign seam.
+    if (dot(data2.zw, data2.zw) < 0.5)
+    {
+        if (type < 6.5)
+            return abs(length(radial) - data1.z) - data1.w;
+
+        return length(radial) - data1.z;
+    }
+
+    float2 q = NowSdfRotateRadialV1(radial, data2.zw);
 
     if (type < 6.5)
-        return sdArc(q, data2.xy, data1.z, data1.w);
+        return NowSdfArcDistanceV1(q, data2.xy, data1.z, data1.w);
 
-    return sdPie(q, data2.xy, data1.z);
+    return NowSdfPieDistanceV1(q, data2.xy, data1.z);
 }
 
 float2 shapeUv(float type, float4 data1, float4 data2, float2 scenePos)
@@ -189,10 +205,16 @@ float2 shapeUv(float type, float4 data1, float4 data2, float2 scenePos)
         minPoint = data1.xy - halfSize;
         maxPoint = data1.xy + halfSize;
     }
-    else
+    else if (type < 4.5)
     {
         minPoint = min(data1.xy, data1.zw) - data2.xx;
         maxPoint = max(data1.xy, data1.zw) + data2.xx;
+    }
+    else
+    {
+        float extent = type < 6.5 ? data1.z + data1.w : data1.z;
+        minPoint = data1.xy - float2(extent, extent);
+        maxPoint = data1.xy + float2(extent, extent);
     }
 
     float2 uv = saturate((scenePos - minPoint) / max(maxPoint - minPoint, 0.0001));
@@ -203,7 +225,7 @@ float4 shapeFill(int index, float type, float4 data1, float4 data2, float2 scene
 {
     float4 color = _SdfColors[index] * tint;
 
-    if (type > 4.5 || _SdfShapeMeta[index].y < 0.5)
+    if ((type > 4.5 && type < 5.5) || _SdfShapeMeta[index].y < 0.5)
         return color;
 
     float2 uv = shapeUv(type, data1, data2, scenePos);
