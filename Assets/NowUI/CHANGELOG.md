@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.2.0...nowui-v1.3.0) (2026-08-12)
+
+
+### Features
+
+* **deps:** make Unity integrations optional ([ed36f56](https://github.com/BlenMiner/NowUI/commit/ed36f56b3d964ab27a1ee79c2e5147e6b8e4b5dc))
+
 # [1.2.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.1.2...nowui-v1.2.0) (2026-08-12)
 
 
