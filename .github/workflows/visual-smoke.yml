@@ -85,8 +85,8 @@ jobs:
         run: >
           ./Tools/Assert-NowUIVisualArtifacts.ps1
           -ArtifactsPath "${env:GITHUB_WORKSPACE}/artifacts/golden/windows/golden"
-          -MinCaptures 19
-          -RequiredCaptures "landing-page-now","landing-page-now-layout","landing-page-now-compact","landing-page-now-layout-compact","sdf-mask-glow-clip","sdf-mask-gallery"
+          -MinCaptures 20
+          -RequiredCaptures "landing-page-now","landing-page-now-layout","landing-page-now-compact","landing-page-now-layout-compact","sdf-mask-glow-clip","sdf-mask-gallery","sdf-radial-primitives"
 
       - name: Upload golden artifacts
         if: always()
