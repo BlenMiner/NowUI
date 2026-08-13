@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.5.0...nowui-v1.6.0) (2026-08-13)
+
+
+### Features
+
+* **sdf:** rotate text runs around shared center ([438f7e4](https://github.com/BlenMiner/NowUI/commit/438f7e43130982a0b49e64f2208c9d3d66cc19a4))
+
 # [1.5.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.4.0...nowui-v1.5.0) (2026-08-13)
 
 
