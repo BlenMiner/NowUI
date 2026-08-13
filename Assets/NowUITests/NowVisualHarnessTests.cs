@@ -27,6 +27,7 @@ public class NowVisualHarnessTests
 
     [TestCase("sdf-mask-glow-clip")]
     [TestCase("sdf-mask-gallery")]
+    [TestCase("sdf-planar-primitives")]
     [TestCase("sdf-radial-primitives")]
     public void SdfScenariosUseFocusedGoldenTolerance(string scenarioName)
     {

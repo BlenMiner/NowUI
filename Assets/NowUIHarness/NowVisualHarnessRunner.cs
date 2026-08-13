@@ -104,6 +104,7 @@ namespace NowUI.Editor
                     return LandingPageTolerance;
                 case "sdf-mask-glow-clip":
                 case "sdf-mask-gallery":
+                case "sdf-planar-primitives":
                 case "sdf-radial-primitives":
                     return SdfTolerance;
                 default:

@@ -26,7 +26,7 @@ Material:
     m_Floats:
     - _ColorMask: 15
     - _NowCanvasLayout: 0
-    - _NowSdfAbiVersion: 1
+    - _NowSdfAbiVersion: 2
     - _SdfFeather: 0
     - _SdfLayerCount: 0
     - _SdfShapeCount: 0

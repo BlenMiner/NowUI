@@ -123,6 +123,642 @@ public class NowSdfTests
     }
 
     [Test]
+    public void SdfPlanarPrimitivesPackDataAndConservativeBounds()
+    {
+        var scene = NowSdf.Scene("sdf-planar-packing")
+            .ChamferedBox(new NowRect(4f, 6f, 20f, 14f), 3f)
+            .Triangle(
+                new Vector2(30f, 4f),
+                new Vector2(54f, 10f),
+                new Vector2(38f, 34f))
+            .Line(new Vector2(8f, 44f), new Vector2(42f, 56f), 10f);
+
+        Assert.AreEqual(new Vector2(54f, 61f), scene.Measure(),
+            "Triangle bounds must include every vertex and Line bounds must include half its width.");
+
+        using (_drawList.Begin(new Vector2(64f, 64f)))
+            scene.Draw(new NowRect(0f, 0f, 64f, 64f));
+
+        var material = _drawList.batches[0].material;
+        var data0 = material.GetVectorArray("_SdfData0");
+        var data1 = material.GetVectorArray("_SdfData1");
+        var data2 = material.GetVectorArray("_SdfData2");
+
+        Assert.AreEqual(8, (int)NowSdfShapeType.ChamferedBox,
+            "New shape opcodes must be appended after the released Arc and Pie opcodes.");
+        Assert.AreEqual(9, (int)NowSdfShapeType.Triangle,
+            "New shape opcodes must remain stable for the shader ABI.");
+        Assert.AreEqual((float)NowSdfShapeType.ChamferedBox, data0[0].x);
+        Assert.AreEqual((float)NowSdfShapeType.Triangle, data0[1].x);
+        Assert.AreEqual((float)NowSdfShapeType.Capsule, data0[2].x,
+            "Line should remain a Capsule alias rather than consuming another opcode.");
+
+        Assert.AreEqual(new Vector4(14f, 13f, 20f, 14f), data1[0]);
+        Assert.AreEqual(new Vector4(3f, 0f, 0f, 0f), data2[0]);
+        Assert.AreEqual(30f, data1[1].x);
+        Assert.AreEqual(4f, data1[1].y);
+        Assert.AreEqual(0.8f, data1[1].z, 0.0001f);
+        Assert.AreEqual(0.2f, data1[1].w, 0.0001f);
+        Assert.AreEqual(8f / 30f, data2[1].x, 0.0001f);
+        Assert.AreEqual(1f, data2[1].y, 0.0001f);
+        Assert.AreEqual(1f, data2[1].z);
+        Assert.AreEqual(30f, data2[1].w);
+        Assert.AreEqual(new Vector4(8f, 44f, 42f, 56f), data1[2]);
+        Assert.AreEqual(new Vector4(5f, 0f, 0f, 0f), data2[2],
+            "Line width is a full stroke width, while Capsule stores its radius.");
+    }
+
+    [Test]
+    public void SdfPlanarPrimitiveNegativeSizesClampToZero()
+    {
+        var graph = NowSdf.Graph()
+            .ChamferedBox(new NowRect(2f, 3f, 20f, 12f), -4f)
+            .Line(new Vector2(4f, 24f), new Vector2(28f, 24f), -6f);
+
+        Assert.AreEqual(2, graph.nodes.Count);
+        Assert.AreEqual(0f, graph.nodes[0].data2.x,
+            "A negative chamfer must behave like a zero-chamfer box.");
+        Assert.AreEqual(0f, graph.nodes[1].data2.x,
+            "A negative Line width must clamp to a zero-radius Capsule.");
+    }
+
+    [Test]
+    public void SdfRotateNextCanonicalizesNodeMetadataAndResetsAfterOnePrimitive()
+    {
+        var rect = new NowRect(4f, 6f, 20f, 14f);
+        var graph = NowSdf.Graph()
+            .RotateNext(90f)
+            .ChamferedBox(rect, 3f)
+            .RotateNext(450f)
+            .Box(rect)
+            .RotateNext(-90f)
+            .Ellipse(rect)
+            .RotateNext(360f)
+            .RoundedBox(rect, 2f);
+
+        Assert.AreEqual(new Vector4(3f, 0f, 0f, 0f), graph.nodes[0].data2,
+            "ChamferedBox no longer owns a shape-specific rotation payload.");
+        Assert.AreEqual(new Vector2(0f, 1f), graph.nodes[0].rotation);
+        Assert.AreEqual(graph.nodes[0].rotation, graph.nodes[1].rotation,
+            "Angles must wrap before packing their rotation.");
+        Assert.AreEqual(new Vector2(0f, -1f), graph.nodes[2].rotation);
+        Assert.AreEqual(Vector2.zero, graph.nodes[3].rotation,
+            "Full turns should use the compact identity sentinel.");
+        AssertRectApproximately(
+            new NowRect(7f, 3f, 14f, 20f),
+            graph.nodes[0].bounds,
+            0.002f,
+            "A quarter turn must swap the authored half-extents around rect.center.");
+        Assert.AreEqual(rect, graph.nodes[3].bounds);
+
+        var nextOnly = NowSdf.Graph()
+            .RotateNext(90f)
+            .Box(rect)
+            .Box(rect);
+        Assert.AreEqual(new Vector2(0f, 1f), nextOnly.nodes[0].rotation);
+        Assert.AreEqual(Vector2.zero, nextOnly.nodes[1].rotation,
+            "RotateNext must apply to exactly one primitive.");
+
+        var lastWins = NowSdf.Graph()
+            .RotateNext(30f)
+            .RotateNext(180f)
+            .Box(rect);
+        Assert.AreEqual(new Vector2(-1f, 0f), lastWins.nodes[0].rotation,
+            "A later RotateNext call must replace the pending angle.");
+
+        var cleared = NowSdf.Graph()
+            .Circle(new Vector2(8f, 8f), 4f)
+            .RotateNext(90f);
+        cleared.Clear().Box(rect);
+        Assert.AreEqual(1, cleared.nodes.Count);
+        Assert.AreEqual(Vector2.zero, cleared.nodes[0].rotation,
+            "Clear must discard pending node transforms.");
+    }
+
+    [Test]
+    public void SdfRotateNextPassesThroughStyleAndOperationAndSkippedShapeConsumesIt()
+    {
+        var rect = new NowRect(4f, 6f, 20f, 14f);
+        var graph = NowSdf.Graph()
+            .Circle(new Vector2(8f, 8f), 4f)
+            .RotateNext(90f)
+            .SetColor(Color.red)
+            .SmoothSubtract(3f)
+            .Box(rect)
+            .Circle(new Vector2(32f, 8f), 4f);
+
+        Assert.AreEqual(new Vector2(0f, 1f), graph.nodes[1].rotation);
+        Assert.AreEqual(NowSdfOperation.SmoothSubtract, graph.nodes[1].operation);
+        Assert.AreEqual(3f, graph.nodes[1].smoothing);
+        Assert.AreEqual((Vector4)Color.red, graph.nodes[1].color);
+        Assert.AreEqual(Vector2.zero, graph.nodes[2].rotation);
+        Assert.AreEqual(NowSdfOperation.Union, graph.nodes[2].operation);
+
+        var skipped = NowSdf.Graph()
+            .Circle(new Vector2(8f, 8f), 4f)
+            .RotateNext(90f)
+            .Subtract()
+            .ChamferedBox(new NowRect(4f, 5f, 0f, 9f), 2f)
+            .Box(rect);
+
+        Assert.AreEqual(2, skipped.nodes.Count);
+        Assert.AreEqual(Vector2.zero, skipped.nodes[1].rotation,
+            "A valid-but-empty primitive must consume pending rotation.");
+        Assert.AreEqual(NowSdfOperation.Union, skipped.nodes[1].operation,
+            "A valid-but-empty primitive must consume its pending operation.");
+    }
+
+    [Test]
+    public void SdfRotateNextRejectsNonFiniteAnglesWithoutChangingPendingState()
+    {
+        var graph = NowSdf.Graph().RotateNext(90f);
+
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => graph.RotateNext(float.NaN));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => graph.RotateNext(float.PositiveInfinity));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => graph.RotateNext(float.NegativeInfinity));
+        Assert.AreEqual(0, graph.nodes.Count);
+
+        graph.Box(new NowRect(4f, 6f, 20f, 14f));
+        Assert.AreEqual(new Vector2(0f, 1f), graph.nodes[0].rotation,
+            "A rejected angle must leave the previous pending rotation intact.");
+    }
+
+    [Test]
+    public void SdfRotateNextProducesConservativeBoundsForEveryPivotKind()
+    {
+        var box = NowSdf.Graph()
+            .RotateNext(30f)
+            .Box(new NowRect(10f, 20f, 80f, 24f));
+        AssertRectApproximately(
+            new NowRect(9.358984f, 1.607695f, 81.282032f, 60.78461f),
+            box.nodes[0].bounds,
+            0.002f);
+
+        var graph = NowSdf.Graph()
+            .RotateNext(90f)
+            .Ellipse(new NowRect(4f, 6f, 20f, 14f))
+            .RotateNext(90f)
+            .Capsule(new Vector2(10f, 20f), new Vector2(30f, 20f), 4f)
+            .RotateNext(90f)
+            .Triangle(
+                new Vector2(10f, 10f),
+                new Vector2(30f, 10f),
+                new Vector2(10f, 20f));
+
+        AssertRectApproximately(
+            new NowRect(7f, 3f, 14f, 20f),
+            graph.nodes[0].bounds,
+            0.002f);
+        AssertRectApproximately(
+            new NowRect(16f, 6f, 8f, 28f),
+            graph.nodes[1].bounds,
+            0.002f,
+            "Capsule rotation must pivot around the endpoint midpoint.");
+        AssertRectApproximately(
+            new NowRect(15f, 5f, 10f, 20f),
+            graph.nodes[2].bounds,
+            0.002f,
+            "Triangle rotation must pivot around its packed vertex AABB center.");
+
+        var degenerate = NowSdf.Graph()
+            .RotateNext(45f)
+            .Line(new Vector2(0f, 0f), new Vector2(20f, 0f), 0f)
+            .RotateNext(45f)
+            .Triangle(
+                new Vector2(0f, 20f),
+                new Vector2(20f, 20f),
+                new Vector2(10f, 20f));
+
+        Assert.Greater(degenerate.nodes[0].bounds.width, 0f);
+        Assert.Greater(degenerate.nodes[0].bounds.height, 0f,
+            "A rotated zero-width Line must acquire a two-dimensional conservative AABB.");
+        Assert.Greater(degenerate.nodes[1].bounds.width, 0f);
+        Assert.Greater(degenerate.nodes[1].bounds.height, 0f,
+            "A rotated collinear Triangle must acquire a two-dimensional conservative AABB.");
+    }
+
+    [Test]
+    public void SdfRotateNextBoundsContainAdversarialPackedGeometry()
+    {
+        var circle = NowSdf.Graph()
+            .RotateNext(120f)
+            .Circle(new Vector2(-1.25f, 0f), 1.42f)
+            .nodes[0];
+        double circleScale = ShaderReferenceScale(circle.rotation);
+        Assert.GreaterOrEqual(
+            (double)circle.bounds.xMax,
+            circle.data1.x + circle.data1.z * circleScale,
+            "Radial bounds must use the payload center and shader-effective rotation scale.");
+
+        var box = NowSdf.Graph()
+            .RotateNext(141f)
+            .Box(new NowRect(-89.8f, 189.3f, 32.9f, 164.7f))
+            .nodes[0];
+        var boxPivot = new Vector2(box.data1.x, box.data1.y);
+        var boxHalf = new Vector2(box.data1.z, box.data1.w) * 0.5f;
+        AssertRotatedBoundsContain(box, boxPivot, boxPivot + new Vector2(-boxHalf.x, -boxHalf.y));
+        AssertRotatedBoundsContain(box, boxPivot, boxPivot + new Vector2(-boxHalf.x, boxHalf.y));
+        AssertRotatedBoundsContain(box, boxPivot, boxPivot + new Vector2(boxHalf.x, -boxHalf.y));
+        AssertRotatedBoundsContain(box, boxPivot, boxPivot + new Vector2(boxHalf.x, boxHalf.y));
+
+        var triangle = NowSdf.Graph()
+            .RotateNext(135f)
+            .Triangle(
+                new Vector2(-1f, -1f),
+                new Vector2(33554432f, 33554432f),
+                new Vector2(-1f, 33554432f))
+            .nodes[0];
+        float scale = triangle.data2.w;
+        var a = new Vector2(triangle.data1.x, triangle.data1.y);
+        Vector2 b = a + new Vector2(triangle.data1.z, triangle.data1.w) * scale;
+        Vector2 c = a + new Vector2(triangle.data2.x, triangle.data2.y) * scale;
+        Vector2 trianglePivot = Vector2.Min(a, Vector2.Min(b, c)) +
+            (Vector2.Max(a, Vector2.Max(b, c)) - Vector2.Min(a, Vector2.Min(b, c))) * 0.5f;
+        AssertRotatedBoundsContain(triangle, trianglePivot, a);
+        AssertRotatedBoundsContain(triangle, trianglePivot, b);
+        AssertRotatedBoundsContain(triangle, trianglePivot, c);
+
+        var cardinal = NowSdf.Graph()
+            .RotateNext(90f)
+            .Box(new NowRect(-4.0001f, -6f, 0.0002f, 4f))
+            .nodes[0];
+        float oneFloatBeyondIdeal = NextRepresentableFloat(-2f);
+        Assert.AreEqual(2f, oneFloatBeyondIdeal - cardinal.data1.x,
+            "The shader subtraction must reproduce the cardinal cancellation case.");
+        Assert.GreaterOrEqual(cardinal.bounds.xMax, oneFloatBeyondIdeal,
+            "Rotated bounds must cover float cancellation even at exact cardinal angles.");
+    }
+
+    [Test]
+    public void SdfBuilderRotateNextMeasuresBoundsAndUploadsPerNodeMetadata()
+    {
+        var rect = new NowRect(4f, 6f, 20f, 14f);
+        var scene = NowSdf.Scene("sdf-generic-rotation-upload")
+            .RotateNext(90f)
+            .Box(rect)
+            .Circle(rect.center, 2f);
+
+        Assert.AreEqual(21f, scene.Measure().x, 0.002f,
+            "Builder measurement must use the rotated primitive bounds.");
+        Assert.AreEqual(23f, scene.Measure().y, 0.002f,
+            "Builder measurement must use the rotated primitive bounds.");
+
+        using (_drawList.Begin(new Vector2(32f, 32f)))
+            scene.Draw(new NowRect(0f, 0f, 32f, 32f));
+
+        var shapeMeta = _drawList.batches[0].material.GetVectorArray("_SdfShapeMeta");
+        Assert.AreEqual(0f, shapeMeta[0].z);
+        Assert.AreEqual(1f, shapeMeta[0].w);
+        Assert.AreEqual(0f, shapeMeta[1].z);
+        Assert.AreEqual(0f, shapeMeta[1].w,
+            "Builder rotation must reset after the first primitive.");
+    }
+
+    [Test]
+    public void SdfRotationStackComposesAndRotateNextTargetsOnePrimitive()
+    {
+        var rect = new NowRect(4f, 6f, 20f, 14f);
+        var graph = NowSdf.Graph()
+            .PushRotation(20f)
+            .Box(rect)
+            .RotateNext(10f)
+            .Triangle(Vector2.zero, Vector2.right * 20f, Vector2.up * 20f)
+            .Circle(new Vector2(32f, 32f), 4f)
+            .PushRotation(-5f)
+            .Ellipse(rect)
+            .PopRotation()
+            .PopRotation()
+            .RoundedBox(rect, 2f);
+
+        AssertRotation(graph.nodes[0].rotation, 20f);
+        AssertRotation(graph.nodes[1].rotation, 30f);
+        AssertRotation(graph.nodes[2].rotation, 20f,
+            "RotateNext must be consumed without changing the pushed rotation.");
+        AssertRotation(graph.nodes[3].rotation, 15f,
+            "Nested PushRotation calls must compose relative angles.");
+        Assert.AreEqual(Vector2.zero, graph.nodes[4].rotation,
+            "PopRotation must restore the parent rotation and eventually identity.");
+
+        var skipped = NowSdf.Graph()
+            .PushRotation(20f)
+            .RotateNext(10f)
+            .ChamferedBox(new NowRect(0f, 0f, 0f, 10f), 2f)
+            .Box(rect)
+            .PopRotation();
+        AssertRotation(skipped.nodes[0].rotation, 20f,
+            "A skipped primitive must consume RotateNext but preserve pushed rotation.");
+
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        var cancelledForText = NowSdf.Graph()
+            .PushRotation(20f)
+            .RotateNext(-20f)
+            .Text(new Vector2(2f, 2f), "R", font, 12f)
+            .Box(rect)
+            .PopRotation();
+        AssertRotation(cancelledForText.nodes[cancelledForText.nodes.Count - 1].rotation, 20f,
+            "An identity-cancelled Text operand must consume RotateNext without clearing its pushed rotation.");
+
+        var skippedText = NowSdf.Graph()
+            .PushRotation(20f)
+            .RotateNext(-20f)
+            .Text(Vector2.zero, string.Empty, 16f)
+            .Box(rect)
+            .PopRotation();
+        AssertRotation(skippedText.nodes[0].rotation, 20f,
+            "A skipped identity-cancelled Text operand must also consume RotateNext.");
+
+        using (_drawList.Begin(new Vector2(64f, 64f)))
+        {
+            NowSdf.Scene(new NowRect(0f, 0f, 64f, 64f), "sdf-rotation-stack-upload")
+                .PushRotation(20f)
+                    .Box(rect)
+                    .RotateNext(10f)
+                    .Circle(new Vector2(32f, 32f), 4f)
+                .PopRotation()
+                .Box(rect)
+                .Draw();
+        }
+
+        var shapeMeta = _drawList.batches[0].material.GetVectorArray("_SdfShapeMeta");
+        AssertRotation(new Vector2(shapeMeta[0].z, shapeMeta[0].w), 20f);
+        AssertRotation(new Vector2(shapeMeta[1].z, shapeMeta[1].w), 30f);
+        Assert.AreEqual(Vector2.zero, new Vector2(shapeMeta[2].z, shapeMeta[2].w));
+    }
+
+    [Test]
+    public void SdfRotationStackValidatesBalanceAndPreservesTransactionalState()
+    {
+        var rect = new NowRect(4f, 6f, 20f, 14f);
+        var graph = NowSdf.Graph().PushRotation(20f).RotateNext(10f);
+
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => graph.PushRotation(float.NaN));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.Triangle(Vector2.zero, new Vector2(float.PositiveInfinity, 0f), Vector2.one));
+        graph.Box(rect);
+        AssertRotation(graph.nodes[0].rotation, 30f,
+            "Rejected input must retain both pushed and next-primitive rotation state.");
+        graph.PopRotation();
+        Assert.Throws<System.InvalidOperationException>(() => graph.PopRotation());
+
+        var openGraph = NowSdf.Graph().PushRotation(15f).Box(rect);
+        var scene = NowSdf.Scene(new NowRect(0f, 0f, 32f, 32f), "sdf-open-rotation-graph");
+        Assert.Throws<System.InvalidOperationException>(() => scene.Graph(openGraph));
+        openGraph.PopRotation();
+        scene = scene.Graph(openGraph);
+
+        var openScene = NowSdf.Scene(new NowRect(0f, 0f, 32f, 32f), "sdf-open-rotation-scene")
+            .PushRotation(15f)
+            .Box(rect);
+        Assert.Throws<System.InvalidOperationException>(() => openScene.Draw());
+        openScene = openScene.PopRotation();
+
+        using (_drawList.Begin(new Vector2(32f, 32f)))
+            openScene.Draw();
+
+        graph.Clear().Box(rect);
+        Assert.AreEqual(Vector2.zero, graph.nodes[0].rotation,
+            "Clear must discard pushed and next-primitive rotation state.");
+    }
+
+    [Test]
+    public void SdfRotationStackDoesNotAllocateAfterWarmup()
+    {
+        var graph = NowSdf.Graph();
+        var rect = new NowRect(4f, 6f, 20f, 14f);
+
+        for (int i = 0; i < 8; ++i)
+        {
+            graph.Clear()
+                .PushRotation(20f)
+                .PushRotation(-5f)
+                .RotateNext(10f)
+                .Box(rect)
+                .PopRotation()
+                .PopRotation();
+        }
+
+        long before;
+        try
+        {
+            before = System.GC.GetAllocatedBytesForCurrentThread();
+        }
+        catch (System.MissingMethodException)
+        {
+            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
+            return;
+        }
+
+        for (int i = 0; i < 128; ++i)
+        {
+            graph.Clear()
+                .PushRotation(20f)
+                .PushRotation(-5f)
+                .RotateNext(10f)
+                .Box(rect)
+                .PopRotation()
+                .PopRotation();
+        }
+
+        long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.AreEqual(0, allocated,
+            "A warmed SDF rotation stack must not allocate managed memory.");
+
+        var sceneId = new NowId(0x5DF20);
+        Vector2 measured = default;
+        for (int i = 0; i < 8; ++i)
+        {
+            measured = NowSdf.Scene(sceneId)
+                .PushRotation(20f)
+                .PushRotation(-5f)
+                .RotateNext(10f)
+                .Box(rect)
+                .PopRotation()
+                .PopRotation()
+                .Measure();
+        }
+
+        before = System.GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 128; ++i)
+        {
+            measured = NowSdf.Scene(sceneId)
+                .PushRotation(20f)
+                .PushRotation(-5f)
+                .RotateNext(10f)
+                .Box(rect)
+                .PopRotation()
+                .PopRotation()
+                .Measure();
+        }
+
+        allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Greater(measured.x, 0f);
+        Assert.AreEqual(0, allocated,
+            "A warmed cached-scene rotation stack must not allocate managed memory.");
+    }
+
+    [Test]
+    public void SdfPlanarPrimitiveBoundaryContractsAreStable()
+    {
+        var graph = NowSdf.Graph()
+            .ChamferedBox(new NowRect(2f, 3f, 20f, 12f), 100f)
+            .Subtract()
+            .ChamferedBox(new NowRect(4f, 5f, 0f, 9f), 2f)
+            .Circle(new Vector2(20f, 20f), 3f)
+            .Triangle(
+                new Vector2(0f, 40f),
+                new Vector2(1000f, 40f),
+                new Vector2(1000f, 40.001f));
+
+        Assert.AreEqual(3, graph.nodes.Count, "An empty ChamferedBox must not add a node.");
+        Assert.AreEqual(6f, graph.nodes[0].data2.x,
+            "Chamfer must clamp to half the shorter side.");
+        Assert.AreEqual(NowSdfOperation.Union, graph.nodes[1].operation,
+            "A skipped primitive must consume its pending boolean operation.");
+        Assert.AreEqual(0f, graph.nodes[2].data2.z,
+            "A numerically near-collinear Triangle must use an unsigned edge field.");
+        Assert.AreEqual(1000f, graph.nodes[2].data2.w,
+            "Triangle normalization must retain its component span for shader distances.");
+    }
+
+    [Test]
+    public void SdfTriangleDegeneracyCutoffIsScaleRelativeAndWindingAware()
+    {
+        var a = Vector2.zero;
+        var b = new Vector2(1024f, 0f);
+        var graph = NowSdf.Graph()
+            .Triangle(a, b, new Vector2(1024f, 1f / 256f))
+            .Triangle(a, b, new Vector2(1024f, 1f / 128f))
+            .Triangle(a, b, new Vector2(1024f, 1f / 64f))
+            .Triangle(a, new Vector2(1024f, 1f / 64f), b)
+            .Triangle(a, a, a);
+
+        Assert.AreEqual(0f, graph.nodes[0].data2.z,
+            "A triangle below the relative-area cutoff must be unsigned.");
+        Assert.AreEqual(0f, graph.nodes[1].data2.z,
+            "The inclusive relative-area cutoff must be deterministic.");
+        Assert.AreEqual(1f, graph.nodes[2].data2.z);
+        Assert.AreEqual(-1f, graph.nodes[3].data2.z);
+        Assert.AreEqual(0f, graph.nodes[4].data2.z);
+        Assert.AreEqual(1f, graph.nodes[4].data2.w,
+            "A coincident Triangle must retain a finite normalization scale.");
+
+        const float largeScale = 1099511627776f; // 2^40
+        var scaled = NowSdf.Graph()
+            .Triangle(
+                a,
+                b * largeScale,
+                new Vector2(1024f, 1f / 64f) * largeScale);
+        Assert.AreEqual(graph.nodes[2].data1.z, scaled.nodes[0].data1.z, 0.000001f);
+        Assert.AreEqual(graph.nodes[2].data1.w, scaled.nodes[0].data1.w, 0.000001f);
+        Assert.AreEqual(graph.nodes[2].data2.x, scaled.nodes[0].data2.x, 0.000001f);
+        Assert.AreEqual(graph.nodes[2].data2.y, scaled.nodes[0].data2.y, 0.000001f);
+        Assert.AreEqual(graph.nodes[2].data2.z, scaled.nodes[0].data2.z);
+    }
+
+    [Test]
+    public void SdfTriangleBoundsIncludeShaderReconstructedVertices()
+    {
+        var graph = NowSdf.Graph()
+            .Triangle(
+                new Vector2(-500.123f, 200.456f),
+                new Vector2(619.6848f, -24.779821f),
+                new Vector2(0f, 2000f))
+            .Triangle(
+                new Vector2(-744115.375f, 915255.5f),
+                new Vector2(-503228.75f, 624424f),
+                new Vector2(785268.9375f, 257079.71875f));
+
+        for (int i = 0; i < graph.nodes.Count; ++i)
+        {
+            var node = graph.nodes[i];
+            var a = new Vector2(node.data1.x, node.data1.y);
+            Vector2 reconstructedB = a + new Vector2(node.data1.z, node.data1.w) * node.data2.w;
+            Vector2 reconstructedC = a + new Vector2(node.data2.x, node.data2.y) * node.data2.w;
+
+            Assert.LessOrEqual(node.bounds.x, Mathf.Min(reconstructedB.x, reconstructedC.x));
+            Assert.LessOrEqual(node.bounds.y, Mathf.Min(reconstructedB.y, reconstructedC.y));
+            Assert.GreaterOrEqual(node.bounds.xMax, Mathf.Max(reconstructedB.x, reconstructedC.x),
+                "Packed Triangle reconstruction can move a vertex one ULP beyond its authored AABB.");
+            Assert.GreaterOrEqual(node.bounds.yMax, Mathf.Max(reconstructedB.y, reconstructedC.y));
+        }
+
+        Assert.GreaterOrEqual(graph.nodes[1].bounds.xMax, 785268.9375f,
+            "NowRect size reconstruction must not round the authored maximum inward.");
+    }
+
+    [Test]
+    public void SdfRotateNextCapsuleMidpointDoesNotOverflowForFiniteEndpoints()
+    {
+        float large = float.MaxValue;
+        var graph = NowSdf.Graph()
+            .RotateNext(180f)
+            .Line(
+                new Vector2(large * 0.6f, 0f),
+                new Vector2(large * 0.5f, 0f),
+                0f);
+
+        Assert.AreEqual(1, graph.nodes.Count,
+            "Computing the Capsule pivot must not add its finite endpoints before halving them.");
+        Assert.IsFalse(float.IsNaN(graph.nodes[0].bounds.x));
+        Assert.IsFalse(float.IsInfinity(graph.nodes[0].bounds.x));
+        Assert.IsFalse(float.IsNaN(graph.nodes[0].bounds.xMax));
+        Assert.IsFalse(float.IsInfinity(graph.nodes[0].bounds.xMax));
+    }
+
+    [Test]
+    public void SdfPlanarPrimitiveOverflowDoesNotMutateGraph()
+    {
+        var graph = NowSdf.Graph().Circle(new Vector2(8f, 8f), 4f);
+
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.Line(
+                new Vector2(-float.MaxValue, 0f),
+                new Vector2(float.MaxValue, 0f),
+                0f));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.Triangle(
+                new Vector2(-float.MaxValue, 0f),
+                new Vector2(float.MaxValue, 0f),
+                Vector2.zero));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.RotateNext(45f).Box(
+                new NowRect(
+                    float.MaxValue * 0.75f,
+                    0f,
+                    float.MaxValue * 0.125f,
+                    float.MaxValue * 0.5f)));
+
+        Assert.AreEqual(1, graph.nodes.Count, "Overflowing planar bounds mutated the graph.");
+        Assert.AreEqual(new Vector2(12f, 12f), graph.measureSize,
+            "A rejected rotated bound must not mutate measured graph bounds.");
+
+        graph.Box(new NowRect(2f, 3f, 20f, 12f));
+        Assert.AreEqual(2, graph.nodes.Count);
+        Assert.AreEqual(Mathf.Sqrt(0.5f), graph.nodes[1].rotation.x, 0.000001f);
+        Assert.AreEqual(Mathf.Sqrt(0.5f), graph.nodes[1].rotation.y, 0.000001f,
+            "A bounds exception must leave the pending rotation intact.");
+    }
+
+    [Test]
+    public void SdfPlanarPrimitivesRejectNonFiniteArgumentsWithoutMutation()
+    {
+        var graph = NowSdf.Graph().Circle(new Vector2(8f, 8f), 4f);
+
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.ChamferedBox(new NowRect(float.NaN, 0f, 12f, 8f), 2f));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.ChamferedBox(new NowRect(0f, 0f, 12f, 8f), float.PositiveInfinity));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.Triangle(Vector2.zero, new Vector2(float.PositiveInfinity, 0f), Vector2.one));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.Line(Vector2.zero, new Vector2(float.NaN, 0f), 3f));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+            graph.Line(Vector2.zero, Vector2.one, float.PositiveInfinity));
+
+        Assert.AreEqual(1, graph.nodes.Count, "Invalid planar inputs mutated the graph.");
+    }
+
+    [Test]
     public void SdfMaskCaptureGeometryPreservesSubpixelBounds()
     {
         var material = Resources.Load<Material>("NowUI/SdfMaterial");
@@ -226,6 +862,44 @@ public class NowSdfTests
         Assert.AreEqual((float)NowSdfOperation.SmoothSubtract, shapeData[1].y, 0.0001f);
         Assert.AreEqual((float)NowSdfOperation.SmoothSubtract, shapeData[2].y, 0.0001f);
         Assert.AreEqual((float)NowSdfOperation.SmoothSubtract, shapeData[3].y, 0.0001f);
+    }
+
+    [Test]
+    public void SdfPendingRotateNextRejectsGraphMorphAndTextOperands()
+    {
+        var from = NowSdf.Graph().Circle(new Vector2(16f, 16f), 8f);
+        var to = NowSdf.Graph().Box(new NowRect(8f, 8f, 16f, 16f));
+        var graphScene = NowSdf.Scene("sdf-rotate-graph-guard").RotateNext(90f);
+        var morphScene = NowSdf.Scene("sdf-rotate-morph-guard").RotateNext(90f);
+        var textScene = NowSdf.Scene("sdf-rotate-text-guard").RotateNext(90f);
+
+        Assert.Throws<System.InvalidOperationException>(() => graphScene.Graph(from));
+        Assert.Throws<System.InvalidOperationException>(() => morphScene.Morph(from, to, 0.5f));
+        Assert.Throws<System.InvalidOperationException>(() =>
+            textScene.Text(new Vector2(4f, 4f), "R", 16f));
+
+        var textGraph = NowSdf.Graph().RotateNext(90f);
+        Assert.Throws<System.InvalidOperationException>(() =>
+            textGraph.Text(new Vector2(4f, 4f), "R", 16f));
+        textGraph.Box(new NowRect(4f, 6f, 20f, 14f));
+        Assert.AreEqual(new Vector2(0f, 1f), textGraph.nodes[0].rotation,
+            "A rejected group operand must leave pending rotation intact.");
+
+        var pushedGraphScene = NowSdf.Scene("sdf-pushed-rotation-graph-guard")
+            .PushRotation(10f);
+        var pushedMorphScene = NowSdf.Scene("sdf-pushed-rotation-morph-guard")
+            .PushRotation(10f);
+        var pushedTextScene = NowSdf.Scene("sdf-pushed-rotation-text-guard")
+            .PushRotation(10f);
+        var graphError = Assert.Throws<System.InvalidOperationException>(() =>
+            pushedGraphScene.Graph(from));
+        var morphError = Assert.Throws<System.InvalidOperationException>(() =>
+            pushedMorphScene.Morph(from, to, 0.5f));
+        var textError = Assert.Throws<System.InvalidOperationException>(() =>
+            pushedTextScene.Text(new Vector2(4f, 4f), "R", 16f));
+        StringAssert.Contains("per-primitive rotation", graphError.Message);
+        StringAssert.Contains("per-primitive rotation", morphError.Message);
+        StringAssert.Contains("per-primitive rotation", textError.Message);
     }
 
     [Test]
@@ -362,6 +1036,9 @@ public class NowSdfTests
         var material = Resources.Load<Material>("NowUI/SdfMaterial");
 
         Assert.NotNull(material);
+        Assert.AreEqual(2, NowSdf.MaterialAbiVersion,
+            "ChamferedBox and Triangle require the material ABI-v2 decoder.");
+        Assert.AreEqual(1, NowSdf.MinimumMaterialAbiVersion);
         Assert.IsTrue(material.HasProperty(NowSdf.MaterialAbiProperty));
         Assert.AreEqual(
             NowSdf.MaterialAbiVersion,
@@ -403,7 +1080,7 @@ public class NowSdfTests
     }
 
     [Test]
-    public void SdfSceneRejectsMaterialsWithoutTheCurrentAbi()
+    public void SdfSceneRejectsMaterialsWithoutASupportedAbi()
     {
         var stock = Resources.Load<Material>("NowUI/SdfMaterial");
         var uiShader = Shader.Find("UI/Default");
@@ -413,6 +1090,8 @@ public class NowSdfTests
         var missingAbi = new Material(uiShader);
         var wrongAbi = new Material(stock);
         wrongAbi.SetFloat(NowSdf.MaterialAbiProperty, NowSdf.MaterialAbiVersion + 1);
+        var fractionalAbi = new Material(stock);
+        fractionalAbi.SetFloat(NowSdf.MaterialAbiProperty, 1.5f);
 
         try
         {
@@ -422,6 +1101,9 @@ public class NowSdfTests
             Assert.Throws<System.ArgumentException>(() =>
                 NowSdf.Scene(new NowRect(0f, 0f, 32f, 32f), "wrong-sdf-abi")
                     .SetMaterial(wrongAbi));
+            Assert.Throws<System.ArgumentException>(() =>
+                NowSdf.Scene(new NowRect(0f, 0f, 32f, 32f), "fractional-sdf-abi")
+                    .SetMaterial(fractionalAbi));
 
             Assert.AreEqual(0, _drawList.batchCount);
             Assert.AreEqual(0, NowSdf.maskTextureCount);
@@ -431,6 +1113,115 @@ public class NowSdfTests
         {
             Object.DestroyImmediate(missingAbi);
             Object.DestroyImmediate(wrongAbi);
+            Object.DestroyImmediate(fractionalAbi);
+        }
+    }
+
+    [Test]
+    public void SdfAbiOneMaterialsAcceptIdentityButRejectRotatedLegacyAndV2Shapes()
+    {
+        var legacyShader = Shader.Find("Hidden/NowUI Tests/SDF ABI V1");
+        Assert.NotNull(legacyShader);
+        AssertShaderHasNoErrors(legacyShader);
+        var legacy = new Material(legacyShader);
+
+        try
+        {
+            using (_drawList.Begin(new Vector2(64f, 64f)))
+            {
+                NowSdf.Scene(new NowRect(0f, 0f, 64f, 64f), "legacy-sdf-circle")
+                    .SetMaterial(legacy)
+                    .Circle(new Vector2(32f, 32f), 18f)
+                    .Line(new Vector2(10f, 52f), new Vector2(54f, 52f), 4f)
+                    .Draw();
+            }
+
+            Assert.AreEqual(1, _drawList.batchCount,
+                "ABI-v1 materials should keep rendering the released primitive set.");
+
+            _drawList.Clear();
+            using (_drawList.Begin(new Vector2(64f, 64f)))
+            {
+                NowSdf.Scene(new NowRect(0f, 0f, 64f, 64f), "legacy-sdf-full-turn")
+                    .SetMaterial(legacy)
+                    .RotateNext(360f)
+                    .Box(new NowRect(12f, 18f, 40f, 28f))
+                    .Draw();
+            }
+
+            Assert.AreEqual(1, _drawList.batchCount,
+                "A canonical full turn must remain ABI-v1-compatible identity metadata.");
+
+            _drawList.Clear();
+            using (_drawList.Begin(new Vector2(64f, 64f)))
+            {
+                var incompatibleRotation = NowSdf.Scene(
+                        new NowRect(0f, 0f, 64f, 64f),
+                        "legacy-sdf-rotation")
+                    .SetMaterial(legacy)
+                    .RotateNext(90f)
+                    .Box(new NowRect(12f, 18f, 40f, 28f));
+                Assert.Throws<System.InvalidOperationException>(() => incompatibleRotation.Draw());
+            }
+
+            Assert.AreEqual(0, _drawList.batchCount,
+                "ABI-v1 materials must reject rotation metadata on legacy opcodes.");
+
+            _drawList.Clear();
+            using (_drawList.Begin(new Vector2(64f, 64f)))
+            {
+                var incompatible = NowSdf.Scene(
+                        new NowRect(0f, 0f, 64f, 64f),
+                        "legacy-sdf-planar")
+                    .SetMaterial(legacy)
+                    .ChamferedBox(new NowRect(8f, 8f, 48f, 48f), 8f);
+                Assert.Throws<System.InvalidOperationException>(() => incompatible.Draw());
+            }
+
+            Assert.AreEqual(0, _drawList.batchCount);
+            Assert.AreEqual(0, NowSdf.maskTextureCount);
+
+            _drawList.Clear();
+            using (_drawList.Begin(new Vector2(64f, 64f)))
+            {
+                var incompatibleMask = NowSdf.Scene(
+                        new NowRect(0f, 0f, 64f, 64f),
+                        "legacy-sdf-mask")
+                    .SetMaterial(legacy)
+                    .Triangle(
+                        new Vector2(12f, 52f),
+                        new Vector2(52f, 52f),
+                        new Vector2(32f, 10f));
+                Assert.Throws<System.InvalidOperationException>(() =>
+                    incompatibleMask.BeginMask().Dispose());
+            }
+
+            Assert.AreEqual(0, _drawList.batchCount);
+            Assert.AreEqual(0, NowSdf.maskTextureCount,
+                "ABI rejection must happen before allocating a mask target.");
+
+            _drawList.Clear();
+            var from = NowSdf.Graph().Circle(new Vector2(32f, 32f), 16f);
+            var to = NowSdf.Graph().Triangle(
+                new Vector2(12f, 52f),
+                new Vector2(52f, 52f),
+                new Vector2(32f, 10f));
+            using (_drawList.Begin(new Vector2(64f, 64f)))
+            {
+                var incompatibleMorph = NowSdf.Scene(
+                        new NowRect(0f, 0f, 64f, 64f),
+                        "legacy-sdf-morph")
+                    .SetMaterial(legacy)
+                    .Morph(from, to, 0.5f);
+                Assert.Throws<System.InvalidOperationException>(() => incompatibleMorph.Draw());
+            }
+
+            Assert.AreEqual(0, _drawList.batchCount);
+            Assert.AreEqual(0, NowSdf.maskTextureCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(legacy);
         }
     }
 
@@ -865,6 +1656,38 @@ public class NowSdfTests
     }
 
     [Test]
+    public void SdfMaskCanonicalizesRotateNextAngleInItsCoverageSignature()
+    {
+        var rect = new NowRect(0f, 0f, 64f, 64f);
+        var id = new NowId("sdf-mask-generic-rotation-angle");
+
+        void Capture(float angleDegrees)
+        {
+            using (_drawList.Begin(rect.size))
+            using (NowSdf.Scene(rect, id)
+                .RotateNext(angleDegrees)
+                .Box(new NowRect(12f, 22f, 40f, 20f))
+                .BeginMask())
+            {
+                Now.Rectangle(rect).SetColor(Color.white).Draw();
+            }
+        }
+
+        Capture(0f);
+        Capture(360f);
+        Assert.AreEqual(1, NowSdf.maskRasterizationCount,
+            "Equivalent full-turn angles produced different mask signatures.");
+
+        Capture(30f);
+        Assert.AreEqual(2, NowSdf.maskRasterizationCount,
+            "Changing node rotation did not rerasterize its mask.");
+
+        Capture(390f);
+        Assert.AreEqual(2, NowSdf.maskRasterizationCount,
+            "Wrapped equivalent angles produced different mask signatures.");
+    }
+
+    [Test]
     public void SdfMaskSignatureIncludesAmbientColorMultiplier()
     {
         var rect = new NowRect(0f, 0f, 48f, 32f);
@@ -1236,5 +2059,66 @@ public class NowSdfTests
         Assert.AreEqual(0, NowSdf.cacheCount);
         Assert.AreEqual(0, NowSdf.maskTextureCount);
         Assert.AreEqual(0, NowSdf.cachedMaskPixels);
+    }
+
+    static void AssertRotation(Vector2 actual, float angleDegrees, string message = null)
+    {
+        double radians = angleDegrees * System.Math.PI / 180d;
+        Assert.AreEqual((float)System.Math.Cos(radians), actual.x, 0.000001f, message);
+        Assert.AreEqual((float)System.Math.Sin(radians), actual.y, 0.000001f, message);
+    }
+
+    static void AssertRectApproximately(
+        NowRect expected,
+        NowRect actual,
+        float tolerance,
+        string message = null)
+    {
+        Assert.AreEqual(expected.x, actual.x, tolerance, message);
+        Assert.AreEqual(expected.y, actual.y, tolerance, message);
+        Assert.AreEqual(expected.width, actual.width, tolerance, message);
+        Assert.AreEqual(expected.height, actual.height, tolerance, message);
+    }
+
+    static float NextRepresentableFloat(float value)
+    {
+        int bits = System.BitConverter.SingleToInt32Bits(value);
+        return System.BitConverter.Int32BitsToSingle(value >= 0f ? bits + 1 : bits - 1);
+    }
+
+    static double ShaderReferenceScale(Vector2 rotation)
+    {
+        double squaredLength =
+            (double)rotation.x * rotation.x +
+            (double)rotation.y * rotation.y;
+        float separateDot = rotation.x * rotation.x + rotation.y * rotation.y;
+        float fusedDot = (float)squaredLength;
+        return System.Math.Max(separateDot, fusedDot) / System.Math.Sqrt(squaredLength);
+    }
+
+    static void AssertRotatedBoundsContain(
+        NowSdfNode node,
+        Vector2 pivot,
+        Vector2 point)
+    {
+        double squaredLength =
+            (double)node.rotation.x * node.rotation.x +
+            (double)node.rotation.y * node.rotation.y;
+        float separateDot =
+            node.rotation.x * node.rotation.x +
+            node.rotation.y * node.rotation.y;
+        float fusedDot = (float)squaredLength;
+        double factor = System.Math.Max(separateDot, fusedDot) / squaredLength;
+        double x = point.x - (double)pivot.x;
+        double y = point.y - (double)pivot.y;
+        double transformedX = pivot.x +
+            (node.rotation.x * x - node.rotation.y * y) * factor;
+        double transformedY = pivot.y +
+            (node.rotation.y * x + node.rotation.x * y) * factor;
+
+        Assert.LessOrEqual((double)node.bounds.x, transformedX);
+        Assert.LessOrEqual((double)node.bounds.y, transformedY);
+        Assert.GreaterOrEqual((double)node.bounds.xMax, transformedX);
+        Assert.GreaterOrEqual((double)node.bounds.yMax, transformedY);
     }
 }

@@ -73,6 +73,32 @@ public class NowRenderingPlayModeTests
         return pixels[(Side - 1 - y) * Side + x];
     }
 
+    static void AssertAlphaArraysNear(
+        Color32[] expected,
+        Color32[] actual,
+        int channelTolerance,
+        int allowedMismatchCount,
+        string message)
+    {
+        Assert.AreEqual(expected.Length, actual.Length);
+        int mismatches = 0;
+        int largestDifference = 0;
+
+        for (int i = 0; i < expected.Length; ++i)
+        {
+            int difference = Mathf.Abs(expected[i].a - actual[i].a);
+            largestDifference = Mathf.Max(largestDifference, difference);
+
+            if (difference > channelTolerance)
+                ++mismatches;
+        }
+
+        Assert.LessOrEqual(
+            mismatches,
+            allowedMismatchCount,
+            $"{message} {mismatches} alpha samples differed beyond {channelTolerance}; largest difference was {largestDifference}.");
+    }
+
     static RectInt FindAlphaBounds(Color32[] pixels, byte minimumAlpha = 12)
     {
         int xMin = Side;
@@ -494,6 +520,189 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void SdfTriangleHonorsBothWindingOrders()
+    {
+        var clockwise = RenderSdfTriangle(reverseWinding: false);
+        var counterClockwise = RenderSdfTriangle(reverseWinding: true);
+
+        AssertAlphaArraysNear(
+            clockwise,
+            counterClockwise,
+            channelTolerance: 2,
+            allowedMismatchCount: 8,
+            "Reversing Triangle winding changed its rendered field.");
+
+        Assert.Greater(PixelAtUi(clockwise, 64, 64).a, 240, "The clockwise Triangle lost its interior.");
+        Assert.Greater(PixelAtUi(counterClockwise, 64, 64).a, 240, "The counter-clockwise Triangle lost its interior.");
+        Assert.Less(PixelAtUi(clockwise, 16, 64).a, 16, "The clockwise Triangle leaked outside its edge.");
+        Assert.Less(PixelAtUi(counterClockwise, 16, 64).a, 16, "The counter-clockwise Triangle leaked outside its edge.");
+    }
+
+    [Test]
+    public void SdfDegenerateTriangleIsAnUnsignedLocalizedEdge()
+    {
+        var pixels = RenderSdfDegenerateTriangle();
+
+        Assert.Greater(PixelAtUi(pixels, 64, 64).a, 200,
+            "The degenerate Triangle lost its edge field.");
+        Assert.Less(PixelAtUi(pixels, 64, 48).a, 16,
+            "The degenerate Triangle falsely filled above its collapsed edge.");
+        Assert.Less(PixelAtUi(pixels, 64, 80).a, 16,
+            "The degenerate Triangle falsely filled below its collapsed edge.");
+    }
+
+    [Test]
+    public void SdfChamferedBoxClipsCornersAndZeroChamferMatchesBox()
+    {
+        var chamfered = RenderSdfChamferedBox(14f, useBox: false);
+
+        Assert.Less(PixelAtUi(chamfered, 23, 27).a, 16, "ChamferedBox did not clip its top-left corner.");
+        Assert.Greater(PixelAtUi(chamfered, 36, 28).a, 240, "ChamferedBox clipped past its diagonal corner edge.");
+        Assert.Greater(PixelAtUi(chamfered, 64, 64).a, 240, "ChamferedBox lost its center.");
+
+        var zeroChamfer = RenderSdfChamferedBox(0f, useBox: false);
+        var box = RenderSdfChamferedBox(0f, useBox: true);
+        AssertAlphaArraysNear(
+            box,
+            zeroChamfer,
+            channelTolerance: 1,
+            allowedMismatchCount: 0,
+            "A zero-chamfer ChamferedBox did not render like Box.");
+    }
+
+    [Test]
+    public void SdfRotateNextBoxQuarterTurnMatchesSwappedBox()
+    {
+        var rotated = RenderSdfBoxQuarterTurn(rotated: true);
+        var swappedBox = RenderSdfBoxQuarterTurn(rotated: false);
+
+        AssertAlphaArraysNear(
+            swappedBox,
+            rotated,
+            channelTolerance: 1,
+            allowedMismatchCount: 0,
+            "A Box rotated 90 degrees did not match its swapped axis-aligned bounds.");
+    }
+
+    [Test]
+    public void SdfRotateNextBoxPositiveAnglesClockwise()
+    {
+        var clockwise = RenderSdfRotatedBox(30f);
+        var counterClockwise = RenderSdfRotatedBox(-30f);
+
+        Assert.Greater(PixelAtUi(clockwise, 87, 77).a, 240,
+            "The positive-angle Box lost its clockwise major axis.");
+        Assert.Less(PixelAtUi(clockwise, 87, 51).a, 16,
+            "The positive-angle Box rotated counter-clockwise.");
+        Assert.Greater(PixelAtUi(counterClockwise, 87, 51).a, 240,
+            "The negative-angle Box lost its counter-clockwise major axis.");
+        Assert.Less(PixelAtUi(counterClockwise, 87, 77).a, 16,
+            "The negative-angle Box rotated clockwise.");
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SdfRotateNextKeepsTextureInPrimitiveLocalSpace(bool circle)
+    {
+        var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+
+        try
+        {
+            var red = new Color32(255, 0, 0, 255);
+            var blue = new Color32(0, 0, 255, 255);
+            texture.SetPixels32(new[] { red, blue, red, blue });
+            texture.Apply(false, false);
+
+            var surface = new NowRect(0f, 0f, Side, Side);
+            using (_renderer.Begin(_target))
+            {
+                var scene = NowSdf.Scene(surface, "playmode-sdf-rotated-primitive-texture")
+                    .SetTexture(texture)
+                    .RotateNext(90f);
+                scene = circle
+                    ? scene.Circle(new Vector2(64f, 64f), 42f)
+                    : scene.ChamferedBox(new NowRect(24f, 48f, 80f, 32f), 6f);
+                scene.Draw();
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            var pixels = ReadPixels(_target);
+            Color32 top = PixelAtUi(pixels, 64, 32);
+            Color32 bottom = PixelAtUi(pixels, 64, 96);
+            string primitive = circle ? "Circle" : "ChamferedBox";
+
+            Assert.Greater(top.r, 220, $"The rotated {primitive} local-left side lost the red texel: {top}.");
+            Assert.Less(top.b, 16, $"The rotated {primitive} local-left side sampled blue: {top}.");
+            Assert.Greater(bottom.b, 220, $"The rotated {primitive} local-right side lost the blue texel: {bottom}.");
+            Assert.Less(bottom.r, 16, $"The rotated {primitive} local-right side sampled red: {bottom}.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+        }
+    }
+
+    [Test]
+    public void SdfLineMatchesCapsuleWithHalfItsWidthAsRadius()
+    {
+        var line = RenderSdfLine(useCapsule: false);
+        var capsule = RenderSdfLine(useCapsule: true);
+
+        CollectionAssert.AreEqual(capsule, line,
+            "Line(from, to, width) must render exactly like Capsule(from, to, width / 2).");
+        Assert.Greater(PixelAtUi(line, 64, 64).a, 240, "Line lost its center stroke coverage.");
+        Assert.Less(PixelAtUi(line, 64, 42).a, 16, "Line coverage exceeded its full-width contract.");
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SdfPlanarPrimitivesSampleTextureAcrossConservativeBounds(bool triangle)
+    {
+        var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+
+        try
+        {
+            var red = new Color32(255, 0, 0, 255);
+            var blue = new Color32(0, 0, 255, 255);
+            texture.SetPixels32(new[] { red, blue, red, blue });
+            texture.Apply(false, false);
+
+            var surface = new NowRect(0f, 0f, Side, Side);
+            using (_renderer.Begin(_target))
+            {
+                var scene = NowSdf.Scene(surface, "playmode-sdf-planar-texture")
+                    .SetTexture(texture);
+                scene = triangle
+                    ? scene.Triangle(new Vector2(20f, 100f), new Vector2(108f, 100f), new Vector2(64f, 20f))
+                    : scene.ChamferedBox(new NowRect(20f, 28f, 88f, 72f), 12f);
+                scene.Draw();
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            var pixels = ReadPixels(_target);
+            Color32 left = PixelAtUi(pixels, 40, 72);
+            Color32 right = PixelAtUi(pixels, 88, 72);
+
+            Assert.Greater(left.r, 220, $"The {(triangle ? "Triangle" : "ChamferedBox")} left side lost the texture's red texel: {left}.");
+            Assert.Less(left.b, 16, $"The left side sampled the texture's blue texel: {left}.");
+            Assert.Greater(right.b, 220, $"The {(triangle ? "Triangle" : "ChamferedBox")} right side lost the texture's blue texel: {right}.");
+            Assert.Less(right.r, 16, $"The right side sampled the texture's red texel: {right}.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+        }
+    }
+
+    [Test]
     public void DownsampledSdfMaskStillMapsAcrossFullAuthoredRect()
     {
         var surface = new NowRect(0f, 0f, Side, Side);
@@ -827,6 +1036,127 @@ public class NowRenderingPlayModeTests
             scene = arc
                 ? scene.Arc(surface.center, 36f, 10f, 0f, sweep)
                 : scene.Pie(surface.center, 36f, 0f, sweep);
+            scene.Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    Color32[] RenderSdfTriangle(bool reverseWinding)
+    {
+        _renderer.Clear();
+        var surface = new NowRect(0f, 0f, Side, Side);
+        var a = new Vector2(20f, 100f);
+        var b = new Vector2(108f, 100f);
+        var c = new Vector2(64f, 20f);
+
+        using (_renderer.Begin(_target))
+        {
+            var scene = NowSdf.Scene(surface, "playmode-sdf-triangle-winding")
+                .SetColor(Color.white)
+                .SetFeather(0f);
+            scene = reverseWinding ? scene.Triangle(a, c, b) : scene.Triangle(a, b, c);
+            scene.Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    Color32[] RenderSdfDegenerateTriangle()
+    {
+        _renderer.Clear();
+        var surface = new NowRect(0f, 0f, Side, Side);
+
+        using (_renderer.Begin(_target))
+        {
+            NowSdf.Scene(surface, "playmode-sdf-degenerate-triangle")
+                .SetColor(Color.white)
+                .SetFeather(0f)
+                .SetOutline(2f, Color.white)
+                .Triangle(
+                    new Vector2(20f, 64f),
+                    new Vector2(64f, 64f),
+                    new Vector2(108f, 64f))
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    Color32[] RenderSdfChamferedBox(float chamfer, bool useBox)
+    {
+        _renderer.Clear();
+        var surface = new NowRect(0f, 0f, Side, Side);
+        var box = new NowRect(20f, 24f, 88f, 80f);
+
+        using (_renderer.Begin(_target))
+        {
+            var scene = NowSdf.Scene(surface, "playmode-sdf-chamfered-box")
+                .SetColor(Color.white)
+                .SetFeather(0f);
+            scene = useBox ? scene.Box(box) : scene.ChamferedBox(box, chamfer);
+            scene.Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    Color32[] RenderSdfBoxQuarterTurn(bool rotated)
+    {
+        _renderer.Clear();
+        var surface = new NowRect(0f, 0f, Side, Side);
+
+        using (_renderer.Begin(_target))
+        {
+            var scene = NowSdf.Scene(surface, "playmode-sdf-box-quarter-turn")
+                .SetColor(Color.white)
+                .SetFeather(0f);
+            scene = rotated
+                ? scene.RotateNext(90f).Box(new NowRect(20f, 40f, 88f, 48f))
+                : scene.Box(new NowRect(40f, 20f, 48f, 88f));
+            scene.Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    Color32[] RenderSdfRotatedBox(float angleDegrees)
+    {
+        _renderer.Clear();
+        var surface = new NowRect(0f, 0f, Side, Side);
+
+        using (_renderer.Begin(_target))
+        {
+            NowSdf.Scene(surface, "playmode-sdf-box-angle")
+                .SetColor(Color.white)
+                .SetFeather(0f)
+                .RotateNext(angleDegrees)
+                .Box(new NowRect(28f, 54f, 72f, 20f))
+                .Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    Color32[] RenderSdfLine(bool useCapsule)
+    {
+        _renderer.Clear();
+        var surface = new NowRect(0f, 0f, Side, Side);
+        var from = new Vector2(28f, 58f);
+        var to = new Vector2(100f, 70f);
+
+        using (_renderer.Begin(_target))
+        {
+            var scene = NowSdf.Scene(surface, "playmode-sdf-line-alias")
+                .SetColor(Color.white)
+                .SetFeather(0f);
+            scene = useCapsule ? scene.Capsule(from, to, 8f) : scene.Line(from, to, 16f);
             scene.Draw();
         }
 

@@ -24,7 +24,9 @@ namespace NowUI.Sdf
         Capsule = 4,
         Glyph = 5,
         Arc = 6,
-        Pie = 7
+        Pie = 7,
+        ChamferedBox = 8,
+        Triangle = 9
     }
 
     enum NowSdfLayerKind
@@ -42,6 +44,7 @@ namespace NowUI.Sdf
         public Vector4 data2;
         public Vector4 color;
         public Vector4 uv;
+        public Vector2 rotation;
         public bool useTexture;
         public NowRect bounds;
     }
@@ -64,8 +67,14 @@ namespace NowUI.Sdf
     public sealed class NowSdfGraph
     {
         const float FullTurnRadians = Mathf.PI * 2f;
+        const double TriangleRelativeAreaTolerance = 1d / 131072d;
+        const double FloatMinNormal = 1.1754943508222875E-38d;
+        const double FloatUnitRoundoff = 1d / 16777216d;
+        const double RotationBoundsGamma32 =
+            (32d * FloatUnitRoundoff) / (1d - 32d * FloatUnitRoundoff);
 
         readonly List<NowSdfNode> _nodes = new List<NowSdfNode>(8);
+        readonly List<float> _rotationStack = new List<float>(4);
 
         Vector4 _color = Vector4.one;
         Vector4 _textureUv = new Vector4(0f, 0f, 1f, 1f);
@@ -73,6 +82,8 @@ namespace NowUI.Sdf
         bool _useTexture;
         NowSdfOperation _operation = NowSdfOperation.Union;
         float _smoothing;
+        float _nextRotationDegrees;
+        int _requiredMaterialAbi = 1;
         NowRect _bounds;
         bool _hasBounds;
 
@@ -82,6 +93,8 @@ namespace NowUI.Sdf
 
         internal bool hasNodes => _nodes.Count > 0;
 
+        internal int requiredMaterialAbi => _requiredMaterialAbi;
+
         public Vector2 measureSize => _hasBounds ? new Vector2(_bounds.xMax, _bounds.yMax) : Vector2.zero;
 
         public NowSdfGraph Clear()
@@ -89,6 +102,9 @@ namespace NowUI.Sdf
             _nodes.Clear();
             _operation = NowSdfOperation.Union;
             _smoothing = 0f;
+            _nextRotationDegrees = 0f;
+            _rotationStack.Clear();
+            _requiredMaterialAbi = 1;
             _bounds = default;
             _hasBounds = false;
             return this;
@@ -194,6 +210,51 @@ namespace NowUI.Sdf
             return SetOperation(NowSdfOperation.SmoothIntersect, smoothing);
         }
 
+        /// <summary>
+        /// Rotates the next analytic primitive around its natural center, relative
+        /// to any pushed rotation. Angles are degrees and positive values rotate
+        /// clockwise in UI space.
+        /// </summary>
+        public NowSdfGraph RotateNext(float angleDegrees)
+        {
+            ValidateFinite(angleDegrees, nameof(angleDegrees));
+            _nextRotationDegrees = NormalizeRotationDegrees(angleDegrees);
+            return this;
+        }
+
+        /// <summary>
+        /// Pushes a persistent relative rotation for analytic primitives. Nested
+        /// pushes compose, and <see cref="PopRotation"/> restores the parent rotation.
+        /// </summary>
+        public NowSdfGraph PushRotation(float angleDegrees)
+        {
+            ValidateFinite(angleDegrees, nameof(angleDegrees));
+            float parent = _rotationStack.Count > 0
+                ? _rotationStack[_rotationStack.Count - 1]
+                : 0f;
+            _rotationStack.Add(NormalizeRotationDegrees(parent + angleDegrees));
+            return this;
+        }
+
+        /// <summary>Restores the rotation active before the matching push.</summary>
+        public NowSdfGraph PopRotation()
+        {
+            if (_rotationStack.Count == 0)
+                throw new InvalidOperationException("SDF PopRotation requires a matching PushRotation.");
+
+            _rotationStack.RemoveAt(_rotationStack.Count - 1);
+            return this;
+        }
+
+        internal void ThrowIfRotationScopesOpen(string operation)
+        {
+            if (_rotationStack.Count == 0)
+                return;
+
+            throw new InvalidOperationException(
+                $"SDF {operation} requires every PushRotation to have a matching PopRotation.");
+        }
+
         public NowSdfGraph Circle(Vector2 center, float radius)
         {
             radius = Mathf.Max(0f, radius);
@@ -257,6 +318,44 @@ namespace NowUI.Sdf
             return RoundedBox(rect, radius);
         }
 
+        /// <summary>
+        /// Adds a box whose corners are clipped by straight 45-degree edges.
+        /// </summary>
+        /// <param name="chamfer">
+        /// Distance removed along each adjoining edge. Negative values clamp to zero and
+        /// values larger than half the shorter side clamp to that half-side.
+        /// </param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when the rectangle or chamfer is not finite or cannot produce
+        /// representable bounds.
+        /// </exception>
+        public NowSdfGraph ChamferedBox(NowRect rect, float chamfer)
+        {
+            ValidateFiniteRect(rect, nameof(rect));
+            ValidateFinite(chamfer, nameof(chamfer));
+
+            if (rect.isEmpty)
+                return SkipPrimitive();
+
+            float halfWidth = rect.width * 0.5f;
+            float halfHeight = rect.height * 0.5f;
+            chamfer = Mathf.Clamp(chamfer, 0f, Mathf.Min(halfWidth, halfHeight));
+            Vector4 data = RectData(rect);
+            Add(
+                NowSdfShapeType.ChamferedBox,
+                data,
+                new Vector4(chamfer, 0f, 0f, 0f),
+                rect);
+            return this;
+        }
+
+        public NowSdfGraph ChamferedBox(NowRect rect, float chamfer, Color color)
+        {
+            SetColor(color);
+            UseColor();
+            return ChamferedBox(rect, chamfer);
+        }
+
         public NowSdfGraph Ellipse(NowRect rect)
         {
             Add(NowSdfShapeType.Ellipse, RectData(rect), default, rect);
@@ -281,6 +380,90 @@ namespace NowUI.Sdf
                 new Vector4(radius, 0f, 0f, 0f),
                 new NowRect(min.x, min.y, max.x - min.x, max.y - min.y));
             return this;
+        }
+
+        /// <summary>
+        /// Adds a round-capped line segment. <paramref name="width"/> is the full
+        /// stroke width, matching <c>Now.Line(...).SetWidth(...)</c>.
+        /// </summary>
+        public NowSdfGraph Line(Vector2 from, Vector2 to, float width)
+        {
+            ValidateFinite(from, nameof(from));
+            ValidateFinite(to, nameof(to));
+            ValidateFinite(width, nameof(width));
+            float radius = Mathf.Max(0f, width) * 0.5f;
+            Vector2 extent = new Vector2(radius, radius);
+            ValidateBounds(Vector2.Min(from, to) - extent, Vector2.Max(from, to) + extent, nameof(width));
+            return Capsule(from, to, radius);
+        }
+
+        /// <summary>Adds a filled triangle. Vertex winding does not affect the field.</summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when a vertex is not finite or the bounds cannot be represented.
+        /// </exception>
+        public NowSdfGraph Triangle(Vector2 a, Vector2 b, Vector2 c)
+        {
+            ValidateFinite(a, nameof(a));
+            ValidateFinite(b, nameof(b));
+            ValidateFinite(c, nameof(c));
+
+            Vector2 min = Vector2.Min(a, Vector2.Min(b, c));
+            Vector2 max = Vector2.Max(a, Vector2.Max(b, c));
+            ValidateBounds(min, max, nameof(a));
+            double abx = (double)b.x - a.x;
+            double aby = (double)b.y - a.y;
+            double acx = (double)c.x - a.x;
+            double acy = (double)c.y - a.y;
+            double orientation = abx * acy - aby * acx;
+            double bcx = (double)c.x - b.x;
+            double bcy = (double)c.y - b.y;
+            double scale = Math.Max(
+                Math.Max(Math.Abs(abx), Math.Abs(aby)),
+                Math.Max(Math.Abs(acx), Math.Abs(acy)));
+            scale = Math.Max(scale, Math.Max(Math.Abs(bcx), Math.Abs(bcy)));
+            // At float shader precision, triangles thinner than 64 ULPs relative
+            // to their largest component span have no stable filled interior.
+            // Treat them as an unsigned edge field, like an exact collapse.
+            double degeneracyThreshold = scale * scale * TriangleRelativeAreaTolerance;
+            float orientationSign = Math.Abs(orientation) <= degeneracyThreshold
+                ? 0f
+                : orientation > 0d ? 1f : -1f;
+            float packedScale = scale > 0d ? (float)Math.Max(scale, FloatMinNormal) : 1f;
+            var packedB = new Vector2(
+                (float)(abx / packedScale),
+                (float)(aby / packedScale));
+            var packedC = new Vector2(
+                (float)(acx / packedScale),
+                (float)(acy / packedScale));
+            Vector2 reconstructedB = a + packedB * packedScale;
+            Vector2 reconstructedC = a + packedC * packedScale;
+            min = Vector2.Min(min, Vector2.Min(reconstructedB, reconstructedC));
+            max = Vector2.Max(max, Vector2.Max(reconstructedB, reconstructedC));
+            ValidateBounds(min, max, nameof(a));
+            var bounds = new NowRect(min.x, min.y, max.x - min.x, max.y - min.y);
+
+            // NowRect derives xMax/yMax by adding the stored float size back to
+            // its origin. Opposite-sign or widely separated coordinates can make
+            // that addition round one ULP inward even though min/max are finite.
+            if (bounds.xMax < max.x)
+                bounds.width = NextFloat(bounds.width);
+            if (bounds.yMax < max.y)
+                bounds.height = NextFloat(bounds.height);
+
+            ValidateFiniteRect(bounds, nameof(a));
+            Add(
+                NowSdfShapeType.Triangle,
+                new Vector4(a.x, a.y, packedB.x, packedB.y),
+                new Vector4(packedC.x, packedC.y, orientationSign, packedScale),
+                bounds);
+            return this;
+        }
+
+        public NowSdfGraph Triangle(Vector2 a, Vector2 b, Vector2 c, Color color)
+        {
+            SetColor(color);
+            UseColor();
+            return Triangle(a, b, c);
         }
 
         public NowSdfGraph Capsule(NowRect rect)
@@ -412,8 +595,12 @@ namespace NowUI.Sdf
             bool useTexture,
             NowSdfOperation operation,
             float smoothing,
-            bool resetOperation)
+            bool resetPendingModifiers)
         {
+            Vector2 rotation = EffectiveRotation();
+            if (rotation != Vector2.zero)
+                bounds = RotatedShapeBounds(type, data1, data2, bounds, rotation, nameof(bounds));
+
             operation = _nodes.Count == 0 ? NowSdfOperation.Union : operation;
             _nodes.Add(new NowSdfNode
             {
@@ -424,23 +611,37 @@ namespace NowUI.Sdf
                 data2 = data2,
                 color = _color,
                 uv = uv,
+                rotation = rotation,
                 useTexture = useTexture,
                 bounds = bounds
             });
 
+            if (type == NowSdfShapeType.ChamferedBox ||
+                type == NowSdfShapeType.Triangle ||
+                rotation != Vector2.zero)
+            {
+                _requiredMaterialAbi = 2;
+            }
+
             Encapsulate(bounds);
 
-            if (resetOperation)
+            if (resetPendingModifiers)
             {
                 _operation = NowSdfOperation.Union;
                 _smoothing = 0f;
+                _nextRotationDegrees = 0f;
             }
         }
 
         void AddText(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle, int tabSpaces)
         {
+            ThrowIfPendingRotationCannotApplyTo("Text");
+
             if (font == null || string.IsNullOrEmpty(value) || fontSize <= 0f)
+            {
+                SkipPrimitive();
                 return;
+            }
 
             font.EnsureGlyphs(value, fontSize, fontStyle);
 
@@ -505,8 +706,7 @@ namespace NowUI.Sdf
                 x += glyph.advance * fontSize;
             }
 
-            _operation = NowSdfOperation.Union;
-            _smoothing = 0f;
+            SkipPrimitive();
         }
 
         bool TryBindTexture(Texture texture)
@@ -538,6 +738,427 @@ namespace NowUI.Sdf
             return new Vector4(rect.x + rect.width * 0.5f, rect.y + rect.height * 0.5f, rect.width, rect.height);
         }
 
+        internal NowSdfGraph SetNextRotationDegrees(float angleDegrees)
+        {
+            _nextRotationDegrees = angleDegrees;
+            return this;
+        }
+
+        internal static Vector2 RotationDegrees(float angleDegrees)
+        {
+            ValidateFinite(angleDegrees, nameof(angleDegrees));
+            float normalized = NormalizeRotationDegrees(angleDegrees);
+
+            // Preserve exact identity and quarter-turn values. Besides producing
+            // tighter bounds, this avoids tiny trigonometric drift at common angles.
+            if (normalized == 0f)
+                return Vector2.zero;
+            if (normalized == 90f)
+                return new Vector2(0f, 1f);
+            if (normalized == 180f)
+                return new Vector2(-1f, 0f);
+            if (normalized == 270f)
+                return new Vector2(0f, -1f);
+
+            double radians = normalized * Math.PI / 180d;
+            return new Vector2((float)Math.Cos(radians), (float)Math.Sin(radians));
+        }
+
+        internal static float NormalizeRotationDegrees(float angleDegrees)
+        {
+            float normalized = angleDegrees % 360f;
+            return normalized < 0f ? normalized + 360f : normalized;
+        }
+
+        Vector2 EffectiveRotation()
+        {
+            float scoped = _rotationStack.Count > 0
+                ? _rotationStack[_rotationStack.Count - 1]
+                : 0f;
+            return RotationDegrees(scoped + _nextRotationDegrees);
+        }
+
+        static NowRect RotatedShapeBounds(
+            NowSdfShapeType type,
+            Vector4 data1,
+            Vector4 data2,
+            NowRect authoredBounds,
+            Vector2 rotation,
+            string parameterName)
+        {
+            if (type == NowSdfShapeType.Triangle)
+                return RotatedTriangleBounds(data1, data2, authoredBounds, rotation, parameterName);
+
+            Vector2 pivot = RotationPivot(type, data1, data2);
+            double authoredHalfWidth = AuthoredHalfExtent(
+                authoredBounds.x,
+                authoredBounds.width,
+                authoredBounds.xMax,
+                pivot.x);
+            double authoredHalfHeight = AuthoredHalfExtent(
+                authoredBounds.y,
+                authoredBounds.height,
+                authoredBounds.yMax,
+                pivot.y);
+
+            if (type == NowSdfShapeType.Circle ||
+                type == NowSdfShapeType.Arc ||
+                type == NowSdfShapeType.Pie)
+            {
+                double outer = type == NowSdfShapeType.Arc
+                    ? (double)data1.z + data1.w
+                    : data1.z;
+                outer = Math.Max(outer, Math.Max(authoredHalfWidth, authoredHalfHeight));
+                return RotatedRadialBounds(pivot, outer, rotation, parameterName);
+            }
+
+            double halfWidth = authoredHalfWidth;
+            double halfHeight = authoredHalfHeight;
+
+            if (type == NowSdfShapeType.Capsule)
+            {
+                double radius = Math.Max(0d, data2.x);
+                halfWidth = Math.Max(
+                    halfWidth,
+                    Math.Max(
+                        Math.Abs((double)data1.x - pivot.x),
+                        Math.Abs((double)data1.z - pivot.x)) + radius);
+                halfHeight = Math.Max(
+                    halfHeight,
+                    Math.Max(
+                        Math.Abs((double)data1.y - pivot.y),
+                        Math.Abs((double)data1.w - pivot.y)) + radius);
+            }
+            else
+            {
+                // The v2 shader floors rectangle-family half sizes so collapsed
+                // inputs still have a stable analytic distance field.
+                halfWidth = Math.Max(halfWidth, Math.Max((double)data1.z * 0.5d, 0.0001d));
+                halfHeight = Math.Max(halfHeight, Math.Max((double)data1.w * 0.5d, 0.0001d));
+            }
+
+            return RotatedAabbBounds(pivot, halfWidth, halfHeight, rotation, parameterName);
+        }
+
+        static NowRect RotatedTriangleBounds(
+            Vector4 data1,
+            Vector4 data2,
+            NowRect authoredBounds,
+            Vector2 rotation,
+            string parameterName)
+        {
+            float scale = Mathf.Max(data2.w, (float)FloatMinNormal);
+            var a = new Vector2(data1.x, data1.y);
+            var separateB = a + new Vector2(data1.z, data1.w) * scale;
+            var separateC = a + new Vector2(data2.x, data2.y) * scale;
+            var fusedB = new Vector2(
+                (float)((double)a.x + (double)data1.z * scale),
+                (float)((double)a.y + (double)data1.w * scale));
+            var fusedC = new Vector2(
+                (float)((double)a.x + (double)data2.x * scale),
+                (float)((double)a.y + (double)data2.y * scale));
+            Vector2 separatePivot = TrianglePivot(a, separateB, separateC, false);
+            Vector2 fusedPivot = TrianglePivot(a, fusedB, fusedC, true);
+
+            NowRect separateBounds = RotatedTriangleCandidateBounds(
+                authoredBounds,
+                a,
+                separateB,
+                separateC,
+                fusedB,
+                fusedC,
+                separatePivot,
+                rotation,
+                parameterName);
+            NowRect fusedBounds = RotatedTriangleCandidateBounds(
+                authoredBounds,
+                a,
+                separateB,
+                separateC,
+                fusedB,
+                fusedC,
+                fusedPivot,
+                rotation,
+                parameterName);
+            return UnionConservativeBounds(separateBounds, fusedBounds, parameterName);
+        }
+
+        static NowRect RotatedTriangleCandidateBounds(
+            NowRect authoredBounds,
+            Vector2 a,
+            Vector2 separateB,
+            Vector2 separateC,
+            Vector2 fusedB,
+            Vector2 fusedC,
+            Vector2 pivot,
+            Vector2 rotation,
+            string parameterName)
+        {
+            double halfWidth = AuthoredHalfExtent(
+                authoredBounds.x,
+                authoredBounds.width,
+                authoredBounds.xMax,
+                pivot.x);
+            double halfHeight = AuthoredHalfExtent(
+                authoredBounds.y,
+                authoredBounds.height,
+                authoredBounds.yMax,
+                pivot.y);
+            ExpandHalfExtents(a, pivot, ref halfWidth, ref halfHeight);
+            ExpandHalfExtents(separateB, pivot, ref halfWidth, ref halfHeight);
+            ExpandHalfExtents(separateC, pivot, ref halfWidth, ref halfHeight);
+            ExpandHalfExtents(fusedB, pivot, ref halfWidth, ref halfHeight);
+            ExpandHalfExtents(fusedC, pivot, ref halfWidth, ref halfHeight);
+            return RotatedAabbBounds(pivot, halfWidth, halfHeight, rotation, parameterName);
+        }
+
+        static void ExpandHalfExtents(
+            Vector2 point,
+            Vector2 pivot,
+            ref double halfWidth,
+            ref double halfHeight)
+        {
+            halfWidth = Math.Max(halfWidth, Math.Abs((double)point.x - pivot.x));
+            halfHeight = Math.Max(halfHeight, Math.Abs((double)point.y - pivot.y));
+        }
+
+        static Vector2 TrianglePivot(Vector2 a, Vector2 b, Vector2 c, bool fusedMidpoint)
+        {
+            Vector2 min = Vector2.Min(a, Vector2.Min(b, c));
+            Vector2 max = Vector2.Max(a, Vector2.Max(b, c));
+            Vector2 span = max - min;
+            if (!fusedMidpoint)
+                return min + span * 0.5f;
+
+            return new Vector2(
+                (float)((double)min.x + (double)span.x * 0.5d),
+                (float)((double)min.y + (double)span.y * 0.5d));
+        }
+
+        static NowRect RotatedAabbBounds(
+            Vector2 pivot,
+            double halfWidth,
+            double halfHeight,
+            Vector2 rotation,
+            string parameterName)
+        {
+            double factor = ShaderRotationUpperFactor(rotation, out bool exactCardinal);
+            double extentX = (
+                Math.Abs((double)rotation.x) * halfWidth +
+                Math.Abs((double)rotation.y) * halfHeight) * factor;
+            double extentY = (
+                Math.Abs((double)rotation.y) * halfWidth +
+                Math.Abs((double)rotation.x) * halfHeight) * factor;
+
+            if (!exactCardinal)
+            {
+                extentX = NextFloat(RoundUpToFloat(extentX));
+                extentY = NextFloat(RoundUpToFloat(extentY));
+            }
+
+            double pad = RotationArithmeticPad(
+                pivot,
+                halfWidth,
+                halfHeight,
+                extentX,
+                extentY);
+
+            return BoundsFromExtrema(
+                (double)pivot.x - extentX - pad,
+                (double)pivot.y - extentY - pad,
+                (double)pivot.x + extentX + pad,
+                (double)pivot.y + extentY + pad,
+                true,
+                parameterName);
+        }
+
+        static NowRect RotatedRadialBounds(
+            Vector2 pivot,
+            double outer,
+            Vector2 rotation,
+            string parameterName)
+        {
+            double squaredLength =
+                (double)rotation.x * rotation.x +
+                (double)rotation.y * rotation.y;
+            double dotUpper = ShaderRotationDotUpper(rotation, out bool exactCardinal);
+            double extent = outer * dotUpper / Math.Sqrt(squaredLength);
+            if (!exactCardinal)
+                extent = NextFloat(RoundUpToFloat(extent));
+
+            double pad = RotationArithmeticPad(
+                pivot,
+                outer,
+                outer,
+                extent,
+                extent);
+
+            return BoundsFromExtrema(
+                (double)pivot.x - extent - pad,
+                (double)pivot.y - extent - pad,
+                (double)pivot.x + extent + pad,
+                (double)pivot.y + extent + pad,
+                true,
+                parameterName);
+        }
+
+        static double RotationArithmeticPad(
+            Vector2 pivot,
+            double halfWidth,
+            double halfHeight,
+            double extentX,
+            double extentY)
+        {
+            // A rotated node is evaluated through several float subtract,
+            // multiply, add, divide, and distance operations. Bound that error
+            // as a short IEEE-754 operation chain, including cancellation when
+            // the authored pivot is much larger than the primitive itself.
+            double magnitude =
+                2d * (Math.Abs((double)pivot.x) + Math.Abs((double)pivot.y)) +
+                halfWidth + halfHeight + extentX + extentY;
+            return RotationBoundsGamma32 * magnitude + 32d * float.Epsilon;
+        }
+
+        static double ShaderRotationUpperFactor(Vector2 rotation, out bool exactCardinal)
+        {
+            double squaredLength =
+                (double)rotation.x * rotation.x +
+                (double)rotation.y * rotation.y;
+            return ShaderRotationDotUpper(rotation, out exactCardinal) / squaredLength;
+        }
+
+        static double ShaderRotationDotUpper(Vector2 rotation, out bool exactCardinal)
+        {
+            exactCardinal =
+                (rotation.x == 0f && Math.Abs(rotation.y) == 1f) ||
+                (rotation.y == 0f && Math.Abs(rotation.x) == 1f);
+            if (exactCardinal)
+                return 1d;
+
+            float xSquaredUpper = RoundUpToFloat((double)rotation.x * rotation.x);
+            float ySquaredUpper = RoundUpToFloat((double)rotation.y * rotation.y);
+            return RoundUpToFloat((double)xSquaredUpper + ySquaredUpper);
+        }
+
+        static double AuthoredHalfExtent(float start, float size, float roundedMax, float pivot)
+        {
+            return Math.Max(
+                Math.Abs((double)start - pivot),
+                Math.Max(
+                    Math.Abs((double)start + size - pivot),
+                    Math.Abs((double)roundedMax - pivot)));
+        }
+
+        static NowRect UnionConservativeBounds(NowRect a, NowRect b, string parameterName)
+        {
+            return BoundsFromExtrema(
+                Math.Min(a.x, b.x),
+                Math.Min(a.y, b.y),
+                Math.Max((double)a.x + a.width, (double)b.x + b.width),
+                Math.Max((double)a.y + a.height, (double)b.y + b.height),
+                false,
+                parameterName);
+        }
+
+        static NowRect BoundsFromExtrema(
+            double minX,
+            double minY,
+            double maxX,
+            double maxY,
+            bool guardOutput,
+            string parameterName)
+        {
+            float roundedMinX = RoundDownToFloat(minX);
+            float roundedMinY = RoundDownToFloat(minY);
+            float roundedMaxX = RoundUpToFloat(maxX);
+            float roundedMaxY = RoundUpToFloat(maxY);
+
+            if (guardOutput)
+            {
+                roundedMinX = PreviousFloat(roundedMinX);
+                roundedMinY = PreviousFloat(roundedMinY);
+                roundedMaxX = NextFloat(roundedMaxX);
+                roundedMaxY = NextFloat(roundedMaxY);
+            }
+
+            var min = new Vector2(roundedMinX, roundedMinY);
+            var max = new Vector2(roundedMaxX, roundedMaxY);
+            ValidateBounds(min, max, parameterName);
+            var result = new NowRect(
+                min.x,
+                min.y,
+                max.x - min.x,
+                max.y - min.y);
+
+            if (result.xMax < max.x)
+                result.width = NextFloat(result.width);
+            if (result.yMax < max.y)
+                result.height = NextFloat(result.height);
+
+            ValidateFiniteRect(result, parameterName);
+            return result;
+        }
+
+        static Vector2 RotationPivot(NowSdfShapeType type, Vector4 data1, Vector4 data2)
+        {
+            if (type == NowSdfShapeType.Capsule)
+            {
+                return new Vector2(
+                    data1.x * 0.5f + data1.z * 0.5f,
+                    data1.y * 0.5f + data1.w * 0.5f);
+            }
+
+            if (type == NowSdfShapeType.Triangle)
+            {
+                float scale = Mathf.Max(data2.w, (float)FloatMinNormal);
+                Vector2 a = new Vector2(data1.x, data1.y);
+                Vector2 b = a + new Vector2(data1.z, data1.w) * scale;
+                Vector2 c = a + new Vector2(data2.x, data2.y) * scale;
+                return TrianglePivot(a, b, c, false);
+            }
+
+            return new Vector2(data1.x, data1.y);
+        }
+
+        void ThrowIfPendingRotationCannotApplyTo(string operand)
+        {
+            if (EffectiveRotation() == Vector2.zero)
+                return;
+
+            throw new InvalidOperationException(
+                $"SDF per-primitive rotation applies only to analytic primitives; {operand} requires a layer or group transform.");
+        }
+
+        static float RoundDownToFloat(double value)
+        {
+            float rounded = (float)value;
+            return IsFinite(rounded) && rounded > value ? PreviousFloat(rounded) : rounded;
+        }
+
+        static float RoundUpToFloat(double value)
+        {
+            float rounded = (float)value;
+            return IsFinite(rounded) && rounded < value ? NextFloat(rounded) : rounded;
+        }
+
+        static float PreviousFloat(float value)
+        {
+            if (value == 0f)
+                return -float.Epsilon;
+
+            int bits = BitConverter.SingleToInt32Bits(value);
+            return BitConverter.Int32BitsToSingle(value > 0f ? bits - 1 : bits + 1);
+        }
+
+        static float NextFloat(float value)
+        {
+            if (value == 0f)
+                return float.Epsilon;
+
+            int bits = BitConverter.SingleToInt32Bits(value);
+            return BitConverter.Int32BitsToSingle(value > 0f ? bits + 1 : bits - 1);
+        }
+
         static Vector4 RadialData(float from, float sweep)
         {
             if (Mathf.Abs(sweep) >= FullTurnRadians)
@@ -553,6 +1174,7 @@ namespace NowUI.Sdf
         {
             _operation = NowSdfOperation.Union;
             _smoothing = 0f;
+            _nextRotationDegrees = 0f;
             return this;
         }
 
@@ -595,13 +1217,36 @@ namespace NowUI.Sdf
         static void ValidateFinite(Vector2 value, string parameterName)
         {
             if (!IsFinite(value.x) || !IsFinite(value.y))
-                throw new ArgumentOutOfRangeException(parameterName, "Radial shape coordinates must be finite.");
+                throw new ArgumentOutOfRangeException(parameterName, "SDF shape coordinates must be finite.");
         }
 
         static void ValidateFinite(float value, string parameterName)
         {
             if (!IsFinite(value))
-                throw new ArgumentOutOfRangeException(parameterName, "Radial shape values must be finite.");
+                throw new ArgumentOutOfRangeException(parameterName, "SDF shape values must be finite.");
+        }
+
+        static void ValidateFiniteRect(NowRect rect, string parameterName)
+        {
+            if (!IsFinite(rect.x) || !IsFinite(rect.y) ||
+                !IsFinite(rect.width) || !IsFinite(rect.height) ||
+                !IsFinite(rect.xMax) || !IsFinite(rect.yMax))
+            {
+                throw new ArgumentOutOfRangeException(
+                    parameterName,
+                    "SDF shape bounds must be finite and representable.");
+            }
+        }
+
+        static void ValidateBounds(Vector2 min, Vector2 max, string parameterName)
+        {
+            if (IsFinite(min.x) && IsFinite(min.y) && IsFinite(max.x) && IsFinite(max.y) &&
+                IsFinite(max.x - min.x) && IsFinite(max.y - min.y))
+                return;
+
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                "SDF shape bounds must be finite and representable.");
         }
 
         static bool IsFinite(float value)
@@ -642,7 +1287,10 @@ namespace NowUI.Sdf
         /// Version of the material/shader data contract consumed by
         /// <see cref="NowSdfBuilder.SetMaterial(Material, bool)"/>.
         /// </summary>
-        public const int MaterialAbiVersion = 1;
+        public const int MaterialAbiVersion = 2;
+
+        /// <summary>Oldest material ABI accepted for scenes that only use legacy primitives.</summary>
+        public const int MinimumMaterialAbiVersion = 1;
 
         /// <summary>Shader property that declares the supported SDF material ABI.</summary>
         public const string MaterialAbiProperty = "_NowSdfAbiVersion";
@@ -874,9 +1522,11 @@ namespace NowUI.Sdf
 
         /// <summary>
         /// Uses a caller-provided SDF material as a template for this scene. The
-        /// template must declare <see cref="NowSdf.MaterialAbiProperty"/> with
-        /// value <see cref="NowSdf.MaterialAbiVersion"/> and implement the same
-        /// scene-array and vertex-stream contract as the built-in SDF shader.
+        /// template must declare <see cref="NowSdf.MaterialAbiProperty"/> with a
+        /// supported integer ABI version and implement that version's scene-array
+        /// and vertex-stream contract. ABI 1 remains valid for legacy primitives;
+        /// ChamferedBox, Triangle, and nonidentity node rotation require
+        /// <see cref="NowSdf.MaterialAbiVersion"/>.
         /// NowUI creates and owns separate direct and mask clones as needed for
         /// each distinct template in a resolved scene cache; it never mutates or
         /// destroys <paramref name="material"/>. This overload treats the template
@@ -1092,6 +1742,34 @@ namespace NowUI.Sdf
             return this;
         }
 
+        /// <summary>
+        /// Rotates the next analytic primitive around its natural center, relative
+        /// to any pushed rotation. Angles are degrees and positive values rotate
+        /// clockwise in UI space.
+        /// </summary>
+        public NowSdfBuilder RotateNext(float angleDegrees)
+        {
+            _cache.SetNextRotation(angleDegrees);
+            return this;
+        }
+
+        /// <summary>
+        /// Pushes a persistent relative rotation for following analytic primitives.
+        /// Nested pushes compose until their matching <see cref="PopRotation"/>.
+        /// </summary>
+        public NowSdfBuilder PushRotation(float angleDegrees)
+        {
+            _cache.PushRotation(angleDegrees);
+            return this;
+        }
+
+        /// <summary>Restores the rotation active before the matching push.</summary>
+        public NowSdfBuilder PopRotation()
+        {
+            _cache.PopRotation();
+            return this;
+        }
+
         public NowSdfBuilder Graph(NowSdfGraph graph)
         {
             _cache.Graph(graph);
@@ -1167,6 +1845,25 @@ namespace NowUI.Sdf
             return RoundedBox(rect, radius);
         }
 
+        /// <summary>
+        /// Adds a box with straight 45-degree corner cuts.
+        /// Chamfer is measured along each adjoining edge and clamps to the
+        /// available half-side.
+        /// </summary>
+        public NowSdfBuilder ChamferedBox(NowRect rect, float chamfer)
+        {
+            _cache.ChamferedBox(rect, chamfer);
+            return this;
+        }
+
+        public NowSdfBuilder ChamferedBox(NowRect rect, float chamfer, Color color)
+        {
+            _cache.SetColor(color);
+            _cache.UseColor();
+            _cache.ChamferedBox(rect, chamfer);
+            return this;
+        }
+
         public NowSdfBuilder Ellipse(NowRect rect)
         {
             _cache.Ellipse(rect);
@@ -1190,6 +1887,31 @@ namespace NowUI.Sdf
         public NowSdfBuilder Capsule(NowRect rect)
         {
             _cache.Capsule(rect);
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a round-capped line segment. <paramref name="width"/> is the full
+        /// stroke width, matching <c>Now.Line(...).SetWidth(...)</c>.
+        /// </summary>
+        public NowSdfBuilder Line(Vector2 from, Vector2 to, float width)
+        {
+            _cache.Line(from, to, width);
+            return this;
+        }
+
+        /// <summary>Adds a filled triangle. Vertex winding does not affect the field.</summary>
+        public NowSdfBuilder Triangle(Vector2 a, Vector2 b, Vector2 c)
+        {
+            _cache.Triangle(a, b, c);
+            return this;
+        }
+
+        public NowSdfBuilder Triangle(Vector2 a, Vector2 b, Vector2 c, Color color)
+        {
+            _cache.SetColor(color);
+            _cache.UseColor();
+            _cache.Triangle(a, b, c);
             return this;
         }
 
@@ -1454,6 +2176,7 @@ namespace NowUI.Sdf
 
         readonly List<NowSdfLayer> _layers = new List<NowSdfLayer>(4);
         readonly List<NowSdfGraph> _inlineGraphs = new List<NowSdfGraph>(4);
+        readonly List<float> _rotationStack = new List<float>(4);
         readonly Dictionary<NowSdfGraph, GraphUpload> _graphUploads =
             new Dictionary<NowSdfGraph, GraphUpload>(8);
         readonly List<OwnedMaterial> _ownedMaterials = new List<OwnedMaterial>(2);
@@ -1464,6 +2187,7 @@ namespace NowUI.Sdf
         Material _materialSource;
         Material _maskMaterialSource;
         Material _materialTemplate;
+        int _materialTemplateAbi = NowSdf.MaterialAbiVersion;
         bool _syncMaterialTemplate;
         NowRenderer _maskRenderer;
         RenderTexture _maskTexture;
@@ -1477,6 +2201,7 @@ namespace NowUI.Sdf
         int _inlineGraphCursor;
         NowSdfOperation _pendingOperation;
         float _pendingSmoothing;
+        float _nextRotationDegrees;
         NowSdfOperation _activeLayerOperation;
         float _activeLayerSmoothing;
         float _feather;
@@ -1520,6 +2245,8 @@ namespace NowUI.Sdf
             _activeGraph = RentInlineGraph();
             _pendingOperation = NowSdfOperation.Union;
             _pendingSmoothing = 0f;
+            _nextRotationDegrees = 0f;
+            _rotationStack.Clear();
             _activeLayerOperation = NowSdfOperation.Union;
             _activeLayerSmoothing = 0f;
             _feather = 0f;
@@ -1538,6 +2265,7 @@ namespace NowUI.Sdf
             _warp = default;
             _texture = null;
             _materialTemplate = null;
+            _materialTemplateAbi = NowSdf.MaterialAbiVersion;
             _syncMaterialTemplate = true;
             _bounds = default;
             _hasBounds = false;
@@ -1584,18 +2312,29 @@ namespace NowUI.Sdf
 
         public void SetMaterial(Material material, bool syncPerFrame)
         {
-            if (material != null &&
-                (!material.HasProperty(_materialAbiProp) ||
-                 !Mathf.Approximately(material.GetFloat(_materialAbiProp), NowSdf.MaterialAbiVersion)))
+            int abi = NowSdf.MaterialAbiVersion;
+            if (material != null)
             {
-                throw new ArgumentException(
-                    $"SDF material '{material.name}' does not implement material ABI " +
-                    $"{NowSdf.MaterialAbiVersion}. Declare {NowSdf.MaterialAbiProperty} with that value " +
-                    "and implement the built-in SDF scene data contract.",
-                    nameof(material));
+                float declaredAbi = material.HasProperty(_materialAbiProp)
+                    ? material.GetFloat(_materialAbiProp)
+                    : 0f;
+                bool finiteAbi = !float.IsNaN(declaredAbi) && !float.IsInfinity(declaredAbi);
+                abi = finiteAbi ? Mathf.RoundToInt(declaredAbi) : 0;
+                if (!finiteAbi || declaredAbi != abi ||
+                    abi < NowSdf.MinimumMaterialAbiVersion ||
+                    abi > NowSdf.MaterialAbiVersion)
+                {
+                    throw new ArgumentException(
+                        $"SDF material '{material.name}' does not implement a supported material ABI. " +
+                        $"Declare {NowSdf.MaterialAbiProperty} with an integer value from " +
+                        $"{NowSdf.MinimumMaterialAbiVersion} through {NowSdf.MaterialAbiVersion} and " +
+                        "implement that version's SDF scene data contract.",
+                        nameof(material));
+                }
             }
 
             _materialTemplate = material;
+            _materialTemplateAbi = abi;
             _syncMaterialTemplate = syncPerFrame;
         }
 
@@ -1713,10 +2452,41 @@ namespace NowUI.Sdf
             _pendingSmoothing = Mathf.Max(0f, smoothing);
         }
 
+        public void SetNextRotation(float angleDegrees)
+        {
+            if (float.IsNaN(angleDegrees) || float.IsInfinity(angleDegrees))
+                throw new ArgumentOutOfRangeException(nameof(angleDegrees), "SDF rotation angles must be finite.");
+
+            _nextRotationDegrees = NowSdfGraph.NormalizeRotationDegrees(angleDegrees);
+        }
+
+        public void PushRotation(float angleDegrees)
+        {
+            if (float.IsNaN(angleDegrees) || float.IsInfinity(angleDegrees))
+                throw new ArgumentOutOfRangeException(nameof(angleDegrees), "SDF rotation angles must be finite.");
+
+            float parent = _rotationStack.Count > 0
+                ? _rotationStack[_rotationStack.Count - 1]
+                : 0f;
+            _rotationStack.Add(NowSdfGraph.NormalizeRotationDegrees(parent + angleDegrees));
+        }
+
+        public void PopRotation()
+        {
+            if (_rotationStack.Count == 0)
+                throw new InvalidOperationException("SDF PopRotation requires a matching PushRotation.");
+
+            _rotationStack.RemoveAt(_rotationStack.Count - 1);
+        }
+
         public void Graph(NowSdfGraph graph)
         {
+            ThrowIfPendingRotationCannotApplyTo("Graph");
+
             if (graph == null || !graph.hasNodes)
                 return;
+
+            graph.ThrowIfRotationScopesOpen("Graph");
 
             FlushActiveGraph();
             AddLayer(new NowSdfLayer
@@ -1730,8 +2500,13 @@ namespace NowUI.Sdf
 
         public void Morph(NowSdfGraph from, NowSdfGraph to, float t)
         {
+            ThrowIfPendingRotationCannotApplyTo("Morph");
+
             if (from == null || to == null || !from.hasNodes || !to.hasNodes)
                 return;
+
+            from.ThrowIfRotationScopesOpen("Morph");
+            to.ThrowIfRotationScopesOpen("Morph");
 
             FlushActiveGraph();
             AddLayer(new NowSdfLayer
@@ -1748,90 +2523,118 @@ namespace NowUI.Sdf
         public void Circle(Vector2 center, float radius)
         {
             PrepareActivePrimitive();
-            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Circle(center, radius);
-            ResetPendingOperation();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).Circle(center, radius);
+            ResetPendingPrimitiveModifiers();
             Encapsulate(_activeGraph.measureSize);
         }
 
         public void Box(NowRect rect)
         {
             PrepareActivePrimitive();
-            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Box(rect);
-            ResetPendingOperation();
-            Encapsulate(rect);
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).Box(rect);
+            ResetPendingPrimitiveModifiers();
+            Encapsulate(_activeGraph.measureSize);
         }
 
         public void RoundedBox(NowRect rect, float radius)
         {
             PrepareActivePrimitive();
-            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).RoundedBox(rect, radius);
-            ResetPendingOperation();
-            Encapsulate(rect);
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).RoundedBox(rect, radius);
+            ResetPendingPrimitiveModifiers();
+            Encapsulate(_activeGraph.measureSize);
         }
 
         public void RoundedBox(NowRect rect, Vector4 radius)
         {
             PrepareActivePrimitive();
-            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).RoundedBox(rect, radius);
-            ResetPendingOperation();
-            Encapsulate(rect);
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).RoundedBox(rect, radius);
+            ResetPendingPrimitiveModifiers();
+            Encapsulate(_activeGraph.measureSize);
+        }
+
+        public void ChamferedBox(NowRect rect, float chamfer)
+        {
+            PrepareActivePrimitive();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).ChamferedBox(rect, chamfer);
+            ResetPendingPrimitiveModifiers();
+            Encapsulate(_activeGraph.measureSize);
         }
 
         public void Ellipse(NowRect rect)
         {
             PrepareActivePrimitive();
-            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Ellipse(rect);
-            ResetPendingOperation();
-            Encapsulate(rect);
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).Ellipse(rect);
+            ResetPendingPrimitiveModifiers();
+            Encapsulate(_activeGraph.measureSize);
         }
 
         public void Capsule(Vector2 from, Vector2 to, float radius)
         {
             PrepareActivePrimitive();
-            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Capsule(from, to, radius);
-            ResetPendingOperation();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).Capsule(from, to, radius);
+            ResetPendingPrimitiveModifiers();
             Encapsulate(_activeGraph.measureSize);
         }
 
         public void Capsule(NowRect rect)
         {
             PrepareActivePrimitive();
-            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Capsule(rect);
-            ResetPendingOperation();
-            Encapsulate(rect);
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).Capsule(rect);
+            ResetPendingPrimitiveModifiers();
+            Encapsulate(_activeGraph.measureSize);
+        }
+
+        public void Line(Vector2 from, Vector2 to, float width)
+        {
+            PrepareActivePrimitive();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).Line(from, to, width);
+            ResetPendingPrimitiveModifiers();
+            Encapsulate(_activeGraph.measureSize);
+        }
+
+        public void Triangle(Vector2 a, Vector2 b, Vector2 c)
+        {
+            PrepareActivePrimitive();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).Triangle(a, b, c);
+            ResetPendingPrimitiveModifiers();
+            Encapsulate(_activeGraph.measureSize);
         }
 
         public void Arc(Vector2 center, float radius, float thickness, float from, float sweep)
         {
             PrepareActivePrimitive();
-            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Arc(center, radius, thickness, from, sweep);
-            ResetPendingOperation();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).Arc(center, radius, thickness, from, sweep);
+            ResetPendingPrimitiveModifiers();
             Encapsulate(_activeGraph.measureSize);
         }
 
         public void Pie(Vector2 center, float radius, float from, float sweep)
         {
             PrepareActivePrimitive();
-            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Pie(center, radius, from, sweep);
-            ResetPendingOperation();
+            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).SetNextRotationDegrees(EffectiveRotationDegrees()).Pie(center, radius, from, sweep);
+            ResetPendingPrimitiveModifiers();
             Encapsulate(_activeGraph.measureSize);
         }
 
         public void Text(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle, int tabSpaces)
         {
+            ThrowIfPendingRotationCannotApplyTo("Text");
             PrepareActivePrimitive();
             _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Text(position, value, font, fontSize, fontStyle, tabSpaces);
-            ResetPendingOperation();
+            ResetPendingPrimitiveModifiers();
             Encapsulate(_activeGraph.measureSize);
         }
 
         public void Draw(NowRect rect, NowRect mask, Vector4 tint)
         {
             ThrowIfReleased();
+            ThrowIfRotationScopesOpen("Draw");
             FlushActiveGraph();
 
             if (_layers.Count == 0)
                 return;
+
+            EnsureMaterialSupportsScene();
 
             var material = GetMaterial();
 
@@ -1845,6 +2648,7 @@ namespace NowUI.Sdf
         public NowMaskScope BeginMask(NowRect rect, NowRect mask, Vector4 tint, float resolutionScale)
         {
             ThrowIfReleased();
+            ThrowIfRotationScopesOpen("BeginMask");
 
             // Fail before material creation or RT execution when the ambient
             // texture-mask stack is already full.
@@ -1853,6 +2657,8 @@ namespace NowUI.Sdf
 
             if (_layers.Count == 0 || !IsFiniteRect(rect) || rect.isEmpty)
                 return EmptyMask(rect);
+
+            EnsureMaterialSupportsScene();
 
             var material = GetMaskMaterial();
             if (material == null)
@@ -1973,7 +2779,46 @@ namespace NowUI.Sdf
             if (layer.targetGraph != null)
                 _texture ??= layer.targetGraph.texture;
 
-            ResetPendingOperation();
+            ResetPendingPrimitiveModifiers();
+        }
+
+        void EnsureMaterialSupportsScene()
+        {
+            int requiredAbi = NowSdf.MinimumMaterialAbiVersion;
+            for (int i = 0; i < _layers.Count; ++i)
+            {
+                var layer = _layers[i];
+                requiredAbi = Math.Max(requiredAbi, layer.graph.requiredMaterialAbi);
+
+                if (layer.targetGraph != null)
+                    requiredAbi = Math.Max(requiredAbi, layer.targetGraph.requiredMaterialAbi);
+            }
+
+            if (_materialTemplateAbi >= requiredAbi)
+                return;
+
+            string materialName = _materialTemplate != null ? _materialTemplate.name : "built-in";
+            throw new InvalidOperationException(
+                $"SDF material '{materialName}' declares ABI {_materialTemplateAbi}, but this scene " +
+                $"requires ABI {requiredAbi}. Update {NowSdf.MaterialAbiProperty} and include the " +
+                $"matching NowSdfShaderV{requiredAbi}.cginc implementation.");
+        }
+
+        void ThrowIfRotationScopesOpen(string operation)
+        {
+            if (_rotationStack.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"SDF {operation} requires every PushRotation to have a matching PopRotation.");
+            }
+
+            _activeGraph?.ThrowIfRotationScopesOpen(operation);
+
+            for (int i = 0; i < _layers.Count; ++i)
+            {
+                _layers[i].graph.ThrowIfRotationScopesOpen(operation);
+                _layers[i].targetGraph?.ThrowIfRotationScopesOpen(operation);
+            }
         }
 
         NowSdfOperation ConsumePendingOperation()
@@ -1987,10 +2832,28 @@ namespace NowUI.Sdf
             return _layers.Count == 0 ? 0f : _pendingSmoothing;
         }
 
-        void ResetPendingOperation()
+        void ResetPendingPrimitiveModifiers()
         {
             _pendingOperation = NowSdfOperation.Union;
             _pendingSmoothing = 0f;
+            _nextRotationDegrees = 0f;
+        }
+
+        float EffectiveRotationDegrees()
+        {
+            float scoped = _rotationStack.Count > 0
+                ? _rotationStack[_rotationStack.Count - 1]
+                : 0f;
+            return NowSdfGraph.NormalizeRotationDegrees(scoped + _nextRotationDegrees);
+        }
+
+        void ThrowIfPendingRotationCannotApplyTo(string operand)
+        {
+            if (NowSdfGraph.RotationDegrees(EffectiveRotationDegrees()) == Vector2.zero)
+                return;
+
+            throw new InvalidOperationException(
+                $"SDF per-primitive rotation applies only to analytic primitives; {operand} requires a layer or group transform.");
         }
 
         void Encapsulate(Vector2 size)
@@ -2400,7 +3263,11 @@ namespace NowUI.Sdf
                 _data0[shapeCount] = new Vector4((float)node.type, (float)node.operation, node.smoothing, 0f);
                 _data1[shapeCount] = node.data1;
                 _data2[shapeCount] = node.data2;
-                _shapeMeta[shapeCount] = new Vector4(graphId, node.useTexture ? 1f : 0f, 0f, 0f);
+                _shapeMeta[shapeCount] = new Vector4(
+                    graphId,
+                    node.useTexture ? 1f : 0f,
+                    node.rotation.x,
+                    node.rotation.y);
                 _colors[shapeCount] = node.color;
                 _uvs[shapeCount] = node.uv;
                 ++shapeCount;

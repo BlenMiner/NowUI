@@ -67,8 +67,10 @@ installed NowUI revision. AI coding agents should begin with the
 - [Node Graph](NodeGraph.md): shader-style and visual-scripting-style graph
   data, typed ports, Bezier links, draggable nodes, pan/zoom, and link editing.
 - [SDF Shapes](SDF.md): composable signed-distance-field circles, boxes,
-  rounded boxes, ellipses, capsules, arcs, and pies with
-  union/subtract/intersect operations, smooth blends, colors, and texture fills.
+  rounded and chamfered boxes, triangles, ellipses, capsules, round-capped
+  lines, arcs, and pies with explicit next-primitive and scoped rotation,
+  union/subtract/intersect operations, smooth blends, colors, and texture
+  fills.
 - [Rich Text](RichText.md): spans, default tag parsing, custom inline tags,
   Lottie tags, and link/tag hit testing.
 - [Markup](Markup.md): constrained XML-like layout/control markup for

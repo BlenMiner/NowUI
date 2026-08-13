@@ -12,8 +12,9 @@ dependencies.
 
 ## Inigo Quilez 2D signed-distance functions
 
-NowUI's Arc and Pie shader distance functions are adapted from Inigo Quilez's
-`sdArc` and `sdPie` 2D signed-distance functions.
+NowUI's ChamferedBox, Triangle, Arc, and Pie shader distance functions are
+adapted or reexpressed from Inigo Quilez's corresponding 2D signed-distance
+functions, including `sdChamferBox`, `sdTriangle`, `sdArc`, and `sdPie`.
 
 - Author: Inigo Quilez
 - Source: https://iquilezles.org/articles/distfunctions2d/

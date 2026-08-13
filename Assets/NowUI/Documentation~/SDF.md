@@ -25,10 +25,89 @@ Available primitives:
 - `Circle(center, radius)`
 - `Box(rect)` / `Rectangle(rect)`
 - `RoundedBox(rect, radius)` / `RoundRect(rect, radius)`
+- `ChamferedBox(rect, chamfer)`
+- `Triangle(a, b, c)`
 - `Ellipse(rect)`
 - `Capsule(from, to, radius)` or `Capsule(rect)`
+- `Line(from, to, width)`
 - `Arc(center, radius, thickness, from, sweep)`
 - `Pie(center, radius, from, sweep)`
+
+`Line` is the full-width, round-capped spelling of a capsule stroke: it is
+equivalent to `Capsule(from, to, width * 0.5f)`. This differs from
+`Capsule(..., radius)`, whose final argument is the radius or half-width.
+Negative line widths clamp to zero. `ChamferedBox` cuts each corner with a
+straight 45-degree edge; its chamfer is measured along each adjoining edge,
+clamps negative values to zero, and cannot exceed half the shorter side.
+`Triangle` accepts either clockwise or counter-clockwise points. These planar
+primitive arguments must be finite and produce representable bounds. A
+zero-area or numerically near-collinear triangle has no filled interior and
+evaluates as unsigned distance to its edges.
+
+### Rotate individual primitives
+
+`RotateNext(angleDegrees)` rotates the next analytic primitive only. The angle
+must be finite. Positive degrees turn clockwise in NowUI's top-left-origin UI
+space:
+
+```csharp
+NowSdf.Scene(rect)
+    .RotateNext(22.5f)
+    .ChamferedBox(new NowRect(24f, 20f, 132f, 76f), 16f)
+    .Subtract()
+    .RotateNext(-8f)
+    .Triangle(
+        new Vector2(90f, 24f),
+        new Vector2(150f, 96f),
+        new Vector2(32f, 96f))
+    .Draw();
+```
+
+Rotation is pending until an analytic primitive consumes it; color, texture,
+and boolean-operation modifiers do not consume it. If `RotateNext` is called
+more than once before that primitive, the last call wins. `RotateNext(0f)`
+clears the pending rotation, as do equivalent whole turns.
+
+Use `PushRotation(angleDegrees)` and `PopRotation()` when several consecutive
+primitives need rotation. Pushes are relative and nest by adding their angles:
+
+```csharp
+NowSdf.Scene(rect)
+    .PushRotation(12f)
+        .Box(card)                    // 12 degrees
+        .RotateNext(8f)
+        .Triangle(a, b, c)            // 20 degrees for this node
+        .Circle(center, radius)       // back to 12 degrees
+    .PopRotation()
+    .Box(unrotatedCard)
+    .Draw();
+```
+
+The stack changes the angle applied to each node; it is not a shared-pivot
+group transform. Every primitive still rotates around its own natural center.
+`RotateNext` composes with the active pushed rotation and is consumed by one
+primitive. A skipped primitive consumes `RotateNext` but leaves the pushed
+rotation active. Every push must be matched before a graph is composed or a
+scene is drawn or rasterized as a mask; underflow and unbalanced scopes throw
+`InvalidOperationException`. The graph and scene caches reuse their stack
+storage, so repeated drawing is allocation-free after the deepest nesting has
+warmed up.
+
+Each primitive rotates around the natural center of its authored bounds.
+Rectangle-based and radial primitives use their declared center, capsules and
+lines use the midpoint between their endpoints, and triangles use the center
+of their vertex axis-aligned bounding box. Texture UVs remain local to the
+primitive and rotate with it. Rotated conservative bounds must remain finite
+and representable. Even when a primitive's geometry is rotationally invariant,
+such as a circle, a texture fill can visibly rotate; the nonidentity rotation
+still requires ABI v2.
+
+`RotateNext` and pushed rotations support analytic primitives from the list
+above, but they cannot directly target `Text`, `Graph`, or `Morph`: an effective
+nonidentity rotation followed by one of those operands throws
+`InvalidOperationException`. To use rotated shapes in reusable graphs or morph
+endpoints, apply `RotateNext` to the individual analytic primitives, or balance
+a rotation stack, while building those graphs.
 
 Arc and pie angles are radians. An angle of `0` points right; positive sweeps
 turn clockwise in NowUI's top-left-origin UI space, and negative sweeps turn
@@ -38,7 +117,8 @@ than wrapped back toward zero. Arc `thickness` is the half-width around its
 ring radius, so the complete band is twice that value. Radial arguments must be
 finite; negative radii and thicknesses are clamped to zero.
 
-Texture fills use the same axis-aligned planar mapping as other primitives.
+Texture fills use each primitive's local planar mapping. When `RotateNext` is
+applied, the mapping rotates with the shape.
 Arc UVs cover the conservative outer-ring square and pie UVs cover the full
 disc square, even when only part of that area lies inside the angular sweep.
 Inputs must also produce finite, representable conservative bounds.
@@ -57,6 +137,32 @@ Operations apply to the next primitive only, then reset to `Union`:
 Edges are anti-aliased in screen space. `SetFeather(0)` gives the crisp default
 one-pixel ramp; `SetFeather(1)` widens that transition by roughly one extra
 screen pixel, independent of Canvas Scaler changes.
+
+## Transform A Whole Scene
+
+The core scale-and-translation scope applies to the complete SDF scene, just as
+it does to other NowUI drawing:
+
+```csharp
+using (Now.Transform(new Vector2(1.25f, 0.9f), new Vector2(24f, 12f)))
+{
+    NowSdf.Scene(new NowRect(20f, 20f, 180f, 120f))
+        .SetColor(Color.cyan)
+        .Triangle(
+            new Vector2(24f, 94f),
+            new Vector2(90f, 18f),
+            new Vector2(156f, 94f))
+        .Draw();
+}
+```
+
+This transforms the submitted scene as a unit; it does not add a transform
+node to the SDF graph. Primitive rotation APIs cannot rotate a `Graph` or
+`Morph` layer around one shared pivot. There is no layer transform and no
+SDF-local translate or scale modifier.
+Arbitrary point-list polygons and mixed SDF paths composed from line, arc, and
+Bezier commands are also not supported. Lottie can import and tessellate
+animated vector paths, but it does not turn those paths into SDF graph nodes.
 
 ## Use A Scene As A Mask
 
@@ -229,23 +335,28 @@ An SDF material is not an arbitrary rectangle material. Its shader must keep
 the built-in scene arrays, packed graph ranges, vertex streams, UGUI
 canvas-layout switch, ambient mask handling, and mask-output behavior. The
 supported way to retain that plumbing while changing the pixels is the
-versioned [`NowSdfShaderV1.cginc`](../Extensions/Sdf/NowSdfShaderV1.cginc)
+versioned [`NowSdfShaderV2.cginc`](../Extensions/Sdf/NowSdfShaderV2.cginc)
 implementation. Start from a complete example below: its ShaderLab properties,
 render state, stencil block, pragmas, and include are part of the contract.
 
-The current material ABI is version 1. `NowSdf.MaterialAbiVersion` exposes the
+The current material ABI is version 2. `NowSdf.MaterialAbiVersion` exposes the
 numeric version, and `NowSdf.MaterialAbiProperty` exposes the required shader
 property name, `_NowSdfAbiVersion`. A compatible shader declares it in its
 `Properties` block:
 
 ```shaderlab
-[HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 1
+[HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 2
 ```
 
-`SetMaterial` throws `ArgumentException` when this property is absent or does
-not equal the current ABI version. Declaring it is a compatibility assertion;
+`SetMaterial` throws `ArgumentException` when this property is absent or is not
+a supported integer ABI version. Declaring it is a compatibility assertion;
 the shader still has to include the matching implementation and keep its
-required ShaderLab declarations.
+required ShaderLab declarations. ABI-v1 templates remain accepted for scenes
+that only use the released v1 primitive set. A scene containing
+`ChamferedBox`, `Triangle`, or any nonidentity per-primitive rotation requires
+ABI v2 and fails before drawing or mask rasterization when paired with an
+ABI-v1 template. `RotateNext(0f)` and equivalent whole turns remain identity, and
+an unrotated `Line` remains compatible with v1 because it packs as `Capsule`.
 
 Define `NOW_SDF_CUSTOM_FINAL_SHADE` to the name of an HLSL function before the
 include. The include declares the function and calls it later, so define the
@@ -255,10 +366,10 @@ one of the complete example shaders (also add `_StripeColor` to `Properties`):
 ```hlsl
 float4 _StripeColor;
 
-#define NOW_SDF_CUSTOM_FINAL_SHADE ProjectStripeShadeV1
-#include "Packages/com.blenminer.nowui/Extensions/Sdf/NowSdfShaderV1.cginc"
+#define NOW_SDF_CUSTOM_FINAL_SHADE ProjectStripeShadeV2
+#include "Packages/com.blenminer.nowui/Extensions/Sdf/NowSdfShaderV2.cginc"
 
-float4 ProjectStripeShadeV1(
+float4 ProjectStripeShadeV2(
     float4 stockColor,
     float4 fill,
     float4 tint,
@@ -274,16 +385,18 @@ float4 ProjectStripeShadeV1(
     float stripe = step(0.5, frac(sourceScenePosition.x / 12.0));
     float4 overlay = _StripeColor;
     overlay.a *= fill.a * coverage * stripe;
-    return NowSdfAlphaOverV1(stockColor, overlay);
+    return NowSdfAlphaOverV2(stockColor, overlay);
 }
 ```
 
 That include path is for a normal UPM installation. If the package was copied
 or checked out at `Assets/NowUI`, use
-`Assets/NowUI/Extensions/Sdf/NowSdfShaderV1.cginc`. Shaders living beside the
-packaged examples can use their relative `../NowSdfShaderV1.cginc` path. Do not
-mix an ABI-v1 property with an implementation from another installed package
-version.
+`Assets/NowUI/Extensions/Sdf/NowSdfShaderV2.cginc`. Shaders living beside the
+packaged examples can use their relative `../NowSdfShaderV2.cginc` path. Do not
+mix an ABI property with an implementation from another installed package
+version. ABI v2 adds the chamfered-box and triangle opcodes plus per-node
+rotation metadata; templates that use those features must update both their
+property value and include.
 
 The callback receives:
 
@@ -305,11 +418,11 @@ The hook runs after stock effects and contours but before Unity UI clipping,
 ambient NowUI masks, `_SdfMaskOutput`, and alpha clipping. Consequently its
 returned alpha contributes to `BeginMask()`, while later masks can still clip
 it. Output must remain straight alpha because the pass uses
-`Blend SrcAlpha OneMinusSrcAlpha`. `NowSdfAlphaOverV1(base, top)` composes two
+`Blend SrcAlpha OneMinusSrcAlpha`. `NowSdfAlphaOverV2(base, top)` composes two
 straight-alpha colors without changing that convention.
 
-ABI v1 also exposes
-`NowSdfEvaluateDistanceV1(sourceScenePosition)`. It applies the configured warp
+ABI v2 also exposes
+`NowSdfEvaluateDistanceV2(sourceScenePosition)`. It applies the configured warp
 and evaluates the complete scene distance at another unwarped point, which is
 useful for a displaced shadow. It repeats the scene-distance work, so prefer
 the supplied `signedDistance` when one sample is sufficient.
@@ -344,7 +457,7 @@ The local, git-ignored gallery image is written to
 
 The builder still submits one quad, but the callback runs for fragments across
 that quad, including its transparent padding. A larger scene rect, more custom
-texture samples, loops, and extra calls to `NowSdfEvaluateDistanceV1` therefore
+texture samples, loops, and extra calls to `NowSdfEvaluateDistanceV2` therefore
 increase GPU work. Stock effects are evaluated before the callback; leave
 effects disabled when the custom shader replaces them. Different material
 templates also split draw batches. Reuse a small, stable material set and keep
@@ -358,8 +471,8 @@ sampler such as `_ProjectNoiseTex` for custom textures.
 
 Custom distance and shading functions are ordinary HLSL compiled into the
 project shader. There is no C# per-pixel delegate, function registry, runtime
-shader-source injection, or custom graph-node opcode in ABI v1. New reusable
-primitive kinds still require a future node contract.
+shader-source injection, or custom graph-node opcode in ABI v2. New reusable
+project-defined primitive kinds still require a future node contract.
 
 The passed material is a caller-owned template. A resolved scene cache lazily
 creates its own direct-draw clone and, when needed, a separate mask clone for

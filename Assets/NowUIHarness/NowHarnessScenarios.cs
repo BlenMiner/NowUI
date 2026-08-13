@@ -225,6 +225,7 @@ namespace NowUI.Editor
 #endif
                 new NowHarnessScenario { name = "sdf-mask-glow-clip", width = 640, height = 640, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGlowClip },
                 new NowHarnessScenario { name = "sdf-mask-gallery", width = 960, height = 520, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGallery },
+                new NowHarnessScenario { name = "sdf-planar-primitives", width = 960, height = 390, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfPlanarPrimitives },
                 new NowHarnessScenario { name = "sdf-radial-primitives", width = 840, height = 360, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfRadialPrimitives },
                 new NowHarnessScenario { name = "sdf-custom-shaders", width = 960, height = 430, includeInGoldens = false, warmupFrames = 2, draw = DrawSdfCustomShaders },
                 new NowHarnessScenario { name = "lottie", width = 512, height = 512, includeInGoldens = true, draw = DrawLottie },
@@ -1755,6 +1756,100 @@ namespace NowUI.Editor
                     .SetLinear(35f)
                     .Draw();
             }
+        }
+
+        static void DrawSdfPlanarPrimitives(NowRect rect)
+        {
+            Now.Rectangle(rect).SetColor(new Color(0.018f, 0.026f, 0.050f, 1f)).Draw();
+            Now.Text(new NowRect(26f, 18f, rect.width - 52f, 30f))
+                .SetFontSize(23f)
+                .SetBold()
+                .SetColor(Color.white)
+                .Draw("SDF planar primitives");
+            Now.Text(new NowRect(26f, 50f, rect.width - 52f, 21f))
+                .SetFontSize(13f)
+                .SetColor(new Color(0.65f, 0.76f, 0.89f, 1f))
+                .Draw("Chamfered boxes, winding-independent triangles, and round-capped full-width lines.");
+
+            const float cardWidth = 219f;
+            const float cardGap = 12f;
+            var chamferCard = new NowRect(24f, 92f, cardWidth, 270f);
+            var triangleCard = new NowRect(chamferCard.xMax + cardGap, 92f, cardWidth, 270f);
+            var lineCard = new NowRect(triangleCard.xMax + cardGap, 92f, cardWidth, 270f);
+            var composedCard = new NowRect(lineCard.xMax + cardGap, 92f, cardWidth, 270f);
+
+            DrawSdfPlanarCard(chamferCard, "CHAMFERED BOX", "22.5° clockwise · RotateNext");
+            DrawSdfPlanarCard(triangleCard, "TRIANGLE", "Either winding · same field");
+            DrawSdfPlanarCard(lineCard, "LINE", "28px full width · round caps");
+            DrawSdfPlanarCard(composedCard, "COMPOSED", "8° cut · next line stays unrotated");
+
+            var chamferScene = new NowRect(chamferCard.x + 14f, chamferCard.y + 50f, chamferCard.width - 28f, 146f);
+            NowSdf.Scene(chamferScene, "visual-sdf-planar-chamfer")
+                .SetColor(new Color(0.12f, 0.82f, 1f, 1f))
+                .SetFeather(0.5f)
+                .SetOutline(2f, new Color(0.72f, 0.94f, 1f, 0.72f), 0.5f)
+                .RotateNext(22.5f)
+                .ChamferedBox(new NowRect(28f, 30f, 135f, 86f), 18f)
+                .Draw();
+
+            var triangleScene = new NowRect(triangleCard.x + 14f, triangleCard.y + 50f, triangleCard.width - 28f, 146f);
+            NowSdf.Scene(triangleScene, "visual-sdf-planar-triangle")
+                .SetColor(new Color(1f, 0.28f, 0.67f, 1f))
+                .SetFeather(0.5f)
+                .SetGlow(12f, new Color(1f, 0.16f, 0.58f, 0.24f), 1.5f)
+                .Triangle(
+                    new Vector2(triangleScene.width * 0.5f, 18f),
+                    new Vector2(triangleScene.width - 18f, triangleScene.height - 18f),
+                    new Vector2(18f, triangleScene.height - 34f))
+                .Draw();
+
+            var lineScene = new NowRect(lineCard.x + 14f, lineCard.y + 50f, lineCard.width - 28f, 146f);
+            NowSdf.Scene(lineScene, "visual-sdf-planar-line")
+                .SetColor(new Color(0.30f, 1f, 0.58f, 1f))
+                .SetFeather(0.5f)
+                .SetGlow(14f, new Color(0.16f, 1f, 0.54f, 0.22f), 1.4f)
+                .Line(
+                    new Vector2(30f, lineScene.height - 32f),
+                    new Vector2(lineScene.width - 30f, 32f),
+                    28f)
+                .Draw();
+
+            var composedScene = new NowRect(composedCard.x + 14f, composedCard.y + 50f, composedCard.width - 28f, 146f);
+            NowSdf.Scene(composedScene, "visual-sdf-planar-composed")
+                .SetColor(new Color(0.36f, 0.46f, 1f, 1f))
+                .SetFeather(0.5f)
+                .ChamferedBox(new NowRect(8f, 14f, composedScene.width - 16f, composedScene.height - 28f), 20f)
+                .Subtract()
+                .RotateNext(8f)
+                .Triangle(
+                    new Vector2(composedScene.width * 0.5f, 34f),
+                    new Vector2(composedScene.width - 42f, composedScene.height - 30f),
+                    new Vector2(40f, composedScene.height - 30f))
+                .SetColor(new Color(1f, 0.68f, 0.18f, 1f))
+                .SmoothUnion(7f)
+                .Line(
+                    new Vector2(22f, composedScene.height - 20f),
+                    new Vector2(composedScene.width - 18f, 20f),
+                    12f)
+                .Draw();
+        }
+
+        static void DrawSdfPlanarCard(NowRect rect, string title, string note)
+        {
+            Now.Rectangle(rect)
+                .SetColor(new Color(0.045f, 0.060f, 0.095f, 1f))
+                .SetRadius(16f)
+                .SetOutline(1f, new Color(0.24f, 0.42f, 0.62f, 0.55f))
+                .Draw();
+            Now.Text(new NowRect(rect.x + 16f, rect.y + 16f, rect.width - 32f, 22f))
+                .SetFontSize(13f)
+                .SetBold()
+                .SetColor(new Color(0.56f, 0.82f, 1f, 1f))
+                .Draw(title);
+            Now.Text(new NowRect(rect.x + 16f, rect.yMax - 52f, rect.width - 32f, 34f))
+                .SetFontSize(11f)
+                .SetColor(new Color(0.70f, 0.80f, 0.92f, 1f))
+                .Draw(note);
         }
 
         static void DrawSdfRadialPrimitives(NowRect rect)

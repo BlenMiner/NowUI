@@ -80,13 +80,20 @@ when enabled. No manual NowUI input define is required.
   or `BeginMask()`; the latter returns an ambient `NowMaskScope` backed by
   cached, single-channel SDF coverage. `SetMaskResolutionScale(scale)` can
   reduce that coverage target's resolution without changing its authored
-  bounds. `SetMaterial(Material[, bool])` selects a compatible, compiled HLSL
-  material template; `NowSdf.MaterialAbiVersion` and
-  `NowSdf.MaterialAbiProperty` describe the current ABI-v1 declaration. The
-  cache owns direct and mask material clones per distinct template, while the
-  caller retains the templates. Static templates preserve upload and mask
-  reuse; per-frame synchronization recopies template properties and
-  rerasterizes custom masks.
+  bounds. `RotateNext(angleDegrees)` explicitly targets one following analytic
+  primitive, while balanced `PushRotation(angleDegrees)` / `PopRotation()` calls
+  apply compositional relative rotation to a run of primitives without
+  steady-state allocation. Positive degrees rotate clockwise in UI space. They
+  do not transform `Text`, `Graph`, or `Morph` directly. Any nonidentity
+  per-primitive rotation requires material ABI v2.
+  `SetMaterial(Material[, bool])` selects a compatible, compiled HLSL material
+  template; `NowSdf.MaterialAbiVersion` and
+  `NowSdf.MaterialAbiProperty` describe the current ABI-v2 declaration, while
+  `NowSdf.MinimumMaterialAbiVersion` identifies the oldest legacy-only ABI the
+  runtime accepts. The cache owns direct and mask material clones per distinct
+  template, while the caller retains the templates. Static templates preserve
+  upload and mask reuse; per-frame synchronization recopies template
+  properties and rerasterizes custom masks.
   There is no C# distance-function delegate or runtime shader injection.
   `NowSdf.Release(id)` releases one explicit stable-id cache;
   `NowSdf.Reset()` releases them all. Both invalidate builders backed by a

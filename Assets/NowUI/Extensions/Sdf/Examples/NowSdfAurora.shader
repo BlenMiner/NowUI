@@ -3,7 +3,7 @@ Shader "NowUI/SDF Examples/Aurora"
     Properties
     {
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
-        [HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 1
+        [HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 2
         [HDR] _AuroraColorA ("Aurora Color A", Color) = (0.04, 1.1, 1.5, 1)
         [HDR] _AuroraColorB ("Aurora Color B", Color) = (1.4, 0.12, 0.9, 1)
         [HDR] _AuroraHaloColor ("Aurora Halo", Color) = (0.1, 0.7, 1.8, 0.65)
@@ -87,10 +87,10 @@ Shader "NowUI/SDF Examples/Aurora"
             float _AuroraSpeed;
             float _AuroraHaloRadius;
 
-            #define NOW_SDF_CUSTOM_FINAL_SHADE NowSdfAuroraShadeV1
-            #include "../NowSdfShaderV1.cginc"
+            #define NOW_SDF_CUSTOM_FINAL_SHADE NowSdfAuroraShadeV2
+            #include "../NowSdfShaderV2.cginc"
 
-            float4 NowSdfAuroraShadeV1(
+            float4 NowSdfAuroraShadeV2(
                 float4 stockColor,
                 float4 fill,
                 float4 tint,
@@ -120,7 +120,7 @@ Shader "NowUI/SDF Examples/Aurora"
                 float4 haloColor = _AuroraHaloColor;
                 haloColor.a *= halo * tint.a;
 
-                return NowSdfAlphaOverV1(haloColor, inside);
+                return NowSdfAlphaOverV2(haloColor, inside);
             }
             ENDCG
         }

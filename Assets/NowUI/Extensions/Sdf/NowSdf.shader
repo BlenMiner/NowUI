@@ -3,7 +3,7 @@ Shader "NowUI/SDF Scene"
     Properties
     {
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
-        [HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 1
+        [HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 2
         [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
         [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
         [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
@@ -74,7 +74,7 @@ Shader "NowUI/SDF Scene"
             #pragma multi_compile_local _ UNITY_UI_CLIP_RECT
             #pragma multi_compile_local _ UNITY_UI_ALPHACLIP
 
-            #include "NowSdfShaderV1.cginc"
+            #include "NowSdfShaderV2.cginc"
             ENDCG
         }
     }

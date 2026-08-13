@@ -3,7 +3,7 @@ Shader "NowUI/SDF Examples/Paper Cutout"
     Properties
     {
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
-        [HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 1
+        [HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 2
         _PaperColor ("Paper", Color) = (0.95, 0.8, 0.48, 1)
         _PaperBackColor ("Edge Shade", Color) = (0.38, 0.12, 0.12, 1)
         [HDR] _PaperHighlightColor ("Edge Highlight", Color) = (1.3, 0.9, 0.52, 0.8)
@@ -93,10 +93,10 @@ Shader "NowUI/SDF Examples/Paper Cutout"
             float _PaperShadowSoftness;
             float _PaperShadowSpread;
 
-            #define NOW_SDF_CUSTOM_FINAL_SHADE NowSdfPaperCutoutShadeV1
-            #include "../NowSdfShaderV1.cginc"
+            #define NOW_SDF_CUSTOM_FINAL_SHADE NowSdfPaperCutoutShadeV2
+            #include "../NowSdfShaderV2.cginc"
 
-            float4 NowSdfPaperCutoutShadeV1(
+            float4 NowSdfPaperCutoutShadeV2(
                 float4 stockColor,
                 float4 fill,
                 float4 tint,
@@ -120,7 +120,7 @@ Shader "NowUI/SDF Examples/Paper Cutout"
                 paper += _PaperHighlightColor.rgb * pow(saturate(facing), 5.0) * bevel * _PaperHighlightColor.a;
                 float4 inside = float4(saturate(paper), _PaperColor.a * fill.a * coverage);
 
-                float shadowDistance = NowSdfEvaluateDistanceV1(
+                float shadowDistance = NowSdfEvaluateDistanceV2(
                     sourceScenePosition - _PaperShadowOffset.xy) - _PaperShadowSpread;
                 float shadowAlpha = smoothstep(
                     max(_PaperShadowSoftness, pixelWidth) + edge,
@@ -129,7 +129,7 @@ Shader "NowUI/SDF Examples/Paper Cutout"
                 float4 shadow = _PaperShadowColor;
                 shadow.a *= shadowAlpha * tint.a;
 
-                return NowSdfAlphaOverV1(shadow, inside);
+                return NowSdfAlphaOverV2(shadow, inside);
             }
             ENDCG
         }
