@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.4.0...nowui-v1.5.0) (2026-08-13)
+
+
+### Features
+
+* **sdf:** add planar primitives and composable rotations ([9a28189](https://github.com/BlenMiner/NowUI/commit/9a281894c47faf106a4cfb01bd4b6a42e50ac4e7))
+
 # [1.4.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.3.0...nowui-v1.4.0) (2026-08-12)
 
 
