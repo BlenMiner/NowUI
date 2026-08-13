@@ -600,6 +600,51 @@ public class NowRenderingPlayModeTests
             "The negative-angle Box rotated clockwise.");
     }
 
+    [Test]
+    public void SdfRotateNextTextUsesOneSharedRunPivot()
+    {
+        const string Value = "Hi!";
+        const float FontSize = 36f;
+        var font = ResolveDefaultNowFont();
+        var surface = new NowRect(0f, 0f, Side, Side);
+        Vector2 position = surface.center - SdfTextRunPivot(
+            font,
+            Vector2.zero,
+            Value,
+            FontSize,
+            out int glyphCount);
+
+        Assert.AreEqual(Value.Length, glyphCount,
+            "The shared-pivot fixture requires every character to emit one SDF glyph.");
+
+        // Correct once for float rounding in the positioned glyph rectangles so
+        // the run pivot lands on the render target's pixel-grid quarter-turn.
+        position += surface.center - SdfTextRunPivot(
+            font,
+            position,
+            Value,
+            FontSize,
+            out glyphCount);
+        Vector2 pivot = SdfTextRunPivot(font, position, Value, FontSize, out glyphCount);
+
+        Assert.AreEqual(Value.Length, glyphCount);
+        Assert.AreEqual(surface.center.x, pivot.x, 0.001f);
+        Assert.AreEqual(surface.center.y, pivot.y, 0.001f);
+
+        var unrotated = RenderSdfTextRun(font, position, Value, FontSize, rotate: false);
+        var rotated = RenderSdfTextRun(font, position, Value, FontSize, rotate: true);
+        var expected = RotateAlphaQuarterTurnClockwise(unrotated, pivot);
+
+        Assert.Greater(CountPixels(unrotated, pixel => pixel.a > 128), 120,
+            "The SDF text fixture produced too little ink for a useful rotation comparison.");
+        AssertAlphaArraysNear(
+            expected,
+            rotated,
+            channelTolerance: 12,
+            allowedMismatchCount: 96,
+            "RotateNext did not rotate the glyph arrangement rigidly around the rendered run AABB center.");
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void SdfRotateNextKeepsTextureInPrimitiveLocalSpace(bool circle)
@@ -1142,6 +1187,147 @@ public class NowRenderingPlayModeTests
 
         _renderer.Render(_target, clear: true, clearColor: Color.clear);
         return ReadPixels(_target);
+    }
+
+    Color32[] RenderSdfTextRun(
+        NowFontAsset font,
+        Vector2 position,
+        string value,
+        float fontSize,
+        bool rotate)
+    {
+        _renderer.Clear();
+        var surface = new NowRect(0f, 0f, Side, Side);
+
+        using (_renderer.Begin(_target))
+        {
+            var scene = NowSdf.Scene(surface, "playmode-sdf-text-run-rotation")
+                .SetColor(Color.white)
+                .SetFeather(0f);
+
+            if (rotate)
+                scene = scene.RotateNext(90f);
+
+            scene.Text(position, value, font, fontSize).Draw();
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    static Vector2 SdfTextRunPivot(
+        NowFontAsset font,
+        Vector2 position,
+        string value,
+        float fontSize,
+        out int glyphCount)
+    {
+        font.EnsureGlyphs(value, fontSize);
+
+        float baseline = font.GetAscender() * fontSize;
+        float lineHeight = font.GetLineHeight() * fontSize;
+        float left = position.x;
+        float x = position.x;
+        float y = position.y;
+        double minX = double.PositiveInfinity;
+        double minY = double.PositiveInfinity;
+        double maxX = double.NegativeInfinity;
+        double maxY = double.NegativeInfinity;
+        Texture atlas = null;
+        glyphCount = 0;
+
+        for (int i = 0; i < value.Length; ++i)
+        {
+            int codepoint = NowFont.ReadCodepoint(value, ref i);
+
+            if (codepoint == '\n')
+            {
+                x = left;
+                y += lineHeight;
+                continue;
+            }
+
+            if (codepoint == '\t')
+            {
+                if (font.TryResolveGlyph(' ', fontSize, NowFontStyle.Regular, out _, out var space, out _))
+                    x += space.advance * fontSize * 4f;
+
+                continue;
+            }
+
+            if (!font.TryResolveGlyph(
+                    codepoint,
+                    fontSize,
+                    NowFontStyle.Regular,
+                    out var resolvedFont,
+                    out var glyph,
+                    out var material))
+            {
+                continue;
+            }
+
+            Texture glyphAtlas = material != null ? material.mainTexture : null;
+            bool canEmit = resolvedFont != null &&
+                !resolvedFont.isColor &&
+                !Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right) &&
+                glyphAtlas != null &&
+                (atlas == null || ReferenceEquals(atlas, glyphAtlas));
+
+            if (canEmit)
+            {
+                atlas ??= glyphAtlas;
+                float glyphLeft = glyph.planeBounds.left * fontSize;
+                float glyphRight = glyph.planeBounds.right * fontSize;
+                float glyphBottom = glyph.planeBounds.bottom * fontSize;
+                float glyphTop = glyph.planeBounds.top * fontSize;
+                var rect = new NowRect(
+                    x + glyphLeft,
+                    y + baseline - glyphTop,
+                    glyphRight - glyphLeft,
+                    glyphTop - glyphBottom);
+                float centerX = rect.x + rect.width * 0.5f;
+                float centerY = rect.y + rect.height * 0.5f;
+                double halfWidth = System.Math.Max((double)rect.width * 0.5d, 0.0001d);
+                double halfHeight = System.Math.Max((double)rect.height * 0.5d, 0.0001d);
+                minX = System.Math.Min(minX, centerX - halfWidth);
+                minY = System.Math.Min(minY, centerY - halfHeight);
+                maxX = System.Math.Max(maxX, centerX + halfWidth);
+                maxY = System.Math.Max(maxY, centerY + halfHeight);
+                ++glyphCount;
+            }
+
+            x += glyph.advance * fontSize;
+        }
+
+        Assert.Greater(glyphCount, 0, "The SDF text fixture emitted no glyphs.");
+        return new Vector2(
+            (float)(minX * 0.5d + maxX * 0.5d),
+            (float)(minY * 0.5d + maxY * 0.5d));
+    }
+
+    static Color32[] RotateAlphaQuarterTurnClockwise(Color32[] source, Vector2 pivot)
+    {
+        var rotated = new Color32[source.Length];
+
+        for (int y = 0; y < Side; ++y)
+        {
+            for (int x = 0; x < Side; ++x)
+            {
+                // Inverse-map the destination pixel center through a clockwise
+                // quarter turn in NowUI's top-left-origin coordinate system.
+                float sourceCenterX = pivot.x + (y + 0.5f - pivot.y);
+                float sourceCenterY = pivot.y - (x + 0.5f - pivot.x);
+                int sourceX = Mathf.RoundToInt(sourceCenterX - 0.5f);
+                int sourceY = Mathf.RoundToInt(sourceCenterY - 0.5f);
+
+                if (sourceX < 0 || sourceX >= Side || sourceY < 0 || sourceY >= Side)
+                    continue;
+
+                rotated[(Side - 1 - y) * Side + x] = PixelAtUi(source, sourceX, sourceY);
+            }
+        }
+
+        return rotated;
     }
 
     Color32[] RenderSdfLine(bool useCapsule)

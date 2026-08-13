@@ -81,11 +81,15 @@ when enabled. No manual NowUI input define is required.
   cached, single-channel SDF coverage. `SetMaskResolutionScale(scale)` can
   reduce that coverage target's resolution without changing its authored
   bounds. `RotateNext(angleDegrees)` explicitly targets one following analytic
-  primitive, while balanced `PushRotation(angleDegrees)` / `PopRotation()` calls
-  apply compositional relative rotation to a run of primitives without
-  steady-state allocation. Positive degrees rotate clockwise in UI space. They
-  do not transform `Text`, `Graph`, or `Morph` directly. Any nonidentity
-  per-primitive rotation requires material ABI v2.
+  primitive or complete SDF `Text` call, while balanced
+  `PushRotation(angleDegrees)` / `PopRotation()` calls apply compositional
+  relative rotation to runs of both without steady-state allocation. Positive
+  degrees rotate clockwise in UI space. Text glyphs rotate rigidly around the
+  center of the axis-aligned bounds of the compatible glyph quads actually
+  emitted by that call. `RotateNext` is consumed once even when the text is
+  empty or emits no compatible glyphs, and it composes with a pushed rotation.
+  These APIs do not transform `Graph` or `Morph` operands directly. Any
+  nonidentity per-node rotation requires material ABI v2.
   `SetMaterial(Material[, bool])` selects a compatible, compiled HLSL material
   template; `NowSdf.MaterialAbiVersion` and
   `NowSdf.MaterialAbiProperty` describe the current ABI-v2 declaration, while

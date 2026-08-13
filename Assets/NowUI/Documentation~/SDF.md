@@ -44,11 +44,11 @@ primitive arguments must be finite and produce representable bounds. A
 zero-area or numerically near-collinear triangle has no filled interior and
 evaluates as unsigned distance to its edges.
 
-### Rotate individual primitives
+### Rotate primitives and text
 
-`RotateNext(angleDegrees)` rotates the next analytic primitive only. The angle
-must be finite. Positive degrees turn clockwise in NowUI's top-left-origin UI
-space:
+`RotateNext(angleDegrees)` rotates the next analytic primitive or SDF `Text`
+call. The angle must be finite. Positive degrees turn clockwise in NowUI's
+top-left-origin UI space:
 
 ```csharp
 NowSdf.Scene(rect)
@@ -63,13 +63,14 @@ NowSdf.Scene(rect)
     .Draw();
 ```
 
-Rotation is pending until an analytic primitive consumes it; color, texture,
-and boolean-operation modifiers do not consume it. If `RotateNext` is called
-more than once before that primitive, the last call wins. `RotateNext(0f)`
-clears the pending rotation, as do equivalent whole turns.
+Rotation is pending until an analytic primitive or `Text` call consumes it;
+color, texture, and boolean-operation modifiers do not consume it. If
+`RotateNext` is called more than once before that operand, the last call wins.
+`RotateNext(0f)` clears the pending rotation, as do equivalent whole turns.
 
 Use `PushRotation(angleDegrees)` and `PopRotation()` when several consecutive
-primitives need rotation. Pushes are relative and nest by adding their angles:
+primitives or text runs need rotation. Pushes are relative and nest by adding
+their angles:
 
 ```csharp
 NowSdf.Scene(rect)
@@ -86,12 +87,13 @@ NowSdf.Scene(rect)
 The stack changes the angle applied to each node; it is not a shared-pivot
 group transform. Every primitive still rotates around its own natural center.
 `RotateNext` composes with the active pushed rotation and is consumed by one
-primitive. A skipped primitive consumes `RotateNext` but leaves the pushed
-rotation active. Every push must be matched before a graph is composed or a
-scene is drawn or rasterized as a mask; underflow and unbalanced scopes throw
-`InvalidOperationException`. The graph and scene caches reuse their stack
-storage, so repeated drawing is allocation-free after the deepest nesting has
-warmed up.
+primitive or one complete `Text` call. A skipped primitive, empty text value,
+or text call with no renderable glyphs still consumes `RotateNext` but leaves
+the pushed rotation active. Every push must be matched before a graph is
+composed or a scene is drawn or rasterized as a mask; underflow and unbalanced
+scopes throw `InvalidOperationException`. The graph and scene caches reuse
+their stack storage, so repeated drawing is allocation-free after the deepest
+nesting has warmed up.
 
 Each primitive rotates around the natural center of its authored bounds.
 Rectangle-based and radial primitives use their declared center, capsules and
@@ -102,12 +104,19 @@ and representable. Even when a primitive's geometry is rotationally invariant,
 such as a circle, a texture fill can visibly rotate; the nonidentity rotation
 still requires ABI v2.
 
-`RotateNext` and pushed rotations support analytic primitives from the list
-above, but they cannot directly target `Text`, `Graph`, or `Morph`: an effective
-nonidentity rotation followed by one of those operands throws
-`InvalidOperationException`. To use rotated shapes in reusable graphs or morph
-endpoints, apply `RotateNext` to the individual analytic primitives, or balance
-a rotation stack, while building those graphs.
+An SDF `Text` call rotates all of its emitted glyphs rigidly around one shared
+pivot. That pivot is the center of the axis-aligned bounds of the compatible
+glyph quads that the call actually emits; spaces, missing glyphs, color glyphs,
+and glyphs from an incompatible atlas do not contribute bounds, although their
+resolved advances still affect later glyph positions. `RotateNext` is consumed
+once for the complete call rather than once per glyph, and an active pushed
+rotation composes with it in the same way as for a primitive.
+
+`RotateNext` and pushed rotations cannot directly target `Graph` or `Morph`:
+an effective nonidentity rotation followed by either operand throws
+`InvalidOperationException`. To use rotated shapes or text in reusable graphs
+or morph endpoints, apply the rotation while building those graphs and balance
+their rotation stacks before composition.
 
 Arc and pie angles are radians. An angle of `0` points right; positive sweeps
 turn clockwise in NowUI's top-left-origin UI space, and negative sweeps turn
@@ -353,10 +362,11 @@ a supported integer ABI version. Declaring it is a compatibility assertion;
 the shader still has to include the matching implementation and keep its
 required ShaderLab declarations. ABI-v1 templates remain accepted for scenes
 that only use the released v1 primitive set. A scene containing
-`ChamferedBox`, `Triangle`, or any nonidentity per-primitive rotation requires
-ABI v2 and fails before drawing or mask rasterization when paired with an
-ABI-v1 template. `RotateNext(0f)` and equivalent whole turns remain identity, and
-an unrotated `Line` remains compatible with v1 because it packs as `Capsule`.
+`ChamferedBox`, `Triangle`, or any nonidentity node rotation (including rotated
+text) requires ABI v2 and fails before drawing or mask rasterization when
+paired with an ABI-v1 template. `RotateNext(0f)` and equivalent whole turns
+remain identity, and an unrotated `Line` remains compatible with v1 because it
+packs as `Capsule`.
 
 Define `NOW_SDF_CUSTOM_FINAL_SHADE` to the name of an HLSL function before the
 include. The include declares the function and calls it later, so define the

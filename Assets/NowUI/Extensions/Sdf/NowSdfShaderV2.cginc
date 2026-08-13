@@ -340,9 +340,10 @@ float NowSdfRotatedShapeDistanceV2(
             data2.x);
     }
 
-    // Glyph rotation is not exposed by the public API because Text emits a run
-    // of nodes. Retain a defined result for hand-authored ABI data without
-    // rebuilding a large absolute coordinate from pivot + relativeScenePos.
+    // Text rotates a run rigidly by moving glyph centers around one shared
+    // CPU-side pivot, then rotating each glyph locally around its moved center.
+    // Keep evaluation pivot-relative to avoid rebuilding a large absolute
+    // coordinate from pivot + relativeScenePos.
     if (type < 5.5)
     {
         float2 size = max(data1.zw, 0.0001);

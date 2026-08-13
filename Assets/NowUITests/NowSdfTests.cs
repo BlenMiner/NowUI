@@ -415,6 +415,172 @@ public class NowSdfTests
     }
 
     [Test]
+    public void SdfRotateNextTextUsesSharedRunCenterAndConsumesOnce()
+    {
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        Assert.NotNull(font);
+
+        var position = new Vector2(18f, 20f);
+        var followingRect = new NowRect(2f, 3f, 4f, 5f);
+        const string value = "AB\nC";
+        var baseline = NowSdf.Graph()
+            .Text(position, value, font, 28f, NowFontStyle.Bold);
+        Assert.GreaterOrEqual(baseline.nodes.Count, 3,
+            "The shared-pivot fixture requires glyphs on multiple lines.");
+
+        Vector2 pivot = TextGlyphBoundsCenter(baseline, baseline.nodes.Count);
+        var rotated = NowSdf.Graph()
+            .RotateNext(90f)
+            .Text(position, value, font, 28f, NowFontStyle.Bold)
+            .Box(followingRect);
+
+        int glyphCount = baseline.nodes.Count;
+        Assert.AreEqual(glyphCount + 1, rotated.nodes.Count);
+
+        for (int i = 0; i < glyphCount; ++i)
+        {
+            NowSdfNode source = baseline.nodes[i];
+            NowSdfNode actual = rotated.nodes[i];
+            var sourceCenter = new Vector2(source.data1.x, source.data1.y);
+            var expectedCenter = new Vector2(
+                pivot.x - (sourceCenter.y - pivot.y),
+                pivot.y + (sourceCenter.x - pivot.x));
+            var actualCenter = new Vector2(actual.data1.x, actual.data1.y);
+
+            Assert.AreEqual(NowSdfShapeType.Glyph, actual.type);
+            Assert.AreEqual(expectedCenter.x, actualCenter.x, 0.002f,
+                "Every glyph center must orbit one shared text-run pivot.");
+            Assert.AreEqual(expectedCenter.y, actualCenter.y, 0.002f,
+                "Every glyph center must orbit one shared text-run pivot.");
+            Assert.AreEqual(source.data1.z, actual.data1.z);
+            Assert.AreEqual(source.data1.w, actual.data1.w);
+            Assert.AreEqual(source.data2, actual.data2);
+            Assert.AreEqual(source.uv, actual.uv,
+                "Text rotation must preserve each glyph's atlas rectangle.");
+            AssertRotation(actual.rotation, 90f);
+
+            float halfWidth = Mathf.Max(actual.data1.z * 0.5f, 0.0001f);
+            float halfHeight = Mathf.Max(actual.data1.w * 0.5f, 0.0001f);
+            AssertRotatedBoundsContain(actual, actualCenter, actualCenter + new Vector2(-halfWidth, -halfHeight));
+            AssertRotatedBoundsContain(actual, actualCenter, actualCenter + new Vector2(-halfWidth, halfHeight));
+            AssertRotatedBoundsContain(actual, actualCenter, actualCenter + new Vector2(halfWidth, -halfHeight));
+            AssertRotatedBoundsContain(actual, actualCenter, actualCenter + new Vector2(halfWidth, halfHeight));
+        }
+
+        Assert.AreEqual(Vector2.zero, rotated.nodes[glyphCount].rotation,
+            "RotateNext must be consumed by the complete Text call, not leak past its glyphs.");
+
+        double measuredMaxX = double.NegativeInfinity;
+        double measuredMaxY = double.NegativeInfinity;
+        for (int i = 0; i < rotated.nodes.Count; ++i)
+        {
+            measuredMaxX = System.Math.Max(measuredMaxX, rotated.nodes[i].bounds.xMax);
+            measuredMaxY = System.Math.Max(measuredMaxY, rotated.nodes[i].bounds.yMax);
+        }
+        Assert.AreEqual((float)measuredMaxX, rotated.measureSize.x, 0.0001f,
+            "Graph measurement must be rebuilt from the moved glyph-node bounds.");
+        Assert.AreEqual((float)measuredMaxY, rotated.measureSize.y, 0.0001f,
+            "Graph measurement must be rebuilt from the moved glyph-node bounds.");
+
+        var scene = NowSdf.Scene("sdf-shared-pivot-text-upload")
+            .RotateNext(90f)
+            .Text(position, value, font, 28f, NowFontStyle.Bold)
+            .Box(followingRect);
+        Assert.AreEqual(rotated.measureSize.x, scene.Measure().x, 0.002f);
+        Assert.AreEqual(rotated.measureSize.y, scene.Measure().y, 0.002f,
+            "Cached-scene measurement must include the rotated text bounds.");
+
+        using (_drawList.Begin(new Vector2(96f, 96f)))
+            scene.Draw(new NowRect(0f, 0f, 96f, 96f));
+
+        var shapeMeta = _drawList.batches[0].material.GetVectorArray("_SdfShapeMeta");
+        for (int i = 0; i < glyphCount; ++i)
+            AssertRotation(new Vector2(shapeMeta[i].z, shapeMeta[i].w), 90f);
+        Assert.AreEqual(Vector2.zero,
+            new Vector2(shapeMeta[glyphCount].z, shapeMeta[glyphCount].w));
+    }
+
+    [Test]
+    public void SdfTextRotationScopesComposePerRun()
+    {
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        Assert.NotNull(font);
+
+        const float fontSize = 18f;
+        int firstCount = NowSdf.Graph().Text(new Vector2(4f, 4f), "AB", font, fontSize).nodes.Count;
+        int nextCount = NowSdf.Graph().Text(new Vector2(28f, 4f), "CD", font, fontSize).nodes.Count;
+        int scopedCount = NowSdf.Graph().Text(new Vector2(52f, 4f), "EF", font, fontSize).nodes.Count;
+        int finalCount = NowSdf.Graph().Text(new Vector2(76f, 4f), "G", font, fontSize).nodes.Count;
+        Assert.Greater(firstCount, 0);
+        Assert.Greater(nextCount, 0);
+        Assert.Greater(scopedCount, 0);
+        Assert.Greater(finalCount, 0);
+
+        var graph = NowSdf.Graph()
+            .PushRotation(20f)
+                .Text(new Vector2(4f, 4f), "AB", font, fontSize)
+                .RotateNext(10f)
+                .Text(new Vector2(28f, 4f), "CD", font, fontSize)
+                .Text(new Vector2(52f, 4f), "EF", font, fontSize)
+            .PopRotation()
+            .Text(new Vector2(76f, 4f), "G", font, fontSize);
+
+        int cursor = 0;
+        AssertRotationRange(graph, cursor, firstCount, 20f);
+        cursor += firstCount;
+        AssertRotationRange(graph, cursor, nextCount, 30f,
+            "RotateNext must compose with the pushed angle for one complete text run.");
+        cursor += nextCount;
+        AssertRotationRange(graph, cursor, scopedCount, 20f,
+            "RotateNext must be consumed while the pushed rotation remains active.");
+        cursor += scopedCount;
+        AssertRotationRange(graph, cursor, finalCount, 0f,
+            "PopRotation must restore identity for following text runs.");
+        cursor += finalCount;
+        Assert.AreEqual(cursor, graph.nodes.Count);
+    }
+
+    [Test]
+    public void SdfEmptyTextConsumesRotateNextAndPreservesPushedRotation()
+    {
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        Assert.NotNull(font);
+        var rect = new NowRect(8f, 10f, 24f, 12f);
+
+        var graph = NowSdf.Graph()
+            .PushRotation(15f)
+                .RotateNext(10f)
+                .Text(new Vector2(4f, 4f), string.Empty, font, 20f)
+                .Box(rect)
+            .PopRotation();
+
+        Assert.AreEqual(1, graph.nodes.Count);
+        AssertRotation(graph.nodes[0].rotation, 15f,
+            "An empty Text call must consume RotateNext without clearing its pushed rotation.");
+
+        var noInk = NowSdf.Graph()
+            .RotateNext(90f)
+            .Text(new Vector2(4f, 4f), "\n\t", font, 20f)
+            .Box(rect);
+        Assert.AreEqual(1, noInk.nodes.Count);
+        Assert.AreEqual(Vector2.zero, noInk.nodes[0].rotation,
+            "A text run that emits no glyphs must still consume RotateNext.");
+
+        var emptyScene = NowSdf.Scene(
+                new NowRect(0f, 0f, 48f, 32f),
+                "sdf-empty-rotated-text")
+            .RotateNext(90f)
+            .Text(new Vector2(4f, 4f), string.Empty, font, 20f);
+        Assert.AreEqual(Vector2.zero, emptyScene.Measure());
+
+        using (_drawList.Begin(new Vector2(48f, 32f)))
+            emptyScene.Draw();
+
+        Assert.AreEqual(0, _drawList.batchCount,
+            "A rotated empty text run must remain an empty scene.");
+    }
+
+    [Test]
     public void SdfRotationStackComposesAndRotateNextTargetsOnePrimitive()
     {
         var rect = new NowRect(4f, 6f, 20f, 14f);
@@ -594,6 +760,83 @@ public class NowSdfTests
         Assert.Greater(measured.x, 0f);
         Assert.AreEqual(0, allocated,
             "A warmed cached-scene rotation stack must not allocate managed memory.");
+    }
+
+    [Test]
+    public void SdfRotatedTextDoesNotAllocateAfterWarmup()
+    {
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        Assert.NotNull(font);
+        const string value = "AB\nCD";
+        const float fontSize = 20f;
+        var position = new Vector2(12f, 10f);
+        var graph = NowSdf.Graph();
+        Vector2 measured = default;
+
+        for (int i = 0; i < 8; ++i)
+        {
+            graph.Clear()
+                .PushRotation(15f)
+                .RotateNext(10f)
+                .Text(position, value, font, fontSize)
+                .PopRotation();
+            measured = graph.measureSize;
+        }
+
+        long before;
+        try
+        {
+            before = System.GC.GetAllocatedBytesForCurrentThread();
+        }
+        catch (System.MissingMethodException)
+        {
+            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
+            return;
+        }
+
+        for (int i = 0; i < 128; ++i)
+        {
+            graph.Clear()
+                .PushRotation(15f)
+                .RotateNext(10f)
+                .Text(position, value, font, fontSize)
+                .PopRotation();
+            measured = graph.measureSize;
+        }
+
+        long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Greater(measured.x, 0f);
+        Assert.Greater(measured.y, 0f);
+        Assert.AreEqual(0, allocated,
+            "Rebuilding a warmed rotated text graph must not allocate managed memory.");
+
+        var sceneId = new NowId(0x5DF21);
+        for (int i = 0; i < 8; ++i)
+        {
+            measured = NowSdf.Scene(sceneId)
+                .PushRotation(15f)
+                .RotateNext(10f)
+                .Text(position, value, font, fontSize)
+                .PopRotation()
+                .Measure();
+        }
+
+        before = System.GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 128; ++i)
+        {
+            measured = NowSdf.Scene(sceneId)
+                .PushRotation(15f)
+                .RotateNext(10f)
+                .Text(position, value, font, fontSize)
+                .PopRotation()
+                .Measure();
+        }
+
+        allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Greater(measured.x, 0f);
+        Assert.Greater(measured.y, 0f);
+        Assert.AreEqual(0, allocated,
+            "Rebuilding a warmed cached scene with rotated text must not allocate managed memory.");
     }
 
     [Test]
@@ -865,41 +1108,26 @@ public class NowSdfTests
     }
 
     [Test]
-    public void SdfPendingRotateNextRejectsGraphMorphAndTextOperands()
+    public void SdfPendingRotationRejectsGraphAndMorphOperands()
     {
         var from = NowSdf.Graph().Circle(new Vector2(16f, 16f), 8f);
         var to = NowSdf.Graph().Box(new NowRect(8f, 8f, 16f, 16f));
         var graphScene = NowSdf.Scene("sdf-rotate-graph-guard").RotateNext(90f);
         var morphScene = NowSdf.Scene("sdf-rotate-morph-guard").RotateNext(90f);
-        var textScene = NowSdf.Scene("sdf-rotate-text-guard").RotateNext(90f);
 
         Assert.Throws<System.InvalidOperationException>(() => graphScene.Graph(from));
         Assert.Throws<System.InvalidOperationException>(() => morphScene.Morph(from, to, 0.5f));
-        Assert.Throws<System.InvalidOperationException>(() =>
-            textScene.Text(new Vector2(4f, 4f), "R", 16f));
-
-        var textGraph = NowSdf.Graph().RotateNext(90f);
-        Assert.Throws<System.InvalidOperationException>(() =>
-            textGraph.Text(new Vector2(4f, 4f), "R", 16f));
-        textGraph.Box(new NowRect(4f, 6f, 20f, 14f));
-        Assert.AreEqual(new Vector2(0f, 1f), textGraph.nodes[0].rotation,
-            "A rejected group operand must leave pending rotation intact.");
 
         var pushedGraphScene = NowSdf.Scene("sdf-pushed-rotation-graph-guard")
             .PushRotation(10f);
         var pushedMorphScene = NowSdf.Scene("sdf-pushed-rotation-morph-guard")
             .PushRotation(10f);
-        var pushedTextScene = NowSdf.Scene("sdf-pushed-rotation-text-guard")
-            .PushRotation(10f);
         var graphError = Assert.Throws<System.InvalidOperationException>(() =>
             pushedGraphScene.Graph(from));
         var morphError = Assert.Throws<System.InvalidOperationException>(() =>
             pushedMorphScene.Morph(from, to, 0.5f));
-        var textError = Assert.Throws<System.InvalidOperationException>(() =>
-            pushedTextScene.Text(new Vector2(4f, 4f), "R", 16f));
-        StringAssert.Contains("per-primitive rotation", graphError.Message);
-        StringAssert.Contains("per-primitive rotation", morphError.Message);
-        StringAssert.Contains("per-primitive rotation", textError.Message);
+        StringAssert.Contains("layer or group transform", graphError.Message);
+        StringAssert.Contains("layer or group transform", morphError.Message);
     }
 
     [Test]
@@ -2059,6 +2287,53 @@ public class NowSdfTests
         Assert.AreEqual(0, NowSdf.cacheCount);
         Assert.AreEqual(0, NowSdf.maskTextureCount);
         Assert.AreEqual(0, NowSdf.cachedMaskPixels);
+    }
+
+    static Vector2 TextGlyphBoundsCenter(NowSdfGraph graph, int glyphCount)
+    {
+        Assert.Greater(glyphCount, 0);
+        Assert.GreaterOrEqual(graph.nodes.Count, glyphCount);
+        double minX = double.PositiveInfinity;
+        double minY = double.PositiveInfinity;
+        double maxX = double.NegativeInfinity;
+        double maxY = double.NegativeInfinity;
+
+        for (int i = 0; i < glyphCount; ++i)
+        {
+            NowSdfNode node = graph.nodes[i];
+            Assert.AreEqual(NowSdfShapeType.Glyph, node.type);
+            double halfWidth = System.Math.Max((double)node.data1.z * 0.5d, 0.0001d);
+            double halfHeight = System.Math.Max((double)node.data1.w * 0.5d, 0.0001d);
+            minX = System.Math.Min(minX, (double)node.data1.x - halfWidth);
+            minY = System.Math.Min(minY, (double)node.data1.y - halfHeight);
+            maxX = System.Math.Max(maxX, (double)node.data1.x + halfWidth);
+            maxY = System.Math.Max(maxY, (double)node.data1.y + halfHeight);
+        }
+
+        return new Vector2(
+            (float)(minX * 0.5d + maxX * 0.5d),
+            (float)(minY * 0.5d + maxY * 0.5d));
+    }
+
+    static void AssertRotationRange(
+        NowSdfGraph graph,
+        int start,
+        int count,
+        float angleDegrees,
+        string message = null)
+    {
+        Assert.Greater(count, 0);
+        Assert.LessOrEqual(start + count, graph.nodes.Count);
+        float normalized = angleDegrees % 360f;
+
+        for (int i = start; i < start + count; ++i)
+        {
+            Assert.AreEqual(NowSdfShapeType.Glyph, graph.nodes[i].type);
+            if (normalized == 0f)
+                Assert.AreEqual(Vector2.zero, graph.nodes[i].rotation, message);
+            else
+                AssertRotation(graph.nodes[i].rotation, angleDegrees, message);
+        }
     }
 
     static void AssertRotation(Vector2 actual, float angleDegrees, string message = null)

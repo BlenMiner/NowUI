@@ -211,9 +211,10 @@ namespace NowUI.Sdf
         }
 
         /// <summary>
-        /// Rotates the next analytic primitive around its natural center, relative
-        /// to any pushed rotation. Angles are degrees and positive values rotate
-        /// clockwise in UI space.
+        /// Rotates the next analytic primitive around its natural center, or
+        /// the next text run around the center of its emitted glyph bounds,
+        /// relative to any pushed rotation. Angles are degrees and positive
+        /// values rotate clockwise in UI space.
         /// </summary>
         public NowSdfGraph RotateNext(float angleDegrees)
         {
@@ -223,8 +224,9 @@ namespace NowUI.Sdf
         }
 
         /// <summary>
-        /// Pushes a persistent relative rotation for analytic primitives. Nested
-        /// pushes compose, and <see cref="PopRotation"/> restores the parent rotation.
+        /// Pushes a persistent relative rotation for analytic primitives and
+        /// text runs. Nested pushes compose, and <see cref="PopRotation"/>
+        /// restores the parent rotation.
         /// </summary>
         public NowSdfGraph PushRotation(float angleDegrees)
         {
@@ -601,6 +603,174 @@ namespace NowUI.Sdf
             if (rotation != Vector2.zero)
                 bounds = RotatedShapeBounds(type, data1, data2, bounds, rotation, nameof(bounds));
 
+            AppendNode(type, data1, data2, bounds, uv, useTexture, operation, smoothing, rotation, true);
+
+            if (resetPendingModifiers)
+            {
+                _operation = NowSdfOperation.Union;
+                _smoothing = 0f;
+                _nextRotationDegrees = 0f;
+            }
+        }
+
+        void AddText(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle, int tabSpaces)
+        {
+            if (font == null || string.IsNullOrEmpty(value) || fontSize <= 0f)
+            {
+                SkipPrimitive();
+                return;
+            }
+
+            int firstGlyph = _nodes.Count;
+            int previousRequiredMaterialAbi = _requiredMaterialAbi;
+            Texture previousTexture = _texture;
+            NowRect previousBounds = _bounds;
+            bool previouslyHadBounds = _hasBounds;
+
+            try
+            {
+                font.EnsureGlyphs(value, fontSize, fontStyle);
+
+                float lineHeight = font.GetLineHeight(fontStyle) * fontSize;
+                float baseline = font.GetAscender(fontStyle) * fontSize;
+                float left = position.x;
+                float x = position.x;
+                float y = position.y;
+                int spaces = Mathf.Max(1, tabSpaces);
+                var glyphOperation = _nodes.Count == 0 ? NowSdfOperation.Union : _operation;
+                float glyphSmoothing = _nodes.Count == 0 ? 0f : _smoothing;
+                Vector2 textRotation = EffectiveRotation();
+                double textMinX = double.PositiveInfinity;
+                double textMinY = double.PositiveInfinity;
+                double textMaxX = double.NegativeInfinity;
+                double textMaxY = double.NegativeInfinity;
+
+                for (int i = 0; i < value.Length; ++i)
+                {
+                    int codepoint = NowFont.ReadCodepoint(value, ref i);
+
+                    if (codepoint == '\n')
+                    {
+                        x = left;
+                        y += lineHeight;
+                        continue;
+                    }
+
+                    if (codepoint == '\t')
+                    {
+                        if (font.TryResolveGlyph(' ', fontSize, fontStyle, out _, out var space, out _))
+                            x += space.advance * fontSize * spaces;
+
+                        continue;
+                    }
+
+                    if (!font.TryResolveGlyph(codepoint, fontSize, fontStyle, out var resolvedFont, out var glyph, out var material))
+                        continue;
+
+                    if (resolvedFont != null &&
+                        !resolvedFont.isColor &&
+                        !Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right) &&
+                        material != null &&
+                        material.mainTexture != null &&
+                        TryBindTexture(material.mainTexture))
+                    {
+                        var rect = GlyphRect(x, y, baseline, fontSize, glyph);
+                        var uv = new Vector4(
+                            glyph.atlasBounds.left,
+                            glyph.atlasBounds.bottom,
+                            glyph.atlasBounds.right - glyph.atlasBounds.left,
+                            glyph.atlasBounds.top - glyph.atlasBounds.bottom);
+                        float range = resolvedFont.GetScreenPixelRange(codepoint, fontSize);
+                        AppendNode(
+                            NowSdfShapeType.Glyph,
+                            RectData(rect),
+                            new Vector4(range, 0f, 0f, 0f),
+                            rect,
+                            uv,
+                            false,
+                            glyphOperation,
+                            glyphSmoothing,
+                            textRotation,
+                            textRotation == Vector2.zero);
+
+                        var node = _nodes[_nodes.Count - 1];
+                        double halfWidth = Math.Abs((double)node.data1.z) * 0.5d;
+                        double halfHeight = Math.Abs((double)node.data1.w) * 0.5d;
+                        textMinX = Math.Min(textMinX, (double)node.data1.x - halfWidth);
+                        textMinY = Math.Min(textMinY, (double)node.data1.y - halfHeight);
+                        textMaxX = Math.Max(textMaxX, (double)node.data1.x + halfWidth);
+                        textMaxY = Math.Max(textMaxY, (double)node.data1.y + halfHeight);
+                    }
+
+                    x += glyph.advance * fontSize;
+                }
+
+                if (textRotation != Vector2.zero && _nodes.Count > firstGlyph)
+                {
+                    var textPivot = new Vector2(
+                        (float)(textMinX * 0.5d + textMaxX * 0.5d),
+                        (float)(textMinY * 0.5d + textMaxY * 0.5d));
+                    ValidateFinite(textPivot, nameof(position));
+
+                    _bounds = previousBounds;
+                    _hasBounds = previouslyHadBounds;
+
+                    for (int i = firstGlyph; i < _nodes.Count; ++i)
+                    {
+                        var node = _nodes[i];
+                        var glyphCenter = new Vector2(node.data1.x, node.data1.y);
+                        Vector2 transformedCenter = RotatePointAroundPivot(
+                            glyphCenter,
+                            textPivot,
+                            textRotation,
+                            nameof(position));
+                        node.data1.x = transformedCenter.x;
+                        node.data1.y = transformedCenter.y;
+                        var transformedRect = new NowRect(
+                            (float)((double)transformedCenter.x - (double)node.data1.z * 0.5d),
+                            (float)((double)transformedCenter.y - (double)node.data1.w * 0.5d),
+                            node.data1.z,
+                            node.data1.w);
+                        ValidateFiniteRect(transformedRect, nameof(position));
+                        node.bounds = RotatedShapeBounds(
+                            node.type,
+                            node.data1,
+                            node.data2,
+                            transformedRect,
+                            node.rotation,
+                            nameof(position));
+                        _nodes[i] = node;
+                        Encapsulate(node.bounds);
+                    }
+                }
+            }
+            catch
+            {
+                if (_nodes.Count > firstGlyph)
+                    _nodes.RemoveRange(firstGlyph, _nodes.Count - firstGlyph);
+
+                _requiredMaterialAbi = previousRequiredMaterialAbi;
+                _texture = previousTexture;
+                _bounds = previousBounds;
+                _hasBounds = previouslyHadBounds;
+                throw;
+            }
+
+            SkipPrimitive();
+        }
+
+        void AppendNode(
+            NowSdfShapeType type,
+            Vector4 data1,
+            Vector4 data2,
+            NowRect bounds,
+            Vector4 uv,
+            bool useTexture,
+            NowSdfOperation operation,
+            float smoothing,
+            Vector2 rotation,
+            bool encapsulate)
+        {
             operation = _nodes.Count == 0 ? NowSdfOperation.Union : operation;
             _nodes.Add(new NowSdfNode
             {
@@ -623,90 +793,23 @@ namespace NowUI.Sdf
                 _requiredMaterialAbi = 2;
             }
 
-            Encapsulate(bounds);
-
-            if (resetPendingModifiers)
-            {
-                _operation = NowSdfOperation.Union;
-                _smoothing = 0f;
-                _nextRotationDegrees = 0f;
-            }
+            if (encapsulate)
+                Encapsulate(bounds);
         }
 
-        void AddText(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle, int tabSpaces)
+        static Vector2 RotatePointAroundPivot(
+            Vector2 point,
+            Vector2 pivot,
+            Vector2 rotation,
+            string parameterName)
         {
-            ThrowIfPendingRotationCannotApplyTo("Text");
-
-            if (font == null || string.IsNullOrEmpty(value) || fontSize <= 0f)
-            {
-                SkipPrimitive();
-                return;
-            }
-
-            font.EnsureGlyphs(value, fontSize, fontStyle);
-
-            float lineHeight = font.GetLineHeight(fontStyle) * fontSize;
-            float baseline = font.GetAscender(fontStyle) * fontSize;
-            float left = position.x;
-            float x = position.x;
-            float y = position.y;
-            int spaces = Mathf.Max(1, tabSpaces);
-            var glyphOperation = _nodes.Count == 0 ? NowSdfOperation.Union : _operation;
-            float glyphSmoothing = _nodes.Count == 0 ? 0f : _smoothing;
-
-            for (int i = 0; i < value.Length; ++i)
-            {
-                int codepoint = NowFont.ReadCodepoint(value, ref i);
-
-                if (codepoint == '\n')
-                {
-                    x = left;
-                    y += lineHeight;
-                    continue;
-                }
-
-                if (codepoint == '\t')
-                {
-                    if (font.TryResolveGlyph(' ', fontSize, fontStyle, out _, out var space, out _))
-                        x += space.advance * fontSize * spaces;
-
-                    continue;
-                }
-
-                if (!font.TryResolveGlyph(codepoint, fontSize, fontStyle, out var resolvedFont, out var glyph, out var material))
-                    continue;
-
-                if (resolvedFont != null &&
-                    !resolvedFont.isColor &&
-                    !Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right) &&
-                    material != null &&
-                    material.mainTexture != null &&
-                    TryBindTexture(material.mainTexture))
-                {
-                    var rect = GlyphRect(x, y, baseline, fontSize, glyph);
-                    var uv = new Vector4(
-                        glyph.atlasBounds.left,
-                        glyph.atlasBounds.bottom,
-                        glyph.atlasBounds.right - glyph.atlasBounds.left,
-                        glyph.atlasBounds.top - glyph.atlasBounds.bottom);
-                    float range = resolvedFont.GetScreenPixelRange(codepoint, fontSize);
-
-                    Add(
-                        NowSdfShapeType.Glyph,
-                        RectData(rect),
-                        new Vector4(range, 0f, 0f, 0f),
-                        rect,
-                        uv,
-                        false,
-                        glyphOperation,
-                        glyphSmoothing,
-                        false);
-                }
-
-                x += glyph.advance * fontSize;
-            }
-
-            SkipPrimitive();
+            double x = (double)point.x - pivot.x;
+            double y = (double)point.y - pivot.y;
+            var result = new Vector2(
+                (float)((double)pivot.x + (double)rotation.x * x - (double)rotation.y * y),
+                (float)((double)pivot.y + (double)rotation.y * x + (double)rotation.x * y));
+            ValidateFinite(result, parameterName);
+            return result;
         }
 
         bool TryBindTexture(Texture texture)
@@ -1118,15 +1221,6 @@ namespace NowUI.Sdf
             }
 
             return new Vector2(data1.x, data1.y);
-        }
-
-        void ThrowIfPendingRotationCannotApplyTo(string operand)
-        {
-            if (EffectiveRotation() == Vector2.zero)
-                return;
-
-            throw new InvalidOperationException(
-                $"SDF per-primitive rotation applies only to analytic primitives; {operand} requires a layer or group transform.");
         }
 
         static float RoundDownToFloat(double value)
@@ -1743,9 +1837,10 @@ namespace NowUI.Sdf
         }
 
         /// <summary>
-        /// Rotates the next analytic primitive around its natural center, relative
-        /// to any pushed rotation. Angles are degrees and positive values rotate
-        /// clockwise in UI space.
+        /// Rotates the next analytic primitive around its natural center, or
+        /// the next text run around the center of its emitted glyph bounds,
+        /// relative to any pushed rotation. Angles are degrees and positive
+        /// values rotate clockwise in UI space.
         /// </summary>
         public NowSdfBuilder RotateNext(float angleDegrees)
         {
@@ -1754,8 +1849,9 @@ namespace NowUI.Sdf
         }
 
         /// <summary>
-        /// Pushes a persistent relative rotation for following analytic primitives.
-        /// Nested pushes compose until their matching <see cref="PopRotation"/>.
+        /// Pushes a persistent relative rotation for following analytic
+        /// primitives and text runs. Nested pushes compose until their matching
+        /// <see cref="PopRotation"/>.
         /// </summary>
         public NowSdfBuilder PushRotation(float angleDegrees)
         {
@@ -2618,9 +2714,11 @@ namespace NowUI.Sdf
 
         public void Text(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle, int tabSpaces)
         {
-            ThrowIfPendingRotationCannotApplyTo("Text");
             PrepareActivePrimitive();
-            _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Text(position, value, font, fontSize, fontStyle, tabSpaces);
+            _activeGraph
+                .SetOperation(_pendingOperation, _pendingSmoothing)
+                .SetNextRotationDegrees(EffectiveRotationDegrees())
+                .Text(position, value, font, fontSize, fontStyle, tabSpaces);
             ResetPendingPrimitiveModifiers();
             Encapsulate(_activeGraph.measureSize);
         }
@@ -2853,7 +2951,7 @@ namespace NowUI.Sdf
                 return;
 
             throw new InvalidOperationException(
-                $"SDF per-primitive rotation applies only to analytic primitives; {operand} requires a layer or group transform.");
+                $"SDF rotation applies to analytic primitives and text runs; {operand} requires a layer or group transform.");
         }
 
         void Encapsulate(Vector2 size)
