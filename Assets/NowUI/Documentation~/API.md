@@ -38,9 +38,12 @@ when enabled. No manual NowUI input define is required.
   navigation only at the host boundary.
 - When `com.unity.modules.uielements` is resolved, `NowVisualElement` and
   `NowLayoutVisualElement` provide the UI Toolkit integration.
-- `NowLayout`: fluent `Row`/`Column` containers, growth, justification,
-  `ReserveRect` bridging, manual-host `RunMeasured`, content measurement,
-  labels, controls, Lottie reservations, and content rect caching.
+- `NowLayout`: fluent `Row`/`Horizontal` and `Column`/`Vertical` container
+  aliases, growth, justification, `ReserveRect` bridging, manual-host
+  `RunMeasured`, content measurement, labels, controls, Lottie reservations,
+  and content rect caching. The lower-level immediate-scope forms are named
+  `HorizontalScope` and `VerticalScope`; code using their former directional
+  names must migrate to the explicit `Scope` suffix.
 - `NowInput`, `INowInputProvider`, `INowSurfaceToScreenMapper`, `NowFocus`,
   `NowControls`, `NowControlState`,
   `NowFilePicker`, `NowViewStack`, `INowView`, `NowViews`, and control

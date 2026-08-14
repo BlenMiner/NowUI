@@ -121,7 +121,7 @@ namespace NowUI
             // never escape the control visually.
             var mask = Now.Mask(rect);
             var area = NowLayout.Area(NowId.Resolved(areaKey), rect, padding);
-            var row = NowLayout.Horizontal(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
+            var row = NowLayout.HorizontalScope(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
         }
@@ -445,7 +445,7 @@ namespace NowUI
 
             var mask = Now.Mask(rect);
             var area = NowLayout.Area(NowId.Resolved(areaKey), renderer.ToggleContentRect(theme, rect, glyphSize));
-            var row = NowLayout.Horizontal(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
+            var row = NowLayout.HorizontalScope(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, clicked);
         }
@@ -576,7 +576,7 @@ namespace NowUI
 
             var mask = Now.Mask(rect);
             var area = NowLayout.Area(NowId.Resolved(areaKey), renderer.ToggleContentRect(theme, rect, glyphSize));
-            var row = NowLayout.Horizontal(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
+            var row = NowLayout.HorizontalScope(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
         }

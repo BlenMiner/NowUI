@@ -63,7 +63,8 @@ present in the project's resolved dependency graph.
 
 Choose the placement API by one simple rule: use `Now` when you already have
 rects, and use `NowLayout` when you want the library to arrange rows and
-columns.
+columns. Its fluent containers provide identical `Row`/`Horizontal` and
+`Column`/`Vertical` naming pairs.
 
 For explicit placement, derive from the one-pass `NowGraphic` host and draw
 directly into known bounds:
@@ -159,8 +160,9 @@ Toolkit, world-space, and manual-host examples, see
   shaping for ligatures, kerning, and complex scripts where the plugin is
   present, falling back per codepoint elsewhere; contextual font stack via
   `using (Now.Font(...))`.
-- **Layout** — fluent `Row`/`Column` containers with gaps, padding, growth,
-  alignment, justification, and exact-measure layout hosts.
+- **Layout** — fluent `Row`/`Horizontal` and `Column`/`Vertical` container
+  aliases with gaps, padding, growth, alignment, justification, and
+  exact-measure layout hosts.
   [Documentation~/Layout.md](Assets/NowUI/Documentation~/Layout.md)
 - **Input** — immediate-mode `NowInput.Interact` with hover, press, drag,
   and click across mouse, touch, and keyboard on either built-in backend, plus

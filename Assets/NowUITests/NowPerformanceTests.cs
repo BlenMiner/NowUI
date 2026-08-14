@@ -300,7 +300,7 @@ public class NowPerformanceTests
 
         using (NowLayout.Area(menuListRect))
         using (NowLayout.ScrollView("perf-docs-menu").Begin())
-        using (NowLayout.Vertical(spacing: 4f, padding: 2f))
+        using (NowLayout.VerticalScope(spacing: 4f, padding: 2f))
         {
             for (int i = 0; i < DocsMenuItems.Length; ++i)
             {
@@ -346,7 +346,7 @@ public class NowPerformanceTests
     static void DrawDocsMarkdown(NowRect rect)
     {
         using (NowLayout.Area(rect))
-        using (NowLayout.Vertical(spacing: 8f))
+        using (NowLayout.VerticalScope(spacing: 8f))
         {
             NowMarkdown.Document(DocsMarkdownSample).Draw();
         }
@@ -355,7 +355,7 @@ public class NowPerformanceTests
     static void DrawDocsControls(NowThemeAsset theme, NowRect rect)
     {
         using (NowLayout.Area(rect))
-        using (NowLayout.Vertical(spacing: 8f))
+        using (NowLayout.VerticalScope(spacing: 8f))
         {
             NowMarkdown.Document("## Control cluster\n\nA docs page often mixes explanatory text with compact controls.").Draw();
 
@@ -365,7 +365,7 @@ public class NowPerformanceTests
             int choice = 1;
             string[] choices = { "Auto", "Fast", "Balanced", "High" };
 
-            using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+            using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
             {
                 NowLayout.Checkbox("Animate").Draw(ref flag);
                 NowLayout.Label("Blur").SetWidth(34f).Draw();
@@ -433,7 +433,7 @@ public class NowPerformanceTests
 
             using (NowLayout.Area(content))
             using (NowLayout.ScrollView("perf-docs-content").Begin())
-            using (NowLayout.Vertical(spacing: 12f))
+            using (NowLayout.VerticalScope(spacing: 12f))
             {
                 NowMarkdown.Document(DocsMarkdownSample).Draw();
                 DrawDocsControls(theme, NowLayout.ReserveRect(height: 210f, stretchWidth: true));

@@ -23,7 +23,8 @@ First choose placement:
 
 - Use `Now` when you already have a `NowRect` and want exact placement.
 - Use `NowLayout` when NowUI should arrange rows, columns, spacing, growth, and
-  alignment.
+  alignment. `Row`/`Horizontal` and `Column`/`Vertical` are identical fluent
+  naming pairs.
 - Use `NowLayout.ReserveRect(...)` to reserve layout space for an explicit
   `Now` primitive.
 

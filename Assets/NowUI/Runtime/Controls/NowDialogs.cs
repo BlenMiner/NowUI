@@ -145,7 +145,7 @@ namespace NowUI
                     .SetHeight(Mathf.Max(38f, panel.height - 132f))
                     .Draw();
 
-                using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+                using (NowLayout.HorizontalScope(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
                 {
                     NowLayout.FlexibleSpace();
 

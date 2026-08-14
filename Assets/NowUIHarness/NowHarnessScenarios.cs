@@ -1293,7 +1293,7 @@ namespace NowUI.Editor
             using (NowLayout.Area(left.Inset(18f), spacing: 12f))
             {
                 Section("Actions");
-                using (NowLayout.Horizontal(spacing: 8f))
+                using (NowLayout.HorizontalScope(spacing: 8f))
                 {
                     NowLayout.Button("Primary").SetWidth(104f).Draw();
                     NowLayout.Button("Outline").SetStyle(NowRectangleStyle.Outline).SetWidth(104f).Draw();
@@ -1304,7 +1304,7 @@ namespace NowUI.Editor
                 NowLayout.Checkbox("Enable glass").Draw(ref checkedValue);
                 NowLayout.Checkbox("Use compact rows").Draw(ref otherValue);
 
-                using (NowLayout.Horizontal(spacing: 8f))
+                using (NowLayout.HorizontalScope(spacing: 8f))
                 {
                     NowLayout.Radio("Low", quality == 0).Draw();
                     NowLayout.Radio("Medium", quality == 1).Draw();
@@ -2183,7 +2183,7 @@ namespace NowUI.Editor
             {
                 Header("Docking and Node Graph", "Two extension surfaces rendered from generated harness state.");
 
-                using (NowLayout.Horizontal(spacing: 14f))
+                using (NowLayout.HorizontalScope(spacing: 14f))
                 {
                     var dockRect = NowLayout.ReserveRect(width: 430f, height: 390f);
                     SubmitDockWindows();
@@ -2242,7 +2242,7 @@ namespace NowUI.Editor
 
         static void SliderRow(string label, ref float value, float min, float max)
         {
-            using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+            using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
             {
                 NowLayout.Label(label).SetWidth(92f).Draw();
                 var sliderRect = NowLayout.ReserveRect(190f, 30f, align: NowLayoutAlign.Center);

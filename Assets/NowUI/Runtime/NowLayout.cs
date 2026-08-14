@@ -364,7 +364,8 @@ namespace NowUI
 
     /// <summary>
     /// Disposable handle returned by <see cref="NowLayout.Area(NowRect)"/>,
-    /// <see cref="NowLayout.Horizontal()"/> and <see cref="NowLayout.Vertical()"/>,
+    /// <see cref="NowLayout.HorizontalScope(float, float, NowLayoutAlign, float, float, bool, bool, string, int)"/>
+    /// and <see cref="NowLayout.VerticalScope(float, float, NowLayoutAlign, float, float, bool, bool, string, int)"/>,
     /// mirroring the <see cref="NowInput.Begin(Vector2)"/> flow: wrap it in a using
     /// statement and the group ends when the scope is disposed.
     /// </summary>
@@ -866,10 +867,10 @@ namespace NowUI
 
     /// <summary>
     /// Immediate-mode automatic layout for NowUI, similar in spirit to GUILayout.
-    /// Declare a root <see cref="Column(NowRect, string, int)"/> or
-    /// <see cref="Row(NowRect, string, int)"/>, nest fluent row/column containers,
-    /// and reserve controls or rects that flow automatically with spacing, padding,
-    /// growth and alignment. Containers are closed with a using statement:
+    /// Declare a root <see cref="Column(NowRect, string, int)"/>/<see cref="Vertical(NowRect, string, int)"/>
+    /// or <see cref="Row(NowRect, string, int)"/>/<see cref="Horizontal(NowRect, string, int)"/>, nest fluent
+    /// containers, and reserve controls or rects that flow automatically with spacing,
+    /// padding, growth and alignment. Containers are closed with a using statement:
     ///
     /// <code>
     /// using (NowLayout.Column(panelRect).Padding(16).Gap(8).Begin())
@@ -1612,11 +1613,12 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Starts a horizontal group. The common settings are optional parameters
-        /// (<c>Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center)</c>);
+        /// Starts a lower-level horizontal group immediately. The common settings
+        /// are optional parameters
+        /// (<c>HorizontalScope(spacing: 8, alignItems: NowLayoutAlign.Center)</c>);
         /// pass a <see cref="NowLayoutOptions"/> for anything beyond them.
         /// </summary>
-        public static NowLayoutScope Horizontal(
+        public static NowLayoutScope HorizontalScope(
             float spacing = 0f,
             float padding = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start,
@@ -1630,7 +1632,7 @@ namespace NowUI
             return BeginGroup(true, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Horizontal(
+        public static NowLayoutScope HorizontalScope(
             Vector4 padding,
             float spacing = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start,
@@ -1644,7 +1646,7 @@ namespace NowUI
             return BeginGroup(true, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Horizontal(
+        public static NowLayoutScope HorizontalScope(
             in NowLayoutOptions options,
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
@@ -1652,7 +1654,7 @@ namespace NowUI
             return BeginGroup(true, default, options, NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Horizontal(
+        public static NowLayoutScope HorizontalScope(
             NowId id,
             float spacing = 0f,
             float padding = 0f,
@@ -1667,7 +1669,7 @@ namespace NowUI
             return BeginGroup(true, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Horizontal(
+        public static NowLayoutScope HorizontalScope(
             NowId id,
             Vector4 padding,
             float spacing = 0f,
@@ -1682,7 +1684,7 @@ namespace NowUI
             return BeginGroup(true, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Horizontal(
+        public static NowLayoutScope HorizontalScope(
             NowId id,
             in NowLayoutOptions options,
             [CallerFilePath] string file = "",
@@ -1741,11 +1743,11 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Starts a vertical group. The common settings are optional parameters
-        /// (<c>Vertical(spacing: 8, padding: 16)</c>); pass a
+        /// Starts a lower-level vertical group immediately. The common settings
+        /// are optional parameters (<c>VerticalScope(spacing: 8, padding: 16)</c>); pass a
         /// <see cref="NowLayoutOptions"/> for anything beyond them.
         /// </summary>
-        public static NowLayoutScope Vertical(
+        public static NowLayoutScope VerticalScope(
             float spacing = 0f,
             float padding = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start,
@@ -1759,7 +1761,7 @@ namespace NowUI
             return BeginGroup(false, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Vertical(
+        public static NowLayoutScope VerticalScope(
             Vector4 padding,
             float spacing = 0f,
             NowLayoutAlign alignItems = NowLayoutAlign.Start,
@@ -1773,7 +1775,7 @@ namespace NowUI
             return BeginGroup(false, default, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Vertical(
+        public static NowLayoutScope VerticalScope(
             in NowLayoutOptions options,
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
@@ -1781,7 +1783,7 @@ namespace NowUI
             return BeginGroup(false, default, options, NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Vertical(
+        public static NowLayoutScope VerticalScope(
             NowId id,
             float spacing = 0f,
             float padding = 0f,
@@ -1796,7 +1798,7 @@ namespace NowUI
             return BeginGroup(false, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Vertical(
+        public static NowLayoutScope VerticalScope(
             NowId id,
             Vector4 padding,
             float spacing = 0f,
@@ -1811,7 +1813,7 @@ namespace NowUI
             return BeginGroup(false, id, GroupOptions(spacing, padding, alignItems, width, height, stretchWidth, stretchHeight), NowControls.SiteId(file, line));
         }
 
-        public static NowLayoutScope Vertical(
+        public static NowLayoutScope VerticalScope(
             NowId id,
             in NowLayoutOptions options,
             [CallerFilePath] string file = "",
@@ -2240,7 +2242,7 @@ namespace NowUI
             in NowLayoutOptions options,
             int site)
         {
-            ref var parent = ref RequireGroup("Nested layout containers require a root. Begin with NowLayout.Column(rect) or NowLayout.Row(rect), or open the lower-level NowLayout.Area(rect).");
+            ref var parent = ref RequireGroup("Nested layout containers require a root. Begin with NowLayout.Column(rect), Vertical(rect), Row(rect), or Horizontal(rect), or open the lower-level NowLayout.Area(rect).");
 
             int groupId = id.hasValue
                 ? HashCombine(parent.id, id.ResolveStableId(1))
@@ -2875,7 +2877,7 @@ namespace NowUI
             if (_depth == 0)
             {
                 throw new InvalidOperationException(
-                    message ?? "Layout calls require a root. Begin with NowLayout.Column(rect) or NowLayout.Row(rect), or open the lower-level NowLayout.Area(rect).");
+                    message ?? "Layout calls require a root. Begin with NowLayout.Column(rect), Vertical(rect), Row(rect), or Horizontal(rect), or open the lower-level NowLayout.Area(rect).");
             }
 
             return ref Top();

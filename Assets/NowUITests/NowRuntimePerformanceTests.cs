@@ -254,9 +254,9 @@ public class NowRuntimePerformanceTests
                 {
                     for (int g = 0; g < 25; ++g)
                     {
-                        using (NowLayout.Vertical(spacing: 2f, stretchWidth: true))
+                        using (NowLayout.VerticalScope(spacing: 2f, stretchWidth: true))
                         {
-                            using (NowLayout.Horizontal(spacing: 4f, stretchWidth: true))
+                            using (NowLayout.HorizontalScope(spacing: 4f, stretchWidth: true))
                             {
                                 for (int c = 0; c < 18; ++c)
                                     NowLayout.ReserveRect(width: 20f + (c % 4) * 12f, height: 14f);
@@ -265,7 +265,7 @@ public class NowRuntimePerformanceTests
                                 NowLayout.ReserveRect(height: 14f, stretchWidth: true);
                             }
 
-                            using (NowLayout.Horizontal(spacing: 4f, alignItems: NowLayoutAlign.Center))
+                            using (NowLayout.HorizontalScope(spacing: 4f, alignItems: NowLayoutAlign.Center))
                             {
                                 NowLayout.Space(8f);
 
@@ -303,7 +303,7 @@ public class NowRuntimePerformanceTests
                     using (drawList.Begin(FrameSize))
                     using (NowTheme.Scope(theme))
                     using (NowLayout.Area("perf-labels-repeated", new NowRect(16f, 16f, 600f, 4200f)))
-                    using (NowLayout.Vertical(spacing: 2f))
+                    using (NowLayout.VerticalScope(spacing: 2f))
                     {
                         for (int i = 0; i < LabelRows; ++i)
                             NowLayout.Label(RepeatedLabel).Draw();
@@ -340,7 +340,7 @@ public class NowRuntimePerformanceTests
                     using (drawList.Begin(FrameSize))
                     using (NowTheme.Scope(theme))
                     using (NowLayout.Area("perf-labels-unique", new NowRect(16f, 16f, 600f, 4200f)))
-                    using (NowLayout.Vertical(spacing: 2f))
+                    using (NowLayout.VerticalScope(spacing: 2f))
                     {
                         for (int i = 0; i < UniqueLabels.Length; ++i)
                             NowLayout.Label(UniqueLabels[i]).Draw();
@@ -377,7 +377,7 @@ public class NowRuntimePerformanceTests
                     using (drawList.Begin(FrameSize))
                     using (NowTheme.Scope(theme))
                     using (NowLayout.Area("perf-labels-multiline", new NowRect(16f, 16f, 600f, 12600f)))
-                    using (NowLayout.Vertical(spacing: 2f))
+                    using (NowLayout.VerticalScope(spacing: 2f))
                     {
                         for (int i = 0; i < LabelRows; ++i)
                             NowLayout.Label(MultilineLabel).Draw();
@@ -506,7 +506,7 @@ public class NowRuntimePerformanceTests
                 using (NowTheme.Scope(theme))
                 using (NowLayout.Area("perf-stress-area", new NowRect(16f, 16f, 460f, 640f)))
                 using (NowLayout.ScrollView("perf-stress-scroll").Begin())
-                using (NowLayout.Vertical(spacing: 2f, padding: 2f))
+                using (NowLayout.VerticalScope(spacing: 2f, padding: 2f))
                 {
                     for (int i = 0; i < StressButtonIds.Length; ++i)
                         NowLayout.Button("Command").SetId(StressButtonIds[i]).SetStretchWidth().Draw();
@@ -637,7 +637,7 @@ public class NowRuntimePerformanceTests
                     using (NowTheme.Scope(theme))
                     using (NowLayout.Area("perf-scroll-rows-area", new NowRect(16f, 16f, 480f, 640f)))
                     using (NowLayout.ScrollView("perf-scroll-rows").Begin())
-                    using (NowLayout.Vertical(spacing: 2f, padding: 2f))
+                    using (NowLayout.VerticalScope(spacing: 2f, padding: 2f))
                     {
                         for (int i = 0; i < ScrollRowLabels.Length; ++i)
                             NowLayout.Label(ScrollRowLabels[i]).Draw();

@@ -91,7 +91,7 @@ public class NowControlGalleryExample : MonoBehaviour
 
         using (var view = NowLayout.TabView(_tabPages).SetStretchWidth().SetStretchHeight().Begin(ref _page))
         {
-            using (NowLayout.Vertical(padding: 16f, spacing: 12f))
+            using (NowLayout.VerticalScope(padding: 16f, spacing: 12f))
             {
                 switch (view.selected)
                 {
@@ -117,7 +117,7 @@ public class NowControlGalleryExample : MonoBehaviour
 
     void DrawHeader()
     {
-        using (NowLayout.Horizontal(spacing: 10f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 10f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Heading), "Control Gallery").Draw();
             NowLayout.Badge("v0.2").SetStyle(NowRectangleStyle.AccentSoft).Draw();
@@ -131,7 +131,7 @@ public class NowControlGalleryExample : MonoBehaviour
 
     void DrawInputsPage()
     {
-        using (NowLayout.Horizontal(spacing: 8f))
+        using (NowLayout.HorizontalScope(spacing: 8f))
         {
             if (NowLayout.Button("Primary").Draw())
                 _progress = Mathf.Repeat(_progress + 0.1f, 1f);
@@ -156,7 +156,7 @@ public class NowControlGalleryExample : MonoBehaviour
         NowLayout.Switch("Notifications").Draw(ref _notifications);
         NowLayout.Switch("Auto-save").Draw(ref _autoSave);
 
-        using (NowLayout.Horizontal(spacing: 8f))
+        using (NowLayout.HorizontalScope(spacing: 8f))
         {
             for (int i = 0; i < _qualityOptions.Length; ++i)
             {
@@ -177,7 +177,7 @@ public class NowControlGalleryExample : MonoBehaviour
         NowLayout.TextArea().SetPlaceholder("Notes...").SetLines(2, 4).SetStretchWidth().Draw(ref _notes);
 
 #if NOWUI_INPUT_SYSTEM
-        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Body), "Jump").Draw();
             NowLayout.KeyBindingField().SetWidth(120f).Draw(ref _jumpKey);
@@ -196,7 +196,7 @@ public class NowControlGalleryExample : MonoBehaviour
         NowLayout.DatePicker().SetWidth(220f).SetToday(DateTime.Today).Draw(ref _dueDate);
         NowLayout.TimePicker().SetWidth(220f).Set24Hour(false).Draw(ref _alarm);
 
-        using (NowLayout.Horizontal(spacing: 8f))
+        using (NowLayout.HorizontalScope(spacing: 8f))
         {
             if (NowLayout.Chip("Filter: Active").SetSelected(_chipSelected).Draw())
                 _chipSelected = !_chipSelected;
@@ -282,7 +282,7 @@ public class NowControlGalleryExample : MonoBehaviour
             NowContextMenu.End();
         }
 
-        using (NowLayout.Horizontal(spacing: 8f))
+        using (NowLayout.HorizontalScope(spacing: 8f))
         {
             var cornerButton = NowLayout.Button("Open at screen corner").Draw();
 
@@ -329,7 +329,7 @@ public class NowControlGalleryExample : MonoBehaviour
         var split = NowLayout.SplitView().Begin(ref _splitRatio);
 
         using (split.BeginFirst())
-        using (NowLayout.Vertical(padding: 8f, spacing: 4f))
+        using (NowLayout.VerticalScope(padding: 8f, spacing: 4f))
         using (var tree = NowLayout.TreeView(_treeState).Begin())
         {
             if (tree.BeginNode("Assets"))
@@ -354,7 +354,7 @@ public class NowControlGalleryExample : MonoBehaviour
         }
 
         using (split.BeginSecond())
-        using (NowLayout.Vertical(padding: 12f, spacing: 8f))
+        using (NowLayout.VerticalScope(padding: 12f, spacing: 8f))
         {
             NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Subheading), "Details").Draw();
             NowLayout.Label(NowTheme.themeAsset.ResolveText(NowTextStyle.Muted), "Select a row on the left; drag the divider to resize.").Draw();
@@ -436,7 +436,7 @@ public class NowControlGalleryExample : MonoBehaviour
             .Draw();
 
         using (NowLayout.ScrollView().Begin())
-        using (NowLayout.Vertical(padding: new Vector4(0f, 0f, 12f, 0f), spacing: 4f, stretchWidth: true))
+        using (NowLayout.VerticalScope(padding: new Vector4(0f, 0f, 12f, 0f), spacing: 4f, stretchWidth: true))
         {
             NowLayout.Inspector().SetToday(DateTime.Today).Draw(ref _inspectorTarget);
         }

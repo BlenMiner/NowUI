@@ -47,7 +47,7 @@ public class NowGraphicExample : NowLayoutGraphic
             Now.Rectangle(content.rect).SetColor(Color.black).Draw();
             content.Draw();
 
-            using (NowLayout.Horizontal())
+            using (NowLayout.HorizontalScope())
             {
                 NowLayout.Label("N").Draw();
                 NowLayout.Label("o").Draw();
@@ -58,7 +58,7 @@ public class NowGraphicExample : NowLayoutGraphic
                 NowLayout.Label("I").Draw();
             }
 
-            using (NowLayout.Horizontal())
+            using (NowLayout.HorizontalScope())
             {
                 NowLayout.Button("A").Draw();
                 NowLayout.Button("A").Draw();

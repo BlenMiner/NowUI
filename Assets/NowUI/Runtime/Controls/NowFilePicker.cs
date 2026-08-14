@@ -599,14 +599,14 @@ namespace NowUI
 
             using (NowLayout.Area(NowId.Resolved(state.areaId), state.popupRect, spacing: spacing, padding: padding, alignItems: NowLayoutAlign.Start))
             {
-                using (NowLayout.Horizontal(height: titleHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+                using (NowLayout.HorizontalScope(height: titleHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
                 {
                     NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Title), Title(state.mode, state.settings))
                         .SetStretchWidth()
                         .Draw();
                 }
 
-                using (NowLayout.Horizontal(height: addressHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+                using (NowLayout.HorizontalScope(height: addressHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
                 {
                     string parent = state.parentDirectory;
 
@@ -638,7 +638,7 @@ namespace NowUI
 
                 if (hasFileName)
                 {
-                    using (NowLayout.Horizontal(height: fileNameHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+                    using (NowLayout.HorizontalScope(height: fileNameHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
                     {
                         NowLayout.Label("File name:").SetWidth(78f).Draw();
                         if (NowLayout.TextField(NowId.Resolved(state.fileNameFieldId))
@@ -654,7 +654,7 @@ namespace NowUI
 
                 if (hasFilter)
                 {
-                    using (NowLayout.Horizontal(height: filterHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+                    using (NowLayout.HorizontalScope(height: filterHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
                     {
                         NowLayout.Label("File type:").SetWidth(78f).Draw();
                         int filter = state.filterIndex;
@@ -669,7 +669,7 @@ namespace NowUI
                     }
                 }
 
-                using (NowLayout.Horizontal(height: footerHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+                using (NowLayout.HorizontalScope(height: footerHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
                 {
                     if (!string.IsNullOrEmpty(state.error))
                     {

@@ -121,12 +121,12 @@ namespace NowUI
             if (_hasRect)
             {
                 using (NowLayout.Area(NowId.Resolved(NowInput.CombineId(id, AreaSeed)), _rect))
-                using (NowLayout.Vertical(new NowLayoutOptions().SetSpacing(_settings.rowSpacing).SetStretchWidth()))
+                using (NowLayout.VerticalScope(new NowLayoutOptions().SetSpacing(_settings.rowSpacing).SetStretchWidth()))
                     changed = DrawRoot(id, ref boxed);
             }
             else
             {
-                using (NowLayout.Vertical(GroupOptions()))
+                using (NowLayout.VerticalScope(GroupOptions()))
                     changed = DrawRoot(id, ref boxed);
             }
 
@@ -864,7 +864,7 @@ namespace NowUI
             {
                 DrawRowLabel(label, settings);
 
-                using (NowLayout.Vertical(new NowLayoutOptions().SetSpacing(settings.rowSpacing).SetStretchWidth()))
+                using (NowLayout.VerticalScope(new NowLayoutOptions().SetSpacing(settings.rowSpacing).SetStretchWidth()))
                 {
                     changed |= DrawSubVector("Center", ref center, settings);
                     changed |= DrawSubVector("Extent", ref extents, settings);
@@ -889,7 +889,7 @@ namespace NowUI
             {
                 DrawRowLabel(label, settings);
 
-                using (NowLayout.Vertical(new NowLayoutOptions().SetSpacing(settings.rowSpacing).SetStretchWidth()))
+                using (NowLayout.VerticalScope(new NowLayoutOptions().SetSpacing(settings.rowSpacing).SetStretchWidth()))
                 {
                     changed |= DrawSubVector("Position", ref position, settings);
                     changed |= DrawSubVector("Size", ref size, settings);
@@ -906,7 +906,7 @@ namespace NowUI
         static bool DrawSubVector(string label, ref Vector3 value, in NowInspectorSettings settings)
         {
             using (NowControls.IdScope(label))
-            using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(settings.cellSpacing).SetAlignItems(NowLayoutAlign.Center).SetStretchWidth()))
+            using (NowLayout.HorizontalScope(new NowLayoutOptions().SetSpacing(settings.cellSpacing).SetAlignItems(NowLayoutAlign.Center).SetStretchWidth()))
             {
                 NowLayout.Label(label).SetWidth(52f).Draw();
                 return NowLayout.VectorField().SetStretchWidth().Draw(ref value);
@@ -916,7 +916,7 @@ namespace NowUI
         static bool DrawSubVector(string label, ref Vector3Int value, in NowInspectorSettings settings)
         {
             using (NowControls.IdScope(label))
-            using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(settings.cellSpacing).SetAlignItems(NowLayoutAlign.Center).SetStretchWidth()))
+            using (NowLayout.HorizontalScope(new NowLayoutOptions().SetSpacing(settings.cellSpacing).SetAlignItems(NowLayoutAlign.Center).SetStretchWidth()))
             {
                 NowLayout.Label(label).SetWidth(52f).Draw();
                 return NowLayout.VectorField().SetStretchWidth().Draw(ref value);
@@ -1008,7 +1008,7 @@ namespace NowUI
                         }
                     }
 
-                    using (NowLayout.Horizontal(new NowLayoutOptions().SetSpacing(settings.cellSpacing).SetStretchWidth()))
+                    using (NowLayout.HorizontalScope(new NowLayoutOptions().SetSpacing(settings.cellSpacing).SetStretchWidth()))
                     {
                         NowLayout.ReserveRect(stretchWidth: true);
 
@@ -1097,7 +1097,7 @@ namespace NowUI
 
         static NowLayoutScope BeginRow(in NowInspectorSettings settings)
         {
-            return NowLayout.Horizontal(new NowLayoutOptions()
+            return NowLayout.HorizontalScope(new NowLayoutOptions()
                 .SetSpacing(settings.cellSpacing)
                 .SetAlignItems(NowLayoutAlign.Center)
                 .SetStretchWidth());
@@ -1105,7 +1105,7 @@ namespace NowUI
 
         static NowLayoutScope BeginIndent(in NowInspectorSettings settings)
         {
-            return NowLayout.Vertical(new NowLayoutOptions()
+            return NowLayout.VerticalScope(new NowLayoutOptions()
                 .SetPadding(new Vector4(settings.indent, 0f, 0f, 0f))
                 .SetSpacing(settings.rowSpacing)
                 .SetStretchWidth());

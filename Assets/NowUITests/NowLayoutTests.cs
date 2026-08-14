@@ -74,6 +74,25 @@ public class NowLayoutTests
         return rect;
     }
 
+    static void DrawConditionalHorizontalAliasGroup()
+    {
+        using (NowLayout.Horizontal().Begin())
+            NowLayout.ReserveRect(10f, 80f);
+    }
+
+    static NowRect DrawStableHorizontalAliasGroup()
+    {
+        NowRect rect;
+
+        using (var group = NowLayout.Horizontal().Begin())
+        {
+            rect = group.rect;
+            NowLayout.ReserveRect(10f, 30f);
+        }
+
+        return rect;
+    }
+
     static void DrawWeightedGrowRow(float secondWeight, out NowRect first, out NowRect second)
     {
         using (NowLayout.Row(new NowRect(0f, 0f, 400f, 20f))
@@ -336,7 +355,7 @@ public class NowLayoutTests
         AssertRect(new Vector4(4, 31, 100, 20), areaSecond);
 
         NowLayout.Area(new Vector4(0, 0, 300, 400));
-        NowLayout.Horizontal(new Vector4(3, 4, 5, 6), spacing: 7);
+        NowLayout.HorizontalScope(new Vector4(3, 4, 5, 6), spacing: 7);
 
         Vector4 rowFirst = NowLayout.ReserveRect(10, 8);
         Vector4 rowSecond = NowLayout.ReserveRect(20, 8);
@@ -352,7 +371,7 @@ public class NowLayoutTests
     public void HorizontalGroupPlacesRectsAlongX()
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
-        NowLayout.Horizontal(spacing: 8);
+        NowLayout.HorizontalScope(spacing: 8);
 
         Vector4 first = NowLayout.ReserveRect(60, 30);
         Vector4 second = NowLayout.ReserveRect(40, 30);
@@ -416,10 +435,44 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void HorizontalAndVerticalAreFluentRowAndColumnAliases()
+    {
+        NowRect horizontalFirst;
+        NowRect horizontalSecond;
+
+        using (NowLayout.Horizontal(new NowRect(10f, 20f, 200f, 80f))
+            .Padding(5f, 6f)
+            .Gap(7f)
+            .Begin())
+        {
+            horizontalFirst = NowLayout.ReserveRect(20f, 10f);
+            horizontalSecond = NowLayout.ReserveRect(30f, 10f);
+        }
+
+        AssertRect(new NowRect(15f, 26f, 20f, 10f), horizontalFirst);
+        AssertRect(new NowRect(42f, 26f, 30f, 10f), horizontalSecond);
+
+        NowRect verticalFirst;
+        NowRect verticalSecond;
+
+        using (NowLayout.Vertical(new NowRect(10f, 20f, 200f, 80f))
+            .Padding(5f, 6f)
+            .Gap(7f)
+            .Begin())
+        {
+            verticalFirst = NowLayout.ReserveRect(20f, 10f);
+            verticalSecond = NowLayout.ReserveRect(30f, 10f);
+        }
+
+        AssertRect(new NowRect(15f, 26f, 20f, 10f), verticalFirst);
+        AssertRect(new NowRect(15f, 43f, 30f, 10f), verticalSecond);
+    }
+
+    [Test]
     public void GroupFillsParentCrossAxisByDefault()
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
-        var row = NowLayout.Horizontal();
+        var row = NowLayout.HorizontalScope();
         NowLayout.EndHorizontal();
         NowLayout.EndArea();
 
@@ -449,7 +502,7 @@ public class NowLayoutTests
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
 
-        NowLayout.Horizontal();
+        NowLayout.HorizontalScope();
         NowLayout.ReserveRect(100, 30);
         NowLayout.EndHorizontal();
 
@@ -468,7 +521,7 @@ public class NowLayoutTests
             NowControls.ResetControlIdOccurrences();
             NowLayout.Area("area", new Vector4(0, 0, 400, 300));
 
-            var row = NowLayout.Horizontal();
+            var row = NowLayout.HorizontalScope();
             NowLayout.ReserveRect(100, 30);
             NowLayout.EndHorizontal();
 
@@ -528,10 +581,30 @@ public class NowLayoutTests
     }
 
     [Test]
+    public void HorizontalAliasForwardsItsCallerIdentity()
+    {
+        using (NowLayout.Area("horizontal-alias-call-site", new NowRect(0f, 0f, 300f, 300f)))
+        {
+            DrawConditionalHorizontalAliasGroup();
+            DrawStableHorizontalAliasGroup();
+        }
+
+        NowControls.ResetControlIdOccurrences();
+
+        NowRect stable;
+
+        using (NowLayout.Area("horizontal-alias-call-site", new NowRect(0f, 0f, 300f, 300f)))
+            stable = DrawStableHorizontalAliasGroup();
+
+        Assert.AreEqual(30f, stable.height, 0.001f,
+            "the alias must preserve its caller's site instead of sharing the factory wrapper's site");
+    }
+
+    [Test]
     public void CrossStretchedGroupMeasuresContentNotAllocation()
     {
         NowLayout.Area("measure-area", new Vector4(0, 0, 60, 60));
-        NowLayout.Horizontal();
+        NowLayout.HorizontalScope();
         NowLayout.ReserveRect(128, 128);
         NowLayout.ReserveRect(40, 16);
         NowLayout.EndHorizontal();
@@ -547,7 +620,7 @@ public class NowLayoutTests
     {
         using (NowLayout.Area("root-area-cache", new NowRect(0f, 0f, 100f, 100f)))
         {
-            using (NowLayout.Vertical("nested-group-cache"))
+            using (NowLayout.VerticalScope("nested-group-cache"))
                 NowLayout.ReserveRect(40f, 20f);
         }
 
@@ -603,7 +676,7 @@ public class NowLayoutTests
     public void AlignItemsAlignsChildrenWithPerChildOverride()
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300));
-        NowLayout.Horizontal(height: 100, alignItems: NowLayoutAlign.Center);
+        NowLayout.HorizontalScope(height: 100, alignItems: NowLayoutAlign.Center);
 
         Vector4 inherited = NowLayout.ReserveRect(50, 20);
         Vector4 overridden = NowLayout.ReserveRect(50, 20, align: NowLayoutAlign.End);
@@ -655,7 +728,7 @@ public class NowLayoutTests
         {
             NowControls.ResetControlIdOccurrences();
             NowLayout.Area("shrink-area", new Vector4(0, 0, 300, 300));
-            NowLayout.Horizontal();
+            NowLayout.HorizontalScope();
             NowLayout.ReserveRect(200, 20);
             NowLayout.EndHorizontal();
             NowLayout.EndArea();
@@ -663,7 +736,7 @@ public class NowLayoutTests
 
         NowControls.ResetControlIdOccurrences();
         NowLayout.Area("shrink-area", new Vector4(0, 0, 300, 300));
-        NowLayout.Horizontal();
+        NowLayout.HorizontalScope();
         NowLayout.ReserveRect(50, 20);
         NowLayout.EndHorizontal();
         NowLayout.EndArea();
@@ -701,7 +774,7 @@ public class NowLayoutTests
         {
             NowControls.ResetControlIdOccurrences();
             NowLayout.Area("area", new Vector4(0, 0, 400, 300));
-            NowLayout.Horizontal();
+            NowLayout.HorizontalScope();
 
             NowLayout.ReserveRect(100, 20);
             b = NowLayout.ReserveRect(NowLayout.StretchWidth(1).SetHeight(20));
@@ -1048,7 +1121,7 @@ public class NowLayoutTests
     public void NestedGroupsComposePaddingAndPosition()
     {
         NowLayout.Area(new Vector4(0, 0, 400, 300), padding: 10);
-        NowLayout.Vertical(padding: 5, height: 100);
+        NowLayout.VerticalScope(padding: 5, height: 100);
 
         Vector4 inner = NowLayout.ReserveRect(50, 20);
 
@@ -1063,7 +1136,7 @@ public class NowLayoutTests
     {
         using (NowLayout.Area(new Vector4(0, 0, 400, 300)))
         {
-            using (var row = NowLayout.Horizontal())
+            using (var row = NowLayout.HorizontalScope())
             {
                 Assert.AreEqual(400f, row.width, 0.001f);
                 NowLayout.ReserveRect(10, 10);
@@ -1103,7 +1176,7 @@ public class NowLayoutTests
     public void OutOfOrderLayoutDisposeThrowsWithoutCorruptingStack()
     {
         var area = NowLayout.Area(new NowRect(0, 0, 100, 100));
-        var row = NowLayout.Horizontal();
+        var row = NowLayout.HorizontalScope();
 
         try
         {
@@ -1140,6 +1213,9 @@ public class NowLayoutTests
         var width = default(NowLayoutOptions).SetWidth(50f);
 
         Assert.Throws<InvalidOperationException>(() => NowLayout.Row(rect).Width(50f));
+        Assert.Throws<InvalidOperationException>(() => NowLayout.Horizontal(rect).Width(50f));
+        Assert.Throws<InvalidOperationException>(() => NowLayout.Column(rect).Height(50f));
+        Assert.Throws<InvalidOperationException>(() => NowLayout.Vertical(rect).Height(50f));
         Assert.Throws<InvalidOperationException>(() =>
         {
             using var area = NowLayout.Area(rect, width);
@@ -1368,7 +1444,7 @@ public class NowLayoutTests
 
         NowLayout.RunMeasured(new Vector4(0, 0, 400, 300), () =>
         {
-            using (var row = NowLayout.Horizontal())
+            using (var row = NowLayout.HorizontalScope())
             {
                 NowLayout.ReserveRect(100, 30);
 
@@ -1658,7 +1734,7 @@ public class NowLayoutTests
     public void MismatchedEndThrows()
     {
         NowLayout.Area(new Vector4(0, 0, 100, 100));
-        NowLayout.Horizontal();
+        NowLayout.HorizontalScope();
 
         Assert.Throws<InvalidOperationException>(NowLayout.EndVertical);
     }
@@ -1667,7 +1743,7 @@ public class NowLayoutTests
     public void EndAreaWithOpenGroupThrows()
     {
         NowLayout.Area(new Vector4(0, 0, 100, 100));
-        NowLayout.Vertical();
+        NowLayout.VerticalScope();
 
         Assert.Throws<InvalidOperationException>(NowLayout.EndArea);
     }

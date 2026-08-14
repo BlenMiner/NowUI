@@ -491,7 +491,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         using (NowLayout.Area(610001, rect, spacing: 9f, padding: 0f, alignItems: NowLayoutAlign.Start))
         {
-            using (NowLayout.Horizontal(height: 30f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 9f))
+            using (NowLayout.HorizontalScope(height: 30f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 9f))
             {
                 NowRect badge = NowLayout.ReserveRect(30f, 30f);
                 Now.Rectangle(badge)
@@ -500,7 +500,7 @@ public class NowDocsExample : NowLayoutGraphic
                     .Draw();
                 DrawCenteredText(theme, badge, "N", 16f, accentText, bold: true);
 
-                using (NowLayout.Vertical(spacing: 0f, stretchWidth: true))
+                using (NowLayout.VerticalScope(spacing: 0f, stretchWidth: true))
                 {
                     NowLayout.Label("NowUI")
                         .SetFontSize(15f)
@@ -547,7 +547,7 @@ public class NowDocsExample : NowLayoutGraphic
     {
         using (NowLayout.Area(rect))
         using (NowLayout.ScrollView("docs-menu").Begin())
-        using (NowLayout.Vertical(spacing: 3f, padding: 2f))
+        using (NowLayout.VerticalScope(spacing: 3f, padding: 2f))
         {
             bool drewAny = false;
 
@@ -598,7 +598,7 @@ public class NowDocsExample : NowLayoutGraphic
     {
         Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
 
-        using (NowLayout.Horizontal(height: 20f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 7f))
+        using (NowLayout.HorizontalScope(height: 20f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 7f))
         {
             NowLayout.Label(entry.icon)
                 .SetFontSize(9f)
@@ -768,11 +768,11 @@ public class NowDocsExample : NowLayoutGraphic
 
         using (NowLayout.Area(contentRect))
         using (NowLayout.ScrollView($"docs-scroll-{_selected}").Begin())
-        using (NowLayout.Horizontal(stretchWidth: true))
+        using (NowLayout.HorizontalScope(stretchWidth: true))
         {
             NowLayout.FlexibleSpace();
 
-            using (NowLayout.Vertical(width: contentWidth, spacing: 0f))
+            using (NowLayout.VerticalScope(width: contentWidth, spacing: 0f))
             {
                 DrawDocsBreadcrumb(theme);
                 DrawDocsPageContent(theme);
@@ -866,7 +866,7 @@ public class NowDocsExample : NowLayoutGraphic
         Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
         Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
 
-        using (NowLayout.Horizontal(height: 16f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+        using (NowLayout.HorizontalScope(height: 16f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
         {
             NowLayout.Label(SectionTitleFor(_selected).ToUpperInvariant())
                 .SetFontSize(10f)
@@ -1099,7 +1099,7 @@ public class NowDocsExample : NowLayoutGraphic
     {
         NowMarkdown.Document("# Docking demo\n\nDrag tabs onto a pane edge to split, across the tab bar to merge or reorder, or outside the dockspace to float. A drop guide shows where the tab will land, and the layout commits when you release. The layout below is a retained `NowDockSpace`, while each panel's content is still submitted every frame.").Draw();
 
-        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
         {
             if (NowLayout.Button("Reset layout").Draw())
             {
@@ -1161,7 +1161,7 @@ public class NowDocsExample : NowLayoutGraphic
         NowLayout.Label("Dock this tab into another panel or split the workspace.").SetFontSize(12f).Draw();
         NowLayout.FlexibleSpace();
 
-        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label("Exposure").SetWidth(72f).Draw();
             NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _dockDemoExposure);
@@ -1187,7 +1187,7 @@ public class NowDocsExample : NowLayoutGraphic
         NowLayout.Label(DockDemoObjects[_dockDemoSelection]).SetFontSize(13f).Draw();
         NowLayout.Checkbox("Show scene grid").Draw(ref _dockDemoGrid);
 
-        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label("Exposure").SetWidth(72f).Draw();
             NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _dockDemoExposure);
@@ -1585,15 +1585,15 @@ public class NowDocsExample : NowLayoutGraphic
 
         NowMarkdown.Document("# Markup demo\n\nThe panel below is rendered from a constrained XML-like markup string. Controls write to `NowMarkupState`, actions mutate state keys, and click/change/action events are returned to the host each frame.").Draw();
 
-        using (NowLayout.Horizontal(spacing: 12f, stretchWidth: true))
+        using (NowLayout.HorizontalScope(spacing: 12f, stretchWidth: true))
         {
-            using (NowLayout.Vertical(width: 430f, spacing: 8f))
+            using (NowLayout.VerticalScope(width: 430f, spacing: 8f))
             {
                 var result = NowMarkup.Document(MarkupDemoSample).Draw(_markupDemoState);
                 ConsumeMarkupDemoEvents(result);
             }
 
-            using (NowLayout.Vertical(spacing: 8f, stretchWidth: true))
+            using (NowLayout.VerticalScope(spacing: 8f, stretchWidth: true))
             {
                 NowMarkdown.Document("## State").Draw();
 
@@ -1643,7 +1643,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     static void DrawMarkupDemoStateLine(NowThemeAsset themeAsset, string key, string value)
     {
-        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label(key)
                 .SetWidth(86f)
@@ -1845,7 +1845,7 @@ public class NowDocsExample : NowLayoutGraphic
     {
         NowMarkdown.Document("# Custom material demo\n\nThis demo is rendered through the active NowUI host. The large panel below is an ordinary `Now.Rectangle` using a generated noise texture and a custom UGUI material via `SetCanvasMaterial(...)`.").Draw();
 
-        using (NowLayout.Horizontal(spacing: 12f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 12f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Checkbox("Animate").Draw(ref _customMaterialAnimate);
 
@@ -2021,7 +2021,7 @@ public class NowDocsExample : NowLayoutGraphic
         NowGlassSettings.diagnosticsEnabled = _glassDemoDebug;
         NowMarkdown.Document("# Glass demo\n\nThis page is rendered by the UGUI docs browser. UGUI glass automatically uses the expensive backdrop path when a `Now.Glass` batch is present: it replays the NowUI batches behind each glass pane into a texture, blurs that texture, then keeps the foreground labels as sharp UGUI geometry.").Draw();
 
-        using (NowLayout.Horizontal(spacing: 12f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 12f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Checkbox("Animate").Draw(ref _glassDemoAnimate);
 
@@ -2035,7 +2035,7 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.Dropdown(GlassQualityLabels).SetWidth(118f).Draw(ref _glassDemoQuality);
         }
 
-        using (NowLayout.Horizontal(spacing: 12f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 12f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label("Radius").SetWidth(48f).Draw();
             NowLayout.Slider(0f, 44f).SetWidth(120f).Draw(ref _glassDemoRadius);
@@ -2311,14 +2311,14 @@ public class NowDocsExample : NowLayoutGraphic
     {
         NowMarkdown.Document("# Effects demo\n\n`NowEffects.Modifier(...)` captures ordinary draw commands inside a scope, then deforms the captured vertices. Mesh mode keeps text and geometry crisp; texture mode flattens the scope first and deforms one textured surface.").Draw();
 
-        using (NowLayout.Horizontal(spacing: 12f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 12f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Checkbox("Texture backend").Draw(ref _effectsDemoTexture);
             NowLayout.Checkbox("Wave").Draw(ref _effectsDemoWave);
             NowLayout.Checkbox("Auto").Draw(ref _effectsDemoAuto);
         }
 
-        using (NowLayout.Horizontal(spacing: 10f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 10f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label("Progress").SetWidth(74f).Draw();
             if (!_effectsDemoAuto)
@@ -2327,7 +2327,7 @@ public class NowDocsExample : NowLayoutGraphic
                 NowLayout.Label("Animated").SetFontSize(12f).SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
         }
 
-        using (NowLayout.Horizontal(spacing: 10f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 10f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label("Subdivision").SetWidth(74f).Draw();
             NowLayout.Slider(1f, 10f).SetStretchWidth().Draw(ref _effectsDemoSubdivision);
@@ -2504,7 +2504,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         bool queueRender = false;
 
-        using (NowLayout.Horizontal(spacing: 12f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 12f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Checkbox("Auto rotate").Draw(ref _modelPreviewDemoAutoRotate);
             NowLayout.Checkbox("Pause rendering").Draw(ref _modelPreviewDemoPaused);
@@ -2517,7 +2517,7 @@ public class NowDocsExample : NowLayoutGraphic
                 queueRender = true;
         }
 
-        using (NowLayout.Horizontal(spacing: 10f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 10f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label("Angle").SetWidth(46f).Draw();
 
@@ -2548,7 +2548,7 @@ public class NowDocsExample : NowLayoutGraphic
                 .Draw(ref _modelPreviewDemoWaveAmplitude);
         }
 
-        using (NowLayout.Horizontal(spacing: 14f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 14f, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Checkbox("Use scene lighting").Draw(ref _modelPreviewDemoSceneLighting);
             NowLayout.Checkbox("Post processing").Draw(ref _modelPreviewDemoPostProcessing);
@@ -2755,7 +2755,7 @@ public class NowDocsExample : NowLayoutGraphic
             " The field owns the browser UI and returns the selected path; your code still owns the" +
             " file read, write, import, or export operation.").Draw();
 
-        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
         {
             if (NowLayout.Button("Clear paths").SetWidth(104f).Draw())
             {
@@ -2793,7 +2793,7 @@ public class NowDocsExample : NowLayoutGraphic
                 .SetStretchWidth()
                 .Draw();
 
-            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+            using (NowLayout.HorizontalScope(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
             {
                 NowLayout.Label("Open").SetWidth(74f).Draw();
 
@@ -2813,7 +2813,7 @@ public class NowDocsExample : NowLayoutGraphic
                 }
             }
 
-            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+            using (NowLayout.HorizontalScope(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
             {
                 NowLayout.Label("Save").SetWidth(74f).Draw();
 
@@ -2832,7 +2832,7 @@ public class NowDocsExample : NowLayoutGraphic
                 }
             }
 
-            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+            using (NowLayout.HorizontalScope(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
             {
                 NowLayout.Label("Folder").SetWidth(74f).Draw();
 
@@ -2943,7 +2943,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         EnsureViewStackDemoHome();
 
-        using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
         {
             if (NowLayout.Button("Reset").SetWidth(86f).Draw())
                 ResetViewStackDemo();
@@ -3017,7 +3017,7 @@ public class NowDocsExample : NowLayoutGraphic
                 .SetFontSize(12f)
                 .Draw();
 
-            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            using (NowLayout.HorizontalScope(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
             {
                 if (NowLayout.Button("Open details").SetWidth(128f).Draw())
                     OpenViewStackDetails(context.stack);
@@ -3032,7 +3032,7 @@ public class NowDocsExample : NowLayoutGraphic
                     .Draw();
             }
 
-            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            using (NowLayout.HorizontalScope(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
             {
                 NowLayout.Checkbox("Sync enabled").Draw(ref _viewStackDemoSync);
                 NowLayout.Label("Progress").SetWidth(58f).SetColor(muted).SetFontSize(12f).Draw();
@@ -3055,7 +3055,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         using (NowLayout.Area(640102, body, spacing: 10f, padding: 0f, alignItems: NowLayoutAlign.Start))
         {
-            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            using (NowLayout.HorizontalScope(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
             {
                 if (NowLayout.Button("Back").SetWidth(86f).SetStyle(NowRectangleStyle.Surface).Draw())
                     context.Close();
@@ -3076,7 +3076,7 @@ public class NowDocsExample : NowLayoutGraphic
                 .SetFontSize(12f)
                 .Draw();
 
-            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            using (NowLayout.HorizontalScope(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
             {
                 NowLayout.Label("Shared progress").SetWidth(112f).SetColor(muted).SetFontSize(12f).Draw();
                 NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _viewStackDemoProgress);
@@ -3107,7 +3107,7 @@ public class NowDocsExample : NowLayoutGraphic
                 .SetColor(muted)
                 .Draw();
 
-            using (NowLayout.Horizontal(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            using (NowLayout.HorizontalScope(height: 34f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
             {
                 NowLayout.FlexibleSpace();
 
@@ -3295,7 +3295,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         NowMarkdown.Document("## Gallery").Draw();
 
-        using (NowLayout.Horizontal(spacing: 16, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 16, alignItems: NowLayoutAlign.Center))
         {
             for (int i = 0; i < _lotties.Length; ++i)
             {
@@ -3306,7 +3306,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         NowMarkdown.Document("## Playback\n\n`SetTime(Time.time)` plays; `SetNormalizedTime` pins a frame for scrubbing.").Draw();
 
-        using (NowLayout.Horizontal(spacing: 12, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 12, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Checkbox("Scrub").Draw(ref _lottieScrub);
 
@@ -3324,7 +3324,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         NowMarkdown.Document("## Sizes\n\nThe same asset scales with the layout box — geometry, not pixels.").Draw();
 
-        using (NowLayout.Horizontal(spacing: 16, alignItems: NowLayoutAlign.End))
+        using (NowLayout.HorizontalScope(spacing: 16, alignItems: NowLayoutAlign.End))
         {
             NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(24).Draw();
             NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(48).Draw();
@@ -3333,7 +3333,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         NowMarkdown.Document("## Tinting\n\n`SetColor` multiplies the animation's own colors.").Draw();
 
-        using (NowLayout.Horizontal(spacing: 16, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 16, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(56).Draw();
             NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(56).SetColor(themeAsset.GetColor(NowColorToken.Accent, Color.blue)).Draw();
@@ -3397,7 +3397,7 @@ public class NowDocsExample : NowLayoutGraphic
     {
         EnsureGalleryState();
 
-        using (NowLayout.Vertical(spacing: 8f, stretchWidth: true))
+        using (NowLayout.VerticalScope(spacing: 8f, stretchWidth: true))
             DrawControlsGalleryContent(theme);
 
         NowControlState.RequestRepaint();
@@ -3412,7 +3412,7 @@ public class NowDocsExample : NowLayoutGraphic
         if (intro.clickedLink != null)
             NavigateLink(intro.clickedLink);
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             if (NowLayout.Button("Save").Draw())
                 ++_gallerySaves;
@@ -3425,13 +3425,13 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.FlexibleSpace();
         }
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Determinate");
             NowLayout.ProgressBar(_galleryVolume).SetStretchWidth().Draw();
         }
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Indeterminate");
             NowLayout.ProgressBar().SetIndeterminate().SetTime(Time.time).SetStretchWidth().Draw();
@@ -3439,14 +3439,14 @@ public class NowDocsExample : NowLayoutGraphic
 
         NowMarkdown.Document("## Toggles").Draw();
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 16f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 16f))
         {
             NowLayout.Checkbox("Enable shadows").Draw(ref _galleryShadows);
             NowLayout.Switch("Notifications").Draw(ref _galleryNotifications);
             NowLayout.FlexibleSpace();
         }
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 16f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 16f))
         {
             if (NowLayout.Radio("Low", _galleryQuality == 0).Draw()) _galleryQuality = 0;
             if (NowLayout.Radio("Medium", _galleryQuality == 1).Draw()) _galleryQuality = 1;
@@ -3456,14 +3456,14 @@ public class NowDocsExample : NowLayoutGraphic
 
         NowMarkdown.Document("## Sliders & numbers").Draw();
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Volume");
             NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _galleryVolume);
             NowLayout.Label($"{Mathf.RoundToInt(_galleryVolume * 100f)}%").SetWidth(40f).SetFontSize(12f).Draw();
         }
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Speed");
             NowLayout.FloatField().SetRange(0f, 100f).SetSpinner(0.5f).SetStretchWidth().Draw(ref _gallerySpeed);
@@ -3471,7 +3471,7 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.IntField().SetRange(0, 99).SetSpinner().SetStretchWidth().Draw(ref _galleryLives);
         }
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Spawn");
             NowLayout.Vector3Field().SetStretchWidth().Draw(ref _gallerySpawn);
@@ -3479,7 +3479,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         NowMarkdown.Document("## Text").Draw();
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Name");
             NowLayout.TextField("gallery-name").SetPlaceholder("Player name...").SetStretchWidth().Draw(ref _galleryName);
@@ -3489,7 +3489,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         NowMarkdown.Document("## Selection").Draw();
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Resolution");
             NowLayout.Dropdown(GalleryResolutions).SetStretchWidth().Draw(ref _galleryResolution);
@@ -3497,7 +3497,7 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.EnumDropdown<GalleryQuality>().SetStretchWidth().Draw(ref _galleryQualityLevel);
         }
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Country");
             NowLayout.ComboBox(GalleryCountries).SetStretchWidth().Draw(ref _galleryCountry);
@@ -3505,7 +3505,7 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.MaskField(GalleryChannelNames, "gallery-channels").SetStretchWidth().Draw(ref _galleryChannels);
         }
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Tabs");
             NowLayout.TabBar(GalleryTabs).SetStretchWidth().Draw(ref _galleryTab);
@@ -3518,7 +3518,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         NowMarkdown.Document("## Pickers").Draw();
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Tint");
             NowLayout.ColorPicker("gallery-tint").SetShowAlpha(false).SetStretchWidth().Draw(ref _galleryTint);
@@ -3526,13 +3526,13 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.GradientField("gallery-ramp").SetStretchWidth().Draw(ref _galleryRamp);
         }
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Falloff");
             NowLayout.AnimationCurveField("gallery-falloff").SetTimeRange(0f, 1f).SetStretchWidth().Draw(ref _galleryFalloff);
         }
 
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Due date");
             NowLayout.DatePicker().SetStretchWidth().Draw(ref _galleryDate);
@@ -3541,7 +3541,7 @@ public class NowDocsExample : NowLayoutGraphic
         }
 
 #if NOWUI_INPUT_SYSTEM
-        using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+        using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
             DrawGalleryLabel(theme, "Jump key");
             NowLayout.KeyBindingField("gallery-jump").SetStretchWidth().Draw(ref _galleryJumpKey);
@@ -3554,15 +3554,15 @@ public class NowDocsExample : NowLayoutGraphic
 
         if (_galleryAdvanced)
         {
-            using (NowLayout.Vertical(spacing: 8f, padding: 10f, stretchWidth: true))
+            using (NowLayout.VerticalScope(spacing: 8f, padding: 10f, stretchWidth: true))
             {
-                using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+                using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
                 {
                     DrawGalleryLabel(theme, "Flags");
                     NowLayout.EnumFlags<GalleryChannels>().SetStretchWidth().Draw(ref _galleryChannelFlags);
                 }
 
-                using (NowLayout.Horizontal(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
+                using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
                 {
                     DrawGalleryLabel(theme, "Hit layers");
                     NowLayout.LayerMaskField("gallery-layers").SetStretchWidth().Draw(ref _galleryLayers);

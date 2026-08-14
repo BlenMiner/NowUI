@@ -4,7 +4,8 @@ using UnityEngine;
 
 /// <summary>
 /// The same search page expressed as layout intent. NowLayoutGraphic owns the
-/// exact measure/draw cycle, so ordinary Row/Column scopes are all this needs.
+/// exact measure/draw cycle, so ordinary Horizontal/Vertical scopes are all
+/// this needs.
 /// Control events are passive during measurement: side effects guarded by
 /// clicked/submitted results run only once, during the real draw pass.
 /// Reusable colors and small drawing helpers live in NowLandingPageShared.cs.
@@ -25,7 +26,7 @@ public sealed class NowLayoutLandingPageExample : NowLayoutGraphic
         bool minimalChrome = view.height < 360f;
         bool stackButtons = view.width < 360f;
 
-        using (NowLayout.Column(view).Begin())
+        using (NowLayout.Vertical(view).Begin())
         {
             if (!minimalChrome)
                 DrawHeader(compact, shortView, view.width);
@@ -39,7 +40,7 @@ public sealed class NowLayoutLandingPageExample : NowLayoutGraphic
 
     void DrawHeader(bool compact, bool shortView, float viewWidth)
     {
-        using (NowLayout.Row()
+        using (NowLayout.Horizontal()
             .FillWidth()
             .Height(shortView ? 52f : 64f)
             .Padding(compact ? 16f : 24f, 6f)
@@ -94,7 +95,7 @@ public sealed class NowLayoutLandingPageExample : NowLayoutGraphic
 
         // Symmetric padding plus Center makes the vertical intent explicit; there
         // is no compensating bottom-padding offset to reverse-engineer.
-        using (NowLayout.Column()
+        using (NowLayout.Vertical()
             .Grow()
             .Padding(horizontalPadding, verticalPadding)
             .AlignChildren(NowLayoutAlign.Center)
@@ -140,7 +141,7 @@ public sealed class NowLayoutLandingPageExample : NowLayoutGraphic
             if (primaryActionOnly)
             {
                 NowLayout.Space(8f);
-                using (NowLayout.Column().FillWidth(NowLandingPageShared.SearchButtonWidth).Begin())
+                using (NowLayout.Vertical().FillWidth(NowLandingPageShared.SearchButtonWidth).Begin())
                 {
                     if (NowLayout.Button("Now Search")
                         .SetStretchWidth()
@@ -171,7 +172,7 @@ public sealed class NowLayoutLandingPageExample : NowLayoutGraphic
     {
         if (stacked)
         {
-            using (NowLayout.Column()
+            using (NowLayout.Vertical()
                 .FillWidth(280f)
                 .Gap(NowLandingPageShared.ButtonGap)
                 .Begin())
@@ -193,7 +194,7 @@ public sealed class NowLayoutLandingPageExample : NowLayoutGraphic
             return;
         }
 
-        using (NowLayout.Row()
+        using (NowLayout.Horizontal()
             .Width(NowLandingPageShared.SearchButtonWidth + NowLandingPageShared.ButtonGap + NowLandingPageShared.LuckyButtonWidth)
             .Gap(NowLandingPageShared.ButtonGap)
             .Begin())
@@ -220,7 +221,7 @@ public sealed class NowLayoutLandingPageExample : NowLayoutGraphic
     {
         if (compact)
         {
-            using (var footer = NowLayout.Column()
+            using (var footer = NowLayout.Vertical()
                 .FillWidth()
                 .Height(76f)
                 .Padding(8f, 5f)
@@ -234,7 +235,7 @@ public sealed class NowLayoutLandingPageExample : NowLayoutGraphic
             return;
         }
 
-        using (var footer = NowLayout.Row()
+        using (var footer = NowLayout.Horizontal()
             .FillWidth()
             .Height(52f)
             .Padding(22f, 6f)
@@ -244,13 +245,13 @@ public sealed class NowLayoutLandingPageExample : NowLayoutGraphic
         {
             DrawFooterBackground(footer.rect);
 
-            using (NowLayout.Row().Gap(4f).Begin())
+            using (NowLayout.Horizontal().Gap(4f).Begin())
             {
                 DrawFooterLink("About", "landing-about", 64f);
                 DrawFooterLink("How it works", "landing-how", 108f);
             }
 
-            using (NowLayout.Row().Gap(0f).Begin())
+            using (NowLayout.Horizontal().Gap(0f).Begin())
             {
                 DrawFooterLink("Privacy", "landing-privacy", 74f);
                 DrawFooterLink("Settings", "landing-settings", 82f);
@@ -260,7 +261,7 @@ public sealed class NowLayoutLandingPageExample : NowLayoutGraphic
 
     void DrawFooterRow(string left, string right)
     {
-        using (NowLayout.Row()
+        using (NowLayout.Horizontal()
             .FillWidth()
             .Height(30f)
             .Gap(4f)

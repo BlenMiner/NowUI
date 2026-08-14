@@ -44,7 +44,9 @@ size, never produce negative extents, and are alias-safe in this form. Use
 ## Preferred layout API
 
 Declare the root rect with `Column(view)` or `Row(view)`, configure containers
-fluently, and finish each declaration with `Begin()` in a `using` statement:
+fluently, and finish each declaration with `Begin()` in a `using` statement.
+`Vertical` is an exact naming alias for `Column`, and `Horizontal` is an exact
+naming alias for `Row`; choose whichever pair reads more naturally:
 
 ```csharp
 public sealed class SettingsPanel : NowLayoutGraphic
@@ -103,15 +105,23 @@ otherwise-unsized child container fits its content and can actually be
 centered or end-aligned; call `FillWidth` / `FillHeight` when filling is the
 intent.
 
-`Row` and `Column` capture a stable identity from their call site. For
-data-backed containers that can reorder or appear conditionally, anchor the
-identity with `.SetId(item.id)` and wrap repeated controls in
-`NowControls.IdScope(item.id)`.
+`Row`/`Horizontal` and `Column`/`Vertical` capture a stable identity from their
+call site. Each naming pair returns the same fluent container builder and has
+the same behavior. For data-backed containers that can reorder or appear
+conditionally, anchor the identity with `.SetId(item.id)` and wrap repeated
+controls in `NowControls.IdScope(item.id)`.
 
-The older `Area`, `Horizontal`, and `Vertical` scope overloads remain available
-as lower-level forms. `NowLayoutOptions` is also available when options need
-to be built or forwarded separately, but the fluent row/column API is the
-normal starting point.
+`Area`, `HorizontalScope`, and `VerticalScope` are the lower-level
+immediate-scope forms. The `Scope` suffix distinguishes the renamed horizontal
+and vertical overloads from the fluent aliases. These methods begin their scope
+immediately and therefore do not use `.Begin()`. `NowLayoutOptions` is also
+available when options need to be built or forwarded separately, but the
+fluent container API is the normal starting point.
+
+When updating code written before the fluent aliases were added, rename
+`Horizontal(...)` to `HorizontalScope(...)` and `Vertical(...)` to
+`VerticalScope(...)` if that call returned a disposable scope directly. Fluent
+container declarations keep the directional names and end with `.Begin()`.
 
 ## Mixing layout with explicit drawing
 
@@ -152,13 +162,14 @@ The base `NowGraphic`, `NowWorldGraphic`, `NowPipelineGraphic`, and
 measurement pass when their content uses explicit rects. If layout code runs
 in one of those hosts, its cached measurements settle on a later rebuild.
 
-The layout-specific hosts own the complete two-pass cycle, so code inside
-them should use ordinary `Row`/`Column` scopes. Do not wrap that code in
-`RunMeasured`; nested measurement is unnecessary. Their `DrawNowUI` callback
-runs once with drawing suppressed and input passive, then once for the real
-draw. Reacting to a control's returned click/change/submit result is safe
-because controls are inert during measurement. Avoid unconditional state
-changes in `DrawNowUI`, or guard them with `NowLayout.isMeasurePass`.
+The layout-specific hosts own the complete two-pass cycle, so code inside them
+should use ordinary fluent `Row`/`Horizontal` or `Column`/`Vertical` scopes. Do
+not wrap that code in `RunMeasured`; nested measurement is unnecessary. Their
+`DrawNowUI` callback runs once with drawing suppressed and input passive, then
+once for the real draw. Reacting to a control's returned click/change/submit
+result is safe because controls are inert during measurement. Avoid
+unconditional state changes in `DrawNowUI`, or guard them with
+`NowLayout.isMeasurePass`.
 
 Retained hosts reject synchronous recursive rebuilds (one host forcing another
 host to rebuild from inside its draw callback), because independent retained

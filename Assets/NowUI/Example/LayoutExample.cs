@@ -76,7 +76,7 @@ public class LayoutExample : MonoBehaviour
 
     void DrawHeader()
     {
-        using (NowLayout.Horizontal())
+        using (NowLayout.HorizontalScope())
         {
             NowLayout.Label("Settings", 24f, Rgb(235, 238, 245))
                 .SetAlign(NowLayoutAlign.Center)
@@ -90,7 +90,7 @@ public class LayoutExample : MonoBehaviour
 
     void DrawTabs()
     {
-        using (NowLayout.Horizontal(spacing: 8))
+        using (NowLayout.HorizontalScope(spacing: 8))
         {
             for (int i = 0; i < _tabs.Length; ++i)
             {
@@ -105,11 +105,11 @@ public class LayoutExample : MonoBehaviour
 
     void DrawOptions()
     {
-        using (NowLayout.Vertical("options", spacing: 8))
+        using (NowLayout.VerticalScope("options", spacing: 8))
         {
             for (int i = 0; i < _options.Length; ++i)
             {
-                using var row = NowLayout.Horizontal(_options[i], height: 44, padding: 10);
+                using var row = NowLayout.HorizontalScope(_options[i], height: 44, padding: 10);
 
                 Now.Rectangle(row.rect)
                     .SetColor(Rgb(40, 44, 53))
@@ -130,7 +130,7 @@ public class LayoutExample : MonoBehaviour
 
     void DrawFooter()
     {
-        using (NowLayout.Horizontal(spacing: 10))
+        using (NowLayout.HorizontalScope(spacing: 10))
         {
             NowLayout.FlexibleSpace();
 

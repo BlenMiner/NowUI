@@ -61,9 +61,9 @@ public class NowZooExample : NowLayoutGraphic
         {
             Header(theme);
 
-            using (NowLayout.Horizontal(spacing: 16))
+            using (NowLayout.HorizontalScope(spacing: 16))
             {
-                using (NowLayout.Vertical(spacing: 10, stretchWidth: true))
+                using (NowLayout.VerticalScope(spacing: 10, stretchWidth: true))
                 {
                     Buttons(theme);
                     Toggles(theme);
@@ -71,7 +71,7 @@ public class NowZooExample : NowLayoutGraphic
                     Lines(theme);
                 }
 
-                using (NowLayout.Vertical(spacing: 10, stretchWidth: true))
+                using (NowLayout.VerticalScope(spacing: 10, stretchWidth: true))
                 {
                     Fields(theme);
                     ScrollLog(theme);
@@ -86,7 +86,7 @@ public class NowZooExample : NowLayoutGraphic
 
     void Header(NowThemeAsset themeAsset)
     {
-        using (NowLayout.Horizontal(spacing: 10, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 10, alignItems: NowLayoutAlign.Center))
         {
             if (_lottie != null)
                 NowLayout.Lottie(_lottie).SetTime(Time.time).SetHeight(36).Draw();
@@ -125,7 +125,7 @@ public class NowZooExample : NowLayoutGraphic
     {
         SectionTitle(themeAsset, "Buttons");
 
-        using (NowLayout.Horizontal(spacing: 6))
+        using (NowLayout.HorizontalScope(spacing: 6))
         {
             if (NowLayout.Button("Accent").Draw())
                 Log("Accent clicked");
@@ -171,7 +171,7 @@ public class NowZooExample : NowLayoutGraphic
                 .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray)).Draw();
         }
 
-        using (NowLayout.Horizontal(spacing: 10))
+        using (NowLayout.HorizontalScope(spacing: 10))
         {
             for (int i = 0; i < Difficulties.Length; ++i)
                 if (NowLayout.Radio(Difficulties[i], _difficulty == i).Draw())
@@ -188,7 +188,7 @@ public class NowZooExample : NowLayoutGraphic
 
         // Per-frame string interpolation is the classic UI GC trap: format only
         // when the value changes, draw the cached string otherwise.
-        using (NowLayout.Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 8, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label("Volume").Draw();
 
@@ -198,7 +198,7 @@ public class NowZooExample : NowLayoutGraphic
             NowLayout.Label(_volumeLabel).SetFontSize(12).Draw();
         }
 
-        using (NowLayout.Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center))
+        using (NowLayout.HorizontalScope(spacing: 8, alignItems: NowLayoutAlign.Center))
         {
             NowLayout.Label("Gamma").Draw();
 
@@ -216,7 +216,7 @@ public class NowZooExample : NowLayoutGraphic
         if (NowLayout.TextField().SetPlaceholder("Player name...").SetStretchWidth().Draw(ref _playerName))
             _greetingLabel = string.IsNullOrEmpty(_playerName) ? null : $"Hello, {_playerName}!";
 
-        using (NowLayout.Horizontal(spacing: 8))
+        using (NowLayout.HorizontalScope(spacing: 8))
         {
             NowLayout.Dropdown(Resolutions).SetStretchWidth().Draw(ref _resolution);
         }
@@ -252,7 +252,7 @@ public class NowZooExample : NowLayoutGraphic
     {
         SectionTitle(themeAsset, "Theme presets");
 
-        using (NowLayout.Horizontal(spacing: 6))
+        using (NowLayout.HorizontalScope(spacing: 6))
         {
             for (int i = 0; i < SwatchStyles.Length; ++i)
             {

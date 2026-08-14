@@ -4,7 +4,8 @@ using UnityEngine;
 namespace NowUI
 {
     /// <summary>
-    /// Fluent row/column declaration. Configure the container, then call
+    /// Fluent row/column declaration. <c>Horizontal</c>/<c>Vertical</c> are
+    /// interchangeable naming aliases. Configure the container, then call
     /// <see cref="Begin"/> in a using statement:
     /// <code>
     /// using (NowLayout.Column(view).Padding(16).Gap(12).Begin())
@@ -204,8 +205,9 @@ namespace NowUI
 
             throw new System.InvalidOperationException(
                 $"{method} configures a container inside its parent and cannot be used on " +
-                "NowLayout.Row(rect) or Column(rect), whose explicit rect already fixes the root bounds. " +
-                "Change that rect, or use Row()/Column() inside a parent.");
+                "a root NowLayout.Row(rect)/Horizontal(rect) or Column(rect)/Vertical(rect), " +
+                "whose explicit rect already fixes the root bounds. Change that rect, or use a " +
+                "nested container inside a parent.");
         }
 
         readonly void ValidateRootOptions(in NowLayoutOptions options)
@@ -229,9 +231,10 @@ namespace NowUI
                 return;
 
             throw new System.InvalidOperationException(
-                "Root Row(rect)/Column(rect) options may configure only Gap, Padding, AlignChildren, and Justify. " +
+                "Root Row(rect)/Horizontal(rect)/Column(rect)/Vertical(rect) options may configure only " +
+                "Gap, Padding, AlignChildren, and Justify. " +
                 "The explicit rect already fixes the root's size and placement; put sizing, stretching, Grow, or " +
-                "AlignSelf on a nested Row()/Column() instead.");
+                "AlignSelf on a nested container instead.");
         }
     }
 
@@ -254,6 +257,23 @@ namespace NowUI
             return new NowLayoutContainer(false, rect, NowControls.SiteId(file, line));
         }
 
+        /// <summary>Naming alias for <see cref="Column(string, int)"/>.</summary>
+        public static NowLayoutContainer Vertical(
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            return Column(file, line);
+        }
+
+        /// <summary>Naming alias for <see cref="Column(NowRect, string, int)"/>.</summary>
+        public static NowLayoutContainer Vertical(
+            NowRect rect,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            return Column(rect, file, line);
+        }
+
         /// <summary>Declares a horizontal container inside the active layout.</summary>
         public static NowLayoutContainer Row(
             [CallerFilePath] string file = "",
@@ -269,6 +289,23 @@ namespace NowUI
             [CallerLineNumber] int line = 0)
         {
             return new NowLayoutContainer(true, rect, NowControls.SiteId(file, line));
+        }
+
+        /// <summary>Naming alias for <see cref="Row(string, int)"/>.</summary>
+        public static NowLayoutContainer Horizontal(
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            return Row(file, line);
+        }
+
+        /// <summary>Naming alias for <see cref="Row(NowRect, string, int)"/>.</summary>
+        public static NowLayoutContainer Horizontal(
+            NowRect rect,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            return Row(rect, file, line);
         }
 
         /// <summary>Alias for <see cref="FlexibleSpace"/> with layout-DSL terminology.</summary>

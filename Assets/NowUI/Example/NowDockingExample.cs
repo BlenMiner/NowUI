@@ -77,7 +77,7 @@ public sealed class NowDockingExample : MonoBehaviour
             NowLayout.Label("Drag tabs to split, merge, reorder, or float outside the dockspace.").SetFontSize(13f).Draw();
             NowLayout.FlexibleSpace();
 
-            using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+            using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
             {
                 NowLayout.Label("Exposure").SetWidth(72f).Draw();
                 NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _exposure);
@@ -109,7 +109,7 @@ public sealed class NowDockingExample : MonoBehaviour
             NowLayout.Label(Objects[_selectedObject]).SetFontSize(14f).Draw();
             NowLayout.Checkbox("Show grid").Draw(ref _showGrid);
 
-            using (NowLayout.Horizontal(spacing: 8f, alignItems: NowLayoutAlign.Center))
+            using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
             {
                 NowLayout.Label("Exposure").SetWidth(72f).Draw();
                 NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _exposure);

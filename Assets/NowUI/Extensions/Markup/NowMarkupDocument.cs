@@ -751,8 +751,8 @@ namespace NowUI.Markup
         {
             var options = cache.options;
             NowLayoutScope scope = cache.hasExplicitId
-                ? (vertical ? NowLayout.Vertical(new NowId(cache.nodeId), options) : NowLayout.Horizontal(new NowId(cache.nodeId), options))
-                : (vertical ? NowLayout.Vertical(options) : NowLayout.Horizontal(options));
+                ? (vertical ? NowLayout.VerticalScope(new NowId(cache.nodeId), options) : NowLayout.HorizontalScope(new NowId(cache.nodeId), options))
+                : (vertical ? NowLayout.VerticalScope(options) : NowLayout.HorizontalScope(options));
 
             using (scope)
             {
@@ -783,7 +783,7 @@ namespace NowUI.Markup
             if (index != previous)
                 state.SetInt(key, index);
 
-            using (var scope = NowLayout.Vertical(new NowId(id), cache.options))
+            using (var scope = NowLayout.VerticalScope(new NowId(id), cache.options))
             {
                 DrawBackground(cache, scope.rect);
 
@@ -796,7 +796,7 @@ namespace NowUI.Markup
 
                 if (cache.galleryControls)
                 {
-                    using (NowLayout.Horizontal(spacing: 8f))
+                    using (NowLayout.HorizontalScope(spacing: 8f))
                     {
                         if (NowLayout.Button("Prev").SetId(new NowId(cache.galleryPrevId)).SetStyle(NowRectangleStyle.Outline).Draw())
                         {
@@ -982,8 +982,8 @@ namespace NowUI.Markup
         void RenderList(NowMarkupNode node, NowMarkupState state, NowMarkupNodeCache cache)
         {
             var scope = cache.hasExplicitId
-                ? NowLayout.Vertical(new NowId(cache.nodeId), cache.options)
-                : NowLayout.Vertical(cache.options);
+                ? NowLayout.VerticalScope(new NowId(cache.nodeId), cache.options)
+                : NowLayout.VerticalScope(cache.options);
 
             using (scope)
             {
@@ -1013,11 +1013,11 @@ namespace NowUI.Markup
         {
             var cache = Cache(node);
 
-            using (NowLayout.Horizontal(spacing: 8f))
+            using (NowLayout.HorizontalScope(spacing: 8f))
             {
                 NowLayout.Label(cache.listMarker ?? "•").Draw();
 
-                using (NowLayout.Vertical(ListContentOptions))
+                using (NowLayout.VerticalScope(ListContentOptions))
                 {
                     if (cache.inlineOnly)
                         RenderText(cache);
@@ -1063,7 +1063,7 @@ namespace NowUI.Markup
             if (index != previous)
                 state.SetInt(key, index);
 
-            using (var scope = NowLayout.Vertical(new NowId(cache.nodeId), cache.options))
+            using (var scope = NowLayout.VerticalScope(new NowId(cache.nodeId), cache.options))
             {
                 DrawBackground(cache, scope.rect);
 

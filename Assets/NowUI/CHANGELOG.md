@@ -983,12 +983,16 @@ point it became installable through UPM.
   undo/redo keys. See Documentation~/CodeEditor.md and the docs browser's
   "Code editor" page.
 - Layout groups and rects take their common settings as optional parameters:
-  `NowLayout.Horizontal(spacing: 8, alignItems: NowLayoutAlign.Center)`,
+  the historical `NowLayout.Horizontal(spacing: 8,
+  alignItems: NowLayoutAlign.Center)` and
   `Vertical(spacing: 10, stretchWidth: true)`,
   `Area(rect, padding: 16, spacing: 8)` (scope, callback and id-keyed forms)
   and `Rect(height: 22, stretchWidth: true)` — no more
   `new NowLayoutOptions().Set...` chains inside `using` headers. The
   `NowLayoutOptions` overloads remain for everything beyond the common set.
+  These historical immediate-scope overloads were renamed to
+  `HorizontalScope(...)` and `VerticalScope(...)` when `Horizontal` and
+  `Vertical` became fluent container aliases.
 - Measure passes resolve the same control ids as the real pass: occurrence
   salting now counts in a per-pass table instead of being skipped while
   passive, so loop-salted controls and `NowLayout.ContentRect` reservations

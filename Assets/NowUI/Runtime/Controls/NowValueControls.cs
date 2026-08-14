@@ -284,7 +284,7 @@ namespace NowUI
             }
             else
             {
-                using (NowLayout.Vertical(GroupOptions()))
+                using (NowLayout.VerticalScope(GroupOptions()))
                     DrawFlags(id, ref bits);
             }
 
@@ -4413,14 +4413,14 @@ namespace NowUI
             if (hasRect)
             {
                 var area = NowLayout.Area(NowId.Resolved(NowInput.CombineId(id, 0x4e564172)), rect);
-                var row = NowLayout.Horizontal(
+                var row = NowLayout.HorizontalScope(
                     spacing: settings.spacing,
                     alignItems: NowLayoutAlign.Center,
                     stretchWidth: true);
                 return new NowVectorFieldScope(area, row, true);
             }
 
-            return new NowVectorFieldScope(default, NowLayout.Horizontal(GroupOptions(settings)), false);
+            return new NowVectorFieldScope(default, NowLayout.HorizontalScope(GroupOptions(settings)), false);
         }
 
         static bool ShouldStretchComponents(bool hasRect, NowVectorFieldSettings settings)
