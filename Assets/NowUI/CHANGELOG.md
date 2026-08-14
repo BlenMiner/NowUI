@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.6.0...nowui-v1.6.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* Horizontal/Vertical aliases ([f33a759](https://github.com/BlenMiner/NowUI/commit/f33a7598cd379a8dd069ff69aeb68d7249b1c475))
+
 # [1.6.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.5.0...nowui-v1.6.0) (2026-08-13)
 
 
