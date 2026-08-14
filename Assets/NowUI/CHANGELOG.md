@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.7.0...nowui-v1.7.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* deps ([6c449c7](https://github.com/BlenMiner/NowUI/commit/6c449c7340ba6f6aed5c49eb4147fbf9f77bb809))
+
 # [1.7.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.6.1...nowui-v1.7.0) (2026-08-14)
 
 
