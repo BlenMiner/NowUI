@@ -14,10 +14,10 @@
   },
   "dependencies": {
     "com.unity.burst": "1.8.28",
-    "com.unity.mathematics": "1.3.3",
+    "com.unity.mathematics": "1.3.2",
     "com.unity.modules.unitywebrequest": "1.0.0",
     "com.unity.modules.unitywebrequesttexture": "1.0.0",
-    "com.unity.collections": "6.4.0"
+    "com.unity.collections": "2.2.1"
   },
   "keywords": [
     "ui",
