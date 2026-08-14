@@ -16,9 +16,9 @@ public class NowThemeAssetTests
         try
         {
             Assert.IsTrue(theme.TryGetColor(NowColorToken.Accent, out var accent));
-            Assert.AreEqual(0.145f, accent.r, 0.0001f);
-            Assert.AreEqual(0.388f, accent.g, 0.0001f);
-            Assert.AreEqual(0.922f, accent.b, 0.0001f);
+            Assert.AreEqual(0.369f, accent.r, 0.0001f);
+            Assert.AreEqual(0.416f, accent.g, 0.0001f);
+            Assert.AreEqual(0.824f, accent.b, 0.0001f);
         }
         finally
         {
@@ -92,9 +92,9 @@ public class NowThemeAssetTests
             NowRectangle rectangle = theme.Rectangle(new Vector4(4, 8, 100, 40), NowRectangleStyle.Accent);
 
             Assert.AreEqual(new NowRect(4, 8, 100, 40), rectangle.rect);
-            Assert.AreEqual(0.145f, rectangle.color.x, 0.0001f);
-            Assert.AreEqual(0.388f, rectangle.color.y, 0.0001f);
-            Assert.AreEqual(0.922f, rectangle.color.z, 0.0001f);
+            Assert.AreEqual(0.369f, rectangle.color.x, 0.0001f);
+            Assert.AreEqual(0.416f, rectangle.color.y, 0.0001f);
+            Assert.AreEqual(0.824f, rectangle.color.z, 0.0001f);
             Assert.AreEqual(new Vector4(10, 10, 10, 10), rectangle.radius);
         }
         finally
@@ -143,9 +143,9 @@ public class NowThemeAssetTests
         Assert.Greater(text.g, 0.9f);
         Assert.Greater(text.b, 0.9f);
         Assert.Greater(accent.b, accent.r);
-        Assert.Less(accentText.r, 0.2f);
-        Assert.Less(accentText.g, 0.2f);
-        Assert.Less(accentText.b, 0.2f);
+        Assert.Greater(accentText.r, 0.9f);
+        Assert.Greater(accentText.g, 0.9f);
+        Assert.Greater(accentText.b, 0.9f);
     }
 
     [Test]
@@ -270,9 +270,9 @@ public class NowThemeAssetTests
         Assert.IsTrue(theme.counterpart.isDark);
         Assert.AreSame(theme, theme.counterpart.counterpart);
         Assert.IsTrue(theme.TryGetColor(NowColorToken.Accent, out var accent));
-        Assert.AreEqual(0.145f, accent.r, 0.0001f);
-        Assert.AreEqual(0.388f, accent.g, 0.0001f);
-        Assert.AreEqual(0.922f, accent.b, 0.0001f);
+        Assert.AreEqual(0.369f, accent.r, 0.0001f);
+        Assert.AreEqual(0.416f, accent.g, 0.0001f);
+        Assert.AreEqual(0.824f, accent.b, 0.0001f);
     }
 
     [Test]

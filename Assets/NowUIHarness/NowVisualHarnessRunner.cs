@@ -18,6 +18,7 @@ namespace NowUI.Editor
 
         public static void Capture()
         {
+            NowHarnessScenarios.renderScale = 2;
             string outputRoot = NowHarnessScenarios.ReadArgument(
                 "-nowuiArtifactsPath",
                 Path.Combine(NowHarnessScenarios.ProjectPath(), "artifacts", "local", "visual"));
@@ -35,6 +36,7 @@ namespace NowUI.Editor
 
         public static void CompareGoldens()
         {
+            NowHarnessScenarios.renderScale = 1;
             bool update = NowHarnessScenarios.HasArgument("-nowuiUpdateBaselines");
             string outputRoot = NowHarnessScenarios.ReadArgument(
                 "-nowuiArtifactsPath",

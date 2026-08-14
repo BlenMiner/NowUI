@@ -268,10 +268,6 @@ MonoBehaviour:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _body:
       _font: {fileID: 0}
@@ -285,10 +281,6 @@ MonoBehaviour:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 0
     _muted:
       _font: {fileID: 0}
@@ -302,10 +294,6 @@ MonoBehaviour:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 0
     _button:
       _font: {fileID: 0}
@@ -319,10 +307,6 @@ MonoBehaviour:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _display:
       _font: {fileID: 0}
@@ -336,10 +320,6 @@ MonoBehaviour:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _heading:
       _font: {fileID: 0}
@@ -353,10 +333,6 @@ MonoBehaviour:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _subheading:
       _font: {fileID: 0}
@@ -370,10 +346,6 @@ MonoBehaviour:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _bodyStrong:
       _font: {fileID: 0}
@@ -387,10 +359,6 @@ MonoBehaviour:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _label:
       _font: {fileID: 0}
@@ -404,10 +372,6 @@ MonoBehaviour:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 0
     _caption:
       _font: {fileID: 0}
@@ -421,10 +385,6 @@ MonoBehaviour:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 0
   _controlStyles:
     _buttonPadding: {x: 24, y: 8, z: 24, w: 8}
@@ -496,6 +456,37 @@ MonoBehaviour:
     _scrollbarPadding: 4
     _scrollbarMinThumbSize: 32
     _scrollWheelStep: 48
+    _switchWidth: 44
+    _switchHeight: 24
+    _switchKnobInset: 3
+    _progressBarHeight: 8
+    _progressBarSweepRatio: 0.3
+    _progressBarPeriod: 1.2
+    _badgeMinSize: 20
+    _badgePaddingX: 8
+    _chipHeight: 28
+    _chipPaddingX: 12
+    _chipRemoveSize: 16
+    _tooltipDelay: 0.55
+    _tooltipLongPressDelay: 0.45
+    _tooltipPadding: 8
+    _tooltipMaxWidth: 280
+    _tooltipGap: 6
+    _spinnerButtonWidth: 20
+    _tabHeight: 40
+    _tabPaddingX: 16
+    _tabIndicatorThickness: 2
+    _tabSpacing: 0
+    _splitterThickness: 4
+    _splitterHitOutset: 10
+    _treeRowHeight: 32
+    _treeIndentWidth: 18
+    _treeDisclosureSize: 14
+    _calendarCellSize: 40
+    _calendarHeaderHeight: 36
+    _calendarPadding: 8
+    _clockDialSize: 220
+    _clockHeaderHeight: 44
   _controlRenderer: {fileID: 11400000, guid: b7a5e40a901744e09d17be169d43d03f, type: 2}
   _counterpart: {fileID: 11400000, guid: c8ce4e3c2df64b6baec4381427476ca6, type: 2}
   _generatorDark: 0

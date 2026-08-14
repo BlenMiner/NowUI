@@ -536,7 +536,7 @@ namespace NowUI.Markdown
             Color text = themeAsset.GetColor(NowColorToken.Text, Color.black);
             Color textMuted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
             Color accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
-            Color border = themeAsset.GetColor(NowColorToken.Border, new Color(0.886f, 0.910f, 0.941f, 1f));
+            Color border = themeAsset.GetColor(NowColorToken.Border, new Color(0.894f, 0.902f, 0.922f, 1f));
             Color surfaceMuted = themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
             Color surface = themeAsset.GetColor(NowColorToken.Surface, Color.white);
             Color background = themeAsset.GetColor(NowColorToken.Background, surface);
@@ -606,7 +606,7 @@ namespace NowUI.Markdown
                 case Role.Rule:
                 case Role.TableLine:
                 case Role.CheckBox:
-                    return themeAsset.GetColor(NowColorToken.Border, new Color(0.886f, 0.910f, 0.941f, 1f));
+                    return themeAsset.GetColor(NowColorToken.Border, new Color(0.894f, 0.902f, 0.922f, 1f));
                 case Role.QuoteBar:
                 case Role.Bullet:
                 case Role.CheckFill:

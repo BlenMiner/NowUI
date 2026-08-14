@@ -14,6 +14,7 @@ namespace NowUI.Editor
 
         public static void Run()
         {
+            NowHarnessScenarios.renderScale = 1;
             string outputRoot = NowHarnessScenarios.ReadArgument(
                 "-nowuiArtifactsPath",
                 Path.Combine(NowHarnessScenarios.ProjectPath(), "artifacts", "local", "perf"));

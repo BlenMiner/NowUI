@@ -15,22 +15,22 @@ MonoBehaviour:
   _defaultRectangleStyle: 0
   _defaultTextStyle: 1
   _palette:
-    _background: {r: 0.059, g: 0.09, b: 0.165, a: 1}
-    _surface: {r: 0.118, g: 0.161, b: 0.231, a: 1}
-    _surfaceMuted: {r: 0.161, g: 0.208, b: 0.282, a: 1}
-    _text: {r: 0.973, g: 0.98, b: 0.988, a: 1}
-    _textMuted: {r: 0.58, g: 0.639, b: 0.722, a: 1}
-    _border: {r: 0.2, g: 0.255, b: 0.333, a: 1}
-    _accent: {r: 0.376, g: 0.647, b: 0.98, a: 1}
-    _accentText: {r: 0.043, g: 0.071, b: 0.125, a: 1}
-    _surfaceElevated: {r: 0.173, g: 0.227, b: 0.314, a: 1}
-    _surfaceHover: {r: 0.2, g: 0.255, b: 0.333, a: 1}
-    _surfacePressed: {r: 0.243, g: 0.298, b: 0.388, a: 1}
-    _accentHover: {r: 0.576, g: 0.773, b: 0.992, a: 1}
-    _accentPressed: {r: 0.231, g: 0.51, b: 0.965, a: 1}
-    _accentMuted: {r: 0.118, g: 0.227, b: 0.373, a: 1}
-    _borderStrong: {r: 0.278, g: 0.333, b: 0.412, a: 1}
-    _focusRing: {r: 0.376, g: 0.647, b: 0.98, a: 0.6}
+    _background: {r: 0.031, g: 0.035, b: 0.059, a: 1}
+    _surface: {r: 0.071, g: 0.078, b: 0.122, a: 1}
+    _surfaceMuted: {r: 0.098, g: 0.11, b: 0.165, a: 1}
+    _text: {r: 0.969, g: 0.973, b: 0.98, a: 1}
+    _textMuted: {r: 0.608, g: 0.631, b: 0.69, a: 1}
+    _border: {r: 0.137, g: 0.153, b: 0.227, a: 1}
+    _accent: {r: 0.369, g: 0.416, b: 0.824, a: 1}
+    _accentText: {r: 1, g: 1, b: 1, a: 1}
+    _surfaceElevated: {r: 0.09, g: 0.102, b: 0.157, a: 1}
+    _surfaceHover: {r: 0.11, g: 0.122, b: 0.18, a: 1}
+    _surfacePressed: {r: 0.137, g: 0.153, b: 0.22, a: 1}
+    _accentHover: {r: 0.435, g: 0.478, b: 0.871, a: 1}
+    _accentPressed: {r: 0.329, g: 0.376, b: 0.769, a: 1}
+    _accentMuted: {r: 0.133, g: 0.149, b: 0.278, a: 1}
+    _borderStrong: {r: 0.188, g: 0.212, b: 0.314, a: 1}
+    _focusRing: {r: 0.369, g: 0.416, b: 0.824, a: 0.6}
     _success: {r: 0.29, g: 0.871, b: 0.502, a: 1}
     _successText: {r: 0.02, g: 0.18, b: 0.086, a: 1}
     _successMuted: {r: 0.09, g: 0.204, b: 0.145, a: 1}
@@ -112,7 +112,7 @@ MonoBehaviour:
       _outlineColor:
         _useToken: 1
         _token: 5
-        _fallback: {r: 0.886, g: 0.91, b: 0.941, a: 1}
+        _fallback: {r: 0.894, g: 0.902, b: 0.922, a: 1}
       _elevation: 0
     _muted:
       _fill:
@@ -152,13 +152,13 @@ MonoBehaviour:
       _outlineColor:
         _useToken: 1
         _token: 14
-        _fallback: {r: 0.796, g: 0.835, b: 0.882, a: 1}
+        _fallback: {r: 0.788, g: 0.804, b: 0.839, a: 1}
       _elevation: 0
     _accent:
       _fill:
         _useToken: 1
         _token: 6
-        _fallback: {r: 0.145, g: 0.388, b: 0.922, a: 1}
+        _fallback: {r: 0.369, g: 0.416, b: 0.824, a: 1}
       _radius:
         _useToken: 1
         _token: 2
@@ -192,13 +192,13 @@ MonoBehaviour:
       _outlineColor:
         _useToken: 1
         _token: 5
-        _fallback: {r: 0.886, g: 0.91, b: 0.941, a: 1}
+        _fallback: {r: 0.894, g: 0.902, b: 0.922, a: 1}
       _elevation: 1
     _accentSoft:
       _fill:
         _useToken: 1
         _token: 13
-        _fallback: {r: 0.859, g: 0.918, b: 0.996, a: 1}
+        _fallback: {r: 0.91, g: 0.918, b: 0.984, a: 1}
       _radius:
         _useToken: 1
         _token: 2
@@ -262,16 +262,12 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.086, g: 0.094, b: 0.114, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _body:
       _font: {fileID: 0}
@@ -279,16 +275,12 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.086, g: 0.094, b: 0.114, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 0
     _muted:
       _font: {fileID: 0}
@@ -296,16 +288,12 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 4
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.086, g: 0.094, b: 0.114, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 0
     _button:
       _font: {fileID: 0}
@@ -313,16 +301,12 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 7
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.086, g: 0.094, b: 0.114, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _display:
       _font: {fileID: 0}
@@ -330,16 +314,12 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.086, g: 0.094, b: 0.114, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _heading:
       _font: {fileID: 0}
@@ -347,16 +327,12 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.086, g: 0.094, b: 0.114, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _subheading:
       _font: {fileID: 0}
@@ -364,16 +340,12 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.086, g: 0.094, b: 0.114, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _bodyStrong:
       _font: {fileID: 0}
@@ -381,16 +353,12 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.086, g: 0.094, b: 0.114, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 1
     _label:
       _font: {fileID: 0}
@@ -398,16 +366,12 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.086, g: 0.094, b: 0.114, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 0
     _caption:
       _font: {fileID: 0}
@@ -415,16 +379,12 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 4
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.086, g: 0.094, b: 0.114, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
         _token: 0
         _fallback: {r: 0, g: 0, b: 0, a: 0}
-      _padding:
-        _useToken: 0
-        _token: 0
-        _fallback: {x: 0, y: 0, z: 0, w: 0}
       _fontStyle: 0
   _controlStyles:
     _buttonPadding: {x: 14, y: 10, z: 14, w: 10}
@@ -440,11 +400,11 @@ MonoBehaviour:
     _focusColor:
       _useToken: 1
       _token: 15
-      _fallback: {r: 0.145, g: 0.388, b: 0.922, a: 0.55}
+      _fallback: {r: 0.369, g: 0.416, b: 0.824, a: 0.55}
     _fieldFocusColor:
       _useToken: 1
       _token: 15
-      _fallback: {r: 0.145, g: 0.388, b: 0.922, a: 0.55}
+      _fallback: {r: 0.369, g: 0.416, b: 0.824, a: 0.55}
     _focusRingOffset: 2
     _hoverStateOpacity: 0.08
     _pressedStateOpacity: 0.12
@@ -496,6 +456,37 @@ MonoBehaviour:
     _scrollbarPadding: 4
     _scrollbarMinThumbSize: 24
     _scrollWheelStep: 40
+    _switchWidth: 44
+    _switchHeight: 24
+    _switchKnobInset: 3
+    _progressBarHeight: 8
+    _progressBarSweepRatio: 0.3
+    _progressBarPeriod: 1.2
+    _badgeMinSize: 20
+    _badgePaddingX: 8
+    _chipHeight: 28
+    _chipPaddingX: 12
+    _chipRemoveSize: 16
+    _tooltipDelay: 0.55
+    _tooltipLongPressDelay: 0.45
+    _tooltipPadding: 8
+    _tooltipMaxWidth: 280
+    _tooltipGap: 6
+    _spinnerButtonWidth: 20
+    _tabHeight: 40
+    _tabPaddingX: 16
+    _tabIndicatorThickness: 2
+    _tabSpacing: 0
+    _splitterThickness: 4
+    _splitterHitOutset: 10
+    _treeRowHeight: 32
+    _treeIndentWidth: 18
+    _treeDisclosureSize: 14
+    _calendarCellSize: 40
+    _calendarHeaderHeight: 36
+    _calendarPadding: 8
+    _clockDialSize: 220
+    _clockHeaderHeight: 44
   _controlRenderer: {fileID: 0}
   _counterpart: {fileID: 11400000, guid: 0693568246044a119c8a8652ba4c5358, type: 2}
   _generatorDark: 1

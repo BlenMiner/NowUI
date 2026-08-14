@@ -41,6 +41,13 @@ namespace NowUI.Editor
 
     internal static class NowHarnessScenarios
     {
+        /// <summary>
+        /// Supersampling factor for captures. Shader feather AA resolves per
+        /// pixel, so rendering at 2x matches what a high-DPI game view shows;
+        /// golden comparisons pin this to 1 to keep baselines small and stable.
+        /// </summary>
+        public static int renderScale = 1;
+
         const string MarkdownSample =
             "# Harness markdown\n\n" +
             "NowUI renders **layout**, `inline code`, lists, links, and code fences through the same immediate-mode frame.\n\n" +
@@ -253,10 +260,12 @@ namespace NowUI.Editor
                 return scenario.capture(scenario, outputPath);
 
             var stopwatch = Stopwatch.StartNew();
+            int scale = Mathf.Max(1, renderScale);
             using var renderer = new NowRenderer();
-            var target = new RenderTexture(scenario.width, scenario.height, 0, RenderTextureFormat.ARGB32)
+            var target = new RenderTexture(scenario.width * scale, scenario.height * scale, 0, RenderTextureFormat.ARGB32)
             {
                 name = "NowUI Harness Target",
+                antiAliasing = 8,
                 hideFlags = HideFlags.HideAndDontSave
             };
             target.Create();
@@ -267,11 +276,13 @@ namespace NowUI.Editor
                 var inputProvider = scenario.createInputProvider != null ? scenario.createInputProvider() : Input;
                 int warmupFrames = Mathf.Max(1, scenario.warmupFrames);
 
+                Now.SetUIScale(scale);
+
                 for (int i = 0; i < warmupFrames; ++i)
                     renderer.Warmup(surface, inputProvider, () => DrawScenarioFrame(scenario));
 
                 using (NowInput.Begin(inputProvider, surface))
-                using (renderer.Begin(target))
+                using (renderer.Begin(new Vector2(scenario.width, scenario.height)))
                 {
                     DrawScenarioFrame(scenario);
                 }
@@ -283,8 +294,8 @@ namespace NowUI.Editor
                 return new NowHarnessCapture
                 {
                     name = scenario.name,
-                    width = scenario.width,
-                    height = scenario.height,
+                    width = target.width,
+                    height = target.height,
                     path = outputPath,
                     batchCount = renderer.batchCount,
                     vertexCount = renderer.mesh != null ? renderer.mesh.vertexCount : 0,
@@ -293,6 +304,7 @@ namespace NowUI.Editor
             }
             finally
             {
+                Now.SetUIScale(1f);
                 target.Release();
                 UnityEngine.Object.DestroyImmediate(target);
             }
@@ -320,10 +332,12 @@ namespace NowUI.Editor
             string outputPath)
         {
             var stopwatch = Stopwatch.StartNew();
+            int scale = Mathf.Max(1, renderScale);
             using var renderer = new NowRenderer();
-            var target = new RenderTexture(scenario.width, scenario.height, 0, RenderTextureFormat.ARGB32)
+            var target = new RenderTexture(scenario.width * scale, scenario.height * scale, 0, RenderTextureFormat.ARGB32)
             {
                 name = "NowUI Model Preview Harness Target",
+                antiAliasing = 8,
                 hideFlags = HideFlags.HideAndDontSave
             };
             NowModelPreviewDemoRig demoRig = null;
@@ -333,7 +347,7 @@ namespace NowUI.Editor
                 target.Create();
                 demoRig = new NowModelPreviewDemoRig();
                 var preview = demoRig.preview
-                    .SetFixedResolution(256, 224)
+                    .SetFixedResolution(256 * scale, 224 * scale)
                     .SetBackground(Color.clear);
 
                 if (!preview.RenderNow())
@@ -342,6 +356,8 @@ namespace NowUI.Editor
                 Now.defaultFont = Resources.Load<NowFontAsset>("NowUI/NotoSans");
                 var surface = new NowInputSurface(new Vector2(scenario.width, scenario.height));
                 int warmupFrames = Mathf.Max(1, scenario.warmupFrames);
+
+                Now.SetUIScale(scale);
 
                 for (int i = 0; i < warmupFrames; ++i)
                     renderer.Warmup(surface, Input, () => DrawModelPreviewEffectsFrame(scenario, preview));
@@ -352,7 +368,7 @@ namespace NowUI.Editor
                         renderer.Clear();
 
                     using (NowInput.Begin(Input, surface))
-                    using (renderer.Begin(target))
+                    using (renderer.Begin(new Vector2(scenario.width, scenario.height)))
                     {
                         DrawModelPreviewEffectsFrame(scenario, preview);
                     }
@@ -369,8 +385,8 @@ namespace NowUI.Editor
                 return new NowHarnessCapture
                 {
                     name = scenario.name,
-                    width = scenario.width,
-                    height = scenario.height,
+                    width = target.width,
+                    height = target.height,
                     path = outputPath,
                     batchCount = renderer.batchCount,
                     vertexCount = renderer.mesh != null ? renderer.mesh.vertexCount : 0,
@@ -379,6 +395,7 @@ namespace NowUI.Editor
             }
             finally
             {
+                Now.SetUIScale(1f);
                 demoRig?.Dispose();
                 target.Release();
                 UnityEngine.Object.DestroyImmediate(target);
@@ -393,9 +410,11 @@ namespace NowUI.Editor
             string outputPath)
         {
             var stopwatch = Stopwatch.StartNew();
-            var target = new RenderTexture(scenario.width, scenario.height, 24, RenderTextureFormat.ARGB32)
+            int scale = Mathf.Max(1, renderScale);
+            var target = new RenderTexture(scenario.width * scale, scenario.height * scale, 24, RenderTextureFormat.ARGB32)
             {
                 name = "NowUI Docs Model Preview Target",
+                antiAliasing = 8,
                 hideFlags = HideFlags.HideAndDontSave
             };
             var cameraObject = new GameObject("NowUI Docs Model Preview Camera")
@@ -423,7 +442,7 @@ namespace NowUI.Editor
                 camera.nearClipPlane = 0.01f;
                 camera.farClipPlane = 20f;
                 camera.allowHDR = false;
-                camera.allowMSAA = false;
+                camera.allowMSAA = true;
                 camera.targetTexture = target;
                 cameraObject.transform.position = new Vector3(0f, 0f, -10f);
 
@@ -435,7 +454,7 @@ namespace NowUI.Editor
 
                 var scaler = canvasObject.GetComponent<CanvasScaler>();
                 scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
-                scaler.scaleFactor = 1f;
+                scaler.scaleFactor = scale;
 
                 var panelObject = new GameObject(
                     "NowUI Docs Model Preview Host",
@@ -488,8 +507,8 @@ namespace NowUI.Editor
                 return new NowHarnessCapture
                 {
                     name = scenario.name,
-                    width = scenario.width,
-                    height = scenario.height,
+                    width = target.width,
+                    height = target.height,
                     path = outputPath,
                     batchCount = graphic.canvasRenderer.materialCount,
                     vertexCount = vertexCount,
@@ -626,9 +645,11 @@ namespace NowUI.Editor
             Action<NowRect> draw = null)
         {
             var stopwatch = Stopwatch.StartNew();
-            var target = new RenderTexture(scenario.width, scenario.height, 24, RenderTextureFormat.ARGB32)
+            int scale = Mathf.Max(1, renderScale);
+            var target = new RenderTexture(scenario.width * scale, scenario.height * scale, 24, RenderTextureFormat.ARGB32)
             {
                 name = $"NowUI Canvas Harness Target ({scenario.name})",
+                antiAliasing = 8,
                 hideFlags = HideFlags.HideAndDontSave
             };
             target.Create();
@@ -653,7 +674,7 @@ namespace NowUI.Editor
                 camera.nearClipPlane = 0.01f;
                 camera.farClipPlane = 20f;
                 camera.allowHDR = false;
-                camera.allowMSAA = false;
+                camera.allowMSAA = true;
                 camera.targetTexture = target;
                 cameraObject.transform.position = new Vector3(0f, 0f, -10f);
 
@@ -665,7 +686,7 @@ namespace NowUI.Editor
 
                 var scaler = canvasObject.GetComponent<CanvasScaler>();
                 scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
-                scaler.scaleFactor = 1f;
+                scaler.scaleFactor = scale;
 
                 var panelObject = new GameObject(
                     $"NowUI Canvas Harness Host ({scenario.name})",
@@ -723,8 +744,8 @@ namespace NowUI.Editor
                 return new NowHarnessCapture
                 {
                     name = scenario.name,
-                    width = scenario.width,
-                    height = scenario.height,
+                    width = target.width,
+                    height = target.height,
                     path = outputPath,
                     batchCount = graphic.canvasRenderer.materialCount,
                     vertexCount = vertexCount,
@@ -744,9 +765,11 @@ namespace NowUI.Editor
         static NowHarnessCapture CaptureWorldContextPingPongSubmenus(NowHarnessScenario scenario, string outputPath)
         {
             var stopwatch = Stopwatch.StartNew();
-            var target = new RenderTexture(scenario.width, scenario.height, 24, RenderTextureFormat.ARGB32)
+            int scale = Mathf.Max(1, renderScale);
+            var target = new RenderTexture(scenario.width * scale, scenario.height * scale, 24, RenderTextureFormat.ARGB32)
             {
                 name = "NowUI World Harness Target",
+                antiAliasing = 8,
                 hideFlags = HideFlags.HideAndDontSave
             };
             target.Create();
@@ -797,8 +820,8 @@ namespace NowUI.Editor
                 return new NowHarnessCapture
                 {
                     name = scenario.name,
-                    width = scenario.width,
-                    height = scenario.height,
+                    width = target.width,
+                    height = target.height,
                     path = outputPath,
                     batchCount = panel.batchCount,
                     vertexCount = panel.mesh != null ? panel.mesh.vertexCount : 0,
@@ -817,9 +840,11 @@ namespace NowUI.Editor
         static NowHarnessCapture CaptureWorldMultiSurfaceOverlap(NowHarnessScenario scenario, string outputPath)
         {
             var stopwatch = Stopwatch.StartNew();
-            var target = new RenderTexture(scenario.width, scenario.height, 24, RenderTextureFormat.ARGB32)
+            int scale = Mathf.Max(1, renderScale);
+            var target = new RenderTexture(scenario.width * scale, scenario.height * scale, 24, RenderTextureFormat.ARGB32)
             {
                 name = "NowUI World Multi Surface Target",
+                antiAliasing = 8,
                 hideFlags = HideFlags.HideAndDontSave
             };
             target.Create();
@@ -880,8 +905,8 @@ namespace NowUI.Editor
                 return new NowHarnessCapture
                 {
                     name = scenario.name,
-                    width = scenario.width,
-                    height = scenario.height,
+                    width = target.width,
+                    height = target.height,
                     path = outputPath,
                     batchCount = back.batchCount + front.batchCount,
                     vertexCount = (back.mesh != null ? back.mesh.vertexCount : 0) +

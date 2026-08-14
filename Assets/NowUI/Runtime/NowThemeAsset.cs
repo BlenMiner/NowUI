@@ -33,7 +33,7 @@ namespace NowUI
 
         [SerializeField, HideInInspector] Color _generatorKeyColor = new Color(0.58f, 0.64f, 0.72f, 1f);
 
-        [SerializeField, HideInInspector] Color _generatorAccentColor = new Color(0.145f, 0.388f, 0.922f, 1f);
+        [SerializeField, HideInInspector] Color _generatorAccentColor = new Color(0.369f, 0.416f, 0.824f, 1f);
 
         [SerializeField, HideInInspector] int _generatorSeed;
 
@@ -322,25 +322,25 @@ namespace NowUI
 
         public const int TokenCount = 27;
 
-        /// <summary>Slate-neutral light palette with a blue accent — the out-of-box look.</summary>
+        /// <summary>Cool-neutral light palette with an indigo accent — the out-of-box look.</summary>
         public static NowThemeColorSet DefaultLight => new NowThemeColorSet
         {
-            _background = new Color(0.973f, 0.980f, 0.988f, 1f),
+            _background = new Color(0.980f, 0.980f, 0.984f, 1f),
             _surface = Color.white,
-            _surfaceMuted = new Color(0.945f, 0.961f, 0.976f, 1f),
-            _text = new Color(0.059f, 0.090f, 0.165f, 1f),
-            _textMuted = new Color(0.392f, 0.455f, 0.545f, 1f),
-            _border = new Color(0.886f, 0.910f, 0.941f, 1f),
-            _accent = new Color(0.145f, 0.388f, 0.922f, 1f),
+            _surfaceMuted = new Color(0.945f, 0.949f, 0.965f, 1f),
+            _text = new Color(0.086f, 0.094f, 0.114f, 1f),
+            _textMuted = new Color(0.361f, 0.388f, 0.439f, 1f),
+            _border = new Color(0.894f, 0.902f, 0.922f, 1f),
+            _accent = new Color(0.369f, 0.416f, 0.824f, 1f),
             _accentText = Color.white,
             _surfaceElevated = Color.white,
-            _surfaceHover = new Color(0.945f, 0.961f, 0.976f, 1f),
-            _surfacePressed = new Color(0.886f, 0.910f, 0.941f, 1f),
-            _accentHover = new Color(0.114f, 0.306f, 0.847f, 1f),
-            _accentPressed = new Color(0.118f, 0.251f, 0.686f, 1f),
-            _accentMuted = new Color(0.859f, 0.918f, 0.996f, 1f),
-            _borderStrong = new Color(0.796f, 0.835f, 0.882f, 1f),
-            _focusRing = new Color(0.145f, 0.388f, 0.922f, 0.55f),
+            _surfaceHover = new Color(0.957f, 0.961f, 0.973f, 1f),
+            _surfacePressed = new Color(0.910f, 0.918f, 0.941f, 1f),
+            _accentHover = new Color(0.322f, 0.369f, 0.788f, 1f),
+            _accentPressed = new Color(0.275f, 0.322f, 0.702f, 1f),
+            _accentMuted = new Color(0.910f, 0.918f, 0.984f, 1f),
+            _borderStrong = new Color(0.788f, 0.804f, 0.839f, 1f),
+            _focusRing = new Color(0.369f, 0.416f, 0.824f, 0.55f),
             _success = new Color(0.082f, 0.502f, 0.239f, 1f),
             _successText = Color.white,
             _successMuted = new Color(0.863f, 0.988f, 0.906f, 1f),
@@ -350,29 +350,29 @@ namespace NowUI
             _danger = new Color(0.863f, 0.149f, 0.149f, 1f),
             _dangerText = Color.white,
             _dangerMuted = new Color(0.996f, 0.886f, 0.886f, 1f),
-            _shadow = new Color(0.059f, 0.090f, 0.165f, 1f),
-            _scrim = new Color(0.059f, 0.090f, 0.165f, 0.50f)
+            _shadow = new Color(0.086f, 0.094f, 0.114f, 1f),
+            _scrim = new Color(0.086f, 0.094f, 0.114f, 0.50f)
         };
 
-        /// <summary>Slate-neutral dark palette; lighter surfaces read as closer.</summary>
+        /// <summary>Near-black blue-tinted dark palette; lighter surfaces read as closer.</summary>
         public static NowThemeColorSet DefaultDark => new NowThemeColorSet
         {
-            _background = new Color(0.059f, 0.090f, 0.165f, 1f),
-            _surface = new Color(0.118f, 0.161f, 0.231f, 1f),
-            _surfaceMuted = new Color(0.161f, 0.208f, 0.282f, 1f),
-            _text = new Color(0.973f, 0.980f, 0.988f, 1f),
-            _textMuted = new Color(0.580f, 0.639f, 0.722f, 1f),
-            _border = new Color(0.200f, 0.255f, 0.333f, 1f),
-            _accent = new Color(0.376f, 0.647f, 0.980f, 1f),
-            _accentText = new Color(0.043f, 0.071f, 0.125f, 1f),
-            _surfaceElevated = new Color(0.173f, 0.227f, 0.314f, 1f),
-            _surfaceHover = new Color(0.200f, 0.255f, 0.333f, 1f),
-            _surfacePressed = new Color(0.243f, 0.298f, 0.388f, 1f),
-            _accentHover = new Color(0.576f, 0.773f, 0.992f, 1f),
-            _accentPressed = new Color(0.231f, 0.510f, 0.965f, 1f),
-            _accentMuted = new Color(0.118f, 0.227f, 0.373f, 1f),
-            _borderStrong = new Color(0.278f, 0.333f, 0.412f, 1f),
-            _focusRing = new Color(0.376f, 0.647f, 0.980f, 0.60f),
+            _background = new Color(0.031f, 0.035f, 0.059f, 1f),
+            _surface = new Color(0.071f, 0.078f, 0.122f, 1f),
+            _surfaceMuted = new Color(0.098f, 0.110f, 0.165f, 1f),
+            _text = new Color(0.969f, 0.973f, 0.980f, 1f),
+            _textMuted = new Color(0.608f, 0.631f, 0.690f, 1f),
+            _border = new Color(0.137f, 0.153f, 0.227f, 1f),
+            _accent = new Color(0.369f, 0.416f, 0.824f, 1f),
+            _accentText = Color.white,
+            _surfaceElevated = new Color(0.090f, 0.102f, 0.157f, 1f),
+            _surfaceHover = new Color(0.110f, 0.122f, 0.180f, 1f),
+            _surfacePressed = new Color(0.137f, 0.153f, 0.220f, 1f),
+            _accentHover = new Color(0.435f, 0.478f, 0.871f, 1f),
+            _accentPressed = new Color(0.329f, 0.376f, 0.769f, 1f),
+            _accentMuted = new Color(0.133f, 0.149f, 0.278f, 1f),
+            _borderStrong = new Color(0.188f, 0.212f, 0.314f, 1f),
+            _focusRing = new Color(0.369f, 0.416f, 0.824f, 0.60f),
             _success = new Color(0.290f, 0.871f, 0.502f, 1f),
             _successText = new Color(0.020f, 0.180f, 0.086f, 1f),
             _successMuted = new Color(0.090f, 0.204f, 0.145f, 1f),
@@ -955,7 +955,7 @@ namespace NowUI
                 default,
                 0f,
                 1f,
-                new NowThemeColorReference(NowColorToken.Border, new Color(0.886f, 0.910f, 0.941f, 1f))),
+                new NowThemeColorReference(NowColorToken.Border, new Color(0.894f, 0.902f, 0.922f, 1f))),
             _muted = new NowRectanglePreset(
                 new NowThemeColorReference(NowColorToken.SurfaceMuted, new Color(0.945f, 0.961f, 0.976f, 1f)),
                 new NowThemeRadiusReference(NowRadiusToken.Md, new Vector4(10f, 10f, 10f, 10f)),
@@ -969,9 +969,9 @@ namespace NowUI
                 default,
                 0f,
                 1f,
-                new NowThemeColorReference(NowColorToken.BorderStrong, new Color(0.796f, 0.835f, 0.882f, 1f))),
+                new NowThemeColorReference(NowColorToken.BorderStrong, new Color(0.788f, 0.804f, 0.839f, 1f))),
             _accent = new NowRectanglePreset(
-                new NowThemeColorReference(NowColorToken.Accent, new Color(0.145f, 0.388f, 0.922f, 1f)),
+                new NowThemeColorReference(NowColorToken.Accent, new Color(0.369f, 0.416f, 0.824f, 1f)),
                 new NowThemeRadiusReference(NowRadiusToken.Md, new Vector4(10f, 10f, 10f, 10f)),
                 default,
                 0f,
@@ -983,10 +983,10 @@ namespace NowUI
                 default,
                 0f,
                 1f,
-                new NowThemeColorReference(NowColorToken.Border, new Color(0.886f, 0.910f, 0.941f, 1f)),
+                new NowThemeColorReference(NowColorToken.Border, new Color(0.894f, 0.902f, 0.922f, 1f)),
                 NowElevationToken.Raised),
             _accentSoft = new NowRectanglePreset(
-                new NowThemeColorReference(NowColorToken.AccentMuted, new Color(0.859f, 0.918f, 0.996f, 1f)),
+                new NowThemeColorReference(NowColorToken.AccentMuted, new Color(0.910f, 0.918f, 0.984f, 1f)),
                 new NowThemeRadiusReference(NowRadiusToken.Md, new Vector4(10f, 10f, 10f, 10f)),
                 default,
                 0f,
@@ -1151,7 +1151,7 @@ namespace NowUI
             return new NowTextPreset(
                 null,
                 size,
-                new NowThemeColorReference(color, new Color(0.059f, 0.090f, 0.165f, 1f)),
+                new NowThemeColorReference(color, new Color(0.086f, 0.094f, 0.114f, 1f)),
                 0f,
                 NowThemeColorReference.Fallback(Color.clear),
                 fontStyle);
@@ -1381,8 +1381,8 @@ namespace NowUI
                     _buttonMinHeight = 36f,
                     _buttonRadius = NowThemeRadiusReference.Fallback(default),
                     _focusOutline = 2f,
-                    _focusColor = new NowThemeColorReference(NowColorToken.FocusRing, new Color(0.145f, 0.388f, 0.922f, 0.55f)),
-                    _fieldFocusColor = new NowThemeColorReference(NowColorToken.FocusRing, new Color(0.145f, 0.388f, 0.922f, 0.55f)),
+                    _focusColor = new NowThemeColorReference(NowColorToken.FocusRing, new Color(0.369f, 0.416f, 0.824f, 0.55f)),
+                    _fieldFocusColor = new NowThemeColorReference(NowColorToken.FocusRing, new Color(0.369f, 0.416f, 0.824f, 0.55f)),
                     _focusRingOffset = 2f,
                     _hoverStateOpacity = 0.08f,
                     _pressedStateOpacity = 0.12f,
