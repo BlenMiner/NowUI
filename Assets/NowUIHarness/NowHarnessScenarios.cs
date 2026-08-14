@@ -183,6 +183,18 @@ namespace NowUI.Editor
             }
         }
 
+#if NOWUI_UGUI
+        sealed class LayoutCallbackGraphic : NowLayoutGraphic
+        {
+            public Action<NowRect> draw;
+
+            protected override void DrawNowUI(NowRect view)
+            {
+                draw?.Invoke(view);
+            }
+        }
+#endif
+
         sealed class WorldHarnessPanel : NowWorldGraphic
         {
             public INowInputProvider inputProvider;
@@ -230,6 +242,8 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "shader-variants", width = 840, height = 420, includeInGoldens = true, draw = DrawShaderVariants },
 #if NOWUI_UGUI
                 new NowHarnessScenario { name = "quick-start-overlay", width = 500, height = 400, includeInGoldens = true, draw = DrawQuickStartOverlay, capture = CaptureQuickStartOverlay },
+                new NowHarnessScenario { name = "quick-start-score", width = 300, height = 120, includeInGoldens = false, darkTheme = true, draw = DrawQuickStartScore, capture = CaptureQuickStartScore },
+                new NowHarnessScenario { name = "quick-start-settings", width = 360, height = 190, includeInGoldens = false, darkTheme = true, draw = DrawQuickStartSettings, capture = CaptureQuickStartSettings },
 #endif
                 new NowHarnessScenario { name = "sdf-mask-glow-clip", width = 640, height = 640, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGlowClip },
                 new NowHarnessScenario { name = "sdf-mask-gallery", width = 960, height = 520, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGallery },
@@ -324,6 +338,59 @@ namespace NowUI.Editor
         static NowHarnessCapture CaptureQuickStartOverlay(NowHarnessScenario scenario, string outputPath)
         {
             return CaptureCanvasHost(scenario, outputPath, layout: false, draw: _ => DrawScenarioFrame(scenario));
+        }
+
+        static NowHarnessCapture CaptureQuickStartScore(NowHarnessScenario scenario, string outputPath)
+        {
+            return CaptureCanvasHost(scenario, outputPath, layout: false, draw: _ => DrawScenarioFrame(scenario));
+        }
+
+        static NowHarnessCapture CaptureQuickStartSettings(NowHarnessScenario scenario, string outputPath)
+        {
+            return CaptureCanvasHost(scenario, outputPath, layout: true, draw: _ => DrawScenarioFrame(scenario));
+        }
+
+        /// <summary>
+        /// The README Quick Start explicit-placement snippet, drawn verbatim over
+        /// a gradient standing in for the game view behind the overlay.
+        /// </summary>
+        static void DrawQuickStartScore(NowRect rect)
+        {
+            Now.Gradient(rect, new Color(0.10f, 0.14f, 0.24f, 1f), new Color(0.05f, 0.06f, 0.10f, 1f))
+                .SetLinear(115f)
+                .Draw();
+
+            var panel = new NowRect(rect.x + 20, rect.y + 20, 260, 80);
+            Now.Rectangle(panel)
+                .SetColor(new Color(0, 0, 0, 0.8f))
+                .SetRadius(10)
+                .Draw();
+
+            Now.Text(panel.Inset(16))
+                .SetFontSize(32)
+                .SetColor(Color.white)
+                .Draw("Score: 1200");
+        }
+
+        /// <summary>The README Quick Start measured-layout snippet, drawn verbatim.</summary>
+        static void DrawQuickStartSettings(NowRect rect)
+        {
+            using (NowLayout.Column(rect).Padding(16).Gap(8).Begin())
+            {
+                NowLayout.Label("Hello Now-UI").SetFontSize(32).Draw();
+
+                using (NowLayout.Row()
+                    .FillWidth()
+                    .AlignChildren(NowLayoutAlign.Center)
+                    .Begin())
+                {
+                    NowLayout.Label("Status").Draw();
+                    NowLayout.Spacer();
+                    NowLayout.Label("Ready").Draw();
+                }
+
+                NowLayout.Button("Sample Button").Draw();
+            }
         }
 #endif
 
@@ -705,7 +772,13 @@ namespace NowUI.Editor
 
                 NowGraphic graphic;
 
-                if (draw != null)
+                if (draw != null && layout)
+                {
+                    var layoutGraphic = panelObject.AddComponent<LayoutCallbackGraphic>();
+                    layoutGraphic.draw = draw;
+                    graphic = layoutGraphic;
+                }
+                else if (draw != null)
                 {
                     graphic = panelObject.AddComponent<NowGraphic>();
                     graphic.rebuildNowUI += (_, hostRect) => draw(hostRect);

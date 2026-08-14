@@ -115,6 +115,9 @@ public sealed class ScoreOverlay : NowGraphic
 }
 ```
 
+<img src="Docs/media/readme/quick-start-score.png" width="300" alt="The score overlay the snippet above renders: a rounded translucent panel with Score: 1200">
+
+
 For responsive placement, derive from `NowLayoutGraphic`. It owns the exact
 measure/draw cycle, so the layout code only describes intent:
 
@@ -142,6 +145,9 @@ public sealed class SettingsPanel : NowLayoutGraphic
     }
 }
 ```
+
+<img src="Docs/media/readme/quick-start-settings.png" width="360" alt="The settings panel the snippet above renders: a title, a status row, and a themed button">
+
 
 `NowLayout.ReserveRect(...)` bridges the two styles by reserving a layout slot
 and returning its resolved rect for a `Now` primitive. Manual hosts such as a
