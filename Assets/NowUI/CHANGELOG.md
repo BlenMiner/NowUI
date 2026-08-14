@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.6.1...nowui-v1.7.0) (2026-08-14)
+
+
+### Features
+
+* text animations and gradients ([0c52a99](https://github.com/BlenMiner/NowUI/commit/0c52a999f6362b380528f4b6ef4a0051da097908))
+
 ## [1.6.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.6.0...nowui-v1.6.1) (2026-08-14)
 
 
