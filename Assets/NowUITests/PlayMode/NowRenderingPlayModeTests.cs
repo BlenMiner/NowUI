@@ -1571,6 +1571,45 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void TextGradientRendersAcrossGlyphsWithoutMaskComposition()
+    {
+        var font = ResolveDefaultNowFont();
+
+        using (_renderer.Begin(_target))
+        {
+            Now.Text(new NowRect(4f, 30f, 120f, 64f), font)
+                .SetFontSize(42f)
+                .SetGradient(Color.red, Color.blue)
+                .SetGradientLinear(90f)
+                .Draw("MMMM");
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+        int redInk = 0;
+        int blueInk = 0;
+
+        for (int y = 0; y < Side; ++y)
+        {
+            for (int x = 0; x < Side; ++x)
+            {
+                Color32 pixel = PixelAtUi(pixels, x, y);
+
+                if (pixel.a < 40)
+                    continue;
+
+                if (x < Side / 2 && pixel.r > pixel.b + 24)
+                    ++redInk;
+                else if (x >= Side / 2 && pixel.b > pixel.r + 24)
+                    ++blueInk;
+            }
+        }
+
+        Assert.Greater(redInk, 80, "The left glyphs did not sample the red side of the text gradient.");
+        Assert.Greater(blueInk, 80, "The right glyphs did not sample the blue side of the text gradient.");
+    }
+
+    [Test]
     public void AnalyticCapsuleMaskClipsGradientMaterial()
     {
         using (_renderer.Begin(_target))

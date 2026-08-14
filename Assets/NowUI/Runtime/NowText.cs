@@ -157,6 +157,48 @@ namespace NowUI
 
         public NowFontStyle fontStyle;
 
+        internal bool gradientEnabled;
+
+        internal NowGradientKind gradientKind;
+
+        internal NowGradientShape gradientShape;
+
+        internal NowGradientSpread gradientSpread;
+
+        internal Vector4 gradientParameters;
+
+        internal Vector4 gradientColorFrom;
+
+        internal Vector4 gradientColorTo;
+
+        internal UnityEngine.Gradient gradientRamp;
+
+        internal int gradientRampRevision;
+
+        internal float gradientRepetitions;
+
+        internal NowRect gradientBounds;
+
+        internal bool hasGradientBounds;
+
+        internal bool hasExplicitMask;
+
+        internal Vector4 resolvedGradientPayload;
+
+        internal float resolvedGradientRamp;
+
+        internal NowTextAnimation animation;
+
+        internal float animationTime;
+
+        internal bool hasAnimationTime;
+
+        internal bool animationTimeNormalized;
+
+        internal int animationUnitOffset;
+
+        internal int animationUnitCount;
+
         public NowText(NowRect rect, NowFontAsset font)
         {
             this.rect = rect;
@@ -167,6 +209,27 @@ namespace NowUI
             color = new Vector4(1, 1, 1, 1);
             outlineColor = new Vector4(0, 0, 0, 1);
             this.font = font;
+            gradientEnabled = false;
+            gradientKind = NowGradientKind.Linear;
+            gradientShape = NowGradientShape.Ellipse;
+            gradientSpread = NowGradientSpread.Clamp;
+            gradientParameters = new Vector4(0f, 1f, 0f, 0f);
+            gradientColorFrom = Color.black;
+            gradientColorTo = Color.white;
+            gradientRamp = null;
+            gradientRampRevision = 0;
+            gradientRepetitions = 1f;
+            gradientBounds = default;
+            hasGradientBounds = false;
+            hasExplicitMask = false;
+            resolvedGradientPayload = default;
+            resolvedGradientRamp = 0f;
+            animation = default;
+            animationTime = 0f;
+            hasAnimationTime = false;
+            animationTimeNormalized = false;
+            animationUnitOffset = 0;
+            animationUnitCount = 0;
         }
 
         public NowText SetFont(NowFontAsset font)
@@ -224,7 +287,7 @@ namespace NowUI
         /// </summary>
         public NowText SetPosition(NowRect rect)
         {
-            if (mask == this.rect)
+            if (!hasExplicitMask && mask == this.rect)
                 mask = rect;
 
             this.rect = rect;
@@ -238,6 +301,7 @@ namespace NowUI
         public NowText SetMask(NowRect mask)
         {
             this.mask = mask;
+            hasExplicitMask = true;
             return this;
         }
 
@@ -250,6 +314,215 @@ namespace NowUI
         public NowText SetColor(Vector4 color)
         {
             this.color = color;
+            return this;
+        }
+
+        /// <summary>
+        /// Fills the glyphs with a cached two-color gradient. <see cref="color"/>
+        /// remains a multiplicative tint and the outline remains independently solid.
+        /// </summary>
+        public NowText SetGradient(Color from, Color to)
+        {
+            gradientEnabled = true;
+            gradientColorFrom = from;
+            gradientColorTo = to;
+            gradientRamp = null;
+            gradientRampRevision = 0;
+            return this;
+        }
+
+        /// <summary>Vector overload of <see cref="SetGradient(Color, Color)"/>.</summary>
+        public NowText SetGradient(Vector4 from, Vector4 to)
+        {
+            gradientEnabled = true;
+            gradientColorFrom = from;
+            gradientColorTo = to;
+            gradientRamp = null;
+            gradientRampRevision = 0;
+            return this;
+        }
+
+        /// <summary>
+        /// Fills the glyphs with all color and alpha keys from a Unity gradient.
+        /// Increment <paramref name="revision"/> after mutating the same instance,
+        /// or call <see cref="Now.InvalidateGradient(UnityEngine.Gradient)"/>.
+        /// </summary>
+        public NowText SetGradient(UnityEngine.Gradient gradient, int revision = 0)
+        {
+            gradientEnabled = true;
+            gradientRamp = gradient;
+            gradientRampRevision = revision;
+            return this;
+        }
+
+        /// <summary>Alias that makes Unity-gradient assignment explicit at call sites.</summary>
+        public NowText SetGradientRamp(UnityEngine.Gradient gradient, int revision = 0)
+        {
+            return SetGradient(gradient, revision);
+        }
+
+        /// <summary>Maps the ramp across the text bounds in a named CSS-style direction.</summary>
+        public NowText SetGradientLinear(NowGradientDirection direction = NowGradientDirection.ToBottom)
+        {
+            gradientEnabled = true;
+            gradientKind = NowGradientKind.Linear;
+
+            const float diagonal = 0.70710678118f;
+
+            switch (direction)
+            {
+                case NowGradientDirection.ToTop: gradientParameters = new Vector4(0f, -1f, 0f, 0f); break;
+                case NowGradientDirection.ToTopRight: gradientParameters = new Vector4(diagonal, -diagonal, 0f, 0f); break;
+                case NowGradientDirection.ToRight: gradientParameters = new Vector4(1f, 0f, 0f, 0f); break;
+                case NowGradientDirection.ToBottomRight: gradientParameters = new Vector4(diagonal, diagonal, 0f, 0f); break;
+                case NowGradientDirection.ToBottomLeft: gradientParameters = new Vector4(-diagonal, diagonal, 0f, 0f); break;
+                case NowGradientDirection.ToLeft: gradientParameters = new Vector4(-1f, 0f, 0f, 0f); break;
+                case NowGradientDirection.ToTopLeft: gradientParameters = new Vector4(-diagonal, -diagonal, 0f, 0f); break;
+                default: gradientParameters = new Vector4(0f, 1f, 0f, 0f); break;
+            }
+
+            return this;
+        }
+
+        /// <summary>Maps the ramp at a CSS-style angle: 0 is up and 90 is right.</summary>
+        public NowText SetGradientLinear(float angleDegrees)
+        {
+            float radians = angleDegrees * Mathf.Deg2Rad;
+            return SetGradientLinear(new Vector2(Mathf.Sin(radians), -Mathf.Cos(radians)));
+        }
+
+        /// <summary>Maps the ramp along a UI-space direction (positive y points down).</summary>
+        public NowText SetGradientLinear(Vector2 direction)
+        {
+            gradientEnabled = true;
+            gradientKind = NowGradientKind.Linear;
+            gradientParameters = new Vector4(direction.x, direction.y, 0f, 0f);
+            return this;
+        }
+
+        /// <summary>Uses a centered ellipse or circle across the text bounds.</summary>
+        public NowText SetGradientRadial(NowGradientShape shape = NowGradientShape.Ellipse)
+        {
+            gradientEnabled = true;
+            gradientKind = NowGradientKind.Radial;
+            gradientShape = shape;
+            gradientParameters = new Vector4(0.5f, 0.5f, 0.5f, 0.5f);
+            return this;
+        }
+
+        /// <summary>Uses an ellipse in normalized text-bound coordinates.</summary>
+        public NowText SetGradientRadial(Vector2 center, Vector2 radius)
+        {
+            gradientEnabled = true;
+            gradientKind = NowGradientKind.Radial;
+            gradientShape = NowGradientShape.Ellipse;
+            gradientParameters = new Vector4(center.x, center.y, radius.x, radius.y);
+            return this;
+        }
+
+        /// <summary>Uses a circle whose radius is relative to the smaller text-bound dimension.</summary>
+        public NowText SetGradientRadial(Vector2 center, float radius)
+        {
+            gradientEnabled = true;
+            gradientKind = NowGradientKind.Radial;
+            gradientShape = NowGradientShape.Circle;
+            gradientParameters = new Vector4(center.x, center.y, radius, radius);
+            return this;
+        }
+
+        /// <summary>Uses a clockwise conic sweep centered on the text bounds.</summary>
+        public NowText SetGradientConic()
+        {
+            return SetGradientConic(new Vector2(0.5f, 0.5f), 0f);
+        }
+
+        /// <summary>Uses a clockwise conic sweep around a normalized center.</summary>
+        public NowText SetGradientConic(Vector2 center, float startAngle = 0f)
+        {
+            gradientEnabled = true;
+            gradientKind = NowGradientKind.Conic;
+            gradientParameters = new Vector4(center.x, center.y, startAngle / 360f, 0f);
+            return this;
+        }
+
+        public NowText SetGradientSpread(NowGradientSpread spread)
+        {
+            gradientEnabled = true;
+            gradientSpread = spread;
+            return this;
+        }
+
+        public NowText SetGradientRepetitions(float repetitions)
+        {
+            gradientEnabled = true;
+            gradientRepetitions = repetitions;
+            return this;
+        }
+
+        /// <summary>
+        /// Pins gradient mapping to a stable rectangle. By default each draw maps
+        /// over this text builder's rect; pinning is useful across styled runs.
+        /// </summary>
+        public NowText SetGradientBounds(NowRect bounds)
+        {
+            gradientBounds = bounds;
+            hasGradientBounds = true;
+            return this;
+        }
+
+        public NowText ClearGradient()
+        {
+            gradientEnabled = false;
+            return this;
+        }
+
+        /// <summary>
+        /// Applies an allocation-free, per-cluster animation. Playback has no
+        /// hidden clock; provide the sample time with <see cref="SetTime"/>.
+        /// </summary>
+        public NowText SetAnimation(NowTextAnimation animation)
+        {
+            this.animation = animation;
+            return this;
+        }
+
+        /// <summary>Samples the animation at an absolute caller-owned time in seconds.</summary>
+        public NowText SetTime(float seconds)
+        {
+            animationTime = seconds;
+            hasAnimationTime = true;
+            animationTimeNormalized = false;
+            return this;
+        }
+
+        /// <summary>
+        /// Scrubs a finite animation from 0 to 1 without requesting continuous
+        /// repaint. Continuous Wave animation should use <see cref="SetTime"/>.
+        /// </summary>
+        public NowText SetNormalizedTime(float progress)
+        {
+            animationTime = Mathf.Clamp01(progress);
+            hasAnimationTime = true;
+            animationTimeNormalized = true;
+            return this;
+        }
+
+        public NowText ClearAnimation()
+        {
+            animation = default;
+            animationTime = 0f;
+            hasAnimationTime = false;
+            animationTimeNormalized = false;
+            animationUnitOffset = 0;
+            animationUnitCount = 0;
+            return this;
+        }
+
+        /// <summary>Internal sequence continuity used by rich text and wrapped runs.</summary>
+        internal NowText SetAnimationSequence(int unitOffset, int unitCount)
+        {
+            animationUnitOffset = Mathf.Max(0, unitOffset);
+            animationUnitCount = Mathf.Max(0, unitCount);
             return this;
         }
 
@@ -342,12 +615,7 @@ namespace NowUI
         [NowConsumer]
         public NowText Draw(char character)
         {
-            if (font != null &&
-                font.TryResolveGlyph(character, fontSize, fontStyle, out var resolvedFont, out var glyph, out _))
-            {
-                Now.DrawCharacter(this, glyph, resolvedFont);
-            }
-
+            Now.DrawCharacter(this, character);
             return this;
         }
 

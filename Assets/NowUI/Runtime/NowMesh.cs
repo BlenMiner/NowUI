@@ -684,10 +684,24 @@ namespace NowUI.Internal
             Vector4 color,
             Vector4 outlineColor,
             float outline,
-            float pixelRange)
+            float pixelRange,
+            Vector4 gradient = default,
+            float encodedGradient = 0f)
         {
             ReserveTextGlyphs(1);
-            AddTextGlyphReserved(glyph, x, y, fontSize, baseline, mask, color, outlineColor, outline, pixelRange);
+            AddTextGlyphReserved(
+                glyph,
+                x,
+                y,
+                fontSize,
+                baseline,
+                mask,
+                color,
+                outlineColor,
+                outline,
+                pixelRange,
+                gradient,
+                encodedGradient);
         }
 
         internal void ReserveTextGlyphs(int glyphCount)
@@ -732,7 +746,9 @@ namespace NowUI.Internal
             Vector4 color,
             Vector4 outlineColor,
             float outline,
-            float pixelRange)
+            float pixelRange,
+            Vector4 gradient = default,
+            float encodedGradient = 0f)
         {
             var planeBounds = glyph.planeBounds;
             float left = planeBounds.left * fontSize;
@@ -768,6 +784,8 @@ namespace NowUI.Internal
             Vector4 extra = default;
             extra.x = outline;
             extra.y = pixelRange;
+            extra.z = gradient.w;
+            extra.w = encodedGradient;
 
             var maskArray = _mask.array;
             int maskCount = _mask.count;
@@ -787,10 +805,11 @@ namespace NowUI.Internal
 
             var radiusArray = _radius.array;
             int radiusCount = _radius.count;
-            radiusArray[radiusCount] = default;
-            radiusArray[radiusCount + 1] = default;
-            radiusArray[radiusCount + 2] = default;
-            radiusArray[radiusCount + 3] = default;
+            Vector4 gradientXYZ = new Vector4(gradient.x, gradient.y, gradient.z, 0f);
+            radiusArray[radiusCount] = gradientXYZ;
+            radiusArray[radiusCount + 1] = gradientXYZ;
+            radiusArray[radiusCount + 2] = gradientXYZ;
+            radiusArray[radiusCount + 3] = gradientXYZ;
             _radius.count += 4;
 
             var colorArray = _color.array;
@@ -850,6 +869,28 @@ namespace NowUI.Internal
             triArray[triCount + 4] = indexOffset + 2;
             triArray[triCount + 5] = indexOffset + 3;
             _tris.count += 6;
+        }
+
+        /// <summary>
+        /// Adds a text-gradient payload to glyphs emitted by a bulk/native run.
+        /// Text keeps using its normal material and batch; the gradient is entirely
+        /// vertex-driven, so differently painted strings can share that batch.
+        /// </summary>
+        internal void SetTextGradient(int firstVertex, Vector4 gradient, float encodedGradient)
+        {
+            if (encodedGradient <= 0f || firstVertex < 0 || firstVertex >= _verts.count)
+                return;
+
+            Vector4 gradientXYZ = new Vector4(gradient.x, gradient.y, gradient.z, 0f);
+            var radii = _radius.array;
+            var extras = _extra.array;
+
+            for (int i = firstVertex; i < _verts.count; ++i)
+            {
+                radii[i] = gradientXYZ;
+                extras[i].z = gradient.w;
+                extras[i].w = encodedGradient;
+            }
         }
 
         internal float AddShapedTextRunReserved(
@@ -1621,7 +1662,13 @@ namespace NowUI.Internal
                 if (isRectangleLike)
                     PatchRectangleCanvasVertices(destination.array, destinationBase, count);
 
-                if (kind == NowMeshKind.Gradient)
+                if (isText)
+                    PatchTextCanvasColors(
+                        destination.array,
+                        destinationBase,
+                        count,
+                        canvasVertexColorAlwaysGammaSpace);
+                else if (kind == NowMeshKind.Gradient)
                     PatchGradientCanvasColors(
                         destination.array,
                         destinationBase,
@@ -1652,6 +1699,7 @@ namespace NowUI.Internal
                 {
                     var rawUv = _rawuv.array[i];
                     vertex.uv0 = new Vector4(uv.x, uv.y, rawUv.x, rawUv.y);
+                    vertex.uv3 = _extra.array[i];
                 }
                 else if (isRectangleLike)
                 {
@@ -1672,7 +1720,13 @@ namespace NowUI.Internal
                 output[destinationBase + i] = vertex;
             }
 
-            if (kind == NowMeshKind.Gradient)
+            if (isText)
+                PatchTextCanvasColors(
+                    output,
+                    destinationBase,
+                    count,
+                    canvasVertexColorAlwaysGammaSpace);
+            else if (kind == NowMeshKind.Gradient)
                 PatchGradientCanvasColors(
                     output,
                     destinationBase,
@@ -1680,6 +1734,60 @@ namespace NowUI.Internal
                     canvasVertexColorAlwaysGammaSpace);
 
             destination.count += count;
+        }
+
+        /// <summary>
+        /// Canvas only performs its automatic gamma-to-linear conversion on the
+        /// COLOR channel, and can be configured to leave even that channel in gamma
+        /// space. Text outlines ride TANGENT, so normalize both authored UI colors
+        /// to the shader's working space here when Canvas will not do it for us.
+        /// </summary>
+        static void PatchTextCanvasColors(
+            NowCanvasVertex[] output,
+            int destinationBase,
+            int count,
+            bool canvasVertexColorAlwaysGammaSpace)
+        {
+            ColorSpace colorSpace = QualitySettings.activeColorSpace;
+
+            if (colorSpace != ColorSpace.Linear)
+                return;
+
+            for (int i = 0; i < count; ++i)
+            {
+                int index = destinationBase + i;
+
+                if (canvasVertexColorAlwaysGammaSpace)
+                    output[index].color = TextCanvasColorToWorkingSpace(output[index].color, colorSpace);
+
+                output[index].tangent = TextCanvasColorToWorkingSpace(output[index].tangent, colorSpace);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static Color TextCanvasColorToWorkingSpace(Color color, ColorSpace colorSpace)
+        {
+            if (colorSpace != ColorSpace.Linear)
+                return color;
+
+            return new Color(
+                Mathf.GammaToLinearSpace(color.r),
+                Mathf.GammaToLinearSpace(color.g),
+                Mathf.GammaToLinearSpace(color.b),
+                color.a);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static Vector4 TextCanvasColorToWorkingSpace(Vector4 color, ColorSpace colorSpace)
+        {
+            if (colorSpace != ColorSpace.Linear)
+                return color;
+
+            return new Vector4(
+                Mathf.GammaToLinearSpace(color.x),
+                Mathf.GammaToLinearSpace(color.y),
+                Mathf.GammaToLinearSpace(color.z),
+                color.w);
         }
 
         /// <summary>

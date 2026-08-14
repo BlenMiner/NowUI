@@ -27,7 +27,21 @@ public sealed class NowUIQuickStartOverlay : MonoBehaviour
 
     void DrawOverlay()
     {
-        NowLayout.Label("NowUI", 28f).Draw();
+        var titleRect = NowLayout.ReserveRect(width: 180f, height: 38f);
+        float titleTime = Mathf.Repeat(Time.unscaledTime, 2.5f);
+
+        Now.Text(titleRect)
+            .SetFontSize(28f)
+            .SetGradient(
+                new Color(0.12f, 0.58f, 1f),
+                new Color(0.82f, 0.22f, 0.94f))
+            .SetGradientLinear(90f)
+            .SetAnimation(NowTextAnimations.FadeUp(
+                distance: 10f,
+                duration: 0.45f,
+                stagger: 0.06f))
+            .SetTime(titleTime)
+            .Draw("NowUI");
 
         var gradientRect = NowLayout.ReserveRect(width: 180f, height: 36f);
         Now.Gradient(

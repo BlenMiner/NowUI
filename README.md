@@ -10,6 +10,30 @@ It renders through the built-in pipeline (`GL`/`Graphics.DrawMeshNow`), URP,
 HDRP, a UGUI `CanvasRenderer`, UI Toolkit/UXML, a world-space `MeshRenderer`,
 a `RenderTexture`, or IMGUI — same drawing code everywhere.
 
+## Showcase
+
+Every image below was drawn by NowUI itself: the repository's deterministic
+visual harness renders each scene into an offscreen `RenderTexture` and writes
+the PNG to disk (`Tools/NowUI-Harness.ps1 -Mode Visual`). No editor
+screenshots, no compositing.
+
+![In-app documentation browser rendered with NowUI, including live 3D model previews and syntax-highlighted code](Docs/media/readme/docs-model-preview-demo.png)
+
+*The in-app docs browser from [NowDocsExample](Assets/NowUI/Example/NowDocsExample.cs):
+sidebar navigation, scroll views, controls, syntax-shaped code blocks, and
+three live camera-backed 3D model previews sharing one immediate-mode frame.*
+
+| | |
+| --- | --- |
+| ![Custom SDF shader gallery: animated aurora, topographic contours, relit paper cutout](Docs/media/readme/sdf-custom-shaders.png) Composable SDF scenes with custom final-shading — animation, distance fields, relighting. [SDF Shapes](Assets/NowUI/Documentation~/SDF.md) | ![SDF mask gallery: boolean cutouts, text-shaped masks, feathered edge coverage](Docs/media/readme/sdf-mask-gallery.png) Boolean cutouts, text-shaped masks, and feathered coverage. [Masks](Assets/NowUI/Documentation~/Masks.md) |
+| ![Two 3D model previews, one drawn directly and one captured then wave-deformed](Docs/media/readme/model-preview-effects.png) 3D models rendered to transparent textures and composed like any other draw — here with a texture-backed wave deformer. [Model Previews](Assets/NowUI/Documentation~/ModelPreviews.md), [Effects](Assets/NowUI/Documentation~/Effects.md) | ![Controls gallery in the dark theme: buttons, toggles, sliders, fields, dropdowns](Docs/media/readme/controls-dark.png) The stock control set under the dark theme preset. [Controls](Assets/NowUI/Documentation~/Controls.md), [Styles & Themes](Assets/NowUI/Documentation~/StylesAndThemes.md) |
+| ![Dockable tabbed windows with a scene view, hierarchy, and inspector panes](Docs/media/readme/docking.png) Dockable tabbed windows with side splits, splitter resizing, and drag-to-dock guides. [Docking](Assets/NowUI/Documentation~/Docking.md) | ![Node graph with typed ports and bezier links](Docs/media/readme/node-graph.png) Schema-driven node graph with typed ports, bezier links, and undo history. [Node Graph](Assets/NowUI/Documentation~/NodeGraph.md) |
+
+![Google-style landing page mockup built from NowUI primitives](Docs/media/readme/landing-page-now.png)
+
+*A pixel-faithful landing page from [NowLandingPageExample](Assets/NowUI/Example/NowLandingPageExample.cs) —
+nothing but text, colors, controls, and rectangles.*
+
 ## Installation
 
 Install as a UPM package via git URL (Window > Package Manager > `+` >

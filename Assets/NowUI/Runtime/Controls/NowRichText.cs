@@ -182,6 +182,46 @@ namespace NowUI
 
         public NowRichText SetColor(Vector4 color) { _style = _style.SetColor(color); return this; }
 
+        public NowRichText SetGradient(Color from, Color to) { _style = _style.SetGradient(from, to); return this; }
+
+        public NowRichText SetGradient(Vector4 from, Vector4 to) { _style = _style.SetGradient(from, to); return this; }
+
+        public NowRichText SetGradient(UnityEngine.Gradient gradient, int revision = 0) { _style = _style.SetGradient(gradient, revision); return this; }
+
+        public NowRichText SetGradientRamp(UnityEngine.Gradient gradient, int revision = 0) { _style = _style.SetGradientRamp(gradient, revision); return this; }
+
+        public NowRichText SetGradientLinear(NowGradientDirection direction = NowGradientDirection.ToBottom) { _style = _style.SetGradientLinear(direction); return this; }
+
+        public NowRichText SetGradientLinear(float angleDegrees) { _style = _style.SetGradientLinear(angleDegrees); return this; }
+
+        public NowRichText SetGradientLinear(Vector2 direction) { _style = _style.SetGradientLinear(direction); return this; }
+
+        public NowRichText SetGradientRadial(NowGradientShape shape = NowGradientShape.Ellipse) { _style = _style.SetGradientRadial(shape); return this; }
+
+        public NowRichText SetGradientRadial(Vector2 center, Vector2 radius) { _style = _style.SetGradientRadial(center, radius); return this; }
+
+        public NowRichText SetGradientRadial(Vector2 center, float radius) { _style = _style.SetGradientRadial(center, radius); return this; }
+
+        public NowRichText SetGradientConic() { _style = _style.SetGradientConic(); return this; }
+
+        public NowRichText SetGradientConic(Vector2 center, float startAngle = 0f) { _style = _style.SetGradientConic(center, startAngle); return this; }
+
+        public NowRichText SetGradientSpread(NowGradientSpread spread) { _style = _style.SetGradientSpread(spread); return this; }
+
+        public NowRichText SetGradientRepetitions(float repetitions) { _style = _style.SetGradientRepetitions(repetitions); return this; }
+
+        public NowRichText SetGradientBounds(NowRect bounds) { _style = _style.SetGradientBounds(bounds); return this; }
+
+        public NowRichText ClearGradient() { _style = _style.ClearGradient(); return this; }
+
+        public NowRichText SetAnimation(NowTextAnimation animation) { _style = _style.SetAnimation(animation); return this; }
+
+        public NowRichText SetTime(float seconds) { _style = _style.SetTime(seconds); return this; }
+
+        public NowRichText SetNormalizedTime(float progress) { _style = _style.SetNormalizedTime(progress); return this; }
+
+        public NowRichText ClearAnimation() { _style = _style.ClearAnimation(); return this; }
+
         public NowRichText SetSpans(IReadOnlyList<NowRichTextSpan> spans) { _spans = spans; return this; }
 
         /// <summary>
@@ -689,45 +729,149 @@ namespace NowUI
 
         void DrawRuns(NowRichTextLayout layout, NowRect mask)
         {
+            float motionOutset = _style.animation.isAnimated ? _style.animation.boundedOutset : 0f;
+            int totalAnimationUnits = 0;
+
+            if (_style.animation.isAnimated)
+            {
+                for (int i = 0; i < layout.runs.Count; ++i)
+                {
+                    var countRun = layout.runs[i];
+                    totalAnimationUnits += countRun.isInline
+                        ? 1
+                        : countRun.length > 0 && countRun.start >= 0
+                            ? NowTextUnitCursor.Count(System.MemoryExtensions.AsSpan(layout.text, countRun.start, countRun.length))
+                            : 0;
+                }
+            }
+
+            int animationUnitOffset = 0;
+            float sampledAnimationTime = _style.animationTime;
+
+            if (_style.animationTimeNormalized && _style.animation.isAnimated)
+            {
+                float completion = _style.animation.CompletionTime(totalAnimationUnits);
+
+                if (!float.IsInfinity(completion))
+                    sampledAnimationTime *= completion;
+            }
+
+            if (_style.animation.isAnimated &&
+                _style.hasAnimationTime &&
+                !_style.animationTimeNormalized &&
+                _style.animation.RequiresRepaint(sampledAnimationTime, totalAnimationUnits))
+            {
+                NowControlState.RequestRepaint();
+            }
+
             for (int i = 0; i < layout.runs.Count; ++i)
             {
                 var run = layout.runs[i];
 
                 if (run.isInline)
                 {
-                    run.drawInline?.Invoke(run, RunMask(run.rect, mask));
+                    if (!_style.animation.isAnimated)
+                    {
+                        run.drawInline?.Invoke(run, RunMask(run.rect, mask, motionOutset));
+                    }
+                    else
+                    {
+                        NowTextAnimationState state = _style.animation.Sample(animationUnitOffset, sampledAnimationTime);
+
+                        if (state.visible && state.alpha > 0.0005f && state.scale > 0.0005f)
+                        {
+                            Vector2 center = run.rect.center;
+                            run.rect.x += state.offset.x;
+                            run.rect.y += state.offset.y;
+
+                            if (!Mathf.Approximately(state.scale, 1f))
+                            {
+                                run.rect.width *= state.scale;
+                                run.rect.height *= state.scale;
+                                run.rect.x = center.x - run.rect.width * 0.5f + state.offset.x;
+                                run.rect.y = center.y - run.rect.height * 0.5f + state.offset.y;
+                            }
+
+                            Now.BeginColorMultiplier(new Color(1f, 1f, 1f, state.alpha));
+
+                            try
+                            {
+                                run.drawInline?.Invoke(run, RunMask(run.rect, mask, motionOutset));
+                            }
+                            finally
+                            {
+                                Now.EndColorMultiplier();
+                            }
+                        }
+
+                        ++animationUnitOffset;
+                    }
+
                     continue;
                 }
 
                 if (run.length <= 0 || run.start < 0)
                     continue;
 
+                var runText = System.MemoryExtensions.AsSpan(layout.text, run.start, run.length);
+                int runAnimationUnits = _style.animation.isAnimated
+                    ? NowTextUnitCursor.Count(runText)
+                    : 0;
+
                 var style = _style
                     .SetPosition(run.rect)
-                    .SetMask(RunMask(run.rect, mask))
+                    .SetMask(RunMask(run.rect, mask, motionOutset))
                     .SetFontSize(run.fontSize)
-                    .SetFontStyle(run.fontStyle);
+                    .SetFontStyle(run.fontStyle)
+                    .SetAnimationSequence(animationUnitOffset, totalAnimationUnits);
+
+                if (style.gradientEnabled && !style.hasGradientBounds)
+                    style = style.SetGradientBounds(mask);
 
                 if (run.hasColor)
                     style = style.SetColor(run.color);
 
-                style.Draw(System.MemoryExtensions.AsSpan(layout.text, run.start, run.length));
+                style.Draw(runText);
 
-                if (run.underline)
-                    Now.Rectangle(new NowRect(run.rect.x, run.rect.yMax - 2f, run.rect.width - 1f, 1f))
-                        .SetColor(style.color)
+                float decorationAlpha = 1f;
+                Vector2 decorationOffset = default;
+                bool drawDecoration = true;
+
+                if (_style.animation.isAnimated && runAnimationUnits > 0)
+                {
+                    NowTextAnimationState decorationState = _style.animation.Sample(
+                        animationUnitOffset + runAnimationUnits - 1,
+                        sampledAnimationTime);
+                    drawDecoration = decorationState.visible && decorationState.alpha > 0.0005f;
+                    decorationAlpha = decorationState.alpha;
+                    decorationOffset = decorationState.offset;
+                }
+
+                if (run.underline && drawDecoration)
+                    Now.Rectangle(new NowRect(
+                            run.rect.x + decorationOffset.x,
+                            run.rect.yMax - 2f + decorationOffset.y,
+                            run.rect.width - 1f,
+                            1f))
+                        .SetColor(new Vector4(style.color.x, style.color.y, style.color.z, style.color.w * decorationAlpha))
                         .Draw();
 
-                if (run.strikethrough)
-                    Now.Rectangle(new NowRect(run.rect.x, run.rect.y + run.rect.height * 0.55f, run.rect.width - 1f, 1f))
-                        .SetColor(style.color)
+                if (run.strikethrough && drawDecoration)
+                    Now.Rectangle(new NowRect(
+                            run.rect.x + decorationOffset.x,
+                            run.rect.y + run.rect.height * 0.55f + decorationOffset.y,
+                            run.rect.width - 1f,
+                            1f))
+                        .SetColor(new Vector4(style.color.x, style.color.y, style.color.z, style.color.w * decorationAlpha))
                         .Draw();
+
+                animationUnitOffset += runAnimationUnits;
             }
         }
 
-        static NowRect RunMask(NowRect runRect, NowRect regionMask)
+        static NowRect RunMask(NowRect runRect, NowRect regionMask, float motionOutset = 0f)
         {
-            return regionMask.Union(runRect).Outset(4f);
+            return regionMask.Union(runRect).Outset(4f + Mathf.Max(0f, motionOutset));
         }
     }
 

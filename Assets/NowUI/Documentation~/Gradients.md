@@ -3,6 +3,9 @@
 `Now.Gradient(...)` draws CSS-inspired linear, radial, and conic paints without
 adding gradient state to `NowRectangle`.
 
+For the equivalent fill applied directly to shaped glyphs, see
+[Text Gradients And Animation](TextStyling.md).
+
 ```csharp
 Now.Gradient(rect, new Color(0.12f, 0.48f, 1f), new Color(0.72f, 0.2f, 0.95f))
     .SetLinear(135f)

@@ -202,6 +202,16 @@ namespace NowUI
 
             float lineHeight = runStyle.font.GetLineHeight(runStyle.fontStyle) * runStyle.fontSize;
 
+            if (!runStyle.hasExplicitMask && !runStyle.mask.isEmpty)
+            {
+                float motionOutset = runStyle.animation.isAnimated
+                    ? runStyle.animation.boundedOutset
+                    : 0f;
+                runStyle.mask = runStyle.mask.Outset(4f + motionOutset);
+            }
+
+            int totalAnimationUnits = 0;
+
             for (int i = 0; i < runs.Count; ++i)
             {
                 var run = runs[i];
@@ -212,8 +222,41 @@ namespace NowUI
                     runs[i] = run;
                 }
 
-                runStyle.rect = new NowRect(origin.x + run.x, origin.y + run.y, run.width + 1f, lineHeight);
-                runStyle.Draw(run.text);
+                if (runStyle.animation.isAnimated)
+                    totalAnimationUnits += Now.GetTextAnimationUnitCount(runStyle, run.text);
+            }
+
+            if (runStyle.gradientEnabled && !runStyle.hasGradientBounds && runs.Count > 0)
+            {
+                float minX = float.PositiveInfinity;
+                float minY = float.PositiveInfinity;
+                float maxX = float.NegativeInfinity;
+                float maxY = float.NegativeInfinity;
+
+                for (int i = 0; i < runs.Count; ++i)
+                {
+                    var boundsRun = runs[i];
+                    minX = Mathf.Min(minX, origin.x + boundsRun.x);
+                    minY = Mathf.Min(minY, origin.y + boundsRun.y);
+                    maxX = Mathf.Max(maxX, origin.x + boundsRun.x + boundsRun.width);
+                    maxY = Mathf.Max(maxY, origin.y + boundsRun.y + lineHeight);
+                }
+
+                runStyle = runStyle.SetGradientBounds(new NowRect(minX, minY, maxX - minX, maxY - minY));
+            }
+
+            int animationUnitOffset = 0;
+
+            for (int i = 0; i < runs.Count; ++i)
+            {
+                var run = runs[i];
+
+                var currentStyle = runStyle.SetAnimationSequence(animationUnitOffset, totalAnimationUnits);
+                currentStyle.rect = new NowRect(origin.x + run.x, origin.y + run.y, run.width + 1f, lineHeight);
+                currentStyle.Draw(run.text);
+
+                if (runStyle.animation.isAnimated)
+                    animationUnitOffset += Now.GetTextAnimationUnitCount(runStyle, run.text);
             }
         }
     }

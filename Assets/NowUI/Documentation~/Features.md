@@ -385,6 +385,25 @@ Now.Text(new Vector4(20, 20, advance.x, bounds.w), font)
 Text supports tabs, newlines, and Unicode code point reading for
 supplementary-plane glyphs when the font atlas contains those glyphs.
 
+Gradient fills and caller-timed glyph animations are configured on the same
+builder and can be combined:
+
+```csharp
+Now.Text(new NowRect(24, 92, 360, 60), font)
+    .SetFontSize(42f)
+    .SetGradient(Color.cyan, new Color(0.76f, 0.2f, 0.96f))
+    .SetGradientLinear(90f)
+    .SetAnimation(NowTextAnimations.FadeUp(12f, 0.4f, 0.035f))
+    .SetTime(Time.unscaledTime - titleStartedAt)
+    .Draw("Animated gradient");
+```
+
+The text builder owns no hidden clock: pass elapsed seconds through `SetTime`
+to play, pause, restart, or test an animation deterministically. See
+[Text Gradients And Animation](TextStyling.md) for radial and conic fills,
+Unity ramps, typewriter/fade/scale/wave presets, retained-host rebuilding, and
+warmup guidance.
+
 ## UGUI Rendering
 
 Use `NowGraphic` when NowUI should render into a UGUI `CanvasRenderer`.

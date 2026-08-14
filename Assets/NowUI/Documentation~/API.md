@@ -55,9 +55,11 @@ when enabled. No manual NowUI input define is required.
   `NowKeyInput`, and `NowKeyNames` provide keyboard-binding capture and display
   names over `UnityEngine.InputSystem.Key`. These types are not compiled into
   configurations without that package.
-- `NowText`, `NowFontAsset`, `NowFont`, `NowTextWrap`,
+- `NowText`, `NowTextAnimation`, `NowTextAnimationKind`,
+  `NowTextAnimationEasing`, `NowTextAnimations`, `NowFontAsset`, `NowFont`, `NowTextWrap`,
   `NowTextSelection`, `NowTextEdit`, `NowTextArea`, `NowTextFieldResult`, and rich-text types:
-  text rendering, shaping, editing, wrapping, selection, and parser hooks.
+  text rendering, gradient fills, caller-timed glyph animation, shaping,
+  editing, wrapping, selection, and parser hooks.
 - `NowGlass`, `NowGlassSettings`, and diagnostics structs: backdrop pane
   drawing, quality selection, and non-alloc diagnostic reporting.
 - `NowGradient`, `NowGradientKind`, `NowGradientDirection`,

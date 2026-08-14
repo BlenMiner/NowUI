@@ -402,7 +402,7 @@ namespace NowUI
                     ++controlCount;
                     ++lineCount;
                 }
-                else if (character == '\t')
+                else if (character == '\t' || character == '\r')
                 {
                     ++controlCount;
                 }
@@ -423,7 +423,7 @@ namespace NowUI
             {
                 char control = i < value.Length ? value[i] : '\0';
 
-                if (i < value.Length && control != '\n' && control != '\t')
+                if (i < value.Length && control != '\n' && control != '\r' && control != '\t')
                     continue;
 
                 if (i > segmentStart)
@@ -592,6 +592,9 @@ namespace NowUI
                     continue;
                 }
 
+                if (codepoint == '\r')
+                    continue;
+
                 if (codepoint == '\t')
                 {
                     visited.Clear();
@@ -663,6 +666,9 @@ namespace NowUI
                     continue;
                 }
 
+                if (codepoint == '\r')
+                    continue;
+
                 if (codepoint == '\t')
                 {
                     if (direct)
@@ -723,7 +729,7 @@ namespace NowUI
         /// </summary>
         internal float GetCodepointAdvance(int codepoint, float fontSize, NowFontStyle style = NowFontStyle.Regular, int tabSpaces = 4)
         {
-            if (fontSize <= 0 || codepoint <= 0 || codepoint == '\n')
+            if (fontSize <= 0 || codepoint <= 0 || codepoint == '\n' || codepoint == '\r')
                 return 0f;
 
             bool isTab = codepoint == '\t';
@@ -925,6 +931,9 @@ namespace NowUI
                     lineY += lineHeight;
                     continue;
                 }
+
+                if (codepoint == '\r')
+                    continue;
 
                 if (codepoint == '\t')
                 {
@@ -2582,7 +2591,7 @@ namespace NowUI
             {
                 int codepoint = ReadCodepoint(value, ref i);
 
-                if (codepoint == '\n')
+                if (codepoint == '\n' || codepoint == '\r')
                     continue;
 
                 if (codepoint == '\t')
@@ -3330,6 +3339,12 @@ namespace NowUI
         {
             public readonly uint glyphIndex;
 
+            /// <summary>UTF-16 cluster index in the shaped source segment.</summary>
+            public readonly uint cluster;
+
+            /// <summary>Logical animation unit for this cluster.</summary>
+            public readonly int animationUnit;
+
             public readonly int encodedKey;
 
             public readonly float xAdvance;
@@ -3349,9 +3364,12 @@ namespace NowUI
             public PreparedShapedGlyph(
                 in NowTextShaper.ShapedGlyph shaped,
                 NowFontAtlasInfo.Glyph glyph,
-                Material material)
+                Material material,
+                int animationUnit)
             {
                 glyphIndex = shaped.glyphIndex;
+                cluster = shaped.cluster;
+                this.animationUnit = animationUnit;
                 encodedKey = EncodeGlyphIndexKey((int)shaped.glyphIndex);
                 xAdvance = shaped.xAdvance;
                 xOffset = shaped.xOffset;
@@ -3437,15 +3455,23 @@ namespace NowUI
 
             public int generation;
 
+            public readonly int animationUnitCount;
+
             public int length => glyphs.Length;
 
             public PreparedShapedRun(PreparedShapedGlyph[] glyphs)
             {
                 this.glyphs = glyphs;
                 textGlyphs = new PreparedTextGlyph[glyphs.Length];
+                int maxAnimationUnit = -1;
 
                 for (int i = 0; i < glyphs.Length; ++i)
+                {
                     textGlyphs[i] = glyphs[i].textGlyph;
+                    maxAnimationUnit = Mathf.Max(maxAnimationUnit, glyphs[i].animationUnit);
+                }
+
+                animationUnitCount = maxAnimationUnit + 1;
             }
         }
 
@@ -3642,6 +3668,12 @@ namespace NowUI
                 if (codepoint == '\n')
                 {
                     prepared.Add(new PreparedCodepointGlyph(codepoint, 0f, default, null, false, true));
+                    continue;
+                }
+
+                if (codepoint == '\r')
+                {
+                    prepared.Add(new PreparedCodepointGlyph(codepoint, 0f, default, null, false, false));
                     continue;
                 }
 
@@ -3921,6 +3953,12 @@ namespace NowUI
                 return false;
 
             var prepared = new PreparedShapedGlyph[shapedRun.Length];
+            int animationUnitCount = CountShapedAnimationUnits(shapedRun);
+
+            bool logicalOrderMatchesVisual =
+                shapedRun.Length < 2 || shapedRun[0].cluster <= shapedRun[shapedRun.Length - 1].cluster;
+            int visualAnimationUnit = -1;
+            uint previousCluster = uint.MaxValue;
 
             for (int i = 0; i < shapedRun.Length; ++i)
             {
@@ -3929,7 +3967,14 @@ namespace NowUI
                 if (!TryGetShapedGlyph((int)shaped.glyphIndex, fontSize, out var glyph, out var glyphMaterial))
                     return false;
 
-                prepared[i] = new PreparedShapedGlyph(shaped, glyph, glyphMaterial);
+                if (i == 0 || shaped.cluster != previousCluster)
+                    ++visualAnimationUnit;
+
+                previousCluster = shaped.cluster;
+                int animationUnit = logicalOrderMatchesVisual
+                    ? visualAnimationUnit
+                    : animationUnitCount - visualAnimationUnit - 1;
+                prepared[i] = new PreparedShapedGlyph(shaped, glyph, glyphMaterial, animationUnit);
             }
 
             if (_preparedShapeCache.Count >= SHAPE_CACHE_LIMIT)
@@ -3938,6 +3983,28 @@ namespace NowUI
             run = new PreparedShapedRun(prepared) { generation = _preparedShapeGeneration };
             _preparedShapeCache[key] = run;
             return true;
+        }
+
+        /// <summary>
+        /// HarfBuzz's default monotone-grapheme cluster level keeps equal cluster
+        /// values adjacent in visual output, including RTL runs. Count those groups
+        /// without baking atlas glyphs so wrapped animation can precompute exact
+        /// sequence offsets without populating offscreen font pages.
+        /// </summary>
+        internal static int CountShapedAnimationUnits(NowTextShaper.ShapedGlyph[] shapedRun)
+        {
+            if (shapedRun == null || shapedRun.Length == 0)
+                return 0;
+
+            int count = 1;
+
+            for (int i = 1; i < shapedRun.Length; ++i)
+            {
+                if (shapedRun[i].cluster != shapedRun[i - 1].cluster)
+                    ++count;
+            }
+
+            return count;
         }
 
         bool TryBakeShapedGlyphs(List<int> glyphIndices, int atlasSize)

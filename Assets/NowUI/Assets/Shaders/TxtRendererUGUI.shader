@@ -55,6 +55,7 @@ Shader "NowUI/Text Renderer UGUI"
 
             #include "UnityCG.cginc"
             #include "UnityUI.cginc"
+            #include "NowUITextGradient.cginc"
             #include "NowUIMask.cginc"
 
             struct appdata
@@ -66,6 +67,7 @@ Shader "NowUI/Text Renderer UGUI"
                 float4 mask : TEXCOORD2;
                 float4 extras : TEXCOORD3;
                 float4 outlineColor : TANGENT;
+                float3 gradientPayload : NORMAL;
             };
 
             struct v2f
@@ -78,6 +80,7 @@ Shader "NowUI/Text Renderer UGUI"
                 float4 mask : TEXCOORD2;
                 float4 extras : TEXCOORD3;
                 float4 outlineColor : TEXCOORD4;
+                float3 gradientPayload : TEXCOORD6;
             };
 
             sampler2D _MainTex;
@@ -104,6 +107,7 @@ Shader "NowUI/Text Renderer UGUI"
                 o.extras = v.extras;
                 o.color = v.color;
                 o.outlineColor = v.outlineColor;
+                o.gradientPayload = v.gradientPayload;
                 return o;
             }
 
@@ -137,7 +141,15 @@ Shader "NowUI/Text Renderer UGUI"
                 float screenPxDistanceOutline = screenPxDistance + outline / unitsPerPixel;
                 float opacity = clamp(screenPxDistance + 0.5, 0.0, 1.0);
                 float outlineOp = clamp(screenPxDistanceOutline + 0.5, 0.0, 1.0);
-                float4 color = outline == 0 ? i.color : lerp(i.outlineColor, i.color, outline < 0 ? outlineOp : opacity);
+                float4 fillColor = i.color;
+
+                if (i.extras.w > 0.0)
+                {
+                    float4 gradientPayload = float4(i.gradientPayload, i.extras.z);
+                    fillColor *= NowUITextGradientSample(uiPosition, gradientPayload, i.extras.w);
+                }
+
+                float4 color = outline == 0 ? fillColor : lerp(i.outlineColor, fillColor, outline < 0 ? outlineOp : opacity);
 
                 color.a *= max(opacity, outlineOp);
                 color.a *= NowUIMaskCoverage(uiPosition);

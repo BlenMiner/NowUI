@@ -2616,6 +2616,116 @@ namespace NowUI
             }
         }
 
+        static bool PrepareTextDraw(ref NowText style)
+        {
+            bool hasTransform = _transformStack.Count > 0;
+            float motionOutset = style.animation.isAnimated ? style.animation.boundedOutset : 0f;
+
+            if (!style.hasExplicitMask && !style.mask.isEmpty && style.mask == style.rect)
+                style.mask = style.mask.Outset(4f + motionOutset);
+
+            // Transform only the mask to screen-space; glyph positions are
+            // transformed at emission time so animation offsets scale with them.
+            if (hasTransform && !style.mask.isEmpty)
+                style.mask = ApplyTransformRect(style.mask);
+
+            style.mask = ApplyAmbientMask(style.mask);
+            NowRect overlapRect = hasTransform ? ApplyTransformRect(style.rect) : style.rect;
+            float scaledMotionOutset = hasTransform ? ApplyTransformScalar(motionOutset) : motionOutset;
+
+            if (style.mask.isEmpty || !style.mask.Overlaps(overlapRect.Outset(8f + scaledMotionOutset)))
+                return false;
+
+            style.resolvedGradientPayload = default;
+            style.resolvedGradientRamp = 0f;
+            TryResolveTextGradient(style, out style.resolvedGradientPayload, out style.resolvedGradientRamp);
+
+            return true;
+        }
+
+        /// <summary>
+        /// Resolves normalized time and retained-host repaint behavior only after
+        /// the selected draw path knows its exact cluster count. This keeps
+        /// ligatures and combining clusters from introducing dead timeline slots.
+        /// </summary>
+        static void PrepareTextAnimation(ref NowText style, int localAnimationUnits)
+        {
+            if (!style.animation.isAnimated)
+                return;
+
+            int totalUnits = style.animationUnitCount > 0
+                ? style.animationUnitCount
+                : style.animationUnitOffset + Mathf.Max(0, localAnimationUnits);
+
+            if (style.animationTimeNormalized)
+            {
+                float completion = style.animation.CompletionTime(totalUnits);
+
+                if (!float.IsInfinity(completion))
+                    style.animationTime *= completion;
+            }
+
+            if (style.hasAnimationTime &&
+                !style.animationTimeNormalized &&
+                style.animation.RequiresRepaint(style.animationTime, totalUnits))
+            {
+                NowControlState.RequestRepaint();
+            }
+
+            // Settled entrance/reveal presets are visually identical to static
+            // text. Drop only the local draw copy back to the bulk/native path;
+            // the caller's immutable builder still retains its configuration.
+            if (style.animation.kind != NowTextAnimationKind.Wave &&
+                style.animation.IsComplete(style.animationTime, totalUnits))
+            {
+                style.animation = default;
+            }
+        }
+
+        /// <summary>
+        /// Returns the units the string draw path will actually animate. Wrapped
+        /// text uses this before assigning global offsets to separately shaped words.
+        /// </summary>
+        internal static int GetTextAnimationUnitCount(in NowText style, string value)
+        {
+            if (!style.animation.isAnimated || string.IsNullOrEmpty(value))
+                return 0;
+
+            if (textShaping &&
+                style.font != null &&
+                style.font.TryResolveFont(style.fontStyle, out var font) &&
+                font != null)
+            {
+                if (!HasShapedControlCharacters(value))
+                {
+                    if (font.TryGetShapedRun(value, out var run))
+                        return NowFont.CountShapedAnimationUnits(run);
+                }
+                else
+                {
+                    var segmentation = GetShapedSegmentation(value);
+                    int units = 0;
+
+                    for (int i = 0; i < segmentation.segments.Length; ++i)
+                    {
+                        string segment = segmentation.segments[i];
+
+                        if (segment == null)
+                            continue;
+
+                        if (!font.TryGetShapedRun(segment, out var run))
+                            return NowTextUnitCursor.Count(value.AsSpan());
+
+                        units += NowFont.CountShapedAnimationUnits(run);
+                    }
+
+                    return units;
+                }
+            }
+
+            return NowTextUnitCursor.Count(value.AsSpan());
+        }
+
         /// <summary>Draws a text block. The default mask (= the layout rect) is outset
         /// because glyphs legitimately overhang the advance box — descenders, italics;
         /// explicit masks stay exact, and empty masks mean "no mask". Fully masked
@@ -2627,20 +2737,7 @@ namespace NowUI
 
             using var profile = NowProfiler.TextDraw.Auto();
 
-            if (!style.mask.isEmpty && style.mask == style.rect)
-                style.mask = style.mask.Outset(4f);
-
-            // Transform only the mask to screen-space when transform is active
-            // (rect transformation is handled by DrawStringCodepoints)
-            bool hasTransform = _transformStack.Count > 0;
-            if (hasTransform && !style.mask.isEmpty)
-                style.mask = ApplyTransformRect(style.mask);
-
-            style.mask = ApplyAmbientMask(style.mask);
-
-            NowRect overlapRect = hasTransform ? ApplyTransformRect(style.rect) : style.rect;
-
-            if (style.mask.isEmpty || !style.mask.Overlaps(overlapRect.Outset(8f)))
+            if (!PrepareTextDraw(ref style))
                 return;
 
             if (textShaping && TryDrawShapedString(style, value))
@@ -2650,6 +2747,9 @@ namespace NowUI
                 preparedFont != null &&
                 preparedFont.TryGetPreparedCodepointRun(value, style.fontSize, style.fontStyle, 4, out var preparedRun))
             {
+                PrepareTextAnimation(
+                    ref style,
+                    style.animation.isAnimated ? NowTextUnitCursor.Count(value.AsSpan()) : 0);
                 DrawPreparedCodepointRun(style, preparedFont, preparedRun);
                 return;
             }
@@ -2657,6 +2757,9 @@ namespace NowUI
             if (ShouldEnsureGlyphsBeforeCodepointDraw(style.font))
                 style.font.EnsureGlyphs(value, style.fontSize, style.fontStyle);
 
+            PrepareTextAnimation(
+                ref style,
+                style.animation.isAnimated ? NowTextUnitCursor.Count(value.AsSpan()) : 0);
             DrawStringCodepoints(style, value.AsSpan());
         }
 
@@ -2672,22 +2775,12 @@ namespace NowUI
 
             using var profile = NowProfiler.TextDraw.Auto();
 
-            if (!style.mask.isEmpty && style.mask == style.rect)
-                style.mask = style.mask.Outset(4f);
-
-            // Transform only the mask to screen-space when transform is active
-            // (rect transformation is handled by DrawStringCodepoints)
-            bool hasTransform = _transformStack.Count > 0;
-            if (hasTransform && !style.mask.isEmpty)
-                style.mask = ApplyTransformRect(style.mask);
-
-            style.mask = ApplyAmbientMask(style.mask);
-
-            NowRect overlapRect = hasTransform ? ApplyTransformRect(style.rect) : style.rect;
-
-            if (style.mask.isEmpty || !style.mask.Overlaps(overlapRect.Outset(8f)))
+            if (!PrepareTextDraw(ref style))
                 return;
 
+            PrepareTextAnimation(
+                ref style,
+                style.animation.isAnimated ? NowTextUnitCursor.Count(value) : 0);
             DrawStringCodepoints(style, value);
         }
 
@@ -2697,6 +2790,51 @@ namespace NowUI
             {
                 var fallbacks = fontAsset.fallbacks;
                 return fallbacks != null && fallbacks.Count > 0;
+            }
+
+            return true;
+        }
+
+        static bool ApplyTextAnimation(
+            in NowText style,
+            in NowFontAtlasInfo.Glyph glyph,
+            int animationUnit,
+            ref float x,
+            ref float y,
+            ref float fontSize,
+            ref float baseline,
+            ref Vector4 color,
+            ref Vector4 outlineColor,
+            ref float outline,
+            ref float pixelRange)
+        {
+            if (!style.animation.isAnimated)
+                return true;
+
+            NowTextAnimationState state = style.animation.Sample(animationUnit, style.animationTime);
+
+            if (!state.visible || state.alpha <= 0.0005f || state.scale <= 0.0005f)
+                return false;
+
+            Vector2 offset = _transformStack.Count > 0
+                ? TransformScreenVector(state.offset)
+                : state.offset;
+            x += offset.x;
+            y += offset.y;
+            color.w *= state.alpha;
+            outlineColor.w *= state.alpha;
+
+            if (!Mathf.Approximately(state.scale, 1f))
+            {
+                var plane = glyph.planeBounds;
+                float centerX = x + (plane.left + plane.right) * fontSize * 0.5f;
+                float centerY = y + baseline - (plane.bottom + plane.top) * fontSize * 0.5f;
+                fontSize *= state.scale;
+                baseline *= state.scale;
+                x = centerX - (plane.left + plane.right) * fontSize * 0.5f;
+                y = centerY - baseline + (plane.bottom + plane.top) * fontSize * 0.5f;
+                outline *= state.scale;
+                pixelRange *= state.scale;
             }
 
             return true;
@@ -2727,6 +2865,7 @@ namespace NowUI
             float leftPos = style.rect.x;
 
             const int TAB_SPACES = 4;
+            var animationCursor = new NowTextUnitCursor(style.animationUnitOffset);
 
             for (int i = 0; i < value.Length; ++i)
             {
@@ -2735,17 +2874,26 @@ namespace NowUI
                 switch (codepoint)
                 {
                     case '\n':
+                        animationCursor.BreakSequence();
                         style.rect.x = leftPos;
                         style.rect.y += lineHeight;
                         break;
                     case '\t':
                     {
+                        animationCursor.BreakSequence();
                         if (TryResolveTextGlyph(fontAsset, ' ', fontSize, style.fontStyle, out _, out var space, out _))
                             style.rect.x += space.advance * fontSize * TAB_SPACES;
                         break;
                     }
+                    case '\r':
+                        animationCursor.BreakSequence();
+                        break;
                     default:
                     {
+                        int animationUnit = style.animation.isAnimated && codepoint != '\r'
+                            ? animationCursor.MoveNext(codepoint)
+                            : animationCursor.index;
+
                         if (!TryResolveTextGlyph(
                             fontAsset,
                             codepoint,
@@ -2794,17 +2942,43 @@ namespace NowUI
                                 glyphY = transformedPos.y;
                             }
 
+                            float glyphFontSize = scaledFontSize;
+                            float glyphBaseline = scaledBaseline;
+                            float glyphOutline = scaledOutline;
+                            float glyphPixelRange = pixelRange;
+                            Vector4 glyphColor = color;
+                            Vector4 glyphOutlineColor = outlineColor;
+
+                            if (!ApplyTextAnimation(
+                                style,
+                                glyph,
+                                animationUnit,
+                                ref glyphX,
+                                ref glyphY,
+                                ref glyphFontSize,
+                                ref glyphBaseline,
+                                ref glyphColor,
+                                ref glyphOutlineColor,
+                                ref glyphOutline,
+                                ref glyphPixelRange))
+                            {
+                                style.rect.x += glyph.advance * fontSize;
+                                break;
+                            }
+
                             mesh.AddTextGlyphReserved(
                                 glyph,
                                 glyphX,
                                 glyphY,
-                                scaledFontSize,
-                                scaledBaseline,
+                                glyphFontSize,
+                                glyphBaseline,
                                 style.mask,
-                                color,
-                                outlineColor,
-                                scaledOutline,
-                                pixelRange);
+                                glyphColor,
+                                glyphOutlineColor,
+                                glyphOutline,
+                                glyphPixelRange,
+                                style.resolvedGradientPayload,
+                                style.resolvedGradientRamp);
                         }
 
                         style.rect.x += glyph.advance * fontSize;
@@ -2885,7 +3059,7 @@ namespace NowUI
             float lineHeight = style.font.GetLineHeight(style.fontStyle) * fontSize;
             float leftPos = style.rect.x;
 
-            if (!hasTransform)
+            if (!hasTransform && !style.animation.isAnimated)
             {
                 DrawPreparedCodepointRunUntransformed(
                     ref style,
@@ -2907,6 +3081,7 @@ namespace NowUI
 
             var glyphs = run.glyphs;
             bool reservedCurrentMesh = false;
+            var animationCursor = new NowTextUnitCursor(style.animationUnitOffset);
 
             for (int i = 0; i < run.length; ++i)
             {
@@ -2914,10 +3089,21 @@ namespace NowUI
 
                 if (prepared.lineBreak)
                 {
+                    animationCursor.BreakSequence();
                     style.rect.x = leftPos;
                     style.rect.y += lineHeight;
                     reservedCurrentMesh = false;
                     continue;
+                }
+
+                int animationUnit = 0;
+
+                if (style.animation.isAnimated)
+                {
+                    if (prepared.codepoint == '\t' || prepared.codepoint == '\r')
+                        animationCursor.BreakSequence();
+                    else
+                        animationUnit = animationCursor.MoveNext(prepared.codepoint);
                 }
 
                 if (prepared.visible)
@@ -2958,17 +3144,45 @@ namespace NowUI
                     float glyphY = style.rect.y;
                     Vector2 transformedPos = ApplyTransform(new Vector2(glyphX, glyphY));
 
+                    glyphX = transformedPos.x;
+                    glyphY = transformedPos.y;
+                    float glyphFontSize = scaledFontSize;
+                    float glyphBaseline = scaledBaseline;
+                    float glyphOutline = scaledOutline;
+                    float glyphPixelRange = pixelRange;
+                    Vector4 glyphColor = color;
+                    Vector4 glyphOutlineColor = outlineColor;
+
+                    if (!ApplyTextAnimation(
+                        style,
+                        prepared.glyph,
+                        animationUnit,
+                        ref glyphX,
+                        ref glyphY,
+                        ref glyphFontSize,
+                        ref glyphBaseline,
+                        ref glyphColor,
+                        ref glyphOutlineColor,
+                        ref glyphOutline,
+                        ref glyphPixelRange))
+                    {
+                        style.rect.x += prepared.advance * fontSize;
+                        continue;
+                    }
+
                     mesh.AddTextGlyphReserved(
                         prepared.glyph,
-                        transformedPos.x,
-                        transformedPos.y,
-                        scaledFontSize,
-                        scaledBaseline,
+                        glyphX,
+                        glyphY,
+                        glyphFontSize,
+                        glyphBaseline,
                         style.mask,
-                        color,
-                        outlineColor,
-                        scaledOutline,
-                        pixelRange);
+                        glyphColor,
+                        glyphOutlineColor,
+                        glyphOutline,
+                        glyphPixelRange,
+                        style.resolvedGradientPayload,
+                        style.resolvedGradientRamp);
                 }
 
                 style.rect.x += prepared.advance * fontSize;
@@ -3062,6 +3276,7 @@ namespace NowUI
                     ++end;
                 }
 
+                int firstGradientVertex = mesh.vertexCount;
                 penX = mesh.AddCodepointTextRunReserved(
                     run,
                     i,
@@ -3075,6 +3290,10 @@ namespace NowUI
                     outlineColor,
                     outline,
                     pixelRange);
+                mesh.SetTextGradient(
+                    firstGradientVertex,
+                    style.resolvedGradientPayload,
+                    style.resolvedGradientRamp);
                 i = end;
             }
 
@@ -3106,6 +3325,8 @@ namespace NowUI
             if (_shapedRunScratch.Length < segments.Length)
                 Array.Resize(ref _shapedRunScratch, Mathf.NextPowerOfTwo(segments.Length));
 
+            int animationUnits = 0;
+
             for (int s = 0; s < segments.Length; ++s)
             {
                 NowFont.PreparedShapedRun run = null;
@@ -3114,6 +3335,9 @@ namespace NowUI
                     return false;
 
                 _shapedRunScratch[s] = run;
+
+                if (run != null)
+                    animationUnits += run.animationUnitCount;
             }
 
             float tabAdvance = 0f;
@@ -3132,6 +3356,8 @@ namespace NowUI
                 tabAdvance *= fontSize * 4;
             }
 
+            PrepareTextAnimation(ref style, animationUnits);
+
             float lineHeight = style.font.GetLineHeight(style.fontStyle) * fontSize;
             float baseline = style.font.GetAscender(style.fontStyle) * fontSize;
             float leftPos = style.rect.x;
@@ -3142,6 +3368,7 @@ namespace NowUI
             NowFont pixelRangeFont = null;
             Material pixelRangeMaterial = null;
             float pixelRange = 0f;
+            int animationUnitBase = style.animationUnitOffset;
 
             for (int s = 0; s < segments.Length; ++s)
             {
@@ -3161,6 +3388,7 @@ namespace NowUI
                         color,
                         outlineColor,
                         outline,
+                        animationUnitBase,
                         ref mesh,
                         ref pixelRangeFont,
                         ref pixelRangeMaterial,
@@ -3168,6 +3396,8 @@ namespace NowUI
                     {
                         return true;
                     }
+
+                    animationUnitBase += run.animationUnitCount;
                 }
 
                 char control = controls[s];
@@ -3222,7 +3452,7 @@ namespace NowUI
             {
                 char character = value[i];
 
-                if (character == '\n' || character == '\t')
+                if (character == '\n' || character == '\r' || character == '\t')
                     ++controlCount;
             }
 
@@ -3239,7 +3469,7 @@ namespace NowUI
             {
                 char control = i < value.Length ? value[i] : '\0';
 
-                if (i < value.Length && control != '\n' && control != '\t')
+                if (i < value.Length && control != '\n' && control != '\r' && control != '\t')
                     continue;
 
                 segmentation.segments[index] = i > segmentStart
@@ -3264,7 +3494,7 @@ namespace NowUI
             {
                 char character = value[i];
 
-                if (character == '\n' || character == '\t')
+                if (character == '\n' || character == '\r' || character == '\t')
                     return true;
             }
 
@@ -3275,6 +3505,8 @@ namespace NowUI
         {
             if (!font.TryGetPreparedShapedRun(value, fontSize, out var run))
                 return false;
+
+            PrepareTextAnimation(ref style, run.animationUnitCount);
 
             float baseline = style.font.GetAscender(style.fontStyle) * fontSize;
             var color = ApplyColorMultiplier(style.color);
@@ -3294,6 +3526,7 @@ namespace NowUI
                 color,
                 outlineColor,
                 outline,
+                style.animationUnitOffset,
                 ref mesh,
                 ref pixelRangeFont,
                 ref pixelRangeMaterial,
@@ -3311,6 +3544,7 @@ namespace NowUI
             Vector4 color,
             Vector4 outlineColor,
             float outline,
+            int animationUnitBase,
             ref NowMesh mesh,
             ref NowFont pixelRangeFont,
             ref Material pixelRangeMaterial,
@@ -3318,7 +3552,7 @@ namespace NowUI
         {
             bool hasTransform = _transformStack.Count > 0;
 
-            if (!hasTransform)
+            if (!hasTransform && !style.animation.isAnimated)
             {
                 return AppendShapedRunUntransformed(
                     ref style,
@@ -3393,17 +3627,40 @@ namespace NowUI
                         glyphY = transformedPos.y;
                     }
 
-                    mesh.AddTextGlyphReserved(
+                    float glyphFontSize = scaledFontSize;
+                    float glyphBaseline = scaledBaseline;
+                    float glyphOutline = scaledOutline;
+                    float glyphPixelRange = pixelRange;
+                    Vector4 glyphColor = color;
+                    Vector4 glyphOutlineColor = outlineColor;
+
+                    if (ApplyTextAnimation(
+                        style,
                         glyph,
-                        glyphX,
-                        glyphY,
-                        scaledFontSize,
-                        scaledBaseline,
-                        style.mask,
-                        color,
-                        outlineColor,
-                        scaledOutline,
-                        pixelRange);
+                        animationUnitBase + shaped.animationUnit,
+                        ref glyphX,
+                        ref glyphY,
+                        ref glyphFontSize,
+                        ref glyphBaseline,
+                        ref glyphColor,
+                        ref glyphOutlineColor,
+                        ref glyphOutline,
+                        ref glyphPixelRange))
+                    {
+                        mesh.AddTextGlyphReserved(
+                            glyph,
+                            glyphX,
+                            glyphY,
+                            glyphFontSize,
+                            glyphBaseline,
+                            style.mask,
+                            glyphColor,
+                            glyphOutlineColor,
+                            glyphOutline,
+                            glyphPixelRange,
+                            style.resolvedGradientPayload,
+                            style.resolvedGradientRamp);
+                    }
                 }
 
                 style.rect.x += shaped.xAdvance * fontSize;
@@ -3487,6 +3744,7 @@ namespace NowUI
                     ++end;
                 }
 
+                int firstGradientVertex = mesh.vertexCount;
                 penX = mesh.AddShapedTextRunReserved(
                     run,
                     g,
@@ -3500,6 +3758,10 @@ namespace NowUI
                     outlineColor,
                     outline,
                     pixelRange);
+                mesh.SetTextGradient(
+                    firstGradientVertex,
+                    style.resolvedGradientPayload,
+                    style.resolvedGradientRamp);
                 g = end;
             }
 
@@ -3507,35 +3769,59 @@ namespace NowUI
             return true;
         }
 
+        internal static void DrawCharacter(NowText style, char character)
+        {
+            if (_suppressDrawDepth > 0 || style.font == null)
+                return;
+
+            if (!PrepareTextDraw(ref style))
+                return;
+            PrepareTextAnimation(ref style, style.animation.isAnimated ? 1 : 0);
+
+            if (style.font.TryResolveGlyph(
+                character,
+                style.fontSize,
+                style.fontStyle,
+                out var resolvedFont,
+                out var glyph,
+                out _))
+            {
+                DrawCharacterResolved(style, glyph, resolvedFont);
+            }
+        }
+
         internal static void DrawCharacter(NowText style, NowFontAtlasInfo.Glyph glyph)
         {
             if (_suppressDrawDepth > 0 || style.font == null)
                 return;
 
-            if (!style.mask.isEmpty && style.mask == style.rect)
-                style.mask = style.mask.Outset(4f);
-
-            // Transform only the mask to screen-space when transform is active
-            bool hasTransform = _transformStack.Count > 0;
-            if (hasTransform && !style.mask.isEmpty)
-                style.mask = ApplyTransformRect(style.mask);
-
-            style.mask = ApplyAmbientMask(style.mask);
-
-            NowRect overlapRect = hasTransform ? ApplyTransformRect(style.rect) : style.rect;
-
-            if (style.mask.isEmpty || !style.mask.Overlaps(overlapRect.Outset(8f)))
+            if (!PrepareTextDraw(ref style))
                 return;
+
+            PrepareTextAnimation(ref style, style.animation.isAnimated ? 1 : 0);
 
             if (!style.font.TryResolveFont(style.fontStyle, out var resolvedFont))
                 return;
 
-            DrawCharacter(style, glyph, resolvedFont);
+            DrawCharacterResolved(style, glyph, resolvedFont);
         }
 
         internal static void DrawCharacter(NowText style, NowFontAtlasInfo.Glyph glyph, NowFont font)
         {
             if (_suppressDrawDepth > 0 || font == null)
+                return;
+
+            if (!PrepareTextDraw(ref style))
+                return;
+
+            PrepareTextAnimation(ref style, style.animation.isAnimated ? 1 : 0);
+
+            DrawCharacterResolved(style, glyph, font);
+        }
+
+        static void DrawCharacterResolved(NowText style, NowFontAtlasInfo.Glyph glyph, NowFont font)
+        {
+            if (font == null)
                 return;
 
             var material = font.GetMaterial(glyph.unicode, style.fontSize);
@@ -3577,17 +3863,42 @@ namespace NowUI
                 glyphY = transformedPos.y;
             }
 
+            float glyphFontSize = scaledFontSize;
+            float glyphBaseline = scaledBaseline;
+            float glyphOutline = style.outline * scaledFontSize;
+            float glyphPixelRange = font.GetScreenPixelRange(glyph.unicode, fontSize) * textScale;
+            Vector4 glyphColor = ApplyColorMultiplier(style.color);
+            Vector4 glyphOutlineColor = ApplyColorMultiplier(style.outlineColor);
+
+            if (!ApplyTextAnimation(
+                style,
+                glyph,
+                style.animationUnitOffset,
+                ref glyphX,
+                ref glyphY,
+                ref glyphFontSize,
+                ref glyphBaseline,
+                ref glyphColor,
+                ref glyphOutlineColor,
+                ref glyphOutline,
+                ref glyphPixelRange))
+            {
+                return;
+            }
+
             mesh.AddTextGlyph(
                 glyph,
                 glyphX,
                 glyphY,
-                scaledFontSize,
-                scaledBaseline,
+                glyphFontSize,
+                glyphBaseline,
                 style.mask,
-                ApplyColorMultiplier(style.color),
-                ApplyColorMultiplier(style.outlineColor),
-                style.outline * scaledFontSize,
-                font.GetScreenPixelRange(glyph.unicode, fontSize) * textScale);
+                glyphColor,
+                glyphOutlineColor,
+                glyphOutline,
+                glyphPixelRange,
+                style.resolvedGradientPayload,
+                style.resolvedGradientRamp);
         }
 
         internal static void DrawLottie(NowLottie lottie)

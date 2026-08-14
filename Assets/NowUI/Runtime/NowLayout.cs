@@ -510,6 +510,126 @@ namespace NowUI
             return this;
         }
 
+        public NowLabel SetGradient(Color from, Color to)
+        {
+            _style = _style.SetGradient(from, to);
+            return this;
+        }
+
+        public NowLabel SetGradient(Vector4 from, Vector4 to)
+        {
+            _style = _style.SetGradient(from, to);
+            return this;
+        }
+
+        public NowLabel SetGradient(UnityEngine.Gradient gradient, int revision = 0)
+        {
+            _style = _style.SetGradient(gradient, revision);
+            return this;
+        }
+
+        public NowLabel SetGradientRamp(UnityEngine.Gradient gradient, int revision = 0)
+        {
+            _style = _style.SetGradientRamp(gradient, revision);
+            return this;
+        }
+
+        public NowLabel SetGradientLinear(NowGradientDirection direction = NowGradientDirection.ToBottom)
+        {
+            _style = _style.SetGradientLinear(direction);
+            return this;
+        }
+
+        public NowLabel SetGradientLinear(float angleDegrees)
+        {
+            _style = _style.SetGradientLinear(angleDegrees);
+            return this;
+        }
+
+        public NowLabel SetGradientLinear(Vector2 direction)
+        {
+            _style = _style.SetGradientLinear(direction);
+            return this;
+        }
+
+        public NowLabel SetGradientRadial(NowGradientShape shape = NowGradientShape.Ellipse)
+        {
+            _style = _style.SetGradientRadial(shape);
+            return this;
+        }
+
+        public NowLabel SetGradientRadial(Vector2 center, Vector2 radius)
+        {
+            _style = _style.SetGradientRadial(center, radius);
+            return this;
+        }
+
+        public NowLabel SetGradientRadial(Vector2 center, float radius)
+        {
+            _style = _style.SetGradientRadial(center, radius);
+            return this;
+        }
+
+        public NowLabel SetGradientConic()
+        {
+            _style = _style.SetGradientConic();
+            return this;
+        }
+
+        public NowLabel SetGradientConic(Vector2 center, float startAngle = 0f)
+        {
+            _style = _style.SetGradientConic(center, startAngle);
+            return this;
+        }
+
+        public NowLabel SetGradientSpread(NowGradientSpread spread)
+        {
+            _style = _style.SetGradientSpread(spread);
+            return this;
+        }
+
+        public NowLabel SetGradientRepetitions(float repetitions)
+        {
+            _style = _style.SetGradientRepetitions(repetitions);
+            return this;
+        }
+
+        public NowLabel SetGradientBounds(NowRect bounds)
+        {
+            _style = _style.SetGradientBounds(bounds);
+            return this;
+        }
+
+        public NowLabel ClearGradient()
+        {
+            _style = _style.ClearGradient();
+            return this;
+        }
+
+        public NowLabel SetAnimation(NowTextAnimation animation)
+        {
+            _style = _style.SetAnimation(animation);
+            return this;
+        }
+
+        public NowLabel SetTime(float seconds)
+        {
+            _style = _style.SetTime(seconds);
+            return this;
+        }
+
+        public NowLabel SetNormalizedTime(float progress)
+        {
+            _style = _style.SetNormalizedTime(progress);
+            return this;
+        }
+
+        public NowLabel ClearAnimation()
+        {
+            _style = _style.ClearAnimation();
+            return this;
+        }
+
         /// <summary>
         /// Outline thickness relative to the font size (em units): 0.05 ≈ a
         /// 5%-of-em stroke at any size. Negative values inset the outline.
@@ -2701,7 +2821,8 @@ namespace NowUI
                     mask = mask.Union(new NowRect(rect.x + bounds.x, rect.y + bounds.y, bounds.z, bounds.w));
             }
 
-            return mask.Outset(4f);
+            float motionOutset = style.animation.isAnimated ? style.animation.boundedOutset : 0f;
+            return mask.Outset(4f + motionOutset);
         }
 
         static float FlexShare(ref Group group, float weight, float min, float max)

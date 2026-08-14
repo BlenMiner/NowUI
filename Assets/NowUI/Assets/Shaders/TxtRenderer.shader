@@ -34,6 +34,7 @@ Shader "NowUI/Text Renderer"
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
+            #include "NowUITextGradient.cginc"
             #include "NowUIMask.cginc"
 
             struct appdata
@@ -114,7 +115,15 @@ Shader "NowUI/Text Renderer"
                 float opacity = clamp(screenPxDistance + 0.5, 0.0, 1.0);
                 float outlineOp = clamp(screenPxDistanceOutline + 0.5, 0.0, 1.0);
 
-                float4 color = outline == 0 ? i.color : lerp(i.outlineColor, i.color, outline < 0 ? outlineOp : opacity);
+                float4 fillColor = i.color;
+
+                if (i.extras.w > 0.0)
+                {
+                    float4 gradientPayload = float4(i.radius.xyz, i.extras.z);
+                    fillColor *= NowUITextGradientSample(uiPosition, gradientPayload, i.extras.w);
+                }
+
+                float4 color = outline == 0 ? fillColor : lerp(i.outlineColor, fillColor, outline < 0 ? outlineOp : opacity);
 
                 color.a *= max(opacity, outlineOp);
                 color.a *= NowUIMaskCoverage(uiPosition);

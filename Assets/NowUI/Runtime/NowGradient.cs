@@ -394,6 +394,8 @@ namespace NowUI
 
     internal static class NowGradientRampCache
     {
+        static readonly int TextRampTextureProperty = Shader.PropertyToID("_NowGradientRampTexture");
+
         internal const int TextureWidth = 256;
 
         internal const int TextureHeight = 256;
@@ -575,6 +577,7 @@ namespace NowUI
                 _rowPixels[i] = (i & 8) == 0 ? Color.magenta : Color.black;
 
             UploadRow(0);
+            Shader.SetGlobalTexture(TextRampTextureProperty, _texture);
         }
 
         static int AllocateRow()
@@ -617,6 +620,8 @@ namespace NowUI
 
             if (_texture == null)
                 return;
+
+            Shader.SetGlobalTexture(TextRampTextureProperty, null);
 
             if (Application.isPlaying)
                 UnityEngine.Object.Destroy(_texture);
@@ -753,6 +758,111 @@ namespace NowUI
         public static void InvalidateGradient(UnityEngine.Gradient gradient)
         {
             NowGradientRampCache.Invalidate(gradient);
+        }
+
+        /// <summary>
+        /// Converts normalized text-gradient geometry into an absolute UI-space
+        /// mapping. Keeping it absolute lets every glyph (and every material page)
+        /// share one continuous gradient without adding another per-draw bounds stream.
+        /// </summary>
+        internal static bool TryResolveTextGradient(
+            in NowText text,
+            out Vector4 payload,
+            out float encodedRamp)
+        {
+            payload = default;
+            encodedRamp = 0f;
+
+            if (!text.gradientEnabled)
+                return false;
+
+            NowRect bounds = text.hasGradientBounds ? text.gradientBounds : text.rect;
+
+            if (_transformStack.Count > 0)
+                bounds = ApplyTransformRect(bounds);
+
+            float width = Mathf.Abs(bounds.width);
+            float height = Mathf.Abs(bounds.height);
+
+            if (width < 0.0001f || height < 0.0001f)
+                return false;
+
+            float repetitions = text.gradientRepetitions;
+
+            if (!IsFiniteGradientValue(repetitions) || Mathf.Abs(repetitions) < 0.0001f)
+                repetitions = 1f;
+
+            repetitions = Mathf.Abs(repetitions);
+            Vector4 parameters = text.gradientParameters;
+            float centerX = bounds.x + parameters.x * bounds.width;
+            float centerY = bounds.y + parameters.y * bounds.height;
+
+            switch (text.gradientKind)
+            {
+                case NowGradientKind.Linear:
+                {
+                    Vector2 direction = new Vector2(parameters.x, parameters.y);
+                    float directionLength = direction.magnitude;
+
+                    if (directionLength < 0.0001f)
+                        direction = new Vector2(0f, 1f);
+                    else
+                        direction /= directionLength;
+
+                    float extent = Mathf.Max(
+                        Mathf.Abs(direction.x) * width * 0.5f +
+                        Mathf.Abs(direction.y) * height * 0.5f,
+                        0.0001f);
+                    Vector2 center = new Vector2(bounds.x + bounds.width * 0.5f, bounds.y + bounds.height * 0.5f);
+                    Vector2 coefficients = direction * (repetitions / (2f * extent));
+                    payload = new Vector4(
+                        coefficients.x,
+                        coefficients.y,
+                        repetitions * 0.5f - Vector2.Dot(center, coefficients),
+                        0f);
+                    break;
+                }
+                case NowGradientKind.Radial:
+                {
+                    float radiusX;
+                    float radiusY;
+
+                    if (text.gradientShape == NowGradientShape.Circle)
+                    {
+                        float radius = Mathf.Max(
+                            Mathf.Abs(parameters.z) * Mathf.Min(width, height) / repetitions,
+                            0.0001f);
+                        radiusX = radius;
+                        radiusY = radius;
+                    }
+                    else
+                    {
+                        radiusX = Mathf.Max(Mathf.Abs(parameters.z) * width / repetitions, 0.0001f);
+                        radiusY = Mathf.Max(Mathf.Abs(parameters.w) * height / repetitions, 0.0001f);
+                    }
+
+                    payload = new Vector4(centerX, centerY, radiusX, radiusY);
+                    break;
+                }
+                default:
+                    payload = new Vector4(centerX, centerY, parameters.z, repetitions);
+                    break;
+            }
+
+            NowGradientRampHandle ramp = text.gradientRamp != null
+                ? NowGradientRampCache.Get(text.gradientRamp, text.gradientRampRevision)
+                : NowGradientRampCache.Get(text.gradientColorFrom, text.gradientColorTo);
+            int flags = ((int)text.gradientKind & GradientKindMask) |
+                ((int)text.gradientSpread << GradientSpreadShift);
+
+            if (text.gradientKind == NowGradientKind.Radial && text.gradientShape == NowGradientShape.Circle)
+                flags |= GradientCircleFlag;
+
+            if (ramp.fixedMode)
+                flags |= GradientFixedFlag;
+
+            encodedRamp = ramp.row + (flags + 0.5f) / 256f;
+            return true;
         }
 
         internal static void DrawGradient(in NowGradient gradient)

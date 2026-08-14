@@ -21,6 +21,7 @@ namespace NowUI.Editor
         public int width;
         public int height;
         public bool includeInGoldens;
+        public bool darkTheme;
         public Func<INowInputProvider> createInputProvider;
         public Func<NowHarnessScenario, string, NowHarnessCapture> capture;
         public int warmupFrames;
@@ -49,7 +50,7 @@ namespace NowUI.Editor
             "```csharp\nNowLayout.Button(\"Apply\").Draw();\n```";
 
         static readonly string[] QualityOptions = { "Low", "Medium", "High", "Ultra" };
-        static readonly string[] GraphLog = { "compile shader", "bake preview", "upload material" };
+        static readonly string[] HierarchyObjects = { "Camera", "Directional Light", "Player", "Environment" };
 
         static readonly IdleInputProvider Input = new IdleInputProvider();
 
@@ -209,7 +210,7 @@ namespace NowUI.Editor
             return new[]
             {
                 new NowHarnessScenario { name = "controls", width = 960, height = 540, includeInGoldens = true, draw = DrawControls },
-                new NowHarnessScenario { name = "controls-dark", width = 960, height = 540, includeInGoldens = true, draw = DrawControlsDark },
+                new NowHarnessScenario { name = "controls-dark", width = 960, height = 540, includeInGoldens = true, darkTheme = true, draw = DrawControlsDark },
                 new NowHarnessScenario { name = "elevation", width = 840, height = 420, includeInGoldens = true, draw = DrawElevation },
                 new NowHarnessScenario { name = "context-menu", width = 640, height = 420, includeInGoldens = true, draw = DrawContextMenu },
                 new NowHarnessScenario { name = "context-submenus", width = 720, height = 420, includeInGoldens = true, createInputProvider = () => new StaticPointerInputProvider(new Vector2(80f, 136f)), draw = DrawContextSubmenus },
@@ -238,7 +239,8 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "landing-page-now-layout-compact", width = 360, height = 640, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNowLayout },
 #endif
                 new NowHarnessScenario { name = "markdown-code", width = 960, height = 540, includeInGoldens = false, draw = DrawMarkdown },
-                new NowHarnessScenario { name = "docking-nodegraph", width = 960, height = 540, includeInGoldens = false, draw = DrawDockingAndNodeGraph }
+                new NowHarnessScenario { name = "docking", width = 960, height = 540, includeInGoldens = false, darkTheme = true, draw = DrawDocking },
+                new NowHarnessScenario { name = "node-graph", width = 960, height = 540, includeInGoldens = false, darkTheme = true, draw = DrawNodeGraph }
             };
         }
 
@@ -1001,7 +1003,7 @@ namespace NowUI.Editor
         static void DrawScenarioFrame(NowHarnessScenario scenario)
         {
             Now.defaultFont = Resources.Load<NowFontAsset>("NowUI/NotoSans");
-            string themePath = scenario.name == "controls-dark"
+            string themePath = scenario.darkTheme
                 ? "Assets/NowUI/Assets/Themes/DefaultDark.asset"
                 : "Assets/NowUI/Assets/Themes/Default.asset";
             var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
@@ -2175,27 +2177,55 @@ namespace NowUI.Editor
             }
         }
 
-        static void DrawDockingAndNodeGraph(NowRect rect)
+        static void DrawDocking(NowRect rect)
         {
-            DrawSurface(rect);
+            DrawShowcaseBackdrop(rect, "Docking", "Dockable tabbed windows with side splits, splitter resizing, and drag-to-dock guides.");
 
-            using (NowLayout.Area(rect.Inset(24f), spacing: 12f))
-            {
-                Header("Docking and Node Graph", "Two extension surfaces rendered from generated harness state.");
+            var panel = new NowRect(26f, 86f, rect.width - 52f, rect.height - 112f);
+            DrawShowcasePanel(panel, new Color(0.36f, 0.70f, 1f, 1f));
+            SubmitDockWindows();
+            NowDock.Space(_dock, panel.Inset(12f), "harness-dock").SetMinPaneSize(150f).Draw();
+        }
 
-                using (NowLayout.HorizontalScope(spacing: 14f))
-                {
-                    var dockRect = NowLayout.ReserveRect(width: 430f, height: 390f);
-                    SubmitDockWindows();
-                    NowDock.Space(_dock, dockRect, "harness-dock").SetMinPaneSize(120f).Draw();
+        static void DrawNodeGraph(NowRect rect)
+        {
+            DrawShowcaseBackdrop(rect, "Node Graph", "Schema-driven nodes with typed ports, bezier links, selection, and undo history.");
 
-                    var graphRect = NowLayout.ReserveRect(height: 390f, stretchWidth: true);
-                    NowNodes.Canvas(_nodeGraph, graphRect, "harness-graph")
-                        .SetSchema(_nodeSchema)
-                        .SetHistory(_nodeHistory)
-                        .Draw();
-                }
-            }
+            var panel = new NowRect(26f, 86f, rect.width - 52f, rect.height - 112f);
+            DrawShowcasePanel(panel, new Color(0.32f, 1f, 0.68f, 1f));
+            NowNodes.Canvas(_nodeGraph, panel.Inset(12f), "harness-graph")
+                .SetSchema(_nodeSchema)
+                .SetHistory(_nodeHistory)
+                .Draw();
+        }
+
+        static void DrawShowcaseBackdrop(NowRect rect, string title, string subtitle)
+        {
+            var background = new Color(0.018f, 0.026f, 0.050f, 1f);
+            var grid = new Color(0.30f, 0.58f, 0.82f, 0.055f);
+            Now.Rectangle(rect).SetColor(background).Draw();
+
+            for (float x = rect.x + 24f; x < rect.xMax; x += 48f)
+                Now.Rectangle(new NowRect(x, rect.y, 1f, rect.height)).SetColor(grid).Draw();
+
+            Now.Text(new NowRect(26f, 15f, rect.width - 52f, 30f))
+                .SetFontSize(23f)
+                .SetBold()
+                .SetColor(Color.white)
+                .Draw(title);
+            Now.Text(new NowRect(26f, 48f, rect.width - 52f, 21f))
+                .SetFontSize(13f)
+                .SetColor(new Color(0.65f, 0.76f, 0.89f, 1f))
+                .Draw(subtitle);
+        }
+
+        static void DrawShowcasePanel(NowRect rect, Color accent)
+        {
+            Now.Rectangle(rect)
+                .SetColor(new Color(0.044f, 0.055f, 0.086f, 0.98f))
+                .SetRadius(17f)
+                .SetOutline(1f, new Color(accent.r, accent.g, accent.b, 0.26f))
+                .Draw();
         }
 
         static void DrawSurface(NowRect rect)
@@ -2255,12 +2285,25 @@ namespace NowUI.Editor
         {
             _dock.Window("Scene", rect =>
             {
-                Now.Rectangle(rect).SetColor(new Color(0.08f, 0.09f, 0.11f, 1f)).SetRadius(3f).Draw();
+                Now.Gradient(rect, new Color(0.035f, 0.050f, 0.110f, 1f), new Color(0.075f, 0.020f, 0.115f, 1f))
+                    .SetLinear(90f)
+                    .SetRadius(3f)
+                    .Draw();
+
                 for (float x = rect.x + 24f; x < rect.xMax; x += 28f)
-                    Now.Rectangle(new NowRect(x, rect.y, 1f, rect.height)).SetColor(new Color(1f, 1f, 1f, 0.06f)).Draw();
+                    Now.Rectangle(new NowRect(x, rect.y, 1f, rect.height)).SetColor(new Color(0.55f, 0.76f, 1f, 0.07f)).Draw();
                 for (float y = rect.y + 24f; y < rect.yMax; y += 28f)
-                    Now.Rectangle(new NowRect(rect.x, y, rect.width, 1f)).SetColor(new Color(1f, 1f, 1f, 0.06f)).Draw();
-                Now.Text(rect.Inset(18f)).SetFontSize(20f).SetColor(Color.white).Draw("Scene View");
+                    Now.Rectangle(new NowRect(rect.x, y, rect.width, 1f)).SetColor(new Color(0.55f, 0.76f, 1f, 0.07f)).Draw();
+
+                var focus = new Vector2(rect.x + rect.width * 0.5f, rect.y + rect.height * 0.52f);
+                Now.Circle(focus, 52f).SetColor(new Color(0.18f, 0.94f, 1f, 0.10f)).Draw();
+                Now.Circle(focus, 30f).SetColor(new Color(0.18f, 0.94f, 1f, 0.18f)).Draw();
+                Now.Circle(focus, 12f).SetColor(new Color(0.18f, 0.94f, 1f, 0.95f)).Draw();
+
+                Now.Text(new NowRect(rect.x + 12f, rect.yMax - 26f, rect.width - 24f, 18f))
+                    .SetFontSize(12f)
+                    .SetColor(new Color(1f, 1f, 1f, 0.55f))
+                    .Draw("Scene");
             }, id: "Scene");
 
             _dock.Window("Hierarchy", rect =>
@@ -2268,8 +2311,8 @@ namespace NowUI.Editor
                 using (NowLayout.Area(rect, spacing: 6f))
                 {
                     NowLayout.Label("Objects").SetFontSize(16f).Draw();
-                    for (int i = 0; i < GraphLog.Length; ++i)
-                        NowLayout.Label(GraphLog[i]).SetFontSize(13f).Draw();
+                    for (int i = 0; i < HierarchyObjects.Length; ++i)
+                        NowLayout.Label(HierarchyObjects[i]).SetFontSize(13f).Draw();
                 }
             }, id: "Hierarchy");
 
@@ -2297,8 +2340,8 @@ namespace NowUI.Editor
             {
                 _dock = new NowDockSpace();
                 SubmitDockWindows();
-                _dock.Dock("Inspector", "Scene", NowDockSide.Right);
-                _dock.Dock("Hierarchy", "Scene", NowDockSide.Left);
+                _dock.Dock("Inspector", "Scene", NowDockSide.Right, ratio: 0.26f);
+                _dock.Dock("Hierarchy", "Scene", NowDockSide.Left, ratio: 0.24f);
             }
 
             if (_nodeSchema == null)

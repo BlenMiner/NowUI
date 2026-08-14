@@ -34,6 +34,7 @@ Shader "NowUI/Text Renderer RGBA"
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
+            #include "NowUITextGradient.cginc"
             #include "NowUIMask.cginc"
 
             struct appdata
@@ -57,6 +58,8 @@ Shader "NowUI/Text Renderer RGBA"
                 float4 color : TEXCOORD2;
                 float4 mask : TEXCOORD3;
                 float4 rawUV : TEXCOORD4;
+                float4 gradientPayload : TEXCOORD5;
+                float gradientEncodedRamp : TEXCOORD6;
             };
 
             sampler2D _MainTex;
@@ -71,6 +74,8 @@ Shader "NowUI/Text Renderer RGBA"
                 o.color = NowUIColorToWorkingSpace(v.color);
                 o.mask = v.mask;
                 o.rawUV = v.rawUV;
+                o.gradientPayload = float4(v.radius.xyz, v.extras.z);
+                o.gradientEncodedRamp = v.extras.w;
                 return o;
             }
 
@@ -82,8 +87,22 @@ Shader "NowUI/Text Renderer RGBA"
 
                 NowUIClipLegacyRect(uiPosition, mask);
 
-                float4 col = tex2D(_MainTex, i.uv) * i.color;
-                col.rgb = col.a > 0 ? saturate(col.rgb / col.a) : col.rgb;
+                float4 col;
+
+                if (i.gradientEncodedRamp > 0.0)
+                {
+                    float4 glyph = tex2D(_MainTex, i.uv);
+                    float4 fillColor =
+                        NowUITextGradientSample(uiPosition, i.gradientPayload, i.gradientEncodedRamp) *
+                        i.color;
+                    col = float4(fillColor.rgb, glyph.a * fillColor.a);
+                }
+                else
+                {
+                    col = tex2D(_MainTex, i.uv) * i.color;
+                    col.rgb = col.a > 0 ? saturate(col.rgb / col.a) : col.rgb;
+                }
+
                 col.a *= NowUIMaskCoverage(uiPosition);
                 clip(col.a - 0.01);
                 return col;

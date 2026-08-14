@@ -55,6 +55,7 @@ Shader "NowUI/Text Renderer RGBA UGUI"
 
             #include "UnityCG.cginc"
             #include "UnityUI.cginc"
+            #include "NowUITextGradient.cginc"
             #include "NowUIMask.cginc"
 
             struct appdata
@@ -65,6 +66,7 @@ Shader "NowUI/Text Renderer RGBA UGUI"
                 float4 rect : TEXCOORD1;
                 float4 mask : TEXCOORD2;
                 float4 extras : TEXCOORD3;
+                float3 gradientPayload : NORMAL;
             };
 
             struct v2f
@@ -75,6 +77,8 @@ Shader "NowUI/Text Renderer RGBA UGUI"
                 float4 uv : TEXCOORD0;
                 float4 rect : TEXCOORD1;
                 float4 mask : TEXCOORD2;
+                float4 gradientPayload : TEXCOORD4;
+                float gradientEncodedRamp : TEXCOORD5;
             };
 
             sampler2D _MainTex;
@@ -99,6 +103,8 @@ Shader "NowUI/Text Renderer RGBA UGUI"
                 o.rect = v.rect;
                 o.mask = v.mask;
                 o.color = v.color;
+                o.gradientPayload = float4(v.gradientPayload, v.extras.z);
+                o.gradientEncodedRamp = v.extras.w;
                 return o;
             }
 
@@ -110,8 +116,22 @@ Shader "NowUI/Text Renderer RGBA UGUI"
 
                 NowUIClipLegacyRect(uiPosition, mask);
 
-                float4 col = tex2D(_MainTex, i.uv.xy) * i.color;
-                col.rgb = col.a > 0 ? saturate(col.rgb / col.a) : col.rgb;
+                float4 col;
+
+                if (i.gradientEncodedRamp > 0.0)
+                {
+                    float4 glyph = tex2D(_MainTex, i.uv.xy);
+                    float4 fillColor =
+                        NowUITextGradientSample(uiPosition, i.gradientPayload, i.gradientEncodedRamp) *
+                        i.color;
+                    col = float4(fillColor.rgb, glyph.a * fillColor.a);
+                }
+                else
+                {
+                    col = tex2D(_MainTex, i.uv.xy) * i.color;
+                    col.rgb = col.a > 0 ? saturate(col.rgb / col.a) : col.rgb;
+                }
+
                 col.a *= NowUIMaskCoverage(uiPosition);
 
                 #ifdef UNITY_UI_CLIP_RECT
