@@ -15,6 +15,7 @@ namespace NowUI.Editor
         public static void Run()
         {
             NowHarnessScenarios.renderScale = 1;
+            NowHarnessScenarios.brandCaptures = false;
             string outputRoot = NowHarnessScenarios.ReadArgument(
                 "-nowuiArtifactsPath",
                 Path.Combine(NowHarnessScenarios.ProjectPath(), "artifacts", "local", "perf"));

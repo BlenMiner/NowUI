@@ -22,6 +22,7 @@ namespace NowUI.Editor
         public int height;
         public bool includeInGoldens;
         public bool darkTheme;
+        public bool suppressBadge;
         public Func<INowInputProvider> createInputProvider;
         public Func<NowHarnessScenario, string, NowHarnessCapture> capture;
         public int warmupFrames;
@@ -47,6 +48,13 @@ namespace NowUI.Editor
         /// golden comparisons pin this to 1 to keep baselines small and stable.
         /// </summary>
         public static int renderScale = 1;
+
+        /// <summary>
+        /// Stamps a small "Rendered with NowUI" chip on captures. Only the
+        /// visual (README) runner enables this; goldens and perf never brand so
+        /// baselines and timings stay comparable.
+        /// </summary>
+        public static bool brandCaptures;
 
         const string MarkdownSample =
             "# Harness markdown\n\n" +
@@ -242,8 +250,8 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "shader-variants", width = 840, height = 420, includeInGoldens = true, draw = DrawShaderVariants },
 #if NOWUI_UGUI
                 new NowHarnessScenario { name = "quick-start-overlay", width = 500, height = 400, includeInGoldens = true, draw = DrawQuickStartOverlay, capture = CaptureQuickStartOverlay },
-                new NowHarnessScenario { name = "quick-start-score", width = 300, height = 120, includeInGoldens = false, darkTheme = true, draw = DrawQuickStartScore, capture = CaptureQuickStartScore },
-                new NowHarnessScenario { name = "quick-start-settings", width = 360, height = 190, includeInGoldens = false, darkTheme = true, draw = DrawQuickStartSettings, capture = CaptureQuickStartSettings },
+                new NowHarnessScenario { name = "quick-start-score", width = 300, height = 120, includeInGoldens = false, darkTheme = true, suppressBadge = true, draw = DrawQuickStartScore, capture = CaptureQuickStartScore },
+                new NowHarnessScenario { name = "quick-start-settings", width = 360, height = 190, includeInGoldens = false, darkTheme = true, suppressBadge = true, draw = DrawQuickStartSettings, capture = CaptureQuickStartSettings },
 #endif
                 new NowHarnessScenario { name = "sdf-mask-glow-clip", width = 640, height = 640, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGlowClip },
                 new NowHarnessScenario { name = "sdf-mask-gallery", width = 960, height = 520, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGallery },
@@ -255,10 +263,10 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "model-preview-effects", width = 720, height = 420, includeInGoldens = false, warmupFrames = 2, capture = CaptureModelPreviewEffects },
 #if NOWUI_UGUI
                 new NowHarnessScenario { name = "docs-model-preview-demo", width = 1280, height = 720, includeInGoldens = false, warmupFrames = 3, capture = CaptureDocsModelPreviewDemo },
-                new NowHarnessScenario { name = "landing-page-now", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNow },
-                new NowHarnessScenario { name = "landing-page-now-layout", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNowLayout },
-                new NowHarnessScenario { name = "landing-page-now-compact", width = 360, height = 640, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNow },
-                new NowHarnessScenario { name = "landing-page-now-layout-compact", width = 360, height = 640, includeInGoldens = true, warmupFrames = 2, capture = CaptureLandingPageNowLayout },
+                new NowHarnessScenario { name = "landing-page-now", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, suppressBadge = true, capture = CaptureLandingPageNow },
+                new NowHarnessScenario { name = "landing-page-now-layout", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, suppressBadge = true, capture = CaptureLandingPageNowLayout },
+                new NowHarnessScenario { name = "landing-page-now-compact", width = 360, height = 640, includeInGoldens = true, warmupFrames = 2, suppressBadge = true, capture = CaptureLandingPageNow },
+                new NowHarnessScenario { name = "landing-page-now-layout-compact", width = 360, height = 640, includeInGoldens = true, warmupFrames = 2, suppressBadge = true, capture = CaptureLandingPageNowLayout },
 #endif
                 new NowHarnessScenario { name = "markdown-code", width = 960, height = 540, includeInGoldens = false, draw = DrawMarkdown },
                 new NowHarnessScenario { name = "docking", width = 960, height = 540, includeInGoldens = false, darkTheme = true, draw = DrawDocking },
@@ -544,6 +552,7 @@ namespace NowUI.Editor
                 graphic.ConfigureModelPreviewsDemoHarness(
                     AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/DefaultDark.asset"),
                     Resources.Load<NowFontAsset>("NowUI/NotoSans"));
+                AddCanvasBrandBadge(scenario, canvasObject);
 
                 int warmupFrames = Mathf.Max(2, scenario.warmupFrames);
 
@@ -634,6 +643,9 @@ namespace NowUI.Editor
                 "Captured, then deformed",
                 orange,
                 textureEffect: true);
+
+            if (brandCaptures && !scenario.suppressBadge)
+                DrawBrandBadge(rect);
 
             void DrawModelPreviewCard(
                 NowRect cardRect,
@@ -794,6 +806,9 @@ namespace NowUI.Editor
                 }
 
                 graphic.raycastTarget = false;
+
+                if (draw == null)
+                    AddCanvasBrandBadge(scenario, canvasObject);
 
                 int warmupFrames = Mathf.Max(1, scenario.warmupFrames);
                 for (int i = 0; i < warmupFrames; ++i)
@@ -1106,16 +1121,84 @@ namespace NowUI.Editor
                 ? "Assets/NowUI/Assets/Themes/DefaultDark.asset"
                 : "Assets/NowUI/Assets/Themes/Default.asset";
             var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
+            var frame = new NowRect(0, 0, scenario.width, scenario.height);
 
             if (theme != null)
             {
                 using (NowControls.Theme(theme))
-                    scenario.draw(new NowRect(0, 0, scenario.width, scenario.height));
+                    scenario.draw(frame);
             }
             else
             {
-                scenario.draw(new NowRect(0, 0, scenario.width, scenario.height));
+                scenario.draw(frame);
             }
+
+            if (brandCaptures && !scenario.suppressBadge)
+                DrawBrandBadge(frame);
+        }
+
+#if NOWUI_UGUI
+        /// <summary>Overlays the brand chip on component-hosted canvas captures.</summary>
+        static void AddCanvasBrandBadge(NowHarnessScenario scenario, GameObject canvasObject)
+        {
+            if (!brandCaptures || scenario.suppressBadge)
+                return;
+
+            var badgeObject = new GameObject(
+                "NowUI Harness Badge",
+                typeof(RectTransform),
+                typeof(CanvasRenderer))
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            badgeObject.transform.SetParent(canvasObject.transform, false);
+
+            var badgeRect = badgeObject.GetComponent<RectTransform>();
+            badgeRect.anchorMin = Vector2.zero;
+            badgeRect.anchorMax = Vector2.one;
+            badgeRect.offsetMin = Vector2.zero;
+            badgeRect.offsetMax = Vector2.zero;
+
+            var badge = badgeObject.AddComponent<NowGraphic>();
+            badge.raycastTarget = false;
+            badge.rebuildNowUI += (_, hostRect) => DrawBrandBadge(hostRect);
+        }
+#endif
+
+        /// <summary>A small self-referential watermark: the chip is itself NowUI draws.</summary>
+        static void DrawBrandBadge(NowRect rect)
+        {
+            var chip = new NowRect(rect.xMax - 168f, rect.yMax - 34f, 156f, 22f);
+            Now.Rectangle(chip)
+                .SetColor(new Color(0.02f, 0.03f, 0.06f, 0.66f))
+                .SetRadius(11f)
+                .SetOutline(1f, new Color(1f, 1f, 1f, 0.14f))
+                .Draw();
+
+            float cy = chip.y + chip.height * 0.5f;
+            float gx = chip.x + 10f;
+            Span<Vector2> pulse = stackalloc Vector2[]
+            {
+                new Vector2(gx, cy),
+                new Vector2(gx + 5f, cy),
+                new Vector2(gx + 8f, cy - 4f),
+                new Vector2(gx + 12f, cy + 4f),
+                new Vector2(gx + 15f, cy),
+                new Vector2(gx + 20f, cy)
+            };
+
+            for (int i = 0; i < pulse.Length - 1; ++i)
+            {
+                Now.Line(pulse[i], pulse[i + 1])
+                    .SetWidth(1.6f)
+                    .SetColor(new Color(0.55f, 0.60f, 0.95f, 1f))
+                    .Draw();
+            }
+
+            Now.Text(new NowRect(chip.x + 34f, chip.y + 4f, chip.width - 38f, 15f))
+                .SetFontSize(11f)
+                .SetColor(new Color(1f, 1f, 1f, 0.78f))
+                .Draw("Rendered with NowUI");
         }
 
         static void DrawControlsDark(NowRect rect)
