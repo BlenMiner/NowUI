@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="Docs/media/readme/logo.png" width="760" alt="NowUI — immediate-mode UI for Unity. Logo banner rendered by NowUI itself.">
+</p>
+
 # Now-UI
 
 Now-UI is an immediate-mode UI renderer for Unity. You call the drawing API
@@ -12,10 +16,11 @@ a `RenderTexture`, or IMGUI — same drawing code everywhere.
 
 ## Showcase
 
-Every image below was drawn by NowUI itself: the repository's deterministic
-visual harness renders each scene into an offscreen `RenderTexture` and writes
-the PNG to disk (`Tools/NowUI-Harness.ps1 -Mode Visual`). No editor
-screenshots, no compositing.
+Every image in this README — the logo above included — was drawn by NowUI
+itself: the repository's deterministic visual harness renders each scene into
+an offscreen `RenderTexture` and writes the PNG to disk
+(`Tools/NowUI-Harness.ps1 -Mode Visual`). No editor screenshots, no
+compositing.
 
 ![In-app documentation browser rendered with NowUI, including live 3D model previews and syntax-highlighted code](Docs/media/readme/docs-model-preview-demo.png)
 

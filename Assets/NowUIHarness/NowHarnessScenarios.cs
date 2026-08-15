@@ -251,6 +251,7 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "sdf-radial-primitives", width = 840, height = 360, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfRadialPrimitives },
                 new NowHarnessScenario { name = "sdf-custom-shaders", width = 960, height = 430, includeInGoldens = false, warmupFrames = 2, draw = DrawSdfCustomShaders },
                 new NowHarnessScenario { name = "lottie", width = 512, height = 512, includeInGoldens = true, draw = DrawLottie },
+                new NowHarnessScenario { name = "logo", width = 960, height = 240, includeInGoldens = false, warmupFrames = 2, draw = DrawLogo },
                 new NowHarnessScenario { name = "model-preview-effects", width = 720, height = 420, includeInGoldens = false, warmupFrames = 2, capture = CaptureModelPreviewEffects },
 #if NOWUI_UGUI
                 new NowHarnessScenario { name = "docs-model-preview-demo", width = 1280, height = 720, includeInGoldens = false, warmupFrames = 3, capture = CaptureDocsModelPreviewDemo },
@@ -2295,6 +2296,67 @@ namespace NowUI.Editor
                 .SetSchema(_nodeSchema)
                 .SetHistory(_nodeHistory)
                 .Draw();
+        }
+
+        /// <summary>
+        /// The README banner: NowUI's logo drawn by NowUI — SDF glow, gradient
+        /// tile, line-and-circle pulse mark, and MSDF wordmark.
+        /// </summary>
+        static void DrawLogo(NowRect rect)
+        {
+            var background = new Color(0.018f, 0.026f, 0.050f, 1f);
+            var grid = new Color(0.30f, 0.58f, 0.82f, 0.05f);
+            var indigo = new Color(0.369f, 0.416f, 0.824f, 1f);
+            var violet = new Color(0.545f, 0.361f, 0.965f, 1f);
+            var muted = new Color(0.65f, 0.76f, 0.89f, 1f);
+
+            Now.Rectangle(rect).SetColor(background).Draw();
+
+            for (float x = rect.x + 24f; x < rect.xMax; x += 48f)
+                Now.Rectangle(new NowRect(x, rect.y, 1f, rect.height)).SetColor(grid).Draw();
+
+            var tile = new NowRect(rect.width * 0.5f - 188f, rect.height * 0.5f - 60f, 120f, 120f);
+            var halo = new NowRect(tile.x - 70f, tile.y - 70f, tile.width + 140f, tile.height + 140f);
+
+            Now.Gradient(
+                    halo,
+                    new Color(indigo.r, indigo.g, indigo.b, 0.34f),
+                    new Color(indigo.r, indigo.g, indigo.b, 0f))
+                .SetRadial(halo.center, halo.width * 0.5f)
+                .Draw();
+
+            Now.Gradient(tile, indigo, violet).SetLinear(135f).SetRadius(30f).Draw();
+            Now.Rectangle(tile)
+                .SetColor(Color.clear)
+                .SetRadius(30f)
+                .SetOutline(1.5f, new Color(1f, 1f, 1f, 0.28f))
+                .Draw();
+
+            Span<Vector2> pulse = stackalloc Vector2[]
+            {
+                new Vector2(tile.x + 22f, tile.center.y),
+                new Vector2(tile.x + 44f, tile.center.y),
+                new Vector2(tile.x + 56f, tile.center.y - 24f),
+                new Vector2(tile.x + 72f, tile.center.y + 26f),
+                new Vector2(tile.x + 84f, tile.center.y),
+                new Vector2(tile.x + 98f, tile.center.y)
+            };
+
+            for (int i = 0; i < pulse.Length - 1; ++i)
+                Now.Line(pulse[i], pulse[i + 1]).SetWidth(7f).SetColor(Color.white).Draw();
+
+            for (int i = 0; i < pulse.Length; ++i)
+                Now.Circle(pulse[i], 3.5f).SetColor(Color.white).Draw();
+
+            Now.Text(new NowRect(tile.xMax + 36f, rect.height * 0.5f - 46f, 340f, 78f))
+                .SetFontSize(64f)
+                .SetBold()
+                .SetColor(Color.white)
+                .Draw("NowUI");
+            Now.Text(new NowRect(tile.xMax + 39f, rect.height * 0.5f + 28f, 380f, 26f))
+                .SetFontSize(16f)
+                .SetColor(muted)
+                .Draw("Immediate-mode UI for Unity");
         }
 
         static void DrawShowcaseBackdrop(NowRect rect, string title, string subtitle)
