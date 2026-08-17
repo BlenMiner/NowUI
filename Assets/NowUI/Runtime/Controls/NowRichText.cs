@@ -133,6 +133,9 @@ namespace NowUI
             public LayoutInputs measuredInputs;
             public float measuredWidth;
             public float measuredHeight;
+            public bool hasIntrinsicWidth;
+            public LayoutInputs intrinsicInputs;
+            public float intrinsicWidth;
         }
 
         int ResolveControlId() => NowControls.GetControlId(_id, _site);
@@ -171,6 +174,8 @@ namespace NowUI
         public NowRichText SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
         public NowRichText SetStretchHeight(float weight = 1f) { _options = _options.SetStretchHeight(weight); return this; }
+
+        public NowRichText SetAlign(NowLayoutAlign align) { _options = _options.SetAlign(align); return this; }
 
         public NowRichText SetFont(NowFontAsset font) { _style = _style.SetFont(font); return this; }
 
@@ -554,7 +559,7 @@ namespace NowUI
                 return NowLayout.ReserveRect(options);
             }
 
-            float width = ResolveLayoutWidth(document.text);
+            float width = ResolveLayoutWidth(lineHeight, document, ref state, inputs);
 
             if (!state.hasMeasuredHeight || state.measuredWidth != width || !state.measuredInputs.Matches(inputs))
             {
@@ -588,15 +593,32 @@ namespace NowUI
             }
         }
 
-        float ResolveLayoutWidth(string text)
+        float ResolveLayoutWidth(float lineHeight, NowRichTextDocument document, ref State state, in LayoutInputs inputs)
         {
             if (_options.Has(NowLayoutOptions.Field.Width))
                 return _options.width;
 
-            if (_options.Has(NowLayoutOptions.Field.StretchWidth))
-                return Mathf.Max(_style.Measure(text).x + 1f, 1f);
+            if (!state.hasIntrinsicWidth || !state.intrinsicInputs.Matches(inputs))
+            {
+                state.intrinsicWidth = MeasureIntrinsicWidth(lineHeight, document);
+                state.intrinsicInputs = inputs;
+                state.hasIntrinsicWidth = true;
+            }
 
-            return Mathf.Max(_style.Measure(text).x + 1f, 1f);
+            return state.intrinsicWidth;
+        }
+
+        /// <summary>
+        /// Widest unwrapped line, flowed with the document's real spans — a
+        /// base-style string measure undercounts bold/size spans and inlines,
+        /// reserving a too-narrow rect that wraps spuriously.
+        /// </summary>
+        float MeasureIntrinsicWidth(float lineHeight, NowRichTextDocument document)
+        {
+            SharedLayout.Clear();
+            BuildLayout(SharedLayout, new NowRect(0f, 0f, float.MaxValue, float.MaxValue), lineHeight, document);
+            SharedLayout.CompleteLines();
+            return Mathf.Max(SharedLayout.bounds.width, 1f);
         }
 
         float MeasureHeight(float width, float lineHeight, NowRichTextDocument document)

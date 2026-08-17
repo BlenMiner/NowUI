@@ -43,6 +43,8 @@ public class NowTextStylingTests
     public void SetUp()
     {
         NowGradientRampCache.Reset();
+        NowControls.Reset();
+        NowLayout.Reset();
         Now.textShaping = true;
         _drawList = new NowDrawList();
     }
@@ -54,6 +56,8 @@ public class NowTextStylingTests
         _drawList = null;
         NowGradientRampCache.Reset();
         NowControlState.Reset();
+        NowControls.Reset();
+        NowLayout.Reset();
         Now.textShaping = true;
     }
 
@@ -739,6 +743,48 @@ public class NowTextStylingTests
 
         Assert.AreEqual(8, _drawList.mesh.vertexCount,
             "the next styled run should reveal at the next document-wide sequence boundary");
+    }
+
+    [Test]
+    public void LayoutRichTextReservesSpanAwareIntrinsicWidth()
+    {
+        NowRichTextResult result;
+
+        using (_drawList.Begin(Surface))
+        using (NowLayout.Area(new Vector4(0f, 0f, 480f, 192f)))
+        {
+            result = NowLayout.RichText("AA <size=80>AA</size>")
+                .ParseDefaultTags()
+                .SetFont(_fontAsset)
+                .SetFontSize(FontSize)
+                .Draw();
+        }
+
+        Assert.AreEqual(1, result.layout.lines.Count,
+            "span-styled text must reserve its full flowed width instead of wrapping early");
+        Assert.GreaterOrEqual(result.rect.width, result.layout.bounds.width - 0.001f,
+            "the reserved rect must fit the span-aware flowed width");
+    }
+
+    [Test]
+    public void LayoutRichTextSetAlignCentersInLayoutCell()
+    {
+        NowRichTextResult result;
+
+        using (_drawList.Begin(Surface))
+        using (NowLayout.Area(new Vector4(0f, 0f, 480f, 192f)))
+        {
+            result = NowLayout.RichText("AA")
+                .SetFont(_fontAsset)
+                .SetFontSize(FontSize)
+                .SetAlign(NowLayoutAlign.Center)
+                .Draw();
+        }
+
+        Assert.Greater(result.rect.x, 0f,
+            "centered rich text should be inset from the area's left edge");
+        Assert.AreEqual(240f, result.rect.center.x, 1f,
+            "SetAlign(Center) must center the reserved rect in the layout cell");
     }
 
     [Test]
