@@ -283,14 +283,22 @@ namespace NowUI.Markdown
             return new NowMarkdownBuilder(markdown, file, line);
         }
 
+        /// <summary>
+        /// Parses through the registered text preprocessor
+        /// (<see cref="Now.SetTextPreprocessor"/>), like drawn documents; the
+        /// snapshot does not follow later invalidations — re-parse after a
+        /// language switch. <see cref="NowMarkdownDocument.Parse(string)"/>
+        /// parses verbatim.
+        /// </summary>
         public static NowMarkdownDocument Parse(string markdown)
         {
-            return NowMarkdownDocument.Parse(markdown ?? string.Empty);
+            return NowMarkdownDocument.Parse(Now.PreprocessText(markdown ?? string.Empty));
         }
 
+        /// <inheritdoc cref="Parse(string)"/>
         public static NowMarkdownDocument Parse(string markdown, NowMarkdownStyle style)
         {
-            return NowMarkdownDocument.Parse(markdown ?? string.Empty, style);
+            return NowMarkdownDocument.Parse(Now.PreprocessText(markdown ?? string.Empty), style);
         }
 
         internal static NowMarkdownDocument GetCached(string markdown)
@@ -300,7 +308,7 @@ namespace NowUI.Markdown
 
         internal static NowMarkdownDocument GetCached(string markdown, NowMarkdownStyle style)
         {
-            markdown ??= string.Empty;
+            markdown = Now.PreprocessText(markdown ?? string.Empty);
 
             for (int i = 0; i < _recent.Length; ++i)
             {

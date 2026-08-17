@@ -75,7 +75,7 @@ namespace NowUI
     {
         const float DefaultLineHeight = 1.25f;
 
-        readonly string _value;
+        string _value;
         readonly int _site;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -270,9 +270,21 @@ namespace NowUI
 
         public NowRichText SetSelectable(bool selectable = true) { _selectable = selectable; return this; }
 
+        /// <summary>
+        /// Renders the value verbatim, skipping the registered text
+        /// preprocessor (<see cref="Now.SetTextPreprocessor"/>).
+        /// </summary>
+        public NowRichText SetRaw(bool value = true) { _style = _style.SetRaw(value); return this; }
+
         [NowConsumer]
         public NowRichTextResult Draw()
         {
+            if (!_style.raw)
+            {
+                _value = Now.PreprocessText(_value);
+                _style = _style.SetRaw();
+            }
+
             int id = ResolveControlId();
             float lineHeight = _lineHeight > 0f ? _lineHeight : _style.fontSize * DefaultLineHeight;
             ref var state = ref NowControlState.Get<State>(id);

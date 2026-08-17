@@ -199,6 +199,8 @@ namespace NowUI
 
         internal int animationUnitCount;
 
+        internal bool raw;
+
         public NowText(NowRect rect, NowFontAsset font)
         {
             this.rect = rect;
@@ -230,6 +232,7 @@ namespace NowUI
             animationTimeNormalized = false;
             animationUnitOffset = 0;
             animationUnitCount = 0;
+            raw = false;
         }
 
         public NowText SetFont(NowFontAsset font)
@@ -526,10 +529,22 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// Draws and measures this string verbatim, skipping the registered
+        /// text preprocessor (<see cref="Now.SetTextPreprocessor"/>) — for
+        /// content that must never be transformed: identifiers, user input,
+        /// code. Editable controls set this on their content internally.
+        /// </summary>
+        public NowText SetRaw(bool value = true)
+        {
+            raw = value;
+            return this;
+        }
+
         [NowConsumer]
         public NowText Draw(string value)
         {
-            Now.DrawString(this, value);
+            Now.DrawString(this, raw ? value : Now.PreprocessText(value));
             return this;
         }
 
@@ -575,6 +590,9 @@ namespace NowUI
 
         public Vector2 Measure(string value)
         {
+            if (!raw)
+                value = Now.PreprocessText(value);
+
             return font != null ? font.MeasureText(value, fontSize, fontStyle) : default;
         }
 
@@ -609,6 +627,9 @@ namespace NowUI
 
         public readonly Vector4 MeasureBounds(string value)
         {
+            if (!raw)
+                value = Now.PreprocessText(value);
+
             return font != null ? font.MeasureTextBounds(value, fontSize, fontStyle) : default;
         }
 

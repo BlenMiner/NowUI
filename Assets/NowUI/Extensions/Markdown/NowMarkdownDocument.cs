@@ -261,7 +261,7 @@ namespace NowUI.Markdown
                 {
                     case OpKind.Text:
                     {
-                        var text = theme.Text(target, _layoutFont);
+                        var text = theme.Text(target, _layoutFont).SetRaw();
                         text.fontSize = op.fontSize;
                         text.fontStyle = op.fontStyle;
                         text.color = hovered && op.role == Role.Link ? _linkHoverColor : _roleColors[(int)op.role];

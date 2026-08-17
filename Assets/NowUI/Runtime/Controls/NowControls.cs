@@ -721,6 +721,7 @@ namespace NowUI
         static float _labelMeasureFontSize;
         static NowFontStyle _labelMeasureStyle;
         static Vector2 _labelMeasureSize;
+        static int _labelMeasureRevision;
 
         /// <summary>
         /// One-entry measure memo for the label helpers: controls measure their
@@ -733,7 +734,8 @@ namespace NowUI
                 ReferenceEquals(_labelMeasureText, label) &&
                 ReferenceEquals(_labelMeasureFont, text.font) &&
                 _labelMeasureFontSize == text.fontSize &&
-                _labelMeasureStyle == text.fontStyle)
+                _labelMeasureStyle == text.fontStyle &&
+                _labelMeasureRevision == Now.textPreprocessorRevision)
             {
                 return _labelMeasureSize;
             }
@@ -744,6 +746,7 @@ namespace NowUI
             _labelMeasureFontSize = text.fontSize;
             _labelMeasureStyle = text.fontStyle;
             _labelMeasureSize = size;
+            _labelMeasureRevision = Now.textPreprocessorRevision;
             return size;
         }
 

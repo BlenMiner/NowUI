@@ -1196,7 +1196,7 @@ namespace NowUI
                 if (display.Length > 0)
                 {
                     textStyle.rect = new NowRect(textX, inner.y, totalWidth + 4f, inner.height);
-                    textStyle.Draw(display);
+                    textStyle.SetRaw().Draw(display);
                 }
                 else if (!string.IsNullOrEmpty(_placeholder))
                 {
