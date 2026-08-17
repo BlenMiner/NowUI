@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.7.1...nowui-v1.8.0) (2026-08-17)
+
+
+### Features
+
+* TextPreprocessor ([83ce8b6](https://github.com/BlenMiner/NowUI/commit/83ce8b636097304268115455148581e12cb55c45))
+
 ## [1.7.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.7.0...nowui-v1.7.1) (2026-08-14)
 
 
