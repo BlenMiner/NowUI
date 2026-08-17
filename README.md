@@ -195,6 +195,12 @@ Toolkit, world-space, and manual-host examples, see
   shaping for ligatures, kerning, and complex scripts where the plugin is
   present, falling back per codepoint elsewhere; contextual font stack via
   `using (Now.Font(...))`.
+- **Text Preprocessor** — one registered hook every UI string resolves
+  through before measurement, so localization (and any other string
+  transform: casing, terminology, pseudo-loc) gets correct layout for free;
+  memoized per unique string, explicit invalidation on language switch, and
+  `SetRaw()` opt-outs for verbatim text.
+  [Documentation~/TextPreprocessor.md](Assets/NowUI/Documentation~/TextPreprocessor.md)
 - **Layout** — fluent `Row`/`Horizontal` and `Column`/`Vertical` container
   aliases with gaps, padding, growth, alignment, justification, and
   exact-measure layout hosts.

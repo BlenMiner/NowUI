@@ -13,6 +13,9 @@ installed NowUI revision. AI coding agents should begin with the
 - [Text Gradients And Animation](TextStyling.md): first-class linear, radial,
   and conic text fills plus caller-timed typewriter, fade, movement, scale, and
   wave presets.
+- [Text Preprocessor](TextPreprocessor.md): one registered hook every UI
+  string resolves through before measurement — localization and other string
+  transforms with correct layout, memoized results, and raw opt-outs.
 - [Masks](Masks.md): exact rectangular clips plus anti-aliased analytic
   rectangles, rounded rectangles, circles, ellipses, and capsules with soft
   screen-pixel feathers.
