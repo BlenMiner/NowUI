@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.0...nowui-v1.8.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* richtext bugs ([31844d7](https://github.com/BlenMiner/NowUI/commit/31844d759906bf750450ec92b6f6a6ec834eb25a))
+
 # [1.8.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.7.1...nowui-v1.8.0) (2026-08-17)
 
 
