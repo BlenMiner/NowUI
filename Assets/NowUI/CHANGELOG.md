@@ -1,3 +1,10 @@
+## [1.8.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.2...nowui-v1.8.3) (2026-08-20)
+
+
+### Bug Fixes
+
+* out the box japanese support ([a066d24](https://github.com/BlenMiner/NowUI/commit/a066d24bb0e6b083540fd80fc90e0e78e9908804))
+
 ## [1.8.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.1...nowui-v1.8.2) (2026-08-19)
 
 
