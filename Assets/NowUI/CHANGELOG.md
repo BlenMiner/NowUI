@@ -1,3 +1,10 @@
+## [1.8.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.1...nowui-v1.8.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* add context to the preprocessor ([eea7cb6](https://github.com/BlenMiner/NowUI/commit/eea7cb6b99f43fbd1a7c3541bb04ed4620a81aae))
+
 ## [1.8.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.0...nowui-v1.8.1) (2026-08-17)
 
 
