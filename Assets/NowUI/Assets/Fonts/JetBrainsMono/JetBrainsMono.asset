@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7fc6d0b96f8f49d4a8da53c8d2c48f91, type: 3}
   m_Name: JetBrainsMono
   m_EditorClassIdentifier: NowUI.Runtime::NowUI.NowFontFamily
-  _fallbacks: []
+  _fallbacks:
+  - {fileID: 11400000, guid: d9b4fc19191445a4f851b19fd4cf730f, type: 2}
   _regular: {fileID: 11400000, guid: f8d8aa8919f6db2429183f839249c09b, type: 2}
   _bold: {fileID: 11400000, guid: 938d1076f0709c249b1b768b9081ee25, type: 2}
   _italic: {fileID: 11400000, guid: 6507a9160a15bd44bb7eba445d37cb1a, type: 2}
