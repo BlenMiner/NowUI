@@ -387,6 +387,9 @@ namespace NowUI
             public int overlayId;
             public int version;
             public NowViewHandle handle;
+            public object openedInputProvider;
+            public int openedInputPass;
+            public bool hasOpenedInputPass;
             public Phase phase;
             public double transitionStartTime;
             public bool closeQueued;
@@ -623,6 +626,7 @@ namespace NowUI
             };
 
             entry.handle = new NowViewHandle(this, entryId, version);
+            CaptureOpenedInputPass(entry);
             return entry;
         }
 
@@ -646,6 +650,14 @@ namespace NowUI
                     : Phase.Open;
             entry.transitionStartTime = NowTime.realtimeSinceStartup;
             entry.closeQueued = false;
+            CaptureOpenedInputPass(entry);
+        }
+
+        static void CaptureOpenedInputPass(Entry entry)
+        {
+            entry.hasOpenedInputPass = NowInput.hasContext;
+            entry.openedInputProvider = entry.hasOpenedInputPass ? NowInput.currentProvider : null;
+            entry.openedInputPass = entry.hasOpenedInputPass ? NowInput.current.inputPass : 0;
         }
 
         bool Pop(Entry entry)
@@ -1107,10 +1119,19 @@ namespace NowUI
             if (!NowInput.hasContext || NowInput.isPassive)
                 return;
 
+            var snapshot = NowInput.current;
+            bool openingInputPass = entry.hasOpenedInputPass &&
+                ReferenceEquals(entry.openedInputProvider, NowInput.currentProvider) &&
+                snapshot.inputPass == entry.openedInputPass;
+
+            if (entry.hasOpenedInputPass && !openingInputPass)
+            {
+                entry.hasOpenedInputPass = false;
+                entry.openedInputProvider = null;
+            }
+
             if (NowOverlay.HasNestedOverlay(entry.overlayId))
                 return;
-
-            var snapshot = NowInput.current;
 
             if (entry.options.closeOnCancel && snapshot.cancelPressed && !NowInput.cancelConsumed)
             {
@@ -1122,7 +1143,7 @@ namespace NowUI
             if (!entry.options.closeOnOutsideClick || !snapshot.hasPointer)
                 return;
 
-            if (snapshot.anyPointerPressed &&
+            if (snapshot.anyPointerPressed && !openingInputPass &&
                 !NowOverlay.IsPointerInsideOverlayTree(entry.overlayId, snapshot.pointerPosition))
             {
                 NowInput.ConsumePointerPress();

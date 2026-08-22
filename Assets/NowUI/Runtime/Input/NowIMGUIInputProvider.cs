@@ -723,8 +723,19 @@ namespace NowUI
             ResetState(releaseNativeCapture: true);
         }
 
+        /// <summary>
+        /// Releases native capture, retained overlay ownership and buffered
+        /// keyboard state. Custom IMGUI hosts should call this when they stop
+        /// using the provider.
+        /// </summary>
+        public void Reset()
+        {
+            ResetState(releaseNativeCapture: true);
+        }
+
         internal void ResetState(bool releaseNativeCapture)
         {
+            NowOverlay.ReleaseRegistrationOwner(this);
             CancelTrackedCapture(releaseNativeCapture);
             _sampledEvent = null;
             _sampledType = EventType.Ignore;

@@ -446,6 +446,7 @@ namespace NowUI
 
             if (rect.width <= 0 || rect.height <= 0)
             {
+                NowOverlay.ReleaseRegistrationOwner(this);
                 _repaintTracker.SetWantsRepaint(false);
                 _drawList.Clear();
                 ReleaseUGUIGlassBackdrops();
@@ -658,12 +659,20 @@ namespace NowUI
 
         public override void Cull(Rect clipRect, bool validRect)
         {
+            bool wasCulled = canvasRenderer.cull;
             base.Cull(clipRect, validRect);
 
             if (canvasRenderer.cull)
             {
+                NowOverlay.ReleaseRegistrationOwner(this);
                 CancelDeferredUGUINavigationBoundary();
                 _uguiNavigationProxy?.CancelPendingYield();
+            }
+            else if (wasCulled)
+            {
+                // The cached mesh becomes visible again without necessarily
+                // rebuilding. Re-declare any retained popup footprint first.
+                SetVerticesDirty();
             }
 
             ApplyCullToExtraCanvasRenderers();
@@ -734,6 +743,8 @@ namespace NowUI
 
         protected override void OnDisable()
         {
+            NowOverlay.ReleaseRegistrationOwner(this);
+
             if (_scopeId != 0)
                 NowFocus.UnregisterHost(_scopeId);
 

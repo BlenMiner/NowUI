@@ -124,6 +124,7 @@ namespace NowUI
         [NonSerialized] Camera _fallbackCamera;
         [NonSerialized] bool _dirty = true;
         [NonSerialized] NowInteractionRepaintTracker _repaintTracker;
+        [NonSerialized] bool _overlayFootprintCulled;
         [NonSerialized] int _dynamicTextureBuildVersion;
         [NonSerialized] bool _hasGlassBatches;
         [NonSerialized] float _maxGlassBlurRadius;
@@ -493,6 +494,11 @@ namespace NowUI
             {
                 frame.Dispose();
             }
+
+            _overlayFootprintCulled = !IsVisibleForRebuild();
+
+            if (_overlayFootprintCulled)
+                NowOverlay.ReleaseRegistrationOwner(this);
         }
 
         public Vector3 UIToLocal(Vector2 uiPosition)
@@ -937,6 +943,7 @@ namespace NowUI
         protected virtual void OnEnable()
         {
             _materialHosts.Add(this);
+            _overlayFootprintCulled = false;
             _glassBackdropMode = NowWorldGlassBackdrop.NormalizeMode(_glassBackdropMode);
 
             if (!_instances.Contains(this))
@@ -954,6 +961,8 @@ namespace NowUI
         protected virtual void OnDisable()
         {
             CancelEditorRebuild();
+            NowOverlay.ReleaseRegistrationOwner(this);
+            _overlayFootprintCulled = false;
 
             if (_instances.Remove(this))
                 InvalidateInputResolution();
@@ -985,22 +994,26 @@ namespace NowUI
             ApplyFacing();
             RegisterGlassBackdropIfNeeded();
 
-            bool needsRebuild = _dirty || _rebuildEveryFrame || _repaintTracker.wantsRepaint;
-            bool visibilityChecked = false;
-
-            if (!needsRebuild && _autoRebuildOnInteraction)
+            if (!IsVisibleForRebuild())
             {
-                if (!IsVisibleForRebuild())
-                    return;
+                NowOverlay.ReleaseRegistrationOwner(this);
+                _overlayFootprintCulled = true;
 
-                visibilityChecked = true;
-                needsRebuild = HasInteractionInputChanged();
+                return;
             }
 
-            if (!needsRebuild)
-                return;
+            if (_overlayFootprintCulled)
+            {
+                _overlayFootprintCulled = false;
+                MarkDirty();
+            }
 
-            if (!visibilityChecked && !IsVisibleForRebuild())
+            bool needsRebuild = _dirty || _rebuildEveryFrame || _repaintTracker.wantsRepaint;
+
+            if (!needsRebuild && _autoRebuildOnInteraction)
+                needsRebuild = HasInteractionInputChanged();
+
+            if (!needsRebuild)
                 return;
 
             RebuildNowUI();

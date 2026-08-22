@@ -467,6 +467,281 @@ public class NowPopupUXTests
     }
 
     [Test]
+    public void IdleUIToolkitProviderKeepsModalFootprintUntilReset()
+    {
+        var provider = new NowUIToolkitInputProvider();
+
+        using (NowInput.Begin(provider, Surface))
+            NowOverlay.BlockAllSurfaces(7002);
+
+        NowOverlay.ForceNewFrame();
+        NowOverlay.ForceNewFrame();
+        NowOverlay.ForceNewFrame();
+
+        using (NowInput.Begin(provider, Surface))
+        {
+            Assert.IsTrue(
+                NowOverlay.IsPointerBlocked(new Vector2(500f, 500f)),
+                "An idle UI Toolkit host must keep its last completed modal footprint.");
+        }
+
+        provider.Reset();
+
+        Assert.AreEqual(0, NowOverlay.currentBlockCount);
+        Assert.AreEqual(0, NowOverlay.previousBlockCount);
+        Assert.AreEqual(0, NowOverlay.registrationOwnerCount);
+    }
+
+    [Test]
+    public void IdleIMGUIProviderKeepsModalFootprintUntilResetState()
+    {
+        var provider = new NowIMGUIInputProvider();
+
+        try
+        {
+            using (NowInput.Begin(provider, Surface))
+                NowOverlay.BlockAllSurfaces(7003);
+
+            NowOverlay.ForceNewFrame();
+            NowOverlay.ForceNewFrame();
+            NowOverlay.ForceNewFrame();
+
+            using (NowInput.Begin(provider, Surface))
+            {
+                Assert.IsTrue(
+                    NowOverlay.IsPointerBlocked(new Vector2(500f, 500f)),
+                    "An idle cached IMGUI panel must keep its last completed modal footprint.");
+            }
+        }
+        finally
+        {
+            provider.Reset();
+        }
+
+        Assert.AreEqual(0, NowOverlay.currentBlockCount);
+        Assert.AreEqual(0, NowOverlay.previousBlockCount);
+        Assert.AreEqual(0, NowOverlay.registrationOwnerCount);
+    }
+
+    [Test]
+    public void IdleRuntimeHostKeepsModalFootprintUntilItsNextCompletedPass()
+    {
+        var hostObject = new GameObject("NowOverlay retained owner test");
+        var background = new NowRect(20f, 40f, 100f, 80f);
+
+        try
+        {
+            _pointer.snapshot = new NowInputSnapshot(background.center, false, false, false);
+
+            using (NowOverlay.Host(hostObject.transform))
+            using (NowInput.Begin(_pointer, Surface))
+                NowOverlay.BlockAllSurfaces(7004);
+
+            Assert.AreEqual(1, NowOverlay.currentBlockCount);
+
+            NowOverlay.ForceNewFrame();
+            NowOverlay.ForceNewFrame();
+            NowOverlay.ForceNewFrame();
+
+            Assert.AreEqual(
+                1,
+                NowOverlay.previousBlockCount,
+                "A retained host's last completed modal footprint must survive Unity frames with no draw pass.");
+            Assert.AreEqual(1, NowOverlay.registrationOwnerCount);
+
+            using (NowOverlay.Host(hostObject.transform))
+            using (NowInput.Begin(_pointer, Surface))
+            {
+                Assert.IsTrue(
+                    NowOverlay.IsPointerBlocked(background.center),
+                    "The first interaction-driven rebuild after idle must still see the retained modal block.");
+                Assert.IsFalse(
+                    NowInput.Interact(7005, background).hovered,
+                    "Background content must not hover for one rebuild before the modal re-registers.");
+
+                NowOverlay.BlockAllSurfaces(7004);
+            }
+
+            NowOverlay.ForceNewFrame();
+            Assert.AreEqual(1, NowOverlay.previousBlockCount);
+
+            using (NowOverlay.Host(hostObject.transform))
+            using (NowInput.Begin(_pointer, Surface))
+            {
+                Assert.IsTrue(NowOverlay.IsPointerBlocked(background.center));
+            }
+
+            NowOverlay.ForceNewFrame();
+
+            Assert.AreEqual(
+                0,
+                NowOverlay.previousBlockCount,
+                "A completed retained-host pass that declares no overlay replaces and releases the old footprint.");
+            Assert.AreEqual(0, NowOverlay.registrationOwnerCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(hostObject);
+        }
+    }
+
+    [Test]
+    public void DisablingRetainedWorldHostImmediatelyReleasesItsModalFootprint()
+    {
+        var hostObject = new GameObject("NowOverlay disabled world owner test");
+
+        try
+        {
+            var host = hostObject.AddComponent<NowWorldGraphic>();
+
+            using (NowOverlay.Host(host))
+            using (NowInput.Begin(_pointer, Surface))
+                NowOverlay.BlockAllSurfaces(7006);
+
+            NowOverlay.ForceNewFrame();
+            NowOverlay.ForceNewFrame();
+            Assert.AreEqual(1, NowOverlay.previousBlockCount);
+
+            host.enabled = false;
+
+            Assert.AreEqual(0, NowOverlay.currentBlockCount);
+            Assert.AreEqual(0, NowOverlay.previousBlockCount);
+            Assert.AreEqual(0, NowOverlay.registrationOwnerCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(hostObject);
+        }
+    }
+
+#if NOWUI_UGUI
+    [Test]
+    public void DisablingRetainedUguiHostImmediatelyReleasesItsModalFootprint()
+    {
+        var hostObject = new GameObject(
+            "NowOverlay disabled UGUI owner test",
+            typeof(RectTransform),
+            typeof(CanvasRenderer));
+
+        try
+        {
+            var host = hostObject.AddComponent<NowGraphic>();
+
+            using (NowOverlay.Host(host, host.rectTransform, null))
+            using (NowInput.Begin(_pointer, Surface))
+                NowOverlay.BlockAllSurfaces(7008);
+
+            NowOverlay.ForceNewFrame();
+            NowOverlay.ForceNewFrame();
+            Assert.AreEqual(1, NowOverlay.previousBlockCount);
+
+            host.enabled = false;
+
+            Assert.AreEqual(0, NowOverlay.currentBlockCount);
+            Assert.AreEqual(0, NowOverlay.previousBlockCount);
+            Assert.AreEqual(0, NowOverlay.registrationOwnerCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(hostObject);
+        }
+    }
+
+    [Test]
+    public void ZeroSizeRetainedUguiHostReleasesItsModalFootprint()
+    {
+        var hostObject = new GameObject(
+            "NowOverlay zero-size UGUI owner test",
+            typeof(RectTransform),
+            typeof(CanvasRenderer));
+
+        try
+        {
+            var host = hostObject.AddComponent<NowGraphic>();
+
+            using (NowOverlay.Host(host, host.rectTransform, null))
+            using (NowInput.Begin(_pointer, Surface))
+                NowOverlay.BlockAllSurfaces(7009);
+
+            NowOverlay.ForceNewFrame();
+            NowOverlay.ForceNewFrame();
+            Assert.AreEqual(1, NowOverlay.previousBlockCount);
+
+            host.rectTransform.sizeDelta = Vector2.zero;
+            host.Rebuild(UnityEngine.UI.CanvasUpdate.PreRender);
+
+            Assert.AreEqual(0, NowOverlay.currentBlockCount);
+            Assert.AreEqual(0, NowOverlay.previousBlockCount);
+            Assert.AreEqual(0, NowOverlay.registrationOwnerCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(hostObject);
+        }
+    }
+
+    [Test]
+    public void CulledRetainedUguiHostReleasesItsModalFootprint()
+    {
+        var hostObject = new GameObject(
+            "NowOverlay culled UGUI owner test",
+            typeof(RectTransform),
+            typeof(CanvasRenderer));
+
+        try
+        {
+            var host = hostObject.AddComponent<NowGraphic>();
+
+            using (NowOverlay.Host(host, host.rectTransform, null))
+            using (NowInput.Begin(_pointer, Surface))
+                NowOverlay.BlockAllSurfaces(7010);
+
+            NowOverlay.ForceNewFrame();
+            NowOverlay.ForceNewFrame();
+            Assert.AreEqual(1, NowOverlay.previousBlockCount);
+
+            host.Cull(new Rect(1000f, 1000f, 10f, 10f), validRect: true);
+
+            Assert.IsTrue(host.canvasRenderer.cull);
+            Assert.AreEqual(0, NowOverlay.currentBlockCount);
+            Assert.AreEqual(0, NowOverlay.previousBlockCount);
+            Assert.AreEqual(0, NowOverlay.registrationOwnerCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(hostObject);
+        }
+    }
+#endif
+
+    [Test]
+    public void InactiveCustomComponentOwnerIsPrunedWithItsModalFootprint()
+    {
+        var hostObject = new GameObject("NowOverlay inactive custom owner test");
+
+        try
+        {
+            using (NowOverlay.Host(hostObject.transform))
+            using (NowInput.Begin(_pointer, Surface))
+                NowOverlay.BlockAllSurfaces(7007);
+
+            NowOverlay.ForceNewFrame();
+            Assert.AreEqual(1, NowOverlay.previousBlockCount);
+
+            hostObject.SetActive(false);
+            NowOverlay.ForceNewFrame();
+
+            Assert.AreEqual(0, NowOverlay.currentBlockCount);
+            Assert.AreEqual(0, NowOverlay.previousBlockCount);
+            Assert.AreEqual(0, NowOverlay.registrationOwnerCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(hostObject);
+        }
+    }
+
+    [Test]
     public void DestroyedRuntimeHostReleasesItsOwnerAndPointerBlocks()
     {
         var hostObject = new GameObject("NowOverlay owner cleanup test");

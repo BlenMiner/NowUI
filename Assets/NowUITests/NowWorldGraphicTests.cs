@@ -100,6 +100,7 @@ public class NowWorldGraphicTests
     sealed class CountingWorldGraphic : NowWorldGraphic
     {
         public int drawCount;
+        public bool drawModal;
 
         public void TickLateUpdate()
         {
@@ -109,6 +110,9 @@ public class NowWorldGraphicTests
         protected override void DrawNowUI(NowRect rect)
         {
             ++drawCount;
+
+            if (drawModal)
+                NowOverlay.BlockAllSurfaces(7801);
 
             Now.Rectangle(new NowRect(0, 0, rect.width, rect.height))
                 .SetColor(Color.white)
@@ -603,6 +607,69 @@ public class NowWorldGraphicTests
 
             Assert.AreEqual(1, graphic.drawCount);
             Assert.IsTrue(graphic.hasGeometry);
+        }
+        finally
+        {
+            Object.DestroyImmediate(panelObject);
+            Object.DestroyImmediate(cameraObject);
+        }
+    }
+
+    [Test]
+    public void FrustumCulledWorldGraphicReleasesAndRestoresItsModalFootprint()
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        var cameraObject = new GameObject("Now World Overlay Camera");
+        var panelObject = new GameObject("Now World Overlay Panel");
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 1f;
+            camera.pixelRect = new Rect(0, 0, 200, 200);
+            cameraObject.transform.position = new Vector3(0, 0, -5);
+            cameraObject.transform.rotation = Quaternion.identity;
+
+            var graphic = panelObject.AddComponent<CountingWorldGraphic>();
+            graphic.facingMode = NowWorldFacingMode.None;
+            graphic.targetCamera = camera;
+            graphic.frustumCullRebuilds = true;
+            graphic.size = new Vector2(100f, 50f);
+            graphic.pixelsPerUnit = 100f;
+            graphic.drawModal = true;
+
+            graphic.TickLateUpdate();
+            NowOverlay.ForceNewFrame();
+            NowOverlay.ForceNewFrame();
+
+            Assert.AreEqual(1, graphic.drawCount);
+            Assert.AreEqual(1, NowOverlay.previousBlockCount);
+
+            panelObject.transform.position = new Vector3(5f, 0f, 0f);
+            graphic.TickLateUpdate();
+
+            Assert.AreEqual(0, NowOverlay.currentBlockCount);
+            Assert.AreEqual(0, NowOverlay.previousBlockCount);
+            Assert.AreEqual(0, NowOverlay.registrationOwnerCount);
+
+            graphic.RebuildNowUI();
+
+            Assert.AreEqual(2, graphic.drawCount);
+            Assert.AreEqual(
+                0,
+                NowOverlay.currentBlockCount,
+                "A manual off-frustum rebuild must not re-register an invisible modal footprint.");
+            Assert.AreEqual(0, NowOverlay.registrationOwnerCount);
+
+            panelObject.transform.position = Vector3.zero;
+            graphic.TickLateUpdate();
+
+            Assert.AreEqual(3, graphic.drawCount);
+            Assert.AreEqual(
+                1,
+                NowOverlay.currentBlockCount,
+                "Returning to the camera frustum must rebuild and restore the popup footprint.");
         }
         finally
         {

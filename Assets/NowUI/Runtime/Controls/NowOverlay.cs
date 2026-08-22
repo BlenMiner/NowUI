@@ -371,10 +371,11 @@ namespace NowUI
 
         /// <summary>
         /// Owner state exists only to replace one provider/host's prior popup
-        /// footprint on a later pass. Owners with no surviving footprint no
-        /// longer need tracking, and destroyed runtime hosts must release their
-        /// last blocks immediately instead of remaining rooted by this static
-        /// registry for the rest of the session.
+        /// footprint on a later pass. Retained runtime hosts keep their last
+        /// completed footprint while they are idle; owners with no surviving
+        /// footprint no longer need tracking, and destroyed runtime hosts must
+        /// release their last blocks immediately instead of remaining rooted by
+        /// this static registry for the rest of the session.
         /// </summary>
         static void PruneRegistrationOwners()
         {
@@ -388,8 +389,13 @@ namespace NowUI
                 bool destroyedUnityOwner =
                     owner is UnityEngine.Object unityOwner &&
                     !unityOwner;
+                bool inactiveComponentOwner =
+                    owner is Component component &&
+                    component &&
+                    (!component.gameObject.activeInHierarchy ||
+                     (component is Behaviour behaviour && !behaviour.isActiveAndEnabled));
 
-                if (destroyedUnityOwner)
+                if (destroyedUnityOwner || inactiveComponentOwner)
                 {
                     ReleaseRegistrationOwner(owner);
                     i = _registrationOwners.Count;
@@ -427,6 +433,60 @@ namespace NowUI
             }
 
             return false;
+        }
+
+        static bool HasCurrentRegistrationBlocks(object owner)
+        {
+            for (int i = 0; i < _blocksCurrent.Count; ++i)
+            {
+                if (ReferenceEquals(_blocksCurrent[i].registrationOwner, owner))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool RegisteredInVersion(object owner, int registryVersion)
+        {
+            int index = FindRegistrationOwner(owner);
+            return index >= 0 && _registrationOwners[index].registryVersion == registryVersion;
+        }
+
+        static bool RetainsFootprintWhileIdle(object owner)
+        {
+            // Retained graphics rebuild only when their content or input changes.
+            // Their Component (or event-buffered built-in provider) is the
+            // registration owner, so the last completed popup footprint must
+            // outlive Unity frames in which no draw pass ran. Provider-owned
+            // immediate surfaces keep the historical one-frame expiry, avoiding
+            // an unbounded root when a caller abandons an arbitrary provider.
+            if (owner is NowIMGUIInputProvider || owner is NowUIToolkitInputProvider)
+                return true;
+
+            if (owner is not Component component ||
+                component == null ||
+                !component.gameObject.activeInHierarchy)
+            {
+                return false;
+            }
+
+            return component is not Behaviour behaviour || behaviour.isActiveAndEnabled;
+        }
+
+        static void CommitFrameRegistrations(int completedRegistryVersion)
+        {
+            for (int i = _blocksPrevious.Count - 1; i >= 0; --i)
+            {
+                object owner = _blocksPrevious[i].registrationOwner;
+                bool ownerRan = RegisteredInVersion(owner, completedRegistryVersion) ||
+                    HasCurrentRegistrationBlocks(owner);
+
+                if (!RetainsFootprintWhileIdle(owner) || ownerRan)
+                    _blocksPrevious.RemoveAt(i);
+            }
+
+            _blocksPrevious.AddRange(_blocksCurrent);
+            _blocksCurrent.Clear();
         }
 
         static object RegistrationOwner(INowInputProvider provider)
@@ -519,7 +579,10 @@ namespace NowUI
             }
         }
 
-        /// <summary>True while any overlay is registered or queued for this or the previous frame.</summary>
+        /// <summary>
+        /// True while any overlay is queued or has a current/last-completed
+        /// pointer footprint, including an idle retained host's footprint.
+        /// </summary>
         public static bool hasOpenOverlay
         {
             get
@@ -797,10 +860,11 @@ namespace NowUI
         }
 
         /// <summary>
-        /// True when the pointer position is owned by overlay content registered
-        /// last frame; base-layer interactions treat it as hover-blocked. Queries
-        /// roll the frame too, so blocks expire even when no overlay registers
-        /// this frame (a context menu that just closed must release the pointer).
+        /// True when the pointer position is owned by the last completed overlay
+        /// footprint; base-layer interactions treat it as hover-blocked. Runtime
+        /// retained hosts preserve that footprint through idle frames and replace
+        /// it on their next draw pass. Arbitrary provider-owned immediate surfaces
+        /// retain the historical frame-based expiry.
         /// </summary>
         public static bool IsPointerBlocked(Vector2 pointerPosition)
         {
@@ -1305,6 +1369,7 @@ namespace NowUI
                 return;
 
             _registryFrame = frame;
+            int completedRegistryVersion = _registryVersion;
             unchecked
             {
                 ++_registryVersion;
@@ -1313,9 +1378,7 @@ namespace NowUI
                     _registryVersion = 1;
             }
 
-            _blocksPrevious.Clear();
-            _blocksPrevious.AddRange(_blocksCurrent);
-            _blocksCurrent.Clear();
+            CommitFrameRegistrations(completedRegistryVersion);
             PruneRegistrationOwners();
         }
 

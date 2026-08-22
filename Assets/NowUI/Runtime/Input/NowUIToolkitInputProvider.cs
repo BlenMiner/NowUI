@@ -284,6 +284,7 @@ namespace NowUI
 
         public void Reset()
         {
+            NowOverlay.ReleaseRegistrationOwner(this);
             _lastFrame = -1;
             _snapshot = default;
             _hasPointer = false;

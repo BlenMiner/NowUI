@@ -86,6 +86,18 @@ public class NowViewStackTests
             stack.Draw(Surface);
     }
 
+    static NowInputSnapshot SecondaryPress(Vector2 pointer, int inputPass)
+    {
+        var snapshot = new NowInputSnapshot(
+            pointer,
+            NowPointerButtons.Secondary,
+            NowPointerButtons.Secondary,
+            NowPointerButtons.None);
+        snapshot.frame = inputPass;
+        snapshot.inputPass = inputPass;
+        return snapshot;
+    }
+
     [Test]
     public void PushWithoutStoredHandleCanPopTop()
     {
@@ -134,6 +146,56 @@ public class NowViewStackTests
 
         Assert.Throws<InvalidOperationException>(() =>
             stack.Push("settings", new RecordingView(), InstantFullScreen()));
+    }
+
+    [Test]
+    public void PopupPushedByPressIgnoresThatInputPassButLaterOutsidePressClosesIt()
+    {
+        var stack = new NowViewStack();
+        var view = new RecordingView();
+        var outside = new Vector2(20f, 20f);
+        _provider.snapshot = SecondaryPress(outside, 201);
+
+        using (NowInput.Begin(_provider, SurfaceSize))
+        using (_drawList.Begin(SurfaceSize))
+        {
+            stack.Push(view, InstantPopup());
+            stack.Draw(Surface);
+        }
+
+        Assert.AreEqual(1, view.draws);
+        Assert.AreEqual(
+            1,
+            stack.count,
+            "A popup must survive the outside press that pushed it during the same input pass.");
+
+        DrawFrame(stack, SecondaryPress(outside, 202));
+
+        Assert.AreEqual(0, stack.count, "A later outside press must still close the popup.");
+    }
+
+    [Test]
+    public void PopupOpeningPassExemptionIsScopedToItsInputProvider()
+    {
+        var stack = new NowViewStack();
+        var view = new RecordingView();
+        var outside = new Vector2(20f, 20f);
+        _provider.snapshot = SecondaryPress(outside, 203);
+
+        using (NowInput.Begin(_provider, SurfaceSize))
+            stack.Push(view, InstantPopup());
+
+        var otherProvider = new FakeProvider { snapshot = SecondaryPress(outside, 203) };
+
+        using (NowInput.Begin(otherProvider, SurfaceSize))
+        using (_drawList.Begin(SurfaceSize))
+            stack.Draw(Surface);
+
+        Assert.AreEqual(1, view.draws);
+        Assert.AreEqual(
+            0,
+            stack.count,
+            "A different provider reusing the opening pass number must not inherit the exemption.");
     }
 
     [Test]

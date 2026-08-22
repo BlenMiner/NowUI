@@ -270,6 +270,18 @@ public class NowControlsAdvancedTests
             1, time);
     }
 
+    static NowInputSnapshot SecondaryPressSnapshot(Vector2 pointer, int inputPass)
+    {
+        var snapshot = new NowInputSnapshot(
+            pointer,
+            NowPointerButtons.Secondary,
+            NowPointerButtons.Secondary,
+            NowPointerButtons.None);
+        snapshot.frame = inputPass;
+        snapshot.inputPass = inputPass;
+        return snapshot;
+    }
+
     static NowInputSnapshot ComboSnapshot(
         Vector2 pointer,
         bool down = false,
@@ -756,6 +768,103 @@ public class NowControlsAdvancedTests
             Object.DestroyImmediate(renderer);
             Object.DestroyImmediate(theme);
         }
+    }
+
+    [Test]
+    public void ContextMenuOpeningPressCannotImmediatelyDismissItButLaterOutsidePressCan()
+    {
+        const int menuId = 7341;
+        var anchor = new Vector2(20f, 20f);
+        var outside = new Vector2(420f, 220f);
+
+        void DrawFrame(NowInputSnapshot snapshot, bool open = false)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = snapshot;
+
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                if (open)
+                    NowContextMenu.Open(menuId, anchor);
+
+                if (NowContextMenu.Begin(menuId))
+                {
+                    NowContextMenu.Item("Action");
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+        }
+
+        DrawFrame(SecondaryPressSnapshot(outside, 101), open: true);
+
+        Assert.IsTrue(
+            NowContextMenu.isOpen,
+            "The outside press that opened the menu must not dismiss it during the same input pass.");
+
+        DrawFrame(SecondaryPressSnapshot(outside, 102));
+
+        Assert.IsFalse(
+            NowContextMenu.isOpen,
+            "A later outside press must retain the normal context-menu dismissal behavior.");
+    }
+
+    [Test]
+    public void OpeningSubmenuResetsItsOverlayScrollStateWithoutTouchingLegacyCollisionKey()
+    {
+        const int menuId = 7342;
+        var anchor = new Vector2(20f, 20f);
+        var outside = new Vector2(420f, 220f);
+        var styles = NowTheme.themeAsset.controlStyles;
+        var submenuRow = new Vector2(
+            anchor.x + styles.popupPadding + 12f,
+            anchor.y + styles.popupPadding + styles.contextMenuItemHeight * 0.5f);
+
+        void DrawFrame(Vector2 pointer, float time, bool open = false)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = PointerSnapshot(pointer, time);
+
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                if (open)
+                    NowContextMenu.Open(menuId, anchor);
+
+                if (NowContextMenu.Begin(menuId))
+                {
+                    if (NowContextMenu.BeginSubmenu("More"))
+                    {
+                        NowContextMenu.Item("Nested Action");
+                        NowContextMenu.EndSubmenu();
+                    }
+
+                    NowContextMenu.End();
+                }
+
+                NowOverlay.Flush();
+            }
+        }
+
+        DrawFrame(outside, 1f, open: true);
+
+        int pathId = NowInput.CombineId(menuId, 1);
+        int overlayId = NowInput.CombineId(NowInput.GetId(menuId, "ctx-submenu"), pathId);
+        int legacyResetId = NowInput.CombineId(menuId, pathId);
+        Assert.AreNotEqual(overlayId, legacyResetId, "The fixture must distinguish the submenu overlay from the old recomputed key.");
+
+        NowControlState.Get<float>(overlayId, "ctx-scroll") = 37f;
+        NowControlState.Get<float>(legacyResetId, "ctx-scroll") = 19f;
+
+        DrawFrame(submenuRow, 1.1f);
+
+        Assert.AreEqual(0f, NowControlState.Get<float>(overlayId, "ctx-scroll"));
+        Assert.AreEqual(
+            19f,
+            NowControlState.Get<float>(legacyResetId, "ctx-scroll"),
+            "Opening a submenu must not write to the cancellation-prone legacy state key.");
     }
 
     [Test]

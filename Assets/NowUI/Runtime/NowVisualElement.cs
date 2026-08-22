@@ -250,6 +250,7 @@ namespace NowUI
             _disposed = true;
             _continuousRepaintItem?.Pause();
             ClearInteractionRepaintRequest();
+            _inputProvider.Reset();
             ReleaseTarget();
 
             if (_renderer != null)
@@ -330,7 +331,10 @@ namespace NowUI
             var rect = contentRect;
 
             if (rect.width <= 0f || rect.height <= 0f)
+            {
+                NowOverlay.ReleaseRegistrationOwner(_inputProvider);
                 return;
+            }
 
             float pixelsPerPoint = GetPixelsPerPoint();
             int pixelWidth = Mathf.Max(1, Mathf.CeilToInt(rect.width * pixelsPerPoint));

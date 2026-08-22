@@ -50,6 +50,8 @@ namespace NowUI
 
         static int _openId;
         static object _openSurface;
+        static bool _hasOpenedInputPass;
+        static int _openedInputPass;
         static Vector2 _position;
         static bool _fitToView = true;
         static int _activeId;
@@ -156,6 +158,8 @@ namespace NowUI
         {
             _openId = id;
             _openSurface = NowInput.currentProvider;
+            _hasOpenedInputPass = NowInput.hasContext;
+            _openedInputPass = _hasOpenedInputPass ? NowInput.current.inputPass : 0;
             _position = position;
             _fitToView = fitToView;
             _openPath.Clear();
@@ -172,6 +176,7 @@ namespace NowUI
                 NowControlState.RequestRepaint();
 
             _openId = 0;
+            _hasOpenedInputPass = false;
             ClearHoverIntent();
             ClearHighlight();
         }
@@ -465,7 +470,14 @@ namespace NowUI
                 return;
 
             var snapshot = NowInput.current;
-            bool pressed = snapshot.anyPointerPressed;
+            bool openingInputPass = _hasOpenedInputPass &&
+                ReferenceEquals(_openSurface, NowInput.currentProvider) &&
+                snapshot.inputPass == _openedInputPass;
+
+            if (_hasOpenedInputPass && !openingInputPass)
+                _hasOpenedInputPass = false;
+
+            bool pressed = snapshot.anyPointerPressed && !openingInputPass;
             bool pointerInsideTree = NowOverlay.IsPointerInsideOverlayTree(menu.rootId, snapshot.pointerPosition);
 
             if ((pressed && !pointerInsideTree) ||
@@ -796,7 +808,10 @@ namespace NowUI
 
                 if (visible && entry.enabled && IsEntryHovered(itemRect))
                 {
-                    UpdateOpenPathFromHover(menu.depth, entry.kind == EntryKind.Submenu ? entry.pathId : 0);
+                    UpdateOpenPathFromHover(
+                        menu.depth,
+                        entry.kind == EntryKind.Submenu ? entry.pathId : 0,
+                        entry.kind == EntryKind.Submenu ? entry.childMenu : -1);
                     return;
                 }
 
@@ -1037,7 +1052,12 @@ namespace NowUI
                 theme.controlRenderer.DrawContextMenuSubmenuIndicator(theme, itemRect, entry.enabled, submenuOpen);
 
             if (entry.enabled && interaction.hovered)
-                UpdateOpenPathFromHover(menu.depth, entry.kind == EntryKind.Submenu ? entry.pathId : 0);
+            {
+                UpdateOpenPathFromHover(
+                    menu.depth,
+                    entry.kind == EntryKind.Submenu ? entry.pathId : 0,
+                    entry.kind == EntryKind.Submenu ? entry.childMenu : -1);
+            }
 
             if (entry.enabled && highlighted)
                 HandleEntryKeyboard(menu, entry, submenuOpen, submitted);
@@ -1072,7 +1092,7 @@ namespace NowUI
                 entry.childMenu < _menuCount)
             {
                 SetOpenPath(menu.depth, entry.pathId);
-                ResetSubmenuScroll(entry.pathId);
+                ResetSubmenuScroll(entry.childMenu);
                 ClearHoverIntent();
                 _pendingHighlightMenuOverlay = _menus[entry.childMenu].overlayId;
             }
@@ -1252,7 +1272,7 @@ namespace NowUI
         /// keyboard-opened submenus. Timing comes from the input snapshot's
         /// caller-supplied time.
         /// </summary>
-        static void UpdateOpenPathFromHover(int depth, int desiredPathId)
+        static void UpdateOpenPathFromHover(int depth, int desiredPathId, int desiredChildMenu)
         {
             bool alreadyDesired = desiredPathId != 0
                 ? IsPathOpen(depth, desiredPathId)
@@ -1272,7 +1292,7 @@ namespace NowUI
                 (!hasOpenPathAtDepth || (_pointerMoved && !PointerMovingTowardOpenChild(depth))))
             {
                 SetOpenPath(depth, desiredPathId);
-                ResetSubmenuScroll(desiredPathId);
+                ResetSubmenuScroll(desiredChildMenu);
                 ClearHoverIntent();
                 return;
             }
@@ -1294,7 +1314,7 @@ namespace NowUI
             if (time - _hoverIntentStart >= HoverIntentDelay)
             {
                 SetOpenPath(depth, desiredPathId);
-                ResetSubmenuScroll(desiredPathId);
+                ResetSubmenuScroll(desiredChildMenu);
                 ClearHoverIntent();
                 return;
             }
@@ -1371,12 +1391,17 @@ namespace NowUI
             return (point.x - b.x) * (a.y - b.y) - (a.x - b.x) * (point.y - b.y);
         }
 
-        static void ResetSubmenuScroll(int pathId)
+        static void ResetSubmenuScroll(int childMenu)
         {
-            if (pathId == 0 || _openId == 0)
+            if (childMenu < 0 || childMenu >= _menuCount || _openId == 0)
                 return;
 
-            NowControlState.Get<float>(NowInput.CombineId(_openId, pathId), "ctx-scroll") = 0f;
+            var menu = _menus[childMenu];
+
+            if (menu.parentMenu < 0 || menu.rootId != _openId)
+                return;
+
+            NowControlState.Get<float>(menu.overlayId, "ctx-scroll") = 0f;
         }
 
         static void ClearHoverIntent()
@@ -1414,6 +1439,8 @@ namespace NowUI
         {
             _openId = 0;
             _openSurface = null;
+            _hasOpenedInputPass = false;
+            _openedInputPass = 0;
             _fitToView = true;
             _activeId = 0;
             _pendingPathStateId = 0;
