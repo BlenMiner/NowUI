@@ -1,3 +1,10 @@
+## [1.8.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.3...nowui-v1.8.4) (2026-08-22)
+
+
+### Bug Fixes
+
+* wrong context-menu and input consumption ([01624a9](https://github.com/BlenMiner/NowUI/commit/01624a9d4829176ee06d862c7ac6a472cc97a6d8))
+
 ## [1.8.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.2...nowui-v1.8.3) (2026-08-20)
 
 
