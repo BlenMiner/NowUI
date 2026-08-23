@@ -1,3 +1,10 @@
+## [1.8.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.4...nowui-v1.8.5) (2026-08-23)
+
+
+### Bug Fixes
+
+* BREAKING CHANGE reworking how auto IDs work and other input related fixes ([4895db2](https://github.com/BlenMiner/NowUI/commit/4895db2963dde365038edd73605ebed4d25806df))
+
 ## [1.8.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.3...nowui-v1.8.4) (2026-08-22)
 
 
