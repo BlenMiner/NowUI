@@ -121,8 +121,10 @@ cheaper than subdividing every draw command in a text-heavy scope.
 
 Modifier ids are automatic from the caller file and line, matching the rest of
 NowUI's call-site id pattern. Add `SetId(NowId)` for loops, reordered data, or
-long-lived cached entries. Prefer stable non-zero integer ids for data-backed
-effects; string ids remain available for named one-offs.
+long-lived cached entries. Prefer stable model keys for data-backed effects;
+string and integer ids are both valid. If a custom composite
+already owns a `NowResolvedId`, pass it to the resolved `SetId` overload rather
+than converting or re-resolving it. See [Identity](Identity.md).
 
 ```csharp
 foreach (var card in cards)

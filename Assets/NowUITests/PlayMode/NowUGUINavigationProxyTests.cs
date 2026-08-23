@@ -12,9 +12,9 @@ using Object = UnityEngine.Object;
 
 public class NowUGUINavigationProxyTests
 {
-    const int LeftId = 101;
-    const int RightId = 102;
-    const int LastId = 103;
+    const int LeftKey = 101;
+    const int RightKey = 102;
+    const int LastKey = 103;
 
     static readonly Vector2 Surface = new Vector2(320f, 180f);
 
@@ -45,8 +45,8 @@ public class NowUGUINavigationProxyTests
         public bool alwaysMarkDirtyAtEndOfDraw;
         public bool requestRepaintAtEndOfDraw;
         public int drawCount;
-        public int focusedSeenDuringDraw;
-        public int focusDuringDrawId;
+        public NowResolvedId focusedSeenDuringDraw;
+        public NowResolvedId focusDuringDrawId;
         public INowInputProvider inputProvider;
 
         public void RebuildGeometryForTest()
@@ -117,20 +117,20 @@ public class NowUGUINavigationProxyTests
             }
 
             if (includeFirstControl)
-                NowFocus.Register(LeftId, firstRect);
+                NowFocus.Register(ResolveControlId(LeftKey), firstRect);
 
             if (includeMiddleControl)
-                NowFocus.Register(RightId, middleRect);
+                NowFocus.Register(ResolveControlId(RightKey), middleRect);
 
             if (drawLastControl)
-                NowFocus.Register(LastId, lastRect);
+                NowFocus.Register(ResolveControlId(LastKey), lastRect);
 
-            focusedSeenDuringDraw = NowFocus.focusedId;
+            focusedSeenDuringDraw = NowFocus.focusedResolvedId;
 
-            if (focusDuringDrawId != 0)
+            if (focusDuringDrawId.hasValue)
             {
-                int id = focusDuringDrawId;
-                focusDuringDrawId = 0;
+                NowResolvedId id = focusDuringDrawId;
+                focusDuringDrawId = default;
                 NowFocus.Focus(id);
             }
 
@@ -164,7 +164,7 @@ public class NowUGUINavigationProxyTests
 
     sealed class FocusOnSelect : MonoBehaviour, ISelectHandler
     {
-        public int id;
+        public NowResolvedId id;
 
         public void OnSelect(BaseEventData eventData)
         {
@@ -192,6 +192,12 @@ public class NowUGUINavigationProxyTests
     GameObject _outsideObject;
     EventSystem _eventSystem;
     TestNowGraphic _graphic;
+
+    NowResolvedId LeftId => _graphic.ResolveControlId(LeftKey);
+
+    NowResolvedId RightId => _graphic.ResolveControlId(RightKey);
+
+    NowResolvedId LastId => _graphic.ResolveControlId(LastKey);
     NowUGUINavigationProxy _proxy;
     Button _outside;
 
@@ -255,7 +261,7 @@ public class NowUGUINavigationProxyTests
         _proxy.OnMove(move);
 
         Assert.IsTrue(move.used);
-        Assert.AreEqual(LeftId, NowFocus.focusedId);
+        Assert.AreEqual(LeftId, NowFocus.focusedResolvedId);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
     }
 
@@ -270,7 +276,7 @@ public class NowUGUINavigationProxyTests
         _proxy.OnMove(move);
 
         Assert.IsTrue(move.used);
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
     }
 
@@ -290,7 +296,7 @@ public class NowUGUINavigationProxyTests
         _proxy.OnMove(moveToMiddle);
 
         Assert.IsTrue(moveToMiddle.used);
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         CommitDirectionalGraphicControls(direction);
 
@@ -298,7 +304,7 @@ public class NowUGUINavigationProxyTests
         _proxy.OnMove(moveToLast);
 
         Assert.IsTrue(moveToLast.used);
-        Assert.AreEqual(LastId, NowFocus.focusedId);
+        Assert.AreEqual(LastId, NowFocus.focusedResolvedId);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         CommitDirectionalGraphicControls(direction);
 
@@ -307,7 +313,7 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsFalse(boundary.used);
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -334,7 +340,7 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsFalse(boundary.used);
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
 
         _outside.OnMove(Move(MoveDirection.Left));
         CommitDirectionalGraphicControls(
@@ -344,7 +350,7 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             LastId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "Returning through the composite proxy must restore the internal control " +
             "that yielded, even when a different control is farther along the inbound axis.");
     }
@@ -383,7 +389,7 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             RightId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "A removed return target must fall back to spatial edge entry.");
     }
 
@@ -419,7 +425,7 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsTrue(move.used);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
         Assert.AreEqual(
             2,
             _graphic.drawCount,
@@ -430,7 +436,7 @@ public class NowUGUINavigationProxyTests
 
         Assert.AreEqual(
             LastId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "The deferred move must resolve against the newly committed registry.");
         Assert.AreEqual(
             RightId,
@@ -479,12 +485,12 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsTrue(move.used);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
         Assert.AreEqual(2, _graphic.drawCount);
 
         _graphic.RebuildPreRenderForTest();
 
-        Assert.AreEqual(LastId, NowFocus.focusedId);
+        Assert.AreEqual(LastId, NowFocus.focusedResolvedId);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(3, _graphic.drawCount);
     }
@@ -511,7 +517,7 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsTrue(_proxy.ProcessPendingYield());
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
 
         _graphic.RebuildPreRenderForTest();
         Assert.IsTrue(_proxy.ProcessPendingYield());
@@ -519,7 +525,7 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             LastId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "A queued yield must be re-routed after repaint convergence.");
     }
 
@@ -545,7 +551,7 @@ public class NowUGUINavigationProxyTests
         Assert.IsTrue(_proxy.ProcessPendingYield());
 
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [UnityTest]
@@ -586,7 +592,7 @@ public class NowUGUINavigationProxyTests
             _proxy.OnMove(move);
 
             Assert.IsTrue(move.used);
-            Assert.AreEqual(RightId, NowFocus.focusedId);
+            Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
 
             yield return null;
 
@@ -596,7 +602,7 @@ public class NowUGUINavigationProxyTests
                 _eventSystem.currentSelectedGameObject);
             Assert.AreEqual(
                 LastId,
-                NowFocus.focusedId,
+                NowFocus.focusedResolvedId,
                 "The normal CanvasUpdateRegistry pass must resolve the move.");
         }
         finally
@@ -716,7 +722,7 @@ public class NowUGUINavigationProxyTests
         _proxy.OnMove(Move(MoveDirection.Down));
         _graphic.RebuildPreRenderForTest();
 
-        Assert.AreEqual(LastId, NowFocus.focusedId);
+        Assert.AreEqual(LastId, NowFocus.focusedResolvedId);
         Assert.AreEqual(RightId, _graphic.focusedSeenDuringDraw);
 
         AxisEventData repeatedBoundary = Move(MoveDirection.Down);
@@ -724,7 +730,7 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsTrue(repeatedBoundary.used);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(LastId, NowFocus.focusedId);
+        Assert.AreEqual(LastId, NowFocus.focusedResolvedId);
 
         _graphic.RebuildPreRenderForTest();
 
@@ -734,7 +740,7 @@ public class NowUGUINavigationProxyTests
             "The last control must render focused before the repeated move can yield.");
         _proxy.ProcessPendingYield();
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -761,13 +767,13 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsTrue(move.used);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
 
         _graphic.RebuildPreRenderForTest();
         _proxy.ProcessPendingYield();
 
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -793,7 +799,7 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             RightId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "A move from an earlier proxy-selection lifetime must not replay.");
     }
 
@@ -820,7 +826,7 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             RightId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "A move deferred before culling must not replay after un-culling.");
     }
 
@@ -843,7 +849,7 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             LeftId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "An explicit draw-time focus request must supersede the old Tab input.");
         Assert.IsFalse(_proxy.ProcessPendingYield());
     }
@@ -865,7 +871,7 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             RightId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "Proxy OnSelect must preserve an explicit focus already registered " +
             "by the in-flight draw.");
     }
@@ -894,7 +900,7 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             LastId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "Tab must resolve its boundary against the registry committed by the " +
             "current retained draw, not the previous frame's final control.");
     }
@@ -917,7 +923,7 @@ public class NowUGUINavigationProxyTests
             NowFocus.Register(RightId, new NowRect(110f, 10f, 60f, 30f));
         }
 
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
     }
 
@@ -932,7 +938,7 @@ public class NowUGUINavigationProxyTests
         _proxy.OnMove(Move(MoveDirection.Right));
 
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -953,7 +959,7 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsFalse(move.used);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -970,7 +976,7 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsFalse(yieldOnSelect.yielded);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1003,7 +1009,7 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             RightId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "Unavailable routing must use spatial entry, not stale focus memory.");
     }
 
@@ -1035,7 +1041,7 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             RightId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "Pointer entry must cancel the prior directional return target.");
     }
 
@@ -1053,7 +1059,7 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsFalse(_proxy.ProcessPendingYield());
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1063,7 +1069,7 @@ public class NowUGUINavigationProxyTests
 
         AxisEventData axisEntry = Move(MoveDirection.Left);
         _eventSystem.SetSelectedGameObject(_hostObject, axisEntry);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
 
         _eventSystem.SetSelectedGameObject(_outsideObject);
         _eventSystem.SetSelectedGameObject(
@@ -1073,8 +1079,8 @@ public class NowUGUINavigationProxyTests
 
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
-            0,
-            NowFocus.focusedId,
+            NowResolvedId.None,
+            NowFocus.focusedResolvedId,
             "Pointer entry must not replay the axis from an abandoned selection.");
     }
 
@@ -1089,7 +1095,7 @@ public class NowUGUINavigationProxyTests
         _eventSystem.SetSelectedGameObject(_hostObject, enterFromRight);
 
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1101,14 +1107,14 @@ public class NowUGUINavigationProxyTests
         NowFocus.Focus(LeftId);
 
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(LeftId, NowFocus.focusedId);
+        Assert.AreEqual(LeftId, NowFocus.focusedResolvedId);
 
         NowFocus.Focus(RightId);
         CommitGraphicControls();
         _proxy.OnMove(Move(MoveDirection.Right));
 
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1133,19 +1139,23 @@ public class NowUGUINavigationProxyTests
                 sourceGraphic.focusHostId,
                 sourceProxy.focusAdapter))
             {
-                NowFocus.Register(201, new NowRect(10f, 10f, 60f, 30f));
+                NowFocus.Register(
+                    sourceGraphic.ResolveControlId(201),
+                    new NowRect(10f, 10f, 60f, 30f));
             }
 
             _eventSystem.SetSelectedGameObject(sourceObject);
-            Assert.AreEqual(201, NowFocus.focusedId);
-            NowFocus.Focus(201);
+            Assert.AreEqual(
+                sourceGraphic.ResolveControlId(201),
+                NowFocus.focusedResolvedId);
+            NowFocus.Focus(sourceGraphic.ResolveControlId(201));
 
             _eventSystem.SetSelectedGameObject(_hostObject);
 
             Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
             Assert.AreEqual(
                 LeftId,
-                NowFocus.focusedId,
+                NowFocus.focusedResolvedId,
                 "Selecting a different proxy must replace the previous host's " +
                 "internal focus with the destination edge control.");
         }
@@ -1177,19 +1187,23 @@ public class NowUGUINavigationProxyTests
                 sourceGraphic.focusHostId,
                 sourceProxy.focusAdapter))
             {
-                NowFocus.Register(201, new NowRect(10f, 10f, 60f, 30f));
+                NowFocus.Register(
+                    sourceGraphic.ResolveControlId(201),
+                    new NowRect(10f, 10f, 60f, 30f));
             }
 
             _eventSystem.SetSelectedGameObject(sourceObject);
-            Assert.AreEqual(201, NowFocus.focusedId);
+            Assert.AreEqual(
+                sourceGraphic.ResolveControlId(201),
+                NowFocus.focusedResolvedId);
 
             _graphic.MarkDirty();
             _eventSystem.SetSelectedGameObject(_hostObject);
 
             Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
             Assert.AreEqual(
-                0,
-                NowFocus.focusedId,
+                NowResolvedId.None,
+                NowFocus.focusedResolvedId,
                 "A dirty destination must wait for its retained registry commit.");
 
             CommitGraphicControls(horizontal: true);
@@ -1197,7 +1211,7 @@ public class NowUGUINavigationProxyTests
             Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
             Assert.AreEqual(
                 LeftId,
-                NowFocus.focusedId,
+                NowFocus.focusedResolvedId,
                 "The deferred entry must seed the destination after its current " +
                 "registry is committed.");
         }
@@ -1235,7 +1249,9 @@ public class NowUGUINavigationProxyTests
                 destinationGraphic.focusHostId,
                 destinationProxy.focusAdapter))
             {
-                NowFocus.Register(201, new NowRect(10f, 10f, 60f, 30f));
+                NowFocus.Register(
+                    destinationGraphic.ResolveControlId(201),
+                    new NowRect(10f, 10f, 60f, 30f));
             }
 
             _eventSystem.SetSelectedGameObject(destinationObject);
@@ -1245,14 +1261,14 @@ public class NowUGUINavigationProxyTests
                 _eventSystem.currentSelectedGameObject);
             Assert.AreEqual(
                 RightId,
-                NowFocus.focusedId,
+                NowFocus.focusedResolvedId,
                 "An earlier destination OnSelect handler's explicit focus " +
                 "request must not be replaced by proxy entry.");
 
             yield return null;
 
             Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-            Assert.AreEqual(RightId, NowFocus.focusedId);
+            Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
         }
         finally
         {
@@ -1270,12 +1286,12 @@ public class NowUGUINavigationProxyTests
         _eventSystem.SetSelectedGameObject(_outsideObject);
 
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(LeftId, NowFocus.focusedId);
+        Assert.AreEqual(LeftId, NowFocus.focusedResolvedId);
 
         yield return null;
 
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(LeftId, NowFocus.focusedId);
+        Assert.AreEqual(LeftId, NowFocus.focusedResolvedId);
     }
 
     [UnityTest]
@@ -1294,13 +1310,13 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             LeftId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "The destination's OnSelect focus request must win over source cleanup.");
 
         yield return null;
 
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(LeftId, NowFocus.focusedId);
+        Assert.AreEqual(LeftId, NowFocus.focusedResolvedId);
     }
 
     [UnityTest]
@@ -1327,13 +1343,13 @@ public class NowUGUINavigationProxyTests
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
         Assert.AreEqual(
             LeftId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "The Tab destination's OnSelect focus request must win over source cleanup.");
 
         yield return null;
 
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(LeftId, NowFocus.focusedId);
+        Assert.AreEqual(LeftId, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1346,13 +1362,13 @@ public class NowUGUINavigationProxyTests
         _eventSystem.SetSelectedGameObject(null);
         RegisterControls(frame: 2);
 
-        Assert.AreEqual(LeftId, NowFocus.focusedId);
+        Assert.AreEqual(LeftId, NowFocus.focusedResolvedId);
         Assert.IsTrue(_graphic.hasFocusedControl);
 
         _eventSystem.SetSelectedGameObject(_outsideObject);
         RegisterControls(frame: 3);
 
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
         Assert.IsFalse(_graphic.hasFocusedControl);
     }
 
@@ -1368,7 +1384,7 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsFalse(move.used);
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1382,21 +1398,21 @@ public class NowUGUINavigationProxyTests
 
         Assert.IsFalse(move.used);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(LeftId, NowFocus.focusedId);
+        Assert.AreEqual(LeftId, NowFocus.focusedResolvedId);
     }
 
     [Test]
     public void SelectionBeforeFirstRegistrationSeedsWhenControlsAppear()
     {
         SelectProxy();
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
 
         NowControlState.BeginRepaintTracking();
         RegisterControls();
         bool repaintRequested = NowControlState.EndRepaintTracking();
 
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(LeftId, NowFocus.focusedId);
+        Assert.AreEqual(LeftId, NowFocus.focusedResolvedId);
         Assert.IsTrue(repaintRequested);
     }
 
@@ -1407,12 +1423,12 @@ public class NowUGUINavigationProxyTests
         _eventSystem.SetSelectedGameObject(_hostObject, enterFromBelow);
 
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
 
         RegisterThreeControls(MoveDirection.Down);
 
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(LastId, NowFocus.focusedId);
+        Assert.AreEqual(LastId, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1427,7 +1443,7 @@ public class NowUGUINavigationProxyTests
         rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 0f);
         _graphic.RebuildGeometryForTest();
 
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
         Assert.IsFalse(_graphic.hasFocusedControl);
 
         AxisEventData move = Move(MoveDirection.Right);
@@ -1450,7 +1466,7 @@ public class NowUGUINavigationProxyTests
             new Regex("Intentional proxy host failure"));
         _graphic.RebuildGeometryForTest();
 
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
         Assert.IsFalse(_graphic.hasFocusedControl);
 
         AxisEventData move = Move(MoveDirection.Right);
@@ -1485,7 +1501,7 @@ public class NowUGUINavigationProxyTests
         _graphic.RebuildGeometryForTest();
 
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1497,7 +1513,7 @@ public class NowUGUINavigationProxyTests
 
         _graphic.enabled = false;
 
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
         Assert.IsFalse(_graphic.hasFocusedControl);
 
         AxisEventData move = Move(MoveDirection.Right);
@@ -1527,7 +1543,7 @@ public class NowUGUINavigationProxyTests
         _proxy.ProcessPendingYield();
 
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1540,19 +1556,19 @@ public class NowUGUINavigationProxyTests
 
         RegisterThreeControls(MoveDirection.Down, frame: 2, focusNext: true);
 
-        Assert.AreEqual(RightId, NowFocus.focusedId);
+        Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
 
         RegisterThreeControls(MoveDirection.Down, frame: 3, focusNext: true);
 
-        Assert.AreEqual(LastId, NowFocus.focusedId);
+        Assert.AreEqual(LastId, NowFocus.focusedResolvedId);
         Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
 
         RegisterThreeControls(MoveDirection.Down, frame: 4, focusNext: true);
         _proxy.ProcessPendingYield();
 
         Assert.AreSame(_outsideObject, _eventSystem.currentSelectedGameObject);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1578,16 +1594,20 @@ public class NowUGUINavigationProxyTests
                 sourceGraphic.focusHostId,
                 sourceProxy.focusAdapter))
             {
-                NowFocus.Register(201, new NowRect(10f, 10f, 60f, 30f));
+                NowFocus.Register(
+                    sourceGraphic.ResolveControlId(201),
+                    new NowRect(10f, 10f, 60f, 30f));
             }
 
             _eventSystem.SetSelectedGameObject(sourceObject);
-            Assert.AreEqual(201, NowFocus.focusedId);
+            Assert.AreEqual(
+                sourceGraphic.ResolveControlId(201),
+                NowFocus.focusedResolvedId);
 
             Assert.IsTrue(sourceProxy.TryYieldTab(-1));
 
             Assert.AreSame(_hostObject, _eventSystem.currentSelectedGameObject);
-            Assert.AreEqual(RightId, NowFocus.focusedId);
+            Assert.AreEqual(RightId, NowFocus.focusedResolvedId);
         }
         finally
         {

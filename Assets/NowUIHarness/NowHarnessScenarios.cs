@@ -1241,7 +1241,7 @@ namespace NowUI.Editor
             DrawSurface(rect);
             HeaderBlock(rect, "Context Menu", "Clamped tall menu, scrolled, with edge scroll strips.");
 
-            int menuId = NowInput.GetId("harness-context-menu");
+            NowResolvedId menuId = NowControls.GetControlId("harness-context-menu");
 
             if (!NowContextMenu.isOpen)
                 NowContextMenu.Open(menuId, new Vector2(64f, 48f));
@@ -1252,7 +1252,7 @@ namespace NowUI.Editor
                 NowContextMenu.Separator();
 
                 for (int i = 0; i < 40; ++i)
-                    NowContextMenu.Item($"Overflow Option {i + 1}");
+                    NowContextMenu.Item($"Overflow Option {i + 1}", id: i + 1);
 
                 NowContextMenu.End();
                 NowControlState.Get<float>(menuId, "ctx-scroll") = 180f;
@@ -1264,7 +1264,7 @@ namespace NowUI.Editor
             DrawSurface(rect);
             HeaderBlock(rect, "Context Submenus", "Sibling submenu hover state with the active child drawn beside the root.");
 
-            int menuId = NowInput.GetId("harness-context-submenus");
+            NowResolvedId menuId = NowControls.GetControlId("harness-context-submenus");
             var anchor = new Vector2(64f, 118f);
 
             if (!NowContextMenu.isOpen)
@@ -1272,28 +1272,28 @@ namespace NowUI.Editor
 
             if (NowContextMenu.Begin(menuId))
             {
-                if (NowContextMenu.BeginSubmenu("Arrange"))
+                if (NowContextMenu.BeginSubmenu("Arrange", id: "arrange"))
                 {
-                    NowContextMenu.Item("Bring Forward");
-                    NowContextMenu.Item("Send Backward");
+                    NowContextMenu.Item("Bring Forward", id: "bring-forward");
+                    NowContextMenu.Item("Send Backward", id: "send-backward");
                     NowContextMenu.Separator();
-                    NowContextMenu.Item("Align Left");
-                    NowContextMenu.Item("Align Center");
+                    NowContextMenu.Item("Align Left", id: "align-left");
+                    NowContextMenu.Item("Align Center", id: "align-center");
                     NowContextMenu.EndSubmenu();
                 }
 
-                if (NowContextMenu.BeginSubmenu("Export"))
+                if (NowContextMenu.BeginSubmenu("Export", id: "export"))
                 {
-                    NowContextMenu.Item("PNG");
-                    NowContextMenu.Item("SVG");
-                    NowContextMenu.Item("Copy JSON");
+                    NowContextMenu.Item("PNG", id: "png");
+                    NowContextMenu.Item("SVG", id: "svg");
+                    NowContextMenu.Item("Copy JSON", id: "copy-json");
                     NowContextMenu.EndSubmenu();
                 }
 
                 NowContextMenu.Separator();
-                NowContextMenu.Item("Duplicate");
-                NowContextMenu.Item("Rename");
-                NowContextMenu.Item("Delete", enabled: false);
+                NowContextMenu.Item("Duplicate", id: "duplicate");
+                NowContextMenu.Item("Rename", id: "rename");
+                NowContextMenu.Item("Delete", id: "delete", enabled: false);
                 NowContextMenu.End();
             }
         }
@@ -1303,7 +1303,7 @@ namespace NowUI.Editor
             DrawSurface(rect);
             HeaderBlock(rect, "Edge Submenu", "Right-edge submenu clamping in a constrained surface.");
 
-            int menuId = NowInput.GetId("harness-context-edge-submenu");
+            NowResolvedId menuId = NowControls.GetControlId("harness-context-edge-submenu");
             var anchor = new Vector2(320f, 116f);
 
             if (!NowContextMenu.isOpen)
@@ -1311,21 +1311,21 @@ namespace NowUI.Editor
 
             if (NowContextMenu.Begin(menuId))
             {
-                if (NowContextMenu.BeginSubmenu("More Actions"))
+                if (NowContextMenu.BeginSubmenu("More Actions", id: "more-actions"))
                 {
-                    NowContextMenu.Item("Open Details");
-                    NowContextMenu.Item("Pin");
-                    NowContextMenu.Item("Duplicate");
+                    NowContextMenu.Item("Open Details", id: "open-details");
+                    NowContextMenu.Item("Pin", id: "pin");
+                    NowContextMenu.Item("Duplicate", id: "duplicate");
                     NowContextMenu.Separator();
-                    NowContextMenu.Item("Move Up");
-                    NowContextMenu.Item("Move Down");
-                    NowContextMenu.Item("Archive");
+                    NowContextMenu.Item("Move Up", id: "move-up");
+                    NowContextMenu.Item("Move Down", id: "move-down");
+                    NowContextMenu.Item("Archive", id: "archive");
                     NowContextMenu.EndSubmenu();
                 }
 
-                NowContextMenu.Item("Edit");
-                NowContextMenu.Item("Copy");
-                NowContextMenu.Item("Delete", enabled: false);
+                NowContextMenu.Item("Edit", id: "edit");
+                NowContextMenu.Item("Copy", id: "copy");
+                NowContextMenu.Item("Delete", id: "delete", enabled: false);
                 NowContextMenu.End();
             }
         }
@@ -1335,7 +1335,7 @@ namespace NowUI.Editor
             DrawSurface(rect);
             HeaderBlock(rect, "Ping Pong Submenus", "Submenus flip left, then back right, when space runs out.");
 
-            int menuId = NowInput.GetId("harness-context-ping-pong-submenus");
+            NowResolvedId menuId = NowControls.GetControlId("harness-context-ping-pong-submenus");
             var anchor = new Vector2(250f, 116f);
 
             if (!NowContextMenu.isOpen)
@@ -1343,25 +1343,25 @@ namespace NowUI.Editor
 
             if (NowContextMenu.Begin(menuId))
             {
-                if (NowContextMenu.BeginSubmenu("Level 1"))
+                if (NowContextMenu.BeginSubmenu("Level 1", id: "level-1"))
                 {
-                    NowContextMenu.Item("Level 1 Action");
+                    NowContextMenu.Item("Level 1 Action", id: "level-1-action");
 
-                    if (NowContextMenu.BeginSubmenu("Level 2"))
+                    if (NowContextMenu.BeginSubmenu("Level 2", id: "level-2"))
                     {
-                        NowContextMenu.Item("Deep Action");
-                        NowContextMenu.Item("Deep Settings");
+                        NowContextMenu.Item("Deep Action", id: "deep-action");
+                        NowContextMenu.Item("Deep Settings", id: "deep-settings");
                         NowContextMenu.EndSubmenu();
                     }
 
                     NowContextMenu.Separator();
-                    NowContextMenu.Item("Inspect Chain");
+                    NowContextMenu.Item("Inspect Chain", id: "inspect-chain");
                     NowContextMenu.EndSubmenu();
                 }
 
-                NowContextMenu.Item("Root Action");
-                NowContextMenu.Item("Rename Chain");
-                NowContextMenu.Item("Delete Chain", enabled: false);
+                NowContextMenu.Item("Root Action", id: "root-action");
+                NowContextMenu.Item("Rename Chain", id: "rename-chain");
+                NowContextMenu.Item("Delete Chain", id: "delete-chain", enabled: false);
                 NowContextMenu.End();
             }
         }
@@ -1371,7 +1371,7 @@ namespace NowUI.Editor
             DrawSurface(rect);
             HeaderBlock(rect, "World Ping Pong Submenus", "World-space camera fitting flips left, then back right.");
 
-            int menuId = NowInput.GetId("harness-world-context-ping-pong-submenus");
+            NowResolvedId menuId = NowControls.GetControlId("harness-world-context-ping-pong-submenus");
             var anchor = new Vector2(250f, 116f);
 
             if (!NowContextMenu.isOpen)
@@ -1379,25 +1379,25 @@ namespace NowUI.Editor
 
             if (NowContextMenu.Begin(menuId))
             {
-                if (NowContextMenu.BeginSubmenu("Level 1"))
+                if (NowContextMenu.BeginSubmenu("Level 1", id: "level-1"))
                 {
-                    NowContextMenu.Item("Level 1 Action");
+                    NowContextMenu.Item("Level 1 Action", id: "level-1-action");
 
-                    if (NowContextMenu.BeginSubmenu("Level 2"))
+                    if (NowContextMenu.BeginSubmenu("Level 2", id: "level-2"))
                     {
-                        NowContextMenu.Item("Deep Action");
-                        NowContextMenu.Item("Deep Settings");
+                        NowContextMenu.Item("Deep Action", id: "deep-action");
+                        NowContextMenu.Item("Deep Settings", id: "deep-settings");
                         NowContextMenu.EndSubmenu();
                     }
 
                     NowContextMenu.Separator();
-                    NowContextMenu.Item("Inspect Chain");
+                    NowContextMenu.Item("Inspect Chain", id: "inspect-chain");
                     NowContextMenu.EndSubmenu();
                 }
 
-                NowContextMenu.Item("Root Action");
-                NowContextMenu.Item("Rename Chain");
-                NowContextMenu.Item("Delete Chain", enabled: false);
+                NowContextMenu.Item("Root Action", id: "root-action");
+                NowContextMenu.Item("Rename Chain", id: "rename-chain");
+                NowContextMenu.Item("Delete Chain", id: "delete-chain", enabled: false);
                 NowContextMenu.End();
             }
         }

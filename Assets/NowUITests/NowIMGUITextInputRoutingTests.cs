@@ -32,8 +32,10 @@ public class NowIMGUITextInputRoutingTests
     Action _previousRepaintRequested;
     Action<NowIMGUIInputProvider> _previousHostRepaintRequested;
     Action<NowIMGUIInputProvider, float> _previousHostRepaintAfterRequested;
+    NowResolvedId _fieldId;
+    NowResolvedId _areaId;
 
-    static int FieldId => NowInput.GetId("native-field");
+    NowResolvedId FieldId => _fieldId;
 
     [SetUp]
     public void SetUp()
@@ -63,6 +65,8 @@ public class NowIMGUITextInputRoutingTests
 
         _provider = new NowIMGUIInputProvider(18101, new object());
         _drawList = new NowDrawList();
+        _fieldId = ResolveId("native-field");
+        _areaId = ResolveId("native-area");
     }
 
     [TearDown]
@@ -119,7 +123,7 @@ public class NowIMGUITextInputRoutingTests
         Assert.IsTrue(result.changed);
         Assert.IsFalse(result.submitted);
         Assert.AreEqual("a b", text);
-        Assert.AreEqual(FieldId, NowFocus.focusedId);
+        Assert.AreEqual(FieldId, NowFocus.focusedResolvedId);
         Assert.AreEqual(EventType.Used, keyDown.type);
     }
 
@@ -139,7 +143,7 @@ public class NowIMGUITextInputRoutingTests
         Assert.IsTrue(result.changed);
         Assert.AreEqual(expectedText, text);
         Assert.AreEqual(expectedCaret, State().caret);
-        Assert.AreEqual(FieldId, NowFocus.focusedId);
+        Assert.AreEqual(FieldId, NowFocus.focusedResolvedId);
         Assert.AreEqual(EventType.Used, keyDown.type);
 
         Draw(ref text, NativeEvent(EventType.Repaint), EventType.Repaint);
@@ -165,7 +169,7 @@ public class NowIMGUITextInputRoutingTests
         Assert.AreEqual("abcd", text);
         Assert.AreEqual(expectedCaret, State().caret);
         Assert.AreEqual(expectedCaret, State().anchor);
-        Assert.AreEqual(FieldId, NowFocus.focusedId,
+        Assert.AreEqual(FieldId, NowFocus.focusedResolvedId,
             "Caret navigation belongs to the editor and must not move control focus.");
         Assert.AreEqual(EventType.Used, keyDown.type);
     }
@@ -182,7 +186,7 @@ public class NowIMGUITextInputRoutingTests
 
         Assert.IsTrue(result.submitted);
         Assert.IsFalse(result.changed);
-        Assert.AreEqual(0, NowFocus.focusedId,
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId,
             "Submitting a single-line field must leave editing mode so its caret disappears.");
         Assert.AreEqual(EventType.Used, keyDown.type);
 
@@ -190,7 +194,7 @@ public class NowIMGUITextInputRoutingTests
         Draw(ref text, NativeEvent(EventType.Layout), EventType.Layout);
         Draw(ref text, NativeEvent(EventType.Repaint), EventType.Repaint);
 
-        Assert.AreEqual(0, NowFocus.focusedId,
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId,
             "Following IMGUI passes must not silently reacquire the submitted field.");
 
         var character = KeyEvent(EventType.KeyDown, KeyCode.X, 'x');
@@ -214,13 +218,13 @@ public class NowIMGUITextInputRoutingTests
         NowTextFieldResult submitted = DrawFloat(ref value, keyDown, EventType.Ignore);
 
         Assert.IsTrue(submitted.submitted);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
         Assert.AreEqual(EventType.Used, keyDown.type);
 
         DrawFloat(ref value, KeyEvent(EventType.KeyUp, keyCode), EventType.Ignore);
         DrawFloat(ref value, NativeEvent(EventType.Repaint), EventType.Repaint);
 
-        Assert.AreEqual(0, NowFocus.focusedId,
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId,
             "Numeric overloads must preserve Enter blur across the following Editor pass.");
         Assert.AreEqual(1200f, value);
     }
@@ -231,7 +235,7 @@ public class NowIMGUITextInputRoutingTests
         const int HostControlId = 18102;
         var context = new object();
         string text = "ready";
-        int fieldId = 0;
+        NowResolvedId fieldId = NowResolvedId.None;
 
         Assert.NotNull(GetEntryMethod, "NowGUI cache lookup test seam was not found.");
         var entry = (NowGUI.CacheEntry)GetEntryMethod.Invoke(
@@ -260,7 +264,7 @@ public class NowIMGUITextInputRoutingTests
                     out var snapshot));
                 InputSnapshotField.SetValue(null, snapshot);
                 fieldId = NowControls.GetControlId("retained-native-field");
-                return Now.TextField(FieldRect, NowId.Resolved(fieldId)).Draw(ref text);
+                return Now.TextField(FieldRect, fieldId).Draw(ref text);
             }
         }
 
@@ -273,14 +277,14 @@ public class NowIMGUITextInputRoutingTests
             NowTextFieldResult submitted = HostPass(enter, EventType.Ignore);
 
             Assert.IsTrue(submitted.submitted);
-            Assert.AreEqual(0, NowFocus.focusedId);
+            Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
             Assert.AreEqual(EventType.Used, enter.type);
 
             HostPass(KeyEvent(EventType.KeyUp, KeyCode.Return), EventType.Ignore);
             HostPass(NativeEvent(EventType.Layout), EventType.Layout);
             HostPass(NativeEvent(EventType.Repaint), EventType.Repaint);
 
-            Assert.AreEqual(0, NowFocus.focusedId,
+            Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId,
                 "The retained host must not restore a field after Enter blurred it.");
 
             var character = KeyEvent(EventType.KeyDown, KeyCode.X, 'x');
@@ -320,7 +324,7 @@ public class NowIMGUITextInputRoutingTests
 
         Assert.IsTrue(second.submitted,
             "The native KeyUp must clear both provider and text-editor Enter suppression.");
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
         Assert.AreEqual(EventType.Used, secondKeyDown.type);
     }
 
@@ -340,7 +344,7 @@ public class NowIMGUITextInputRoutingTests
 
         Assert.IsFalse(result.changed);
         Assert.AreEqual("start", text);
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
         Assert.AreEqual(EventType.Used, escape.type);
     }
 
@@ -355,7 +359,7 @@ public class NowIMGUITextInputRoutingTests
 
         Assert.IsFalse(result.changed);
         Assert.IsFalse(result.submitted);
-        Assert.AreEqual(FieldId, NowFocus.focusedId);
+        Assert.AreEqual(FieldId, NowFocus.focusedResolvedId);
         Assert.AreEqual(EventType.KeyDown, keyDown.type,
             "A focused text field must not consume a native key it does not handle.");
     }
@@ -397,7 +401,7 @@ public class NowIMGUITextInputRoutingTests
     public void NativeTextAreaEnterInsertsNewlineAndKeepsFocus()
     {
         string text = "ab";
-        int id = NowInput.GetId("native-area");
+        NowResolvedId id = _areaId;
         NowFocus.Focus(id);
         DrawTextArea(ref text, NativeEvent(EventType.Layout), EventType.Layout);
         ref NowTextEditState state = ref NowControlState.Get<NowTextEditState>(id);
@@ -409,7 +413,7 @@ public class NowIMGUITextInputRoutingTests
 
         Assert.IsTrue(changed);
         Assert.AreEqual("a\nb", text);
-        Assert.AreEqual(id, NowFocus.focusedId);
+        Assert.AreEqual(id, NowFocus.focusedResolvedId);
         Assert.AreEqual(EventType.Used, enter.type);
     }
 
@@ -500,6 +504,13 @@ public class NowIMGUITextInputRoutingTests
             out var afterPointer));
         Assert.IsFalse(afterPointer.backspaceHeld,
             "A focus-changing pointer press must not carry an orphaned edit repeat into the next field.");
+    }
+
+    NowResolvedId ResolveId(string id)
+    {
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(SurfaceSize))
+            return NowControls.GetControlId(id);
     }
 
     void FocusAndPrime(ref string text, int caret)

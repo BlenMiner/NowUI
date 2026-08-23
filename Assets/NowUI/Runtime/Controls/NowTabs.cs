@@ -13,7 +13,7 @@ namespace NowUI
     {
         readonly IReadOnlyList<string> _labels;
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         NowFocusNavigation _navigation;
         NowLayoutOptions _options;
         readonly NowRect _rect;
@@ -22,7 +22,7 @@ namespace NowUI
 
         const int TabSeed = 0x4e544162;
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowTabBar(IReadOnlyList<string> labels, int site)
         {
@@ -51,6 +51,9 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowTabBar SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowTabBar SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowTabBar SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
@@ -61,7 +64,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = ResolveControlId();
+            NowResolvedId id = ResolveControlId();
             int count = _labels?.Count ?? 0;
 
             float totalWidth = 0f;
@@ -84,7 +87,7 @@ namespace NowUI
             {
                 float tabWidth = _stretchTabs ? stretchWidth : renderer.MeasureTab(theme, _labels[i]).x;
                 var tabRect = new NowRect(x, rect.y, tabWidth, rect.height);
-                int tabId = NowInput.CombineId(NowInput.CombineId(id, TabSeed), i + 1);
+                NowResolvedId tabId = id.Child(TabSeed).Child(i + 1);
                 var tabInteraction = NowInput.Interact(tabId, tabRect);
 
                 if (tabInteraction.clicked)
@@ -142,7 +145,7 @@ namespace NowUI
     {
         readonly IReadOnlyList<string> _labels;
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -150,7 +153,7 @@ namespace NowUI
 
         const int AreaKeySeed = 0x4e545661;
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowTabView(IReadOnlyList<string> labels, int site)
         {
@@ -182,6 +185,9 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowTabView SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowTabView SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Divides the full bar width evenly between tabs (mobile-style segmented bar).</summary>
         public NowTabView SetStretchTabs(bool stretch = true) { _stretchTabs = stretch; return this; }
 
@@ -189,8 +195,8 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = ResolveControlId();
-            int areaKey = NowInput.CombineId(id, AreaKeySeed);
+            NowResolvedId id = ResolveControlId();
+            NowResolvedId areaKey = id.Derive(NowIdDomain.Layout, AreaKeySeed);
             float barHeight = renderer.TabBarHeight(theme);
 
             if (!_options.Has(NowLayoutOptions.Field.Height) && !_options.Has(NowLayoutOptions.Field.StretchHeight))
@@ -204,12 +210,12 @@ namespace NowUI
             var pageRect = new NowRect(rect.x, rect.y + barHeight, rect.width, Mathf.Max(0f, rect.height - barHeight));
 
             bool changed = new NowTabBar(barRect, _labels, _site)
-                .SetId(_id)
+                .SetId(id)
                 .SetStretchTabs(_stretchTabs)
                 .Draw(ref selected);
 
             var mask = Now.Mask(pageRect);
-            var area = NowLayout.Area(NowId.Resolved(areaKey), pageRect);
+            var area = NowLayout.Area(areaKey, pageRect);
 
             return new NowTabViewScope(mask, area, selected, changed, pageRect);
         }

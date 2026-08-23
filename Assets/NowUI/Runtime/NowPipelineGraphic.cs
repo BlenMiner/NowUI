@@ -39,7 +39,7 @@ namespace NowUI
 
         int _registrationIndex;
 
-        int _scopeId;
+        NowResolvedId _scopeId;
 
         public event Action<NowPipelineGraphic, Camera, Rect> rebuildNowUI;
 
@@ -90,14 +90,14 @@ namespace NowUI
         internal virtual bool useLayoutMeasurePass => false;
 
         /// <summary>Resolves a SetId value within this host's private control scope.</summary>
-        public int ResolveControlId(string id)
+        public NowResolvedId ResolveControlId(string id)
         {
-            return NowControls.ResolveHostControlId(GetScopeId(), id);
+            return GetScopeId().Derive(NowIdDomain.Control, id);
         }
 
-        public int ResolveControlId(int id)
+        public NowResolvedId ResolveControlId(int id)
         {
-            return NowControls.ResolveHostControlId(GetScopeId(), id);
+            return GetScopeId().Derive(NowIdDomain.Control, id);
         }
 
         public static bool HasGraphicsFor(Camera camera)
@@ -221,10 +221,10 @@ namespace NowUI
             _orderDirty = false;
         }
 
-        int GetScopeId()
+        NowResolvedId GetScopeId()
         {
-            if (_scopeId == 0)
-                _scopeId = NowControls.AllocateHostScopeId();
+            if (!_scopeId.hasValue)
+                _scopeId = NowControls.AllocateOwnerScope();
 
             return _scopeId;
         }

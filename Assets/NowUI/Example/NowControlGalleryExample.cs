@@ -233,33 +233,34 @@ public class NowControlGalleryExample : MonoBehaviour
             .Draw("Right-click playground (60-item menu + submenus)");
 
         var playgroundInteraction = NowInput.Interact(playground, NowPointerButton.Secondary);
+        NowResolvedId playgroundMenuId = NowControls.GetControlId("gallery-menu-lab");
 
         if (playgroundInteraction.clicked)
-            NowContextMenu.Open(NowInput.GetId("gallery-menu-lab"), playgroundInteraction.pointerPosition);
+            NowContextMenu.Open(playgroundMenuId, playgroundInteraction.pointerPosition);
 
-        if (NowContextMenu.Begin(NowInput.GetId("gallery-menu-lab")))
+        if (NowContextMenu.Begin(playgroundMenuId))
         {
             NowContextMenu.Label("Menu Lab");
             NowContextMenu.Separator();
 
-            if (NowContextMenu.BeginSubmenu("Long Submenu (80)"))
+            if (NowContextMenu.BeginSubmenu("Long Submenu (80)", "long-submenu"))
             {
                 for (int i = 0; i < 80; ++i)
                 {
-                    if (NowContextMenu.Item($"Deep Cut {i + 1}"))
+                    if (NowContextMenu.Item($"Deep Cut {i + 1}", i + 1))
                         _menuLabResult = $"Picked: Deep Cut {i + 1}";
                 }
 
                 NowContextMenu.EndSubmenu();
             }
 
-            if (NowContextMenu.BeginSubmenu("Nesting"))
+            if (NowContextMenu.BeginSubmenu("Nesting", "nesting"))
             {
-                if (NowContextMenu.BeginSubmenu("Deeper"))
+                if (NowContextMenu.BeginSubmenu("Deeper", "deeper"))
                 {
-                    if (NowContextMenu.BeginSubmenu("Deeper Still"))
+                    if (NowContextMenu.BeginSubmenu("Deeper Still", "deeper-still"))
                     {
-                        if (NowContextMenu.Item("The Bottom"))
+                        if (NowContextMenu.Item("The Bottom", new NowId("the-bottom")))
                             _menuLabResult = "Picked: The Bottom";
 
                         NowContextMenu.EndSubmenu();
@@ -275,7 +276,7 @@ public class NowControlGalleryExample : MonoBehaviour
 
             for (int i = 0; i < 60; ++i)
             {
-                if (NowContextMenu.Item($"Option {i + 1}"))
+                if (NowContextMenu.Item($"Option {i + 1}", i + 1))
                     _menuLabResult = $"Picked: Option {i + 1}";
             }
 
@@ -285,34 +286,36 @@ public class NowControlGalleryExample : MonoBehaviour
         using (NowLayout.HorizontalScope(spacing: 8f))
         {
             var cornerButton = NowLayout.Button("Open at screen corner").Draw();
+            NowResolvedId cornerMenuId = NowControls.GetControlId("gallery-corner-menu");
+            NowResolvedId tallMenuId = NowControls.GetControlId("gallery-tall-menu");
 
             if (cornerButton)
-                NowContextMenu.Open(NowInput.GetId("gallery-corner-menu"), new Vector2(Screen.width / Now.uiScale - 30f, Screen.height / Now.uiScale - 30f));
+                NowContextMenu.Open(cornerMenuId, new Vector2(Screen.width / Now.uiScale - 30f, Screen.height / Now.uiScale - 30f));
 
             if (NowLayout.Button("Open tall menu here").Draw())
-                NowContextMenu.Open(NowInput.GetId("gallery-tall-menu"), NowInput.current.pointerPosition);
-        }
+                NowContextMenu.Open(tallMenuId, NowInput.current.pointerPosition);
 
-        if (NowContextMenu.Begin(NowInput.GetId("gallery-corner-menu")))
-        {
-            for (int i = 0; i < 25; ++i)
+            if (NowContextMenu.Begin(cornerMenuId))
             {
-                if (NowContextMenu.Item($"Corner Case {i + 1}"))
-                    _menuLabResult = $"Picked: Corner Case {i + 1}";
+                for (int i = 0; i < 25; ++i)
+                {
+                    if (NowContextMenu.Item($"Corner Case {i + 1}", i + 1))
+                        _menuLabResult = $"Picked: Corner Case {i + 1}";
+                }
+
+                NowContextMenu.End();
             }
 
-            NowContextMenu.End();
-        }
-
-        if (NowContextMenu.Begin(NowInput.GetId("gallery-tall-menu")))
-        {
-            for (int i = 0; i < 100; ++i)
+            if (NowContextMenu.Begin(tallMenuId))
             {
-                if (NowContextMenu.Item($"Tall Option {i + 1}"))
-                    _menuLabResult = $"Picked: Tall Option {i + 1}";
-            }
+                for (int i = 0; i < 100; ++i)
+                {
+                    if (NowContextMenu.Item($"Tall Option {i + 1}", i + 1))
+                        _menuLabResult = $"Picked: Tall Option {i + 1}";
+                }
 
-            NowContextMenu.End();
+                NowContextMenu.End();
+            }
         }
 
         NowLayout.Dropdown(_qualityOptions).SetWidth(160f).Draw(ref _menuLabDropdown);

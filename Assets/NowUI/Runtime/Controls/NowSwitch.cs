@@ -12,14 +12,14 @@ namespace NowUI
     {
         readonly string _label;
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         NowFocusNavigation _navigation;
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
         NowTextStyle _textPreset;
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowSwitch(string label, int site)
         {
@@ -54,6 +54,9 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowSwitch SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowSwitch SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowSwitch SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
@@ -64,7 +67,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = ResolveControlId();
+            NowResolvedId id = ResolveControlId();
 
             var contentSize = renderer.MeasureSwitch(theme, _label, _textPreset);
 

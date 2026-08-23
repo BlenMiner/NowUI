@@ -6,6 +6,11 @@ using NowUI;
 
 public class NowInputTests
 {
+    static readonly NowResolvedId TestIdentityRoot =
+        NowResolvedId.CreateOwnerRoot(0x494E505554544553UL);
+
+    static NowResolvedId TestId(int id) => TestIdentityRoot.Child(id);
+
     static readonly FieldInfo InputSnapshotField = typeof(NowInput).GetField(
         "_snapshot",
         BindingFlags.NonPublic | BindingFlags.Static);
@@ -49,7 +54,7 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var interaction = NowInput.Interact(1, _rect);
+            var interaction = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsTrue(interaction.hovered);
             Assert.IsFalse(interaction.pressed);
@@ -65,14 +70,14 @@ public class NowInputTests
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         using (Now.Mask(new NowRect(10, 10, 20, 30)))
         {
-            var interaction = NowInput.Interact(1, _rect);
+            var interaction = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsFalse(interaction.hovered);
             Assert.IsFalse(interaction.pressed);
             Assert.IsFalse(interaction.held);
         }
 
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
     }
 
     [Test]
@@ -107,14 +112,14 @@ public class NowInputTests
         using (NowInput.Begin(_provider, new Vector2(100f, 100f)))
         using (Now.Mask(mask))
         {
-            var interaction = NowInput.Interact(1, _rect);
+            var interaction = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsFalse(interaction.hovered);
             Assert.IsFalse(interaction.pressed);
             Assert.IsFalse(interaction.held);
         }
 
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
     }
 
     [Test]
@@ -305,7 +310,7 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var press = NowInput.Interact(1, _rect);
+            var press = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsTrue(press.pressed);
             Assert.IsTrue(press.held);
@@ -317,14 +322,14 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var release = NowInput.Interact(1, _rect);
+            var release = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsTrue(release.released);
             Assert.IsTrue(release.clicked);
             Assert.IsFalse(release.dragEnded);
         }
 
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
     }
 
     [Test]
@@ -333,13 +338,13 @@ public class NowInputTests
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
-            NowInput.Interact(1, _rect);
+            NowInput.Interact(TestId(1), _rect);
 
         _provider.snapshot = new NowInputSnapshot(new Vector2(28, 20), new Vector2(10, 0), true, false, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var drag = NowInput.Interact(1, _rect);
+            var drag = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsTrue(drag.dragStarted);
             Assert.IsTrue(drag.dragging);
@@ -350,7 +355,7 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var release = NowInput.Interact(1, _rect);
+            var release = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsTrue(release.dragEnded);
             Assert.IsFalse(release.clicked);
@@ -363,19 +368,19 @@ public class NowInputTests
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
-            NowInput.Interact(1, _rect);
+            NowInput.Interact(TestId(1), _rect);
 
-        Assert.AreEqual(1, NowInput.activeId);
+        Assert.AreEqual(TestId(1), NowInput.activeId);
 
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, false, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var other = NowInput.Interact(2, new Rect(60, 10, 30, 30));
+            var other = NowInput.Interact(TestId(2), new Rect(60, 10, 30, 30));
             Assert.IsFalse(other.pressed);
         }
 
-        Assert.AreEqual(1, NowInput.activeId);
+        Assert.AreEqual(TestId(1), NowInput.activeId);
 
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, true);
 
@@ -383,7 +388,7 @@ public class NowInputTests
         {
         }
 
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
     }
 
     [Test]
@@ -392,7 +397,7 @@ public class NowInputTests
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
-            NowInput.Interact(1, _rect);
+            NowInput.Interact(TestId(1), _rect);
 
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, true);
 
@@ -400,7 +405,7 @@ public class NowInputTests
         {
         }
 
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
     }
 
     [Test]
@@ -409,7 +414,7 @@ public class NowInputTests
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
-            NowInput.Interact(1, _rect);
+            NowInput.Interact(TestId(1), _rect);
 
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, true);
 
@@ -418,7 +423,7 @@ public class NowInputTests
             NowInput.BeginPassive();
             try
             {
-                NowInput.Interact(1, _rect);
+                NowInput.Interact(TestId(1), _rect);
             }
             finally
             {
@@ -426,7 +431,7 @@ public class NowInputTests
             }
         }
 
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
     }
 
     [Test]
@@ -435,18 +440,18 @@ public class NowInputTests
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
-            NowInput.Interact(1, _rect);
+            NowInput.Interact(TestId(1), _rect);
 
         _provider.snapshot = new NowInputSnapshot(new Vector2(20, 20), new Vector2(2, 0), true, false, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var held = NowInput.Interact(1, _rect);
+            var held = NowInput.Interact(TestId(1), _rect);
             Assert.IsTrue(held.active);
             Assert.IsTrue(held.held);
         }
 
-        Assert.AreEqual(1, NowInput.activeId);
+        Assert.AreEqual(TestId(1), NowInput.activeId);
     }
 
     [Test]
@@ -456,22 +461,22 @@ public class NowInputTests
         _provider.snapshot = SnapshotAt(20, NowPointerButtons.Primary, NowPointerButtons.Primary, NowPointerButtons.None);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
-            NowInput.Interact(1, _rect);
+            NowInput.Interact(TestId(1), _rect);
 
         otherProvider.snapshot = SnapshotAt(21, NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.Primary);
 
         using (NowInput.Begin(otherProvider, new Vector2(100, 100)))
-            Assert.AreEqual(1, NowInput.activeId);
+            Assert.AreEqual(TestId(1), NowInput.activeId);
 
         _provider.snapshot = SnapshotAt(21, NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.Primary);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var release = NowInput.Interact(1, _rect);
+            var release = NowInput.Interact(TestId(1), _rect);
             Assert.IsTrue(release.clicked);
         }
 
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
     }
 
     [Test]
@@ -481,22 +486,22 @@ public class NowInputTests
         _provider.snapshot = SnapshotAt(30, NowPointerButtons.Primary, NowPointerButtons.Primary, NowPointerButtons.None);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
-            NowInput.Interact(1, _rect);
+            NowInput.Interact(TestId(1), _rect);
 
         nextSceneProvider.snapshot = SnapshotAt(31, NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.None);
 
         using (NowInput.Begin(nextSceneProvider, new Vector2(100, 100)))
-            Assert.AreEqual(1, NowInput.activeId);
+            Assert.AreEqual(TestId(1), NowInput.activeId);
 
         nextSceneProvider.snapshot = SnapshotAt(32, NowPointerButtons.Primary, NowPointerButtons.Primary, NowPointerButtons.None);
 
         using (NowInput.Begin(nextSceneProvider, new Vector2(100, 100)))
         {
-            var press = NowInput.Interact(2, _rect);
+            var press = NowInput.Interact(TestId(2), _rect);
             Assert.IsTrue(press.pressed);
         }
 
-        Assert.AreEqual(2, NowInput.activeId);
+        Assert.AreEqual(TestId(2), NowInput.activeId);
     }
 
     [Test]
@@ -505,15 +510,15 @@ public class NowInputTests
         var surface = new NowInputSurface(new Vector2(100, 100));
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
         NowInput.Update(_provider, surface);
-        NowInput.Interact(1, _rect);
+        NowInput.Interact(TestId(1), _rect);
 
-        Assert.AreEqual(1, NowInput.activeId);
+        Assert.AreEqual(TestId(1), NowInput.activeId);
 
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, true);
         NowInput.Update(_provider, surface);
         NowInput.EndFrame();
 
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
     }
 
     [Test]
@@ -523,9 +528,9 @@ public class NowInputTests
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
 
         using (Now.StartUI(new NowRect(0, 0, 100, 100)))
-            NowInput.Interact(1, _rect);
+            NowInput.Interact(TestId(1), _rect);
 
-        Assert.AreEqual(1, NowInput.activeId);
+        Assert.AreEqual(TestId(1), NowInput.activeId);
 
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), false, false, true);
 
@@ -533,7 +538,7 @@ public class NowInputTests
         {
         }
 
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
     }
 
     [Test]
@@ -574,7 +579,7 @@ public class NowInputTests
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         using (Now.Transform(2f, new Vector2(10f, 5f)))
         {
-            var press = NowInput.Interact(1, _rect);
+            var press = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsTrue(press.pressed);
             Assert.AreEqual(new Vector2(18f, 20f), press.pointerPosition);
@@ -586,7 +591,7 @@ public class NowInputTests
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         using (Now.Transform(2f, new Vector2(10f, 5f)))
         {
-            var drag = NowInput.Interact(1, _rect);
+            var drag = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsTrue(drag.dragStarted);
             Assert.IsTrue(drag.dragging);
@@ -599,7 +604,7 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         using (Now.Transform(2f, new Vector2(10f, 5f)))
-            NowInput.Interact(1, _rect);
+            NowInput.Interact(TestId(1), _rect);
     }
 
     [Test]
@@ -613,8 +618,8 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var primary = NowInput.Interact(1, _rect);
-            var secondary = NowInput.Interact(2, _rect, NowPointerButton.Secondary);
+            var primary = NowInput.Interact(TestId(1), _rect);
+            var secondary = NowInput.Interact(TestId(2), _rect, NowPointerButton.Secondary);
 
             Assert.IsFalse(primary.pressed);
             Assert.IsTrue(secondary.pressed);
@@ -630,7 +635,7 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var secondary = NowInput.Interact(2, _rect, NowPointerButton.Secondary);
+            var secondary = NowInput.Interact(TestId(2), _rect, NowPointerButton.Secondary);
 
             Assert.IsTrue(secondary.released);
             Assert.IsTrue(secondary.clicked);
@@ -690,10 +695,10 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var interaction = NowInput.Interact(17, _rect);
+            var interaction = NowInput.Interact(TestId(17), _rect);
 
             Assert.AreEqual(NowInput.GetId(interaction.id, "hover"), interaction.GetId("hover"));
-            Assert.AreEqual(NowInput.CombineId(interaction.id, 3), interaction.GetId(3));
+            Assert.AreEqual(NowInput.GetId(interaction.id, 3), interaction.GetId(3));
 
             ref int stringSlot = ref interaction.State<int>("hover");
             ref int numericSlot = ref interaction.State<int>(3);
@@ -736,7 +741,7 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var interaction = NowInput.Interact(1, _rect);
+            var interaction = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsFalse(interaction.hovered);
             Assert.IsFalse(interaction.pressed);
@@ -1048,13 +1053,13 @@ public class NowInputTests
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
-            NowInput.Interact(1, _rect);
+            NowInput.Interact(TestId(1), _rect);
 
         _provider.snapshot = new NowInputSnapshot(new Vector2(28, 20), new Vector2(10, 0), true, false, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var held = NowInput.Interact(1, _rect);
+            var held = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsFalse(held.dragging);
             Assert.IsFalse(held.dragStarted);
@@ -1064,7 +1069,7 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var release = NowInput.Interact(1, _rect);
+            var release = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsTrue(release.clicked);
             Assert.IsFalse(release.dragEnded);
@@ -1089,7 +1094,7 @@ public class NowInputTests
         _provider.snapshot = new NowInputSnapshot(new Vector2(18, 20), true, true, false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
-            NowInput.Interact(1, _rect);
+            NowInput.Interact(TestId(1), _rect);
 
         _provider.snapshot = new NowInputSnapshot(
             new Vector2(28, 20),
@@ -1099,7 +1104,7 @@ public class NowInputTests
             false);
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
-            Assert.IsTrue(NowInput.Interact(1, _rect).dragging);
+            Assert.IsTrue(NowInput.Interact(TestId(1), _rect).dragging);
 
         _provider.snapshot = new NowInputSnapshot(
             new Vector2(28, 20),
@@ -1110,7 +1115,7 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100, 100)))
         {
-            var cancelled = NowInput.Interact(1, _rect);
+            var cancelled = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsTrue(cancelled.cancelled);
             Assert.IsTrue(cancelled.dragCancelled);
@@ -1119,7 +1124,7 @@ public class NowInputTests
             Assert.IsFalse(cancelled.clicked);
         }
 
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
     }
 
     [Test]
@@ -1134,7 +1139,7 @@ public class NowInputTests
         _provider.snapshot = pressed;
 
         using (NowInput.Begin(_provider, new Vector2(100f, 100f)))
-            Assert.IsTrue(NowInput.Interact(1, _rect).pressed);
+            Assert.IsTrue(NowInput.Interact(TestId(1), _rect).pressed);
 
         other.snapshot = new NowInputSnapshot(new Vector2(18f, 20f), false, false, false)
         {
@@ -1144,7 +1149,7 @@ public class NowInputTests
 
         using (NowInput.Begin(other, new Vector2(100f, 100f)))
         {
-            var collision = NowInput.Interact(1, _rect);
+            var collision = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsFalse(collision.active);
             Assert.IsFalse(collision.cancelled);
@@ -1159,7 +1164,7 @@ public class NowInputTests
 
         using (NowInput.Begin(_provider, new Vector2(100f, 100f)))
         {
-            var owner = NowInput.Interact(1, _rect);
+            var owner = NowInput.Interact(TestId(1), _rect);
 
             Assert.IsTrue(owner.active);
             Assert.IsTrue(owner.held);
@@ -1177,7 +1182,7 @@ public class NowInputTests
         };
 
         using (NowInput.Begin(_provider, new Vector2(100f, 100f)))
-            Assert.IsTrue(NowInput.Interact(1, _rect).pressed);
+            Assert.IsTrue(NowInput.Interact(TestId(1), _rect).pressed);
 
         other.snapshot = new NowInputSnapshot(new Vector2(18f, 20f), true, true, false)
         {
@@ -1187,13 +1192,13 @@ public class NowInputTests
 
         using (NowInput.Begin(other, new Vector2(100f, 100f)))
         {
-            var transferred = NowInput.Interact(2, _rect);
+            var transferred = NowInput.Interact(TestId(2), _rect);
 
             Assert.IsTrue(
                 transferred.pressed,
                 "A new native press must not wait for Time.frameCount to clear a capture whose panel disappeared.");
             Assert.IsTrue(transferred.active);
-            Assert.AreEqual(2, NowInput.activeId);
+            Assert.AreEqual(TestId(2), NowInput.activeId);
         }
     }
 
@@ -1428,6 +1433,8 @@ public class NowInputTests
         Event previousEvent = Event.current;
         int previousHotControl = GUIUtility.hotControl;
         bool previousChanged = GUI.changed;
+        NowResolvedId firstControlId = NowResolvedId.None;
+        NowResolvedId secondControlId = NowResolvedId.None;
 
         try
         {
@@ -1449,10 +1456,11 @@ public class NowInputTests
                     },
                     EventType.MouseDown,
                     ownsCapture: false);
-                Assert.IsTrue(NowInput.Interact(FirstControlId, _rect).pressed);
+                firstControlId = NowControls.GetControlId(new NowId(FirstControlId));
+                Assert.IsTrue(NowInput.Interact(firstControlId, _rect).pressed);
             }
 
-            Assert.AreEqual(FirstControlId, NowInput.activeId);
+            Assert.AreEqual(firstControlId, NowInput.activeId);
             Assert.AreEqual(HostControlId, GUIUtility.hotControl);
             Assert.IsTrue(provider.NotifyHostFocusChanged(false, releaseNativeCapture: false));
             Assert.IsFalse(provider.NotifyHostFocusChanged(true, releaseNativeCapture: false));
@@ -1475,13 +1483,14 @@ public class NowInputTests
                     freshSnapshot.hasPointer,
                     "A real MouseDown must remain actionable while it also reports stale capture cancellation.");
 
-                var fresh = NowInput.Interact(SecondControlId, _rect);
+                secondControlId = NowControls.GetControlId(new NowId(SecondControlId));
+                var fresh = NowInput.Interact(secondControlId, _rect);
                 Assert.IsTrue(fresh.pressed, "The first click after focus returns must not be discarded.");
                 Assert.IsTrue(fresh.active);
                 Assert.IsFalse(fresh.cancelled);
             }
 
-            Assert.AreEqual(SecondControlId, NowInput.activeId);
+            Assert.AreEqual(secondControlId, NowInput.activeId);
             Assert.AreEqual(HostControlId, GUIUtility.hotControl);
         }
         finally
@@ -1530,13 +1539,14 @@ public class NowInputTests
                     "The provider must sample the native press before the competing control acquires capture.");
 
                 GUIUtility.hotControl = ForeignControlId;
-                var interaction = NowInput.Interact(NowControlId, _rect);
+                NowResolvedId controlId = NowControls.GetControlId(new NowId(NowControlId));
+                var interaction = NowInput.Interact(controlId, _rect);
 
                 Assert.IsFalse(
                     interaction.pressed,
                     "A NowUI control must not activate after another native control wins hotControl.");
                 Assert.IsFalse(interaction.active);
-                Assert.AreEqual(0, NowInput.activeId);
+                Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
             }
 
             Assert.AreEqual(
@@ -1576,7 +1586,8 @@ public class NowInputTests
                     inputEvent,
                     routedType,
                     ownsCapture);
-                return NowInput.Interact(NowControlId, _rect);
+                NowResolvedId controlId = NowControls.GetControlId(new NowId(NowControlId));
+                return NowInput.Interact(controlId, _rect);
             }
         }
 
@@ -1595,7 +1606,7 @@ public class NowInputTests
 
             Assert.IsTrue(pressed.pressed);
             Assert.IsTrue(pressed.active);
-            Assert.AreEqual(NowControlId, NowInput.activeId);
+            Assert.AreEqual(pressed.id, NowInput.activeId);
             Assert.AreEqual(HostControlId, GUIUtility.hotControl);
             Assert.AreEqual(
                 EventType.Used,
@@ -1613,7 +1624,7 @@ public class NowInputTests
 
             Assert.IsTrue(dragged.dragging);
             Assert.IsTrue(dragged.active);
-            Assert.AreEqual(NowControlId, NowInput.activeId);
+            Assert.AreEqual(dragged.id, NowInput.activeId);
             Assert.AreEqual(EventType.Used, drag.type);
 
             var ignored = new Event
@@ -1627,7 +1638,7 @@ public class NowInputTests
             Assert.IsTrue(cancelled.cancelled);
             Assert.IsTrue(cancelled.dragCancelled);
             Assert.IsFalse(cancelled.clicked);
-            Assert.AreEqual(0, NowInput.activeId);
+            Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
             Assert.AreEqual(
                 0,
                 GUIUtility.hotControl,
@@ -1645,7 +1656,7 @@ public class NowInputTests
             Assert.IsFalse(afterReentry.active);
             Assert.IsFalse(afterReentry.dragging);
             Assert.IsFalse(afterReentry.clicked);
-            Assert.AreEqual(0, NowInput.activeId);
+            Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
         }
         finally
         {
@@ -1679,7 +1690,8 @@ public class NowInputTests
                     inputEvent,
                     routedType,
                     ownsCapture);
-                return NowInput.Interact(NowControlId, _rect);
+                NowResolvedId controlId = NowControls.GetControlId(new NowId(NowControlId));
+                return NowInput.Interact(controlId, _rect);
             }
         }
 
@@ -1737,7 +1749,7 @@ public class NowInputTests
             Assert.IsFalse(released.clicked);
             Assert.IsFalse(released.cancelled);
             Assert.AreEqual(EventType.Used, up.type);
-            Assert.AreEqual(0, NowInput.activeId);
+            Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
             Assert.AreEqual(
                 0,
                 GUIUtility.hotControl,
@@ -1756,13 +1768,14 @@ public class NowInputTests
     [TestCase(EventType.MouseLeaveWindow)]
     public void IMGUICaptureLossCancelsDraggedScrollbarAndReentryCannotResumeIt(EventType lossType)
     {
-        const int scrollbarId = 9137;
+        const int ScrollbarKey = 9137;
         var provider = new NowIMGUIInputProvider();
         var surface = new NowInputSurface(new Vector2(100f, 100f));
         var track = new NowRect(80f, 10f, 12f, 80f);
         Action previousRepaint = NowIMGUIInputProvider.repaintRequested;
         bool previousChanged = GUI.changed;
         float value = 0f;
+        NowResolvedId scrollbarId = NowResolvedId.None;
 
         bool DrawScrollbar()
         {
@@ -1775,7 +1788,10 @@ public class NowInputTests
                 10f);
 
             using (NowInput.Begin(_provider, surface))
+            {
+                scrollbarId = NowControls.GetControlId(new NowId(ScrollbarKey));
                 return NowScrollbar.Interact(scrollbarId, NowScrollbarAxis.Vertical, metrics, ref value);
+            }
         }
 
         try
@@ -1818,7 +1834,7 @@ public class NowInputTests
             Assert.IsTrue(provider.TryGetSnapshot(surface, lost, lossType, true, out _provider.snapshot));
             Assert.IsTrue(_provider.snapshot.pointerCaptureCancelled);
             Assert.IsFalse(DrawScrollbar());
-            Assert.AreEqual(0, NowInput.activeId, "Capture loss must cancel the active scrollbar immediately.");
+            Assert.AreEqual(NowResolvedId.None, NowInput.activeId, "Capture loss must cancel the active scrollbar immediately.");
             float valueAfterCancellation = value;
 
             var reentryDrag = new Event
@@ -1836,7 +1852,7 @@ public class NowInputTests
                 false,
                 out _provider.snapshot));
             Assert.IsFalse(DrawScrollbar());
-            Assert.AreEqual(0, NowInput.activeId);
+            Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
             Assert.AreEqual(
                 valueAfterCancellation,
                 value,

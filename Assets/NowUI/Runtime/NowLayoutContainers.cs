@@ -26,7 +26,7 @@ namespace NowUI
 
         readonly int _site;
 
-        NowId _id;
+        NowControlIdentity _id;
 
         NowLayoutOptions _options;
 
@@ -51,6 +51,13 @@ namespace NowUI
         }
 
         public NowLayoutContainer SetId(NowId id)
+        {
+            _id = id;
+            return this;
+        }
+
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowLayoutContainer SetId(NowResolvedId id)
         {
             _id = id;
             return this;
@@ -245,7 +252,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return new NowLayoutContainer(false, NowControls.SiteId(file, line));
+            return new NowLayoutContainer(false, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Declares a root vertical container over an explicit rect.</summary>
@@ -254,7 +261,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return new NowLayoutContainer(false, rect, NowControls.SiteId(file, line));
+            return new NowLayoutContainer(false, rect, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Naming alias for <see cref="Column(string, int)"/>.</summary>
@@ -279,7 +286,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return new NowLayoutContainer(true, NowControls.SiteId(file, line));
+            return new NowLayoutContainer(true, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Declares a root horizontal container over an explicit rect.</summary>
@@ -288,7 +295,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return new NowLayoutContainer(true, rect, NowControls.SiteId(file, line));
+            return new NowLayoutContainer(true, rect, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Naming alias for <see cref="Row(string, int)"/>.</summary>
@@ -321,8 +328,54 @@ namespace NowUI
             in NowLayoutOptions options,
             int site)
         {
-            int fallback = HashCombine(AreaSeed, NowControls.GetControlId(site));
-            return BeginArea(id.ResolveStableId(fallback), rect, options, horizontal);
+            return BeginContainerArea(
+                horizontal,
+                rect,
+                new NowControlIdentity(id),
+                options,
+                site);
+        }
+
+        internal static NowLayoutScope BeginContainerArea(
+            bool horizontal,
+            NowRect rect,
+            NowResolvedId id,
+            in NowLayoutOptions options,
+            int site)
+        {
+            return BeginContainerArea(
+                horizontal,
+                rect,
+                new NowControlIdentity(id),
+                options,
+                site);
+        }
+
+        internal static NowLayoutScope BeginContainerArea(
+            bool horizontal,
+            NowRect rect,
+            NowControlIdentity identity,
+            in NowLayoutOptions options,
+            int site)
+        {
+            NowResolvedId areaId;
+
+            if (identity.isResolved)
+            {
+                areaId = identity.resolved;
+            }
+            else if (identity.authored.hasValue)
+            {
+                areaId = NowControls.ResolveScopedId(
+                    NowIdDomain.Layout,
+                    identity.authored);
+            }
+            else
+            {
+                areaId = NowControls.ResolveCallSite(site, NowIdDomain.Layout);
+            }
+
+            return BeginArea(areaId, rect, options, horizontal);
         }
     }
 }

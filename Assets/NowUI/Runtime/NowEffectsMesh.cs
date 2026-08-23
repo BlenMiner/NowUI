@@ -97,7 +97,7 @@ namespace NowUI
             bool subdivideText,
             bool hasSourceRect,
             NowRect sourceRect,
-            int effectId,
+            NowResolvedId effectId,
             float time)
             where TDeformer : struct, INowVertexDeformer
         {

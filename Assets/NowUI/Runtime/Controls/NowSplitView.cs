@@ -22,7 +22,7 @@ namespace NowUI
     public struct NowSplitView
     {
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         NowFocusNavigation _navigation;
         NowLayoutOptions _options;
         readonly NowRect _rect;
@@ -35,7 +35,7 @@ namespace NowUI
         const int FirstAreaSeed = 0x4e535631;
         const int SecondAreaSeed = 0x4e535632;
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowSplitView(int site)
         {
@@ -61,6 +61,9 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowSplitView SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowSplitView SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Explicit directional/Tab focus targets for the divider.</summary>
         public NowSplitView SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
@@ -80,7 +83,7 @@ namespace NowUI
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
             var styles = theme.controlStyles;
-            int id = ResolveControlId();
+            NowResolvedId id = ResolveControlId();
 
             if (!_options.Has(NowLayoutOptions.Field.Height) && !_options.Has(NowLayoutOptions.Field.StretchHeight))
                 _options = _options.SetStretchHeight(1f);
@@ -113,7 +116,7 @@ namespace NowUI
                 ? new NowRect(dividerRect.x - hitOutset, dividerRect.y, thickness + hitOutset * 2f, dividerRect.height)
                 : new NowRect(dividerRect.x, dividerRect.y - hitOutset, dividerRect.width, thickness + hitOutset * 2f);
 
-            int dividerId = NowInput.CombineId(id, DividerSeed);
+            NowResolvedId dividerId = id.Child(DividerSeed);
             var interaction = NowControls.Interact(dividerId, hitRect, _navigation, out bool focused, out _);
             ref float grabOffset = ref NowControlState.Get<float>(dividerId, "grab-offset");
 
@@ -159,8 +162,8 @@ namespace NowUI
                 theme, dividerRect, !horizontal, interaction.dragging, focused, hoverT));
 
             return new NowSplitViewResult(
-                NowInput.CombineId(id, FirstAreaSeed),
-                NowInput.CombineId(id, SecondAreaSeed),
+                id.Derive(NowIdDomain.Layout, FirstAreaSeed),
+                id.Derive(NowIdDomain.Layout, SecondAreaSeed),
                 firstRect,
                 secondRect,
                 interaction.dragging);
@@ -181,10 +184,10 @@ namespace NowUI
         /// <summary>True while the divider is being dragged.</summary>
         public readonly bool dragging;
 
-        readonly int _firstAreaKey;
-        readonly int _secondAreaKey;
+        readonly NowResolvedId _firstAreaKey;
+        readonly NowResolvedId _secondAreaKey;
 
-        internal NowSplitViewResult(int firstAreaKey, int secondAreaKey, NowRect firstRect, NowRect secondRect, bool dragging)
+        internal NowSplitViewResult(NowResolvedId firstAreaKey, NowResolvedId secondAreaKey, NowRect firstRect, NowRect secondRect, bool dragging)
         {
             _firstAreaKey = firstAreaKey;
             _secondAreaKey = secondAreaKey;
@@ -200,7 +203,7 @@ namespace NowUI
 
             try
             {
-                var area = NowLayout.Area(NowId.Resolved(_firstAreaKey), firstRect);
+                var area = NowLayout.Area(_firstAreaKey, firstRect);
                 return new NowSplitPaneScope(mask, area);
             }
             catch
@@ -217,7 +220,7 @@ namespace NowUI
 
             try
             {
-                var area = NowLayout.Area(NowId.Resolved(_secondAreaKey), secondRect);
+                var area = NowLayout.Area(_secondAreaKey, secondRect);
                 return new NowSplitPaneScope(mask, area);
             }
             catch

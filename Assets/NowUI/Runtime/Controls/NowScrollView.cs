@@ -18,7 +18,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowScrollView
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
 
         const int LayoutSizeSeed = 0x4e53564c;
@@ -30,7 +30,7 @@ namespace NowUI
         readonly bool _hasRect;
         bool _followTail;
 
-        internal NowScrollView(NowId id, int site)
+        internal NowScrollView(NowControlIdentity id, int site)
         {
             _id = id;
             _site = site;
@@ -40,13 +40,19 @@ namespace NowUI
             _followTail = false;
         }
 
-        internal NowScrollView(NowRect rect, NowId id, int site) : this(id, site)
+        internal NowScrollView(NowRect rect, NowControlIdentity id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
         }
 
         internal NowScrollView(NowRect rect, int identity) : this(default(NowId), identity)
+        {
+            _rect = rect;
+            _hasRect = true;
+        }
+
+        internal NowScrollView(NowRect rect, NowResolvedId id) : this(id, 0)
         {
             _rect = rect;
             _hasRect = true;
@@ -67,6 +73,8 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowScrollView SetId(NowId id) { _id = id; return this; }
 
+        public NowScrollView SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>
         /// Keeps the view pinned to the bottom as content grows — the console/log
         /// pattern. The pin holds only while the user is already at the bottom;
@@ -74,7 +82,7 @@ namespace NowUI
         /// </summary>
         public NowScrollView SetFollowTail(bool follow = true) { _followTail = follow; return this; }
 
-        static int s_dragScrollRegionId;
+        static NowResolvedId s_dragScrollRegionId;
 
         static int s_dragScrollFrame = -1;
 
@@ -89,16 +97,16 @@ namespace NowUI
             if (NowInput.isPassive || !NowInput.hasContext)
                 return;
 
-            int region = NowFocus.currentScrollRegionId;
+            NowResolvedId region = NowFocus.currentScrollRegionResolvedId;
 
-            if (region == 0)
+            if (!region.hasValue)
                 return;
 
             s_dragScrollRegionId = region;
             s_dragScrollFrame = NowInput.current.frame;
         }
 
-        internal static bool TryConsumeDragScroll(int id)
+        internal static bool TryConsumeDragScroll(NowResolvedId id)
         {
             if (s_dragScrollRegionId != id ||
                 s_dragScrollFrame != NowInput.current.frame ||
@@ -107,7 +115,7 @@ namespace NowUI
                 return false;
             }
 
-            s_dragScrollRegionId = 0;
+            s_dragScrollRegionId = NowResolvedId.None;
             s_dragScrollFrame = -1;
             return true;
         }
@@ -126,13 +134,13 @@ namespace NowUI
             }
 
             NowRect viewport = NowControls.ReserveRect(_hasRect, _rect, options, new Vector2(200f, 200f));
-            int id = NowControls.GetControlId(_id, _site);
-            int areaKey = NowInput.CombineId(id, 0x4e535641);
+            NowResolvedId id = _id.Resolve(_site);
+            NowResolvedId areaKey = id.Derive(NowIdDomain.Layout, 0x4e535641);
 
-            NowLayout.TryGetCachedAreaContentSize(NowId.Resolved(areaKey), out Vector2 content);
+            NowLayout.TryGetCachedAreaContentSize(areaKey, out Vector2 content);
             var styles = NowTheme.themeAsset.controlStyles;
 
-            ref Vector2 measuredSize = ref NowControlState.Get<Vector2>(NowInput.CombineId(id, LayoutSizeSeed));
+            ref Vector2 measuredSize = ref NowControlState.Get<Vector2>(id.Child(LayoutSizeSeed));
 
             if (measuredSize == Vector2.zero)
                 measuredSize = new Vector2(viewport.width, viewport.height);
@@ -148,7 +156,7 @@ namespace NowUI
                 // slack tolerates sub-pixel drift without trapping a deliberate
                 // one-line scroll away from the tail.
                 const float TailSlack = 2f;
-                ref float lastMaxScrollY = ref NowControlState.Get<float>(NowInput.CombineId(id, FollowTailSeed));
+                ref float lastMaxScrollY = ref NowControlState.Get<float>(id.Child(FollowTailSeed));
 
                 if (scroll.y >= lastMaxScrollY - TailSlack)
                     scroll.y = scrollLayout.maxScrollY;
@@ -161,7 +169,7 @@ namespace NowUI
             EnsureFocusedControlVisible(id, scrollLayout.contentViewport, scrollLayout.maxScrollX, scrollLayout.maxScrollY, ref scroll);
 
             var mask = Now.Mask(scrollLayout.contentViewport);
-            var layout = NowLayout.Area(NowId.Resolved(areaKey), new NowRect(
+            var layout = NowLayout.Area(areaKey, new NowRect(
                 viewport.x - scroll.x,
                 viewport.y - scroll.y,
                 scrollLayout.contentViewport.width,
@@ -184,7 +192,7 @@ namespace NowUI
 
         struct FocusRevealState
         {
-            public int focusedId;
+            public NowResolvedId focusedId;
             public int focusRevision;
         }
 
@@ -243,7 +251,7 @@ namespace NowUI
         /// land on rects far larger than the viewport (a selectable document),
         /// where revealing an edge would yank the scroll position.
         /// </summary>
-        static void EnsureFocusedControlVisible(int id, NowRect viewport, float maxScrollX, float maxScrollY, ref Vector2 scroll)
+        static void EnsureFocusedControlVisible(NowResolvedId id, NowRect viewport, float maxScrollX, float maxScrollY, ref Vector2 scroll)
         {
             if ((maxScrollX <= 0f && maxScrollY <= 0f) || NowInput.isPassive ||
                 !NowFocus.TryGetFocusedRectInScrollRegion(id, out var focused))
@@ -251,8 +259,8 @@ namespace NowUI
                 return;
             }
 
-            ref var reveal = ref NowControlState.Get<FocusRevealState>(NowInput.CombineId(id, FocusRevealSeed));
-            int focusedId = NowFocus.focusedId;
+            ref var reveal = ref NowControlState.Get<FocusRevealState>(id.Child(FocusRevealSeed));
+            NowResolvedId focusedId = NowFocus.focusedResolvedId;
             int focusRevision = NowFocus.focusRevision;
 
             if (reveal.focusedId == focusedId && reveal.focusRevision == focusRevision)
@@ -334,7 +342,7 @@ namespace NowUI
         NowFocusScrollRegionScope _focus;
         NowRect _viewport;
         NowRect _contentViewport;
-        readonly int _id;
+        readonly NowResolvedId _id;
         readonly float _maxScrollX;
         readonly float _maxScrollY;
         readonly bool _verticalBarVisible;
@@ -347,7 +355,7 @@ namespace NowUI
             NowFocusScrollRegionScope focus,
             NowRect viewport,
             NowRect contentViewport,
-            int id,
+            NowResolvedId id,
             float maxScrollX,
             float maxScrollY,
             bool verticalBarVisible,
@@ -534,7 +542,7 @@ namespace NowUI
             if (track.width <= 0f || track.height <= 0f || viewportSize <= 0f || contentSize <= 0f)
                 return;
 
-            int thumbId = NowInput.GetId(_id, key);
+            NowResolvedId thumbId = _id.Child(key);
             var metrics = NowScrollbar.Calculate(
                 axis,
                 track,
@@ -619,7 +627,7 @@ namespace NowUI
         /// </summary>
         bool ApplyPanScroll(ref Vector2 scroll, out Vector2 anchor)
         {
-            int panId = NowInput.CombineId(_id, PanSeed);
+            NowResolvedId panId = _id.Child(PanSeed);
             var interaction = NowInput.Interact(panId, _contentViewport, NowPointerButton.Middle);
             ref var pan = ref NowControlState.Get<PanScrollState>(panId);
             var snapshot = NowInput.current;

@@ -630,7 +630,7 @@ public class NowDocsExample : NowLayoutGraphic
         Color accentText = theme.GetColor(NowColorToken.AccentText, Color.white);
         NowRect rect = NowLayout.ReserveRect(height: 28f, stretchWidth: true);
         NowRect row = rect.Inset(1f, 0f);
-        int id = NowControls.GetControlId($"doc-{pageIndex}");
+        NowResolvedId id = NowControls.GetControlId($"doc-{pageIndex}");
         var interaction = NowControls.Interact(id, row, out bool focused, out bool submitted);
 
         if (interaction.clicked || submitted)
@@ -3673,7 +3673,11 @@ public static class GuideControls
         return new MyRating(NowControls.SiteId(file, line));
     }
 
-    internal static bool DrawRating(NowId id, int fallbackIdentity, ref int value, int max)
+    internal static bool DrawRating(
+        NowId id,
+        NowCallSiteId fallbackIdentity,
+        ref int value,
+        int max)
     {
         const float Dot = 18f, Gap = 6f;
 
@@ -3726,11 +3730,11 @@ public static class GuideControls
 [NowBuilder]
 public struct MyRating
 {
-    readonly int _site;
+    readonly NowCallSiteId _site;
     NowId _id;
     int _max;
 
-    internal MyRating(int site)
+    internal MyRating(NowCallSiteId site)
     {
         _site = site;
         _id = default;

@@ -161,6 +161,12 @@ identical snippets never fight over focus. Seed and read values through
 draw. Custom embeds (charts, diagrams, anything drawable) register the same
 way: `new NowMarkdownEmbedSet().Add("chart", DrawChart)`.
 
+Document builders use call-site identity by default. When documents are drawn
+from a reorderable collection, call `.SetId(item.id)` or enter a
+`NowControls.KeyedItem(item.id)` scope. `NowMarkdownEmbedContext.documentId`
+and `embedId` are opaque `NowResolvedId` paths; pass them directly to typed
+NowUI APIs and derive children with `.Child(...)`.
+
 Embeds run arbitrary UI from document content — only enable them for
 markdown you control, not for untrusted user or network content.
 

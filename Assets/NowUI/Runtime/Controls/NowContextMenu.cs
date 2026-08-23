@@ -1,23 +1,25 @@
 using UnityEngine;
+using System;
 using System.Collections.Generic;
 
 namespace NowUI
 {
     /// <summary>
-    /// Immediate-mode context menu on the overlay layer. The owner opens it on a
-    /// right-click and declares items every frame while it is open; a click on an
-    /// item reports through that item's call the next frame (deferred overlay
-    /// draws run after the owner returns):
+    /// Immediate-mode context menu on the overlay layer. The owner resolves one
+    /// stable source id, opens from a source-aware trigger, and declares authored
+    /// items every frame while it is open. A click reports through that item's
+    /// call the next frame (deferred overlay draws run after the owner returns):
     /// <code>
-    /// if (selection.rightClicked)
-    ///     NowContextMenu.Open(menuId, selection.rightClickPosition);
+    /// var menuId = NowControls.GetControlId("selection-context-menu");
+    /// var trigger = NowContextAction.Resolve(selectionRect, moreClicked, moreRect);
+    /// NowContextMenu.Open(menuId, trigger);
     ///
     /// if (NowContextMenu.Begin(menuId))
     /// {
-    ///     if (NowContextMenu.Item("Copy")) Copy();
-    ///     if (NowContextMenu.BeginSubmenu("Create"))
+    ///     if (NowContextMenu.Item("Copy", id: "copy")) Copy();
+    ///     if (NowContextMenu.BeginSubmenu("Create", id: "create"))
     ///     {
-    ///         if (NowContextMenu.Item("Node")) CreateNode();
+    ///         if (NowContextMenu.Item("Node", id: "node")) CreateNode();
     ///         NowContextMenu.EndSubmenu();
     ///     }
     ///     NowContextMenu.End();
@@ -30,10 +32,18 @@ namespace NowUI
     /// activates, right/submit dives into a submenu and left backs out.
     /// Menus taller than the visible view clamp their height and scroll (mouse
     /// wheel, keyboard focus, or hovering the top/bottom edge strips) so every
-    /// option stays reachable; submenus clamp and scroll independently.
+    /// option stays reachable; submenus clamp and scroll independently. A
+    /// retained owner may stay idle with its last menu intact, but once that
+    /// owner completes another declaration pass it must declare the menu again
+    /// or NowUI closes the stale global menu state.
     /// </summary>
     public static class NowContextMenu
     {
+        const string LegacyIdObsoleteMessage =
+            "Raw integer context-menu identities were removed. Use the NowResolvedId overload.";
+        const string PositionalEntryObsoleteMessage =
+            "Positional context-menu entries were removed. Supply a stable authored id, for example Item(label, id: \"copy\").";
+
         const float MinimumMenuWidth = 160f;
         const float SubmenuGap = 2f;
         const float ScrollStripHeight = 16f;
@@ -48,22 +58,30 @@ namespace NowUI
         const int NavUpSeed = 0x43784e55;
         const int NavDownSeed = 0x43784e44;
 
-        static int _openId;
-        static object _openSurface;
+        static NowResolvedId _openId;
+        static INowInputProvider _openSurface;
+        static object _openRegistrationOwner;
+        static int _openOwnerPassSerial;
+        static int _openDeclaredOwnerPassSerial;
         static bool _hasOpenedInputPass;
         static int _openedInputPass;
         static Vector2 _position;
+        static bool _hasActionAnchor;
+        static NowRect _actionAnchor;
         static bool _fitToView = true;
-        static int _activeId;
-        static int _pendingPathStateId;
+        static NowResolvedId _activeId;
+        static object _activeRegistrationOwner;
+        static bool _activeBuildsOpenMenu;
+        static bool _activeHasPendingDelivery;
+        static NowResolvedId[] _activePendingOpenPath;
         static int _menuCount;
         static int _hoverIntentDepth = -1;
-        static int _hoverIntentPath;
+        static NowResolvedId _hoverIntentPath;
         static float _hoverIntentStart;
-        static int _highlightMenuOverlay;
-        static int _highlightEntryIndex = -1;
+        static NowResolvedId _highlightMenuOverlay;
+        static NowResolvedId _highlightEntryPath;
         static bool _highlightMovedByKeyboard;
-        static int _pendingHighlightMenuOverlay;
+        static NowResolvedId _pendingHighlightMenuOverlay;
         static Vector2 _lastPointerPosition;
         static Vector2 _previousPointerPosition;
         static bool _pointerMoved;
@@ -74,19 +92,34 @@ namespace NowUI
 
         static readonly List<Menu> _menus = new List<Menu>(4);
         static readonly List<int> _buildStack = new List<int>(4);
-        static readonly List<int> _openPath = new List<int>(4);
-        static readonly List<int> _pendingOpenPath = new List<int>(4);
+        static readonly List<NowResolvedId> _openPath = new List<NowResolvedId>(4);
+        static readonly List<NowResolvedId> _pendingRemovalScratch = new List<NowResolvedId>(4);
 
-        /// <summary>
-        /// Outstanding click deliveries. While zero, <see cref="Begin"/> for a
-        /// closed menu returns without hashing its pending-path id or touching
-        /// the state store — the common case for every potential menu owner on
-        /// every frame. Never reset: an owner that vanishes before its delivery
-        /// pass leaves the count high, which only re-enables the slow check.
-        /// </summary>
-        static int _pendingDeliveryCount;
+        static readonly Dictionary<NowResolvedId, PendingDelivery> _pendingDeliveries =
+            new Dictionary<NowResolvedId, PendingDelivery>(4);
 
-        static readonly Dictionary<int, int> _labelOccurrenceScratch = new Dictionary<int, int>(32);
+        static readonly List<OwnerPass> _ownerPasses = new List<OwnerPass>(2);
+
+        static int _nextOwnerPassSerial;
+
+        static readonly Dictionary<NowResolvedId, int> _labelOccurrenceScratch =
+            new Dictionary<NowResolvedId, int>(32);
+
+        struct PendingDelivery
+        {
+            public NowResolvedId deliveryId;
+            public object owner;
+            public INowInputProvider provider;
+            public int createdOwnerPassSerial;
+            public NowResolvedId[] openPath;
+        }
+
+        struct OwnerPass
+        {
+            public object owner;
+            public int serial;
+            public bool failed;
+        }
 
         enum EntryKind
         {
@@ -103,20 +136,19 @@ namespace NowUI
             public string shortcut;
             public bool enabled;
             public bool selected;
-            public int pathId;
-            public int deliveryId;
+            public NowResolvedId pathId;
+            public NowResolvedId deliveryId;
             public int localIndex;
             public int childMenu;
         }
 
         sealed class Menu
         {
-            public int rootId;
-            public int pathId;
-            public int overlayId;
+            public NowResolvedId rootId;
+            public NowResolvedId pathId;
+            public NowResolvedId overlayId;
             public int parentMenu;
             public int depth;
-            public int itemSeed;
             public float width;
             public float height;
             public float contentHeight;
@@ -132,14 +164,18 @@ namespace NowUI
 
             public readonly List<Entry> entries = new List<Entry>(8);
 
-            public void Reset(int rootId, int pathId, int overlayId, int parentMenu, int depth)
+            public void Reset(
+                NowResolvedId rootId,
+                NowResolvedId pathId,
+                NowResolvedId overlayId,
+                int parentMenu,
+                int depth)
             {
                 this.rootId = rootId;
                 this.pathId = pathId;
                 this.overlayId = overlayId;
                 this.parentMenu = parentMenu;
                 this.depth = depth;
-                itemSeed = NowInput.GetId(overlayId, "ctx-item");
                 width = 0f;
                 height = 0f;
                 contentHeight = 0f;
@@ -149,21 +185,72 @@ namespace NowUI
         }
 
         /// <summary>True while any context menu is open.</summary>
-        public static bool isOpen => _openId != 0;
+        public static bool isOpen => _openId.hasValue;
 
         /// <summary>True when the menu with this id is the one currently open.</summary>
-        public static bool IsOpen(int id) => _openId != 0 && _openId == id;
+        public static bool IsOpen(NowResolvedId id) => id.hasValue && _openId == id;
 
-        public static void Open(int id, Vector2 position, bool fitToView = true)
+        [Obsolete(LegacyIdObsoleteMessage, true)]
+        public static bool IsOpen(int id) => IsOpen(NowResolvedId.FromLegacy(id));
+
+        public static void Open(NowResolvedId id, Vector2 position, bool fitToView = true)
         {
+            OpenCore(id, position, fitToView, false, default);
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
+        public static void Open(int id, Vector2 position, bool fitToView = true) =>
+            Open(NowResolvedId.FromLegacy(id), position, fitToView);
+
+        /// <summary>
+        /// Opens from a source-aware trigger. Secondary-pointer triggers open at
+        /// the pointer; explicit actions open adjacent to their control. A
+        /// default, untriggered value is a no-op.
+        /// </summary>
+        public static void Open(NowResolvedId id, in NowContextTrigger trigger, bool fitToView = true)
+        {
+            if (!trigger.triggered)
+                return;
+
+            if (trigger.source == NowContextTriggerSource.SecondaryPointer)
+            {
+                OpenCore(id, trigger.screenPointerPosition, fitToView, false, default);
+                NowInput.ConsumePointerPress(NowPointerButton.Secondary);
+                return;
+            }
+
+            OpenCore(
+                id,
+                trigger.screenActionAnchor.position,
+                fitToView,
+                true,
+                trigger.screenActionAnchor);
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
+        public static void Open(int id, in NowContextTrigger trigger, bool fitToView = true) =>
+            Open(NowResolvedId.FromLegacy(id), in trigger, fitToView);
+
+        static void OpenCore(
+            NowResolvedId id,
+            Vector2 position,
+            bool fitToView,
+            bool hasActionAnchor,
+            NowRect actionAnchor)
+        {
+            RequireMenuId(id);
             _openId = id;
             _openSurface = NowInput.currentProvider;
+            _openRegistrationOwner = NowOverlay.currentRegistrationOwner;
+            _openOwnerPassSerial = CurrentOwnerPassSerial(_openRegistrationOwner);
+            _openDeclaredOwnerPassSerial = 0;
             _hasOpenedInputPass = NowInput.hasContext;
             _openedInputPass = _hasOpenedInputPass ? NowInput.current.inputPass : 0;
             _position = position;
+            _hasActionAnchor = hasActionAnchor;
+            _actionAnchor = actionAnchor;
             _fitToView = fitToView;
             _openPath.Clear();
-            _pendingOpenPath.Clear();
             ClearHoverIntent();
             ClearHighlight();
             NowControlState.Get<float>(id, "ctx-scroll") = 0f;
@@ -172,46 +259,72 @@ namespace NowUI
 
         public static void Close()
         {
-            if (_openId != 0)
+            NowResolvedId closingId = _openId;
+
+            if (_openId.hasValue)
                 NowControlState.RequestRepaint();
 
-            _openId = 0;
+            _openId = NowResolvedId.None;
+            _openSurface = null;
+            _openRegistrationOwner = null;
+            _openOwnerPassSerial = 0;
+            _openDeclaredOwnerPassSerial = 0;
             _hasOpenedInputPass = false;
+            _hasActionAnchor = false;
+            _actionAnchor = default;
+
+            if (_activeBuildsOpenMenu && _activeId == closingId)
+            {
+                _activeId = NowResolvedId.None;
+                _activeRegistrationOwner = null;
+                _activeBuildsOpenMenu = false;
+                _activeHasPendingDelivery = false;
+                _activePendingOpenPath = null;
+                _buildStack.Clear();
+            }
+
             ClearHoverIntent();
             ClearHighlight();
         }
 
         static void ClearHighlight()
         {
-            _highlightMenuOverlay = 0;
-            _highlightEntryIndex = -1;
+            _highlightMenuOverlay = NowResolvedId.None;
+            _highlightEntryPath = NowResolvedId.None;
             _highlightMovedByKeyboard = false;
-            _pendingHighlightMenuOverlay = 0;
+            _pendingHighlightMenuOverlay = NowResolvedId.None;
         }
 
         /// <summary>
         /// True while the menu with this id is open — declare items, then call
-        /// <see cref="End"/>. Also true for one frame after an item was clicked
-        /// (the menu has closed by then) so the clicked item can deliver.
+        /// <see cref="End"/>. Also true during the owner's next completed pass
+        /// after an item was clicked (the menu has closed by then) so the
+        /// clicked item can deliver.
         /// </summary>
-        public static bool Begin(int id)
+        public static bool Begin(NowResolvedId id)
         {
+            RequireMenuId(id);
+
             if (NowInput.isPassive)
                 return false;
 
-            if (_openId != id && _pendingDeliveryCount == 0)
-                return false;
+            object owner = NowOverlay.currentRegistrationOwner;
+            bool buildsOpenMenu = _openId == id &&
+                ReferenceEquals(_openRegistrationOwner, owner) &&
+                ReferenceEquals(_openSurface, NowInput.currentProvider);
+            bool hasPendingDelivery =
+                _pendingDeliveries.TryGetValue(id, out var pending) &&
+                ReferenceEquals(pending.owner, owner) &&
+                ReferenceEquals(pending.provider, NowInput.currentProvider);
 
-            int pendingStateId = NowInput.GetId(id, "ctx-pending-path");
-
-            if (_openId != id && NowControlState.Get<int>(pendingStateId) == 0)
-                return false;
-
-            if (_openSurface != null && !ReferenceEquals(_openSurface, NowInput.currentProvider))
+            if (!buildsOpenMenu && !hasPendingDelivery)
                 return false;
 
             _activeId = id;
-            _pendingPathStateId = pendingStateId;
+            _activeRegistrationOwner = owner;
+            _activeBuildsOpenMenu = buildsOpenMenu;
+            _activeHasPendingDelivery = hasPendingDelivery;
+            _activePendingOpenPath = hasPendingDelivery ? pending.openPath : null;
             _menuCount = 0;
             _buildStack.Clear();
             _labelOccurrenceScratch.Clear();
@@ -221,35 +334,86 @@ namespace NowUI
             return true;
         }
 
+        [Obsolete(LegacyIdObsoleteMessage, true)]
+        public static bool Begin(int id) => Begin(NowResolvedId.FromLegacy(id));
+
+        static void RequireMenuId(NowResolvedId id)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("A resolved context-menu id is required.", nameof(id));
+        }
+
         /// <summary>Adds an item; true when it was clicked (the frame after the click).</summary>
+        [Obsolete(PositionalEntryObsoleteMessage, true)]
         public static bool Item(string label)
         {
-            return Item(label, null, true, false);
+            return ItemPositional(label, null, true, false);
         }
 
         /// <summary>Adds an item; true when it was clicked (the frame after the click).</summary>
+        [Obsolete(PositionalEntryObsoleteMessage, true)]
         public static bool Item(string label, bool enabled, bool selected = false)
         {
-            return Item(label, null, enabled, selected);
+            return ItemPositional(label, null, enabled, selected);
         }
 
         /// <summary>Adds an item with a right-aligned shortcut hint ("Ctrl+C").</summary>
+        [Obsolete(PositionalEntryObsoleteMessage, true)]
         public static bool Item(string label, string shortcut)
         {
-            return Item(label, shortcut, true, false);
+            return ItemPositional(label, shortcut, true, false);
         }
 
         /// <summary>Adds an item with a right-aligned shortcut hint ("Ctrl+C").</summary>
+        [Obsolete(PositionalEntryObsoleteMessage, true)]
         public static bool Item(string label, string shortcut, bool enabled, bool selected = false)
         {
-            if (_activeId == 0 || _buildStack.Count == 0)
+            return ItemPositional(label, shortcut, enabled, selected);
+        }
+
+        static bool ItemPositional(string label, string shortcut, bool enabled, bool selected)
+        {
+            if (!_activeId.hasValue || _buildStack.Count == 0)
                 return false;
 
             var menu = CurrentMenu();
             int localIndex = menu.entries.Count;
-            int pathId = NowInput.CombineId(menu.pathId, localIndex + 1);
-            int deliveryId = ItemDeliveryId(menu, label ?? string.Empty);
+            NowResolvedId pathId = menu.pathId.Child(localIndex + 1);
+            NowResolvedId deliveryId = ItemDeliveryId(menu, label ?? string.Empty);
+            return AddItem(menu, label, shortcut, enabled, selected, pathId, deliveryId, localIndex);
+        }
 
+        /// <summary>
+        /// Adds an item whose menu-local authored id remains stable when its
+        /// label changes or sibling rows are inserted, removed, or reordered.
+        /// </summary>
+        public static bool Item(
+            string label,
+            NowId id,
+            bool enabled = true,
+            bool selected = false,
+            string shortcut = null)
+        {
+            if (!_activeId.hasValue || _buildStack.Count == 0)
+                return false;
+
+            var menu = CurrentMenu();
+            int localIndex = menu.entries.Count;
+            NowResolvedId pathId = AuthoredEntryId(menu, id);
+            NowResolvedId deliveryId = pathId.Child("ctx-delivery");
+            return AddItem(menu, label, shortcut, enabled, selected, pathId, deliveryId, localIndex);
+        }
+
+        static bool AddItem(
+            Menu menu,
+            string label,
+            string shortcut,
+            bool enabled,
+            bool selected,
+            NowResolvedId pathId,
+            NowResolvedId deliveryId,
+            int localIndex)
+        {
             menu.entries.Add(new Entry
             {
                 kind = EntryKind.Item,
@@ -263,20 +427,29 @@ namespace NowUI
                 childMenu = -1
             });
 
-            ref int pending = ref NowControlState.Get<int>(_pendingPathStateId);
-
-            if (pending == deliveryId)
+            if (_activeHasPendingDelivery &&
+                _pendingDeliveries.TryGetValue(_activeId, out var pending) &&
+                ReferenceEquals(pending.owner, _activeRegistrationOwner) &&
+                ReferenceEquals(pending.provider, NowInput.currentProvider) &&
+                pending.deliveryId == deliveryId)
             {
-                pending = 0;
-
-                if (_pendingDeliveryCount > 0)
-                    --_pendingDeliveryCount;
-
-                _pendingOpenPath.Clear();
+                _pendingDeliveries.Remove(_activeId);
+                _activeHasPendingDelivery = false;
+                _activePendingOpenPath = null;
                 return enabled;
             }
 
             return false;
+        }
+
+        static NowResolvedId AuthoredEntryId(Menu menu, NowId id)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException(
+                    "Stable context-menu entries require an explicit id.",
+                    nameof(id));
+
+            return menu.pathId.Child("ctx-authored-entry").Child(id);
         }
 
         /// <summary>
@@ -287,41 +460,78 @@ namespace NowUI
         /// positional id would then hand the click to whichever item inherited
         /// the slot.
         /// </summary>
-        static int ItemDeliveryId(Menu menu, string label)
+        static NowResolvedId ItemDeliveryId(Menu menu, string label)
         {
-            int labelId = NowInput.GetId(menu.pathId, label);
+            NowResolvedId seed = menu.pathId.Child("ctx-legacy-label-delivery");
+            NowResolvedId labelId = label.Length > 0
+                ? seed.Child(label)
+                : seed.Child(-1);
             _labelOccurrenceScratch.TryGetValue(labelId, out int occurrence);
             _labelOccurrenceScratch[labelId] = occurrence + 1;
-            return NowInput.CombineId(labelId, occurrence);
+            return labelId.Child(occurrence + 1);
         }
 
         /// <summary>Adds a submenu row; true while that submenu should declare its children.</summary>
+        [Obsolete(PositionalEntryObsoleteMessage, true)]
         public static bool BeginSubmenu(string label)
         {
-            return BeginSubmenu(label, true, false);
+            return BeginSubmenuPositional(label, true, false);
         }
 
         /// <summary>Adds a submenu row; true while that submenu should declare its children.</summary>
+        [Obsolete(PositionalEntryObsoleteMessage, true)]
         public static bool BeginSubmenu(string label, bool enabled, bool selected = false)
         {
-            if (_activeId == 0 || _buildStack.Count == 0)
+            return BeginSubmenuPositional(label, enabled, selected);
+        }
+
+        static bool BeginSubmenuPositional(string label, bool enabled, bool selected)
+        {
+            if (!_activeId.hasValue || _buildStack.Count == 0)
                 return false;
 
             int parentIndex = _buildStack[_buildStack.Count - 1];
             var parent = _menus[parentIndex];
             int localIndex = parent.entries.Count;
-            int pathId = NowInput.CombineId(parent.pathId, localIndex + 1);
+            NowResolvedId pathId = parent.pathId.Child(localIndex + 1);
+            return AddSubmenu(parentIndex, parent, label, enabled, selected, localIndex, pathId);
+        }
 
-            // The overlay id must not be CombineId(_activeId, pathId): for root-level
-            // rows pathId is CombineId(_activeId, row + 1), and CombineId's xor mix
-            // cancels to the constant row + 1 — colliding with any menu whose own id
-            // is that small. A colliding FindMenu resolves the child's deferred draw
-            // back to its ancestor, which re-defers the child in the same flush,
-            // looping until the overlay cap trips.
+        /// <summary>
+        /// Adds a submenu whose menu-local authored id remains stable when its
+        /// label changes or sibling rows are inserted, removed, or reordered.
+        /// </summary>
+        public static bool BeginSubmenu(
+            string label,
+            NowId id,
+            bool enabled = true,
+            bool selected = false)
+        {
+            if (!_activeId.hasValue || _buildStack.Count == 0)
+                return false;
+
+            int parentIndex = _buildStack[_buildStack.Count - 1];
+            var parent = _menus[parentIndex];
+            int localIndex = parent.entries.Count;
+            NowResolvedId pathId = AuthoredEntryId(parent, id);
+            return AddSubmenu(parentIndex, parent, label, enabled, selected, localIndex, pathId);
+        }
+
+        static bool AddSubmenu(
+            int parentIndex,
+            Menu parent,
+            string label,
+            bool enabled,
+            bool selected,
+            int localIndex,
+            NowResolvedId pathId)
+        {
+            // Keep the submenu source beneath its authored row. NowOverlay enters
+            // the Overlay domain exactly once when this source is deferred.
             int childMenu = AddMenu(
                 _activeId,
                 pathId,
-                NowInput.CombineId(NowInput.GetId(_activeId, "ctx-submenu"), pathId),
+                pathId.Child("ctx-submenu-overlay"),
                 parentIndex,
                 parent.depth + 1);
 
@@ -356,7 +566,7 @@ namespace NowUI
         /// <summary>Adds a non-interactive label row.</summary>
         public static void Label(string label)
         {
-            if (_activeId == 0 || _buildStack.Count == 0)
+            if (!_activeId.hasValue || _buildStack.Count == 0)
                 return;
 
             var menu = CurrentMenu();
@@ -368,7 +578,7 @@ namespace NowUI
                 label = label ?? string.Empty,
                 enabled = false,
                 selected = false,
-                pathId = NowInput.CombineId(menu.pathId, localIndex + 1),
+                pathId = menu.pathId.Child(localIndex + 1),
                 localIndex = localIndex,
                 childMenu = -1
             });
@@ -377,7 +587,7 @@ namespace NowUI
         /// <summary>Adds a separator row.</summary>
         public static void Separator()
         {
-            if (_activeId == 0 || _buildStack.Count == 0)
+            if (!_activeId.hasValue || _buildStack.Count == 0)
                 return;
 
             var menu = CurrentMenu();
@@ -389,7 +599,7 @@ namespace NowUI
                 label = string.Empty,
                 enabled = false,
                 selected = false,
-                pathId = NowInput.CombineId(menu.pathId, localIndex + 1),
+                pathId = menu.pathId.Child(localIndex + 1),
                 localIndex = localIndex,
                 childMenu = -1
             });
@@ -403,26 +613,34 @@ namespace NowUI
         /// </summary>
         public static void End()
         {
-            if (_activeId == 0)
+            if (!_activeId.hasValue)
                 return;
 
-            int id = _activeId;
-            _activeId = 0;
+            NowResolvedId id = _activeId;
+            object owner = _activeRegistrationOwner;
+            bool buildsOpenMenu = _activeBuildsOpenMenu;
+            bool hasPendingDelivery = _activeHasPendingDelivery;
+            _activeId = NowResolvedId.None;
+            _activeRegistrationOwner = null;
+            _activeBuildsOpenMenu = false;
+            _activeHasPendingDelivery = false;
+            _activePendingOpenPath = null;
             _buildStack.Clear();
 
-            if (_openId != id)
+            // The owner's next declaration pass is the sole delivery window.
+            // If no declared item claimed it, discard it instead of allowing a
+            // later, unrelated menu layout to receive the old click.
+            if (hasPendingDelivery &&
+                _pendingDeliveries.TryGetValue(id, out var pending) &&
+                ReferenceEquals(pending.owner, owner))
             {
-                ref int pending = ref NowControlState.Get<int>(_pendingPathStateId);
+                _pendingDeliveries.Remove(id);
+            }
 
-                if (pending != 0)
-                {
-                    pending = 0;
-
-                    if (_pendingDeliveryCount > 0)
-                        --_pendingDeliveryCount;
-                }
-
-                _pendingOpenPath.Clear();
+            if (!buildsOpenMenu ||
+                _openId != id ||
+                !ReferenceEquals(_openRegistrationOwner, owner))
+            {
                 return;
             }
 
@@ -440,7 +658,7 @@ namespace NowUI
                 MeasureMenu(_menus[i], theme);
 
             root.contentHeight = root.height;
-            root.popupRect = new NowRect(_position.x, _position.y, root.width, root.height);
+            root.popupRect = PlaceRootMenu(root, theme);
 
             if (_fitToView)
             {
@@ -450,14 +668,38 @@ namespace NowUI
             }
 
             NowOverlay.BlockAllSurfaces(root.overlayId);
-            NowOverlay.DeferScreen(root.popupRect, root.overlayId, DrawDeferred);
+            NowOverlay.DeferScreen(root.popupRect, root.overlayId, 0, DrawDeferred);
+            _openDeclaredOwnerPassSerial = CurrentOwnerPassSerial(owner);
         }
 
-        static void DrawDeferred(int overlayId)
+        static NowRect PlaceRootMenu(Menu root, NowThemeAsset theme)
         {
-            var menu = FindMenu(overlayId);
+            if (!_hasActionAnchor)
+                return new NowRect(_position.x, _position.y, root.width, root.height);
 
-            if (menu == null || _openId != menu.rootId)
+            float gap = Mathf.Max(0f, theme.controlStyles.dropdownPopupGap);
+            float x = _actionAnchor.xMax - root.width;
+            float y = _actionAnchor.yMax + gap;
+
+            if (_fitToView && y + root.height > NowInput.surface.size.y)
+            {
+                float above = _actionAnchor.y - gap - root.height;
+
+                if (above >= 0f)
+                    y = above;
+            }
+
+            return new NowRect(x, y, root.width, root.height);
+        }
+
+        static void DrawDeferred(int menuIndex)
+        {
+            if (menuIndex < 0 || menuIndex >= _menuCount)
+                return;
+
+            var menu = _menus[menuIndex];
+
+            if (_openId != menu.rootId)
                 return;
 
             if (menu.parentMenu < 0)
@@ -524,19 +766,24 @@ namespace NowUI
             NowFocus.LockNavigation();
             NowFocus.RetainFocus();
 
-            if (_highlightMenuOverlay == 0)
+            if (!_highlightMenuOverlay.hasValue)
                 return;
 
             var highlighted = FindMenu(_highlightMenuOverlay);
 
-            if (highlighted == null || highlighted.rootId != _openId || !IsMenuDrawn(highlighted))
+            if (highlighted == null ||
+                highlighted.rootId != _openId ||
+                !IsMenuDrawn(highlighted) ||
+                FindEntryIndex(highlighted, _highlightEntryPath) < 0)
+            {
                 ClearHighlight();
+            }
         }
 
         static bool NavPulse(Menu root, int seed, bool held)
         {
             return NowControlState.Repeat(
-                NowInput.CombineId(root.rootId, seed),
+                root.rootId.Child(seed),
                 held,
                 NavRepeatDelay,
                 NavRepeatInterval);
@@ -553,9 +800,9 @@ namespace NowUI
 
             theme.controlRenderer.DrawPopupBackground(theme, menu.popupRect, menu: true);
 
-            if (_pendingHighlightMenuOverlay != 0 && _pendingHighlightMenuOverlay == menu.overlayId)
+            if (_pendingHighlightMenuOverlay.hasValue && _pendingHighlightMenuOverlay == menu.overlayId)
             {
-                _pendingHighlightMenuOverlay = 0;
+                _pendingHighlightMenuOverlay = NowResolvedId.None;
                 SetHighlight(menu, FindSelectableEntry(menu, -1, 1));
             }
 
@@ -608,21 +855,24 @@ namespace NowUI
         /// </summary>
         static void UpdateMenuHighlightFromKeyboard(Menu menu)
         {
-            bool ownsHighlight = _highlightMenuOverlay == menu.overlayId && _highlightEntryIndex >= 0;
+            int highlightedIndex = _highlightMenuOverlay == menu.overlayId
+                ? FindEntryIndex(menu, _highlightEntryPath)
+                : -1;
+            bool ownsHighlight = highlightedIndex >= 0;
 
             if (!_navUpPulse && !_navDownPulse)
                 return;
 
             if (!ownsHighlight)
             {
-                if (_highlightMenuOverlay != 0 || HasOpenChild(menu))
+                if (_highlightMenuOverlay.hasValue || HasOpenChild(menu))
                     return;
 
                 SetHighlight(menu, FindSelectableEntry(menu, _navDownPulse ? -1 : menu.entries.Count, _navDownPulse ? 1 : -1));
                 return;
             }
 
-            SetHighlight(menu, FindSelectableEntry(menu, _highlightEntryIndex, _navDownPulse ? 1 : -1));
+            SetHighlight(menu, FindSelectableEntry(menu, highlightedIndex, _navDownPulse ? 1 : -1));
         }
 
         static void SetHighlight(Menu menu, int entryIndex)
@@ -631,9 +881,23 @@ namespace NowUI
                 return;
 
             _highlightMenuOverlay = menu.overlayId;
-            _highlightEntryIndex = entryIndex;
+            _highlightEntryPath = menu.entries[entryIndex].pathId;
             _highlightMovedByKeyboard = true;
             NowControlState.RequestRepaint();
+        }
+
+        static int FindEntryIndex(Menu menu, NowResolvedId pathId)
+        {
+            if (!pathId.hasValue)
+                return -1;
+
+            for (int i = 0; i < menu.entries.Count; ++i)
+            {
+                if (menu.entries[i].pathId == pathId)
+                    return i;
+            }
+
+            return -1;
         }
 
         /// <summary>
@@ -694,10 +958,11 @@ namespace NowUI
         /// </summary>
         static void ScrollHighlightIntoView(NowThemeAsset theme, Menu menu, NowRect itemArea, ref float scroll)
         {
+            int highlightedIndex = FindEntryIndex(menu, _highlightEntryPath);
+
             if (!_highlightMovedByKeyboard ||
                 _highlightMenuOverlay != menu.overlayId ||
-                _highlightEntryIndex < 0 ||
-                _highlightEntryIndex >= menu.entries.Count)
+                highlightedIndex < 0)
             {
                 return;
             }
@@ -706,10 +971,10 @@ namespace NowUI
             float itemHeight = theme.controlStyles.contextMenuItemHeight;
             float offset = 0f;
 
-            for (int i = 0; i < _highlightEntryIndex; ++i)
+            for (int i = 0; i < highlightedIndex; ++i)
                 offset += EntryHeight(menu.entries[i], itemHeight);
 
-            float entryHeight = EntryHeight(menu.entries[_highlightEntryIndex], itemHeight);
+            float entryHeight = EntryHeight(menu.entries[highlightedIndex], itemHeight);
             float top = offset - scroll;
 
             if (top < 0f)
@@ -755,7 +1020,7 @@ namespace NowUI
                 {
                     if (!visible)
                     {
-                        SetOpenPath(menu.depth, 0);
+                        SetOpenPath(menu.depth, NowResolvedId.None);
                     }
                     else
                     {
@@ -764,7 +1029,11 @@ namespace NowUI
                         if (child.entries.Count > 0)
                         {
                             child.popupRect = PlaceSubmenu(menu, child, itemRect, popupPadding);
-                            NowOverlay.DeferScreen(child.popupRect, child.overlayId, DrawDeferred);
+                            NowOverlay.DeferScreen(
+                                child.popupRect,
+                                child.overlayId,
+                                entry.childMenu,
+                                DrawDeferred);
                         }
                     }
                 }
@@ -810,7 +1079,7 @@ namespace NowUI
                 {
                     UpdateOpenPathFromHover(
                         menu.depth,
-                        entry.kind == EntryKind.Submenu ? entry.pathId : 0,
+                        entry.kind == EntryKind.Submenu ? entry.pathId : NowResolvedId.None,
                         entry.kind == EntryKind.Submenu ? entry.childMenu : -1);
                     return;
                 }
@@ -975,19 +1244,20 @@ namespace NowUI
             }
 
             var interaction = entry.enabled && !occluded
-                ? NowInput.Interact(NowInput.CombineId(menu.itemSeed, entry.localIndex + 1), itemRect)
+                ? NowInput.Interact(entry.pathId.Child("ctx-interaction"), itemRect)
                 : default;
 
             if (entry.enabled && interaction.hovered && _pointerMoved &&
-                (_highlightMenuOverlay != menu.overlayId || _highlightEntryIndex != entry.localIndex))
+                (_highlightMenuOverlay != menu.overlayId || _highlightEntryPath != entry.pathId))
             {
                 _highlightMenuOverlay = menu.overlayId;
-                _highlightEntryIndex = entry.localIndex;
+                _highlightEntryPath = entry.pathId;
                 _highlightMovedByKeyboard = false;
                 NowControlState.RequestRepaint();
             }
 
-            bool highlighted = _highlightMenuOverlay == menu.overlayId && _highlightEntryIndex == entry.localIndex;
+            bool highlighted = _highlightMenuOverlay == menu.overlayId &&
+                _highlightEntryPath == entry.pathId;
             bool submitted = entry.enabled && highlighted && NowInput.current.submitPressed;
 
             if (submitted)
@@ -1055,7 +1325,7 @@ namespace NowUI
             {
                 UpdateOpenPathFromHover(
                     menu.depth,
-                    entry.kind == EntryKind.Submenu ? entry.pathId : 0,
+                    entry.kind == EntryKind.Submenu ? entry.pathId : NowResolvedId.None,
                     entry.kind == EntryKind.Submenu ? entry.childMenu : -1);
             }
 
@@ -1065,13 +1335,14 @@ namespace NowUI
             if (entry.kind != EntryKind.Item || !entry.enabled || (!interaction.clicked && !submitted))
                 return;
 
-            ref int pendingDelivery = ref NowControlState.Get<int>(_pendingPathStateId);
-
-            if (pendingDelivery == 0)
-                ++_pendingDeliveryCount;
-
-            pendingDelivery = entry.deliveryId;
-            CopyOpenPathToPending(menu.depth);
+            _pendingDeliveries[menu.rootId] = new PendingDelivery
+            {
+                deliveryId = entry.deliveryId,
+                owner = _openRegistrationOwner,
+                provider = _openSurface,
+                createdOwnerPassSerial = CurrentOwnerPassSerial(_openRegistrationOwner),
+                openPath = CopyOpenPath(menu.depth)
+            };
             Close();
         }
 
@@ -1100,13 +1371,13 @@ namespace NowUI
             if (menu.depth > 0 && _navLeftPulse && menu.parentMenu >= 0)
             {
                 var parent = _menus[menu.parentMenu];
-                SetOpenPath(menu.depth - 1, 0);
+                SetOpenPath(menu.depth - 1, NowResolvedId.None);
                 ClearHoverIntent();
                 SetHighlight(parent, FindParentEntryIndex(parent, menu.pathId));
             }
         }
 
-        static int FindParentEntryIndex(Menu parent, int childPathId)
+        static int FindParentEntryIndex(Menu parent, NowResolvedId childPathId)
         {
             for (int i = 0; i < parent.entries.Count; ++i)
             {
@@ -1218,7 +1489,12 @@ namespace NowUI
             return itemHeight;
         }
 
-        static int AddMenu(int rootId, int pathId, int overlayId, int parentMenu, int depth)
+        static int AddMenu(
+            NowResolvedId rootId,
+            NowResolvedId pathId,
+            NowResolvedId overlayId,
+            int parentMenu,
+            int depth)
         {
             if (_menuCount >= _menus.Count)
                 _menus.Add(new Menu());
@@ -1240,7 +1516,7 @@ namespace NowUI
             return _menus[_buildStack[_buildStack.Count - 1]];
         }
 
-        static Menu FindMenu(int overlayId)
+        static Menu FindMenu(NowResolvedId overlayId)
         {
             for (int i = 0; i < _menuCount; ++i)
             {
@@ -1251,14 +1527,16 @@ namespace NowUI
             return null;
         }
 
-        static bool IsPathOpen(int depth, int pathId)
+        static bool IsPathOpen(int depth, NowResolvedId pathId)
         {
             return _openPath.Count > depth && _openPath[depth] == pathId;
         }
 
-        static bool IsPendingPathOpen(int depth, int pathId)
+        static bool IsPendingPathOpen(int depth, NowResolvedId pathId)
         {
-            return _pendingOpenPath.Count > depth && _pendingOpenPath[depth] == pathId;
+            return _activePendingOpenPath != null &&
+                _activePendingOpenPath.Length > depth &&
+                _activePendingOpenPath[depth] == pathId;
         }
 
         /// <summary>
@@ -1272,9 +1550,12 @@ namespace NowUI
         /// keyboard-opened submenus. Timing comes from the input snapshot's
         /// caller-supplied time.
         /// </summary>
-        static void UpdateOpenPathFromHover(int depth, int desiredPathId, int desiredChildMenu)
+        static void UpdateOpenPathFromHover(
+            int depth,
+            NowResolvedId desiredPathId,
+            int desiredChildMenu)
         {
-            bool alreadyDesired = desiredPathId != 0
+            bool alreadyDesired = desiredPathId.hasValue
                 ? IsPathOpen(depth, desiredPathId)
                 : _openPath.Count <= depth;
 
@@ -1288,7 +1569,7 @@ namespace NowUI
 
             bool hasOpenPathAtDepth = _openPath.Count > depth;
 
-            if (desiredPathId != 0 &&
+            if (desiredPathId.hasValue &&
                 (!hasOpenPathAtDepth || (_pointerMoved && !PointerMovingTowardOpenChild(depth))))
             {
                 SetOpenPath(depth, desiredPathId);
@@ -1363,7 +1644,7 @@ namespace NowUI
             if (_openPath.Count <= depth)
                 return null;
 
-            int pathId = _openPath[depth];
+            NowResolvedId pathId = _openPath[depth];
 
             for (int i = 0; i < _menuCount; ++i)
             {
@@ -1393,7 +1674,7 @@ namespace NowUI
 
         static void ResetSubmenuScroll(int childMenu)
         {
-            if (childMenu < 0 || childMenu >= _menuCount || _openId == 0)
+            if (childMenu < 0 || childMenu >= _menuCount || !_openId.hasValue)
                 return;
 
             var menu = _menus[childMenu];
@@ -1407,43 +1688,262 @@ namespace NowUI
         static void ClearHoverIntent()
         {
             _hoverIntentDepth = -1;
-            _hoverIntentPath = 0;
+            _hoverIntentPath = NowResolvedId.None;
             _hoverIntentStart = 0f;
         }
 
-        static void SetOpenPath(int depth, int pathId)
+        static void SetOpenPath(int depth, NowResolvedId pathId)
         {
-            int targetCount = pathId != 0 ? depth + 1 : depth;
+            int targetCount = pathId.hasValue ? depth + 1 : depth;
             bool changed = _openPath.Count != targetCount ||
-                (pathId != 0 && (_openPath.Count <= depth || _openPath[depth] != pathId));
+                (pathId.hasValue && (_openPath.Count <= depth || _openPath[depth] != pathId));
 
             while (_openPath.Count > depth)
                 _openPath.RemoveAt(_openPath.Count - 1);
 
-            if (pathId != 0)
+            if (pathId.hasValue)
                 _openPath.Add(pathId);
 
             if (changed)
                 NowControlState.RequestRepaint();
         }
 
-        static void CopyOpenPathToPending(int depth)
+        static NowResolvedId[] CopyOpenPath(int depth)
         {
-            _pendingOpenPath.Clear();
+            int count = Mathf.Min(depth, _openPath.Count);
 
-            for (int i = 0; i < depth && i < _openPath.Count; ++i)
-                _pendingOpenPath.Add(_openPath[i]);
+            if (count <= 0)
+                return null;
+
+            var result = new NowResolvedId[count];
+
+            for (int i = 0; i < count; ++i)
+                result[i] = _openPath[i];
+
+            return result;
         }
+
+        /// <summary>
+        /// Starts a declaration pass for the owner selected by the overlay
+        /// transaction. The pass serial is deliberately independent of Unity's
+        /// frame count because IMGUI can run several input/layout/repaint passes
+        /// inside one Unity frame.
+        /// </summary>
+        internal static void BeginOwnerPass(object owner)
+        {
+            unchecked
+            {
+                ++_nextOwnerPassSerial;
+
+                if (_nextOwnerPassSerial == 0)
+                    _nextOwnerPassSerial = 1;
+            }
+
+            _ownerPasses.Add(new OwnerPass
+            {
+                owner = owner,
+                serial = _nextOwnerPassSerial
+            });
+        }
+
+        /// <summary>
+        /// Completes one owner's declaration pass. An open menu is retained
+        /// while its owner is idle, but once that owner actually runs again it
+        /// must finish declaring the menu. Pending item delivery gets the same
+        /// single-subsequent-pass lifetime.
+        /// </summary>
+        internal static void EndOwnerPass(object owner, bool completed)
+        {
+            int index = FindOwnerPass(owner);
+
+            if (index < 0)
+                return;
+
+            OwnerPass pass = _ownerPasses[index];
+            _ownerPasses.RemoveAt(index);
+
+            if (!completed || pass.failed)
+            {
+                DropPendingCreatedInPass(owner, pass.serial);
+                return;
+            }
+
+            DropPendingBeforeCompletedPass(owner, pass.serial);
+
+            if (_openId.hasValue &&
+                ReferenceEquals(_openRegistrationOwner, owner) &&
+                _openOwnerPassSerial != pass.serial &&
+                _openDeclaredOwnerPassSerial != pass.serial)
+            {
+                Close();
+            }
+        }
+
+        /// <summary>Marks active passes failed without applying liveness cleanup.</summary>
+        internal static void MarkOwnerPassesFailed()
+        {
+            for (int i = 0; i < _ownerPasses.Count; ++i)
+            {
+                OwnerPass pass = _ownerPasses[i];
+                pass.failed = true;
+                _ownerPasses[i] = pass;
+            }
+        }
+
+        /// <summary>
+        /// Drops lifecycle bookkeeping for transactions abandoned by a reset or
+        /// leaked input scope. Abandonment is not evidence that an owner
+        /// successfully completed a declaration pass, so it never closes a
+        /// previously valid open menu.
+        /// </summary>
+        internal static void AbandonOwnerPasses()
+        {
+            for (int i = 0; i < _ownerPasses.Count; ++i)
+            {
+                OwnerPass pass = _ownerPasses[i];
+                DropPendingCreatedInPass(pass.owner, pass.serial);
+            }
+
+            _ownerPasses.Clear();
+        }
+
+        /// <summary>Releases all menu state rooted by a disposed overlay owner.</summary>
+        internal static void ReleaseOwner(object owner)
+        {
+            if (_openId.hasValue && ReferenceEquals(_openRegistrationOwner, owner))
+                Close();
+
+            DropAllPendingForOwner(owner);
+
+            if (ReferenceEquals(_activeRegistrationOwner, owner))
+            {
+                _activeId = NowResolvedId.None;
+                _activeRegistrationOwner = null;
+                _activeBuildsOpenMenu = false;
+                _activeHasPendingDelivery = false;
+                _activePendingOpenPath = null;
+                _buildStack.Clear();
+            }
+
+            for (int i = _ownerPasses.Count - 1; i >= 0; --i)
+            {
+                if (ReferenceEquals(_ownerPasses[i].owner, owner))
+                    _ownerPasses.RemoveAt(i);
+            }
+        }
+
+        /// <summary>
+        /// True while the context-menu subsystem still needs an overlay owner
+        /// for an open menu or a pending click delivery.
+        /// </summary>
+        internal static bool TracksOwner(object owner)
+        {
+            if (_openId.hasValue && ReferenceEquals(_openRegistrationOwner, owner))
+                return true;
+
+            foreach (var pair in _pendingDeliveries)
+            {
+                if (ReferenceEquals(pair.Value.owner, owner))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static int CurrentOwnerPassSerial(object owner)
+        {
+            int index = FindOwnerPass(owner);
+            return index >= 0 ? _ownerPasses[index].serial : 0;
+        }
+
+        static int FindOwnerPass(object owner)
+        {
+            for (int i = _ownerPasses.Count - 1; i >= 0; --i)
+            {
+                if (ReferenceEquals(_ownerPasses[i].owner, owner))
+                    return i;
+            }
+
+            return -1;
+        }
+
+        static void DropPendingBeforeCompletedPass(object owner, int currentPassSerial)
+        {
+            _pendingRemovalScratch.Clear();
+
+            foreach (var pair in _pendingDeliveries)
+            {
+                PendingDelivery pending = pair.Value;
+
+                if (ReferenceEquals(pending.owner, owner) &&
+                    pending.createdOwnerPassSerial != currentPassSerial)
+                {
+                    _pendingRemovalScratch.Add(pair.Key);
+                }
+            }
+
+            RemovePendingScratch();
+        }
+
+        static void DropPendingCreatedInPass(object owner, int passSerial)
+        {
+            _pendingRemovalScratch.Clear();
+
+            foreach (var pair in _pendingDeliveries)
+            {
+                PendingDelivery pending = pair.Value;
+
+                if (ReferenceEquals(pending.owner, owner) &&
+                    pending.createdOwnerPassSerial == passSerial)
+                {
+                    _pendingRemovalScratch.Add(pair.Key);
+                }
+            }
+
+            RemovePendingScratch();
+        }
+
+        static void DropAllPendingForOwner(object owner)
+        {
+            _pendingRemovalScratch.Clear();
+
+            foreach (var pair in _pendingDeliveries)
+            {
+                if (ReferenceEquals(pair.Value.owner, owner))
+                    _pendingRemovalScratch.Add(pair.Key);
+            }
+
+            RemovePendingScratch();
+        }
+
+        static void RemovePendingScratch()
+        {
+            for (int i = 0; i < _pendingRemovalScratch.Count; ++i)
+                _pendingDeliveries.Remove(_pendingRemovalScratch[i]);
+
+            _pendingRemovalScratch.Clear();
+        }
+
+        internal static int pendingDeliveryCount => _pendingDeliveries.Count;
 
         public static void Reset()
         {
-            _openId = 0;
+            _openId = NowResolvedId.None;
             _openSurface = null;
+            _openRegistrationOwner = null;
+            _openOwnerPassSerial = 0;
+            _openDeclaredOwnerPassSerial = 0;
             _hasOpenedInputPass = false;
             _openedInputPass = 0;
+            _position = default;
+            _hasActionAnchor = false;
+            _actionAnchor = default;
             _fitToView = true;
-            _activeId = 0;
-            _pendingPathStateId = 0;
+            _activeId = NowResolvedId.None;
+            _activeRegistrationOwner = null;
+            _activeBuildsOpenMenu = false;
+            _activeHasPendingDelivery = false;
+            _activePendingOpenPath = null;
             _menuCount = 0;
             ClearHoverIntent();
             ClearHighlight();
@@ -1456,7 +1956,10 @@ namespace NowUI
             _navDownPulse = false;
             _buildStack.Clear();
             _openPath.Clear();
-            _pendingOpenPath.Clear();
+            _pendingRemovalScratch.Clear();
+            _pendingDeliveries.Clear();
+            _ownerPasses.Clear();
+            _nextOwnerPassSerial = 0;
 
             for (int i = 0; i < _menus.Count; ++i)
                 _menus[i].entries.Clear();

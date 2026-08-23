@@ -25,59 +25,78 @@ namespace NowUI
     /// </summary>
     public static class NowControls
     {
-        static readonly List<int> _idStack = new List<int>(8);
+        static readonly List<NowResolvedId> _idStack = new List<NowResolvedId>(8);
 
         static readonly NowScopeGuard _idScopes = new NowScopeGuard("NowControls.IdScope", 8);
 
         static int _idScopeStartedAt = int.MinValue;
 
-        static int _nextHostScopeId;
+        static ulong _nextOwnerNonce;
 
-        const int HostScopeSeed = unchecked((int)0x4e485354);
-
-        /// <summary>Process-wide identity shared by every retained NowUI host type.</summary>
-        internal static int AllocateHostScopeId()
+        sealed class OwnerIdentity
         {
-            unchecked
+            public readonly NowResolvedId root;
+
+            public OwnerIdentity(NowResolvedId root)
             {
-                ++_nextHostScopeId;
-
-                if (_nextHostScopeId == 0)
-                    ++_nextHostScopeId;
-
-                return NowInput.CombineId(HostScopeSeed, _nextHostScopeId);
+                this.root = root;
             }
         }
 
-        internal static int ResolveHostControlId(int hostScopeId, string id)
-        {
-            if (id == null)
-                throw new ArgumentNullException(nameof(id));
+        static ConditionalWeakTable<object, OwnerIdentity> _ownerIdentities =
+            new ConditionalWeakTable<object, OwnerIdentity>();
 
-            // hostScopeId is already the absolute root seed. Combining it with an
-            // ambient scope would double-hash when this helper is called from a
-            // host draw callback.
-            return NowInput.GetId(hostScopeId, id);
+        static NowResolvedId _defaultOwnerRoot;
+
+        static NowResolvedId AllocateOwnerRoot()
+        {
+            unchecked
+            {
+                ++_nextOwnerNonce;
+
+                if (_nextOwnerNonce == 0UL)
+                    ++_nextOwnerNonce;
+
+                return NowResolvedId.CreateOwnerRoot(_nextOwnerNonce);
+            }
         }
 
-        internal static int ResolveHostControlId(int hostScopeId, int id)
+        internal static NowResolvedId AllocateOwnerScope()
         {
-            if (id == 0)
-                throw new ArgumentException("Control id 0 is reserved.", nameof(id));
-
-            return NowInput.CombineId(hostScopeId, id);
+            return AllocateOwnerRoot();
         }
 
-        internal static int ResolveScopedControlId(int id)
+        static NowResolvedId CurrentOwnerRoot()
         {
-            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            return seed != 0 ? NowInput.CombineId(seed, id) : id;
+            object owner = NowInput.currentProvider;
+
+            if (owner != null)
+            {
+                return _ownerIdentities.GetValue(
+                    owner,
+                    _ => new OwnerIdentity(AllocateOwnerRoot())).root;
+            }
+
+            if (!_defaultOwnerRoot.hasValue)
+                _defaultOwnerRoot = AllocateOwnerRoot();
+
+            return _defaultOwnerRoot;
+        }
+
+        static NowResolvedId CurrentIdentityParent()
+        {
+            return _idStack.Count > 0 ? _idStack[^1] : CurrentOwnerRoot();
+        }
+
+        internal static NowResolvedId ResolveScopedControlId(int id)
+        {
+            return CurrentIdentityParent().Derive(NowIdDomain.Control, id);
         }
 
         /// <summary>Captures the fully resolved innermost id scope for deferred drawing.</summary>
-        internal static int CaptureIdScope()
+        internal static NowResolvedId CaptureIdScope()
         {
-            return _idStack.Count > 0 ? _idStack[^1] : 0;
+            return CurrentIdentityParent();
         }
 
         /// <summary>
@@ -85,8 +104,11 @@ namespace NowUI
         /// this does not combine it with the current scope: the captured value
         /// already contains its complete host and nested-scope ancestry.
         /// </summary>
-        internal static ControlIdScope RestoreIdScope(int resolvedScopeId)
+        internal static ControlIdScope RestoreIdScope(NowResolvedId resolvedScopeId)
         {
+            if (!resolvedScopeId.hasValue)
+                throw new ArgumentException("A resolved scope id is required.", nameof(resolvedScopeId));
+
             _idStack.Add(resolvedScopeId);
             return new ControlIdScope(EnterIdScope());
         }
@@ -129,9 +151,15 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            int resolved = GetControlId(id, SiteId(file, line));
+            NowResolvedId resolved = GetControlId(id, SiteToken(file, line));
             _idStack.Add(resolved);
             return new ControlIdScope(EnterIdScope());
+        }
+
+        /// <summary>Pushes an identity that has already been resolved exactly once.</summary>
+        public static ControlIdScope ControlScope(NowResolvedId id)
+        {
+            return RestoreIdScope(id);
         }
 
         /// <summary>
@@ -144,8 +172,10 @@ namespace NowUI
         /// </summary>
         public static ControlIdScope IdScope(string name)
         {
-            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            _idStack.Add(NowInput.GetId(seed, name));
+            if (string.IsNullOrEmpty(name))
+                throw new ArgumentException("ID scope names cannot be null or empty.", nameof(name));
+
+            _idStack.Add(CurrentIdentityParent().Derive(NowIdDomain.Scope, name));
             return new ControlIdScope(EnterIdScope());
         }
 
@@ -159,18 +189,14 @@ namespace NowUI
             if (!id.hasValue)
                 return default;
 
-            if (id.isString)
-            {
-                _idStack.Add(GetControlId(id.stringValue));
-                return new ControlIdScope(EnterIdScope());
-            }
-
-            int resolved = id.isResolved
-                ? id.intValue
-                : ResolveScopedControlId(id.intValue);
-
-            _idStack.Add(resolved != 0 ? resolved : 1);
+            _idStack.Add(CurrentIdentityParent().Derive(NowIdDomain.Scope, id));
             return new ControlIdScope(EnterIdScope());
+        }
+
+        /// <summary>Pushes a fully resolved scope without resolving it again.</summary>
+        public static ControlIdScope IdScope(NowResolvedId id)
+        {
+            return RestoreIdScope(id);
         }
 
         /// <summary>
@@ -179,21 +205,45 @@ namespace NowUI
         /// </summary>
         public static ControlIdScope IdScope(int id)
         {
-            if (id == 0)
-                throw new ArgumentException("Control id 0 is reserved.", nameof(id));
-
-            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-
-            if (seed != 0)
-            {
-                unchecked
-                {
-                    id = (seed * 397) ^ id;
-                }
-            }
-
-            _idStack.Add(id != 0 ? id : 1);
+            _idStack.Add(CurrentIdentityParent().Derive(NowIdDomain.Scope, id));
             return new ControlIdScope(EnterIdScope());
+        }
+
+        /// <summary>
+        /// Opens a stable identity scope for one item in a repeated collection.
+        /// The required domain key survives insertion, removal and reordering;
+        /// the caller site supplies a separate list namespace automatically.
+        /// </summary>
+        public static NowKeyedItemScope KeyedItem(
+            NowId key,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            if (!key.hasValue)
+                throw new ArgumentException("A keyed item requires a non-empty domain key.", nameof(key));
+
+            int siteToken = SiteToken(file, line);
+            NowResolvedId list = ResolveCallSiteStable(siteToken, NowIdDomain.Scope);
+            NowResolvedId item = list.Derive(NowIdDomain.Scope, key);
+            return new NowKeyedItemScope(RestoreIdScope(item));
+        }
+
+        /// <summary>
+        /// Opens a stable repeated-item scope under an explicit list namespace.
+        /// Use this overload when helper methods at different call sites draw the
+        /// same logical collection.
+        /// </summary>
+        public static NowKeyedItemScope KeyedItemIn(NowId listId, NowId key)
+        {
+            if (!listId.hasValue)
+                throw new ArgumentException("An explicit list id is required.", nameof(listId));
+
+            if (!key.hasValue)
+                throw new ArgumentException("A keyed item requires a non-empty domain key.", nameof(key));
+
+            NowResolvedId list = CurrentIdentityParent().Derive(NowIdDomain.Scope, listId);
+            NowResolvedId item = list.Derive(NowIdDomain.Scope, key);
+            return new NowKeyedItemScope(RestoreIdScope(item));
         }
 
         internal static void PopIdScope(int token)
@@ -230,11 +280,14 @@ namespace NowUI
 #endif
         }
 
-        static readonly Dictionary<int, int> _labelOccurrences = new Dictionary<int, int>(32);
+        static readonly Dictionary<NowResolvedId, int> _labelOccurrences =
+            new Dictionary<NowResolvedId, int>(32);
 
-        static readonly Dictionary<int, int> _passiveOccurrences = new Dictionary<int, int>(32);
+        static readonly Dictionary<NowResolvedId, int> _passiveOccurrences =
+            new Dictionary<NowResolvedId, int>(32);
 
-        static readonly Dictionary<int, int> _passiveReplayBase = new Dictionary<int, int>(32);
+        static readonly Dictionary<NowResolvedId, int> _passiveReplayBase =
+            new Dictionary<NowResolvedId, int>(32);
 
         const int InteractionRepaintSeed = 0x4e435249;
 
@@ -247,59 +300,95 @@ namespace NowUI
             public bool focused;
         }
 
-        sealed class ReferenceStringComparer : IEqualityComparer<string>
+        readonly struct CallSiteKey : IEquatable<CallSiteKey>
         {
-            public bool Equals(string x, string y)
+            public readonly string file;
+
+            public readonly int line;
+
+            public CallSiteKey(string file, int line)
             {
-                return ReferenceEquals(x, y);
+                this.file = file;
+                this.line = line;
             }
 
-            public int GetHashCode(string value)
+            public bool Equals(CallSiteKey other)
             {
-                return RuntimeHelpers.GetHashCode(value);
+                return line == other.line &&
+                    string.Equals(file, other.file, StringComparison.Ordinal);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is CallSiteKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((file != null ? StringComparer.Ordinal.GetHashCode(file) : 0) * 397) ^ line;
+                }
             }
         }
 
-        const int SiteFileHashCacheLimit = 4096;
+        readonly struct CallSiteRecord
+        {
+            public readonly string file;
 
-        static readonly Dictionary<string, int> _siteFileHashes =
-            new Dictionary<string, int>(64, new ReferenceStringComparer());
+            public readonly int line;
+
+            public CallSiteRecord(string file, int line)
+            {
+                this.file = file;
+                this.line = line;
+            }
+        }
+
+        static readonly Dictionary<CallSiteKey, int> _callSiteTokens =
+            new Dictionary<CallSiteKey, int>(128);
+
+        static readonly Dictionary<int, CallSiteRecord> _callSites =
+            new Dictionary<int, CallSiteRecord>(128);
+
+        static int _nextCallSiteToken;
 
         /// <summary>
-        /// Hashes a call site (file + line) into a control identity. The control
+        /// Interns a call site (file + line) into an opaque runtime token. The token
+        /// is not itself an authored identity: resolution hashes the full path and line into
+        /// the active 64-bit owner/scope path, avoiding the old 32-bit call-site
+        /// collision boundary. The control
         /// factories capture their caller via [CallerFilePath]/[CallerLineNumber]
         /// and pass it here, so every textual call site is automatically its own
         /// control — no explicit id needed. Loops share a site and are
-        /// disambiguated by per-frame occurrence in <see cref="GetControlId(int)"/>.
+        /// disambiguated by per-frame occurrence when the typed fallback is
+        /// passed to <see cref="GetControlId(NowId, NowCallSiteId)"/>.
         /// Custom controls get the same behavior by declaring the caller-info
         /// parameters themselves and forwarding them here.
-        /// The path's content hash is memoized by reference: caller-info paths
-        /// are compiler-interned constants, so each call site pays the
-        /// O(path-length) walk once. Non-interned strings still hash correctly
-        /// (the cached value is the content hash); the cache is size-capped so
-        /// dynamic paths cannot grow it without bound.
+        /// Equivalent path strings share a token even when they are not the same
+        /// string instance. Tokens are process-local and must not be persisted.
         /// </summary>
-        public static int SiteId(string file, int line)
+        public static NowCallSiteId SiteId(string file, int line)
         {
-            unchecked
+            return new NowCallSiteId(SiteToken(file, line));
+        }
+
+        internal static int SiteToken(string file, int line)
+        {
+            var key = new CallSiteKey(file, line);
+
+            if (_callSiteTokens.TryGetValue(key, out int token))
+                return token;
+
+            do
             {
-                int fileHash;
-
-                if (file == null)
-                {
-                    fileHash = 0;
-                }
-                else if (!_siteFileHashes.TryGetValue(file, out fileHash))
-                {
-                    fileHash = file.GetHashCode();
-
-                    if (_siteFileHashes.Count < SiteFileHashCacheLimit)
-                        _siteFileHashes.Add(file, fileHash);
-                }
-
-                int hash = (fileHash * 397) ^ line;
-                return hash != 0 ? hash : 1;
+                token = unchecked(++_nextCallSiteToken);
             }
+            while (token == 0 || _callSites.ContainsKey(token));
+
+            _callSiteTokens.Add(key, token);
+            _callSites.Add(token, new CallSiteRecord(file, line));
+            return token;
         }
 
         /// <summary>
@@ -309,37 +398,59 @@ namespace NowUI
         /// two controls sharing one explicit id in one frame share state, which
         /// is the caller's bug, not something to silently disambiguate.
         /// </summary>
-        public static int GetControlId(string id)
+        public static NowResolvedId GetControlId(string id)
         {
-            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            return NowInput.GetId(seed, id);
+            if (string.IsNullOrEmpty(id))
+                throw new ArgumentException("Control id strings cannot be null or empty.", nameof(id));
+
+            return CurrentIdentityParent().Derive(NowIdDomain.Control, id);
+        }
+
+        /// <summary>
+        /// Resolves an authored id once beneath the active owner/scope. Default
+        /// identity uses the caller site and receives loop occurrence salting.
+        /// </summary>
+        public static NowResolvedId GetControlId(
+            NowId id = default,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            return GetControlId(id, SiteToken(file, line));
         }
 
         /// <summary>
         /// Resolves an optional explicit id to a control id, falling back to the
         /// captured call-site identity when the id is default. Explicit ids are
-        /// stable (strings and ordinary integers scoped; resolved integers pass
-        /// through unchanged — see <see cref="NowId"/>);
-        /// only the call-site fallback is occurrence-salted.
+        /// stable (both strings and integers are authored local path segments);
+        /// only the call-site fallback is occurrence-salted. Pass an already
+        /// resolved identity directly to the API that consumes it.
         /// </summary>
-        public static int GetControlId(NowId id, int fallbackIdentity)
+        public static NowResolvedId GetControlId(
+            NowId id,
+            NowCallSiteId fallbackIdentity)
         {
-            return id.ResolveControlId(fallbackIdentity);
+            return GetControlId(id, fallbackIdentity.token);
         }
 
-        internal static int ResolveNavigationTargetId(NowId id)
+        internal static NowResolvedId GetControlId(NowId id, int fallbackIdentity)
         {
             if (!id.hasValue)
-                return 0;
+                return GetControlId(fallbackIdentity);
 
-            // Must mirror NowId.ResolveControlId exactly, or navigation links
-            // point at ids no control ever registers.
-            return id.ResolveStableId(1);
+            return CurrentIdentityParent().Derive(NowIdDomain.Control, id);
+        }
+
+        internal static NowResolvedId ResolveNavigationTargetId(NowId id)
+        {
+            if (!id.hasValue)
+                return NowResolvedId.None;
+
+            return CurrentIdentityParent().Derive(NowIdDomain.Control, id);
         }
 
         /// <summary>
-        /// Derives a control id from a call-site identity hash (a
-        /// <see cref="SiteId"/>) within the active id scope. Repeated draws of the
+        /// Derives a control id from an internal call-site token within the active
+        /// id scope. Repeated draws of the
         /// same identity in one frame — loop iterations over a single call site —
         /// are salted by occurrence so they never share interaction state; the
         /// first occurrence keeps the stable id. Occurrence order follows draw
@@ -349,26 +460,44 @@ namespace NowUI
         /// </see>
         /// keyed by your data — explicit ids are never salted.
         /// </summary>
-        public static int GetControlId(int identity)
+        internal static NowResolvedId GetControlId(int identity)
         {
-            int seed = _idStack.Count > 0 ? _idStack[^1] : 0;
-            int id = identity;
-
-            if (seed != 0)
-            {
-                unchecked
-                {
-                    id = (seed * 397) ^ identity;
-                }
-            }
-
-            if (id == 0)
-                id = 1;
-
-            return Salt(id);
+            return Salt(ResolveCallSiteStable(identity, NowIdDomain.Control));
         }
 
-        static int Salt(int id)
+        internal static NowResolvedId ResolveCallSiteStable(int identity, NowIdDomain domain)
+        {
+            return ResolveCallSiteStable(CurrentIdentityParent(), identity, domain);
+        }
+
+        internal static NowResolvedId ResolveCallSiteStable(
+            NowResolvedId parent,
+            int identity,
+            NowIdDomain domain)
+        {
+            if (!parent.hasValue)
+                throw new ArgumentException("A resolved call-site parent is required.", nameof(parent));
+
+            if (_callSites.TryGetValue(identity, out var site))
+                return NowIdHash.DeriveCallSite(parent, domain, site.file, site.line);
+
+            return NowIdHash.DeriveCallSiteToken(parent, domain, identity);
+        }
+
+        internal static NowResolvedId ResolveScopedId(NowIdDomain domain, NowId id)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("A non-empty authored id is required.", nameof(id));
+
+            return CurrentIdentityParent().Derive(domain, id);
+        }
+
+        internal static NowResolvedId ResolveCallSite(int identity, NowIdDomain domain)
+        {
+            return Salt(ResolveCallSiteStable(identity, domain));
+        }
+
+        static NowResolvedId Salt(NowResolvedId id)
         {
             // Measure passes draw the same controls again, so they count in a
             // replay table seeded from the real pass's current occurrence offsets:
@@ -380,11 +509,7 @@ namespace NowUI
             {
                 occurrences[id] = occurrence + 1;
 
-                unchecked
-                {
-                    int salted = (id * 397) ^ (occurrence * -1521134295);
-                    return salted != 0 ? salted : 1;
-                }
+                return NowIdHash.DeriveOccurrence(id, occurrence);
             }
 
             occurrences[id] = 1;
@@ -401,9 +526,9 @@ namespace NowUI
         }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-        static readonly HashSet<int> _interactedIds = new HashSet<int>(64);
+        static readonly HashSet<NowResolvedId> _interactedIds = new HashSet<NowResolvedId>(64);
 
-        static readonly HashSet<int> _duplicateWarnedIds = new HashSet<int>(8);
+        static readonly HashSet<NowResolvedId> _duplicateWarnedIds = new HashSet<NowResolvedId>(8);
 #endif
 
         /// <summary>
@@ -418,7 +543,7 @@ namespace NowUI
         public static bool warnOnDuplicateControlIds = true;
 
         [System.Diagnostics.Conditional("UNITY_EDITOR"), System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
-        static void CheckDuplicateControlId(int id)
+        static void CheckDuplicateControlId(NowResolvedId id)
         {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (!warnOnDuplicateControlIds || NowInput.isPassive)
@@ -428,10 +553,10 @@ namespace NowUI
                 return;
 
             Debug.LogWarning(
-                $"NowUI: two controls resolved to the same id (0x{id:X8}) in one pass — they share focus, state and " +
+                $"NowUI: two controls resolved to the same id ({id}) in one pass — they share focus, state and " +
                 "interaction. An explicit id is being reused: give each control its own identity with SetId keyed by " +
                 "your data, wrap repeated panels in NowControls.IdScope, or mint sub-region ids with " +
-                "NowInput.CombineId(parentId, seed). (Warned once per id; NowControls.warnOnDuplicateControlIds " +
+                "parentId.Child(seed). (Warned once per id; NowControls.warnOnDuplicateControlIds " +
                 "disables this check.)");
 #endif
         }
@@ -516,7 +641,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return Interact(GetControlId(SiteId(file, line)), rect, out focused, out submitted);
+            return Interact(GetControlId(SiteToken(file, line)), rect, out focused, out submitted);
         }
 
         /// <summary>
@@ -531,7 +656,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return Interact(GetControlId(SiteId(file, line)), rect, navigation, out focused, out submitted);
+            return Interact(GetControlId(SiteToken(file, line)), rect, navigation, out focused, out submitted);
         }
 
         /// <summary>
@@ -546,7 +671,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return Interact(GetControlId(id, SiteId(file, line)), rect, out focused, out submitted);
+            return Interact(GetControlId(id, SiteToken(file, line)), rect, out focused, out submitted);
         }
 
         /// <summary>
@@ -562,14 +687,19 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return Interact(GetControlId(id, SiteId(file, line)), rect, navigation, out focused, out submitted);
+            return Interact(GetControlId(id, SiteToken(file, line)), rect, navigation, out focused, out submitted);
         }
 
         /// <summary>
         /// The standard interaction bundle for builders that already captured a
         /// fallback call-site identity in their factory.
         /// </summary>
-        public static NowInteraction Interact(NowId id, int fallbackIdentity, NowRect rect, out bool focused, out bool submitted)
+        public static NowInteraction Interact(
+            NowId id,
+            NowCallSiteId fallbackIdentity,
+            NowRect rect,
+            out bool focused,
+            out bool submitted)
         {
             return Interact(GetControlId(id, fallbackIdentity), rect, out focused, out submitted);
         }
@@ -580,7 +710,7 @@ namespace NowUI
         /// </summary>
         public static NowInteraction Interact(
             NowId id,
-            int fallbackIdentity,
+            NowCallSiteId fallbackIdentity,
             NowRect rect,
             NowFocusNavigation navigation,
             out bool focused,
@@ -589,23 +719,63 @@ namespace NowUI
             return Interact(GetControlId(id, fallbackIdentity), rect, navigation, out focused, out submitted);
         }
 
-        public static NowInteraction Interact(int id, NowRect rect, out bool focused, out bool submitted)
+        public static NowInteraction Interact(NowResolvedId id, NowRect rect, out bool focused, out bool submitted)
         {
             return Interact(id, rect, default, out focused, out submitted);
+        }
+
+        /// <summary>Standard interaction for a composite parent with child hit exclusions.</summary>
+        public static NowInteraction Interact(
+            NowResolvedId id,
+            in NowInteractionRegion region,
+            out bool focused,
+            out bool submitted)
+        {
+            return Interact(id, in region, default, out focused, out submitted);
+        }
+
+        [Obsolete("Raw integer control identities were removed. Use Interact(NowResolvedId, ...).", true)]
+        public static NowInteraction Interact(int id, NowRect rect, out bool focused, out bool submitted)
+        {
+            return Interact(NowResolvedId.FromLegacy(id), rect, out focused, out submitted);
         }
 
         /// <summary>
         /// The standard interaction bundle with explicit focus navigation targets.
         /// </summary>
-        public static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation, out bool focused, out bool submitted)
+        public static NowInteraction Interact(NowResolvedId id, NowRect rect, NowFocusNavigation navigation, out bool focused, out bool submitted)
         {
             return Interact(id, rect, navigation, NowFocusNavigationLock.None, false, out focused, out submitted);
+        }
+
+        public static NowInteraction Interact(
+            NowResolvedId id,
+            in NowInteractionRegion region,
+            NowFocusNavigation navigation,
+            out bool focused,
+            out bool submitted)
+        {
+            return Interact(
+                id,
+                in region,
+                navigation,
+                NowFocusNavigationLock.None,
+                false,
+                acceptsSubmit: true,
+                out focused,
+                out submitted);
+        }
+
+        [Obsolete("Raw integer control identities were removed. Use Interact(NowResolvedId, ...).", true)]
+        public static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation, out bool focused, out bool submitted)
+        {
+            return Interact(NowResolvedId.FromLegacy(id), rect, navigation, out focused, out submitted);
         }
 
         /// <summary>
         /// The standard interaction bundle with focused-input ownership metadata.
         /// </summary>
-        public static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation,
+        public static NowInteraction Interact(NowResolvedId id, NowRect rect, NowFocusNavigation navigation,
             NowFocusNavigationLock navigationLock, bool consumesCancel, out bool focused, out bool submitted)
         {
             return Interact(
@@ -619,18 +789,48 @@ namespace NowUI
                 out submitted);
         }
 
+        [Obsolete("Raw integer control identities were removed. Use Interact(NowResolvedId, ...).", true)]
+        public static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation,
+            NowFocusNavigationLock navigationLock, bool consumesCancel, out bool focused, out bool submitted)
+        {
+            return Interact(
+                NowResolvedId.FromLegacy(id),
+                rect,
+                navigation,
+                navigationLock,
+                consumesCancel,
+                out focused,
+                out submitted);
+        }
+
         /// <summary>
         /// Standard interaction with an explicit submit policy. Text editors
         /// disable generic button-style submit so Space remains text and Enter
         /// is classified by the editor before the native key is claimed.
         /// </summary>
-        internal static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation,
+        internal static NowInteraction Interact(NowResolvedId id, NowRect rect, NowFocusNavigation navigation,
             NowFocusNavigationLock navigationLock, bool consumesCancel, bool acceptsSubmit,
             out bool focused, out bool submitted)
         {
+            var region = new NowInteractionRegion(rect);
+            return Interact(
+                id,
+                in region,
+                navigation,
+                navigationLock,
+                consumesCancel,
+                acceptsSubmit,
+                out focused,
+                out submitted);
+        }
+
+        internal static NowInteraction Interact(NowResolvedId id, in NowInteractionRegion region,
+            NowFocusNavigation navigation, NowFocusNavigationLock navigationLock,
+            bool consumesCancel, bool acceptsSubmit, out bool focused, out bool submitted)
+        {
             CheckDuplicateControlId(id);
-            var interaction = NowInput.Interact(id, rect);
-            NowFocus.Register(id, rect, navigation, navigationLock, consumesCancel);
+            var interaction = NowInput.Interact(id, in region);
+            NowFocus.Register(id, region.bounds, navigation, navigationLock, consumesCancel);
 
             if (interaction.pressed)
                 NowFocus.Focus(id);
@@ -640,7 +840,7 @@ namespace NowUI
 
             if (!NowInput.isPassive)
             {
-                int repaintId = NowInput.CombineId(id, InteractionRepaintSeed);
+                NowResolvedId repaintId = id.Child(InteractionRepaintSeed);
                 bool active = interaction.hovered || interaction.held || focused;
 
                 // Untouched controls already have the implicit all-false state,
@@ -673,6 +873,21 @@ namespace NowUI
             }
 
             return interaction;
+        }
+
+        internal static NowInteraction Interact(int id, NowRect rect, NowFocusNavigation navigation,
+            NowFocusNavigationLock navigationLock, bool consumesCancel, bool acceptsSubmit,
+            out bool focused, out bool submitted)
+        {
+            return Interact(
+                NowResolvedId.FromLegacy(id),
+                rect,
+                navigation,
+                navigationLock,
+                consumesCancel,
+                acceptsSubmit,
+                out focused,
+                out submitted);
         }
 
         /// <summary>
@@ -829,6 +1044,24 @@ namespace NowUI
 
             NowControls.PopIdScope(_token);
             _token = 0;
+        }
+    }
+
+    /// <summary>Disposable identity scope returned by <see cref="NowControls.KeyedItem(NowId, string, int)"/>.</summary>
+    [NowScope]
+    public struct NowKeyedItemScope : IDisposable
+    {
+        ControlIdScope _scope;
+
+        internal NowKeyedItemScope(ControlIdScope scope)
+        {
+            _scope = scope;
+        }
+
+        public void Dispose()
+        {
+            _scope.Dispose();
+            _scope = default;
         }
     }
 }

@@ -116,8 +116,19 @@ the consuming project's root `AGENTS.md`.
   under the project's `Assets` directory.
 - Builders are inert until consumed with `.Draw()` or `.Begin()`; use returned
   scopes in `using` statements.
-- Prefer stable non-zero integer IDs for controls in dynamic, conditional, or
-  reorderable collections.
+- Use authored model keys with `SetId`, `ControlScope`, or `KeyedItem` for
+  dynamic, conditional, or reorderable collections. Keep opaque
+  `NowResolvedId` values runtime-only; do not hash model strings into integers.
+  Integer zero is a valid authored `NowId`; `NowControls.SiteId(...)` returns a
+  typed `NowCallSiteId` fallback, not an authored or resolved identity.
+- Use `NowContextAction` for secondary-pointer/action-button menus, exclude
+  child controls with `NowInteractionRegion`, and give every item/submenu a
+  stable `id:`. Positional menu entries and raw resolved-looking integer IDs
+  are compile-time errors.
+- An anonymous overlay callback's `int state` is payload only. Pass a separate
+  `NowResolvedId` to a named `NowOverlay.Defer` overload when the overlay needs
+  source identity; the deferred callback receives its queued input/host/id
+  context.
 - Treat `NOWUI001` and `NOWUI002` analyzer diagnostics as correctness issues.
 - Allocation-free claims apply after representative warmup, not necessarily on
   first use.

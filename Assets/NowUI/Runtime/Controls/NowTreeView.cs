@@ -9,22 +9,25 @@ namespace NowUI
     /// </summary>
     public sealed class NowTreeViewState
     {
-        internal readonly HashSet<int> expanded = new HashSet<int>(32);
+        internal readonly HashSet<NowTreeNodeKey> expanded = new HashSet<NowTreeNodeKey>(32);
 
-        /// <summary>Resolved id of the selected row, or 0 when nothing is selected.</summary>
-        public int selectedId { get; set; }
+        /// <summary>Semantic key of the selected data node, or <see cref="NowTreeNodeKey.None"/>.</summary>
+        public NowTreeNodeKey selectedKey { get; set; }
 
-        public bool IsExpanded(int nodeId)
+        public bool IsExpanded(NowTreeNodeKey nodeKey)
         {
-            return expanded.Contains(nodeId);
+            return expanded.Contains(nodeKey);
         }
 
-        public void SetExpanded(int nodeId, bool value)
+        public void SetExpanded(NowTreeNodeKey nodeKey, bool value)
         {
+            if (!nodeKey.hasValue)
+                throw new System.ArgumentException("A tree node key is required.", nameof(nodeKey));
+
             if (value)
-                expanded.Add(nodeId);
+                expanded.Add(nodeKey);
             else
-                expanded.Remove(nodeId);
+                expanded.Remove(nodeKey);
         }
 
         public void CollapseAll()
@@ -55,9 +58,9 @@ namespace NowUI
     {
         readonly NowTreeViewState _state;
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowTreeView(NowTreeViewState state, int site)
         {
@@ -69,6 +72,9 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowTreeView SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Uses an identity that was already resolved by this host.</summary>
+        public NowTreeView SetId(NowResolvedId id) { _id = id; return this; }
+
         public NowTreeViewScope Begin()
         {
             var frame = NowTreeFrame.Rent(out int token);
@@ -79,8 +85,10 @@ namespace NowUI
                 frame.theme = NowTheme.themeAsset;
                 frame.selectionChanged = false;
                 frame.pathIds.Clear();
+                frame.pathKeys.Clear();
                 frame.counters.Clear();
                 frame.pathIds.Add(ResolveControlId());
+                frame.pathKeys.Add(NowTreeNodeKey.Root);
                 frame.counters.Add(0);
                 return new NowTreeViewScope(frame, token);
             }
@@ -103,7 +111,8 @@ namespace NowUI
         public NowTreeViewState state;
         public NowThemeAsset theme;
         public bool selectionChanged;
-        public readonly List<int> pathIds = new List<int>(8);
+        public readonly List<NowResolvedId> pathIds = new List<NowResolvedId>(8);
+        public readonly List<NowTreeNodeKey> pathKeys = new List<NowTreeNodeKey>(8);
         public readonly List<int> counters = new List<int>(8);
         public readonly NowTreeViewState fallbackState = new NowTreeViewState();
 
@@ -179,7 +188,7 @@ namespace NowUI
         }
 
         /// <summary>The selected row id after this frame's interactions.</summary>
-        public int selectedId => RequireFrame().state.selectedId;
+        public NowTreeNodeKey selectedKey => RequireFrame().state.selectedKey;
 
         /// <summary>True when a row changed the selection this frame.</summary>
         public bool selectionChanged => RequireFrame().selectionChanged;
@@ -196,15 +205,16 @@ namespace NowUI
         public bool BeginNode(string label, NowId id)
         {
             RequireFrame();
-            int nodeId = NextNodeId(id);
-            bool expanded = _frame.state.IsExpanded(nodeId);
+            NodeAddress node = NextNode(id);
+            bool expanded = _frame.state.IsExpanded(node.key);
 
-            DrawRow(label, nodeId, hasChildren: true, ref expanded);
+            DrawRow(label, node, hasChildren: true, ref expanded);
 
             if (!expanded)
                 return false;
 
-            _frame.pathIds.Add(nodeId);
+            _frame.pathIds.Add(node.controlId);
+            _frame.pathKeys.Add(node.key);
             _frame.counters.Add(0);
             return true;
         }
@@ -218,9 +228,9 @@ namespace NowUI
         public bool Node(string label, NowId id)
         {
             RequireFrame();
-            int nodeId = NextNodeId(id);
+            NodeAddress node = NextNode(id);
             bool expanded = false;
-            return DrawRow(label, nodeId, hasChildren: false, ref expanded);
+            return DrawRow(label, node, hasChildren: false, ref expanded);
         }
 
         /// <summary>Closes the children of the last <see cref="BeginNode"/> that returned true.</summary>
@@ -231,22 +241,45 @@ namespace NowUI
             if (_frame.pathIds.Count > 1)
             {
                 _frame.pathIds.RemoveAt(_frame.pathIds.Count - 1);
+                _frame.pathKeys.RemoveAt(_frame.pathKeys.Count - 1);
                 _frame.counters.RemoveAt(_frame.counters.Count - 1);
             }
         }
 
-        int NextNodeId(NowId id)
+        readonly struct NodeAddress
         {
-            int depth = _frame.pathIds.Count - 1;
-            _frame.counters[depth] = _frame.counters[depth] + 1;
+            public readonly NowTreeNodeKey key;
+            public readonly NowResolvedId controlId;
 
-            if (id.hasValue)
-                return NowInput.CombineId(_frame.pathIds[depth], id.ResolveStableId(_frame.counters[depth]));
-
-            return NowInput.CombineId(_frame.pathIds[depth], _frame.counters[depth]);
+            public NodeAddress(NowTreeNodeKey key, NowResolvedId controlId)
+            {
+                this.key = key;
+                this.controlId = controlId;
+            }
         }
 
-        bool DrawRow(string label, int nodeId, bool hasChildren, ref bool expanded)
+        NodeAddress NextNode(NowId id)
+        {
+            int depth = _frame.pathIds.Count - 1;
+            int position = _frame.counters[depth] + 1;
+            _frame.counters[depth] = position;
+
+            NowTreeNodeKey parentKey = _frame.pathKeys[depth];
+            NowResolvedId parentControlId = _frame.pathIds[depth];
+
+            if (id.hasValue)
+            {
+                return new NodeAddress(
+                    parentKey.Child(id),
+                    parentControlId.Child(id));
+            }
+
+            return new NodeAddress(
+                parentKey.PositionalChild(position),
+                parentControlId.Derive(NowIdDomain.Occurrence, position));
+        }
+
+        bool DrawRow(string label, NodeAddress node, bool hasChildren, ref bool expanded)
         {
             var theme = _frame.theme;
             var styles = theme.controlStyles;
@@ -264,24 +297,31 @@ namespace NowUI
                 disclosure);
 
             bool toggled = false;
+            var rowRegion = new NowInteractionRegion(rect);
 
             if (hasChildren)
             {
                 var disclosureHit = disclosureRect.Outset(6f);
-                var disclosureInteraction = NowInput.Interact(NowInput.CombineId(nodeId, DisclosureSeed), disclosureHit);
+                rowRegion = rowRegion.Exclude(disclosureHit);
+                var disclosureInteraction = NowInput.Interact(node.controlId.Child(DisclosureSeed), disclosureHit);
 
                 if (disclosureInteraction.clicked)
                     toggled = true;
             }
 
-            var interaction = NowControls.Interact(nodeId, rect, default, out bool focused, out bool submitted);
+            var interaction = NowControls.Interact(
+                node.controlId,
+                in rowRegion,
+                default,
+                out bool focused,
+                out bool submitted);
             bool activated = false;
 
             if (interaction.clicked && !toggled)
             {
-                if (_frame.state.selectedId != nodeId)
+                if (_frame.state.selectedKey != node.key)
                 {
-                    _frame.state.selectedId = nodeId;
+                    _frame.state.selectedKey = node.key;
                     _frame.selectionChanged = true;
                 }
 
@@ -300,7 +340,7 @@ namespace NowUI
             {
                 float navX = NowInput.current.navigation.x;
 
-                if (NowControlState.Repeat(nodeId, "nav-x", Mathf.Abs(navX) > 0.55f, 0.35f, 0.2f))
+                if (NowControlState.Repeat(node.controlId, "nav-x", Mathf.Abs(navX) > 0.55f, 0.35f, 0.2f))
                 {
                     if (navX > 0f && !expanded)
                         toggled = true;
@@ -312,11 +352,11 @@ namespace NowUI
             if (toggled)
             {
                 expanded = !expanded;
-                _frame.state.SetExpanded(nodeId, expanded);
+                _frame.state.SetExpanded(node.key, expanded);
                 NowControlState.RequestRepaint();
             }
 
-            bool selected = _frame.state.selectedId == nodeId;
+            bool selected = _frame.state.selectedKey == node.key;
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
 
             renderer.DrawTreeRow(new NowTreeRowRenderContext(

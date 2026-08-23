@@ -18,7 +18,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowMaskField
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
 
         const int SummarySeed = 0x4e4d4653;
@@ -34,12 +34,12 @@ namespace NowUI
         {
             public NowThemeAsset themeAsset;
             public IReadOnlyList<string> options;
-            public int id;
+            public NowResolvedId id;
             public int mask;
             public int optionCount;
-            public int pendingId;
-            public int itemSeed;
-            public int scrollId;
+            public NowResolvedId itemSeed;
+            public NowResolvedId scrollId;
+            public int callbackState;
             public bool scrolls;
             public float itemHeight;
             public NowRect field;
@@ -62,12 +62,14 @@ namespace NowUI
             public string label;
         }
 
-        static readonly Dictionary<int, PopupState> _popupStates = new Dictionary<int, PopupState>(8);
+        static readonly Dictionary<NowResolvedId, PopupState> _popupStates = new Dictionary<NowResolvedId, PopupState>(8);
+        static readonly Dictionary<int, PopupState> _popupStatesByCallback = new Dictionary<int, PopupState>(8);
+        static int s_nextPopupState = 1;
 
         static string[] _layerNames;
         static int[] _layerIndices;
 
-        internal NowMaskField(NowId id, IReadOnlyList<string> options, int site)
+        internal NowMaskField(NowControlIdentity id, IReadOnlyList<string> options, int site)
         {
             _id = id;
             _site = site;
@@ -79,7 +81,7 @@ namespace NowUI
             _fitToView = true;
         }
 
-        internal NowMaskField(NowRect rect, NowId id, IReadOnlyList<string> options, int site) : this(id, options, site)
+        internal NowMaskField(NowRect rect, NowControlIdentity id, IReadOnlyList<string> options, int site) : this(id, options, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -93,6 +95,8 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowMaskField SetId(NowId id) { _id = id; return this; }
+
+        public NowMaskField SetId(NowResolvedId id) { _id = id; return this; }
 
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowMaskField SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
@@ -126,7 +130,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             int optionCount = Mathf.Min(options?.Count ?? 0, 32);
             int allBits = AllBits(optionCount);
 
@@ -178,7 +182,7 @@ namespace NowUI
         static void DeferPopup(
             NowThemeAsset themeAsset,
             IReadOnlyList<string> options,
-            int id,
+            NowResolvedId id,
             NowRect field,
             int mask,
             int optionCount,
@@ -197,8 +201,14 @@ namespace NowUI
 
             if (!_popupStates.TryGetValue(id, out var state))
             {
-                state = new PopupState();
+                int callbackState = s_nextPopupState++;
+
+                if (s_nextPopupState == 0)
+                    s_nextPopupState = 1;
+
+                state = new PopupState { callbackState = callbackState };
                 _popupStates[id] = state;
+                _popupStatesByCallback[callbackState] = state;
             }
 
             state.themeAsset = themeAsset;
@@ -206,9 +216,8 @@ namespace NowUI
             state.id = id;
             state.mask = mask;
             state.optionCount = optionCount;
-            state.pendingId = NowInput.GetId(id, "pending");
-            state.itemSeed = NowInput.GetId(id, "item");
-            state.scrollId = NowInput.GetId(id, "popup-scroll");
+            state.itemSeed = id.Child("item");
+            state.scrollId = id.Child("popup-scroll");
             state.scrolls = popupRect.height < contentHeight - 0.5f;
             state.itemHeight = itemHeight;
             state.field = Now.TransformScreenRect(field);
@@ -216,12 +225,12 @@ namespace NowUI
             state.itemArea = popupRect.Inset(popupPadding);
 
             NowOverlay.BlockAllSurfaces(id);
-            NowOverlay.Defer(popupRect, id, DrawPopup);
+            NowOverlay.Defer(popupRect, id, state.callbackState, DrawPopup);
         }
 
         static void DrawPopup(int stateId)
         {
-            if (!_popupStates.TryGetValue(stateId, out var state) || state.options == null)
+            if (!_popupStatesByCallback.TryGetValue(stateId, out var state) || state.options == null)
                 return;
 
             var themeAsset = state.themeAsset;
@@ -297,7 +306,7 @@ namespace NowUI
                     next = state.mask ^ bit;
                 }
 
-                var itemInteraction = NowInput.Interact(NowInput.CombineId(state.itemSeed, row + 1), itemRect);
+                var itemInteraction = NowInput.Interact(state.itemSeed.Child(row + 1), itemRect);
                 state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
                     state.themeAsset,
                     itemRect,
@@ -307,7 +316,7 @@ namespace NowUI
 
                 if (itemInteraction.clicked)
                 {
-                    ref var pending = ref NowControlState.Get<PendingMask>(state.pendingId);
+                    ref var pending = ref NowControlState.Get<PendingMask>(state.id, "pending");
                     pending.hasValue = 1;
                     pending.value = next;
                     state.mask = next;
@@ -316,9 +325,9 @@ namespace NowUI
             }
         }
 
-        static string Summary(int id, IReadOnlyList<string> options, int optionCount, int mask, int allBits, NowText measure, float availableWidth)
+        static string Summary(NowResolvedId id, IReadOnlyList<string> options, int optionCount, int mask, int allBits, NowText measure, float availableWidth)
         {
-            ref var cache = ref NowControlState.Get<SummaryCache>(NowInput.CombineId(id, SummarySeed));
+            ref var cache = ref NowControlState.Get<SummaryCache>(id.Child(SummarySeed));
 
             if (cache.initialized != 0 && cache.mask == mask && cache.optionCount == optionCount &&
                 cache.width == availableWidth && cache.label != null)
@@ -459,6 +468,8 @@ namespace NowUI
         static void ResetForRuntimeLoad()
         {
             _popupStates.Clear();
+            _popupStatesByCallback.Clear();
+            s_nextPopupState = 1;
             _layerNames = null;
             _layerIndices = null;
         }
@@ -468,12 +479,12 @@ namespace NowUI
     {
         public static NowMaskField MaskField(NowRect rect, IReadOnlyList<string> options, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowMaskField(rect, id, options, NowControls.SiteId(file, line));
+            return new NowMaskField(rect, id, options, NowControls.SiteToken(file, line));
         }
 
         public static NowMaskField LayerMaskField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowMaskField(rect, id, null, NowControls.SiteId(file, line));
+            return new NowMaskField(rect, id, null, NowControls.SiteToken(file, line));
         }
     }
 
@@ -481,12 +492,12 @@ namespace NowUI
     {
         public static NowMaskField MaskField(IReadOnlyList<string> options, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowMaskField(id, options, NowControls.SiteId(file, line));
+            return new NowMaskField(id, options, NowControls.SiteToken(file, line));
         }
 
         public static NowMaskField LayerMaskField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowMaskField(id, null, NowControls.SiteId(file, line));
+            return new NowMaskField(id, null, NowControls.SiteToken(file, line));
         }
     }
 }

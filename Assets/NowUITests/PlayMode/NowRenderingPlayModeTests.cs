@@ -2882,19 +2882,28 @@ public class NowRenderingPlayModeTests
             var eventSystem = UnityEngine.EventSystems.EventSystem.current;
             Assert.NotNull(eventSystem, "EventSystem must be live in play mode.");
 
-            NowFocus.Focus(7);
+            NowResolvedId firstFocus = NowResolvedId
+                .CreateOwnerRoot(0x52454E444552464FUL)
+                .Child(7);
+            NowResolvedId registeredFocus = firstFocus.Child(1);
+            NowResolvedId secondFocus = firstFocus.Child(9);
+
+            NowFocus.Focus(firstFocus);
             eventSystem.SetSelectedGameObject(selectable);
             Assert.NotNull(eventSystem.currentSelectedGameObject);
 
             yield return null;
-            NowFocus.Register(1, new NowRect(0, 0, 10, 10));
+            NowFocus.Register(registeredFocus, new NowRect(0, 0, 10, 10));
 
-            Assert.AreEqual(0, NowFocus.focusedId, "UGUI selection must clear NowUI focus.");
+            Assert.AreEqual(
+                NowResolvedId.None,
+                NowFocus.focusedResolvedId,
+                "UGUI selection must clear NowUI focus.");
 
             eventSystem.SetSelectedGameObject(selectable);
-            NowFocus.Focus(9);
+            NowFocus.Focus(secondFocus);
             Assert.IsNull(eventSystem.currentSelectedGameObject, "NowUI focus must deselect the EventSystem.");
-            Assert.AreEqual(9, NowFocus.focusedId);
+            Assert.AreEqual(secondFocus, NowFocus.focusedResolvedId);
         }
         finally
         {

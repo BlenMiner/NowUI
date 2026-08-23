@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 
@@ -18,7 +19,7 @@ namespace NowUI
     {
         struct HoverState
         {
-            public int id;
+            public NowResolvedId id;
             public float enterTime;
             public Vector2 enterPosition;
             public bool pressed;
@@ -44,7 +45,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            For(NowControls.GetControlId(default, NowControls.SiteId(file, line)), rect, text);
+            For(NowControls.GetControlId(default, NowControls.SiteToken(file, line)), rect, text);
         }
 
         /// <summary>Tooltip for a control scope opened with Begin().</summary>
@@ -54,8 +55,11 @@ namespace NowUI
         }
 
         /// <summary>Tooltip with an explicit id, for looped/data-driven rects.</summary>
-        public static void For(int id, NowRect rect, string text)
+        public static void For(NowResolvedId id, NowRect rect, string text)
         {
+            if (!id.hasValue)
+                throw new ArgumentException("A resolved tooltip id is required.", nameof(id));
+
             if (string.IsNullOrEmpty(text) || NowInput.isPassive)
                 return;
 
@@ -94,10 +98,16 @@ namespace NowUI
                 return;
             }
 
-            Show(NowTheme.themeAsset, rect, text);
+            Show(id, NowTheme.themeAsset, rect, text);
         }
 
-        static void Show(NowThemeAsset theme, NowRect anchor, string text)
+        [Obsolete("Raw integer tooltip identities were removed. Use For(NowResolvedId, ...).", true)]
+        public static void For(int id, NowRect rect, string text)
+        {
+            For(NowResolvedId.FromLegacy(id), rect, text);
+        }
+
+        static void Show(NowResolvedId id, NowThemeAsset theme, NowRect anchor, string text)
         {
             var styles = theme.controlStyles;
             Vector2 size = theme.controlRenderer.MeasureTooltip(theme, text);
@@ -120,7 +130,7 @@ namespace NowUI
                 text = text
             };
 
-            NowOverlay.DeferPassive(0, DrawActive);
+            NowOverlay.DeferPassive(id, 0, DrawActive);
         }
 
         static void DrawActive(int state)

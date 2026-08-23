@@ -634,8 +634,8 @@ public class NowLayoutTests
     public void IntegerAreaIdsRemainIsolatedAcrossRetainedHostScopes()
     {
         const int areaId = 42;
-        int firstHost = NowControls.AllocateHostScopeId();
-        int secondHost = NowControls.AllocateHostScopeId();
+        NowResolvedId firstHost = NowControls.AllocateOwnerScope();
+        NowResolvedId secondHost = NowControls.AllocateOwnerScope();
 
         using (NowControls.RestoreIdScope(firstHost))
         {
@@ -665,11 +665,15 @@ public class NowLayoutTests
                 "drawing another host must not overwrite this host's cached measurement");
         }
 
-        int resolvedFirstArea = NowControls.ResolveHostControlId(firstHost, areaId);
+        NowResolvedId resolvedFirstArea;
+
+        using (NowControls.RestoreIdScope(firstHost))
+            resolvedFirstArea = NowControls.ResolveScopedId(NowIdDomain.Layout, new NowId(areaId));
+
         Assert.IsTrue(NowLayout.TryGetCachedAreaContentSize(
-            NowId.Resolved(resolvedFirstArea), out var resolvedSize));
+            resolvedFirstArea, out var resolvedSize));
         Assert.AreEqual(new Vector2(40f, 20f), resolvedSize,
-            "NowId.Resolved must remain the explicit escape hatch for an already-composed key");
+            "A resolved identity must remain exact when crossing a layout cache boundary.");
     }
 
     [Test]
@@ -1475,7 +1479,9 @@ public class NowLayoutTests
                 NowLayout.RunMeasured(new Vector4(0, 0, 200, 200), () =>
                 {
                     Vector4 rect = NowLayout.ReserveRect(100, 100);
-                    var interaction = NowInput.Interact(1, rect);
+                    var interaction = NowInput.Interact(
+                        NowResolvedId.CreateOwnerRoot(0x4C41594F5554494EUL).Child(1),
+                        rect);
 
                     if (NowLayout.isMeasurePass)
                         measure = interaction;

@@ -1389,7 +1389,8 @@ namespace NowUI.Sdf
         /// <summary>Shader property that declares the supported SDF material ABI.</summary>
         public const string MaterialAbiProperty = "_NowSdfAbiVersion";
 
-        static readonly Dictionary<int, NowSdfCache> _caches = new Dictionary<int, NowSdfCache>(16);
+        static readonly Dictionary<NowResolvedId, NowSdfCache> _caches =
+            new Dictionary<NowResolvedId, NowSdfCache>(16);
 
         static int _maskRasterizationCount;
 
@@ -1440,12 +1441,22 @@ namespace NowUI.Sdf
             return new NowSdfBuilder(GetCache(ControlId(id, file, line)), rect, true, default);
         }
 
+        public static NowSdfBuilder Scene(NowRect rect, NowResolvedId id)
+        {
+            return new NowSdfBuilder(GetCache(id), rect, true, default);
+        }
+
         public static NowSdfBuilder Scene(
             NowId id = default,
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
             return new NowSdfBuilder(GetCache(ControlId(id, file, line)), default, false, default);
+        }
+
+        public static NowSdfBuilder Scene(NowResolvedId id)
+        {
+            return new NowSdfBuilder(GetCache(id), default, false, default);
         }
 
         public static NowSdfBuilder Scene(
@@ -1459,6 +1470,12 @@ namespace NowUI.Sdf
             return new NowSdfBuilder(GetCache(ControlId(id, file, line)), default, false, options);
         }
 
+        public static NowSdfBuilder Scene(float width, float height, NowResolvedId id)
+        {
+            var options = new NowLayoutOptions().SetSize(width, height);
+            return new NowSdfBuilder(GetCache(id), default, false, options);
+        }
+
         public static NowSdfBuilder Scene(
             NowLayoutOptions options,
             NowId id = default,
@@ -1468,9 +1485,14 @@ namespace NowUI.Sdf
             return new NowSdfBuilder(GetCache(ControlId(id, file, line)), default, false, options);
         }
 
+        public static NowSdfBuilder Scene(NowLayoutOptions options, NowResolvedId id)
+        {
+            return new NowSdfBuilder(GetCache(id), default, false, options);
+        }
+
         /// <summary>
-        /// Releases the cache owned by an explicit stable id in the current
-        /// <see cref="NowControls.IdScope(string)"/>. Use this when dynamically
+        /// Releases the cache owned by an explicit stable id in the current host
+        /// and <see cref="NowControls.IdScope(string)"/>. Use this when dynamically
         /// generated ids leave a long-lived collection so their materials and mask
         /// render texture do not remain cached until <see cref="Reset"/>.
         /// Any retained batch still sampling this cache's mask texture becomes
@@ -1485,11 +1507,19 @@ namespace NowUI.Sdf
             if (!id.hasValue)
                 throw new ArgumentException("NowSdf.Release requires an explicit stable NowId.", nameof(id));
 
-            int resolvedId = id.ResolveStableId(0);
-            if (!_caches.TryGetValue(resolvedId, out var cache))
+            return Release(NowControls.GetControlId(id));
+        }
+
+        /// <summary>Releases a cache using the resolved identity captured while drawing its host.</summary>
+        public static bool Release(NowResolvedId id)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("NowSdf.Release requires a resolved scene id.", nameof(id));
+
+            if (!_caches.TryGetValue(id, out var cache))
                 return false;
 
-            _caches.Remove(resolvedId);
+            _caches.Remove(id);
             cache.Release();
             return true;
         }
@@ -1508,13 +1538,16 @@ namespace NowUI.Sdf
             ++_maskRasterizationCount;
         }
 
-        static int ControlId(NowId id, string file, int line)
+        static NowResolvedId ControlId(NowId id, string file, int line)
         {
             return NowControls.GetControlId(id, NowControls.SiteId(file, line));
         }
 
-        static NowSdfCache GetCache(int id)
+        static NowSdfCache GetCache(NowResolvedId id)
         {
+            if (!id.hasValue)
+                throw new ArgumentException("A resolved SDF scene id is required.", nameof(id));
+
             if (!_caches.TryGetValue(id, out var cache))
             {
                 cache = new NowSdfCache();

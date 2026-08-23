@@ -80,7 +80,7 @@ namespace NowUI
         readonly NowRect _rect;
         readonly bool _hasRect;
 
-        NowId _id;
+        NowControlIdentity _id;
         NowText _style;
         NowLayoutOptions _options;
         IReadOnlyList<NowRichTextSpan> _spans;
@@ -138,7 +138,7 @@ namespace NowUI
             public float intrinsicWidth;
         }
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowRichText(string value, NowText style, int site)
         {
@@ -164,6 +164,9 @@ namespace NowUI
         }
 
         public NowRichText SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowRichText SetId(NowResolvedId id) { _id = id; return this; }
 
         public NowRichText SetOptions(NowLayoutOptions options) { _options = options; return this; }
 
@@ -290,7 +293,7 @@ namespace NowUI
                 _style = _style.SetRaw();
             }
 
-            int id = ResolveControlId();
+            NowResolvedId id = ResolveControlId();
             float lineHeight = _lineHeight > 0f ? _lineHeight : _style.fontSize * DefaultLineHeight;
             ref var state = ref NowControlState.Get<State>(id);
             var document = PrepareDocument(ref state);
@@ -355,14 +358,14 @@ namespace NowUI
             return result;
         }
 
-        bool DrawSelection(int id, NowRichTextLayout layout)
+        bool DrawSelection(NowResolvedId id, NowRichTextLayout layout)
         {
             string text = layout.text;
 
             if (string.IsNullOrEmpty(text) || layout.selectionLines.Count == 0 || _style.font == null)
                 return false;
 
-            int selectionId = NowInput.GetId(id, "selection");
+            NowResolvedId selectionId = id.Child("selection");
             var selection = NowTextSelection.Interact(
                 selectionId,
                 text,
@@ -371,17 +374,16 @@ namespace NowUI
                 _style.fontSize,
                 _style.fontStyle);
 
-            int menuId = NowInput.GetId(selectionId, "menu");
+            NowResolvedId menuId = selectionId.Child("menu");
 
-            if (selection.rightClicked)
-                NowContextMenu.Open(menuId, selection.rightClickPosition);
+            NowContextMenu.Open(menuId, in selection.contextTrigger);
 
             if (NowContextMenu.Begin(menuId))
             {
-                if (selection.hasSelection && NowContextMenu.Item("Copy"))
+                if (selection.hasSelection && NowContextMenu.Item("Copy", new NowId("copy")))
                     NowClipboard.Copy(NowTextSelection.GetSelection(selectionId, text));
 
-                if (NowContextMenu.Item("Select All"))
+                if (NowContextMenu.Item("Select All", new NowId("select-all")))
                     NowTextSelection.SelectAll(selectionId, text);
 
                 NowContextMenu.End();
@@ -924,7 +926,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return new NowRichText(rect, value, NowTheme.themeAsset.ResolveText(NowTextStyle.Body), NowControls.SiteId(file, line));
+            return new NowRichText(rect, value, NowTheme.themeAsset.ResolveText(NowTextStyle.Body), NowControls.SiteToken(file, line));
         }
     }
 
@@ -942,7 +944,7 @@ namespace NowUI
             [CallerFilePath] string file = "",
             [CallerLineNumber] int line = 0)
         {
-            return new NowRichText(value, NowTheme.themeAsset.ResolveText(NowTextStyle.Body), NowControls.SiteId(file, line));
+            return new NowRichText(value, NowTheme.themeAsset.ResolveText(NowTextStyle.Body), NowControls.SiteToken(file, line));
         }
     }
 }

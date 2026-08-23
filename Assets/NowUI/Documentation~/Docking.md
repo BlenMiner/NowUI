@@ -57,8 +57,10 @@ NowDock.Space(_dock, rect, 100).Draw();
 ```
 
 Window ids are semantic strings inside `NowDockSpace`; the dock-space control
-id is a `NowId`, so use a stable non-zero integer when the dock surface is tied
-to data or instantiated repeatedly.
+id is a `NowId`, so use a stable model key when the dock surface is tied to
+data or instantiated repeatedly. A composite that already resolved its
+surface can use `NowDock.Space(..., NowResolvedId)` or
+`.SetId(NowResolvedId)` directly; see [Identity](Identity.md).
 
 Users can drag tabs onto a panel's tab bar to merge or reorder tabs, or onto an
 edge to split. Dragging outside the dockspace detaches the tab as a floating

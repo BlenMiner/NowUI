@@ -1061,13 +1061,14 @@ public class NowPerformanceTests
     public void OverlayIntegerDeferIsAllocationFreeAfterWarmup()
     {
         var drawList = new NowDrawList();
+        NowResolvedId overlayId = NowResolvedId.CreateOwnerRoot(0x504552464F564552UL).Child(42);
 
         try
         {
             void DrawFrame()
             {
                 using (drawList.Begin(new Vector2(128, 64)))
-                    NowOverlay.Defer(new NowRect(8, 8, 24, 24), 42, DrawDeferredOverlay);
+                    NowOverlay.Defer(new NowRect(8, 8, 24, 24), overlayId, 42, DrawDeferredOverlay);
             }
 
             AssertNoAllocAfterWarmup(DrawFrame, "steady-state integer overlay defer must not allocate");

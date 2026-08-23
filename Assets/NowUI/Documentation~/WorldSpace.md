@@ -52,9 +52,9 @@ The component owns:
 
 Pointer input is ray-mapped from the target camera onto the surface plane and
 arrives through normal `NowInput` snapshots. Built-in controls work unchanged,
-and the host automatically wraps drawing in an integer `NowControls.IdScope`
-keyed by the component instance, so repeated nameplate prefabs do not share
-button, hover, focus, or animation state.
+and the host supplies its own opaque identity root, so repeated nameplate
+prefabs do not share button, hover, focus, overlay, or animation state even
+when their authored local IDs match.
 
 Call `MarkDirty()` when retained data changes, or enable `Rebuild Every Frame`
 for continuously changing labels. Camera-facing rotation updates in

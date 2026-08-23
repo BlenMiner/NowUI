@@ -27,10 +27,22 @@ namespace NowUI
     {
         public bool hasSelection;
 
-        /// <summary>A secondary-button press landed in the region this frame.</summary>
-        public bool rightClicked;
+        /// <summary>
+        /// A source-aware secondary-pointer request for the selection region.
+        /// Pass it to <see cref="NowContextMenu.Open(NowResolvedId, in NowContextTrigger, bool)"/>
+        /// so opening the menu claims the handled press for the rest of the input pass.
+        /// </summary>
+        public NowContextTrigger contextTrigger;
 
-        public Vector2 rightClickPosition;
+        [System.Obsolete(
+            "Use contextTrigger and pass it to NowContextMenu.Open. Raw bool context reporting loses pointer ownership.",
+            true)]
+        public bool rightClicked => contextTrigger.triggered;
+
+        [System.Obsolete(
+            "Use contextTrigger and pass it to NowContextMenu.Open. Detached pointer positions lose trigger provenance.",
+            true)]
+        public Vector2 rightClickPosition => contextTrigger.screenPointerPosition;
     }
 
     /// <summary>
@@ -56,7 +68,7 @@ namespace NowUI
 
         /// <summary>Single-region convenience: <see cref="Interact"/> + <see cref="DrawHighlights"/>.</summary>
         public static NowTextSelectionResult Draw(
-            int id,
+            NowResolvedId id,
             string text,
             List<NowTextSelectionLine> lines,
             NowFontAsset font,
@@ -82,7 +94,7 @@ namespace NowUI
         /// controls (copy buttons).
         /// </summary>
         public static NowTextSelectionResult Interact(
-            int id,
+            NowResolvedId id,
             string text,
             List<NowTextSelectionLine> lines,
             NowFontAsset font,
@@ -104,27 +116,25 @@ namespace NowUI
             NowTextEdit.Clamp(ref state, text);
 
             var snapshot = NowInput.current;
+            bool pointerExcluded = snapshot.hasPointer &&
+                IsExcluded(
+                    Now.InverseTransformScreenPoint(snapshot.pointerPosition),
+                    exclusions);
 
-            if (NowInput.WasRightClicked(bounds))
+            NowContextTrigger contextTrigger = pointerExcluded
+                ? default
+                : NowContextAction.Resolve(
+                    bounds,
+                    actionInvoked: false,
+                    actionAnchor: default);
+
+            if (contextTrigger.triggered)
             {
                 NowFocus.Focus(id);
-                result.rightClicked = true;
-                result.rightClickPosition = snapshot.pointerPosition;
+                result.contextTrigger = contextTrigger;
             }
 
-            bool pressExcluded = false;
-
-            if (snapshot.primaryPressed && exclusions != null)
-            {
-                for (int i = 0; i < exclusions.Count; ++i)
-                {
-                    if (!exclusions[i].isEmpty && exclusions[i].Contains(snapshot.pointerPosition))
-                    {
-                        pressExcluded = true;
-                        break;
-                    }
-                }
-            }
+            bool pressExcluded = snapshot.primaryPressed && pointerExcluded;
 
             if (pressExcluded)
             {
@@ -178,7 +188,7 @@ namespace NowUI
                 NowControlState.RequestRepaint();
             }
 
-            bool ownsFocus = NowFocus.focusedId == id;
+            bool ownsFocus = NowFocus.focusedResolvedId == id;
             bool focused = NowFocus.IsFocused(id);
 
             if (!ownsFocus && !interaction.held && state.hasSelection)
@@ -204,12 +214,31 @@ namespace NowUI
             return result;
         }
 
+        static bool IsExcluded(
+            Vector2 localPointerPosition,
+            IReadOnlyList<NowRect> exclusions)
+        {
+            if (exclusions == null)
+                return false;
+
+            for (int i = 0; i < exclusions.Count; ++i)
+            {
+                if (!exclusions[i].isEmpty &&
+                    exclusions[i].Contains(localPointerPosition))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Draws the highlight rects for a slice of the segments (one region of a
         /// larger selection); returns true while a selection exists.
         /// </summary>
         public static bool DrawHighlights(
-            int id,
+            NowResolvedId id,
             string text,
             List<NowTextSelectionLine> lines,
             NowFontAsset font,
@@ -308,7 +337,7 @@ namespace NowUI
         }
 
         /// <summary>Selects the whole region's text (for context menus and shortcuts).</summary>
-        public static void SelectAll(int id, string text)
+        public static void SelectAll(NowResolvedId id, string text)
         {
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.SelectAll(ref state, text ?? string.Empty);
@@ -317,7 +346,7 @@ namespace NowUI
         }
 
         /// <summary>The selected text of a region, or empty.</summary>
-        public static string GetSelection(int id, string text)
+        public static string GetSelection(NowResolvedId id, string text)
         {
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             return NowTextEdit.GetSelection(text ?? string.Empty, state);

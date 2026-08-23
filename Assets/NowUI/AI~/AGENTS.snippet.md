@@ -15,7 +15,16 @@ installed package revision and resolve `NOWUI001` and `NOWUI002` diagnostics.
 
 For correctness, wrap reusable composite control bodies in
 `NowControls.ControlScope(id, file, line)` and forward caller information from
-public wrappers; give reorderable instances stable explicit IDs. Use
+public wrappers; give reorderable instances stable explicit IDs. Keep authored
+keys as `NowId`, runtime-resolved paths as `NowResolvedId`, and derive typed
+children with `.Child(...)`. Use `NowControls.KeyedItem` for reorderable rows;
+integer zero is a valid authored key, while `NowControls.SiteId(...)` is only a
+typed `NowCallSiteId` fallback, not an authored or resolved ID. Exclude
+independent child rectangles from a parent `NowInteractionRegion`. Resolve menu
+requests with `NowContextAction` and give every item/submenu a stable `id:`.
+Raw-integer resolved-identity and positional menu-entry adapters are
+compile-time errors. Treat anonymous overlay callback
+`int state` as payload, separate from a named overlay's `NowResolvedId`. Use
 `NowEditorGUI` or `NowEditorGUILayout` in editor IMGUI hosts so consumed wheel
 input triggers a repaint. Do not call direct `NowGUI`/`NowGUILayout` from
 editor hosts: those runtime/legacy paths lack owning-window identity and cannot
@@ -38,8 +47,12 @@ prevents another IMGUI pass from replaying one-shot text or shortcuts. Use
 Claimed KeyDown and handled pointer events are consumed natively. Focus, popup,
 and pointer registries stay bounded across repeated same-frame passes, and a
 failed overlay pass discards its provisional hit footprint while retaining the
-owner's last valid one. Immediate and deadline repaint requests target the
-owning window, are coalesced after IMGUI dispatch, and do not mark
+owner's last valid one. An idle retained owner does not close a menu; its next
+successful pass must redeclare it, and pending item delivery belongs only to
+that owner/provider/pass. Deferred callbacks restore the provider, input
+pass, surface, host, and identity context in which they were queued. Immediate
+and deadline repaint requests target the owning window, are coalesced after
+IMGUI dispatch, and do not mark
 temporal-only work as `GUI.changed`. Static popups idle, and focused carets
 sleep until their next blink-phase deadline; retained UI Toolkit hosts use a
 one-shot deadline and leave their continuous scheduler paused. Idle live

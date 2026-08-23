@@ -18,7 +18,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowKeyBindingField
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -61,6 +61,8 @@ namespace NowUI
 
         public NowKeyBindingField SetId(NowId id) { _id = id; return this; }
 
+        public NowKeyBindingField SetId(NowResolvedId id) { _id = id; return this; }
+
         public NowKeyBindingField SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
         /// <summary>Delete/Backspace while capturing clears the binding to <see cref="Key.None"/> (default on).</summary>
@@ -75,7 +77,7 @@ namespace NowUI
         public bool Draw(ref Key value)
         {
             var theme = NowTheme.themeAsset;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             var rect = NowControls.ReserveRect(_hasRect, _rect, _options, new Vector2(120f, 30f));
             var interaction = NowControls.Interact(
                 id,
@@ -156,7 +158,7 @@ namespace NowUI
             return changed;
         }
 
-        static void BeginListening(int id, ref ListenState state)
+        static void BeginListening(NowResolvedId id, ref ListenState state)
         {
             state.listening = 1;
             state.armInputPass = NowInput.current.inputPass;
@@ -257,7 +259,7 @@ namespace NowUI
     {
         public static NowKeyBindingField KeyBindingField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowKeyBindingField(rect, id, NowControls.SiteId(file, line));
+            return new NowKeyBindingField(rect, id, NowControls.SiteToken(file, line));
         }
     }
 
@@ -265,7 +267,7 @@ namespace NowUI
     {
         public static NowKeyBindingField KeyBindingField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowKeyBindingField(id, NowControls.SiteId(file, line));
+            return new NowKeyBindingField(id, NowControls.SiteToken(file, line));
         }
     }
 }

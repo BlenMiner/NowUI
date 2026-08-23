@@ -44,8 +44,10 @@ when enabled. No manual NowUI input define is required.
   and content rect caching. The lower-level immediate-scope forms are named
   `HorizontalScope` and `VerticalScope`; code using their former directional
   names must migrate to the explicit `Scope` suffix.
-- `NowInput`, `INowInputProvider`, `INowSurfaceToScreenMapper`, `NowFocus`,
-  `NowControls`, `NowControlState`,
+- `NowId`, `NowResolvedId`, `NowCallSiteId`, `NowControlIdentity`,
+  `NowInteractionRegion`, `NowContextAction`, `NowContextTrigger`, `NowInput`,
+  `INowInputProvider`, `INowSurfaceToScreenMapper`, `NowFocus`, `NowControls`,
+  `NowControlState`,
   `NowFilePicker`, `NowViewStack`, `INowView`, `NowViews`, and control
   builders: immediate interaction, navigation, focus, reusable control state,
   optional surface-to-screen projection for IME candidate placement, file
@@ -57,7 +59,8 @@ when enabled. No manual NowUI input define is required.
   configurations without that package.
 - `NowText`, `NowTextAnimation`, `NowTextAnimationKind`,
   `NowTextAnimationEasing`, `NowTextAnimations`, `NowFontAsset`, `NowFont`, `NowTextWrap`,
-  `NowTextSelection`, `NowTextEdit`, `NowTextArea`, `NowTextFieldResult`, and rich-text types:
+  `NowTextSelection`, `NowTextSelectionResult`, `NowTextEdit`, `NowTextArea`,
+  `NowTextFieldResult`, and rich-text types:
   text rendering, gradient fills, caller-timed glyph animation, shaping,
   editing, wrapping, selection, and parser hooks.
 - `NowGlass`, `NowGlassSettings`, and diagnostics structs: backdrop pane
@@ -116,7 +119,18 @@ when enabled. No manual NowUI input define is required.
 - Warmup APIs may allocate while preparing state, but must clear captured
   geometry before returning so the next measured frame starts from a clean draw
   list.
-- String IDs are allowed for convenience, but examples should prefer stable
-  integer or data-backed `NowId` values in repeated/dynamic UI. Both forms are
-  host/id-scope local; `NowId.Resolved(...)` is reserved for already-composed
-  identities.
+- Strings and integers (including zero) are authored through `NowId`; both remain
+  host/id-scope local. Repeated data should use `NowControls.KeyedItem` or
+  `KeyedItemIn`. `NowResolvedId` is the opaque, host-owned runtime result and
+  derives sub-controls with `.Child(...)`; it is never persisted or wrapped
+  back into `NowId`. `NowControls.SiteId(...)` returns an opaque
+  `NowCallSiteId` fallback, not an authored or resolved identity. Raw-integer
+  resolved-identity adapters are compile-time errors. See
+  [Identity](Identity.md).
+- Context-menu entries and submenus require stable authored IDs. Menu roots and
+  named overlays take `NowResolvedId`; positional menu entries and raw integer
+  menu IDs are compile-time errors.
+- Deferred overlay callbacks run under their captured provider/input-pass,
+  surface, host, and identity context. Anonymous non-capturing overlay overloads
+  treat `int state` as callback payload only; named overloads take a separate
+  resolved source ID.

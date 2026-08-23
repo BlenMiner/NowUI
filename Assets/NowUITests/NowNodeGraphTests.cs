@@ -210,6 +210,20 @@ public class NowNodeGraphTests
         }
     }
 
+    NowNodeGraphResult Frame(NowNodeGraph graph, NowResolvedId canvasId)
+    {
+        NowTextInput.Invalidate();
+        NowOverlay.ForceNewFrame();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            var result = NowNodes.Canvas(graph, CanvasRect, canvasId).Draw();
+            NowOverlay.Flush();
+            return result;
+        }
+    }
+
     NowNodeGraphResult Frame(NowNodeGraphView view, NowNodeContentRenderer content)
     {
         NowTextInput.Invalidate();
@@ -967,8 +981,8 @@ public class NowNodeGraphTests
 
         _pointer.snapshot = new NowInputSnapshot(new Vector2(70f, 45f), true, true, false);
         Frame(graph, configure: canvas => canvas.SetNodeSnapping(false));
-        int capturedId = NowInput.activeId;
-        Assert.AreNotEqual(0, capturedId, "pressing a node must capture the primary pointer");
+        NowResolvedId capturedId = NowInput.activeId;
+        Assert.IsTrue(capturedId.hasValue, "pressing a node must capture the primary pointer");
 
         _pointer.snapshot = new NowInputSnapshot(new Vector2(110f, 65f), new Vector2(40f, 20f), true, false, false);
         var result = Frame(graph, configure: canvas => canvas.SetNodeSnapping(false));
@@ -979,6 +993,63 @@ public class NowNodeGraphTests
 
         Assert.IsTrue(result.nodeMoved);
         Assert.AreEqual(new Vector2(80f, 50f), graph.FindNode("a").position);
+    }
+
+    [Test]
+    public void ResolvedCanvasUsesExactNodeModelPathForCapture()
+    {
+        var graph = SampleGraph();
+        NowResolvedId canvasId;
+
+        NowTextInput.Invalidate();
+        NowOverlay.ForceNewFrame();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            canvasId = NowControls.GetControlId("resolved-node-graph");
+            NowNodes.Canvas(graph, CanvasRect).SetId(canvasId).Draw();
+            NowOverlay.Flush();
+        }
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(70f, 45f), true, true, false);
+        Frame(graph, canvasId);
+
+        NowResolvedId expected = canvasId
+            .Child("nodes")
+            .Child("model-id")
+            .Child("a");
+        Assert.AreEqual(expected, NowInput.activeId);
+    }
+
+    [Test]
+    public void PortExclusionKeepsNodeParentFromCapturingItsChild()
+    {
+        var graph = SampleGraph();
+        NowResolvedId canvasId;
+
+        NowTextInput.Invalidate();
+        NowOverlay.ForceNewFrame();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            canvasId = NowControls.GetControlId("resolved-port-graph");
+            NowNodes.Canvas(graph, CanvasRect, canvasId).Draw();
+            NowOverlay.Flush();
+        }
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(232f, 80f), true, true, false);
+        Frame(graph, canvasId);
+
+        NowResolvedId expected = canvasId
+            .Child("nodes")
+            .Child("model-id")
+            .Child("a")
+            .Child("output-ports")
+            .Child("model-id")
+            .Child("out");
+        Assert.AreEqual(expected, NowInput.activeId);
     }
 
     [Test]

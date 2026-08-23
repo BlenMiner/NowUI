@@ -113,6 +113,7 @@ Host lifecycle rules:
 | Rows, columns, sizing, measurement | `NowLayout` and layout hosts | [Layout](Layout.md) |
 | Buttons, fields, pickers, lists, dialogs, inspection | `Now` / `NowLayout` controls | [Controls](Controls.md) |
 | New or restyled controls | Control builders and interaction primitives | [Custom Controls](CustomControls.md) |
+| Authored, resolved, repeated, or composite identity | `NowId`, `NowResolvedId`, `KeyedItem` | [Identity](Identity.md) |
 | Themes and reusable style tokens | `NowThemeAsset` | [Styles and Themes](StylesAndThemes.md) |
 | Lines, Beziers, dashes, arrows | `Now.Line`, `Now.Bezier` | [Lines](Lines.md) |
 | Linear, radial, and conic fills | `Now.Gradient` | [Gradients](Gradients.md) |
@@ -141,14 +142,29 @@ Host lifecycle rules:
 - Builders are inert until consumed. End drawing builders with `.Draw()` and
   container/control scopes with `.Begin()`; place returned scopes in `using`.
 - Treat `NOWUI001` and `NOWUI002` as correctness warnings, not style warnings.
-- Id-less controls are suitable for fixed one-off call sites. Prefer stable
-  non-zero integer IDs for data-backed, conditional, repeated, or reorderable
-  controls.
+- Id-less controls are suitable for fixed one-off call sites. Use
+  `NowControls.KeyedItem` with a stable data key for conditional, repeated, or
+  reorderable items.
 - Wrap composite custom-control bodies in `NowControls.ControlScope(...)` so
   their local child IDs resolve within the invocation instead of sharing focus
   and state with another instance.
-- IDs are local to the active host and ID scope. Use `NowId.Resolved(...)` only
-  for an identity that is already resolved or composed.
+- Keep authored local keys as `NowId` and already-resolved runtime paths as
+  `NowResolvedId`. Pass resolved values directly and derive sub-controls with
+  `.Child(...)`; never convert them back into authored IDs. Integer zero is a
+  valid authored key. `NowControls.SiteId(...)` returns an opaque
+  `NowCallSiteId` fallback for a custom builder, not an authored or resolved
+  control identity.
+- Parent controls containing independent child controls must exclude child hit
+  rectangles with `NowInteractionRegion` before parent interaction.
+- Use `NowContextAction.Resolve(...)` when either a secondary pointer or an
+  action button can open a menu. Give every item and submenu a stable explicit
+  `id:`. Raw-integer resolved-identity overloads and positional menu-entry
+  overloads are source-blocked with compiler errors.
+- In anonymous `NowOverlay.Defer`, `DeferScreen`, and `DeferPassive` callback
+  overloads, `int state` is payload only. Pass a separate `NowResolvedId`
+  source to the named overload when the overlay needs identity. Deferred draws
+  run with the input provider/pass/surface and host/id context captured when
+  they were queued.
 - Preserve draw order. Glass samples prior content, and material changes can
   flush the current batch.
 - Use the input provider established by the host. Scope a custom

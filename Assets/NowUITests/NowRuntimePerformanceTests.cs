@@ -566,13 +566,19 @@ public class NowRuntimePerformanceTests
     }
 
     /// <summary>
-    /// Repaint-state tracking for one thousand inactive controls with integer ids,
+    /// Repaint-state tracking for one thousand inactive controls with resolved ids,
     /// isolated from rendering, layout, and string hashing. Guards the steady-state
-    /// cost of <see cref="NowControls.Interact(int, NowRect, out bool, out bool)"/>.
+    /// cost of <see cref="NowControls.Interact(NowResolvedId, NowRect, out bool, out bool)"/>.
     /// </summary>
     [Test, Performance]
     public void InteractionRepaintTrackingStress()
     {
+        var root = NowResolvedId.CreateOwnerRoot(0x50455246494E5055UL);
+        var ids = new NowResolvedId[1000];
+
+        for (int i = 0; i < ids.Length; ++i)
+            ids[i] = root.Child(0x49520000 + i);
+
         void DrawFrame()
         {
             using (NowInput.Begin(_pointer, FrameSize))
@@ -580,7 +586,7 @@ public class NowRuntimePerformanceTests
                 for (int i = 0; i < 1000; ++i)
                 {
                     var rect = new NowRect((i * 29) % 1200, (i * 17) % 680, 48f, 20f);
-                    NowControls.Interact(0x49520000 + i, rect, out _, out _);
+                    NowControls.Interact(ids[i], rect, out _, out _);
                 }
             }
         }
@@ -594,16 +600,22 @@ public class NowRuntimePerformanceTests
     }
 
     /// <summary>
-    /// One thousand settled transition updates with stable integer ids, isolating
+    /// One thousand settled transition updates with stable resolved ids, isolating
     /// control-state lookup and frame-clock sampling from rendering and layout.
     /// </summary>
     [Test, Performance]
     public void TransitionTimingStress()
     {
+        var root = NowResolvedId.CreateOwnerRoot(0x504552465452414EUL);
+        var ids = new NowResolvedId[1000];
+
+        for (int i = 0; i < ids.Length; ++i)
+            ids[i] = root.Child(0x54520000 + i);
+
         void DrawFrame()
         {
             for (int i = 0; i < 1000; ++i)
-                NowControlState.Transition(0x54520000 + i, false);
+                NowControlState.Transition(ids[i], false);
         }
 
         Measure.Method(DrawFrame)
@@ -742,7 +754,7 @@ public class NowRuntimePerformanceTests
     /// every rebuild, deferring the full option list through the overlay
     /// flush. Simplification: instead of simulating the opening click, the
     /// control's retained open flag is set directly via
-    /// <see cref="NowControlState.Get{T}(int)"/> — the same state a real click
+    /// <see cref="NowControlState.Get{T}(NowResolvedId)"/> — the same state a real click
     /// toggles — which keeps the benchmark free of fragile input scripting.
     /// </summary>
     [Test, Performance]
@@ -753,10 +765,14 @@ public class NowRuntimePerformanceTests
         var previousFont = Now.defaultFont;
         Now.defaultFont = font;
         var drawList = new NowDrawList();
+        NowResolvedId dropdownId;
+
+        using (drawList.Begin(FrameSize))
+            dropdownId = NowControls.GetControlId(new NowId(DropdownFieldId));
 
         try
         {
-            NowControlState.Get<bool>(DropdownFieldId) = true;
+            NowControlState.Get<bool>(dropdownId) = true;
 
             Measure.Method(() =>
                 {
@@ -764,7 +780,7 @@ public class NowRuntimePerformanceTests
                     using (drawList.Begin(FrameSize))
                     using (NowTheme.Scope(theme))
                     {
-                        Now.Dropdown(new NowRect(40f, 40f, 260f, 30f), DropdownFieldId, DropdownOptions)
+                        Now.Dropdown(new NowRect(40f, 40f, 260f, 30f), dropdownId, DropdownOptions)
                             .Draw(ref _dropdownSelected);
                     }
                 })
@@ -774,7 +790,7 @@ public class NowRuntimePerformanceTests
         }
         finally
         {
-            NowControlState.Get<bool>(DropdownFieldId) = false;
+            NowControlState.Get<bool>(dropdownId) = false;
             Now.defaultFont = previousFont;
             drawList.Dispose();
         }

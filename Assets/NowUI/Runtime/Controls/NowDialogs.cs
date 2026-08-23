@@ -48,8 +48,9 @@ namespace NowUI
         const int SecondarySeed = 0x4e444c53;
 
         static int s_nextId = 1;
+        static readonly NowResolvedId DialogRoot = NowResolvedId.CreateOwnerRoot(0x4E6F774449414C47UL);
 
-        readonly int _id;
+        readonly NowResolvedId _id;
         readonly string _title;
         readonly string _message;
         readonly IAction _primaryAction;
@@ -72,7 +73,7 @@ namespace NowUI
             IAction secondaryAction,
             bool hasSecondary)
         {
-            _id = NowInput.CombineId(DialogSeed, NextId());
+            _id = DialogRoot.Derive(NowIdDomain.Control, DialogSeed).Child(NextId());
             _title = title ?? string.Empty;
             _message = message ?? string.Empty;
             _primaryLabel = string.IsNullOrEmpty(primaryLabel) ? "OK" : primaryLabel;
@@ -134,7 +135,7 @@ namespace NowUI
             var panel = Center(surface, _size);
             theme.controlRenderer.DrawPopupBackground(theme, panel, menu: false);
 
-            using (NowLayout.Area(NowId.Resolved(NowInput.CombineId(_id, AreaSeed)), panel, spacing: 12f, padding: 18f, alignItems: NowLayoutAlign.Start))
+            using (NowLayout.Area(_id.Derive(NowIdDomain.Layout, AreaSeed), panel, spacing: 12f, padding: 18f, alignItems: NowLayoutAlign.Start))
             {
                 NowLayout.Label(NowControls.Text(theme, NowTextStyle.Title), _title)
                     .SetStretchWidth()
@@ -151,7 +152,7 @@ namespace NowUI
 
                     if (_hasSecondary &&
                         NowLayout.Button(_secondaryLabel)
-                            .SetId(NowId.Resolved(NowInput.CombineId(_id, SecondarySeed)))
+                            .SetId(_id.Child(SecondarySeed))
                             .SetStyle(NowRectangleStyle.Surface)
                             .SetWidth(104f)
                             .Draw())
@@ -160,7 +161,7 @@ namespace NowUI
                     }
 
                     if (NowLayout.Button(_primaryLabel)
-                        .SetId(NowId.Resolved(NowInput.CombineId(_id, PrimarySeed)))
+                        .SetId(_id.Child(PrimarySeed))
                         .SetStyle(NowRectangleStyle.Accent)
                         .SetWidth(104f)
                         .Draw())
@@ -174,7 +175,7 @@ namespace NowUI
                 NowInput.hasContext &&
                 NowInput.current.cancelPressed &&
                 !NowInput.cancelConsumed &&
-                !NowOverlay.HasNestedOverlay(NowOverlay.currentFocusLayerId))
+                !NowOverlay.HasNestedOverlayResolved(NowOverlay.currentFocusLayerId))
             {
                 NowInput.ConsumeKeyActivity();
                 Close(context, primary: !_hasSecondary);

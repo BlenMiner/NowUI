@@ -8,6 +8,11 @@ using Object = UnityEngine.Object;
 
 public class NowWorldGraphicTests
 {
+    static readonly NowResolvedId TestIdentityRoot =
+        NowResolvedId.CreateOwnerRoot(0x574F524C44544553UL);
+
+    static NowResolvedId TestId(int id) => TestIdentityRoot.Child(id);
+
     sealed class RectWorldGraphic : NowWorldGraphic
     {
         public bool drawTextured;
@@ -51,7 +56,7 @@ public class NowWorldGraphicTests
         public AnimationCurve curve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
         public bool hovered;
         public bool open;
-        public int controlId;
+        public NowResolvedId controlId;
 
         protected override INowInputProvider GetInputProvider()
         {
@@ -112,7 +117,8 @@ public class NowWorldGraphicTests
             ++drawCount;
 
             if (drawModal)
-                NowOverlay.BlockAllSurfaces(7801);
+                NowOverlay.BlockAllSurfaces(
+                    NowControls.GetControlId(new NowId(7801)));
 
             Now.Rectangle(new NowRect(0, 0, rect.width, rect.height))
                 .SetColor(Color.white)
@@ -216,7 +222,9 @@ public class NowWorldGraphicTests
         protected override void DrawNowUI(NowRect rect)
         {
             var full = new NowRect(0, 0, rect.width, rect.height);
-            var press = NowInput.Interact(NowInput.CombineId(GetEntityId().GetHashCode(), 101), full);
+            NowResolvedId surfaceId = NowControls.GetControlId("world-menu-surface");
+            NowResolvedId resolvedMenuId = NowControls.GetControlId(new NowId(menuId));
+            var press = NowInput.Interact(surfaceId.Child(101), full);
 
             if (press.clicked)
                 ++behindClicks;
@@ -224,14 +232,14 @@ public class NowWorldGraphicTests
             if (!ownsMenu)
                 return;
 
-            var context = NowInput.Interact(NowInput.CombineId(GetEntityId().GetHashCode(), 102), full, NowPointerButton.Secondary);
+            var context = NowInput.Interact(surfaceId.Child(102), full, NowPointerButton.Secondary);
 
             if (context.clicked)
-                NowContextMenu.Open(menuId, context.pointerPosition, fitToView: false);
+                NowContextMenu.Open(resolvedMenuId, context.pointerPosition, fitToView: false);
 
-            if (NowContextMenu.Begin(menuId))
+            if (NowContextMenu.Begin(resolvedMenuId))
             {
-                if (NowContextMenu.Item("Do the thing"))
+                if (NowContextMenu.Item("Do the thing", id: "do-the-thing"))
                     ++itemClicks;
 
                 NowContextMenu.End();
@@ -1392,9 +1400,9 @@ public class NowWorldGraphicTests
             var replayProvider = new FakeProvider { snapshot = pressSnapshot };
 
             using (NowInput.Begin(replayProvider, surface))
-                Assert.IsTrue(NowInput.Interact(7, new NowRect(0, 0, 100, 50)).pressed);
+                Assert.IsTrue(NowInput.Interact(TestId(7), new NowRect(0, 0, 100, 50)).pressed);
 
-            Assert.AreEqual(7, NowInput.activeId);
+            Assert.AreEqual(TestId(7), NowInput.activeId);
 
             provider.TryGetSnapshot(surface, new NowMouseInput
             {
@@ -1406,9 +1414,9 @@ public class NowWorldGraphicTests
             replayProvider.snapshot = releaseSnapshot;
 
             using (NowInput.Begin(replayProvider, surface))
-                Assert.IsTrue(NowInput.Interact(7, new NowRect(0, 0, 100, 50)).released);
+                Assert.IsTrue(NowInput.Interact(TestId(7), new NowRect(0, 0, 100, 50)).released);
 
-            Assert.AreEqual(0, NowInput.activeId);
+            Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
         }
         finally
         {
@@ -1503,8 +1511,8 @@ public class NowWorldGraphicTests
 
             provider.snapshot = new NowInputSnapshot(fieldPoint, true, true, false);
             graphic.RebuildNowUI();
-            Assert.AreNotEqual(0, NowInput.activeId, "Pressing the curve field must capture active pointer input.");
-            int pressedId = NowInput.activeId;
+            Assert.IsTrue(NowInput.activeId.hasValue, "Pressing the curve field must capture active pointer input.");
+            NowResolvedId pressedId = NowInput.activeId;
             Assert.AreEqual(graphic.controlId, pressedId, "The curve field press must capture the same id used by its open state.");
             Assert.IsFalse(NowInput.hasContext, "World graphic input should restore the previous input context after rebuilding.");
 
@@ -1512,7 +1520,7 @@ public class NowWorldGraphicTests
             Assert.AreEqual(pressedId, NowInput.activeId, "The active id must survive until the release frame begins.");
             graphic.RebuildNowUI();
             Assert.AreEqual(pressedId, graphic.controlId, "The curve field id must stay stable between press and release.");
-            Assert.AreEqual(0, NowInput.activeId, $"Releasing the curve field should clear active pointer input captured by id {pressedId}.");
+            Assert.AreEqual(NowResolvedId.None, NowInput.activeId, $"Releasing the curve field should clear active pointer input captured by id {pressedId}.");
             Assert.IsTrue(graphic.hovered, "Releasing over the curve field should still hover it.");
             Assert.IsTrue(graphic.open, "Clicking the curve field should toggle its popup open state.");
 

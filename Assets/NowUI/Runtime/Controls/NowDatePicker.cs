@@ -17,7 +17,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowDatePicker
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
 
         const int PendingDateSeed = 0x4e445044;
@@ -51,15 +51,16 @@ namespace NowUI
         sealed class PopupState
         {
             public NowThemeAsset themeAsset;
-            public int id;
-            public int pendingId;
-            public int shownMonthId;
-            public int daySeed;
-            public int monthSeed;
-            public int yearSeed;
-            public int prevId;
-            public int nextId;
-            public int labelId;
+            public NowResolvedId id;
+            public NowResolvedId pendingId;
+            public NowResolvedId shownMonthId;
+            public NowResolvedId daySeed;
+            public NowResolvedId monthSeed;
+            public NowResolvedId yearSeed;
+            public NowResolvedId prevId;
+            public NowResolvedId nextId;
+            public NowResolvedId labelId;
+            public int callbackState;
             public int year;
             public int month;
             public long selectedTicks;
@@ -92,9 +93,11 @@ namespace NowUI
             public string text = string.Empty;
         }
 
-        static readonly Dictionary<int, PopupState> _popupStates = new Dictionary<int, PopupState>(4);
+        static readonly Dictionary<NowResolvedId, PopupState> _popupStates = new Dictionary<NowResolvedId, PopupState>(4);
+        static readonly Dictionary<int, PopupState> _popupStatesByCallback = new Dictionary<int, PopupState>(4);
+        static int s_nextPopupState = 1;
 
-        static readonly Dictionary<int, FieldLabel> _fieldLabels = new Dictionary<int, FieldLabel>(8);
+        static readonly Dictionary<NowResolvedId, FieldLabel> _fieldLabels = new Dictionary<NowResolvedId, FieldLabel>(8);
 
         static string[] s_dayLabels;
 
@@ -102,7 +105,7 @@ namespace NowUI
 
         static string[] s_monthLabels;
 
-        internal NowDatePicker(NowId id, int site)
+        internal NowDatePicker(NowControlIdentity id, int site)
         {
             _id = id;
             _site = site;
@@ -119,7 +122,7 @@ namespace NowUI
             _hasToday = false;
         }
 
-        internal NowDatePicker(NowRect rect, NowId id, int site) : this(id, site)
+        internal NowDatePicker(NowRect rect, NowControlIdentity id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -133,6 +136,8 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowDatePicker SetId(NowId id) { _id = id; return this; }
+
+        public NowDatePicker SetId(NowResolvedId id) { _id = id; return this; }
 
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowDatePicker SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
@@ -171,9 +176,9 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
 
-            ref var pending = ref NowControlState.Get<PendingDate>(NowInput.CombineId(id, PendingDateSeed));
+            ref var pending = ref NowControlState.Get<PendingDate>(id.Child(PendingDateSeed));
             bool changed = false;
 
             if (pending.has != 0)
@@ -193,7 +198,7 @@ namespace NowUI
 
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             ref bool open = ref NowControlState.Get<bool>(id);
-            ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(id, ShownMonthSeed));
+            ref var shown = ref NowControlState.Get<ShownMonth>(id.Child(ShownMonthSeed));
 
             if (interaction.clicked || submitted)
             {
@@ -204,7 +209,7 @@ namespace NowUI
                     shown.year = value.Year;
                     shown.month = value.Month;
                     ClampShownMonth(ref shown);
-                    NowControlState.Get<int>(NowInput.CombineId(id, CalendarViewSeed)) = 0;
+                    NowControlState.Get<int>(id.Child(CalendarViewSeed)) = 0;
 
                     var openState = GetState(id);
                     openState.highlightTicks = value.Date.Ticks;
@@ -224,7 +229,7 @@ namespace NowUI
             return changed;
         }
 
-        static string FieldText(int id, DateTime value, string format)
+        static string FieldText(NowResolvedId id, DateTime value, string format)
         {
             if (!_fieldLabels.TryGetValue(id, out var label))
             {
@@ -244,7 +249,7 @@ namespace NowUI
             return label.text;
         }
 
-        void DeferPopup(NowThemeAsset theme, int id, NowRect field, DateTime value, ref ShownMonth shown)
+        void DeferPopup(NowThemeAsset theme, NowResolvedId id, NowRect field, DateTime value, ref ShownMonth shown)
         {
             ClampShownMonth(ref shown);
 
@@ -264,12 +269,12 @@ namespace NowUI
             state.id = id;
             state.pendingId = id;
             state.shownMonthId = id;
-            state.daySeed = NowInput.GetId(id, "day");
-            state.monthSeed = NowInput.GetId(id, "month");
-            state.yearSeed = NowInput.GetId(id, "year");
-            state.prevId = NowInput.GetId(id, "prev-month");
-            state.nextId = NowInput.GetId(id, "next-month");
-            state.labelId = NowInput.GetId(id, "header-label");
+            state.daySeed = id.Child("day");
+            state.monthSeed = id.Child("month");
+            state.yearSeed = id.Child("year");
+            state.prevId = id.Child("prev-month");
+            state.nextId = id.Child("next-month");
+            state.labelId = id.Child("header-label");
             state.year = shown.year;
             state.month = shown.month;
             state.selectedTicks = value.Date.Ticks;
@@ -283,15 +288,21 @@ namespace NowUI
             state.popupRect = popupRect;
 
             NowOverlay.BlockAllSurfaces(id);
-            NowOverlay.Defer(popupRect, id, DrawPopup);
+            NowOverlay.Defer(popupRect, id, state.callbackState, DrawPopup);
         }
 
-        static PopupState GetState(int id)
+        static PopupState GetState(NowResolvedId id)
         {
             if (!_popupStates.TryGetValue(id, out var state))
             {
-                state = new PopupState();
+                int callbackState = s_nextPopupState++;
+
+                if (s_nextPopupState == 0)
+                    s_nextPopupState = 1;
+
+                state = new PopupState { callbackState = callbackState };
                 _popupStates[id] = state;
+                _popupStatesByCallback[callbackState] = state;
             }
 
             return state;
@@ -299,7 +310,7 @@ namespace NowUI
 
         static void DrawPopup(int stateId)
         {
-            if (!_popupStates.TryGetValue(stateId, out var state) || state.themeAsset == null)
+            if (!_popupStatesByCallback.TryGetValue(stateId, out var state) || state.themeAsset == null)
                 return;
 
             var theme = state.themeAsset;
@@ -307,7 +318,7 @@ namespace NowUI
             var styles = theme.controlStyles;
             var popupRect = state.popupRect;
 
-            ref int view = ref NowControlState.Get<int>(NowInput.CombineId(state.id, CalendarViewSeed));
+            ref int view = ref NowControlState.Get<int>(state.id.Child(CalendarViewSeed));
 
             renderer.DrawPopupBackground(theme, popupRect, menu: false);
             UpdateKeyboard(state, ref view);
@@ -380,12 +391,12 @@ namespace NowUI
 
                     long dayTicks = day.Ticks;
                     bool disabled = state.hasRange && (dayTicks < state.minTicks || dayTicks > state.maxTicks);
-                    int cellId = NowInput.CombineId(state.daySeed, index + 1);
+                    NowResolvedId cellId = state.daySeed.Child(index + 1);
                     var interaction = NowInput.Interact(cellId, cellRect);
 
                     if (interaction.clicked && !disabled)
                     {
-                        ref var pending = ref NowControlState.Get<PendingDate>(NowInput.CombineId(state.pendingId, PendingDateSeed));
+                        ref var pending = ref NowControlState.Get<PendingDate>(state.pendingId.Child(PendingDateSeed));
                         pending.has = 1;
                         pending.ticks = dayTicks;
                         NowControlState.Get<bool>(state.id) = false;
@@ -427,12 +438,12 @@ namespace NowUI
                     rowHeight);
 
                 bool disabled = MonthDisabled(state, state.year, month);
-                int cellId = NowInput.CombineId(state.monthSeed, month);
+                NowResolvedId cellId = state.monthSeed.Child(month);
                 var interaction = NowInput.Interact(cellId, cellRect);
 
                 if (interaction.clicked && !disabled)
                 {
-                    ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(state.shownMonthId, ShownMonthSeed));
+                    ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId.Child(ShownMonthSeed));
                     shown.year = state.year;
                     shown.month = month;
                     ClampShownMonth(ref shown);
@@ -482,12 +493,12 @@ namespace NowUI
                     rowHeight);
 
                 bool disabled = YearDisabled(state, year);
-                int cellId = NowInput.CombineId(state.yearSeed, index + 1);
+                NowResolvedId cellId = state.yearSeed.Child(index + 1);
                 var interaction = NowInput.Interact(cellId, cellRect);
 
                 if (interaction.clicked && !disabled)
                 {
-                    ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(state.shownMonthId, ShownMonthSeed));
+                    ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId.Child(ShownMonthSeed));
                     shown.year = year;
                     ClampShownMonth(ref shown);
                     view = 1;
@@ -601,7 +612,7 @@ namespace NowUI
 
             if (step != 0)
             {
-                ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(state.shownMonthId, ShownMonthSeed));
+                ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId.Child(ShownMonthSeed));
 
                 if (view == 1)
                     StepMonths(ref shown, step);
@@ -632,7 +643,7 @@ namespace NowUI
             state.hasHighlight = true;
 
             var day = new DateTime(next);
-            ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(state.shownMonthId, ShownMonthSeed));
+            ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId.Child(ShownMonthSeed));
 
             if (day.Year != shown.year || day.Month != shown.month)
             {
@@ -651,7 +662,7 @@ namespace NowUI
             if (state.hasRange && (ticks < state.minTicks || ticks > state.maxTicks))
                 return;
 
-            ref var pending = ref NowControlState.Get<PendingDate>(NowInput.CombineId(state.pendingId, PendingDateSeed));
+            ref var pending = ref NowControlState.Get<PendingDate>(state.pendingId.Child(PendingDateSeed));
             pending.has = 1;
             pending.ticks = ticks;
             NowControlState.Get<bool>(state.id) = false;
@@ -668,7 +679,7 @@ namespace NowUI
             var prev = NowInput.Interact(state.prevId, prevRect);
             var next = NowInput.Interact(state.nextId, nextRect);
 
-            ref var shown = ref NowControlState.Get<ShownMonth>(NowInput.CombineId(state.shownMonthId, ShownMonthSeed));
+            ref var shown = ref NowControlState.Get<ShownMonth>(state.shownMonthId.Child(ShownMonthSeed));
             int arrowStep = view == 0 ? 1 : view == 1 ? 12 : 144;
 
             if (prev.clicked)
@@ -850,6 +861,8 @@ namespace NowUI
         static void ResetForRuntimeLoad()
         {
             _popupStates.Clear();
+            _popupStatesByCallback.Clear();
+            s_nextPopupState = 1;
             _fieldLabels.Clear();
             s_dayLabels = null;
             s_weekdayLabels = null;

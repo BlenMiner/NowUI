@@ -134,9 +134,10 @@ public class NowPopupUXTests
             _frame, _frame * 0.25f);
     }
 
-    int ResolveControlId(string id)
+    NowResolvedId ResolveControlId(string id)
     {
         using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
             return NowControls.GetControlId(id);
     }
 
@@ -261,7 +262,7 @@ public class NowPopupUXTests
             DrawDropdownAndButtonFrame(ref selected, Snapshot(buttonCenter, released: true)),
             "With no popup open, the button must click.");
 
-        int dropdownId = ResolveControlId("dd");
+        NowResolvedId dropdownId = ResolveControlId("dd");
         NowControlState.Get<bool>(dropdownId) = true;
 
         DrawDropdownAndButtonFrame(ref selected, Snapshot(buttonCenter));
@@ -280,7 +281,7 @@ public class NowPopupUXTests
     {
         int selected = 0;
         var fieldCenter = FieldRect.center;
-        int dropdownId = ResolveControlId("dd");
+        NowResolvedId dropdownId = ResolveControlId("dd");
 
         NowControlState.Get<bool>(dropdownId) = true;
         DrawDropdownAndButtonFrame(ref selected, Snapshot(fieldCenter));
@@ -338,8 +339,9 @@ public class NowPopupUXTests
 
         using (NowInput.Begin(_pointer, Surface))
         {
-            NowOverlay.BlockAllSurfaces(7001);
-            NowOverlay.DeferScreen(popup, 7001, _ =>
+            NowResolvedId popupSourceId = NowControls.GetControlId("current-pass-wheel-popup");
+            NowOverlay.BlockAllSurfaces(popupSourceId);
+            NowOverlay.DeferScreen(popup, popupSourceId, () =>
             {
                 popupWheel = NowInput.ConsumeScrollDelta(popup);
             });
@@ -381,8 +383,9 @@ public class NowPopupUXTests
 
         using (NowInput.Begin(_pointer, Surface))
         {
-            NowOverlay.BlockAllSurfaces(7002);
-            NowOverlay.DeferScreen(popup, 7002, _ => { });
+            NowResolvedId popupSourceId = NowControls.GetControlId("scroll-edge-popup");
+            NowOverlay.BlockAllSurfaces(popupSourceId);
+            NowOverlay.DeferScreen(popup, popupSourceId, () => { });
 
             Assert.AreEqual(Vector2.zero, NowInput.ConsumeScrollDelta(parent));
             NowOverlay.Flush();
@@ -404,8 +407,9 @@ public class NowPopupUXTests
         {
             using (NowInput.Begin(_pointer, Surface))
             {
-                NowOverlay.BlockAllSurfaces(7003);
-                NowOverlay.DeferScreen(popup, 7003, _ => { });
+                NowResolvedId popupSourceId = NowControls.GetControlId("bounded-registry-popup");
+                NowOverlay.BlockAllSurfaces(popupSourceId);
+                NowOverlay.DeferScreen(popup, popupSourceId, () => { });
             }
 
             Assert.LessOrEqual(NowOverlay.currentBlockCount, 2);
@@ -472,7 +476,7 @@ public class NowPopupUXTests
         var provider = new NowUIToolkitInputProvider();
 
         using (NowInput.Begin(provider, Surface))
-            NowOverlay.BlockAllSurfaces(7002);
+            NowOverlay.BlockAllSurfaces(NowControls.GetControlId("idle-uitoolkit-modal"));
 
         NowOverlay.ForceNewFrame();
         NowOverlay.ForceNewFrame();
@@ -500,7 +504,7 @@ public class NowPopupUXTests
         try
         {
             using (NowInput.Begin(provider, Surface))
-                NowOverlay.BlockAllSurfaces(7003);
+                NowOverlay.BlockAllSurfaces(NowControls.GetControlId("idle-imgui-modal"));
 
             NowOverlay.ForceNewFrame();
             NowOverlay.ForceNewFrame();
@@ -535,7 +539,7 @@ public class NowPopupUXTests
 
             using (NowOverlay.Host(hostObject.transform))
             using (NowInput.Begin(_pointer, Surface))
-                NowOverlay.BlockAllSurfaces(7004);
+                NowOverlay.BlockAllSurfaces(NowControls.GetControlId("retained-runtime-modal"));
 
             Assert.AreEqual(1, NowOverlay.currentBlockCount);
 
@@ -556,10 +560,12 @@ public class NowPopupUXTests
                     NowOverlay.IsPointerBlocked(background.center),
                     "The first interaction-driven rebuild after idle must still see the retained modal block.");
                 Assert.IsFalse(
-                    NowInput.Interact(7005, background).hovered,
+                    NowInput.Interact(
+                        NowControls.GetControlId("retained-runtime-background"),
+                        background).hovered,
                     "Background content must not hover for one rebuild before the modal re-registers.");
 
-                NowOverlay.BlockAllSurfaces(7004);
+                NowOverlay.BlockAllSurfaces(NowControls.GetControlId("retained-runtime-modal"));
             }
 
             NowOverlay.ForceNewFrame();
@@ -596,7 +602,7 @@ public class NowPopupUXTests
 
             using (NowOverlay.Host(host))
             using (NowInput.Begin(_pointer, Surface))
-                NowOverlay.BlockAllSurfaces(7006);
+                NowOverlay.BlockAllSurfaces(NowControls.GetControlId("disabled-world-modal"));
 
             NowOverlay.ForceNewFrame();
             NowOverlay.ForceNewFrame();
@@ -629,7 +635,7 @@ public class NowPopupUXTests
 
             using (NowOverlay.Host(host, host.rectTransform, null))
             using (NowInput.Begin(_pointer, Surface))
-                NowOverlay.BlockAllSurfaces(7008);
+                NowOverlay.BlockAllSurfaces(NowControls.GetControlId("disabled-ugui-modal"));
 
             NowOverlay.ForceNewFrame();
             NowOverlay.ForceNewFrame();
@@ -661,7 +667,7 @@ public class NowPopupUXTests
 
             using (NowOverlay.Host(host, host.rectTransform, null))
             using (NowInput.Begin(_pointer, Surface))
-                NowOverlay.BlockAllSurfaces(7009);
+                NowOverlay.BlockAllSurfaces(NowControls.GetControlId("zero-size-ugui-modal"));
 
             NowOverlay.ForceNewFrame();
             NowOverlay.ForceNewFrame();
@@ -694,7 +700,7 @@ public class NowPopupUXTests
 
             using (NowOverlay.Host(host, host.rectTransform, null))
             using (NowInput.Begin(_pointer, Surface))
-                NowOverlay.BlockAllSurfaces(7010);
+                NowOverlay.BlockAllSurfaces(NowControls.GetControlId("culled-ugui-modal"));
 
             NowOverlay.ForceNewFrame();
             NowOverlay.ForceNewFrame();
@@ -723,7 +729,7 @@ public class NowPopupUXTests
         {
             using (NowOverlay.Host(hostObject.transform))
             using (NowInput.Begin(_pointer, Surface))
-                NowOverlay.BlockAllSurfaces(7007);
+                NowOverlay.BlockAllSurfaces(NowControls.GetControlId("inactive-component-modal"));
 
             NowOverlay.ForceNewFrame();
             Assert.AreEqual(1, NowOverlay.previousBlockCount);
@@ -778,16 +784,20 @@ public class NowPopupUXTests
         _pointer.snapshot = new NowInputSnapshot(new Vector2(40f, 60f), false, false, false);
 
         using (NowInput.Begin(_pointer, Surface))
-            NowOverlay.DeferScreen(validPopup, 7201, _ => { });
+        {
+            NowResolvedId validPopupSourceId = NowControls.GetControlId("rollback-valid-popup");
+            NowOverlay.DeferScreen(validPopup, validPopupSourceId, () => { });
+        }
 
         Assert.Throws<System.InvalidOperationException>(() =>
         {
             using (NowInput.Begin(_pointer, Surface))
             {
+                NowResolvedId failedPopupSourceId = NowControls.GetControlId("rollback-failed-popup");
                 NowOverlay.DeferScreen(
                     failedPopup,
-                    7202,
-                    _ => throw new System.InvalidOperationException("popup replay failed"));
+                    failedPopupSourceId,
+                    () => throw new System.InvalidOperationException("popup replay failed"));
             }
         });
 
@@ -810,14 +820,25 @@ public class NowPopupUXTests
         _pointer.snapshot = new NowInputSnapshot(new Vector2(40f, 60f), false, false, false);
 
         using (NowInput.Begin(_pointer, Surface))
-            NowOverlay.DeferScreen(validPopup, 7251, _ => { });
+        {
+            NowResolvedId validPopupSourceId = NowControls.GetControlId("flush-cap-valid-popup");
+            NowOverlay.DeferScreen(validPopup, validPopupSourceId, () => { });
+        }
 
         using (NowInput.Begin(_pointer, Surface))
         {
+            NowResolvedId abandonedPopupRootId =
+                NowControls.GetControlId("flush-cap-abandoned-popup");
             NowOverlay.DrawCallback draw = _ => { };
 
             for (int i = 0; i <= 1024; ++i)
-                NowOverlay.DeferScreen(abandonedPopup, 7300 + i, draw);
+            {
+                NowOverlay.DeferScreen(
+                    abandonedPopup,
+                    abandonedPopupRootId.Child(i),
+                    i,
+                    draw);
+            }
 
             LogAssert.Expect(
                 LogType.Error,
@@ -848,23 +869,31 @@ public class NowPopupUXTests
         _pointer.snapshot = other.snapshot;
 
         using (NowInput.Begin(other, Surface))
-            NowOverlay.DeferScreen(previousOther, 7301, _ => { });
+        {
+            NowResolvedId previousOtherSourceId =
+                NowControls.GetControlId("nested-owner-previous-popup");
+            NowOverlay.DeferScreen(previousOther, previousOtherSourceId, () => { });
+        }
 
         NowInput.defaultProvider = _pointer;
         NowInput.BeginScreenFrame(new NowInputSurface(Surface));
 
         try
         {
-            NowOverlay.DeferScreen(outerCurrent, 7302, _ => { });
+            NowResolvedId outerCurrentSourceId =
+                NowControls.GetControlId("nested-owner-outer-popup");
+            NowOverlay.DeferScreen(outerCurrent, outerCurrentSourceId, () => { });
 
             Assert.Throws<System.InvalidOperationException>(() =>
             {
                 using (NowInput.Begin(other, Surface))
                 {
+                    NowResolvedId nestedFailedSourceId =
+                        NowControls.GetControlId("nested-owner-failed-popup");
                     NowOverlay.DeferScreen(
                         nestedFailed,
-                        7303,
-                        _ => throw new System.InvalidOperationException("nested popup replay failed"));
+                        nestedFailedSourceId,
+                        () => throw new System.InvalidOperationException("nested popup replay failed"));
                 }
             });
 
@@ -895,13 +924,15 @@ public class NowPopupUXTests
         var firstPanel = new NowIMGUIInputProvider();
         var secondPanel = new NowIMGUIInputProvider();
         var popup = new NowRect(20f, 40f, 100f, 80f);
+        NowResolvedId popupSourceId = NowResolvedId.None;
 
         try
         {
             using (NowInput.Begin(firstPanel, Surface))
             {
-                NowOverlay.BlockAllSurfaces(7401);
-                NowOverlay.DeferScreen(popup, 7401, _ => { });
+                popupSourceId = NowControls.GetControlId("hostless-imgui-popup");
+                NowOverlay.BlockAllSurfaces(popupSourceId);
+                NowOverlay.DeferScreen(popup, popupSourceId, () => { });
             }
 
             // A later pass promotes the first panel's completed footprint to
@@ -910,7 +941,9 @@ public class NowPopupUXTests
             {
                 Assert.IsTrue(NowOverlay.IsPointerBlocked(popup.center));
                 Assert.IsTrue(NowOverlay.IsPointerInsideOverlay(popup.center));
-                Assert.AreEqual(7401, NowOverlay.activeFocusLayerId);
+                Assert.AreEqual(
+                    popupSourceId,
+                    NowOverlay.activeFocusLayerSourceId);
             }
 
             using (NowInput.Begin(secondPanel, Surface))
@@ -919,7 +952,7 @@ public class NowPopupUXTests
                     NowOverlay.IsPointerBlocked(popup.center),
                     "Local coordinates from one EditorWindow are not a modal region in another.");
                 Assert.IsFalse(NowOverlay.IsPointerInsideOverlay(popup.center));
-                Assert.AreEqual(0, NowOverlay.activeFocusLayerId);
+                Assert.AreEqual(NowResolvedId.None, NowOverlay.activeFocusLayerId);
             }
         }
         finally
@@ -932,8 +965,8 @@ public class NowPopupUXTests
     [Test]
     public void SameFrameDropdownWheelScrollsPopupWithoutMovingParent()
     {
-        const int outerId = 8101;
-        const int dropdownId = 8102;
+        NowResolvedId outerId = ResolveControlId("same-frame-outer-scroll");
+        NowResolvedId dropdownId = ResolveControlId("same-frame-dropdown");
         var outerRect = new NowRect(0f, 0f, 260f, 180f);
         var fieldRect = new NowRect(20f, 20f, 180f, 30f);
         var options = new List<string>(40);
@@ -974,11 +1007,11 @@ public class NowPopupUXTests
             using (NowInput.Begin(_pointer, Surface))
             using (_drawList.Begin(Surface))
             {
-                using (Now.ScrollView(outerRect, NowId.Resolved(outerId)).Begin())
+                using (Now.ScrollView(outerRect, outerId).Begin())
                 {
                     Now.Dropdown(
                             fieldRect,
-                            NowId.Resolved(dropdownId),
+                            dropdownId,
                             options)
                         .Draw(ref selected);
                     NowLayout.ReserveRect(height: 500f, stretchWidth: true);
@@ -996,7 +1029,7 @@ public class NowPopupUXTests
         Draw(Vector2.zero);
 
         ref Vector2 outerScroll = ref NowControlState.Get<Vector2>(outerId);
-        int popupScrollId = NowInput.GetId(dropdownId, "popup-scroll");
+        NowResolvedId popupScrollId = dropdownId.Child("popup-scroll");
         ref Vector2 popupScroll = ref NowControlState.Get<Vector2>(popupScrollId);
 
         Assert.AreEqual(Vector2.zero, outerScroll);
@@ -1036,10 +1069,10 @@ public class NowPopupUXTests
     [Test]
     public void NativeIMGUIDropdownWheelIsConsumedByPopupAndRepaintsOwningProvider()
     {
-        const int HostControlId = 8111;
-        const int OuterId = 8112;
-        const int DropdownId = 8113;
-        var provider = new NowIMGUIInputProvider(HostControlId, new object());
+        const int NativeHostControlId = 8111;
+        NowResolvedId outerId = ResolveControlId("native-imgui-outer-scroll");
+        NowResolvedId dropdownId = ResolveControlId("native-imgui-dropdown");
+        var provider = new NowIMGUIInputProvider(NativeHostControlId, new object());
         var inputSurface = new NowInputSurface(Surface);
         var outerRect = new NowRect(0f, 0f, 260f, 180f);
         var fieldRect = new NowRect(20f, 20f, 180f, 30f);
@@ -1061,7 +1094,7 @@ public class NowPopupUXTests
             options.Add($"Option {i + 1}");
 
         Assert.NotNull(snapshotField);
-        NowControlState.Get<bool>(DropdownId) = true;
+        NowControlState.Get<bool>(dropdownId) = true;
 
         void Draw(Event inputEvent, EventType routedType)
         {
@@ -1081,11 +1114,11 @@ public class NowPopupUXTests
                 {
                     using (Now.ScrollView(
                                outerRect,
-                               NowId.Resolved(OuterId)).Begin())
+                               outerId).Begin())
                     {
                         Now.Dropdown(
                                 fieldRect,
-                                NowId.Resolved(DropdownId),
+                                dropdownId,
                                 options)
                             .Draw(ref selected);
                         NowLayout.ReserveRect(height: 500f, stretchWidth: true);
@@ -1118,10 +1151,8 @@ public class NowPopupUXTests
             }
 
             ref Vector2 outerScroll =
-                ref NowControlState.Get<Vector2>(OuterId);
-            int popupScrollId = NowInput.GetId(
-                DropdownId,
-                "popup-scroll");
+                ref NowControlState.Get<Vector2>(outerId);
+            NowResolvedId popupScrollId = dropdownId.Child("popup-scroll");
             ref Vector2 popupScroll =
                 ref NowControlState.Get<Vector2>(popupScrollId);
             Assert.AreEqual(Vector2.zero, outerScroll);
@@ -1171,7 +1202,7 @@ public class NowPopupUXTests
     public void StableOpenDropdownDoesNotRequestAnotherImmediateRepaint()
     {
         int selected = 0;
-        int dropdownId = ResolveControlId("stable-dd");
+        NowResolvedId dropdownId = ResolveControlId("stable-dd");
         NowControlState.Get<bool>(dropdownId) = true;
         _pointer.snapshot = new NowInputSnapshot(new Vector2(500f, 500f), false, false, false);
         NowControlState.BeginRepaintTracking();
@@ -1315,7 +1346,7 @@ public class NowPopupUXTests
     {
         var stack = new NowViewStack();
         var idle = new Vector2(500f, 500f);
-        int dropdownId = ResolveControlId("nested-dd");
+        NowResolvedId dropdownId = ResolveControlId("nested-dd");
 
         stack.Push(new NestedDropdownView(), NowViewOptions.Popup(ViewPopupRect, NowViewTransitionPreset.None, 0f));
         NowControlState.Get<bool>(dropdownId) = true;
@@ -1336,7 +1367,7 @@ public class NowPopupUXTests
     {
         var stack = new NowViewStack();
         var outside = new Vector2(500f, 500f);
-        int dropdownId = ResolveControlId("nested-dd");
+        NowResolvedId dropdownId = ResolveControlId("nested-dd");
 
         stack.Push(new NestedDropdownView(), NowViewOptions.Popup(ViewPopupRect, NowViewTransitionPreset.None, 0f));
         NowControlState.Get<bool>(dropdownId) = true;

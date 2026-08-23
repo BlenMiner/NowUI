@@ -72,7 +72,7 @@ namespace NowUI
 
     public readonly struct NowEffectContext
     {
-        public readonly int id;
+        public readonly NowResolvedId id;
         public readonly NowRect sourceRect;
 
         /// <summary>
@@ -82,7 +82,7 @@ namespace NowUI
         /// </summary>
         public readonly float time;
 
-        internal NowEffectContext(int id, NowRect sourceRect, float time)
+        internal NowEffectContext(NowResolvedId id, NowRect sourceRect, float time)
         {
             this.id = id;
             this.sourceRect = sourceRect;
@@ -210,8 +210,8 @@ namespace NowUI
 
         const int MaxPooledTemporaryEntries = 8;
 
-        static readonly Dictionary<int, Entry> _entries = new Dictionary<int, Entry>(16);
-        static readonly List<int> _removeIds = new List<int>(8);
+        static readonly Dictionary<NowResolvedId, Entry> _entries = new Dictionary<NowResolvedId, Entry>(16);
+        static readonly List<NowResolvedId> _removeIds = new List<NowResolvedId>(8);
         static readonly Stack<Entry> _temporaryEntryPool = new Stack<Entry>(4);
         static readonly NowScopeGuard _effectScopes = new NowScopeGuard("NowEffects", 8);
         static double _lastCleanupTime;
@@ -237,7 +237,7 @@ namespace NowUI
         }
 
         internal static NowModifierScope<TDeformer> BeginModifier<TDeformer>(
-            int id,
+            NowResolvedId id,
             TDeformer deformer,
             NowSubdivision subdivision,
             bool renderToTexture,
@@ -298,7 +298,7 @@ namespace NowUI
             }
         }
 
-        internal static NowSnapshotScope BeginSnapshot(int id, NowRect rect)
+        internal static NowSnapshotScope BeginSnapshot(NowResolvedId id, NowRect rect)
         {
             var entry = GetEntry(id, out bool temporary);
             entry.inUse = true;
@@ -489,7 +489,7 @@ namespace NowUI
             return new Vector2(Mathf.Max(1, Screen.width), Mathf.Max(1, Screen.height));
         }
 
-        static Entry GetEntry(int id, out bool temporary)
+        static Entry GetEntry(NowResolvedId id, out bool temporary)
         {
             if (_entries.TryGetValue(id, out var entry) && !entry.inUse)
             {
@@ -555,7 +555,7 @@ namespace NowUI
 
             for (int i = 0; i < _removeIds.Count; ++i)
             {
-                int id = _removeIds[i];
+                NowResolvedId id = _removeIds[i];
                 _entries[id].Dispose();
                 _entries.Remove(id);
             }
@@ -643,8 +643,8 @@ namespace NowUI
         where TDeformer : struct, INowVertexDeformer
     {
         readonly TDeformer _deformer;
-        readonly int _site;
-        NowId _id;
+        readonly NowCallSiteId _site;
+        NowControlIdentity _id;
         NowSubdivision _subdivision;
         bool _renderToTexture;
         bool _subdivideText;
@@ -652,7 +652,7 @@ namespace NowUI
         NowRect _sourceRect;
         float _time;
 
-        internal NowModifierBuilder(TDeformer deformer, int site)
+        internal NowModifierBuilder(TDeformer deformer, NowCallSiteId site)
         {
             _deformer = deformer;
             _site = site;
@@ -666,6 +666,13 @@ namespace NowUI
         }
 
         public NowModifierBuilder<TDeformer> SetId(NowId id)
+        {
+            _id = id;
+            return this;
+        }
+
+        /// <summary>Uses an identity already resolved by the active host.</summary>
+        public NowModifierBuilder<TDeformer> SetId(NowResolvedId id)
         {
             _id = id;
             return this;
@@ -718,7 +725,7 @@ namespace NowUI
 
         public NowModifierScope<TDeformer> Begin()
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site).InDomain(NowIdDomain.Effect);
             return NowEffects.BeginModifier(
                 id,
                 _deformer,
@@ -735,7 +742,7 @@ namespace NowUI
     public struct NowModifierScope<TDeformer> : IDisposable
         where TDeformer : struct, INowVertexDeformer
     {
-        internal int id;
+        internal NowResolvedId id;
         internal NowEffects.Entry entry;
         internal bool temporaryEntry;
         internal TDeformer deformer;
@@ -750,7 +757,7 @@ namespace NowUI
         int _token;
 
         internal NowModifierScope(
-            int id,
+            NowResolvedId id,
             NowEffects.Entry entry,
             bool temporaryEntry,
             TDeformer deformer,
@@ -818,11 +825,11 @@ namespace NowUI
     [NowBuilder]
     public struct NowSnapshotBuilder
     {
-        readonly int _site;
+        readonly NowCallSiteId _site;
         readonly NowRect _rect;
-        NowId _id;
+        NowControlIdentity _id;
 
-        internal NowSnapshotBuilder(NowRect rect, int site)
+        internal NowSnapshotBuilder(NowRect rect, NowCallSiteId site)
         {
             _rect = rect;
             _site = site;
@@ -835,9 +842,16 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Uses an identity already resolved by the active host.</summary>
+        public NowSnapshotBuilder SetId(NowResolvedId id)
+        {
+            _id = id;
+            return this;
+        }
+
         public NowSnapshotScope Begin()
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site).InDomain(NowIdDomain.Effect);
             return NowEffects.BeginSnapshot(id, _rect);
         }
     }
@@ -845,7 +859,7 @@ namespace NowUI
     [NowScope]
     public struct NowSnapshotScope : IDisposable
     {
-        internal int id;
+        internal NowResolvedId id;
         internal NowEffects.Entry entry;
         internal bool temporaryEntry;
         internal NowRect rect;
@@ -858,7 +872,7 @@ namespace NowUI
         public Texture Texture => texture;
 
         internal NowSnapshotScope(
-            int id,
+            NowResolvedId id,
             NowEffects.Entry entry,
             bool temporaryEntry,
             NowRect rect,
@@ -933,7 +947,7 @@ namespace NowUI
             bool subdivideText,
             bool hasSourceRect,
             NowRect sourceRect,
-            int effectId,
+            NowResolvedId effectId,
             float time)
             where TDeformer : struct, INowVertexDeformer
         {

@@ -169,7 +169,10 @@ public class NowNewControlsTests
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
         {
-            NowTooltip.For(4242, TooltipAnchorRect, "Hint");
+            NowTooltip.For(
+                NowControls.GetControlId(new NowId(4242)),
+                TooltipAnchorRect,
+                "Hint");
             NowOverlay.Flush();
         }
     }
@@ -403,9 +406,10 @@ public class NowNewControlsTests
     public void SwitchSubmitWhileFocusedToggles()
     {
         bool value = false;
-        int id;
+        NowResolvedId id;
 
         using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
             id = NowControls.GetControlId("switch");
 
         NowFocus.Focus(id);
@@ -741,7 +745,7 @@ public class NowNewControlsTests
             }
 
             Assert.IsTrue(renderer.rowRects.ContainsKey("Leaf"), "Disclosure click must expand the node.");
-            Assert.AreEqual(0, state.selectedId, "Toggling the disclosure must not change the selection.");
+            Assert.IsFalse(state.selectedKey.hasValue, "Toggling the disclosure must not change the selection.");
         }
         finally
         {
@@ -786,7 +790,7 @@ public class NowNewControlsTests
 
                 Assert.IsTrue(activated, "Clicking a leaf must report activation.");
                 Assert.IsTrue(selectionChanged);
-                Assert.AreNotEqual(0, state.selectedId);
+                Assert.IsTrue(state.selectedKey.hasValue);
             }
         }
         finally
@@ -808,9 +812,10 @@ public class NowNewControlsTests
         _pointer.snapshot = new NowInputSnapshot(fieldCenter, false, false, true);
         Assert.IsFalse(DrawComboFrame(ref selected));
 
-        int id;
+        NowResolvedId id;
 
         using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
             id = NowControls.GetControlId("combo");
 
         Assert.IsTrue(NowControlState.Get<bool>(id), "Combo box should open after a click.");

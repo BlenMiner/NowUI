@@ -547,9 +547,9 @@ namespace NowUI
         {
             public readonly NowRenderer renderer = new NowRenderer();
 
-            public readonly int scopeId = NowControls.AllocateHostScopeId();
+            public readonly NowResolvedId scopeId;
 
-            public readonly int focusHostId = NowControls.AllocateHostScopeId();
+            public readonly NowResolvedId focusHostId;
 
             public readonly NowIMGUIInputProvider inputProvider;
 
@@ -564,6 +564,8 @@ namespace NowUI
                 object hostContext,
                 CacheContextActivity contextActivity)
             {
+                scopeId = NowControls.AllocateOwnerScope();
+                focusHostId = scopeId.InDomain(NowIdDomain.FocusHost);
                 inputProvider = new NowIMGUIInputProvider(controlId, hostContext);
                 this.contextActivity = contextActivity;
             }

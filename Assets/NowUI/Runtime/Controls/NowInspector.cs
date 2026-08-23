@@ -36,7 +36,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowInspector
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -67,6 +67,8 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowInspector SetId(NowId id) { _id = id; return this; }
+
+        public NowInspector SetId(NowResolvedId id) { _id = id; return this; }
 
         /// <summary>Width of the label column; the control cell takes the rest.</summary>
         public NowInspector SetLabelWidth(float width) { _settings.labelWidth = Mathf.Max(0f, width); return this; }
@@ -115,12 +117,12 @@ namespace NowUI
 
         bool DrawBoxed(ref object boxed)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             bool changed;
 
             if (_hasRect)
             {
-                using (NowLayout.Area(NowId.Resolved(NowInput.CombineId(id, AreaSeed)), _rect))
+                using (NowLayout.Area(id.Derive(NowIdDomain.Layout, AreaSeed), _rect))
                 using (NowLayout.VerticalScope(new NowLayoutOptions().SetSpacing(_settings.rowSpacing).SetStretchWidth()))
                     changed = DrawRoot(id, ref boxed);
             }
@@ -133,7 +135,7 @@ namespace NowUI
             return changed;
         }
 
-        bool DrawRoot(int id, ref object boxed)
+        bool DrawRoot(NowResolvedId id, ref object boxed)
         {
             using (NowControls.IdScope(id))
             {
@@ -1513,7 +1515,7 @@ namespace NowUI
     {
         public static NowInspector Inspector(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowInspector(rect, id, NowControls.SiteId(file, line));
+            return new NowInspector(rect, id, NowControls.SiteToken(file, line));
         }
     }
 
@@ -1521,7 +1523,7 @@ namespace NowUI
     {
         public static NowInspector Inspector(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowInspector(id, NowControls.SiteId(file, line));
+            return new NowInspector(id, NowControls.SiteToken(file, line));
         }
     }
 }

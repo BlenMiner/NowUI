@@ -249,6 +249,9 @@ batches may still reference them. Never generate a new id every frame. Release
 a departed dynamic item's explicit id under the same host/`IdScope`, after
 rebuilding or discarding retained batches that sample it. A retained host must
 still call `MarkDirty()` before changed mask code runs.
+Both `Scene(...)` and `Release(...)` accept `NowResolvedId` directly when a
+composite already owns the resolved scene path; never wrap it back into an
+authored integer. See [Identity](Identity.md).
 `Release(id)` and `Reset()` also invalidate existing builders for the released
 cache. Their `Measure()`, `Draw()`, and `BeginMask()` consumers throw
 `ObjectDisposedException`; obtain a fresh builder from `NowSdf.Scene(...)`.

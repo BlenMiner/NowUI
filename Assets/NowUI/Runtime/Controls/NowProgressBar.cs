@@ -15,7 +15,7 @@ namespace NowUI
     {
         readonly float _value01;
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -23,7 +23,7 @@ namespace NowUI
         float _time;
         bool _hasTime;
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowProgressBar(float value01, int site)
         {
@@ -59,6 +59,9 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowProgressBar SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowProgressBar SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Sweeping activity indicator instead of a filled fraction. Pass time via <see cref="SetTime"/>.</summary>
         public NowProgressBar SetIndeterminate() { _indeterminate = true; return this; }
 
@@ -79,8 +82,8 @@ namespace NowUI
                 float period = theme.controlStyles.progressBarPeriod;
                 phase01 = Mathf.Repeat(_time / period, 1f);
 
-                int id = ResolveControlId();
-                ref float lastTime = ref NowControlState.Get<float>(NowInput.CombineId(id, 0x50425474));
+                NowResolvedId id = ResolveControlId();
+                ref float lastTime = ref NowControlState.Get<float>(id.Child(0x50425474));
 
                 if (!Mathf.Approximately(lastTime, _time))
                 {

@@ -13,6 +13,8 @@ namespace NowUI
 
         readonly string _meshName;
 
+        readonly NowResolvedId _identityRoot = NowControls.AllocateOwnerScope();
+
         readonly List<NowCanvasMeshPage> _extraCanvasPages = new List<NowCanvasMeshPage>(2);
 
         int _canvasPageCount = 1;
@@ -164,9 +166,17 @@ namespace NowUI
             var overlayCheckpoint = NowOverlay.CaptureCheckpoint();
             bool beganAmbientScope = false;
             bool capturesMesh = size.x > 0f && size.y > 0f;
+            ControlIdScope controlIdScope = default;
+            bool ownsControlIdScope = false;
 
             try
             {
+                if (!inheritContext)
+                {
+                    controlIdScope = NowControls.RestoreIdScope(_identityRoot);
+                    ownsControlIdScope = true;
+                }
+
                 if (!capturesMesh)
                     Now.BeginSuppressDraw();
                 else
@@ -181,6 +191,8 @@ namespace NowUI
                     overlayCheckpoint,
                     flushOverlays,
                     canvasVertexColorAlwaysGammaSpace,
+                    controlIdScope,
+                    ownsControlIdScope,
                     _scopes.Enter());
             }
             catch
@@ -194,6 +206,10 @@ namespace NowUI
                 }
 
                 glassQualityScope.Dispose();
+
+                if (ownsControlIdScope)
+                    controlIdScope.Dispose();
+
                 throw;
             }
         }
@@ -470,6 +486,10 @@ namespace NowUI
 
         readonly bool _canvasVertexColorAlwaysGammaSpace;
 
+        ControlIdScope _controlIdScope;
+
+        bool _ownsControlIdScope;
+
         int _token;
 
         internal NowDrawScope(
@@ -480,6 +500,8 @@ namespace NowUI
             NowOverlay.Checkpoint overlayCheckpoint,
             bool flushOverlays,
             bool canvasVertexColorAlwaysGammaSpace,
+            ControlIdScope controlIdScope,
+            bool ownsControlIdScope,
             int token)
         {
             _drawList = drawList;
@@ -489,6 +511,8 @@ namespace NowUI
             _overlayCheckpoint = overlayCheckpoint;
             _flushOverlays = flushOverlays;
             _canvasVertexColorAlwaysGammaSpace = canvasVertexColorAlwaysGammaSpace;
+            _controlIdScope = controlIdScope;
+            _ownsControlIdScope = ownsControlIdScope;
             _token = token;
         }
 
@@ -532,8 +556,15 @@ namespace NowUI
                 }
                 finally
                 {
-                    _drawList = null;
-                    _token = 0;
+                    try
+                    {
+                        DisposeControlIdScope();
+                    }
+                    finally
+                    {
+                        _drawList = null;
+                        _token = 0;
+                    }
                 }
             }
         }
@@ -564,10 +595,27 @@ namespace NowUI
                 }
                 finally
                 {
-                    _drawList = null;
-                    _token = 0;
+                    try
+                    {
+                        DisposeControlIdScope();
+                    }
+                    finally
+                    {
+                        _drawList = null;
+                        _token = 0;
+                    }
                 }
             }
+        }
+
+        void DisposeControlIdScope()
+        {
+            if (!_ownsControlIdScope)
+                return;
+
+            _controlIdScope.Dispose();
+            _controlIdScope = default;
+            _ownsControlIdScope = false;
         }
     }
 }

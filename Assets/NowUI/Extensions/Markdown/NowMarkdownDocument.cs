@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace NowUI.Markdown
@@ -121,7 +122,7 @@ namespace NowUI.Markdown
         Color _colorSurface;
         Color _colorBackground;
         bool _hasSelection;
-        int _selectionId;
+        NowResolvedId _selectionId;
         string _documentText = string.Empty;
         bool _regionActive;
         int _regionSegmentStart;
@@ -173,9 +174,15 @@ namespace NowUI.Markdown
         /// is reported in the result, content below rect.height simply overflows
         /// unless an ambient mask clips it).
         /// </summary>
-        public NowMarkdownResult Draw(NowRect rect)
+        public NowMarkdownResult Draw(
+            NowRect rect,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            return Draw(rect, _embeds);
+            return DrawResolved(
+                rect,
+                _embeds,
+                NowControls.GetControlId(default, NowControls.SiteId(file, line)));
         }
 
         /// <summary>
@@ -184,7 +191,34 @@ namespace NowUI.Markdown
         /// sticky — it also serves later <see cref="Draw(NowRect)"/> and
         /// <see cref="MeasureHeight(float)"/> calls until replaced.
         /// </summary>
-        public NowMarkdownResult Draw(NowRect rect, NowMarkdownEmbedSet embeds)
+        public NowMarkdownResult Draw(
+            NowRect rect,
+            NowMarkdownEmbedSet embeds,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            return DrawResolved(
+                rect,
+                embeds,
+                NowControls.GetControlId(default, NowControls.SiteId(file, line)));
+        }
+
+        /// <summary>Draws using an identity already resolved by the active host.</summary>
+        public NowMarkdownResult Draw(
+            NowRect rect,
+            NowResolvedId id,
+            NowMarkdownEmbedSet embeds = null)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("A resolved markdown document id is required.", nameof(id));
+
+            return DrawResolved(rect, embeds ?? _embeds, id);
+        }
+
+        internal NowMarkdownResult DrawResolved(
+            NowRect rect,
+            NowMarkdownEmbedSet embeds,
+            NowResolvedId docId)
         {
             _embeds = embeds;
 
@@ -201,8 +235,6 @@ namespace NowUI.Markdown
 
             if (_hasLoadingImages)
                 NowControlState.RequestRepaint();
-
-            int docId = NowInput.GetId(GetHashCode(), "markdown");
 
             // A link spanning several words is ONE link: the prepass finds the
             // word the pointer is over per link, then the link interacts ONCE
@@ -240,7 +272,8 @@ namespace NowUI.Markdown
                     }
 
                     var target = new NowRect(rect.x + op.rect.x, rect.y + op.rect.y, op.rect.width, op.rect.height);
-                    var interaction = NowInput.Interact(NowInput.CombineId(docId, op.link), target);
+                    var interaction = NowInput.Interact(
+                        docId.Child("link").Child(op.link + 1), target);
                     result.hoveredLink = _links[op.link];
                     NowControlState.RequestRepaint();
 
@@ -297,7 +330,7 @@ namespace NowUI.Markdown
                     }
                     case OpKind.Embed:
                     {
-                        DrawEmbed(op, target);
+                        DrawEmbed(op, target, docId);
                         break;
                     }
                 }
@@ -312,14 +345,14 @@ namespace NowUI.Markdown
         /// version, which re-bakes the op list next frame — the same
         /// convergence contract images use.
         /// </summary>
-        void DrawEmbed(in Op op, NowRect target)
+        void DrawEmbed(in Op op, NowRect target, NowResolvedId docId)
         {
             var slot = _embedSlots[op.link];
 
             if (slot.renderer == null)
                 return;
 
-            var context = new NowMarkdownEmbedContext(target, slot.source, slot.info, op.link, GetHashCode());
+            var context = new NowMarkdownEmbedContext(target, slot.source, slot.info, op.link, docId);
             float measured;
 
             using (Now.Mask(target.Outset(2f)))
@@ -339,7 +372,7 @@ namespace NowUI.Markdown
             }
         }
 
-        void InteractDocumentSelection(int docId, NowRect origin)
+        void InteractDocumentSelection(NowResolvedId docId, NowRect origin)
         {
             _hasSelection = false;
 
@@ -388,24 +421,23 @@ namespace NowUI.Markdown
                     op.rect.height));
             }
 
-            int selectionId = NowInput.GetId(docId, "selection");
+            NowResolvedId selectionId = docId.Child("selection");
             _selectionId = selectionId;
             var selection = NowTextSelection.Interact(
                 selectionId, _documentText, _documentScratch, _layoutFont,
                 _style.fontSize, NowFontStyle.Regular, _exclusionScratch);
             _hasSelection = selection.hasSelection;
 
-            int menuId = NowInput.GetId(selectionId, "menu");
+            NowResolvedId menuId = selectionId.Child("menu");
 
-            if (selection.rightClicked)
-                NowContextMenu.Open(menuId, selection.rightClickPosition);
+            NowContextMenu.Open(menuId, in selection.contextTrigger);
 
             if (NowContextMenu.Begin(menuId))
             {
-                if (selection.hasSelection && NowContextMenu.Item("Copy"))
+                if (selection.hasSelection && NowContextMenu.Item("Copy", id: "copy"))
                     NowClipboard.Copy(NowTextSelection.GetSelection(selectionId, _documentText));
 
-                if (NowContextMenu.Item("Select All"))
+                if (NowContextMenu.Item("Select All", id: "select-all"))
                     NowTextSelection.SelectAll(selectionId, _documentText);
 
                 NowContextMenu.End();
@@ -436,9 +468,14 @@ namespace NowUI.Markdown
                 _layoutFont, region.fontSize, NowFontStyle.Regular, highlight);
         }
 
-        void DrawCopyButton(NowThemeAsset themeAsset, int docId, int opIndex, in Op op, NowRect target)
+        void DrawCopyButton(
+            NowThemeAsset themeAsset,
+            NowResolvedId docId,
+            int opIndex,
+            in Op op,
+            NowRect target)
         {
-            int buttonId = NowInput.CombineId(docId, ~opIndex);
+            NowResolvedId buttonId = docId.Child(~opIndex);
             ref float copiedAt = ref NowControlState.Get<float>(buttonId);
             bool showCopied = copiedAt > 0f && Time.realtimeSinceStartup - copiedAt < 1.2f;
 
@@ -455,7 +492,13 @@ namespace NowUI.Markdown
                 NowClipboard.Copy(op.text);
         }
 
-        void DrawImage(NowThemeAsset themeAsset, int docId, int opIndex, in Op op, NowRect target, bool linkHovered)
+        void DrawImage(
+            NowThemeAsset themeAsset,
+            NowResolvedId docId,
+            int opIndex,
+            in Op op,
+            NowRect target,
+            bool linkHovered)
         {
             if (NowMarkdownImages.GetState(op.text, out var texture) != NowMarkdownImageState.Loaded ||
                 texture == null)
@@ -470,21 +513,28 @@ namespace NowUI.Markdown
 
             image.Draw();
 
-            int menuId = NowInput.CombineId(NowInput.GetId(docId, "img-menu"), opIndex);
+            NowResolvedId menuId = docId.Child("img-menu").Child(opIndex + 1);
 
-            if (NowInput.WasRightClicked(target))
-                NowContextMenu.Open(menuId, NowInput.current.pointerPosition);
+            NowContextTrigger contextTrigger = NowContextAction.Resolve(
+                target,
+                actionInvoked: false,
+                actionAnchor: default);
+            NowContextMenu.Open(menuId, in contextTrigger);
 
             if (NowContextMenu.Begin(menuId))
             {
-                if (NowContextMenu.Item("Copy image address"))
+                if (NowContextMenu.Item("Copy image address", id: "copy-address"))
                     NowClipboard.Copy(op.text);
 
                 NowContextMenu.End();
             }
         }
 
-        bool DrawBadgeButton(NowThemeAsset themeAsset, int buttonId, NowRect target, ref float copiedAt)
+        bool DrawBadgeButton(
+            NowThemeAsset themeAsset,
+            NowResolvedId buttonId,
+            NowRect target,
+            ref float copiedAt)
         {
             var interaction = NowInput.Interact(buttonId, target);
             bool clicked = interaction.clicked;
