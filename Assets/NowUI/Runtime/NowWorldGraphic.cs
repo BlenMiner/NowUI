@@ -134,7 +134,7 @@ namespace NowUI
         [NonSerialized] Texture _appliedGlassSharpTexture;
         [NonSerialized] bool _appliedGlassUseBackdrop;
         [NonSerialized] bool _appliedGlassUseSceneDepth;
-        [NonSerialized] int _scopeId;
+        [NonSerialized] NowResolvedId _scopeId;
 #if UNITY_EDITOR
         static bool _editorCallbacksRegistered;
 
@@ -359,14 +359,14 @@ namespace NowUI
         internal virtual bool useLayoutMeasurePass => false;
 
         /// <summary>Resolves a SetId value within this host's private control scope.</summary>
-        public int ResolveControlId(string id)
+        public NowResolvedId ResolveControlId(string id)
         {
-            return NowControls.ResolveHostControlId(GetScopeId(), id);
+            return GetScopeId().Derive(NowIdDomain.Control, id);
         }
 
-        public int ResolveControlId(int id)
+        public NowResolvedId ResolveControlId(int id)
         {
-            return NowControls.ResolveHostControlId(GetScopeId(), id);
+            return GetScopeId().Derive(NowIdDomain.Control, id);
         }
 
         struct FrameContent : INowFrameContent
@@ -1049,12 +1049,12 @@ namespace NowUI
                 _meshFilter.sharedMesh = _drawList.mesh;
         }
 
-        int GetScopeId()
+        NowResolvedId GetScopeId()
         {
-            if (_scopeId != 0)
+            if (_scopeId.hasValue)
                 return _scopeId;
 
-            _scopeId = NowControls.AllocateHostScopeId();
+            _scopeId = NowControls.AllocateOwnerScope();
             return _scopeId;
         }
 

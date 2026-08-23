@@ -60,6 +60,42 @@ public class NowDockingTests
         }
     }
 
+    NowResolvedId ResolvedFrame(NowDockSpace dock, System.Action submit)
+    {
+        submit();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            NowResolvedId id = NowControls.GetControlId("resolved-dock");
+            NowDock.Space(dock, DockRect, id).Draw();
+            NowOverlay.Flush();
+            return id;
+        }
+    }
+
+    [Test]
+    public void ResolvedDockIdIsUsedWithoutBeingScopedAgain()
+    {
+        var dock = new NowDockSpace();
+
+        void Submit()
+        {
+            dock.Window("Scene", () => { });
+            dock.Window("Inspector", () => { });
+        }
+
+        ResolvedFrame(dock, Submit);
+
+        _pointer.snapshot = new NowInputSnapshot(new Vector2(100f, 14f), true, true, false);
+        NowResolvedId dockId = ResolvedFrame(dock, Submit);
+
+        Assert.AreEqual(
+            dockId.Child("dock-tab").Child("Inspector"),
+            NowInput.activeId,
+            "A resolved dock-space id must remain the root of its internal identity paths.");
+    }
+
     [Test]
     public void DrawsFirstSubmittedWindowAsSelectedTab()
     {

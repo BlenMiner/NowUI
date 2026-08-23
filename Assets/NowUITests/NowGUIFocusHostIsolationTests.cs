@@ -65,8 +65,8 @@ public class NowGUIFocusHostIsolationTests
     {
         public NowGUI.CacheEntry entry;
         public FakeProvider provider;
-        public int firstId;
-        public int secondId;
+        public NowResolvedId firstId;
+        public NowResolvedId secondId;
         public int frame;
         public int inputPass;
     }
@@ -136,13 +136,13 @@ public class NowGUIFocusHostIsolationTests
         DrawHostPass(ref second, Snapshot(frame: 700, inputPass: 11, focusNext: true));
         Assert.AreEqual(
             first.firstId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "A Tab pass in another GUI context must not navigate the focused host.");
 
         DrawHostPass(ref first, Snapshot(frame: 700, inputPass: 11, focusNext: true));
         Assert.AreEqual(
             first.secondId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "The focused GUI context must navigate within its own retained registry.");
 
         NowFocus.Focus(second.firstId);
@@ -150,7 +150,7 @@ public class NowGUIFocusHostIsolationTests
 
         Assert.AreEqual(
             second.secondId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "The second GUI context must retain a separate Tab registry even when the native control id matches.");
     }
 
@@ -178,7 +178,7 @@ public class NowGUIFocusHostIsolationTests
             "Each native IMGUI pass must receive a distinct input identity.");
         Assert.AreEqual(
             registered.secondId,
-            NowFocus.focusedId,
+            NowFocus.focusedResolvedId,
             "Tab must be processed by the host scope even after an earlier IMGUI pass in the same Unity frame.");
     }
 
@@ -187,8 +187,8 @@ public class NowGUIFocusHostIsolationTests
     public void NativeTabIsConsumedAndRepaintsOnlyAfterTheHostHandlesIt(bool shift)
     {
         var panel = CreatePanel(new object(), 7201);
-        int startingId = shift ? panel.secondId : panel.firstId;
-        int expectedId = shift ? panel.firstId : panel.secondId;
+        NowResolvedId startingId = shift ? panel.secondId : panel.firstId;
+        NowResolvedId expectedId = shift ? panel.firstId : panel.secondId;
         NowFocus.Focus(startingId);
         var expectedProvider = panel.entry.inputProvider;
         int repaintCount = 0;
@@ -214,7 +214,7 @@ public class NowGUIFocusHostIsolationTests
             tabEvent,
             EventType.Ignore);
 
-        Assert.AreEqual(expectedId, NowFocus.focusedId);
+        Assert.AreEqual(expectedId, NowFocus.focusedResolvedId);
         Assert.AreEqual(
             EventType.Used,
             tabEvent.type,
@@ -266,7 +266,7 @@ public class NowGUIFocusHostIsolationTests
             EventType.KeyDown,
             tabEvent.type,
             "An earlier panel that does not own focus must leave the native Tab available.");
-        Assert.AreEqual(second.firstId, NowFocus.focusedId);
+        Assert.AreEqual(second.firstId, NowFocus.focusedResolvedId);
         Assert.AreEqual(0, firstRepaints);
         Assert.AreEqual(0, secondRepaints);
 
@@ -275,7 +275,7 @@ public class NowGUIFocusHostIsolationTests
             tabEvent,
             EventType.Ignore);
 
-        Assert.AreEqual(second.secondId, NowFocus.focusedId);
+        Assert.AreEqual(second.secondId, NowFocus.focusedResolvedId);
         Assert.AreEqual(EventType.Used, tabEvent.type);
         Assert.AreEqual(0, firstRepaints);
         Assert.AreEqual(
@@ -320,8 +320,9 @@ public class NowGUIFocusHostIsolationTests
                     ownsCapture,
                     out var snapshot));
                 InputSnapshotField.SetValue(null, snapshot);
+                NowResolvedId controlId = NowControls.GetControlId(new NowId(NowControlId));
                 var interaction = NowInput.Interact(
-                    NowControlId,
+                    controlId,
                     new NowRect(10f, 10f, 80f, 24f));
                 return (interaction, snapshot);
             }
@@ -383,7 +384,7 @@ public class NowGUIFocusHostIsolationTests
             Assert.AreEqual(Vector2.zero, resumed.snapshot.navigation);
             Assert.IsTrue(resumed.interaction.cancelled);
             Assert.IsFalse(resumed.interaction.clicked);
-            Assert.AreEqual(0, NowInput.activeId);
+            Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
             Assert.AreEqual(
                 0,
                 GUIUtility.hotControl,
@@ -509,8 +510,8 @@ public class NowGUIFocusHostIsolationTests
             1f,
             repaint: false))
         {
-            int firstId = NowControls.GetControlId("shared-first");
-            int secondId = NowControls.GetControlId("shared-second");
+            NowResolvedId firstId = NowControls.GetControlId("shared-first");
+            NowResolvedId secondId = NowControls.GetControlId("shared-second");
 
             NowFocus.Register(firstId, new NowRect(10f, 10f, 80f, 24f));
             NowFocus.Register(secondId, new NowRect(110f, 10f, 80f, 24f));
@@ -533,8 +534,8 @@ public class NowGUIFocusHostIsolationTests
         using (NowFocus.BeginHostRegistration(panel.entry.focusHostId, null))
         using (NowControls.RestoreIdScope(panel.entry.scopeId))
         {
-            int firstId = NowControls.GetControlId("shared-first");
-            int secondId = NowControls.GetControlId("shared-second");
+            NowResolvedId firstId = NowControls.GetControlId("shared-first");
+            NowResolvedId secondId = NowControls.GetControlId("shared-second");
 
             Assert.AreEqual(panel.firstId, firstId);
             Assert.AreEqual(panel.secondId, secondId);
@@ -572,8 +573,8 @@ public class NowGUIFocusHostIsolationTests
                 using (NowFocus.BeginHostRegistration(panel.entry.focusHostId, null))
                 using (NowControls.RestoreIdScope(panel.entry.scopeId))
                 {
-                    int firstId = NowControls.GetControlId("shared-first");
-                    int secondId = NowControls.GetControlId("shared-second");
+                    NowResolvedId firstId = NowControls.GetControlId("shared-first");
+                    NowResolvedId secondId = NowControls.GetControlId("shared-second");
 
                     Assert.AreEqual(panel.firstId, firstId);
                     Assert.AreEqual(panel.secondId, secondId);

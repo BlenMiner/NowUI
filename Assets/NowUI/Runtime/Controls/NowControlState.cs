@@ -22,8 +22,10 @@ namespace NowUI
     /// Per-control ephemeral state for immediate-mode controls: callers own their
     /// values (ref parameters), this store owns everything transient — hover
     /// transitions, double-click timestamps, key-repeat timers, scroll offsets.
-    /// Slots are keyed by control id and evicted after going untouched for a while,
-    /// mirroring NowLayout's measurement cache.
+    /// Typed slots are keyed by resolved control identity inside the State domain.
+    /// Raw integer overloads are source-blocked; the internal compatibility importer
+    /// remains isolated from typed state. Slots are evicted after going untouched for
+    /// a while, mirroring NowLayout's measurement cache.
     ///
     /// Custom controls build on the same helpers the built-in ones use; nothing
     /// here is internal-only.
@@ -34,6 +36,9 @@ namespace NowUI
 
         const float SWEEP_INTERVAL_SECONDS = 1f;
 
+        const string LegacyIdObsoleteMessage =
+            "Raw integer state identities were removed. Resolve an authored NowId once and use the NowResolvedId overload.";
+
         sealed class Entry<T>
         {
             public T value;
@@ -42,7 +47,8 @@ namespace NowUI
 
         static class Store<T>
         {
-            public static readonly Dictionary<int, Entry<T>> entries = new Dictionary<int, Entry<T>>(64);
+            public static readonly Dictionary<NowResolvedId, Entry<T>> entries =
+                new Dictionary<NowResolvedId, Entry<T>>(64);
 
             public static float lastSweep;
 
@@ -58,22 +64,29 @@ namespace NowUI
 
         static readonly List<Action> s_resets = new List<Action>(8);
 
-        static readonly List<int> s_sweepScratch = new List<int>(16);
+        static readonly List<NowResolvedId> s_sweepScratch = new List<NowResolvedId>(16);
 
         static bool s_repaintRequested;
 
         static float s_nextRepaintAt = float.PositiveInfinity;
 
         /// <summary>
-        /// Returns a persistent slot for this control id, created zeroed on first
+        /// Returns a persistent slot for this resolved control id, created zeroed on first
         /// use. The reference stays valid for the current frame; re-fetch each frame.
         /// </summary>
+        public static ref T Get<T>(NowResolvedId id) where T : struct
+        {
+            return ref GetByStateKey<T>(StateKey(id));
+        }
+
+        /// <summary>
+        /// Source-blocked compatibility slot. It remains only to produce a precise
+        /// migration error for callers that still pass a raw integer identity.
+        /// </summary>
+        [Obsolete(LegacyIdObsoleteMessage, true)]
         public static ref T Get<T>(int id) where T : struct
         {
-            float now = Time.realtimeSinceStartup;
-            var entry = GetOrCreateEntry<T>(id, now);
-            entry.lastTouch = now;
-            return ref entry.value;
+            return ref GetByStateKey<T>(LegacyKey(id));
         }
 
         /// <summary>
@@ -81,9 +94,19 @@ namespace NowUI
         /// Internal hot paths use this to keep untouched controls at their
         /// implicit zero state without populating the persistent store.
         /// </summary>
+        internal static bool TryRead<T>(NowResolvedId id, out T value) where T : struct
+        {
+            return TryReadByStateKey(StateKey(id), out value);
+        }
+
         internal static bool TryRead<T>(int id, out T value) where T : struct
         {
-            if (Store<T>.entries.TryGetValue(id, out var entry))
+            return TryReadByStateKey(LegacyKey(id), out value);
+        }
+
+        static bool TryReadByStateKey<T>(NowResolvedId stateKey, out T value) where T : struct
+        {
+            if (Store<T>.entries.TryGetValue(stateKey, out var entry))
             {
                 value = entry.value;
                 return true;
@@ -93,26 +116,64 @@ namespace NowUI
             return false;
         }
 
-        static Entry<T> GetOrCreateEntry<T>(int id, float now) where T : struct
+        static ref T GetByStateKey<T>(NowResolvedId stateKey) where T : struct
+        {
+            float now = Time.realtimeSinceStartup;
+            var entry = GetOrCreateEntry<T>(stateKey, now);
+            entry.lastTouch = now;
+            return ref entry.value;
+        }
+
+        static Entry<T> GetOrCreateEntry<T>(NowResolvedId stateKey, float now) where T : struct
         {
             var entries = Store<T>.entries;
 
-            if (!entries.TryGetValue(id, out var entry))
+            if (!entries.TryGetValue(stateKey, out var entry))
             {
                 Sweep<T>(now);
                 entry = new Entry<T>();
-                entries.Add(id, entry);
+                entries.Add(stateKey, entry);
             }
 
             return entry;
         }
 
+        static NowResolvedId StateKey(NowResolvedId id)
+        {
+            return id.InDomain(NowIdDomain.State);
+        }
+
+        static NowResolvedId StateKey(NowResolvedId id, string key)
+        {
+            return StateKey(id).Child(key);
+        }
+
+        static NowResolvedId LegacyKey(int id)
+        {
+            return NowResolvedId.FromLegacy(id);
+        }
+
+        static NowResolvedId LegacyKey(int id, string key)
+        {
+            // Preserve the exact legacy aliasing contract: a named integer slot
+            // is the same slot as the old pre-composed integer id. Typed state
+            // instead derives its named child after entering the State domain.
+            return LegacyKey(NowInput.GetLegacyId(id, key));
+        }
+
         /// <summary>
         /// Returns a persistent slot for a named sub-state under this control id.
         /// </summary>
+        public static ref T Get<T>(NowResolvedId id, string key) where T : struct
+        {
+            return ref GetByStateKey<T>(StateKey(id, key));
+        }
+
+        /// <summary>Source-blocked compatibility adapter for a named integer slot.</summary>
+        [Obsolete(LegacyIdObsoleteMessage, true)]
         public static ref T Get<T>(int id, string key) where T : struct
         {
-            return ref Get<T>(NowInput.GetId(id, key));
+            return ref GetByStateKey<T>(LegacyKey(id, key));
         }
 
         /// <summary>
@@ -120,36 +181,59 @@ namespace NowUI
         /// scene/widget initialization for known stable ids so the first interactive
         /// frame does not allocate the slot.
         /// </summary>
-        public static void Warmup<T>(int id) where T : struct
+        public static void Warmup<T>(NowResolvedId id) where T : struct
         {
             Warmup(id, default(T));
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
+        public static void Warmup<T>(int id) where T : struct
+        {
+            WarmupByStateKey(LegacyKey(id), default(T));
         }
 
         /// <summary>
         /// Creates a named sub-state slot outside a measured frame.
         /// </summary>
+        public static void Warmup<T>(NowResolvedId id, string key) where T : struct
+        {
+            WarmupByStateKey(StateKey(id, key), default(T));
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
         public static void Warmup<T>(int id, string key) where T : struct
         {
-            Warmup(NowInput.GetId(id, key), default(T));
+            WarmupByStateKey(LegacyKey(id, key), default(T));
         }
 
         /// <summary>
         /// Creates this control-state slot with an initial value if it is missing.
         /// Existing slots are left untouched.
         /// </summary>
+        public static void Warmup<T>(NowResolvedId id, T initialValue) where T : struct
+        {
+            WarmupByStateKey(StateKey(id), initialValue);
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
         public static void Warmup<T>(int id, T initialValue) where T : struct
+        {
+            WarmupByStateKey(LegacyKey(id), initialValue);
+        }
+
+        static void WarmupByStateKey<T>(NowResolvedId stateKey, T initialValue) where T : struct
         {
             var entries = Store<T>.entries;
             float now = Time.realtimeSinceStartup;
 
-            if (!entries.TryGetValue(id, out var entry))
+            if (!entries.TryGetValue(stateKey, out var entry))
             {
                 Sweep<T>(now);
                 entry = new Entry<T>
                 {
                     value = initialValue
                 };
-                entries.Add(id, entry);
+                entries.Add(stateKey, entry);
             }
 
             entry.lastTouch = now;
@@ -159,9 +243,15 @@ namespace NowUI
         /// Creates a named sub-state slot with an initial value if it is missing.
         /// Existing slots are left untouched.
         /// </summary>
+        public static void Warmup<T>(NowResolvedId id, string key, T initialValue) where T : struct
+        {
+            WarmupByStateKey(StateKey(id, key), initialValue);
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
         public static void Warmup<T>(int id, string key, T initialValue) where T : struct
         {
-            Warmup(NowInput.GetId(id, key), initialValue);
+            WarmupByStateKey(LegacyKey(id, key), initialValue);
         }
 
         static void Sweep<T>(float now)
@@ -196,13 +286,24 @@ namespace NowUI
         /// <see cref="RequestRepaint"/> while mid-transition so retained hosts (UGUI)
         /// keep rebuilding until the animation settles.
         /// </summary>
+        public static float Transition(NowResolvedId id, bool towardOne, float speed = 10f)
+        {
+            return TransitionByStateKey(StateKey(id), towardOne, speed);
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
         public static float Transition(int id, bool towardOne, float speed = 10f)
+        {
+            return TransitionByStateKey(LegacyKey(id), towardOne, speed);
+        }
+
+        static float TransitionByStateKey(NowResolvedId stateKey, bool towardOne, float speed)
         {
             // Get and advance from one timestamp. Get<T> and the old transition
             // path each sampled realtime independently, doubling the clock calls
             // made by every animated control while adding no useful precision.
             float now = Time.realtimeSinceStartup;
-            var entry = GetOrCreateEntry<TransitionState>(id, now);
+            var entry = GetOrCreateEntry<TransitionState>(stateKey, now);
             entry.lastTouch = now;
             return AdvanceTransition(ref entry.value, towardOne, speed, now);
         }
@@ -229,7 +330,7 @@ namespace NowUI
         /// </summary>
         public static float Transition(NowInteraction interaction, bool towardOne, float speed = 10f)
         {
-            return Transition(interaction.id, towardOne, speed);
+            return TransitionByStateKey(StateKey(interaction.id), towardOne, speed);
         }
 
         /// <summary>
@@ -237,7 +338,7 @@ namespace NowUI
         /// </summary>
         public static float Transition(NowInteraction interaction, string key, bool towardOne, float speed = 10f)
         {
-            return Transition(interaction.GetId(key), towardOne, speed);
+            return TransitionByStateKey(StateKey(interaction.id, key), towardOne, speed);
         }
 
         struct DoubleClickState
@@ -246,12 +347,23 @@ namespace NowUI
         }
 
         /// <summary>True when this click lands within <paramref name="window"/> of the previous one.</summary>
+        public static bool DetectDoubleClick(NowResolvedId id, bool clicked, float window = 0.35f)
+        {
+            return DetectDoubleClickByStateKey(StateKey(id), clicked, window);
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
         public static bool DetectDoubleClick(int id, bool clicked, float window = 0.35f)
+        {
+            return DetectDoubleClickByStateKey(LegacyKey(id), clicked, window);
+        }
+
+        static bool DetectDoubleClickByStateKey(NowResolvedId stateKey, bool clicked, float window)
         {
             if (!clicked)
                 return false;
 
-            ref var state = ref Get<DoubleClickState>(id);
+            ref var state = ref GetByStateKey<DoubleClickState>(stateKey);
             float now = Time.realtimeSinceStartup;
             bool isDouble = state.lastClickTime > 0f && now - state.lastClickTime <= window;
             state.lastClickTime = isDouble ? 0f : now;
@@ -271,21 +383,48 @@ namespace NowUI
         /// and so on; 0 on non-click frames. Each click must land within
         /// <paramref name="window"/> of the previous one to extend the streak.
         /// </summary>
-        public static int ClickStreak(int id, bool clicked, float window = 0.35f)
+        public static int ClickStreak(NowResolvedId id, bool clicked, float window = 0.35f)
         {
             return ClickStreak(id, clicked, default, -1f, window);
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
+        public static int ClickStreak(int id, bool clicked, float window = 0.35f)
+        {
+            return ClickStreakByStateKey(LegacyKey(id), clicked, default, -1f, window);
         }
 
         /// <summary>
         /// Consecutive-click count for this click, requiring subsequent clicks to
         /// land near the previous click as well as inside the time window.
         /// </summary>
+        public static int ClickStreak(
+            NowResolvedId id,
+            bool clicked,
+            Vector2 position,
+            float maxDistance = 6f,
+            float window = 0.35f)
+        {
+            return ClickStreakByStateKey(StateKey(id), clicked, position, maxDistance, window);
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
         public static int ClickStreak(int id, bool clicked, Vector2 position, float maxDistance = 6f, float window = 0.35f)
+        {
+            return ClickStreakByStateKey(LegacyKey(id), clicked, position, maxDistance, window);
+        }
+
+        static int ClickStreakByStateKey(
+            NowResolvedId stateKey,
+            bool clicked,
+            Vector2 position,
+            float maxDistance,
+            float window)
         {
             if (!clicked)
                 return 0;
 
-            ref var state = ref Get<ClickStreakState>(id);
+            ref var state = ref GetByStateKey<ClickStreakState>(stateKey);
             float now = Time.realtimeSinceStartup;
             bool inWindow = state.lastClickTime > 0f && now - state.lastClickTime <= window;
             bool usePosition = maxDistance >= 0f;
@@ -326,9 +465,20 @@ namespace NowUI
         /// <paramref name="delay"/> repeats every <paramref name="interval"/> while
         /// <paramref name="held"/> stays true.
         /// </summary>
+        public static bool Repeat(NowResolvedId id, bool held, float delay = 0.4f, float interval = 0.05f)
+        {
+            return RepeatByStateKey(StateKey(id), held, delay, interval);
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
         public static bool Repeat(int id, bool held, float delay = 0.4f, float interval = 0.05f)
         {
-            ref var state = ref Get<RepeatState>(id);
+            return RepeatByStateKey(LegacyKey(id), held, delay, interval);
+        }
+
+        static bool RepeatByStateKey(NowResolvedId stateKey, bool held, float delay, float interval)
+        {
+            ref var state = ref GetByStateKey<RepeatState>(stateKey);
             float now = Time.realtimeSinceStartup;
 
             if (!held)
@@ -358,9 +508,20 @@ namespace NowUI
         /// <summary>
         /// Key-repeat pulses for a named sub-state under <paramref name="id"/>.
         /// </summary>
+        public static bool Repeat(
+            NowResolvedId id,
+            string key,
+            bool held,
+            float delay = 0.4f,
+            float interval = 0.05f)
+        {
+            return RepeatByStateKey(StateKey(id, key), held, delay, interval);
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
         public static bool Repeat(int id, string key, bool held, float delay = 0.4f, float interval = 0.05f)
         {
-            return Repeat(NowInput.GetId(id, key), held, delay, interval);
+            return RepeatByStateKey(LegacyKey(id, key), held, delay, interval);
         }
 
         /// <summary>
@@ -368,7 +529,7 @@ namespace NowUI
         /// </summary>
         public static bool Repeat(NowInteraction interaction, bool held, float delay = 0.4f, float interval = 0.05f)
         {
-            return Repeat(interaction.id, held, delay, interval);
+            return RepeatByStateKey(StateKey(interaction.id), held, delay, interval);
         }
 
         /// <summary>
@@ -376,7 +537,7 @@ namespace NowUI
         /// </summary>
         public static bool Repeat(NowInteraction interaction, string key, bool held, float delay = 0.4f, float interval = 0.05f)
         {
-            return Repeat(interaction.GetId(key), held, delay, interval);
+            return RepeatByStateKey(StateKey(interaction.id, key), held, delay, interval);
         }
 
         /// <summary>
@@ -384,17 +545,39 @@ namespace NowUI
         /// Material ripples. Returns the active animation and requests repaints
         /// until the effect has finished.
         /// </summary>
+        public static NowPressAnimation PressAnimation(
+            NowResolvedId id,
+            bool triggered,
+            Vector2 origin,
+            float duration = 0.45f)
+        {
+            if (!id.hasValue || duration <= 0f)
+                return default;
+
+            return PressAnimationByStateKey(StateKey(id), triggered, origin, duration);
+        }
+
+        [Obsolete(LegacyIdObsoleteMessage, true)]
         public static NowPressAnimation PressAnimation(int id, bool triggered, Vector2 origin, float duration = 0.45f)
         {
             if (id == 0 || duration <= 0f)
                 return default;
 
+            return PressAnimationByStateKey(LegacyKey(id), triggered, origin, duration);
+        }
+
+        static NowPressAnimation PressAnimationByStateKey(
+            NowResolvedId stateKey,
+            bool triggered,
+            Vector2 origin,
+            float duration)
+        {
             var entries = Store<PressAnimationState>.entries;
 
             // An animation that has never started has an implicit inactive state.
             // Keep idle controls out of the store and avoid sampling Unity's clock;
             // inactive retained entries are likewise left untouched so they can age out.
-            if (!entries.TryGetValue(id, out var entry))
+            if (!entries.TryGetValue(stateKey, out var entry))
             {
                 if (!triggered)
                     return default;
@@ -407,7 +590,7 @@ namespace NowUI
             float now = Time.realtimeSinceStartup;
 
             if (entry == null)
-                entry = GetOrCreateEntry<PressAnimationState>(id, now);
+                entry = GetOrCreateEntry<PressAnimationState>(stateKey, now);
 
             entry.lastTouch = now;
             ref var state = ref entry.value;
@@ -449,7 +632,11 @@ namespace NowUI
             Vector2 origin,
             float duration = 0.45f)
         {
-            return PressAnimation(interaction.GetId(key), triggered, origin, duration);
+            return PressAnimationByStateKey(
+                StateKey(interaction.id, key),
+                triggered,
+                origin,
+                duration);
         }
 
         /// <summary>Square-wave blink (caret-style); stateless.</summary>

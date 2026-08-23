@@ -11,6 +11,11 @@ using NowUI;
 /// </summary>
 public class NowControlsTests
 {
+    static readonly NowResolvedId TestIdentityRoot =
+        NowResolvedId.CreateOwnerRoot(0x4E4F575549544553UL);
+
+    static NowResolvedId TestId(int id) => TestIdentityRoot.Child(id);
+
     sealed class FakeProvider : INowInputProvider
     {
         public NowInputSnapshot snapshot;
@@ -85,7 +90,7 @@ public class NowControlsTests
         NowControlState.BeginRepaintTracking();
 
         using (NowInput.Begin(_provider, Surface))
-            NowControls.Interact(101, ButtonRect, out _, out _);
+            NowControls.Interact(TestId(101), ButtonRect, out _, out _);
 
         return NowControlState.EndRepaintTracking();
     }
@@ -95,7 +100,11 @@ public class NowControlsTests
         return NowControls.Interact(ButtonRect, out focused, out submitted);
     }
 
-    static NowInteraction DrawBuilderFallbackInteraction(NowId id, int fallbackIdentity, out bool focused, out bool submitted)
+    static NowInteraction DrawBuilderFallbackInteraction(
+        NowId id,
+        NowCallSiteId fallbackIdentity,
+        out bool focused,
+        out bool submitted)
     {
         return NowControls.Interact(id, fallbackIdentity, ButtonRect, out focused, out submitted);
     }
@@ -129,17 +138,17 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, new NowRect(10, 10, 80, 30));
-            NowFocus.Register(2, new NowRect(110, 10, 80, 30), default, navigationLock, consumesCancel);
-            NowFocus.Register(3, new NowRect(210, 10, 80, 30));
-            NowFocus.Focus(2);
+            NowFocus.Register(TestId(1), new NowRect(10, 10, 80, 30));
+            NowFocus.Register(TestId(2), new NowRect(110, 10, 80, 30), default, navigationLock, consumesCancel);
+            NowFocus.Register(TestId(3), new NowRect(210, 10, 80, 30));
+            NowFocus.Focus(TestId(2));
         }
     }
 
     [Test]
     public void TransitionDoesNotAdvanceDuringPassiveMeasurePass()
     {
-        const int id = 909;
+        NowResolvedId id = TestId(909);
 
         try
         {
@@ -177,7 +186,7 @@ public class NowControlsTests
     [Test]
     public void TransitionAdvancesOnFirstActiveFrameAfterIdle()
     {
-        const int id = 910;
+        NowResolvedId id = TestId(910);
 
         Assert.AreEqual(0f, NowControlState.Transition(id, false, 100f));
         System.Threading.Thread.Sleep(20);
@@ -192,7 +201,7 @@ public class NowControlsTests
 
         Assert.AreEqual(0, NowControlState.pressAnimationStateCount);
         NowControlState.BeginRepaintTracking();
-        var animation = NowControlState.PressAnimation(707, true, origin, 1f);
+        var animation = NowControlState.PressAnimation(TestId(707), true, origin, 1f);
         bool repaint = NowControlState.EndRepaintTracking();
 
         Assert.IsTrue(animation.active);
@@ -205,7 +214,7 @@ public class NowControlsTests
     [Test]
     public void PressAnimationAdvancesAndRequestsRepaintWhileActive()
     {
-        const int id = 708;
+        NowResolvedId id = TestId(708);
         var origin = new Vector2(3f, 7f);
 
         NowControlState.PressAnimation(id, true, origin, 10f);
@@ -230,7 +239,7 @@ public class NowControlsTests
 
         for (int i = 0; i < 100; ++i)
         {
-            var animation = NowControlState.PressAnimation(8000 + i, false, default, 1f);
+            var animation = NowControlState.PressAnimation(TestId(8000 + i), false, default, 1f);
             Assert.IsFalse(animation.active);
         }
 
@@ -280,7 +289,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
         {
             NowInput.BeginPassive();
-            animation = NowControlState.PressAnimation(808, true, new Vector2(8f, 9f), 1f);
+            animation = NowControlState.PressAnimation(TestId(808), true, new Vector2(8f, 9f), 1f);
             NowInput.EndPassive();
         }
 
@@ -293,7 +302,7 @@ public class NowControlsTests
     [Test]
     public void ControlStateWarmupCreatesSlotWithoutOverwritingExistingValue()
     {
-        const int id = 7171;
+        NowResolvedId id = TestId(7171);
 
         NowControlState.Warmup(id, 42);
         Assert.AreEqual(42, NowControlState.Get<int>(id));
@@ -377,29 +386,29 @@ public class NowControlsTests
     [Test]
     public void ExactMeasureReplayContinuesFromTheActiveOccurrenceOffset()
     {
-        int site = NowControls.SiteId("test", 253);
+        NowCallSiteId site = NowControls.SiteId("test", 253);
 
         using (NowInput.Begin(_provider, Surface))
         {
-            int active1 = NowControls.GetControlId(site);
-            int active2 = NowControls.GetControlId(site);
+            NowResolvedId active1 = NowControls.GetControlId(default, site);
+            NowResolvedId active2 = NowControls.GetControlId(default, site);
 
             int snapshot = NowLayout.BeginMeasurePass();
-            int measured1;
-            int measured2;
+            NowResolvedId measured1;
+            NowResolvedId measured2;
 
             try
             {
-                measured1 = NowControls.GetControlId(site);
-                measured2 = NowControls.GetControlId(site);
+                measured1 = NowControls.GetControlId(default, site);
+                measured2 = NowControls.GetControlId(default, site);
             }
             finally
             {
                 NowLayout.EndMeasurePass(snapshot);
             }
 
-            int drawn1 = NowControls.GetControlId(site);
-            int drawn2 = NowControls.GetControlId(site);
+            NowResolvedId drawn1 = NowControls.GetControlId(default, site);
+            NowResolvedId drawn2 = NowControls.GetControlId(default, site);
 
             Assert.AreNotEqual(active1, active2, "Repeated controls at one call site must salt apart.");
             Assert.AreEqual(drawn1, measured1,
@@ -412,19 +421,19 @@ public class NowControlsTests
     [Test]
     public void PassiveOnlyRegionReservesItsControlIdOccurrences()
     {
-        int site = NowControls.SiteId("test", 254);
+        NowCallSiteId site = NowControls.SiteId("test", 254);
 
         using (NowInput.Begin(_provider, Surface))
         {
-            int before = NowControls.GetControlId(site);
+            NowResolvedId before = NowControls.GetControlId(default, site);
 
             NowInput.BeginPassive();
-            int passive = NowControls.GetControlId(site);
+            NowResolvedId passive = NowControls.GetControlId(default, site);
             NowInput.EndPassive();
 
-            int after = NowControls.GetControlId(site);
+            NowResolvedId after = NowControls.GetControlId(default, site);
 
-            Assert.AreEqual(3, new HashSet<int> { before, passive, after }.Count,
+            Assert.AreEqual(3, new HashSet<NowResolvedId> { before, passive, after }.Count,
                 "A passive-only subtree must reserve its logical slots in the surrounding draw.");
         }
     }
@@ -432,52 +441,52 @@ public class NowControlsTests
     [Test]
     public void NestedPassiveRegionKeepsMeasureAndDrawOccurrencesAligned()
     {
-        int site = NowControls.SiteId("test", 255);
-        var measured = new List<int>();
-        var drawn = new List<int>();
+        NowCallSiteId site = NowControls.SiteId("test", 255);
+        var measured = new List<NowResolvedId>();
+        var drawn = new List<NowResolvedId>();
 
         using (NowInput.Begin(_provider, Surface))
         {
             NowLayout.RunMeasured(new NowRect(0f, 0f, 100f, 20f), () =>
             {
-                List<int> ids = NowLayout.isMeasurePass ? measured : drawn;
-                ids.Add(NowControls.GetControlId(site));
+                List<NowResolvedId> ids = NowLayout.isMeasurePass ? measured : drawn;
+                ids.Add(NowControls.GetControlId(default, site));
 
                 NowInput.BeginPassive();
                 try
                 {
-                    ids.Add(NowControls.GetControlId(site));
+                    ids.Add(NowControls.GetControlId(default, site));
                 }
                 finally
                 {
                     NowInput.EndPassive();
                 }
 
-                ids.Add(NowControls.GetControlId(site));
+                ids.Add(NowControls.GetControlId(default, site));
             });
         }
 
         CollectionAssert.AreEqual(measured, drawn);
-        Assert.AreEqual(3, new HashSet<int>(drawn).Count,
+        Assert.AreEqual(3, new HashSet<NowResolvedId>(drawn).Count,
             "The nested passive subtree must consume one stable occurrence in both passes.");
     }
 
     [Test]
     public void NestedInputSurfaceDoesNotResetOuterControlOccurrences()
     {
-        int site = NowControls.SiteId("test", 256);
+        NowCallSiteId site = NowControls.SiteId("test", 256);
 
         using (NowInput.Begin(_provider, Surface))
         {
-            int before = NowControls.GetControlId(site);
-            int nested;
+            NowResolvedId before = NowControls.GetControlId(default, site);
+            NowResolvedId nested;
 
             using (NowInput.Begin(_provider, Surface))
-                nested = NowControls.GetControlId(site);
+                nested = NowControls.GetControlId(default, site);
 
-            int after = NowControls.GetControlId(site);
+            NowResolvedId after = NowControls.GetControlId(default, site);
 
-            Assert.AreEqual(3, new HashSet<int> { before, nested, after }.Count,
+            Assert.AreEqual(3, new HashSet<NowResolvedId> { before, nested, after }.Count,
                 "A nested input surface must not restart the outer surface's occurrence sequence.");
         }
     }
@@ -485,19 +494,25 @@ public class NowControlsTests
     [Test]
     public void ButtonPressTakesFocus()
     {
-        int expectedId;
+        NowResolvedId expectedId;
 
         using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
             expectedId = NowControls.GetControlId("Save");
 
         DrawButtonFrame(new Vector2(60, 36), true, true, false);
-        Assert.AreEqual(expectedId, NowFocus.focusedId);
+        Assert.AreEqual(expectedId, NowFocus.focusedResolvedId);
     }
 
     [Test]
     public void FocusedButtonActivatesOnSubmit()
     {
-        int id = NowControls.GetControlId("Save");
+        NowResolvedId id;
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            id = NowControls.GetControlId("Save");
+
         NowFocus.Focus(id);
 
         _provider.snapshot = new NowInputSnapshot(
@@ -534,11 +549,11 @@ public class NowControlsTests
         }
 
         Frame(down: true, pressed: true, released: false);
-        int id = interaction.id;
+        NowResolvedId id = interaction.id;
 
         Assert.IsTrue(focused);
         Assert.IsFalse(submitted);
-        Assert.AreEqual(id, NowFocus.focusedId);
+        Assert.AreEqual(id, NowFocus.focusedResolvedId);
 
         Frame(down: false, pressed: false, released: true);
 
@@ -553,12 +568,17 @@ public class NowControlsTests
         _provider.snapshot = new NowInputSnapshot(new Vector2(60, 36), false, false, false);
 
         using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
         {
-            var fallback = DrawBuilderFallbackInteraction(default, 7001, out _, out _);
-            var explicitId = DrawBuilderFallbackInteraction(7002, 7001, out _, out _);
+            NowCallSiteId site = NowControls.SiteId("builder-fallback", 7001);
+            var fallback = DrawBuilderFallbackInteraction(default, site, out _, out _);
+            var explicitId = DrawBuilderFallbackInteraction(7002, site, out _, out _);
 
-            Assert.AreEqual(7001, fallback.id);
-            Assert.AreEqual(7002, explicitId.id);
+            Assert.IsTrue(fallback.id.hasValue);
+            Assert.AreEqual(
+                NowControls.GetControlId(new NowId(7002)),
+                explicitId.id);
+            Assert.AreNotEqual(fallback.id, explicitId.id);
         }
     }
 
@@ -631,24 +651,26 @@ public class NowControlsTests
     [Test]
     public void RepeatedCallSiteGetsDistinctStableIds()
     {
-        int first, second, third;
-        int site = NowControls.SiteId("test", 423);
+        NowResolvedId first, second, third;
+        NowCallSiteId site = NowControls.SiteId("test", 423);
 
         using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
         {
-            first = NowControls.GetControlId(site);
-            second = NowControls.GetControlId(site);
-            third = NowControls.GetControlId(site);
+            first = NowControls.GetControlId(default, site);
+            second = NowControls.GetControlId(default, site);
+            third = NowControls.GetControlId(default, site);
         }
 
         Assert.AreNotEqual(first, second);
         Assert.AreNotEqual(second, third);
         Assert.AreNotEqual(first, third);
 
-        int firstNextFrame;
+        NowResolvedId firstNextFrame;
 
         using (NowInput.Begin(_provider, Surface))
-            firstNextFrame = NowControls.GetControlId(site);
+        using (_drawList.Begin(Surface))
+            firstNextFrame = NowControls.GetControlId(default, site);
 
         Assert.AreEqual(first, firstNextFrame);
     }
@@ -685,11 +707,13 @@ public class NowControlsTests
     }
 
     [Test]
-    public void CombineIdIsStableAndNeverZero()
+    public void ResolvedChildIdsAreStableAndNeverEmpty()
     {
-        Assert.AreEqual(NowInput.CombineId(7, 3), NowInput.CombineId(7, 3));
-        Assert.AreNotEqual(NowInput.CombineId(7, 3), NowInput.CombineId(7, 4));
-        Assert.AreNotEqual(0, NowInput.CombineId(0, 0));
+        NowResolvedId parent = TestId(7);
+
+        Assert.AreEqual(parent.Child(3), parent.Child(3));
+        Assert.AreNotEqual(parent.Child(3), parent.Child(4));
+        Assert.IsTrue(parent.Child(0).hasValue);
     }
 
     [Test]
@@ -698,34 +722,40 @@ public class NowControlsTests
         NowId none = (string)null;
         NowId stringId = "row-7";
         NowId intId = 77;
-        NowId resolvedId = NowId.Resolved(77);
 
         Assert.IsFalse(none.hasValue);
-        Assert.AreEqual(123, NowInput.GetId(none, 123));
 
         Assert.IsTrue(stringId.isString);
         Assert.AreEqual("row-7", stringId.stringValue);
-        Assert.AreEqual(NowInput.GetId("row-7"), NowInput.GetId(stringId, 1));
 
         Assert.IsTrue(intId.isInt);
-        Assert.IsFalse(intId.isResolved);
         Assert.AreEqual(77, intId.intValue);
-        Assert.AreEqual(77, NowInput.GetId(intId, 1));
-        Assert.IsTrue(resolvedId.isInt);
-        Assert.IsTrue(resolvedId.isResolved);
 
-        using (NowControls.IdScope("panel"))
+        using (NowInput.Begin(_provider, Surface))
         {
-            Assert.AreNotEqual(77, NowInput.GetId(intId, 1));
-            Assert.AreEqual(77, NowInput.GetId(resolvedId, 1));
+            NowCallSiteId site = NowControls.SiteId("authored-id-resolution", 1);
+            NowResolvedId stringResolved = NowInput.GetId(stringId, site);
+            NowResolvedId intResolved = NowInput.GetId(intId, site);
+
+            Assert.IsTrue(stringResolved.hasValue);
+            Assert.IsTrue(intResolved.hasValue);
+            Assert.AreNotEqual(stringResolved, intResolved);
+
+            using (NowControls.IdScope("panel"))
+            {
+                Assert.AreNotEqual(stringResolved, NowInput.GetId(stringId, site));
+                Assert.AreNotEqual(intResolved, NowInput.GetId(intId, site));
+            }
         }
     }
 
     [Test]
-    public void NowIdRejectsReservedOrEmptyExplicitIds()
+    public void NowIdAcceptsIntegerZeroButRejectsEmptyStringsAndDefaultInteraction()
     {
-        Assert.Throws<System.ArgumentException>(() => { NowId id = 0; _ = id; });
-        Assert.Throws<System.ArgumentException>(() => NowId.Resolved(0));
+        NowId zero = 0;
+        Assert.IsTrue(zero.hasValue);
+        Assert.IsTrue(zero.isInt);
+        Assert.AreEqual(0, zero.intValue);
         Assert.Throws<System.ArgumentException>(() => { NowId id = string.Empty; _ = id; });
         Assert.Throws<System.ArgumentException>(() => NowInput.Interact(default(NowId), ButtonRect));
     }
@@ -802,9 +832,10 @@ public class NowControlsTests
     [Test]
     public void SetIdDecouplesIdentityFromLabel()
     {
-        int byLabel, byId;
+        NowResolvedId byLabel, byId;
 
         using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
         {
             byLabel = NowControls.GetControlId("Delete");
             byId = NowControls.GetControlId("row-7-delete");
@@ -834,12 +865,13 @@ public class NowControlsTests
     [Test]
     public void IntegerSetIdDecouplesIdentityFromLabel()
     {
-        int byLabel, byId;
+        NowResolvedId byLabel, byId;
 
         using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
         {
             byLabel = NowControls.GetControlId("Delete");
-            byId = NowControls.GetControlId(9007);
+            byId = NowControls.GetControlId(new NowId(9007));
         }
 
         Assert.AreNotEqual(byLabel, byId);
@@ -866,13 +898,13 @@ public class NowControlsTests
     [Test]
     public void IdScopesDisambiguateIdenticalLabels()
     {
-        int outer = NowControls.GetControlId("Delete");
-        int scoped;
+        NowResolvedId outer = NowControls.GetControlId("Delete");
+        NowResolvedId scoped;
 
         using (NowControls.IdScope("row-1"))
             scoped = NowControls.GetControlId("Delete");
 
-        int scopedOther;
+        NowResolvedId scopedOther;
 
         using (NowControls.IdScope("row-2"))
             scopedOther = NowControls.GetControlId("Delete");
@@ -920,9 +952,9 @@ public class NowControlsTests
     [Test]
     public void CopiedTreeScopeCannotReturnAFrameAfterItWasRentedAgain()
     {
-        var firstState = new NowTreeViewState { selectedId = 11 };
-        var secondState = new NowTreeViewState { selectedId = 22 };
-        var thirdState = new NowTreeViewState { selectedId = 33 };
+        var firstState = new NowTreeViewState { selectedKey = NowTreeNodeKey.From(11) };
+        var secondState = new NowTreeViewState { selectedKey = NowTreeNodeKey.From(22) };
+        var thirdState = new NowTreeViewState { selectedKey = NowTreeNodeKey.From(33) };
         var first = NowLayout.TreeView(firstState).SetId("first-tree").Begin();
         var stale = first;
         NowTreeViewScope second = default;
@@ -938,8 +970,8 @@ public class NowControlsTests
             stale.Dispose();
             third = NowLayout.TreeView(thirdState).SetId("third-tree").Begin();
 
-            Assert.AreEqual(22, second.selectedId);
-            Assert.AreEqual(33, third.selectedId);
+            Assert.AreEqual(NowTreeNodeKey.From(22), second.selectedKey);
+            Assert.AreEqual(NowTreeNodeKey.From(33), third.selectedKey);
         }
         finally
         {
@@ -953,15 +985,15 @@ public class NowControlsTests
     [Test]
     public void NestedTreeScopesRequireReverseOrderButOuterCanRetry()
     {
-        var outerState = new NowTreeViewState { selectedId = 41 };
-        var innerState = new NowTreeViewState { selectedId = 42 };
+        var outerState = new NowTreeViewState { selectedKey = NowTreeNodeKey.From(41) };
+        var innerState = new NowTreeViewState { selectedKey = NowTreeNodeKey.From(42) };
         var outer = NowLayout.TreeView(outerState).SetId("outer-tree").Begin();
         var inner = NowLayout.TreeView(innerState).SetId("inner-tree").Begin();
 
         try
         {
             Assert.Throws<System.InvalidOperationException>(() => outer.Dispose());
-            Assert.AreEqual(41, outer.selectedId, "A rejected out-of-order dispose must leave the outer lease usable.");
+            Assert.AreEqual(NowTreeNodeKey.From(41), outer.selectedKey, "A rejected out-of-order dispose must leave the outer lease usable.");
         }
         finally
         {
@@ -979,9 +1011,9 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
         {
             _provider.snapshot = default;
-            NowFocus.Register(1, left);
-            NowFocus.Register(2, right);
-            NowFocus.Focus(1);
+            NowFocus.Register(TestId(1), left);
+            NowFocus.Register(TestId(2), right);
+            NowFocus.Focus(TestId(1));
         }
 
         _provider.snapshot = new NowInputSnapshot(
@@ -993,7 +1025,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowFocus.focusedId);
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1002,10 +1034,10 @@ public class NowControlsTests
         _provider.snapshot = default;
 
         using (NowInput.Begin(_provider, Surface))
-            NowControls.Interact(1, ButtonRect, out _, out _);
+            NowControls.Interact(TestId(1), ButtonRect, out _, out _);
 
-        NowFocus.Focus(1);
-        Assert.AreEqual(1, NowFocus.focusedId);
+        NowFocus.Focus(TestId(1));
+        Assert.AreEqual(TestId(1), NowFocus.focusedResolvedId);
 
         _provider.snapshot = new NowInputSnapshot(
             new Vector2(400f, 200f),
@@ -1015,9 +1047,9 @@ public class NowControlsTests
         NowControlState.BeginRepaintTracking();
 
         using (NowInput.Begin(_provider, Surface))
-            NowControls.Interact(1, ButtonRect, out _, out _);
+            NowControls.Interact(TestId(1), ButtonRect, out _, out _);
 
-        Assert.AreEqual(0, NowFocus.focusedId,
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId,
             "An unclaimed press must blur focus even when IMGUI already registered controls during another event in the same Unity frame.");
         Assert.IsTrue(NowControlState.EndRepaintTracking(),
             "Background defocus must request a repaint so the stale focus and caret visuals disappear.");
@@ -1026,7 +1058,7 @@ public class NowControlsTests
     [Test]
     public void FocusableRegionClaimsPrimaryPressWhenNestedInteractionOwnsCapture()
     {
-        NowFocus.Focus(1);
+        NowFocus.Focus(TestId(1));
         _provider.snapshot = new NowInputSnapshot(
             ButtonRect.center,
             primaryDown: true,
@@ -1035,19 +1067,19 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            var nested = NowInput.Interact(2, ButtonRect);
+            var nested = NowInput.Interact(TestId(2), ButtonRect);
             Assert.IsTrue(nested.pressed);
-            NowFocus.Register(1, ButtonRect);
+            NowFocus.Register(TestId(1), ButtonRect);
         }
 
-        Assert.AreEqual(1, NowFocus.focusedId,
+        Assert.AreEqual(TestId(1), NowFocus.focusedResolvedId,
             "A raw nested interaction inside the focused parent must not make the parent region look like empty space.");
     }
 
     [Test]
     public void RetainFocusProtectsBackgroundPrimaryPress()
     {
-        NowFocus.Focus(1);
+        NowFocus.Focus(TestId(1));
         _provider.snapshot = new NowInputSnapshot(
             new Vector2(400f, 200f),
             primaryDown: true,
@@ -1057,10 +1089,10 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
         {
             NowFocus.RetainFocus();
-            NowControls.Interact(1, ButtonRect, out _, out _);
+            NowControls.Interact(TestId(1), ButtonRect, out _, out _);
         }
 
-        Assert.AreEqual(1, NowFocus.focusedId,
+        Assert.AreEqual(TestId(1), NowFocus.focusedResolvedId,
             "Focus-retaining overlays must preserve their owner's selection when a press dismisses them.");
     }
 
@@ -1073,7 +1105,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowFocus.focusedId);
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId);
     }
 
     [TestCase(false, 3)]
@@ -1086,7 +1118,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(expected, NowFocus.focusedId);
+        Assert.AreEqual(TestId(expected), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1098,7 +1130,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowFocus.focusedId);
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1108,12 +1140,12 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, new NowRect(10, 10, 80, 30));
-            NowFocus.Register(2, new NowRect(110, 10, 80, 30));
-            NowFocus.Register(3, new NowRect(210, 10, 80, 30));
-            NowFocus.Focus(2);
+            NowFocus.Register(TestId(1), new NowRect(10, 10, 80, 30));
+            NowFocus.Register(TestId(2), new NowRect(110, 10, 80, 30));
+            NowFocus.Register(TestId(3), new NowRect(210, 10, 80, 30));
+            NowFocus.Focus(TestId(2));
             NowFocus.LockNavigation();
-            NowFocus.Focus(3);
+            NowFocus.Focus(TestId(3));
         }
 
         _provider.snapshot = NavigationSnapshot(Vector2.zero, previous: true);
@@ -1121,7 +1153,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowFocus.focusedId);
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1138,7 +1170,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowFocus.focusedId);
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1160,7 +1192,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1170,17 +1202,17 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, new NowRect(10, 10, 80, 30));
-            NowFocus.Register(3, new NowRect(210, 10, 80, 30));
+            NowFocus.Register(TestId(1), new NowRect(10, 10, 80, 30));
+            NowFocus.Register(TestId(3), new NowRect(210, 10, 80, 30));
         }
 
-        NowFocus.Focus(2);
+        NowFocus.Focus(TestId(2));
         _provider.snapshot = NavigationSnapshot(Vector2.right);
 
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowFocus.focusedId);
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1193,8 +1225,8 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(2, right);
-            NowFocus.Register(1, left);
+            NowFocus.Register(TestId(2), right);
+            NowFocus.Register(TestId(1), left);
         }
 
         _provider.snapshot = NavigationSnapshot(Vector2.right);
@@ -1202,7 +1234,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(1, NowFocus.focusedId, "Right navigation should start at the left edge, not draw order.");
+        Assert.AreEqual(TestId(1), NowFocus.focusedResolvedId, "Right navigation should start at the left edge, not draw order.");
     }
 
     [Test]
@@ -1216,10 +1248,10 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, first);
-            NowFocus.Register(2, second);
-            NowFocus.Register(3, third);
-            NowFocus.Focus(1);
+            NowFocus.Register(TestId(1), first);
+            NowFocus.Register(TestId(2), second);
+            NowFocus.Register(TestId(3), third);
+            NowFocus.Focus(TestId(1));
         }
 
         _provider.snapshot = NavigationSnapshot(Vector2.zero, next: true);
@@ -1227,15 +1259,15 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowFocus.focusedId);
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId);
 
         _provider.snapshot = default;
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, first);
-            NowFocus.Register(2, second);
-            NowFocus.Register(3, third);
+            NowFocus.Register(TestId(1), first);
+            NowFocus.Register(TestId(2), second);
+            NowFocus.Register(TestId(3), third);
         }
 
         _provider.snapshot = NavigationSnapshot(Vector2.zero, previous: true);
@@ -1243,7 +1275,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(1, NowFocus.focusedId);
+        Assert.AreEqual(TestId(1), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1256,17 +1288,17 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, first);
-            NowFocus.Register(2, second);
-            NowFocus.Focus(1);
+            NowFocus.Register(TestId(1), first);
+            NowFocus.Register(TestId(2), second);
+            NowFocus.Focus(TestId(1));
         }
 
         // Repeated editor IMGUI passes may all share one Time.frameCount.
         // Re-registering must update the pass registry rather than grow it.
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, first);
-            NowFocus.Register(2, second);
+            NowFocus.Register(TestId(1), first);
+            NowFocus.Register(TestId(2), second);
         }
 
         Assert.AreEqual(2, NowFocus.immediateRegistrationCount,
@@ -1277,11 +1309,11 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
         {
             NowFocus.ProcessImmediateTabNavigationPass();
-            NowFocus.Register(1, first);
-            NowFocus.Register(2, second);
+            NowFocus.Register(TestId(1), first);
+            NowFocus.Register(TestId(2), second);
         }
 
-        Assert.AreEqual(2, NowFocus.focusedId,
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId,
             "An IMGUI Tab pulse must traverse the latest registry even when Time.frameCount has not advanced.");
 
         _provider.snapshot = NavigationSnapshot(Vector2.zero, previous: true);
@@ -1289,7 +1321,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ProcessImmediateTabNavigationPass();
 
-        Assert.AreEqual(1, NowFocus.focusedId);
+        Assert.AreEqual(TestId(1), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1304,12 +1336,12 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, baseRect);
-            NowFocus.Focus(1);
-            NowOverlay.DeferScreen(popupRect, 100, _ =>
+            NowFocus.Register(TestId(1), baseRect);
+            NowFocus.Focus(TestId(1));
+            NowOverlay.DeferScreen(popupRect, TestId(100), () =>
             {
-                NowFocus.Register(2, popupFirst);
-                NowFocus.Register(3, popupSecond);
+                NowFocus.Register(TestId(2), popupFirst);
+                NowFocus.Register(TestId(3), popupSecond);
             });
         }
 
@@ -1320,8 +1352,8 @@ public class NowControlsTests
             NowFocus.ForceNewFrame();
         }
 
-        Assert.AreEqual(2, NowFocus.focusedId);
-        Assert.IsFalse(NowFocus.IsFocused(1), "Base focus must not be visible while an overlay layer is active.");
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId);
+        Assert.IsFalse(NowFocus.IsFocused(TestId(1)), "Base focus must not be visible while an overlay layer is active.");
     }
 
     [Test]
@@ -1335,9 +1367,9 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, baseRect);
-            NowFocus.Focus(1);
-            NowOverlay.DeferScreen(popupRect, 100, _ => NowFocus.Register(2, popupItem));
+            NowFocus.Register(TestId(1), baseRect);
+            NowFocus.Focus(TestId(1));
+            NowOverlay.DeferScreen(popupRect, TestId(100), () => NowFocus.Register(TestId(2), popupItem));
         }
 
         _provider.snapshot = new NowInputSnapshot(
@@ -1355,8 +1387,8 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
         {
             NowFocus.ForceNewFrame();
-            submitted = NowFocus.SubmitPressed(1);
-            baseFocused = NowFocus.IsFocused(1);
+            submitted = NowFocus.SubmitPressed(TestId(1));
+            baseFocused = NowFocus.IsFocused(TestId(1));
         }
 
         Assert.IsFalse(submitted);
@@ -1375,11 +1407,11 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowOverlay.DeferScreen(parentRect, 100, _ =>
+            NowOverlay.DeferScreen(parentRect, TestId(100), () =>
             {
-                NowFocus.Register(2, parentItem);
-                NowFocus.Focus(2);
-                NowOverlay.DeferScreen(childRect, 200, __ => NowFocus.Register(3, childItem));
+                NowFocus.Register(TestId(2), parentItem);
+                NowFocus.Focus(TestId(2));
+                NowOverlay.DeferScreen(childRect, TestId(200), () => NowFocus.Register(TestId(3), childItem));
             });
         }
 
@@ -1390,8 +1422,8 @@ public class NowControlsTests
             NowFocus.ForceNewFrame();
         }
 
-        Assert.AreEqual(3, NowFocus.focusedId);
-        Assert.IsFalse(NowFocus.IsFocused(2), "Parent overlay focus must yield to the nested overlay layer.");
+        Assert.AreEqual(TestId(3), NowFocus.focusedResolvedId);
+        Assert.IsFalse(NowFocus.IsFocused(TestId(2)), "Parent overlay focus must yield to the nested overlay layer.");
     }
 
     [Test]
@@ -1405,10 +1437,10 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, first);
-            NowFocus.Register(2, second);
-            NowFocus.Register(3, third);
-            NowFocus.Focus(1);
+            NowFocus.Register(TestId(1), first);
+            NowFocus.Register(TestId(2), second);
+            NowFocus.Register(TestId(3), third);
+            NowFocus.Focus(TestId(1));
         }
 
         _provider.snapshot = NavigationSnapshot(Vector2.right, time: 0.2f);
@@ -1416,17 +1448,17 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(1, NowFocus.focusedId, "Held navigation should wait for the repeat delay.");
+        Assert.AreEqual(TestId(1), NowFocus.focusedResolvedId, "Held navigation should wait for the repeat delay.");
 
         NowFocus.Reset();
         _provider.snapshot = NavigationSnapshot(Vector2.right, time: 0f);
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, first);
-            NowFocus.Register(2, second);
-            NowFocus.Register(3, third);
-            NowFocus.Focus(1);
+            NowFocus.Register(TestId(1), first);
+            NowFocus.Register(TestId(2), second);
+            NowFocus.Register(TestId(3), third);
+            NowFocus.Focus(TestId(1));
         }
 
         _provider.snapshot = NavigationSnapshot(Vector2.right, time: 0.5f);
@@ -1434,7 +1466,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowFocus.focusedId, "Held navigation should repeat after the delay.");
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId, "Held navigation should repeat after the delay.");
     }
 
     [Test]
@@ -1448,10 +1480,10 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, first, NowFocusNavigation.Right(3));
-            NowFocus.Register(2, nearest);
-            NowFocus.Register(3, explicitTarget);
-            NowFocus.Focus(1);
+            NowFocus.Register(TestId(1), first, NowFocusNavigation.Right(TestId(3)));
+            NowFocus.Register(TestId(2), nearest);
+            NowFocus.Register(TestId(3), explicitTarget);
+            NowFocus.Focus(TestId(1));
         }
 
         _provider.snapshot = NavigationSnapshot(Vector2.right);
@@ -1459,7 +1491,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(3, NowFocus.focusedId);
+        Assert.AreEqual(TestId(3), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1472,9 +1504,9 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, first, NowFocusNavigation.Right(99));
-            NowFocus.Register(2, nearest);
-            NowFocus.Focus(1);
+            NowFocus.Register(TestId(1), first, NowFocusNavigation.Right(TestId(99)));
+            NowFocus.Register(TestId(2), nearest);
+            NowFocus.Focus(TestId(1));
         }
 
         _provider.snapshot = NavigationSnapshot(Vector2.right);
@@ -1482,7 +1514,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowFocus.focusedId);
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId);
     }
 
     static readonly NowRect MemoryTopRight = new NowRect(210, 10, 80, 30);
@@ -1497,11 +1529,11 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(3, MemoryTopRight);
-            NowFocus.Register(4, MemoryMiddle);
-            NowFocus.Register(5, MemoryBottomLeft);
-            NowFocus.Register(6, MemoryBottomCenter);
-            NowFocus.Register(7, MemoryBottomRight);
+            NowFocus.Register(TestId(3), MemoryTopRight);
+            NowFocus.Register(TestId(4), MemoryMiddle);
+            NowFocus.Register(TestId(5), MemoryBottomLeft);
+            NowFocus.Register(TestId(6), MemoryBottomCenter);
+            NowFocus.Register(TestId(7), MemoryBottomRight);
         }
     }
 
@@ -1517,48 +1549,48 @@ public class NowControlsTests
     public void DirectionalNavigationRemembersCrossAxisOrigin()
     {
         RegisterMemoryLayout();
-        NowFocus.Focus(3);
+        NowFocus.Focus(TestId(3));
 
         NavigateMemoryLayout(Vector2.down);
-        Assert.AreEqual(4, NowFocus.focusedId, "First move down should reach the offset middle button.");
+        Assert.AreEqual(TestId(4), NowFocus.focusedResolvedId, "First move down should reach the offset middle button.");
 
         RegisterMemoryLayout();
         NavigateMemoryLayout(Vector2.down);
-        Assert.AreEqual(7, NowFocus.focusedId, "Second move down should return to the starting column, not the middle button's column.");
+        Assert.AreEqual(TestId(7), NowFocus.focusedResolvedId, "Second move down should return to the starting column, not the middle button's column.");
     }
 
     [Test]
     public void ExplicitFocusClearsDirectionalNavigationMemory()
     {
         RegisterMemoryLayout();
-        NowFocus.Focus(3);
+        NowFocus.Focus(TestId(3));
 
         NavigateMemoryLayout(Vector2.down);
-        Assert.AreEqual(4, NowFocus.focusedId);
+        Assert.AreEqual(TestId(4), NowFocus.focusedResolvedId);
 
         RegisterMemoryLayout();
-        NowFocus.Focus(5);
+        NowFocus.Focus(TestId(5));
 
         NavigateMemoryLayout(Vector2.up);
-        Assert.AreEqual(4, NowFocus.focusedId, "After an explicit focus the stale cross-axis anchor must not pull navigation sideways.");
+        Assert.AreEqual(TestId(4), NowFocus.focusedResolvedId, "After an explicit focus the stale cross-axis anchor must not pull navigation sideways.");
     }
 
     [Test]
     public void HorizontalMoveUpdatesDirectionalNavigationMemory()
     {
         RegisterMemoryLayout();
-        NowFocus.Focus(5);
+        NowFocus.Focus(TestId(5));
 
         NavigateMemoryLayout(Vector2.right);
-        Assert.AreEqual(6, NowFocus.focusedId);
+        Assert.AreEqual(TestId(6), NowFocus.focusedResolvedId);
 
         RegisterMemoryLayout();
         NavigateMemoryLayout(Vector2.right);
-        Assert.AreEqual(7, NowFocus.focusedId);
+        Assert.AreEqual(TestId(7), NowFocus.focusedResolvedId);
 
         RegisterMemoryLayout();
         NavigateMemoryLayout(Vector2.up);
-        Assert.AreEqual(3, NowFocus.focusedId, "Horizontal movement must re-anchor the column used by later vertical moves.");
+        Assert.AreEqual(TestId(3), NowFocus.focusedResolvedId, "Horizontal movement must re-anchor the column used by later vertical moves.");
     }
 
     void RegisterShiftedColumns(float shift)
@@ -1567,12 +1599,12 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, new NowRect(410 + shift, 10, 80, 30));
-            NowFocus.Register(2, new NowRect(210 + shift, 10, 80, 30));
-            NowFocus.Register(3, new NowRect(410 + shift, 60, 80, 30));
-            NowFocus.Register(4, new NowRect(210 + shift, 60, 80, 30));
-            NowFocus.Register(5, new NowRect(410 + shift, 110, 80, 30));
-            NowFocus.Register(6, new NowRect(210 + shift, 110, 80, 30));
+            NowFocus.Register(TestId(1), new NowRect(410 + shift, 10, 80, 30));
+            NowFocus.Register(TestId(2), new NowRect(210 + shift, 10, 80, 30));
+            NowFocus.Register(TestId(3), new NowRect(410 + shift, 60, 80, 30));
+            NowFocus.Register(TestId(4), new NowRect(210 + shift, 60, 80, 30));
+            NowFocus.Register(TestId(5), new NowRect(410 + shift, 110, 80, 30));
+            NowFocus.Register(TestId(6), new NowRect(210 + shift, 110, 80, 30));
         }
     }
 
@@ -1580,14 +1612,14 @@ public class NowControlsTests
     public void NavigationMemoryShiftsWithScrolledContent()
     {
         RegisterShiftedColumns(0f);
-        NowFocus.Focus(2);
+        NowFocus.Focus(TestId(2));
 
         NavigateMemoryLayout(Vector2.down);
-        Assert.AreEqual(4, NowFocus.focusedId);
+        Assert.AreEqual(TestId(4), NowFocus.focusedResolvedId);
 
         RegisterShiftedColumns(-200f);
         NavigateMemoryLayout(Vector2.down);
-        Assert.AreEqual(6, NowFocus.focusedId, "The cross-axis anchor must move with scrolled content, not point at the old screen position.");
+        Assert.AreEqual(TestId(6), NowFocus.focusedResolvedId, "The cross-axis anchor must move with scrolled content, not point at the old screen position.");
     }
 
     [Test]
@@ -1599,10 +1631,10 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         using (Now.Mask(viewport))
-        using (NowFocus.BeginScrollRegion(500))
+        using (NowFocus.BeginScrollRegion(TestId(500)))
         {
-            NowFocus.Register(1, new NowRect(0, -100, 100, 30));
-            NowFocus.Register(2, new NowRect(0, 0, 100, 30));
+            NowFocus.Register(TestId(1), new NowRect(0, -100, 100, 30));
+            NowFocus.Register(TestId(2), new NowRect(0, 0, 100, 30));
         }
 
         _provider.snapshot = NavigationSnapshot(Vector2.down);
@@ -1610,7 +1642,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowFocus.focusedId, "Seeding should land on a visible control, not one clipped out of the scroll viewport.");
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId, "Seeding should land on a visible control, not one clipped out of the scroll viewport.");
     }
 
     [Test]
@@ -1624,10 +1656,10 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         {
-            NowFocus.Register(1, first, NowFocusNavigation.Next(3));
-            NowFocus.Register(2, second);
-            NowFocus.Register(3, explicitTarget);
-            NowFocus.Focus(1);
+            NowFocus.Register(TestId(1), first, NowFocusNavigation.Next(TestId(3)));
+            NowFocus.Register(TestId(2), second);
+            NowFocus.Register(TestId(3), explicitTarget);
+            NowFocus.Focus(TestId(1));
         }
 
         _provider.snapshot = NavigationSnapshot(Vector2.zero, next: true);
@@ -1635,7 +1667,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(3, NowFocus.focusedId);
+        Assert.AreEqual(TestId(3), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1650,18 +1682,18 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         {
-            Now.Button(first, "First").SetId(1).SetNavigation(NowFocusNavigation.Right(3)).Draw();
-            Now.Button(nearest, "Nearest").SetId(2).Draw();
-            Now.Button(explicitTarget, "Target").SetId(3).Draw();
+            Now.Button(first, "First").SetId(TestId(1)).SetNavigation(NowFocusNavigation.Right(TestId(3))).Draw();
+            Now.Button(nearest, "Nearest").SetId(TestId(2)).Draw();
+            Now.Button(explicitTarget, "Target").SetId(TestId(3)).Draw();
         }
 
-        NowFocus.Focus(1);
+        NowFocus.Focus(TestId(1));
         _provider.snapshot = NavigationSnapshot(Vector2.right);
 
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(3, NowFocus.focusedId);
+        Assert.AreEqual(TestId(3), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1673,11 +1705,11 @@ public class NowControlsTests
 
         using (NowInput.Begin(_provider, Surface))
         using (Now.Mask(viewport))
-        using (NowFocus.BeginScrollRegion(500))
+        using (NowFocus.BeginScrollRegion(TestId(500)))
         {
-            NowFocus.Register(1, new NowRect(0, 0, 100, 30));
-            NowFocus.Register(2, new NowRect(0, 50, 100, 30));
-            NowFocus.Focus(1);
+            NowFocus.Register(TestId(1), new NowRect(0, 0, 100, 30));
+            NowFocus.Register(TestId(2), new NowRect(0, 50, 100, 30));
+            NowFocus.Focus(TestId(1));
         }
 
         _provider.snapshot = NavigationSnapshot(new Vector2(0f, -1f));
@@ -1685,7 +1717,7 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(2, NowFocus.focusedId);
+        Assert.AreEqual(TestId(2), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -1704,22 +1736,22 @@ public class NowControlsTests
                 outer = Now.ScrollView(
                     new NowRect(0f, 0f, 220f, 140f),
                     "copied-scroll-outer").Begin();
-                int outerRegion = NowFocus.currentScrollRegionId;
+                NowResolvedId outerRegion = NowFocus.currentScrollRegionResolvedId;
 
                 inner = Now.ScrollView(
                     new NowRect(10f, 10f, 180f, 80f),
                     "copied-scroll-inner").Begin();
-                int innerRegion = NowFocus.currentScrollRegionId;
+                NowResolvedId innerRegion = NowFocus.currentScrollRegionResolvedId;
                 staleInner = inner;
 
-                Assert.AreNotEqual(0, outerRegion);
+                Assert.IsTrue(outerRegion.hasValue);
                 Assert.AreNotEqual(outerRegion, innerRegion);
 
                 inner.Dispose();
-                Assert.AreEqual(outerRegion, NowFocus.currentScrollRegionId);
+                Assert.AreEqual(outerRegion, NowFocus.currentScrollRegionResolvedId);
 
                 staleInner.Dispose();
-                Assert.AreEqual(outerRegion, NowFocus.currentScrollRegionId,
+                Assert.AreEqual(outerRegion, NowFocus.currentScrollRegionResolvedId,
                     "disposing a stale copy of the inner scroll scope must not pop the live outer focus region");
             }
             finally
@@ -1729,14 +1761,14 @@ public class NowControlsTests
                 outer.Dispose();
             }
 
-            Assert.AreEqual(0, NowFocus.currentScrollRegionId);
+            Assert.AreEqual(NowResolvedId.None, NowFocus.currentScrollRegionResolvedId);
         }
     }
 
     [Test]
     public void CancelClearsFocus()
     {
-        NowFocus.Focus(42);
+        NowFocus.Focus(TestId(42));
 
         _provider.snapshot = new NowInputSnapshot(
             true, default, default, default,
@@ -1748,49 +1780,53 @@ public class NowControlsTests
         using (NowInput.Begin(_provider, Surface))
             NowFocus.ForceNewFrame();
 
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
     public void ControlStateSlotsPersistAndReset()
     {
-        ref int slot = ref NowControlState.Get<int>(7);
+        NowResolvedId id = TestId(7);
+        ref int slot = ref NowControlState.Get<int>(id);
         slot = 123;
 
-        Assert.AreEqual(123, NowControlState.Get<int>(7));
+        Assert.AreEqual(123, NowControlState.Get<int>(id));
 
         NowControlState.Reset();
-        Assert.AreEqual(0, NowControlState.Get<int>(7));
+        Assert.AreEqual(0, NowControlState.Get<int>(id));
     }
 
     [Test]
     public void ControlStateNamedSlotsUseDerivedIds()
     {
-        NowControlState.Warmup(7, "slot", 12);
-        Assert.AreEqual(12, NowControlState.Get<int>(7, "slot"));
+        NowResolvedId id = TestId(7);
+        NowControlState.Warmup(id, "slot", 12);
+        Assert.AreEqual(12, NowControlState.Get<int>(id, "slot"));
 
-        NowControlState.Get<int>(7, "slot") = 34;
+        NowControlState.Get<int>(id, "slot") = 34;
 
-        Assert.AreEqual(34, NowControlState.Get<int>(NowInput.GetId(7, "slot")));
-        Assert.AreEqual(0, NowControlState.Get<int>(7, "other"));
+        Assert.AreEqual(34, NowControlState.Get<int>(id, "slot"));
+        Assert.AreEqual(0, NowControlState.Get<int>(id, "other"));
     }
 
     [Test]
     public void RepeatPulsesOnInitialPress()
     {
-        Assert.IsTrue(NowControlState.Repeat(1, held: true));
-        Assert.IsFalse(NowControlState.Repeat(1, held: true), "No pulse before the repeat delay.");
-        Assert.IsFalse(NowControlState.Repeat(1, held: false));
-        Assert.IsTrue(NowControlState.Repeat(1, held: true), "Releasing resets the initial pulse.");
+        NowResolvedId id = TestId(1);
+        Assert.IsTrue(NowControlState.Repeat(id, held: true));
+        Assert.IsFalse(NowControlState.Repeat(id, held: true), "No pulse before the repeat delay.");
+        Assert.IsFalse(NowControlState.Repeat(id, held: false));
+        Assert.IsTrue(NowControlState.Repeat(id, held: true), "Releasing resets the initial pulse.");
     }
 
     [Test]
     public void RepeatNamedKeysUseSeparateSlots()
     {
-        Assert.IsTrue(NowControlState.Repeat(7, "left", held: true));
-        Assert.IsTrue(NowControlState.Repeat(7, "right", held: true));
-        Assert.IsFalse(NowControlState.Repeat(7, "left", held: true));
-        Assert.IsFalse(NowControlState.Repeat(7, "right", held: true));
+        NowResolvedId id = TestId(7);
+        Assert.IsTrue(NowControlState.Repeat(id, "left", held: true));
+        Assert.IsTrue(NowControlState.Repeat(id, "right", held: true));
+        Assert.IsFalse(NowControlState.Repeat(id, "left", held: true));
+        Assert.IsFalse(NowControlState.Repeat(id, "right", held: true));
     }
 
     [Test]
@@ -1923,7 +1959,7 @@ public class NowControlsTests
             if (eventSystem == null)
                 Assert.Ignore("EventSystem.current unavailable in this environment.");
 
-            NowFocus.Focus(7);
+            NowFocus.Focus(TestId(7));
             eventSystem.SetSelectedGameObject(selectable);
 
             if (eventSystem.currentSelectedGameObject == null)
@@ -1932,12 +1968,12 @@ public class NowControlsTests
             using (NowInput.Begin(_provider, Surface))
                 NowFocus.ForceNewFrame();
 
-            Assert.AreEqual(0, NowFocus.focusedId, "UGUI selection must clear NowUI focus.");
+            Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId, "UGUI selection must clear NowUI focus.");
 
             eventSystem.SetSelectedGameObject(selectable);
-            NowFocus.Focus(9);
+            NowFocus.Focus(TestId(9));
             Assert.IsNull(eventSystem.currentSelectedGameObject, "NowUI focus must deselect the EventSystem.");
-            Assert.AreEqual(9, NowFocus.focusedId);
+            Assert.AreEqual(TestId(9), NowFocus.focusedResolvedId);
         }
         finally
         {

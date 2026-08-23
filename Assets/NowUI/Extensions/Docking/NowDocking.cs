@@ -29,7 +29,6 @@ namespace NowUI.Docking
         sealed class WindowState
         {
             public string id;
-            public int idHash;
             public string title;
             public Action<NowRect> draw;
             public Action drawSimple;
@@ -46,12 +45,12 @@ namespace NowUI.Docking
             public NowFontAsset measuredFont;
             public NowFontStyle measuredFontStyle;
             public Vector2 titleSize;
-            public int closeSeedTabId;
-            public int closeId;
-            public int floatSeedControlId;
-            public int floatMoveTitleId;
-            public int floatResizeId;
-            public int floatCloseId;
+            public NowResolvedId closeSeedTabId;
+            public NowResolvedId closeId;
+            public NowResolvedId floatSeedControlId;
+            public NowResolvedId floatMoveTitleId;
+            public NowResolvedId floatResizeId;
+            public NowResolvedId floatCloseId;
         }
 
         sealed class Node
@@ -89,11 +88,14 @@ namespace NowUI.Docking
             public int tabIndex;
         }
 
-        static readonly int SplitterSeed = NowInput.GetId("dock-splitter");
-        static readonly int ContentSeed = NowInput.GetId("dock-content");
-        static readonly int TabSeed = NowInput.GetId("dock-tab");
-        static readonly int FloatingSeed = NowInput.GetId("dock-floating");
-        static readonly int DragContentSeed = NowInput.GetId("dock-drag-content");
+        const string SplitterPath = "dock-splitter";
+        const string ContentPath = "dock-content";
+        const string TabPath = "dock-tab";
+        const string FloatingPath = "dock-floating";
+        const string DragContentPath = "dock-drag-content";
+        const string DropGuidePath = "dock-drop-guide";
+        const string DraggedTabPillPath = "dock-dragged-tab-pill";
+        const string DragGhostPath = "dock-drag-ghost";
 
         /// <summary>Dock colors resolved from the active theme each draw, with
         /// the legacy hardcoded scheme as the theme-less fallback.</summary>
@@ -161,7 +163,7 @@ namespace NowUI.Docking
         bool _hasTabDragOffset;
         string _pendingCloseId;
         /// <summary>Per-draw context and drag-feedback snapshots read by cached overlay callbacks, so deferred drawing allocates no closures.</summary>
-        int _frameControlId;
+        NowResolvedId _frameControlId;
         Style _frameStyle;
         NowThemeAsset _frameTheme;
         DropTarget _dragFeedbackTarget;
@@ -209,11 +211,7 @@ namespace NowUI.Docking
 
             if (!_windows.TryGetValue(windowId, out var window))
             {
-                window = new WindowState
-                {
-                    id = windowId,
-                    idHash = NowInput.GetId(windowId)
-                };
+                window = new WindowState { id = windowId };
                 _windows.Add(windowId, window);
                 _windowOrder.Add(windowId);
             }
@@ -346,7 +344,7 @@ namespace NowUI.Docking
             return true;
         }
 
-        internal void Draw(NowRect rect, int controlId, Style style)
+        internal void Draw(NowRect rect, NowResolvedId controlId, Style style)
         {
             try
             {
@@ -788,7 +786,7 @@ namespace NowUI.Docking
             return Mathf.Clamp(ratio, min, 1f - min);
         }
 
-        void DrawNode(Node node, int controlId, Style style, NowThemeAsset theme)
+        void DrawNode(Node node, NowResolvedId controlId, Style style, NowThemeAsset theme)
         {
             if (node.isLeaf)
             {
@@ -801,25 +799,25 @@ namespace NowUI.Docking
             DrawSplitter(node, controlId, style, theme);
         }
 
-        void DrawSplitter(Node node, int controlId, Style style, NowThemeAsset theme)
+        void DrawSplitter(Node node, NowResolvedId controlId, Style style, NowThemeAsset theme)
         {
             // The standard splitter control (grip pill, hover/drag feedback)
             // owns the divider; the node ratio is exactly its 0..1 split.
-            int splitterId = NowInput.CombineId(NowInput.CombineId(controlId, SplitterSeed), node.id);
+            NowResolvedId splitterId = controlId.Child(SplitterPath).Child(node.id);
             float usable = node.horizontal
                 ? Mathf.Max(1f, node.rect.width - style.splitterSize)
                 : Mathf.Max(1f, node.rect.height - style.splitterSize);
 
             float ratio = node.ratio;
 
-            Now.Splitter(node.splitterRect, NowId.Resolved(splitterId))
+            Now.Splitter(node.splitterRect, splitterId)
                 .SetColumn(node.horizontal)
                 .Draw(ref ratio, usable, style.minPaneSize);
 
             node.ratio = ClampRatio(ratio, usable, style.minPaneSize);
         }
 
-        void DrawLeaf(Node leaf, int controlId, Style style, NowThemeAsset theme)
+        void DrawLeaf(Node leaf, NowResolvedId controlId, Style style, NowThemeAsset theme)
         {
             ValidateSelections(leaf);
 
@@ -849,7 +847,7 @@ namespace NowUI.Docking
                 if (contentRect.width > 0f && contentRect.height > 0f)
                 {
                     using (Now.Mask(contentRect))
-                    using (NowLayout.Area(NowId.Resolved(NowInput.CombineId(NowInput.CombineId(controlId, ContentSeed), selected.idHash)), contentRect))
+                    using (NowLayout.Area(controlId.Child(ContentPath).Child(selected.id), contentRect))
                     {
                         InvokeDraw(selected.draw, selected.drawSimple, contentRect);
                     }
@@ -860,7 +858,7 @@ namespace NowUI.Docking
                 DrawPanelOutline(leaf.rect, style.paneRadius);
         }
 
-        void DrawTabs(Node leaf, NowRect tabBar, int controlId, Style style, NowThemeAsset theme)
+        void DrawTabs(Node leaf, NowRect tabBar, NowResolvedId controlId, Style style, NowThemeAsset theme)
         {
             float x = tabBar.x;
             float overflowLimit = tabBar.xMax - 4f;
@@ -918,9 +916,9 @@ namespace NowUI.Docking
             return window.titleSize;
         }
 
-        void DrawTab(Node leaf, WindowState window, NowRect tabRect, bool selected, int controlId, Style style, NowThemeAsset theme)
+        void DrawTab(Node leaf, WindowState window, NowRect tabRect, bool selected, NowResolvedId controlId, Style style, NowThemeAsset theme)
         {
-            int tabId = DockTabId(controlId, window);
+            NowResolvedId tabId = DockTabId(controlId, window);
             var tabHitRect = tabRect.Inset(0f, 2f, 0f, 2f);
             var tabVisualRect = CompactTabVisualRect(tabRect);
             NowRect closeRect = default;
@@ -932,7 +930,7 @@ namespace NowUI.Docking
                 if (window.closeSeedTabId != tabId)
                 {
                     window.closeSeedTabId = tabId;
-                    window.closeId = NowInput.GetId(tabId, "close");
+                    window.closeId = tabId.Child("close");
                 }
 
                 closeRect = new NowRect(tabVisualRect.xMax - 17f, tabVisualRect.y + 3f, 13f, Mathf.Max(12f, tabVisualRect.height - 6f));
@@ -944,7 +942,12 @@ namespace NowUI.Docking
                     _pendingCloseId = window.id;
             }
 
-            var interaction = NowInput.Interact(tabId, tabHitRect);
+            var tabRegion = new NowInteractionRegion(tabHitRect);
+
+            if (window.canClose)
+                tabRegion = tabRegion.Exclude(closeRect);
+
+            var interaction = NowInput.Interact(tabId, in tabRegion);
 
             if (interaction.pressed || interaction.clicked)
                 leaf.selected = window.id;
@@ -1010,14 +1013,19 @@ namespace NowUI.Docking
             }
         }
 
-        static int DockTabId(int controlId, WindowState window)
+        static NowResolvedId DockTabId(NowResolvedId controlId, WindowState window)
         {
-            return NowInput.CombineId(NowInput.CombineId(controlId, TabSeed), window.idHash);
+            return controlId.Child(TabPath).Child(window.id);
         }
 
-        static int DockTabId(int controlId, string windowId)
+        static NowResolvedId DockTabId(NowResolvedId controlId, string windowId)
         {
-            return NowInput.CombineId(NowInput.CombineId(controlId, TabSeed), NowInput.GetId(windowId));
+            return controlId.Child(TabPath).Child(windowId);
+        }
+
+        static NowResolvedId FloatingWindowId(NowResolvedId controlId, WindowState window)
+        {
+            return controlId.Child(FloatingPath).Child(window.id);
         }
 
         static NowRect CompactTabVisualRect(NowRect tabRect)
@@ -1109,7 +1117,7 @@ namespace NowUI.Docking
             FloatWindow(windowId, pointer, style);
         }
 
-        void CompleteLostTabDrag(int controlId, Style style, NowThemeAsset theme)
+        void CompleteLostTabDrag(NowResolvedId controlId, Style style, NowThemeAsset theme)
         {
             if (string.IsNullOrEmpty(_draggingWindowId) || NowInput.isPassive)
                 return;
@@ -1384,7 +1392,7 @@ namespace NowUI.Docking
             }
         }
 
-        void DrawFloatingWindows(int controlId, Style style, NowThemeAsset theme)
+        void DrawFloatingWindows(NowResolvedId controlId, Style style, NowThemeAsset theme)
         {
             for (int i = 0; i < _windowOrder.Count; ++i)
             {
@@ -1413,17 +1421,17 @@ namespace NowUI.Docking
                 }
 
                 var blockRect = window.floatingRect.Outset(2f);
-                NowOverlay.Defer(blockRect, window.floatingOverlayDraw);
+                NowOverlay.Defer(blockRect, FloatingWindowId(controlId, window), window.floatingOverlayDraw);
             }
         }
 
         void DrawFloatingWindowOverlay(WindowState window)
         {
-            int windowControlId = NowInput.CombineId(NowInput.CombineId(_frameControlId, FloatingSeed), window.idHash);
+            NowResolvedId windowControlId = FloatingWindowId(_frameControlId, window);
             DrawFloatingWindow(_frameControlId, windowControlId, window, _frameStyle, _frameTheme);
         }
 
-        void DrawTabDragFeedback(int controlId, Style style, NowThemeAsset theme)
+        void DrawTabDragFeedback(NowResolvedId controlId, Style style, NowThemeAsset theme)
         {
             if (string.IsNullOrEmpty(_draggingWindowId) || NowInput.isPassive || !NowInput.current.hasPointer ||
                 !_windows.TryGetValue(_draggingWindowId, out var window) || window.hidden)
@@ -1439,14 +1447,14 @@ namespace NowUI.Docking
             {
                 _dragFeedbackTarget = target;
                 _dropGuideOverlay ??= DrawDropGuideOverlay;
-                NowOverlay.Defer(default, _dropGuideOverlay);
+                NowOverlay.Defer(default, controlId.Child(DropGuidePath).Child(window.id), _dropGuideOverlay);
             }
 
             if (hasTarget && target.side == NowDockSide.Center)
             {
                 _dragPillRect = DraggedTabPillRect(pointer, window, style, theme);
                 _draggedTabPillOverlay ??= DrawDraggedTabPillOverlay;
-                NowOverlay.Defer(default, _draggedTabPillOverlay);
+                NowOverlay.Defer(default, controlId.Child(DraggedTabPillPath).Child(window.id), _draggedTabPillOverlay);
                 return;
             }
 
@@ -1457,7 +1465,7 @@ namespace NowUI.Docking
             _dragGhostDraw = window.draw;
             _dragGhostDrawSimple = window.drawSimple;
             _dragGhostOverlay ??= DrawDragGhostOverlay;
-            NowOverlay.Defer(default, _dragGhostOverlay);
+            NowOverlay.Defer(default, controlId.Child(DragGhostPath).Child(window.id), _dragGhostOverlay);
         }
 
         void DrawDropGuideOverlay()
@@ -1486,7 +1494,7 @@ namespace NowUI.Docking
         }
 
         void ProcessFloatingTabDrag(
-            int dockControlId,
+            NowResolvedId dockControlId,
             WindowState window,
             Style style,
             NowThemeAsset theme)
@@ -1591,7 +1599,7 @@ namespace NowUI.Docking
             if (window == null)
                 return;
 
-            int controlId = _frameControlId;
+            NowResolvedId controlId = _frameControlId;
             NowRect rect = _dragGhostRect;
             string title = window.title;
             var style = _frameStyle;
@@ -1637,12 +1645,10 @@ namespace NowUI.Docking
             if (contentRect.width > 0f && contentRect.height > 0f &&
                 (_dragGhostDraw != null || _dragGhostDrawSimple != null))
             {
-                int dragContentId = NowInput.CombineId(
-                    NowInput.CombineId(controlId, DragContentSeed),
-                    window.idHash);
+                NowResolvedId dragContentId = controlId.Child(DragContentPath).Child(window.id);
 
                 using (Now.Mask(contentRect))
-                using (NowLayout.Area(NowId.Resolved(dragContentId), contentRect))
+                using (NowLayout.Area(dragContentId, contentRect))
                 {
                     InvokeDraw(_dragGhostDraw, _dragGhostDrawSimple, contentRect);
                 }
@@ -1652,8 +1658,8 @@ namespace NowUI.Docking
         }
 
         void DrawFloatingWindow(
-            int dockControlId,
-            int controlId,
+            NowResolvedId dockControlId,
+            NowResolvedId controlId,
             WindowState window,
             Style style,
             NowThemeAsset theme)
@@ -1664,9 +1670,9 @@ namespace NowUI.Docking
             if (window.floatSeedControlId != controlId)
             {
                 window.floatSeedControlId = controlId;
-                window.floatMoveTitleId = NowInput.GetId(controlId, "move-title");
-                window.floatResizeId = NowInput.GetId(controlId, "resize");
-                window.floatCloseId = NowInput.GetId(controlId, "close");
+                window.floatMoveTitleId = controlId.Child("move-title");
+                window.floatResizeId = controlId.Child("resize");
+                window.floatCloseId = controlId.Child("close");
             }
 
             var rect = window.floatingRect;
@@ -1837,7 +1843,7 @@ namespace NowUI.Docking
                 (window.frameDraw != null || window.frameDrawSimple != null))
             {
                 using (Now.Mask(contentRect))
-                using (NowLayout.Area(NowId.Resolved(NowInput.CombineId(NowInput.CombineId(controlId, ContentSeed), window.idHash)), contentRect))
+                using (NowLayout.Area(controlId.Child(ContentPath), contentRect))
                 {
                     InvokeDraw(window.frameDraw, window.frameDrawSimple, contentRect);
                 }
@@ -1942,17 +1948,35 @@ namespace NowUI.Docking
     {
         readonly NowDockSpace _space;
         readonly NowRect _rect;
-        readonly NowId _id;
-        readonly int _site;
+        readonly NowCallSiteId _site;
+        NowControlIdentity _id;
         NowDockSpace.Style _style;
 
-        internal NowDockSpaceBuilder(NowDockSpace space, NowRect rect, NowId id, int site)
+        internal NowDockSpaceBuilder(
+            NowDockSpace space,
+            NowRect rect,
+            NowId id,
+            NowCallSiteId site)
         {
             _space = space;
             _rect = rect;
             _id = id;
             _site = site;
             _style = NowDockSpace.DefaultStyle();
+        }
+
+        /// <summary>Sets an authored identity for this dock space.</summary>
+        public NowDockSpaceBuilder SetId(NowId id)
+        {
+            _id = id;
+            return this;
+        }
+
+        /// <summary>Uses an identity that was already resolved by the active host.</summary>
+        public NowDockSpaceBuilder SetId(NowResolvedId id)
+        {
+            _id = id;
+            return this;
         }
 
         public NowDockSpaceBuilder SetTabHeight(float value)
@@ -2005,7 +2029,7 @@ namespace NowUI.Docking
             if (_space == null)
                 throw new InvalidOperationException("NowDock.Space requires a NowDockSpace instance.");
 
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
 
             _space.Draw(_rect, id, _style);
         }
@@ -2021,6 +2045,18 @@ namespace NowUI.Docking
             [CallerLineNumber] int line = 0)
         {
             return new NowDockSpaceBuilder(space, rect, id, NowControls.SiteId(file, line));
+        }
+
+        /// <summary>Creates a dock-space builder with an already resolved identity.</summary>
+        public static NowDockSpaceBuilder Space(
+            NowDockSpace space,
+            NowRect rect,
+            NowResolvedId id,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            return new NowDockSpaceBuilder(space, rect, default, NowControls.SiteId(file, line))
+                .SetId(id);
         }
     }
 }

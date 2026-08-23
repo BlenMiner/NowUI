@@ -194,8 +194,9 @@ public class NowValueControlsTests
     void OpenColorPicker()
     {
         using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
         {
-            int id = NowControls.GetControlId("color");
+            NowResolvedId id = NowControls.GetControlId("color");
             NowControlState.Get<bool>(id) = true;
         }
     }
@@ -203,8 +204,9 @@ public class NowValueControlsTests
     void OpenControl(string id)
     {
         using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
         {
-            int controlId = NowControls.GetControlId(id);
+            NowResolvedId controlId = NowControls.GetControlId(id);
             NowControlState.Get<bool>(controlId) = true;
         }
     }
@@ -270,7 +272,13 @@ public class NowValueControlsTests
     public void FloatFieldKeepsPartialTextAndClampsParsedValue()
     {
         float value = 0f;
-        NowFocus.Focus(NowControls.GetControlId("float"));
+        NowResolvedId id;
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            id = NowControls.GetControlId("float");
+
+        NowFocus.Focus(id);
 
         Assert.IsFalse(DrawFloatFieldFrame(ref value, new NowTextInputFrame { backspaceHeld = true }));
         Assert.AreEqual(0f, value, 0.0001f);
@@ -988,7 +996,7 @@ public class NowValueControlsTests
 
         _pointer.snapshot = new NowInputSnapshot(verticalHandle, false, false, true);
         Assert.IsTrue(DrawAnimationCurveFrame(ref curve));
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
 
         var keys = curve.keys;
         Assert.AreEqual(2, keys.Length);
@@ -1017,7 +1025,7 @@ public class NowValueControlsTests
 
         _pointer.snapshot = new NowInputSnapshot(movedHandle, false, false, true);
         Assert.IsTrue(DrawAnimationCurveFrame(ref curve));
-        Assert.AreEqual(0, NowInput.activeId);
+        Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
 
         keys = curve.keys;
         Assert.AreEqual(2, keys.Length);
@@ -1106,9 +1114,10 @@ public class NowValueControlsTests
     public void EnumDropdownAppliesPendingSelection()
     {
         Quality quality = Quality.Low;
-        int id;
+        NowResolvedId id;
 
         using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
             id = NowControls.GetControlId("quality");
 
         NowControlState.Get<int>(id, "pending") = 3;

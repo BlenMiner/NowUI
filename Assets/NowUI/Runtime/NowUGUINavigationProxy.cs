@@ -38,7 +38,7 @@ namespace NowUI
 
         int _pendingYieldTabStep;
 
-        int _pendingYieldFocusId;
+        NowResolvedId _pendingYieldFocusId;
 
         int _pendingYieldFocusRevision;
 
@@ -384,7 +384,7 @@ namespace NowUI
             _pendingYieldKind = kind;
             _pendingYieldDirection = direction;
             _pendingYieldTabStep = tabStep;
-            _pendingYieldFocusId = NowFocus.focusedId;
+            _pendingYieldFocusId = NowFocus.focusedResolvedId;
             _pendingYieldFocusRevision = NowFocus.focusRevision;
             _pendingYieldWaitedForRegistryCommit = false;
         }
@@ -394,7 +394,7 @@ namespace NowUI
             _pendingYieldKind = PendingYieldKind.None;
             _pendingYieldDirection = default;
             _pendingYieldTabStep = 0;
-            _pendingYieldFocusId = 0;
+            _pendingYieldFocusId = NowResolvedId.None;
             _pendingYieldFocusRevision = 0;
             _pendingYieldWaitedForRegistryCommit = false;
         }
@@ -414,7 +414,7 @@ namespace NowUI
 
             if (eventSystem == null ||
                 eventSystem.currentSelectedGameObject != gameObject ||
-                NowFocus.focusedId != _pendingYieldFocusId ||
+                NowFocus.focusedResolvedId != _pendingYieldFocusId ||
                 NowFocus.focusRevision != _pendingYieldFocusRevision)
             {
                 CancelPendingYield();

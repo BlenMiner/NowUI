@@ -129,7 +129,9 @@ namespace NowUI
 
         [NonSerialized] bool _layoutSizeDirty;
 
-        [NonSerialized] int _scopeId;
+        [NonSerialized] NowResolvedId _scopeId;
+
+        [NonSerialized] NowResolvedId _focusHostId;
 
         [NonSerialized] bool _measuringLayoutInput;
 
@@ -452,14 +454,14 @@ namespace NowUI
                 ReleaseUGUIGlassBackdrops();
                 ApplyCanvasPages();
 
-                if (_scopeId != 0)
+                if (_scopeId.hasValue)
                 {
-                    NowFocus.UnregisterHost(_scopeId);
+                    NowFocus.UnregisterHost(GetFocusHostId());
 
                     // Keep a selected proxy ready to seed again if layout
                     // restores this host without another OnSelect callback.
                     if (_uguiNavigationProxy != null)
-                        NowFocus.EnterUGUINavigation(_scopeId, default);
+                        NowFocus.EnterUGUINavigation(GetFocusHostId(), default);
                 }
 
                 return;
@@ -499,12 +501,12 @@ namespace NowUI
                     var inputScope = NowInput.Begin(interactive ? GetInputProvider() : null, inputSurface);
 
                     using (NowFocus.BeginHostRegistration(
-                        GetScopeId(),
+                        GetFocusHostId(),
                         _uguiNavigationProxy != null ? _uguiNavigationProxy.focusAdapter : null))
                     {
                         try
                         {
-                            int hostId = GetScopeId();
+                            NowResolvedId hostId = GetScopeId();
 
                             using (NowControls.RestoreIdScope(hostId))
                             {
@@ -541,8 +543,8 @@ namespace NowUI
                             // against a partially registered control list.
                             scope.Cancel();
 
-                            if (_scopeId != 0)
-                                NowFocus.UnregisterHost(_scopeId);
+                            if (_scopeId.hasValue)
+                                NowFocus.UnregisterHost(GetFocusHostId());
 
                             throw;
                         }
@@ -572,16 +574,16 @@ namespace NowUI
                 _focusRegistryDeferralBlocked = true;
                 _uguiNavigationProxy?.CancelPendingYield();
 
-                if (_scopeId != 0)
+                if (_scopeId.hasValue)
                 {
                     // A registration scope disposes while exceptions unwind,
                     // so it may have committed only the controls reached before
                     // the failure. Drop that transaction before the proxy can
                     // route into invisible partial geometry.
-                    NowFocus.UnregisterHost(_scopeId);
+                    NowFocus.UnregisterHost(GetFocusHostId());
 
                     if (_uguiNavigationProxy != null)
-                        NowFocus.EnterUGUINavigation(_scopeId, default);
+                        NowFocus.EnterUGUINavigation(GetFocusHostId(), default);
                 }
 
                 if (passiveInputActive)
@@ -745,8 +747,8 @@ namespace NowUI
         {
             NowOverlay.ReleaseRegistrationOwner(this);
 
-            if (_scopeId != 0)
-                NowFocus.UnregisterHost(_scopeId);
+            if (_scopeId.hasValue)
+                NowFocus.UnregisterHost(GetFocusHostId());
 
             _repaintTracker.Reset();
             ReleaseStencilMaterials();
@@ -767,8 +769,8 @@ namespace NowUI
         {
             _liveGraphics.Remove(this);
 
-            if (_scopeId != 0)
-                NowFocus.UnregisterHost(_scopeId);
+            if (_scopeId.hasValue)
+                NowFocus.UnregisterHost(GetFocusHostId());
 
             ReleaseStencilMaterials();
             ReleaseUGUIGlassBackdrops();
@@ -854,22 +856,23 @@ namespace NowUI
         /// True when keyboard/gamepad focus currently belongs to a control
         /// registered by this graphic.
         /// </summary>
-        public bool hasFocusedControl => _scopeId != 0 && NowFocus.IsFocusedInHost(_scopeId);
+        public bool hasFocusedControl =>
+            _scopeId.hasValue && NowFocus.IsFocusedInHost(GetFocusHostId());
 
-        internal int focusHostId => GetScopeId();
+        internal NowResolvedId focusHostId => GetFocusHostId();
 
         /// <summary>
         /// Resolves a SetId value inside this host for external focus,
         /// navigation, state, or layout-cache APIs.
         /// </summary>
-        public int ResolveControlId(string id)
+        public NowResolvedId ResolveControlId(string id)
         {
-            return NowControls.ResolveHostControlId(GetScopeId(), id);
+            return GetScopeId().Derive(NowIdDomain.Control, id);
         }
 
-        public int ResolveControlId(int id)
+        public NowResolvedId ResolveControlId(int id)
         {
-            return NowControls.ResolveHostControlId(GetScopeId(), id);
+            return GetScopeId().Derive(NowIdDomain.Control, id);
         }
 
         internal void AttachUGUINavigationProxy(NowUGUINavigationProxy proxy)
@@ -877,8 +880,8 @@ namespace NowUI
             if (_uguiNavigationProxy == proxy)
                 return;
 
-            if (_scopeId != 0)
-                NowFocus.UnregisterHost(_scopeId);
+            if (_scopeId.hasValue)
+                NowFocus.UnregisterHost(GetFocusHostId());
 
             _uguiNavigationProxy = proxy;
             SetVerticesDirty();
@@ -891,8 +894,8 @@ namespace NowUI
 
             _uguiNavigationProxy = null;
 
-            if (_scopeId != 0)
-                NowFocus.UnregisterHost(_scopeId);
+            if (_scopeId.hasValue)
+                NowFocus.UnregisterHost(GetFocusHostId());
 
             SetVerticesDirty();
         }
@@ -901,7 +904,7 @@ namespace NowUI
         {
             Rect rect = rectTransform.rect;
 
-            if (_scopeId == 0 ||
+            if (!_scopeId.hasValue ||
                 canvasRenderer.cull ||
                 rect.width <= 0f ||
                 rect.height <= 0f)
@@ -909,14 +912,14 @@ namespace NowUI
                 return NowFocusMoveResult.Unavailable;
             }
 
-            return NowFocus.RouteUGUINavigation(_scopeId, direction);
+            return NowFocus.RouteUGUINavigation(GetFocusHostId(), direction);
         }
 
         internal NowFocusMoveResult RouteUGUITab(int step)
         {
             Rect rect = rectTransform.rect;
 
-            if (_scopeId == 0 ||
+            if (!_scopeId.hasValue ||
                 canvasRenderer.cull ||
                 rect.width <= 0f ||
                 rect.height <= 0f)
@@ -924,7 +927,7 @@ namespace NowUI
                 return NowFocusMoveResult.Unavailable;
             }
 
-            return NowFocus.RouteUGUITab(_scopeId, step);
+            return NowFocus.RouteUGUITab(GetFocusHostId(), step);
         }
 
         internal bool hasDirtyFocusRegistry => _focusRegistryDirty;
@@ -941,19 +944,19 @@ namespace NowUI
         {
             Rect rect = rectTransform.rect;
 
-            if (_scopeId == 0 ||
+            if (!_scopeId.hasValue ||
                 !IsActive() ||
                 canvasRenderer.cull ||
                 rect.width <= 0f ||
                 rect.height <= 0f ||
                 _focusRegistryDeferralBlocked ||
                 (!_focusRegistryDirty && !_repaintTracker.wantsRepaint) ||
-                NowFocus.IsUGUIDirectionalNavigationLocked(_scopeId))
+                NowFocus.IsUGUIDirectionalNavigationLocked(GetFocusHostId()))
             {
                 return false;
             }
 
-            if (!NowFocus.DeferUGUIDirectionalBoundary(_scopeId, direction))
+            if (!NowFocus.DeferUGUIDirectionalBoundary(GetFocusHostId(), direction))
                 return false;
 
             // Route only after Unity's normal canvas pass has applied layout,
@@ -969,7 +972,7 @@ namespace NowUI
         {
             Rect rect = rectTransform.rect;
 
-            return _scopeId != 0 &&
+            return _scopeId.hasValue &&
                 IsActive() &&
                 !canvasRenderer.cull &&
                 rect.width > 0f &&
@@ -982,57 +985,57 @@ namespace NowUI
 
         internal void PrepareUGUIEntry()
         {
-            NowFocus.PrepareUGUIEntry(GetScopeId());
+            NowFocus.PrepareUGUIEntry(GetFocusHostId());
         }
 
         internal void DeferUGUINavigationEntry(Vector2 direction)
         {
-            NowFocus.DeferUGUINavigationEntry(GetScopeId(), direction);
+            NowFocus.DeferUGUINavigationEntry(GetFocusHostId(), direction);
         }
 
         internal void DeferUGUITabEntry(int step)
         {
-            NowFocus.DeferUGUITabEntry(GetScopeId(), step);
+            NowFocus.DeferUGUITabEntry(GetFocusHostId(), step);
         }
 
         internal void CancelPendingUGUIEntry()
         {
-            if (_scopeId != 0)
-                NowFocus.CancelPendingUGUIEntry(_scopeId);
+            if (_scopeId.hasValue)
+                NowFocus.CancelPendingUGUIEntry(GetFocusHostId());
         }
 
         internal void CancelDeferredUGUINavigationBoundary()
         {
-            if (_scopeId != 0)
-                NowFocus.CancelDeferredUGUIDirectionalBoundary(_scopeId);
+            if (_scopeId.hasValue)
+                NowFocus.CancelDeferredUGUIDirectionalBoundary(GetFocusHostId());
         }
 
         internal NowFocusMoveResult EnterUGUINavigation(Vector2 direction)
         {
-            return NowFocus.EnterUGUINavigation(GetScopeId(), direction);
+            return NowFocus.EnterUGUINavigation(GetFocusHostId(), direction);
         }
 
         internal NowFocusMoveResult EnterUGUITab(int step)
         {
-            return NowFocus.EnterUGUITab(GetScopeId(), step);
+            return NowFocus.EnterUGUITab(GetFocusHostId(), step);
         }
 
         internal void ExitUGUINavigation()
         {
-            if (_scopeId != 0)
-                NowFocus.ExitUGUINavigation(_scopeId);
+            if (_scopeId.hasValue)
+                NowFocus.ExitUGUINavigation(GetFocusHostId());
         }
 
         internal void ExitUGUINavigationAtDirectionalBoundary()
         {
-            if (_scopeId != 0)
-                NowFocus.ExitUGUINavigationAtDirectionalBoundary(_scopeId);
+            if (_scopeId.hasValue)
+                NowFocus.ExitUGUINavigationAtDirectionalBoundary(GetFocusHostId());
         }
 
         internal void DiscardUGUIDirectionalReturn()
         {
-            if (_scopeId != 0)
-                NowFocus.DiscardUGUIDirectionalReturn(_scopeId);
+            if (_scopeId.hasValue)
+                NowFocus.DiscardUGUIDirectionalReturn(GetFocusHostId());
         }
 
         public virtual void CalculateLayoutInputHorizontal()
@@ -1114,12 +1117,20 @@ namespace NowUI
             }
         }
 
-        int GetScopeId()
+        NowResolvedId GetScopeId()
         {
-            if (_scopeId == 0)
-                _scopeId = NowControls.AllocateHostScopeId();
+            if (!_scopeId.hasValue)
+                _scopeId = NowControls.AllocateOwnerScope();
 
             return _scopeId;
+        }
+
+        NowResolvedId GetFocusHostId()
+        {
+            if (!_focusHostId.hasValue)
+                _focusHostId = GetScopeId().InDomain(NowIdDomain.FocusHost);
+
+            return _focusHostId;
         }
 
         protected virtual INowInputProvider GetInputProvider()

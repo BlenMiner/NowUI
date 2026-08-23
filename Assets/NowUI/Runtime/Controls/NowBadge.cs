@@ -76,7 +76,7 @@ namespace NowUI
     {
         readonly string _label;
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         NowFocusNavigation _navigation;
         NowLayoutOptions _options;
         readonly NowRect _rect;
@@ -87,7 +87,7 @@ namespace NowUI
 
         const int RemoveKeySeed = 0x4e435872;
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowChip(string label, int site)
         {
@@ -124,6 +124,9 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowChip SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowChip SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowChip SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
@@ -151,7 +154,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = ResolveControlId();
+            NowResolvedId id = ResolveControlId();
 
             var contentSize = renderer.MeasureChip(theme, _label, _textPreset, _removable);
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
@@ -163,7 +166,7 @@ namespace NowUI
             if (_removable)
             {
                 removeRect = renderer.ChipRemoveRect(theme, rect);
-                var removeInteraction = NowInput.Interact(NowInput.CombineId(id, RemoveKeySeed), removeRect);
+                var removeInteraction = NowInput.Interact(id.Child(RemoveKeySeed), removeRect);
                 removeHovered = removeInteraction.hovered;
                 removed = removeInteraction.clicked;
             }

@@ -9,13 +9,13 @@ namespace NowUI
     [NowBuilder]
     public struct NowVectorField
     {
-        readonly NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
         readonly NowRect _rect;
         readonly bool _hasRect;
         NowVectorFieldSettings _settings;
 
-        internal NowVectorField(NowId id, int site)
+        internal NowVectorField(NowControlIdentity id, int site)
         {
             _id = id;
             _site = site;
@@ -24,11 +24,15 @@ namespace NowUI
             _settings = NowVectorFieldSettings.Default;
         }
 
-        internal NowVectorField(NowRect rect, NowId id, int site) : this(id, site)
+        internal NowVectorField(NowRect rect, NowControlIdentity id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
         }
+
+        public NowVectorField SetId(NowId id) { _id = id; return this; }
+
+        public NowVectorField SetId(NowResolvedId id) { _id = id; return this; }
 
         /// <summary>Explicit layout options, overriding the content-derived size.</summary>
         public NowVectorField SetOptions(NowLayoutOptions options) { _settings.options = options; return this; }
@@ -89,19 +93,19 @@ namespace NowUI
 
         public bool Draw(ref Vector2 value)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             return NowVectorFieldUtility.DrawFloatComponents(id, _hasRect, _rect, _settings, ref value.x, ref value.y);
         }
 
         public bool Draw(ref Vector3 value)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             return NowVectorFieldUtility.DrawFloatComponents(id, _hasRect, _rect, _settings, ref value.x, ref value.y, ref value.z);
         }
 
         public bool Draw(ref Vector4 value)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             return NowVectorFieldUtility.DrawFloatComponents(id, _hasRect, _rect, _settings, ref value.x, ref value.y, ref value.z, ref value.w);
         }
 
@@ -109,7 +113,7 @@ namespace NowUI
         {
             int x = value.x;
             int y = value.y;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             bool changed = NowVectorFieldUtility.DrawIntComponents(id, _hasRect, _rect, _settings, ref x, ref y);
 
             if (changed)
@@ -125,7 +129,7 @@ namespace NowUI
             float y = value.y;
             float w = value.width;
             float h = value.height;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             bool changed = NowVectorFieldUtility.DrawFloatComponents(
                 id, _hasRect, _rect, _settings, NowVectorFieldUtility.XYWH, ref x, ref y, ref w, ref h);
 
@@ -142,7 +146,7 @@ namespace NowUI
             int y = value.y;
             int w = value.width;
             int h = value.height;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             bool changed = NowVectorFieldUtility.DrawIntComponents(
                 id, _hasRect, _rect, _settings, NowVectorFieldUtility.XYWH, ref x, ref y, ref w, ref h);
 
@@ -157,7 +161,7 @@ namespace NowUI
             int x = value.x;
             int y = value.y;
             int z = value.z;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             bool changed = NowVectorFieldUtility.DrawIntComponents(id, _hasRect, _rect, _settings, ref x, ref y, ref z);
 
             if (changed)
@@ -170,14 +174,14 @@ namespace NowUI
     [NowBuilder]
     public struct NowEnumDropdown<TEnum> where TEnum : struct, Enum
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
         readonly NowRect _rect;
         readonly bool _hasRect;
         NowFocusNavigation _navigation;
         NowLayoutOptions _options;
 
-        internal NowEnumDropdown(NowId id, int site)
+        internal NowEnumDropdown(NowControlIdentity id, int site)
         {
             _id = id;
             _site = site;
@@ -187,7 +191,7 @@ namespace NowUI
             _options = default;
         }
 
-        internal NowEnumDropdown(NowRect rect, NowId id, int site) : this(id, site)
+        internal NowEnumDropdown(NowRect rect, NowControlIdentity id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -204,6 +208,8 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowEnumDropdown<TEnum> SetId(NowId id) { _id = id; return this; }
+
+        public NowEnumDropdown<TEnum> SetId(NowResolvedId id) { _id = id; return this; }
 
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowEnumDropdown<TEnum> SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
@@ -228,7 +234,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowEnumFlags<TEnum> where TEnum : struct, Enum
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -236,7 +242,7 @@ namespace NowUI
         float _spacing;
         NowTextStyle _textStyle;
 
-        internal NowEnumFlags(NowId id, int site)
+        internal NowEnumFlags(NowControlIdentity id, int site)
         {
             _id = id;
             _site = site;
@@ -247,7 +253,7 @@ namespace NowUI
             _textStyle = NowTextStyle.Body;
         }
 
-        internal NowEnumFlags(NowRect rect, NowId id, int site) : this(id, site)
+        internal NowEnumFlags(NowRect rect, NowControlIdentity id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -271,15 +277,17 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowEnumFlags<TEnum> SetId(NowId id) { _id = id; return this; }
 
+        public NowEnumFlags<TEnum> SetId(NowResolvedId id) { _id = id; return this; }
+
         public bool Draw(ref TEnum value)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             ulong bits = NowEnumBits.ToUInt64(value);
             ulong original = bits;
 
             if (_hasRect)
             {
-                using (NowLayout.Area(NowId.Resolved(NowInput.CombineId(id, 0x4e464172)), _rect, spacing: _spacing))
+                using (NowLayout.Area(id.Derive(NowIdDomain.Layout, 0x4e464172), _rect, spacing: _spacing))
                     DrawFlags(id, ref bits);
             }
             else
@@ -305,7 +313,7 @@ namespace NowUI
             return options;
         }
 
-        void DrawFlags(int id, ref ulong bits)
+        void DrawFlags(NowResolvedId id, ref ulong bits)
         {
             var names = NowEnumCache<TEnum>.flagNames;
             var values = NowEnumCache<TEnum>.flagBits;
@@ -315,7 +323,7 @@ namespace NowUI
                 ulong flag = values[i];
                 bool on = (bits & flag) == flag;
 
-                if (!NowLayout.Checkbox(names[i]).SetId(NowId.Resolved(NowInput.CombineId(id, i + 1))).SetTextStyle(_textStyle).Draw(ref on))
+                if (!NowLayout.Checkbox(names[i]).SetId(id.Child(i + 1)).SetTextStyle(_textStyle).Draw(ref on))
                     continue;
 
                 if (on)
@@ -329,7 +337,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowColorPicker
     {
-        readonly NowId _id;
+        readonly NowControlIdentity _id;
         readonly int _site;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -340,8 +348,9 @@ namespace NowUI
         {
             public NowThemeAsset themeAsset;
             public NowColorPickerSettings settings;
-            public int id;
-            public int pendingId;
+            public NowResolvedId id;
+            public NowResolvedId pendingId;
+            public int callbackState;
             public Color value;
             public NowRect fieldRect;
             public NowRect popupRect;
@@ -372,7 +381,9 @@ namespace NowUI
             public string label;
         }
 
-        static readonly Dictionary<int, PopupState> _popupStates = new Dictionary<int, PopupState>(4);
+        static readonly Dictionary<NowResolvedId, PopupState> _popupStates = new Dictionary<NowResolvedId, PopupState>(4);
+        static readonly Dictionary<int, PopupState> _popupStatesByCallback = new Dictionary<int, PopupState>(4);
+        static int s_nextPopupState = 1;
 
         const int SaturationValueSeed = 0x43535631;
         const int HueSeed = 0x43485531;
@@ -397,7 +408,7 @@ namespace NowUI
 
         static readonly int s_modeProperty = Shader.PropertyToID("_Mode");
 
-        internal NowColorPicker(NowId id, int site)
+        internal NowColorPicker(NowControlIdentity id, int site)
         {
             _id = id;
             _site = site;
@@ -407,7 +418,7 @@ namespace NowUI
             _navigation = default;
         }
 
-        internal NowColorPicker(NowRect rect, NowId id, int site) : this(id, site)
+        internal NowColorPicker(NowRect rect, NowControlIdentity id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -432,6 +443,12 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowColorPicker SetId(NowId id)
+        {
+            _settings.idOverride = id;
+            return this;
+        }
+
+        public NowColorPicker SetId(NowResolvedId id)
         {
             _settings.idOverride = id;
             return this;
@@ -478,8 +495,8 @@ namespace NowUI
         public bool Draw(ref Color value)
         {
             var theme = NowTheme.themeAsset;
-            int id = ResolveControlId();
-            int pendingId = NowInput.CombineId(id, ColorPendingSeed);
+            NowResolvedId id = ResolveControlId();
+            NowResolvedId pendingId = id.Child(ColorPendingSeed);
             ref var pending = ref NowControlState.Get<PendingColor>(pendingId);
             bool changed = false;
 
@@ -516,11 +533,11 @@ namespace NowUI
             return changed;
         }
 
-        int ResolveControlId()
+        NowResolvedId ResolveControlId()
         {
             return _settings.idOverride.hasValue
-                ? NowControls.GetControlId(_settings.idOverride, _site)
-                : NowControls.GetControlId(_id, _site);
+                ? _settings.idOverride.Resolve(_site)
+                : _id.Resolve(_site);
         }
 
         static Vector2 MeasureField(NowColorPickerSettings settings)
@@ -572,8 +589,8 @@ namespace NowUI
 
         static void DeferPopup(
             NowThemeAsset theme,
-            int id,
-            int pendingId,
+            NowResolvedId id,
+            NowResolvedId pendingId,
             NowRect field,
             Color value,
             NowColorPickerSettings settings)
@@ -583,11 +600,7 @@ namespace NowUI
             if (settings.fitToView)
                 popupRect = NowOverlay.FitToView(popupRect);
 
-            if (!_popupStates.TryGetValue(id, out var state))
-            {
-                state = new PopupState();
-                _popupStates[id] = state;
-            }
+            var state = GetPopupState(id);
 
             state.themeAsset = theme;
             state.settings = settings;
@@ -597,7 +610,7 @@ namespace NowUI
             state.fieldRect = Now.TransformScreenRect(field);
             ApplyEditorLayout(state, popupRect, settings);
 
-            NowOverlay.Defer(popupRect, id, DrawPopup);
+            NowOverlay.Defer(popupRect, id, state.callbackState, DrawPopup);
         }
 
         internal static float CalculateEditorWidth(NowColorPickerSettings settings)
@@ -689,22 +702,18 @@ namespace NowUI
 
         internal static bool DrawInlineEditor(
             NowThemeAsset theme,
-            int id,
+            NowResolvedId id,
             NowRect rect,
             NowColorPickerSettings settings,
             Color value,
             ref Color next)
         {
-            if (!_popupStates.TryGetValue(id, out var state))
-            {
-                state = new PopupState();
-                _popupStates[id] = state;
-            }
+            var state = GetPopupState(id);
 
             state.themeAsset = theme;
             state.settings = settings;
             state.id = id;
-            state.pendingId = 0;
+            state.pendingId = NowResolvedId.None;
             state.value = value;
             state.fieldRect = rect;
             ApplyEditorLayout(state, rect, settings);
@@ -722,7 +731,7 @@ namespace NowUI
 
         static void DrawPopup(int stateId)
         {
-            if (!_popupStates.TryGetValue(stateId, out var state))
+            if (!_popupStatesByCallback.TryGetValue(stateId, out var state))
                 return;
 
             var theme = state.themeAsset;
@@ -759,6 +768,22 @@ namespace NowUI
             }
         }
 
+        static PopupState GetPopupState(NowResolvedId id)
+        {
+            if (_popupStates.TryGetValue(id, out var state))
+                return state;
+
+            int callbackState = s_nextPopupState++;
+
+            if (s_nextPopupState == 0)
+                s_nextPopupState = 1;
+
+            state = new PopupState { callbackState = callbackState };
+            _popupStates[id] = state;
+            _popupStatesByCallback[callbackState] = state;
+            return state;
+        }
+
         static bool DrawEditorContent(PopupState state, Color value, out Color next)
         {
             var theme = state.themeAsset;
@@ -774,7 +799,7 @@ namespace NowUI
             bool changed = false;
             next = value;
 
-            var svInteraction = NowInput.Interact(NowInput.CombineId(state.id, SaturationValueSeed), state.saturationValueRect);
+            var svInteraction = NowInput.Interact(state.id.Child(SaturationValueSeed), state.saturationValueRect);
             if (svInteraction.held)
             {
                 saturation = Mathf.Clamp01((svInteraction.pointerPosition.x - state.saturationValueRect.x) / Mathf.Max(1f, state.saturationValueRect.width));
@@ -784,7 +809,7 @@ namespace NowUI
                 changed = true;
             }
 
-            var hueInteraction = NowInput.Interact(NowInput.CombineId(state.id, HueSeed), state.hueRect);
+            var hueInteraction = NowInput.Interact(state.id.Child(HueSeed), state.hueRect);
             if (hueInteraction.held)
             {
                 hue = Mathf.Clamp01((hueInteraction.pointerPosition.y - state.hueRect.y) / Mathf.Max(1f, state.hueRect.height));
@@ -795,7 +820,7 @@ namespace NowUI
 
             if (settings.showAlpha)
             {
-                var alphaInteraction = NowInput.Interact(NowInput.CombineId(state.id, AlphaSeed), state.alphaRect);
+                var alphaInteraction = NowInput.Interact(state.id.Child(AlphaSeed), state.alphaRect);
                 if (alphaInteraction.held)
                 {
                     next.a = Mathf.Clamp01((alphaInteraction.pointerPosition.x - state.alphaRect.x) / Mathf.Max(1f, state.alphaRect.width));
@@ -956,7 +981,7 @@ namespace NowUI
             ref Color next)
         {
             bool changed = false;
-            int hexInputId = NowInput.CombineId(state.id, HexInputSeed);
+            NowResolvedId hexInputId = state.id.Child(HexInputSeed);
             byte showAlpha = settings.showAlpha ? (byte)1 : (byte)0;
 
             if (state.hexText == null ||
@@ -970,7 +995,7 @@ namespace NowUI
 
             string hex = state.hexText;
 
-            if (Now.TextField(state.hexRect, NowId.Resolved(hexInputId))
+            if (Now.TextField(state.hexRect, hexInputId)
                     .SetPlaceholder(settings.showAlpha ? "#RRGGBBAA" : "#RRGGBB")
                     .Draw(ref hex))
             {
@@ -987,10 +1012,10 @@ namespace NowUI
             string copyLabel = state.compactHexButtons ? "C" : "Copy";
             string pasteLabel = state.compactHexButtons ? "P" : "Paste";
 
-            if (Now.Button(state.copyRect, copyLabel).SetId(NowId.Resolved(NowInput.CombineId(state.id, CopySeed))).Draw())
+            if (Now.Button(state.copyRect, copyLabel).SetId(state.id.Child(CopySeed)).Draw())
                 NowClipboard.Copy(FormatColor(value, settings.showAlpha));
 
-            if (Now.Button(state.pasteRect, pasteLabel).SetId(NowId.Resolved(NowInput.CombineId(state.id, PasteSeed))).Draw() &&
+            if (Now.Button(state.pasteRect, pasteLabel).SetId(state.id.Child(PasteSeed)).Draw() &&
                 TryParseHexColor(NowClipboard.Paste(), settings.showAlpha, value.a, out var pasted))
             {
                 next = pasted;
@@ -1028,7 +1053,7 @@ namespace NowUI
             return changed;
         }
 
-        static bool DrawChannelRow(NowThemeAsset theme, int id, NowRect rect, string label, int seed, ref float value)
+        static bool DrawChannelRow(NowThemeAsset theme, NowResolvedId id, NowRect rect, string label, int seed, ref float value)
         {
             float labelWidth = 16f;
             float valueWidth = 34f;
@@ -1038,9 +1063,9 @@ namespace NowUI
             var sliderRect = new NowRect(labelRect.xMax + gap, rect.y, Mathf.Max(1f, valueRect.x - labelRect.xMax - gap * 2f), rect.height);
 
             NowControls.DrawLeftLabel(theme, labelRect, label, NowTextStyle.Muted);
-            bool changed = Now.Slider(sliderRect, 0f, 1f).SetId(NowId.Resolved(NowInput.CombineId(id, seed))).Draw(ref value);
+            bool changed = Now.Slider(sliderRect, 0f, 1f).SetId(id.Child(seed)).Draw(ref value);
             var valueHitRect = new NowRect(sliderRect.xMax, rect.y, Mathf.Max(1f, rect.xMax - sliderRect.xMax), rect.height);
-            var valueInteraction = NowInput.Interact(NowInput.CombineId(NowInput.CombineId(id, ChannelValueHitSeed), seed), valueHitRect);
+            var valueInteraction = NowInput.Interact(id.Child(ChannelValueHitSeed).Child(seed), valueHitRect);
 
             if (valueInteraction.held)
             {
@@ -1171,9 +1196,9 @@ namespace NowUI
             return new string(chars);
         }
 
-        static string FieldLabel(int id, Color color, bool showAlpha)
+        static string FieldLabel(NowResolvedId id, Color color, bool showAlpha)
         {
-            ref var cache = ref NowControlState.Get<LabelCache>(NowInput.CombineId(id, LabelSeed));
+            ref var cache = ref NowControlState.Get<LabelCache>(id.Child(LabelSeed));
             byte alpha = showAlpha ? (byte)1 : (byte)0;
 
             if (cache.initialized == 0 ||
@@ -1194,6 +1219,8 @@ namespace NowUI
         static void ResetForRuntimeLoad()
         {
             _popupStates.Clear();
+            _popupStatesByCallback.Clear();
+            s_nextPopupState = 1;
             _saturationValueMaterial = null;
             _hueMaterial = null;
             _alphaMaterial = null;
@@ -1206,7 +1233,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowGradientField
     {
-        readonly NowId _id;
+        readonly NowControlIdentity _id;
         readonly int _site;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -1217,13 +1244,14 @@ namespace NowUI
         {
             public NowThemeAsset themeAsset;
             public NowGradientFieldSettings settings;
-            public int id;
-            public int pendingId;
-            public int selectedColorId;
-            public int selectedAlphaId;
-            public int selectedKindId;
-            public int draggedColorId;
-            public int draggedAlphaId;
+            public NowResolvedId id;
+            public NowResolvedId pendingId;
+            public NowResolvedId selectedColorId;
+            public NowResolvedId selectedAlphaId;
+            public NowResolvedId selectedKindId;
+            public NowResolvedId draggedColorId;
+            public NowResolvedId draggedAlphaId;
+            public int callbackState;
             public NowRect fieldRect;
             public NowRect popupRect;
             public NowRect gradientRect;
@@ -1279,8 +1307,10 @@ namespace NowUI
             public byte initialized;
         }
 
-        static readonly Dictionary<int, PopupState> _popupStates = new Dictionary<int, PopupState>(4);
-        static readonly Dictionary<int, GradientTextureCache> _textureCaches = new Dictionary<int, GradientTextureCache>(8);
+        static readonly Dictionary<NowResolvedId, PopupState> _popupStates = new Dictionary<NowResolvedId, PopupState>(4);
+        static readonly Dictionary<int, PopupState> _popupStatesByCallback = new Dictionary<int, PopupState>(4);
+        static readonly Dictionary<NowResolvedId, GradientTextureCache> _textureCaches = new Dictionary<NowResolvedId, GradientTextureCache>(8);
+        static int s_nextPopupState = 1;
         static readonly Gradient PreviewGradient = new Gradient();
 
         const int TextureWidth = 1024;
@@ -1308,7 +1338,7 @@ namespace NowUI
         const int DraggedAlphaSeed = 0x47444741;
         const string DeleteGlyph = "🗑";
 
-        internal NowGradientField(NowId id, int site)
+        internal NowGradientField(NowControlIdentity id, int site)
         {
             _id = id;
             _site = site;
@@ -1318,7 +1348,7 @@ namespace NowUI
             _navigation = default;
         }
 
-        internal NowGradientField(NowRect rect, NowId id, int site) : this(id, site)
+        internal NowGradientField(NowRect rect, NowControlIdentity id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -1348,6 +1378,12 @@ namespace NowUI
             return this;
         }
 
+        public NowGradientField SetId(NowResolvedId id)
+        {
+            _settings.idOverride = id;
+            return this;
+        }
+
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowGradientField SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
@@ -1370,8 +1406,8 @@ namespace NowUI
             if (value == null)
                 value = DefaultGradient();
 
-            int id = ResolveControlId();
-            int pendingId = NowInput.CombineId(id, GradientPendingSeed);
+            NowResolvedId id = ResolveControlId();
+            NowResolvedId pendingId = id.Child(GradientPendingSeed);
             ref var pending = ref NowControlState.Get<PendingGradient>(pendingId);
             bool changed = false;
 
@@ -1383,7 +1419,7 @@ namespace NowUI
                 changed = true;
             }
 
-            ref var mirror = ref NowControlState.Get<KeyMirror>(NowInput.CombineId(id, KeyMirrorSeed));
+            ref var mirror = ref NowControlState.Get<KeyMirror>(id.Child(KeyMirrorSeed));
 
             if (mirror.initialized == 0 || changed ||
                 !ReferenceEquals(mirror.source, value) || mirror.mode != value.mode)
@@ -1415,11 +1451,11 @@ namespace NowUI
             return changed;
         }
 
-        int ResolveControlId()
+        NowResolvedId ResolveControlId()
         {
             return _settings.idOverride.hasValue
-                ? NowControls.GetControlId(_settings.idOverride, _site)
-                : NowControls.GetControlId(_id, _site);
+                ? _settings.idOverride.Resolve(_site)
+                : _id.Resolve(_site);
         }
 
         static Vector2 MeasureField(NowGradientFieldSettings settings)
@@ -1428,7 +1464,7 @@ namespace NowUI
         }
 
         static void DrawField(
-            int id,
+            NowResolvedId id,
             NowThemeAsset theme,
             NowRect rect,
             GradientColorKey[] colorKeys,
@@ -1442,7 +1478,7 @@ namespace NowUI
             theme.controlRenderer.DrawTextInputFrame(new NowControlFrameRenderContext(theme, rect, focused || open));
 
             var strip = rect.Inset(5f, 7f, 22f, 7f);
-            DrawGradientStrip(strip, NowInput.CombineId(id, StripSeed), colorKeys, alphaKeys, mode, 24, theme);
+            DrawGradientStrip(strip, id.Child(StripSeed), colorKeys, alphaKeys, mode, 24, theme);
             DropdownArrowDraw.Draw(
                 theme,
                 new NowRect(rect.xMax - 18f, rect.y, 14f, rect.height),
@@ -1451,8 +1487,8 @@ namespace NowUI
 
         static void DeferPopup(
             NowThemeAsset theme,
-            int id,
-            int pendingId,
+            NowResolvedId id,
+            NowResolvedId pendingId,
             NowRect field,
             Gradient value,
             NowGradientFieldSettings settings,
@@ -1464,7 +1500,7 @@ namespace NowUI
             float colorPickerWidth = NowColorPicker.CalculateEditorWidth(colorPickerSettings);
             float popupWidth = Mathf.Max(settings.popupWidth, field.width, colorPickerWidth + padding * 2f);
             colorPickerSettings.popupWidth = popupWidth - padding * 2f;
-            int selectedKindId = NowInput.CombineId(id, SelectedKindSeed);
+            NowResolvedId selectedKindId = id.Child(SelectedKindSeed);
             float stripHeight = settings.stripHeight;
             float markerLaneHeight = settings.alphaStripHeight;
             float keyEditorHeight = settings.keyEditorHeight;
@@ -1490,21 +1526,17 @@ namespace NowUI
             var keyEditorRect = new NowRect(contentX, gradientRect.yMax + markerLaneHeight + popupGap, contentWidth, keyEditorHeight);
             var colorPickerRect = new NowRect(contentX, keyEditorRect.yMax + popupGap, contentWidth, pickerHeight);
 
-            if (!_popupStates.TryGetValue(id, out var state))
-            {
-                state = new PopupState();
-                _popupStates[id] = state;
-            }
+            var state = GetGradientPopupState(id);
 
             state.themeAsset = theme;
             state.settings = settings;
             state.id = id;
             state.pendingId = pendingId;
-            state.selectedColorId = NowInput.CombineId(id, SelectedColorSeed);
-            state.selectedAlphaId = NowInput.CombineId(id, SelectedAlphaSeed);
+            state.selectedColorId = id.Child(SelectedColorSeed);
+            state.selectedAlphaId = id.Child(SelectedAlphaSeed);
             state.selectedKindId = selectedKindId;
-            state.draggedColorId = NowInput.CombineId(id, DraggedColorSeed);
-            state.draggedAlphaId = NowInput.CombineId(id, DraggedAlphaSeed);
+            state.draggedColorId = id.Child(DraggedColorSeed);
+            state.draggedAlphaId = id.Child(DraggedAlphaSeed);
             state.fieldRect = Now.TransformScreenRect(field);
             state.popupRect = popupRect;
             state.gradientRect = gradientRect;
@@ -1525,12 +1557,12 @@ namespace NowUI
                 state.mode = value.mode;
             }
 
-            NowOverlay.Defer(popupRect, id, DrawPopup);
+            NowOverlay.Defer(popupRect, id, state.callbackState, DrawPopup);
         }
 
         static void DrawPopup(int stateId)
         {
-            if (!_popupStates.TryGetValue(stateId, out var state))
+            if (!_popupStatesByCallback.TryGetValue(stateId, out var state))
                 return;
 
             var theme = state.themeAsset;
@@ -1539,13 +1571,13 @@ namespace NowUI
             theme.controlRenderer.DrawPopupBackground(theme, state.popupRect, menu: false);
             DrawAlphaStrip(
                 state.alphaRect,
-                NowInput.CombineId(state.id, AlphaStripSeed),
+                state.id.Child(AlphaStripSeed),
                 state.alphaKeys,
                 settings.previewSegments,
                 theme);
             DrawGradientStrip(
                 state.gradientRect,
-                NowInput.CombineId(state.id, StripSeed),
+                state.id.Child(StripSeed),
                 state.colorKeys,
                 state.alphaKeys,
                 state.mode,
@@ -1563,7 +1595,7 @@ namespace NowUI
                 for (int i = 0; i < state.colorKeys.Length; ++i)
                 {
                     var marker = ColorMarkerRect(state.gradientRect, state.colorKeys[i].time);
-                    var interaction = NowInput.Interact(NowInput.CombineId(NowInput.CombineId(state.id, ColorMarkerSeed), i + 1), marker);
+                    var interaction = NowInput.Interact(state.id.Child(ColorMarkerSeed).Child(i + 1), marker);
 
                     if (interaction.pressed)
                     {
@@ -1593,7 +1625,7 @@ namespace NowUI
                         draggedColor = 0;
                 }
 
-                var stripInteraction = NowInput.Interact(NowInput.CombineId(state.id, StripSeed), state.gradientRect);
+                var stripInteraction = NowInput.Interact(state.id.Child(StripSeed), state.gradientRect);
                 if (NowControlState.DetectDoubleClick(stripInteraction.id, stripInteraction.clicked))
                 {
                     float time = PointerTime(state.gradientRect, stripInteraction.pointerPosition);
@@ -1606,7 +1638,7 @@ namespace NowUI
                 for (int i = 0; i < state.alphaKeys.Length; ++i)
                 {
                     var marker = AlphaMarkerRect(state.alphaRect, state.alphaKeys[i].time);
-                    var interaction = NowInput.Interact(NowInput.CombineId(NowInput.CombineId(state.id, AlphaMarkerSeed), i + 1), marker);
+                    var interaction = NowInput.Interact(state.id.Child(AlphaMarkerSeed).Child(i + 1), marker);
 
                     if (interaction.pressed)
                     {
@@ -1636,7 +1668,7 @@ namespace NowUI
                         draggedAlpha = 0;
                 }
 
-                var alphaStripInteraction = NowInput.Interact(NowInput.CombineId(state.id, AlphaStripSeed), state.alphaRect);
+                var alphaStripInteraction = NowInput.Interact(state.id.Child(AlphaStripSeed), state.alphaRect);
                 if (NowControlState.DetectDoubleClick(alphaStripInteraction.id, alphaStripInteraction.clicked))
                 {
                     float time = PointerTime(state.alphaRect, alphaStripInteraction.pointerPosition);
@@ -1659,7 +1691,7 @@ namespace NowUI
 
                     if (NowColorPicker.DrawInlineEditor(
                         theme,
-                        NowInput.CombineId(state.id, ColorPickerSeed),
+                        state.id.Child(ColorPickerSeed),
                         state.colorPickerRect,
                         state.colorPickerSettings,
                         state.colorKeys[selectedColor].color,
@@ -1706,6 +1738,22 @@ namespace NowUI
             }
         }
 
+        static PopupState GetGradientPopupState(NowResolvedId id)
+        {
+            if (_popupStates.TryGetValue(id, out var state))
+                return state;
+
+            int callbackState = s_nextPopupState++;
+
+            if (s_nextPopupState == 0)
+                s_nextPopupState = 1;
+
+            state = new PopupState { callbackState = callbackState };
+            _popupStates[id] = state;
+            _popupStatesByCallback[callbackState] = state;
+            return state;
+        }
+
         static bool DrawKeyInspector(PopupState state, ref int selectedColor, ref int selectedAlpha, ref int selectedKind)
         {
             return selectedKind == SelectedKindAlpha
@@ -1745,7 +1793,7 @@ namespace NowUI
         static bool HandleDeleteShortcut(PopupState state, ref int selectedColor, ref int selectedAlpha, int selectedKind)
         {
             if (IsGradientTextInputFocused(state, selectedKind) ||
-                !DeleteKeyPressed(NowInput.CombineId(state.id, DeleteShortcutSeed)))
+                !DeleteKeyPressed(state.id.Child(DeleteShortcutSeed)))
             {
                 return false;
             }
@@ -1770,18 +1818,18 @@ namespace NowUI
 
         static bool IsGradientTextInputFocused(PopupState state, int selectedKind)
         {
-            int focused = NowFocus.focusedId;
+            NowResolvedId focused = NowFocus.focusedResolvedId;
 
-            if (focused == 0 || !NowFocus.IsFocused(focused))
+            if (!focused.hasValue || !NowFocus.IsFocused(focused))
                 return false;
 
             if (selectedKind == SelectedKindAlpha)
-                return focused == NowInput.CombineId(state.id, AlphaValueFieldSeed) ||
-                    focused == NowInput.CombineId(state.id, AlphaTimeFieldSeed);
+                return focused == state.id.Child(AlphaValueFieldSeed) ||
+                    focused == state.id.Child(AlphaTimeFieldSeed);
 
-            int colorPickerId = NowInput.CombineId(state.id, ColorPickerSeed);
-            return focused == NowInput.CombineId(state.id, ColorTimeFieldSeed) ||
-                focused == NowInput.CombineId(colorPickerId, ColorPickerHexInputSeed);
+            NowResolvedId colorPickerId = state.id.Child(ColorPickerSeed);
+            return focused == state.id.Child(ColorTimeFieldSeed) ||
+                focused == colorPickerId.Child(ColorPickerHexInputSeed);
         }
 
         static bool DrawColorKeyInspector(PopupState state, ref int selected)
@@ -1819,7 +1867,7 @@ namespace NowUI
             var deleteRect = new NowRect(rect.xMax - outerPadding - deleteWidth, y, deleteWidth, rowHeight);
             NowControls.DrawLeftLabel(theme, labelRect, contentWidth < 190f ? "Loc" : "Location", NowTextStyle.Muted);
 
-            if (Now.FloatField(timeRect, NowId.Resolved(NowInput.CombineId(state.id, ColorTimeFieldSeed)))
+            if (Now.FloatField(timeRect, state.id.Child(ColorTimeFieldSeed))
                     .SetRange(0f, 1f)
                     .SetFormat("0.###")
                     .Draw(ref time))
@@ -1834,7 +1882,7 @@ namespace NowUI
             if (state.colorKeys.Length > 1)
             {
                 if (Now.Button(deleteRect, DeleteGlyph)
-                        .SetId(NowId.Resolved(NowInput.CombineId(state.id, DeleteColorSeed)))
+                        .SetId(state.id.Child(DeleteColorSeed))
                         .SetStyle(NowRectangleStyle.Outline)
                         .Draw())
                 {
@@ -1894,11 +1942,11 @@ namespace NowUI
             NowControls.DrawLeftLabel(theme, alphaLabelRect, contentWidth < 210f ? "A" : "Alpha", NowTextStyle.Muted);
 
             if (Now.Slider(alphaSliderRect, 0f, 1f)
-                    .SetId(NowId.Resolved(NowInput.CombineId(state.id, AlphaValueSliderSeed)))
+                    .SetId(state.id.Child(AlphaValueSliderSeed))
                     .Draw(ref alpha))
                 changed = true;
 
-            if (Now.FloatField(alphaValueRect, NowId.Resolved(NowInput.CombineId(state.id, AlphaValueFieldSeed)))
+            if (Now.FloatField(alphaValueRect, state.id.Child(AlphaValueFieldSeed))
                     .SetRange(0f, 1f)
                     .SetFormat("0.###")
                     .Draw(ref alpha))
@@ -1919,7 +1967,7 @@ namespace NowUI
 
                 NowControls.DrawLeftLabel(theme, locationLabelRect, contentWidth < 210f ? "Loc" : "Location", NowTextStyle.Muted);
 
-                if (Now.FloatField(timeRect, NowId.Resolved(NowInput.CombineId(state.id, AlphaTimeFieldSeed)))
+                if (Now.FloatField(timeRect, state.id.Child(AlphaTimeFieldSeed))
                         .SetRange(0f, 1f)
                         .SetFormat("0.###")
                         .Draw(ref time))
@@ -1938,7 +1986,7 @@ namespace NowUI
             if (state.alphaKeys.Length > 2)
             {
                 if (Now.Button(deleteRect, DeleteGlyph)
-                        .SetId(NowId.Resolved(NowInput.CombineId(state.id, DeleteAlphaSeed)))
+                        .SetId(state.id.Child(DeleteAlphaSeed))
                         .SetStyle(NowRectangleStyle.Outline)
                         .Draw())
                 {
@@ -1978,7 +2026,7 @@ namespace NowUI
                 NowTextStyle.Muted);
         }
 
-        static bool DeleteKeyPressed(int id)
+        static bool DeleteKeyPressed(NowResolvedId id)
         {
             if (NowInput.isPassive)
                 return false;
@@ -1993,7 +2041,7 @@ namespace NowUI
 
         static void DrawGradientStrip(
             NowRect rect,
-            int textureId,
+            NowResolvedId textureId,
             GradientColorKey[] colorKeys,
             GradientAlphaKey[] alphaKeys,
             GradientMode mode,
@@ -2024,7 +2072,7 @@ namespace NowUI
             DrawStripOutline(rect, theme);
         }
 
-        static void DrawAlphaStrip(NowRect rect, int textureId, GradientAlphaKey[] alphaKeys, int segments, NowThemeAsset theme)
+        static void DrawAlphaStrip(NowRect rect, NowResolvedId textureId, GradientAlphaKey[] alphaKeys, int segments, NowThemeAsset theme)
         {
             DrawChecker(rect, 6f, theme);
 
@@ -2063,7 +2111,7 @@ namespace NowUI
 
         static bool DrawGradientTexture(
             NowRect rect,
-            int textureId,
+            NowResolvedId textureId,
             GradientColorKey[] colorKeys,
             GradientAlphaKey[] alphaKeys,
             GradientMode mode,
@@ -2082,7 +2130,7 @@ namespace NowUI
         }
 
         static Texture2D GetGradientTexture(
-            int textureId,
+            NowResolvedId textureId,
             GradientColorKey[] colorKeys,
             GradientAlphaKey[] alphaKeys,
             GradientMode mode,
@@ -2258,7 +2306,7 @@ namespace NowUI
             return Mathf.Clamp01((pointer.x - rect.x) / Mathf.Max(1f, rect.width));
         }
 
-        static void SetPending(int pendingId, GradientColorKey[] colorKeys, GradientAlphaKey[] alphaKeys, GradientMode mode)
+        static void SetPending(NowResolvedId pendingId, GradientColorKey[] colorKeys, GradientAlphaKey[] alphaKeys, GradientMode mode)
         {
             ref var pending = ref NowControlState.Get<PendingGradient>(pendingId);
             pending.hasValue = 1;
@@ -2562,6 +2610,8 @@ namespace NowUI
         static void ResetForRuntimeLoad()
         {
             _popupStates.Clear();
+            _popupStatesByCallback.Clear();
+            s_nextPopupState = 1;
             DestroyTextureCache();
         }
 
@@ -2591,7 +2641,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowAnimationCurveField
     {
-        readonly NowId _id;
+        readonly NowControlIdentity _id;
         readonly int _site;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -2602,10 +2652,11 @@ namespace NowUI
         {
             public NowThemeAsset themeAsset;
             public NowAnimationCurveFieldSettings settings;
-            public int id;
-            public int pendingId;
-            public int selectedKeyId;
-            public int draggedKeyId;
+            public NowResolvedId id;
+            public NowResolvedId pendingId;
+            public NowResolvedId selectedKeyId;
+            public NowResolvedId draggedKeyId;
+            public int callbackState;
             public NowRect fieldRect;
             public NowRect popupRect;
             public NowRect plotRect;
@@ -2665,7 +2716,9 @@ namespace NowUI
             Out
         }
 
-        static readonly Dictionary<int, PopupState> _popupStates = new Dictionary<int, PopupState>(4);
+        static readonly Dictionary<NowResolvedId, PopupState> _popupStates = new Dictionary<NowResolvedId, PopupState>(4);
+        static readonly Dictionary<int, PopupState> _popupStatesByCallback = new Dictionary<int, PopupState>(4);
+        static int s_nextPopupState = 1;
         static readonly AnimationCurve PreviewCurve = new AnimationCurve();
 
         const int KeySeed = 0x41434b31;
@@ -2689,7 +2742,7 @@ namespace NowUI
         const float StepTangentHandlePixels = 36f;
         const string DeleteGlyph = "🗑";
 
-        internal NowAnimationCurveField(NowId id, int site)
+        internal NowAnimationCurveField(NowControlIdentity id, int site)
         {
             _id = id;
             _site = site;
@@ -2699,7 +2752,7 @@ namespace NowUI
             _navigation = default;
         }
 
-        internal NowAnimationCurveField(NowRect rect, NowId id, int site) : this(id, site)
+        internal NowAnimationCurveField(NowRect rect, NowControlIdentity id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -2724,6 +2777,12 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowAnimationCurveField SetId(NowId id)
+        {
+            _settings.idOverride = id;
+            return this;
+        }
+
+        public NowAnimationCurveField SetId(NowResolvedId id)
         {
             _settings.idOverride = id;
             return this;
@@ -2776,8 +2835,8 @@ namespace NowUI
             if (value == null)
                 value = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 
-            int id = ResolveControlId();
-            int pendingId = NowInput.CombineId(id, CurvePendingSeed);
+            NowResolvedId id = ResolveControlId();
+            NowResolvedId pendingId = id.Child(CurvePendingSeed);
             ref var pending = ref NowControlState.Get<PendingCurve>(pendingId);
             bool changed = false;
 
@@ -2788,7 +2847,7 @@ namespace NowUI
                 changed = true;
             }
 
-            ref var mirror = ref NowControlState.Get<KeyMirror>(NowInput.CombineId(id, KeyMirrorSeed));
+            ref var mirror = ref NowControlState.Get<KeyMirror>(id.Child(KeyMirrorSeed));
 
             if (mirror.initialized == 0 || changed ||
                 !ReferenceEquals(mirror.source, value) || mirror.sourceLength != value.length)
@@ -2819,11 +2878,11 @@ namespace NowUI
             return changed;
         }
 
-        int ResolveControlId()
+        NowResolvedId ResolveControlId()
         {
             return _settings.idOverride.hasValue
-                ? NowControls.GetControlId(_settings.idOverride, _site)
-                : NowControls.GetControlId(_id, _site);
+                ? _settings.idOverride.Resolve(_site)
+                : _id.Resolve(_site);
         }
 
         static Vector2 MeasureField(NowAnimationCurveFieldSettings settings)
@@ -2855,8 +2914,8 @@ namespace NowUI
 
         static void DeferPopup(
             NowThemeAsset theme,
-            int id,
-            int pendingId,
+            NowResolvedId id,
+            NowResolvedId pendingId,
             NowRect field,
             AnimationCurve value,
             NowAnimationCurveFieldSettings settings,
@@ -2880,18 +2939,14 @@ namespace NowUI
             var plotRect = new NowRect(contentRect.x, contentRect.y, contentRect.width, plotHeight);
             var inspectorRect = new NowRect(contentRect.x, plotRect.yMax + inspectorGap, contentRect.width, inspectorHeight);
 
-            if (!_popupStates.TryGetValue(id, out var state))
-            {
-                state = new PopupState();
-                _popupStates[id] = state;
-            }
+            var state = GetCurvePopupState(id);
 
             state.themeAsset = theme;
             state.settings = settings;
             state.id = id;
             state.pendingId = pendingId;
-            state.selectedKeyId = NowInput.CombineId(id, SelectedKeySeed);
-            state.draggedKeyId = NowInput.CombineId(id, DraggedKeySeed);
+            state.selectedKeyId = id.Child(SelectedKeySeed);
+            state.draggedKeyId = id.Child(DraggedKeySeed);
             state.fieldRect = fieldScreen;
             state.popupRect = popupRect;
             state.plotRect = plotRect;
@@ -2912,12 +2967,12 @@ namespace NowUI
             if (NowControlState.Get<int>(state.draggedKeyId) == 0 || !NowInput.IsPointerDown(NowPointerButton.Primary))
                 state.bounds = ResolveBounds(state.keys, settings);
 
-            NowOverlay.Defer(popupRect, id, DrawPopup);
+            NowOverlay.Defer(popupRect, id, state.callbackState, DrawPopup);
         }
 
         static void DrawPopup(int stateId)
         {
-            if (!_popupStates.TryGetValue(stateId, out var state))
+            if (!_popupStatesByCallback.TryGetValue(stateId, out var state))
                 return;
 
             Normalize(ref state.keys);
@@ -2935,7 +2990,7 @@ namespace NowUI
             for (int i = 0; i < state.keys.Length; ++i)
             {
                 var marker = KeyMarkerRect(state.plotRect, state.bounds, state.keys[i]);
-                var interaction = NowInput.Interact(NowInput.CombineId(NowInput.CombineId(state.id, KeySeed), i + 1), marker);
+                var interaction = NowInput.Interact(state.id.Child(KeySeed).Child(i + 1), marker);
 
                 if (interaction.pressed)
                 {
@@ -2966,7 +3021,7 @@ namespace NowUI
             changed |= InteractSelectedTangents(state, selected);
             changed |= DrawTangentContextMenu(state, ref selected);
 
-            var plotInteraction = NowInput.Interact(NowInput.CombineId(state.id, PlotSeed), state.plotRect);
+            var plotInteraction = NowInput.Interact(state.id.Child(PlotSeed), state.plotRect);
             if (NowControlState.DetectDoubleClick(plotInteraction.id, plotInteraction.clicked))
             {
                 float time = PointerTime(state.plotRect, state.bounds, plotInteraction.pointerPosition);
@@ -3011,6 +3066,22 @@ namespace NowUI
 
                 NowControlState.Get<bool>(state.id) = false;
             }
+        }
+
+        static PopupState GetCurvePopupState(NowResolvedId id)
+        {
+            if (_popupStates.TryGetValue(id, out var state))
+                return state;
+
+            int callbackState = s_nextPopupState++;
+
+            if (s_nextPopupState == 0)
+                s_nextPopupState = 1;
+
+            state = new PopupState { callbackState = callbackState };
+            _popupStates[id] = state;
+            _popupStatesByCallback[callbackState] = state;
+            return state;
         }
 
         static bool DrawKeyInspector(PopupState state, ref int selected)
@@ -3059,7 +3130,7 @@ namespace NowUI
             bool changed = false;
 
             NowControls.DrawLeftLabel(theme, timeLabelRect, timeLabel, NowTextStyle.Muted);
-            var timeField = Now.FloatField(timeRect, NowId.Resolved(NowInput.CombineId(state.id, TimeFieldSeed)))
+            var timeField = Now.FloatField(timeRect, state.id.Child(TimeFieldSeed))
                 .SetFormat("0.###");
 
             if (state.settings.hasTimeRange)
@@ -3072,7 +3143,7 @@ namespace NowUI
             }
 
             NowControls.DrawLeftLabel(theme, valueLabelRect, valueLabel, NowTextStyle.Muted);
-            var valueField = Now.FloatField(valueRect, NowId.Resolved(NowInput.CombineId(state.id, ValueFieldSeed)))
+            var valueField = Now.FloatField(valueRect, state.id.Child(ValueFieldSeed))
                 .SetFormat("0.###");
 
             if (state.settings.hasValueRange)
@@ -3094,7 +3165,7 @@ namespace NowUI
             if (state.keys.Length > 1)
             {
                 if (Now.Button(deleteRect, DeleteGlyph)
-                        .SetId(NowId.Resolved(NowInput.CombineId(state.id, DeleteKeySeed)))
+                        .SetId(state.id.Child(DeleteKeySeed))
                         .SetStyle(NowRectangleStyle.Outline)
                         .Draw())
                 {
@@ -3125,7 +3196,7 @@ namespace NowUI
             if (state.keys == null || state.keys.Length <= 1 ||
                 IsCurveTextInputFocused(state) ||
                 NowContextMenu.isOpen ||
-                !DeleteKeyPressed(NowInput.CombineId(state.id, DeleteShortcutSeed)))
+                !DeleteKeyPressed(state.id.Child(DeleteShortcutSeed)))
             {
                 return false;
             }
@@ -3137,13 +3208,13 @@ namespace NowUI
 
         static bool IsCurveTextInputFocused(PopupState state)
         {
-            int focused = NowFocus.focusedId;
-            return (focused == NowInput.CombineId(state.id, TimeFieldSeed) ||
-                focused == NowInput.CombineId(state.id, ValueFieldSeed)) &&
+            NowResolvedId focused = NowFocus.focusedResolvedId;
+            return (focused == state.id.Child(TimeFieldSeed) ||
+                focused == state.id.Child(ValueFieldSeed)) &&
                 NowFocus.IsFocused(focused);
         }
 
-        static bool DeleteKeyPressed(int id)
+        static bool DeleteKeyPressed(NowResolvedId id)
         {
             if (NowInput.isPassive)
                 return false;
@@ -3170,7 +3241,7 @@ namespace NowUI
             var flatRect = new NowRect(stepRect.xMax + gap, rect.y, Mathf.Max(1f, rect.xMax - stepRect.xMax - gap), rect.height);
 
             if (Now.Button(smoothRect, "Smooth")
-                    .SetId(NowId.Resolved(NowInput.CombineId(state.id, SmoothTangentSeed)))
+                    .SetId(state.id.Child(SmoothTangentSeed))
                     .SetStyle(NowRectangleStyle.Outline)
                     .Draw())
             {
@@ -3179,7 +3250,7 @@ namespace NowUI
             }
 
             if (Now.Button(linearRect, "Linear")
-                    .SetId(NowId.Resolved(NowInput.CombineId(state.id, LinearTangentSeed)))
+                    .SetId(state.id.Child(LinearTangentSeed))
                     .SetStyle(NowRectangleStyle.Outline)
                     .Draw())
             {
@@ -3188,7 +3259,7 @@ namespace NowUI
             }
 
             if (Now.Button(stepRect, "Step")
-                    .SetId(NowId.Resolved(NowInput.CombineId(state.id, StepTangentSeed)))
+                    .SetId(state.id.Child(StepTangentSeed))
                     .SetStyle(NowRectangleStyle.Outline)
                     .Draw())
             {
@@ -3197,7 +3268,7 @@ namespace NowUI
             }
 
             if (Now.Button(flatRect, "Flat")
-                    .SetId(NowId.Resolved(NowInput.CombineId(state.id, FlatTangentSeed)))
+                    .SetId(state.id.Child(FlatTangentSeed))
                     .SetStyle(NowRectangleStyle.Outline)
                     .Draw())
             {
@@ -3230,7 +3301,7 @@ namespace NowUI
                 return false;
 
             int seed = side == TangentSide.In ? InTangentSeed : OutTangentSeed;
-            var interaction = NowInput.Interact(NowInput.CombineId(NowInput.CombineId(state.id, seed), selected + 1), rect);
+            var interaction = NowInput.Interact(state.id.Child(seed).Child(selected + 1), rect);
 
             if (!interaction.dragging)
                 return false;
@@ -3248,13 +3319,18 @@ namespace NowUI
         static bool DrawTangentContextMenu(PopupState state, ref int selected)
         {
             var snapshot = NowInput.current;
-            int menuId = NowInput.CombineId(state.id, TangentContextSeed);
+            NowResolvedId menuId = state.id.Child(TangentContextSeed);
             Vector2 localPointer = Now.InverseTransformScreenPoint(snapshot.pointerPosition);
 
-            if (NowInput.WasRightClicked(state.plotRect))
+            NowContextTrigger contextTrigger = NowContextAction.Resolve(
+                state.plotRect,
+                actionInvoked: false,
+                actionAnchor: default);
+
+            if (contextTrigger.triggered)
             {
                 selected = HitKey(state.plotRect, state.bounds, state.keys, localPointer, selected);
-                NowContextMenu.Open(menuId, snapshot.pointerPosition);
+                NowContextMenu.Open(menuId, in contextTrigger);
             }
 
             bool changed = false;
@@ -3263,25 +3339,25 @@ namespace NowUI
             {
                 selected = Mathf.Clamp(selected, 0, state.keys.Length - 1);
 
-                if (NowContextMenu.Item("Smooth Tangents"))
+                if (NowContextMenu.Item("Smooth Tangents", new NowId("smooth")))
                 {
                     ApplySmoothTangents(state.keys, selected);
                     changed = true;
                 }
 
-                if (NowContextMenu.Item("Linear Tangents"))
+                if (NowContextMenu.Item("Linear Tangents", new NowId("linear")))
                 {
                     ApplyLinearTangents(state.keys, selected);
                     changed = true;
                 }
 
-                if (NowContextMenu.Item("Step Tangents"))
+                if (NowContextMenu.Item("Step Tangents", new NowId("step")))
                 {
                     ApplyStepTangents(state.keys, selected);
                     changed = true;
                 }
 
-                if (NowContextMenu.Item("Flat Tangents"))
+                if (NowContextMenu.Item("Flat Tangents", new NowId("flat")))
                 {
                     ApplyFlatTangents(state.keys, selected);
                     changed = true;
@@ -3839,7 +3915,7 @@ namespace NowUI
             return !float.IsNaN(value) && !float.IsInfinity(value);
         }
 
-        static void SetPending(int pendingId, Keyframe[] keys, WrapMode preWrapMode, WrapMode postWrapMode)
+        static void SetPending(NowResolvedId pendingId, Keyframe[] keys, WrapMode preWrapMode, WrapMode postWrapMode)
         {
             ref var pending = ref NowControlState.Get<PendingCurve>(pendingId);
             pending.hasValue = 1;
@@ -4011,6 +4087,8 @@ namespace NowUI
         static void ResetForRuntimeLoad()
         {
             _popupStates.Clear();
+            _popupStatesByCallback.Clear();
+            s_nextPopupState = 1;
         }
     }
 
@@ -4018,20 +4096,40 @@ namespace NowUI
     {
         public static NowTextField FloatField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTextField(rect, id, NowControls.SiteId(file, line));
+            return new NowTextField(rect, id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowTextField FloatField(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTextField(rect, id, NowControls.SiteToken(file, line));
         }
 
         public static NowTextField IntField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTextField(rect, id, NowControls.SiteId(file, line));
+            return new NowTextField(rect, id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowTextField IntField(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTextField(rect, id, NowControls.SiteToken(file, line));
         }
 
         public static NowVectorField VectorField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowVectorField(rect, id, NowControls.SiteId(file, line));
+            return new NowVectorField(rect, id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowVectorField VectorField(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowVectorField(rect, id, NowControls.SiteToken(file, line));
         }
 
         public static NowVectorField Vector2Field(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return VectorField(rect, id, file, line);
+        }
+
+        public static NowVectorField Vector2Field(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return VectorField(rect, id, file, line);
         }
@@ -4041,7 +4139,17 @@ namespace NowUI
             return VectorField(rect, id, file, line);
         }
 
+        public static NowVectorField Vector3Field(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return VectorField(rect, id, file, line);
+        }
+
         public static NowVectorField Vector4Field(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return VectorField(rect, id, file, line);
+        }
+
+        public static NowVectorField Vector4Field(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return VectorField(rect, id, file, line);
         }
@@ -4051,7 +4159,17 @@ namespace NowUI
             return VectorField(rect, id, file, line);
         }
 
+        public static NowVectorField Vector2IntField(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return VectorField(rect, id, file, line);
+        }
+
         public static NowVectorField Vector3IntField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return VectorField(rect, id, file, line);
+        }
+
+        public static NowVectorField Vector3IntField(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return VectorField(rect, id, file, line);
         }
@@ -4059,28 +4177,28 @@ namespace NowUI
         public static NowEnumDropdown<TEnum> EnumDropdown<TEnum>(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
             where TEnum : struct, Enum
         {
-            return new NowEnumDropdown<TEnum>(rect, id, NowControls.SiteId(file, line));
+            return new NowEnumDropdown<TEnum>(rect, id, NowControls.SiteToken(file, line));
         }
 
         public static NowEnumFlags<TEnum> EnumFlags<TEnum>(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
             where TEnum : struct, Enum
         {
-            return new NowEnumFlags<TEnum>(rect, id, NowControls.SiteId(file, line));
+            return new NowEnumFlags<TEnum>(rect, id, NowControls.SiteToken(file, line));
         }
 
         public static NowColorPicker ColorPicker(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowColorPicker(rect, id, NowControls.SiteId(file, line));
+            return new NowColorPicker(rect, id, NowControls.SiteToken(file, line));
         }
 
         public static NowGradientField GradientField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowGradientField(rect, id, NowControls.SiteId(file, line));
+            return new NowGradientField(rect, id, NowControls.SiteToken(file, line));
         }
 
         public static NowAnimationCurveField AnimationCurveField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowAnimationCurveField(rect, id, NowControls.SiteId(file, line));
+            return new NowAnimationCurveField(rect, id, NowControls.SiteToken(file, line));
         }
 
         public static NowAnimationCurveField CurveField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
@@ -4093,20 +4211,40 @@ namespace NowUI
     {
         public static NowTextField FloatField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTextField(id, NowControls.SiteId(file, line));
+            return new NowTextField(id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowTextField FloatField(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTextField(id, NowControls.SiteToken(file, line));
         }
 
         public static NowTextField IntField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTextField(id, NowControls.SiteId(file, line));
+            return new NowTextField(id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowTextField IntField(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTextField(id, NowControls.SiteToken(file, line));
         }
 
         public static NowVectorField VectorField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowVectorField(id, NowControls.SiteId(file, line));
+            return new NowVectorField(id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowVectorField VectorField(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowVectorField(id, NowControls.SiteToken(file, line));
         }
 
         public static NowVectorField Vector2Field(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return VectorField(id, file, line);
+        }
+
+        public static NowVectorField Vector2Field(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return VectorField(id, file, line);
         }
@@ -4116,7 +4254,17 @@ namespace NowUI
             return VectorField(id, file, line);
         }
 
+        public static NowVectorField Vector3Field(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return VectorField(id, file, line);
+        }
+
         public static NowVectorField Vector4Field(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return VectorField(id, file, line);
+        }
+
+        public static NowVectorField Vector4Field(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return VectorField(id, file, line);
         }
@@ -4126,7 +4274,17 @@ namespace NowUI
             return VectorField(id, file, line);
         }
 
+        public static NowVectorField Vector2IntField(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return VectorField(id, file, line);
+        }
+
         public static NowVectorField Vector3IntField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return VectorField(id, file, line);
+        }
+
+        public static NowVectorField Vector3IntField(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return VectorField(id, file, line);
         }
@@ -4134,28 +4292,28 @@ namespace NowUI
         public static NowEnumDropdown<TEnum> EnumDropdown<TEnum>(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
             where TEnum : struct, Enum
         {
-            return new NowEnumDropdown<TEnum>(id, NowControls.SiteId(file, line));
+            return new NowEnumDropdown<TEnum>(id, NowControls.SiteToken(file, line));
         }
 
         public static NowEnumFlags<TEnum> EnumFlags<TEnum>(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
             where TEnum : struct, Enum
         {
-            return new NowEnumFlags<TEnum>(id, NowControls.SiteId(file, line));
+            return new NowEnumFlags<TEnum>(id, NowControls.SiteToken(file, line));
         }
 
         public static NowColorPicker ColorPicker(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowColorPicker(id, NowControls.SiteId(file, line));
+            return new NowColorPicker(id, NowControls.SiteToken(file, line));
         }
 
         public static NowGradientField GradientField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowGradientField(id, NowControls.SiteId(file, line));
+            return new NowGradientField(id, NowControls.SiteToken(file, line));
         }
 
         public static NowAnimationCurveField AnimationCurveField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowAnimationCurveField(id, NowControls.SiteId(file, line));
+            return new NowAnimationCurveField(id, NowControls.SiteToken(file, line));
         }
 
         public static NowAnimationCurveField CurveField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
@@ -4167,7 +4325,7 @@ namespace NowUI
     struct NowColorPickerSettings
     {
         public NowLayoutOptions options;
-        public NowId idOverride;
+        public NowControlIdentity idOverride;
         public bool showAlpha;
         public bool fitToView;
         public float fieldHeight;
@@ -4211,7 +4369,7 @@ namespace NowUI
     struct NowGradientFieldSettings
     {
         public NowLayoutOptions options;
-        public NowId idOverride;
+        public NowControlIdentity idOverride;
         public bool fitToView;
         public float fieldHeight;
         public float popupWidth;
@@ -4249,7 +4407,7 @@ namespace NowUI
     struct NowAnimationCurveFieldSettings
     {
         public NowLayoutOptions options;
-        public NowId idOverride;
+        public NowControlIdentity idOverride;
         public bool fitToView;
         public float fieldHeight;
         public float popupWidth;
@@ -4313,7 +4471,7 @@ namespace NowUI
         static readonly string[] XYZW = { "X", "Y", "Z", "W" };
         internal static readonly string[] XYWH = { "X", "Y", "W", "H" };
 
-        public static bool DrawFloatComponents(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref float x, ref float y)
+        public static bool DrawFloatComponents(NowResolvedId id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref float x, ref float y)
         {
             bool changed = false;
 
@@ -4327,7 +4485,7 @@ namespace NowUI
             return changed;
         }
 
-        public static bool DrawFloatComponents(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref float x, ref float y, ref float z)
+        public static bool DrawFloatComponents(NowResolvedId id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref float x, ref float y, ref float z)
         {
             bool changed = false;
 
@@ -4342,12 +4500,12 @@ namespace NowUI
             return changed;
         }
 
-        public static bool DrawFloatComponents(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref float x, ref float y, ref float z, ref float w)
+        public static bool DrawFloatComponents(NowResolvedId id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref float x, ref float y, ref float z, ref float w)
         {
             return DrawFloatComponents(id, hasRect, rect, settings, XYZW, ref x, ref y, ref z, ref w);
         }
 
-        public static bool DrawFloatComponents(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, string[] labels, ref float x, ref float y, ref float z, ref float w)
+        public static bool DrawFloatComponents(NowResolvedId id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, string[] labels, ref float x, ref float y, ref float z, ref float w)
         {
             bool changed = false;
 
@@ -4363,7 +4521,7 @@ namespace NowUI
             return changed;
         }
 
-        public static bool DrawIntComponents(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, string[] labels, ref int x, ref int y, ref int z, ref int w)
+        public static bool DrawIntComponents(NowResolvedId id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, string[] labels, ref int x, ref int y, ref int z, ref int w)
         {
             bool changed = false;
 
@@ -4379,7 +4537,7 @@ namespace NowUI
             return changed;
         }
 
-        public static bool DrawIntComponents(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref int x, ref int y)
+        public static bool DrawIntComponents(NowResolvedId id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref int x, ref int y)
         {
             bool changed = false;
 
@@ -4393,7 +4551,7 @@ namespace NowUI
             return changed;
         }
 
-        public static bool DrawIntComponents(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref int x, ref int y, ref int z)
+        public static bool DrawIntComponents(NowResolvedId id, bool hasRect, NowRect rect, NowVectorFieldSettings settings, ref int x, ref int y, ref int z)
         {
             bool changed = false;
 
@@ -4408,11 +4566,11 @@ namespace NowUI
             return changed;
         }
 
-        static NowVectorFieldScope BeginScope(int id, bool hasRect, NowRect rect, NowVectorFieldSettings settings)
+        static NowVectorFieldScope BeginScope(NowResolvedId id, bool hasRect, NowRect rect, NowVectorFieldSettings settings)
         {
             if (hasRect)
             {
-                var area = NowLayout.Area(NowId.Resolved(NowInput.CombineId(id, 0x4e564172)), rect);
+                var area = NowLayout.Area(id.Derive(NowIdDomain.Layout, 0x4e564172), rect);
                 var row = NowLayout.HorizontalScope(
                     spacing: settings.spacing,
                     alignItems: NowLayoutAlign.Center,
@@ -4444,14 +4602,14 @@ namespace NowUI
             return options;
         }
 
-        static bool DrawFloatComponent(int parentId, int index, string label, NowVectorFieldSettings settings, bool stretch, ref float value)
+        static bool DrawFloatComponent(NowResolvedId parentId, int index, string label, NowVectorFieldSettings settings, bool stretch, ref float value)
         {
             DrawComponentLabel(label, settings);
             var field = ConfigureField(NowLayout.TextField(ComponentId(parentId, index)), settings, stretch);
             return field.Draw(ref value);
         }
 
-        static bool DrawIntComponent(int parentId, int index, string label, NowVectorFieldSettings settings, bool stretch, ref int value)
+        static bool DrawIntComponent(NowResolvedId parentId, int index, string label, NowVectorFieldSettings settings, bool stretch, ref int value)
         {
             DrawComponentLabel(label, settings);
             var field = ConfigureField(NowLayout.TextField(ComponentId(parentId, index)), settings, stretch);
@@ -4479,9 +4637,9 @@ namespace NowUI
             NowLayout.Label(label).SetWidth(settings.labelWidth).SetAlign(NowLayoutAlign.Center).Draw();
         }
 
-        static NowId ComponentId(int parentId, int index)
+        static NowResolvedId ComponentId(NowResolvedId parentId, int index)
         {
-            return NowId.Resolved(NowInput.CombineId(parentId, 0x4e564300 + index + 1));
+            return parentId.Child(0x4e564300 + index + 1);
         }
 
         struct NowVectorFieldScope : IDisposable

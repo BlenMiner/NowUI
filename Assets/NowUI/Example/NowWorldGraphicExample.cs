@@ -20,11 +20,12 @@ public sealed class NowWorldGraphicExample : NowWorldLayoutGraphic
             .Draw();
 
         var background = NowInput.Interact(rect, NowPointerButton.Secondary);
+        NowResolvedId menuId = NowControls.GetControlId("world-menu-lab");
 
         if (background.clicked)
-            NowContextMenu.Open(NowInput.CombineId(GetEntityId().GetHashCode(), 0x574d4c62), background.pointerPosition);
+            NowContextMenu.Open(menuId, background.pointerPosition);
 
-        DrawMenuLab();
+        DrawMenuLab(menuId);
 
         using (NowLayout.Area(rect, padding: 10, spacing: 6))
         {
@@ -55,32 +56,32 @@ public sealed class NowWorldGraphicExample : NowWorldLayoutGraphic
     /// (clamps and scrolls), a long submenu (scrolls independently), and a
     /// deep chain — the world-space stress cases in one place.
     /// </summary>
-    void DrawMenuLab()
+    void DrawMenuLab(NowResolvedId menuId)
     {
-        if (!NowContextMenu.Begin(NowInput.CombineId(GetEntityId().GetHashCode(), 0x574d4c62)))
+        if (!NowContextMenu.Begin(menuId))
             return;
 
         NowContextMenu.Label("World Menu Lab");
         NowContextMenu.Separator();
 
-        if (NowContextMenu.BeginSubmenu("Long Submenu (50)"))
+        if (NowContextMenu.BeginSubmenu("Long Submenu (50)", "long-submenu"))
         {
             for (int i = 0; i < 50; ++i)
             {
-                if (NowContextMenu.Item($"Submenu Option {i + 1}"))
+                if (NowContextMenu.Item($"Submenu Option {i + 1}", i + 1))
                     _lastMenuChoice = $"Picked: Submenu Option {i + 1}";
             }
 
             NowContextMenu.EndSubmenu();
         }
 
-        if (NowContextMenu.BeginSubmenu("Deep Chain"))
+        if (NowContextMenu.BeginSubmenu("Deep Chain", "deep-chain"))
         {
-            if (NowContextMenu.BeginSubmenu("Level 2"))
+            if (NowContextMenu.BeginSubmenu("Level 2", "level-2"))
             {
-                if (NowContextMenu.BeginSubmenu("Level 3"))
+                if (NowContextMenu.BeginSubmenu("Level 3", "level-3"))
                 {
-                    if (NowContextMenu.Item("Buried Treasure"))
+                    if (NowContextMenu.Item("Buried Treasure", new NowId("buried-treasure")))
                         _lastMenuChoice = "Picked: Buried Treasure";
 
                     NowContextMenu.EndSubmenu();
@@ -96,7 +97,7 @@ public sealed class NowWorldGraphicExample : NowWorldLayoutGraphic
 
         for (int i = 0; i < 40; ++i)
         {
-            if (NowContextMenu.Item($"Overflow Option {i + 1}"))
+            if (NowContextMenu.Item($"Overflow Option {i + 1}", i + 1))
                 _lastMenuChoice = $"Picked: Overflow Option {i + 1}";
         }
 

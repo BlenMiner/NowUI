@@ -19,133 +19,158 @@ namespace NowUI
         /// <summary>Push button at an explicit rect.</summary>
         public static NowButton Button(NowRect rect, string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowButton(rect, label, NowControls.SiteId(file, line));
+            return new NowButton(rect, label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Focusable row with caller-owned selection at an explicit rect.</summary>
         public static NowSelectableRow SelectableRow(NowRect rect, string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowSelectableRow(rect, label, NowControls.SiteId(file, line));
+            return new NowSelectableRow(rect, label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Labeled checkbox at an explicit rect.</summary>
         public static NowCheckbox Checkbox(NowRect rect, string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowCheckbox(rect, label, NowControls.SiteId(file, line));
+            return new NowCheckbox(rect, label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Labeled radio option at an explicit rect.</summary>
         public static NowRadio Radio(NowRect rect, string label, bool isOn, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowRadio(rect, label, isOn, NowControls.SiteId(file, line));
+            return new NowRadio(rect, label, isOn, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Unlabeled radio option at an explicit rect.</summary>
         public static NowRadio Radio(NowRect rect, bool isOn, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowRadio(rect, string.Empty, isOn, NowControls.SiteId(file, line));
+            return new NowRadio(rect, string.Empty, isOn, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Horizontal slider over a min/max range at an explicit rect.</summary>
         public static NowSlider Slider(NowRect rect, float min, float max, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowSlider(rect, min, max, NowControls.SiteId(file, line));
+            return new NowSlider(rect, min, max, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Single-line text field at an explicit rect.</summary>
         public static NowTextField TextField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTextField(rect, id, NowControls.SiteId(file, line));
+            return new NowTextField(rect, id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowTextField TextField(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTextField(rect, id, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Multi-line text area at an explicit rect.</summary>
         public static NowTextArea TextArea(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTextArea(rect, id, NowControls.SiteId(file, line));
+            return new NowTextArea(rect, id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowTextArea TextArea(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTextArea(rect, id, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Single-selection dropdown over the given options at an explicit rect.</summary>
         public static NowDropdown Dropdown(NowRect rect, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowDropdown(rect, default, options, NowControls.SiteId(file, line));
+            return new NowDropdown(rect, default, options, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Single-selection dropdown with an explicit id at an explicit rect.</summary>
         public static NowDropdown Dropdown(NowRect rect, NowId id, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowDropdown(rect, id, options, NowControls.SiteId(file, line));
+            return new NowDropdown(rect, id, options, NowControls.SiteToken(file, line));
+        }
+
+        public static NowDropdown Dropdown(NowRect rect, NowResolvedId id, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowDropdown(rect, id, options, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Scrollable content container at an explicit rect.</summary>
         public static NowScrollView ScrollView(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowScrollView(rect, id, NowControls.SiteId(file, line));
+            return new NowScrollView(rect, id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowScrollView ScrollView(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowScrollView(rect, id, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Toggle switch with a sliding knob at an explicit rect.</summary>
         public static NowSwitch Switch(NowRect rect, string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowSwitch(rect, label, NowControls.SiteId(file, line));
+            return new NowSwitch(rect, label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Draggable divider between two panes at an explicit rect.</summary>
         public static NowSplitter Splitter(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowSplitter(rect, id, NowControls.SiteId(file, line));
+            return new NowSplitter(rect, id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowSplitter Splitter(NowRect rect, NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowSplitter(rect, default(NowId), NowControls.SiteToken(file, line)).SetId(id);
         }
 
         /// <summary>Determinate or indeterminate progress bar at an explicit rect.</summary>
         public static NowProgressBar ProgressBar(NowRect rect, float value01 = 0f, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowProgressBar(rect, value01, NowControls.SiteId(file, line));
+            return new NowProgressBar(rect, value01, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Non-interactive pill label at an explicit rect.</summary>
         public static NowBadge Badge(NowRect rect, string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowBadge(rect, label, NowControls.SiteId(file, line));
+            return new NowBadge(rect, label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Selectable, optionally removable pill at an explicit rect.</summary>
         public static NowChip Chip(NowRect rect, string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowChip(rect, label, NowControls.SiteId(file, line));
+            return new NowChip(rect, label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Caller-owned tab strip at an explicit rect.</summary>
         public static NowTabBar TabBar(NowRect rect, IReadOnlyList<string> labels, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTabBar(rect, labels, NowControls.SiteId(file, line));
+            return new NowTabBar(rect, labels, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Tab strip with a masked page area below it at an explicit rect.</summary>
         public static NowTabView TabView(NowRect rect, IReadOnlyList<string> labels, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTabView(rect, labels, NowControls.SiteId(file, line));
+            return new NowTabView(rect, labels, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Two resizable panes split by a draggable divider at an explicit rect.</summary>
         public static NowSplitView SplitView(NowRect rect, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowSplitView(rect, NowControls.SiteId(file, line));
+            return new NowSplitView(rect, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Editable dropdown that filters the given options at an explicit rect.</summary>
         public static NowComboBox ComboBox(NowRect rect, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowComboBox(rect, default, options, NowControls.SiteId(file, line));
+            return new NowComboBox(rect, default, options, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Date field with a calendar popup at an explicit rect.</summary>
         public static NowDatePicker DatePicker(NowRect rect, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowDatePicker(rect, default, NowControls.SiteId(file, line));
+            return new NowDatePicker(rect, default, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Time-of-day field with a spinner popup at an explicit rect.</summary>
         public static NowTimePicker TimePicker(NowRect rect, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTimePicker(rect, default, NowControls.SiteId(file, line));
+            return new NowTimePicker(rect, default, NowControls.SiteToken(file, line));
         }
     }
 
@@ -170,139 +195,164 @@ namespace NowUI
         /// <summary>Push button in layout flow.</summary>
         public static NowButton Button(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowButton(label, NowControls.SiteId(file, line));
+            return new NowButton(label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Focusable row with caller-owned selection in layout flow.</summary>
         public static NowSelectableRow SelectableRow(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowSelectableRow(label, NowControls.SiteId(file, line));
+            return new NowSelectableRow(label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Labeled checkbox in layout flow.</summary>
         public static NowCheckbox Checkbox(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowCheckbox(label, NowControls.SiteId(file, line));
+            return new NowCheckbox(label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Labeled radio option in layout flow.</summary>
         public static NowRadio Radio(string label, bool isOn, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowRadio(label, isOn, NowControls.SiteId(file, line));
+            return new NowRadio(label, isOn, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Unlabeled radio option in layout flow.</summary>
         public static NowRadio Radio(bool isOn, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowRadio(string.Empty, isOn, NowControls.SiteId(file, line));
+            return new NowRadio(string.Empty, isOn, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Horizontal slider over a min/max range in layout flow.</summary>
         public static NowSlider Slider(float min, float max, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowSlider(min, max, NowControls.SiteId(file, line));
+            return new NowSlider(min, max, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Single-line text field in layout flow.</summary>
         public static NowTextField TextField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTextField(id, NowControls.SiteId(file, line));
+            return new NowTextField(id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowTextField TextField(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTextField(id, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Multi-line text area in layout flow.</summary>
         public static NowTextArea TextArea(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTextArea(id, NowControls.SiteId(file, line));
+            return new NowTextArea(id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowTextArea TextArea(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowTextArea(id, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Single-selection dropdown over the given options in layout flow.</summary>
         public static NowDropdown Dropdown(IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowDropdown(default, options, NowControls.SiteId(file, line));
+            return new NowDropdown(default, options, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Single-selection dropdown with an explicit id in layout flow.</summary>
         public static NowDropdown Dropdown(NowId id, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowDropdown(id, options, NowControls.SiteId(file, line));
+            return new NowDropdown(id, options, NowControls.SiteToken(file, line));
+        }
+
+        public static NowDropdown Dropdown(NowResolvedId id, IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowDropdown(id, options, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Scrollable content container in layout flow.</summary>
         public static NowScrollView ScrollView(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowScrollView(id, NowControls.SiteId(file, line));
+            return new NowScrollView(id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowScrollView ScrollView(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowScrollView(id, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Toggle switch with a sliding knob in layout flow.</summary>
         public static NowSwitch Switch(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowSwitch(label, NowControls.SiteId(file, line));
+            return new NowSwitch(label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Draggable divider between two panes in layout flow.</summary>
         public static NowSplitter Splitter(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowSplitter(id, NowControls.SiteId(file, line));
+            return new NowSplitter(id, NowControls.SiteToken(file, line));
+        }
+
+        public static NowSplitter Splitter(NowResolvedId id, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowSplitter(default(NowId), NowControls.SiteToken(file, line)).SetId(id);
         }
 
         /// <summary>Determinate or indeterminate progress bar in layout flow.</summary>
         public static NowProgressBar ProgressBar(float value01 = 0f, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowProgressBar(value01, NowControls.SiteId(file, line));
+            return new NowProgressBar(value01, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Non-interactive pill label in layout flow.</summary>
         public static NowBadge Badge(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowBadge(label, NowControls.SiteId(file, line));
+            return new NowBadge(label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Selectable, optionally removable pill in layout flow.</summary>
         public static NowChip Chip(string label = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowChip(label, NowControls.SiteId(file, line));
+            return new NowChip(label, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Caller-owned tab strip in layout flow.</summary>
         public static NowTabBar TabBar(IReadOnlyList<string> labels, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTabBar(labels, NowControls.SiteId(file, line));
+            return new NowTabBar(labels, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Tab strip with a masked page area below it in layout flow.</summary>
         public static NowTabView TabView(IReadOnlyList<string> labels, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTabView(labels, NowControls.SiteId(file, line));
+            return new NowTabView(labels, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Two resizable panes split by a draggable divider in layout flow.</summary>
         public static NowSplitView SplitView(NowSplitAxis axis = NowSplitAxis.Horizontal, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowSplitView(NowControls.SiteId(file, line)).SetAxis(axis);
+            return new NowSplitView(NowControls.SiteToken(file, line)).SetAxis(axis);
         }
 
         /// <summary>Hierarchical tree of collapsible rows driven by caller-owned state.</summary>
         public static NowTreeView TreeView(NowTreeViewState state, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTreeView(state, NowControls.SiteId(file, line));
+            return new NowTreeView(state, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Editable dropdown that filters the given options in layout flow.</summary>
         public static NowComboBox ComboBox(IReadOnlyList<string> options, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowComboBox(default, options, NowControls.SiteId(file, line));
+            return new NowComboBox(default, options, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Date field with a calendar popup in layout flow.</summary>
         public static NowDatePicker DatePicker([CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowDatePicker(default(NowId), NowControls.SiteId(file, line));
+            return new NowDatePicker(default(NowId), NowControls.SiteToken(file, line));
         }
 
         /// <summary>Time-of-day field with a spinner popup in layout flow.</summary>
         public static NowTimePicker TimePicker([CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowTimePicker(default(NowId), NowControls.SiteId(file, line));
+            return new NowTimePicker(default(NowId), NowControls.SiteToken(file, line));
         }
     }
 }

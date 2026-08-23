@@ -19,7 +19,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowFoldout
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
 
         const int ExpandedSeed = 0x4e464458;
@@ -56,6 +56,8 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowFoldout SetId(NowId id) { _id = id; return this; }
 
+        public NowFoldout SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowFoldout SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
@@ -66,8 +68,8 @@ namespace NowUI
         /// </summary>
         public bool Draw()
         {
-            int id = NowControls.GetControlId(_id, _site);
-            ref bool expanded = ref NowControlState.Get<bool>(NowInput.CombineId(id, ExpandedSeed));
+            NowResolvedId id = _id.Resolve(_site);
+            ref bool expanded = ref NowControlState.Get<bool>(id.Child(ExpandedSeed));
             DrawHeader(id, ref expanded);
             return expanded;
         }
@@ -75,11 +77,11 @@ namespace NowUI
         /// <summary>Caller-owned expansion; returns true when toggled this frame.</summary>
         public bool Draw(ref bool expanded)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             return DrawHeader(id, ref expanded);
         }
 
-        bool DrawHeader(int id, ref bool expanded)
+        bool DrawHeader(NowResolvedId id, ref bool expanded)
         {
             var theme = NowTheme.themeAsset;
             var styles = theme.controlStyles;
@@ -132,7 +134,7 @@ namespace NowUI
     {
         public static NowFoldout Foldout(NowRect rect, string label = "", NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowFoldout(rect, label, id, NowControls.SiteId(file, line));
+            return new NowFoldout(rect, label, id, NowControls.SiteToken(file, line));
         }
     }
 
@@ -140,7 +142,7 @@ namespace NowUI
     {
         public static NowFoldout Foldout(string label = "", NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowFoldout(label, id, NowControls.SiteId(file, line));
+            return new NowFoldout(label, id, NowControls.SiteToken(file, line));
         }
     }
 }

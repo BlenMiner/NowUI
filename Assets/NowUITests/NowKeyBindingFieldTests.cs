@@ -59,6 +59,7 @@ public class NowKeyBindingFieldTests
     FakePointer _pointer;
     FakeKeys _keys;
     NowDrawList _drawList;
+    NowResolvedId _fieldId;
     int _frame;
 
     [SetUp]
@@ -78,6 +79,9 @@ public class NowKeyBindingFieldTests
         _keys = new FakeKeys();
         NowKeyInput.source = _keys;
         _drawList = new NowDrawList();
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            _fieldId = NowControls.GetControlId("bind");
         _frame = Time.frameCount + 1;
     }
 
@@ -230,7 +234,7 @@ public class NowKeyBindingFieldTests
     public void SubmitWhileFocusedStartsCapture()
     {
         var value = Key.E;
-        NowFocus.Focus(NowControls.GetControlId("bind"));
+        NowFocus.Focus(_fieldId);
 
         Assert.IsFalse(DrawFrame(ref value, SubmitSnapshot()));
 
@@ -242,7 +246,7 @@ public class NowKeyBindingFieldTests
     public void SubmitKeyPressedAfterArmingBindsThatKey()
     {
         var value = Key.E;
-        NowFocus.Focus(NowControls.GetControlId("bind"));
+        NowFocus.Focus(_fieldId);
 
         Assert.IsFalse(DrawFrame(ref value, SubmitSnapshot()));
 

@@ -71,8 +71,9 @@ public class NowInputReplayTests
         _replay.Release(new Vector2(60f, 35f));
         DrawDropdown(rect, options, ref selected);
 
-        int id;
+        NowResolvedId id;
         using (NowInput.Begin(_replay, Surface))
+        using (_drawList.Begin(Surface))
             id = NowControls.GetControlId("quality");
 
         Assert.IsTrue(NowControlState.Get<bool>(id), "Dropdown should open after replayed click.");
@@ -96,8 +97,9 @@ public class NowInputReplayTests
         _replay.Scroll(new Vector2(40f, 40f), new Vector2(0f, -5f));
         DrawScrollView(viewport);
 
-        int id;
+        NowResolvedId id;
         using (NowInput.Begin(_replay, Surface))
+        using (_drawList.Begin(Surface))
             id = NowControls.GetControlId("list");
 
         ref Vector2 scroll = ref NowControlState.Get<Vector2>(id);

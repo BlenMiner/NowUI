@@ -133,6 +133,9 @@ public class NowTextFieldEditingTests
     FakePointer _pointer;
     FakeKeyboard _keyboard;
     NowDrawList _drawList;
+    NowResolvedId _id;
+    NowResolvedId _beforeId;
+    NowResolvedId _afterId;
     int _snapshotFrame;
 
     [OneTimeSetUp]
@@ -158,6 +161,9 @@ public class NowTextFieldEditingTests
         _keyboard = new FakeKeyboard();
         NowTextInput.source = _keyboard;
         _drawList = new NowDrawList();
+        _id = ResolveId("name");
+        _beforeId = ResolveId("before-name");
+        _afterId = ResolveId("after-name");
         _snapshotFrame = 0;
     }
 
@@ -182,11 +188,18 @@ public class NowTextFieldEditingTests
             .SetValue(theme, renderer);
     }
 
-    static int Id => NowInput.GetId("name");
+    NowResolvedId Id => _id;
 
-    static int BeforeId => NowInput.GetId("before-name");
+    NowResolvedId BeforeId => _beforeId;
 
-    static int AfterId => NowInput.GetId("after-name");
+    NowResolvedId AfterId => _afterId;
+
+    NowResolvedId ResolveId(string id)
+    {
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            return NowControls.GetControlId(id);
+    }
 
     void Focus()
     {
@@ -196,13 +209,15 @@ public class NowTextFieldEditingTests
     [Test]
     public void UndoRegistryEvictsLeastRecentlyUsedStackAtCapacity()
     {
-        var oldest = NowTextUndoRegistry.Get(1);
+        var undoRoot = NowResolvedId.CreateOwnerRoot(0x54455854554E444FUL);
+        NowResolvedId oldestId = undoRoot.Child(1);
+        var oldest = NowTextUndoRegistry.Get(oldestId);
 
         for (int id = 2; id <= NowTextUndoRegistry.Capacity + 1; ++id)
-            NowTextUndoRegistry.Get(id);
+            NowTextUndoRegistry.Get(undoRoot.Child(id));
 
         Assert.AreEqual(NowTextUndoRegistry.Capacity, NowTextUndoRegistry.count);
-        Assert.AreNotSame(oldest, NowTextUndoRegistry.Get(1));
+        Assert.AreNotSame(oldest, NowTextUndoRegistry.Get(oldestId));
         Assert.AreEqual(NowTextUndoRegistry.Capacity, NowTextUndoRegistry.count);
     }
 
@@ -466,7 +481,7 @@ public class NowTextFieldEditingTests
 
         Assert.IsTrue(result.changed);
         Assert.AreEqual(character, text);
-        Assert.AreEqual(Id, NowFocus.focusedId);
+        Assert.AreEqual(Id, NowFocus.focusedResolvedId);
     }
 
     [TestCase("left", 0)]
@@ -506,7 +521,7 @@ public class NowTextFieldEditingTests
         NavigationFrame(ref text, keys, navigation, advanceFocusFrame: true);
 
         Assert.AreEqual(expectedCaret, State().caret);
-        Assert.AreEqual(Id, NowFocus.focusedId);
+        Assert.AreEqual(Id, NowFocus.focusedResolvedId);
     }
 
     [TestCase(false)]
@@ -523,7 +538,7 @@ public class NowTextFieldEditingTests
             focusNext: !previous,
             advanceFocusFrame: true);
 
-        Assert.AreEqual(previous ? BeforeId : AfterId, NowFocus.focusedId);
+        Assert.AreEqual(previous ? BeforeId : AfterId, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -540,7 +555,7 @@ public class NowTextFieldEditingTests
             advanceFocusFrame: true);
 
         Assert.AreEqual("hello", text);
-        Assert.AreEqual(Id, NowFocus.focusedId);
+        Assert.AreEqual(Id, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -566,7 +581,7 @@ public class NowTextFieldEditingTests
 
         Assert.IsFalse(changed, "The revert frame must not report a change.");
         Assert.AreEqual("hello", text, "Escape restores the text captured on focus gain.");
-        Assert.AreEqual(0, NowFocus.focusedId, "Escape still blurs the field.");
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId, "Escape still blurs the field.");
     }
 
     [Test]
@@ -583,7 +598,7 @@ public class NowTextFieldEditingTests
         Assert.IsFalse(changed, "Enter without new characters reports no change.");
         Assert.IsTrue(result.submitted, "Enter is exposed separately from value changes.");
         Assert.AreEqual("hello!", text, "Enter commits instead of reverting.");
-        Assert.AreEqual(0, NowFocus.focusedId, "Enter blurs the field.");
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId, "Enter blurs the field.");
 
         _keyboard.frame = new NowTextInputFrame { enterPressed = true, enterHeld = true };
         NowTextInput.Invalidate();
@@ -625,7 +640,7 @@ public class NowTextFieldEditingTests
             }
 
             Assert.IsTrue(result.submitted);
-            Assert.AreEqual(0, NowFocus.focusedId);
+            Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
             Assert.AreEqual(1, renderer.frameCalls);
             Assert.IsFalse(renderer.lastFrame.focused,
                 "The submit draw must not render one stale focused/caret frame after focus was cleared.");
@@ -675,7 +690,7 @@ public class NowTextFieldEditingTests
                 result = Now.TextField(FieldRect, "name").Draw(ref text);
 
             Assert.IsTrue(result.submitted);
-            Assert.AreEqual(0, NowFocus.focusedId);
+            Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
         }
         finally
         {
@@ -734,7 +749,7 @@ public class NowTextFieldEditingTests
 
         Assert.IsFalse(changed, "The revert frame must not report a change.");
         Assert.AreEqual(5f, value, "Escape restores the value captured on focus gain.");
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -791,7 +806,7 @@ public class NowTextFieldEditingTests
         Focus();
 
         Frame(ref text);
-        Assert.AreEqual(Id, NowFocus.focusedId, "Fixture must keep the field focused.");
+        Assert.AreEqual(Id, NowFocus.focusedResolvedId, "Fixture must keep the field focused.");
 
         Frame(ref text, placeholder: "Type here");
         int withPlaceholder = _drawList.mesh.vertexCount;
@@ -799,7 +814,7 @@ public class NowTextFieldEditingTests
         Frame(ref text);
         int withoutPlaceholder = _drawList.mesh.vertexCount;
 
-        Assert.AreEqual(Id, NowFocus.focusedId);
+        Assert.AreEqual(Id, NowFocus.focusedResolvedId);
         Assert.Greater(withPlaceholder, withoutPlaceholder,
             "A focused empty field must still draw its placeholder.");
     }
@@ -821,7 +836,7 @@ public class NowTextFieldEditingTests
 
         try
         {
-            NowFocus.Focus(NowInput.GetId("styled-field"));
+            NowFocus.Focus(ResolveId("styled-field"));
 
             using (NowTheme.Scope(theme))
             using (NowInput.Begin(_pointer, Surface))

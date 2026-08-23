@@ -128,7 +128,9 @@ using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
   with a draggable, focusable divider. The result itself is not disposable;
   `BeginFirst()`/`BeginSecond()` return the scopes that open each pane.
 - `TreeView(state).Begin()` renders collapsible rows; expansion and selection
-  live in a caller-owned `NowTreeViewState`.
+  live in a caller-owned `NowTreeViewState`. The state exposes semantic
+  `NowTreeNodeKey` values (`selectedKey`, `IsExpanded`, `SetExpanded`) rather
+  than host-resolved UI IDs; use explicit node IDs whenever siblings reorder.
 - `ComboBox(options).Draw(ref index)` is a searchable dropdown: open it and
   type to filter, up/down highlight, submit commits.
   `Draw(ref string value)` stores the selected option text directly; combine it
@@ -589,39 +591,53 @@ for (int i = 0; i < rows.Count; ++i)
 Draw-order salting means state follows the *position* in the loop, not the
 item. When looped items can reorder, appear, or vanish — or when one logical
 control draws from several code paths — anchor identity to your data instead.
-`NowId` is the preferred explicit identity type: it can hold a string or a
-non-zero integer, and integer ids avoid per-frame string hashing for
-data-backed controls. Both forms are local to the active retained host and
-`NowControls.IdScope`, so two reusable panels can safely use the same ids.
+`NowId` is the authored identity type: it can hold a string or any integer
+including zero. Both forms are local to the active retained host and identity scope,
+so two reusable panels can safely use the same application keys.
 
 ```csharp
 NowLayout.Button("Delete").SetId(item.id).Draw();
 
-for (int i = 0; i < rows.Count; ++i)
-    using (NowControls.IdScope(rows[i].id))
+foreach (var row in rows)
+    using (NowControls.KeyedItem(row.id))
         if (NowLayout.Button("Delete").Draw())
-            Delete(rows[i]);
+            Delete(row);
 ```
 
-When an integer is already fully resolved—such as a value returned by
-`graphic.ResolveControlId(item.id)` or composed from a resolved parent with
-`NowInput.CombineId`—wrap it with `NowId.Resolved(value)` before passing it
-back to `SetId`. This explicit escape hatch prevents accidental double-scoping;
-ordinary application/data ids should stay as plain integers.
+`KeyedItem(key)` uses its call site as the list namespace. Use
+`KeyedItemIn(listId, key)` when several helpers or call sites draw the same
+logical collection.
+
+`NowResolvedId` is a separate opaque type returned by
+`NowControls.GetControlId(...)`, host `ResolveControlId(...)` methods, and
+`NowInteraction.id`. Pass a resolved value directly to a `NowResolvedId`
+overload and derive private sub-controls with `resolved.Child(...)`. Never
+persist it, turn it into an integer, or feed it back through `NowId`; that type
+boundary prevents accidental double-scoping. See [Identity](Identity.md).
 
 `TextField`, `Dropdown`, and `ScrollView` keep their optional explicit id as
 the first parameter (`TextField(player.id)` or `TextField("player-name")`) for
 the same purpose; omit it and the call site is the id. Custom controls get site
 identity by declaring the caller-info parameters themselves and passing them
 through `NowControls.Interact(...)`. Builder-style custom controls can store
-`NowControls.SiteId(file, line)` in the factory and pass that fallback identity
-to `NowControls.Interact(id, fallbackIdentity, rect, ...)`.
+`NowControls.SiteId(file, line)` plus a `NowControlIdentity`, resolve it once in
+`Draw()`, and pass the resulting `NowResolvedId` to
+`NowControls.Interact(...)`.
+The `SiteId` return value is an opaque `NowCallSiteId` that lets the resolver
+recover the caller file/line. It is not an authored or resolved control ID and
+must not be persisted.
 
 A composite custom control that draws several child controls should wrap its
 body in `NowControls.ControlScope(id, file, line)`. The scope mixes the custom
 control invocation into every descendant id, allowing reusable local child ids
 without shared focus or state. Its default identity is occurrence-salted; use a
 stable explicit id when repeated instances can reorder.
+
+When a composite parent contains independent child controls, declaration order
+does not make the child win hit testing. Build a `NowInteractionRegion` for the
+parent and exclude every child rectangle before calling the parent's
+interaction. This prevents one-frame parent hover/press reactions through the
+child.
 
 ## Compile-time misuse warnings
 
@@ -876,21 +892,23 @@ The toolkit pieces:
 | `NowControls.Interact(id, rect, navigation, navigationLock, consumesCancel, out focused, out submitted)` | Register a custom control's directional/full navigation and cancel ownership while focused |
 | `NowInput.Interact(rect)` | Id-less interaction: identity from the call site |
 | `interaction.GetId("slot")` / `interaction.State<T>("slot")` | Sub-state keys derived from the resolved control id |
-| `NowInput.CombineId(a, b)` | Mint sub-element ids (rows, links, items) without strings |
+| `resolvedId.Child(id)` | Mint typed sub-element ids for rows, links, and items beneath an already-resolved owner |
+| `NowInteractionRegion.From(rect).Exclude(childRect)` | Define a composite parent's hit region with allocation-free child-control holes |
 | `using (Now.Transform(scale, origin))` | Scale/pan drawing and input together when a host already scales explicit rects, such as zoomable node content |
 | `NowControlState.Get<T>(id)` / `Get<T>(id, "slot")` | Persistent ephemeral slot (struct), evicted when stale |
 | `NowControlState.Transition / Repeat / DetectDoubleClick / ClickStreak / Blink` | The standard timing behaviors; common animation/repeat helpers also accept `NowInteraction` |
 | `NowControlState.RequestRepaint()` | Tell retained hosts (UGUI) to render another frame |
 | `NowFocus.IsFocused / Focus / Clear / LockDirectionalNavigation / LockNavigation` | Focus queries, explicit control, directional-only or full navigation ownership while editing |
 | `Now.Mask(rect)` / `Now.Mask(shape)` | Ambient exact-rectangle or analytic/soft clipping scope; ScrollView uses the rectangular form |
-| `NowOverlay.Defer(blockRect, draw)` | Draw above everything; input beneath is blocked |
-| `NowContextMenu.Open / Begin / Item / End` | Modal right-click menus on the overlay layer |
+| `NowOverlay.Defer(blockRect, draw)` | Draw above everything; input beneath is blocked; deferred callbacks restore their queued input/host/id context |
+| `NowOverlay.Defer(blockRect, sourceId, state, callback)` | Named non-capturing overlay with typed source identity and separate integer callback payload; the three-argument `int state` form is anonymous |
+| `NowContextAction.Resolve` + `NowContextMenu.Open / Begin / Item / End` | Source-aware modal context menus; use explicit item/submenu `NowId` values for stable next-owner-pass delivery |
 | `NowTextInput.current` / `ClaimActivity()` | Frame-sampled keyboard text/editing input, including IME composition; custom focused consumers claim one-shot activity so later IMGUI passes cannot replay it |
 | `NowTextInput.setImeEnabled / setCompositionCursor` | IME hooks: editors toggle on focus and report the caret for the candidate window |
 | `NowTextEdit` | Headless caret/selection/editing engine for custom editors |
 | `NowTextWrap.Layout / Draw` | Word wrap: lay out once into positioned runs, draw many frames |
 | `NowTextArea.LayoutLines / LineOf` | Editing-grade line layout: every character covered, caret-exact metrics |
-| `NowTextSelection.Draw / Interact / DrawHighlights` | Browser-style text selection over positioned line segments |
+| `NowTextSelection.Draw / Interact / DrawHighlights` | Browser-style text selection; pass `NowTextSelectionResult.contextTrigger` directly to `NowContextMenu.Open` |
 | `NowClipboard.Copy / Paste / setText / getText` | The single clipboard hook every copy/paste path uses |
 | `NowLayout.ContentRect()` → `content.End(height)` | Reserve/measure for width-dependent content; same-cycle in layout hosts, cached in one-pass hosts |
 | `theme.Rectangle / theme.Text / theme.ResolveText / theme.GetColor ...` | Themed visuals; `ResolveText` is the rect-free, mask-free starting point |

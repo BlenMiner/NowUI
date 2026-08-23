@@ -21,7 +21,7 @@ namespace NowUI
 
         readonly NowUIToolkitInputProvider _inputProvider = new NowUIToolkitInputProvider();
 
-        readonly int _scopeId = NowControls.AllocateHostScopeId();
+        readonly NowResolvedId _scopeId = NowControls.AllocateOwnerScope();
 
         const long ContinuousRepaintIntervalMilliseconds = 16;
 
@@ -118,14 +118,14 @@ namespace NowUI
         }
 
         /// <summary>Resolves a SetId value within this element's private control scope.</summary>
-        public int ResolveControlId(string id)
+        public NowResolvedId ResolveControlId(string id)
         {
-            return NowControls.ResolveHostControlId(_scopeId, id);
+            return _scopeId.Derive(NowIdDomain.Control, id);
         }
 
-        public int ResolveControlId(int id)
+        public NowResolvedId ResolveControlId(int id)
         {
-            return NowControls.ResolveHostControlId(_scopeId, id);
+            return _scopeId.Derive(NowIdDomain.Control, id);
         }
 
         [UxmlAttribute]

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace NowUI
@@ -11,7 +12,7 @@ namespace NowUI
 
     public readonly struct NowInteraction
     {
-        public readonly int id;
+        public readonly NowResolvedId id;
 
         public readonly Rect rect;
 
@@ -50,7 +51,7 @@ namespace NowUI
         public readonly bool dragCancelled;
 
         internal NowInteraction(
-            int id,
+            NowResolvedId id,
             Rect rect,
             NowPointerButton button,
             bool hasPointer,
@@ -90,15 +91,15 @@ namespace NowUI
         }
 
         /// <summary>Derives a stable sub-id from this interaction's resolved control id.</summary>
-        public int GetId(string key)
+        public NowResolvedId GetId(string key)
         {
-            return NowInput.GetId(id, key);
+            return id.Child(key);
         }
 
         /// <summary>Derives a stable numeric sub-id from this interaction's resolved control id.</summary>
-        public int GetId(int key)
+        public NowResolvedId GetId(int key)
         {
-            return NowInput.CombineId(id, key);
+            return id.Child(key);
         }
 
         /// <summary>Returns a persistent control-state slot keyed under this interaction.</summary>
@@ -128,13 +129,13 @@ namespace NowUI
 
         static bool _hasContext;
 
-        static int _activeId;
+        static NowResolvedId _activeId;
 
         static INowInputProvider _activeProvider;
 
         static NowPointerButton _activeButton;
 
-        static int _dragId;
+        static NowResolvedId _dragId;
 
         static bool _activeDragged;
 
@@ -183,7 +184,7 @@ namespace NowUI
         internal static void CancelScreenFrame()
         {
             _screenFrameActive = false;
-            NowOverlay.EndFrameTransaction();
+            NowOverlay.EndFrameTransaction(completed: false);
         }
 
         static bool _scrollConsumed;
@@ -195,6 +196,20 @@ namespace NowUI
         static int _cancelClaimFrame = int.MinValue;
 
         static INowInputProvider _cancelClaimProvider;
+
+        struct PointerPressClaim
+        {
+            public INowInputProvider provider;
+            public int inputPass;
+            public NowPointerButtons buttons;
+        }
+
+        // A draw can temporarily enter another input provider and then return to
+        // the original one. Key claims by both provider and input-pass instead
+        // of keeping one global flag so nested surfaces cannot erase or inherit
+        // each other's pointer-down ownership.
+        static readonly List<PointerPressClaim> _pointerPressClaims =
+            new List<PointerPressClaim>(4);
 
         public static INowInputProvider defaultProvider
         {
@@ -211,15 +226,15 @@ namespace NowUI
 
         public static bool hasContext => _hasContext;
 
-        public static int activeId => _activeId;
+        public static NowResolvedId activeId => _activeId;
 
         public static NowPointerButton activeButton => _activeButton;
 
         internal static bool hasActiveInteraction =>
-            _activeId != 0 && ReferenceEquals(_currentProvider, _activeProvider);
+            _activeId.hasValue && ReferenceEquals(_currentProvider, _activeProvider);
 
         internal static bool IsActiveControl(
-            int id,
+            NowResolvedId id,
             NowPointerButton button = NowPointerButton.Primary)
         {
             return _activeId == id &&
@@ -315,9 +330,8 @@ namespace NowUI
             {
                 if (!_screenFrameActive)
                 {
-                    NowOverlay.EndFrameTransaction();
                     HealLeakedPassiveScope();
-                    CompleteFrame();
+                    CompletePreviousFrameTransaction();
                 }
 
             }
@@ -358,7 +372,7 @@ namespace NowUI
             catch
             {
                 if (beganOverlayTransaction)
-                    NowOverlay.EndFrameTransaction();
+                    NowOverlay.EndFrameTransaction(completed: false);
 
                 _scopes.Exit(token);
                 _scopeDepth = previousScopeDepth;
@@ -443,9 +457,8 @@ namespace NowUI
 
             if (topLevel)
             {
-                NowOverlay.EndFrameTransaction();
                 HealLeakedPassiveScope();
-                CompleteFrame();
+                CompletePreviousFrameTransaction();
             }
 
             try
@@ -465,9 +478,24 @@ namespace NowUI
             catch
             {
                 if (beganOverlayTransaction)
-                    NowOverlay.EndFrameTransaction();
+                    NowOverlay.EndFrameTransaction(completed: false);
 
                 throw;
+            }
+        }
+
+        static void CompletePreviousFrameTransaction()
+        {
+            bool completed = false;
+
+            try
+            {
+                CompleteFrame();
+                completed = true;
+            }
+            finally
+            {
+                NowOverlay.EndFrameTransaction(completed);
             }
         }
 
@@ -495,6 +523,7 @@ namespace NowUI
                 NowKeyInput.BeginInputPass();
 #endif
                 _scrollConsumed = false;
+                _pointerPressClaims.Clear();
                 _focusClaimedByPrimaryPress = false;
                 _activeSeenThisFrame = false;
             }
@@ -515,6 +544,22 @@ namespace NowUI
         public static bool IsHovered(NowRect rect)
         {
             return IsHovered((Rect)rect);
+        }
+
+        /// <summary>
+        /// True when the pointer belongs to a composite region's bounds and is
+        /// outside all of its child exclusions.
+        /// </summary>
+        public static bool IsHovered(in NowInteractionRegion region)
+        {
+            Rect screenRect = Now.TransformScreenRect(region.bounds);
+            Vector2 pointer = _snapshot.pointerPosition;
+
+            return _hasContext && _snapshot.hasPointer &&
+                screenRect.Contains(pointer) &&
+                !region.IsExcluded(Now.InverseTransformScreenPoint(pointer)) &&
+                Now.IsInsideAmbientMask(pointer) &&
+                !NowOverlay.IsPointerBlocked(pointer);
         }
 
         internal static void ClaimFocusForCurrentPrimaryPress()
@@ -551,6 +596,18 @@ namespace NowUI
         }
 
         /// <summary>
+        /// True when a secondary-button press belongs to a composite region and
+        /// not to one of its excluded child controls.
+        /// </summary>
+        public static bool WasRightClicked(in NowInteractionRegion region)
+        {
+            return _passiveDepth == 0 &&
+                _hasContext &&
+                WasPointerPressedUnclaimed(NowPointerButton.Secondary) &&
+                IsHovered(in region);
+        }
+
+        /// <summary>
         /// True when a secondary-button press landed inside <paramref name="rect"/>
         /// this frame, respecting ambient masks and overlay pointer blocks.
         /// </summary>
@@ -558,7 +615,7 @@ namespace NowUI
         {
             return _passiveDepth == 0 &&
                 _hasContext &&
-                _snapshot.WasPointerPressed(NowPointerButton.Secondary) &&
+                WasPointerPressedUnclaimed(NowPointerButton.Secondary) &&
                 IsHovered(rect);
         }
 
@@ -661,8 +718,90 @@ namespace NowUI
                 return;
             }
 
+            ClaimPointerPresses(_snapshot.pointerButtonsPressed, notifyNative: true);
+        }
+
+        /// <summary>
+        /// Claims one pointer button's press for the current input pass without
+        /// creating a draggable control capture. Later NowUI controls in the
+        /// same provider/pass no longer observe that press.
+        /// </summary>
+        public static void ConsumePointerPress(NowPointerButton button)
+        {
+            if (_passiveDepth > 0 ||
+                !_hasContext ||
+                !_snapshot.WasPointerPressed(button))
+            {
+                return;
+            }
+
+            ClaimPointerPresses(
+                NowInputSnapshot.ToButtonMask(button),
+                notifyNative: true);
+        }
+
+        static void ClaimPointerPresses(
+            NowPointerButtons buttons,
+            bool notifyNative)
+        {
+            if (buttons == NowPointerButtons.None)
+                return;
+
+            for (int i = 0; i < _pointerPressClaims.Count; ++i)
+            {
+                var claim = _pointerPressClaims[i];
+
+                if (!ReferenceEquals(claim.provider, _currentProvider) ||
+                    claim.inputPass != _snapshot.inputPass)
+                {
+                    continue;
+                }
+
+                claim.buttons |= buttons;
+                _pointerPressClaims[i] = claim;
+
+                if (notifyNative)
+                    NotifyPointerPressConsumed();
+
+                return;
+            }
+
+            _pointerPressClaims.Add(new PointerPressClaim
+            {
+                provider = _currentProvider,
+                inputPass = _snapshot.inputPass,
+                buttons = buttons
+            });
+
+            if (notifyNative)
+                NotifyPointerPressConsumed();
+        }
+
+        static void NotifyPointerPressConsumed()
+        {
             if (_currentProvider is NowIMGUIInputProvider imgui)
                 imgui.NotifyPointerPressConsumed();
+        }
+
+        static bool WasPointerPressedUnclaimed(NowPointerButton button)
+        {
+            if (!_snapshot.WasPointerPressed(button))
+                return false;
+
+            NowPointerButtons mask = NowInputSnapshot.ToButtonMask(button);
+
+            for (int i = _pointerPressClaims.Count - 1; i >= 0; --i)
+            {
+                var claim = _pointerPressClaims[i];
+
+                if (ReferenceEquals(claim.provider, _currentProvider) &&
+                    claim.inputPass == _snapshot.inputPass)
+                {
+                    return (claim.buttons & mask) == 0;
+                }
+            }
+
+            return true;
         }
 
         /// <summary>True when a control claimed this frame's cancel press, so
@@ -690,7 +829,7 @@ namespace NowUI
 
         public static bool WasPointerPressed(NowPointerButton button)
         {
-            return _hasContext && _snapshot.WasPointerPressed(button);
+            return _hasContext && WasPointerPressedUnclaimed(button);
         }
 
         public static bool WasPointerReleased(NowPointerButton button)
@@ -699,13 +838,17 @@ namespace NowUI
         }
 
         /// <summary>
-        /// Combines two ids into one (a parent control id and a sub-element
-        /// index, for example) — the blessed way to mint ids for interactive
-        /// sub-regions without strings. Never returns 0. When passing the result
-        /// to an API that accepts <see cref="NowId"/>, wrap it in
-        /// <see cref="NowId.Resolved(int)"/> because the parent was already
-        /// resolved; int-based input/state APIs accept the result directly.
+        /// Derives a typed sub-element identity from an already-resolved parent.
+        /// The edge is order-sensitive and preserves the parent's complete owner
+        /// and ancestry; it cannot algebraically cancel an earlier path segment.
         /// </summary>
+        public static NowResolvedId CombineId(NowResolvedId parent, int child)
+        {
+            return parent.Child(child);
+        }
+
+        /// <summary>Legacy 32-bit combiner retained for one migration cycle.</summary>
+        [Obsolete("Use NowResolvedId.Child or CombineId(NowResolvedId, int). Raw integer identity composition is no longer supported.", true)]
         public static int CombineId(int a, int b)
         {
             unchecked
@@ -715,9 +858,9 @@ namespace NowUI
             }
         }
 
-        static int CallerControlId(string file, int line)
+        static NowResolvedId CallerControlId(string file, int line)
         {
-            return NowControls.GetControlId(NowControls.SiteId(file, line));
+            return NowControls.GetControlId(NowControls.SiteToken(file, line));
         }
 
         /// <summary>
@@ -785,7 +928,7 @@ namespace NowUI
 
         public static NowInteraction Interact(string id, NowRect rect, NowPointerButton button)
         {
-            return Interact(GetId(id), (Rect)rect, button);
+            return Interact(NowControls.GetControlId(id), (Rect)rect, button);
         }
 
         public static NowInteraction Interact(NowId id, NowRect rect, NowPointerButton button)
@@ -805,7 +948,7 @@ namespace NowUI
 
         public static NowInteraction Interact(string id, Rect rect, NowPointerButton button)
         {
-            return Interact(GetId(id), rect, button);
+            return Interact(NowControls.GetControlId(id), rect, button);
         }
 
         public static NowInteraction Interact(NowId id, Rect rect, NowPointerButton button)
@@ -813,28 +956,52 @@ namespace NowUI
             return Interact(RequireExplicitId(id, nameof(id)), rect, button);
         }
 
-        public static NowInteraction Interact(int id, NowRect rect)
+        public static NowInteraction Interact(NowResolvedId id, NowRect rect)
         {
             return Interact(id, rect, NowPointerButton.Primary);
         }
 
-        public static NowInteraction Interact(int id, NowRect rect, NowPointerButton button)
+        public static NowInteraction Interact(NowResolvedId id, NowRect rect, NowPointerButton button)
         {
             return Interact(id, (Rect)rect, button);
         }
 
-        public static NowInteraction Interact(int id, Rect rect)
+        public static NowInteraction Interact(NowResolvedId id, Rect rect)
         {
             return Interact(id, rect, NowPointerButton.Primary);
         }
 
-        public static NowInteraction Interact(int id, Rect rect, NowPointerButton button)
+        public static NowInteraction Interact(NowResolvedId id, Rect rect, NowPointerButton button)
         {
-            if (id == 0)
-                throw new ArgumentException("Control id 0 is reserved.", nameof(id));
+            var region = new NowInteractionRegion(rect);
+            return Interact(id, in region, button);
+        }
 
-            Rect localRect = rect;
-            Rect screenRect = Now.TransformScreenRect(rect);
+        /// <summary>
+        /// Interacts with a composite region whose inline exclusions reserve
+        /// child-control rectangles from the parent's hit target.
+        /// </summary>
+        public static NowInteraction Interact(
+            NowResolvedId id,
+            in NowInteractionRegion region)
+        {
+            return Interact(id, in region, NowPointerButton.Primary);
+        }
+
+        /// <summary>
+        /// Interacts with a composite region using the requested pointer button.
+        /// Bounds and exclusions are authored in the active local transform.
+        /// </summary>
+        public static NowInteraction Interact(
+            NowResolvedId id,
+            in NowInteractionRegion region,
+            NowPointerButton button)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("A resolved control id is required.", nameof(id));
+
+            Rect localRect = region.bounds;
+            Rect screenRect = Now.TransformScreenRect(region.bounds);
 
             if (_passiveDepth == 0 &&
                 _currentProvider != null &&
@@ -845,10 +1012,12 @@ namespace NowUI
 
             ref readonly var snapshot = ref _snapshot;
             bool hasPointer = _hasContext && snapshot.hasPointer;
-            bool hovered = hasPointer && screenRect.Contains(snapshot.pointerPosition) &&
+            Vector2 localPointerPosition = Now.InverseTransformScreenPoint(snapshot.pointerPosition);
+            bool hovered = hasPointer &&
+                screenRect.Contains(snapshot.pointerPosition) &&
+                !region.IsExcluded(localPointerPosition) &&
                 Now.IsInsideAmbientMask(snapshot.pointerPosition) &&
                 !NowOverlay.IsPointerBlocked(snapshot.pointerPosition);
-            Vector2 localPointerPosition = Now.InverseTransformScreenPoint(snapshot.pointerPosition);
             Vector2 localPointerDelta = Now.InverseTransformScreenVector(snapshot.pointerDelta);
 
             if (_passiveDepth > 0)
@@ -878,7 +1047,7 @@ namespace NowUI
 
             bool freshPress =
                 hovered &&
-                snapshot.WasPointerPressed(button);
+                WasPointerPressedUnclaimed(button);
 
             if (freshPress && snapshot.pointerCaptureCancelled)
             {
@@ -890,7 +1059,7 @@ namespace NowUI
             }
 
             if (freshPress &&
-                _activeId != 0 &&
+                _activeId.hasValue &&
                 _activeButton == button &&
                 !ReferenceEquals(_activeProvider, _currentProvider))
             {
@@ -901,7 +1070,7 @@ namespace NowUI
             }
 
             bool pressed = freshPress &&
-                (_activeId == 0 || IsActiveControl(id, button));
+                (!_activeId.hasValue || IsActiveControl(id, button));
 
             if (pressed &&
                 _currentProvider is NowIMGUIInputProvider imgui &&
@@ -912,10 +1081,16 @@ namespace NowUI
 
             if (pressed)
             {
+                // Native capture already consumed the host event above. Record
+                // the semantic claim too so a later raw context-action check
+                // cannot observe a child control's press in the same pass.
+                ClaimPointerPresses(
+                    NowInputSnapshot.ToButtonMask(button),
+                    notifyNative: false);
                 _activeId = id;
                 _activeProvider = _currentProvider;
                 _activeButton = button;
-                _dragId = 0;
+                _dragId = NowResolvedId.None;
                 _activeDragged = false;
                 _pressPosition = snapshot.pointerPosition;
 
@@ -995,7 +1170,49 @@ namespace NowUI
             return interaction;
         }
 
+        [Obsolete("Use Interact(NowResolvedId, ...). Raw integer control ids are no longer accepted.", true)]
+        public static NowInteraction Interact(int id, NowRect rect)
+        {
+            return Interact(NowResolvedId.FromLegacy(id), rect);
+        }
+
+        [Obsolete("Use Interact(NowResolvedId, ...). Raw integer control ids are no longer accepted.", true)]
+        public static NowInteraction Interact(int id, NowRect rect, NowPointerButton button)
+        {
+            return Interact(NowResolvedId.FromLegacy(id), rect, button);
+        }
+
+        [Obsolete("Use Interact(NowResolvedId, ...). Raw integer control ids are no longer accepted.", true)]
+        public static NowInteraction Interact(int id, Rect rect)
+        {
+            return Interact(NowResolvedId.FromLegacy(id), rect);
+        }
+
+        [Obsolete("Use Interact(NowResolvedId, ...). Raw integer control ids are no longer accepted.", true)]
+        public static NowInteraction Interact(int id, Rect rect, NowPointerButton button)
+        {
+            return Interact(NowResolvedId.FromLegacy(id), rect, button);
+        }
+
+        /// <summary>Derives a named child from an already-resolved parent.</summary>
+        public static NowResolvedId GetId(NowResolvedId parent, string value)
+        {
+            return parent.Child(value);
+        }
+
+        /// <summary>Derives an integer child from an already-resolved parent.</summary>
+        public static NowResolvedId GetId(NowResolvedId parent, int value)
+        {
+            return parent.Child(value);
+        }
+
+        [Obsolete("Use NowControls.GetControlId(string) or NowResolvedId.Child(string). Raw 32-bit identity hashes are no longer supported.", true)]
         public static int GetId(string value)
+        {
+            return GetLegacyId(value);
+        }
+
+        internal static int GetLegacyId(string value)
         {
             if (string.IsNullOrEmpty(value))
                 throw new ArgumentException("Control id strings cannot be null or empty.", nameof(value));
@@ -1016,7 +1233,13 @@ namespace NowUI
             }
         }
 
+        [Obsolete("Use GetId(NowResolvedId, string). Raw 32-bit identity composition is no longer supported.", true)]
         public static int GetId(int seed, string value)
+        {
+            return GetLegacyId(seed, value);
+        }
+
+        internal static int GetLegacyId(int seed, string value)
         {
             if (string.IsNullOrEmpty(value))
                 throw new ArgumentException("Control id strings cannot be null or empty.", nameof(value));
@@ -1035,17 +1258,17 @@ namespace NowUI
             }
         }
 
-        public static int GetId(NowId id, int fallback)
+        public static NowResolvedId GetId(NowId id, NowCallSiteId fallback)
         {
-            return id.ResolveStableId(fallback);
+            return NowControls.GetControlId(id, fallback);
         }
 
-        static int RequireExplicitId(NowId id, string paramName)
+        static NowResolvedId RequireExplicitId(NowId id, string paramName)
         {
             if (!id.hasValue)
                 throw new ArgumentException("This API requires an explicit NowId.", paramName);
 
-            return id.ResolveStableId(0);
+            return NowControls.ResolveNavigationTargetId(id);
         }
 
         public static void Reset()
@@ -1055,10 +1278,10 @@ namespace NowUI
             _snapshot = default;
             _hasContext = false;
             _currentProvider = null;
-            _activeId = 0;
+            _activeId = NowResolvedId.None;
             _activeProvider = null;
             _activeButton = NowPointerButton.Primary;
-            _dragId = 0;
+            _dragId = NowResolvedId.None;
             _activeDragged = false;
             _activeSeenThisFrame = false;
             _activeLastSeenFrame = -1;
@@ -1076,6 +1299,7 @@ namespace NowUI
             _cancelClaimInputPass = int.MinValue;
             _cancelClaimFrame = int.MinValue;
             _cancelClaimProvider = null;
+            _pointerPressClaims.Clear();
             NowRaycastGate.InvalidateCache();
             NowPointerArbiter.Reset();
             NowInputSystemInput.Invalidate();
@@ -1153,6 +1377,29 @@ namespace NowUI
             _hasContext = hasContext;
         }
 
+        /// <summary>
+        /// Captures the ambient input coordinates and event snapshot used by a
+        /// deferred draw. Pointer claims and capture ownership stay global and
+        /// are keyed by provider/input-pass, so restoring this context cannot
+        /// resurrect a consumed press.
+        /// </summary>
+        internal static NowInputContextSnapshot CaptureContext()
+        {
+            return new NowInputContextSnapshot(
+                _currentProvider,
+                _surface,
+                _snapshot,
+                _hasContext);
+        }
+
+        /// <summary>Temporarily applies a previously captured input context.</summary>
+        internal static NowInputContextScope ApplyContext(in NowInputContextSnapshot context)
+        {
+            var previous = CaptureContext();
+            Restore(context.provider, context.surface, context.snapshot, context.hasContext);
+            return new NowInputContextScope(previous);
+        }
+
         internal static void EndScope(
             INowInputProvider previousProvider,
             NowInputSurface previousSurface,
@@ -1162,10 +1409,15 @@ namespace NowUI
             bool completeFrame,
             int token)
         {
+            bool flushed = !completeFrame;
+
             try
             {
                 if (completeFrame)
+                {
                     NowOverlay.Flush();
+                    flushed = true;
+                }
             }
             finally
             {
@@ -1180,7 +1432,7 @@ namespace NowUI
                 try
                 {
                     if (completeFrame)
-                        EndScopedFrame();
+                        EndScopedFrame(flushed);
                 }
                 finally
                 {
@@ -1197,30 +1449,36 @@ namespace NowUI
 
         internal static void EndFrame()
         {
+            bool completed = false;
+
             try
             {
                 CompleteFrame();
+                completed = true;
             }
             finally
             {
                 _screenFrameActive = false;
-                NowOverlay.EndFrameTransaction();
+                NowOverlay.EndFrameTransaction(completed);
             }
         }
 
-        static void EndScopedFrame()
+        static void EndScopedFrame(bool drawCompleted)
         {
+            bool completed = false;
+
             try
             {
                 CompleteFrame();
+                completed = drawCompleted;
             }
             finally
             {
-                NowOverlay.EndFrameTransaction();
+                NowOverlay.EndFrameTransaction(completed);
             }
         }
 
-        internal static void ClearActiveIf(int id, NowPointerButton button = NowPointerButton.Primary)
+        internal static void ClearActiveIf(NowResolvedId id, NowPointerButton button = NowPointerButton.Primary)
         {
             if (IsActiveControl(id, button))
             {
@@ -1231,11 +1489,17 @@ namespace NowUI
             }
         }
 
+        [Obsolete("Use ClearActiveIf(NowResolvedId). Raw integer control ids are no longer accepted.", true)]
+        internal static void ClearActiveIf(int id, NowPointerButton button = NowPointerButton.Primary)
+        {
+            ClearActiveIf(NowResolvedId.FromLegacy(id), button);
+        }
+
         static void CompleteFrame()
         {
             try
             {
-                if (_activeId != 0 &&
+                if (_activeId.hasValue &&
                     ReferenceEquals(_currentProvider, _activeProvider) &&
                     _hasContext &&
                     (_snapshot.pointerCaptureCancelled ||
@@ -1279,10 +1543,10 @@ namespace NowUI
 
         static void ClearActive()
         {
-            _activeId = 0;
+            _activeId = NowResolvedId.None;
             _activeProvider = null;
             _activeButton = NowPointerButton.Primary;
-            _dragId = 0;
+            _dragId = NowResolvedId.None;
             _activeDragged = false;
             _activeSeenThisFrame = false;
             _activeLastSeenFrame = -1;
@@ -1291,7 +1555,7 @@ namespace NowUI
 
         static void ClearStaleActiveFromMissingProvider()
         {
-            if (_activeId == 0 ||
+            if (!_activeId.hasValue ||
                 ReferenceEquals(_currentProvider, _activeProvider) ||
                 _activeLastSeenFrame < 0)
             {
@@ -1307,6 +1571,56 @@ namespace NowUI
 
                 ClearActive();
             }
+        }
+    }
+
+    internal readonly struct NowInputContextSnapshot
+    {
+        internal readonly INowInputProvider provider;
+
+        internal readonly NowInputSurface surface;
+
+        internal readonly NowInputSnapshot snapshot;
+
+        internal readonly bool hasContext;
+
+        internal NowInputContextSnapshot(
+            INowInputProvider provider,
+            NowInputSurface surface,
+            NowInputSnapshot snapshot,
+            bool hasContext)
+        {
+            this.provider = provider;
+            this.surface = surface;
+            this.snapshot = snapshot;
+            this.hasContext = hasContext;
+        }
+    }
+
+    [NowScope]
+    internal struct NowInputContextScope : IDisposable
+    {
+        readonly NowInputContextSnapshot _previous;
+
+        bool _disposed;
+
+        internal NowInputContextScope(NowInputContextSnapshot previous)
+        {
+            _previous = previous;
+            _disposed = false;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            NowInput.Restore(
+                _previous.provider,
+                _previous.surface,
+                _previous.snapshot,
+                _previous.hasContext);
         }
     }
 

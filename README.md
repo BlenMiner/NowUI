@@ -212,6 +212,9 @@ Toolkit, world-space, and manual-host examples, see
 - **Controls** — buttons, checkboxes, radios, sliders, text fields,
   dropdowns, and scroll views with focus navigation, theming, and a public
   toolkit for building custom controls. [Documentation~/Controls.md](Assets/NowUI/Documentation~/Controls.md)
+- **Typed identity** — authored `NowId` keys, opaque host-owned
+  `NowResolvedId` paths, reorder-safe keyed collection scopes, and composite
+  hit-region exclusions. [Documentation~/Identity.md](Assets/NowUI/Documentation~/Identity.md)
 - **Lottie** — vector animations tessellated live on the CPU, never
   rasterized to textures. [Documentation~/Lottie.md](Assets/NowUI/Documentation~/Lottie.md)
 - **Themes** — ScriptableObject color/spacing/radius tokens and presets.
@@ -312,11 +315,10 @@ changes its bundled toolchain.
   switching materials flushes the active mesh.
 - Use id-less controls and interactions for one-off UI
   (`NowLayout.Button("Save")`, `NowInput.Interact(rect)`). Prefer stable
-  non-zero integer ids (`SetId(item.id)`, `IdScope(item.id)`,
-  `NowInput.Interact(item.id, rect)`) for data-backed controls that can appear,
-  disappear, or reorder; strings remain convenient for one-off named controls.
-  Both are local to the active host/id scope. Use `NowId.Resolved(...)` only
-  when reusing an already-resolved or composed integer.
+  data keys (`SetId(item.id)`, `KeyedItem(item.id)`) for controls that can
+  appear, disappear, or reorder. Authored strings/integers use `NowId` and stay
+  local to the active host/id scope. Runtime paths use the opaque
+  `NowResolvedId`; pass them directly and derive children with `.Child(...)`.
 - The hot path is allocation-free once buffers, glyphs, effect textures, and
   world-space material batches are warm. First use, new ids, new material
   batches, and capacity growth may allocate.

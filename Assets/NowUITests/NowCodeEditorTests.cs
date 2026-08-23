@@ -41,6 +41,10 @@ public class NowCodeEditorTests
     FakePointer _pointer;
     FakeKeyboard _keyboard;
     NowDrawList _drawList;
+    NowResolvedId _codeId;
+    NowResolvedId _outerId;
+    NowResolvedId _editorStateId;
+    NowResolvedId _lastEditorId;
 
     [SetUp]
     public void SetUp()
@@ -86,7 +90,10 @@ public class NowCodeEditorTests
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
+        {
+            _lastEditorId = NowControls.GetControlId(id);
             return NowCode.Editor(EditorRect, NowJsonLanguage.instance, id).Draw(ref text);
+        }
     }
 
     NowCodeEditorResult FrameLanguage(ref string text, NowCodeLanguage language, NowTextInputFrame keys = default)
@@ -97,7 +104,10 @@ public class NowCodeEditorTests
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
+        {
+            CaptureCodeIds();
             result = NowCode.Editor(EditorRect, language, "code").Draw(ref text);
+        }
 
         return result;
     }
@@ -130,23 +140,40 @@ public class NowCodeEditorTests
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-        using (Now.ScrollView(new NowRect(0, 0, 500, 200), "outer").Begin())
         {
-            NowLayout.ReserveRect(height: 90f, stretchWidth: true);
-            NowCode.Editor(NowJsonLanguage.instance, "code").SetHeight(120f).Draw(ref text);
-            NowLayout.ReserveRect(height: 500f, stretchWidth: true);
+            CaptureCodeIds();
+            _outerId = NowControls.GetControlId("outer");
+
+            using (Now.ScrollView(new NowRect(0, 0, 500, 200), "outer").Begin())
+            {
+                NowLayout.ReserveRect(height: 90f, stretchWidth: true);
+                NowCode.Editor(NowJsonLanguage.instance, "code").SetHeight(120f).Draw(ref text);
+                NowLayout.ReserveRect(height: 500f, stretchWidth: true);
+            }
         }
     }
 
-    static int Id => NowInput.GetId("code");
+    NowResolvedId Id => _codeId;
 
-    static int OuterId => NowInput.GetId("outer");
+    NowResolvedId OuterId => _outerId;
 
-    static int EditorStateId => NowInput.GetId(Id, "editor");
+    NowResolvedId EditorStateId => _editorStateId;
+
+    void CaptureCodeIds()
+    {
+        _codeId = NowControls.GetControlId("code");
+        _editorStateId = _codeId.Child("editor");
+        _lastEditorId = _codeId;
+    }
 
     void Focus()
     {
-        NowFocus.Focus(Id);
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            CaptureCodeIds();
+            NowFocus.Focus(Id);
+        }
     }
 
     ref NowTextEditState State()
@@ -167,9 +194,10 @@ public class NowCodeEditorTests
         Assert.NotNull(entriesField);
 
         var entries = (IDictionary)entriesField.GetValue(null);
-        Assert.IsTrue(entries.Contains(EditorStateId), "Editor state was not created.");
+        NowResolvedId stateKey = EditorStateId.InDomain(NowIdDomain.State);
+        Assert.IsTrue(entries.Contains(stateKey), "Editor state was not created.");
 
-        object entry = entries[EditorStateId];
+        object entry = entries[stateKey];
         object value = entry.GetType().GetField("value", BindingFlags.Instance | BindingFlags.Public).GetValue(entry);
         return (float)editorType.GetField("scrollY", BindingFlags.Instance | BindingFlags.Public).GetValue(value);
     }
@@ -179,6 +207,12 @@ public class NowCodeEditorTests
         var field = typeof(NowCodeEditor).GetField("_caches", BindingFlags.Static | BindingFlags.NonPublic);
         Assert.NotNull(field);
         return ((IDictionary)field.GetValue(null)).Count;
+    }
+
+    bool ReleaseEditorCache(NowId id)
+    {
+        using (_drawList.Begin(Surface))
+            return NowCodeEditor.ReleaseCache(id);
     }
 
     static List<NowCodeToken> Tokenize(NowCodeLanguage language, string line, int state = 0)
@@ -221,9 +255,9 @@ public class NowCodeEditorTests
         Frame(ref text);
 
         Assert.AreEqual(1, EditorCacheCount());
-        Assert.IsTrue(NowCodeEditor.ReleaseCache(NowId.Resolved(Id)));
+        Assert.IsTrue(NowCodeEditor.ReleaseCache(_lastEditorId));
         Assert.AreEqual(0, EditorCacheCount());
-        Assert.IsFalse(NowCodeEditor.ReleaseCache(NowId.Resolved(Id)));
+        Assert.IsFalse(NowCodeEditor.ReleaseCache(_lastEditorId));
     }
 
     [Test]
@@ -241,9 +275,9 @@ public class NowCodeEditorTests
             FrameId(ref text, "third");
 
             Assert.AreEqual(2, EditorCacheCount());
-            Assert.IsTrue(NowCodeEditor.ReleaseCache("first"));
-            Assert.IsFalse(NowCodeEditor.ReleaseCache("second"));
-            Assert.IsTrue(NowCodeEditor.ReleaseCache("third"));
+            Assert.IsTrue(ReleaseEditorCache("first"));
+            Assert.IsFalse(ReleaseEditorCache("second"));
+            Assert.IsTrue(ReleaseEditorCache("third"));
         }
         finally
         {

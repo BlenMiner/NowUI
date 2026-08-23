@@ -231,11 +231,11 @@ chaining, executed by `Draw()`:
 [NowBuilder]
 public struct MyRating
 {
-    readonly int _site;
-    NowId _id;
+    readonly NowCallSiteId _site;
+    NowControlIdentity _id;
     int _max;
 
-    internal MyRating(int site)
+    internal MyRating(NowCallSiteId site)
     {
         _site = site;
         _id = default;
@@ -243,13 +243,15 @@ public struct MyRating
     }
 
     public MyRating SetId(NowId id) { _id = id; return this; }
+    public MyRating SetId(NowResolvedId id) { _id = id; return this; }
 
     public MyRating SetMax(int max) { _max = max; return this; }
 
     public bool Draw(ref int value)
     {
         NowRect rect = NowLayout.ReserveRect(_max * 18f + (_max - 1) * 6f, 18f);
-        var interaction = NowControls.Interact(_id, _site, rect, out bool focused, out bool submitted);
+        NowResolvedId id = _id.Resolve(_site);
+        var interaction = NowControls.Interact(id, rect, out bool focused, out bool submitted);
         // ... body as above, using _max ...
         return false;
     }
@@ -271,6 +273,12 @@ same protection the built-ins get (see *Compile-time misuse warnings* in
 Controls.md, including `[NowConsumer]` and `[NowScope]`). The `SetId` escape
 hatch matters as soon as the control can draw from loops over reorderable
 data — same rules as the *Identity* section in Controls.md.
+
+`NowControls.SiteId(file, line)` returns an opaque `NowCallSiteId`, distinct
+from both `NowId` and `NowResolvedId`. Keep it beside `NowControlIdentity` and
+pass it only to typed fallback APIs such as `_id.Resolve(_site)`; do not persist
+it or derive children from it. Integer model keys, including zero, remain valid
+authored `NowId` values through `SetId(NowId)`.
 
 For an explicit-rect twin (`MyControls.Rating(rect)`), add a second factory
 and constructor that carry a `NowRect` and skip `NowLayout.ReserveRect` — compare
@@ -306,14 +314,33 @@ before writing one:
   `NowTextInput.current` the normalized keyboard frame (including IME
   composition), `NowTextWrap` display word-wrap, `NowTextArea.LayoutLines`
   editing-grade line layout, `NowTextSelection` browser-style selection over
-  positioned segments. A custom focused keyboard consumer should call
+  positioned segments. Pass `NowTextSelectionResult.contextTrigger` directly
+  to `NowContextMenu.Open`; do not split it into a bool and pointer position.
+  A custom focused keyboard consumer should call
   `NowTextInput.ClaimActivity()` during its active input pass; this spends
   characters and pressed-edge shortcuts when the pass ends while preserving
   held keys, modifiers, and ongoing IME composition.
 - **Popups**: `NowOverlay.Defer(blockRect, draw)` draws above everything
   and blocks input beneath; `NowContextMenu` is the ready-made modal menu.
-  Remember overlay blocks apply one frame late — deliver results the frame
-  after closing, the way `NowDropdown` and `NowContextMenu` do.
+  Deferred callbacks run with the provider, input snapshot/pass, surface,
+  host, and identity scope captured when queued. In the non-capturing overload
+  `Defer(blockRect, int state, callback)`, the integer is anonymous callback
+  payload, not overlay identity; use
+  `Defer(blockRect, resolvedSourceId, state, callback)` for a named overlay.
+  The same distinction applies to `DeferScreen` and `DeferPassive`.
+- **Context menus**: use `NowContextAction.Resolve` to preserve whether the
+  request came from the secondary pointer or an explicit action button. Give
+  every `Item` and `BeginSubmenu` a stable `id:`. The menu stays valid while a
+  retained owner is idle, then must be redeclared on that owner's next
+  successful pass. A clicked item is delivered only on that next owner/provider
+  pass; unrelated and failed passes cannot receive it.
+- **Composite interaction**: build a `NowInteractionRegion` from the parent
+  row and exclude each child-control rectangle before calling
+  `NowInput.Interact(parentId, in region)`. This prevents the parent from
+  briefly hovering, pressing, or clicking through an independently interactive
+  child without allocating a list of holes. A handled press is also claimed
+  against later controls in the same provider/pass/button, but declaration
+  order is not a substitute for these exclusions.
 - **Clipping**: `using (Now.Mask(rect))` is all a rectangular viewport is;
   ScrollView is a mask plus a stored offset. Use `Now.Mask(NowMaskShape)` for
   an analytic non-rectangular or soft boundary; see [Masks](Masks.md).
@@ -331,8 +358,13 @@ and they are the reference for the conventions above.
       (free-form) — ideally both, as twin factories.
 - [ ] `NowControls.Interact` for call-site identity, pointer + focus + submit;
       draw a visible focus state when `focused` is true.
-- [ ] `SetId(NowId)` escape hatch when a control can draw from loops over
-      reorderable data or from several code paths.
+- [ ] Store `NowControlIdentity` and expose both `SetId(NowId)` and
+      `SetId(NowResolvedId)` when callers may pass an already-resolved path.
+- [ ] Store the typed `NowCallSiteId` fallback from `SiteId(...)`; resolve once,
+      then derive children from the resulting `NowResolvedId`.
+- [ ] Exclude independent child hit rectangles from composite parent regions.
+- [ ] Use source-aware context triggers and stable item/submenu `id:` values.
+- [ ] Keep overlay callback payload separate from typed overlay source identity.
 - [ ] Caller owns real values; `NowControlState` holds only ephemera.
 - [ ] Colors and metrics from the theme, not constants.
 - [ ] `RequestRepaint()` for anything time-driven.

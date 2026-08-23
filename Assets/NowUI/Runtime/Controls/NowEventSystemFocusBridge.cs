@@ -8,7 +8,7 @@ namespace NowUI
 {
     internal static class NowEventSystemFocusBridge
     {
-        public static void SynchronizeFocus(int hostId)
+        public static void SynchronizeFocus(NowResolvedId hostId)
         {
 #if NOWUI_UGUI
             EventSystem eventSystem = EventSystem.current;
@@ -50,7 +50,7 @@ namespace NowUI
         }
 
 #if NOWUI_UGUI
-        static bool TrySelectOwningProxy(int hostId, EventSystem eventSystem)
+        static bool TrySelectOwningProxy(NowResolvedId hostId, EventSystem eventSystem)
         {
             INowFocusNavigationProxy proxy = NowFocus.GetHostProxy(hostId);
 

@@ -53,7 +53,7 @@ namespace NowUI
         }
 
         public static bool Interact(
-            int id,
+            NowResolvedId id,
             NowScrollbarAxis axis,
             in NowScrollbarMetrics metrics,
             ref float value,
@@ -86,7 +86,7 @@ namespace NowUI
             return true;
         }
 
-        public static void Draw(NowThemeAsset themeAsset, int id, NowScrollbarAxis axis, in NowScrollbarMetrics metrics)
+        public static void Draw(NowThemeAsset themeAsset, NowResolvedId id, NowScrollbarAxis axis, in NowScrollbarMetrics metrics)
         {
             if (!metrics.visible)
                 return;

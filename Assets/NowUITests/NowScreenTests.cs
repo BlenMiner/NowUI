@@ -180,12 +180,18 @@ public class NowScreenTests
         try
         {
             var startedAt = typeof(Now).GetField("_screenFrameStartedAt", BindingFlags.NonPublic | BindingFlags.Static);
+            var idScopeStartedAt = typeof(NowControls).GetField("_idScopeStartedAt", BindingFlags.NonPublic | BindingFlags.Static);
             Assert.NotNull(startedAt);
+            Assert.NotNull(idScopeStartedAt);
             startedAt.SetValue(null, Time.frameCount - 1);
+            idScopeStartedAt.SetValue(null, Time.frameCount - 1);
 
             LogAssert.Expect(
                 LogType.Error,
                 "NowUI: a NowUIScreenScope from a previous frame was never disposed; the abandoned frame was discarded. Wrap Now.StartUI in a using statement.");
+            LogAssert.Expect(
+                LogType.Warning,
+                "NowUI: a NowControls.IdScope from the previous frame was never disposed; the id scope stack was reset. Wrap the scope in a using statement.");
 
             using (Now.StartUI(new NowRect(0f, 0f, 60f, 40f)))
             {
@@ -527,7 +533,8 @@ public class NowScreenTests
 
         try
         {
-            NowOverlay.DeferPassive(1, _ =>
+            NowResolvedId overlayId = NowResolvedId.CreateOwnerRoot(0x53435245454E4F56UL).Child(1);
+            NowOverlay.DeferPassive(overlayId, 1, _ =>
             {
                 try
                 {

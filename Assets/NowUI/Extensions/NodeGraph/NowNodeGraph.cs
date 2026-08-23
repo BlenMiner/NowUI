@@ -263,32 +263,6 @@ namespace NowUI.NodeGraph
 
         public bool isOutput => direction == NowNodePortDirection.Output;
 
-        [NonSerialized] string _idHashSource;
-        [NonSerialized] int _idHash;
-
-        /// <summary>
-        /// Control-id hash of <see cref="id"/>, cached against the current string
-        /// instance and recomputed when the id field is reassigned. Returns 0 for
-        /// a null or empty id.
-        /// </summary>
-        internal int idHash
-        {
-            get
-            {
-                string value = id;
-
-                if (string.IsNullOrEmpty(value))
-                    return 0;
-
-                if (!ReferenceEquals(_idHashSource, value))
-                {
-                    _idHash = NowInput.GetId(value);
-                    _idHashSource = value;
-                }
-
-                return _idHash;
-            }
-        }
     }
 
     public sealed class NowNodePortDefinition
@@ -828,33 +802,6 @@ namespace NowUI.NodeGraph
             this.title = title ?? string.Empty;
             this.position = position;
             size = default;
-        }
-
-        [NonSerialized] string _idHashSource;
-        [NonSerialized] int _idHash;
-
-        /// <summary>
-        /// Control-id hash of <see cref="id"/>, cached against the current string
-        /// instance and recomputed when the id field is reassigned. Returns 0 for
-        /// a null or empty id.
-        /// </summary>
-        internal int idHash
-        {
-            get
-            {
-                string value = id;
-
-                if (string.IsNullOrEmpty(value))
-                    return 0;
-
-                if (!ReferenceEquals(_idHashSource, value))
-                {
-                    _idHash = NowInput.GetId(value);
-                    _idHashSource = value;
-                }
-
-                return _idHash;
-            }
         }
 
         public NowNodePort AddInput(string id, string label, int typeId = 0)
@@ -3268,13 +3215,13 @@ namespace NowUI.NodeGraph
         public Func<NowNodeGraph, NowNodeGraphHistory, bool> drawCustomItems;
         public Func<NowNodeGraph, NowNodeGraphHistory, NowNodeGraphResult, bool> drawCustomItemsWithResult;
 
-        public bool Draw(int id, NowNodeGraph graph, NowNodeGraphHistory history, ref NowNodeGraphResult result)
+        public bool Draw(NowResolvedId id, NowNodeGraph graph, NowNodeGraphHistory history, ref NowNodeGraphResult result)
         {
             return Draw(id, graph, history, result.contextMenuGraphPosition, NowNodeGraphClipboard.shared, ref result);
         }
 
         public bool Draw(
-            int id,
+            NowResolvedId id,
             NowNodeGraph graph,
             NowNodeGraphHistory history,
             Vector2 graphPosition,
@@ -3284,7 +3231,7 @@ namespace NowUI.NodeGraph
         }
 
         public bool Draw(
-            int id,
+            NowResolvedId id,
             NowNodeGraph graph,
             NowNodeGraphHistory history,
             Vector2 graphPosition,
@@ -3299,7 +3246,7 @@ namespace NowUI.NodeGraph
 
             if (undoRedo && history != null)
             {
-                if (NowContextMenu.Item(undoLabel, history.canUndo) && history.Undo(graph))
+                if (NowContextMenu.Item(undoLabel, id: "undo", enabled: history.canUndo) && history.Undo(graph))
                 {
                     result.changed = true;
                     result.undo = true;
@@ -3307,7 +3254,7 @@ namespace NowUI.NodeGraph
                     changed = true;
                 }
 
-                if (NowContextMenu.Item(redoLabel, history.canRedo) && history.Redo(graph))
+                if (NowContextMenu.Item(redoLabel, id: "redo", enabled: history.canRedo) && history.Redo(graph))
                 {
                     result.changed = true;
                     result.redo = true;
@@ -3322,10 +3269,10 @@ namespace NowUI.NodeGraph
             {
                 bool hasSelection = graph.SelectedNodeCount() > 0;
 
-                if (NowContextMenu.Item(copyLabel, hasSelection) && clipboard.Copy(graph) > 0)
+                if (NowContextMenu.Item(copyLabel, id: "copy", enabled: hasSelection) && clipboard.Copy(graph) > 0)
                     result.nodesCopied = true;
 
-                if (NowContextMenu.Item(cutLabel, hasSelection) && clipboard.Copy(graph) > 0)
+                if (NowContextMenu.Item(cutLabel, id: "cut", enabled: hasSelection) && clipboard.Copy(graph) > 0)
                 {
                     result.nodesCopied = true;
                     history?.Record(graph);
@@ -3340,7 +3287,7 @@ namespace NowUI.NodeGraph
                     }
                 }
 
-                if (NowContextMenu.Item(pasteLabel, !clipboard.isEmpty) && !clipboard.isEmpty)
+                if (NowContextMenu.Item(pasteLabel, id: "paste", enabled: !clipboard.isEmpty) && !clipboard.isEmpty)
                 {
                     history?.Record(graph);
 
@@ -3353,7 +3300,7 @@ namespace NowUI.NodeGraph
                     }
                 }
 
-                if (NowContextMenu.Item(duplicateLabel, hasSelection) && hasSelection)
+                if (NowContextMenu.Item(duplicateLabel, id: "duplicate", enabled: hasSelection) && hasSelection)
                 {
                     history?.Record(graph);
 
@@ -3369,7 +3316,10 @@ namespace NowUI.NodeGraph
                 hasBuiltInItems = true;
             }
 
-            if (deleteSelection && NowContextMenu.Item(deleteSelectionLabel, graph.SelectedNodeCount() > 0))
+            if (deleteSelection && NowContextMenu.Item(
+                deleteSelectionLabel,
+                id: "delete-selection",
+                enabled: graph.SelectedNodeCount() > 0))
             {
                 if (graph.SelectedNodeCount() > 0)
                 {
@@ -3394,7 +3344,7 @@ namespace NowUI.NodeGraph
                 if (hasBuiltInItems)
                     NowContextMenu.Separator();
 
-                if (NowContextMenu.BeginSubmenu(createNodeLabel))
+                if (NowContextMenu.BeginSubmenu(createNodeLabel, id: "create-node"))
                 {
                     var definitions = graph.schema.nodeDefinitions;
 
@@ -3405,7 +3355,11 @@ namespace NowUI.NodeGraph
                         if (definition == null)
                             continue;
 
-                        if (NowContextMenu.Item(definition.title))
+                        NowId itemId = definition.kindId != 0
+                            ? new NowId(definition.kindId)
+                            : new NowId("node-kind-zero");
+
+                        if (NowContextMenu.Item(definition.title, id: itemId))
                         {
                             history?.Record(graph);
                             var node = graph.schema.CreateNode(graph, definition.kindId, graphPosition);
@@ -3505,6 +3459,15 @@ namespace NowUI.NodeGraph
             return new NowNodeGraphCanvas(graph, rect, id, NowControls.SiteId(file, line));
         }
 
+        /// <summary>Creates a canvas whose identity was already resolved by its owning control.</summary>
+        public static NowNodeGraphCanvas Canvas(
+            NowNodeGraph graph,
+            NowRect rect,
+            NowResolvedId id)
+        {
+            return new NowNodeGraphCanvas(graph, rect, id);
+        }
+
         public static NowNodeGraphCanvas Canvas(
             NowNodeGraphView view,
             NowRect rect,
@@ -3513,6 +3476,15 @@ namespace NowUI.NodeGraph
             [CallerLineNumber] int line = 0)
         {
             return new NowNodeGraphCanvas(view, rect, id, NowControls.SiteId(file, line));
+        }
+
+        /// <summary>Creates a canvas view whose identity was already resolved by its owning control.</summary>
+        public static NowNodeGraphCanvas Canvas(
+            NowNodeGraphView view,
+            NowRect rect,
+            NowResolvedId id)
+        {
+            return new NowNodeGraphCanvas(view, rect, id);
         }
     }
 
@@ -3548,7 +3520,7 @@ namespace NowUI.NodeGraph
             public byte selectionSubtractive;
             public Vector2 selectionStart;
             public Vector2 selectionEnd;
-            public int nodeDragControlId;
+            public NowResolvedId nodeDragControlId;
             public byte nodeDragHistoryRecorded;
             public Vector2 nodeDragPointerGraphStart;
             public Vector2 nodeDragActiveNodeStart;
@@ -3599,7 +3571,8 @@ namespace NowUI.NodeGraph
             public readonly List<NodeSearchMatch> matches = new List<NodeSearchMatch>(32);
             public string query = string.Empty;
             public string lastQuery = string.Empty;
-            public int fieldId;
+            public NowResolvedId overlayId;
+            public NowResolvedId fieldId;
             public int highlight;
             public NowRect popupRect;
             public NowNodeGraphStyle style;
@@ -3650,8 +3623,10 @@ namespace NowUI.NodeGraph
         readonly NowNodeGraphView _view;
         readonly NowNodeGraph _graph;
         readonly NowRect _rect;
-        readonly NowId _id;
-        readonly int _site;
+        NowId _id;
+        NowResolvedId _resolvedId;
+        bool _hasResolvedId;
+        readonly NowCallSiteId _site;
         NowNodeGraphStyle _style;
         NowNodeGraphSchema _schema;
         INowNodeGraphRenderer _renderer;
@@ -3663,12 +3638,18 @@ namespace NowUI.NodeGraph
         NowNodeContentRenderer _nodeContent;
         DrawCache _drawCache;
 
-        internal NowNodeGraphCanvas(NowNodeGraph graph, NowRect rect, NowId id, int site)
+        internal NowNodeGraphCanvas(
+            NowNodeGraph graph,
+            NowRect rect,
+            NowId id,
+            NowCallSiteId site)
         {
             _view = null;
             _graph = graph;
             _rect = rect;
             _id = id;
+            _resolvedId = NowResolvedId.None;
+            _hasResolvedId = false;
             _site = site;
             _style = default;
             _schema = null;
@@ -3682,12 +3663,28 @@ namespace NowUI.NodeGraph
             _drawCache = null;
         }
 
-        internal NowNodeGraphCanvas(NowNodeGraphView view, NowRect rect, NowId id, int site)
+        internal NowNodeGraphCanvas(NowNodeGraph graph, NowRect rect, NowResolvedId id)
+            : this(graph, rect, default(NowId), default)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("A resolved node-graph canvas id is required.", nameof(id));
+
+            _resolvedId = id;
+            _hasResolvedId = true;
+        }
+
+        internal NowNodeGraphCanvas(
+            NowNodeGraphView view,
+            NowRect rect,
+            NowId id,
+            NowCallSiteId site)
         {
             _view = view;
             _graph = view?.graph;
             _rect = rect;
             _id = id;
+            _resolvedId = NowResolvedId.None;
+            _hasResolvedId = false;
             _site = site;
             _style = default;
             _schema = null;
@@ -3699,6 +3696,37 @@ namespace NowUI.NodeGraph
             _legacyNodeContent = null;
             _nodeContent = null;
             _drawCache = null;
+        }
+
+        internal NowNodeGraphCanvas(NowNodeGraphView view, NowRect rect, NowResolvedId id)
+            : this(view, rect, default(NowId), default)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("A resolved node-graph canvas id is required.", nameof(id));
+
+            _resolvedId = id;
+            _hasResolvedId = true;
+        }
+
+        /// <summary>Overrides the canvas with an authored id resolved beneath the current owner.</summary>
+        public NowNodeGraphCanvas SetId(NowId id)
+        {
+            _id = id;
+            _resolvedId = NowResolvedId.None;
+            _hasResolvedId = false;
+            return this;
+        }
+
+        /// <summary>Overrides the canvas with an identity that has already been resolved by its owner.</summary>
+        public NowNodeGraphCanvas SetId(NowResolvedId id)
+        {
+            if (!id.hasValue)
+                throw new ArgumentException("A resolved node-graph canvas id is required.", nameof(id));
+
+            _id = NowId.None;
+            _resolvedId = id;
+            _hasResolvedId = true;
+            return this;
         }
 
         public NowNodeGraphCanvas SetStyle(NowNodeGraphStyle style)
@@ -3871,7 +3899,9 @@ namespace NowUI.NodeGraph
             if (schema != null)
                 _graph.schema = schema;
 
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _hasResolvedId
+                ? _resolvedId
+                : NowControls.GetControlId(_id, _site);
             ref var state = ref NowControlState.Get<CanvasState>(id);
             InitializeState(ref state, style);
 
@@ -3881,7 +3911,7 @@ namespace NowUI.NodeGraph
             _drawCache = state.drawCache;
             _drawCache.Invalidate();
 
-            int focusId = NowInput.GetId(id, "focus");
+            NowResolvedId focusId = id.Child("focus");
             RegisterCanvasFocus(focusId);
             result.focused = NowFocus.IsFocused(focusId);
             result.hovered = NowInput.IsHovered(_rect);
@@ -3941,12 +3971,12 @@ namespace NowUI.NodeGraph
                     renderer.DrawSelection(new NowNodeGraphSelectionContext(_rect, SelectionScreenRect(state), style));
             }
 
-            contextMenu?.Draw(NowInput.GetId(id, "context-menu"), _graph, history, state.contextMenuGraphPosition, clipboard, ref result);
+            contextMenu?.Draw(id.Child("context-menu"), _graph, history, state.contextMenuGraphPosition, clipboard, ref result);
             result.selectedNodeId = _graph.selectedNodeId;
             return result;
         }
 
-        void RegisterCanvasFocus(int focusId)
+        void RegisterCanvasFocus(NowResolvedId focusId)
         {
             NowFocus.Register(focusId, _rect);
 
@@ -3958,7 +3988,7 @@ namespace NowUI.NodeGraph
         }
 
         void HandleKeyboardShortcuts(
-            int focusId,
+            NowResolvedId focusId,
             ref CanvasState state,
             NowNodeGraphStyle style,
             NowNodeGraphHistory history,
@@ -4070,7 +4100,7 @@ namespace NowUI.NodeGraph
                 return;
             }
 
-            if (NowControlState.Repeat(NowInput.CombineId(focusId, DeleteShortcutSeed), frame.deleteHeld || frame.backspaceHeld))
+            if (NowControlState.Repeat(focusId.Child(DeleteShortcutSeed), frame.deleteHeld || frame.backspaceHeld))
             {
                 if (_graph.SelectedNodeCount() > 0)
                     DeleteSelectedNodes(history, ref result);
@@ -4084,7 +4114,7 @@ namespace NowUI.NodeGraph
         }
 
         void HandleArrowNudge(
-            int focusId,
+            NowResolvedId focusId,
             ref CanvasState state,
             NowNodeGraphStyle style,
             NowNodeGraphHistory history,
@@ -4109,8 +4139,8 @@ namespace NowUI.NodeGraph
             float dx = (frame.rightHeld ? 1f : 0f) - (frame.leftHeld ? 1f : 0f);
             float dy = (frame.downHeld ? 1f : 0f) - (frame.upHeld ? 1f : 0f);
 
-            bool xPulse = dx != 0f && NowControlState.Repeat(NowInput.CombineId(focusId, NudgeXShortcutSeed), frame.leftHeld || frame.rightHeld);
-            bool yPulse = dy != 0f && NowControlState.Repeat(NowInput.CombineId(focusId, NudgeYShortcutSeed), frame.upHeld || frame.downHeld);
+            bool xPulse = dx != 0f && NowControlState.Repeat(focusId.Child(NudgeXShortcutSeed), frame.leftHeld || frame.rightHeld);
+            bool yPulse = dy != 0f && NowControlState.Repeat(focusId.Child(NudgeYShortcutSeed), frame.upHeld || frame.downHeld);
 
             if (!xPulse && !yPulse)
                 return;
@@ -4199,7 +4229,7 @@ namespace NowUI.NodeGraph
         }
 
         void OpenNodeSearch(
-            int focusId,
+            NowResolvedId focusId,
             ref CanvasState state,
             ref NowNodeGraphResult result,
             bool suppressCurrentInput = false)
@@ -4225,7 +4255,8 @@ namespace NowUI.NodeGraph
             data.query = string.Empty;
             data.lastQuery = string.Empty;
             data.highlight = 0;
-            data.fieldId = NowInput.CombineId(focusId, 0x53464c44);
+            data.overlayId = focusId.Child("node-search");
+            data.fieldId = data.overlayId.Child("field");
             data.hasLinkSource = state.searchHasLinkSource != 0;
             data.linkSourceIsOutput = state.searchLinkSourceIsOutput != 0;
             data.linkSourceType = state.searchLinkSourceType;
@@ -4237,7 +4268,7 @@ namespace NowUI.NodeGraph
         }
 
         void HandleNodeSearch(
-            int focusId,
+            NowResolvedId focusId,
             ref CanvasState state,
             NowNodeGraphStyle style,
             NowNodeGraphSchema schema,
@@ -4294,13 +4325,13 @@ namespace NowUI.NodeGraph
                 data.highlight = Mathf.Clamp(data.highlight, 0, count - 1);
                 float navY = snapshot.navigation.y;
 
-                if (NowControlState.Repeat(NowInput.CombineId(focusId, 0x53420002), frame.downHeld || navY < -0.55f))
+                if (NowControlState.Repeat(focusId.Child("search-next"), frame.downHeld || navY < -0.55f))
                 {
                     data.highlight = (data.highlight + 1) % count;
                     NowControlState.RequestRepaint();
                 }
 
-                if (NowControlState.Repeat(NowInput.CombineId(focusId, 0x53420003), frame.upHeld || navY > 0.55f))
+                if (NowControlState.Repeat(focusId.Child("search-previous"), frame.upHeld || navY > 0.55f))
                 {
                     data.highlight = (data.highlight - 1 + count) % count;
                     NowControlState.RequestRepaint();
@@ -4349,7 +4380,7 @@ namespace NowUI.NodeGraph
                 data.drawAction = () => DrawNodeSearchPopup(captured);
             }
 
-            NowOverlay.Defer(popup, data.drawAction);
+            NowOverlay.Defer(popup, data.overlayId, data.drawAction);
         }
 
         static bool SearchCancelPressed(bool suppressInput, NowInputSnapshot snapshot, NowTextInputFrame frame)
@@ -4364,7 +4395,7 @@ namespace NowUI.NodeGraph
                 (frame.enterPressed || (snapshot.submitPressed && !ContainsChar(frame.characters, ' ')));
         }
 
-        void CloseNodeSearch(int focusId, ref CanvasState state)
+        void CloseNodeSearch(NowResolvedId focusId, ref CanvasState state)
         {
             state.searchOpen = 0;
             state.searchHasLinkSource = 0;
@@ -4587,7 +4618,7 @@ namespace NowUI.NodeGraph
 
         void CreateSearchNode(
             NowNodeDefinition definition,
-            int focusId,
+            NowResolvedId focusId,
             ref CanvasState state,
             NowNodeGraphSchema schema,
             NowNodeGraphHistory history,
@@ -4668,7 +4699,7 @@ namespace NowUI.NodeGraph
 
             string query = data.query ?? string.Empty;
 
-            if (Now.TextField(field, NowId.Resolved(data.fieldId))
+            if (Now.TextField(field, data.fieldId)
                     .SetPlaceholder("Search nodes...")
                     .Draw(ref query))
             {
@@ -4835,9 +4866,9 @@ namespace NowUI.NodeGraph
             NowControlState.RequestRepaint();
         }
 
-        void HandleCanvasNavigation(int id, ref CanvasState state, NowNodeGraphStyle style, ref NowNodeGraphResult result)
+        void HandleCanvasNavigation(NowResolvedId id, ref CanvasState state, NowNodeGraphStyle style, ref NowNodeGraphResult result)
         {
-            var pan = NowInput.Interact(NowInput.GetId(id, "pan"), _rect, NowPointerButton.Middle);
+            var pan = NowInput.Interact(id.Child("pan"), _rect, NowPointerButton.Middle);
 
             if (pan.dragging)
             {
@@ -4867,7 +4898,7 @@ namespace NowUI.NodeGraph
         }
 
         void HandleInteractions(
-            int id,
+            NowResolvedId id,
             ref CanvasState state,
             NowNodeGraphStyle style,
             NowNodeGraphSchema schema,
@@ -4875,7 +4906,7 @@ namespace NowUI.NodeGraph
             NowNodeGraphContextMenu contextMenu,
             ref NowNodeGraphResult result)
         {
-            int focusId = NowInput.GetId(id, "focus");
+            NowResolvedId focusId = id.Child("focus");
             int pointerNodeIndex = -1;
             bool pointerOverPort = false;
             bool pointerOverNodeOrPort = false;
@@ -4906,7 +4937,7 @@ namespace NowUI.NodeGraph
             }
 
             bool processNodeInteractions = NowInput.current.hasPointer ||
-                NowInput.activeId != 0 ||
+                NowInput.activeId.hasValue ||
                 state.linkActive != 0;
 
             for (int n = processNodeInteractions ? _graph.nodes.Count - 1 : -1; n >= 0; --n)
@@ -4916,7 +4947,7 @@ namespace NowUI.NodeGraph
                 if (node == null)
                     continue;
 
-                if (NowInput.activeId == 0)
+                if (!NowInput.activeId.hasValue)
                 {
                     float hitPadding = Mathf.Max(style.portHitRadius, 4f);
 
@@ -4928,9 +4959,9 @@ namespace NowUI.NodeGraph
                 InteractPorts(id, n, node, NowNodePortDirection.Output, ref state, style, history, ref result);
                 InteractCompactToggle(id, n, node, ref state, style, history, ref result);
 
-                int nodeControlId = NodeControlId(id, n, node);
-                var nodeDragRect = NodeDragScreenRect(nodeControlId, node, _rect, state, style);
-                var nodeInteraction = NowInput.Interact(nodeControlId, nodeDragRect);
+                NowResolvedId nodeControlId = NodeControlId(id, n, node);
+                var nodeDragRegion = NodeDragInteractionRegion(node, _rect, state, style);
+                var nodeInteraction = NowInput.Interact(nodeControlId, in nodeDragRegion);
 
                 if (nodeInteraction.active)
                     nodePointerActive = true;
@@ -4972,7 +5003,7 @@ namespace NowUI.NodeGraph
 
             if (!nodePointerActive)
             {
-                state.nodeDragControlId = 0;
+                state.nodeDragControlId = NowResolvedId.None;
                 state.nodeDragHistoryRecorded = 0;
                 ClearNodeSnapGuide(ref state);
             }
@@ -4980,7 +5011,7 @@ namespace NowUI.NodeGraph
             if (state.linkActive != 0 && NowInput.WasPointerReleased(NowPointerButton.Primary))
                 CommitPendingLink(focusId, ref state, style, schema, history, ref result);
 
-            int backgroundId = NowInput.GetId(id, "background");
+            NowResolvedId backgroundId = id.Child("background");
             bool backgroundOwnsPointer = NowInput.activeId == backgroundId && NowInput.activeButton == NowPointerButton.Primary;
             var backgroundRect = !pointerOverNodeOrPort || backgroundOwnsPointer || state.selectionActive != 0
                 ? _rect
@@ -5044,7 +5075,7 @@ namespace NowUI.NodeGraph
             }
 
             // Right-button: drag pans (Unreal/Unity convention), click opens the menu.
-            int menuId = NowInput.GetId(id, "context-menu");
+            NowResolvedId menuId = id.Child("context-menu");
             var secondary = NowInput.Interact(menuId, _rect, NowPointerButton.Secondary);
 
             if (secondary.dragging)
@@ -5073,7 +5104,7 @@ namespace NowUI.NodeGraph
         }
 
         void InteractPorts(
-            int canvasId,
+            NowResolvedId canvasId,
             int nodeIndex,
             NowNode node,
             NowNodePortDirection direction,
@@ -5094,7 +5125,7 @@ namespace NowUI.NodeGraph
                 Vector2 center = PortScreenPosition(node, direction, p, _rect, state, style);
                 float hitRadius = style.portHitRadius;
                 var hit = new NowRect(center.x - hitRadius, center.y - hitRadius, hitRadius * 2f, hitRadius * 2f);
-                int portId = PortControlId(canvasId, nodeIndex, node, direction, p, port);
+                NowResolvedId portId = PortControlId(canvasId, nodeIndex, node, direction, p, port);
                 var primary = NowInput.Interact(portId, hit);
 
                 if (primary.pressed)
@@ -5116,7 +5147,7 @@ namespace NowUI.NodeGraph
                 if (primary.dragging)
                     NowControlState.RequestRepaint();
 
-                int removeId = NowInput.CombineId(portId, 0x524d);
+                NowResolvedId removeId = portId.Child("remove-links");
                 var secondary = NowInput.Interact(removeId, hit, NowPointerButton.Secondary);
 
                 if (secondary.clicked)
@@ -5140,7 +5171,7 @@ namespace NowUI.NodeGraph
         }
 
         void InteractCompactToggle(
-            int canvasId,
+            NowResolvedId canvasId,
             int nodeIndex,
             NowNode node,
             ref CanvasState state,
@@ -5152,7 +5183,7 @@ namespace NowUI.NodeGraph
                 return;
 
             var toggleRect = CompactToggleScreenRect(node, _rect, state, style);
-            int toggleId = NowInput.CombineId(NodeControlId(canvasId, nodeIndex, node), 0x7043);
+            NowResolvedId toggleId = NodeControlId(canvasId, nodeIndex, node).Child("compact-toggle");
             var interaction = NowInput.Interact(toggleId, toggleRect);
 
             if (interaction.pressed)
@@ -5200,7 +5231,7 @@ namespace NowUI.NodeGraph
         }
 
         void CommitPendingLink(
-            int focusId,
+            NowResolvedId focusId,
             ref CanvasState state,
             NowNodeGraphStyle style,
             NowNodeGraphSchema schema,
@@ -5546,7 +5577,7 @@ namespace NowUI.NodeGraph
             }
         }
 
-        void BeginNodeDrag(int nodeControlId, NowNode activeNode, ref CanvasState state)
+        void BeginNodeDrag(NowResolvedId nodeControlId, NowNode activeNode, ref CanvasState state)
         {
             state.nodeDragControlId = nodeControlId;
             state.nodeDragHistoryRecorded = 0;
@@ -5557,7 +5588,7 @@ namespace NowUI.NodeGraph
 
         Vector2 NodeDragDeltaFromStart(NowNode activeNode, Vector2 fallbackDelta, CanvasState state)
         {
-            if (activeNode == null || state.nodeDragControlId == 0 || !NowInput.current.hasPointer)
+            if (activeNode == null || !state.nodeDragControlId.hasValue || !NowInput.current.hasPointer)
                 return fallbackDelta;
 
             Vector2 currentPointer = ScreenToGraph(state.pointerLocalPosition, _rect, state);
@@ -6056,7 +6087,7 @@ namespace NowUI.NodeGraph
         }
 
         void DrawNodes(
-            int canvasId,
+            NowResolvedId canvasId,
             ref CanvasState state,
             NowNodeGraphStyle style,
             NowNodeGraphSchema schema,
@@ -6108,7 +6139,7 @@ namespace NowUI.NodeGraph
         }
 
         void DrawNode(
-            int canvasId,
+            NowResolvedId canvasId,
             int nodeIndex,
             NowNode node,
             ref CanvasState state,
@@ -6266,7 +6297,7 @@ namespace NowUI.NodeGraph
         }
 
         void DrawPortList(
-            int canvasId,
+            NowResolvedId canvasId,
             int nodeIndex,
             NowNode node,
             NowNodePortDirection direction,
@@ -6286,7 +6317,7 @@ namespace NowUI.NodeGraph
                     continue;
 
                 Vector2 center = PortGraphPosition(node, direction, i, style);
-                int portId = PortControlId(canvasId, nodeIndex, node, direction, i, port);
+                NowResolvedId portId = PortControlId(canvasId, nodeIndex, node, direction, i, port);
                 float hover = NowControlState.Transition(portId, NowInput.IsHovered(new NowRect(center.x - 9f, center.y - 9f, 18f, 18f)));
                 float radius = Mathf.Max(3.5f, style.portRadius + hover * 1.5f);
                 Color color = PortColor(port, direction, style);
@@ -6585,43 +6616,54 @@ namespace NowUI.NodeGraph
             return new NowRect(rect.x, rect.y, rect.width, style.titleHeight * state.zoom);
         }
 
-        NowRect NodeDragScreenRect(
-            int nodeControlId,
+        NowInteractionRegion NodeDragInteractionRegion(
             NowNode node,
             NowRect viewport,
             CanvasState state,
             NowNodeGraphStyle style)
         {
             NowRect nodeRect = NodeScreenRect(node, viewport, state, style);
+            var region = new NowInteractionRegion(nodeRect);
 
-            if (IsRerouteNode(node) ||
-                (NowInput.activeId == nodeControlId && NowInput.activeButton == NowPointerButton.Primary))
+            if (!IsRerouteNode(node))
             {
-                return nodeRect;
+                region = region.Exclude(CompactToggleScreenRect(node, viewport, state, style));
+                NowRect titleRect = NodeTitleScreenRect(node, viewport, state, style);
+                NowRect contentRect = NodeContentScreenRect(node, nodeRect, titleRect, state, style);
+
+                if (!contentRect.isEmpty)
+                    region = region.Exclude(TopContentControlScreenRect(node, nodeRect, contentRect, state, style));
             }
 
-            if (!NowInput.current.hasPointer)
-                return NodeTitleScreenRect(node, viewport, state, style);
+            region = region.Exclude(PortInteractionBounds(node, NowNodePortDirection.Input, viewport, state, style));
+            region = region.Exclude(PortInteractionBounds(node, NowNodePortDirection.Output, viewport, state, style));
+            return region;
+        }
 
-            Vector2 pointer = state.pointerLocalPosition;
+        NowRect PortInteractionBounds(
+            NowNode node,
+            NowNodePortDirection direction,
+            NowRect viewport,
+            CanvasState state,
+            NowNodeGraphStyle style)
+        {
+            var ports = direction == NowNodePortDirection.Input ? node.inputs : node.outputs;
+            NowRect bounds = default;
+            bool hasBounds = false;
+            float radius = style.portHitRadius;
 
-            if (!nodeRect.Contains(pointer))
-                return NodeTitleScreenRect(node, viewport, state, style);
+            for (int i = 0; i < ports.Count; ++i)
+            {
+                if (ports[i] == null)
+                    continue;
 
-            if (CompactToggleScreenRect(node, viewport, state, style).Contains(pointer))
-                return NodeTitleScreenRect(node, viewport, state, style);
+                Vector2 center = PortScreenPosition(node, direction, i, viewport, state, style);
+                var hit = new NowRect(center.x - radius, center.y - radius, radius * 2f, radius * 2f);
+                bounds = hasBounds ? bounds.Union(hit) : hit;
+                hasBounds = true;
+            }
 
-            NowRect titleRect = NodeTitleScreenRect(node, viewport, state, style);
-
-            if (titleRect.Contains(pointer))
-                return nodeRect;
-
-            NowRect contentRect = NodeContentScreenRect(node, nodeRect, titleRect, state, style);
-
-            if (!contentRect.isEmpty && TopContentControlScreenRect(node, nodeRect, contentRect, state, style).Contains(pointer))
-                return titleRect;
-
-            return nodeRect;
+            return hasBounds ? bounds : default;
         }
 
         NowRect TopContentControlScreenRect(
@@ -6856,29 +6898,28 @@ namespace NowUI.NodeGraph
             return new NowRect(min, max - min);
         }
 
-        static int NodeControlId(int canvasId, int nodeIndex, NowNode node)
+        static NowResolvedId NodeControlId(NowResolvedId canvasId, int nodeIndex, NowNode node)
         {
-            int idHash = node.idHash;
-            return idHash != 0
-                ? NowInput.CombineId(canvasId, idHash)
-                : NowInput.CombineId(canvasId, 0x4e000 + nodeIndex);
+            NowResolvedId nodes = canvasId.Child("nodes");
+            return node != null && !string.IsNullOrEmpty(node.id)
+                ? nodes.Child("model-id").Child(node.id)
+                : nodes.Child("position").Child(nodeIndex + 1);
         }
 
-        static int PortControlId(
-            int canvasId,
+        static NowResolvedId PortControlId(
+            NowResolvedId canvasId,
             int nodeIndex,
             NowNode node,
             NowNodePortDirection direction,
             int portIndex,
             NowNodePort port)
         {
-            int nodeId = NodeControlId(canvasId, nodeIndex, node);
-            int dirId = direction == NowNodePortDirection.Input ? 0x491 : 0x4f1;
-            int baseId = NowInput.CombineId(nodeId, dirId);
-            int idHash = port.idHash;
-            return idHash != 0
-                ? NowInput.CombineId(baseId, idHash)
-                : NowInput.CombineId(baseId, portIndex + 1);
+            NowResolvedId nodeId = NodeControlId(canvasId, nodeIndex, node);
+            NowResolvedId ports = nodeId.Child(
+                direction == NowNodePortDirection.Input ? "input-ports" : "output-ports");
+            return port != null && !string.IsNullOrEmpty(port.id)
+                ? ports.Child("model-id").Child(port.id)
+                : ports.Child("position").Child(portIndex + 1);
         }
 
         static void InitializeState(ref CanvasState state, NowNodeGraphStyle style)

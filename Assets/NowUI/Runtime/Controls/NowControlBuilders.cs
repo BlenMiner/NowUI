@@ -12,7 +12,7 @@ namespace NowUI
     {
         readonly string _label;
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         NowFocusNavigation _navigation;
         NowLayoutOptions _options;
         NowRectangleStyle _rectPreset;
@@ -27,7 +27,7 @@ namespace NowUI
         static readonly HashSet<int> s_warnedBeginLabelSites = new HashSet<int>();
 #endif
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowButton(string label, int site)
         {
@@ -63,6 +63,9 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowButton SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowButton SetId(NowResolvedId id) { _id = id; return this; }
 
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowButton SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
@@ -102,11 +105,11 @@ namespace NowUI
 
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = ResolveControlId();
-            int areaKey = NowInput.CombineId(id, AreaKeySeed);
+            NowResolvedId id = ResolveControlId();
+            NowResolvedId areaKey = id.Derive(NowIdDomain.Layout, AreaKeySeed);
 
             Vector4 padding = theme.controlStyles.buttonPadding;
-            NowLayout.TryGetCachedAreaContentSize(NowId.Resolved(areaKey), out Vector2 cached);
+            NowLayout.TryGetCachedAreaContentSize(areaKey, out Vector2 cached);
             var contentSize = renderer.MeasureButtonContent(theme, cached);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
@@ -120,7 +123,7 @@ namespace NowUI
             // frames can be smaller than the content, and oversized children should
             // never escape the control visually.
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(NowId.Resolved(areaKey), rect, padding);
+            var area = NowLayout.Area(areaKey, rect, padding);
             var row = NowLayout.HorizontalScope(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
@@ -130,7 +133,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = ResolveControlId();
+            NowResolvedId id = ResolveControlId();
 
             Vector2 contentSize = renderer.MeasureButton(theme, _label, _textPreset);
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
@@ -153,7 +156,7 @@ namespace NowUI
     {
         readonly string _label;
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         NowFocusNavigation _navigation;
         NowLayoutOptions _options;
         NowTextStyle _textPreset;
@@ -169,7 +172,7 @@ namespace NowUI
         const float DefaultPaddingY = 4f;
         const float DefaultMinHeight = 22f;
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowSelectableRow(string label, int site)
         {
@@ -208,6 +211,9 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowSelectableRow SetId(NowId id) { _id = id; return this; }
+
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowSelectableRow SetId(NowResolvedId id) { _id = id; return this; }
 
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowSelectableRow SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
@@ -353,7 +359,7 @@ namespace NowUI
     {
         readonly string _label;
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         NowFocusNavigation _navigation;
         NowLayoutOptions _options;
         readonly NowRect _rect;
@@ -363,7 +369,7 @@ namespace NowUI
 
         const int AreaKeySeed = 0x4e434172;
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowCheckbox(string label, int site)
         {
@@ -399,6 +405,9 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowCheckbox SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowCheckbox SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowCheckbox SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
@@ -425,10 +434,10 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = ResolveControlId();
-            int areaKey = NowInput.CombineId(id, AreaKeySeed);
+            NowResolvedId id = ResolveControlId();
+            NowResolvedId areaKey = id.Derive(NowIdDomain.Layout, AreaKeySeed);
 
-            NowLayout.TryGetCachedAreaContentSize(NowId.Resolved(areaKey), out Vector2 cached);
+            NowLayout.TryGetCachedAreaContentSize(areaKey, out Vector2 cached);
             var contentSize = renderer.MeasureToggleContent(theme, cached);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
@@ -444,7 +453,7 @@ namespace NowUI
             renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, glyphRect, value, interaction, focused, hoverT));
 
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(NowId.Resolved(areaKey), renderer.ToggleContentRect(theme, rect, glyphSize));
+            var area = NowLayout.Area(areaKey, renderer.ToggleContentRect(theme, rect, glyphSize));
             var row = NowLayout.HorizontalScope(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, clicked);
@@ -454,7 +463,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = ResolveControlId();
+            NowResolvedId id = ResolveControlId();
 
             var text = NowControls.Text(theme, _textPreset);
             Vector2 labelSize = text.Measure(_label);
@@ -487,7 +496,7 @@ namespace NowUI
     {
         readonly string _label;
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         NowFocusNavigation _navigation;
         readonly bool _isOn;
         NowLayoutOptions _options;
@@ -498,7 +507,7 @@ namespace NowUI
 
         const int AreaKeySeed = 0x4e524172;
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowRadio(string label, bool isOn, int site)
         {
@@ -535,6 +544,9 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the rendered label.</summary>
         public NowRadio SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowRadio SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowRadio SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
@@ -560,10 +572,10 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = ResolveControlId();
-            int areaKey = NowInput.CombineId(id, AreaKeySeed);
+            NowResolvedId id = ResolveControlId();
+            NowResolvedId areaKey = id.Derive(NowIdDomain.Layout, AreaKeySeed);
 
-            NowLayout.TryGetCachedAreaContentSize(NowId.Resolved(areaKey), out Vector2 cached);
+            NowLayout.TryGetCachedAreaContentSize(areaKey, out Vector2 cached);
             var contentSize = renderer.MeasureToggleContent(theme, cached);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
@@ -575,7 +587,7 @@ namespace NowUI
             renderer.DrawRadio(new NowToggleRenderContext(theme, rect, glyphRect, _isOn, interaction, focused, hoverT));
 
             var mask = Now.Mask(rect);
-            var area = NowLayout.Area(NowId.Resolved(areaKey), renderer.ToggleContentRect(theme, rect, glyphSize));
+            var area = NowLayout.Area(areaKey, renderer.ToggleContentRect(theme, rect, glyphSize));
             var row = NowLayout.HorizontalScope(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
@@ -585,7 +597,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = ResolveControlId();
+            NowResolvedId id = ResolveControlId();
 
             var text = NowControls.Text(theme, _textPreset);
             Vector2 labelSize = text.Measure(_label);
@@ -618,7 +630,7 @@ namespace NowUI
         readonly NowRect _rect;
         readonly bool _hasRect;
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         NowFocusNavigation _navigation;
         float _step;
 
@@ -659,6 +671,9 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowSlider SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowSlider SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowSlider SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
@@ -666,7 +681,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
 
             float knobSize = theme.controlStyles.sliderKnobSize;
 

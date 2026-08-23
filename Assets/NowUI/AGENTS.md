@@ -37,7 +37,27 @@ not infer APIs from feature names or internal design notes.
 - Wrap every reusable composite control body in
   `NowControls.ControlScope(id, file, line)`. Public wrappers must forward
   caller-file and caller-line information, and dynamic or reorderable
-  instances should also receive stable non-zero explicit IDs.
+  instances should also receive stable explicit IDs. Integer zero is a valid
+  authored `NowId`.
+- Keep authored keys as `NowId` and runtime-resolved paths as
+  `NowResolvedId`; pass resolved paths directly and derive children with
+  `.Child(...)`. Never hash or combine them back into integers. Use
+  `NowControls.KeyedItem`/`KeyedItemIn` for reorderable collections.
+- `NowControls.SiteId(file, line)` returns an opaque `NowCallSiteId` for
+  custom-builder fallback resolution, not an authored or resolved control ID.
+  Keep it beside a `NowControlIdentity` and pass it only to typed fallback
+  APIs such as `Resolve(...)`; never persist it.
+- A parent interaction containing independent child controls must exclude the
+  child rectangles with `NowInteractionRegion`; declaration order alone does
+  not establish pointer precedence.
+- Resolve context requests with `NowContextAction`, using its
+  `NowInteractionRegion` overload for composite parents. Give every context
+  menu item and submenu a stable explicit `id:`; positional entries and raw
+  integer menu identities are compile-time errors.
+- Treat the `int state` in anonymous `NowOverlay.Defer`, `DeferScreen`, and
+  `DeferPassive` callbacks as payload only. A named overlay takes a separate
+  `NowResolvedId` source. Deferred callbacks inherit the provider, input pass,
+  surface, host, and identity context in which they were queued.
 - Use `NowEditorGUI` or `NowEditorGUILayout` in editor IMGUI hosts so consumed
   wheel input requests the editor repaint that makes scrolling visible and
   each panel is isolated under its owning `EditorWindow`. The panel owns native
@@ -126,7 +146,18 @@ not infer APIs from feature names or internal design notes.
   and consume Tab or Shift+Tab while its native key event is current. Overlay
   registration is transactional: if deferred drawing throws, discard the
   failed pass's provisional footprint and retain that owner's last completed
-  footprint as the authoritative hit region.
+  footprint as the authoritative hit region. An open menu remains valid while
+  its retained owner is idle, but the owner's next successful declaration pass
+  must declare it again or it closes. Pending item delivery belongs only to
+  that owner, provider, and next declaration pass; failed or unrelated passes
+  must neither close nor receive it.
+- Preserve provider/input-pass/button-scoped pointer-press claims. A handled
+  press is invisible to controls declared later in that same pass, while other
+  buttons and providers remain independent. Composite parents still require
+  `NowInteractionRegion` exclusions because declaration order is not z-order.
+- Preserve the captured input and host context around every deferred overlay
+  callback, including nested providers, and restore the outer context after
+  the callback returns or throws.
 - Coalesce and rate-limit editor repaint requests until the current IMGUI
   dispatch completes, and let immediate-mode controls forward tracked animation
   demand without marking temporal-only work as `GUI.changed`. Static open

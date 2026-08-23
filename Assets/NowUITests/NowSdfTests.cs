@@ -1464,11 +1464,13 @@ public class NowSdfTests
         template.SetFloat("_SdfShapeCount", 23f);
         var rect = new NowRect(0f, 0f, 48f, 32f);
         var id = new NowId("custom-sdf-material");
+        NowResolvedId resolvedId = NowResolvedId.None;
 
         Material Draw(bool? syncPerFrame)
         {
             using (_drawList.Begin(rect.size))
             {
+                resolvedId = NowControls.GetControlId(id);
                 var scene = NowSdf.Scene(rect, id);
                 scene = syncPerFrame.HasValue
                     ? scene.SetMaterial(template, syncPerFrame.Value)
@@ -1515,7 +1517,7 @@ public class NowSdfTests
             Assert.IsTrue(template, "Switching materials destroyed the caller's template.");
             Assert.AreNotSame(template, _drawList.batches[0].material);
 
-            Assert.IsTrue(NowSdf.Release(id));
+            Assert.IsTrue(NowSdf.Release(resolvedId));
             Assert.IsFalse(clone, "Releasing the scene cache did not destroy its owned clone.");
             Assert.IsTrue(template, "Releasing the scene cache destroyed the caller's template.");
         }
@@ -1537,11 +1539,13 @@ public class NowSdfTests
         templateB.SetFloat("_ColorMask", 3f);
         var rect = new NowRect(0f, 0f, 48f, 32f);
         var id = new NowId("queued-sdf-material-switch");
+        NowResolvedId resolvedId = NowResolvedId.None;
 
         try
         {
             using (_drawList.Begin(rect.size))
             {
+                resolvedId = NowControls.GetControlId(id);
                 var scene = NowSdf.Scene(rect, id)
                     .SetMaterial(templateA)
                     .Circle(rect.center, 12f);
@@ -1562,7 +1566,7 @@ public class NowSdfTests
             Assert.AreEqual(7f, first.GetFloat("_ColorMask"));
             Assert.AreEqual(3f, second.GetFloat("_ColorMask"));
 
-            Assert.IsTrue(NowSdf.Release(id));
+            Assert.IsTrue(NowSdf.Release(resolvedId));
             Assert.IsFalse(first);
             Assert.IsFalse(second);
             Assert.IsTrue(templateA);
@@ -2225,6 +2229,7 @@ public class NowSdfTests
     {
         var surface = new NowRect(0f, 0f, 48f, 32f);
         var id = new NowId("released-sdf-mask");
+        NowResolvedId resolvedId = NowResolvedId.None;
         RenderTexture target;
 
         using (_drawList.Begin(surface.size))
@@ -2233,6 +2238,7 @@ public class NowSdfTests
             .Ellipse(surface)
             .BeginMask())
         {
+            resolvedId = NowControls.GetControlId(id);
             Now.Rectangle(surface).SetColor(Color.white).Draw();
         }
 
@@ -2243,17 +2249,14 @@ public class NowSdfTests
         Assert.AreEqual(1, NowSdf.maskTextureCount);
         Assert.AreEqual((long)target.width * target.height, NowSdf.cachedMaskPixels);
 
-        using (NowControls.IdScope("release-owner"))
-        {
-            Assert.IsTrue(NowSdf.Release(id));
-            Assert.IsFalse(NowSdf.Release(id));
-        }
+        Assert.IsTrue(NowSdf.Release(resolvedId));
+        Assert.IsFalse(NowSdf.Release(resolvedId));
 
         Assert.AreEqual(0, NowSdf.cacheCount);
         Assert.AreEqual(0, NowSdf.maskTextureCount);
         Assert.AreEqual(0, NowSdf.cachedMaskPixels);
         Assert.IsFalse(target, "Releasing an explicit SDF cache did not destroy its mask target.");
-        Assert.Throws<System.ArgumentException>(() => NowSdf.Release(default));
+        Assert.Throws<System.ArgumentException>(() => NowSdf.Release(default(NowId)));
     }
 
     [Test]

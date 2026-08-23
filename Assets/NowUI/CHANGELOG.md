@@ -1,3 +1,49 @@
+## Unreleased
+
+### Breaking Changes
+
+* Split authored `NowId` keys from opaque, 64-bit `NowResolvedId` runtime
+  identities. Raw integer overloads that formerly stood for resolved identity
+  now produce compiler errors; authored integers remain supported through
+  `NowId`, while resolved identity consumers require `NowResolvedId`. Custom
+  builders should retain `NowControlIdentity` and expose authored and resolved
+  `SetId` overloads. See
+  `Documentation~/Identity.md` for migration.
+* `NowControls.SiteId(...)` and public custom-builder fallback APIs now use the
+  opaque `NowCallSiteId` type. It has no public integer conversion, preventing
+  a call-site fallback from being reused as an authored or resolved ID.
+* `NowTextSelectionResult` now reports a source-aware `contextTrigger` for
+  direct use with `NowContextMenu.Open`. The detached `rightClicked` and
+  `rightClickPosition` properties produce compiler errors because they lose
+  the press ownership required for same-pass routing.
+* Context-menu items and submenus now require stable authored IDs. Positional
+  entry overloads and raw integer menu identities produce compiler errors;
+  use `Item(label, id: key)`, `BeginSubmenu(label, id: key)`, and a resolved
+  menu source. Tree selection and expansion now use semantic `NowTreeNodeKey`
+  values instead of UI control IDs.
+* Anonymous `NowOverlay.Defer`, `DeferScreen`, and `DeferPassive` overloads
+  treat their `int state` as callback payload only. Named overlays now take a
+  separate `NowResolvedId` source; code that previously reused one integer for
+  both concepts must migrate to the typed overload.
+
+### Bug Fixes
+
+* Keep a context menu open through the input pass that opened it and retain its
+  blocking footprint while a retained owner is idle. On that owner's next
+  successful declaration pass, omission closes the menu; a failed pass keeps
+  the last completed menu and footprint. Pending item clicks are delivered only
+  to the same owner/provider's next declaration pass and then expire.
+* Isolate identity by host, ordered path, and subsystem domain; add keyed list
+  scopes and composite interaction exclusions to prevent state collisions and
+  parent controls reacting through interactive children.
+* Preserve pointer-versus-action context-menu anchoring. Handled pointer
+  presses are claimed per provider, input pass, and button, preventing a menu
+  trigger or child control from leaking the same press to controls declared
+  later while leaving unrelated buttons/providers independent.
+* Restore the provider, input snapshot/pass, surface mapping, host, and identity
+  context captured by each deferred overlay callback, including through nested
+  input scopes, then restore the outer context when the callback exits.
+
 ## [1.8.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.2...nowui-v1.8.3) (2026-08-20)
 
 

@@ -39,7 +39,14 @@ namespace NowUI
         NowId _down;
         NowId _previous;
         NowId _next;
+        NowResolvedId _resolvedLeft;
+        NowResolvedId _resolvedRight;
+        NowResolvedId _resolvedUp;
+        NowResolvedId _resolvedDown;
+        NowResolvedId _resolvedPrevious;
+        NowResolvedId _resolvedNext;
         byte _mask;
+        byte _resolvedMask;
 
         public static NowFocusNavigation None => default;
 
@@ -55,17 +62,41 @@ namespace NowUI
 
         public static NowFocusNavigation Next(NowId id) => default(NowFocusNavigation).SetNext(id);
 
-        public NowFocusNavigation SetLeft(NowId id) { _left = id; SetMask(LeftMask, id.hasValue); return this; }
+        public static NowFocusNavigation Left(NowResolvedId id) => default(NowFocusNavigation).SetLeft(id);
 
-        public NowFocusNavigation SetRight(NowId id) { _right = id; SetMask(RightMask, id.hasValue); return this; }
+        public static NowFocusNavigation Right(NowResolvedId id) => default(NowFocusNavigation).SetRight(id);
 
-        public NowFocusNavigation SetUp(NowId id) { _up = id; SetMask(UpMask, id.hasValue); return this; }
+        public static NowFocusNavigation Up(NowResolvedId id) => default(NowFocusNavigation).SetUp(id);
 
-        public NowFocusNavigation SetDown(NowId id) { _down = id; SetMask(DownMask, id.hasValue); return this; }
+        public static NowFocusNavigation Down(NowResolvedId id) => default(NowFocusNavigation).SetDown(id);
 
-        public NowFocusNavigation SetPrevious(NowId id) { _previous = id; SetMask(PreviousMask, id.hasValue); return this; }
+        public static NowFocusNavigation Previous(NowResolvedId id) => default(NowFocusNavigation).SetPrevious(id);
 
-        public NowFocusNavigation SetNext(NowId id) { _next = id; SetMask(NextMask, id.hasValue); return this; }
+        public static NowFocusNavigation Next(NowResolvedId id) => default(NowFocusNavigation).SetNext(id);
+
+        public NowFocusNavigation SetLeft(NowId id) { _left = id; SetMask(LeftMask, id.hasValue); SetResolvedMask(LeftMask, false); return this; }
+
+        public NowFocusNavigation SetRight(NowId id) { _right = id; SetMask(RightMask, id.hasValue); SetResolvedMask(RightMask, false); return this; }
+
+        public NowFocusNavigation SetUp(NowId id) { _up = id; SetMask(UpMask, id.hasValue); SetResolvedMask(UpMask, false); return this; }
+
+        public NowFocusNavigation SetDown(NowId id) { _down = id; SetMask(DownMask, id.hasValue); SetResolvedMask(DownMask, false); return this; }
+
+        public NowFocusNavigation SetPrevious(NowId id) { _previous = id; SetMask(PreviousMask, id.hasValue); SetResolvedMask(PreviousMask, false); return this; }
+
+        public NowFocusNavigation SetNext(NowId id) { _next = id; SetMask(NextMask, id.hasValue); SetResolvedMask(NextMask, false); return this; }
+
+        public NowFocusNavigation SetLeft(NowResolvedId id) { _resolvedLeft = id; SetMask(LeftMask, id.hasValue); SetResolvedMask(LeftMask, true); return this; }
+
+        public NowFocusNavigation SetRight(NowResolvedId id) { _resolvedRight = id; SetMask(RightMask, id.hasValue); SetResolvedMask(RightMask, true); return this; }
+
+        public NowFocusNavigation SetUp(NowResolvedId id) { _resolvedUp = id; SetMask(UpMask, id.hasValue); SetResolvedMask(UpMask, true); return this; }
+
+        public NowFocusNavigation SetDown(NowResolvedId id) { _resolvedDown = id; SetMask(DownMask, id.hasValue); SetResolvedMask(DownMask, true); return this; }
+
+        public NowFocusNavigation SetPrevious(NowResolvedId id) { _resolvedPrevious = id; SetMask(PreviousMask, id.hasValue); SetResolvedMask(PreviousMask, true); return this; }
+
+        public NowFocusNavigation SetNext(NowResolvedId id) { _resolvedNext = id; SetMask(NextMask, id.hasValue); SetResolvedMask(NextMask, true); return this; }
 
         void SetMask(byte mask, bool enabled)
         {
@@ -75,29 +106,55 @@ namespace NowUI
                 _mask &= (byte)~mask;
         }
 
-        internal ResolvedFocusNavigation Resolve()
+        void SetResolvedMask(byte mask, bool resolved)
+        {
+            if (resolved)
+                _resolvedMask |= mask;
+            else
+                _resolvedMask &= (byte)~mask;
+        }
+
+        internal ResolvedFocusNavigation Resolve(bool legacyRegistration = false)
         {
             var resolved = default(ResolvedFocusNavigation);
 
             if ((_mask & LeftMask) != 0)
-                resolved.SetLeft(NowControls.ResolveNavigationTargetId(_left));
+                resolved.SetLeft(ResolveTarget(LeftMask, _left, _resolvedLeft, legacyRegistration));
 
             if ((_mask & RightMask) != 0)
-                resolved.SetRight(NowControls.ResolveNavigationTargetId(_right));
+                resolved.SetRight(ResolveTarget(RightMask, _right, _resolvedRight, legacyRegistration));
 
             if ((_mask & UpMask) != 0)
-                resolved.SetUp(NowControls.ResolveNavigationTargetId(_up));
+                resolved.SetUp(ResolveTarget(UpMask, _up, _resolvedUp, legacyRegistration));
 
             if ((_mask & DownMask) != 0)
-                resolved.SetDown(NowControls.ResolveNavigationTargetId(_down));
+                resolved.SetDown(ResolveTarget(DownMask, _down, _resolvedDown, legacyRegistration));
 
             if ((_mask & PreviousMask) != 0)
-                resolved.SetPrevious(NowControls.ResolveNavigationTargetId(_previous));
+                resolved.SetPrevious(ResolveTarget(PreviousMask, _previous, _resolvedPrevious, legacyRegistration));
 
             if ((_mask & NextMask) != 0)
-                resolved.SetNext(NowControls.ResolveNavigationTargetId(_next));
+                resolved.SetNext(ResolveTarget(NextMask, _next, _resolvedNext, legacyRegistration));
 
             return resolved;
+        }
+
+        NowResolvedId ResolveTarget(
+            byte mask,
+            NowId authored,
+            NowResolvedId resolved,
+            bool legacyRegistration)
+        {
+            if ((_resolvedMask & mask) != 0)
+                return resolved;
+
+            if (!legacyRegistration)
+                return NowControls.ResolveNavigationTargetId(authored);
+
+            int legacyId = authored.isString
+                ? NowInput.GetLegacyId(authored.stringValue)
+                : authored.intValue;
+            return NowResolvedId.FromLegacy(legacyId);
         }
     }
 
@@ -110,25 +167,25 @@ namespace NowUI
         const byte PreviousMask = 1 << 4;
         const byte NextMask = 1 << 5;
 
-        int _left;
-        int _right;
-        int _up;
-        int _down;
-        int _previous;
-        int _next;
+        NowResolvedId _left;
+        NowResolvedId _right;
+        NowResolvedId _up;
+        NowResolvedId _down;
+        NowResolvedId _previous;
+        NowResolvedId _next;
         byte _mask;
 
-        public void SetLeft(int id) { _left = id; SetMask(LeftMask, id != 0); }
+        public void SetLeft(NowResolvedId id) { _left = id; SetMask(LeftMask, id.hasValue); }
 
-        public void SetRight(int id) { _right = id; SetMask(RightMask, id != 0); }
+        public void SetRight(NowResolvedId id) { _right = id; SetMask(RightMask, id.hasValue); }
 
-        public void SetUp(int id) { _up = id; SetMask(UpMask, id != 0); }
+        public void SetUp(NowResolvedId id) { _up = id; SetMask(UpMask, id.hasValue); }
 
-        public void SetDown(int id) { _down = id; SetMask(DownMask, id != 0); }
+        public void SetDown(NowResolvedId id) { _down = id; SetMask(DownMask, id.hasValue); }
 
-        public void SetPrevious(int id) { _previous = id; SetMask(PreviousMask, id != 0); }
+        public void SetPrevious(NowResolvedId id) { _previous = id; SetMask(PreviousMask, id.hasValue); }
 
-        public void SetNext(int id) { _next = id; SetMask(NextMask, id != 0); }
+        public void SetNext(NowResolvedId id) { _next = id; SetMask(NextMask, id.hasValue); }
 
         void SetMask(byte mask, bool enabled)
         {
@@ -138,7 +195,7 @@ namespace NowUI
                 _mask &= (byte)~mask;
         }
 
-        public bool TryGetDirectional(Vector2 direction, out int id)
+        public bool TryGetDirectional(Vector2 direction, out NowResolvedId id)
         {
             if (direction.x < -0.5f && (_mask & LeftMask) != 0)
             {
@@ -164,11 +221,11 @@ namespace NowUI
                 return true;
             }
 
-            id = 0;
+            id = default;
             return false;
         }
 
-        public bool TryGetOrder(int step, out int id)
+        public bool TryGetOrder(int step, out NowResolvedId id)
         {
             if (step < 0 && (_mask & PreviousMask) != 0)
             {
@@ -182,7 +239,7 @@ namespace NowUI
                 return true;
             }
 
-            id = 0;
+            id = default;
             return false;
         }
     }
@@ -267,13 +324,32 @@ namespace NowUI
 
         const float NavigationRepeatInterval = 0.12f;
 
+        const string LegacyControlIdObsoleteMessage =
+            "Raw integer focus identities were removed. Resolve an authored NowId once and use the NowResolvedId overload.";
+
+        const string LegacyHostIdObsoleteMessage =
+            "Use the NowResolvedId overload. Raw integer host handles are mapped only through the isolated legacy FocusHost domain.";
+
+        static NowResolvedId LegacyControlId(int id)
+        {
+            return NowResolvedId.FromLegacy(id);
+        }
+
+        static NowResolvedId LegacyHostId(int hostId)
+        {
+            return hostId != 0
+                ? NowResolvedId.FromLegacy(hostId).InDomain(NowIdDomain.FocusHost)
+                : NowResolvedId.None;
+        }
+
         struct Focusable
         {
-            public int id;
+            public NowResolvedId id;
+            public int legacyId;
             public Rect rect;
             public Rect visibleRect;
-            public int scrollRegionId;
-            public int overlayLayerId;
+            public NowResolvedId scrollRegionId;
+            public NowResolvedId overlayLayerId;
             public ResolvedFocusNavigation navigation;
             public NowFocusNavigationLock navigationLock;
             public bool consumesCancel;
@@ -281,15 +357,17 @@ namespace NowUI
 
         sealed class HostRegistry
         {
-            public readonly int hostId;
+            public readonly NowResolvedId hostId;
 
             public List<Focusable> focusables = new List<Focusable>(32);
 
             public List<Focusable> buildingFocusables = new List<Focusable>(32);
 
-            public Dictionary<int, int> owners = new Dictionary<int, int>(16);
+            public Dictionary<NowResolvedId, NowResolvedId> owners =
+                new Dictionary<NowResolvedId, NowResolvedId>(16);
 
-            public Dictionary<int, int> buildingOwners = new Dictionary<int, int>(16);
+            public Dictionary<NowResolvedId, NowResolvedId> buildingOwners =
+                new Dictionary<NowResolvedId, NowResolvedId>(16);
 
             public INowFocusNavigationProxy proxy;
 
@@ -301,7 +379,7 @@ namespace NowUI
 
             public int buildingNavigationLockFocusRevision;
 
-            public int pendingCancelOwnerId;
+            public NowResolvedId pendingCancelOwnerId;
 
             public bool hasPendingEntry;
 
@@ -311,7 +389,7 @@ namespace NowUI
 
             public int pendingTabBoundaryStep;
 
-            public int pendingTabFocusId;
+            public NowResolvedId pendingTabFocusId;
 
             public int pendingTabFocusRevision;
 
@@ -319,7 +397,7 @@ namespace NowUI
 
             public Vector2 pendingDirectionalBoundary;
 
-            public int pendingDirectionalBoundaryFocusId;
+            public NowResolvedId pendingDirectionalBoundaryFocusId;
 
             public int pendingDirectionalBoundaryFocusRevision;
 
@@ -327,7 +405,7 @@ namespace NowUI
 
             public ulong registrationVersion;
 
-            public int directionalReturnId;
+            public NowResolvedId directionalReturnId;
 
             public bool retainFocus;
 
@@ -345,7 +423,7 @@ namespace NowUI
 
             public float nextNavigationRepeatTime;
 
-            public HostRegistry(int hostId)
+            public HostRegistry(NowResolvedId hostId)
             {
                 this.hostId = hostId;
             }
@@ -378,17 +456,20 @@ namespace NowUI
             }
         }
 
-        static readonly List<int> _scrollRegionStack = new List<int>(4);
+        static readonly List<NowResolvedId> _scrollRegionStack =
+            new List<NowResolvedId>(4);
+
+        static readonly List<int> _legacyScrollRegionStack = new List<int>(4);
 
         static readonly List<Focusable> _current = new List<Focusable>(32);
 
-        static readonly Dictionary<int, int> _currentIndices =
-            new Dictionary<int, int>(32);
+        static readonly Dictionary<NowResolvedId, int> _currentIndices =
+            new Dictionary<NowResolvedId, int>(32);
 
         static readonly List<Focusable> _previous = new List<Focusable>(32);
 
-        static readonly Dictionary<int, HostRegistry> _hostRegistries =
-            new Dictionary<int, HostRegistry>(4);
+        static readonly Dictionary<NowResolvedId, HostRegistry> _hostRegistries =
+            new Dictionary<NowResolvedId, HostRegistry>(4);
 
         static readonly List<HostRegistry> _hostRegistrationStack =
             new List<HostRegistry>(2);
@@ -396,9 +477,11 @@ namespace NowUI
         static readonly NowScopeGuard _hostRegistrationScopes =
             new NowScopeGuard("NowFocus.BeginHostRegistration", 2);
 
-        static int _focusedId;
+        static NowResolvedId _focusedId;
 
-        static int _focusedHostId;
+        static int _focusedLegacyId;
+
+        static NowResolvedId _focusedHostId;
 
         static int _focusRevision;
 
@@ -412,11 +495,11 @@ namespace NowUI
 
         static int _navigationLockPreviousFocusRevision;
 
-        static int _explicitFocusRequestId;
+        static NowResolvedId _explicitFocusRequestId;
 
-        static int _explicitFocusRequestHostId;
+        static NowResolvedId _explicitFocusRequestHostId;
 
-        static int _pendingCancelOwnerId;
+        static NowResolvedId _pendingCancelOwnerId;
 
         static bool _preserveInputClaimsOnNextSwap;
 
@@ -446,30 +529,49 @@ namespace NowUI
         /// </summary>
         public static bool respectEventSystem = true;
 
-        /// <summary>The focused control id, or 0 when nothing has focus.</summary>
-        public static int focusedId => _focusedId;
+        /// <summary>The focused resolved control id, or <see cref="NowResolvedId.None"/>.</summary>
+        public static NowResolvedId focusedResolvedId => _focusedId;
+
+        /// <summary>
+        /// Source-blocked compatibility view retained only so old callers receive
+        /// a compiler-guided migration to <see cref="focusedResolvedId"/>.
+        /// </summary>
+        [System.Obsolete(LegacyControlIdObsoleteMessage, true)]
+        public static int focusedId => _focusedLegacyId;
 
         internal static int focusRevision => _focusRevision;
 
         internal static int immediateRegistrationCount => _current.Count;
 
+        internal static bool IsFocusedInHost(NowResolvedId hostId)
+        {
+            return hostId.hasValue && _focusedId.hasValue && _focusedHostId == hostId;
+        }
+
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
         internal static bool IsFocusedInHost(int hostId)
         {
-            return hostId != 0 && _focusedId != 0 && _focusedHostId == hostId;
+            return IsFocusedInHost(LegacyHostId(hostId));
         }
 
+        internal static bool IsFocusedOutsideHost(NowResolvedId hostId)
+        {
+            return _focusedId.hasValue && _focusedHostId != hostId;
+        }
+
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
         internal static bool IsFocusedOutsideHost(int hostId)
         {
-            return _focusedId != 0 && _focusedHostId != hostId;
+            return IsFocusedOutsideHost(LegacyHostId(hostId));
         }
 
-        internal static void PrepareUGUIEntry(int hostId)
+        internal static void PrepareUGUIEntry(NowResolvedId hostId)
         {
             if (!IsFocusedOutsideHost(hostId))
                 return;
 
             bool preserveExplicitTransfer =
-                _explicitFocusRequestId != 0 &&
+                _explicitFocusRequestId.hasValue &&
                 _explicitFocusRequestId == _focusedId &&
                 _explicitFocusRequestHostId == _focusedHostId;
             HostRegistry focusedHost = GetHostRegistry(_focusedHostId);
@@ -490,14 +592,28 @@ namespace NowUI
             Clear();
         }
 
-        public static bool IsFocused(int id)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static void PrepareUGUIEntry(int hostId)
         {
-            return id != 0 && _focusedId == id && IsFocusedInActiveLayer(id);
+            PrepareUGUIEntry(LegacyHostId(hostId));
         }
 
-        static readonly Dictionary<int, int> _ownersCurrent = new Dictionary<int, int>(16);
+        public static bool IsFocused(NowResolvedId id)
+        {
+            return id.hasValue && _focusedId == id && IsFocusedInActiveLayer(id);
+        }
 
-        static readonly Dictionary<int, int> _ownersPrevious = new Dictionary<int, int>(16);
+        [System.Obsolete(LegacyControlIdObsoleteMessage, true)]
+        public static bool IsFocused(int id)
+        {
+            return IsFocused(LegacyControlId(id));
+        }
+
+        static readonly Dictionary<NowResolvedId, NowResolvedId> _ownersCurrent =
+            new Dictionary<NowResolvedId, NowResolvedId>(16);
+
+        static readonly Dictionary<NowResolvedId, NowResolvedId> _ownersPrevious =
+            new Dictionary<NowResolvedId, NowResolvedId>(16);
 
         /// <summary>
         /// Declares that a control or overlay layer belongs to an owner for
@@ -506,9 +622,9 @@ namespace NowUI
         /// declares its inline rename field, a control declares the context
         /// menu it opened, a menu declares its submenu overlays.
         /// </summary>
-        public static void DeclareOwner(int id, int ownerId)
+        public static void DeclareOwner(NowResolvedId id, NowResolvedId ownerId)
         {
-            if (id == 0 || ownerId == 0 || id == ownerId || NowInput.isPassive)
+            if (!id.hasValue || !ownerId.hasValue || id == ownerId || NowInput.isPassive)
                 return;
 
             HostRegistry host = ActiveHostRegistry();
@@ -523,6 +639,12 @@ namespace NowUI
             _ownersCurrent[id] = ownerId;
         }
 
+        [System.Obsolete(LegacyControlIdObsoleteMessage, true)]
+        public static void DeclareOwner(int id, int ownerId)
+        {
+            DeclareOwner(LegacyControlId(id), LegacyControlId(ownerId));
+        }
+
         /// <summary>
         /// Focus-within: true when this control is focused, when focus sits on
         /// a control it owns (transitively, via <see cref="DeclareOwner"/>), or
@@ -531,30 +653,39 @@ namespace NowUI
         /// menu is active keeps rendering focused instead of blinking through
         /// every internal handoff.
         /// </summary>
-        public static bool IsFocusedWithin(int id)
+        public static bool IsFocusedWithin(NowResolvedId id)
         {
-            if (id == 0)
+            if (!id.hasValue)
                 return false;
 
-            int hostId = ActiveHostRegistry()?.hostId ?? _focusedHostId;
+            NowResolvedId hostId = ActiveHostRegistry()?.hostId ?? _focusedHostId;
 
             if (OwnerChainReaches(_focusedId, id, hostId))
                 return true;
 
-            int layerId = NowOverlay.activeFocusLayerId;
-            return layerId != 0 && OwnerChainReaches(layerId, id, hostId);
+            NowResolvedId layerId = NowOverlay.activeFocusLayerSourceId;
+            return layerId.hasValue && OwnerChainReaches(layerId, id, hostId);
         }
 
-        static bool OwnerChainReaches(int cursor, int id, int hostId)
+        [System.Obsolete(LegacyControlIdObsoleteMessage, true)]
+        public static bool IsFocusedWithin(int id)
+        {
+            return IsFocusedWithin(LegacyControlId(id));
+        }
+
+        static bool OwnerChainReaches(
+            NowResolvedId cursor,
+            NowResolvedId id,
+            NowResolvedId hostId)
         {
             HostRegistry host = GetHostRegistry(hostId);
 
-            for (int depth = 0; cursor != 0 && depth < 8; ++depth)
+            for (int depth = 0; cursor.hasValue && depth < 8; ++depth)
             {
                 if (cursor == id)
                     return true;
 
-                int owner;
+                NowResolvedId owner;
                 bool found = host != null
                     ? ((host.isRegistering &&
                         host.buildingOwners.TryGetValue(cursor, out owner)) ||
@@ -573,43 +704,62 @@ namespace NowUI
             return false;
         }
 
+        public static void Focus(NowResolvedId id)
+        {
+            FocusResolved(id, 0);
+        }
+
+        [System.Obsolete(LegacyControlIdObsoleteMessage, true)]
         public static void Focus(int id)
         {
-            if (id != 0)
+            FocusResolved(LegacyControlId(id), id);
+        }
+
+        static void FocusResolved(NowResolvedId id, int legacyId)
+        {
+            if (id.hasValue)
                 NowInput.ClaimFocusForCurrentPrimaryPress();
 
-            int hostId = ResolveFocusHost(id);
+            NowResolvedId hostId = ResolveFocusHost(id);
 
             if (_focusedId != id || _focusedHostId != hostId)
-                SetFocused(id, hostId);
+                SetFocused(id, hostId, legacyId);
+            else if (legacyId != 0)
+                _focusedLegacyId = legacyId;
 
             _explicitFocusRequestId = id;
             _explicitFocusRequestHostId = hostId;
 
-            if (respectEventSystem && id != 0)
+            if (respectEventSystem && id.hasValue)
                 NowEventSystemFocusBridge.SynchronizeFocus(hostId);
         }
 
         public static void Clear()
         {
-            _explicitFocusRequestId = 0;
-            _explicitFocusRequestHostId = 0;
-            SetFocused(0, 0);
+            _explicitFocusRequestId = default;
+            _explicitFocusRequestHostId = default;
+            SetFocused(default, default);
         }
 
+        internal static void ClearHostFocus(NowResolvedId hostId)
+        {
+            if (hostId.hasValue && _focusedHostId == hostId)
+                Clear();
+        }
+
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
         internal static void ClearHostFocus(int hostId)
         {
-            if (hostId != 0 && _focusedHostId == hostId)
-                Clear();
+            ClearHostFocus(LegacyHostId(hostId));
         }
 
         internal static bool ClearOnUnhandledPrimaryPress()
         {
-            if (_focusedId == 0)
+            if (!_focusedId.hasValue)
                 return false;
 
             HostRegistry host = ActiveHostRegistry();
-            int inputHostId = host != null ? host.hostId : 0;
+            NowResolvedId inputHostId = host != null ? host.hostId : default;
 
             // An input surface may finish while another retained host owns
             // focus. Only the owning host (or the shared immediate-mode host)
@@ -629,18 +779,27 @@ namespace NowUI
             return true;
         }
 
-        static void SetFocused(int id)
+        static void SetFocused(NowResolvedId id)
         {
             SetFocused(id, ResolveFocusHost(id));
         }
 
-        static void SetFocused(int id, int hostId)
+        static void SetFocused(NowResolvedId id, NowResolvedId hostId, int legacyId = 0)
         {
             if (_focusedId == id && _focusedHostId == hostId)
+            {
+                if (legacyId != 0)
+                    _focusedLegacyId = legacyId;
+
                 return;
+            }
+
+            if (legacyId == 0 && _focusedId == id)
+                legacyId = _focusedLegacyId;
 
             _focusedId = id;
-            _focusedHostId = id != 0 ? hostId : 0;
+            _focusedLegacyId = id.hasValue ? legacyId : 0;
+            _focusedHostId = id.hasValue ? hostId : default;
 
             unchecked
             {
@@ -657,46 +816,86 @@ namespace NowUI
         /// passes so exact-measure hosts and <c>NowLayout.RunMeasured</c>
         /// do not register twice.
         /// </summary>
-        public static void Register(int id, NowRect rect)
+        public static void Register(NowResolvedId id, NowRect rect)
         {
             Register(id, rect, default);
+        }
+
+        [System.Obsolete(LegacyControlIdObsoleteMessage, true)]
+        public static void Register(int id, NowRect rect)
+        {
+            RegisterResolved(LegacyControlId(id), id, rect, default,
+                NowFocusNavigationLock.None, false);
         }
 
         /// <summary>
         /// Adds a control to this frame's focus registry with optional explicit
         /// directional/Tab navigation targets.
         /// </summary>
-        public static void Register(int id, NowRect rect, NowFocusNavigation navigation)
+        public static void Register(
+            NowResolvedId id,
+            NowRect rect,
+            NowFocusNavigation navigation)
         {
             Register(id, rect, navigation, NowFocusNavigationLock.None);
+        }
+
+        [System.Obsolete(LegacyControlIdObsoleteMessage, true)]
+        public static void Register(int id, NowRect rect, NowFocusNavigation navigation)
+        {
+            RegisterResolved(LegacyControlId(id), id, rect, navigation,
+                NowFocusNavigationLock.None, false);
         }
 
         /// <summary>
         /// Adds a control with the navigation and cancel inputs it owns while focused.
         /// </summary>
+        public static void Register(
+            NowResolvedId id,
+            NowRect rect,
+            NowFocusNavigation navigation,
+            NowFocusNavigationLock navigationLock, bool consumesCancel = false)
+        {
+            RegisterResolved(id, 0, rect, navigation, navigationLock, consumesCancel);
+        }
+
+        [System.Obsolete(LegacyControlIdObsoleteMessage, true)]
         public static void Register(int id, NowRect rect, NowFocusNavigation navigation,
             NowFocusNavigationLock navigationLock, bool consumesCancel = false)
         {
-            if (id == 0 || NowInput.isPassive || rect.isEmpty)
+            RegisterResolved(
+                LegacyControlId(id), id, rect, navigation, navigationLock, consumesCancel);
+        }
+
+        static void RegisterResolved(
+            NowResolvedId id,
+            int legacyId,
+            NowRect rect,
+            NowFocusNavigation navigation,
+            NowFocusNavigationLock navigationLock,
+            bool consumesCancel)
+        {
+            if (!id.hasValue || NowInput.isPassive || rect.isEmpty)
                 return;
 
             if (NowInput.current.primaryPressed && NowInput.IsHovered(rect))
                 NowInput.ClaimFocusForCurrentPrimaryPress();
 
             NowRect visibleRect = Now.ApplyAmbientMask(rect);
-            int scrollRegionId = CurrentScrollRegionId();
+            NowResolvedId scrollRegionId = CurrentScrollRegionId();
 
-            if (visibleRect.isEmpty && scrollRegionId == 0)
+            if (visibleRect.isEmpty && !scrollRegionId.hasValue)
                 return;
 
             var focusable = new Focusable
             {
                 id = id,
-                rect = scrollRegionId != 0 ? (Rect)rect : (Rect)visibleRect,
+                legacyId = legacyId,
+                rect = scrollRegionId.hasValue ? (Rect)rect : (Rect)visibleRect,
                 visibleRect = (Rect)visibleRect,
                 scrollRegionId = scrollRegionId,
                 overlayLayerId = NowOverlay.currentFocusLayerId,
-                navigation = navigation.Resolve(),
+                navigation = navigation.Resolve(legacyId != 0),
                 navigationLock = navigationLock,
                 consumesCancel = consumesCancel
             };
@@ -705,11 +904,11 @@ namespace NowUI
 
             if (host != null)
             {
-                if (_focusedId == id && _focusedHostId == 0)
+                if (_focusedId == id && !_focusedHostId.hasValue)
                 {
-                    SetFocused(id, host.hostId);
+                    SetFocused(id, host.hostId, legacyId);
 
-                    if (_explicitFocusRequestId == id && _explicitFocusRequestHostId == 0)
+                    if (_explicitFocusRequestId == id && !_explicitFocusRequestHostId.hasValue)
                         _explicitFocusRequestHostId = host.hostId;
 
                     if (respectEventSystem)
@@ -736,37 +935,64 @@ namespace NowUI
             _current.Add(focusable);
         }
 
+        internal static NowFocusScrollRegionScope BeginScrollRegion(NowResolvedId id)
+        {
+            return BeginScrollRegionResolved(id, 0);
+        }
+
+        [System.Obsolete(LegacyControlIdObsoleteMessage)]
         internal static NowFocusScrollRegionScope BeginScrollRegion(int id)
         {
-            if (id == 0 || NowInput.isPassive)
+            return BeginScrollRegionResolved(LegacyControlId(id), id);
+        }
+
+        static NowFocusScrollRegionScope BeginScrollRegionResolved(
+            NowResolvedId id,
+            int legacyId)
+        {
+            if (!id.hasValue || NowInput.isPassive)
                 return new NowFocusScrollRegionScope(false);
 
             if (ActiveHostRegistry() == null)
                 BeginFrameIfNeeded();
 
             _scrollRegionStack.Add(id);
+            _legacyScrollRegionStack.Add(legacyId);
             return new NowFocusScrollRegionScope(true);
         }
 
         internal static void PopScrollRegion()
         {
             if (_scrollRegionStack.Count > 0)
+            {
                 _scrollRegionStack.RemoveAt(_scrollRegionStack.Count - 1);
+                _legacyScrollRegionStack.RemoveAt(_legacyScrollRegionStack.Count - 1);
+            }
         }
 
-        static int CurrentScrollRegionId()
+        static NowResolvedId CurrentScrollRegionId()
         {
-            return _scrollRegionStack.Count > 0 ? _scrollRegionStack[_scrollRegionStack.Count - 1] : 0;
+            return _scrollRegionStack.Count > 0
+                ? _scrollRegionStack[_scrollRegionStack.Count - 1]
+                : default;
         }
 
-        /// <summary>The innermost scroll region enclosing the current draw position, or 0.</summary>
-        internal static int currentScrollRegionId => CurrentScrollRegionId();
+        /// <summary>The innermost resolved scroll region enclosing the current draw position.</summary>
+        internal static NowResolvedId currentScrollRegionResolvedId => CurrentScrollRegionId();
 
-        internal static bool TryGetFocusedRectInScrollRegion(int scrollRegionId, out NowRect rect)
+        /// <summary>Legacy integer view of the current scroll-region identity.</summary>
+        [System.Obsolete(LegacyControlIdObsoleteMessage)]
+        internal static int currentScrollRegionId => _legacyScrollRegionStack.Count > 0
+            ? _legacyScrollRegionStack[_legacyScrollRegionStack.Count - 1]
+            : 0;
+
+        internal static bool TryGetFocusedRectInScrollRegion(
+            NowResolvedId scrollRegionId,
+            out NowRect rect)
         {
             rect = default;
 
-            if (scrollRegionId == 0 || _focusedId == 0 || NowInput.isPassive)
+            if (!scrollRegionId.hasValue || !_focusedId.hasValue || NowInput.isPassive)
                 return false;
 
             HostRegistry host = ActiveHostRegistry() ?? GetHostRegistry(_focusedHostId);
@@ -774,7 +1000,7 @@ namespace NowUI
             if (host == null)
                 BeginFrameIfNeeded();
 
-            int activeLayerId = NowOverlay.activeFocusLayerId;
+            NowResolvedId activeLayerId = NowOverlay.activeFocusLayerId;
 
             if (host != null)
             {
@@ -795,7 +1021,19 @@ namespace NowUI
             return TryGetFocusedRectInScrollRegion(_current, scrollRegionId, activeLayerId, out rect);
         }
 
-        static bool TryGetFocusedRectInScrollRegion(List<Focusable> focusables, int scrollRegionId, int activeLayerId, out NowRect rect)
+        [System.Obsolete(LegacyControlIdObsoleteMessage)]
+        internal static bool TryGetFocusedRectInScrollRegion(
+            int scrollRegionId,
+            out NowRect rect)
+        {
+            return TryGetFocusedRectInScrollRegion(LegacyControlId(scrollRegionId), out rect);
+        }
+
+        static bool TryGetFocusedRectInScrollRegion(
+            List<Focusable> focusables,
+            NowResolvedId scrollRegionId,
+            NowResolvedId activeLayerId,
+            out NowRect rect)
         {
             for (int i = 0; i < focusables.Count; ++i)
             {
@@ -816,7 +1054,7 @@ namespace NowUI
         /// True when the focused control should activate from submit (enter/space/
         /// gamepad south) this frame.
         /// </summary>
-        public static bool SubmitPressed(int id)
+        public static bool SubmitPressed(NowResolvedId id)
         {
             bool submitted =
                 IsFocused(id) &&
@@ -827,6 +1065,12 @@ namespace NowUI
                 NowInput.ConsumeKeyActivity();
 
             return submitted;
+        }
+
+        [System.Obsolete(LegacyControlIdObsoleteMessage, true)]
+        public static bool SubmitPressed(int id)
+        {
+            return SubmitPressed(LegacyControlId(id));
         }
 
         /// <summary>
@@ -925,11 +1169,11 @@ namespace NowUI
         }
 
         internal static NowFocusHostRegistrationScope BeginHostRegistration(
-            int hostId,
+            NowResolvedId hostId,
             INowFocusNavigationProxy proxy)
         {
-            if (hostId == 0)
-                throw new System.ArgumentException("Focus host id 0 is reserved.", nameof(hostId));
+            if (!hostId.hasValue)
+                throw new System.ArgumentException("An empty focus host id is reserved.", nameof(hostId));
 
             HostRegistry host = GetOrCreateHostRegistry(hostId);
 
@@ -955,6 +1199,14 @@ namespace NowUI
                 _hostRegistrationScopes.Exit(token);
                 throw;
             }
+        }
+
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static NowFocusHostRegistrationScope BeginHostRegistration(
+            int hostId,
+            INowFocusNavigationProxy proxy)
+        {
+            return BeginHostRegistration(LegacyHostId(hostId), proxy);
         }
 
         internal static void EndHostRegistration(int token)
@@ -990,9 +1242,10 @@ namespace NowUI
             }
         }
 
-        internal static void UnregisterHost(int hostId)
+        internal static void UnregisterHost(NowResolvedId hostId)
         {
-            if (hostId == 0 || !_hostRegistries.TryGetValue(hostId, out HostRegistry host))
+            if (!hostId.hasValue ||
+                !_hostRegistries.TryGetValue(hostId, out HostRegistry host))
                 return;
 
             if (host.isRegistering)
@@ -1011,24 +1264,36 @@ namespace NowUI
             _hostRegistries.Remove(hostId);
         }
 
-        internal static void ExitUGUINavigation(int hostId)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static void UnregisterHost(int hostId)
+        {
+            UnregisterHost(LegacyHostId(hostId));
+        }
+
+        internal static void ExitUGUINavigation(NowResolvedId hostId)
         {
             HostRegistry host = GetHostRegistry(hostId);
 
             if (host != null)
-                host.directionalReturnId = 0;
+                host.directionalReturnId = default;
 
-            if (hostId != 0 && _focusedHostId == hostId)
+            if (hostId.hasValue && _focusedHostId == hostId)
                 Clear();
         }
 
-        internal static void ExitUGUINavigationAtDirectionalBoundary(int hostId)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static void ExitUGUINavigation(int hostId)
+        {
+            ExitUGUINavigation(LegacyHostId(hostId));
+        }
+
+        internal static void ExitUGUINavigationAtDirectionalBoundary(NowResolvedId hostId)
         {
             HostRegistry host = GetHostRegistry(hostId);
 
             if (host != null)
             {
-                int activeLayerId = NowOverlay.activeFocusLayerId;
+            NowResolvedId activeLayerId = NowOverlay.activeFocusLayerId;
                 host.directionalReturnId =
                     _focusedHostId == hostId &&
                     ContainsFocusableInLayer(
@@ -1036,23 +1301,35 @@ namespace NowUI
                         _focusedId,
                         activeLayerId)
                         ? _focusedId
-                        : 0;
+                        : default;
             }
 
-            if (hostId != 0 && _focusedHostId == hostId)
+            if (hostId.hasValue && _focusedHostId == hostId)
                 Clear();
         }
 
-        internal static void DiscardUGUIDirectionalReturn(int hostId)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static void ExitUGUINavigationAtDirectionalBoundary(int hostId)
+        {
+            ExitUGUINavigationAtDirectionalBoundary(LegacyHostId(hostId));
+        }
+
+        internal static void DiscardUGUIDirectionalReturn(NowResolvedId hostId)
         {
             HostRegistry host = GetHostRegistry(hostId);
 
             if (host != null)
-                host.directionalReturnId = 0;
+                host.directionalReturnId = default;
+        }
+
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static void DiscardUGUIDirectionalReturn(int hostId)
+        {
+            DiscardUGUIDirectionalReturn(LegacyHostId(hostId));
         }
 
         internal static bool DeferUGUIDirectionalBoundary(
-            int hostId,
+            NowResolvedId hostId,
             Vector2 direction)
         {
             HostRegistry host = GetHostRegistry(hostId);
@@ -1066,14 +1343,20 @@ namespace NowUI
             host.hasPendingDirectionalBoundary = true;
             host.pendingDirectionalBoundary = direction;
             host.pendingDirectionalBoundaryFocusId =
-                _focusedHostId == hostId ? _focusedId : 0;
+                _focusedHostId == hostId ? _focusedId : default;
             host.pendingDirectionalBoundaryFocusRevision = _focusRevision;
             host.pendingDirectionalBoundaryRegistrationVersion =
                 host.registrationVersion + (host.isRegistering ? 2UL : 1UL);
             return true;
         }
 
-        internal static void CancelDeferredUGUIDirectionalBoundary(int hostId)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static bool DeferUGUIDirectionalBoundary(int hostId, Vector2 direction)
+        {
+            return DeferUGUIDirectionalBoundary(LegacyHostId(hostId), direction);
+        }
+
+        internal static void CancelDeferredUGUIDirectionalBoundary(NowResolvedId hostId)
         {
             HostRegistry host = GetHostRegistry(hostId);
 
@@ -1081,11 +1364,17 @@ namespace NowUI
                 ClearPendingHostDirectionalBoundary(host);
         }
 
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static void CancelDeferredUGUIDirectionalBoundary(int hostId)
+        {
+            CancelDeferredUGUIDirectionalBoundary(LegacyHostId(hostId));
+        }
+
         internal static void DeferUGUINavigationEntry(
-            int hostId,
+            NowResolvedId hostId,
             Vector2 direction)
         {
-            if (hostId == 0)
+            if (!hostId.hasValue)
                 return;
 
             HostRegistry host = GetOrCreateHostRegistry(hostId);
@@ -1094,22 +1383,34 @@ namespace NowUI
             host.pendingEntryOrderStep = 0;
 
             if (!TryResolveUGUIDirection(direction, out _))
-                host.directionalReturnId = 0;
+                host.directionalReturnId = default;
         }
 
-        internal static void DeferUGUITabEntry(int hostId, int step)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static void DeferUGUINavigationEntry(int hostId, Vector2 direction)
         {
-            if (hostId == 0 || step == 0)
+            DeferUGUINavigationEntry(LegacyHostId(hostId), direction);
+        }
+
+        internal static void DeferUGUITabEntry(NowResolvedId hostId, int step)
+        {
+            if (!hostId.hasValue || step == 0)
                 return;
 
             HostRegistry host = GetOrCreateHostRegistry(hostId);
-            host.directionalReturnId = 0;
+            host.directionalReturnId = default;
             host.hasPendingEntry = true;
             host.pendingEntryDirection = default;
             host.pendingEntryOrderStep = step < 0 ? -1 : 1;
         }
 
-        internal static void CancelPendingUGUIEntry(int hostId)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static void DeferUGUITabEntry(int hostId, int step)
+        {
+            DeferUGUITabEntry(LegacyHostId(hostId), step);
+        }
+
+        internal static void CancelPendingUGUIEntry(NowResolvedId hostId)
         {
             HostRegistry host = GetHostRegistry(hostId);
 
@@ -1121,22 +1422,28 @@ namespace NowUI
             host.pendingEntryOrderStep = 0;
         }
 
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static void CancelPendingUGUIEntry(int hostId)
+        {
+            CancelPendingUGUIEntry(LegacyHostId(hostId));
+        }
+
         static HostRegistry ActiveHostRegistry()
         {
             int count = _hostRegistrationStack.Count;
             return count > 0 ? _hostRegistrationStack[count - 1] : null;
         }
 
-        static HostRegistry GetHostRegistry(int hostId)
+        static HostRegistry GetHostRegistry(NowResolvedId hostId)
         {
-            if (hostId == 0)
+            if (!hostId.hasValue)
                 return null;
 
             _hostRegistries.TryGetValue(hostId, out HostRegistry host);
             return host;
         }
 
-        static HostRegistry GetOrCreateHostRegistry(int hostId)
+        static HostRegistry GetOrCreateHostRegistry(NowResolvedId hostId)
         {
             if (_hostRegistries.TryGetValue(hostId, out HostRegistry host))
                 return host;
@@ -1146,17 +1453,17 @@ namespace NowUI
             return host;
         }
 
-        static int ResolveFocusHost(int id)
+        static NowResolvedId ResolveFocusHost(NowResolvedId id)
         {
-            if (id == 0)
-                return 0;
+            if (!id.hasValue)
+                return default;
 
             HostRegistry active = ActiveHostRegistry();
 
             if (active != null)
                 return active.hostId;
 
-            if (_focusedId == id && _focusedHostId != 0)
+            if (_focusedId == id && _focusedHostId.hasValue)
                 return _focusedHostId;
 
             foreach (var pair in _hostRegistries)
@@ -1171,10 +1478,10 @@ namespace NowUI
                 }
             }
 
-            return 0;
+            return default;
         }
 
-        static bool ContainsFocusable(List<Focusable> focusables, int id)
+        static bool ContainsFocusable(List<Focusable> focusables, NowResolvedId id)
         {
             for (int i = 0; i < focusables.Count; ++i)
             {
@@ -1185,7 +1492,22 @@ namespace NowUI
             return false;
         }
 
-        internal static bool IsOwningProxySelection(int hostId, GameObject selection)
+        static int LegacyIdForFocusable(
+            List<Focusable> focusables,
+            NowResolvedId id)
+        {
+            for (int i = 0; i < focusables.Count; ++i)
+            {
+                if (focusables[i].id == id)
+                    return focusables[i].legacyId;
+            }
+
+            return 0;
+        }
+
+        internal static bool IsOwningProxySelection(
+            NowResolvedId hostId,
+            GameObject selection)
         {
             HostRegistry host = GetHostRegistry(hostId);
             return host != null &&
@@ -1193,10 +1515,22 @@ namespace NowUI
                 host.proxy.owningSelection == selection;
         }
 
-        internal static INowFocusNavigationProxy GetHostProxy(int hostId)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static bool IsOwningProxySelection(int hostId, GameObject selection)
+        {
+            return IsOwningProxySelection(LegacyHostId(hostId), selection);
+        }
+
+        internal static INowFocusNavigationProxy GetHostProxy(NowResolvedId hostId)
         {
             HostRegistry host = GetHostRegistry(hostId);
             return host != null ? host.proxy : null;
+        }
+
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static INowFocusNavigationProxy GetHostProxy(int hostId)
+        {
+            return GetHostProxy(LegacyHostId(hostId));
         }
 
         static bool IsOwningProxySelected(INowFocusNavigationProxy proxy)
@@ -1206,7 +1540,7 @@ namespace NowUI
 
         static void FinalizeHostPendingCancelOwner(HostRegistry host)
         {
-            if (host.pendingCancelOwnerId == 0)
+            if (!host.pendingCancelOwnerId.hasValue)
                 return;
 
             bool ownerRegistered = false;
@@ -1228,7 +1562,7 @@ namespace NowUI
                 Clear();
             }
 
-            host.pendingCancelOwnerId = 0;
+            host.pendingCancelOwnerId = default;
         }
 
         static void CompletePendingHostEntry(HostRegistry host)
@@ -1246,7 +1580,7 @@ namespace NowUI
                 IsFocusedInHost(host.hostId) ||
                 IsFocusedOutsideHost(host.hostId))
             {
-                host.directionalReturnId = 0;
+                host.directionalReturnId = default;
                 return;
             }
 
@@ -1267,16 +1601,16 @@ namespace NowUI
         static void ResolvePendingHostTabBoundary(HostRegistry host)
         {
             int step = host.pendingTabBoundaryStep;
-            int expectedFocusId = host.pendingTabFocusId;
+            NowResolvedId expectedFocusId = host.pendingTabFocusId;
             int expectedFocusRevision = host.pendingTabFocusRevision;
             host.pendingTabBoundaryStep = 0;
-            host.pendingTabFocusId = 0;
+            host.pendingTabFocusId = default;
             host.pendingTabFocusRevision = 0;
 
             if (step == 0 ||
                 !IsOwningProxySelected(host.proxy) ||
                 _focusRevision != expectedFocusRevision ||
-                (_focusedHostId == host.hostId ? _focusedId : 0) !=
+                (_focusedHostId == host.hostId ? _focusedId : default) !=
                     expectedFocusId)
             {
                 return;
@@ -1317,14 +1651,14 @@ namespace NowUI
             }
 
             Vector2 direction = host.pendingDirectionalBoundary;
-            int expectedFocusId = host.pendingDirectionalBoundaryFocusId;
+            NowResolvedId expectedFocusId = host.pendingDirectionalBoundaryFocusId;
             int expectedFocusRevision =
                 host.pendingDirectionalBoundaryFocusRevision;
             ClearPendingHostDirectionalBoundary(host);
 
             if (!IsOwningProxySelected(host.proxy) ||
                 _focusRevision != expectedFocusRevision ||
-                (_focusedHostId == host.hostId ? _focusedId : 0) !=
+                (_focusedHostId == host.hostId ? _focusedId : default) !=
                     expectedFocusId)
             {
                 return;
@@ -1355,7 +1689,7 @@ namespace NowUI
         {
             host.hasPendingDirectionalBoundary = false;
             host.pendingDirectionalBoundary = default;
-            host.pendingDirectionalBoundaryFocusId = 0;
+            host.pendingDirectionalBoundaryFocusId = default;
             host.pendingDirectionalBoundaryFocusRevision = 0;
             host.pendingDirectionalBoundaryRegistrationVersion = 0;
         }
@@ -1415,7 +1749,7 @@ namespace NowUI
 
         static void FinalizePendingCancelOwner()
         {
-            if (_pendingCancelOwnerId == 0)
+            if (!_pendingCancelOwnerId.hasValue)
                 return;
 
             bool ownerRegistered = false;
@@ -1432,7 +1766,7 @@ namespace NowUI
             if (_focusedId == _pendingCancelOwnerId && !ownerRegistered)
                 Clear();
 
-            _pendingCancelOwnerId = 0;
+            _pendingCancelOwnerId = default;
         }
 
         /// <summary>Forces the frame swap; used by tests where frameCount is static.</summary>
@@ -1463,11 +1797,11 @@ namespace NowUI
         static void ProcessNavigation()
         {
             int ignoredPendingTabBoundaryStep = 0;
-            int ignoredPendingTabFocusId = 0;
+            NowResolvedId ignoredPendingTabFocusId = default;
             int ignoredPendingTabFocusRevision = 0;
             ProcessNavigation(
                 _previous,
-                0,
+                default,
                 null,
                 false,
                 ref ignoredPendingTabBoundaryStep,
@@ -1500,7 +1834,7 @@ namespace NowUI
 
             host.lastProcessedInputPass = snapshot.inputPass;
             host.pendingTabBoundaryStep = 0;
-            host.pendingTabFocusId = 0;
+            host.pendingTabFocusId = default;
             host.pendingTabFocusRevision = 0;
             ProcessNavigation(
                 host.focusables,
@@ -1522,23 +1856,23 @@ namespace NowUI
 
         static void ProcessNavigation(
             List<Focusable> focusables,
-            int hostId,
+            NowResolvedId hostId,
             INowFocusNavigationProxy proxy,
             bool deferProxyTabBoundary,
             ref int pendingTabBoundaryStep,
-            ref int pendingTabFocusId,
+            ref NowResolvedId pendingTabFocusId,
             ref int pendingTabFocusRevision,
             NowInputSnapshot snapshot,
             NowFocusNavigationLock claimedNavigationLock,
             int claimedNavigationLockFocusRevision,
-            ref int pendingCancelOwnerId,
+            ref NowResolvedId pendingCancelOwnerId,
             bool retainFocus,
             ref Vector2 lastNavigation,
             ref Vector2 repeatDirection,
             ref float nextNavigationRepeatTime)
         {
-            int activeLayerId = NowOverlay.activeFocusLayerId;
-            bool ownsFocus = _focusedId != 0 && _focusedHostId == hostId;
+            NowResolvedId activeLayerId = NowOverlay.activeFocusLayerId;
+            bool ownsFocus = _focusedId.hasValue && _focusedHostId == hostId;
             bool focusedWasRegistered = TryGetFocusedInputPolicy(
                 focusables,
                 hostId,
@@ -1565,7 +1899,7 @@ namespace NowUI
                 return;
             }
 
-            if (_focusedId != 0 && _focusedHostId != hostId)
+            if (_focusedId.hasValue && _focusedHostId != hostId)
             {
                 lastNavigation = snapshot.navigation;
                 ResetNavigationRepeat(ref repeatDirection, ref nextNavigationRepeatTime);
@@ -1616,15 +1950,15 @@ namespace NowUI
             }
 
             Vector2 navigation = snapshot.navigation;
-            bool protectExplicitFocus = _explicitFocusRequestId != 0 &&
+            bool protectExplicitFocus = _explicitFocusRequestId.hasValue &&
                 _explicitFocusRequestHostId == hostId &&
                 _explicitFocusRequestId == _focusedId &&
                 !focusedWasRegistered;
 
             if (_explicitFocusRequestHostId == hostId)
             {
-                _explicitFocusRequestId = 0;
-                _explicitFocusRequestHostId = 0;
+                _explicitFocusRequestId = default;
+                _explicitFocusRequestHostId = default;
             }
 
             if (protectExplicitFocus &&
@@ -1657,7 +1991,7 @@ namespace NowUI
                 {
                     pendingTabBoundaryStep = step;
                     pendingTabFocusId =
-                        _focusedHostId == hostId ? _focusedId : 0;
+                        _focusedHostId == hostId ? _focusedId : default;
                     pendingTabFocusRevision = _focusRevision;
                 }
                 else
@@ -1720,14 +2054,16 @@ namespace NowUI
             NowInput.ConsumeKeyActivity();
         }
 
-        internal static NowFocusMoveResult RouteUGUINavigation(int hostId, Vector2 direction)
+        internal static NowFocusMoveResult RouteUGUINavigation(
+            NowResolvedId hostId,
+            Vector2 direction)
         {
             HostRegistry host = GetHostRegistry(hostId);
 
             if (host == null || !TryResolveUGUIDirection(direction, out Vector2 resolvedDirection))
                 return NowFocusMoveResult.Unavailable;
 
-            int activeLayerId = NowOverlay.activeFocusLayerId;
+            NowResolvedId activeLayerId = NowOverlay.activeFocusLayerId;
 
             if (!HasFocusableInLayer(host.focusables, activeLayerId))
                 return NowFocusMoveResult.Unavailable;
@@ -1757,14 +2093,20 @@ namespace NowUI
             return MoveFocus(host.focusables, host.hostId, resolvedDirection, activeLayerId);
         }
 
-        internal static bool IsUGUIDirectionalNavigationLocked(int hostId)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static NowFocusMoveResult RouteUGUINavigation(int hostId, Vector2 direction)
+        {
+            return RouteUGUINavigation(LegacyHostId(hostId), direction);
+        }
+
+        internal static bool IsUGUIDirectionalNavigationLocked(NowResolvedId hostId)
         {
             HostRegistry host = GetHostRegistry(hostId);
 
             if (host == null || _focusedHostId != hostId)
                 return false;
 
-            int activeLayerId = NowOverlay.activeFocusLayerId;
+            NowResolvedId activeLayerId = NowOverlay.activeFocusLayerId;
             TryGetFocusedInputPolicy(
                 host.focusables,
                 hostId,
@@ -1782,14 +2124,20 @@ namespace NowUI
                 navigationLock == NowFocusNavigationLock.All;
         }
 
-        internal static NowFocusMoveResult RouteUGUITab(int hostId, int step)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static bool IsUGUIDirectionalNavigationLocked(int hostId)
+        {
+            return IsUGUIDirectionalNavigationLocked(LegacyHostId(hostId));
+        }
+
+        internal static NowFocusMoveResult RouteUGUITab(NowResolvedId hostId, int step)
         {
             HostRegistry host = GetHostRegistry(hostId);
 
             if (host == null || step == 0)
                 return NowFocusMoveResult.Unavailable;
 
-            int activeLayerId = NowOverlay.activeFocusLayerId;
+            NowResolvedId activeLayerId = NowOverlay.activeFocusLayerId;
 
             if (!HasFocusableInLayer(host.focusables, activeLayerId))
                 return NowFocusMoveResult.Unavailable;
@@ -1821,9 +2169,17 @@ namespace NowUI
                 wrap: false);
         }
 
-        internal static NowFocusMoveResult EnterUGUINavigation(int hostId, Vector2 direction)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static NowFocusMoveResult RouteUGUITab(int hostId, int step)
         {
-            if (hostId == 0)
+            return RouteUGUITab(LegacyHostId(hostId), step);
+        }
+
+        internal static NowFocusMoveResult EnterUGUINavigation(
+            NowResolvedId hostId,
+            Vector2 direction)
+        {
+            if (!hostId.hasValue)
                 return NowFocusMoveResult.Unavailable;
 
             HostRegistry host = GetOrCreateHostRegistry(hostId);
@@ -1831,9 +2187,9 @@ namespace NowUI
                 TryResolveUGUIDirection(direction, out Vector2 resolvedDirection);
 
             if (!hasDirection)
-                host.directionalReturnId = 0;
+                host.directionalReturnId = default;
 
-            int activeLayerId = NowOverlay.activeFocusLayerId;
+            NowResolvedId activeLayerId = NowOverlay.activeFocusLayerId;
 
             if (IsFocusedOutsideHost(hostId))
             {
@@ -1866,14 +2222,14 @@ namespace NowUI
                       _focusedId,
                       activeLayerId))))
             {
-                host.directionalReturnId = 0;
+                host.directionalReturnId = default;
                 return NowFocusMoveResult.Consumed;
             }
 
-            int directionalReturnId = host.directionalReturnId;
-            host.directionalReturnId = 0;
+            NowResolvedId directionalReturnId = host.directionalReturnId;
+            host.directionalReturnId = default;
 
-            if (directionalReturnId != 0)
+            if (directionalReturnId.hasValue)
             {
                 if (hasDirection &&
                     TryFocusRegistered(
@@ -1887,34 +2243,40 @@ namespace NowUI
                 }
             }
 
-            int id;
+            NowResolvedId id;
 
             if (hasDirection)
                 id = FindEdgeFocus(host.focusables, resolvedDirection, activeLayerId);
             else
                 id = FindFirstFocus(host.focusables, activeLayerId);
 
-            if (id == 0)
+            if (!id.hasValue)
                 return NowFocusMoveResult.Unavailable;
 
-            SetFocused(id, hostId);
+            SetFocused(id, hostId, LegacyIdForFocusable(host.focusables, id));
             return NowFocusMoveResult.Seeded;
         }
 
-        internal static NowFocusMoveResult EnterUGUITab(int hostId, int step)
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static NowFocusMoveResult EnterUGUINavigation(int hostId, Vector2 direction)
         {
-            if (hostId == 0 || step == 0)
+            return EnterUGUINavigation(LegacyHostId(hostId), direction);
+        }
+
+        internal static NowFocusMoveResult EnterUGUITab(NowResolvedId hostId, int step)
+        {
+            if (!hostId.hasValue || step == 0)
                 return NowFocusMoveResult.Unavailable;
 
             HostRegistry host = GetOrCreateHostRegistry(hostId);
-            host.directionalReturnId = 0;
-            int activeLayerId = NowOverlay.activeFocusLayerId;
+            host.directionalReturnId = default;
+            NowResolvedId activeLayerId = NowOverlay.activeFocusLayerId;
 
             if (IsFocusedOutsideHost(hostId))
                 return NowFocusMoveResult.Consumed;
 
             if (_explicitFocusRequestHostId == hostId &&
-                _explicitFocusRequestId != 0 &&
+                _explicitFocusRequestId.hasValue &&
                 _explicitFocusRequestId == _focusedId)
             {
                 host.hasPendingEntry = false;
@@ -1935,17 +2297,23 @@ namespace NowUI
             host.pendingEntryDirection = default;
             host.pendingEntryOrderStep = 0;
 
-            int id = FindRegistrationEdgeFocus(
+            NowResolvedId id = FindRegistrationEdgeFocus(
                 host.focusables,
                 activeLayerId,
                 step < 0 ? -1 : 1);
 
-            if (id == 0)
+            if (!id.hasValue)
                 return NowFocusMoveResult.Unavailable;
 
             bool changed = _focusedHostId != hostId || _focusedId != id;
-            SetFocused(id, hostId);
+            SetFocused(id, hostId, LegacyIdForFocusable(host.focusables, id));
             return changed ? NowFocusMoveResult.Seeded : NowFocusMoveResult.Consumed;
+        }
+
+        [System.Obsolete(LegacyHostIdObsoleteMessage)]
+        internal static NowFocusMoveResult EnterUGUITab(int hostId, int step)
+        {
+            return EnterUGUITab(LegacyHostId(hostId), step);
         }
 
         static bool TryResolveUGUIDirection(Vector2 direction, out Vector2 resolvedDirection)
@@ -1972,8 +2340,8 @@ namespace NowUI
 
         static bool TryGetFocusedInputPolicy(
             List<Focusable> focusables,
-            int hostId,
-            int activeLayerId,
+            NowResolvedId hostId,
+            NowResolvedId activeLayerId,
             out NowFocusNavigationLock navigationLock,
             out bool consumesCancel)
         {
@@ -2071,9 +2439,9 @@ namespace NowUI
 
         static NowFocusMoveResult MoveFocusInRegistrationOrder(
             List<Focusable> focusables,
-            int hostId,
+            NowResolvedId hostId,
             int step,
-            int activeLayerId,
+            NowResolvedId activeLayerId,
             bool wrap)
         {
             if (!HasFocusableInLayer(focusables, activeLayerId))
@@ -2099,11 +2467,14 @@ namespace NowUI
 
             if (focusedIndex < 0)
             {
-                SetFocused(focusables[fallbackIndex].id, hostId);
+                Focusable fallback = focusables[fallbackIndex];
+                SetFocused(fallback.id, hostId, fallback.legacyId);
                 return NowFocusMoveResult.Seeded;
             }
 
-            if (focusables[focusedIndex].navigation.TryGetOrder(step, out int targetId) &&
+            if (focusables[focusedIndex].navigation.TryGetOrder(
+                    step,
+                    out NowResolvedId targetId) &&
                 TryFocusRegistered(focusables, hostId, targetId, activeLayerId, out _))
             {
                 return NowFocusMoveResult.Moved;
@@ -2115,15 +2486,16 @@ namespace NowUI
             if (next < 0)
                 return NowFocusMoveResult.Boundary;
 
-            SetFocused(focusables[next].id, hostId);
+            Focusable nextFocusable = focusables[next];
+            SetFocused(nextFocusable.id, hostId, nextFocusable.legacyId);
             return NowFocusMoveResult.Moved;
         }
 
         static NowFocusMoveResult MoveFocus(
             List<Focusable> focusables,
-            int hostId,
+            NowResolvedId hostId,
             Vector2 direction,
-            int activeLayerId)
+            NowResolvedId activeLayerId)
         {
             int focusedIndex = -1;
 
@@ -2140,16 +2512,18 @@ namespace NowUI
 
             if (focusedIndex < 0)
             {
-                int seeded = FindEdgeFocus(focusables, direction, activeLayerId);
+                NowResolvedId seeded = FindEdgeFocus(focusables, direction, activeLayerId);
 
-                if (seeded == 0)
+                if (!seeded.hasValue)
                     return NowFocusMoveResult.Unavailable;
 
-                SetFocused(seeded, hostId);
+                SetFocused(seeded, hostId, LegacyIdForFocusable(focusables, seeded));
                 return NowFocusMoveResult.Seeded;
             }
 
-            if (focusables[focusedIndex].navigation.TryGetDirectional(direction, out int targetId) &&
+            if (focusables[focusedIndex].navigation.TryGetDirectional(
+                    direction,
+                    out NowResolvedId targetId) &&
                 TryFocusRegistered(
                     focusables, hostId, targetId, activeLayerId, out Rect targetRect))
             {
@@ -2197,7 +2571,8 @@ namespace NowUI
             if (bestIndex < 0)
                 return NowFocusMoveResult.Boundary;
 
-            SetFocused(focusables[bestIndex].id, hostId);
+            Focusable best = focusables[bestIndex];
+            SetFocused(best.id, hostId, best.legacyId);
 
             Vector2 focusedCenter = focusables[bestIndex].rect.center;
             Vector2 memory = origin;
@@ -2231,14 +2606,14 @@ namespace NowUI
 
         static bool TryFocusRegistered(
             List<Focusable> focusables,
-            int hostId,
-            int id,
-            int activeLayerId,
+            NowResolvedId hostId,
+            NowResolvedId id,
+            NowResolvedId activeLayerId,
             out Rect rect)
         {
             rect = default;
 
-            if (id == 0)
+            if (!id.hasValue)
                 return false;
 
             for (int i = 0; i < focusables.Count; ++i)
@@ -2246,7 +2621,7 @@ namespace NowUI
                 if (focusables[i].id == id &&
                     IsFocusableInLayer(focusables[i], activeLayerId))
                 {
-                    SetFocused(id, hostId);
+                    SetFocused(id, hostId, focusables[i].legacyId);
                     rect = focusables[i].rect;
                     return true;
                 }
@@ -2261,23 +2636,23 @@ namespace NowUI
         /// region but currently clipped away — seeding should land where the
         /// user is looking, not yank the scroll to a far-off control.
         /// </summary>
-        static int FindEdgeFocus(
+        static NowResolvedId FindEdgeFocus(
             List<Focusable> focusables,
             Vector2 direction,
-            int activeLayerId)
+            NowResolvedId activeLayerId)
         {
             float bestVisibleScore = float.MaxValue;
-            int bestVisibleId = 0;
+            NowResolvedId bestVisibleId = default;
             float bestScore = float.MaxValue;
-            int bestId = 0;
-            int fallbackId = 0;
+            NowResolvedId bestId = default;
+            NowResolvedId fallbackId = default;
 
             for (int i = 0; i < focusables.Count; ++i)
             {
                 if (!IsFocusableInLayer(focusables[i], activeLayerId))
                     continue;
 
-                if (fallbackId == 0)
+                if (!fallbackId.hasValue)
                     fallbackId = focusables[i].id;
 
                 float score = Vector2.Dot(focusables[i].rect.center, direction);
@@ -2297,23 +2672,25 @@ namespace NowUI
                 }
             }
 
-            if (bestVisibleId != 0)
+            if (bestVisibleId.hasValue)
                 return bestVisibleId;
 
-            return bestId != 0 ? bestId : fallbackId;
+            return bestId.hasValue ? bestId : fallbackId;
         }
 
-        static int FindFirstFocus(List<Focusable> focusables, int activeLayerId)
+        static NowResolvedId FindFirstFocus(
+            List<Focusable> focusables,
+            NowResolvedId activeLayerId)
         {
             return FindRegistrationEdgeFocus(focusables, activeLayerId, 1);
         }
 
-        static int FindRegistrationEdgeFocus(
+        static NowResolvedId FindRegistrationEdgeFocus(
             List<Focusable> focusables,
-            int activeLayerId,
+            NowResolvedId activeLayerId,
             int step)
         {
-            int fallbackId = 0;
+            NowResolvedId fallbackId = default;
 
             int start = step < 0 ? focusables.Count - 1 : 0;
             int end = step < 0 ? -1 : focusables.Count;
@@ -2323,7 +2700,7 @@ namespace NowUI
                 if (!IsFocusableInLayer(focusables[i], activeLayerId))
                     continue;
 
-                if (fallbackId == 0)
+                if (!fallbackId.hasValue)
                     fallbackId = focusables[i].id;
 
                 if (focusables[i].visibleRect.width > 0f &&
@@ -2336,11 +2713,11 @@ namespace NowUI
             return fallbackId;
         }
 
-        static bool IsFocusedInActiveLayer(int id)
+        static bool IsFocusedInActiveLayer(NowResolvedId id)
         {
-            int activeLayerId = NowOverlay.activeFocusLayerId;
+            NowResolvedId activeLayerId = NowOverlay.activeFocusLayerId;
 
-            if (activeLayerId == 0)
+            if (!activeLayerId.hasValue)
                 return true;
 
             HostRegistry host = GetHostRegistry(_focusedHostId);
@@ -2356,7 +2733,10 @@ namespace NowUI
                 ContainsFocusableInLayer(_previous, id, activeLayerId);
         }
 
-        static bool ContainsFocusableInLayer(List<Focusable> focusables, int id, int activeLayerId)
+        static bool ContainsFocusableInLayer(
+            List<Focusable> focusables,
+            NowResolvedId id,
+            NowResolvedId activeLayerId)
         {
             for (int i = 0; i < focusables.Count; ++i)
             {
@@ -2367,7 +2747,9 @@ namespace NowUI
             return false;
         }
 
-        static bool HasFocusableInLayer(List<Focusable> focusables, int activeLayerId)
+        static bool HasFocusableInLayer(
+            List<Focusable> focusables,
+            NowResolvedId activeLayerId)
         {
             for (int i = 0; i < focusables.Count; ++i)
             {
@@ -2382,7 +2764,7 @@ namespace NowUI
             List<Focusable> focusables,
             int focusedIndex,
             int step,
-            int activeLayerId,
+            NowResolvedId activeLayerId,
             bool wrap)
         {
             int count = focusables.Count;
@@ -2414,7 +2796,7 @@ namespace NowUI
             return -1;
         }
 
-        static bool IsFocusableInLayer(Focusable focusable, int activeLayerId)
+        static bool IsFocusableInLayer(Focusable focusable, NowResolvedId activeLayerId)
         {
             return focusable.overlayLayerId == activeLayerId;
         }
@@ -2427,20 +2809,22 @@ namespace NowUI
             _ownersCurrent.Clear();
             _ownersPrevious.Clear();
             _scrollRegionStack.Clear();
+            _legacyScrollRegionStack.Clear();
             _hostRegistries.Clear();
             _hostRegistrationStack.Clear();
             _hostRegistrationScopes.Clear();
-            _focusedId = 0;
-            _focusedHostId = 0;
+            _focusedId = default;
+            _focusedLegacyId = 0;
+            _focusedHostId = default;
             _focusRevision = 0;
             _registryFrame = -1;
             _navigationLockCurrent = NowFocusNavigationLock.None;
             _navigationLockCurrentFocusRevision = 0;
             _navigationLockPrevious = NowFocusNavigationLock.None;
             _navigationLockPreviousFocusRevision = 0;
-            _explicitFocusRequestId = 0;
-            _explicitFocusRequestHostId = 0;
-            _pendingCancelOwnerId = 0;
+            _explicitFocusRequestId = default;
+            _explicitFocusRequestHostId = default;
+            _pendingCancelOwnerId = default;
             _preserveInputClaimsOnNextSwap = false;
             _retainFocusCurrent = false;
             _retainFocusPrevious = false;

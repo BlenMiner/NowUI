@@ -604,33 +604,27 @@ public class NowMarkdownTests
         var rect = new NowRect(0, 0, 400f, 60f);
         var style = NowMarkdownStyle.Default;
 
+        NowMarkdownResult Frame(NowInputSnapshot snapshot)
+        {
+            _provider.snapshot = snapshot;
+
+            using (NowInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+                return document.Draw(rect);
+        }
+
         float firstWordWidth = _font.MeasureText("two", style.fontSize).x;
         float spaceWidth = _font.MeasureText(" ", style.fontSize).x;
         Vector2 overFirstWord = new Vector2(3f, 8f);
         Vector2 overSecondWord = new Vector2(firstWordWidth + spaceWidth + 3f, 8f);
 
-        _provider.snapshot = new NowInputSnapshot(overSecondWord, false, false, false);
+        var hover = Frame(new NowInputSnapshot(overSecondWord, false, false, false));
+        Assert.AreEqual("https://example.com/multi", hover.hoveredLink,
+            "hovering any word of a multi-word link must report the link");
 
-        using (NowInput.Begin(_provider, Surface))
-        using (_drawList.Begin(Surface))
-        {
-            var hover = document.Draw(rect);
-            Assert.AreEqual("https://example.com/multi", hover.hoveredLink,
-                "hovering any word of a multi-word link must report the link");
-        }
-
-        _provider.snapshot = new NowInputSnapshot(overFirstWord, true, true, false);
-
-        using (NowInput.Begin(_provider, Surface))
-        using (_drawList.Begin(Surface))
-            document.Draw(rect);
-
-        _provider.snapshot = new NowInputSnapshot(overSecondWord, false, false, true);
-        string clicked;
-
-        using (NowInput.Begin(_provider, Surface))
-        using (_drawList.Begin(Surface))
-            clicked = document.Draw(rect).clickedLink;
+        Frame(new NowInputSnapshot(overFirstWord, true, true, false));
+        string clicked = Frame(
+            new NowInputSnapshot(overSecondWord, false, false, true)).clickedLink;
 
         Assert.AreEqual("https://example.com/multi", clicked,
             "press on one word and release on another must still click the link");
@@ -941,17 +935,17 @@ public class NowMarkdownTests
             float buttonSize = NowMarkdownStyle.Default.fontSize;
             Vector2 inside = new Vector2(400f - 6f - buttonSize * 1.8f, 6f + buttonSize * 0.75f);
 
-            _provider.snapshot = new NowInputSnapshot(inside, true, true, false);
+            void Frame(NowInputSnapshot snapshot)
+            {
+                _provider.snapshot = snapshot;
 
-            using (NowInput.Begin(_provider, Surface))
-            using (_drawList.Begin(Surface))
-                document.Draw(rect);
+                using (NowInput.Begin(_provider, Surface))
+                using (_drawList.Begin(Surface))
+                    document.Draw(rect);
+            }
 
-            _provider.snapshot = new NowInputSnapshot(inside, false, false, true);
-
-            using (NowInput.Begin(_provider, Surface))
-            using (_drawList.Begin(Surface))
-                document.Draw(rect);
+            Frame(new NowInputSnapshot(inside, true, true, false));
+            Frame(new NowInputSnapshot(inside, false, false, true));
 
             Assert.AreEqual("int x = 1;", copied);
         }
@@ -973,19 +967,19 @@ public class NowMarkdownTests
             var document = NowMarkdownDocument.Parse("[![badge](https://example.com/badge.png)](https://example.com/dest)");
             var rect = new NowRect(0, 0, 400f, 100f);
             Vector2 inside = new Vector2(10f, 10f);
-            string clicked = null;
 
-            _provider.snapshot = new NowInputSnapshot(inside, true, true, false);
+            NowMarkdownResult Frame(NowInputSnapshot snapshot)
+            {
+                _provider.snapshot = snapshot;
 
-            using (NowInput.Begin(_provider, Surface))
-            using (_drawList.Begin(Surface))
-                document.Draw(rect);
+                using (NowInput.Begin(_provider, Surface))
+                using (_drawList.Begin(Surface))
+                    return document.Draw(rect);
+            }
 
-            _provider.snapshot = new NowInputSnapshot(inside, false, false, true);
-
-            using (NowInput.Begin(_provider, Surface))
-            using (_drawList.Begin(Surface))
-                clicked = document.Draw(rect).clickedLink;
+            Frame(new NowInputSnapshot(inside, true, true, false));
+            string clicked = Frame(
+                new NowInputSnapshot(inside, false, false, true)).clickedLink;
 
             Assert.AreEqual("https://example.com/dest", clicked);
         }
@@ -1072,19 +1066,19 @@ public class NowMarkdownTests
         var document = NowMarkdownDocument.Parse("[click me](https://example.com/target)");
         var rect = new NowRect(0, 0, 400f, 60f);
         Vector2 inside = new Vector2(8f, 8f);
-        string clicked = null;
 
-        _provider.snapshot = new NowInputSnapshot(inside, true, true, false);
+        NowMarkdownResult Frame(NowInputSnapshot snapshot)
+        {
+            _provider.snapshot = snapshot;
 
-        using (NowInput.Begin(_provider, Surface))
-        using (_drawList.Begin(Surface))
-            document.Draw(rect);
+            using (NowInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+                return document.Draw(rect);
+        }
 
-        _provider.snapshot = new NowInputSnapshot(inside, false, false, true);
-
-        using (NowInput.Begin(_provider, Surface))
-        using (_drawList.Begin(Surface))
-            clicked = document.Draw(rect).clickedLink;
+        Frame(new NowInputSnapshot(inside, true, true, false));
+        string clicked = Frame(
+            new NowInputSnapshot(inside, false, false, true)).clickedLink;
 
         Assert.AreEqual("https://example.com/target", clicked);
     }

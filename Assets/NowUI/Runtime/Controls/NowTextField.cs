@@ -376,7 +376,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowTextField
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
         string _placeholder;
         NowFocusNavigation _navigation;
@@ -410,7 +410,7 @@ namespace NowUI
         const int SpinNavRepeatSeed = 0x4e54460c;
 
         static TouchScreenKeyboard s_touchKeyboard;
-        static int s_touchKeyboardId;
+        static NowResolvedId s_touchKeyboardId;
 
         struct NumberEditState
         {
@@ -436,7 +436,7 @@ namespace NowUI
             public string text;
         }
 
-        internal NowTextField(NowId id, int site)
+        internal NowTextField(NowControlIdentity id, int site)
         {
             _id = id;
             _site = site;
@@ -457,7 +457,7 @@ namespace NowUI
             _appearance = default;
         }
 
-        internal NowTextField(NowRect rect, NowId id, int site) : this(id, site)
+        internal NowTextField(NowRect rect, NowControlIdentity id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -570,6 +570,8 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowTextField SetId(NowId id) { _id = id; return this; }
 
+        public NowTextField SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>
         /// Selects the whole text when focus arrives without a click — the
         /// convention for dialog fields and inline rename prompts. A click
@@ -586,14 +588,14 @@ namespace NowUI
         /// </summary>
         public NowTextFieldResult Draw(ref float value)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             return DrawFloat(ref value, id, _numberFormat ?? "G7");
         }
 
         /// <summary>Numeric text field helper with a one-off format override.</summary>
         public NowTextFieldResult Draw(ref float value, string format)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             return DrawFloat(ref value, id, string.IsNullOrEmpty(format) ? "G7" : format);
         }
 
@@ -603,7 +605,7 @@ namespace NowUI
         /// </summary>
         public NowTextFieldResult Draw(ref int value)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             return DrawInt(ref value, id);
         }
 
@@ -613,7 +615,7 @@ namespace NowUI
         /// </summary>
         public NowTextFieldResult Draw(ref double value)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             return DrawDouble(ref value, id, _numberFormat ?? "G15");
         }
 
@@ -622,7 +624,7 @@ namespace NowUI
         /// </summary>
         public NowTextFieldResult Draw(ref long value)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             return DrawLong(ref value, id);
         }
 
@@ -633,18 +635,18 @@ namespace NowUI
         /// </summary>
         public NowTextFieldResult Draw(ref string text)
         {
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             return DrawText(ref text, id, out _);
         }
 
-        NowTextFieldResult DrawFloat(ref float value, int id, string format)
+        NowTextFieldResult DrawFloat(ref float value, NowResolvedId id, string format)
         {
             float previous = value;
 
             if (_hasNumberRange)
                 value = Mathf.Clamp(value, _numberMin, _numberMax);
 
-            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.CombineId(id, NumberStateSeed));
+            ref var numberState = ref NowControlState.Get<NumberEditState>(id.Child(NumberStateSeed));
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatFloat(ref numberState, value, format);
@@ -689,14 +691,14 @@ namespace NowUI
             return result.WithChanged(!Mathf.Approximately(previous, value));
         }
 
-        NowTextFieldResult DrawInt(ref int value, int id)
+        NowTextFieldResult DrawInt(ref int value, NowResolvedId id)
         {
             int previous = value;
 
             if (_hasNumberRange)
                 value = Mathf.Clamp(value, Mathf.CeilToInt(_numberMin), Mathf.FloorToInt(_numberMax));
 
-            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.CombineId(id, NumberStateSeed));
+            ref var numberState = ref NowControlState.Get<NumberEditState>(id.Child(NumberStateSeed));
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatLong(ref numberState, value);
@@ -741,14 +743,14 @@ namespace NowUI
             return result.WithChanged(previous != value);
         }
 
-        NowTextFieldResult DrawDouble(ref double value, int id, string format)
+        NowTextFieldResult DrawDouble(ref double value, NowResolvedId id, string format)
         {
             double previous = value;
 
             if (_hasNumberRange)
                 value = ClampDouble(value, _numberMin, _numberMax);
 
-            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.CombineId(id, NumberStateSeed));
+            ref var numberState = ref NowControlState.Get<NumberEditState>(id.Child(NumberStateSeed));
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatDouble(ref numberState, value, format);
@@ -793,14 +795,14 @@ namespace NowUI
             return result.WithChanged(previous != value);
         }
 
-        NowTextFieldResult DrawLong(ref long value, int id)
+        NowTextFieldResult DrawLong(ref long value, NowResolvedId id)
         {
             long previous = value;
 
             if (_hasNumberRange)
                 value = ClampLong(value, _numberMin, _numberMax);
 
-            ref var numberState = ref NowControlState.Get<NumberEditState>(NowInput.CombineId(id, NumberStateSeed));
+            ref var numberState = ref NowControlState.Get<NumberEditState>(id.Child(NumberStateSeed));
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatLong(ref numberState, value);
@@ -912,7 +914,7 @@ namespace NowUI
             return state.formatted;
         }
 
-        NowTextFieldResult DrawText(ref string text, int id, out bool reverted)
+        NowTextFieldResult DrawText(ref string text, NowResolvedId id, out bool reverted)
         {
             reverted = false;
             bool submitted = false;
@@ -950,8 +952,8 @@ namespace NowUI
                 float half = rect.height * 0.5f;
                 spinnerUpRect = new NowRect(rect.xMax - buttonWidth - 1f, rect.y + 1f, buttonWidth, half - 1f);
                 spinnerDownRect = new NowRect(rect.xMax - buttonWidth - 1f, rect.y + half, buttonWidth, half - 1f);
-                spinnerUp = NowInput.Interact(NowInput.CombineId(id, SpinnerUpSeed), spinnerUpRect);
-                spinnerDown = NowInput.Interact(NowInput.CombineId(id, SpinnerDownSeed), spinnerDownRect);
+                spinnerUp = NowInput.Interact(id.Child(SpinnerUpSeed), spinnerUpRect);
+                spinnerDown = NowInput.Interact(id.Child(SpinnerDownSeed), spinnerDownRect);
             }
 
             var interaction = NowControls.Interact(id, rect, _navigation,
@@ -959,11 +961,11 @@ namespace NowUI
 
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
-            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(NowInput.CombineId(id, SelectionGestureSeed));
+            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(id.Child(SelectionGestureSeed));
 
             // Focus gained without a click (tab/gamepad/programmatic): caret to end.
             ref byte hadFocus = ref NowControlState.Get<byte>(id, "hadfocus");
-            ref var revert = ref NowControlState.Get<RevertState>(NowInput.CombineId(id, RevertSeed));
+            ref var revert = ref NowControlState.Get<RevertState>(id.Child(RevertSeed));
 
             if (focused && hadFocus == 0)
             {
@@ -1085,7 +1087,7 @@ namespace NowUI
                         }
                     }
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, BackspaceRepeatSeed), frame.backspaceHeld))
+                    if (NowControlState.Repeat(id.Child(BackspaceRepeatSeed), frame.backspaceHeld))
                     {
                         undo.Push(text, in state, typing: true);
 
@@ -1095,13 +1097,13 @@ namespace NowUI
                             NowTextEdit.Backspace(ref text, ref state, frame.wordModifier);
                     }
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, DeleteRepeatSeed), frame.deleteHeld))
+                    if (NowControlState.Repeat(id.Child(DeleteRepeatSeed), frame.deleteHeld))
                     {
                         undo.Push(text, in state, typing: true);
                         NowTextEdit.Delete(ref text, ref state, frame.wordModifier);
                     }
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, LeftRepeatSeed), frame.leftHeld))
+                    if (NowControlState.Repeat(id.Child(LeftRepeatSeed), frame.leftHeld))
                     {
                         if (frame.lineModifier)
                             NowTextEdit.MoveHome(ref state, frame.shift);
@@ -1109,7 +1111,7 @@ namespace NowUI
                             NowTextEdit.MoveCaret(ref state, text, -1, frame.shift, frame.wordModifier);
                     }
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, RightRepeatSeed), frame.rightHeld))
+                    if (NowControlState.Repeat(id.Child(RightRepeatSeed), frame.rightHeld))
                     {
                         if (frame.lineModifier)
                             NowTextEdit.MoveEnd(ref state, text, frame.shift);
@@ -1148,8 +1150,8 @@ namespace NowUI
                 NowControlState.RequestRepaint();
             }
 
-            ref float blinkAnchor = ref NowControlState.Get<float>(NowInput.CombineId(id, BlinkSeed));
-            ref int lastCaret = ref NowControlState.Get<int>(NowInput.CombineId(id, LastCaretSeed));
+            ref float blinkAnchor = ref NowControlState.Get<float>(id.Child(BlinkSeed));
+            ref int lastCaret = ref NowControlState.Get<int>(id.Child(LastCaretSeed));
 
             if (state.caret != lastCaret || text != original || interaction.pressed)
             {
@@ -1234,17 +1236,17 @@ namespace NowUI
             {
                 int ticks = 0;
 
-                if (NowControlState.Repeat(NowInput.CombineId(id, SpinUpRepeatSeed), spinnerUp.held, 0.35f, 0.06f))
+                if (NowControlState.Repeat(id.Child(SpinUpRepeatSeed), spinnerUp.held, 0.35f, 0.06f))
                     ++ticks;
 
-                if (NowControlState.Repeat(NowInput.CombineId(id, SpinDownRepeatSeed), spinnerDown.held, 0.35f, 0.06f))
+                if (NowControlState.Repeat(id.Child(SpinDownRepeatSeed), spinnerDown.held, 0.35f, 0.06f))
                     --ticks;
 
                 if (focused && !NowInput.isPassive)
                 {
                     float navY = NowInput.current.navigation.y;
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, SpinNavRepeatSeed), Mathf.Abs(navY) > 0.55f, 0.35f, 0.08f))
+                    if (NowControlState.Repeat(id.Child(SpinNavRepeatSeed), Mathf.Abs(navY) > 0.55f, 0.35f, 0.08f))
                         ticks += navY > 0f ? 1 : -1;
                 }
 
@@ -1257,7 +1259,7 @@ namespace NowUI
             return new NowTextFieldResult(rect, !reverted && text != original, submitted);
         }
 
-        bool SyncTouchKeyboard(int id, ref string text, ref NowTextEditState state)
+        bool SyncTouchKeyboard(NowResolvedId id, ref string text, ref NowTextEditState state)
         {
             if (!TouchScreenKeyboard.isSupported)
                 return false;
@@ -1299,7 +1301,7 @@ namespace NowUI
                 s_touchKeyboard.active = false;
 
             s_touchKeyboard = null;
-            s_touchKeyboardId = 0;
+            s_touchKeyboardId = NowResolvedId.None;
         }
 
         /// <summary>

@@ -134,6 +134,8 @@ sample their targets. Do not generate a fresh id every frame. When an item with
 a dynamic explicit id leaves, call `NowSdf.Release(id)` under the same host and
 `NowControls.IdScope`; rebuild or discard any retained batch that sampled it
 first. `NowSdf.Reset()` remains the whole-extension cleanup operation.
+If the scene identity is already a `NowResolvedId`, pass it directly to both
+`NowSdf.Scene(...)` and `NowSdf.Release(...)`.
 Builders backed by a released cache are invalid and throw
 `ObjectDisposedException` from `Measure()`, `Draw()`, or `BeginMask()`; create a
 fresh scene builder before drawing that id again.

@@ -23,6 +23,9 @@ installed NowUI revision. AI coding agents should begin with the
   Unity ramps, spread modes, styling, batching, and warmup behavior.
 - [Public API](API.md): supported runtime/extension surfaces, compatibility
   rules, and allocation expectations for public APIs.
+- [Identity](Identity.md): authored versus resolved IDs, owner/domain
+  isolation, keyed collections, composite hit regions, context actions, and
+  migration from raw integer composition.
 - [Lines](Lines.md): anti-aliased straight lines, cubic Beziers, dashed
   strokes, arrow heads, clipping, and performance notes.
 - [Shapes](Shapes.md): filled or outlined circles, ellipses, triangles, and

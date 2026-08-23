@@ -92,7 +92,7 @@ public class NowTextSelectionTests
         return RunFrame(forceFocusFrame);
     }
 
-    NowTextSelectionResult RightClickFrame(Vector2 pointer)
+    NowTextSelectionResult RightClickFrame(Vector2 pointer, NowRect exclusion = default)
     {
         _keyboard.frame = default;
         NowTextInput.Invalidate();
@@ -101,10 +101,12 @@ public class NowTextSelectionTests
             NowPointerButtons.Secondary,
             NowPointerButtons.Secondary,
             NowPointerButtons.None);
-        return RunFrame(false);
+        return RunFrame(false, exclusion);
     }
 
-    NowTextSelectionResult RunFrame(bool forceFocusFrame)
+    NowTextSelectionResult RunFrame(
+        bool forceFocusFrame,
+        NowRect exclusion = default)
     {
         NowTextSelectionResult result;
 
@@ -114,8 +116,16 @@ public class NowTextSelectionTests
             if (forceFocusFrame)
                 NowFocus.ForceNewFrame();
 
+            NowResolvedId id = NowControls.GetControlId(new NowId(42));
             result = NowTextSelection.Draw(
-                42, _text, _lines, _font, Size, NowFontStyle.Regular, new Vector4(0f, 0f, 1f, 0.3f));
+                id,
+                _text,
+                _lines,
+                _font,
+                Size,
+                NowFontStyle.Regular,
+                new Vector4(0f, 0f, 1f, 0.3f),
+                exclusion);
         }
 
         return result;
@@ -319,12 +329,30 @@ public class NowTextSelectionTests
         Frame(toX, down: true, pressed: false, released: false);
         Frame(toX, down: false, pressed: false, released: true);
 
-        var result = RightClickFrame(new Vector2(XAt("hello wo"), 10f));
+        var pointer = new Vector2(XAt("hello wo"), 10f);
+        var result = RightClickFrame(pointer);
 
-        Assert.IsTrue(result.rightClicked, "secondary press inside the region must report");
+        Assert.IsTrue(result.contextTrigger.triggered,
+            "secondary press inside the region must report a source-aware trigger");
+        Assert.AreEqual(NowContextTriggerSource.SecondaryPointer, result.contextTrigger.source);
+        Assert.AreEqual(pointer, result.contextTrigger.screenPointerPosition);
         Assert.IsTrue(result.hasSelection, "right-clicking must not destroy the selection");
 
         Frame(toX, down: false, pressed: false, released: false, new NowTextInputFrame { copyPressed = true });
         Assert.AreEqual("world", _copied, "the selection survives the right-click");
+    }
+
+    [Test]
+    public void ExcludedChildDoesNotTriggerTheParentSelectionContextAction()
+    {
+        var exclusion = new NowRect(40f, 0f, 80f, 20f);
+        var excluded = RightClickFrame(exclusion.center, exclusion);
+
+        Assert.IsFalse(
+            excluded.contextTrigger.triggered,
+            "A secondary press reserved for an embedded child must not trigger the parent menu.");
+
+        var parentOnly = RightClickFrame(new Vector2(180f, 10f), exclusion);
+        Assert.IsTrue(parentOnly.contextTrigger.triggered);
     }
 }

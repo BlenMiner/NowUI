@@ -41,8 +41,9 @@ public class NowIMGUIKeyInputRoutingTests
     Action _previousRepaintRequested;
     Action<NowIMGUIInputProvider> _previousHostRepaintRequested;
     Action<NowIMGUIInputProvider, float> _previousHostRepaintAfterRequested;
+    NowResolvedId _fieldId;
 
-    static int FieldId => NowInput.GetId("native-bind");
+    NowResolvedId FieldId => _fieldId;
 
     [SetUp]
     public void SetUp()
@@ -72,6 +73,7 @@ public class NowIMGUIKeyInputRoutingTests
 
         _provider = new NowIMGUIInputProvider(HostControlId, new object());
         _drawList = new NowDrawList();
+        _fieldId = ResolveId();
     }
 
     [TearDown]
@@ -187,7 +189,14 @@ public class NowIMGUIKeyInputRoutingTests
     {
         Assert.IsFalse(Draw(ref value, PointerEvent(EventType.MouseDown), EventType.MouseDown));
         Assert.IsFalse(Draw(ref value, PointerEvent(EventType.MouseUp), EventType.MouseUp));
-        Assert.AreEqual(FieldId, NowFocus.focusedId);
+        Assert.AreEqual(FieldId, NowFocus.focusedResolvedId);
+    }
+
+    NowResolvedId ResolveId()
+    {
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(SurfaceSize))
+            return NowControls.GetControlId("native-bind");
     }
 
     bool Draw(ref Key value, Event inputEvent, EventType routedType)

@@ -41,6 +41,8 @@ public class NowTextAreaTests
     FakePointer _pointer;
     FakeKeyboard _keyboard;
     NowDrawList _drawList;
+    NowResolvedId _id;
+    NowResolvedId _areaStateId;
 
     [OneTimeSetUp]
     public void LoadFont()
@@ -63,6 +65,8 @@ public class NowTextAreaTests
         _keyboard = new FakeKeyboard();
         NowTextInput.source = _keyboard;
         _drawList = new NowDrawList();
+        _id = ResolveId("notes");
+        _areaStateId = _id.InDomain(NowIdDomain.State).Child("area");
     }
 
     [TearDown]
@@ -104,9 +108,16 @@ public class NowTextAreaTests
             false, false, false,
             true, true, false, 1, 1f);
     }
-    static int Id => NowInput.GetId("notes");
+    NowResolvedId Id => _id;
 
-    static int AreaStateId => NowInput.GetId(Id, "area");
+    NowResolvedId AreaStateId => _areaStateId;
+
+    NowResolvedId ResolveId(string id)
+    {
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            return NowControls.GetControlId(id);
+    }
 
     void Focus()
     {
@@ -445,11 +456,11 @@ public class NowTextAreaTests
         Frame(ref text, new NowTextInputFrame { enterHeld = true });
 
         Assert.AreEqual("ab\n", text);
-        Assert.AreEqual(Id, NowFocus.focusedId, "Enter must not blur a text area.");
+        Assert.AreEqual(Id, NowFocus.focusedResolvedId, "Enter must not blur a text area.");
 
         _pointer.snapshot = CancelSnapshot();
         Frame(ref text, new NowTextInputFrame { escapePressed = true }, advanceFocusFrame: true);
-        Assert.AreEqual(0, NowFocus.focusedId, "Escape blurs.");
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId, "Escape blurs.");
     }
 
     [Test]
@@ -559,7 +570,7 @@ public class NowTextAreaTests
         Assert.IsFalse(changed, "Composition must not edit the text.");
         Assert.AreEqual("ab", text);
         Assert.AreEqual(2, State().caret);
-        Assert.AreEqual(Id, NowFocus.focusedId, "Escape belongs to the IME while composing.");
+        Assert.AreEqual(Id, NowFocus.focusedResolvedId, "Escape belongs to the IME while composing.");
 
         Frame(ref text, new NowTextInputFrame { characters = "か" });
         Assert.AreEqual("abか", text, "Committed characters insert normally.");

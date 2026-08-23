@@ -29,14 +29,14 @@ NowCode.Editor(rect, NowMarkupCodeLanguage.instance).Draw(ref markupText);
 
 Builder options: `SetHeight` / `SetWidth` (stretch width by default in
 layout flow), `SetFontSize` (default 14), `SetLineNumbers(false)`,
-`SetStatusBar(false)`.
+`SetStatusBar(false)`, and authored or resolved `SetId(...)` overloads.
 
 Each explicitly identified editor retains its parsed line table and undo
 history between draws. Retention is bounded to the 128 most recently drawn
 editors by default; tune `NowCodeEditor.cacheCapacity` for unusually large
 editor grids. When a dynamic editor is removed permanently, call
 `NowCodeEditor.ReleaseCache(id)` from the same host/id scope (or pass a fully
-resolved `NowId`) to release it immediately. `ResetCaches()` releases every
+resolved `NowResolvedId`) to release it immediately. `ResetCaches()` releases every
 editor cache.
 
 ## Example

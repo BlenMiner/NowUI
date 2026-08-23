@@ -16,7 +16,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowTimePicker
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
 
         const int TimePartsSeed = 0x4e545054;
@@ -40,12 +40,13 @@ namespace NowUI
         sealed class PopupState
         {
             public NowThemeAsset themeAsset;
-            public int id;
-            public int dialId;
-            public int hourHeaderId;
-            public int minuteHeaderId;
-            public int amId;
-            public int pmId;
+            public NowResolvedId id;
+            public NowResolvedId dialId;
+            public NowResolvedId hourHeaderId;
+            public NowResolvedId minuteHeaderId;
+            public NowResolvedId amId;
+            public NowResolvedId pmId;
+            public int callbackState;
             public bool twentyFourHour;
             public int minuteStep;
             public int openedInputPass;
@@ -60,9 +61,11 @@ namespace NowUI
             public string text = string.Empty;
         }
 
-        static readonly Dictionary<int, PopupState> _popupStates = new Dictionary<int, PopupState>(4);
+        static readonly Dictionary<NowResolvedId, PopupState> _popupStates = new Dictionary<NowResolvedId, PopupState>(4);
+        static readonly Dictionary<int, PopupState> _popupStatesByCallback = new Dictionary<int, PopupState>(4);
+        static int s_nextPopupState = 1;
 
-        static readonly Dictionary<int, FieldLabel> _fieldLabels = new Dictionary<int, FieldLabel>(8);
+        static readonly Dictionary<NowResolvedId, FieldLabel> _fieldLabels = new Dictionary<NowResolvedId, FieldLabel>(8);
 
         static string[] s_outerHourLabels;
 
@@ -72,7 +75,7 @@ namespace NowUI
 
         static string[] s_twoDigitLabels;
 
-        internal NowTimePicker(NowId id, int site)
+        internal NowTimePicker(NowControlIdentity id, int site)
         {
             _id = id;
             _site = site;
@@ -85,7 +88,7 @@ namespace NowUI
             _minuteStep = 1;
         }
 
-        internal NowTimePicker(NowRect rect, NowId id, int site) : this(id, site)
+        internal NowTimePicker(NowRect rect, NowControlIdentity id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -99,6 +102,8 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowTimePicker SetId(NowId id) { _id = id; return this; }
+
+        public NowTimePicker SetId(NowResolvedId id) { _id = id; return this; }
 
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowTimePicker SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
@@ -128,9 +133,9 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
 
-            ref var parts = ref NowControlState.Get<TimeParts>(NowInput.CombineId(id, TimePartsSeed));
+            ref var parts = ref NowControlState.Get<TimeParts>(id.Child(TimePartsSeed));
             ref bool open = ref NowControlState.Get<bool>(id);
             bool changed = false;
 
@@ -168,7 +173,7 @@ namespace NowUI
                     parts.hour = value.Hours;
                     parts.minute = value.Minutes;
                     parts.initialized = 1;
-                    NowControlState.Get<int>(NowInput.CombineId(id, ClockModeSeed)) = 0;
+                    NowControlState.Get<int>(id.Child(ClockModeSeed)) = 0;
                     GetState(id).openedInputPass = NowInput.current.inputPass;
                 }
             }
@@ -184,7 +189,7 @@ namespace NowUI
             return changed;
         }
 
-        static string FieldText(int id, TimeSpan value, bool twentyFourHour)
+        static string FieldText(NowResolvedId id, TimeSpan value, bool twentyFourHour)
         {
             if (!_fieldLabels.TryGetValue(id, out var label))
             {
@@ -222,7 +227,7 @@ namespace NowUI
             return label.text;
         }
 
-        void DeferPopup(NowThemeAsset theme, int id, NowRect field)
+        void DeferPopup(NowThemeAsset theme, NowResolvedId id, NowRect field)
         {
             var styles = theme.controlStyles;
             float padding = styles.popupPadding + 4f;
@@ -238,26 +243,32 @@ namespace NowUI
 
             state.themeAsset = theme;
             state.id = id;
-            state.dialId = NowInput.GetId(id, "dial");
-            state.hourHeaderId = NowInput.GetId(id, "hour");
-            state.minuteHeaderId = NowInput.GetId(id, "minute");
-            state.amId = NowInput.GetId(id, "am");
-            state.pmId = NowInput.GetId(id, "pm");
+            state.dialId = id.Child("dial");
+            state.hourHeaderId = id.Child("hour");
+            state.minuteHeaderId = id.Child("minute");
+            state.amId = id.Child("am");
+            state.pmId = id.Child("pm");
             state.twentyFourHour = _twentyFourHour;
             state.minuteStep = _minuteStep;
             state.field = Now.TransformScreenRect(field);
             state.popupRect = popupRect;
 
             NowOverlay.BlockAllSurfaces(id);
-            NowOverlay.Defer(popupRect, id, DrawPopup);
+            NowOverlay.Defer(popupRect, id, state.callbackState, DrawPopup);
         }
 
-        static PopupState GetState(int id)
+        static PopupState GetState(NowResolvedId id)
         {
             if (!_popupStates.TryGetValue(id, out var state))
             {
-                state = new PopupState();
+                int callbackState = s_nextPopupState++;
+
+                if (s_nextPopupState == 0)
+                    s_nextPopupState = 1;
+
+                state = new PopupState { callbackState = callbackState };
                 _popupStates[id] = state;
+                _popupStatesByCallback[callbackState] = state;
             }
 
             return state;
@@ -265,7 +276,7 @@ namespace NowUI
 
         static void DrawPopup(int stateId)
         {
-            if (!_popupStates.TryGetValue(stateId, out var state) || state.themeAsset == null)
+            if (!_popupStatesByCallback.TryGetValue(stateId, out var state) || state.themeAsset == null)
                 return;
 
             var theme = state.themeAsset;
@@ -276,8 +287,8 @@ namespace NowUI
             renderer.DrawPopupBackground(theme, popupRect, menu: false);
             EnsureStaticLabels();
 
-            ref var parts = ref NowControlState.Get<TimeParts>(NowInput.CombineId(state.id, TimePartsSeed));
-            ref int mode = ref NowControlState.Get<int>(NowInput.CombineId(state.id, ClockModeSeed));
+            ref var parts = ref NowControlState.Get<TimeParts>(state.id.Child(TimePartsSeed));
+            ref int mode = ref NowControlState.Get<int>(state.id.Child(ClockModeSeed));
 
             UpdateKeyboard(state, ref parts, ref mode);
 
@@ -311,10 +322,10 @@ namespace NowUI
                 var pmRect = new NowRect(inner.x + chipWidth + 8f, chipY, chipWidth, styles.chipHeight);
                 bool pm = parts.hour >= 12;
 
-                if (new NowChip(amRect, "AM", 0).SetId(NowId.Resolved(state.amId)).SetSelected(!pm).Draw() && pm)
+                if (new NowChip(amRect, "AM", 0).SetId(state.amId).SetSelected(!pm).Draw() && pm)
                     parts.hour -= 12;
 
-                if (new NowChip(pmRect, "PM", 0).SetId(NowId.Resolved(state.pmId)).SetSelected(pm).Draw() && !pm)
+                if (new NowChip(pmRect, "PM", 0).SetId(state.pmId).SetSelected(pm).Draw() && !pm)
                     parts.hour += 12;
             }
 
@@ -602,6 +613,8 @@ namespace NowUI
         static void ResetForRuntimeLoad()
         {
             _popupStates.Clear();
+            _popupStatesByCallback.Clear();
+            s_nextPopupState = 1;
             _fieldLabels.Clear();
             s_outerHourLabels = null;
             s_innerHourLabels = null;

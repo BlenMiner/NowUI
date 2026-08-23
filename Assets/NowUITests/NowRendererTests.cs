@@ -51,7 +51,7 @@ public class NowRendererTests
                 Color.clear,
                 1f,
                 repaint: false);
-            int firstId = NowControls.GetControlId("shared-panel-control");
+            NowResolvedId firstId = NowControls.GetControlId("shared-panel-control");
             first.Dispose();
 
             second = NowGUI.AutoForEvent(
@@ -60,7 +60,7 @@ public class NowRendererTests
                 Color.clear,
                 1f,
                 repaint: false);
-            int secondId = NowControls.GetControlId("shared-panel-control");
+            NowResolvedId secondId = NowControls.GetControlId("shared-panel-control");
             second.Dispose();
 
             Assert.AreNotEqual(firstId, secondId,
@@ -93,7 +93,7 @@ public class NowRendererTests
                 Color.clear,
                 1f,
                 repaint: false);
-            int firstId = NowControls.GetControlId("shared-window-control");
+            NowResolvedId firstId = NowControls.GetControlId("shared-window-control");
             first.Dispose();
 
             second = NowGUI.AutoForEvent(
@@ -103,7 +103,7 @@ public class NowRendererTests
                 Color.clear,
                 1f,
                 repaint: false);
-            int secondId = NowControls.GetControlId("shared-window-control");
+            NowResolvedId secondId = NowControls.GetControlId("shared-window-control");
             second.Dispose();
 
             Assert.AreNotEqual(
@@ -135,7 +135,8 @@ public class NowRendererTests
                 Color.clear,
                 1f,
                 repaint: false);
-            NowOverlay.BlockAllSurfaces(3031);
+            NowOverlay.BlockAllSurfaces(
+                NowControls.GetControlId(new NowId(3031)));
             panel.Dispose();
 
             Assert.AreEqual(1, NowOverlay.registrationOwnerCount);
@@ -1215,11 +1216,14 @@ public class NowRendererTests
 
         try
         {
-            NowOverlay.DeferPassive(1, _ =>
+            NowResolvedId resetOverlayId = NowResolvedId.CreateOwnerRoot(0x52455345544F5645UL).Child(1);
+            NowResolvedId freshOverlayId = resetOverlayId.Child(2);
+
+            NowOverlay.DeferPassive(resetOverlayId, 1, _ =>
             {
                 ++resettingCallbackCount;
                 NowOverlay.Reset();
-                NowOverlay.DeferPassive(2, __ => ++freshCallbackCount);
+                NowOverlay.DeferPassive(freshOverlayId, 2, __ => ++freshCallbackCount);
             });
 
             Assert.DoesNotThrow(() => NowOverlay.Flush());
@@ -1299,6 +1303,30 @@ public class NowRendererTests
             Assert.IsTrue(drawList.hasGeometry);
             Assert.AreEqual(1, drawList.batchCount);
             Assert.AreEqual(4, drawList.mesh.vertexCount);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void ModifierBuilderPreservesAnAlreadyResolvedIdentity()
+    {
+        var drawList = new NowDrawList();
+        NowResolvedId resolved = NowResolvedId.CreateOwnerRoot(0xEFFEC7UL).Child("modifier");
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128, 64)))
+            using (var modifier = NowEffects
+                .Modifier(NowDeformers.Wave(0f, 0f, 16f))
+                .SetId(resolved)
+                .Begin())
+            {
+                Assert.AreEqual(resolved.InDomain(NowIdDomain.Effect), modifier.id,
+                    "A resolved builder id must enter the effect domain directly, without ambient re-resolution.");
+            }
         }
         finally
         {
@@ -1779,7 +1807,7 @@ public class NowRendererTests
             }
 
             Assert.IsFalse(clicked);
-            Assert.AreEqual(0, NowInput.activeId);
+            Assert.AreEqual(NowResolvedId.None, NowInput.activeId);
         }
         finally
         {
@@ -2234,8 +2262,8 @@ public class NowRendererTests
             using (NowControls.IdScope("unrelated-ambient-b"))
                 second.Rebuild(CanvasUpdate.PreRender);
 
-            Assert.AreNotEqual(0, first.resolvedId);
-            Assert.AreNotEqual(0, second.resolvedId);
+            Assert.IsTrue(first.resolvedId.hasValue);
+            Assert.IsTrue(second.resolvedId.hasValue);
             Assert.AreEqual(first.resolvedId, first.ResolveControlId("shared-host-control"),
                 "The public resolver must reproduce the id used inside the first host's private scope.");
             Assert.AreEqual(first.resolvedId, first.resolvedViaHost,
@@ -2250,9 +2278,6 @@ public class NowRendererTests
             Assert.AreEqual(second.resolvedIntId, second.ResolveControlId(42));
             Assert.AreNotEqual(first.resolvedIntId, second.resolvedIntId,
                 "Integer SetId values must be private to each host just like strings.");
-            Assert.AreEqual(42, first.absoluteIntId);
-            Assert.AreEqual(42, second.absoluteIntId,
-                "NowId.Resolved is the explicit escape hatch for an already-resolved integer.");
         }
         finally
         {
@@ -2264,18 +2289,17 @@ public class NowRendererTests
     [Test]
     public void HostIdRootsCannotAliasSimpleUserIdScopes()
     {
-        int hostRoot = NowControls.AllocateHostScopeId();
-        int hostChild;
-        int userChild;
+        NowResolvedId hostRoot = NowControls.AllocateOwnerScope();
+        NowResolvedId hostChild;
+        NowResolvedId userChild;
 
-        using (NowControls.RestoreIdScope(hostRoot))
-            hostChild = NowControls.GetControlId(new NowId(7), 1);
+        hostChild = hostRoot.Derive(NowIdDomain.Control, 7);
 
         using (NowControls.IdScope(1))
-            userChild = NowControls.GetControlId(new NowId(7), 1);
+            userChild = NowControls.GetControlId(new NowId(7));
 
-        Assert.AreNotEqual(1, hostRoot,
-            "retained hosts must not use raw sequence numbers as public id-scope roots");
+        Assert.IsTrue(hostRoot.hasValue,
+            "retained hosts must own a fully resolved identity root");
         Assert.AreNotEqual(userChild, hostChild,
             "a retained host root must not alias a same-numbered user IdScope");
     }
@@ -2959,20 +2983,17 @@ public class NowRendererTests
 
     sealed class ScopeRecordingGraphic : NowGraphic
     {
-        public int resolvedId;
+        public NowResolvedId resolvedId;
 
-        public int resolvedViaHost;
+        public NowResolvedId resolvedViaHost;
 
-        public int resolvedIntId;
-
-        public int absoluteIntId;
+        public NowResolvedId resolvedIntId;
 
         protected override void DrawNowUI(NowRect rect)
         {
             resolvedId = NowControls.GetControlId("shared-host-control");
             resolvedViaHost = ResolveControlId("shared-host-control");
-            resolvedIntId = NowControls.GetControlId(new NowId(42), 1);
-            absoluteIntId = NowControls.GetControlId(NowId.Resolved(42), 1);
+            resolvedIntId = NowControls.GetControlId(new NowId(42));
             Now.Rectangle(new NowRect(2f, 2f, 12f, 8f)).Draw();
         }
     }

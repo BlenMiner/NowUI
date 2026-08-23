@@ -7,6 +7,15 @@ public class NowFocusHostRegistryTests
     const int FirstHost = 101;
     const int SecondHost = 202;
 
+    static NowResolvedId OwnerRoot(int hostId) =>
+        NowResolvedId.CreateOwnerRoot(unchecked(0x4E6F775549486F73UL + (uint)hostId));
+
+    static NowResolvedId HostId(int hostId) =>
+        OwnerRoot(hostId).InDomain(NowIdDomain.FocusHost);
+
+    static NowResolvedId ControlId(int hostId, int controlId) =>
+        OwnerRoot(hostId).Derive(NowIdDomain.Control, controlId);
+
     [SetUp]
     public void SetUp()
     {
@@ -38,8 +47,8 @@ public class NowFocusHostRegistryTests
 
         Assert.AreEqual(
             NowFocusMoveResult.Seeded,
-            NowFocus.EnterUGUINavigation(FirstHost, Vector2.zero));
-        Assert.AreEqual(11, NowFocus.focusedId);
+            NowFocus.EnterUGUINavigation(HostId(FirstHost), Vector2.zero));
+        Assert.AreEqual(ControlId(FirstHost, 11), NowFocus.focusedResolvedId);
 
         RegisterHost(
             SecondHost,
@@ -48,10 +57,10 @@ public class NowFocusHostRegistryTests
 
         Assert.AreEqual(
             NowFocusMoveResult.Consumed,
-            NowFocus.RouteUGUINavigation(FirstHost, Vector2.right));
-        Assert.AreEqual(11, NowFocus.focusedId);
-        Assert.IsTrue(NowFocus.IsFocusedInHost(FirstHost));
-        Assert.IsFalse(NowFocus.IsFocusedInHost(SecondHost));
+            NowFocus.RouteUGUINavigation(HostId(FirstHost), Vector2.right));
+        Assert.AreEqual(ControlId(FirstHost, 11), NowFocus.focusedResolvedId);
+        Assert.IsTrue(NowFocus.IsFocusedInHost(HostId(FirstHost)));
+        Assert.IsFalse(NowFocus.IsFocusedInHost(HostId(SecondHost)));
     }
 
     [Test]
@@ -64,18 +73,18 @@ public class NowFocusHostRegistryTests
 
         Assert.AreEqual(
             NowFocusMoveResult.Seeded,
-            NowFocus.EnterUGUINavigation(FirstHost, Vector2.zero));
-        Assert.AreEqual(11, NowFocus.focusedId);
+            NowFocus.EnterUGUINavigation(HostId(FirstHost), Vector2.zero));
+        Assert.AreEqual(ControlId(FirstHost, 11), NowFocus.focusedResolvedId);
 
         Assert.AreEqual(
             NowFocusMoveResult.Moved,
-            NowFocus.RouteUGUINavigation(FirstHost, Vector2.right));
-        Assert.AreEqual(12, NowFocus.focusedId);
+            NowFocus.RouteUGUINavigation(HostId(FirstHost), Vector2.right));
+        Assert.AreEqual(ControlId(FirstHost, 12), NowFocus.focusedResolvedId);
 
         Assert.AreEqual(
             NowFocusMoveResult.Boundary,
-            NowFocus.RouteUGUINavigation(FirstHost, Vector2.right));
-        Assert.AreEqual(12, NowFocus.focusedId);
+            NowFocus.RouteUGUINavigation(HostId(FirstHost), Vector2.right));
+        Assert.AreEqual(ControlId(FirstHost, 12), NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -88,34 +97,37 @@ public class NowFocusHostRegistryTests
 
         Assert.AreEqual(
             NowFocusMoveResult.Seeded,
-            NowFocus.EnterUGUINavigation(FirstHost, Vector2.left));
-        Assert.AreEqual(12, NowFocus.focusedId);
+            NowFocus.EnterUGUINavigation(HostId(FirstHost), Vector2.left));
+        Assert.AreEqual(ControlId(FirstHost, 12), NowFocus.focusedResolvedId);
 
         NowFocus.Clear();
 
         Assert.AreEqual(
             NowFocusMoveResult.Seeded,
-            NowFocus.EnterUGUINavigation(FirstHost, Vector2.right));
-        Assert.AreEqual(11, NowFocus.focusedId);
+            NowFocus.EnterUGUINavigation(HostId(FirstHost), Vector2.right));
+        Assert.AreEqual(ControlId(FirstHost, 11), NowFocus.focusedResolvedId);
     }
 
     [Test]
     public void FocusRequestedBeforeFirstDrawAdoptsTheRegisteringHost()
     {
-        const int resolvedControlId = 7001;
+        NowResolvedId resolvedControlId = NowResolvedId.CreateOwnerRoot(0x464F435553544553UL).Child(7001);
         NowFocus.Focus(resolvedControlId);
 
-        Assert.AreEqual(resolvedControlId, NowFocus.focusedId);
-        Assert.IsFalse(NowFocus.IsFocusedInHost(FirstHost));
+        Assert.AreEqual(resolvedControlId, NowFocus.focusedResolvedId);
+        Assert.IsFalse(NowFocus.IsFocusedInHost(HostId(FirstHost)));
 
-        RegisterHost(
-            FirstHost,
-            (resolvedControlId,
+        using (NowFocus.BeginHostRegistration(HostId(FirstHost), null))
+        {
+            NowFocus.Register(
+                resolvedControlId,
                 new NowRect(10f, 10f, 60f, 30f),
-                NowFocusNavigationLock.None));
+                default,
+                NowFocusNavigationLock.None);
+        }
 
-        Assert.AreEqual(resolvedControlId, NowFocus.focusedId);
-        Assert.IsTrue(NowFocus.IsFocusedInHost(FirstHost));
+        Assert.AreEqual(resolvedControlId, NowFocus.focusedResolvedId);
+        Assert.IsTrue(NowFocus.IsFocusedInHost(HostId(FirstHost)));
     }
 
     [Test]
@@ -128,15 +140,15 @@ public class NowFocusHostRegistryTests
             SecondHost,
             (21, new NowRect(10f, 10f, 60f, 30f), NowFocusNavigationLock.None));
 
-        NowFocus.EnterUGUINavigation(FirstHost, Vector2.zero);
-        NowFocus.UnregisterHost(SecondHost);
+        NowFocus.EnterUGUINavigation(HostId(FirstHost), Vector2.zero);
+        NowFocus.UnregisterHost(HostId(SecondHost));
 
-        Assert.AreEqual(11, NowFocus.focusedId);
-        Assert.IsTrue(NowFocus.IsFocusedInHost(FirstHost));
+        Assert.AreEqual(ControlId(FirstHost, 11), NowFocus.focusedResolvedId);
+        Assert.IsTrue(NowFocus.IsFocusedInHost(HostId(FirstHost)));
 
-        NowFocus.UnregisterHost(FirstHost);
+        NowFocus.UnregisterHost(HostId(FirstHost));
 
-        Assert.AreEqual(0, NowFocus.focusedId);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
     }
 
     [Test]
@@ -148,23 +160,24 @@ public class NowFocusHostRegistryTests
         RegisterHost(FirstHost);
 
         NowFocus.Clear();
-        NowFocus.Focus(11);
+        NowResolvedId removedId = ControlId(FirstHost, 11);
+        NowFocus.Focus(removedId);
 
-        Assert.AreEqual(11, NowFocus.focusedId);
-        Assert.IsFalse(NowFocus.IsFocusedInHost(FirstHost));
+        Assert.AreEqual(removedId, NowFocus.focusedResolvedId);
+        Assert.IsFalse(NowFocus.IsFocusedInHost(HostId(FirstHost)));
     }
 
     static void RegisterHost(
         int hostId,
         params (int id, NowRect rect, NowFocusNavigationLock navigationLock)[] controls)
     {
-        using (NowFocus.BeginHostRegistration(hostId, null))
+        using (NowFocus.BeginHostRegistration(HostId(hostId), null))
         {
             for (int i = 0; i < controls.Length; ++i)
             {
                 var control = controls[i];
                 NowFocus.Register(
-                    control.id,
+                    ControlId(hostId, control.id),
                     control.rect,
                     default,
                     control.navigationLock);

@@ -29,14 +29,14 @@ namespace NowUI
         const float HitSlack = 3f;
 
         readonly int _site;
-        NowId _id;
+        NowControlIdentity _id;
         readonly NowRect _rect;
         readonly bool _hasRect;
         NowLayoutOptions _options;
         float _thickness;
         bool _column;
 
-        int ResolveControlId() => NowControls.GetControlId(_id, _site);
+        NowResolvedId ResolveControlId() => _id.Resolve(_site);
 
         internal NowSplitter(NowId id, int site)
         {
@@ -61,6 +61,9 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowSplitter SetId(NowId id) { _id = id; return this; }
 
+        /// <summary>Uses an identity that has already been fully resolved.</summary>
+        public NowSplitter SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Reserved thickness across the split axis in layout flow.</summary>
         public NowSplitter SetThickness(float thickness) { _thickness = thickness; return this; }
 
@@ -70,7 +73,7 @@ namespace NowUI
         public bool Draw(ref float split, float span, float minSize = 0f)
         {
             var theme = NowTheme.themeAsset;
-            int id = ResolveControlId();
+            NowResolvedId id = ResolveControlId();
 
             var options = _options;
 

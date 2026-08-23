@@ -17,7 +17,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowDropdown
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
         readonly IReadOnlyList<string> _options;
         NowFocusNavigation _navigation;
@@ -30,12 +30,12 @@ namespace NowUI
         {
             public NowThemeAsset themeAsset;
             public IReadOnlyList<string> options;
-            public int id;
+            public NowResolvedId id;
             public int selected;
             public int optionCount;
-            public int pendingId;
-            public int itemSeed;
-            public int scrollId;
+            public NowResolvedId itemSeed;
+            public NowResolvedId scrollId;
+            public int callbackState;
             public bool scrolls;
             public float itemHeight;
             public int highlight = -1;
@@ -46,9 +46,11 @@ namespace NowUI
             public NowRect itemArea;
         }
 
-        static readonly Dictionary<int, PopupState> _popupStates = new Dictionary<int, PopupState>(8);
+        static readonly Dictionary<NowResolvedId, PopupState> _popupStates = new Dictionary<NowResolvedId, PopupState>(8);
+        static readonly Dictionary<int, PopupState> _popupStatesByCallback = new Dictionary<int, PopupState>(8);
+        static int s_nextPopupState = 1;
 
-        internal NowDropdown(NowId id, IReadOnlyList<string> options, int site)
+        internal NowDropdown(NowControlIdentity id, IReadOnlyList<string> options, int site)
         {
             _id = id;
             _site = site;
@@ -60,7 +62,7 @@ namespace NowUI
             _fitToView = true;
         }
 
-        internal NowDropdown(NowRect rect, NowId id, IReadOnlyList<string> options, int site) : this(id, options, site)
+        internal NowDropdown(NowRect rect, NowControlIdentity id, IReadOnlyList<string> options, int site) : this(id, options, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -75,6 +77,8 @@ namespace NowUI
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowDropdown SetId(NowId id) { _id = id; return this; }
 
+        public NowDropdown SetId(NowResolvedId id) { _id = id; return this; }
+
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowDropdown SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
@@ -85,7 +89,7 @@ namespace NowUI
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             int optionCount = _options?.Count ?? 0;
 
             ref int pending = ref NowControlState.Get<int>(id, "pending");
@@ -146,7 +150,7 @@ namespace NowUI
         static void DeferPopup(
             NowThemeAsset themeAsset,
             IReadOnlyList<string> options,
-            int id,
+            NowResolvedId id,
             NowRect field,
             int selected,
             int optionCount,
@@ -169,9 +173,8 @@ namespace NowUI
             state.id = id;
             state.selected = selected;
             state.optionCount = optionCount;
-            state.pendingId = NowInput.GetId(id, "pending");
-            state.itemSeed = NowInput.GetId(id, "item");
-            state.scrollId = NowInput.GetId(id, "popup-scroll");
+            state.itemSeed = id.Child("item");
+            state.scrollId = id.Child("popup-scroll");
             state.scrolls = popupRect.height < contentHeight - 0.5f;
             state.itemHeight = itemHeight;
             state.field = Now.TransformScreenRect(field);
@@ -179,15 +182,21 @@ namespace NowUI
             state.itemArea = popupRect.Inset(popupPadding);
 
             NowOverlay.BlockAllSurfaces(id);
-            NowOverlay.Defer(popupRect, id, DrawPopup);
+            NowOverlay.Defer(popupRect, id, state.callbackState, DrawPopup);
         }
 
-        static PopupState GetState(int id)
+        static PopupState GetState(NowResolvedId id)
         {
             if (!_popupStates.TryGetValue(id, out var state))
             {
-                state = new PopupState();
+                int callbackState = s_nextPopupState++;
+
+                if (s_nextPopupState == 0)
+                    s_nextPopupState = 1;
+
+                state = new PopupState { callbackState = callbackState };
                 _popupStates[id] = state;
+                _popupStatesByCallback[callbackState] = state;
             }
 
             return state;
@@ -195,7 +204,7 @@ namespace NowUI
 
         static void DrawPopup(int stateId)
         {
-            if (!_popupStates.TryGetValue(stateId, out var state) || state.options == null)
+            if (!_popupStatesByCallback.TryGetValue(stateId, out var state) || state.options == null)
                 return;
 
             var themeAsset = state.themeAsset;
@@ -274,7 +283,7 @@ namespace NowUI
                 state.highlight < state.optionCount)
             {
                 NowInput.ConsumeKeyActivity();
-                NowControlState.Get<int>(state.pendingId) = state.highlight + 1;
+                NowControlState.Get<int>(state.id, "pending") = state.highlight + 1;
                 NowControlState.Get<bool>(state.id) = false;
             }
         }
@@ -369,7 +378,7 @@ namespace NowUI
                         state.itemArea.width,
                         state.itemHeight);
 
-                var itemInteraction = NowInput.Interact(NowInput.CombineId(state.itemSeed, i + 1), itemRect);
+                var itemInteraction = NowInput.Interact(state.itemSeed.Child(i + 1), itemRect);
                 state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
                     state.themeAsset,
                     itemRect,
@@ -379,7 +388,7 @@ namespace NowUI
 
                 if (itemInteraction.clicked)
                 {
-                    NowControlState.Get<int>(state.pendingId) = i + 1;
+                    NowControlState.Get<int>(state.id, "pending") = i + 1;
                     NowControlState.Get<bool>(state.id) = false;
                 }
             }
@@ -411,7 +420,7 @@ namespace NowUI
             for (int i = first; i < end; ++i)
             {
                 NowRect itemRect = NowLayout.ReserveRect(height: itemHeight, stretchWidth: true);
-                var itemInteraction = NowInput.Interact(NowInput.CombineId(state.itemSeed, i + 1), itemRect);
+                var itemInteraction = NowInput.Interact(state.itemSeed.Child(i + 1), itemRect);
                 state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
                     state.themeAsset,
                     itemRect,
@@ -421,7 +430,7 @@ namespace NowUI
 
                 if (itemInteraction.clicked)
                 {
-                    NowControlState.Get<int>(state.pendingId) = i + 1;
+                    NowControlState.Get<int>(state.id, "pending") = i + 1;
                     NowControlState.Get<bool>(state.id) = false;
                 }
             }
@@ -434,6 +443,8 @@ namespace NowUI
         static void ResetForRuntimeLoad()
         {
             _popupStates.Clear();
+            _popupStatesByCallback.Clear();
+            s_nextPopupState = 1;
         }
     }
 }

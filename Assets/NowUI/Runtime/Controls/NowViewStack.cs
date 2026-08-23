@@ -384,7 +384,8 @@ namespace NowUI
             public NowId key;
             public bool hasKey;
             public int entryId;
-            public int overlayId;
+            public int drawState;
+            public NowResolvedId overlaySourceId;
             public int version;
             public NowViewHandle handle;
             public object openedInputProvider;
@@ -413,6 +414,8 @@ namespace NowUI
         static readonly Dictionary<int, DrawTarget> s_drawTargets = new Dictionary<int, DrawTarget>(16);
 
         static int s_nextStackId = 1;
+
+        static int s_nextDrawState = 1;
 
         readonly List<Entry> _entries = new List<Entry>(4);
         readonly List<PendingMutation> _pending = new List<PendingMutation>(4);
@@ -591,15 +594,20 @@ namespace NowUI
 
                 entry.surface = surface;
                 entry.rect = ResolveRect(entry.options, surface);
-                s_drawTargets[entry.overlayId] = new DrawTarget { stack = this, entry = entry };
+                entry.overlaySourceId = ResolveOverlaySourceId(entry);
+                s_drawTargets[entry.drawState] = new DrawTarget { stack = this, entry = entry };
 
                 if (entry.options.modal &&
                     entry.options.presentationKind == NowViewPresentationKind.Popup)
                 {
-                    NowOverlay.BlockAllSurfaces(entry.overlayId);
+                    NowOverlay.BlockAllSurfaces(entry.overlaySourceId);
                 }
 
-                NowOverlay.DeferScreen(entry.rect, entry.overlayId, DrawDeferred);
+                NowOverlay.DeferScreen(
+                    entry.rect,
+                    entry.overlaySourceId,
+                    entry.drawState,
+                    DrawDeferred);
             }
         }
 
@@ -607,7 +615,6 @@ namespace NowUI
         {
             int entryId = NextNonZero(ref _nextEntryId);
             int version = NextNonZero(ref _nextVersion);
-            int overlayId = NowInput.CombineId(_stackId, entryId);
             options = options.Normalized();
 
             var entry = new Entry
@@ -617,7 +624,7 @@ namespace NowUI
                 key = key,
                 hasKey = key.hasValue,
                 entryId = entryId,
-                overlayId = overlayId,
+                drawState = NextNonZero(ref s_nextDrawState),
                 version = version,
                 phase = HasAnimatedTransition(options)
                     ? Phase.Entering
@@ -902,13 +909,23 @@ namespace NowUI
             return false;
         }
 
-        static void DrawDeferred(int overlayId)
+        static void DrawDeferred(int drawState)
         {
-            if (!s_drawTargets.TryGetValue(overlayId, out var target))
+            if (!s_drawTargets.TryGetValue(drawState, out var target))
                 return;
 
-            s_drawTargets.Remove(overlayId);
+            s_drawTargets.Remove(drawState);
             target.stack.DrawEntry(target.entry);
+        }
+
+        NowResolvedId ResolveOverlaySourceId(Entry entry)
+        {
+            // The stack token distinguishes retained stack instances; resolving it
+            // beneath the current owner/scope keeps a stack drawn on two hosts from
+            // sharing overlay or focus identity. The entry is a true child path,
+            // while drawState remains callback payload only.
+            return NowControls.GetControlId(new NowId(_stackId))
+                .Child(entry.entryId);
         }
 
         void DrawEntry(Entry entry)
@@ -1130,7 +1147,7 @@ namespace NowUI
                 entry.openedInputProvider = null;
             }
 
-            if (NowOverlay.HasNestedOverlay(entry.overlayId))
+            if (NowOverlay.HasNestedOverlay(entry.overlaySourceId))
                 return;
 
             if (entry.options.closeOnCancel && snapshot.cancelPressed && !NowInput.cancelConsumed)
@@ -1144,7 +1161,7 @@ namespace NowUI
                 return;
 
             if (snapshot.anyPointerPressed && !openingInputPass &&
-                !NowOverlay.IsPointerInsideOverlayTree(entry.overlayId, snapshot.pointerPosition))
+                !NowOverlay.IsPointerInsideOverlayTree(entry.overlaySourceId, snapshot.pointerPosition))
             {
                 NowInput.ConsumePointerPress();
                 Pop(entry);
@@ -1204,6 +1221,7 @@ namespace NowUI
         {
             s_drawTargets.Clear();
             s_nextStackId = 1;
+            s_nextDrawState = 1;
         }
     }
 }

@@ -30,7 +30,7 @@ namespace NowUI
     public struct NowFilePicker
     {
         readonly NowFileDialogMode _mode;
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -69,19 +69,20 @@ namespace NowUI
             public readonly List<BrowserEntry> entries = new List<BrowserEntry>(32);
             public readonly List<FolderTreeEntry> treeEntries = new List<FolderTreeEntry>(32);
             public readonly HashSet<string> expandedTreePaths = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
-            public int id;
-            public int areaId;
-            public int pathFieldId;
-            public int fileNameFieldId;
-            public int filterId;
-            public int scrollId;
-            public int treeScrollId;
-            public int entrySeed;
-            public int treeSeed;
-            public int selectButtonId;
-            public int cancelButtonId;
-            public int goButtonId;
-            public int upButtonId;
+            public NowResolvedId id;
+            public NowResolvedId areaId;
+            public NowResolvedId pathFieldId;
+            public NowResolvedId fileNameFieldId;
+            public NowResolvedId filterId;
+            public NowResolvedId scrollId;
+            public NowResolvedId treeScrollId;
+            public NowResolvedId entrySeed;
+            public NowResolvedId treeSeed;
+            public NowResolvedId selectButtonId;
+            public NowResolvedId cancelButtonId;
+            public NowResolvedId goButtonId;
+            public NowResolvedId upButtonId;
+            public int callbackState;
             public int filterIndex;
             public string currentDirectory;
             public string currentDirectoryKey;
@@ -102,7 +103,9 @@ namespace NowUI
             public NowRect popupRect;
         }
 
-        static readonly Dictionary<int, PopupState> _popupStates = new Dictionary<int, PopupState>(4);
+        static readonly Dictionary<NowResolvedId, PopupState> _popupStates = new Dictionary<NowResolvedId, PopupState>(4);
+        static readonly Dictionary<int, PopupState> _popupStatesByCallback = new Dictionary<int, PopupState>(4);
+        static int s_nextPopupState = 1;
 
         const int AreaSeed = 0x4e464141;
         const int PathFieldSeed = 0x4e464150;
@@ -117,7 +120,7 @@ namespace NowUI
         const int GoSeed = 0x4e464147;
         const int UpSeed = 0x4e464155;
 
-        internal NowFilePicker(NowFileDialogMode mode, NowId id, int site)
+        internal NowFilePicker(NowFileDialogMode mode, NowControlIdentity id, int site)
         {
             _mode = mode;
             _id = id;
@@ -128,7 +131,7 @@ namespace NowUI
             _settings = NowFilePickerSettings.Default(mode);
         }
 
-        internal NowFilePicker(NowRect rect, NowFileDialogMode mode, NowId id, int site) : this(mode, id, site)
+        internal NowFilePicker(NowRect rect, NowFileDialogMode mode, NowControlIdentity id, int site) : this(mode, id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -148,6 +151,8 @@ namespace NowUI
         public NowFilePicker SetStretchWidth(float weight = 1f) { _settings.options = _settings.options.SetStretchWidth(weight); return this; }
 
         public NowFilePicker SetId(NowId id) { _id = id; return this; }
+
+        public NowFilePicker SetId(NowResolvedId id) { _id = id; return this; }
 
         public NowFilePicker SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
@@ -214,7 +219,7 @@ namespace NowUI
 
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
             var state = GetState(id);
             bool changed = ApplyPending(state, ref path);
 
@@ -264,12 +269,18 @@ namespace NowUI
             settings.defaultExtension = NowFilePickerUtility.FirstConcreteExtension(settings.filters, 0);
         }
 
-        static PopupState GetState(int id)
+        static PopupState GetState(NowResolvedId id)
         {
             if (!_popupStates.TryGetValue(id, out var state))
             {
-                state = new PopupState();
+                int callbackState = s_nextPopupState++;
+
+                if (s_nextPopupState == 0)
+                    s_nextPopupState = 1;
+
+                state = new PopupState { callbackState = callbackState };
                 _popupStates[id] = state;
+                _popupStatesByCallback[callbackState] = state;
             }
 
             return state;
@@ -293,7 +304,7 @@ namespace NowUI
 
         static void InitializeStateForOpen(
             PopupState state,
-            int id,
+            NowResolvedId id,
             string value,
             NowFileDialogMode mode,
             NowFilePickerSettings settings)
@@ -304,18 +315,18 @@ namespace NowUI
             state.filters = NowFilePickerUtility.NormalizeFilters(settings.filters);
             RebuildFilterLabels(state);
             state.filterIndex = Mathf.Clamp(state.filterIndex, 0, Mathf.Max(0, state.filters.Length - 1));
-            state.areaId = NowInput.CombineId(id, AreaSeed);
-            state.pathFieldId = NowInput.CombineId(id, PathFieldSeed);
-            state.fileNameFieldId = NowInput.CombineId(id, FileNameSeed);
-            state.filterId = NowInput.CombineId(id, FilterSeed);
-            state.scrollId = NowInput.CombineId(id, ScrollSeed);
-            state.treeScrollId = NowInput.CombineId(id, TreeScrollSeed);
-            state.entrySeed = NowInput.CombineId(id, EntrySeed);
-            state.treeSeed = NowInput.CombineId(id, TreeSeed);
-            state.selectButtonId = NowInput.CombineId(id, SelectSeed);
-            state.cancelButtonId = NowInput.CombineId(id, CancelSeed);
-            state.goButtonId = NowInput.CombineId(id, GoSeed);
-            state.upButtonId = NowInput.CombineId(id, UpSeed);
+            state.areaId = id.Derive(NowIdDomain.Layout, AreaSeed);
+            state.pathFieldId = id.Child(PathFieldSeed);
+            state.fileNameFieldId = id.Child(FileNameSeed);
+            state.filterId = id.Child(FilterSeed);
+            state.scrollId = id.Child(ScrollSeed);
+            state.treeScrollId = id.Child(TreeScrollSeed);
+            state.entrySeed = id.Child(EntrySeed);
+            state.treeSeed = id.Child(TreeSeed);
+            state.selectButtonId = id.Child(SelectSeed);
+            state.cancelButtonId = id.Child(CancelSeed);
+            state.goButtonId = id.Child(GoSeed);
+            state.upButtonId = id.Child(UpSeed);
             SetCurrentDirectory(state, ResolveInitialDirectory(value, settings));
             SetSelectedDirectory(state, null);
             state.directoryText = state.currentDirectory;
@@ -530,7 +541,7 @@ namespace NowUI
             }
         }
 
-        static void DeferPopup(NowThemeAsset theme, int id, NowRect field, NowFilePickerSettings settings)
+        static void DeferPopup(NowThemeAsset theme, NowResolvedId id, NowRect field, NowFilePickerSettings settings)
         {
             var state = GetState(id);
             state.themeAsset = theme;
@@ -538,7 +549,7 @@ namespace NowUI
             state.popupRect = CalculatePopupRect(theme, field, settings);
 
             NowOverlay.BlockAllSurfaces(id);
-            NowOverlay.Defer(state.popupRect, id, DrawPopup);
+            NowOverlay.Defer(state.popupRect, id, state.callbackState, DrawPopup);
         }
 
         static NowRect CalculatePopupRect(NowThemeAsset theme, NowRect field, NowFilePickerSettings settings)
@@ -554,7 +565,7 @@ namespace NowUI
 
         static void DrawPopup(int stateId)
         {
-            if (!_popupStates.TryGetValue(stateId, out var state))
+            if (!_popupStatesByCallback.TryGetValue(stateId, out var state))
                 return;
 
             var theme = state.themeAsset;
@@ -597,7 +608,7 @@ namespace NowUI
             if (browserHeight < headerHeight + 96f)
                 browserHeight = headerHeight + 96f;
 
-            using (NowLayout.Area(NowId.Resolved(state.areaId), state.popupRect, spacing: spacing, padding: padding, alignItems: NowLayoutAlign.Start))
+            using (NowLayout.Area(state.areaId, state.popupRect, spacing: spacing, padding: padding, alignItems: NowLayoutAlign.Start))
             {
                 using (NowLayout.HorizontalScope(height: titleHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
                 {
@@ -612,7 +623,7 @@ namespace NowUI
 
                     if (!string.IsNullOrEmpty(parent))
                     {
-                        if (NowLayout.Button("Up").SetId(NowId.Resolved(state.upButtonId)).SetStyle(NowRectangleStyle.Outline).SetWidth(48f).Draw())
+                        if (NowLayout.Button("Up").SetId(state.upButtonId).SetStyle(NowRectangleStyle.Outline).SetWidth(48f).Draw())
                             NavigateTo(state, parent);
                     }
                     else
@@ -620,7 +631,7 @@ namespace NowUI
                         NowLayout.Label("").SetWidth(48f).Draw();
                     }
 
-                    if (NowLayout.TextField(NowId.Resolved(state.pathFieldId))
+                    if (NowLayout.TextField(state.pathFieldId)
                         .SetStretchWidth()
                         .SetPlaceholder("Address")
                         .Draw(ref state.directoryText))
@@ -629,7 +640,7 @@ namespace NowUI
                         ClearError(state);
                     }
 
-                    if (NowLayout.Button("Go").SetId(NowId.Resolved(state.goButtonId)).SetStyle(NowRectangleStyle.Outline).SetWidth(44f).Draw())
+                    if (NowLayout.Button("Go").SetId(state.goButtonId).SetStyle(NowRectangleStyle.Outline).SetWidth(44f).Draw())
                         NavigateTo(state, state.directoryText);
                 }
 
@@ -641,7 +652,7 @@ namespace NowUI
                     using (NowLayout.HorizontalScope(height: fileNameHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
                     {
                         NowLayout.Label("File name:").SetWidth(78f).Draw();
-                        if (NowLayout.TextField(NowId.Resolved(state.fileNameFieldId))
+                        if (NowLayout.TextField(state.fileNameFieldId)
                             .SetStretchWidth()
                             .SetPlaceholder("File name...")
                             .Draw(ref state.fileName))
@@ -659,7 +670,7 @@ namespace NowUI
                         NowLayout.Label("File type:").SetWidth(78f).Draw();
                         int filter = state.filterIndex;
 
-                        if (NowLayout.Dropdown(NowId.Resolved(state.filterId), state.filterLabels).SetStretchWidth().Draw(ref filter))
+                        if (NowLayout.Dropdown(state.filterId, state.filterLabels).SetStretchWidth().Draw(ref filter))
                         {
                             state.filterIndex = Mathf.Clamp(filter, 0, state.filters.Length - 1);
                             SetSelectedDirectory(state, null);
@@ -683,10 +694,10 @@ namespace NowUI
                         NowLayout.FlexibleSpace();
                     }
 
-                    if (NowLayout.Button(ActionLabel(state.mode)).SetId(NowId.Resolved(state.selectButtonId)).SetStyle(NowRectangleStyle.Accent).Draw())
+                    if (NowLayout.Button(ActionLabel(state.mode)).SetId(state.selectButtonId).SetStyle(NowRectangleStyle.Accent).Draw())
                         CommitAction(state);
 
-                    if (NowLayout.Button("Cancel").SetId(NowId.Resolved(state.cancelButtonId)).SetStyle(NowRectangleStyle.Surface).SetWidth(78f).Draw())
+                    if (NowLayout.Button("Cancel").SetId(state.cancelButtonId).SetStyle(NowRectangleStyle.Surface).SetWidth(78f).Draw())
                         NowControlState.Get<bool>(state.id) = false;
                 }
             }
@@ -743,7 +754,7 @@ namespace NowUI
             DrawListHeader(state.themeAsset, headerRect);
             DrawListFrame(state.themeAsset, listRect);
 
-            using (Now.ScrollView(listRect.Inset(1f), NowId.Resolved(state.scrollId)).Begin())
+            using (Now.ScrollView(listRect.Inset(1f), state.scrollId).Begin())
                 DrawEntries(state);
         }
 
@@ -773,7 +784,7 @@ namespace NowUI
             var contentRect = new NowRect(rect.x, rect.y + headerHeight, rect.width, Mathf.Max(0f, rect.height - headerHeight));
             BuildFolderTree(state);
 
-            using (Now.ScrollView(contentRect.Inset(1f), NowId.Resolved(state.treeScrollId)).Begin())
+            using (Now.ScrollView(contentRect.Inset(1f), state.treeScrollId).Begin())
                 DrawFolderTreeEntries(state);
         }
 
@@ -798,7 +809,7 @@ namespace NowUI
         static void DrawFolderTreeRow(PopupState state, NowRect row, FolderTreeEntry entry, int index)
         {
             var theme = state.themeAsset;
-            int id = FolderTreeRowId(state, entry, index);
+            NowResolvedId id = FolderTreeRowId(state, entry, index);
             bool revealFocus = KeyEquals(state.pendingTreeFocusKey, entry.key);
 
             if (revealFocus && !NowInput.isPassive)
@@ -928,7 +939,7 @@ namespace NowUI
         static void DrawEntryRow(PopupState state, NowRect row, BrowserEntry entry, int index)
         {
             var theme = state.themeAsset;
-            int id = NowInput.CombineId(state.entrySeed, index + 1);
+            NowResolvedId id = state.entrySeed.Child(index + 1);
             var interaction = NowInput.Interact(id, row);
             bool selected = IsSelectedEntry(state, entry);
             NowRect visual = row.Inset(2f, 1f);
@@ -1201,11 +1212,11 @@ namespace NowUI
                 state.treeDirty = true;
         }
 
-        static int FolderTreeRowId(PopupState state, FolderTreeEntry entry, int fallbackIndex)
+        static NowResolvedId FolderTreeRowId(PopupState state, FolderTreeEntry entry, int fallbackIndex)
         {
             return string.IsNullOrEmpty(entry.key)
-                ? NowInput.CombineId(state.treeSeed, fallbackIndex + 1)
-                : NowInput.GetId(state.treeSeed, entry.key);
+                ? state.treeSeed.Child(fallbackIndex + 1)
+                : state.treeSeed.Child(entry.key);
         }
 
         static string TreePathKey(string path)
@@ -1598,7 +1609,7 @@ namespace NowUI
             SetErrorText(state, string.IsNullOrWhiteSpace(error) ? "Invalid selection" : error);
             state.actionError = true;
 
-            if (focusFileName && state.fileNameFieldId != 0)
+            if (focusFileName && state.fileNameFieldId.hasValue)
             {
                 NowFocus.Focus(state.fileNameFieldId);
                 ref var edit = ref NowControlState.Get<NowTextEditState>(state.fileNameFieldId);
@@ -1661,6 +1672,8 @@ namespace NowUI
         static void ResetForRuntimeLoad()
         {
             _popupStates.Clear();
+            _popupStatesByCallback.Clear();
+            s_nextPopupState = 1;
         }
     }
 
@@ -1996,22 +2009,22 @@ namespace NowUI
     {
         public static NowFilePicker OpenFileField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowFilePicker(rect, NowFileDialogMode.OpenFile, id, NowControls.SiteId(file, line));
+            return new NowFilePicker(rect, NowFileDialogMode.OpenFile, id, NowControls.SiteToken(file, line));
         }
 
         public static NowFilePicker SaveFileField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowFilePicker(rect, NowFileDialogMode.SaveFile, id, NowControls.SiteId(file, line));
+            return new NowFilePicker(rect, NowFileDialogMode.SaveFile, id, NowControls.SiteToken(file, line));
         }
 
         public static NowFilePicker DirectoryField(NowRect rect, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowFilePicker(rect, NowFileDialogMode.Directory, id, NowControls.SiteId(file, line));
+            return new NowFilePicker(rect, NowFileDialogMode.Directory, id, NowControls.SiteToken(file, line));
         }
 
         public static NowFilePicker FilePicker(NowRect rect, NowFileDialogMode mode, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowFilePicker(rect, mode, id, NowControls.SiteId(file, line));
+            return new NowFilePicker(rect, mode, id, NowControls.SiteToken(file, line));
         }
     }
 
@@ -2019,22 +2032,22 @@ namespace NowUI
     {
         public static NowFilePicker OpenFileField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowFilePicker(NowFileDialogMode.OpenFile, id, NowControls.SiteId(file, line));
+            return new NowFilePicker(NowFileDialogMode.OpenFile, id, NowControls.SiteToken(file, line));
         }
 
         public static NowFilePicker SaveFileField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowFilePicker(NowFileDialogMode.SaveFile, id, NowControls.SiteId(file, line));
+            return new NowFilePicker(NowFileDialogMode.SaveFile, id, NowControls.SiteToken(file, line));
         }
 
         public static NowFilePicker DirectoryField(NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowFilePicker(NowFileDialogMode.Directory, id, NowControls.SiteId(file, line));
+            return new NowFilePicker(NowFileDialogMode.Directory, id, NowControls.SiteToken(file, line));
         }
 
         public static NowFilePicker FilePicker(NowFileDialogMode mode, NowId id = default, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return new NowFilePicker(mode, id, NowControls.SiteId(file, line));
+            return new NowFilePicker(mode, id, NowControls.SiteToken(file, line));
         }
     }
 }

@@ -243,7 +243,9 @@ public class NowViewStackTests
         using (NowInput.Begin(_provider, SurfaceSize))
         using (_drawList.Begin(SurfaceSize))
         {
-            var interaction = NowInput.Interact(42, buttonRect);
+            var interaction = NowInput.Interact(
+                NowControls.GetControlId(new NowId(42)),
+                buttonRect);
             stack.Draw(Surface);
 
             Assert.IsFalse(interaction.hovered);

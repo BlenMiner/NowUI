@@ -25,13 +25,13 @@ namespace NowUI
             public long lastUse;
         }
 
-        static readonly Dictionary<int, Entry> _stacks = new Dictionary<int, Entry>(8);
+        static readonly Dictionary<NowResolvedId, Entry> _stacks = new Dictionary<NowResolvedId, Entry>(8);
 
         static long s_use;
 
         internal static int count => _stacks.Count;
 
-        public static NowTextUndoStack Get(int id)
+        public static NowTextUndoStack Get(NowResolvedId id)
         {
             if (!_stacks.TryGetValue(id, out var entry))
             {
@@ -54,7 +54,7 @@ namespace NowUI
 
         static void EvictLeastRecentlyUsed()
         {
-            int oldestId = 0;
+            NowResolvedId oldestId = NowResolvedId.None;
             long oldestUse = long.MaxValue;
 
             foreach (var pair in _stacks)

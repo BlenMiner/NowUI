@@ -31,7 +31,7 @@ namespace NowUI
     [NowBuilder]
     public struct NowTextArea
     {
-        NowId _id;
+        NowControlIdentity _id;
         readonly int _site;
         string _placeholder;
         NowFocusNavigation _navigation;
@@ -43,9 +43,9 @@ namespace NowUI
         int _maxLines;
 
         static TouchScreenKeyboard s_touchKeyboard;
-        static int s_touchKeyboardId;
+        static NowResolvedId s_touchKeyboardId;
 
-        internal NowTextArea(NowId id, int site)
+        internal NowTextArea(NowControlIdentity id, int site)
         {
             _id = id;
             _site = site;
@@ -59,7 +59,7 @@ namespace NowUI
             _maxLines = 8;
         }
 
-        internal NowTextArea(NowRect rect, NowId id, int site) : this(id, site)
+        internal NowTextArea(NowRect rect, NowControlIdentity id, int site) : this(id, site)
         {
             _rect = rect;
             _hasRect = true;
@@ -77,6 +77,8 @@ namespace NowUI
 
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowTextArea SetId(NowId id) { _id = id; return this; }
+
+        public NowTextArea SetId(NowResolvedId id) { _id = id; return this; }
 
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowTextArea SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
@@ -133,14 +135,14 @@ namespace NowUI
 
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
-            int id = NowControls.GetControlId(_id, _site);
+            NowResolvedId id = _id.Resolve(_site);
 
             var textStyle = NowControls.Text(theme, _textPreset);
             var fontAsset = textStyle.font;
             float fontSize = textStyle.fontSize;
             float lineHeight = fontAsset != null ? fontAsset.GetLineHeight(textStyle.fontStyle) * fontSize : fontSize * 1.2f;
 
-            ref int lastLineCount = ref NowControlState.Get<int>(NowInput.CombineId(id, LineCountSeed));
+            ref int lastLineCount = ref NowControlState.Get<int>(id.Child(LineCountSeed));
             int visualLines = Mathf.Clamp(Mathf.Max(lastLineCount, 1), _minLines, _maxLines);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureTextArea(theme, lineHeight, visualLines));
@@ -149,13 +151,13 @@ namespace NowUI
             ref var state = ref NowControlState.Get<NowTextEditState>(id);
             NowTextEdit.Clamp(ref state, text);
             ref var area = ref NowControlState.Get<AreaState>(id, "area");
-            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(NowInput.CombineId(id, SelectionGestureSeed));
+            ref var gesture = ref NowControlState.Get<NowTextSelectionGesture>(id.Child(SelectionGestureSeed));
 
             if (fontAsset == null)
                 return false;
 
-            int scrollbarId = NowInput.CombineId(id, VScrollSeed);
-            ref var wrap = ref NowControlState.Get<WrapCache>(NowInput.CombineId(id, WrapCacheSeed));
+            NowResolvedId scrollbarId = id.Child(VScrollSeed);
+            ref var wrap = ref NowControlState.Get<WrapCache>(id.Child(WrapCacheSeed));
             wrap.lines ??= new List<NowTextLine>(16);
             var lines = wrap.lines;
             EnsureLines(ref wrap, text, fontAsset, fontSize, textStyle.fontStyle, inner.width);
@@ -307,14 +309,14 @@ namespace NowUI
                         }
                     }
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, EnterRepeatSeed), frame.enterHeld))
+                    if (NowControlState.Repeat(id.Child(EnterRepeatSeed), frame.enterHeld))
                     {
                         revealCaret = true;
                         undo.Push(text, in state, typing: true);
                         NowTextEdit.Insert(ref text, ref state, "\n");
                     }
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, BackspaceRepeatSeed), frame.backspaceHeld))
+                    if (NowControlState.Repeat(id.Child(BackspaceRepeatSeed), frame.backspaceHeld))
                     {
                         revealCaret = true;
                         undo.Push(text, in state, typing: true);
@@ -325,7 +327,7 @@ namespace NowUI
                             NowTextEdit.Backspace(ref text, ref state, frame.wordModifier);
                     }
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, DeleteRepeatSeed), frame.deleteHeld))
+                    if (NowControlState.Repeat(id.Child(DeleteRepeatSeed), frame.deleteHeld))
                     {
                         revealCaret = true;
                         undo.Push(text, in state, typing: true);
@@ -335,7 +337,7 @@ namespace NowUI
                     if (text != original)
                         EnsureLines(ref wrap, text, fontAsset, fontSize, textStyle.fontStyle, inner.width);
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, LeftRepeatSeed), frame.leftHeld))
+                    if (NowControlState.Repeat(id.Child(LeftRepeatSeed), frame.leftHeld))
                     {
                         revealCaret = true;
 
@@ -353,7 +355,7 @@ namespace NowUI
                         }
                     }
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, RightRepeatSeed), frame.rightHeld))
+                    if (NowControlState.Repeat(id.Child(RightRepeatSeed), frame.rightHeld))
                     {
                         revealCaret = true;
 
@@ -371,7 +373,7 @@ namespace NowUI
                         }
                     }
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, UpRepeatSeed), frame.upHeld))
+                    if (NowControlState.Repeat(id.Child(UpRepeatSeed), frame.upHeld))
                     {
                         revealCaret = true;
 
@@ -387,7 +389,7 @@ namespace NowUI
                         }
                     }
 
-                    if (NowControlState.Repeat(NowInput.CombineId(id, DownRepeatSeed), frame.downHeld))
+                    if (NowControlState.Repeat(id.Child(DownRepeatSeed), frame.downHeld))
                     {
                         revealCaret = true;
 
@@ -561,7 +563,7 @@ namespace NowUI
 
             if (maxScroll > 0f)
             {
-                int thumbId = scrollbarId;
+                NowResolvedId thumbId = scrollbarId;
                 var metrics = ScrollbarMetrics(theme, rect, inner, contentHeight, area.scrollY);
                 float hoverT = NowControlState.Transition(thumbId, NowInput.IsHovered(metrics.track.Outset(4f, 2f)));
                 renderer.DrawScrollbar(new NowScrollbarRenderContext(
@@ -730,7 +732,7 @@ namespace NowUI
             }
         }
 
-        void SyncTouchKeyboard(int id, ref string text, ref NowTextEditState state)
+        void SyncTouchKeyboard(NowResolvedId id, ref string text, ref NowTextEditState state)
         {
             if (!TouchScreenKeyboard.isSupported)
                 return;
@@ -770,7 +772,7 @@ namespace NowUI
                 s_touchKeyboard.active = false;
 
             s_touchKeyboard = null;
-            s_touchKeyboardId = 0;
+            s_touchKeyboardId = NowResolvedId.None;
         }
     }
 }

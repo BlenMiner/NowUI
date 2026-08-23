@@ -177,14 +177,18 @@ namespace NowUI
     /// Deferred top-layer drawing for popups, dropdowns and tooltips. Deferred
     /// callbacks run after everything else in the frame, so they draw above all
     /// regular content, and their rect blocks pointer interaction for the controls
-    /// underneath (resolved one frame late, like the focus registry — immediate
-    /// mode has no z-order to query).
+    /// underneath. The last completed footprint protects controls declared
+    /// before an overlay is rebuilt, while blocks registered in the active
+    /// transaction protect controls declared later in that same pass.
     /// <code>
-    /// NowOverlay.Defer(popupRect, popupId, DrawPopup);
+    /// NowOverlay.Defer(popupRect, popupId, callbackState, DrawPopup);
     /// </code>
     /// </summary>
     public static class NowOverlay
     {
+        const string LegacyOverlayIdObsoleteMessage =
+            "Raw integer overlay identities were removed. Use the NowResolvedId overlay-source overload.";
+
         public delegate void DrawCallback(int state);
 
         struct DeferredDraw
@@ -192,19 +196,23 @@ namespace NowUI
             public Action draw;
             public DrawCallback drawWithState;
             public int state;
-            public int overlayId;
+            public NowResolvedId overlaySourceId;
+            public NowResolvedId overlayId;
             public Now.NowTransformSnapshot transform;
             public NowThemeAsset theme;
-            public int controlIdScope;
+            public NowResolvedId controlIdScope;
+            public NowInputContextSnapshot inputContext;
+            public OverlayHostContext hostContext;
         }
 
         struct OverlayBlock
         {
             public NowRect rect;
-            public int id;
-            public int parentId;
+            public NowResolvedId sourceId;
+            public NowResolvedId id;
+            public NowResolvedId parentId;
             public bool modal;
-            public int modalInteractiveRootId;
+            public NowResolvedId modalInteractiveRootId;
             public object registrationOwner;
             public Component host;
             public RectTransform hostRectTransform;
@@ -243,7 +251,9 @@ namespace NowUI
 
         static readonly List<OverlayBlock> _blocksPrevious = new List<OverlayBlock>(4);
 
-        static readonly List<int> _drawingStack = new List<int>(4);
+        static readonly List<NowResolvedId> _drawingStack = new List<NowResolvedId>(4);
+
+        static readonly List<NowResolvedId> _drawingSourceStack = new List<NowResolvedId>(4);
 
         static readonly List<OverlayHostContext> _hostStack = new List<OverlayHostContext>(2);
 
@@ -325,20 +335,39 @@ namespace NowUI
 
             _frameTransactions.Add(CaptureCheckpoint());
             _frameTransactionOwners.Add(owner);
+            NowContextMenu.BeginOwnerPass(owner);
         }
 
-        internal static void EndFrameTransaction()
+        internal static void EndFrameTransaction(bool completed = true)
         {
             if (_frameTransactions.Count > 0)
             {
+                int last = _frameTransactions.Count - 1;
+                object owner = _frameTransactionOwners[last];
+
+                if (!completed)
+                {
+                    Rollback(_frameTransactions[last]);
+                    int ownerIndex = FindRegistrationOwner(owner);
+
+                    if (ownerIndex >= 0)
+                    {
+                        var state = _registrationOwners[ownerIndex];
+                        state.registryVersion = 0;
+                        _registrationOwners[ownerIndex] = state;
+                    }
+                }
+
                 _frameTransactions.RemoveAt(_frameTransactions.Count - 1);
                 _frameTransactionOwners.RemoveAt(_frameTransactionOwners.Count - 1);
+                NowContextMenu.EndOwnerPass(owner, completed);
                 PruneRegistrationOwners();
             }
         }
 
         internal static void ClearFrameTransactions()
         {
+            NowContextMenu.AbandonOwnerPasses();
             _frameTransactions.Clear();
             _frameTransactionOwners.Clear();
         }
@@ -347,6 +376,8 @@ namespace NowUI
         {
             if (owner == null)
                 return;
+
+            NowContextMenu.ReleaseOwner(owner);
 
             for (int i = _blocksCurrent.Count - 1; i >= 0; --i)
             {
@@ -403,7 +434,22 @@ namespace NowUI
                 }
 
                 if (!HasRegistrationBlocks(owner))
+                {
+                    if (NowContextMenu.TracksOwner(owner))
+                    {
+                        int ownerVersion = _registrationOwners[i].registryVersion;
+                        bool ranRecently = ownerVersion == 0 ||
+                            ownerVersion == _registryVersion ||
+                            ownerVersion == _registryVersion - 1;
+
+                        if (RetainsFootprintWhileIdle(owner) || ranRecently)
+                            continue;
+
+                        NowContextMenu.ReleaseOwner(owner);
+                    }
+
                     _registrationOwners.RemoveAt(i);
+                }
             }
         }
 
@@ -495,6 +541,28 @@ namespace NowUI
             return host ? (object)host : provider;
         }
 
+        /// <summary>
+        /// Owner of the active declaration transaction. Nested input providers
+        /// do not start their own frame transaction, so context-menu liveness
+        /// remains tied to the outer owner while input and deferred rendering
+        /// continue to use the nested provider.
+        /// </summary>
+        internal static object currentRegistrationOwner
+        {
+            get
+            {
+                if (_frameTransactionOwners.Count > 0)
+                {
+                    object owner = _frameTransactionOwners[_frameTransactionOwners.Count - 1];
+
+                    if (owner != null)
+                        return owner;
+                }
+
+                return RegistrationOwner(NowInput.currentProvider);
+            }
+        }
+
         static int FindRegistrationOwner(object owner)
         {
             for (int i = 0; i < _registrationOwners.Count; ++i)
@@ -551,6 +619,8 @@ namespace NowUI
             if (_frameTransactions.Count == 0)
                 return;
 
+            NowContextMenu.MarkOwnerPassesFailed();
+
             // Flush owns the global deferred queue and abandons all of it when
             // a callback throws. Roll pointer blocks back to the oldest owner
             // whose callbacks are being discarded as well. Using only the
@@ -592,30 +662,33 @@ namespace NowUI
             }
         }
 
-        internal static int currentFocusLayerId => CurrentOverlayId();
+        internal static NowResolvedId currentFocusLayerId => CurrentOverlayId();
 
-        internal static int activeFocusLayerId
+        internal static NowResolvedId currentFocusLayerSourceId => CurrentOverlaySourceId();
+
+        internal static NowResolvedId activeFocusLayerId => ActiveFocusLayerBlock().id;
+
+        internal static NowResolvedId activeFocusLayerSourceId => ActiveFocusLayerBlock().sourceId;
+
+        static OverlayBlock ActiveFocusLayerBlock()
         {
-            get
+            BeginFrameIfNeeded();
+            var host = CurrentHostContext().host;
+            object owner = RegistrationOwner(NowInput.currentProvider);
+
+            OverlayBlock current = FindTopOverlayBlock(_blocksCurrent, host, owner);
+            OverlayBlock previous = FindTopOverlayBlock(_blocksPrevious, host, owner);
+
+            if (current.id.hasValue && previous.id.hasValue && current.id != previous.id &&
+                OverlayIdBelongsToTree(previous.id, current.id, _blocksPrevious, owner))
             {
-                BeginFrameIfNeeded();
-                var host = CurrentHostContext().host;
-                object owner = RegistrationOwner(NowInput.currentProvider);
-
-                int current = FindTopOverlayId(_blocksCurrent, host, owner);
-                int previous = FindTopOverlayId(_blocksPrevious, host, owner);
-
-                if (current != 0 && previous != 0 && current != previous &&
-                    OverlayIdBelongsToTree(previous, current, _blocksPrevious, owner))
-                {
-                    return previous;
-                }
-
-                if (current != 0)
-                    return current;
-
                 return previous;
             }
+
+            if (current.id.hasValue)
+                return current;
+
+            return previous;
         }
 
         internal static NowOverlayHostScope Host(Component host, RectTransform rectTransform, Camera camera)
@@ -650,6 +723,15 @@ namespace NowUI
                 camera = null
             });
 
+            return new NowOverlayHostScope(true);
+        }
+
+        // Deferred callbacks may outlive a nested host scope. Push even the
+        // empty context so an outer host cannot accidentally become the owner
+        // of overlays queued by a hostless nested input surface.
+        static NowOverlayHostScope ApplyHostContext(OverlayHostContext context)
+        {
+            _hostStack.Add(context);
             return new NowOverlayHostScope(true);
         }
 
@@ -698,6 +780,16 @@ namespace NowUI
             return NowPopupPlacement.ClampLocalToView(rect);
         }
 
+        static NowResolvedId ResolveOverlaySourceId(NowResolvedId overlaySourceId)
+        {
+            if (!overlaySourceId.hasValue)
+                throw new ArgumentException(
+                    "A named overlay requires a non-empty resolved source id.",
+                    nameof(overlaySourceId));
+
+            return overlaySourceId.InDomain(NowIdDomain.Overlay);
+        }
+
         /// <summary>
         /// Queues a draw callback for the end of the frame and blocks pointer
         /// interaction inside <paramref name="blockRect"/> for everything that is
@@ -705,6 +797,36 @@ namespace NowUI
         /// </summary>
         public static void Defer(NowRect blockRect, Action draw)
         {
+            DeferResolved(
+                blockRect,
+                NowResolvedId.None,
+                NowResolvedId.None,
+                draw);
+        }
+
+        /// <summary>
+        /// Queues a named overlay. <paramref name="overlaySourceId"/> is the
+        /// resolved control/path identity that owns the overlay; the Overlay
+        /// domain boundary is applied exactly once by this API.
+        /// </summary>
+        public static void Defer(
+            NowRect blockRect,
+            NowResolvedId overlaySourceId,
+            Action draw)
+        {
+            DeferResolved(
+                blockRect,
+                overlaySourceId,
+                ResolveOverlaySourceId(overlaySourceId),
+                draw);
+        }
+
+        static void DeferResolved(
+            NowRect blockRect,
+            NowResolvedId overlaySourceId,
+            NowResolvedId overlayId,
+            Action draw)
+        {
             if (draw == null || NowInput.isPassive)
                 return;
 
@@ -712,11 +834,15 @@ namespace NowUI
             _deferred.Add(new DeferredDraw
             {
                 draw = draw,
+                overlaySourceId = overlaySourceId,
+                overlayId = overlayId,
                 transform = Now.CaptureTransform(),
                 theme = NowTheme.currentScopeTheme,
-                controlIdScope = NowControls.CaptureIdScope()
+                controlIdScope = NowControls.CaptureIdScope(),
+                inputContext = NowInput.CaptureContext(),
+                hostContext = CurrentHostContext()
             });
-            AddBlock(Now.TransformScreenRect(blockRect), 0);
+            AddBlock(Now.TransformScreenRect(blockRect), overlaySourceId, overlayId);
         }
 
         /// <summary>
@@ -724,6 +850,34 @@ namespace NowUI
         /// </summary>
         public static void DeferScreen(NowRect blockRect, Action draw)
         {
+            DeferScreenResolved(
+                blockRect,
+                NowResolvedId.None,
+                NowResolvedId.None,
+                draw);
+        }
+
+        /// <summary>
+        /// Queues a named overlay whose geometry is already in screen space.
+        /// </summary>
+        public static void DeferScreen(
+            NowRect blockRect,
+            NowResolvedId overlaySourceId,
+            Action draw)
+        {
+            DeferScreenResolved(
+                blockRect,
+                overlaySourceId,
+                ResolveOverlaySourceId(overlaySourceId),
+                draw);
+        }
+
+        static void DeferScreenResolved(
+            NowRect blockRect,
+            NowResolvedId overlaySourceId,
+            NowResolvedId overlayId,
+            Action draw)
+        {
             if (draw == null || NowInput.isPassive)
                 return;
 
@@ -731,10 +885,14 @@ namespace NowUI
             _deferred.Add(new DeferredDraw
             {
                 draw = draw,
+                overlaySourceId = overlaySourceId,
+                overlayId = overlayId,
                 theme = NowTheme.currentScopeTheme,
-                controlIdScope = NowControls.CaptureIdScope()
+                controlIdScope = NowControls.CaptureIdScope(),
+                inputContext = NowInput.CaptureContext(),
+                hostContext = CurrentHostContext()
             });
-            AddBlock(blockRect, 0);
+            AddBlock(blockRect, overlaySourceId, overlayId);
         }
 
         /// <summary>
@@ -742,7 +900,41 @@ namespace NowUI
         /// <paramref name="state"/> and pass a static method to avoid closure
         /// allocation on warmed popup paths.
         /// </summary>
+        public static void Defer(
+            NowRect blockRect,
+            NowResolvedId overlaySourceId,
+            int state,
+            DrawCallback draw)
+        {
+            DeferResolved(
+                blockRect,
+                overlaySourceId,
+                ResolveOverlaySourceId(overlaySourceId),
+                state,
+                draw);
+        }
+
+        /// <summary>
+        /// Queues an anonymous non-capturing overlay. The integer is callback
+        /// payload only; use the four-argument overload when the overlay needs
+        /// a stable source identity.
+        /// </summary>
         public static void Defer(NowRect blockRect, int state, DrawCallback draw)
+        {
+            DeferResolved(
+                blockRect,
+                NowResolvedId.None,
+                NowResolvedId.None,
+                state,
+                draw);
+        }
+
+        static void DeferResolved(
+            NowRect blockRect,
+            NowResolvedId overlaySourceId,
+            NowResolvedId overlayId,
+            int state,
+            DrawCallback draw)
         {
             if (draw == null || NowInput.isPassive)
                 return;
@@ -752,18 +944,55 @@ namespace NowUI
             {
                 drawWithState = draw,
                 state = state,
-                overlayId = state,
+                overlaySourceId = overlaySourceId,
+                overlayId = overlayId,
                 transform = Now.CaptureTransform(),
                 theme = NowTheme.currentScopeTheme,
-                controlIdScope = NowControls.CaptureIdScope()
+                controlIdScope = NowControls.CaptureIdScope(),
+                inputContext = NowInput.CaptureContext(),
+                hostContext = CurrentHostContext()
             });
-            AddBlock(Now.TransformScreenRect(blockRect), state);
+            AddBlock(Now.TransformScreenRect(blockRect), overlaySourceId, overlayId);
         }
 
         /// <summary>
         /// Queues a non-capturing screen-space overlay callback.
         /// </summary>
+        public static void DeferScreen(
+            NowRect blockRect,
+            NowResolvedId overlaySourceId,
+            int state,
+            DrawCallback draw)
+        {
+            DeferScreenResolved(
+                blockRect,
+                overlaySourceId,
+                ResolveOverlaySourceId(overlaySourceId),
+                state,
+                draw);
+        }
+
+        /// <summary>
+        /// Queues an anonymous non-capturing screen-space overlay. The integer
+        /// is callback payload only; use the four-argument overload for a named
+        /// overlay.
+        /// </summary>
         public static void DeferScreen(NowRect blockRect, int state, DrawCallback draw)
+        {
+            DeferScreenResolved(
+                blockRect,
+                NowResolvedId.None,
+                NowResolvedId.None,
+                state,
+                draw);
+        }
+
+        static void DeferScreenResolved(
+            NowRect blockRect,
+            NowResolvedId overlaySourceId,
+            NowResolvedId overlayId,
+            int state,
+            DrawCallback draw)
         {
             if (draw == null || NowInput.isPassive)
                 return;
@@ -773,11 +1002,14 @@ namespace NowUI
             {
                 drawWithState = draw,
                 state = state,
-                overlayId = state,
+                overlaySourceId = overlaySourceId,
+                overlayId = overlayId,
                 theme = NowTheme.currentScopeTheme,
-                controlIdScope = NowControls.CaptureIdScope()
+                controlIdScope = NowControls.CaptureIdScope(),
+                inputContext = NowInput.CaptureContext(),
+                hostContext = CurrentHostContext()
             });
-            AddBlock(blockRect, state);
+            AddBlock(blockRect, overlaySourceId, overlayId);
         }
 
         /// <summary>
@@ -785,7 +1017,37 @@ namespace NowUI
         /// pointer — tooltips and other purely informational layers that must not
         /// steal hover or clicks from the controls beneath them.
         /// </summary>
+        public static void DeferPassive(
+            NowResolvedId overlaySourceId,
+            int state,
+            DrawCallback draw)
+        {
+            DeferPassiveResolved(
+                overlaySourceId,
+                ResolveOverlaySourceId(overlaySourceId),
+                state,
+                draw);
+        }
+
+        /// <summary>
+        /// Queues an anonymous passive callback. The integer is callback
+        /// payload only; use the three-argument typed overload for a named
+        /// passive overlay.
+        /// </summary>
         public static void DeferPassive(int state, DrawCallback draw)
+        {
+            DeferPassiveResolved(
+                NowResolvedId.None,
+                NowResolvedId.None,
+                state,
+                draw);
+        }
+
+        static void DeferPassiveResolved(
+            NowResolvedId overlaySourceId,
+            NowResolvedId overlayId,
+            int state,
+            DrawCallback draw)
         {
             if (draw == null || NowInput.isPassive)
                 return;
@@ -795,10 +1057,13 @@ namespace NowUI
             {
                 drawWithState = draw,
                 state = state,
-                overlayId = state,
+                overlaySourceId = overlaySourceId,
+                overlayId = overlayId,
                 transform = Now.CaptureTransform(),
                 theme = NowTheme.currentScopeTheme,
-                controlIdScope = NowControls.CaptureIdScope()
+                controlIdScope = NowControls.CaptureIdScope(),
+                inputContext = NowInput.CaptureContext(),
+                hostContext = CurrentHostContext()
             });
         }
 
@@ -812,7 +1077,10 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            AddBlock(Now.TransformScreenRect(blockRect), 0);
+            AddBlock(
+                Now.TransformScreenRect(blockRect),
+                NowResolvedId.None,
+                NowResolvedId.None);
         }
 
         /// <summary>
@@ -824,7 +1092,7 @@ namespace NowUI
                 return;
 
             BeginFrameIfNeeded();
-            AddBlock(blockRect, 0);
+            AddBlock(blockRect, NowResolvedId.None, NowResolvedId.None);
         }
 
         /// <summary>
@@ -832,11 +1100,31 @@ namespace NowUI
         /// registering host's — the modal guarantee for context menus and modal
         /// dialogs. Base content is blocked everywhere; other overlay content is
         /// blocked too, except the overlay subtree rooted at
-        /// <paramref name="interactiveRootId"/> (the modal's own popups), so a
+        /// modal's interactive root (its own popup subtree), so a
         /// context menu opened from inside another popup wins the pointer over
         /// the popup beneath it.
         /// </summary>
+        public static void BlockAllSurfaces()
+        {
+            BlockAllSurfacesResolved(NowResolvedId.None);
+        }
+
+        /// <summary>
+        /// Blocks every surface while leaving the overlay tree rooted at
+        /// <paramref name="interactiveRootSourceId"/> interactive.
+        /// </summary>
+        public static void BlockAllSurfaces(NowResolvedId interactiveRootSourceId)
+        {
+            BlockAllSurfacesResolved(ResolveOverlaySourceId(interactiveRootSourceId));
+        }
+
+        [Obsolete(LegacyOverlayIdObsoleteMessage, true)]
         public static void BlockAllSurfaces(int interactiveRootId = 0)
+        {
+            BlockAllSurfaces(NowResolvedId.FromLegacy(interactiveRootId));
+        }
+
+        static void BlockAllSurfacesResolved(NowResolvedId interactiveRootId)
         {
             if (NowInput.isPassive)
                 return;
@@ -848,7 +1136,8 @@ namespace NowUI
             _blocksCurrent.Add(new OverlayBlock
             {
                 rect = new NowRect(-100000f, -100000f, 200000f, 200000f),
-                id = 0,
+                sourceId = NowResolvedId.None,
+                id = NowResolvedId.None,
                 parentId = CurrentOverlayId(),
                 modal = true,
                 modalInteractiveRootId = interactiveRootId,
@@ -861,10 +1150,11 @@ namespace NowUI
 
         /// <summary>
         /// True when the pointer position is owned by the last completed overlay
-        /// footprint; base-layer interactions treat it as hover-blocked. Runtime
-        /// retained hosts preserve that footprint through idle frames and replace
-        /// it on their next draw pass. Arbitrary provider-owned immediate surfaces
-        /// retain the historical frame-based expiry.
+        /// footprint or by an overlay registered earlier in the active input
+        /// transaction. Base-layer interactions treat it as hover-blocked. Runtime
+        /// retained hosts preserve their completed footprint through idle frames
+        /// and replace it on their next draw pass. Arbitrary provider-owned
+        /// immediate surfaces retain the historical frame-based expiry.
         /// </summary>
         public static bool IsPointerBlocked(Vector2 pointerPosition)
         {
@@ -888,6 +1178,41 @@ namespace NowUI
                 }
             }
 
+            if (CurrentModalBlocksDomain(host, owner))
+                return true;
+
+            int start = CurrentTransactionBlockStart();
+
+            for (int i = start; i < _blocksCurrent.Count; ++i)
+            {
+                if (BlockBelongsToDomain(_blocksCurrent[i], host, owner) &&
+                    _blocksCurrent[i].rect.Contains(pointerPosition))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static int CurrentTransactionBlockStart()
+        {
+            return _frameTransactions.Count > 0
+                ? Mathf.Clamp(
+                    _frameTransactions[_frameTransactions.Count - 1].blockCount,
+                    0,
+                    _blocksCurrent.Count)
+                : _blocksCurrent.Count;
+        }
+
+        static bool CurrentModalBlocksDomain(Component host, object owner)
+        {
+            for (int i = 0; i < _blocksCurrent.Count; ++i)
+            {
+                if (ModalBlocksDomain(_blocksCurrent[i], host, owner))
+                    return true;
+            }
+
             return false;
         }
 
@@ -909,6 +1234,9 @@ namespace NowUI
             var host = CurrentHostContext().host;
             object owner = RegistrationOwner(NowInput.currentProvider);
 
+            if (CurrentModalBlocksDomain(host, owner))
+                return true;
+
             for (int i = 0; i < _blocksPrevious.Count; ++i)
             {
                 if (BlocksBasePointer(_blocksPrevious[i], host, owner, pointerPosition))
@@ -918,10 +1246,7 @@ namespace NowUI
             if (_frameTransactions.Count == 0)
                 return false;
 
-            int start = Mathf.Clamp(
-                _frameTransactions[_frameTransactions.Count - 1].blockCount,
-                0,
-                _blocksCurrent.Count);
+            int start = CurrentTransactionBlockStart();
 
             for (int i = start; i < _blocksCurrent.Count; ++i)
             {
@@ -947,6 +1272,9 @@ namespace NowUI
             var host = CurrentHostContext().host;
             object owner = RegistrationOwner(NowInput.currentProvider);
 
+            if (CurrentModalBlocksDomain(host, owner))
+                return true;
+
             for (int i = 0; i < _blocksPrevious.Count; ++i)
             {
                 if (BlocksBasePointer(_blocksPrevious[i], host, owner, pointerPosition))
@@ -956,10 +1284,7 @@ namespace NowUI
             if (_frameTransactions.Count == 0)
                 return false;
 
-            int start = Mathf.Clamp(
-                _frameTransactions[_frameTransactions.Count - 1].blockCount,
-                0,
-                _blocksCurrent.Count);
+            int start = CurrentTransactionBlockStart();
 
             for (int i = start; i < _blocksCurrent.Count; ++i)
             {
@@ -979,19 +1304,42 @@ namespace NowUI
         /// </summary>
         static bool IsOverlayContentBlocked()
         {
-            int drawing = CurrentOverlayId();
+            NowResolvedId drawing = CurrentOverlayId();
             var host = CurrentHostContext().host;
             object owner = RegistrationOwner(NowInput.currentProvider);
 
-            for (int i = 0; i < _blocksPrevious.Count; ++i)
+            if (IsOverlayContentBlocked(
+                _blocksPrevious, 0, drawing, host, owner))
             {
-                var block = _blocksPrevious[i];
+                return true;
+            }
+
+            return IsOverlayContentBlocked(
+                _blocksCurrent,
+                0,
+                drawing,
+                host,
+                owner);
+        }
+
+        static bool IsOverlayContentBlocked(
+            List<OverlayBlock> blocks,
+            int start,
+            NowResolvedId drawing,
+            Component host,
+            object owner)
+        {
+            start = Mathf.Clamp(start, 0, blocks.Count);
+
+            for (int i = start; i < blocks.Count; ++i)
+            {
+                var block = blocks[i];
 
                 if (!ModalBlocksDomain(block, host, owner))
                     continue;
 
-                if (block.modalInteractiveRootId != 0 &&
-                    drawing != 0 &&
+                if (block.modalInteractiveRootId.hasValue &&
+                    drawing.hasValue &&
                     (drawing == block.modalInteractiveRootId ||
                      OverlayIdBelongsToTree(
                          drawing,
@@ -1015,30 +1363,49 @@ namespace NowUI
 
         /// <summary>
         /// True when <paramref name="pointerPosition"/> is inside the overlay
-        /// registered for <paramref name="rootId"/> or any nested overlay deferred
+        /// registered for <paramref name="rootSourceId"/> or any nested overlay deferred
         /// while that root was drawing. Use this for popup outside-click checks.
         /// </summary>
+        public static bool IsPointerInsideOverlayTree(
+            NowResolvedId rootSourceId,
+            Vector2 pointerPosition)
+        {
+            return IsPointerInsideOverlayTreeResolved(
+                ResolveOverlaySourceId(rootSourceId),
+                pointerPosition);
+        }
+
+        [Obsolete(LegacyOverlayIdObsoleteMessage, true)]
         public static bool IsPointerInsideOverlayTree(int rootId, Vector2 pointerPosition)
+        {
+            return IsPointerInsideOverlayTree(
+                NowResolvedId.FromLegacy(rootId),
+                pointerPosition);
+        }
+
+        internal static bool IsPointerInsideOverlayTreeResolved(
+            NowResolvedId rootId,
+            Vector2 pointerPosition)
         {
             BeginFrameIfNeeded();
             var host = CurrentHostContext().host;
             object owner = RegistrationOwner(NowInput.currentProvider);
 
             if (_overlayDepth > 0)
-                return IsPointerInsideOverlayTree(
+                return IsPointerInsideOverlayTreeInBlocks(
                     rootId,
                     pointerPosition,
                     _blocksCurrent,
                     host,
                     owner);
 
-            return IsPointerInsideOverlayTree(
+            return IsPointerInsideOverlayTreeInBlocks(
                     rootId,
                     pointerPosition,
                     _blocksCurrent,
                     host,
                     owner) ||
-                IsPointerInsideOverlayTree(
+                IsPointerInsideOverlayTreeInBlocks(
                     rootId,
                     pointerPosition,
                     _blocksPrevious,
@@ -1048,7 +1415,7 @@ namespace NowUI
 
         /// <summary>
         /// True when the pointer is inside any concrete overlay popup. Modal
-        /// screen-wide blocks use id 0 and are intentionally ignored.
+        /// screen-wide blocks use the empty identity and are intentionally ignored.
         /// </summary>
         internal static bool IsPointerInsideOverlay(Vector2 pointerPosition)
         {
@@ -1086,35 +1453,46 @@ namespace NowUI
         }
 
         /// <summary>
-        /// True when an overlay was deferred while <paramref name="rootId"/> or
+        /// True when an overlay was deferred while <paramref name="rootSourceId"/> or
         /// one of its descendants was drawing. Use this to let cancel close the
         /// topmost nested popup before its parents.
         /// </summary>
+        public static bool HasNestedOverlay(NowResolvedId rootSourceId)
+        {
+            return HasNestedOverlayResolved(ResolveOverlaySourceId(rootSourceId));
+        }
+
+        [Obsolete(LegacyOverlayIdObsoleteMessage, true)]
         public static bool HasNestedOverlay(int rootId)
+        {
+            return HasNestedOverlay(NowResolvedId.FromLegacy(rootId));
+        }
+
+        internal static bool HasNestedOverlayResolved(NowResolvedId rootId)
         {
             BeginFrameIfNeeded();
             var host = CurrentHostContext().host;
             object owner = RegistrationOwner(NowInput.currentProvider);
 
             if (_overlayDepth > 0)
-                return HasNestedOverlay(rootId, _blocksCurrent, host, owner);
+                return HasNestedOverlayInBlocks(rootId, _blocksCurrent, host, owner);
 
-            return HasNestedOverlay(rootId, _blocksCurrent, host, owner) ||
-                HasNestedOverlay(rootId, _blocksPrevious, host, owner);
+            return HasNestedOverlayInBlocks(rootId, _blocksCurrent, host, owner) ||
+                HasNestedOverlayInBlocks(rootId, _blocksPrevious, host, owner);
         }
 
-        static bool HasNestedOverlay(
-            int rootId,
+        static bool HasNestedOverlayInBlocks(
+            NowResolvedId rootId,
             List<OverlayBlock> blocks,
             Component host,
             object owner)
         {
-            if (rootId == 0)
+            if (!rootId.hasValue)
                 return false;
 
             for (int i = 0; i < blocks.Count; ++i)
             {
-                if (blocks[i].id == 0 || blocks[i].id == rootId)
+                if (!blocks[i].id.hasValue || blocks[i].id == rootId)
                     continue;
 
                 if (!BlockBelongsToDomain(blocks[i], host, owner))
@@ -1127,14 +1505,14 @@ namespace NowUI
             return false;
         }
 
-        static bool IsPointerInsideOverlayTree(
-            int rootId,
+        static bool IsPointerInsideOverlayTreeInBlocks(
+            NowResolvedId rootId,
             Vector2 pointerPosition,
             List<OverlayBlock> blocks,
             Component host,
             object owner)
         {
-            if (rootId == 0)
+            if (!rootId.hasValue)
                 return false;
 
             for (int i = 0; i < blocks.Count; ++i)
@@ -1160,7 +1538,7 @@ namespace NowUI
         {
             for (int i = 0; i < blocks.Count; ++i)
             {
-                if (blocks[i].id != 0 &&
+                if (blocks[i].id.hasValue &&
                     BlockBelongsToDomain(blocks[i], host, owner) &&
                     blocks[i].rect.Contains(pointerPosition))
                 {
@@ -1175,7 +1553,7 @@ namespace NowUI
         {
             for (int i = 0; i < blocks.Count; ++i)
             {
-                if (blocks[i].id != 0 &&
+                if (blocks[i].id.hasValue &&
                     blocks[i].host == host &&
                     blocks[i].rect.Contains(pointerPosition))
                 {
@@ -1258,13 +1636,17 @@ namespace NowUI
             return block.rect.Contains(position);
         }
 
-        static void AddBlock(NowRect rect, int id)
+        static void AddBlock(
+            NowRect rect,
+            NowResolvedId sourceId,
+            NowResolvedId id)
         {
             var host = CurrentHostContext();
 
             _blocksCurrent.Add(new OverlayBlock
             {
                 rect = rect,
+                sourceId = sourceId,
                 id = id,
                 parentId = CurrentOverlayId(),
                 registrationOwner = RegistrationOwner(NowInput.currentProvider),
@@ -1279,15 +1661,18 @@ namespace NowUI
             return _hostStack.Count > 0 ? _hostStack[_hostStack.Count - 1] : default;
         }
 
-        static bool BlockBelongsToTree(OverlayBlock block, int rootId, List<OverlayBlock> blocks)
+        static bool BlockBelongsToTree(
+            OverlayBlock block,
+            NowResolvedId rootId,
+            List<OverlayBlock> blocks)
         {
             if (block.id == rootId)
                 return true;
 
-            int parentId = block.parentId;
+            NowResolvedId parentId = block.parentId;
             object owner = block.registrationOwner;
 
-            for (int guard = 0; guard < blocks.Count && parentId != 0; ++guard)
+            for (int guard = 0; guard < blocks.Count && parentId.hasValue; ++guard)
             {
                 if (parentId == rootId)
                     return true;
@@ -1299,12 +1684,12 @@ namespace NowUI
         }
 
         static bool OverlayIdBelongsToTree(
-            int id,
-            int rootId,
+            NowResolvedId id,
+            NowResolvedId rootId,
             List<OverlayBlock> blocks,
             object owner)
         {
-            if (id == 0 || rootId == 0)
+            if (!id.hasValue || !rootId.hasValue)
                 return false;
 
             for (int i = blocks.Count - 1; i >= 0; --i)
@@ -1319,7 +1704,10 @@ namespace NowUI
             return false;
         }
 
-        static int FindParentId(int id, List<OverlayBlock> blocks, object owner)
+        static NowResolvedId FindParentId(
+            NowResolvedId id,
+            List<OverlayBlock> blocks,
+            object owner)
         {
             for (int i = blocks.Count - 1; i >= 0; --i)
             {
@@ -1330,35 +1718,46 @@ namespace NowUI
                 }
             }
 
-            return 0;
+            return NowResolvedId.None;
         }
 
-        static int CurrentOverlayId()
+        static NowResolvedId CurrentOverlayId()
         {
             for (int i = _drawingStack.Count - 1; i >= 0; --i)
             {
-                if (_drawingStack[i] != 0)
+                if (_drawingStack[i].hasValue)
                     return _drawingStack[i];
             }
 
-            return 0;
+            return NowResolvedId.None;
         }
 
-        static int FindTopOverlayId(
+        static NowResolvedId CurrentOverlaySourceId()
+        {
+            for (int i = _drawingSourceStack.Count - 1; i >= 0; --i)
+            {
+                if (_drawingSourceStack[i].hasValue)
+                    return _drawingSourceStack[i];
+            }
+
+            return NowResolvedId.None;
+        }
+
+        static OverlayBlock FindTopOverlayBlock(
             List<OverlayBlock> blocks,
             Component host,
             object owner)
         {
             for (int i = blocks.Count - 1; i >= 0; --i)
             {
-                if (blocks[i].id != 0 &&
+                if (blocks[i].id.hasValue &&
                     BlockBelongsToDomain(blocks[i], host, owner))
                 {
-                    return blocks[i].id;
+                    return blocks[i];
                 }
             }
 
-            return 0;
+            return default;
         }
 
         static void BeginFrameIfNeeded()
@@ -1441,10 +1840,13 @@ namespace NowUI
                     }
 
                     var deferred = _deferred[_flushIndex];
+                    _drawingSourceStack.Add(deferred.overlaySourceId);
                     _drawingStack.Add(deferred.overlayId);
 
                     try
                     {
+                        using (ApplyHostContext(deferred.hostContext))
+                        using (NowInput.ApplyContext(deferred.inputContext))
                         using (NowControls.RestoreIdScope(deferred.controlIdScope))
                         using (Now.ApplyTransformSnapshot(deferred.transform))
                         using (NowTheme.ScopeOrDefault(deferred.theme))
@@ -1458,6 +1860,7 @@ namespace NowUI
                     finally
                     {
                         _drawingStack.RemoveAt(_drawingStack.Count - 1);
+                        _drawingSourceStack.RemoveAt(_drawingSourceStack.Count - 1);
                     }
 
                     if (_resetDuringFlush)
@@ -1489,6 +1892,7 @@ namespace NowUI
                 }
 
                 _drawingStack.Clear();
+                _drawingSourceStack.Clear();
                 --_overlayDepth;
                 _flushIndex = -1;
                 _resetDuringFlush = false;
@@ -1520,6 +1924,7 @@ namespace NowUI
             _blocksCurrent.Clear();
             _blocksPrevious.Clear();
             _drawingStack.Clear();
+            _drawingSourceStack.Clear();
             _registrationOwners.Clear();
             _registryFrame = -1;
             _registryVersion = 0;
@@ -1546,6 +1951,7 @@ namespace NowUI
                 _registrationOwners.Clear();
                 _registryFrame = -1;
                 _registryVersion = 0;
+                NowContextMenu.AbandonOwnerPasses();
 
                 for (int i = 0; i < _frameTransactions.Count; ++i)
                 {
@@ -1564,6 +1970,7 @@ namespace NowUI
             _blocksCurrent.Clear();
             _blocksPrevious.Clear();
             _drawingStack.Clear();
+            _drawingSourceStack.Clear();
             _hostStack.Clear();
             _registrationOwners.Clear();
             _registryFrame = -1;

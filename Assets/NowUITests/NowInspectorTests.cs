@@ -480,9 +480,10 @@ public class NowMaskFieldTests
         DrawFrame(ref mask, fieldCenter, true, true, false);
         DrawFrame(ref mask, fieldCenter, false, false, true);
 
-        int id;
+        NowResolvedId id;
 
         using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
             id = NowControls.GetControlId("mask");
 
         Assert.IsTrue(NowControlState.Get<bool>(id), "Click must open the mask popup.");
