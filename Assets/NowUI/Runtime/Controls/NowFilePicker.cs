@@ -97,6 +97,7 @@ namespace NowUI
             public NowFileFilter[] filters = Array.Empty<NowFileFilter>();
             public readonly List<string> filterLabels = new List<string>(4);
             public readonly List<BrowserEntry> entries = new List<BrowserEntry>(32);
+            public readonly List<NowFilePickerUserFolder> userFolders = new List<NowFilePickerUserFolder>(6);
             public readonly List<FolderTreeEntry> treeEntries = new List<FolderTreeEntry>(32);
             public readonly HashSet<string> expandedTreePaths = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
             public readonly Dictionary<string, ThumbnailEntry> thumbnails =
@@ -112,6 +113,7 @@ namespace NowUI
             public NowResolvedId scrollId;
             public NowResolvedId treeScrollId;
             public NowResolvedId entrySeed;
+            public NowResolvedId userFolderSeed;
             public NowResolvedId treeSeed;
             public NowResolvedId selectButtonId;
             public NowResolvedId cancelButtonId;
@@ -164,6 +166,7 @@ namespace NowUI
         const int ScrollSeed = 0x4e464153;
         const int TreeScrollSeed = 0x4e464154;
         const int EntrySeed = 0x4e464145;
+        const int UserFolderSeed = 0x4e465046;
         const int TreeSeed = 0x4e464152;
         const int SelectSeed = 0x4e46414f;
         const int CancelSeed = 0x4e464143;
@@ -400,6 +403,7 @@ namespace NowUI
             state.scrollId = id.Child(ScrollSeed);
             state.treeScrollId = id.Child(TreeScrollSeed);
             state.entrySeed = id.Child(EntrySeed);
+            state.userFolderSeed = id.Child(UserFolderSeed);
             state.treeSeed = id.Child(TreeSeed);
             state.selectButtonId = id.Child(SelectSeed);
             state.cancelButtonId = id.Child(CancelSeed);
@@ -416,6 +420,7 @@ namespace NowUI
 
             NowControlState.Get<Vector2>(state.scrollId) = Vector2.zero;
             SetCurrentDirectory(state, ResolveInitialDirectory(value, settings));
+            NowFilePickerUserFolders.Resolve(state.userFolders);
             SetSelectedDirectory(state, null);
             state.directoryText = state.currentDirectory;
             state.fileName = ResolveInitialFileName(value, settings, mode);
@@ -558,6 +563,13 @@ namespace NowUI
                 : 20f;
         }
 
+        static float ResolveTextFieldLineHeight(NowText textStyle)
+        {
+            return textStyle.font != null
+                ? textStyle.font.GetLineHeight() * textStyle.fontSize
+                : textStyle.fontSize * 1.2f;
+        }
+
         static void DrawField(
             NowThemeAsset theme,
             NowRect rect,
@@ -697,18 +709,41 @@ namespace NowUI
         {
             RefreshEntries(state);
 
+            var theme = state.themeAsset;
             float padding = Mathf.Min(
                 state.settings.popupPadding,
                 Mathf.Max(0f, (Mathf.Min(state.popupRect.width, state.popupRect.height) - 1f) * 0.5f));
             float spacing = state.settings.popupSpacing;
             bool hasFilter = state.mode != NowFileDialogMode.Directory && state.filters.Length > 1;
             bool hasFileName = state.mode != NowFileDialogMode.Directory;
-            const float titleHeight = 30f;
-            const float addressHeight = 32f;
+            var renderer = theme.controlRenderer;
+            var bodyText = NowControls.Text(theme, NowTextStyle.Body);
+            var titleText = NowControls.Text(theme, NowTextStyle.Title);
+            float bodyLabelHeight = bodyText.Measure("Ag").y;
+            float titleLabelHeight = titleText.Measure(Title(state.mode, state.settings)).y;
+            float textFieldHeight = renderer.MeasureTextField(theme, ResolveTextFieldLineHeight(bodyText)).y;
+            float dropdownHeight = renderer.MeasureDropdownField(theme, ResolveLineHeight(bodyText)).y;
+            float upButtonHeight = renderer.MeasureButton(theme, "Up", NowTextStyle.Button).y;
+            float goButtonHeight = renderer.MeasureButton(theme, "Go", NowTextStyle.Button).y;
+            float actionButtonHeight = renderer.MeasureButton(theme, ActionLabel(state.mode), NowTextStyle.Button).y;
+            float cancelButtonHeight = renderer.MeasureButton(theme, "Cancel", NowTextStyle.Button).y;
+            float titleHeight = Mathf.Max(30f, titleLabelHeight);
+            titleHeight = Mathf.Max(titleHeight, bodyLabelHeight);
+            titleHeight = Mathf.Max(titleHeight, renderer.MeasureSlider(theme).y);
+
+            // A compact popup moves the filter into the title row. Reserving its
+            // intrinsic height up front keeps that responsive transition from
+            // letting a tall themed dropdown bleed into the address row.
+            if (hasFilter)
+                titleHeight = Mathf.Max(titleHeight, dropdownHeight);
+
+            float addressHeight = Mathf.Max(textFieldHeight, Mathf.Max(upButtonHeight, goButtonHeight));
             const float headerHeight = 24f;
-            const float fileNameHeight = 30f;
-            const float filterHeight = 30f;
-            const float preferredFooterHeight = 34f;
+            float fileNameHeight = Mathf.Max(textFieldHeight, bodyLabelHeight);
+            float filterHeight = Mathf.Max(dropdownHeight, bodyLabelHeight);
+            float preferredFooterHeight = Mathf.Max(
+                bodyLabelHeight,
+                Mathf.Max(actionButtonHeight, cancelButtonHeight));
             const float minimumBrowserHeight = 44f;
             NowRect contentRect = state.popupRect.Inset(padding);
             float footerHeight = Mathf.Min(preferredFooterHeight, contentRect.height);
@@ -1111,13 +1146,147 @@ namespace NowUI
                 .SetColor(surfaceMuted)
                 .Draw();
 
-            NowControls.DrawLeftLabel(theme, headerRect.Inset(8f, 0f), "Folders", NowTextStyle.Muted, muted);
+            string header = state.userFolders.Count > 0 ? "Places" : "Folders";
+            NowControls.DrawLeftLabel(theme, headerRect.Inset(8f, 0f), header, NowTextStyle.Muted, muted);
 
             var contentRect = new NowRect(rect.x, rect.y + headerHeight, rect.width, Mathf.Max(0f, rect.height - headerHeight));
             BuildFolderTree(state);
 
-            using (Now.ScrollView(contentRect.Inset(1f), state.treeScrollId).Begin())
-                DrawFolderTreeEntries(state);
+            if (state.userFolders.Count == 0)
+            {
+                using (Now.ScrollView(contentRect.Inset(1f), state.treeScrollId).Begin())
+                    DrawFolderTreeEntries(state);
+                return;
+            }
+
+            const float preferredUserFolderRowHeight = 27f;
+            const float minimumUserFolderRowHeight = 22f;
+            const float foldersHeaderHeight = 22f;
+            float minimumTreeHeight = Mathf.Min(72f, contentRect.height * 0.35f);
+            float availableUserFolderHeight = Mathf.Max(
+                0f,
+                contentRect.height - foldersHeaderHeight - minimumTreeHeight);
+            float userFolderRowHeight = Mathf.Min(
+                preferredUserFolderRowHeight,
+                availableUserFolderHeight / state.userFolders.Count);
+            int visibleUserFolderCount = state.userFolders.Count;
+
+            if (userFolderRowHeight < minimumUserFolderRowHeight)
+            {
+                userFolderRowHeight = minimumUserFolderRowHeight;
+                visibleUserFolderCount = Mathf.Min(
+                    state.userFolders.Count,
+                    Mathf.FloorToInt(availableUserFolderHeight / minimumUserFolderRowHeight));
+            }
+
+            float userFolderHeight = visibleUserFolderCount * userFolderRowHeight;
+            var userFolderRect = new NowRect(contentRect.x, contentRect.y, contentRect.width, userFolderHeight);
+            var userFolderRowsRect = new NowRect(
+                userFolderRect.x + 1f,
+                userFolderRect.y,
+                Mathf.Max(0f, userFolderRect.width - 2f),
+                userFolderRect.height);
+
+            DrawUserFolderEntries(state, userFolderRowsRect, userFolderRowHeight, visibleUserFolderCount);
+
+            var foldersHeaderRect = new NowRect(
+                contentRect.x,
+                userFolderRect.yMax,
+                contentRect.width,
+                Mathf.Min(foldersHeaderHeight, Mathf.Max(0f, contentRect.yMax - userFolderRect.yMax)));
+
+            if (foldersHeaderRect.height > 0f)
+            {
+                Now.Rectangle(foldersHeaderRect)
+                    .SetColor(surfaceMuted)
+                    .Draw();
+                NowControls.DrawLeftLabel(theme, foldersHeaderRect.Inset(8f, 0f), "Folders", NowTextStyle.Muted, muted);
+            }
+
+            var treeRect = new NowRect(
+                contentRect.x,
+                foldersHeaderRect.yMax,
+                contentRect.width,
+                Mathf.Max(0f, contentRect.yMax - foldersHeaderRect.yMax));
+
+            if (treeRect.height > 0f)
+            {
+                using (Now.ScrollView(treeRect.Inset(1f), state.treeScrollId).Begin())
+                    DrawFolderTreeEntries(state);
+            }
+        }
+
+        static void DrawUserFolderEntries(
+            PopupState state,
+            NowRect rect,
+            float rowHeight,
+            int visibleCount)
+        {
+            for (int i = 0; i < visibleCount; ++i)
+            {
+                NowRect row = new NowRect(rect.x, rect.y + i * rowHeight, rect.width, rowHeight);
+                DrawUserFolderRow(state, row, state.userFolders[i]);
+            }
+        }
+
+        static void DrawUserFolderRow(PopupState state, NowRect row, NowFilePickerUserFolder folder)
+        {
+            var theme = state.themeAsset;
+            NowResolvedId id = state.userFolderSeed.Child(folder.stableId);
+            string key = TreePathKey(folder.path);
+            bool revealFocus = KeyEquals(state.pendingTreeFocusKey, key);
+
+            if (revealFocus && !NowInput.isPassive)
+            {
+                NowFocus.Focus(id);
+                state.pendingTreeFocusKey = null;
+            }
+
+            var interaction = NowControls.Interact(id, row, out bool focused, out bool submitted);
+            bool current = KeyEquals(state.currentDirectoryKey, key);
+            bool selected = current || KeyEquals(state.selectedDirectoryKey, key);
+            NowRect visual = row.Inset(2f, 1f);
+
+            if (selected)
+            {
+                Color accent = theme.GetColor(NowColorToken.Accent);
+                Now.Rectangle(visual)
+                    .SetRadius(3f)
+                    .SetColor(new Color(accent.r, accent.g, accent.b, current ? 0.20f : 0.12f))
+                    .SetOutline(1f)
+                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, focused ? 0.70f : current ? 0.52f : 0.34f))
+                    .Draw();
+            }
+            else if (focused)
+            {
+                Color accent = theme.GetColor(NowColorToken.Accent);
+                Now.Rectangle(visual)
+                    .SetRadius(3f)
+                    .SetColor(new Color(accent.r, accent.g, accent.b, 0.07f))
+                    .SetOutline(1f)
+                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.42f))
+                    .Draw();
+            }
+            else if (interaction.hovered || interaction.held)
+            {
+                Color mutedSurface = theme.GetColor(NowColorToken.SurfaceMuted);
+                mutedSurface = NowControls.StateColor(theme, mutedSurface, 1f, interaction.held);
+                Now.Rectangle(visual)
+                    .SetRadius(3f)
+                    .SetColor(mutedSurface)
+                    .Draw();
+            }
+
+            var iconRect = new NowRect(row.x + 9f, row.y, 20f, row.height);
+            var nameRect = new NowRect(iconRect.xMax + 5f, row.y, Mathf.Max(0f, row.xMax - iconRect.xMax - 12f), row.height);
+            Color iconColor = current
+                ? theme.GetColor(NowColorToken.Accent)
+                : theme.GetColor(NowColorToken.TextMuted);
+            NowControls.DrawLeftLabel(theme, iconRect, folder.icon, NowTextStyle.Body, iconColor);
+            NowControls.DrawLeftLabel(theme, nameRect, folder.label, NowTextStyle.Body, theme.GetColor(NowColorToken.Text));
+
+            if ((interaction.clicked || submitted) && !current)
+                NavigateTo(state, folder.path);
         }
 
         static void DrawFolderTreeEntries(PopupState state)
@@ -1356,27 +1525,32 @@ namespace NowUI
                 return;
             }
 
-            const float gap = 8f;
+            const float outerPadding = 8f;
+            const float columnGap = 8f;
+            const float rowGap = 10f;
             float preferredWidth = PreferredThumbnailWidth(state.view);
-            int columns = NowFilePickerUtility.GridColumnCount(contentWidth, preferredWidth, gap);
-            float cellWidth = Mathf.Max(1f, (contentWidth - gap * (columns - 1)) / columns);
+            float usableWidth = Mathf.Max(1f, contentWidth - outerPadding * 2f);
+            int columns = NowFilePickerUtility.GridColumnCount(usableWidth, preferredWidth, columnGap);
+            float cellWidth = Mathf.Max(1f, (usableWidth - columnGap * (columns - 1)) / columns);
             float previewHeight = Mathf.Clamp(cellWidth * 0.72f, 54f, 132f);
-            float cellHeight = previewHeight + 38f;
-            float rowHeight = cellHeight + gap;
+            float cellHeight = previewHeight + 48f;
+            float rowHeight = cellHeight + rowGap;
             int rowCount = Mathf.CeilToInt(state.entries.Count / (float)columns);
-            int firstRow = Mathf.Clamp(Mathf.FloorToInt(scrollY / rowHeight), 0, rowCount);
+            float visibleTop = Mathf.Max(0f, scrollY - outerPadding);
+            float visibleBottom = Mathf.Max(0f, scrollY + Mathf.Max(0f, viewportHeight) - outerPadding);
+            int firstRow = Mathf.Clamp(Mathf.FloorToInt(visibleTop / rowHeight), 0, rowCount);
             int endRow = Mathf.Clamp(
-                Mathf.CeilToInt((scrollY + Mathf.Max(0f, viewportHeight)) / rowHeight) + 1,
+                Mathf.CeilToInt(visibleBottom / rowHeight) + 1,
                 firstRow,
                 rowCount);
 
-            if (firstRow > 0)
-                NowLayout.Space(firstRow * rowHeight);
+            NowLayout.Space(outerPadding + firstRow * rowHeight);
 
             for (int rowIndex = firstRow; rowIndex < endRow; ++rowIndex)
             {
                 NowRect row = NowLayout.ReserveRect(height: rowHeight, stretchWidth: true);
-                float resolvedWidth = Mathf.Max(1f, (row.width - gap * (columns - 1)) / columns);
+                float rowContentWidth = Mathf.Max(1f, row.width - outerPadding * 2f);
+                float resolvedWidth = Mathf.Max(1f, (rowContentWidth - columnGap * (columns - 1)) / columns);
                 int firstEntry = rowIndex * columns;
                 int endEntry = Mathf.Min(firstEntry + columns, state.entries.Count);
 
@@ -1384,7 +1558,7 @@ namespace NowUI
                 {
                     int column = entryIndex - firstEntry;
                     var cell = new NowRect(
-                        row.x + column * (resolvedWidth + gap),
+                        row.x + outerPadding + column * (resolvedWidth + columnGap),
                         row.y,
                         resolvedWidth,
                         cellHeight);
@@ -1392,8 +1566,7 @@ namespace NowUI
                 }
             }
 
-            if (endRow < rowCount)
-                NowLayout.Space((rowCount - endRow) * rowHeight);
+            NowLayout.Space((rowCount - endRow) * rowHeight + outerPadding);
         }
 
         static float PreferredThumbnailWidth(NowFilePickerView view)
@@ -1439,23 +1612,22 @@ namespace NowUI
             }
 
             var previewRect = new NowRect(
-                cell.x + 6f,
-                cell.y + 6f,
-                Mathf.Max(0f, cell.width - 12f),
-                Mathf.Max(0f, cell.height - 44f));
+                cell.x + 7f,
+                cell.y + 7f,
+                Mathf.Max(0f, cell.width - 14f),
+                Mathf.Max(0f, cell.height - 48f));
             DrawThumbnailFrame(state, previewRect, entry);
 
             var nameRect = new NowRect(
-                cell.x + 5f,
-                previewRect.yMax + 2f,
-                Mathf.Max(0f, cell.width - 10f),
-                Mathf.Max(0f, cell.yMax - previewRect.yMax - 4f));
-            NowControls.DrawCenteredLabel(
+                previewRect.x,
+                previewRect.yMax + 6f,
+                previewRect.width,
+                Mathf.Max(0f, cell.yMax - previewRect.yMax - 13f));
+            NowControls.DrawLeftLabel(
                 theme,
                 nameRect,
                 entry.name,
                 NowTextStyle.Body,
-                nameRect,
                 theme.GetColor(NowColorToken.Text));
             HandleEntryClick(state, entry, id, interaction);
         }
@@ -2895,7 +3067,7 @@ namespace NowUI
                 popupWidth = 760f,
                 popupHeight = 460f,
                 popupPadding = 10f,
-                popupSpacing = 6f
+                popupSpacing = 8f
             };
         }
     }

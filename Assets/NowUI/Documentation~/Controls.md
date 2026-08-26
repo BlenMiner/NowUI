@@ -343,6 +343,13 @@ selected image. Thumbnail views arrange entries in progressively larger grids.
 PNG, JPG, and JPEG files use decoded image previews in both forms; unsupported
 files keep their extension-aware icons.
 
+On wider pickers, the **Places** sidebar provides quick access to existing
+common user folders. Windows uses the system's Desktop, Downloads, Documents,
+Pictures, Music, and Videos locations; macOS uses the equivalent folders with
+Movies in place of Videos; Linux follows `xdg-user-dirs`, including localized
+or customized paths. Missing and explicitly disabled locations are omitted,
+and the browsable folder tree remains available beneath the shortcuts.
+
 ```csharp
 string previewPath = "";
 string savePath = "";
