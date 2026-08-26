@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.5...nowui-v1.9.0) (2026-08-26)
+
+
+### Features
+
+* file dialog zoom level ([ca44d28](https://github.com/BlenMiner/NowUI/commit/ca44d280a3dbfbe5bec246872fd9b1f933c6492b))
+
 ## [1.8.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.4...nowui-v1.8.5) (2026-08-23)
 
 
