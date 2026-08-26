@@ -1,3 +1,10 @@
+## [1.9.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.0...nowui-v1.9.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* preset folders in file picker ([675cad6](https://github.com/BlenMiner/NowUI/commit/675cad6fdee1ed824ecb97f985824f139daad88d))
+
 # [1.9.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.8.5...nowui-v1.9.0) (2026-08-26)
 
 
