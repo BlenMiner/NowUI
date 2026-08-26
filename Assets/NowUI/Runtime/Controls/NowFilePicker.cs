@@ -1140,91 +1140,49 @@ namespace NowUI
                 .SetOutlineColor(border)
                 .Draw();
 
-            var headerRect = new NowRect(rect.x, rect.y, rect.width, headerHeight);
-            Now.Rectangle(headerRect)
-                .SetRadius(4f, 4f, 0f, 0f)
-                .SetColor(surfaceMuted)
-                .Draw();
-
-            string header = state.userFolders.Count > 0 ? "Places" : "Folders";
-            NowControls.DrawLeftLabel(theme, headerRect.Inset(8f, 0f), header, NowTextStyle.Muted, muted);
-
-            var contentRect = new NowRect(rect.x, rect.y + headerHeight, rect.width, Mathf.Max(0f, rect.height - headerHeight));
             BuildFolderTree(state);
 
-            if (state.userFolders.Count == 0)
+            using (Now.ScrollView(rect.Inset(1f), state.treeScrollId).Begin())
             {
-                using (Now.ScrollView(contentRect.Inset(1f), state.treeScrollId).Begin())
-                    DrawFolderTreeEntries(state);
-                return;
-            }
+                if (state.userFolders.Count > 0)
+                {
+                    DrawFolderTreeSectionHeader(theme, surfaceMuted, muted, "Places", headerHeight, roundedTop: true);
+                    DrawUserFolderEntries(state, 27f);
+                    DrawFolderTreeSectionHeader(theme, surfaceMuted, muted, "Folders", headerHeight, roundedTop: false);
+                }
+                else
+                {
+                    DrawFolderTreeSectionHeader(theme, surfaceMuted, muted, "Folders", headerHeight, roundedTop: true);
+                }
 
-            const float preferredUserFolderRowHeight = 27f;
-            const float minimumUserFolderRowHeight = 22f;
-            const float foldersHeaderHeight = 22f;
-            float minimumTreeHeight = Mathf.Min(72f, contentRect.height * 0.35f);
-            float availableUserFolderHeight = Mathf.Max(
-                0f,
-                contentRect.height - foldersHeaderHeight - minimumTreeHeight);
-            float userFolderRowHeight = Mathf.Min(
-                preferredUserFolderRowHeight,
-                availableUserFolderHeight / state.userFolders.Count);
-            int visibleUserFolderCount = state.userFolders.Count;
-
-            if (userFolderRowHeight < minimumUserFolderRowHeight)
-            {
-                userFolderRowHeight = minimumUserFolderRowHeight;
-                visibleUserFolderCount = Mathf.Min(
-                    state.userFolders.Count,
-                    Mathf.FloorToInt(availableUserFolderHeight / minimumUserFolderRowHeight));
-            }
-
-            float userFolderHeight = visibleUserFolderCount * userFolderRowHeight;
-            var userFolderRect = new NowRect(contentRect.x, contentRect.y, contentRect.width, userFolderHeight);
-            var userFolderRowsRect = new NowRect(
-                userFolderRect.x + 1f,
-                userFolderRect.y,
-                Mathf.Max(0f, userFolderRect.width - 2f),
-                userFolderRect.height);
-
-            DrawUserFolderEntries(state, userFolderRowsRect, userFolderRowHeight, visibleUserFolderCount);
-
-            var foldersHeaderRect = new NowRect(
-                contentRect.x,
-                userFolderRect.yMax,
-                contentRect.width,
-                Mathf.Min(foldersHeaderHeight, Mathf.Max(0f, contentRect.yMax - userFolderRect.yMax)));
-
-            if (foldersHeaderRect.height > 0f)
-            {
-                Now.Rectangle(foldersHeaderRect)
-                    .SetColor(surfaceMuted)
-                    .Draw();
-                NowControls.DrawLeftLabel(theme, foldersHeaderRect.Inset(8f, 0f), "Folders", NowTextStyle.Muted, muted);
-            }
-
-            var treeRect = new NowRect(
-                contentRect.x,
-                foldersHeaderRect.yMax,
-                contentRect.width,
-                Mathf.Max(0f, contentRect.yMax - foldersHeaderRect.yMax));
-
-            if (treeRect.height > 0f)
-            {
-                using (Now.ScrollView(treeRect.Inset(1f), state.treeScrollId).Begin())
-                    DrawFolderTreeEntries(state);
+                DrawFolderTreeEntries(state);
+                NowLayout.Space(4f);
             }
         }
 
-        static void DrawUserFolderEntries(
-            PopupState state,
-            NowRect rect,
-            float rowHeight,
-            int visibleCount)
+        static void DrawFolderTreeSectionHeader(
+            NowThemeAsset theme,
+            Color surfaceMuted,
+            Color muted,
+            string label,
+            float height,
+            bool roundedTop)
         {
-            for (int i = 0; i < visibleCount; ++i)
+            NowRect headerRect = NowLayout.ReserveRect(height: height, stretchWidth: true);
+            var background = Now.Rectangle(headerRect).SetColor(surfaceMuted);
+
+            if (roundedTop)
+                background = background.SetRadius(3f, 3f, 0f, 0f);
+
+            background.Draw();
+            NowControls.DrawLeftLabel(theme, headerRect.Inset(8f, 0f), label, NowTextStyle.Muted, muted);
+        }
+
+        static void DrawUserFolderEntries(PopupState state, float rowHeight)
+        {
+            for (int i = 0; i < state.userFolders.Count; ++i)
             {
-                NowRect row = new NowRect(rect.x, rect.y + i * rowHeight, rect.width, rowHeight);
+                NowRect row = NowLayout.ReserveRect(height: rowHeight, stretchWidth: true);
                 DrawUserFolderRow(state, row, state.userFolders[i]);
             }
         }
@@ -1234,13 +1192,10 @@ namespace NowUI
             var theme = state.themeAsset;
             NowResolvedId id = state.userFolderSeed.Child(folder.stableId);
             string key = TreePathKey(folder.path);
-            bool revealFocus = KeyEquals(state.pendingTreeFocusKey, key);
 
-            if (revealFocus && !NowInput.isPassive)
-            {
-                NowFocus.Focus(id);
-                state.pendingTreeFocusKey = null;
-            }
+            // The canonical tree row owns programmatic focus/reveal. If a Place
+            // consumed the same pending key first, the unified scroll would stay
+            // at the shortcuts instead of showing the current folder location.
 
             var interaction = NowControls.Interact(id, row, out bool focused, out bool submitted);
             bool current = KeyEquals(state.currentDirectoryKey, key);

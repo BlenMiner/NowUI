@@ -348,7 +348,9 @@ common user folders. Windows uses the system's Desktop, Downloads, Documents,
 Pictures, Music, and Videos locations; macOS uses the equivalent folders with
 Movies in place of Videos; Linux follows `xdg-user-dirs`, including localized
 or customized paths. Missing and explicitly disabled locations are omitted,
-and the browsable folder tree remains available beneath the shortcuts.
+and Places shares one scrollable sidebar with the folder tree. Opening or
+navigating the picker reveals the current tree node; scroll upward to return to
+the shortcuts.
 
 ```csharp
 string previewPath = "";
