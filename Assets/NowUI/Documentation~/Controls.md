@@ -331,28 +331,36 @@ void DrawSettings()
 
 ## File picker fields
 
-File picker fields are ordinary controls with overlay popups. They only return
-paths; opening, saving, importing, and validation beyond the selected mode stay
-in your code. The popup includes an address bar, a folder tree for upstream and
-local navigation, and a details list with extension-aware file icons.
+File picker fields are ordinary controls with modal overlay popups. They only
+return paths; opening, saving, importing, and validation beyond the selected
+mode stay in your code. By default, the popup is centered and clamped to the
+input surface, with a themed scrim separating it from the UI underneath.
+
+The view slider moves through `NowFilePickerView.Details`, `SmallThumbnails`,
+`MediumThumbnails`, and `LargeThumbnails`. Details view keeps the folder tree
+and file list and, when space allows, adds a larger preview pane for the
+selected image. Thumbnail views arrange entries in progressively larger grids.
+PNG, JPG, and JPEG files use decoded image previews in both forms; unsupported
+files keep their extension-aware icons.
 
 ```csharp
-string loadPath = "";
+string previewPath = "";
 string savePath = "";
 string outputDirectory = "";
 
 using (NowLayout.Area(NowScreen.safeArea, padding: 16f, spacing: 8f))
 {
-    if (NowLayout.OpenFileField("load-config")
-        .SetTitle("Open config")
+    if (NowLayout.OpenFileField("preview-image")
+        .SetTitle("Choose preview image")
         .SetStartDirectory(Application.dataPath)
+        .SetInitialView(NowFilePickerView.MediumThumbnails)
         .SetFilters(
-            new NowFileFilter("Config", "json", "yaml", "yml"),
+            new NowFileFilter("Images", "png", "jpg", "jpeg"),
             new NowFileFilter("All files", "*"))
         .SetPopupSize(780f, 480f)
-        .Draw(ref loadPath))
+        .Draw(ref previewPath))
     {
-        LoadConfig(loadPath);
+        SetPreviewImage(previewPath);
     }
 
     if (NowLayout.SaveFileField("save-config")
@@ -384,8 +392,13 @@ using (NowLayout.Area(NowScreen.safeArea, padding: 16f, spacing: 8f))
   extension is used.
 - `SetShowHidden(true)` includes hidden filesystem entries. The default keeps
   them out of the browser list.
-- `SetFitToView(false)` disables popup fitting when a host wants exact
-  placement.
+- `SetInitialView(...)` chooses the view used when the picker first opens. The
+  popup slider can change it without closing the picker, and that choice is
+  preserved on later opens.
+- `SetPopupSize(...)` sets the preferred browser size; the modal remains
+  centered and is clamped when the input surface is smaller.
+- `SetFitToView(false)` restores field-anchored placement and disables clamping
+  for a host that requires exact popup sizing.
 - Selection is delivered on the next `Draw(ref path)` after the popup commits,
   matching dropdown popup behavior.
 - See the file-picker section in the packaged

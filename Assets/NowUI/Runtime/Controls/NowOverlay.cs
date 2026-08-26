@@ -259,6 +259,10 @@ namespace NowUI
 
         static readonly List<RegistrationOwnerState> _registrationOwners = new List<RegistrationOwnerState>(4);
 
+        internal static event Action<object> registrationOwnerReleased;
+
+        internal static event Action<object> registrationOwnerFootprintExpired;
+
         static int _registryFrame = -1;
 
         static int _registryVersion;
@@ -398,6 +402,8 @@ namespace NowUI
                 if (ReferenceEquals(_registrationOwners[i].owner, owner))
                     _registrationOwners.RemoveAt(i);
             }
+
+            registrationOwnerReleased?.Invoke(owner);
         }
 
         /// <summary>
@@ -449,6 +455,7 @@ namespace NowUI
                     }
 
                     _registrationOwners.RemoveAt(i);
+                    registrationOwnerFootprintExpired?.Invoke(owner);
                 }
             }
         }
@@ -1925,7 +1932,7 @@ namespace NowUI
             _blocksPrevious.Clear();
             _drawingStack.Clear();
             _drawingSourceStack.Clear();
-            _registrationOwners.Clear();
+            ExpireAllRegistrationOwnerFootprints();
             _registryFrame = -1;
             _registryVersion = 0;
             _overlayDepth = 0;
@@ -1948,7 +1955,7 @@ namespace NowUI
                 _postResetDeferredStart = prefix;
                 _blocksCurrent.Clear();
                 _blocksPrevious.Clear();
-                _registrationOwners.Clear();
+                ExpireAllRegistrationOwnerFootprints();
                 _registryFrame = -1;
                 _registryVersion = 0;
                 NowContextMenu.AbandonOwnerPasses();
@@ -1972,7 +1979,7 @@ namespace NowUI
             _drawingStack.Clear();
             _drawingSourceStack.Clear();
             _hostStack.Clear();
-            _registrationOwners.Clear();
+            ExpireAllRegistrationOwnerFootprints();
             _registryFrame = -1;
             _registryVersion = 0;
             _overlayDepth = 0;
@@ -1981,6 +1988,17 @@ namespace NowUI
             _postResetDeferredStart = 0;
             ClearFrameTransactions();
             NowPopupPlacement.Reset();
+        }
+
+        static void ExpireAllRegistrationOwnerFootprints()
+        {
+            while (_registrationOwners.Count > 0)
+            {
+                int last = _registrationOwners.Count - 1;
+                object owner = _registrationOwners[last].owner;
+                _registrationOwners.RemoveAt(last);
+                registrationOwnerFootprintExpired?.Invoke(owner);
+            }
         }
 
         internal static int currentBlockCount => _blocksCurrent.Count;

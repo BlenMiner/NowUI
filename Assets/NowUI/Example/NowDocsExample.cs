@@ -2751,9 +2751,9 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawFilePickerDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# File picker demo\n\nFile picker fields are built-in overlay controls." +
-            " The field owns the browser UI and returns the selected path; your code still owns the" +
-            " file read, write, import, or export operation.").Draw();
+        NowMarkdown.Document("# File picker demo\n\nFile picker fields are modal overlay controls." +
+            " Image files get real previews, and the view slider moves from details to thumbnail grids." +
+            " The field returns the selected path; your code still owns the file operation.").Draw();
 
         using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
         {
@@ -2776,7 +2776,6 @@ public class NowDocsExample : NowLayoutGraphic
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
         var body = panel.Inset(16f);
-        string docsDirectory = ResolveDocumentationRoot() ?? FilePickerDemoDirectory("Assets");
         string assetsDirectory = FilePickerDemoDirectory("Assets");
         string saveDirectory = FilePickerDemoDirectory("Library");
 
@@ -2798,11 +2797,11 @@ public class NowDocsExample : NowLayoutGraphic
                 NowLayout.Label("Open").SetWidth(74f).Draw();
 
                 if (NowLayout.OpenFileField("docs-file-picker-open")
-                    .SetTitle("Open project document")
-                    .SetStartDirectory(docsDirectory)
+                    .SetTitle("Choose preview image")
+                    .SetStartDirectory(assetsDirectory)
+                    .SetInitialView(NowFilePickerView.MediumThumbnails)
                     .SetFilters(
-                        new NowFileFilter("Markdown", "md"),
-                        new NowFileFilter("Text", "txt", "json"),
+                        new NowFileFilter("Images", "png", "jpg", "jpeg"),
                         new NowFileFilter("All files", "*"))
                     .SetShowHidden(_filePickerShowHidden)
                     .SetPopupSize(780f, 480f)

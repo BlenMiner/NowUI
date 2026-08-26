@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using UnityEngine;
+using UnityEngine.Networking;
 
 namespace NowUI
 {
@@ -11,6 +12,15 @@ namespace NowUI
         OpenFile,
         SaveFile,
         Directory
+    }
+
+    /// <summary>Visual density used by the built-in file browser.</summary>
+    public enum NowFilePickerView
+    {
+        Details,
+        SmallThumbnails,
+        MediumThumbnails,
+        LargeThumbnails
     }
 
     public readonly struct NowFileFilter
@@ -45,6 +55,26 @@ namespace NowUI
             public string type;
             public bool directory;
             public bool parent;
+            public bool previewable;
+        }
+
+        enum ThumbnailState : byte
+        {
+            Pending,
+            Loading,
+            Loaded,
+            Failed
+        }
+
+        sealed class ThumbnailEntry
+        {
+            public string path;
+            public ThumbnailState state;
+            public Texture texture;
+            public string dimensions;
+            public long lastAccess;
+            public UnityWebRequest request;
+            public UnityWebRequestAsyncOperation operation;
         }
 
         sealed class FolderTreeEntry
@@ -69,11 +99,16 @@ namespace NowUI
             public readonly List<BrowserEntry> entries = new List<BrowserEntry>(32);
             public readonly List<FolderTreeEntry> treeEntries = new List<FolderTreeEntry>(32);
             public readonly HashSet<string> expandedTreePaths = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+            public readonly Dictionary<string, ThumbnailEntry> thumbnails =
+                new Dictionary<string, ThumbnailEntry>(StringComparer.Ordinal);
             public NowResolvedId id;
             public NowResolvedId areaId;
+            public NowResolvedId footerAreaId;
             public NowResolvedId pathFieldId;
             public NowResolvedId fileNameFieldId;
             public NowResolvedId filterId;
+            public NowResolvedId viewSliderId;
+            public NowResolvedId errorTooltipId;
             public NowResolvedId scrollId;
             public NowResolvedId treeScrollId;
             public NowResolvedId entrySeed;
@@ -94,23 +129,38 @@ namespace NowUI
             public string error;
             public string errorLabel;
             public bool actionError;
+            public NowFilePickerView view;
+            public bool viewInitialized;
+            public long thumbnailAccess;
+            public int activeThumbnailRequests;
+            public bool previewResourcesActive;
             public string pendingPath;
             public bool hasPendingPath;
             public string pendingTreeFocusKey;
             public bool entriesDirty;
             public bool treeDirty;
             public NowRect fieldRect;
+            public NowRect surfaceRect;
             public NowRect popupRect;
+            public object registrationOwner;
         }
 
         static readonly Dictionary<NowResolvedId, PopupState> _popupStates = new Dictionary<NowResolvedId, PopupState>(4);
         static readonly Dictionary<int, PopupState> _popupStatesByCallback = new Dictionary<int, PopupState>(4);
+        static readonly List<Texture> _deferredThumbnailReleases = new List<Texture>(16);
+        static readonly List<NowResolvedId> _releasedPopupStateIds = new List<NowResolvedId>(4);
+#if UNITY_EDITOR
+        static bool s_editorThumbnailReleaseQueued;
+#endif
         static int s_nextPopupState = 1;
 
         const int AreaSeed = 0x4e464141;
+        const int FooterAreaSeed = 0x4e464158;
         const int PathFieldSeed = 0x4e464150;
         const int FileNameSeed = 0x4e464146;
         const int FilterSeed = 0x4e46414c;
+        const int ViewSliderSeed = 0x4e46565a;
+        const int ErrorTooltipSeed = 0x4e464521;
         const int ScrollSeed = 0x4e464153;
         const int TreeScrollSeed = 0x4e464154;
         const int EntrySeed = 0x4e464145;
@@ -119,6 +169,18 @@ namespace NowUI
         const int CancelSeed = 0x4e464143;
         const int GoSeed = 0x4e464147;
         const int UpSeed = 0x4e464155;
+        const int MaxThumbnailRequests = 2;
+        const int MaxThumbnailEntries = 64;
+        const int ThumbnailDimension = 256;
+        const long MaxThumbnailFileBytes = 64L * 1024L * 1024L;
+        const int MaxThumbnailSourceDimension = 16384;
+        const long MaxThumbnailSourcePixels = 24L * 1024L * 1024L;
+
+        static NowFilePicker()
+        {
+            NowOverlay.registrationOwnerReleased += ReleaseRegistrationOwner;
+            NowOverlay.registrationOwnerFootprintExpired += ReleaseExpiredRegistrationOwner;
+        }
 
         internal NowFilePicker(NowFileDialogMode mode, NowControlIdentity id, int site)
         {
@@ -172,6 +234,13 @@ namespace NowUI
 
         public NowFilePicker SetShowHidden(bool showHidden = true) { _settings.showHidden = showHidden; return this; }
 
+        /// <summary>Sets the initial visual density; the user's later choice persists for this control.</summary>
+        public NowFilePicker SetInitialView(NowFilePickerView view)
+        {
+            _settings.initialView = NowFilePickerUtility.ClampView(view);
+            return this;
+        }
+
         public NowFilePicker SetPopupSize(float width, float height)
         {
             _settings.popupWidth = Mathf.Max(220f, width);
@@ -221,6 +290,7 @@ namespace NowUI
             var renderer = theme.controlRenderer;
             NowResolvedId id = _id.Resolve(_site);
             var state = GetState(id);
+            state.registrationOwner = NowOverlay.currentRegistrationOwner;
             bool changed = ApplyPending(state, ref path);
 
             var textStyle = NowControls.Text(theme, NowTextStyle.Body);
@@ -240,10 +310,15 @@ namespace NowUI
 
                 if (open)
                     InitializeStateForOpen(state, id, path, _mode, _settings);
+                else
+                    ReleaseThumbnailResources(state, deferLoadedTextures: true);
             }
 
             if (open && !wasOpen && string.IsNullOrEmpty(state.currentDirectory))
                 InitializeStateForOpen(state, id, path, _mode, _settings);
+
+            if (!open && state.previewResourcesActive)
+                ReleaseThumbnailResources(state, deferLoadedTextures: true);
 
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             DrawField(theme, rect, path, _mode, _settings, open, focused, interaction.held, hoverT, lineHeight);
@@ -316,9 +391,12 @@ namespace NowUI
             RebuildFilterLabels(state);
             state.filterIndex = Mathf.Clamp(state.filterIndex, 0, Mathf.Max(0, state.filters.Length - 1));
             state.areaId = id.Derive(NowIdDomain.Layout, AreaSeed);
+            state.footerAreaId = id.Derive(NowIdDomain.Layout, FooterAreaSeed);
             state.pathFieldId = id.Child(PathFieldSeed);
             state.fileNameFieldId = id.Child(FileNameSeed);
             state.filterId = id.Child(FilterSeed);
+            state.viewSliderId = id.Child(ViewSliderSeed);
+            state.errorTooltipId = id.Child(ErrorTooltipSeed);
             state.scrollId = id.Child(ScrollSeed);
             state.treeScrollId = id.Child(TreeScrollSeed);
             state.entrySeed = id.Child(EntrySeed);
@@ -327,6 +405,16 @@ namespace NowUI
             state.cancelButtonId = id.Child(CancelSeed);
             state.goButtonId = id.Child(GoSeed);
             state.upButtonId = id.Child(UpSeed);
+            ReleaseThumbnailResources(state, deferLoadedTextures: true);
+            state.previewResourcesActive = true;
+
+            if (!state.viewInitialized)
+            {
+                state.view = NowFilePickerUtility.ClampView(settings.initialView);
+                state.viewInitialized = true;
+            }
+
+            NowControlState.Get<Vector2>(state.scrollId) = Vector2.zero;
             SetCurrentDirectory(state, ResolveInitialDirectory(value, settings));
             SetSelectedDirectory(state, null);
             state.directoryText = state.currentDirectory;
@@ -546,21 +634,47 @@ namespace NowUI
             var state = GetState(id);
             state.themeAsset = theme;
             state.fieldRect = Now.TransformScreenRect(field);
-            state.popupRect = CalculatePopupRect(theme, field, settings);
+            state.surfaceRect = CalculateLocalSurfaceRect();
+            state.popupRect = CalculatePopupRect(theme, field, settings, state.surfaceRect);
 
             NowOverlay.BlockAllSurfaces(id);
             NowOverlay.Defer(state.popupRect, id, state.callbackState, DrawPopup);
         }
 
-        static NowRect CalculatePopupRect(NowThemeAsset theme, NowRect field, NowFilePickerSettings settings)
+        static NowRect CalculateLocalSurfaceRect()
         {
+            Vector2 size = NowInput.surface.size;
+
+            if (size.x <= 0f || size.y <= 0f)
+                return default;
+
+            Vector2 a = Now.InverseTransformScreenPoint(Vector2.zero);
+            Vector2 b = Now.InverseTransformScreenPoint(size);
+            float xMin = Mathf.Min(a.x, b.x);
+            float yMin = Mathf.Min(a.y, b.y);
+            return new NowRect(xMin, yMin, Mathf.Abs(b.x - a.x), Mathf.Abs(b.y - a.y));
+        }
+
+        static NowRect CalculatePopupRect(
+            NowThemeAsset theme,
+            NowRect field,
+            NowFilePickerSettings settings,
+            NowRect surfaceRect)
+        {
+            float width = Mathf.Max(field.width, settings.popupWidth);
+            float height = settings.popupHeight;
             var rect = new NowRect(
                 field.x,
                 field.yMax + theme.controlStyles.dropdownPopupGap,
-                Mathf.Max(field.width, settings.popupWidth),
-                settings.popupHeight);
+                width,
+                height);
 
-            return settings.fitToView ? NowOverlay.FitToView(rect) : rect;
+            if (!settings.fitToView)
+                return rect;
+
+            rect = NowFilePickerUtility.FitModalRect(rect, surfaceRect, 8f);
+
+            return NowOverlay.ClampToView(rect);
         }
 
         static void DrawPopup(int stateId)
@@ -569,6 +683,11 @@ namespace NowUI
                 return;
 
             var theme = state.themeAsset;
+
+            if (!state.surfaceRect.isEmpty)
+                Now.Rectangle(state.surfaceRect).SetColor(theme.GetColor(NowColorToken.Scrim)).Draw();
+
+            PollThumbnailRequests(state);
             theme.controlRenderer.DrawPopupBackground(theme, state.popupRect, menu: false);
             DrawPopupContent(state);
             HandleDismiss(state);
@@ -578,7 +697,9 @@ namespace NowUI
         {
             RefreshEntries(state);
 
-            float padding = state.settings.popupPadding;
+            float padding = Mathf.Min(
+                state.settings.popupPadding,
+                Mathf.Max(0f, (Mathf.Min(state.popupRect.width, state.popupRect.height) - 1f) * 0.5f));
             float spacing = state.settings.popupSpacing;
             bool hasFilter = state.mode != NowFileDialogMode.Directory && state.filters.Length > 1;
             bool hasFileName = state.mode != NowFileDialogMode.Directory;
@@ -587,119 +708,284 @@ namespace NowUI
             const float headerHeight = 24f;
             const float fileNameHeight = 30f;
             const float filterHeight = 30f;
-            const float footerHeight = 34f;
-            float fixedHeight = titleHeight + addressHeight + footerHeight;
-            int fixedRows = 3;
+            const float preferredFooterHeight = 34f;
+            const float minimumBrowserHeight = 44f;
+            NowRect contentRect = state.popupRect.Inset(padding);
+            float footerHeight = Mathf.Min(preferredFooterHeight, contentRect.height);
+            float footerGap = contentRect.height > footerHeight
+                ? Mathf.Min(spacing, contentRect.height - footerHeight)
+                : 0f;
+            float bodyHeight = Mathf.Max(0f, contentRect.height - footerHeight - footerGap);
+            var bodyRect = new NowRect(contentRect.x, contentRect.y, contentRect.width, bodyHeight);
+            var footerRect = new NowRect(
+                contentRect.x,
+                contentRect.yMax - footerHeight,
+                contentRect.width,
+                footerHeight);
+            float resolvedTitleHeight = Mathf.Min(titleHeight, bodyRect.height);
+            float browserBudget = Mathf.Max(
+                0f,
+                bodyRect.height - resolvedTitleHeight - (resolvedTitleHeight > 0f ? spacing : 0f));
+            bool showFileName = hasFileName &&
+                TryUseResponsiveRow(ref browserBudget, fileNameHeight, spacing, minimumBrowserHeight);
+            bool showAddress = contentRect.width >= 124f &&
+                TryUseResponsiveRow(ref browserBudget, addressHeight, spacing, minimumBrowserHeight);
+            bool showFilter = hasFilter &&
+                TryUseResponsiveRow(ref browserBudget, filterHeight, spacing, minimumBrowserHeight);
+            bool showCompactFilter = hasFilter && !showFilter;
+            float browserHeight = browserBudget;
+            float resolvedHeaderHeight = Mathf.Min(headerHeight, browserHeight);
 
-            if (hasFileName)
+            using (Now.Mask(state.popupRect.Inset(1f)))
             {
-                fixedHeight += fileNameHeight;
-                ++fixedRows;
-            }
-
-            if (hasFilter)
-            {
-                fixedHeight += filterHeight;
-                ++fixedRows;
-            }
-
-            float browserHeight = state.popupRect.height - padding * 2f - fixedHeight - spacing * fixedRows;
-
-            if (browserHeight < headerHeight + 96f)
-                browserHeight = headerHeight + 96f;
-
-            using (NowLayout.Area(state.areaId, state.popupRect, spacing: spacing, padding: padding, alignItems: NowLayoutAlign.Start))
-            {
-                using (NowLayout.HorizontalScope(height: titleHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+                if (!bodyRect.isEmpty)
                 {
-                    NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Title), Title(state.mode, state.settings))
+                    using (NowLayout.Area(
+                        state.areaId,
+                        bodyRect,
+                        spacing: spacing,
+                        padding: 0f,
+                        alignItems: NowLayoutAlign.Start))
+                    {
+                        if (resolvedTitleHeight > 0f)
+                            DrawPopupTitle(state, resolvedTitleHeight, bodyRect.width, showCompactFilter);
+
+                        if (showAddress)
+                            DrawAddressRow(state, addressHeight, bodyRect.width);
+
+                        NowRect browserRect = NowLayout.ReserveRect(height: browserHeight, stretchWidth: true);
+                        if (!browserRect.isEmpty)
+                            DrawBrowser(state, browserRect, resolvedHeaderHeight);
+
+                        if (showFileName)
+                            DrawFileNameRow(state, fileNameHeight, bodyRect.width);
+
+                        if (showFilter)
+                            DrawFilterRow(state, filterHeight, bodyRect.width);
+                    }
+                }
+
+                if (!footerRect.isEmpty)
+                {
+                    using (NowLayout.Area(
+                        state.footerAreaId,
+                        footerRect,
+                        spacing: 0f,
+                        padding: 0f,
+                        alignItems: NowLayoutAlign.Start))
+                    {
+                        DrawPopupFooter(state, footerRect.height, footerRect.width);
+                    }
+                }
+            }
+        }
+
+        static bool TryUseResponsiveRow(
+            ref float browserBudget,
+            float rowHeight,
+            float spacing,
+            float minimumBrowserHeight)
+        {
+            float cost = rowHeight + spacing;
+
+            if (browserBudget - cost < minimumBrowserHeight)
+                return false;
+
+            browserBudget -= cost;
+            return true;
+        }
+
+        static void DrawPopupTitle(
+            PopupState state,
+            float height,
+            float availableWidth,
+            bool showCompactFilter)
+        {
+            using (NowLayout.HorizontalScope(height: height, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+            {
+                bool compactError = availableWidth < 340f && !string.IsNullOrEmpty(state.error);
+
+                if (showCompactFilter && availableWidth < 280f)
+                {
+                    if (compactError && availableWidth >= 48f)
+                    {
+                        var errorMarker = NowLayout.Label("!")
+                            .SetWidth(16f)
+                            .SetColor(new Color(0.86f, 0.24f, 0.24f))
+                            .Reserve();
+                        errorMarker.Draw();
+                        NowTooltip.For(state.errorTooltipId, errorMarker.rect, state.error);
+                    }
+
+                    DrawPopupFilterControl(state, stretch: true);
+                    return;
+                }
+
+                string label = compactError ? state.errorLabel : Title(state.mode, state.settings);
+                var title = NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Title), label)
+                    .SetStretchWidth();
+
+                if (compactError)
+                    title = title.SetColor(new Color(0.86f, 0.24f, 0.24f));
+
+                title.Draw();
+
+                if (showCompactFilter)
+                {
+                    DrawPopupFilterControl(state, stretch: false, width: 140f);
+                }
+                else if (availableWidth >= 340f)
+                {
+                    NowLayout.Label("View").SetWidth(34f).Draw();
+                    NowLayout.Label("▤").SetWidth(16f).Draw();
+                    int view = (int)state.view;
+
+                    if (NowLayout.Slider(
+                            (float)NowFilePickerView.Details,
+                            (float)NowFilePickerView.LargeThumbnails)
+                        .SetId(state.viewSliderId)
+                        .SetStep(1f)
+                        .SetWidth(92f)
+                        .Draw(ref view))
+                    {
+                        state.view = NowFilePickerUtility.ClampView((NowFilePickerView)view);
+                        NowControlState.Get<Vector2>(state.scrollId) = Vector2.zero;
+                        NowControlState.RequestRepaint();
+                    }
+
+                    NowLayout.Label("▦").SetWidth(16f).Draw();
+                }
+            }
+        }
+
+        static void DrawAddressRow(PopupState state, float height, float availableWidth)
+        {
+            float upWidth = availableWidth < 260f ? 36f : 48f;
+            float goWidth = availableWidth < 260f ? 36f : 44f;
+
+            using (NowLayout.HorizontalScope(height: height, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+            {
+                string parent = state.parentDirectory;
+
+                if (!string.IsNullOrEmpty(parent))
+                {
+                    if (NowLayout.Button("Up").SetId(state.upButtonId).SetStyle(NowRectangleStyle.Outline).SetWidth(upWidth).Draw())
+                        NavigateTo(state, parent);
+                }
+                else
+                {
+                    NowLayout.Label("").SetWidth(upWidth).Draw();
+                }
+
+                if (NowLayout.TextField(state.pathFieldId)
+                    .SetStretchWidth()
+                    .SetPlaceholder("Address")
+                    .Draw(ref state.directoryText))
+                {
+                    SetSelectedDirectory(state, null);
+                    ClearError(state);
+                }
+
+                if (NowLayout.Button("Go").SetId(state.goButtonId).SetStyle(NowRectangleStyle.Outline).SetWidth(goWidth).Draw())
+                    NavigateTo(state, state.directoryText);
+            }
+        }
+
+        static void DrawFileNameRow(PopupState state, float height, float availableWidth)
+        {
+            using (NowLayout.HorizontalScope(height: height, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            {
+                if (availableWidth >= 220f)
+                    NowLayout.Label("File name:").SetWidth(78f).Draw();
+
+                if (NowLayout.TextField(state.fileNameFieldId)
+                    .SetStretchWidth()
+                    .SetPlaceholder("File name...")
+                    .Draw(ref state.fileName))
+                {
+                    SetSelectedDirectory(state, null);
+                    ClearError(state);
+                }
+            }
+        }
+
+        static void DrawFilterRow(PopupState state, float height, float availableWidth)
+        {
+            using (NowLayout.HorizontalScope(height: height, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            {
+                if (availableWidth >= 220f)
+                    NowLayout.Label("File type:").SetWidth(78f).Draw();
+
+                DrawPopupFilterControl(state, stretch: true);
+            }
+        }
+
+        static void DrawPopupFilterControl(
+            PopupState state,
+            bool stretch,
+            float width = 0f)
+        {
+            int filter = state.filterIndex;
+            var dropdown = NowLayout.Dropdown(state.filterId, state.filterLabels);
+            dropdown = stretch
+                ? dropdown.SetStretchWidth()
+                : dropdown.SetWidth(width);
+
+            if (!dropdown.Draw(ref filter))
+                return;
+
+            state.filterIndex = Mathf.Clamp(filter, 0, state.filters.Length - 1);
+            SetSelectedDirectory(state, null);
+            state.entriesDirty = true;
+            ClearError(state);
+        }
+
+        static void DrawPopupFooter(PopupState state, float height, float availableWidth)
+        {
+            using (NowLayout.HorizontalScope(height: height, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
+            {
+                if (availableWidth < 340f)
+                {
+                    float buttonWidth = Mathf.Max(1f, (availableWidth - 8f) * 0.5f);
+
+                    if (NowLayout.Button(ActionLabel(state.mode))
+                        .SetId(state.selectButtonId)
+                        .SetStyle(NowRectangleStyle.Accent)
+                        .SetWidth(buttonWidth)
+                        .Draw())
+                    {
+                        CommitAction(state);
+                    }
+
+                    if (NowLayout.Button("Cancel")
+                        .SetId(state.cancelButtonId)
+                        .SetStyle(NowRectangleStyle.Surface)
+                        .SetWidth(buttonWidth)
+                        .Draw())
+                    {
+                        ClosePopup(state);
+                    }
+
+                    return;
+                }
+
+                if (!string.IsNullOrEmpty(state.error))
+                {
+                    NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Body), state.errorLabel)
                         .SetStretchWidth()
+                        .SetColor(new Color(0.86f, 0.24f, 0.24f))
                         .Draw();
                 }
-
-                using (NowLayout.HorizontalScope(height: addressHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
+                else
                 {
-                    string parent = state.parentDirectory;
-
-                    if (!string.IsNullOrEmpty(parent))
-                    {
-                        if (NowLayout.Button("Up").SetId(state.upButtonId).SetStyle(NowRectangleStyle.Outline).SetWidth(48f).Draw())
-                            NavigateTo(state, parent);
-                    }
-                    else
-                    {
-                        NowLayout.Label("").SetWidth(48f).Draw();
-                    }
-
-                    if (NowLayout.TextField(state.pathFieldId)
-                        .SetStretchWidth()
-                        .SetPlaceholder("Address")
-                        .Draw(ref state.directoryText))
-                    {
-                        SetSelectedDirectory(state, null);
-                        ClearError(state);
-                    }
-
-                    if (NowLayout.Button("Go").SetId(state.goButtonId).SetStyle(NowRectangleStyle.Outline).SetWidth(44f).Draw())
-                        NavigateTo(state, state.directoryText);
+                    NowLayout.FlexibleSpace();
                 }
 
-                NowRect browserRect = NowLayout.ReserveRect(height: browserHeight, stretchWidth: true);
-                DrawBrowser(state, browserRect, headerHeight);
+                if (NowLayout.Button(ActionLabel(state.mode)).SetId(state.selectButtonId).SetStyle(NowRectangleStyle.Accent).Draw())
+                    CommitAction(state);
 
-                if (hasFileName)
-                {
-                    using (NowLayout.HorizontalScope(height: fileNameHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
-                    {
-                        NowLayout.Label("File name:").SetWidth(78f).Draw();
-                        if (NowLayout.TextField(state.fileNameFieldId)
-                            .SetStretchWidth()
-                            .SetPlaceholder("File name...")
-                            .Draw(ref state.fileName))
-                        {
-                            SetSelectedDirectory(state, null);
-                            ClearError(state);
-                        }
-                    }
-                }
-
-                if (hasFilter)
-                {
-                    using (NowLayout.HorizontalScope(height: filterHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
-                    {
-                        NowLayout.Label("File type:").SetWidth(78f).Draw();
-                        int filter = state.filterIndex;
-
-                        if (NowLayout.Dropdown(state.filterId, state.filterLabels).SetStretchWidth().Draw(ref filter))
-                        {
-                            state.filterIndex = Mathf.Clamp(filter, 0, state.filters.Length - 1);
-                            SetSelectedDirectory(state, null);
-                            state.entriesDirty = true;
-                            ClearError(state);
-                        }
-                    }
-                }
-
-                using (NowLayout.HorizontalScope(height: footerHeight, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 8f))
-                {
-                    if (!string.IsNullOrEmpty(state.error))
-                    {
-                        NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Body), state.errorLabel)
-                            .SetStretchWidth()
-                            .SetColor(new Color(0.86f, 0.24f, 0.24f))
-                            .Draw();
-                    }
-                    else
-                    {
-                        NowLayout.FlexibleSpace();
-                    }
-
-                    if (NowLayout.Button(ActionLabel(state.mode)).SetId(state.selectButtonId).SetStyle(NowRectangleStyle.Accent).Draw())
-                        CommitAction(state);
-
-                    if (NowLayout.Button("Cancel").SetId(state.cancelButtonId).SetStyle(NowRectangleStyle.Surface).SetWidth(78f).Draw())
-                        NowControlState.Get<bool>(state.id) = false;
-                }
+                if (NowLayout.Button("Cancel").SetId(state.cancelButtonId).SetStyle(NowRectangleStyle.Surface).SetWidth(78f).Draw())
+                    ClosePopup(state);
             }
         }
 
@@ -748,14 +1034,60 @@ namespace NowUI
                 listWidth = Mathf.Max(0f, rect.xMax - listX);
             }
 
+            BrowserEntry previewEntry = state.view == NowFilePickerView.Details
+                ? SelectedPreviewEntry(state)
+                : null;
+            bool showPreview = state.view == NowFilePickerView.Details && listWidth >= 420f;
+            float previewWidth = showPreview
+                ? Mathf.Clamp(listWidth * 0.36f, 160f, 210f)
+                : 0f;
+
+            if (showPreview)
+                listWidth = Mathf.Max(0f, listWidth - previewWidth - 8f);
+
             var headerRect = new NowRect(listX, rect.y, listWidth, headerHeight);
             var listRect = new NowRect(listX, rect.y + headerHeight, listWidth, Mathf.Max(0f, rect.height - headerHeight));
 
-            DrawListHeader(state.themeAsset, headerRect);
+            if (state.view == NowFilePickerView.Details)
+                DrawListHeader(state.themeAsset, headerRect);
+            else
+                DrawGridHeader(state.themeAsset, headerRect);
+
             DrawListFrame(state.themeAsset, listRect);
 
-            using (Now.ScrollView(listRect.Inset(1f), state.scrollId).Begin())
-                DrawEntries(state);
+            using (var scroll = Now.ScrollView(listRect.Inset(1f), state.scrollId).Begin())
+            {
+                if (state.view == NowFilePickerView.Details)
+                {
+                    DrawEntries(state, scroll.scrollOffset.y, scroll.viewport.height);
+                }
+                else
+                {
+                    float contentWidth = scroll.viewport.width;
+
+                    if (scroll.verticalScrollbarVisible)
+                    {
+                        var styles = state.themeAsset.controlStyles;
+                        contentWidth -= styles.scrollbarWidth + styles.scrollbarPadding;
+                    }
+
+                    DrawGridEntries(
+                        state,
+                        scroll.scrollOffset.y,
+                        scroll.viewport.height,
+                        Mathf.Max(1f, contentWidth));
+                }
+            }
+
+            if (showPreview)
+            {
+                var previewRect = new NowRect(
+                    listRect.xMax + 8f,
+                    rect.y,
+                    previewWidth,
+                    rect.height);
+                DrawPreviewPanel(state, previewRect, headerHeight, previewEntry);
+            }
         }
 
         static void DrawFolderTree(PopupState state, NowRect rect, float headerHeight)
@@ -899,6 +1231,22 @@ namespace NowUI
             NowControls.DrawLeftLabel(theme, typeRect, "Type", NowTextStyle.Muted, muted);
         }
 
+        static void DrawGridHeader(NowThemeAsset theme, NowRect rect, string label = "Thumbnails")
+        {
+            Color surfaceMuted = theme.GetColor(NowColorToken.SurfaceMuted);
+            Color border = theme.GetColor(NowColorToken.Border);
+            Color muted = theme.GetColor(NowColorToken.TextMuted);
+
+            Now.Rectangle(rect)
+                .SetRadius(4f, 4f, 0f, 0f)
+                .SetColor(surfaceMuted)
+                .SetOutline(1f)
+                .SetOutlineColor(border)
+                .Draw();
+
+            NowControls.DrawLeftLabel(theme, rect.Inset(8f, 0f), label, NowTextStyle.Muted, muted);
+        }
+
         static void DrawListFrame(NowThemeAsset theme, NowRect rect)
         {
             Color surface = theme.GetColor(NowColorToken.Surface);
@@ -917,7 +1265,7 @@ namespace NowUI
             return rect.width >= 430f ? 118f : 92f;
         }
 
-        static void DrawEntries(PopupState state)
+        static void DrawEntries(PopupState state, float scrollY, float viewportHeight)
         {
             if (state.entries.Count == 0)
             {
@@ -928,12 +1276,26 @@ namespace NowUI
                 return;
             }
 
-            for (int i = 0; i < state.entries.Count; ++i)
+            const float rowHeight = 28f;
+            int count = state.entries.Count;
+            int first = Mathf.Clamp(Mathf.FloorToInt(scrollY / rowHeight), 0, count);
+            int end = Mathf.Clamp(
+                Mathf.CeilToInt((scrollY + Mathf.Max(0f, viewportHeight)) / rowHeight) + 1,
+                first,
+                count);
+
+            if (first > 0)
+                NowLayout.Space(first * rowHeight);
+
+            for (int i = first; i < end; ++i)
             {
                 var entry = state.entries[i];
-                NowRect row = NowLayout.ReserveRect(height: 28f, stretchWidth: true);
+                NowRect row = NowLayout.ReserveRect(height: rowHeight, stretchWidth: true);
                 DrawEntryRow(state, row, entry, i);
             }
+
+            if (end < count)
+                NowLayout.Space((count - end) * rowHeight);
         }
 
         static void DrawEntryRow(PopupState state, NowRect row, BrowserEntry entry, int index)
@@ -973,10 +1335,137 @@ namespace NowUI
                 ? text
                 : theme.GetColor(NowColorToken.TextMuted);
 
-            NowControls.DrawLeftLabel(theme, iconRect, string.IsNullOrEmpty(entry.icon) ? "📄" : entry.icon, NowTextStyle.Body, Color.white);
+            DrawEntryIcon(state, iconRect.Inset(1f), entry);
             NowControls.DrawLeftLabel(theme, nameRect, entry.name, NowTextStyle.Body, text);
             NowControls.DrawLeftLabel(theme, typeRect, entry.type, NowTextStyle.Muted, muted);
+            HandleEntryClick(state, entry, id, interaction);
+        }
 
+        static void DrawGridEntries(
+            PopupState state,
+            float scrollY,
+            float viewportHeight,
+            float contentWidth)
+        {
+            if (state.entries.Count == 0)
+            {
+                NowLayout.Space(8f);
+                NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Muted), "No matching items")
+                    .SetStretchWidth()
+                    .Draw();
+                return;
+            }
+
+            const float gap = 8f;
+            float preferredWidth = PreferredThumbnailWidth(state.view);
+            int columns = NowFilePickerUtility.GridColumnCount(contentWidth, preferredWidth, gap);
+            float cellWidth = Mathf.Max(1f, (contentWidth - gap * (columns - 1)) / columns);
+            float previewHeight = Mathf.Clamp(cellWidth * 0.72f, 54f, 132f);
+            float cellHeight = previewHeight + 38f;
+            float rowHeight = cellHeight + gap;
+            int rowCount = Mathf.CeilToInt(state.entries.Count / (float)columns);
+            int firstRow = Mathf.Clamp(Mathf.FloorToInt(scrollY / rowHeight), 0, rowCount);
+            int endRow = Mathf.Clamp(
+                Mathf.CeilToInt((scrollY + Mathf.Max(0f, viewportHeight)) / rowHeight) + 1,
+                firstRow,
+                rowCount);
+
+            if (firstRow > 0)
+                NowLayout.Space(firstRow * rowHeight);
+
+            for (int rowIndex = firstRow; rowIndex < endRow; ++rowIndex)
+            {
+                NowRect row = NowLayout.ReserveRect(height: rowHeight, stretchWidth: true);
+                float resolvedWidth = Mathf.Max(1f, (row.width - gap * (columns - 1)) / columns);
+                int firstEntry = rowIndex * columns;
+                int endEntry = Mathf.Min(firstEntry + columns, state.entries.Count);
+
+                for (int entryIndex = firstEntry; entryIndex < endEntry; ++entryIndex)
+                {
+                    int column = entryIndex - firstEntry;
+                    var cell = new NowRect(
+                        row.x + column * (resolvedWidth + gap),
+                        row.y,
+                        resolvedWidth,
+                        cellHeight);
+                    DrawGridEntry(state, cell, state.entries[entryIndex], entryIndex);
+                }
+            }
+
+            if (endRow < rowCount)
+                NowLayout.Space((rowCount - endRow) * rowHeight);
+        }
+
+        static float PreferredThumbnailWidth(NowFilePickerView view)
+        {
+            return view switch
+            {
+                NowFilePickerView.SmallThumbnails => 84f,
+                NowFilePickerView.LargeThumbnails => 156f,
+                _ => 116f
+            };
+        }
+
+        static void DrawGridEntry(PopupState state, NowRect cell, BrowserEntry entry, int index)
+        {
+            var theme = state.themeAsset;
+            NowResolvedId id = state.entrySeed.Child(index + 1);
+            var interaction = NowInput.Interact(id, cell);
+            bool selected = IsSelectedEntry(state, entry);
+            Color border = theme.GetColor(NowColorToken.Border);
+            Color surface = theme.GetColor(NowColorToken.Surface);
+
+            if (selected)
+            {
+                Color accent = theme.GetColor(NowColorToken.Accent);
+                Now.Rectangle(cell)
+                    .SetRadius(5f)
+                    .SetColor(new Color(accent.r, accent.g, accent.b, 0.18f))
+                    .SetOutline(1f)
+                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.58f))
+                    .Draw();
+            }
+            else
+            {
+                Color fill = interaction.hovered || interaction.held
+                    ? NowControls.StateColor(theme, theme.GetColor(NowColorToken.SurfaceMuted), 1f, interaction.held)
+                    : surface;
+                Now.Rectangle(cell)
+                    .SetRadius(5f)
+                    .SetColor(fill)
+                    .SetOutline(1f)
+                    .SetOutlineColor(border)
+                    .Draw();
+            }
+
+            var previewRect = new NowRect(
+                cell.x + 6f,
+                cell.y + 6f,
+                Mathf.Max(0f, cell.width - 12f),
+                Mathf.Max(0f, cell.height - 44f));
+            DrawThumbnailFrame(state, previewRect, entry);
+
+            var nameRect = new NowRect(
+                cell.x + 5f,
+                previewRect.yMax + 2f,
+                Mathf.Max(0f, cell.width - 10f),
+                Mathf.Max(0f, cell.yMax - previewRect.yMax - 4f));
+            NowControls.DrawCenteredLabel(
+                theme,
+                nameRect,
+                entry.name,
+                NowTextStyle.Body,
+                nameRect,
+                theme.GetColor(NowColorToken.Text));
+            HandleEntryClick(state, entry, id, interaction);
+        }
+
+        static void HandleEntryClick(
+            PopupState state,
+            BrowserEntry entry,
+            NowResolvedId id,
+            NowInteraction interaction)
+        {
             if (!interaction.clicked)
                 return;
 
@@ -1015,6 +1504,703 @@ namespace NowUI
 
                 NowControlState.RequestRepaint();
             }
+        }
+
+        static BrowserEntry SelectedPreviewEntry(PopupState state)
+        {
+            if (state.mode == NowFileDialogMode.Directory || string.IsNullOrEmpty(state.fileName))
+                return null;
+
+            for (int i = 0; i < state.entries.Count; ++i)
+            {
+                var entry = state.entries[i];
+
+                if (!entry.directory &&
+                    entry.previewable &&
+                    string.Equals(entry.name, state.fileName, StringComparison.CurrentCultureIgnoreCase))
+                {
+                    return entry;
+                }
+            }
+
+            return null;
+        }
+
+        static void DrawPreviewPanel(
+            PopupState state,
+            NowRect rect,
+            float headerHeight,
+            BrowserEntry entry)
+        {
+            var theme = state.themeAsset;
+            var headerRect = new NowRect(rect.x, rect.y, rect.width, headerHeight);
+            var bodyRect = new NowRect(rect.x, rect.y + headerHeight, rect.width, Mathf.Max(0f, rect.height - headerHeight));
+            DrawGridHeader(theme, headerRect, "Preview");
+            DrawListFrame(theme, bodyRect);
+
+            float imageSize = Mathf.Max(0f, Mathf.Min(bodyRect.width - 16f, bodyRect.height - 62f));
+            var imageRect = new NowRect(
+                bodyRect.x + (bodyRect.width - imageSize) * 0.5f,
+                bodyRect.y + 8f,
+                imageSize,
+                imageSize);
+
+            if (entry == null)
+            {
+                Now.Rectangle(imageRect)
+                    .SetRadius(4f)
+                    .SetColor(theme.GetColor(NowColorToken.SurfaceMuted))
+                    .SetOutline(1f)
+                    .SetOutlineColor(theme.GetColor(NowColorToken.Border))
+                    .Draw();
+                NowControls.DrawCenteredLabel(
+                    theme,
+                    imageRect.Inset(4f),
+                    "🖼️",
+                    NowTextStyle.Title,
+                    imageRect,
+                    Color.white);
+                var emptyLabel = new NowRect(
+                    bodyRect.x + 8f,
+                    imageRect.yMax + 5f,
+                    Mathf.Max(0f, bodyRect.width - 16f),
+                    22f);
+                NowControls.DrawLeftLabel(
+                    theme,
+                    emptyLabel,
+                    "Select an image",
+                    NowTextStyle.Body,
+                    theme.GetColor(NowColorToken.Text));
+                var emptyDetail = new NowRect(emptyLabel.x, emptyLabel.yMax, emptyLabel.width, 20f);
+                NowControls.DrawLeftLabel(
+                    theme,
+                    emptyDetail,
+                    "PNG or JPEG",
+                    NowTextStyle.Muted,
+                    theme.GetColor(NowColorToken.TextMuted));
+                return;
+            }
+
+            ThumbnailEntry thumbnail = DrawThumbnailFrame(state, imageRect, entry);
+            var nameRect = new NowRect(
+                bodyRect.x + 8f,
+                imageRect.yMax + 5f,
+                Mathf.Max(0f, bodyRect.width - 16f),
+                22f);
+            NowControls.DrawLeftLabel(theme, nameRect, entry.name, NowTextStyle.Body, theme.GetColor(NowColorToken.Text));
+
+            string detail = thumbnail != null && !string.IsNullOrEmpty(thumbnail.dimensions)
+                ? thumbnail.dimensions
+                : entry.type;
+            var detailRect = new NowRect(nameRect.x, nameRect.yMax, nameRect.width, 20f);
+            NowControls.DrawLeftLabel(theme, detailRect, detail, NowTextStyle.Muted, theme.GetColor(NowColorToken.TextMuted));
+        }
+
+        static void DrawEntryIcon(PopupState state, NowRect rect, BrowserEntry entry)
+        {
+            ThumbnailEntry thumbnail = GetThumbnailEntry(state, entry);
+
+            if (thumbnail?.texture != null)
+            {
+                Now.Rectangle(rect)
+                    .SetTexture(thumbnail.texture)
+                    .SetPreserveAspect()
+                    .SetColor(Color.white)
+                    .Draw();
+                return;
+            }
+
+            NowControls.DrawCenteredLabel(
+                state.themeAsset,
+                rect,
+                string.IsNullOrEmpty(entry.icon) ? "📄" : entry.icon,
+                NowTextStyle.Body,
+                rect,
+                Color.white);
+        }
+
+        static ThumbnailEntry DrawThumbnailFrame(PopupState state, NowRect rect, BrowserEntry entry)
+        {
+            var theme = state.themeAsset;
+            Color border = theme.GetColor(NowColorToken.Border);
+            Now.Rectangle(rect)
+                .SetRadius(4f)
+                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted))
+                .SetOutline(1f)
+                .SetOutlineColor(border)
+                .Draw();
+
+            ThumbnailEntry thumbnail = GetThumbnailEntry(state, entry);
+            NowRect content = rect.Inset(4f);
+
+            if (thumbnail?.texture != null)
+            {
+                Now.Rectangle(content)
+                    .SetTexture(thumbnail.texture)
+                    .SetPreserveAspect()
+                    .SetColor(Color.white)
+                    .Draw();
+            }
+            else
+            {
+                NowControls.DrawCenteredLabel(
+                    theme,
+                    content,
+                    string.IsNullOrEmpty(entry.icon) ? "📄" : entry.icon,
+                    NowTextStyle.Title,
+                    content,
+                    Color.white);
+            }
+
+            return thumbnail;
+        }
+
+        static ThumbnailEntry GetThumbnailEntry(PopupState state, BrowserEntry browserEntry)
+        {
+            if (!state.previewResourcesActive ||
+                browserEntry == null ||
+                !browserEntry.previewable ||
+                string.IsNullOrEmpty(browserEntry.path))
+                return null;
+
+            if (!state.thumbnails.TryGetValue(browserEntry.path, out var thumbnail))
+            {
+                thumbnail = new ThumbnailEntry
+                {
+                    path = browserEntry.path,
+                    state = ThumbnailState.Pending
+                };
+                state.thumbnails[browserEntry.path] = thumbnail;
+            }
+
+            thumbnail.lastAccess = ++state.thumbnailAccess;
+
+            if (thumbnail.state == ThumbnailState.Pending)
+                StartThumbnailRequest(state, thumbnail);
+
+            if (thumbnail.state == ThumbnailState.Loading)
+                NowControlState.RequestRepaint();
+
+            TrimThumbnailCache(state, thumbnail);
+            return thumbnail;
+        }
+
+        static void StartThumbnailRequest(PopupState state, ThumbnailEntry entry)
+        {
+            if (entry == null || entry.state != ThumbnailState.Pending)
+                return;
+
+            if (state.activeThumbnailRequests >= MaxThumbnailRequests)
+            {
+                NowControlState.RequestRepaint();
+                return;
+            }
+
+            try
+            {
+                var file = new FileInfo(entry.path);
+
+                if (!file.Exists || file.Length <= 0L || file.Length > MaxThumbnailFileBytes)
+                {
+                    entry.state = ThumbnailState.Failed;
+                    return;
+                }
+
+                if (!TryReadEncodedImageSize(file.FullName, out int width, out int height) ||
+                    !IsThumbnailSourceSizeAllowed(width, height))
+                {
+                    entry.state = ThumbnailState.Failed;
+                    return;
+                }
+
+                var uri = new Uri(file.FullName);
+                var parameters = DownloadedTextureParams.Default;
+                parameters.readable = false;
+                parameters.mipmapChain = false;
+                parameters.linearColorSpace = false;
+                var request = UnityWebRequestTexture.GetTexture(uri, parameters);
+                request.timeout = 15;
+                entry.request = request;
+                entry.operation = request.SendWebRequest();
+                entry.state = ThumbnailState.Loading;
+                ++state.activeThumbnailRequests;
+                NowControlState.RequestRepaint();
+            }
+            catch (Exception)
+            {
+                entry.request?.Dispose();
+                entry.request = null;
+                entry.operation = null;
+                entry.state = ThumbnailState.Failed;
+            }
+        }
+
+        static void PollThumbnailRequests(PopupState state)
+        {
+            if (state.thumbnails.Count == 0)
+                return;
+
+            foreach (var pair in state.thumbnails)
+            {
+                var entry = pair.Value;
+
+                if (entry.state == ThumbnailState.Loading &&
+                    entry.operation != null &&
+                    entry.operation.isDone)
+                {
+                    CompleteThumbnailRequest(state, entry);
+                }
+            }
+
+            if (state.activeThumbnailRequests > 0)
+                NowControlState.RequestRepaint();
+
+            TrimThumbnailCache(state, null);
+        }
+
+        static bool IsThumbnailSourceSizeAllowed(int width, int height)
+        {
+            return width > 0 &&
+                   height > 0 &&
+                   width <= MaxThumbnailSourceDimension &&
+                   height <= MaxThumbnailSourceDimension &&
+                   (long)width * height <= MaxThumbnailSourcePixels;
+        }
+
+        static bool TryReadEncodedImageSize(string path, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+
+            try
+            {
+                using var stream = File.OpenRead(path);
+                var header = new byte[24];
+                var read = 0;
+                while (read < header.Length)
+                {
+                    var count = stream.Read(header, read, header.Length - read);
+                    if (count <= 0)
+                        break;
+
+                    read += count;
+                }
+
+                if (read >= 24 &&
+                    header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47 &&
+                    header[12] == 0x49 && header[13] == 0x48 && header[14] == 0x44 && header[15] == 0x52)
+                {
+                    width = (header[16] << 24) | (header[17] << 16) | (header[18] << 8) | header[19];
+                    height = (header[20] << 24) | (header[21] << 16) | (header[22] << 8) | header[23];
+                    return width > 0 && height > 0;
+                }
+
+                if (read < 2 || header[0] != 0xFF || header[1] != 0xD8)
+                    return false;
+
+                stream.Position = 2;
+                var scanLimit = stream.Length;
+                while (stream.Position + 4 <= scanLimit)
+                {
+                    var prefix = stream.ReadByte();
+                    if (prefix < 0)
+                        return false;
+
+                    if (prefix != 0xFF)
+                        return false;
+
+                    int marker;
+                    do
+                    {
+                        marker = stream.ReadByte();
+                    }
+                    while (marker == 0xFF && stream.Position < scanLimit);
+
+                    if (marker < 0 || marker == 0xD9 || marker == 0xDA)
+                        return false;
+
+                    if (marker == 0x00 || marker == 0x01 || marker == 0xD8 ||
+                        (marker >= 0xD0 && marker <= 0xD7))
+                    {
+                        continue;
+                    }
+
+                    var segmentLengthHigh = stream.ReadByte();
+                    var segmentLengthLow = stream.ReadByte();
+                    if (segmentLengthHigh < 0 || segmentLengthLow < 0)
+                        return false;
+
+                    var segmentLength = (segmentLengthHigh << 8) | segmentLengthLow;
+                    if (segmentLength < 2)
+                        return false;
+
+                    var isStartOfFrame = (marker >= 0xC0 && marker <= 0xC3) ||
+                                         (marker >= 0xC5 && marker <= 0xC7) ||
+                                         (marker >= 0xC9 && marker <= 0xCB) ||
+                                         (marker >= 0xCD && marker <= 0xCF);
+                    if (isStartOfFrame)
+                    {
+                        if (segmentLength < 7)
+                            return false;
+
+                        var precision = stream.ReadByte();
+                        var heightHigh = stream.ReadByte();
+                        var heightLow = stream.ReadByte();
+                        var widthHigh = stream.ReadByte();
+                        var widthLow = stream.ReadByte();
+                        if (precision < 0 || heightHigh < 0 || heightLow < 0 || widthHigh < 0 || widthLow < 0)
+                            return false;
+
+                        height = (heightHigh << 8) | heightLow;
+                        width = (widthHigh << 8) | widthLow;
+                        return width > 0 && height > 0;
+                    }
+
+                    var skip = segmentLength - 2L;
+                    if (stream.Position + skip > scanLimit)
+                        return false;
+
+                    stream.Seek(skip, SeekOrigin.Current);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+            catch (ArgumentException)
+            {
+            }
+            catch (NotSupportedException)
+            {
+            }
+
+            return false;
+        }
+
+        static void CompleteThumbnailRequest(PopupState state, ThumbnailEntry entry)
+        {
+            var request = entry.request;
+            entry.request = null;
+            entry.operation = null;
+            state.activeThumbnailRequests = Mathf.Max(0, state.activeThumbnailRequests - 1);
+            Texture2D source = null;
+
+            try
+            {
+                if (request == null || request.result != UnityWebRequest.Result.Success)
+                {
+                    entry.state = ThumbnailState.Failed;
+                    return;
+                }
+
+                source = DownloadHandlerTexture.GetContent(request);
+
+                if (source == null ||
+                    source.width < 1 ||
+                    source.height < 1 ||
+                    !IsThumbnailSourceSizeAllowed(source.width, source.height))
+                {
+                    entry.state = ThumbnailState.Failed;
+                    return;
+                }
+
+                entry.dimensions = source.width + " × " + source.height;
+                Texture thumbnail = CreateThumbnailTexture(source, ThumbnailDimension);
+
+                if (thumbnail == null)
+                {
+                    entry.state = ThumbnailState.Failed;
+                    return;
+                }
+
+                if (!ReferenceEquals(thumbnail, source))
+                {
+                    DestroyThumbnailTexture(source);
+                    source = null;
+                }
+
+                entry.texture = thumbnail;
+                entry.state = ThumbnailState.Loaded;
+            }
+            catch (Exception)
+            {
+                entry.state = ThumbnailState.Failed;
+            }
+            finally
+            {
+                request?.Dispose();
+
+                if (entry.state != ThumbnailState.Loaded && source != null)
+                    DestroyThumbnailTexture(source);
+
+                NowControlState.RequestRepaint();
+            }
+        }
+
+        static Texture CreateThumbnailTexture(Texture2D source, int maxDimension)
+        {
+            Vector2Int size = NowFilePickerUtility.ThumbnailSize(
+                source != null ? source.width : 0,
+                source != null ? source.height : 0,
+                maxDimension);
+
+            if (source == null || size.x <= 0 || size.y <= 0)
+                return null;
+
+            source.name = "NowUI File Preview";
+            source.hideFlags = HideFlags.HideAndDontSave;
+            source.filterMode = FilterMode.Bilinear;
+            source.wrapMode = TextureWrapMode.Clamp;
+
+            if (size.x == source.width && size.y == source.height)
+                return source;
+
+            RenderTexture result = null;
+
+            try
+            {
+                result = new RenderTexture(
+                    size.x,
+                    size.y,
+                    0,
+                    RenderTextureFormat.ARGB32,
+                    RenderTextureReadWrite.Default)
+                {
+                    name = "NowUI File Preview",
+                    hideFlags = HideFlags.HideAndDontSave,
+                    filterMode = FilterMode.Bilinear,
+                    wrapMode = TextureWrapMode.Clamp,
+                    useMipMap = false,
+                    autoGenerateMips = false
+                };
+                if (!result.Create())
+                {
+                    DestroyThumbnailTexture(result);
+                    return null;
+                }
+
+                Graphics.Blit(source, result);
+                return result;
+            }
+            catch (Exception)
+            {
+                if (result != null)
+                    DestroyThumbnailTexture(result);
+                return null;
+            }
+        }
+
+        static void TrimThumbnailCache(PopupState state, ThumbnailEntry preserve)
+        {
+            while (state.thumbnails.Count > MaxThumbnailEntries)
+            {
+                ThumbnailEntry oldest = null;
+
+                foreach (var pair in state.thumbnails)
+                {
+                    var candidate = pair.Value;
+
+                    if (ReferenceEquals(candidate, preserve) || candidate.state == ThumbnailState.Loading)
+                        continue;
+
+                    if (oldest == null || candidate.lastAccess < oldest.lastAccess)
+                        oldest = candidate;
+                }
+
+                if (oldest == null)
+                    break;
+
+                state.thumbnails.Remove(oldest.path);
+                oldest.request?.Abort();
+                oldest.request?.Dispose();
+
+                if (oldest.texture != null)
+                    ReleaseThumbnailTexture(oldest.texture, defer: true);
+            }
+        }
+
+        static void ReleaseThumbnailResources(PopupState state, bool deferLoadedTextures = false)
+        {
+            CancelThumbnailRequests(state);
+
+            foreach (var pair in state.thumbnails)
+            {
+                var thumbnail = pair.Value;
+
+                if (thumbnail.texture != null)
+                    ReleaseThumbnailTexture(thumbnail.texture, deferLoadedTextures);
+            }
+
+            state.thumbnails.Clear();
+            state.activeThumbnailRequests = 0;
+            state.thumbnailAccess = 0L;
+            state.previewResourcesActive = false;
+        }
+
+        static void CancelThumbnailRequests(PopupState state)
+        {
+            foreach (var pair in state.thumbnails)
+            {
+                var thumbnail = pair.Value;
+
+                if (thumbnail.state != ThumbnailState.Loading)
+                    continue;
+
+                thumbnail.request?.Abort();
+                thumbnail.request?.Dispose();
+                thumbnail.request = null;
+                thumbnail.operation = null;
+                thumbnail.state = ThumbnailState.Failed;
+            }
+
+            state.activeThumbnailRequests = 0;
+        }
+
+        static void ClosePopup(PopupState state)
+        {
+            ReleaseThumbnailResources(state, deferLoadedTextures: true);
+            NowControlState.Get<bool>(state.id) = false;
+        }
+
+        static void ReleaseThumbnailTexture(Texture texture, bool defer)
+        {
+            if (texture == null)
+                return;
+
+#if UNITY_EDITOR
+            if (defer && !Application.isPlaying)
+            {
+                _deferredThumbnailReleases.Add(texture);
+                NowEditorRebuildQueue.Queue(ref s_editorThumbnailReleaseQueued, FlushDeferredThumbnailReleases);
+                return;
+            }
+#endif
+
+            DestroyThumbnailTexture(texture);
+        }
+
+        static void FlushDeferredThumbnailReleases()
+        {
+#if UNITY_EDITOR
+            s_editorThumbnailReleaseQueued = false;
+#endif
+
+            for (int i = 0; i < _deferredThumbnailReleases.Count; ++i)
+                DestroyThumbnailTexture(_deferredThumbnailReleases[i]);
+
+            _deferredThumbnailReleases.Clear();
+        }
+
+        static void ReleaseAllThumbnailResources()
+        {
+            foreach (var pair in _popupStates)
+            {
+                var state = pair.Value;
+                ReleaseThumbnailResources(state);
+
+                if (state.id.hasValue)
+                    NowControlState.Get<bool>(state.id) = false;
+            }
+
+#if UNITY_EDITOR
+            NowEditorRebuildQueue.Cancel(ref s_editorThumbnailReleaseQueued, FlushDeferredThumbnailReleases);
+#endif
+            FlushDeferredThumbnailReleases();
+        }
+
+        static void ClearPopupStateMaps()
+        {
+            _popupStates.Clear();
+            _popupStatesByCallback.Clear();
+            _releasedPopupStateIds.Clear();
+            s_nextPopupState = 1;
+        }
+
+        static void ReleaseRegistrationOwner(object owner)
+        {
+            if (owner == null || _popupStates.Count == 0)
+                return;
+
+            foreach (var pair in _popupStates)
+            {
+                var state = pair.Value;
+
+                if (!ReferenceEquals(state.registrationOwner, owner))
+                    continue;
+
+                ReleaseThumbnailResources(state, deferLoadedTextures: true);
+                NowControlState.Get<bool>(state.id) = false;
+                _popupStatesByCallback.Remove(state.callbackState);
+                _releasedPopupStateIds.Add(pair.Key);
+            }
+
+            for (int i = 0; i < _releasedPopupStateIds.Count; ++i)
+                _popupStates.Remove(_releasedPopupStateIds[i]);
+
+            _releasedPopupStateIds.Clear();
+        }
+
+        static void ReleaseExpiredRegistrationOwner(object owner)
+        {
+            if (owner == null)
+                return;
+
+            foreach (var pair in _popupStates)
+            {
+                var state = pair.Value;
+
+                if (!ReferenceEquals(state.registrationOwner, owner))
+                    continue;
+
+                state.registrationOwner = null;
+
+                if (!state.previewResourcesActive)
+                    continue;
+
+                ReleaseThumbnailResources(state, deferLoadedTextures: true);
+                NowControlState.Get<bool>(state.id) = false;
+            }
+        }
+
+#if UNITY_EDITOR
+        [UnityEditor.InitializeOnLoadMethod]
+        static void RegisterEditorThumbnailCleanup()
+        {
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= ReleaseAllThumbnailResources;
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += ReleaseAllThumbnailResources;
+            UnityEditor.EditorApplication.quitting -= ReleaseAllThumbnailResources;
+            UnityEditor.EditorApplication.quitting += ReleaseAllThumbnailResources;
+            UnityEditor.EditorApplication.playModeStateChanged -= HandleEditorPlayModeStateChanged;
+            UnityEditor.EditorApplication.playModeStateChanged += HandleEditorPlayModeStateChanged;
+        }
+
+        static void HandleEditorPlayModeStateChanged(UnityEditor.PlayModeStateChange change)
+        {
+            if (change != UnityEditor.PlayModeStateChange.ExitingPlayMode)
+                return;
+
+            ReleaseAllThumbnailResources();
+            ClearPopupStateMaps();
+        }
+#endif
+
+        static void DestroyThumbnailTexture(Texture texture)
+        {
+            if (texture == null)
+                return;
+
+            if (Application.isPlaying)
+            {
+                UnityEngine.Object.Destroy(texture);
+                return;
+            }
+
+            if (texture is RenderTexture renderTexture && renderTexture.IsCreated())
+                renderTexture.Release();
+
+            UnityEngine.Object.DestroyImmediate(texture);
         }
 
         static bool IsSelectedEntry(PopupState state, BrowserEntry entry)
@@ -1299,7 +2485,8 @@ namespace NowUI
                         name = Path.GetFileName(files[i]),
                         icon = FileIcon(files[i]),
                         type = FileTypeLabel(files[i]),
-                        directory = false
+                        directory = false,
+                        previewable = NowFilePickerUtility.IsPreviewableImage(files[i])
                     });
                 }
 
@@ -1641,7 +2828,7 @@ namespace NowUI
             state.pendingPath = next;
             state.hasPendingPath = true;
             ClearError(state);
-            NowControlState.Get<bool>(state.id) = false;
+            ClosePopup(state);
         }
 
         static void HandleDismiss(PopupState state)
@@ -1664,16 +2851,17 @@ namespace NowUI
                 if (snapshot.cancelPressed)
                     NowInput.ConsumeKeyActivity();
 
-                NowControlState.Get<bool>(state.id) = false;
+                ClosePopup(state);
             }
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetForRuntimeLoad()
         {
-            _popupStates.Clear();
-            _popupStatesByCallback.Clear();
-            s_nextPopupState = 1;
+            Application.quitting -= ReleaseAllThumbnailResources;
+            Application.quitting += ReleaseAllThumbnailResources;
+            ReleaseAllThumbnailResources();
+            ClearPopupStateMaps();
         }
     }
 
@@ -1688,6 +2876,7 @@ namespace NowUI
         public NowFileFilter[] filters;
         public bool showHidden;
         public bool fitToView;
+        public NowFilePickerView initialView;
         public float fieldHeight;
         public float popupWidth;
         public float popupHeight;
@@ -1701,6 +2890,7 @@ namespace NowUI
                 defaultFileName = mode == NowFileDialogMode.SaveFile ? "Untitled" : null,
                 filters = Array.Empty<NowFileFilter>(),
                 fitToView = true,
+                initialView = NowFilePickerView.Details,
                 fieldHeight = 30f,
                 popupWidth = 760f,
                 popupHeight = 460f,
@@ -1712,6 +2902,68 @@ namespace NowUI
 
     static class NowFilePickerUtility
     {
+        public static NowRect FitModalRect(NowRect preferred, NowRect surface, float margin)
+        {
+            if (preferred.isEmpty || surface.isEmpty)
+                return preferred;
+
+            margin = Mathf.Max(0f, margin);
+            float width = Mathf.Min(preferred.width, Mathf.Max(1f, surface.width - margin * 2f));
+            float height = Mathf.Min(preferred.height, Mathf.Max(1f, surface.height - margin * 2f));
+            return new NowRect(
+                surface.x + (surface.width - width) * 0.5f,
+                surface.y + (surface.height - height) * 0.5f,
+                width,
+                height);
+        }
+
+        public static NowFilePickerView ClampView(NowFilePickerView view)
+        {
+            return (NowFilePickerView)Mathf.Clamp(
+                (int)view,
+                (int)NowFilePickerView.Details,
+                (int)NowFilePickerView.LargeThumbnails);
+        }
+
+        public static bool IsPreviewableImage(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            string extension;
+
+            try
+            {
+                extension = NormalizeExtension(Path.GetExtension(path));
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+
+            return extension == "png" || extension == "jpg" || extension == "jpeg";
+        }
+
+        public static Vector2Int ThumbnailSize(int width, int height, int maxDimension)
+        {
+            if (width <= 0 || height <= 0 || maxDimension <= 0)
+                return Vector2Int.zero;
+
+            float scale = Mathf.Min(1f, maxDimension / (float)Mathf.Max(width, height));
+            return new Vector2Int(
+                Mathf.Max(1, Mathf.RoundToInt(width * scale)),
+                Mathf.Max(1, Mathf.RoundToInt(height * scale)));
+        }
+
+        public static int GridColumnCount(float width, float preferredWidth, float gap)
+        {
+            if (width <= 0f || preferredWidth <= 0f)
+                return 1;
+
+            gap = Mathf.Max(0f, gap);
+            return Mathf.Max(1, Mathf.FloorToInt((width + gap) / (preferredWidth + gap)));
+        }
+
         public static NowFileFilter[] NormalizeFilters(NowFileFilter[] filters)
         {
             if (filters == null || filters.Length == 0)

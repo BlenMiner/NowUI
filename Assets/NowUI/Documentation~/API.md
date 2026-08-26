@@ -48,7 +48,7 @@ when enabled. No manual NowUI input define is required.
   `NowInteractionRegion`, `NowContextAction`, `NowContextTrigger`, `NowInput`,
   `INowInputProvider`, `INowSurfaceToScreenMapper`, `NowFocus`, `NowControls`,
   `NowControlState`,
-  `NowFilePicker`, `NowViewStack`, `INowView`, `NowViews`, and control
+  `NowFilePicker`, `NowFilePickerView`, `NowViewStack`, `INowView`, `NowViews`, and control
   builders: immediate interaction, navigation, focus, reusable control state,
   optional surface-to-screen projection for IME candidate placement, file
   picker overlays, retained view navigation, and dialogs, including
