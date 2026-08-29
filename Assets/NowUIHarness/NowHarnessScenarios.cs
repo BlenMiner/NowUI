@@ -1,7 +1,9 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using NowUI.Docking;
 using NowUI.Markdown;
@@ -23,9 +25,11 @@ namespace NowUI.Editor
         public bool includeInGoldens;
         public bool darkTheme;
         public bool suppressBadge;
+        public Action<string> prepare;
         public Func<INowInputProvider> createInputProvider;
         public Func<NowHarnessScenario, string, NowHarnessCapture> capture;
         public int warmupFrames;
+        public Action afterWarmup;
         public Action<NowRect> draw;
     }
 
@@ -77,6 +81,10 @@ namespace NowUI.Editor
         static Material _sdfAuroraMaterial;
         static Material _sdfTopographicMaterial;
         static Material _sdfPaperCutoutMaterial;
+        static string _filePickerFixtureDirectory;
+        static string _filePickerPreviewPath;
+        static string _filePickerSavePath;
+        static Texture2D _filePickerPreviewTexture;
 
         sealed class IdleInputProvider : INowInputProvider
         {
@@ -180,6 +188,79 @@ namespace NowUI.Editor
             }
         }
 
+        sealed class ClickThenIdleInputProvider : INowInputProvider
+        {
+            readonly Vector2 _clickPointer;
+            readonly Vector2 _restingPointer;
+            readonly Vector2 _scrollDelta;
+            readonly Vector2? _followupClickPointer;
+            int _frame;
+
+            public ClickThenIdleInputProvider(Vector2 pointer)
+                : this(pointer, pointer, Vector2.zero, null)
+            {
+            }
+
+            public ClickThenIdleInputProvider(
+                Vector2 clickPointer,
+                Vector2 restingPointer,
+                Vector2 scrollDelta)
+                : this(clickPointer, restingPointer, scrollDelta, null)
+            {
+            }
+
+            public ClickThenIdleInputProvider(
+                Vector2 clickPointer,
+                Vector2 restingPointer,
+                Vector2 scrollDelta,
+                Vector2? followupClickPointer)
+            {
+                _clickPointer = clickPointer;
+                _restingPointer = restingPointer;
+                _scrollDelta = scrollDelta;
+                _followupClickPointer = followupClickPointer;
+            }
+
+            public bool TryGetSnapshot(NowInputSurface surface, out NowInputSnapshot snapshot)
+            {
+                bool pressed = _frame == 0 || (_followupClickPointer.HasValue && _frame == 3);
+                bool released = _frame == 1 || (_followupClickPointer.HasValue && _frame == 4);
+                bool scrolling = _frame == 2 && _scrollDelta != Vector2.zero;
+                Vector2 pointer = _followupClickPointer.HasValue && _frame >= 3
+                    ? _followupClickPointer.Value
+                    : scrolling ? _restingPointer : _clickPointer;
+                Vector2 previous = _frame == 2
+                    ? _clickPointer
+                    : _frame == 3 && _scrollDelta != Vector2.zero
+                        ? _restingPointer
+                        : pointer;
+                NowPointerButtons down = pressed ? NowPointerButtons.Primary : NowPointerButtons.None;
+                NowPointerButtons pressedButtons = pressed ? NowPointerButtons.Primary : NowPointerButtons.None;
+                NowPointerButtons releasedButtons = released ? NowPointerButtons.Primary : NowPointerButtons.None;
+
+                ++_frame;
+                snapshot = new NowInputSnapshot(
+                    true,
+                    pointer,
+                    previous,
+                    pointer - previous,
+                    down,
+                    pressedButtons,
+                    releasedButtons,
+                    scrolling ? _scrollDelta : Vector2.zero,
+                    Vector2.zero,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    _frame,
+                    _frame * 0.05f);
+                return true;
+            }
+        }
+
         sealed class FixedWorldInputProvider : INowInputProvider
         {
             public NowWorldInputProvider inner;
@@ -261,6 +342,10 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "lottie", width = 512, height = 512, includeInGoldens = true, draw = DrawLottie },
                 new NowHarnessScenario { name = "logo", width = 960, height = 240, includeInGoldens = false, warmupFrames = 2, draw = DrawLogo },
                 new NowHarnessScenario { name = "model-preview-effects", width = 720, height = 420, includeInGoldens = false, warmupFrames = 2, capture = CaptureModelPreviewEffects },
+                new NowHarnessScenario { name = "file-picker-open-image-preview", width = 1024, height = 640, includeInGoldens = false, warmupFrames = 4, prepare = PrepareFilePickerFixture, createInputProvider = () => new ClickThenIdleInputProvider(new Vector2(208f, 33f)), afterWarmup = InjectFilePickerPreviewFixture, draw = DrawFilePickerOpenImagePreview },
+                new NowHarnessScenario { name = "file-picker-save-no-preview", width = 1024, height = 640, includeInGoldens = false, warmupFrames = 2, prepare = PrepareFilePickerFixture, createInputProvider = () => new ClickThenIdleInputProvider(new Vector2(208f, 33f)), draw = DrawFilePickerSaveNoPreview },
+                new NowHarnessScenario { name = "file-picker-directory-places", width = 1024, height = 640, includeInGoldens = false, warmupFrames = 3, prepare = PrepareFilePickerFixture, createInputProvider = () => new ClickThenIdleInputProvider(new Vector2(208f, 33f), new Vector2(160f, 260f), new Vector2(0f, 100f)), draw = DrawFilePickerDirectoryPlaces },
+                new NowHarnessScenario { name = "file-picker-place-navigation", width = 1024, height = 640, includeInGoldens = false, warmupFrames = 5, prepare = PrepareFilePickerFixture, createInputProvider = () => new ClickThenIdleInputProvider(new Vector2(208f, 33f), new Vector2(160f, 260f), new Vector2(0f, 100f), new Vector2(160f, 262f)), draw = DrawFilePickerPlaceNavigation },
 #if NOWUI_UGUI
                 new NowHarnessScenario { name = "docs-model-preview-demo", width = 1280, height = 720, includeInGoldens = false, warmupFrames = 3, capture = CaptureDocsModelPreviewDemo },
                 new NowHarnessScenario { name = "landing-page-now", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, suppressBadge = true, capture = CaptureLandingPageNow },
@@ -278,6 +363,7 @@ namespace NowUI.Editor
         {
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
             ResetFrameState();
+            scenario.prepare?.Invoke(outputPath);
 
             if (scenario.capture != null)
                 return scenario.capture(scenario, outputPath);
@@ -303,6 +389,8 @@ namespace NowUI.Editor
 
                 for (int i = 0; i < warmupFrames; ++i)
                     renderer.Warmup(surface, inputProvider, () => DrawScenarioFrame(scenario));
+
+                scenario.afterWarmup?.Invoke();
 
                 using (NowInput.Begin(inputProvider, surface))
                 using (renderer.Begin(new Vector2(scenario.width, scenario.height)))
@@ -1199,6 +1287,206 @@ namespace NowUI.Editor
                 .SetFontSize(11f)
                 .SetColor(new Color(1f, 1f, 1f, 0.78f))
                 .Draw("Rendered with NowUI");
+        }
+
+        static void PrepareFilePickerFixture(string outputPath)
+        {
+            _ = outputPath;
+
+            if (string.IsNullOrEmpty(_filePickerFixtureDirectory))
+            {
+                _filePickerFixtureDirectory = Path.Combine(
+                    ProjectPath(),
+                    "Library",
+                    "NowUIHarness",
+                    "FilePickerVisualV1");
+                _filePickerPreviewPath = Path.Combine(_filePickerFixtureDirectory, "aurora-preview.png");
+                _filePickerSavePath = Path.Combine(_filePickerFixtureDirectory, "layout.nowui");
+            }
+
+            Directory.CreateDirectory(_filePickerFixtureDirectory);
+            Directory.CreateDirectory(Path.Combine(_filePickerFixtureDirectory, "Concepts"));
+            Directory.CreateDirectory(Path.Combine(_filePickerFixtureDirectory, "Exports"));
+
+            if (!File.Exists(_filePickerSavePath))
+                File.WriteAllText(_filePickerSavePath, "{ \"name\": \"NowUI visual fixture\" }\n", new UTF8Encoding(false));
+
+            string notesPath = Path.Combine(_filePickerFixtureDirectory, "readme.txt");
+            if (!File.Exists(notesPath))
+                File.WriteAllText(notesPath, "Deterministic NowUI file-picker fixture.\n", new UTF8Encoding(false));
+
+            if (!File.Exists(_filePickerPreviewPath))
+                WriteFilePickerPreviewFixture(_filePickerPreviewPath);
+
+            if (_filePickerPreviewTexture == null)
+            {
+                var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
+                {
+                    name = "NowUI File Picker Loaded Fixture",
+                    hideFlags = HideFlags.HideAndDontSave
+                };
+
+                if (!texture.LoadImage(File.ReadAllBytes(_filePickerPreviewPath), markNonReadable: true))
+                {
+                    UnityEngine.Object.DestroyImmediate(texture);
+                    throw new InvalidOperationException("Could not decode the file-picker preview fixture.");
+                }
+
+                _filePickerPreviewTexture = texture;
+            }
+        }
+
+        static void WriteFilePickerPreviewFixture(string path)
+        {
+            const int width = 320;
+            const int height = 180;
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            {
+                name = "NowUI File Picker Fixture",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            try
+            {
+                var pixels = new Color32[width * height];
+
+                for (int y = 0; y < height; ++y)
+                {
+                    for (int x = 0; x < width; ++x)
+                    {
+                        byte red = (byte)(24 + x * 152 / (width - 1));
+                        byte green = (byte)(38 + y * 128 / (height - 1));
+                        byte blue = (byte)(112 + (width - 1 - x) * 92 / (width - 1));
+                        bool ribbon = Mathf.Abs(y - (height - 1 - x * height / width)) < 12;
+
+                        if (ribbon)
+                        {
+                            red = 244;
+                            green = 190;
+                            blue = 92;
+                        }
+
+                        pixels[y * width + x] = new Color32(red, green, blue, 255);
+                    }
+                }
+
+                texture.SetPixels32(pixels);
+                texture.Apply(updateMipmaps: false, makeNoLongerReadable: false);
+                File.WriteAllBytes(path, texture.EncodeToPNG());
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        static void InjectFilePickerPreviewFixture()
+        {
+            // ExecuteMethod captures do not advance the Editor player loop while warming up.
+            // Inject the already-decoded deterministic fixture after the picker has requested it.
+            const BindingFlags StaticPrivate = BindingFlags.Static | BindingFlags.NonPublic;
+            const BindingFlags InstancePublic = BindingFlags.Instance | BindingFlags.Public;
+            FieldInfo popupStatesField = typeof(NowFilePicker).GetField("_popupStates", StaticPrivate);
+            var popupStates = popupStatesField?.GetValue(null) as IDictionary;
+
+            if (popupStates == null)
+                throw new InvalidOperationException("File-picker popup state was not available to the visual harness.");
+
+            foreach (object popupState in popupStates.Values)
+            {
+                Type popupStateType = popupState.GetType();
+                var thumbnails = popupStateType.GetField("thumbnails", InstancePublic)?.GetValue(popupState) as IDictionary;
+
+                if (thumbnails == null)
+                    continue;
+
+                foreach (object thumbnail in thumbnails.Values)
+                {
+                    Type thumbnailType = thumbnail.GetType();
+                    string path = thumbnailType.GetField("path", InstancePublic)?.GetValue(thumbnail) as string;
+
+                    if (!string.Equals(path, _filePickerPreviewPath, StringComparison.Ordinal))
+                        continue;
+
+                    var requestField = thumbnailType.GetField("request", InstancePublic);
+                    var request = requestField?.GetValue(thumbnail) as UnityEngine.Networking.UnityWebRequest;
+                    request?.Abort();
+                    request?.Dispose();
+                    requestField?.SetValue(thumbnail, null);
+                    thumbnailType.GetField("operation", InstancePublic)?.SetValue(thumbnail, null);
+                    thumbnailType.GetField("texture", InstancePublic)?.SetValue(thumbnail, _filePickerPreviewTexture);
+
+                    FieldInfo thumbnailStateField = thumbnailType.GetField("state", InstancePublic);
+                    thumbnailStateField?.SetValue(
+                        thumbnail,
+                        Enum.Parse(thumbnailStateField.FieldType, "Loaded"));
+                    popupStateType.GetField("activeThumbnailRequests", InstancePublic)?.SetValue(popupState, 0);
+                    return;
+                }
+            }
+
+            throw new InvalidOperationException("The selected preview fixture was not requested during harness warmup.");
+        }
+
+        static void DrawFilePickerOpenImagePreview(NowRect rect)
+        {
+            DrawSurface(rect);
+
+            string path = _filePickerPreviewPath ?? string.Empty;
+            Now.OpenFileField(
+                    new NowRect(28f, 18f, 360f, 30f),
+                    "harness-file-picker-open-image")
+                .SetTitle("Open Image — Preview Enabled")
+                .SetStartDirectory(_filePickerFixtureDirectory)
+                .SetInitialView(NowFilePickerView.Details)
+                .SetFilters(
+                    new NowFileFilter("Images", "png", "jpg", "jpeg"),
+                    new NowFileFilter("Text", "txt"))
+                .SetPopupSize(920f, 560f)
+                .Draw(ref path);
+        }
+
+        static void DrawFilePickerSaveNoPreview(NowRect rect)
+        {
+            DrawSurface(rect);
+
+            string path = _filePickerSavePath ?? string.Empty;
+            Now.SaveFileField(
+                    new NowRect(28f, 18f, 360f, 30f),
+                    "harness-file-picker-save")
+                .SetTitle("Save Layout — Preview Suppressed")
+                .SetStartDirectory(_filePickerFixtureDirectory)
+                .SetInitialView(NowFilePickerView.Details)
+                .SetFilters(
+                    new NowFileFilter("NowUI layouts", "nowui"),
+                    new NowFileFilter("Text", "txt"))
+                .SetPopupSize(920f, 560f)
+                .Draw(ref path);
+        }
+
+        static void DrawFilePickerDirectoryPlaces(NowRect rect)
+        {
+            DrawFilePickerDirectory(rect, "Select Folder — Places and Folders", "harness-file-picker-directory");
+        }
+
+        static void DrawFilePickerPlaceNavigation(NowRect rect)
+        {
+            DrawFilePickerDirectory(rect, "Select Folder — Place Stays Visible", "harness-file-picker-place-navigation");
+        }
+
+        static void DrawFilePickerDirectory(NowRect rect, string title, string id)
+        {
+            DrawSurface(rect);
+
+            string path = _filePickerFixtureDirectory ?? string.Empty;
+            Now.DirectoryField(
+                    new NowRect(28f, 18f, 360f, 30f),
+                    id)
+                .SetTitle(title)
+                .SetStartDirectory(_filePickerFixtureDirectory)
+                .SetInitialView(NowFilePickerView.Details)
+                .SetPopupSize(920f, 560f)
+                .Draw(ref path);
         }
 
         static void DrawControlsDark(NowRect rect)

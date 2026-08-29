@@ -9,6 +9,9 @@ param(
     [string] $Filter,
 
     [Parameter(Mandatory = $false)]
+    [string] $ScenarioFilter,
+
+    [Parameter(Mandatory = $false)]
     [string] $UnityEditor = $env:UNITY_EDITOR,
 
     [Parameter(Mandatory = $false)]
@@ -299,6 +302,10 @@ function Invoke-ExecuteMethod {
 
     if ($UpdateBaselines) {
         $args += "-nowuiUpdateBaselines"
+    }
+
+    if ($Name -eq "visual" -and ![string]::IsNullOrWhiteSpace($ScenarioFilter)) {
+        $args += @("-nowuiScenarioFilter", $ScenarioFilter)
     }
 
     Invoke-Unity -UnityArgs $args -LogPath (Join-Path $methodArtifacts "NowUI-$Name.log")

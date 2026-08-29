@@ -66,6 +66,19 @@ namespace NowUI
             Failed
         }
 
+        enum FolderNavigationSource : byte
+        {
+            Automatic,
+            Place,
+            Tree
+        }
+
+        enum SidebarLocationSource : byte
+        {
+            Places,
+            Tree
+        }
+
         sealed class ThumbnailEntry
         {
             public string path;
@@ -122,6 +135,7 @@ namespace NowUI
             public int callbackState;
             public int filterIndex;
             public string currentDirectory;
+            public string currentDirectoryCanonical;
             public string currentDirectoryKey;
             public string parentDirectory;
             public string selectedDirectory;
@@ -138,7 +152,9 @@ namespace NowUI
             public bool previewResourcesActive;
             public string pendingPath;
             public bool hasPendingPath;
+            public int pendingUserFolderFocusId;
             public string pendingTreeFocusKey;
+            public SidebarLocationSource sidebarLocationSource;
             public bool entriesDirty;
             public bool treeDirty;
             public NowRect fieldRect;
@@ -419,6 +435,7 @@ namespace NowUI
             }
 
             NowControlState.Get<Vector2>(state.scrollId) = Vector2.zero;
+            NowControlState.Get<Vector2>(state.treeScrollId) = Vector2.zero;
             SetCurrentDirectory(state, ResolveInitialDirectory(value, settings));
             NowFilePickerUserFolders.Resolve(state.userFolders);
             SetSelectedDirectory(state, null);
@@ -428,14 +445,16 @@ namespace NowUI
             state.entries.Clear();
             state.treeEntries.Clear();
             state.expandedTreePaths.Clear();
+            state.pendingUserFolderFocusId = 0;
             state.pendingTreeFocusKey = null;
             MarkListsDirty(state);
-            RevealFolderInTree(state, state.currentDirectory, focus: true, expandTarget: true);
+            SynchronizeSidebarToDirectory(state, state.currentDirectory, FolderNavigationSource.Automatic);
         }
 
         static void SetCurrentDirectory(PopupState state, string directory)
         {
             state.currentDirectory = directory;
+            state.currentDirectoryCanonical = NowFilePickerUserFolders.CanonicalPath(directory);
             state.currentDirectoryKey = TreePathKey(directory);
             state.parentDirectory = ParentDirectory(directory);
         }
@@ -1056,6 +1075,13 @@ namespace NowUI
         static void DrawBrowser(PopupState state, NowRect rect, float headerHeight)
         {
             bool showTree = rect.width >= 560f;
+
+            if (!showTree)
+            {
+                state.pendingUserFolderFocusId = 0;
+                state.pendingTreeFocusKey = null;
+            }
+
             float treeWidth = showTree ? Mathf.Clamp(rect.width * 0.30f, 168f, 220f) : 0f;
             float gap = showTree ? 8f : 0f;
             float listX = rect.x;
@@ -1069,10 +1095,13 @@ namespace NowUI
                 listWidth = Mathf.Max(0f, rect.xMax - listX);
             }
 
-            BrowserEntry previewEntry = state.view == NowFilePickerView.Details
-                ? SelectedPreviewEntry(state)
-                : null;
-            bool showPreview = state.view == NowFilePickerView.Details && listWidth >= 420f;
+            bool showPreview = NowFilePickerUtility.ShouldShowPreviewPanel(
+                state.mode,
+                state.view,
+                listWidth,
+                state.filters,
+                state.filterIndex);
+            BrowserEntry previewEntry = showPreview ? SelectedInspectorEntry(state) : null;
             float previewWidth = showPreview
                 ? Mathf.Clamp(listWidth * 0.36f, 160f, 210f)
                 : 0f;
@@ -1191,15 +1220,20 @@ namespace NowUI
         {
             var theme = state.themeAsset;
             NowResolvedId id = state.userFolderSeed.Child(folder.stableId);
-            string key = TreePathKey(folder.path);
+            bool revealFocus = state.pendingUserFolderFocusId == folder.stableId;
 
-            // The canonical tree row owns programmatic focus/reveal. If a Place
-            // consumed the same pending key first, the unified scroll would stay
-            // at the shortcuts instead of showing the current folder location.
+            if (revealFocus && !NowInput.isPassive)
+            {
+                NowFocus.Focus(id);
+                state.pendingUserFolderFocusId = 0;
+            }
 
             var interaction = NowControls.Interact(id, row, out bool focused, out bool submitted);
-            bool current = KeyEquals(state.currentDirectoryKey, key);
-            bool selected = current || KeyEquals(state.selectedDirectoryKey, key);
+            var platform = NowFilePickerUserFolders.Platform(Application.platform);
+            bool currentPath = NowFilePickerUserFolders.PathComparer(platform)
+                .Equals(folder.path, state.currentDirectoryCanonical);
+            bool current = currentPath && state.sidebarLocationSource == SidebarLocationSource.Places;
+            bool selected = current;
             NowRect visual = row.Inset(2f, 1f);
 
             if (selected)
@@ -1240,8 +1274,20 @@ namespace NowUI
             NowControls.DrawLeftLabel(theme, iconRect, folder.icon, NowTextStyle.Body, iconColor);
             NowControls.DrawLeftLabel(theme, nameRect, folder.label, NowTextStyle.Body, theme.GetColor(NowColorToken.Text));
 
-            if ((interaction.clicked || submitted) && !current)
-                NavigateTo(state, folder.path);
+            if (interaction.clicked || submitted)
+            {
+                if (!currentPath)
+                {
+                    NavigateTo(state, folder.path, FolderNavigationSource.Place);
+                }
+                else
+                {
+                    state.sidebarLocationSource = SidebarLocationSource.Places;
+                    state.pendingUserFolderFocusId = 0;
+                    state.pendingTreeFocusKey = null;
+                    NowControlState.RequestRepaint();
+                }
+            }
         }
 
         static void DrawFolderTreeEntries(PopupState state)
@@ -1275,7 +1321,7 @@ namespace NowUI
             }
 
             var interaction = NowControls.Interact(id, row, out bool focused, out bool submitted);
-            bool selected = entry.current || KeyEquals(state.selectedDirectoryKey, entry.key);
+            bool selected = entry.current && state.sidebarLocationSource == SidebarLocationSource.Tree;
             NowRect visual = row.Inset(2f, 1f);
 
             if (selected)
@@ -1330,8 +1376,17 @@ namespace NowUI
                 return;
             }
 
-            if ((interaction.clicked || submitted) && !KeyEquals(state.currentDirectoryKey, entry.key))
-                NavigateTo(state, entry.path);
+            if (interaction.clicked || submitted)
+            {
+                state.sidebarLocationSource = SidebarLocationSource.Tree;
+                state.pendingUserFolderFocusId = 0;
+                state.pendingTreeFocusKey = null;
+
+                if (!KeyEquals(state.currentDirectoryKey, entry.key))
+                    NavigateTo(state, entry.path, FolderNavigationSource.Tree);
+                else
+                    NowControlState.RequestRepaint();
+            }
         }
 
         static void DrawListHeader(NowThemeAsset theme, NowRect rect)
@@ -1607,7 +1662,6 @@ namespace NowUI
                 }
 
                 SetSelectedDirectory(state, entry.path);
-                RevealFolderInTree(state, entry.path, focus: true, expandTarget: false);
 
                 if (state.mode == NowFileDialogMode.OpenFile)
                     state.fileName = string.Empty;
@@ -1633,9 +1687,9 @@ namespace NowUI
             }
         }
 
-        static BrowserEntry SelectedPreviewEntry(PopupState state)
+        static BrowserEntry SelectedInspectorEntry(PopupState state)
         {
-            if (state.mode == NowFileDialogMode.Directory || string.IsNullOrEmpty(state.fileName))
+            if (state.mode != NowFileDialogMode.OpenFile || string.IsNullOrEmpty(state.fileName))
                 return null;
 
             for (int i = 0; i < state.entries.Count; ++i)
@@ -1643,7 +1697,6 @@ namespace NowUI
                 var entry = state.entries[i];
 
                 if (!entry.directory &&
-                    entry.previewable &&
                     string.Equals(entry.name, state.fileName, StringComparison.CurrentCultureIgnoreCase))
                 {
                     return entry;
@@ -1662,7 +1715,7 @@ namespace NowUI
             var theme = state.themeAsset;
             var headerRect = new NowRect(rect.x, rect.y, rect.width, headerHeight);
             var bodyRect = new NowRect(rect.x, rect.y + headerHeight, rect.width, Mathf.Max(0f, rect.height - headerHeight));
-            DrawGridHeader(theme, headerRect, "Preview");
+            DrawGridHeader(theme, headerRect, "Details");
             DrawListFrame(theme, bodyRect);
 
             float imageSize = Mathf.Max(0f, Mathf.Min(bodyRect.width - 16f, bodyRect.height - 62f));
@@ -1695,14 +1748,14 @@ namespace NowUI
                 NowControls.DrawLeftLabel(
                     theme,
                     emptyLabel,
-                    "Select an image",
+                    "Select a file",
                     NowTextStyle.Body,
                     theme.GetColor(NowColorToken.Text));
                 var emptyDetail = new NowRect(emptyLabel.x, emptyLabel.yMax, emptyLabel.width, 20f);
                 NowControls.DrawLeftLabel(
                     theme,
                     emptyDetail,
-                    "PNG or JPEG",
+                    "PNG and JPEG show a preview",
                     NowTextStyle.Muted,
                     theme.GetColor(NowColorToken.TextMuted));
                 return;
@@ -2510,6 +2563,40 @@ namespace NowUI
                 state.pendingTreeFocusKey = TreePathKey(full);
         }
 
+        static void SynchronizeSidebarToDirectory(
+            PopupState state,
+            string directory,
+            FolderNavigationSource source)
+        {
+            state.pendingUserFolderFocusId = 0;
+            state.pendingTreeFocusKey = null;
+
+            if (source == FolderNavigationSource.Place)
+            {
+                state.sidebarLocationSource = SidebarLocationSource.Places;
+                return;
+            }
+
+            if (source == FolderNavigationSource.Tree)
+            {
+                state.sidebarLocationSource = SidebarLocationSource.Tree;
+                return;
+            }
+
+            var platform = NowFilePickerUserFolders.Platform(Application.platform);
+            int userFolderIndex = NowFilePickerUserFolders.IndexOfPath(state.userFolders, directory, platform);
+
+            if (userFolderIndex >= 0)
+            {
+                state.sidebarLocationSource = SidebarLocationSource.Places;
+                state.pendingUserFolderFocusId = state.userFolders[userFolderIndex].stableId;
+                return;
+            }
+
+            state.sidebarLocationSource = SidebarLocationSource.Tree;
+            RevealFolderInTree(state, directory, focus: true, expandTarget: false);
+        }
+
         static void SetFolderTreeExpanded(PopupState state, string path, bool expanded)
         {
             string key = TreePathKey(path);
@@ -2840,7 +2927,10 @@ namespace NowUI
             }
         }
 
-        static void NavigateTo(PopupState state, string directory)
+        static void NavigateTo(
+            PopupState state,
+            string directory,
+            FolderNavigationSource source = FolderNavigationSource.Automatic)
         {
             string full = NowFilePickerUtility.TryGetFullPath(directory);
 
@@ -2857,7 +2947,7 @@ namespace NowUI
                 state.fileName = string.Empty;
 
             MarkListsDirty(state);
-            RevealFolderInTree(state, full, focus: true, expandTarget: true);
+            SynchronizeSidebarToDirectory(state, full, source);
             ClearError(state);
             NowControlState.RequestRepaint();
         }
@@ -3069,6 +3159,54 @@ namespace NowUI
             }
 
             return extension == "png" || extension == "jpg" || extension == "jpeg";
+        }
+
+        public static bool FilterSupportsImagePreview(NowFileFilter[] filters, int filterIndex)
+        {
+            if (filters == null || filters.Length == 0)
+                return true;
+
+            NowFileFilter filter = filters[Mathf.Clamp(filterIndex, 0, filters.Length - 1)];
+            string[] extensions = filter.extensions;
+
+            if (extensions == null || extensions.Length == 0)
+                return true;
+
+            for (int i = 0; i < extensions.Length; ++i)
+            {
+                if (IsPreviewFilterExtension(extensions[i]))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool IsPreviewFilterExtension(string extension)
+        {
+            return string.Equals(extension, "*", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, "*.*", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, "png", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, "*.png", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, "jpg", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, "*.jpg", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, "jpeg", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, "*.jpeg", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool ShouldShowPreviewPanel(
+            NowFileDialogMode mode,
+            NowFilePickerView view,
+            float listWidth,
+            NowFileFilter[] filters,
+            int filterIndex)
+        {
+            return mode == NowFileDialogMode.OpenFile &&
+                view == NowFilePickerView.Details &&
+                listWidth >= 420f &&
+                FilterSupportsImagePreview(filters, filterIndex);
         }
 
         public static Vector2Int ThumbnailSize(int width, int height, int maxDimension)

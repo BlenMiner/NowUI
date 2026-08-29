@@ -338,19 +338,23 @@ input surface, with a themed scrim separating it from the UI underneath.
 
 The view slider moves through `NowFilePickerView.Details`, `SmallThumbnails`,
 `MediumThumbnails`, and `LargeThumbnails`. Details view keeps the folder tree
-and file list and, when space allows, adds a larger preview pane for the
-selected image. Thumbnail views arrange entries in progressively larger grids.
-PNG, JPG, and JPEG files use decoded image previews in both forms; unsupported
-files keep their extension-aware icons.
+and file list. In Open mode, when space allows and the active filter is
+preview-capable, it also adds a contextual **Details** pane. PNG, JPG, and JPEG
+selections use a decoded preview there; other selected entries show generic
+metadata. Save and Directory modes never reserve the pane. Thumbnail views
+arrange entries in progressively larger grids; supported images use decoded
+thumbnails and other files keep their extension-aware icons.
 
 On wider pickers, the **Places** sidebar provides quick access to existing
 common user folders. Windows uses the system's Desktop, Downloads, Documents,
 Pictures, Music, and Videos locations; macOS uses the equivalent folders with
 Movies in place of Videos; Linux follows `xdg-user-dirs`, including localized
 or customized paths. Missing and explicitly disabled locations are omitted,
-and Places shares one scrollable sidebar with the folder tree. Opening or
-navigating the picker reveals the current tree node; scroll upward to return to
-the shortcuts.
+and Places shares one scrollable sidebar with the folder tree. Activating a
+Place keeps that shortcut selected and visible while the main file view
+navigates; it does not scroll down to the matching tree node. Navigation to a
+folder that is not a Place reveals its current tree node instead; scroll upward
+to return to the shortcuts.
 
 ```csharp
 string previewPath = "";
@@ -395,7 +399,11 @@ using (NowLayout.Area(NowScreen.safeArea, padding: 16f, spacing: 8f))
 
 - `SetExtensions(...)` is the quick form for one unnamed filter; use
   `SetFilter(name, ...)` for one named filter and `SetFilters(...)` for a
-  popup filter dropdown.
+  popup filter dropdown. A concrete active filter enables the **Details**
+  pane only when it contains `png`, `jpg`, or `jpeg`. No filter, an empty
+  extension list, and the `*` wildcard are broad and remain preview-capable in
+  Open mode; the selected entry then determines whether the pane shows an image
+  or generic metadata. A wildcard mixed with concrete extensions remains broad.
 - Save fields append `SetDefaultExtension(...)` when the selected file name
   has no extension. If no default extension is set, the first concrete filter
   extension is used.

@@ -48,6 +48,104 @@ public class NowFilePickerTests
         Assert.IsFalse(NowFilePickerUtility.IsPreviewableImage(path));
     }
 
+    [Test]
+    public void ImagePreviewFilterSupportIncludesUnfilteredWildcardAndImageExtensions()
+    {
+        Assert.IsTrue(NowFilePickerUtility.FilterSupportsImagePreview(null, 0));
+        Assert.IsTrue(NowFilePickerUtility.FilterSupportsImagePreview(new NowFileFilter[0], 0));
+        Assert.IsTrue(NowFilePickerUtility.FilterSupportsImagePreview(
+            new[] { new NowFileFilter("All files", "*.*") },
+            0));
+        Assert.IsTrue(NowFilePickerUtility.FilterSupportsImagePreview(
+            new[] { new NowFileFilter("Images", ".PNG", "jpeg") },
+            0));
+        Assert.IsTrue(NowFilePickerUtility.FilterSupportsImagePreview(
+            new[] { new NowFileFilter("Mixed", "json", "jpg") },
+            0));
+    }
+
+    [Test]
+    public void ImagePreviewFilterSupportRejectsConcreteNonImageExtensions()
+    {
+        var filters = new[]
+        {
+            new NowFileFilter("Images", "png"),
+            new NowFileFilter("Documents", "json", "txt"),
+            new NowFileFilter("Unsupported images", "gif", "webp")
+        };
+
+        Assert.IsTrue(NowFilePickerUtility.FilterSupportsImagePreview(filters, 0));
+        Assert.IsFalse(NowFilePickerUtility.FilterSupportsImagePreview(filters, 1));
+        Assert.IsFalse(NowFilePickerUtility.FilterSupportsImagePreview(filters, 2));
+    }
+
+    [TestCase(NowFileDialogMode.OpenFile, NowFilePickerView.Details, 420f, true)]
+    [TestCase(NowFileDialogMode.OpenFile, NowFilePickerView.Details, 419.9f, false)]
+    [TestCase(NowFileDialogMode.OpenFile, NowFilePickerView.SmallThumbnails, 600f, false)]
+    [TestCase(NowFileDialogMode.OpenFile, NowFilePickerView.MediumThumbnails, 600f, false)]
+    [TestCase(NowFileDialogMode.OpenFile, NowFilePickerView.LargeThumbnails, 600f, false)]
+    [TestCase(NowFileDialogMode.SaveFile, NowFilePickerView.Details, 600f, false)]
+    [TestCase(NowFileDialogMode.Directory, NowFilePickerView.Details, 600f, false)]
+    public void PreviewPanelPolicyRequiresOpenDetailsViewAndEnoughWidth(
+        NowFileDialogMode mode,
+        NowFilePickerView view,
+        float listWidth,
+        bool expected)
+    {
+        var filters = new[] { new NowFileFilter("Images", "png", "jpg") };
+
+        Assert.AreEqual(
+            expected,
+            NowFilePickerUtility.ShouldShowPreviewPanel(mode, view, listWidth, filters, 0));
+    }
+
+    [Test]
+    public void PreviewPanelPolicyUsesTheActiveFilter()
+    {
+        var filters = new[]
+        {
+            new NowFileFilter("Images", "png", "jpeg"),
+            new NowFileFilter("Documents", "json", "txt"),
+            new NowFileFilter("All files", "*")
+        };
+
+        Assert.IsTrue(NowFilePickerUtility.ShouldShowPreviewPanel(
+            NowFileDialogMode.OpenFile,
+            NowFilePickerView.Details,
+            600f,
+            filters,
+            0));
+        Assert.IsFalse(NowFilePickerUtility.ShouldShowPreviewPanel(
+            NowFileDialogMode.OpenFile,
+            NowFilePickerView.Details,
+            600f,
+            filters,
+            1));
+        Assert.IsTrue(NowFilePickerUtility.ShouldShowPreviewPanel(
+            NowFileDialogMode.OpenFile,
+            NowFilePickerView.Details,
+            600f,
+            filters,
+            2));
+    }
+
+    [Test]
+    public void PreviewPanelPolicyAllowsUnfilteredOpenFileDialogs()
+    {
+        Assert.IsTrue(NowFilePickerUtility.ShouldShowPreviewPanel(
+            NowFileDialogMode.OpenFile,
+            NowFilePickerView.Details,
+            600f,
+            null,
+            0));
+        Assert.IsTrue(NowFilePickerUtility.ShouldShowPreviewPanel(
+            NowFileDialogMode.OpenFile,
+            NowFilePickerView.Details,
+            600f,
+            new NowFileFilter[0],
+            0));
+    }
+
     [TestCase(400, 200, 128, 128, 64)]
     [TestCase(200, 400, 128, 64, 128)]
     [TestCase(320, 320, 96, 96, 96)]

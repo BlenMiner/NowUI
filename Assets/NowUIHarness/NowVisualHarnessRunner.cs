@@ -23,16 +23,29 @@ namespace NowUI.Editor
             string outputRoot = NowHarnessScenarios.ReadArgument(
                 "-nowuiArtifactsPath",
                 Path.Combine(NowHarnessScenarios.ProjectPath(), "artifacts", "local", "visual"));
+            string scenarioFilter = NowHarnessScenarios.ReadArgument("-nowuiScenarioFilter", null);
 
             var captures = new List<NowHarnessCapture>();
             foreach (var scenario in NowHarnessScenarios.All())
             {
+                if (!MatchesScenarioFilter(scenario.name, scenarioFilter))
+                    continue;
+
                 string outputPath = Path.Combine(outputRoot, $"{scenario.name}.png");
                 captures.Add(NowHarnessScenarios.Capture(scenario, outputPath));
             }
 
+            if (captures.Count == 0)
+                throw new InvalidOperationException($"No visual scenarios matched '{scenarioFilter}'.");
+
             File.WriteAllText(Path.Combine(outputRoot, "manifest.json"), NowHarnessScenarios.BuildManifest(captures));
             Debug.Log($"NowUI visual harness wrote {captures.Count} captures to {outputRoot}.");
+        }
+
+        static bool MatchesScenarioFilter(string scenarioName, string filter)
+        {
+            return string.IsNullOrWhiteSpace(filter) ||
+                scenarioName.IndexOf(filter.Trim(), StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         public static void CompareGoldens()

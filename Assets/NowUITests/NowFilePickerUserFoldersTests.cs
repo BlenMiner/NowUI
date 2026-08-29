@@ -74,6 +74,78 @@ public class NowFilePickerUserFoldersTests
     }
 
     [Test]
+    public void IndexOfPathCanonicalizesTheCandidateAndFolderPaths()
+    {
+        string pictures = Path.Combine(Path.GetTempPath(), "NowFilePickerUserFolders", "Pictures");
+        var folders = new List<NowFilePickerUserFolder>
+        {
+            new NowFilePickerUserFolder(1, "Pictures", pictures + Path.DirectorySeparatorChar, "P")
+        };
+
+        Assert.AreEqual(0, NowFilePickerUserFolders.IndexOfPath(
+            folders,
+            pictures,
+            NowFilePickerUserFolderPlatform.Windows));
+        Assert.AreEqual(-1, NowFilePickerUserFolders.IndexOfPath(
+            folders,
+            Path.Combine(Path.GetTempPath(), "NowFilePickerUserFolders", "Videos"),
+            NowFilePickerUserFolderPlatform.Windows));
+    }
+
+    [Test]
+    public void PathMatchingUsesThePlatformPathComparer()
+    {
+        string pictures = Path.Combine(Path.GetTempPath(), "NowFilePickerUserFolders", "Pictures");
+        string differentlyCased = pictures.ToUpperInvariant();
+        var folders = new List<NowFilePickerUserFolder>
+        {
+            new NowFilePickerUserFolder(1, "Pictures", pictures, "P")
+        };
+
+        Assert.IsTrue(NowFilePickerUserFolders.PathsEqual(
+            pictures,
+            differentlyCased,
+            NowFilePickerUserFolderPlatform.Windows));
+        Assert.IsFalse(NowFilePickerUserFolders.PathsEqual(
+            pictures,
+            differentlyCased,
+            NowFilePickerUserFolderPlatform.MacOS));
+        Assert.IsFalse(NowFilePickerUserFolders.PathsEqual(
+            pictures,
+            differentlyCased,
+            NowFilePickerUserFolderPlatform.Linux));
+        Assert.AreEqual(0, NowFilePickerUserFolders.IndexOfPath(
+            folders,
+            differentlyCased,
+            NowFilePickerUserFolderPlatform.Windows));
+        Assert.AreEqual(-1, NowFilePickerUserFolders.IndexOfPath(
+            folders,
+            differentlyCased,
+            NowFilePickerUserFolderPlatform.MacOS));
+        Assert.AreEqual(-1, NowFilePickerUserFolders.IndexOfPath(
+            folders,
+            differentlyCased,
+            NowFilePickerUserFolderPlatform.Linux));
+    }
+
+    [Test]
+    public void IndexOfPathRejectsMissingFoldersAndBlankCandidates()
+    {
+        Assert.AreEqual(-1, NowFilePickerUserFolders.IndexOfPath(
+            null,
+            Path.GetTempPath(),
+            NowFilePickerUserFolderPlatform.Windows));
+        Assert.AreEqual(-1, NowFilePickerUserFolders.IndexOfPath(
+            new List<NowFilePickerUserFolder>(),
+            Path.GetTempPath(),
+            NowFilePickerUserFolderPlatform.Windows));
+        Assert.AreEqual(-1, NowFilePickerUserFolders.IndexOfPath(
+            new[] { new NowFilePickerUserFolder(1, "Pictures", Path.GetTempPath(), "P") },
+            "",
+            NowFilePickerUserFolderPlatform.Windows));
+    }
+
+    [Test]
     public void WindowsCandidatesUseSpecialFoldersAndKnownDownloadsInStableOrder()
     {
         string home = Path.Combine(Path.GetTempPath(), "user");

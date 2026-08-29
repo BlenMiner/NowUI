@@ -123,6 +123,44 @@ namespace NowUI
                 : StringComparer.Ordinal;
         }
 
+        internal static bool PathsEqual(
+            string left,
+            string right,
+            NowFilePickerUserFolderPlatform platform)
+        {
+            string canonicalLeft = CanonicalPath(left);
+            string canonicalRight = CanonicalPath(right);
+            return !string.IsNullOrEmpty(canonicalLeft) &&
+                !string.IsNullOrEmpty(canonicalRight) &&
+                PathComparer(platform).Equals(canonicalLeft, canonicalRight);
+        }
+
+        internal static int IndexOfPath(
+            IReadOnlyList<NowFilePickerUserFolder> folders,
+            string path,
+            NowFilePickerUserFolderPlatform platform)
+        {
+            if (folders == null || folders.Count == 0)
+                return -1;
+
+            string canonical = CanonicalPath(path);
+
+            if (string.IsNullOrEmpty(canonical))
+                return -1;
+
+            StringComparer comparer = PathComparer(platform);
+
+            for (int i = 0; i < folders.Count; ++i)
+            {
+                string candidate = CanonicalPath(folders[i].path);
+
+                if (!string.IsNullOrEmpty(candidate) && comparer.Equals(candidate, canonical))
+                    return i;
+            }
+
+            return -1;
+        }
+
         internal static void BuildCandidates(
             NowFilePickerUserFolderPlatform platform,
             string home,
