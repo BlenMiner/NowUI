@@ -451,6 +451,7 @@ namespace NowUI
         {
             public float heldSince;
             public float lastPulse;
+            public bool active;
         }
 
         struct PressAnimationState
@@ -478,19 +479,29 @@ namespace NowUI
 
         static bool RepeatByStateKey(NowResolvedId stateKey, bool held, float delay, float interval)
         {
+            // Measurement/replay passes must observe repeat state without
+            // mutating it. In particular, passive interactions report
+            // held=false; treating that as a release makes the following real
+            // draw pulse as though the same physical press were new.
+            if (NowInput.isPassive)
+                return false;
+
             ref var state = ref GetByStateKey<RepeatState>(stateKey);
-            float now = Time.realtimeSinceStartup;
+            float now = NowInput.hasContext
+                ? NowInput.current.time
+                : Time.realtimeSinceStartup;
 
             if (!held)
             {
-                state.heldSince = 0f;
+                state.active = false;
                 return false;
             }
 
             RequestRepaint();
 
-            if (state.heldSince <= 0f)
+            if (!state.active)
             {
+                state.active = true;
                 state.heldSince = now;
                 state.lastPulse = now;
                 return true;

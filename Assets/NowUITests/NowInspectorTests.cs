@@ -98,6 +98,16 @@ public class NowInspectorTests
         public bool flag;
     }
 
+    class NumericTarget
+    {
+        public int count = 3;
+    }
+
+    class UnsignedWideTarget
+    {
+        public ulong wide = ulong.MaxValue;
+    }
+
     struct Meters
     {
         public float value;
@@ -285,6 +295,36 @@ public class NowInspectorTests
 
         Assert.IsTrue(changed, "Releasing over the checkbox reports a change.");
         Assert.IsTrue(target.flag);
+    }
+
+    [Test]
+    public void NumericRowLabelScrubsItsValue()
+    {
+        var target = new NumericTarget();
+        var labelPress = new Vector2(20f, 10f);
+        var labelDrag = new Vector2(40f, 10f);
+
+        DrawInspectorFrame(ref target, labelPress);
+        DrawInspectorFrame(ref target, labelPress, down: true, pressed: true);
+        bool changed = DrawInspectorFrame(ref target, labelDrag, down: true);
+        DrawInspectorFrame(ref target, labelDrag, released: true);
+
+        Assert.IsTrue(changed, "Dragging a numeric property label must report the scrubbed value change.");
+        Assert.Greater(target.count, 3);
+    }
+
+    [Test]
+    public void UnsignedLongRowLabelDoesNotUseSignedScrubbing()
+    {
+        var target = new UnsignedWideTarget();
+        var labelPress = new Vector2(20f, 10f);
+        var labelDrag = new Vector2(40f, 10f);
+
+        Assert.IsFalse(DrawInspectorFrame(ref target, labelPress));
+        Assert.IsFalse(DrawInspectorFrame(ref target, labelPress, down: true, pressed: true));
+        Assert.IsFalse(DrawInspectorFrame(ref target, labelDrag, down: true));
+        Assert.IsFalse(DrawInspectorFrame(ref target, labelDrag, released: true));
+        Assert.AreEqual(ulong.MaxValue, target.wide);
     }
 
     [Test]
@@ -618,6 +658,56 @@ public class NowWideNumericFieldTests
 
         Assert.IsFalse(changed);
         Assert.AreEqual(new RectInt(1, 2, 3, 4), value);
+    }
+
+    [Test]
+    public void VectorComponentLabelScrubsOnlyItsComponent()
+    {
+        var value = new Vector2(1f, 2f);
+        var labelPress = new Vector2(FieldRect.x + 6f, FieldRect.y + 10f);
+        var labelDrag = new Vector2(labelPress.x + 20f, labelPress.y);
+
+        DrawVectorFrame(ref value, labelPress);
+        DrawVectorFrame(ref value, labelPress, down: true, pressed: true);
+        bool changed = DrawVectorFrame(ref value, labelDrag, down: true);
+        DrawVectorFrame(ref value, labelDrag, released: true);
+
+        Assert.IsTrue(changed);
+        Assert.Greater(value.x, 1f);
+        Assert.AreEqual(2f, value.y, 0.0001f);
+    }
+
+    [Test]
+    public void VectorComponentLabelScrubbingCanBeDisabled()
+    {
+        var value = new Vector2(1f, 2f);
+        var labelPress = new Vector2(FieldRect.x + 6f, FieldRect.y + 10f);
+        var labelDrag = new Vector2(labelPress.x + 20f, labelPress.y);
+
+        DrawVectorFrame(ref value, labelPress, scrubLabels: false);
+        DrawVectorFrame(ref value, labelPress, down: true, pressed: true, scrubLabels: false);
+        bool changed = DrawVectorFrame(ref value, labelDrag, down: true, scrubLabels: false);
+        DrawVectorFrame(ref value, labelDrag, released: true, scrubLabels: false);
+
+        Assert.IsFalse(changed);
+        Assert.AreEqual(new Vector2(1f, 2f), value);
+    }
+
+    bool DrawVectorFrame(
+        ref Vector2 value,
+        Vector2 pointer,
+        bool down = false,
+        bool pressed = false,
+        bool released = false,
+        bool scrubLabels = true)
+    {
+        _pointer.snapshot = new NowInputSnapshot(pointer, down, pressed, released);
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            return Now.Vector2Field(FieldRect, "scrub-vector")
+                .SetLabelScrubbing(scrubLabels)
+                .Draw(ref value);
     }
 }
 

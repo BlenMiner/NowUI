@@ -74,6 +74,8 @@ public class NowNewControlsTests
     static readonly NowRect ChipRect = new NowRect(20, 20, 140, 28);
     static readonly NowRect TooltipAnchorRect = new NowRect(50, 50, 100, 30);
     static readonly NowRect SpinnerFieldRect = new NowRect(20, 20, 180, 32);
+    static readonly NowRect ScrubLabelRect = new NowRect(20, 20, 72, 32);
+    static readonly NowRect ScrubFieldRect = new NowRect(104, 20, 180, 32);
     static readonly NowRect TabsRect = new NowRect(10, 10, 400, 40);
     static readonly NowRect SplitRect = new NowRect(10, 10, 310, 120);
     static readonly NowRect ComboRect = new NowRect(20, 20, 180, 36);
@@ -128,6 +130,54 @@ public class NowNewControlsTests
             Vector2.zero, Vector2.zero,
             false, false, false, false, false, false,
             frame, time);
+    }
+
+    static NowInputSnapshot TimedPrimary(
+        Vector2 position,
+        bool down,
+        bool pressed,
+        bool released,
+        float time,
+        int frame)
+    {
+        return TimedPrimaryPointer(
+            position,
+            position,
+            down,
+            pressed,
+            released,
+            time,
+            frame);
+    }
+
+    static NowInputSnapshot TimedPrimaryPointer(
+        Vector2 position,
+        Vector2 previousPosition,
+        bool down,
+        bool pressed,
+        bool released,
+        float time,
+        int frame,
+        bool captureCancelled = false)
+    {
+        NowPointerButtons downButtons = down
+            ? NowPointerButtons.Primary
+            : NowPointerButtons.None;
+        NowPointerButtons pressedButtons = pressed
+            ? NowPointerButtons.Primary
+            : NowPointerButtons.None;
+        NowPointerButtons releasedButtons = released
+            ? NowPointerButtons.Primary
+            : NowPointerButtons.None;
+
+        var snapshot = new NowInputSnapshot(
+            true, position, previousPosition, position - previousPosition,
+            downButtons, pressedButtons, releasedButtons,
+            Vector2.zero, Vector2.zero,
+            false, false, false, false, false, false,
+            frame, time);
+        snapshot.pointerCaptureCancelled = captureCancelled;
+        return snapshot;
     }
 
     static NowInputSnapshot SubmitSnapshot()
@@ -203,6 +253,68 @@ public class NowNewControlsTests
                 .SetRange(0f, 10f)
                 .Draw(ref value);
         }
+    }
+
+    bool DrawMeasuredSpinnerFieldFrame(ref float value)
+    {
+        _keyboard.frame = default;
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            int areaCounter = NowLayout.BeginMeasurePass();
+
+            try
+            {
+                Now.TextField(SpinnerFieldRect, "spin")
+                    .SetSpinner(2f)
+                    .SetRange(0f, 10f)
+                    .Draw(ref value);
+            }
+            finally
+            {
+                NowLayout.EndMeasurePass(areaCounter);
+            }
+
+            return Now.TextField(SpinnerFieldRect, "spin")
+                .SetSpinner(2f)
+                .SetRange(0f, 10f)
+                .Draw(ref value);
+        }
+    }
+
+    bool DrawScrubFieldFrame(
+        ref float value,
+        NowTextInputFrame keys = default,
+        bool clampRange = false)
+    {
+        _keyboard.frame = keys;
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            var field = Now.FloatField(ScrubFieldRect, "scrub")
+                .SetScrubRect(ScrubLabelRect, sensitivity: 1f);
+
+            if (clampRange)
+                field = field.SetRange(0f, 10f);
+
+            return field.Draw(ref value);
+        }
+    }
+
+    bool DrawLongScrubFieldFrame(ref long value, NowTextInputFrame keys = default)
+    {
+        _keyboard.frame = keys;
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            return Now.TextField(ScrubFieldRect, "long-scrub")
+                .SetScrubRect(ScrubLabelRect, sensitivity: 1f)
+                .Draw(ref value);
     }
 
     bool DrawTabsFrame(ref int selected)
@@ -593,6 +705,228 @@ public class NowNewControlsTests
         _pointer.snapshot = new NowInputSnapshot(downCenter, false, false, true);
         Assert.IsFalse(DrawSpinnerFieldFrame(ref value));
         Assert.AreEqual(5f, value, 0.0001f);
+    }
+
+    [Test]
+    public void MeasuredSpinnerClickDoesNotRestartRepeatBeforeRelease()
+    {
+        var styles = NowTheme.themeAsset.controlStyles;
+        var upCenter = new Vector2(
+            SpinnerFieldRect.xMax - 1f - styles.spinnerButtonWidth * 0.5f,
+            SpinnerFieldRect.y + SpinnerFieldRect.height * 0.25f);
+        float value = 5f;
+
+        _pointer.snapshot = TimedPrimary(
+            upCenter, down: true, pressed: true, released: false, time: 1f, frame: 1);
+        Assert.IsTrue(DrawMeasuredSpinnerFieldFrame(ref value));
+        Assert.AreEqual(7f, value, 0.0001f);
+
+        _pointer.snapshot = TimedPrimary(
+            upCenter, down: true, pressed: false, released: false, time: 1.01f, frame: 2);
+        Assert.IsFalse(
+            DrawMeasuredSpinnerFieldFrame(ref value),
+            "The passive measure pass must not reset repeat and turn an ordinary held repaint into another initial pulse.");
+        Assert.AreEqual(7f, value, 0.0001f);
+
+        _pointer.snapshot = TimedPrimary(
+            upCenter, down: false, pressed: false, released: true, time: 1.02f, frame: 3);
+        Assert.IsFalse(DrawMeasuredSpinnerFieldFrame(ref value));
+        Assert.AreEqual(7f, value, 0.0001f);
+    }
+
+    [Test]
+    public void TextFieldSpinnerHoldUsesSnapshotTimeForDelayAndInterval()
+    {
+        var styles = NowTheme.themeAsset.controlStyles;
+        var upCenter = new Vector2(
+            SpinnerFieldRect.xMax - 1f - styles.spinnerButtonWidth * 0.5f,
+            SpinnerFieldRect.y + SpinnerFieldRect.height * 0.25f);
+        float value = 1f;
+
+        _pointer.snapshot = TimedPrimary(
+            upCenter, down: true, pressed: true, released: false, time: 1f, frame: 1);
+        Assert.IsTrue(DrawSpinnerFieldFrame(ref value));
+        Assert.AreEqual(3f, value, 0.0001f);
+
+        _pointer.snapshot = TimedPrimary(
+            upCenter, down: true, pressed: false, released: false, time: 1.34f, frame: 2);
+        Assert.IsFalse(DrawSpinnerFieldFrame(ref value), "No repeat is due before the 0.35 second delay.");
+        Assert.AreEqual(3f, value, 0.0001f);
+
+        _pointer.snapshot = TimedPrimary(
+            upCenter, down: true, pressed: false, released: false, time: 1.36f, frame: 3);
+        Assert.IsTrue(DrawSpinnerFieldFrame(ref value));
+        Assert.AreEqual(5f, value, 0.0001f);
+
+        _pointer.snapshot = TimedPrimary(
+            upCenter, down: true, pressed: false, released: false, time: 1.419f, frame: 4);
+        Assert.IsFalse(DrawSpinnerFieldFrame(ref value), "No repeat is due before the 0.06 second interval.");
+        Assert.AreEqual(5f, value, 0.0001f);
+
+        _pointer.snapshot = TimedPrimary(
+            upCenter, down: true, pressed: false, released: false, time: 1.421f, frame: 5);
+        Assert.IsTrue(DrawSpinnerFieldFrame(ref value));
+        Assert.AreEqual(7f, value, 0.0001f);
+
+        _pointer.snapshot = TimedPrimary(
+            upCenter, down: false, pressed: false, released: true, time: 1.43f, frame: 6);
+        Assert.IsFalse(DrawSpinnerFieldFrame(ref value));
+        Assert.AreEqual(7f, value, 0.0001f);
+    }
+
+    [Test]
+    public void NumericScrubLabelClickWithoutDragLeavesValueUnchanged()
+    {
+        Vector2 point = ScrubLabelRect.center;
+        float value = 5f;
+
+        _pointer.snapshot = TimedPrimary(
+            point, down: true, pressed: true, released: false, time: 1f, frame: 1);
+        Assert.IsFalse(DrawScrubFieldFrame(ref value));
+
+        _pointer.snapshot = TimedPrimary(
+            point, down: false, pressed: false, released: true, time: 1.01f, frame: 2);
+        Assert.IsFalse(DrawScrubFieldFrame(ref value));
+        Assert.AreEqual(5f, value, 0.0001f);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId,
+            "A scrub-label click must not focus the separate text field.");
+    }
+
+    [Test]
+    public void NumericScrubLabelHorizontalDragUsesConfiguredSensitivity()
+    {
+        Vector2 start = ScrubLabelRect.center;
+        Vector2 end = start + new Vector2(10f, 0f);
+        float value = 5f;
+
+        _pointer.snapshot = TimedPrimary(
+            start, down: true, pressed: true, released: false, time: 1f, frame: 1);
+        Assert.IsFalse(DrawScrubFieldFrame(ref value));
+
+        _pointer.snapshot = TimedPrimaryPointer(
+            end, start, down: true, pressed: false, released: false, time: 1.01f, frame: 2);
+        Assert.IsTrue(DrawScrubFieldFrame(ref value));
+        Assert.AreEqual(15f, value, 0.0001f);
+
+        _pointer.snapshot = TimedPrimary(
+            end, down: false, pressed: false, released: true, time: 1.02f, frame: 3);
+        Assert.IsFalse(DrawScrubFieldFrame(ref value));
+        Assert.AreEqual(15f, value, 0.0001f);
+    }
+
+    [Test]
+    public void NumericScrubLabelShiftMultipliesDragByFour()
+    {
+        Vector2 start = ScrubLabelRect.center;
+        Vector2 end = start + new Vector2(10f, 0f);
+        float value = 5f;
+
+        _pointer.snapshot = TimedPrimary(
+            start, down: true, pressed: true, released: false, time: 1f, frame: 1);
+        DrawScrubFieldFrame(ref value);
+
+        _pointer.snapshot = TimedPrimaryPointer(
+            end, start, down: true, pressed: false, released: false, time: 1.01f, frame: 2);
+        Assert.IsTrue(DrawScrubFieldFrame(
+            ref value,
+            new NowTextInputFrame { shift = true }));
+        Assert.AreEqual(45f, value, 0.0001f);
+    }
+
+    [Test]
+    public void NumericScrubLabelCommandMultipliesDragByOneQuarter()
+    {
+        Vector2 start = ScrubLabelRect.center;
+        Vector2 end = start + new Vector2(10f, 0f);
+        float value = 5f;
+
+        _pointer.snapshot = TimedPrimary(
+            start, down: true, pressed: true, released: false, time: 1f, frame: 1);
+        DrawScrubFieldFrame(ref value);
+
+        _pointer.snapshot = TimedPrimaryPointer(
+            end, start, down: true, pressed: false, released: false, time: 1.01f, frame: 2);
+        Assert.IsTrue(DrawScrubFieldFrame(
+            ref value,
+            new NowTextInputFrame { command = true }));
+        Assert.AreEqual(7.5f, value, 0.0001f);
+    }
+
+    [Test]
+    public void NumericScrubLabelClampsToConfiguredRange()
+    {
+        Vector2 start = ScrubLabelRect.center;
+        Vector2 end = start + new Vector2(10f, 0f);
+        float value = 8f;
+
+        _pointer.snapshot = TimedPrimary(
+            start, down: true, pressed: true, released: false, time: 1f, frame: 1);
+        DrawScrubFieldFrame(ref value, clampRange: true);
+
+        _pointer.snapshot = TimedPrimaryPointer(
+            end, start, down: true, pressed: false, released: false, time: 1.01f, frame: 2);
+        Assert.IsTrue(DrawScrubFieldFrame(ref value, clampRange: true));
+        Assert.AreEqual(10f, value, 0.0001f);
+    }
+
+    [Test]
+    public void NumericScrubLabelCaptureCancellationRestoresStartValue()
+    {
+        Vector2 start = ScrubLabelRect.center;
+        Vector2 end = start + new Vector2(10f, 0f);
+        float value = 5f;
+
+        _pointer.snapshot = TimedPrimary(
+            start, down: true, pressed: true, released: false, time: 1f, frame: 1);
+        DrawScrubFieldFrame(ref value);
+
+        _pointer.snapshot = TimedPrimaryPointer(
+            end, start, down: true, pressed: false, released: false, time: 1.01f, frame: 2);
+        Assert.IsTrue(DrawScrubFieldFrame(ref value));
+        Assert.AreEqual(15f, value, 0.0001f);
+
+        _pointer.snapshot = TimedPrimaryPointer(
+            end,
+            end,
+            down: false,
+            pressed: false,
+            released: false,
+            time: 1.02f,
+            frame: 3,
+            captureCancelled: true);
+        Assert.IsTrue(DrawScrubFieldFrame(ref value));
+        Assert.AreEqual(5f, value, 0.0001f,
+            "Losing pointer capture aborts the gesture and restores its starting value.");
+    }
+
+    [Test]
+    public void LongScrubPreservesUnitPrecisionAboveTwoToTheFiftyThird()
+    {
+        Vector2 start = ScrubLabelRect.center;
+        Vector2 end = start + new Vector2(10f, 0f);
+        long original = 9007199254740993L;
+        long value = original;
+
+        _pointer.snapshot = TimedPrimary(
+            start, down: true, pressed: true, released: false, time: 1f, frame: 1);
+        DrawLongScrubFieldFrame(ref value);
+
+        _pointer.snapshot = TimedPrimaryPointer(
+            end, start, down: true, pressed: false, released: false, time: 1.01f, frame: 2);
+        Assert.IsTrue(DrawLongScrubFieldFrame(ref value));
+        Assert.AreEqual(original + 10L, value);
+
+        _pointer.snapshot = TimedPrimaryPointer(
+            end,
+            end,
+            down: false,
+            pressed: false,
+            released: false,
+            time: 1.02f,
+            frame: 3,
+            captureCancelled: true);
+        Assert.IsTrue(DrawLongScrubFieldFrame(ref value));
+        Assert.AreEqual(original, value, "Cancelling must restore the exact long baseline.");
     }
 
     [Test]

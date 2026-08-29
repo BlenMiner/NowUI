@@ -14,6 +14,7 @@ namespace NowUI.Editor
         ToggleOn,
         TextField,
         IntegerField,
+        FloatField,
         Popup,
         Slider,
         ProgressBar,
@@ -70,6 +71,7 @@ namespace NowUI.Editor
             AddRow(rows, width, ref y, NowEditorThemeComparisonElement.ToggleOn, "Toggle on");
             AddRow(rows, width, ref y, NowEditorThemeComparisonElement.TextField, "Text field");
             AddRow(rows, width, ref y, NowEditorThemeComparisonElement.IntegerField, "Integer field");
+            AddRow(rows, width, ref y, NowEditorThemeComparisonElement.FloatField, "Float field");
             AddRow(rows, width, ref y, NowEditorThemeComparisonElement.Popup, "Popup");
             AddRow(rows, width, ref y, NowEditorThemeComparisonElement.Slider, "Slider");
             AddRow(rows, width, ref y, NowEditorThemeComparisonElement.ProgressBar, "Progress");
@@ -152,6 +154,7 @@ namespace NowUI.Editor
         [SerializeField] string _text = "Player Camera";
         [SerializeField] string _notes = "Line one\nLine two";
         [SerializeField] int _integer = 12;
+        [SerializeField] float _float = 1.25f;
         [SerializeField] int _quality = 2;
         [SerializeField] float _slider = 0.68f;
         [SerializeField] bool _foldout = true;
@@ -188,6 +191,7 @@ namespace NowUI.Editor
             _text = "Player Camera";
             _notes = "Line one\nLine two";
             _integer = 12;
+            _float = 1.25f;
             _quality = 2;
             _slider = 0.68f;
             _foldout = true;
@@ -360,7 +364,11 @@ namespace NowUI.Editor
 
                 Rect labelRect = NowEditorThemeComparisonSpecimen.LabelRect(row);
                 Rect controlRect = NowEditorThemeComparisonSpecimen.ControlRect(row);
-                EditorGUI.LabelField(labelRect, row.label);
+                bool numericField = row.element == NowEditorThemeComparisonElement.IntegerField ||
+                    row.element == NowEditorThemeComparisonElement.FloatField;
+
+                if (!numericField)
+                    EditorGUI.LabelField(labelRect, row.label);
 
                 switch (row.element)
                 {
@@ -384,7 +392,10 @@ namespace NowUI.Editor
                         _text = EditorGUI.TextField(controlRect, _text);
                         break;
                     case NowEditorThemeComparisonElement.IntegerField:
-                        _integer = EditorGUI.IntField(controlRect, _integer);
+                        _integer = DrawNativeIntField(row.rect, row.label, _integer);
+                        break;
+                    case NowEditorThemeComparisonElement.FloatField:
+                        _float = DrawNativeFloatField(row.rect, row.label, _float);
                         break;
                     case NowEditorThemeComparisonElement.Popup:
                         _quality = EditorGUI.Popup(controlRect, _quality, QualityOptions);
@@ -461,7 +472,14 @@ namespace NowUI.Editor
                         Now.TextField(nowRect, new NowId(1104)).Draw(ref _text);
                         break;
                     case NowEditorThemeComparisonElement.IntegerField:
-                        Now.IntField(nowRect, new NowId(1105)).Draw(ref _integer);
+                        Now.IntField(nowRect, new NowId(1105))
+                            .SetScrubRect(ToNow(labelRect))
+                            .Draw(ref _integer);
+                        break;
+                    case NowEditorThemeComparisonElement.FloatField:
+                        Now.FloatField(nowRect, new NowId(1111))
+                            .SetScrubRect(ToNow(labelRect))
+                            .Draw(ref _float);
                         break;
                     case NowEditorThemeComparisonElement.Popup:
                         Now.Dropdown(nowRect, new NowId(1106), QualityOptions).Draw(ref _quality);
@@ -514,6 +532,38 @@ namespace NowUI.Editor
                     i == 2,
                     false,
                     i == 3);
+            }
+        }
+
+        static int DrawNativeIntField(Rect rect, string label, int value)
+        {
+            float previousLabelWidth = EditorGUIUtility.labelWidth;
+
+            try
+            {
+                EditorGUIUtility.labelWidth = NowEditorThemeComparisonSpecimen.LabelWidth +
+                    NowEditorThemeComparisonSpecimen.LabelGap;
+                return EditorGUI.IntField(rect, new GUIContent(label), value);
+            }
+            finally
+            {
+                EditorGUIUtility.labelWidth = previousLabelWidth;
+            }
+        }
+
+        static float DrawNativeFloatField(Rect rect, string label, float value)
+        {
+            float previousLabelWidth = EditorGUIUtility.labelWidth;
+
+            try
+            {
+                EditorGUIUtility.labelWidth = NowEditorThemeComparisonSpecimen.LabelWidth +
+                    NowEditorThemeComparisonSpecimen.LabelGap;
+                return EditorGUI.FloatField(rect, new GUIContent(label), value);
+            }
+            finally
+            {
+                EditorGUIUtility.labelWidth = previousLabelWidth;
             }
         }
 
@@ -715,6 +765,7 @@ namespace NowUI.Editor
             _text = "Player Camera";
             _notes = "Line one\nLine two";
             _integer = 12;
+            _float = 1.25f;
             _quality = 2;
             _slider = 0.68f;
             _foldout = true;

@@ -391,6 +391,13 @@ namespace NowUI
         bool _spinner;
         float _spinnerStep;
         int _spinnerTicks;
+        bool _hasScrubRect;
+        NowRect _scrubRect;
+        float _scrubSensitivity;
+        double _scrubDelta;
+        bool _scrubStarted;
+        bool _scrubActive;
+        bool _scrubCancelled;
         bool _selectAllOnFocus;
         NowTextFieldAppearance _appearance;
 
@@ -408,6 +415,7 @@ namespace NowUI
         const int SpinUpRepeatSeed = 0x4e54460a;
         const int SpinDownRepeatSeed = 0x4e54460b;
         const int SpinNavRepeatSeed = 0x4e54460c;
+        const int ScrubGestureSeed = 0x4e54460d;
 
         static TouchScreenKeyboard s_touchKeyboard;
         static NowResolvedId s_touchKeyboardId;
@@ -429,6 +437,25 @@ namespace NowUI
             public double revert;
 
             public long revertLong;
+
+            public double scrubStart;
+
+            public long scrubStartLong;
+
+            public double scrubSensitivity;
+        }
+
+        struct ScrubGestureState
+        {
+            public float lastX;
+
+            public double accumulated;
+
+            public int lastInputPass;
+
+            public bool started;
+
+            public bool cancelled;
         }
 
         struct RevertState
@@ -453,6 +480,13 @@ namespace NowUI
             _spinner = false;
             _spinnerStep = 1f;
             _spinnerTicks = 0;
+            _hasScrubRect = false;
+            _scrubRect = default;
+            _scrubSensitivity = 0f;
+            _scrubDelta = 0d;
+            _scrubStarted = false;
+            _scrubActive = false;
+            _scrubCancelled = false;
             _selectAllOnFocus = false;
             _appearance = default;
         }
@@ -567,6 +601,21 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// Uses an external label or other rectangle as a Unity-style numeric
+        /// scrub handle. Drag horizontally to change the value. Shift is coarse
+        /// (4x); Alt/Option or Ctrl/Command is fine (0.25x). A zero sensitivity
+        /// selects a value-aware default matching Unity's numeric draggers.
+        /// This only affects the numeric Draw overloads.
+        /// </summary>
+        public NowTextField SetScrubRect(NowRect rect, float sensitivity = 0f)
+        {
+            _hasScrubRect = true;
+            _scrubRect = rect;
+            _scrubSensitivity = Mathf.Max(0f, sensitivity);
+            return this;
+        }
+
         /// <summary>Explicit control id, decoupling identity from the call site.</summary>
         public NowTextField SetId(NowId id) { _id = id; return this; }
 
@@ -647,6 +696,7 @@ namespace NowUI
                 value = Mathf.Clamp(value, _numberMin, _numberMax);
 
             ref var numberState = ref NowControlState.Get<NumberEditState>(id.Child(NumberStateSeed));
+            bool wasEditing = numberState.editing;
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatFloat(ref numberState, value, format);
@@ -655,9 +705,15 @@ namespace NowUI
                 numberState.revert = value;
 
             string text = numberState.text;
-            NowTextFieldResult result = DrawText(ref text, id, out bool reverted);
+            NowTextFieldResult result = DrawText(ref text, id, out bool reverted, numeric: true);
 
             bool focused = NowFocus.IsFocused(id);
+
+            if (NowInput.isPassive)
+            {
+                value = previous;
+                return result.WithChanged(false);
+            }
 
             if (reverted)
             {
@@ -667,7 +723,9 @@ namespace NowUI
                 return result.WithChanged(false);
             }
 
-            if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed))
+            bool parsedLiteral = TryParseFiniteFloat(text, out float parsed);
+
+            if (parsedLiteral)
             {
                 if (_hasNumberRange)
                     parsed = Mathf.Clamp(parsed, _numberMin, _numberMax);
@@ -675,7 +733,17 @@ namespace NowUI
                 value = parsed;
             }
 
-            numberState.text = focused ? text : FormatFloat(ref numberState, value, format);
+            bool committed = result.submitted || (wasEditing && !focused);
+
+            if (committed && !parsedLiteral &&
+                NowNumericExpression.TryEvaluate(text, out double expression) &&
+                expression >= -float.MaxValue && expression <= float.MaxValue)
+            {
+                value = (float)expression;
+
+                if (_hasNumberRange)
+                    value = Mathf.Clamp(value, _numberMin, _numberMax);
+            }
 
             if (_spinner && _spinnerTicks != 0)
             {
@@ -687,8 +755,15 @@ namespace NowUI
                 numberState.text = FormatFloat(ref numberState, value, format);
             }
 
+            value = ApplyFloatScrub(value, ref numberState);
+
+            numberState.text = focused && !committed && _spinnerTicks == 0 &&
+                !_scrubActive && !_scrubCancelled
+                ? text
+                : FormatFloat(ref numberState, value, format);
+
             numberState.editing = focused;
-            return result.WithChanged(!Mathf.Approximately(previous, value));
+            return result.WithChanged(previous != value);
         }
 
         NowTextFieldResult DrawInt(ref int value, NowResolvedId id)
@@ -699,6 +774,7 @@ namespace NowUI
                 value = Mathf.Clamp(value, Mathf.CeilToInt(_numberMin), Mathf.FloorToInt(_numberMax));
 
             ref var numberState = ref NowControlState.Get<NumberEditState>(id.Child(NumberStateSeed));
+            bool wasEditing = numberState.editing;
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatLong(ref numberState, value);
@@ -707,9 +783,15 @@ namespace NowUI
                 numberState.revertLong = value;
 
             string text = numberState.text;
-            NowTextFieldResult result = DrawText(ref text, id, out bool reverted);
+            NowTextFieldResult result = DrawText(ref text, id, out bool reverted, numeric: true);
 
             bool focused = NowFocus.IsFocused(id);
+
+            if (NowInput.isPassive)
+            {
+                value = previous;
+                return result.WithChanged(false);
+            }
 
             if (reverted)
             {
@@ -719,7 +801,13 @@ namespace NowUI
                 return result.WithChanged(false);
             }
 
-            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            bool parsedLiteral = int.TryParse(
+                text,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out int parsed);
+
+            if (parsedLiteral)
             {
                 if (_hasNumberRange)
                     parsed = Mathf.Clamp(parsed, Mathf.CeilToInt(_numberMin), Mathf.FloorToInt(_numberMax));
@@ -727,17 +815,40 @@ namespace NowUI
                 value = parsed;
             }
 
-            numberState.text = focused ? text : FormatLong(ref numberState, value);
+            bool committed = result.submitted || (wasEditing && !focused);
+
+            if (committed && !parsedLiteral &&
+                NowNumericExpression.TryEvaluate(text, out double expression) &&
+                TryConvertInt(expression, out int expressionValue))
+            {
+                value = expressionValue;
+
+                if (_hasNumberRange)
+                    value = Mathf.Clamp(value, Mathf.CeilToInt(_numberMin), Mathf.FloorToInt(_numberMax));
+            }
 
             if (_spinner && _spinnerTicks != 0)
             {
-                value += _spinnerTicks * Mathf.Max(1, Mathf.RoundToInt(_spinnerStep));
+                long stepped = (long)value +
+                    (long)_spinnerTicks * Mathf.Max(1, Mathf.RoundToInt(_spinnerStep));
+                value = stepped < int.MinValue
+                    ? int.MinValue
+                    : stepped > int.MaxValue
+                        ? int.MaxValue
+                        : (int)stepped;
 
                 if (_hasNumberRange)
                     value = Mathf.Clamp(value, Mathf.CeilToInt(_numberMin), Mathf.FloorToInt(_numberMax));
 
                 numberState.text = FormatLong(ref numberState, value);
             }
+
+            value = ApplyIntScrub(value, ref numberState);
+
+            numberState.text = focused && !committed && _spinnerTicks == 0 &&
+                !_scrubActive && !_scrubCancelled
+                ? text
+                : FormatLong(ref numberState, value);
 
             numberState.editing = focused;
             return result.WithChanged(previous != value);
@@ -751,6 +862,7 @@ namespace NowUI
                 value = ClampDouble(value, _numberMin, _numberMax);
 
             ref var numberState = ref NowControlState.Get<NumberEditState>(id.Child(NumberStateSeed));
+            bool wasEditing = numberState.editing;
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatDouble(ref numberState, value, format);
@@ -759,9 +871,15 @@ namespace NowUI
                 numberState.revert = value;
 
             string text = numberState.text;
-            NowTextFieldResult result = DrawText(ref text, id, out bool reverted);
+            NowTextFieldResult result = DrawText(ref text, id, out bool reverted, numeric: true);
 
             bool focused = NowFocus.IsFocused(id);
+
+            if (NowInput.isPassive)
+            {
+                value = previous;
+                return result.WithChanged(false);
+            }
 
             if (reverted)
             {
@@ -771,7 +889,9 @@ namespace NowUI
                 return result.WithChanged(false);
             }
 
-            if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed))
+            bool parsedLiteral = TryParseFiniteDouble(text, out double parsed);
+
+            if (parsedLiteral)
             {
                 if (_hasNumberRange)
                     parsed = ClampDouble(parsed, _numberMin, _numberMax);
@@ -779,7 +899,15 @@ namespace NowUI
                 value = parsed;
             }
 
-            numberState.text = focused ? text : FormatDouble(ref numberState, value, format);
+            bool committed = result.submitted || (wasEditing && !focused);
+
+            if (committed && !parsedLiteral && NowNumericExpression.TryEvaluate(text, out double expression))
+            {
+                value = expression;
+
+                if (_hasNumberRange)
+                    value = ClampDouble(value, _numberMin, _numberMax);
+            }
 
             if (_spinner && _spinnerTicks != 0)
             {
@@ -790,6 +918,13 @@ namespace NowUI
 
                 numberState.text = FormatDouble(ref numberState, value, format);
             }
+
+            value = ApplyDoubleScrub(value, ref numberState);
+
+            numberState.text = focused && !committed && _spinnerTicks == 0 &&
+                !_scrubActive && !_scrubCancelled
+                ? text
+                : FormatDouble(ref numberState, value, format);
 
             numberState.editing = focused;
             return result.WithChanged(previous != value);
@@ -803,6 +938,7 @@ namespace NowUI
                 value = ClampLong(value, _numberMin, _numberMax);
 
             ref var numberState = ref NowControlState.Get<NumberEditState>(id.Child(NumberStateSeed));
+            bool wasEditing = numberState.editing;
 
             if (!numberState.editing || numberState.text == null)
                 numberState.text = FormatLong(ref numberState, value);
@@ -811,9 +947,15 @@ namespace NowUI
                 numberState.revertLong = value;
 
             string text = numberState.text;
-            NowTextFieldResult result = DrawText(ref text, id, out bool reverted);
+            NowTextFieldResult result = DrawText(ref text, id, out bool reverted, numeric: true);
 
             bool focused = NowFocus.IsFocused(id);
+
+            if (NowInput.isPassive)
+            {
+                value = previous;
+                return result.WithChanged(false);
+            }
 
             if (reverted)
             {
@@ -823,7 +965,13 @@ namespace NowUI
                 return result.WithChanged(false);
             }
 
-            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed))
+            bool parsedLiteral = long.TryParse(
+                text,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out long parsed);
+
+            if (parsedLiteral)
             {
                 if (_hasNumberRange)
                     parsed = ClampLong(parsed, _numberMin, _numberMax);
@@ -831,17 +979,41 @@ namespace NowUI
                 value = parsed;
             }
 
-            numberState.text = focused ? text : FormatLong(ref numberState, value);
+            bool committed = result.submitted || (wasEditing && !focused);
+
+            if (committed && !parsedLiteral &&
+                NowNumericExpression.TryEvaluateLong(text, out long expressionValue))
+            {
+                value = expressionValue;
+
+                if (_hasNumberRange)
+                    value = ClampLong(value, _numberMin, _numberMax);
+            }
 
             if (_spinner && _spinnerTicks != 0)
             {
-                value += _spinnerTicks * (long)Mathf.Max(1, Mathf.RoundToInt(_spinnerStep));
+                long step = Mathf.Max(1, Mathf.RoundToInt(_spinnerStep));
+                long delta = (long)_spinnerTicks * step;
+
+                if (delta > 0 && value > long.MaxValue - delta)
+                    value = long.MaxValue;
+                else if (delta < 0 && value < long.MinValue - delta)
+                    value = long.MinValue;
+                else
+                    value += delta;
 
                 if (_hasNumberRange)
                     value = ClampLong(value, _numberMin, _numberMax);
 
                 numberState.text = FormatLong(ref numberState, value);
             }
+
+            value = ApplyLongScrub(value, ref numberState);
+
+            numberState.text = focused && !committed && _spinnerTicks == 0 &&
+                !_scrubActive && !_scrubCancelled
+                ? text
+                : FormatLong(ref numberState, value);
 
             numberState.editing = focused;
             return result.WithChanged(previous != value);
@@ -864,6 +1036,166 @@ namespace NowUI
                 return high >= long.MaxValue ? long.MaxValue : (long)high;
 
             return value;
+        }
+
+        static bool TryParseFiniteFloat(string text, out float value)
+        {
+            return float.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out value) &&
+                !float.IsNaN(value) &&
+                !float.IsInfinity(value);
+        }
+
+        static bool TryParseFiniteDouble(string text, out double value)
+        {
+            return double.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out value) &&
+                !double.IsNaN(value) &&
+                !double.IsInfinity(value);
+        }
+
+        static bool TryConvertInt(double value, out int result)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value) ||
+                value < int.MinValue || value > int.MaxValue)
+            {
+                result = default;
+                return false;
+            }
+
+            result = (int)System.Math.Truncate(value);
+            return true;
+        }
+
+        float ApplyFloatScrub(float value, ref NumberEditState state)
+        {
+            if (!_scrubActive && !_scrubCancelled)
+                return value;
+
+            double candidate = ScrubCandidate(value, ref state, integral: false);
+
+            if (double.IsNaN(candidate) || double.IsInfinity(candidate))
+                return value;
+
+            candidate = System.Math.Max(-float.MaxValue, System.Math.Min(float.MaxValue, candidate));
+
+            if (_hasNumberRange)
+                candidate = ClampDouble(candidate, _numberMin, _numberMax);
+
+            return (float)candidate;
+        }
+
+        double ApplyDoubleScrub(double value, ref NumberEditState state)
+        {
+            if (!_scrubActive && !_scrubCancelled)
+                return value;
+
+            double candidate = ScrubCandidate(value, ref state, integral: false);
+
+            if (double.IsNaN(candidate) || double.IsInfinity(candidate))
+                return value;
+
+            return _hasNumberRange
+                ? ClampDouble(candidate, _numberMin, _numberMax)
+                : candidate;
+        }
+
+        int ApplyIntScrub(int value, ref NumberEditState state)
+        {
+            if (!_scrubActive && !_scrubCancelled)
+                return value;
+
+            double candidate = ScrubCandidate(value, ref state, integral: true);
+            candidate = System.Math.Round(candidate, MidpointRounding.AwayFromZero);
+            candidate = System.Math.Max(int.MinValue, System.Math.Min(int.MaxValue, candidate));
+            int scrubbed = (int)candidate;
+
+            return _hasNumberRange
+                ? Mathf.Clamp(scrubbed, Mathf.CeilToInt(_numberMin), Mathf.FloorToInt(_numberMax))
+                : scrubbed;
+        }
+
+        long ApplyLongScrub(long value, ref NumberEditState state)
+        {
+            if (!_scrubActive && !_scrubCancelled)
+                return value;
+
+            if (_scrubStarted)
+            {
+                state.scrubStartLong = value;
+                state.scrubSensitivity = ResolveScrubSensitivity(value, integral: true);
+            }
+
+            if (_scrubCancelled)
+                return state.scrubStartLong;
+
+            long scrubbed;
+
+            try
+            {
+                // Keep the baseline and the addition in decimal space. A double
+                // cannot represent every long, so adding even a one-unit drag to
+                // values above 2^53 would otherwise change or discard low bits.
+                decimal delta = decimal.Round(
+                    (decimal)_scrubDelta * (decimal)state.scrubSensitivity,
+                    0,
+                    MidpointRounding.AwayFromZero);
+                decimal candidate = state.scrubStartLong + delta;
+
+                scrubbed = candidate >= long.MaxValue
+                    ? long.MaxValue
+                    : candidate <= long.MinValue
+                        ? long.MinValue
+                        : (long)candidate;
+            }
+            catch (OverflowException)
+            {
+                scrubbed = _scrubDelta < 0d ? long.MinValue : long.MaxValue;
+            }
+
+            return _hasNumberRange
+                ? ClampLong(scrubbed, _numberMin, _numberMax)
+                : scrubbed;
+        }
+
+        double ScrubCandidate(double value, ref NumberEditState state, bool integral)
+        {
+            if (_scrubStarted)
+            {
+                state.scrubStart = value;
+                state.scrubSensitivity = ResolveScrubSensitivity(value, integral);
+            }
+
+            if (_scrubCancelled)
+                return state.scrubStart;
+
+            if (!_scrubActive)
+                return value;
+
+            return state.scrubStart + _scrubDelta * state.scrubSensitivity;
+        }
+
+        double ResolveScrubSensitivity(double value, bool integral)
+        {
+            if (_scrubSensitivity > 0f)
+                return _scrubSensitivity;
+
+            double magnitude = double.IsNaN(value) || double.IsInfinity(value)
+                ? 0d
+                : System.Math.Abs(value);
+            double root = System.Math.Sqrt(magnitude);
+
+            // Unity uses a minimum fine float delta, but keeps integer drags at
+            // least one unit per unmodified pointer delta.
+            return integral
+                ? System.Math.Max(1d, root * 0.03d)
+                : System.Math.Max(1d, root) * 0.03d;
         }
 
         static string FormatFloat(float value, string format)
@@ -914,7 +1246,11 @@ namespace NowUI
             return state.formatted;
         }
 
-        NowTextFieldResult DrawText(ref string text, NowResolvedId id, out bool reverted)
+        NowTextFieldResult DrawText(
+            ref string text,
+            NowResolvedId id,
+            out bool reverted,
+            bool numeric = false)
         {
             reverted = false;
             bool submitted = false;
@@ -939,6 +1275,97 @@ namespace NowUI
                 renderer.MeasureTextField(theme, lineHeight, in _appearance));
             var inner = renderer.TextFieldInnerRect(theme, rect, lineHeight, in _appearance);
 
+            _spinnerTicks = 0;
+            _scrubDelta = 0d;
+            _scrubStarted = false;
+            _scrubActive = false;
+            _scrubCancelled = false;
+
+            if (numeric && _hasScrubRect)
+            {
+#if UNITY_EDITOR
+                // Match Unity's own numeric-label affordance when NowUI is
+                // hosted by IMGUI. Runtime/non-IMGUI hosts simply keep the
+                // horizontal drag behavior without an editor-only dependency.
+                if (Event.current != null)
+                    UnityEditor.EditorGUIUtility.AddCursorRect((Rect)_scrubRect, UnityEditor.MouseCursor.SlideArrow);
+#endif
+                var scrub = NowInput.Interact(id.Child(ScrubGestureSeed), _scrubRect);
+                ref var scrubState = ref NowControlState.Get<ScrubGestureState>(id.Child(ScrubGestureSeed));
+
+                if (!NowInput.isPassive)
+                {
+                    if (scrub.pressed)
+                    {
+                        scrubState.lastX = scrub.pointerPosition.x;
+                        scrubState.accumulated = 0d;
+                        scrubState.lastInputPass = int.MinValue;
+                        scrubState.started = false;
+                        scrubState.cancelled = false;
+                    }
+
+                    if (scrub.dragStarted)
+                    {
+                        scrubState.started = true;
+                        _scrubStarted = true;
+                        NowFocus.Clear();
+                    }
+
+                    bool scrubInProgress = scrubState.started &&
+                        (scrub.dragging || scrub.dragEnded || scrub.held);
+                    var modifierFrame = scrubInProgress
+                        ? NowTextInput.current
+                        : default;
+                    bool cancelScrub = scrubState.started &&
+                        (scrub.dragCancelled ||
+                         modifierFrame.escapePressed ||
+                         NowInput.current.cancelPressed);
+
+                    if (cancelScrub && !scrubState.cancelled)
+                    {
+                        scrubState.cancelled = true;
+                        _scrubCancelled = true;
+                        NowInput.ConsumeCancel();
+
+                        if (modifierFrame.escapePressed)
+                            NowTextInput.ClaimActivity();
+                    }
+
+                    if (scrubState.started && !scrubState.cancelled &&
+                        (scrub.dragging || scrub.dragEnded) &&
+                        scrubState.lastInputPass != NowInput.current.inputPass)
+                    {
+                        float multiplier = 1f;
+
+                        if (modifierFrame.shift)
+                            multiplier *= 4f;
+
+                        if (modifierFrame.option || modifierFrame.command)
+                            multiplier *= 0.25f;
+
+                        float pointerX = scrub.pointerPosition.x;
+                        scrubState.accumulated +=
+                            (pointerX - scrubState.lastX) * multiplier;
+                        scrubState.lastX = pointerX;
+                        scrubState.lastInputPass = NowInput.current.inputPass;
+                    }
+
+                    _scrubDelta = scrubState.accumulated;
+                    _scrubActive = scrubState.started &&
+                        !scrubState.cancelled &&
+                        (scrub.dragging || scrub.dragEnded);
+
+                    if (scrubState.started && (scrub.held || scrub.dragging))
+                        NowControlState.RequestRepaint();
+
+                    if (scrub.released || scrub.cancelled)
+                    {
+                        scrubState.started = false;
+                        scrubState.cancelled = false;
+                    }
+                }
+            }
+
             NowInteraction spinnerUp = default;
             NowInteraction spinnerDown = default;
             NowRect spinnerUpRect = default;
@@ -956,7 +1383,15 @@ namespace NowUI
                 spinnerDown = NowInput.Interact(id.Child(SpinnerDownSeed), spinnerDownRect);
             }
 
-            var interaction = NowControls.Interact(id, rect, _navigation,
+            var fieldRegion = new NowInteractionRegion(rect);
+
+            if (numeric && _hasScrubRect)
+                fieldRegion = fieldRegion.Exclude(_scrubRect);
+
+            if (_spinner)
+                fieldRegion = fieldRegion.Exclude(spinnerUpRect).Exclude(spinnerDownRect);
+
+            var interaction = NowControls.Interact(id, in fieldRegion, _navigation,
                 NowFocusNavigationLock.Directional, true, false, out bool focused, out _);
 
             ref var state = ref NowControlState.Get<NowTextEditState>(id);

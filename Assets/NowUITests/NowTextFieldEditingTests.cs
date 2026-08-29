@@ -393,17 +393,64 @@ public class NowTextFieldEditingTests
         return result;
     }
 
-    bool FloatFrame(ref float value, NowTextInputFrame keys = default)
+    NowTextFieldResult FloatFrameResult(
+        ref float value,
+        NowTextInputFrame keys = default,
+        bool ranged = false,
+        float min = 0f,
+        float max = 0f)
     {
         _keyboard.frame = keys;
         NowTextInput.Invalidate();
-        bool changed;
+        NowTextFieldResult result;
 
         using (NowInput.Begin(_pointer, Surface))
         using (_drawList.Begin(Surface))
-            changed = Now.TextField(FieldRect, "name").Draw(ref value);
+        {
+            var field = Now.TextField(FieldRect, "name");
 
-        return changed;
+            if (ranged)
+                field = field.SetRange(min, max);
+
+            result = field.Draw(ref value);
+        }
+
+        return result;
+    }
+
+    bool FloatFrame(ref float value, NowTextInputFrame keys = default)
+    {
+        return FloatFrameResult(ref value, keys);
+    }
+
+    NowTextFieldResult IntFrame(ref int value, NowTextInputFrame keys = default)
+    {
+        _keyboard.frame = keys;
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            return Now.TextField(FieldRect, "name").Draw(ref value);
+    }
+
+    NowTextFieldResult DoubleFrame(ref double value, NowTextInputFrame keys = default)
+    {
+        _keyboard.frame = keys;
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            return Now.TextField(FieldRect, "name").Draw(ref value);
+    }
+
+    NowTextFieldResult LongFrame(ref long value, NowTextInputFrame keys = default)
+    {
+        _keyboard.frame = keys;
+        NowTextInput.Invalidate();
+
+        using (NowInput.Begin(_pointer, Surface))
+        using (_drawList.Begin(Surface))
+            return Now.TextField(FieldRect, "name").Draw(ref value);
     }
 
     void PointerFrame(ref string text, Vector2 point, bool down, bool pressed, bool released, NowTextInputFrame keys = default)
@@ -750,6 +797,163 @@ public class NowTextFieldEditingTests
         Assert.IsFalse(changed, "The revert frame must not report a change.");
         Assert.AreEqual(5f, value, "Escape restores the value captured on focus gain.");
         Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
+    }
+
+    [Test]
+    public void CompleteFloatExpressionResolvesOnEnter()
+    {
+        float value = 5f;
+        Focus();
+
+        FloatFrameResult(ref value);
+        FloatFrameResult(ref value, new NowTextInputFrame { selectAllPressed = true, command = true });
+        NowTextFieldResult typed = FloatFrameResult(
+            ref value,
+            new NowTextInputFrame { characters = "1 + 2 * 3" });
+
+        Assert.IsFalse(typed.changed, "A complete expression remains pending until the field commits.");
+        Assert.AreEqual(5f, value);
+
+        NowTextFieldResult committed = FloatFrameResult(
+            ref value,
+            new NowTextInputFrame { enterPressed = true });
+
+        Assert.IsTrue(committed.submitted);
+        Assert.IsTrue(committed.changed);
+        Assert.AreEqual(7f, value);
+        Assert.AreEqual(NowResolvedId.None, NowFocus.focusedResolvedId);
+    }
+
+    [Test]
+    public void IntExpressionCommitsWhenTheFieldBlurs()
+    {
+        int value = 11;
+        Focus();
+
+        IntFrame(ref value);
+        IntFrame(ref value, new NowTextInputFrame { selectAllPressed = true, command = true });
+        NowTextFieldResult typed = IntFrame(
+            ref value,
+            new NowTextInputFrame { characters = "9 / 2" });
+
+        Assert.IsFalse(typed.changed);
+        Assert.AreEqual(11, value);
+
+        NowFocus.Clear();
+        NowTextFieldResult committed = IntFrame(ref value);
+
+        Assert.IsFalse(committed.submitted);
+        Assert.IsTrue(committed.changed);
+        Assert.AreEqual(4, value, "Integer expression results truncate toward zero on commit.");
+    }
+
+    [Test]
+    public void DoubleExpressionCommitsOnEnter()
+    {
+        double value = 9d;
+        Focus();
+
+        DoubleFrame(ref value);
+        DoubleFrame(ref value, new NowTextInputFrame { selectAllPressed = true, command = true });
+        DoubleFrame(ref value, new NowTextInputFrame { characters = "(1.5 + 2.5) / 2" });
+
+        Assert.AreEqual(9d, value);
+
+        NowTextFieldResult committed = DoubleFrame(
+            ref value,
+            new NowTextInputFrame { enterPressed = true });
+
+        Assert.IsTrue(committed.submitted);
+        Assert.IsTrue(committed.changed);
+        Assert.AreEqual(2d, value, 0.0000001d);
+    }
+
+    [Test]
+    public void LongExpressionCommitsOnEnter()
+    {
+        long value = 3L;
+        Focus();
+
+        LongFrame(ref value);
+        LongFrame(ref value, new NowTextInputFrame { selectAllPressed = true, command = true });
+        LongFrame(ref value, new NowTextInputFrame { characters = "(20 + 4) / 3" });
+
+        Assert.AreEqual(3L, value);
+
+        NowTextFieldResult committed = LongFrame(
+            ref value,
+            new NowTextInputFrame { enterPressed = true });
+
+        Assert.IsTrue(committed.submitted);
+        Assert.IsTrue(committed.changed);
+        Assert.AreEqual(8L, value);
+    }
+
+    [Test]
+    public void LongExpressionPreservesPrecisionAboveTwoToTheFiftyThird()
+    {
+        long value = 3L;
+        Focus();
+
+        LongFrame(ref value);
+        LongFrame(ref value, new NowTextInputFrame { selectAllPressed = true, command = true });
+        LongFrame(ref value, new NowTextInputFrame { characters = "9007199254740992 + 1" });
+
+        NowTextFieldResult committed = LongFrame(
+            ref value,
+            new NowTextInputFrame { enterPressed = true });
+
+        Assert.IsTrue(committed.changed);
+        Assert.AreEqual(9007199254740993L, value);
+    }
+
+    [Test]
+    public void ScientificNotationWorksInsideFloatExpressions()
+    {
+        float value = 3f;
+        Focus();
+
+        FloatFrameResult(ref value);
+        FloatFrameResult(ref value, new NowTextInputFrame { selectAllPressed = true, command = true });
+        FloatFrameResult(ref value, new NowTextInputFrame { characters = "1e2 + 1" });
+
+        NowTextFieldResult committed = FloatFrameResult(
+            ref value,
+            new NowTextInputFrame { enterPressed = true });
+
+        Assert.IsTrue(committed.changed);
+        Assert.AreEqual(101f, value);
+    }
+
+    [Test]
+    public void ExpressionCommitClampsToTheConfiguredRange()
+    {
+        float value = 5f;
+        Focus();
+
+        FloatFrameResult(ref value, ranged: true, min: 0f, max: 10f);
+        FloatFrameResult(
+            ref value,
+            new NowTextInputFrame { selectAllPressed = true, command = true },
+            ranged: true,
+            min: 0f,
+            max: 10f);
+        FloatFrameResult(
+            ref value,
+            new NowTextInputFrame { characters = "8 * 4" },
+            ranged: true,
+            min: 0f,
+            max: 10f);
+
+        NowTextFieldResult committed = FloatFrameResult(
+            ref value,
+            new NowTextInputFrame { enterPressed = true },
+            ranged: true,
+            min: 0f,
+            max: 10f);
+
+        Assert.IsTrue(committed.changed);
+        Assert.AreEqual(10f, value);
     }
 
     [Test]

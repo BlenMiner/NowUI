@@ -114,6 +114,7 @@ public class NowEditorThemeComparisonTests
             NowEditorThemeComparisonElement.ToggleOn,
             NowEditorThemeComparisonElement.TextField,
             NowEditorThemeComparisonElement.IntegerField,
+            NowEditorThemeComparisonElement.FloatField,
             NowEditorThemeComparisonElement.Popup,
             NowEditorThemeComparisonElement.Slider,
             NowEditorThemeComparisonElement.ProgressBar,

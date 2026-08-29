@@ -64,6 +64,12 @@ namespace NowUI
         /// <summary>Width reserved for each axis label; 0 hides the labels.</summary>
         public NowVectorField SetLabelWidth(float width) { _settings.labelWidth = Mathf.Max(0f, width); return this; }
 
+        /// <summary>
+        /// Enables or disables Unity-style horizontal scrubbing on the X/Y/Z/W
+        /// component labels. Enabled by default.
+        /// </summary>
+        public NowVectorField SetLabelScrubbing(bool enabled = true) { _settings.scrubLabels = enabled; return this; }
+
         /// <summary>Gap between the label/field pairs on the row.</summary>
         public NowVectorField SetSpacing(float spacing) { _settings.spacing = Mathf.Max(0f, spacing); return this; }
 
@@ -4454,13 +4460,15 @@ namespace NowUI
         public float max;
         public string format;
         public NowTextStyle textStyle;
+        public bool scrubLabels;
 
         public static NowVectorFieldSettings Default => new NowVectorFieldSettings
         {
             componentWidth = 64f,
             labelWidth = 12f,
             spacing = 4f,
-            textStyle = NowTextStyle.Body
+            textStyle = NowTextStyle.Body,
+            scrubLabels = true
         };
     }
 
@@ -4604,15 +4612,23 @@ namespace NowUI
 
         static bool DrawFloatComponent(NowResolvedId parentId, int index, string label, NowVectorFieldSettings settings, bool stretch, ref float value)
         {
-            DrawComponentLabel(label, settings);
+            NowRect scrubRect = DrawComponentLabel(label, settings);
             var field = ConfigureField(NowLayout.TextField(ComponentId(parentId, index)), settings, stretch);
+
+            if (settings.scrubLabels && !scrubRect.isEmpty)
+                field = field.SetScrubRect(scrubRect);
+
             return field.Draw(ref value);
         }
 
         static bool DrawIntComponent(NowResolvedId parentId, int index, string label, NowVectorFieldSettings settings, bool stretch, ref int value)
         {
-            DrawComponentLabel(label, settings);
+            NowRect scrubRect = DrawComponentLabel(label, settings);
             var field = ConfigureField(NowLayout.TextField(ComponentId(parentId, index)), settings, stretch);
+
+            if (settings.scrubLabels && !scrubRect.isEmpty)
+                field = field.SetScrubRect(scrubRect);
+
             return field.Draw(ref value);
         }
 
@@ -4629,12 +4645,17 @@ namespace NowUI
             return stretch ? field.SetStretchWidth() : field.SetWidth(settings.componentWidth);
         }
 
-        static void DrawComponentLabel(string label, NowVectorFieldSettings settings)
+        static NowRect DrawComponentLabel(string label, NowVectorFieldSettings settings)
         {
             if (settings.labelWidth <= 0f)
-                return;
+                return default;
 
-            NowLayout.Label(label).SetWidth(settings.labelWidth).SetAlign(NowLayoutAlign.Center).Draw();
+            var componentLabel = NowLayout.Label(label)
+                .SetWidth(settings.labelWidth)
+                .SetAlign(NowLayoutAlign.Center)
+                .Reserve();
+            componentLabel.Draw();
+            return componentLabel.rect;
         }
 
         static NowResolvedId ComponentId(NowResolvedId parentId, int index)

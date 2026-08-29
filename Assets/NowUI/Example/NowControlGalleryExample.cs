@@ -172,8 +172,26 @@ public class NowControlGalleryExample : MonoBehaviour
 
         NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref _volume);
         NowLayout.TextField().SetPlaceholder("Name...").SetStretchWidth().Draw(ref _playerName);
-        NowLayout.FloatField().SetRange(0f, 32f).SetSpinner(0.5f).SetWidth(160f).Draw(ref _spacingValue);
-        NowLayout.IntField().SetRange(0, 10).SetSpinner().SetWidth(160f).Draw(ref _retries);
+
+        using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
+        {
+            var spacingLabel = NowLayout.Label("Spacing").SetWidth(72f).Reserve();
+            spacingLabel.Draw();
+            NowLayout.FloatField()
+                .SetRange(0f, 32f)
+                .SetScrubRect(spacingLabel.rect)
+                .SetStretchWidth()
+                .Draw(ref _spacingValue);
+
+            var retriesLabel = NowLayout.Label("Retries").SetWidth(64f).Reserve();
+            retriesLabel.Draw();
+            NowLayout.IntField()
+                .SetRange(0, 10)
+                .SetScrubRect(retriesLabel.rect)
+                .SetStretchWidth()
+                .Draw(ref _retries);
+        }
+
         NowLayout.TextArea().SetPlaceholder("Notes...").SetLines(2, 4).SetStretchWidth().Draw(ref _notes);
 
 #if NOWUI_INPUT_SYSTEM

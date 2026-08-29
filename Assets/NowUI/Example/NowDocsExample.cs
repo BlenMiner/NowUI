@@ -3586,13 +3586,15 @@ public class NowDocsExample : NowLayoutGraphic
             _galleryDate = System.DateTime.Today;
     }
 
-    static void DrawGalleryLabel(NowThemeAsset theme, string text)
+    static NowRect DrawGalleryLabel(NowThemeAsset theme, string text)
     {
-        NowLayout.Label(text)
+        var label = NowLayout.Label(text)
             .SetWidth(96f)
             .SetFontSize(12f)
             .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
-            .Draw();
+            .Reserve();
+        label.Draw();
+        return label.rect;
     }
 
     void DrawControlsGalleryDemo(NowThemeAsset theme)
@@ -3656,7 +3658,9 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.FlexibleSpace();
         }
 
-        DocsMarkdown("## Sliders & numbers").Draw();
+        DocsMarkdown("## Sliders & numbers\n\nDrag the Speed or Lives label horizontally to scrub." +
+            " Shift is coarse; Alt/Option or Ctrl/Command is fine. Numeric fields also resolve" +
+            " arithmetic such as `1 + 1` when submitted.").Draw();
 
         using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
@@ -3667,10 +3671,18 @@ public class NowDocsExample : NowLayoutGraphic
 
         using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
-            DrawGalleryLabel(theme, "Speed");
-            NowLayout.FloatField().SetRange(0f, 100f).SetSpinner(0.5f).SetStretchWidth().Draw(ref _gallerySpeed);
-            DrawGalleryLabel(theme, "Lives");
-            NowLayout.IntField().SetRange(0, 99).SetSpinner().SetStretchWidth().Draw(ref _galleryLives);
+            NowRect speedLabel = DrawGalleryLabel(theme, "Speed");
+            NowLayout.FloatField()
+                .SetRange(0f, 100f)
+                .SetScrubRect(speedLabel)
+                .SetStretchWidth()
+                .Draw(ref _gallerySpeed);
+            NowRect livesLabel = DrawGalleryLabel(theme, "Lives");
+            NowLayout.IntField()
+                .SetRange(0, 99)
+                .SetScrubRect(livesLabel)
+                .SetStretchWidth()
+                .Draw(ref _galleryLives);
         }
 
         using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))

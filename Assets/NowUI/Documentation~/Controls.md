@@ -96,7 +96,15 @@ using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
     NowLayout.Badge("3").SetStyle(NowRectangleStyle.Danger).Draw();
     if (NowLayout.Chip("Filter: Active").SetSelected(filtered).Draw()) filtered = !filtered;
 
-    NowLayout.FloatField().SetRange(0f, 10f).SetSpinner(0.5f).Draw(ref spacingValue);
+    using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
+    {
+        var spacingLabel = NowLayout.Label("Spacing").SetWidth(88f).Reserve();
+        spacingLabel.Draw();
+        NowLayout.FloatField()
+            .SetRange(0f, 10f)
+            .SetScrubRect(spacingLabel.rect)
+            .Draw(ref spacingValue);
+    }
 
     NowLayout.TabBar(pageNames).Draw(ref page);
 
@@ -120,8 +128,17 @@ using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
 - `Badge(text)` is a non-interactive pill; `Chip(text)` is selectable and
   optionally removable via `SetRemovable().Draw(out bool removed)` — the return
   value reports click/submit only, removal comes solely from the out parameter.
-- `SetSpinner(step)` on numeric text fields adds increment/decrement buttons
-  with press-and-hold repeat; up/down navigation steps while focused.
+- Numeric fields accept arithmetic such as `1 + 1`, parentheses, `*`, `/`,
+  `%`, and `^`; Enter or moving focus away resolves the expression and formats
+  the result.
+- `SetScrubRect(label.rect)` turns a separately reserved label into a
+  Unity-style drag handle. Drag horizontally, hold Shift for 4x movement, or
+  hold Alt/Option or Ctrl/Command for 0.25x movement. The default sensitivity
+  adapts to the current value; pass a positive second argument to set value per
+  pointer pixel explicitly.
+- `SetSpinner(step)` remains available as an opt-in compact stepper: a click
+  steps once, a deliberate hold repeats after its delay, and up/down navigation
+  steps while the field is focused.
 - `TabBar(labels).Draw(ref index)` is a caller-owned tab strip;
   `TabView(labels).Begin(ref index)` adds a masked page area below the bar.
 - `SplitView(rect).Begin(ref ratio)` returns a plain result describing two panes
@@ -163,15 +180,19 @@ using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
 - `Checkbox(...).Draw(ref value)` / `Slider(...).Draw(ref value)` mutate the
   ref and return true when it changed.
 - `FloatField` / `IntField` are typed text-field helpers with optional
-  `SetRange(...)`; `Slider(...).Draw(ref int)` snaps to whole numbers, and
+  `SetRange(...)`, arithmetic input, and external-label scrubbing via
+  `SetScrubRect(...)`; `Slider(...).Draw(ref int)` snaps to whole numbers, and
   `Slider(...).SetStep(step)` snaps floats to increments.
 - `Vector2Field`, `Vector3Field`, `Vector4Field`, `Vector2IntField` and
-  `Vector3IntField` draw component fields for Unity vector structs;
+  `Vector3IntField` draw component fields for Unity vector structs. Their
+  X/Y/Z/W labels scrub the matching component by default; use
+  `SetLabelScrubbing(false)` when those labels should remain passive.
   `VectorField().Draw(ref Rect)` / `Draw(ref RectInt)` draw X Y W H rows for
   rect structs.
 - Numeric text fields also bind wide types: `TextField().Draw(ref double)` and
   `Draw(ref long)` mirror the float/int helpers, including `SetRange(...)` and
-  `SetSpinner(...)`.
+  `SetScrubRect(...)` (with `SetSpinner(...)` still available when explicit
+  up/down buttons are desired).
 - `Foldout(label)` is a collapsible section header. `Draw(ref bool)` edits
   caller-owned expansion and returns true when toggled; `Draw()` keeps the
   expansion in control state and returns whether the section is open.

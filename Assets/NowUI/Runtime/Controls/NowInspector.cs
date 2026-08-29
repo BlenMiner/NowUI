@@ -445,14 +445,20 @@ namespace NowUI
 
             using (BeginRow(settings))
             {
-                DrawRowLabel(label, settings);
-                rowChanged = DrawControlCell(kind, type, attrs, ref value, settings);
+                NowRect labelRect = DrawRowLabel(label, settings);
+                rowChanged = DrawControlCell(kind, type, attrs, ref value, settings, labelRect);
             }
 
             return rowChanged;
         }
 
-        static bool DrawControlCell(ValueKind kind, Type type, in RowAttrs attrs, ref object value, in NowInspectorSettings settings)
+        static bool DrawControlCell(
+            ValueKind kind,
+            Type type,
+            in RowAttrs attrs,
+            ref object value,
+            in NowInspectorSettings settings,
+            NowRect labelRect)
         {
             switch (kind)
             {
@@ -471,7 +477,7 @@ namespace NowUI
                     int v = (int)value;
                     bool changed = attrs.hasRange
                         ? NowLayout.Slider(attrs.min, attrs.max).SetStretchWidth().Draw(ref v)
-                        : ConfigureIntField(attrs).Draw(ref v);
+                        : ConfigureIntField(attrs, labelRect).Draw(ref v);
 
                     if (!changed)
                         return false;
@@ -484,7 +490,7 @@ namespace NowUI
                     float v = (float)value;
                     bool changed = attrs.hasRange
                         ? NowLayout.Slider(attrs.min, attrs.max).SetStretchWidth().Draw(ref v)
-                        : ConfigureFloatField(attrs).Draw(ref v);
+                        : ConfigureFloatField(attrs, labelRect).Draw(ref v);
 
                     if (!changed)
                         return false;
@@ -496,16 +502,16 @@ namespace NowUI
                 {
                     double v = (double)value;
 
-                    if (!ConfigureFloatField(attrs).Draw(ref v))
+                    if (!ConfigureFloatField(attrs, labelRect).Draw(ref v))
                         return false;
 
                     value = v;
                     return true;
                 }
                 case ValueKind.WideInt:
-                    return DrawWideInt(type, attrs, ref value);
+                    return DrawWideInt(type, attrs, ref value, labelRect);
                 case ValueKind.SmallInt:
-                    return DrawSmallInt(type, attrs, ref value);
+                    return DrawSmallInt(type, attrs, ref value, labelRect);
                 case ValueKind.String:
                 {
                     string v = value as string ?? string.Empty;
@@ -697,9 +703,12 @@ namespace NowUI
             return false;
         }
 
-        static NowTextField ConfigureFloatField(in RowAttrs attrs)
+        static NowTextField ConfigureFloatField(in RowAttrs attrs, NowRect scrubRect)
         {
             var field = NowLayout.TextField().SetStretchWidth();
+
+            if (!scrubRect.isEmpty)
+                field = field.SetScrubRect(scrubRect);
 
             if (attrs.hasMin)
                 field = field.SetRange(attrs.minValue, float.MaxValue);
@@ -707,9 +716,12 @@ namespace NowUI
             return field;
         }
 
-        static NowTextField ConfigureIntField(in RowAttrs attrs)
+        static NowTextField ConfigureIntField(in RowAttrs attrs, NowRect scrubRect)
         {
-            var field = NowLayout.TextField().SetStretchWidth().SetSpinner();
+            var field = NowLayout.TextField().SetStretchWidth();
+
+            if (!scrubRect.isEmpty)
+                field = field.SetScrubRect(scrubRect);
 
             if (attrs.hasMin)
                 field = field.SetRange(Mathf.CeilToInt(attrs.minValue), int.MaxValue);
@@ -717,11 +729,17 @@ namespace NowUI
             return field;
         }
 
-        static bool DrawWideInt(Type type, in RowAttrs attrs, ref object value)
+        static bool DrawWideInt(Type type, in RowAttrs attrs, ref object value, NowRect scrubRect)
         {
             long v = type == typeof(ulong) ? unchecked((long)(ulong)value) : Convert.ToInt64(value);
             long previous = v;
             var field = NowLayout.TextField().SetStretchWidth();
+
+            // The current public numeric field represents signed long values.
+            // Do not reinterpret the upper half of ulong as a negative scrub
+            // baseline; full-range ulong editing needs its own unsigned field.
+            if (type != typeof(ulong) && !scrubRect.isEmpty)
+                field = field.SetScrubRect(scrubRect);
 
             if (type == typeof(uint))
                 field = field.SetRange(0f, uint.MaxValue);
@@ -747,13 +765,16 @@ namespace NowUI
             return true;
         }
 
-        static bool DrawSmallInt(Type type, in RowAttrs attrs, ref object value)
+        static bool DrawSmallInt(Type type, in RowAttrs attrs, ref object value, NowRect scrubRect)
         {
             int v = Convert.ToInt32(value);
             int previous = v;
             int min = attrs.hasMin ? Mathf.CeilToInt(attrs.minValue) : int.MinValue;
 
-            var field = NowLayout.TextField().SetStretchWidth().SetSpinner();
+            var field = NowLayout.TextField().SetStretchWidth();
+
+            if (!scrubRect.isEmpty)
+                field = field.SetScrubRect(scrubRect);
 
             if (type == typeof(byte))
                 field = field.SetRange(Mathf.Max(min, byte.MinValue), byte.MaxValue);
@@ -1113,9 +1134,11 @@ namespace NowUI
                 .SetStretchWidth());
         }
 
-        static void DrawRowLabel(string label, in NowInspectorSettings settings)
+        static NowRect DrawRowLabel(string label, in NowInspectorSettings settings)
         {
-            NowLayout.Label(label).SetWidth(settings.labelWidth).Draw();
+            var rowLabel = NowLayout.Label(label).SetWidth(settings.labelWidth).Reserve();
+            rowLabel.Draw();
+            return rowLabel.rect;
         }
 
         static void DrawHeaderLabel(string header)
