@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -11,6 +12,34 @@ namespace NowUI
     public sealed class NowUnityEditorControlRenderer : NowControlRenderer
     {
         static readonly List<NowTextRun> TooltipRuns = new List<NowTextRun>(16);
+
+        // Sparse x, top-y, alpha triples sampled from Unity's 1x dark editor
+        // glyphs. The menu x values are relative to its already-inset helper rect.
+        static readonly byte[] ToggleCheckMask =
+        {
+            10, 4, 19,
+            9, 5, 128, 10, 5, 255, 11, 5, 19,
+            8, 6, 128, 9, 6, 255, 10, 6, 128,
+            3, 7, 29, 7, 7, 128, 8, 7, 255, 9, 7, 128,
+            2, 8, 19, 3, 8, 255, 4, 8, 128, 6, 8, 128, 7, 8, 255, 8, 8, 128,
+            3, 9, 128, 4, 9, 255, 5, 9, 193, 6, 9, 255, 7, 9, 128,
+            4, 10, 128, 5, 10, 255, 6, 10, 128,
+            5, 11, 71
+        };
+        static readonly byte[] MenuCheckMask =
+        {
+            9, 4, 131, 10, 4, 255, 11, 4, 199,
+            8, 5, 62, 9, 5, 255, 10, 5, 236,
+            8, 6, 227, 9, 6, 255, 10, 6, 24,
+            5, 7, 27, 7, 7, 60, 8, 7, 255, 9, 7, 134,
+            4, 8, 72, 5, 8, 255, 6, 8, 208, 7, 8, 178, 8, 8, 255, 9, 8, 13,
+            5, 9, 135, 6, 9, 255, 7, 9, 255, 8, 9, 167,
+            6, 10, 212, 7, 10, 255, 8, 10, 47,
+            6, 11, 47, 7, 11, 214
+        };
+
+        static Texture2D ToggleCheckTexture;
+        static Texture2D MenuCheckTexture;
 
         public override Vector2 MeasureButton(NowThemeAsset themeAsset, string label, NowTextStyle textStyle)
         {
@@ -165,8 +194,13 @@ namespace NowUI
             Color fill = context.interaction.held
                 ? context.themeAsset.GetColor(NowColorToken.SurfacePressed)
                 : context.themeAsset.GetColor(NowColorToken.SurfaceMuted);
+            var visualRect = new NowRect(
+                context.glyphRect.x,
+                context.glyphRect.y + (context.glyphRect.height - 14f) * 0.5f,
+                14f,
+                14f);
 
-            Now.Rectangle(context.glyphRect)
+            Now.Rectangle(visualRect)
                 .SetRadius(radius)
                 .SetColor(fill)
                 .SetOutline(1f)
@@ -176,7 +210,16 @@ namespace NowUI
                 .Draw();
 
             if (context.value)
-                DrawCheckMark(context.themeAsset, context.glyphRect, context.themeAsset.GetColor(NowColorToken.AccentText));
+            {
+                Color mark = Color.LerpUnclamped(
+                    context.themeAsset.GetColor(NowColorToken.Text),
+                    context.themeAsset.GetColor(NowColorToken.AccentText),
+                    4f / 9f);
+                DrawEditorCheckMark(
+                    context.glyphRect,
+                    mark,
+                    false);
+            }
         }
 
         public override void DrawRadio(in NowToggleRenderContext context)
@@ -369,10 +412,10 @@ namespace NowUI
                 color.a *= themeAsset.controlStyles.disabledOpacity;
 
             float size = Mathf.Min(16f, rect.height);
-            DrawCheckMark(
-                themeAsset,
+            DrawEditorCheckMark(
                 new NowRect(rect.x + 1f, rect.y + (rect.height - size) * 0.5f, 15f, size),
-                color);
+                color,
+                true);
         }
 
         public override void DrawContextMenuSubmenuIndicator(
@@ -625,8 +668,7 @@ namespace NowUI
             if (drawCheck && context.isChecked)
             {
                 float size = Mathf.Min(16f, context.rect.height);
-                DrawCheckMark(
-                    context.themeAsset,
+                DrawEditorCheckMark(
                     new NowRect(
                         context.rect.x + 1f,
                         context.rect.y + (context.rect.height - size) * 0.5f,
@@ -634,7 +676,8 @@ namespace NowUI
                         size),
                     highlighted
                         ? context.themeAsset.GetColor(NowColorToken.AccentText)
-                        : context.themeAsset.GetColor(NowColorToken.Text));
+                        : context.themeAsset.GetColor(NowColorToken.Text),
+                    true);
             }
 
             float right = context.hasSubmenu
@@ -675,6 +718,118 @@ namespace NowUI
                     new Vector2(centerX, centerY + 2.5f))
                 .SetColor(color)
                 .Draw();
+        }
+
+        static void DrawEditorCheckMark(NowRect rect, Color color, bool menu)
+        {
+            float expectedWidth = menu ? 15f : 16f;
+            float expectedHeight = menu ? 16f : 15f;
+            if (Mathf.Abs(Now.uiScale - 1f) <= 0.0001f &&
+                !Now.hasTransform &&
+                Mathf.Abs(rect.width - expectedWidth) <= 0.0001f &&
+                Mathf.Abs(rect.height - expectedHeight) <= 0.0001f)
+            {
+                Texture2D texture = GetEditorCheckTexture(menu);
+                var pixelRect = new NowRect(
+                    Mathf.Round(rect.x),
+                    Mathf.Round(rect.y),
+                    texture.width,
+                    texture.height);
+                Now.Rectangle(pixelRect)
+                    .SetColor(color)
+                    .SetTexture(texture)
+                    .Draw();
+                return;
+            }
+
+            Span<Vector2> points = stackalloc Vector2[3];
+
+            if (menu)
+            {
+                points[0] = SnapToScreenPixel(new Vector2(rect.x + 5f, rect.center.y));
+                points[1] = SnapToScreenPixel(new Vector2(rect.x + 7f, rect.center.y + 2f));
+                points[2] = SnapToScreenPixel(new Vector2(rect.x + 10f, rect.center.y - 4f));
+            }
+            else
+            {
+                points[0] = SnapToScreenPixel(new Vector2(rect.x + 3f, rect.center.y));
+                points[1] = SnapToScreenPixel(new Vector2(rect.x + 5f, rect.center.y + 2f));
+                points[2] = SnapToScreenPixel(new Vector2(rect.x + 10f, rect.center.y - 3f));
+            }
+
+            float width = menu ? 2f : 1.55f;
+            Now.DrawPolyline(points.Slice(0, 2), width, NowLineCap.Butt, color);
+            Now.DrawPolyline(points.Slice(1, 2), width, NowLineCap.Butt, color);
+        }
+
+        static Texture2D GetEditorCheckTexture(bool menu)
+        {
+            if (menu)
+            {
+                if (MenuCheckTexture == null)
+                    MenuCheckTexture = CreateEditorCheckTexture("Now Unity Editor Menu Check", 15, 16, MenuCheckMask);
+
+                return MenuCheckTexture;
+            }
+
+            if (ToggleCheckTexture == null)
+                ToggleCheckTexture = CreateEditorCheckTexture("Now Unity Editor Toggle Check", 16, 15, ToggleCheckMask);
+
+            return ToggleCheckTexture;
+        }
+
+        static Texture2D CreateEditorCheckTexture(string name, int width, int height, byte[] mask)
+        {
+            var pixels = new Color32[width * height];
+
+            for (int i = 0; i < mask.Length; i += 3)
+            {
+                int x = mask[i];
+                int topY = mask[i + 1];
+                byte alpha = mask[i + 2];
+                pixels[x + (height - 1 - topY) * width] = new Color32(255, 255, 255, alpha);
+            }
+
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
+            {
+                name = name,
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            return texture;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetEditorCheckTextures()
+        {
+            DestroyEditorCheckTexture(ref ToggleCheckTexture);
+            DestroyEditorCheckTexture(ref MenuCheckTexture);
+        }
+
+        static void DestroyEditorCheckTexture(ref Texture2D texture)
+        {
+            if (texture == null)
+                return;
+
+            Now.ReleaseTextureMaterials(texture);
+
+            if (Application.isPlaying)
+                UnityEngine.Object.Destroy(texture);
+            else
+                UnityEngine.Object.DestroyImmediate(texture);
+
+            texture = null;
+        }
+
+        static Vector2 SnapToScreenPixel(Vector2 point)
+        {
+            float scale = Mathf.Max(0.0001f, Now.uiScale);
+            return new Vector2(
+                Mathf.Round(point.x * scale) / scale,
+                Mathf.Round(point.y * scale) / scale);
         }
 
         static void DrawDisclosureTriangle(NowRect rect, Color color, bool expanded)

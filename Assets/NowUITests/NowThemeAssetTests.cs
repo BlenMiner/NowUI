@@ -301,9 +301,9 @@ public class NowThemeAssetTests
             Assert.IsTrue(
                 BatchContainsColor(
                     drawList,
-                    NowMeshKind.Rectangle,
+                    NowMeshKind.TexturedRectangle,
                     theme.GetColor(NowColorToken.AccentText)),
-                "The selected Unity-style menu row must include a native-like check mark.");
+                "The selected Unity-style menu row must include its point-sampled native check glyph.");
 
             drawList.Clear();
             using (drawList.Begin(new Vector2(240f, 60f)))
@@ -351,6 +351,70 @@ public class NowThemeAssetTests
         Assert.IsTrue(
             legacySelected.isChecked,
             "Existing selected-row call sites must retain their checked semantics.");
+    }
+
+    [Test]
+    public void UnityEditorDarkCheckboxUsesCalibratedEditorTickColor()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+            var rect = new NowRect(8f, 8f, 120f, 18f);
+            var glyph = new NowRect(8f, 9.5f, 16f, 15f);
+            Color expected = Color.LerpUnclamped(
+                theme.GetColor(NowColorToken.Text),
+                theme.GetColor(NowColorToken.AccentText),
+                4f / 9f);
+
+            using (drawList.Begin(new Vector2(160f, 40f)))
+            {
+                theme.controlRenderer.DrawCheckbox(new NowToggleRenderContext(
+                    theme,
+                    rect,
+                    glyph,
+                    true,
+                    default,
+                    false,
+                    0f));
+            }
+
+            Assert.IsTrue(
+                BatchContainsColor(drawList, NowMeshKind.TexturedRectangle, expected),
+                "The Unity-style checkbox must emit its calibrated #E6 point-sampled tick.");
+            Assert.IsFalse(
+                BatchContainsColor(
+                    drawList,
+                    NowMeshKind.TexturedRectangle,
+                    theme.GetColor(NowColorToken.AccentText)),
+                "The checkbox tick must not use the heavier pure-white menu treatment.");
+
+            Texture2D tick = null;
+            for (int i = 0; i < drawList.batches.Count; ++i)
+            {
+                if (drawList.batches[i].kind == NowMeshKind.TexturedRectangle)
+                {
+                    tick = drawList.batches[i].material.mainTexture as Texture2D;
+                    break;
+                }
+            }
+
+            Assert.IsNotNull(tick, "The canonical 1x checkbox must use its native alpha mask.");
+            Assert.AreEqual(16, tick.width);
+            Assert.AreEqual(15, tick.height);
+            Assert.AreEqual(FilterMode.Point, tick.filterMode);
+
+            Vector4 checkboxRect = FirstBatchValue(drawList, NowMeshKind.Rectangle, 1);
+            Assert.AreEqual(14f, checkboxRect.z, 0.0001f, "Unity's visible checkbox is 14 px wide.");
+            Assert.AreEqual(14f, checkboxRect.w, 0.0001f, "Unity's visible checkbox is 14 px tall.");
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
     }
 
     [Test]
