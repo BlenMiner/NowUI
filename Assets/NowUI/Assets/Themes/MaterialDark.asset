@@ -23,25 +23,25 @@ MonoBehaviour:
     _border: {r: 0.5764706, g: 0.56078434, b: 0.6, a: 1}
     _accent: {r: 0.8156863, g: 0.7372549, b: 1, a: 1}
     _accentText: {r: 0.21960784, g: 0.11764706, b: 0.44705883, a: 1}
-    _surfaceElevated: {r: 1, g: 1, b: 1, a: 1}
-    _surfaceHover: {r: 0.945, g: 0.961, b: 0.976, a: 1}
-    _surfacePressed: {r: 0.886, g: 0.91, b: 0.941, a: 1}
-    _accentHover: {r: 0.114, g: 0.306, b: 0.847, a: 1}
-    _accentPressed: {r: 0.118, g: 0.251, b: 0.686, a: 1}
-    _accentMuted: {r: 0.859, g: 0.918, b: 0.996, a: 1}
-    _borderStrong: {r: 0.796, g: 0.835, b: 0.882, a: 1}
-    _focusRing: {r: 0.145, g: 0.388, b: 0.922, a: 0.55}
-    _success: {r: 0.082, g: 0.502, b: 0.239, a: 1}
-    _successText: {r: 1, g: 1, b: 1, a: 1}
-    _successMuted: {r: 0.863, g: 0.988, b: 0.906, a: 1}
-    _warning: {r: 0.961, g: 0.62, b: 0.043, a: 1}
-    _warningText: {r: 0.271, g: 0.102, b: 0.012, a: 1}
-    _warningMuted: {r: 0.996, g: 0.953, b: 0.78, a: 1}
-    _danger: {r: 0.863, g: 0.149, b: 0.149, a: 1}
-    _dangerText: {r: 1, g: 1, b: 1, a: 1}
-    _dangerMuted: {r: 0.996, g: 0.886, b: 0.886, a: 1}
-    _shadow: {r: 0.059, g: 0.09, b: 0.165, a: 1}
-    _scrim: {r: 0.059, g: 0.09, b: 0.165, a: 0.5}
+    _surfaceElevated: {r: 0.15431373, g: 0.15058824, b: 0.1654902, a: 1}
+    _surfaceHover: {r: 0.15733333, g: 0.15247059, b: 0.16815686, a: 1}
+    _surfacePressed: {r: 0.20486274, g: 0.19905883, b: 0.2147451, a: 1}
+    _accentHover: {r: 0.83411765, g: 0.7635294, b: 1, a: 1}
+    _accentPressed: {r: 0.7504314, g: 0.6782745, b: 0.92, a: 1}
+    _accentMuted: {r: 0.30745098, g: 0.28266665, b: 0.3675294, a: 1}
+    _borderStrong: {r: 0.6350588, g: 0.6186667, b: 0.65364707, a: 1}
+    _focusRing: {r: 0.8156863, g: 0.7372549, b: 1, a: 0.6}
+    _success: {r: 0.3496, g: 0.92, b: 0.543536, a: 1}
+    _successText: {r: 0.1, g: 0.07, b: 0.02, a: 1}
+    _successMuted: {r: 0.16255906, g: 0.28498822, b: 0.21440145, a: 1}
+    _warning: {r: 0.92, g: 0.726064, b: 0.3496, a: 1}
+    _warningText: {r: 0.1, g: 0.07, b: 0.02, a: 1}
+    _warningMuted: {r: 0.28804705, g: 0.24232231, b: 0.17173553, a: 1}
+    _danger: {r: 0.92, g: 0.3496, b: 0.3496, a: 1}
+    _dangerText: {r: 0.1, g: 0.07, b: 0.02, a: 1}
+    _dangerMuted: {r: 0.28804705, g: 0.15950023, b: 0.17173553, a: 1}
+    _shadow: {r: 0, g: 0, b: 0, a: 1}
+    _scrim: {r: 0, g: 0, b: 0, a: 0.6}
   _spacings:
     _none: {x: 0, y: 0, z: 0, w: 0}
     _xs: {x: 4, y: 4, z: 4, w: 4}
@@ -178,7 +178,7 @@ MonoBehaviour:
       _fill:
         _useToken: 1
         _token: 8
-        _fallback: {r: 1, g: 1, b: 1, a: 1}
+        _fallback: {r: 0.15431373, g: 0.15058824, b: 0.1654902, a: 1}
       _radius:
         _useToken: 1
         _token: 2
@@ -192,13 +192,13 @@ MonoBehaviour:
       _outlineColor:
         _useToken: 1
         _token: 5
-        _fallback: {r: 0.886, g: 0.91, b: 0.941, a: 1}
+        _fallback: {r: 0.5764706, g: 0.56078434, b: 0.6, a: 1}
       _elevation: 1
     _accentSoft:
       _fill:
         _useToken: 1
         _token: 13
-        _fallback: {r: 0.859, g: 0.918, b: 0.996, a: 1}
+        _fallback: {r: 0.30745098, g: 0.28266665, b: 0.3675294, a: 1}
       _radius:
         _useToken: 1
         _token: 2
@@ -218,7 +218,7 @@ MonoBehaviour:
       _fill:
         _useToken: 1
         _token: 22
-        _fallback: {r: 0.863, g: 0.149, b: 0.149, a: 1}
+        _fallback: {r: 0.92, g: 0.3496, b: 0.3496, a: 1}
       _radius:
         _useToken: 1
         _token: 2
@@ -314,7 +314,7 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.9019608, g: 0.88235295, b: 0.8980392, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
@@ -327,7 +327,7 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.9019608, g: 0.88235295, b: 0.8980392, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
@@ -340,7 +340,7 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.9019608, g: 0.88235295, b: 0.8980392, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
@@ -353,7 +353,7 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.9019608, g: 0.88235295, b: 0.8980392, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
@@ -366,7 +366,7 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 3
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.9019608, g: 0.88235295, b: 0.8980392, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0
@@ -379,7 +379,7 @@ MonoBehaviour:
       _color:
         _useToken: 1
         _token: 4
-        _fallback: {r: 0.059, g: 0.09, b: 0.165, a: 1}
+        _fallback: {r: 0.7921569, g: 0.76862746, b: 0.8156863, a: 1}
       _outline: 0
       _outlineColor:
         _useToken: 0

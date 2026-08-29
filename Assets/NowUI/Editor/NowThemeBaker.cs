@@ -32,8 +32,8 @@ namespace NowUI.Editor
 
             if (material != null && materialDark != null)
             {
-                material.MigrateDerivedRoles();
-                materialDark.MigrateDerivedRoles();
+                material.RegenerateDerivedRoles();
+                materialDark.RegenerateDerivedRoles();
                 material.SetCounterpart(materialDark);
                 materialDark.SetCounterpart(material);
                 EditorUtility.SetDirty(material);

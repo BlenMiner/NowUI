@@ -190,8 +190,11 @@ closest native variants:
   border (`Elevated` adds a drop shadow), `Outline` is bordered, `Ghost` is
   transparent until hovered, `AccentSoft` is a tinted secondary, and `Danger`
   is the destructive variant.
-- Material: `Accent` is filled, `Muted` is tonal, `Outline` is outlined, and
-  `Surface` behaves like a text button.
+- Material: `Accent` is filled, `Muted` and `AccentSoft` are tonal, `Outline`
+  is outlined, `Elevated` adds a raised surface, and `Danger` uses its semantic
+  foreground. `Surface` is borderless and becomes a text button in the Material
+  control renderer. Use `Muted` for a filled tonal container, `Elevated` for a
+  raised container, and `Outline` only when an outlined card is intended.
 
 The renderer hook intentionally keeps behavior in the built-in controls. It can
 replace visuals and measurements, but exact parity with larger design systems

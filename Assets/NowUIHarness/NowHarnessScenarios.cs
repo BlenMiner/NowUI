@@ -23,7 +23,9 @@ namespace NowUI.Editor
         public int width;
         public int height;
         public bool includeInGoldens;
+        public bool includeInPerf = true;
         public bool darkTheme;
+        public string themePath;
         public bool suppressBadge;
         public Action<string> prepare;
         public Func<INowInputProvider> createInputProvider;
@@ -70,6 +72,15 @@ namespace NowUI.Editor
 
         static readonly string[] QualityOptions = { "Low", "Medium", "High", "Ultra" };
         static readonly string[] HierarchyObjects = { "Camera", "Directional Light", "Player", "Environment" };
+        static readonly NowRectangleStyle[] ThemeRectangleStyles =
+            (NowRectangleStyle[])Enum.GetValues(typeof(NowRectangleStyle));
+        static readonly NowTextStyle[] ThemeTextStyles =
+            (NowTextStyle[])Enum.GetValues(typeof(NowTextStyle));
+        static readonly NowColorToken[] ThemeColorTokens =
+            (NowColorToken[])Enum.GetValues(typeof(NowColorToken));
+
+        const string ThemesFolder = "Assets/NowUI/Assets/Themes";
+        const string ThemeReviewPrefix = "theme-review-";
 
         static readonly IdleInputProvider Input = new IdleInputProvider();
 
@@ -311,11 +322,11 @@ namespace NowUI.Editor
             }
         }
 
-        public static IReadOnlyList<NowHarnessScenario> All()
+        public static IReadOnlyList<NowHarnessScenario> All(bool includeThemeReviews = true)
         {
             EnsureSharedState();
 
-            return new[]
+            var scenarios = new List<NowHarnessScenario>
             {
                 new NowHarnessScenario { name = "controls", width = 960, height = 540, includeInGoldens = true, draw = DrawControls },
                 new NowHarnessScenario { name = "controls-dark", width = 960, height = 540, includeInGoldens = true, darkTheme = true, draw = DrawControlsDark },
@@ -357,6 +368,102 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "docking", width = 960, height = 540, includeInGoldens = false, darkTheme = true, draw = DrawDocking },
                 new NowHarnessScenario { name = "node-graph", width = 960, height = 540, includeInGoldens = false, darkTheme = true, draw = DrawNodeGraph }
             };
+
+            if (includeThemeReviews)
+                scenarios.AddRange(ThemeReviewScenarios());
+
+            return scenarios;
+        }
+
+        internal static IReadOnlyList<NowHarnessScenario> ThemeReviewScenarios()
+        {
+            ValidateThemeReviewLayout();
+
+            string[] guids = AssetDatabase.FindAssets("t:NowThemeAsset", new[] { ThemesFolder });
+            var paths = new List<string>(guids.Length);
+
+            for (int i = 0; i < guids.Length; ++i)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guids[i]);
+                if (!string.IsNullOrEmpty(path))
+                    paths.Add(path.Replace('\\', '/'));
+            }
+
+            paths.Sort(StringComparer.Ordinal);
+
+            var scenarios = new List<NowHarnessScenario>(paths.Count);
+            var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < paths.Count; ++i)
+            {
+                string path = paths[i];
+                var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(path);
+                if (theme == null)
+                    throw new InvalidOperationException($"Theme review discovery could not load '{path}' as a NowThemeAsset.");
+
+                string name = ThemeReviewPrefix + ToKebabCase(Path.GetFileNameWithoutExtension(path));
+                if (names.TryGetValue(name, out string previousPath))
+                {
+                    throw new InvalidOperationException(
+                        $"Duplicate theme review scenario name '{name}' for '{previousPath}' and '{path}'.");
+                }
+
+                names.Add(name, path);
+
+                scenarios.Add(new NowHarnessScenario
+                {
+                    name = name,
+                    width = 1280,
+                    height = 960,
+                    includeInGoldens = false,
+                    includeInPerf = false,
+                    themePath = path,
+                    suppressBadge = true,
+                    warmupFrames = 1,
+                    draw = DrawThemeReview
+                });
+            }
+
+            if (scenarios.Count == 0)
+                throw new InvalidOperationException($"No NowThemeAsset instances were found under '{ThemesFolder}'.");
+
+            return scenarios;
+        }
+
+        static void ValidateThemeReviewLayout()
+        {
+            if (ThemeRectangleStyles.Length > 8 || ThemeTextStyles.Length > 10 || ThemeColorTokens.Length > 27)
+            {
+                throw new InvalidOperationException(
+                    "The theme review sheet layout must be expanded for newly added theme enums " +
+                    $"(rectangles={ThemeRectangleStyles.Length}/8, text={ThemeTextStyles.Length}/10, colors={ThemeColorTokens.Length}/27).");
+            }
+        }
+
+        static string ToKebabCase(string value)
+        {
+            var builder = new StringBuilder(value != null ? value.Length + 8 : 0);
+            bool separatorPending = false;
+
+            for (int i = 0; i < (value?.Length ?? 0); ++i)
+            {
+                char current = value[i];
+                if (!char.IsLetterOrDigit(current))
+                {
+                    separatorPending = builder.Length > 0;
+                    continue;
+                }
+
+                bool uppercaseBoundary = char.IsUpper(current) && builder.Length > 0 &&
+                    i > 0 && char.IsLetterOrDigit(value[i - 1]) && !char.IsUpper(value[i - 1]);
+                if ((separatorPending || uppercaseBoundary) && builder[builder.Length - 1] != '-')
+                    builder.Append('-');
+
+                builder.Append(char.ToLowerInvariant(current));
+                separatorPending = false;
+            }
+
+            return builder.ToString().Trim('-');
         }
 
         public static NowHarnessCapture Capture(NowHarnessScenario scenario, string outputPath)
@@ -1205,11 +1312,17 @@ namespace NowUI.Editor
         static void DrawScenarioFrame(NowHarnessScenario scenario)
         {
             Now.defaultFont = Resources.Load<NowFontAsset>("NowUI/NotoSans");
-            string themePath = scenario.darkTheme
-                ? "Assets/NowUI/Assets/Themes/DefaultDark.asset"
-                : "Assets/NowUI/Assets/Themes/Default.asset";
+            bool hasExplicitTheme = !string.IsNullOrWhiteSpace(scenario.themePath);
+            string themePath = hasExplicitTheme
+                ? scenario.themePath
+                : scenario.darkTheme
+                    ? "Assets/NowUI/Assets/Themes/DefaultDark.asset"
+                    : "Assets/NowUI/Assets/Themes/Default.asset";
             var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
             var frame = new NowRect(0, 0, scenario.width, scenario.height);
+
+            if (hasExplicitTheme && theme == null)
+                throw new InvalidOperationException($"Theme review scenario '{scenario.name}' could not load '{themePath}'.");
 
             if (theme != null)
             {
@@ -1492,6 +1605,451 @@ namespace NowUI.Editor
         static void DrawControlsDark(NowRect rect)
         {
             DrawControls(rect);
+        }
+
+        static void DrawThemeReview(NowRect rect)
+        {
+            DrawSurface(rect);
+
+            var theme = NowTheme.themeAsset;
+            string rendererName = theme.controlRenderer.GetType().Name;
+            string mode = theme.isDark ? "Dark" : "Light";
+            HeaderBlock(
+                rect,
+                $"{theme.name} Theme",
+                $"{mode} • {rendererName} • all palette roles, presets, and representative controls.");
+
+            DrawThemeSectionTitle(28f, 116f, "Rectangle presets", "Every built-in button style through this theme's control renderer.");
+            DrawThemeRectangleStyles();
+
+            DrawThemeSectionTitle(28f, 216f, "Palette roles", "Authored display/sRGB values; labels use an independent contrast color.");
+            DrawThemePalette(theme);
+
+            DrawThemeSectionTitle(28f, 464f, "Text presets", "The complete themed type scale over the theme surface.");
+            DrawThemeTextStyles(theme);
+
+            DrawThemeSectionTitle(28f, 648f, "Controls and popup states", "Deterministic idle, hover, pressed, selected, field, and popup states.");
+            DrawThemeControls(theme);
+        }
+
+        static void DrawThemeRectangleStyles()
+        {
+            const float left = 28f;
+            const float top = 158f;
+            const float gap = 10f;
+            const float width = 144.25f;
+            const float height = 44f;
+
+            for (int i = 0; i < ThemeRectangleStyles.Length; ++i)
+            {
+                float x = left + i * (width + gap);
+                Now.Button(new NowRect(x, top, width, height), ThemeRectangleStyles[i].ToString())
+                    .SetId(new NowId(100 + i))
+                    .SetStyle(ThemeRectangleStyles[i])
+                    .Draw();
+            }
+        }
+
+        static void DrawThemePalette(NowThemeAsset theme)
+        {
+            const float left = 28f;
+            const float top = 258f;
+            const float gapX = 8f;
+            const float gapY = 8f;
+            const float width = 128.88f;
+            const float height = 58f;
+            const int columns = 9;
+
+            for (int i = 0; i < ThemeColorTokens.Length; ++i)
+            {
+                int column = i % columns;
+                int row = i / columns;
+                var swatch = new NowRect(
+                    left + column * (width + gapX),
+                    top + row * (height + gapY),
+                    width,
+                    height);
+                Color color = theme.GetColor(ThemeColorTokens[i], Color.magenta);
+
+                Now.Rectangle(swatch)
+                    .SetColor(color)
+                    .SetRadius(6f)
+                    .SetOutline(1f)
+                    .SetOutlineColor(new Color(0f, 0f, 0f, 0.16f))
+                    .Draw();
+                Now.Text(swatch.Inset(7f, 7f, 7f, 7f))
+                    .SetFontSize(10f)
+                    .SetBold()
+                    .SetColor(ReadableSwatchText(color))
+                    .Draw($"{ThemeColorTokens[i]}\n#{ColorUtility.ToHtmlStringRGBA(color)}");
+            }
+        }
+
+        static void DrawThemeTextStyles(NowThemeAsset theme)
+        {
+            var panel = new NowRect(28f, 500f, 1224f, 136f);
+            DrawThemePanelBackground(theme, panel);
+
+            const int columns = 5;
+            float cellWidth = (panel.width - 28f) / columns;
+            float cellHeight = (panel.height - 16f) / 2f;
+
+            for (int i = 0; i < ThemeTextStyles.Length; ++i)
+            {
+                int column = i % columns;
+                int row = i / columns;
+                var cell = new NowRect(
+                    panel.x + 14f + column * cellWidth,
+                    panel.y + 8f + row * cellHeight,
+                    cellWidth - 10f,
+                    cellHeight - 4f);
+
+                Now.Text(new NowRect(cell.x, cell.y, cell.width, 14f))
+                    .SetFontSize(10f)
+                    .SetBold()
+                    .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+                    .Draw(ThemeTextStyles[i].ToString());
+                var sampleRect = new NowRect(cell.x, cell.y + 17f, cell.width, cell.height - 17f);
+                if (ThemeTextStyles[i] == NowTextStyle.Button)
+                {
+                    var buttonSample = new NowRect(sampleRect.x, sampleRect.y, 126f, 40f);
+                    theme.Rectangle(buttonSample, NowRectangleStyle.Accent).SetRadius(8f).Draw();
+                    theme.Text(buttonSample.Inset(10f, 6f, 10f, 6f), ThemeTextStyles[i]).Draw("Aa 123");
+                }
+                else
+                {
+                    theme.Text(sampleRect, ThemeTextStyles[i]).Draw("Aa 123");
+                }
+            }
+        }
+
+        static void DrawThemeControls(NowThemeAsset theme)
+        {
+            var togglesPanel = new NowRect(28f, 688f, 270f, 244f);
+            var statesPanel = new NowRect(310f, 688f, 314f, 244f);
+            var fieldsPanel = new NowRect(636f, 688f, 288f, 244f);
+            var popupPanel = new NowRect(936f, 688f, 316f, 244f);
+            DrawThemePanelBackground(theme, togglesPanel);
+            DrawThemePanelBackground(theme, statesPanel);
+            DrawThemePanelBackground(theme, fieldsPanel);
+            DrawThemePanelBackground(theme, popupPanel);
+
+            DrawThemePanelLabel(theme, togglesPanel, "Core controls");
+            DrawThemePanelLabel(theme, statesPanel, "Shared state roles");
+            DrawThemePanelLabel(theme, fieldsPanel, "Fields and activity");
+            DrawThemePanelLabel(theme, popupPanel, "Popup renderer");
+
+            bool checkedValue = true;
+            bool uncheckedValue = false;
+            float sliderValue = 0.68f;
+            string textValue = "NowUI";
+            int dropdownValue = 2;
+
+            Now.Checkbox(new NowRect(44f, 730f, 112f, 30f), "Checked")
+                .SetId(new NowId(200))
+                .Draw(ref checkedValue);
+            Now.Checkbox(new NowRect(164f, 730f, 118f, 30f), "Unchecked")
+                .SetId(new NowId(201))
+                .Draw(ref uncheckedValue);
+            Now.Radio(new NowRect(44f, 768f, 112f, 30f), "Selected", true)
+                .SetId(new NowId(202))
+                .Draw();
+            Now.Radio(new NowRect(164f, 768f, 118f, 30f), "Unselected", false)
+                .SetId(new NowId(203))
+                .Draw();
+            DrawThemeSwitchSample(theme, new NowRect(44f, 806f, 112f, 32f), "Off", false, hovered: true, held: false);
+            DrawThemeSwitchSample(theme, new NowRect(164f, 806f, 118f, 32f), "On", true, hovered: true, held: true);
+            Now.Badge(new NowRect(44f, 852f, 72f, 28f), "Accent")
+                .SetStyle(NowRectangleStyle.Accent)
+                .Draw();
+            Now.Badge(new NowRect(126f, 852f, 88f, 28f), "Danger")
+                .SetStyle(NowRectangleStyle.Danger)
+                .Draw();
+
+            DrawThemeSharedStates(theme, statesPanel);
+
+            Now.TextField(new NowRect(652f, 730f, 256f, 44f), "theme-review-text")
+                .SetPlaceholder("Name")
+                .Draw(ref textValue);
+            Now.Dropdown(new NowRect(652f, 786f, 256f, 40f), "theme-review-dropdown", QualityOptions)
+                .Draw(ref dropdownValue);
+            Now.Slider(new NowRect(652f, 846f, 164f, 32f), 0f, 1f)
+                .SetId(new NowId(205))
+                .Draw(ref sliderValue);
+            Now.ProgressBar(new NowRect(828f, 857f, 80f, 10f), sliderValue).Draw();
+
+            var popup = new NowRect(952f, 728f, 284f, 188f);
+            theme.controlRenderer.DrawPopupBackground(theme, popup, menu: false);
+            float itemHeight = 42f;
+            theme.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
+                theme,
+                new NowRect(popup.x + 8f, popup.y + 9f, popup.width - 16f, itemHeight),
+                "Normal option",
+                selected: false,
+                interaction: default));
+            theme.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
+                theme,
+                new NowRect(popup.x + 8f, popup.y + 9f + itemHeight, popup.width - 16f, itemHeight),
+                "Hovered option",
+                selected: false,
+                interaction: ThemeReviewInteraction(popup, held: false)));
+            theme.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
+                theme,
+                new NowRect(popup.x + 8f, popup.y + 9f + itemHeight * 2f, popup.width - 16f, itemHeight),
+                "Selected option",
+                selected: true,
+                interaction: default));
+            theme.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
+                theme,
+                new NowRect(popup.x + 8f, popup.y + 9f + itemHeight * 3f, popup.width - 16f, itemHeight),
+                "Open commands",
+                "Shortcut  Ctrl+K",
+                selected: false,
+                interaction: default));
+        }
+
+        static void DrawThemePanelBackground(NowThemeAsset theme, NowRect panel)
+        {
+            // Material filled cards use a tonal container rather than adding an
+            // outline to every surface. Muted is NowUI's closest container role.
+            NowRectangleStyle style = theme.controlRenderer is NowMaterialControlRenderer
+                ? NowRectangleStyle.Muted
+                : NowRectangleStyle.Surface;
+            theme.Rectangle(panel, style).SetRadius(10f).Draw();
+        }
+
+        static void DrawThemeSwitchSample(
+            NowThemeAsset theme,
+            NowRect rect,
+            string label,
+            bool value,
+            bool hovered,
+            bool held)
+        {
+            var renderer = theme.controlRenderer;
+            var interaction = hovered ? ThemeReviewInteraction(rect, held) : default;
+            var glyphRect = renderer.SwitchGlyphRect(theme, rect);
+            renderer.DrawSwitch(new NowSwitchRenderContext(
+                theme,
+                rect,
+                glyphRect,
+                value,
+                value ? 1f : 0f,
+                interaction,
+                focused: false,
+                hoverT: hovered ? 1f : 0f));
+            NowControls.DrawLeftLabel(theme, renderer.SwitchContentRect(theme, rect), label, NowTextStyle.Body);
+        }
+
+        static void DrawThemeSharedStates(NowThemeAsset theme, NowRect panel)
+        {
+            var renderer = theme.controlRenderer;
+            const float labelWidth = 44f;
+            float labelX = panel.x + 16f;
+            float sampleX = labelX + labelWidth;
+            float sampleWidth = panel.xMax - 16f - sampleX;
+
+            float y = panel.y + 42f;
+            DrawThemeStateLabel(theme, new NowRect(labelX, y, labelWidth, 30f), "Chip");
+            const float chipGap = 4f;
+            float chipWidth = (sampleWidth - chipGap * 2f) / 3f;
+            for (int i = 0; i < 3; ++i)
+            {
+                var chip = new NowRect(sampleX + i * (chipWidth + chipGap), y, chipWidth, 30f);
+                bool hovered = i == 1;
+                bool selected = i == 2;
+                renderer.DrawChip(new NowChipRenderContext(
+                    theme,
+                    chip,
+                    i == 0 ? "Idle" : hovered ? "Hover" : "Selected",
+                    selected,
+                    removable: false,
+                    removeRect: default,
+                    removeHovered: false,
+                    textStyle: NowTextStyle.Label,
+                    interaction: hovered ? ThemeReviewInteraction(chip, held: false) : default,
+                    focused: false,
+                    hoverT: hovered ? 1f : 0f));
+            }
+
+            y += 38f;
+            DrawThemeStateLabel(theme, new NowRect(labelX, y, labelWidth, 32f), "Tab");
+            renderer.DrawTabBarBackground(theme, new NowRect(sampleX, y, sampleWidth, 32f));
+            float tabWidth = (sampleWidth - chipGap * 2f) / 3f;
+            for (int i = 0; i < 3; ++i)
+            {
+                var tab = new NowRect(sampleX + i * (tabWidth + chipGap), y, tabWidth, 32f);
+                bool pressed = i == 1;
+                bool selected = i == 2;
+                renderer.DrawTab(new NowTabRenderContext(
+                    theme,
+                    tab,
+                    i == 0 ? "Hover" : pressed ? "Pressed" : "Selected",
+                    selected,
+                    selected ? 1f : 0f,
+                    selected ? default : ThemeReviewInteraction(tab, pressed),
+                    focused: false,
+                    hoverT: selected ? 0f : 1f));
+            }
+
+            y += 40f;
+            DrawThemeStateLabel(theme, new NowRect(labelX, y, labelWidth, 30f), "Tree");
+            float treeWidth = (sampleWidth - 6f) * 0.5f;
+            for (int i = 0; i < 2; ++i)
+            {
+                var row = new NowRect(sampleX + i * (treeWidth + 6f), y, treeWidth, 30f);
+                var disclosure = new NowRect(row.x + 4f, row.y + 5f, 18f, 20f);
+                bool selected = i == 1;
+                renderer.DrawTreeRow(new NowTreeRowRenderContext(
+                    theme,
+                    row,
+                    selected ? "Selected" : "Hover",
+                    depth: 0,
+                    hasChildren: true,
+                    expanded: selected,
+                    selected: selected,
+                    disclosureRect: disclosure,
+                    interaction: selected ? default : ThemeReviewInteraction(row, held: false),
+                    focused: false,
+                    hoverT: selected ? 0f : 1f));
+            }
+
+            y += 38f;
+            DrawThemeStateLabel(theme, new NowRect(labelX, y, labelWidth, 32f), "Spin");
+            var spinner = new NowRect(sampleX, y, 78f, 32f);
+            theme.Rectangle(spinner, NowRectangleStyle.Surface)
+                .SetRadius(4f)
+                .SetOutline(1f)
+                .SetOutlineColor(theme.GetColor(NowColorToken.Border))
+                .Draw();
+            Now.Text(spinner.Inset(8f, 6f, 28f, 4f))
+                .SetStyle(theme, NowTextStyle.Label)
+                .Draw("12");
+            var up = new NowRect(spinner.xMax - 24f, spinner.y, 24f, 16f);
+            var down = new NowRect(spinner.xMax - 24f, spinner.y + 16f, 24f, 16f);
+            renderer.DrawSpinnerButtons(new NowSpinnerRenderContext(
+                theme,
+                spinner,
+                up,
+                down,
+                upHovered: true,
+                upHeld: false,
+                downHovered: true,
+                downHeld: true,
+                focused: false));
+
+            DrawThemeStateLabel(theme, new NowRect(sampleX + 86f, y, 34f, 32f), "Day");
+            float dayX = sampleX + 120f;
+            const float dayGap = 2f;
+            float dayWidth = (sampleWidth - 120f - dayGap * 3f) / 4f;
+            for (int i = 0; i < 4; ++i)
+            {
+                var day = new NowRect(dayX + i * (dayWidth + dayGap), y, dayWidth, 32f);
+                bool selected = i >= 2;
+                bool pressed = i == 1 || i == 3;
+                var interaction = i == 2 ? default : ThemeReviewInteraction(day, pressed);
+                renderer.DrawCalendarDay(new NowCalendarDayRenderContext(
+                    theme,
+                    day,
+                    i == 0 ? "H" : i == 1 ? "P" : i == 2 ? "S" : "SP",
+                    inMonth: true,
+                    isToday: false,
+                    selected: selected,
+                    disabled: false,
+                    interaction: interaction,
+                    focused: false,
+                    hoverT: i == 2 ? 0f : 1f));
+            }
+        }
+
+        static void DrawThemeStateLabel(NowThemeAsset theme, NowRect rect, string label)
+        {
+            Now.Text(rect)
+                .SetFontSize(9f)
+                .SetBold()
+                .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+                .Draw(label);
+        }
+
+        static NowInteraction ThemeReviewInteraction(NowRect rect, bool held)
+        {
+            return new NowInteraction(
+                id: default,
+                rect: rect,
+                button: NowPointerButton.Primary,
+                hasPointer: true,
+                pointerPosition: rect.center,
+                pointerDelta: default,
+                dragDelta: default,
+                hovered: true,
+                pressed: false,
+                held: held,
+                released: false,
+                clicked: false,
+                active: held,
+                dragging: false,
+                dragStarted: false,
+                dragEnded: false,
+                cancelled: false,
+                dragCancelled: false);
+        }
+
+        static void DrawThemeSectionTitle(float x, float y, string title, string subtitle)
+        {
+            var theme = NowTheme.themeAsset;
+            Now.Text(new NowRect(x, y, 240f, 24f))
+                .SetFontSize(15f)
+                .SetBold()
+                .SetColor(theme.GetColor(NowColorToken.Text, Color.white))
+                .Draw(title);
+            Now.Text(new NowRect(x + 250f, y + 1f, 950f, 22f))
+                .SetFontSize(12f)
+                .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+                .Draw(subtitle);
+        }
+
+        static void DrawThemePanelLabel(NowThemeAsset theme, NowRect panel, string label)
+        {
+            Now.Text(new NowRect(panel.x + 18f, panel.y + 14f, panel.width - 36f, 22f))
+                .SetFontSize(12f)
+                .SetBold()
+                .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
+                .Draw(label);
+        }
+
+        static Color ReadableSwatchText(Color background)
+        {
+            Color page = NowTheme.themeAsset.GetColor(NowColorToken.Background, Color.white);
+            Color composited = new Color(
+                background.r * background.a + page.r * (1f - background.a),
+                background.g * background.a + page.g * (1f - background.a),
+                background.b * background.a + page.b * (1f - background.a),
+                1f);
+            var dark = new Color(0.04f, 0.04f, 0.04f, 1f);
+            return ThemeReviewContrast(composited, dark) >= ThemeReviewContrast(composited, Color.white)
+                ? dark
+                : Color.white;
+        }
+
+        static float ThemeReviewContrast(Color a, Color b)
+        {
+            float lighter = Mathf.Max(ThemeReviewLuminance(a), ThemeReviewLuminance(b));
+            float darker = Mathf.Min(ThemeReviewLuminance(a), ThemeReviewLuminance(b));
+            return (lighter + 0.05f) / (darker + 0.05f);
+        }
+
+        static float ThemeReviewLuminance(Color color)
+        {
+            return ThemeReviewLinear(color.r) * 0.2126f +
+                ThemeReviewLinear(color.g) * 0.7152f +
+                ThemeReviewLinear(color.b) * 0.0722f;
+        }
+
+        static float ThemeReviewLinear(float value)
+        {
+            return value <= 0.04045f
+                ? value / 12.92f
+                : Mathf.Pow((value + 0.055f) / 1.055f, 2.4f);
         }
 
         static void DrawElevation(NowRect rect)
@@ -2903,6 +3461,7 @@ namespace NowUI.Editor
         static void ResetFrameState()
         {
             NowSdf.Reset();
+            NowTheme.Reset();
             NowInput.Reset();
             NowFocus.Reset();
             NowControlState.Reset();

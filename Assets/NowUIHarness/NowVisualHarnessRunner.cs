@@ -63,7 +63,7 @@ namespace NowUI.Editor
             var failures = new List<string>();
             var captures = new List<NowHarnessCapture>();
 
-            foreach (var scenario in NowHarnessScenarios.All())
+            foreach (var scenario in NowHarnessScenarios.All(includeThemeReviews: false))
             {
                 if (!scenario.includeInGoldens)
                     continue;

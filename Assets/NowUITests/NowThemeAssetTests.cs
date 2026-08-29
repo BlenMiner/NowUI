@@ -8,6 +8,17 @@ using NowUI.Internal;
 
 public class NowThemeAssetTests
 {
+    static readonly NowResolvedId TestIdentityRoot =
+        NowResolvedId.CreateOwnerRoot(0x5448454D45544553UL);
+
+    static readonly string[] SerializedColorFields =
+    {
+        "_background", "_surface", "_surfaceMuted", "_text", "_textMuted", "_border", "_accent", "_accentText",
+        "_surfaceElevated", "_surfaceHover", "_surfacePressed", "_accentHover", "_accentPressed", "_accentMuted",
+        "_borderStrong", "_focusRing", "_success", "_successText", "_successMuted", "_warning", "_warningText",
+        "_warningMuted", "_danger", "_dangerText", "_dangerMuted", "_shadow", "_scrim"
+    };
+
     [Test]
     public void ThemeDefaultsResolvePaletteTokens()
     {
@@ -206,16 +217,460 @@ public class NowThemeAssetTests
         Assert.AreEqual(40f, theme.controlRenderer.MeasureDropdownField(theme, 20f).y, 0.0001f);
     }
 
-    [TestCase("Assets/NowUI/Assets/Themes/DefaultDark.asset")]
+    [Test]
+    public void ShippedThemeAssetsResolveEverySerializedTokenAndPreset()
+    {
+        var colorTokens = (NowColorToken[])System.Enum.GetValues(typeof(NowColorToken));
+        Assert.AreEqual(NowThemeColorSet.TokenCount, colorTokens.Length, "NowThemeColorSet.TokenCount must track NowColorToken.");
+        Assert.AreEqual(colorTokens.Length, SerializedColorFields.Length, "The serialized palette audit must track every color token.");
+
+        string[] guids = AssetDatabase.FindAssets("t:NowThemeAsset", new[] { "Assets/NowUI/Assets/Themes" });
+        Assert.IsNotEmpty(guids, "No shipped theme assets were discovered.");
+
+        foreach (string guid in guids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(path);
+            Assert.IsNotNull(theme, path);
+
+            var serializedTheme = new SerializedObject(theme);
+            SerializedProperty palette = serializedTheme.FindProperty("_palette");
+            Assert.IsNotNull(palette, path);
+
+            for (int i = 0; i < colorTokens.Length; ++i)
+            {
+                NowColorToken token = colorTokens[i];
+                SerializedProperty property = palette.FindPropertyRelative(SerializedColorFields[i]);
+                Assert.IsNotNull(property, $"{path}: missing serialized {token} slot ({SerializedColorFields[i]}).");
+
+                Color serializedColor = property.colorValue;
+                AssertFiniteColor(serializedColor, $"{path}: serialized {token}");
+                Assert.Greater(serializedColor.a, 0f, $"{path}: serialized {token} is uninitialized/transparent.");
+
+                Assert.IsTrue(theme.TryGetColor(token, out var resolvedColor), $"{path}: {token}");
+                AssertFiniteColor(resolvedColor, $"{path}: resolved {token}");
+                Assert.Greater(resolvedColor.a, 0f, $"{path}: resolved {token} is uninitialized/transparent.");
+            }
+
+            foreach (NowSpacingToken token in System.Enum.GetValues(typeof(NowSpacingToken)))
+            {
+                Assert.IsTrue(theme.TryGetSpacing(token, out var spacing), $"{path}: spacing {token}");
+                AssertFiniteVector(spacing, $"{path}: spacing {token}");
+                AssertNonNegative(spacing, $"{path}: spacing {token}");
+            }
+
+            foreach (NowRadiusToken token in System.Enum.GetValues(typeof(NowRadiusToken)))
+            {
+                Assert.IsTrue(theme.TryGetRadius(token, out var radius), $"{path}: radius {token}");
+                AssertFiniteVector(radius, $"{path}: radius {token}");
+                AssertNonNegative(radius, $"{path}: radius {token}");
+            }
+
+            foreach (NowElevationToken token in System.Enum.GetValues(typeof(NowElevationToken)))
+            {
+                if (token == NowElevationToken.None)
+                    continue;
+
+                Assert.IsTrue(theme.TryGetShadow(token, out var shadow), $"{path}: elevation {token}");
+                AssertValidShadowLayer(shadow.key, $"{path}: elevation {token} key");
+                AssertValidShadowLayer(shadow.ambient, $"{path}: elevation {token} ambient");
+            }
+
+            foreach (NowRectangleStyle style in System.Enum.GetValues(typeof(NowRectangleStyle)))
+            {
+                Assert.IsTrue(theme.TryGetRectanglePreset(style, out _), $"{path}: rectangle {style}");
+                NowRectangle rectangle = theme.Rectangle(new NowRect(0f, 0f, 40f, 24f), style);
+                AssertFiniteVector(rectangle.color, $"{path}: rectangle {style} fill");
+                AssertFiniteVector(rectangle.radius, $"{path}: rectangle {style} radius");
+                AssertFiniteVector(rectangle.padding, $"{path}: rectangle {style} padding");
+                AssertFiniteVector(rectangle.outlineColor, $"{path}: rectangle {style} outline");
+                AssertFinite(rectangle.blur, $"{path}: rectangle {style} blur");
+                AssertFinite(rectangle.outline, $"{path}: rectangle {style} outline width");
+                Assert.Greater(MaxComponent(rectangle.radius), 0f, $"{path}: rectangle {style} has no serialized radius.");
+            }
+
+            foreach (NowTextStyle style in System.Enum.GetValues(typeof(NowTextStyle)))
+            {
+                Assert.IsTrue(theme.TryGetTextPreset(style, out var preset), $"{path}: text {style}");
+                AssertFinite(preset.fontSize, $"{path}: text {style} font size");
+                Assert.Greater(preset.fontSize, 0f, $"{path}: text {style} has no serialized font size.");
+
+                NowText text = theme.Text(new NowRect(0f, 0f, 120f, 32f), style);
+                AssertFiniteVector(text.color, $"{path}: text {style} color");
+                Assert.Greater(text.color.w, 0f, $"{path}: text {style} has no visible serialized color.");
+            }
+        }
+    }
+
+    [TestCase("Assets/NowUI/Assets/Themes/Material.asset")]
     [TestCase("Assets/NowUI/Assets/Themes/MaterialDark.asset")]
-    public void SelectedPopupItemKeepsReadableBodyTextColor(string themePath)
+    public void MaterialThemeExtendedRolesMeetTextContrastMinimums(string themePath)
     {
         var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
+        Assert.IsNotNull(theme);
+
+        AssertThemeContrast(theme, NowColorToken.Text, NowColorToken.Background, 7f);
+
+        var pairs = new[]
+        {
+            new[] { NowColorToken.Text, NowColorToken.Surface },
+            new[] { NowColorToken.Text, NowColorToken.SurfaceMuted },
+            new[] { NowColorToken.Text, NowColorToken.SurfaceElevated },
+            new[] { NowColorToken.Text, NowColorToken.SurfaceHover },
+            new[] { NowColorToken.Text, NowColorToken.SurfacePressed },
+            new[] { NowColorToken.Text, NowColorToken.AccentMuted },
+            new[] { NowColorToken.Text, NowColorToken.SuccessMuted },
+            new[] { NowColorToken.Text, NowColorToken.WarningMuted },
+            new[] { NowColorToken.Text, NowColorToken.DangerMuted },
+            new[] { NowColorToken.TextMuted, NowColorToken.Surface },
+            new[] { NowColorToken.TextMuted, NowColorToken.SurfaceMuted },
+            new[] { NowColorToken.TextMuted, NowColorToken.SurfaceElevated },
+            new[] { NowColorToken.TextMuted, NowColorToken.SurfaceHover },
+            new[] { NowColorToken.TextMuted, NowColorToken.SurfacePressed },
+            new[] { NowColorToken.AccentText, NowColorToken.Accent },
+            new[] { NowColorToken.AccentText, NowColorToken.AccentHover },
+            new[] { NowColorToken.AccentText, NowColorToken.AccentPressed },
+            new[] { NowColorToken.Accent, NowColorToken.AccentMuted },
+            new[] { NowColorToken.SuccessText, NowColorToken.Success },
+            new[] { NowColorToken.WarningText, NowColorToken.Warning },
+            new[] { NowColorToken.DangerText, NowColorToken.Danger }
+        };
+
+        foreach (NowColorToken[] pair in pairs)
+            AssertThemeContrast(theme, pair[0], pair[1], 4.5f);
+    }
+
+    [Test]
+    public void MaterialThemesUseModeSpecificExtendedRoles()
+    {
+        var light = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/Material.asset");
+        var dark = AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/MaterialDark.asset");
+
+        Assert.IsNotNull(light);
+        Assert.IsNotNull(dark);
+
+        foreach (NowColorToken token in new[]
+        {
+            NowColorToken.SurfaceElevated,
+            NowColorToken.SurfaceHover,
+            NowColorToken.SurfacePressed,
+            NowColorToken.AccentHover,
+            NowColorToken.AccentPressed,
+            NowColorToken.AccentMuted,
+            NowColorToken.BorderStrong,
+            NowColorToken.FocusRing,
+            NowColorToken.Success,
+            NowColorToken.SuccessMuted,
+            NowColorToken.Warning,
+            NowColorToken.WarningMuted,
+            NowColorToken.Danger,
+            NowColorToken.DangerMuted,
+            NowColorToken.Shadow,
+            NowColorToken.Scrim
+        })
+        {
+            Color lightColor = light.GetColor(token);
+            Color darkColor = dark.GetColor(token);
+            Assert.Greater(ColorDifference(lightColor, darkColor), 0.01f, $"{token} was copied unchanged between Material modes.");
+        }
+
+        foreach (NowColorToken token in new[]
+        {
+            NowColorToken.SurfaceElevated,
+            NowColorToken.SurfaceHover,
+            NowColorToken.SurfacePressed,
+            NowColorToken.AccentMuted,
+            NowColorToken.SuccessMuted,
+            NowColorToken.WarningMuted,
+            NowColorToken.DangerMuted
+        })
+        {
+            Assert.Less(
+                RelativeLuminance(dark.GetColor(token)),
+                RelativeLuminance(light.GetColor(token)),
+                $"{token} must be regenerated as a dark role instead of retaining a light-theme value.");
+        }
+    }
+
+    [TestCase("Assets/NowUI/Assets/Themes/Material.asset")]
+    [TestCase("Assets/NowUI/Assets/Themes/MaterialDark.asset")]
+    public void MaterialButtonsAndBadgesResolveReadableSemanticForegrounds(string themePath)
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        var previousFont = Now.defaultFont;
+
+        Assert.IsNotNull(theme);
+        Assert.IsNotNull(font, "Default font resource missing.");
+
+        var styles = new[]
+        {
+            NowRectangleStyle.Accent,
+            NowRectangleStyle.Muted,
+            NowRectangleStyle.Elevated,
+            NowRectangleStyle.AccentSoft,
+            NowRectangleStyle.Danger
+        };
+        var expectedForegrounds = new[]
+        {
+            NowColorToken.AccentText,
+            NowColorToken.Text,
+            NowColorToken.Accent,
+            NowColorToken.Accent,
+            NowColorToken.DangerText
+        };
+
+        try
+        {
+            Now.defaultFont = font;
+
+            for (int i = 0; i < styles.Length; ++i)
+            {
+                NowRectangleStyle style = styles[i];
+                Color expected = theme.GetColor(expectedForegrounds[i]);
+                Color background = theme.Rectangle(new NowRect(0f, 0f, 160f, 40f), style).color;
+                Color buttonForeground = RenderButtonForeground(theme, style);
+                Color badgeForeground = RenderBadgeForeground(theme, style);
+
+                AssertColor(expected, buttonForeground, $"{themePath}: {style} button foreground");
+                AssertColor(expected, badgeForeground, $"{themePath}: {style} badge foreground");
+                Assert.GreaterOrEqual(ContrastRatio(buttonForeground, background), 4.5f, $"{themePath}: {style} button text");
+                Assert.GreaterOrEqual(ContrastRatio(badgeForeground, background), 4.5f, $"{themePath}: {style} badge text");
+            }
+        }
+        finally
+        {
+            Now.defaultFont = previousFont;
+        }
+    }
+
+    [TestCase("Assets/NowUI/Assets/Themes/Material.asset")]
+    [TestCase("Assets/NowUI/Assets/Themes/MaterialDark.asset")]
+    public void MaterialSurfaceStaysBorderlessAndTextLikeWhileMutedProvidesPanelFill(string themePath)
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        var previousFont = Now.defaultFont;
         var drawList = new NowDrawList();
 
         try
         {
             Assert.IsNotNull(theme);
+            Assert.IsNotNull(font, "Default font resource missing.");
+
+            var rect = new NowRect(8f, 8f, 160f, 40f);
+            NowRectangle surface = theme.Rectangle(rect, NowRectangleStyle.Surface);
+            NowRectangle muted = theme.Rectangle(rect, NowRectangleStyle.Muted);
+
+            Assert.AreEqual(0f, surface.outline, 0.0001f, $"{themePath}: raw Surface must remain borderless.");
+            AssertColor(theme.GetColor(NowColorToken.Surface), surface.color, $"{themePath}: Surface fill");
+            AssertColor(theme.GetColor(NowColorToken.SurfaceMuted), muted.color, $"{themePath}: Muted fill");
+            Assert.Greater(
+                ColorDifference(muted.color, theme.GetColor(NowColorToken.Background)),
+                0.04f,
+                $"{themePath}: Muted must be visibly distinct from Background for filled review panels.");
+
+            Now.defaultFont = font;
+            using (drawList.Begin(new Vector2(192f, 64f)))
+            {
+                theme.controlRenderer.DrawButton(new NowButtonRenderContext(
+                    theme,
+                    rect,
+                    "Text action",
+                    NowRectangleStyle.Surface,
+                    NowTextStyle.Button,
+                    PassiveInteraction(900, rect),
+                    false,
+                    0f));
+            }
+
+            Color fill = FirstBatchValue(drawList, NowMeshKind.Rectangle, 3);
+            Vector4 rectangleParameters = FirstBatchValue(drawList, NowMeshKind.Rectangle, 5);
+            Color foreground = FirstBatchValue(drawList, NowMeshKind.Text, 3);
+
+            Assert.AreEqual(0f, fill.a, 0.0001f, $"{themePath}: Surface button should not draw a filled container.");
+            Assert.AreEqual(0f, rectangleParameters.y, 0.0001f, $"{themePath}: Surface button should suppress the preset outline.");
+            AssertColor(theme.GetColor(NowColorToken.Accent), foreground, $"{themePath}: Surface button foreground");
+        }
+        finally
+        {
+            drawList.Dispose();
+            Now.defaultFont = previousFont;
+        }
+    }
+
+    [TestCase("Assets/NowUI/Assets/Themes/Material.asset")]
+    [TestCase("Assets/NowUI/Assets/Themes/MaterialDark.asset")]
+    public void MaterialSwitchKnobsKeepGraphicalContrastAcrossStates(string themePath)
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
+        Assert.IsNotNull(theme);
+
+        var states = new[] { "idle", "hover", "held" };
+
+        for (int valueIndex = 0; valueIndex < 2; ++valueIndex)
+        {
+            bool value = valueIndex == 1;
+            float onT = value ? 1f : 0f;
+
+            for (int stateIndex = 0; stateIndex < states.Length; ++stateIndex)
+            {
+                bool hovered = stateIndex > 0;
+                bool held = stateIndex == 2;
+                float hoverT = hovered ? 1f : 0f;
+                var glyphRect = new NowRect(8f, 8f, theme.controlStyles.switchWidth, theme.controlStyles.switchHeight);
+                var drawList = new NowDrawList();
+
+                try
+                {
+                    using (drawList.Begin(new Vector2(96f, 48f)))
+                    {
+                        theme.controlRenderer.DrawSwitch(new NowSwitchRenderContext(
+                            theme,
+                            glyphRect,
+                            glyphRect,
+                            value,
+                            onT,
+                            PassiveInteraction(1000 + valueIndex * 10 + stateIndex, glyphRect, hovered, held),
+                            false,
+                            hoverT));
+                    }
+
+                    Color track = FirstBatchValue(drawList, NowMeshKind.Rectangle, 3);
+                    Color knob = LastBatchValue(drawList, NowMeshKind.Rectangle, 3);
+                    float ratio = ContrastRatio(knob, track);
+                    Assert.GreaterOrEqual(
+                        ratio,
+                        3f,
+                        $"{themePath}: {(value ? "on" : "off")} {states[stateIndex]} switch knob ({ratio:0.00}:1)");
+                }
+                finally
+                {
+                    drawList.Dispose();
+                }
+            }
+        }
+    }
+
+    [TestCase("Assets/NowUI/Assets/Themes/Material.asset")]
+    [TestCase("Assets/NowUI/Assets/Themes/MaterialDark.asset")]
+    public void MaterialChipsRenderOutlinedIdleAndReadableSelectedStates(string themePath)
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        var previousFont = Now.defaultFont;
+        var rect = new NowRect(8f, 8f, 144f, theme != null ? theme.controlStyles.chipHeight : 32f);
+
+        Assert.IsNotNull(theme);
+        Assert.IsNotNull(font, "Default font resource missing.");
+
+        try
+        {
+            Now.defaultFont = font;
+
+            Color idleFill;
+            Color idleOutline;
+            Color idleForeground;
+            float idleOutlineWidth;
+
+            var idleDrawList = new NowDrawList();
+            try
+            {
+                using (idleDrawList.Begin(new Vector2(176f, 56f)))
+                {
+                    theme.controlRenderer.DrawChip(new NowChipRenderContext(
+                        theme,
+                        rect,
+                        "Idle chip",
+                        false,
+                        false,
+                        default,
+                        false,
+                        NowTextStyle.Body,
+                        PassiveInteraction(1100, rect),
+                        false,
+                        0f));
+                }
+
+                idleFill = FirstBatchValue(idleDrawList, NowMeshKind.Rectangle, 3);
+                idleOutline = FirstBatchValue(idleDrawList, NowMeshKind.Rectangle, 4);
+                idleOutlineWidth = FirstBatchValue(idleDrawList, NowMeshKind.Rectangle, 5).y;
+                idleForeground = FirstBatchValue(idleDrawList, NowMeshKind.Text, 3);
+            }
+            finally
+            {
+                idleDrawList.Dispose();
+            }
+
+            Color background = theme.GetColor(NowColorToken.Background);
+            bool transparentFill = idleFill.a <= 0.0001f;
+            bool surfaceCompatibleFill = ColorDifference(idleFill, theme.GetColor(NowColorToken.Surface)) <= 0.0001f;
+            Assert.IsTrue(
+                transparentFill || surfaceCompatibleFill,
+                $"{themePath}: idle chip fill must be transparent or Surface-compatible.");
+            Assert.AreEqual(1f, idleOutlineWidth, 0.0001f, $"{themePath}: idle chip boundary must be 1px.");
+            AssertColor(theme.GetColor(NowColorToken.Border), idleOutline, $"{themePath}: idle chip outline");
+            Assert.GreaterOrEqual(
+                ContrastRatio(CompositeOver(idleOutline, background), background),
+                3f,
+                $"{themePath}: idle chip outline against Background");
+            Assert.GreaterOrEqual(
+                ContrastRatio(idleForeground, CompositeOver(idleFill, background)),
+                4.5f,
+                $"{themePath}: idle chip foreground");
+
+            var selectedDrawList = new NowDrawList();
+            try
+            {
+                using (selectedDrawList.Begin(new Vector2(176f, 56f)))
+                {
+                    theme.controlRenderer.DrawChip(new NowChipRenderContext(
+                        theme,
+                        rect,
+                        "Selected chip",
+                        true,
+                        false,
+                        default,
+                        false,
+                        NowTextStyle.Body,
+                        PassiveInteraction(1101, rect),
+                        false,
+                        0f));
+                }
+
+                Color selectedFill = FirstBatchValue(selectedDrawList, NowMeshKind.Rectangle, 3);
+                Color selectedForeground = FirstBatchValue(selectedDrawList, NowMeshKind.Text, 3);
+                AssertColor(theme.GetColor(NowColorToken.AccentMuted), selectedFill, $"{themePath}: selected chip fill");
+                Assert.GreaterOrEqual(
+                    ContrastRatio(selectedForeground, CompositeOver(selectedFill, background)),
+                    4.5f,
+                    $"{themePath}: selected chip foreground");
+            }
+            finally
+            {
+                selectedDrawList.Dispose();
+            }
+        }
+        finally
+        {
+            Now.defaultFont = previousFont;
+        }
+    }
+
+    [TestCase("Assets/NowUI/Assets/Themes/DefaultDark.asset")]
+    [TestCase("Assets/NowUI/Assets/Themes/MaterialDark.asset")]
+    public void SelectedPopupItemKeepsReadableBodyTextColor(string themePath)
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        var previousFont = Now.defaultFont;
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+            Assert.IsNotNull(font, "Default font resource missing.");
+            Now.defaultFont = font;
 
             using (drawList.Begin(new Vector2(240f, 80f)))
             {
@@ -227,35 +682,61 @@ public class NowThemeAssetTests
                     default));
             }
 
-            var colors = new List<Vector4>();
-            drawList.mesh.GetUVs(3, colors);
             Color expected = theme.GetColor(NowColorToken.Text);
-            bool foundText = false;
+            Color actual = FirstBatchValue(drawList, NowMeshKind.Text, 3);
+            Color highlight = FirstBatchValue(drawList, NowMeshKind.Rectangle, 3);
+            Color composedHighlight = CompositeOver(highlight, theme.GetColor(NowColorToken.Surface));
 
-            for (int i = 0; i < drawList.batches.Count; ++i)
-            {
-                if (drawList.batches[i].kind != NowMeshKind.Text)
-                    continue;
-
-                var indices = drawList.mesh.GetIndices(i);
-
-                if (indices.Length == 0)
-                    continue;
-
-                Color actual = colors[indices[0]];
-                Assert.AreEqual(expected.r, actual.r, 0.0001f);
-                Assert.AreEqual(expected.g, actual.g, 0.0001f);
-                Assert.AreEqual(expected.b, actual.b, 0.0001f);
-                Assert.AreEqual(expected.a, actual.a, 0.0001f);
-                foundText = true;
-                break;
-            }
-
-            Assert.IsTrue(foundText, "Selected popup item did not emit text geometry.");
+            AssertColor(expected, actual, $"{themePath}: selected popup body text");
+            Assert.GreaterOrEqual(
+                ContrastRatio(actual, composedHighlight),
+                4.5f,
+                $"{themePath}: selected popup text over its composited highlight");
         }
         finally
         {
             drawList.Dispose();
+            Now.defaultFont = previousFont;
+        }
+    }
+
+    [TestCase("Assets/NowUI/Assets/Themes/Material.asset")]
+    [TestCase("Assets/NowUI/Assets/Themes/MaterialDark.asset")]
+    public void MaterialPopupItemRendersMutedDetailText(string themePath)
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        var previousFont = Now.defaultFont;
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+            Assert.IsNotNull(font, "Default font resource missing.");
+            Now.defaultFont = font;
+
+            using (drawList.Begin(new Vector2(240f, 80f)))
+            {
+                theme.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
+                    theme,
+                    new NowRect(8f, 8f, 200f, 56f),
+                    "Option title",
+                    "Supporting detail",
+                    false,
+                    default));
+            }
+
+            Assert.IsTrue(
+                BatchContainsColor(drawList, NowMeshKind.Text, theme.GetColor(NowColorToken.Text)),
+                $"{themePath}: popup title did not use Text.");
+            Assert.IsTrue(
+                BatchContainsColor(drawList, NowMeshKind.Text, theme.GetColor(NowColorToken.TextMuted)),
+                $"{themePath}: popup detail was not rendered with TextMuted.");
+        }
+        finally
+        {
+            drawList.Dispose();
+            Now.defaultFont = previousFont;
         }
     }
 
@@ -304,6 +785,230 @@ public class NowThemeAssetTests
         Assert.GreaterOrEqual(ContrastRatio(palette.successText, palette.success), 4.5f, $"{mode}: SuccessText on Success");
         Assert.GreaterOrEqual(ContrastRatio(palette.warningText, palette.warning), 4.5f, $"{mode}: WarningText on Warning");
         Assert.GreaterOrEqual(ContrastRatio(palette.dangerText, palette.danger), 4.5f, $"{mode}: DangerText on Danger");
+    }
+
+    static void AssertThemeContrast(NowThemeAsset theme, NowColorToken foreground, NowColorToken background, float minimum)
+    {
+        float ratio = ContrastRatio(theme.GetColor(foreground), theme.GetColor(background));
+        Assert.GreaterOrEqual(ratio, minimum, $"{theme.name}: {foreground} on {background} ({ratio:0.00}:1)");
+    }
+
+    static Color RenderButtonForeground(NowThemeAsset theme, NowRectangleStyle style)
+    {
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(192f, 64f)))
+            {
+                theme.controlRenderer.DrawButton(new NowButtonRenderContext(
+                    theme,
+                    new NowRect(8f, 8f, 160f, 40f),
+                    "Button",
+                    style,
+                    NowTextStyle.Button,
+                    PassiveInteraction(800 + (int)style, new Rect(8f, 8f, 160f, 40f)),
+                    false,
+                    0f));
+            }
+
+            return FirstBatchValue(drawList, NowMeshKind.Text, 3);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    static Color RenderBadgeForeground(NowThemeAsset theme, NowRectangleStyle style)
+    {
+        var drawList = new NowDrawList();
+
+        try
+        {
+            using (drawList.Begin(new Vector2(192f, 64f)))
+            {
+                theme.controlRenderer.DrawBadge(new NowBadgeRenderContext(
+                    theme,
+                    new NowRect(8f, 8f, 160f, 40f),
+                    "Badge",
+                    style,
+                    NowTextStyle.Button));
+            }
+
+            return FirstBatchValue(drawList, NowMeshKind.Text, 3);
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    static Vector4 FirstBatchValue(NowDrawList drawList, NowMeshKind kind, int uvChannel)
+    {
+        var values = new List<Vector4>();
+        drawList.mesh.GetUVs(uvChannel, values);
+
+        for (int i = 0; i < drawList.batches.Count; ++i)
+        {
+            if (drawList.batches[i].kind != kind)
+                continue;
+
+            int[] indices = drawList.mesh.GetIndices(i);
+
+            if (indices.Length == 0)
+                continue;
+
+            Assert.Less(indices[0], values.Count, $"{kind} batch did not populate UV channel {uvChannel}.");
+            return values[indices[0]];
+        }
+
+        Assert.Fail($"Draw list did not emit a {kind} batch.");
+        return default;
+    }
+
+    static Vector4 LastBatchValue(NowDrawList drawList, NowMeshKind kind, int uvChannel)
+    {
+        var values = new List<Vector4>();
+        drawList.mesh.GetUVs(uvChannel, values);
+
+        for (int i = drawList.batches.Count - 1; i >= 0; --i)
+        {
+            if (drawList.batches[i].kind != kind)
+                continue;
+
+            int[] indices = drawList.mesh.GetIndices(i);
+
+            if (indices.Length == 0)
+                continue;
+
+            int index = indices[indices.Length - 1];
+            Assert.Less(index, values.Count, $"{kind} batch did not populate UV channel {uvChannel}.");
+            return values[index];
+        }
+
+        Assert.Fail($"Draw list did not emit a {kind} batch.");
+        return default;
+    }
+
+    static NowInteraction PassiveInteraction(int id, Rect rect, bool hovered = false, bool held = false)
+    {
+        bool hasPointer = hovered || held;
+        return new NowInteraction(
+            TestIdentityRoot.Child(id),
+            rect,
+            NowPointerButton.Primary,
+            hasPointer,
+            hasPointer ? rect.center : default,
+            default,
+            default,
+            hovered || held,
+            false,
+            held,
+            false,
+            false,
+            held,
+            false,
+            false,
+            false,
+            false,
+            false);
+    }
+
+    static bool BatchContainsColor(NowDrawList drawList, NowMeshKind kind, Color expected)
+    {
+        var colors = new List<Vector4>();
+        drawList.mesh.GetUVs(3, colors);
+
+        for (int i = 0; i < drawList.batches.Count; ++i)
+        {
+            if (drawList.batches[i].kind != kind)
+                continue;
+
+            foreach (int index in drawList.mesh.GetIndices(i))
+            {
+                if (index < colors.Count && ColorDifference(colors[index], expected) <= 0.0001f)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    static Color CompositeOver(Color foreground, Color background)
+    {
+        float alpha = foreground.a + background.a * (1f - foreground.a);
+
+        if (alpha <= 0f)
+            return Color.clear;
+
+        float backgroundWeight = background.a * (1f - foreground.a);
+        return new Color(
+            (foreground.r * foreground.a + background.r * backgroundWeight) / alpha,
+            (foreground.g * foreground.a + background.g * backgroundWeight) / alpha,
+            (foreground.b * foreground.a + background.b * backgroundWeight) / alpha,
+            alpha);
+    }
+
+    static void AssertColor(Color expected, Color actual, string message)
+    {
+        Assert.AreEqual(expected.r, actual.r, 0.0001f, message);
+        Assert.AreEqual(expected.g, actual.g, 0.0001f, message);
+        Assert.AreEqual(expected.b, actual.b, 0.0001f, message);
+        Assert.AreEqual(expected.a, actual.a, 0.0001f, message);
+    }
+
+    static void AssertValidShadowLayer(NowShadowLayer layer, string message)
+    {
+        AssertFinite(layer.offsetY, $"{message} offset");
+        AssertFinite(layer.blur, $"{message} blur");
+        AssertFinite(layer.spread, $"{message} spread");
+        AssertFinite(layer.alpha, $"{message} alpha");
+        Assert.GreaterOrEqual(layer.blur, 0f, $"{message} blur");
+        Assert.Greater(layer.alpha, 0f, $"{message} alpha");
+        Assert.LessOrEqual(layer.alpha, 1f, $"{message} alpha");
+    }
+
+    static void AssertFiniteColor(Color color, string message)
+    {
+        AssertFiniteVector(color, message);
+        Assert.That(color.r, Is.InRange(0f, 1f), message);
+        Assert.That(color.g, Is.InRange(0f, 1f), message);
+        Assert.That(color.b, Is.InRange(0f, 1f), message);
+        Assert.That(color.a, Is.InRange(0f, 1f), message);
+    }
+
+    static void AssertFiniteVector(Vector4 value, string message)
+    {
+        AssertFinite(value.x, $"{message} x");
+        AssertFinite(value.y, $"{message} y");
+        AssertFinite(value.z, $"{message} z");
+        AssertFinite(value.w, $"{message} w");
+    }
+
+    static void AssertNonNegative(Vector4 value, string message)
+    {
+        Assert.GreaterOrEqual(value.x, 0f, $"{message} x");
+        Assert.GreaterOrEqual(value.y, 0f, $"{message} y");
+        Assert.GreaterOrEqual(value.z, 0f, $"{message} z");
+        Assert.GreaterOrEqual(value.w, 0f, $"{message} w");
+    }
+
+    static void AssertFinite(float value, string message)
+    {
+        Assert.IsFalse(float.IsNaN(value) || float.IsInfinity(value), message);
+    }
+
+    static float MaxComponent(Vector4 value)
+    {
+        return Mathf.Max(Mathf.Max(value.x, value.y), Mathf.Max(value.z, value.w));
+    }
+
+    static float ColorDifference(Color a, Color b)
+    {
+        return Mathf.Max(
+            Mathf.Max(Mathf.Abs(a.r - b.r), Mathf.Abs(a.g - b.g)),
+            Mathf.Max(Mathf.Abs(a.b - b.b), Mathf.Abs(a.a - b.a)));
     }
 
     static float ContrastRatio(Color a, Color b)

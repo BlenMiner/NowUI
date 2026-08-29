@@ -34,6 +34,11 @@ Run the editor visual harness locally as a separate rendering gate:
 
 - `Tools/NowUI-Harness.ps1 -Mode Visual` produces PNG captures and a
   `manifest.json` under `artifacts/local/visual`.
+- `Tools/NowUI-Harness.ps1 -Mode Visual -ScenarioFilter theme-review-`
+  auto-discovers every `NowThemeAsset` under `Assets/NowUI/Assets/Themes` and
+  renders the same palette, preset, control, and popup review sheet for each.
+  Theme review sheets are intentionally excluded from golden comparison and
+  performance smoke runs until their current appearance has been reviewed.
 - `Tools/Assert-NowUIVisualArtifacts.ps1` validates the manifest, unique capture
   names, required scenario names, PNG headers, dimensions, file sizes, and
   nonzero batch/vertex counts.

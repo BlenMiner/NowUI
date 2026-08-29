@@ -56,6 +56,9 @@ namespace NowUI
             var rectangle = ButtonRectangle(context.themeAsset, context.rect, context.rectangleStyle);
             rectangle.radius = Radius(context.themeAsset, context.themeAsset.controlStyles.buttonRadius, context.rect, Mathf.Min(context.rect.width, context.rect.height) * 0.5f);
 
+            if (context.rectangleStyle == NowRectangleStyle.Elevated && !context.interaction.held)
+                DrawElevationShadow(context.themeAsset, context.rect, rectangle.radius, NowElevationToken.Raised);
+
             if (context.focused)
                 ApplyFocus(context.themeAsset, ref rectangle, field: false);
 
@@ -82,12 +85,35 @@ namespace NowUI
             {
                 case NowRectangleStyle.Accent:
                     return themeAsset.GetColor(NowColorToken.AccentText, Color.white);
+                case NowRectangleStyle.AccentSoft:
+                case NowRectangleStyle.Elevated:
                 case NowRectangleStyle.Outline:
                 case NowRectangleStyle.Surface:
                     return themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+                case NowRectangleStyle.Danger:
+                    return themeAsset.GetColor(NowColorToken.DangerText, Color.white);
+                case NowRectangleStyle.Muted:
+                case NowRectangleStyle.Ghost:
                 default:
                     return themeAsset.GetColor(NowColorToken.Text, Color.black);
             }
+        }
+
+        protected override Color ResolveSwitchKnobColor(in NowSwitchRenderContext context)
+        {
+            if (context.onT >= 0.5f)
+                return context.themeAsset.GetColor(NowColorToken.AccentText, Color.white);
+
+            if (context.interaction.hovered || context.interaction.held)
+            {
+                return context.themeAsset.isDark
+                    ? context.themeAsset.GetColor(NowColorToken.Surface, Color.black)
+                    : context.themeAsset.GetColor(NowColorToken.AccentText, Color.white);
+            }
+
+            return context.themeAsset.isDark
+                ? context.themeAsset.GetColor(NowColorToken.TextMuted, Color.gray)
+                : context.themeAsset.GetColor(NowColorToken.Text, Color.black);
         }
 
         public override void DrawCheckbox(in NowToggleRenderContext context)
@@ -164,6 +190,55 @@ namespace NowUI
                 .SetRadius(dot * 0.5f)
                 .SetColor(accent)
                 .Draw();
+        }
+
+        public override void DrawChip(in NowChipRenderContext context)
+        {
+            var themeAsset = context.themeAsset;
+            Vector4 radius = Circle(context.rect);
+            Color accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            Color text = themeAsset.GetColor(NowColorToken.Text, Color.black);
+
+            // Material flat filter chips are outlined while unselected and use
+            // a tonal container with no border once selected.
+            Now.Rectangle(context.rect)
+                .SetRadius(radius)
+                .SetColor(context.selected
+                    ? themeAsset.GetColor(NowColorToken.AccentMuted, Color.clear)
+                    : Color.clear)
+                .SetOutline(context.selected ? 0f : 1f)
+                .SetOutlineColor(themeAsset.GetColor(NowColorToken.Border, Color.gray))
+                .Draw();
+
+            DrawStateLayer(
+                themeAsset,
+                context.rect,
+                radius,
+                context.selected ? accent : text,
+                context.hoverT,
+                context.interaction.held);
+
+            if (context.focused)
+                DrawFocusRing(themeAsset, context.rect, radius);
+
+            Color textColor = context.selected ? accent : text;
+            float right = context.removable
+                ? themeAsset.controlStyles.chipRemoveSize + 4f
+                : themeAsset.controlStyles.chipPaddingX;
+            NowControls.DrawLeftLabel(
+                themeAsset,
+                context.rect.Inset(themeAsset.controlStyles.chipPaddingX, 0f, right, 0f),
+                context.label,
+                context.textStyle,
+                textColor);
+
+            if (!context.removable)
+                return;
+
+            Color crossColor = context.removeHovered
+                ? themeAsset.GetColor(NowColorToken.Danger)
+                : themeAsset.GetColor(NowColorToken.TextMuted);
+            DrawCross(context.removeRect, crossColor);
         }
 
         public override void DrawSlider(in NowSliderRenderContext context)
@@ -263,7 +338,7 @@ namespace NowUI
             }
 
             Color textColor = context.themeAsset.GetColor(NowColorToken.Text, Color.black);
-            DrawItemLabel(context.themeAsset, context.rect, context.label, textColor);
+            DrawPopupItemText(context, textColor);
         }
 
         public override void DrawContextMenuItem(in NowPopupItemRenderContext context)
@@ -283,12 +358,9 @@ namespace NowUI
                     .Draw();
             }
 
-            DrawItemLabel(
-                context.themeAsset,
-                context.rect,
-                context.label,
-                context.themeAsset.GetColor(NowColorToken.Text, Color.black),
-                context.hasSubmenu);
+            DrawPopupItemText(
+                context,
+                context.themeAsset.GetColor(NowColorToken.Text, Color.black));
         }
 
         public override void DrawScrollbar(in NowScrollbarRenderContext context)
@@ -462,6 +534,31 @@ namespace NowUI
             float left = themeAsset.controlStyles.contextMenuPaddingX;
             float right = hasSubmenu ? 28f : 8f;
             NowControls.DrawLeftLabel(themeAsset, rect.Inset(left, 0f, right, 0f), label, NowTextStyle.Body, color);
+        }
+
+        static void DrawPopupItemText(in NowPopupItemRenderContext context, Color textColor)
+        {
+            if (string.IsNullOrEmpty(context.detail))
+            {
+                DrawItemLabel(context.themeAsset, context.rect, context.label, textColor, context.hasSubmenu);
+                return;
+            }
+
+            float left = context.themeAsset.controlStyles.contextMenuPaddingX;
+            float right = context.hasSubmenu ? 28f : 8f;
+            NowRect content = context.rect.Inset(left, 0f, right, 0f);
+            var title = content;
+            title.height = Mathf.Max(0f, content.height * 0.5f);
+            title.y += 2f;
+            var detail = new NowRect(content.x, title.yMax - 1f, content.width, Mathf.Max(0f, content.yMax - title.yMax));
+
+            NowControls.DrawLeftLabel(context.themeAsset, title, context.label, NowTextStyle.Body, textColor);
+            NowControls.DrawLeftLabel(
+                context.themeAsset,
+                detail,
+                context.detail,
+                NowTextStyle.Caption,
+                context.themeAsset.GetColor(NowColorToken.TextMuted, Color.gray));
         }
     }
 }

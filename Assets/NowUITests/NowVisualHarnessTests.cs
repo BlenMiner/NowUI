@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using NowUI.Editor;
+using UnityEditor;
 using UnityEngine;
 
 public class NowVisualHarnessTests
@@ -62,6 +64,46 @@ public class NowVisualHarnessTests
         GoldenComparisonTolerance strict = NowVisualHarnessRunner.ToleranceForScenario("landing-page-now-layout");
 
         Assert.IsTrue(NowVisualHarnessRunner.PixelsMatch(expected, actual, strict, out string difference), difference);
+    }
+
+    [Test]
+    public void ThemeReviewScenariosCoverEveryShippedTheme()
+    {
+        string[] guids = AssetDatabase.FindAssets(
+            "t:NowThemeAsset",
+            new[] { "Assets/NowUI/Assets/Themes" });
+        var expectedPaths = new HashSet<string>();
+
+        for (int i = 0; i < guids.Length; ++i)
+            expectedPaths.Add(AssetDatabase.GUIDToAssetPath(guids[i]).Replace('\\', '/'));
+
+        IReadOnlyList<NowHarnessScenario> scenarios = NowHarnessScenarios.ThemeReviewScenarios();
+        var actualPaths = new HashSet<string>();
+        var scenarioNames = new HashSet<string>();
+
+        for (int i = 0; i < scenarios.Count; ++i)
+        {
+            NowHarnessScenario scenario = scenarios[i];
+            StringAssert.StartsWith("theme-review-", scenario.name);
+            Assert.IsTrue(scenarioNames.Add(scenario.name), $"Duplicate review scenario '{scenario.name}'.");
+            Assert.IsFalse(scenario.includeInGoldens, scenario.name);
+            Assert.IsFalse(scenario.includeInPerf, scenario.name);
+            Assert.IsTrue(scenario.suppressBadge, scenario.name);
+            Assert.IsNotNull(scenario.draw, scenario.name);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(scenario.themePath), scenario.name);
+            Assert.IsTrue(actualPaths.Add(scenario.themePath), $"Duplicate theme path '{scenario.themePath}'.");
+        }
+
+        CollectionAssert.AreEquivalent(expectedPaths, actualPaths);
+    }
+
+    [Test]
+    public void CoreScenarioEnumerationExcludesThemeReviews()
+    {
+        IReadOnlyList<NowHarnessScenario> scenarios = NowHarnessScenarios.All(includeThemeReviews: false);
+
+        for (int i = 0; i < scenarios.Count; ++i)
+            Assert.IsFalse(scenarios[i].name.StartsWith("theme-review-"), scenarios[i].name);
     }
 
     static Color32[] SolidPixels(int count, Color32 color)

@@ -22,8 +22,13 @@ namespace NowUI.Editor
             Directory.CreateDirectory(outputRoot);
 
             var metrics = new List<PerfMetric>();
-            foreach (var scenario in NowHarnessScenarios.All())
+            foreach (var scenario in NowHarnessScenarios.All(includeThemeReviews: false))
+            {
+                if (!scenario.includeInPerf)
+                    continue;
+
                 metrics.Add(MeasureScenario(scenario));
+            }
 
             string path = Path.Combine(outputRoot, "nowui-perf.json");
             File.WriteAllText(path, BuildJson(metrics));

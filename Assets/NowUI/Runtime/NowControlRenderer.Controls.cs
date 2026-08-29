@@ -327,14 +327,7 @@ namespace NowUI
             float knobX = Mathf.LerpUnclamped(track.x + inset, track.xMax - inset - knob, context.onT);
             var knobRect = new NowRect(knobX, track.y + inset, knob, knob);
 
-            // Dark themes need a light knob — Surface is nearly the track color
-            // there; light themes keep the classic white Surface knob.
-            Color knobColor = context.themeAsset.isDark
-                ? Color.LerpUnclamped(
-                    context.themeAsset.GetColor(NowColorToken.TextMuted),
-                    context.themeAsset.GetColor(NowColorToken.Text),
-                    context.onT)
-                : context.themeAsset.GetColor(NowColorToken.Surface);
+            Color knobColor = ResolveSwitchKnobColor(context);
 
             DrawElevationShadow(context.themeAsset, knobRect, Circle(knobRect), NowElevationToken.Raised);
             Now.Rectangle(knobRect)
@@ -344,6 +337,20 @@ namespace NowUI
 
             if (context.focused)
                 DrawFocusRing(context.themeAsset, track, new Vector4(trackRadius, trackRadius, trackRadius, trackRadius));
+        }
+
+        /// <summary>Resolves the switch knob independently from its track so renderers
+        /// with light accents in dark mode can provide the matching semantic foreground.</summary>
+        protected virtual Color ResolveSwitchKnobColor(in NowSwitchRenderContext context)
+        {
+            // Dark themes need a light knob — Surface is nearly the track color
+            // there; light themes keep the classic white Surface knob.
+            return context.themeAsset.isDark
+                ? Color.LerpUnclamped(
+                    context.themeAsset.GetColor(NowColorToken.TextMuted),
+                    context.themeAsset.GetColor(NowColorToken.Text),
+                    context.onT)
+                : context.themeAsset.GetColor(NowColorToken.Surface);
         }
 
         public virtual Vector2 MeasureProgressBar(NowThemeAsset themeAsset)
