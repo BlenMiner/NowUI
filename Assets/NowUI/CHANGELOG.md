@@ -1,3 +1,10 @@
+## [1.9.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.3...nowui-v1.9.4) (2026-08-29)
+
+
+### Bug Fixes
+
+* new dark unity editor theme ([4c23bff](https://github.com/BlenMiner/NowUI/commit/4c23bff5b51b7c7e7838096b18f80c31df1cc2cd))
+
 ## [1.9.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.2...nowui-v1.9.3) (2026-08-29)
 
 
