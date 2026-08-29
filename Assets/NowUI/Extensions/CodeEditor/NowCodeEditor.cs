@@ -55,6 +55,11 @@ namespace NowUI.CodeEditor
 
         const int MaxVisibleCompletions = 8;
 
+        const int MaxVisibleCodeActions = 8;
+
+        /// <summary>Namespace for language-supplied menu rows so an action id can never collide with an editor row.</summary>
+        const string CodeActionIdPrefix = "code-action:";
+
         const float CompletionPadding = 4f;
 
         const int DefaultCacheCapacity = 128;
@@ -165,6 +170,18 @@ namespace NowUI.CodeEditor
             public int completionWindow;
             public NowRect completionPopupRect;
             public float completionRowHeight;
+            /// <summary>The language's quick actions, rebuilt only when the menu or the Alt+Enter popup opens.</summary>
+            public readonly List<NowCodeAction> actions = new List<NowCodeAction>(8);
+            /// <summary>Namespaced menu-row ids, built with the actions so declaring the menu allocates nothing.</summary>
+            public readonly List<string> actionMenuIds = new List<string>(8);
+            /// <summary>The text the action spans index into; any other instance retires them.</summary>
+            public string actionText;
+            public int actionCaret;
+            public bool quickActionsOpen;
+            public int quickActionSelected;
+            public int quickActionWindow;
+            public NowRect quickActionPopupRect;
+            public float quickActionRowHeight;
             public string occurrenceWord;
             public string occurrenceText;
             public int occurrenceStart = -1;
@@ -217,7 +234,14 @@ namespace NowUI.CodeEditor
 
         static readonly NowOverlay.DrawCallback s_drawCompletionOverlay = DrawCompletionOverlay;
 
+        static readonly NowOverlay.DrawCallback s_drawQuickActionOverlay = DrawQuickActionOverlay;
+
         static readonly List<NowCodeToken> _tokenScratch = new List<NowCodeToken>(32);
+
+        /// <summary>Edit indices of the action being applied, ordered by descending start.</summary>
+        static readonly List<int> _codeEditOrderScratch = new List<int>(4);
+
+        static readonly HashSet<string> _codeActionIdScratch = new HashSet<string>(StringComparer.Ordinal);
 
         static readonly List<string> _numberStrings = new List<string>(128);
 
@@ -361,6 +385,9 @@ namespace NowUI.CodeEditor
             if (cache.renameActive && !ReferenceEquals(cache.renameText, text))
                 cache.renameActive = false;
 
+            if (cache.quickActionsOpen && !QuickActionsOpen(cache, text, state.caret))
+                CloseQuickActions(cache);
+
             // Async validators report pending work; keep repainting so their
             // results land without waiting for the next interaction.
             if (_language.validationPending && !NowInput.isPassive)
@@ -476,10 +503,24 @@ namespace NowUI.CodeEditor
                     AcceptCompletion(cache, ref text, ref state);
                 }
             }
+            else if (interaction.pressed && QuickActionsOpen(cache, text, state.caret) &&
+                cache.quickActionPopupRect.Contains(interaction.pointerPosition))
+            {
+                int row = cache.quickActionWindow + (int)((interaction.pointerPosition.y -
+                    cache.quickActionPopupRect.y - CompletionPadding) / Mathf.Max(cache.quickActionRowHeight, 1f));
+
+                if (row >= 0 && row < cache.actions.Count)
+                {
+                    revealCaret = true;
+                    cache.undo.Push(text, in state, typing: false);
+                    ApplyCodeAction(cache, ref text, ref state, row);
+                }
+            }
             else if (interaction.pressed)
             {
                 revealCaret = true;
                 CloseCompletions(cache);
+                CloseQuickActions(cache);
                 NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
 
                 bool onStatusBar = statusHeight > 0f && interaction.pointerPosition.y >= rect.yMax - statusHeight - 1f;
@@ -556,6 +597,7 @@ namespace NowUI.CodeEditor
                 else if (!string.IsNullOrEmpty(frame.characters))
                 {
                     revealCaret = true;
+                    CloseQuickActions(cache);
                     cache.undo.Push(text, in state, typing: true);
 
                     for (int i = 0; i < frame.characters.Length; ++i)
@@ -594,6 +636,8 @@ namespace NowUI.CodeEditor
                     {
                         if (cache.goToLineActive)
                             cache.goToLineActive = false;
+                        else if (QuickActionsOpen(cache, text, state.caret))
+                            CloseQuickActions(cache);
                         else if (CompletionsOpen(cache))
                             CloseCompletions(cache);
                         else
@@ -713,6 +757,23 @@ namespace NowUI.CodeEditor
                                 state.anchor = state.caret;
                             }
                         }
+                        else if (QuickActionsOpen(cache, text, state.caret))
+                        {
+                            // Enter applies the highlighted action as one undo
+                            // step. Checked before the chord that opens the
+                            // popup so Alt may stay held while accepting —
+                            // reopening here would silently discard the
+                            // selection the author just arrowed to.
+                            cache.undo.Push(text, in state, typing: false);
+                            ApplyCodeAction(cache, ref text, ref state, cache.quickActionSelected);
+                        }
+                        else if (frame.option && !frame.lineModifier)
+                        {
+                            // Alt+Enter: the language's quick actions at the
+                            // caret, mirroring Alt+Up's modifier gate. Nothing
+                            // opens when the language offers none.
+                            OpenQuickActions(cache, _language, text, state.caret);
+                        }
                         else if (CompletionsOpen(cache))
                         {
                             cache.undo.Push(text, in state, typing: false);
@@ -720,6 +781,8 @@ namespace NowUI.CodeEditor
                         }
                         else
                         {
+                            // Every branch above needs an open popup or the
+                            // Alt chord, so a plain Enter still breaks the line.
                             cache.undo.Push(text, in state, typing: true);
                             InsertNewlineWithIndent(ref text, ref state, _language);
                         }
@@ -820,6 +883,11 @@ namespace NowUI.CodeEditor
                             cache.completionSelected = Mathf.Max(cache.completionSelected - 1, 0);
                             NowControlState.RequestRepaint();
                         }
+                        else if (QuickActionsOpen(cache, text, state.caret))
+                        {
+                            cache.quickActionSelected = Mathf.Max(cache.quickActionSelected - 1, 0);
+                            NowControlState.RequestRepaint();
+                        }
                         else if (frame.option && !frame.lineModifier)
                         {
                             // Alt+Up: move the selected lines up one line.
@@ -848,6 +916,11 @@ namespace NowUI.CodeEditor
                         if (CompletionsOpen(cache))
                         {
                             cache.completionSelected = Mathf.Min(cache.completionSelected + 1, cache.completionVisible.Count - 1);
+                            NowControlState.RequestRepaint();
+                        }
+                        else if (QuickActionsOpen(cache, text, state.caret))
+                        {
+                            cache.quickActionSelected = Mathf.Min(cache.quickActionSelected + 1, cache.actions.Count - 1);
                             NowControlState.RequestRepaint();
                         }
                         else if (frame.option && !frame.lineModifier)
@@ -921,6 +994,7 @@ namespace NowUI.CodeEditor
             {
                 NowFocus.Focus(id);
                 CloseCompletions(cache);
+                CloseQuickActions(cache);
                 CloseTooltip(cache);
                 cache.suppressCaretJump = true;
 
@@ -938,6 +1012,9 @@ namespace NowUI.CodeEditor
                     }
                 }
 
+                // Ask the language once, here: the rows the menu declares —
+                // and the spans they carry — stay fixed for as long as it is up.
+                RefreshCodeActions(cache, _language, text, state.caret);
                 NowContextMenu.Open(contextMenuId, secondary.pointerPosition);
             }
 
@@ -998,6 +1075,26 @@ namespace NowUI.CodeEditor
 
                 if (NowContextMenu.Item("Rename Symbol", id: "rename-symbol", shortcut: "F2"))
                     StartRename(id, cache, text, in state);
+
+                // The language's quick actions, frozen since the menu opened.
+                // A disabled row rather than a Label when there are none:
+                // labels return before the shortcut column is drawn, and the
+                // chord is the point of the row.
+                if (cache.actions.Count == 0)
+                {
+                    NowContextMenu.Item("No Quick Actions", id: "no-code-actions",
+                        enabled: false, shortcut: QuickActionChord());
+                }
+
+                for (int i = 0; i < cache.actions.Count; ++i)
+                {
+                    if (NowContextMenu.Item(cache.actions[i].title, id: cache.actionMenuIds[i],
+                        shortcut: i == 0 ? QuickActionChord() : null))
+                    {
+                        cache.undo.Push(text, in state, typing: false);
+                        ApplyCodeAction(cache, ref text, ref state, i);
+                    }
+                }
 
                 NowContextMenu.Separator();
 
@@ -1075,9 +1172,19 @@ namespace NowUI.CodeEditor
             editor.scrollX = Mathf.Clamp(editor.scrollX, 0f, maxScrollX);
 
             if (!focused)
+            {
                 CloseCompletions(cache);
+                CloseQuickActions(cache);
+            }
+            else if (QuickActionsOpen(cache, text, state.caret))
+            {
+                LayoutQuickActionPopup(id, cache, font, _fontSize, textStyle.fontStyle, textRect, lineHeight,
+                    in editor, caretLine, caretX);
+            }
             else if (CompletionsOpen(cache))
+            {
                 LayoutCompletionPopup(id, cache, text, font, _fontSize, textStyle.fontStyle, textRect, lineHeight, in editor, caretLine);
+            }
 
             if (focused && !NowInput.isPassive)
                 NowTextInput.setCompositionCursor?.Invoke(new Vector2(
@@ -2174,9 +2281,28 @@ namespace NowUI.CodeEditor
             return NowTextInput.isMacPlatform ? "Cmd+" + key : "Ctrl+" + key;
         }
 
+        /// <summary>Platform-appropriate label for the quick-action chord.</summary>
+        static string QuickActionChord()
+        {
+            return NowTextInput.isMacPlatform ? "Option+Enter" : "Alt+Enter";
+        }
+
         static bool CompletionsOpen(EditorCache cache)
         {
             return cache.completionReplaceStart >= 0 && cache.completionVisible.Count > 0;
+        }
+
+        /// <summary>
+        /// True while the quick-action popup describes this exact document and
+        /// caret. Actions carry absolute spans, so an edit or a caret move
+        /// retires them the moment it happens rather than one frame later.
+        /// </summary>
+        static bool QuickActionsOpen(EditorCache cache, string text, int caret)
+        {
+            return cache.quickActionsOpen &&
+                cache.actions.Count > 0 &&
+                cache.actionCaret == caret &&
+                ReferenceEquals(cache.actionText, text);
         }
 
         /// <summary>
@@ -2622,6 +2748,246 @@ namespace NowUI.CodeEditor
             }
         }
 
+        /// <summary>
+        /// Asks the language for the quick actions at a caret position and
+        /// mints their menu rows. Actions with no id or title, and repeats of
+        /// an id already in the list, are dropped: a row delivers its click by
+        /// id one pass after the menu closes, so two rows sharing one would
+        /// silently run the first row's edits.
+        /// The list is frozen while the menu is up. The keyboard block is gated
+        /// on focus alone and the menu never takes focus, so the caret can move
+        /// underneath it — and a list rebuilt for the new caret would hand the
+        /// menu's pending click an edit against a stale span.
+        /// </summary>
+        static void RefreshCodeActions(EditorCache cache, NowCodeLanguage language, string text, int caret)
+        {
+            if (NowContextMenu.IsOpen(cache.idContextMenu))
+                return;
+
+            cache.actions.Clear();
+            cache.actionMenuIds.Clear();
+            cache.actionText = text;
+            cache.actionCaret = caret;
+
+            if (!language.TryGetCodeActions(text, caret, cache.actions) || cache.actions.Count == 0)
+            {
+                cache.actions.Clear();
+                return;
+            }
+
+            _codeActionIdScratch.Clear();
+            int kept = 0;
+
+            for (int i = 0; i < cache.actions.Count; ++i)
+            {
+                var action = cache.actions[i];
+
+                if (string.IsNullOrEmpty(action.id) ||
+                    string.IsNullOrEmpty(action.title) ||
+                    !_codeActionIdScratch.Add(action.id))
+                {
+                    WarnDroppedCodeAction(language, action.id);
+                    continue;
+                }
+
+                cache.actions[kept++] = action;
+                cache.actionMenuIds.Add(CodeActionIdPrefix + action.id);
+            }
+
+            cache.actions.RemoveRange(kept, cache.actions.Count - kept);
+        }
+
+        /// <summary>
+        /// Reports a dropped action once it happens in editor/development
+        /// builds: an action with no id, no title, or an id another action
+        /// already claimed cannot own a row, and dropping it quietly looks
+        /// exactly like the language never offering it.
+        /// </summary>
+        static void WarnDroppedCodeAction(NowCodeLanguage language, string id)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.LogWarning($"NowUI: the '{language.name}' language offered a code action with a missing or duplicate id ('{id}') or no title; menu rows are identified by id, so the action was dropped.");
+#endif
+        }
+
+        /// <summary>
+        /// Opens the quick-action popup at the caret. Nothing opens when the
+        /// language offers no action there — Alt+Enter is simply spent.
+        /// </summary>
+        static void OpenQuickActions(EditorCache cache, NowCodeLanguage language, string text, int caret)
+        {
+            CloseCompletions(cache);
+            CloseQuickActions(cache);
+            RefreshCodeActions(cache, language, text, caret);
+
+            if (cache.actions.Count == 0)
+                return;
+
+            cache.quickActionsOpen = true;
+            NowControlState.RequestRepaint();
+        }
+
+        /// <summary>Closes the popup; the action list outlives it, frozen for the context menu.</summary>
+        static void CloseQuickActions(EditorCache cache)
+        {
+            cache.quickActionsOpen = false;
+            cache.quickActionSelected = 0;
+            cache.quickActionWindow = 0;
+        }
+
+        /// <summary>
+        /// Applies one action's edits together. They run from the highest
+        /// offset down so every range keeps the position the language
+        /// reported, and the caret lands inside the first edit's replacement
+        /// text — the rule <see cref="AcceptCompletion"/> follows. An action
+        /// whose text changed under it, or whose spans no longer fit, is
+        /// dropped whole: half of a two-edit fix is worse than none of it.
+        /// </summary>
+        static void ApplyCodeAction(EditorCache cache, ref string text, ref NowTextEditState state, int index)
+        {
+            CloseQuickActions(cache);
+
+            if (index < 0 || index >= cache.actions.Count || !ReferenceEquals(cache.actionText, text))
+                return;
+
+            var edits = cache.actions[index].edits;
+
+            if (edits == null || edits.Length == 0)
+                return;
+
+            _codeEditOrderScratch.Clear();
+
+            for (int i = 0; i < edits.Length; ++i)
+            {
+                var edit = edits[i];
+
+                if (edit.start < 0 || edit.length < 0 || edit.start + edit.length > text.Length)
+                    return;
+
+                int at = _codeEditOrderScratch.Count;
+
+                while (at > 0 && edits[_codeEditOrderScratch[at - 1]].start < edit.start)
+                    --at;
+
+                _codeEditOrderScratch.Insert(at, i);
+            }
+
+            int anchorStart = edits[0].start;
+
+            for (int i = 0; i < _codeEditOrderScratch.Count; ++i)
+            {
+                var edit = edits[_codeEditOrderScratch[i]];
+                string replacement = edit.text ?? string.Empty;
+                text = text.Remove(edit.start, edit.length).Insert(edit.start, replacement);
+
+                // Edits below the anchoring one move where its text lands.
+                if (edit.start < edits[0].start)
+                    anchorStart += replacement.Length - edit.length;
+            }
+
+            string anchorText = edits[0].text ?? string.Empty;
+            state.caret = Mathf.Clamp(anchorStart + cache.actions[index].caretOffset,
+                anchorStart, anchorStart + anchorText.Length);
+            state.anchor = state.caret;
+
+            // The spans described the text that just went away.
+            cache.actionText = null;
+        }
+
+        static void LayoutQuickActionPopup(NowResolvedId id, EditorCache cache, NowFontAsset font, float fontSize,
+            NowFontStyle fontStyle, NowRect textRect, float lineHeight, in EditorState editor, int caretLine, float caretX)
+        {
+            int count = cache.actions.Count;
+            int rows = Mathf.Min(MaxVisibleCodeActions, count);
+            float rowHeight = Mathf.Ceil(fontSize + 8f);
+
+            // Keep the selection inside the visible window.
+            if (cache.quickActionSelected < cache.quickActionWindow)
+                cache.quickActionWindow = cache.quickActionSelected;
+
+            if (cache.quickActionSelected >= cache.quickActionWindow + rows)
+                cache.quickActionWindow = cache.quickActionSelected - rows + 1;
+
+            cache.quickActionWindow = Mathf.Clamp(cache.quickActionWindow, 0, Mathf.Max(0, count - rows));
+
+            float width = 160f;
+
+            for (int r = 0; r < rows; ++r)
+            {
+                var action = cache.actions[cache.quickActionWindow + r];
+                float rowWidth = 20f + Advance(action.title, font, fontSize, fontStyle);
+
+                if (!string.IsNullOrEmpty(action.detail))
+                    rowWidth += 24f + Advance(action.detail, font, fontSize * 0.85f, fontStyle);
+
+                width = Mathf.Max(width, rowWidth);
+            }
+
+            width = Mathf.Min(width, 440f);
+
+            float height = rows * rowHeight + CompletionPadding * 2f;
+            float x = Mathf.Clamp(textRect.x + caretX - editor.scrollX, textRect.x, Mathf.Max(textRect.x, textRect.xMax - width));
+            float caretTop = textRect.y + caretLine * lineHeight - editor.scrollY;
+            float y = caretTop + lineHeight + 2f;
+
+            // Flip above the caret line when there is no room below.
+            if (y + height > textRect.yMax && caretTop - height - 2f >= textRect.y)
+                y = caretTop - height - 2f;
+
+            cache.quickActionPopupRect = new NowRect(x, y, width, height);
+            cache.quickActionRowHeight = rowHeight;
+            NowOverlay.DeferPassive(id, cache.callbackState, s_drawQuickActionOverlay);
+        }
+
+        static void DrawQuickActionOverlay(int callbackState)
+        {
+            if (!_callbackCaches.TryGetValue(callbackState, out var cache) ||
+                !cache.quickActionsOpen ||
+                cache.actions.Count == 0)
+            {
+                return;
+            }
+
+            var theme = NowTheme.themeAsset;
+            var rect = cache.quickActionPopupRect;
+            var background = theme.Rectangle(rect, NowRectangleStyle.Surface);
+            background.outline = 1f;
+            background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
+            background.SetRadius(4f).Draw();
+
+            var font = cache.measureFont;
+            float fontSize = cache.measureFontSize;
+            float rowHeight = cache.quickActionRowHeight;
+            int rows = Mathf.Min(MaxVisibleCodeActions, cache.actions.Count - cache.quickActionWindow);
+
+            for (int r = 0; r < rows; ++r)
+            {
+                int index = cache.quickActionWindow + r;
+                var action = cache.actions[index];
+                var rowRect = new NowRect(rect.x + 2f, rect.y + CompletionPadding + r * rowHeight, rect.width - 4f, rowHeight);
+
+                if (index == cache.quickActionSelected)
+                {
+                    Now.Rectangle(rowRect)
+                        .SetColor(theme.palette.surfaceHover)
+                        .SetRadius(3f)
+                        .Draw();
+                }
+
+                var labelStyle = theme.Text(new NowRect(rowRect.x + 8f, rowRect.y, rowRect.width - 16f, rowRect.height), NowTextStyle.Body);
+                labelStyle.SetFontSize(fontSize).Draw(action.title);
+
+                if (!string.IsNullOrEmpty(action.detail))
+                {
+                    float detailWidth = Advance(action.detail, font, fontSize * 0.85f, cache.measureFontStyle);
+                    var detailStyle = theme.Text(
+                        new NowRect(rowRect.xMax - detailWidth - 8f, rowRect.y, detailWidth + 4f, rowRect.height),
+                        NowTextStyle.Muted);
+                    detailStyle.SetFontSize(fontSize * 0.85f).Draw(action.detail);
+                }
+            }
+        }
+
         static string NumberString(int value)
         {
             while (_numberStrings.Count < value)
@@ -2668,6 +3034,10 @@ namespace NowUI.CodeEditor
                 cache.language = language;
                 cache.text = null;
                 cache.undo.Clear();
+                cache.actions.Clear();
+                cache.actionMenuIds.Clear();
+                cache.actionText = null;
+                CloseQuickActions(cache);
             }
 
             return cache;

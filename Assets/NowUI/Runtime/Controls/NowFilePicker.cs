@@ -2279,9 +2279,7 @@ namespace NowUI
             {
                 var state = pair.Value;
                 ReleaseThumbnailResources(state);
-
-                if (state.id.hasValue)
-                    NowControlState.Get<bool>(state.id) = false;
+                MarkPopupClosed(state);
             }
 
 #if UNITY_EDITOR
@@ -2298,6 +2296,23 @@ namespace NowUI
             s_nextPopupState = 1;
         }
 
+        /// <summary>
+        /// Clears a popup's open flag, if it ever had an id to key one by.
+        /// </summary>
+        /// <remarks>
+        /// A popup state is created the first time the picker draws, but the
+        /// resolved id is only filled in when the popup opens. Teardown
+        /// reaches every state regardless, so asking
+        /// <see cref="NowControlState"/> for a default id throws
+        /// "a resolved child path requires a non-empty parent" out of
+        /// OnDisable, which takes the whole graphic down with it.
+        /// </remarks>
+        static void MarkPopupClosed(PopupState state)
+        {
+            if (state.id.hasValue)
+                NowControlState.Get<bool>(state.id) = false;
+        }
+
         static void ReleaseRegistrationOwner(object owner)
         {
             if (owner == null || _popupStates.Count == 0)
@@ -2311,7 +2326,7 @@ namespace NowUI
                     continue;
 
                 ReleaseThumbnailResources(state, deferLoadedTextures: true);
-                NowControlState.Get<bool>(state.id) = false;
+                MarkPopupClosed(state);
                 _popupStatesByCallback.Remove(state.callbackState);
                 _releasedPopupStateIds.Add(pair.Key);
             }
@@ -2340,7 +2355,7 @@ namespace NowUI
                     continue;
 
                 ReleaseThumbnailResources(state, deferLoadedTextures: true);
-                NowControlState.Get<bool>(state.id) = false;
+                MarkPopupClosed(state);
             }
         }
 

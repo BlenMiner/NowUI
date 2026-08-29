@@ -307,7 +307,12 @@ namespace NowUI
             DrawTextInputFrame(new NowControlFrameRenderContext(context.themeAsset, context.rect, context.focused || context.open));
 
             NowRect inner = DropdownFieldInnerRect(context.themeAsset, context.rect, LabelHeight(context.themeAsset));
-            NowControls.DrawLeftLabel(context.themeAsset, inner, context.current, NowTextStyle.Body);
+
+            if (context.showsPlaceholder)
+                NowControls.DrawLeftPlaceholder(context.themeAsset, inner, context.placeholder);
+            else
+                NowControls.DrawLeftLabel(context.themeAsset, inner, context.current, NowTextStyle.Body);
+
             float chevron = context.themeAsset.controlStyles.fieldChevronSize;
             DrawChevron(context.themeAsset, new NowRect(context.rect.xMax - chevron - 8f, context.rect.y, chevron, context.rect.height), context.open);
         }

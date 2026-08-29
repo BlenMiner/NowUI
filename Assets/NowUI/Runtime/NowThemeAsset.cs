@@ -1670,7 +1670,25 @@ namespace NowUI
         public readonly bool focused;
         public readonly float hoverT;
 
+        /// <summary>
+        /// Shown in place of <see cref="current"/> while it is empty, muted
+        /// and italic like every other field's placeholder.
+        /// </summary>
+        /// <remarks>
+        /// A combo box that holds no selection — an "add something" picker, a
+        /// filter nobody has set — otherwise renders as a bare box with a
+        /// chevron, which says nothing about what it is for. The placeholder
+        /// was already authored on those controls and was only ever reaching
+        /// the filter field inside the open popup.
+        /// </remarks>
+        public readonly string placeholder;
+
         public NowDropdownFieldRenderContext(NowThemeAsset themeAsset, NowRect rect, string current, bool open, NowInteraction interaction, bool focused, float hoverT)
+            : this(themeAsset, rect, current, open, interaction, focused, hoverT, null)
+        {
+        }
+
+        public NowDropdownFieldRenderContext(NowThemeAsset themeAsset, NowRect rect, string current, bool open, NowInteraction interaction, bool focused, float hoverT, string placeholder)
         {
             this.themeAsset = themeAsset;
             this.rect = rect;
@@ -1679,7 +1697,12 @@ namespace NowUI
             this.interaction = interaction;
             this.focused = focused;
             this.hoverT = hoverT;
+            this.placeholder = placeholder;
         }
+
+        /// <summary>True when the field has nothing to show but a placeholder to show instead.</summary>
+        public bool showsPlaceholder =>
+            string.IsNullOrEmpty(current) && !string.IsNullOrEmpty(placeholder);
     }
 
     public readonly struct NowPopupItemRenderContext
@@ -1691,6 +1714,7 @@ namespace NowUI
         public readonly bool selected;
         public readonly NowInteraction interaction;
         public readonly bool hasSubmenu;
+        public readonly bool isChecked;
 
         public NowPopupItemRenderContext(
             NowThemeAsset themeAsset,
@@ -1699,7 +1723,19 @@ namespace NowUI
             bool selected,
             NowInteraction interaction,
             bool hasSubmenu = false)
-            : this(themeAsset, rect, label, null, selected, interaction, hasSubmenu)
+            : this(themeAsset, rect, label, null, selected, interaction, hasSubmenu, selected)
+        {
+        }
+
+        public NowPopupItemRenderContext(
+            NowThemeAsset themeAsset,
+            NowRect rect,
+            string label,
+            bool selected,
+            NowInteraction interaction,
+            bool hasSubmenu,
+            bool isChecked)
+            : this(themeAsset, rect, label, null, selected, interaction, hasSubmenu, isChecked)
         {
         }
 
@@ -1711,6 +1747,19 @@ namespace NowUI
             bool selected,
             NowInteraction interaction,
             bool hasSubmenu = false)
+            : this(themeAsset, rect, label, detail, selected, interaction, hasSubmenu, selected)
+        {
+        }
+
+        public NowPopupItemRenderContext(
+            NowThemeAsset themeAsset,
+            NowRect rect,
+            string label,
+            string detail,
+            bool selected,
+            NowInteraction interaction,
+            bool hasSubmenu,
+            bool isChecked)
         {
             this.themeAsset = themeAsset;
             this.rect = rect;
@@ -1719,6 +1768,7 @@ namespace NowUI
             this.selected = selected;
             this.interaction = interaction;
             this.hasSubmenu = hasSubmenu;
+            this.isChecked = isChecked;
         }
     }
 
@@ -2188,7 +2238,11 @@ namespace NowUI
                 DrawFocusRing(context.themeAsset, context.rect, radius);
 
             var inner = DropdownFieldInnerRect(context.themeAsset, context.rect, LabelHeight(context.themeAsset));
-            NowControls.DrawLeftLabel(context.themeAsset, inner, context.current, NowTextStyle.Body);
+
+            if (context.showsPlaceholder)
+                NowControls.DrawLeftPlaceholder(context.themeAsset, inner, context.placeholder);
+            else
+                NowControls.DrawLeftLabel(context.themeAsset, inner, context.current, NowTextStyle.Body);
 
             float chevron = context.themeAsset.controlStyles.fieldChevronSize;
             DrawFieldChevron(
@@ -2282,6 +2336,23 @@ namespace NowUI
             float left = context.themeAsset.controlStyles.contextMenuPaddingX * 0.7f;
             float right = context.hasSubmenu ? context.themeAsset.controlStyles.submenuIndicatorInset + 4f : 4f;
             NowControls.DrawLeftLabel(context.themeAsset, context.rect.Inset(left, 0f, right, 0f), context.label, NowTextStyle.Body);
+        }
+
+        public virtual void DrawContextMenuSelectionIndicator(
+            NowThemeAsset themeAsset,
+            NowRect rect,
+            bool enabled,
+            bool highlighted)
+        {
+            Color accent = themeAsset.GetColor(NowColorToken.Accent);
+
+            if (!enabled)
+                accent.a *= 0.62f;
+
+            Now.Rectangle(new NowRect(rect.x + 3f, rect.y + 5f, 3f, Mathf.Max(0f, rect.height - 10f)))
+                .SetColor(accent)
+                .SetRadius(2f)
+                .Draw();
         }
 
         public virtual void DrawContextMenuSubmenuIndicator(NowThemeAsset themeAsset, NowRect rect, bool enabled, bool open)

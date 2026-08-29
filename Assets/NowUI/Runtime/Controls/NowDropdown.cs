@@ -379,12 +379,15 @@ namespace NowUI
                         state.itemHeight);
 
                 var itemInteraction = NowInput.Interact(state.itemSeed.Child(i + 1), itemRect);
+                bool isCurrent = i == state.selected;
                 state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
                     state.themeAsset,
                     itemRect,
                     state.options[i],
-                    i == state.selected || i == state.highlight,
-                    itemInteraction));
+                    isCurrent || i == state.highlight,
+                    itemInteraction,
+                    false,
+                    isCurrent));
 
                 if (itemInteraction.clicked)
                 {
@@ -421,12 +424,15 @@ namespace NowUI
             {
                 NowRect itemRect = NowLayout.ReserveRect(height: itemHeight, stretchWidth: true);
                 var itemInteraction = NowInput.Interact(state.itemSeed.Child(i + 1), itemRect);
+                bool isCurrent = i == state.selected;
                 state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
                     state.themeAsset,
                     itemRect,
                     state.options[i],
-                    i == state.selected || i == state.highlight,
-                    itemInteraction));
+                    isCurrent || i == state.highlight,
+                    itemInteraction,
+                    false,
+                    isCurrent));
 
                 if (itemInteraction.clicked)
                 {

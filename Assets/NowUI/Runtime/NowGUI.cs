@@ -532,7 +532,11 @@ namespace NowUI
         {
             drawScope.Dispose();
             entry.renderer.Render(target, true, clearColor);
-            GUI.DrawTexture(rect, target, ScaleMode.StretchToFill, true);
+            // An opaque surface has already composited coverage into its clear
+            // color. Alpha-blending that finished surface through IMGUI a
+            // second time attenuates glyph and vector AA edge pixels.
+            bool alphaBlend = clearColor.a < 1f;
+            GUI.DrawTexture(rect, target, ScaleMode.StretchToFill, alphaBlend);
             CleanupUnusedEntriesForActiveContext(entry.inputProvider.hostContext);
         }
 

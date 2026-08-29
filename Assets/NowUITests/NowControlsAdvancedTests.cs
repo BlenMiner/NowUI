@@ -82,14 +82,21 @@ public class NowControlsAdvancedTests
         public string label;
         public NowRect rect;
         public bool selected;
+        public bool isChecked;
         public bool hasSubmenu;
         public bool submenuOpen;
 
-        public RecordedContextMenuItem(string label, NowRect rect, bool selected, bool hasSubmenu)
+        public RecordedContextMenuItem(
+            string label,
+            NowRect rect,
+            bool selected,
+            bool isChecked,
+            bool hasSubmenu)
         {
             this.label = label;
             this.rect = rect;
             this.selected = selected;
+            this.isChecked = isChecked;
             this.hasSubmenu = hasSubmenu;
             submenuOpen = false;
         }
@@ -145,6 +152,8 @@ public class NowControlsAdvancedTests
         public int contextMenuItems;
         public readonly List<string> popupLabels = new List<string>();
         public readonly List<string> popupDetails = new List<string>();
+        public readonly List<bool> popupSelected = new List<bool>();
+        public readonly List<bool> popupChecked = new List<bool>();
         public readonly List<string> contextMenuLabels = new List<string>();
         public readonly List<NowRect> menuPopupRects = new List<NowRect>();
         public readonly List<RecordedContextMenuItem> contextMenuItemRecords = new List<RecordedContextMenuItem>();
@@ -153,6 +162,8 @@ public class NowControlsAdvancedTests
         public int horizontalScrollbars;
         public NowRect lastPopupRect;
         public NowRect lastMenuPopupRect;
+        public readonly List<string> dropdownFieldTexts = new List<string>();
+        public readonly List<bool> dropdownFieldPlaceholders = new List<bool>();
 
         public override void DrawButton(in NowButtonRenderContext context)
         {
@@ -187,6 +198,8 @@ public class NowControlsAdvancedTests
         public override void DrawDropdownField(in NowDropdownFieldRenderContext context)
         {
             ++dropdownFields;
+            dropdownFieldTexts.Add(context.showsPlaceholder ? context.placeholder : context.current);
+            dropdownFieldPlaceholders.Add(context.showsPlaceholder);
             base.DrawDropdownField(context);
         }
 
@@ -209,6 +222,8 @@ public class NowControlsAdvancedTests
             ++popupItems;
             popupLabels.Add(context.label);
             popupDetails.Add(context.detail);
+            popupSelected.Add(context.selected);
+            popupChecked.Add(context.isChecked);
             base.DrawPopupItem(context);
         }
 
@@ -220,6 +235,7 @@ public class NowControlsAdvancedTests
                 context.label,
                 context.rect,
                 context.selected,
+                context.isChecked,
                 context.hasSubmenu));
             base.DrawContextMenuItem(context);
         }
@@ -640,7 +656,7 @@ public class NowControlsAdvancedTests
                 NowContextMenu.Open(menuId, new Vector2(16, 160));
                 if (NowContextMenu.Begin(menuId))
                 {
-                    NowContextMenu.Item("Copy", id: "copy");
+                    NowContextMenu.Item("Copy", id: "copy", selected: true);
                     NowContextMenu.End();
                 }
 
@@ -657,11 +673,191 @@ public class NowControlsAdvancedTests
             Assert.GreaterOrEqual(renderer.popupItems, 1);
             Assert.GreaterOrEqual(renderer.contextMenuItems, 1);
             Assert.GreaterOrEqual(renderer.scrollbars, 1);
+            Assert.IsTrue(
+                renderer.popupChecked.Contains(true),
+                "The dropdown's current option must reach the renderer as checked.");
+            Assert.IsTrue(
+                renderer.contextMenuItemRecords.Exists(item => item.label == "Copy" && item.isChecked),
+                "An authored selected menu item must reach the renderer as checked.");
         }
         finally
         {
             Now.defaultFont = previousFont;
             Object.DestroyImmediate(font);
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    /// <summary>
+    /// Tearing down a host that drew a file picker but never opened it must
+    /// not throw.
+    /// </summary>
+    /// <remarks>
+    /// A picker's popup state is created the first time it draws, but the
+    /// resolved id its open flag is keyed by only gets filled in when the
+    /// popup actually opens. Releasing the registration owner walks every
+    /// state, so a picker that was only ever sitting on screen asked
+    /// NowControlState for a default id and threw "a resolved child path
+    /// requires a non-empty parent" out of NowGraphic.OnDisable — taking down
+    /// any host carrying a file field, which is most of them.
+    /// </remarks>
+    [Test]
+    public void ReleasingAnOwnerWhosePickerNeverOpenedDoesNotThrow()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        var rect = new NowRect(20f, 20f, 260f, 32f);
+        string path = string.Empty;
+        object owner = null;
+
+        try
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = new NowInputSnapshot(new Vector2(-100f, -100f), false, false, false);
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                Now.OpenFileField(rect, "never-opened").Draw(ref path);
+
+                // The owner the picker recorded, read from where it read it.
+                // Releasing anything else walks straight past the state this
+                // test exists to reach.
+                owner = NowOverlay.currentRegistrationOwner;
+                Assert.That(owner, Is.Not.Null);
+
+                // Released while the picker's state still names this owner,
+                // which is what destroying a host does: the frame's expiry
+                // pass would otherwise have cleared the owner first and let
+                // the walk skip the state entirely.
+                Assert.DoesNotThrow(() => NowOverlay.ReleaseRegistrationOwner(owner));
+                NowOverlay.Flush();
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    /// <summary>
+    /// A combo box with nothing selected shows its placeholder rather than an
+    /// empty box.
+    /// </summary>
+    /// <remarks>
+    /// The placeholder only ever reached the filter field inside the open
+    /// popup, so a picker that keeps no selection by design — "add a
+    /// modifier", "pick a preset" — rendered as a bare box with a chevron and
+    /// said nothing about what it was for until you clicked it.
+    /// </remarks>
+    [Test]
+    public void ComboBoxShowsItsPlaceholderWhileNothingIsSelected()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        var options = new List<string> { "Bigger Bullet", "Single Shot" };
+        var rect = new NowRect(20f, 20f, 220f, 30f);
+        const string placeholder = "Search modifiers...";
+
+        void DrawFrame(int selected)
+        {
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = new NowInputSnapshot(new Vector2(-100f, -100f), false, false, false);
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                Now.ComboBox(rect, options)
+                    .SetId("placeholder-combo")
+                    .SetPlaceholder(placeholder)
+                    .Draw(ref selected);
+                NowOverlay.Flush();
+            }
+        }
+
+        try
+        {
+            DrawFrame(-1);
+
+            Assert.That(renderer.dropdownFields, Is.EqualTo(1));
+            Assert.That(renderer.dropdownFieldTexts[0], Is.EqualTo(placeholder));
+            Assert.That(renderer.dropdownFieldPlaceholders[0], Is.True);
+
+            // A real selection still wins: the placeholder is not a label.
+            DrawFrame(1);
+
+            Assert.That(renderer.dropdownFieldTexts[1], Is.EqualTo("Single Shot"));
+            Assert.That(renderer.dropdownFieldPlaceholders[1], Is.False);
+        }
+        finally
+        {
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    /// <summary>
+    /// The stock placeholder covers a combo box nobody authored one for, and
+    /// clearing it deliberately still leaves the field bare.
+    /// </summary>
+    /// <remarks>
+    /// Every combo box starts with "Search...", so this fix reaches the ones
+    /// that never called SetPlaceholder as well — which is most of them, and
+    /// which is the point: a control that searches should say so before it is
+    /// opened, not after.
+    /// </remarks>
+    [Test]
+    public void TheStockPlaceholderCoversAnUnauthoredComboBox()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<RecordingRenderer>();
+        SetRenderer(theme, renderer);
+
+        var options = new List<string> { "Bigger Bullet" };
+        var rect = new NowRect(20f, 20f, 220f, 30f);
+
+        void DrawFrame(NowId id, bool clearPlaceholder)
+        {
+            int selected = -1;
+            NowOverlay.ForceNewFrame();
+            _pointer.snapshot = new NowInputSnapshot(new Vector2(-100f, -100f), false, false, false);
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_pointer, Surface))
+            using (_drawList.Begin(Surface))
+            {
+                NowComboBox combo = Now.ComboBox(rect, options).SetId(id);
+
+                if (clearPlaceholder)
+                    combo = combo.SetPlaceholder(null);
+
+                combo.Draw(ref selected);
+                NowOverlay.Flush();
+            }
+        }
+
+        try
+        {
+            DrawFrame(new NowId("stock-combo"), clearPlaceholder: false);
+
+            Assert.That(renderer.dropdownFieldTexts[0], Is.EqualTo("Search..."));
+            Assert.That(renderer.dropdownFieldPlaceholders[0], Is.True);
+
+            DrawFrame(new NowId("bare-combo"), clearPlaceholder: true);
+
+            Assert.That(renderer.dropdownFieldTexts[1], Is.Empty);
+            Assert.That(renderer.dropdownFieldPlaceholders[1], Is.False);
+        }
+        finally
+        {
             Object.DestroyImmediate(renderer);
             Object.DestroyImmediate(theme);
         }

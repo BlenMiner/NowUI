@@ -218,6 +218,414 @@ public class NowThemeAssetTests
     }
 
     [Test]
+    public void UnityEditorDarkThemeUsesEditorRendererAndCompactMetrics()
+    {
+        const string ThemePath = "Assets/NowUI/Assets/Themes/UnityEditorDark.asset";
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(ThemePath);
+
+        Assert.IsNotNull(theme);
+        Assert.IsTrue(theme.isDark);
+        Assert.IsNull(theme.counterpart, "The editor-dark preset is intentionally a standalone dark theme.");
+        Assert.IsInstanceOf<NowUnityEditorControlRenderer>(theme.controlRenderer);
+
+        AssertColor(new Color32(56, 56, 56, 255), theme.GetColor(NowColorToken.Background), "editor background");
+        AssertColor(new Color32(88, 88, 88, 255), theme.GetColor(NowColorToken.Surface), "rendered button");
+        AssertColor(new Color32(42, 42, 42, 255), theme.GetColor(NowColorToken.SurfaceMuted), "rendered inset field");
+        AssertColor(new Color32(81, 81, 81, 255), theme.GetColor(NowColorToken.SurfaceHover), "rendered popup");
+        AssertColor(new Color32(210, 210, 210, 255), theme.GetColor(NowColorToken.Text), "editor label");
+        AssertColor(new Color32(53, 53, 53, 255), theme.GetColor(NowColorToken.Border), "scrollbar track");
+        AssertColor(new Color32(62, 95, 150, 255), theme.GetColor(NowColorToken.Accent), "editor selection");
+        AssertColor(new Color32(70, 96, 124, 255), theme.GetColor(NowColorToken.AccentPressed), "pressed button");
+        AssertColor(new Color32(32, 70, 124, 255), theme.GetColor(NowColorToken.AccentMuted), "progress fill");
+        AssertColor(
+            new Color32(60, 130, 203, 230),
+            theme.controlStyles.fieldFocusColor.Resolve(theme),
+            "text-field focus");
+
+        Assert.AreEqual(18f, theme.controlStyles.buttonMinHeight, 0.0001f);
+        Assert.AreEqual(18f, theme.controlStyles.textFieldMinHeight, 0.0001f);
+        Assert.AreEqual(18f, theme.controlStyles.dropdownFieldMinHeight, 0.0001f);
+        Assert.AreEqual(16f, theme.controlStyles.dropdownItemHeight, 0.0001f);
+        Assert.AreEqual(15f, theme.controlStyles.toggleSize, 0.0001f);
+        Assert.AreEqual(2f, theme.controlStyles.sliderTrackThickness, 0.0001f);
+        Assert.AreEqual(15f, theme.controlStyles.scrollbarWidth, 0.0001f);
+        Assert.AreEqual(18f, theme.controlStyles.treeRowHeight, 0.0001f);
+        Assert.AreEqual(new Vector4(2f, 2f, 2f, 2f), theme.controlStyles.buttonRadius.Resolve(theme));
+        Assert.AreEqual(new Vector4(2f, 2f, 2f, 2f), theme.controlStyles.fieldRadius.Resolve(theme));
+        Assert.AreEqual(new Vector4(2f, 2f, 2f, 2f), theme.controlStyles.popupRadius.Resolve(theme));
+
+        Assert.IsTrue(theme.TryGetTextPreset(NowTextStyle.Body, out var body));
+        Assert.IsTrue(theme.TryGetTextPreset(NowTextStyle.Button, out var button));
+        Assert.AreEqual(12f, body.fontSize, 0.0001f);
+        Assert.AreEqual(12f, button.fontSize, 0.0001f);
+        Assert.AreEqual(NowFontStyle.Regular, button.fontStyle);
+
+        Assert.AreEqual(18f, theme.controlRenderer.MeasureButton(theme, string.Empty, NowTextStyle.Button).y, 0.0001f);
+        Assert.AreEqual(18f, theme.controlRenderer.MeasureButton(theme, "Button", NowTextStyle.Button).y, 0.0001f);
+        Assert.AreEqual(21f, theme.controlRenderer.MeasureButtonContent(theme, default).y, 0.0001f);
+        Assert.AreEqual(15f, theme.controlRenderer.ToggleGlyphSize(theme, 20f), 0.0001f);
+        Assert.AreEqual(18f, theme.controlRenderer.MeasureTextField(theme, 14f).y, 0.0001f);
+        Assert.AreEqual(18f, theme.controlRenderer.MeasureDropdownField(theme, 14f).y, 0.0001f);
+    }
+
+    [Test]
+    public void UnityEditorDarkSelectedPopupUsesNativeBlueAndReadableText()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        var previousFont = Now.defaultFont;
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+            Assert.IsNotNull(font, "Default font resource missing.");
+            Now.defaultFont = font;
+
+            using (drawList.Begin(new Vector2(240f, 60f)))
+            {
+                theme.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
+                    theme,
+                    new NowRect(8f, 8f, 200f, 20f),
+                    "Selected option",
+                    true,
+                    default));
+            }
+
+            Color fill = FirstBatchValue(drawList, NowMeshKind.Rectangle, 3);
+            Color text = FirstBatchValue(drawList, NowMeshKind.Text, 3);
+            AssertColor(theme.GetColor(NowColorToken.Accent), fill, "selected popup fill");
+            AssertColor(theme.GetColor(NowColorToken.AccentText), text, "selected popup text");
+            Assert.GreaterOrEqual(ContrastRatio(text, fill), 4.5f);
+            Assert.IsTrue(
+                BatchContainsColor(
+                    drawList,
+                    NowMeshKind.Rectangle,
+                    theme.GetColor(NowColorToken.AccentText)),
+                "The selected Unity-style menu row must include a native-like check mark.");
+
+            drawList.Clear();
+            using (drawList.Begin(new Vector2(240f, 60f)))
+            {
+                theme.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
+                    theme,
+                    new NowRect(8f, 8f, 200f, 20f),
+                    "Normal option",
+                    false,
+                    default));
+            }
+
+            Color normalText = FirstBatchValue(drawList, NowMeshKind.Text, 3);
+            AssertColor(theme.GetColor(NowColorToken.TextMuted), normalText, "normal popup text");
+        }
+        finally
+        {
+            drawList.Dispose();
+            Now.defaultFont = previousFont;
+        }
+    }
+
+    [Test]
+    public void PopupItemContextSeparatesHighlightFromCheckedState()
+    {
+        var highlightedOnly = new NowPopupItemRenderContext(
+            null,
+            new NowRect(0f, 0f, 100f, 20f),
+            "Keyboard highlight",
+            true,
+            default,
+            false,
+            false);
+        var legacySelected = new NowPopupItemRenderContext(
+            null,
+            new NowRect(0f, 0f, 100f, 20f),
+            "Legacy selected",
+            true,
+            default);
+
+        Assert.IsTrue(highlightedOnly.selected);
+        Assert.IsFalse(
+            highlightedOnly.isChecked,
+            "A keyboard-highlighted row must not acquire a check mark.");
+        Assert.IsTrue(
+            legacySelected.isChecked,
+            "Existing selected-row call sites must retain their checked semantics.");
+    }
+
+    [Test]
+    public void UnityEditorDarkScrollbarUsesInsetPillThumb()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+            NowScrollbarMetrics metrics = NowScrollbar.Calculate(
+                NowScrollbarAxis.Horizontal,
+                new NowRect(8f, 8f, 100f, 15f),
+                28f,
+                100f,
+                32f,
+                theme.controlStyles.scrollbarMinThumbSize);
+
+            using (drawList.Begin(new Vector2(128f, 40f)))
+            {
+                theme.controlRenderer.DrawScrollbar(new NowScrollbarRenderContext(
+                    theme,
+                    NowScrollbarAxis.Horizontal,
+                    metrics,
+                    false,
+                    0f));
+            }
+
+            Vector4 thumbRect = LastBatchValue(drawList, NowMeshKind.Rectangle, 1);
+            Vector4 thumbRadius = LastBatchValue(drawList, NowMeshKind.Rectangle, 2);
+            Color thumb = LastBatchValue(drawList, NowMeshKind.Rectangle, 3);
+            Color thumbOutline = LastBatchValue(drawList, NowMeshKind.Rectangle, 4);
+            Color expectedThumb = Color.LerpUnclamped(
+                theme.GetColor(NowColorToken.Surface),
+                theme.GetColor(NowColorToken.TextMuted),
+                0.08f);
+            Color expectedOutline = Color.LerpUnclamped(
+                theme.GetColor(NowColorToken.BorderStrong),
+                theme.GetColor(NowColorToken.Border),
+                0.82f);
+
+            Assert.AreEqual(13f, thumbRect.w, 0.0001f, "The 15 px bar must draw a centered 13 px thumb.");
+            Assert.AreEqual(6.5f, thumbRadius.x, 0.0001f);
+            Assert.AreEqual(6.5f, thumbRadius.y, 0.0001f);
+            Assert.AreEqual(6.5f, thumbRadius.z, 0.0001f);
+            Assert.AreEqual(6.5f, thumbRadius.w, 0.0001f);
+            AssertColor(expectedThumb, thumb, "Unity-style scrollbar thumb");
+            AssertColor(expectedOutline, thumbOutline, "Unity-style scrollbar outline");
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void UnityEditorDarkSliderUsesCircularTenPixelKnob()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+            var rect = new NowRect(8f, 8f, 100f, 18f);
+            NowSliderVisualMetrics metrics = theme.controlRenderer.CalculateSliderMetrics(
+                theme,
+                rect,
+                0.5f);
+
+            Assert.AreEqual(10f, metrics.knob.width, 0.0001f);
+            Assert.AreEqual(10f, metrics.knob.height, 0.0001f);
+
+            using (drawList.Begin(new Vector2(128f, 40f)))
+            {
+                theme.controlRenderer.DrawSlider(new NowSliderRenderContext(
+                    theme,
+                    rect,
+                    metrics,
+                    default,
+                    false,
+                    0f));
+            }
+
+            Vector4 knobRadius = LastBatchValue(drawList, NowMeshKind.Rectangle, 2);
+            Vector4 knobParameters = LastBatchValue(drawList, NowMeshKind.Rectangle, 5);
+            Assert.AreEqual(new Vector4(5f, 5f, 5f, 5f), knobRadius);
+            Assert.AreEqual(
+                0f,
+                knobParameters.y,
+                0.0001f,
+                "The idle native slider knob has no dark square outline.");
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void UnityEditorDarkDropdownUsesFilledEditorTriangle()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        var previousFont = Now.defaultFont;
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+            Assert.IsNotNull(font);
+            Now.defaultFont = font;
+
+            using (drawList.Begin(new Vector2(240f, 48f)))
+            {
+                theme.controlRenderer.DrawDropdownField(new NowDropdownFieldRenderContext(
+                    theme,
+                    new NowRect(8f, 8f, 200f, 18f),
+                    "High",
+                    false,
+                    default,
+                    false,
+                    0f));
+            }
+
+            Color triangle = Color.LerpUnclamped(
+                theme.GetColor(NowColorToken.TextMuted),
+                theme.GetColor(NowColorToken.Text),
+                8f / 15f);
+            Assert.IsTrue(
+                BatchContainsColor(drawList, NowMeshKind.Rectangle, triangle),
+                "The Unity-style dropdown must emit a filled #C4 down-triangle.");
+            Assert.IsFalse(
+                BatchContainsColor(
+                    drawList,
+                    NowMeshKind.Rectangle,
+                    theme.GetColor(NowColorToken.TextMuted)),
+                "The Unity-style dropdown must not fall back to the generic line chevron.");
+        }
+        finally
+        {
+            drawList.Dispose();
+            Now.defaultFont = previousFont;
+        }
+    }
+
+    [Test]
+    public void UnityEditorDarkTreeRowsUseFilledDisclosureTriangles()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+            var row = new NowRect(8f, 8f, 200f, 18f);
+            var disclosure = new NowRect(10f, 11.5f, 11f, 11f);
+            Color triangle = Color.LerpUnclamped(
+                theme.GetColor(NowColorToken.Surface),
+                theme.GetColor(NowColorToken.TextMuted),
+                4f / 23f);
+
+            for (int expanded = 0; expanded < 2; ++expanded)
+            {
+                using (drawList.Begin(new Vector2(240f, 48f)))
+                {
+                    theme.controlRenderer.DrawTreeRow(new NowTreeRowRenderContext(
+                        theme,
+                        row,
+                        string.Empty,
+                        0,
+                        true,
+                        expanded != 0,
+                        false,
+                        disclosure,
+                        default,
+                        false,
+                        0f));
+                }
+
+                Assert.IsTrue(
+                    BatchContainsColor(drawList, NowMeshKind.Rectangle, triangle),
+                    expanded != 0
+                        ? "The expanded Unity-style foldout must emit a filled down-triangle."
+                        : "The collapsed Unity-style foldout must emit a filled right-triangle.");
+                Assert.IsFalse(
+                    BatchContainsColor(
+                        drawList,
+                        NowMeshKind.Rectangle,
+                        theme.GetColor(NowColorToken.TextMuted)),
+                    "The Unity-style foldout must not fall back to the generic line chevron.");
+                drawList.Clear();
+            }
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
+    public void UnityEditorDarkDefaultButtonUsesNeutralEditorSurface()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+            var rect = new NowRect(8f, 8f, 120f, 20f);
+            var inputRect = new Rect(8f, 8f, 120f, 20f);
+
+            using (drawList.Begin(new Vector2(160f, 48f)))
+            {
+                theme.controlRenderer.DrawButton(new NowButtonRenderContext(
+                    theme,
+                    rect,
+                    string.Empty,
+                    NowRectangleStyle.Accent,
+                    NowTextStyle.Button,
+                    default,
+                    false,
+                    0f));
+            }
+
+            Color fill = FirstBatchValue(drawList, NowMeshKind.Rectangle, 3);
+            AssertColor(theme.GetColor(NowColorToken.Surface), fill, "default editor button fill");
+
+            drawList.Clear();
+            using (drawList.Begin(new Vector2(160f, 48f)))
+            {
+                theme.controlRenderer.DrawButton(new NowButtonRenderContext(
+                    theme,
+                    rect,
+                    string.Empty,
+                    NowRectangleStyle.Accent,
+                    NowTextStyle.Button,
+                    PassiveInteraction(8101, inputRect, hovered: true),
+                    false,
+                    1f));
+            }
+
+            Color hoverFill = FirstBatchValue(drawList, NowMeshKind.Rectangle, 3);
+            AssertColor(theme.GetColor(NowColorToken.Surface), hoverFill, "hovered editor button fill");
+
+            drawList.Clear();
+            using (drawList.Begin(new Vector2(160f, 48f)))
+            {
+                theme.controlRenderer.DrawButton(new NowButtonRenderContext(
+                    theme,
+                    rect,
+                    string.Empty,
+                    NowRectangleStyle.Accent,
+                    NowTextStyle.Button,
+                    PassiveInteraction(8102, inputRect, held: true),
+                    false,
+                    1f));
+            }
+
+            Color pressedFill = FirstBatchValue(drawList, NowMeshKind.Rectangle, 3);
+            AssertColor(theme.GetColor(NowColorToken.AccentPressed), pressedFill, "pressed editor button fill");
+        }
+        finally
+        {
+            drawList.Dispose();
+        }
+    }
+
+    [Test]
     public void ShippedThemeAssetsResolveEverySerializedTokenAndPreset()
     {
         var colorTokens = (NowColorToken[])System.Enum.GetValues(typeof(NowColorToken));

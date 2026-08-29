@@ -106,6 +106,32 @@ public class NowVisualHarnessTests
             Assert.IsFalse(scenarios[i].name.StartsWith("theme-review-"), scenarios[i].name);
     }
 
+    [Test]
+    public void EditorComparisonScenarioUsesARealWindowCaptureOnly()
+    {
+        IReadOnlyList<NowHarnessScenario> scenarios =
+            NowHarnessScenarios.All(includeThemeReviews: false);
+        NowHarnessScenario comparison = null;
+
+        for (int i = 0; i < scenarios.Count; ++i)
+        {
+            if (scenarios[i].name == "editorgui-unity-editor-dark")
+            {
+                comparison = scenarios[i];
+                break;
+            }
+        }
+
+        Assert.IsNotNull(comparison);
+        Assert.IsNotNull(comparison.capture);
+        Assert.IsNull(comparison.draw);
+        Assert.IsFalse(comparison.includeInGoldens);
+        Assert.IsFalse(comparison.includeInPerf);
+        Assert.IsTrue(comparison.suppressBadge);
+        Assert.AreEqual(1100, comparison.width);
+        Assert.AreEqual(660, comparison.height);
+    }
+
     static Color32[] SolidPixels(int count, Color32 color)
     {
         var pixels = new Color32[count];

@@ -10,6 +10,7 @@ using NowUI.Markdown;
 using NowUI.NodeGraph;
 using NowUI.Sdf;
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 #if NOWUI_UGUI
 using UnityEngine.UI;
@@ -78,6 +79,10 @@ namespace NowUI.Editor
             (NowTextStyle[])Enum.GetValues(typeof(NowTextStyle));
         static readonly NowColorToken[] ThemeColorTokens =
             (NowColorToken[])Enum.GetValues(typeof(NowColorToken));
+
+        static readonly MethodInfo RepaintImmediatelyMethod = typeof(EditorWindow).GetMethod(
+            "RepaintImmediately",
+            BindingFlags.Instance | BindingFlags.NonPublic);
 
         const string ThemesFolder = "Assets/NowUI/Assets/Themes";
         const string ThemeReviewPrefix = "theme-review-";
@@ -330,6 +335,7 @@ namespace NowUI.Editor
             {
                 new NowHarnessScenario { name = "controls", width = 960, height = 540, includeInGoldens = true, draw = DrawControls },
                 new NowHarnessScenario { name = "controls-dark", width = 960, height = 540, includeInGoldens = true, darkTheme = true, draw = DrawControlsDark },
+                new NowHarnessScenario { name = "editorgui-unity-editor-dark", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, suppressBadge = true, capture = CaptureEditorGUIUnityEditorDark },
                 new NowHarnessScenario { name = "elevation", width = 840, height = 420, includeInGoldens = true, draw = DrawElevation },
                 new NowHarnessScenario { name = "context-menu", width = 640, height = 420, includeInGoldens = true, draw = DrawContextMenu },
                 new NowHarnessScenario { name = "context-submenus", width = 720, height = 420, includeInGoldens = true, createInputProvider = () => new StaticPointerInputProvider(new Vector2(80f, 136f)), draw = DrawContextSubmenus },
@@ -525,6 +531,100 @@ namespace NowUI.Editor
                 Now.SetUIScale(1f);
                 target.Release();
                 UnityEngine.Object.DestroyImmediate(target);
+            }
+        }
+
+        static NowHarnessCapture CaptureEditorGUIUnityEditorDark(
+            NowHarnessScenario scenario,
+            string outputPath)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            NowEditorThemeComparisonWindow window = null;
+            RenderTexture target = null;
+            RenderTexture previousActive = RenderTexture.active;
+
+            try
+            {
+                NowEditorGUI.DisposeAll();
+
+                NowThemeAsset theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+                    NowEditorThemeComparisonWindow.DefaultThemePath);
+                if (theme == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Editor comparison theme is missing at '{NowEditorThemeComparisonWindow.DefaultThemePath}'.");
+                }
+
+                if (RepaintImmediatelyMethod == null)
+                {
+                    throw new MissingMethodException(
+                        typeof(EditorWindow).FullName,
+                        "RepaintImmediately");
+                }
+
+                window = ScriptableObject.CreateInstance<NowEditorThemeComparisonWindow>();
+                window.titleContent = new GUIContent("Editor Theme Comparison");
+                window.ConfigureForCapture(theme);
+                window.minSize = window.maxSize = new Vector2(scenario.width, scenario.height);
+                window.position = new Rect(64f, 64f, scenario.width, scenario.height);
+                window.ShowUtility();
+                window.position = new Rect(64f, 64f, scenario.width, scenario.height);
+                window.Focus();
+
+                if (!window.hasFocus)
+                    throw new InvalidOperationException("The editor comparison capture window did not receive focus.");
+
+                // First pass warms the IMGUI-hosted NowUI texture/font state;
+                // the second pass is the stable backing image that we capture.
+                RepaintImmediatelyMethod.Invoke(window, null);
+                RepaintImmediatelyMethod.Invoke(window, null);
+
+                float pixelsPerPoint = Mathf.Max(1f, EditorGUIUtility.pixelsPerPoint);
+                int width = Mathf.CeilToInt(window.position.width * pixelsPerPoint);
+                int height = Mathf.CeilToInt(window.position.height * pixelsPerPoint);
+                target = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32)
+                {
+                    name = "NowUI EditorGUI comparison capture",
+                    antiAliasing = 1,
+                    hideFlags = HideFlags.HideAndDontSave
+                };
+                target.Create();
+
+                if (!InternalEditorUtility.CaptureEditorWindow(window, target))
+                    throw new InvalidOperationException("Unity failed to capture the focused editor comparison window.");
+
+                WritePng(target, outputPath);
+                stopwatch.Stop();
+
+                return new NowHarnessCapture
+                {
+                    name = scenario.name,
+                    width = width,
+                    height = height,
+                    path = outputPath,
+                    batchCount = 0,
+                    vertexCount = 0,
+                    elapsedMilliseconds = stopwatch.ElapsedMilliseconds
+                };
+            }
+            finally
+            {
+                if (target != null)
+                {
+                    RenderTexture.active = previousActive;
+                    target.Release();
+                    UnityEngine.Object.DestroyImmediate(target);
+                }
+
+                if (window != null)
+                {
+                    if (window)
+                        window.Close();
+                    if (window)
+                        UnityEngine.Object.DestroyImmediate(window);
+                }
+
+                NowEditorGUI.DisposeAll();
             }
         }
 

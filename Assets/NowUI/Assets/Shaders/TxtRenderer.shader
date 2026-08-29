@@ -23,7 +23,7 @@ Shader "NowUI/Text Renderer"
         Lighting Off
         ZWrite Off
         ZTest [_ZTest]
-        Blend SrcAlpha OneMinusSrcAlpha
+        Blend One OneMinusSrcAlpha
 
         Pass
         {
@@ -127,6 +127,7 @@ Shader "NowUI/Text Renderer"
 
                 color.a *= max(opacity, outlineOp);
                 color.a *= NowUIMaskCoverage(uiPosition);
+                color.rgb *= color.a;
 
                 return color;
             }

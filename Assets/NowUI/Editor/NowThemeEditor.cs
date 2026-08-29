@@ -58,6 +58,10 @@ namespace NowUI.Editor
             EditorGUILayout.Space(8f);
             DrawGenerator();
 
+            EditorGUILayout.Space(6f);
+            if (GUILayout.Button("Compare With Unity Editor"))
+                NowEditorThemeComparisonWindow.Open((NowThemeAsset)target);
+
             bool changed = EditorGUI.EndChangeCheck();
             bool applied = serializedObject.ApplyModifiedProperties();
 

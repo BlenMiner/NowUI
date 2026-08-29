@@ -2,6 +2,7 @@
   "name": "NowUI.Editor.Harness",
   "rootNamespace": "NowUI.Editor",
   "references": [
+    "NowUI.Editor",
     "NowUI.Runtime",
     "NowUI.Examples",
     "NowUI.Extensions.Markdown",

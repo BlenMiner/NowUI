@@ -23,7 +23,7 @@ Shader "NowUI/Text Renderer RGBA"
         Lighting Off
         ZWrite Off
         ZTest [_ZTest]
-        Blend SrcAlpha OneMinusSrcAlpha
+        Blend One OneMinusSrcAlpha
 
         Pass
         {
@@ -105,6 +105,7 @@ Shader "NowUI/Text Renderer RGBA"
 
                 col.a *= NowUIMaskCoverage(uiPosition);
                 clip(col.a - 0.01);
+                col.rgb *= col.a;
                 return col;
             }
             ENDCG

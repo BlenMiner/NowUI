@@ -7,13 +7,15 @@ explicitly.
 
 Create a theme from Unity with `Create > NowUI > Theme`.
 
-The package includes built-in `Default`, `DefaultDark`, `Material`, and
-`MaterialDark` theme assets under [`Assets/Themes`](../Assets/Themes). They share the
-same enum tokens and presets, so UI code can switch between them without
-changing call sites. `Default`/`DefaultDark` use the built-in control renderer
-(soft shadows, line-drawn glyphs, offset focus rings, pressed scale); the
-Material themes assign `MaterialControlRenderer` for a state-layer/ripple
-design language.
+The package includes built-in `Default`, `DefaultDark`, `Material`,
+`MaterialDark`, and `UnityEditorDark` theme assets under
+[`Assets/Themes`](../Assets/Themes). They share the same enum tokens and
+presets, so UI code can switch between them without changing call sites.
+`Default`/`DefaultDark` use the built-in control renderer (soft shadows,
+line-drawn glyphs, offset focus rings, pressed scale); the Material themes
+assign `MaterialControlRenderer` for a state-layer/ripple design language.
+`UnityEditorDark` assigns `NowUnityEditorControlRenderer` for the compact,
+square-edged appearance of Unity's dark editor skin.
 
 Theme palettes and colors passed to NowUI builders are authored as display
 (sRGB) UI colors. Direct, RenderTexture, world-space, and IMGUI rendering
@@ -78,6 +80,69 @@ generated palette, or **New Random** to pick a fresh seed and leave it visible
 for later. The generator controls are serialized on the theme asset, so
 Undo/Redo works through Unity's normal inspector flow and duplicated themes
 keep their generator settings.
+
+## Unity Editor Dark Preset
+
+`UnityEditorDark` is a standalone dark theme for tools that should visually
+belong beside Unity inspectors. It uses editor-like neutral buttons, dark inset
+fields, distinct selection/focus blues, 18-point controls, 16-point menu rows,
+15-point scrollbars, and small radii. The assigned renderer has no
+`UnityEditor` dependency, so the same theme remains usable on every NowUI host;
+selecting it does not require a different editor bridge or a different control
+API.
+
+Assign the asset normally and scope the existing NowUI content:
+
+```csharp
+[SerializeField] NowThemeAsset unityEditorDark;
+
+void DrawPanel()
+{
+    using (NowTheme.Scope(unityEditorDark))
+        DrawContents();
+}
+```
+
+The preset intentionally maps NowUI's default `Accent` button surface to a
+neutral Unity-style button while keeping the `Accent` palette token blue for
+selected menu/tree rows, tab indicators, and directly styled rectangles.
+Focus and pressed controls use their own editor-calibrated blue tokens. Theme
+spacing tokens do not rewrite authored `NowLayout` gaps or panel padding; use
+compact layout values alongside the preset when matching an inspector
+composition.
+
+Unity 6 uses Inter for editor text. NowUI's bundled default is Noto Sans, so
+the preset matches Unity's text sizes and weights but not every glyph width or
+baseline. Supply an appropriately licensed compiled `NowFontAsset` when exact
+Inter typography is required.
+
+### Editor Comparison Harness
+
+Open `Tools > NowUI > Editor Theme Comparison`, or select a theme asset and
+click `Compare With Unity Editor` in its inspector. The editor-only window
+renders Unity's native editor IMGUI on the left and ordinary NowUI controls on
+the right. Both columns consume one shared table of local rectangles, values,
+and row heights, so alignment, padding, typography, colors, and control art can
+be compared without layout drift. Enable `Guides` to overlay identical row
+origins on both panes. Each column is also quantized to a whole number of
+physical pixels before the NowUI render target is allocated, preventing the
+comparison itself from softening text and edges through half-pixel resampling.
+
+The live section uses `EditorGUI` plus Unity's editor-skinned `GUI` primitives
+where Unity exposes no `EditorGUI` method (notably buttons and scrollbars). The
+forced-state section is explicitly synthetic: it calls the native `GUIStyle`
+states and the selected theme's control renderer with matching state flags.
+This keeps hover, pressed, focused, menu-row, and scrollbar calibration visible
+at the same time while the live controls remain interactive.
+
+Capture the real editor window deterministically without adding it to visual
+goldens or performance measurements:
+
+```powershell
+pwsh -File Tools\NowUI-Harness.ps1 -Mode Visual `
+  -ScenarioFilter editorgui-unity-editor-dark `
+  -ArtifactsPath artifacts\local\editor-theme-comparison
+```
 
 ## Drawing With A Theme
 
@@ -195,6 +260,11 @@ closest native variants:
   foreground. `Surface` is borderless and becomes a text button in the Material
   control renderer. Use `Muted` for a filled tonal container, `Elevated` for a
   raised container, and `Outline` only when an outlined card is intended.
+- Unity Editor Dark: controls use compact editor metrics, neutral outlined
+  buttons, inset fields, neutral checkbox/radio and slider art, solid blue menu
+  selection, native-like menu checks, square popup/tree/divider treatments,
+  and an inset pill scrollbar thumb. It approximates EditorGUI visuals with
+  NowUI primitives rather than sampling proprietary editor textures at runtime.
 
 The renderer hook intentionally keeps behavior in the built-in controls. It can
 replace visuals and measurements, but exact parity with larger design systems

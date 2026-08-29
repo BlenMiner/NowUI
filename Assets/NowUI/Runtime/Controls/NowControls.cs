@@ -1008,9 +1008,41 @@ namespace NowUI
             DrawLeftLabel(activeThemeAsset, rect, label, textStyle, color, true);
         }
 
-        static void DrawLeftLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle, Color color, bool overrideColor)
+        /// <summary>
+        /// Draws a field's placeholder where its value would go: muted and
+        /// italic, which is how <see cref="NowTextField"/> and
+        /// <see cref="NowTextArea"/> already draw theirs, so an empty field
+        /// reads the same whichever control it is.
+        /// </summary>
+        internal static void DrawLeftPlaceholder(
+            NowThemeAsset activeThemeAsset,
+            NowRect rect,
+            string placeholder)
+        {
+            DrawLeftLabel(
+                activeThemeAsset,
+                rect,
+                placeholder,
+                NowTextStyle.Muted,
+                default,
+                overrideColor: false,
+                italic: true);
+        }
+
+        static void DrawLeftLabel(
+            NowThemeAsset activeThemeAsset,
+            NowRect rect,
+            string label,
+            NowTextStyle textStyle,
+            Color color,
+            bool overrideColor,
+            bool italic = false)
         {
             var text = Text(activeThemeAsset, textStyle);
+
+            if (italic)
+                text = text.SetItalic();
+
             Vector2 size = MeasureLabel(in text, label);
             float pad = 1f;
 

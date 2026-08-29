@@ -1274,7 +1274,8 @@ namespace NowUI
                     entry.label,
                     selected,
                     interaction,
-                    entry.kind == EntryKind.Submenu));
+                    entry.kind == EntryKind.Submenu,
+                    entry.selected));
             }
             else
             {
@@ -1309,14 +1310,11 @@ namespace NowUI
             }
 
             if (entry.selected)
-            {
-                var accent = theme.GetColor(NowColorToken.Accent);
-
-                Now.Rectangle(new NowRect(itemRect.x + 3f, itemRect.y + 5f, 3f, Mathf.Max(0f, itemRect.height - 10f)))
-                    .SetColor(accent)
-                    .SetRadius(2f)
-                    .Draw();
-            }
+                theme.controlRenderer.DrawContextMenuSelectionIndicator(
+                    theme,
+                    itemRect,
+                    entry.enabled,
+                    selected);
 
             if (entry.kind == EntryKind.Submenu)
                 theme.controlRenderer.DrawContextMenuSubmenuIndicator(theme, itemRect, entry.enabled, submenuOpen);

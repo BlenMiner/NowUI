@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -9,7 +10,8 @@ using NowUI.CodeEditor;
 /// <summary>
 /// Code editor extension tests: the JSON tokenizer and validator, the
 /// markdown profile with embedded fences, and the editor's IDE behaviors
-/// (auto-pairs, auto-indent, tab, undo) driven through fake input sources.
+/// (auto-pairs, auto-indent, tab, undo, quick actions) driven through fake
+/// input sources.
 /// </summary>
 public class NowCodeEditorTests
 {
@@ -35,6 +37,101 @@ public class NowCodeEditorTests
         }
     }
 
+    /// <summary>Offers two single-edit quick actions, whatever the caret sits on.</summary>
+    sealed class ActionLanguage : NowCodeLanguage
+    {
+        public static readonly ActionLanguage instance = new ActionLanguage();
+
+        public override string name => "code-action-fixture";
+
+        public override int TokenizeLine(string text, int start, int length, int state, List<NowCodeToken> tokens)
+        {
+            return 0;
+        }
+
+        public override bool TryGetCodeActions(string text, int caret, List<NowCodeAction> actions)
+        {
+            actions.Add(new NowCodeAction
+            {
+                id = "first",
+                title = "First Action",
+                edits = new[] { new NowCodeEdit(0, 0, "1") }
+            });
+
+            actions.Add(new NowCodeAction
+            {
+                id = "second",
+                title = "Second Action",
+                edits = new[] { new NowCodeEdit(0, 0, "2") }
+            });
+
+            return true;
+        }
+    }
+
+    /// <summary>Two actions that read identically; only their ids differ.</summary>
+    sealed class SameTitleActionLanguage : NowCodeLanguage
+    {
+        public static readonly SameTitleActionLanguage instance = new SameTitleActionLanguage();
+
+        public override string name => "code-action-same-title-fixture";
+
+        public override int TokenizeLine(string text, int start, int length, int state, List<NowCodeToken> tokens)
+        {
+            return 0;
+        }
+
+        public override bool TryGetCodeActions(string text, int caret, List<NowCodeAction> actions)
+        {
+            actions.Add(new NowCodeAction { id = "left", title = "Implement IBar", edits = new[] { new NowCodeEdit(0, 0, "L") } });
+            actions.Add(new NowCodeAction { id = "right", title = "Implement IBar", edits = new[] { new NowCodeEdit(0, 0, "R") } });
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// One action with two disjoint edits: swap the declaration keyword and
+    /// add the member the interface needs, the way a real "change 'struct' to
+    /// 'class' and implement it" fix has to.
+    /// </summary>
+    sealed class TwoEditActionLanguage : NowCodeLanguage
+    {
+        public static readonly TwoEditActionLanguage instance = new TwoEditActionLanguage();
+
+        public const string Body = "\n    void Tick() { }\n";
+
+        public override string name => "code-action-two-edit-fixture";
+
+        public override int TokenizeLine(string text, int start, int length, int state, List<NowCodeToken> tokens)
+        {
+            return 0;
+        }
+
+        public override bool TryGetCodeActions(string text, int caret, List<NowCodeAction> actions)
+        {
+            int brace = text.LastIndexOf('}');
+
+            if (brace < 0 || !text.StartsWith("struct ", StringComparison.Ordinal))
+                return false;
+
+            actions.Add(new NowCodeAction
+            {
+                id = "struct-to-class",
+                title = "Change 'struct' to 'class' and implement IBar",
+                // The body edit is listed first so the caret lands in the new
+                // member even though the keyword edit applies at a lower offset.
+                edits = new[]
+                {
+                    new NowCodeEdit(brace, 0, Body),
+                    new NowCodeEdit(0, "struct".Length, "class")
+                },
+                caretOffset = Body.IndexOf("void", StringComparison.Ordinal)
+            });
+
+            return true;
+        }
+    }
+
     static readonly Vector2 Surface = new Vector2(640, 480);
     static readonly NowRect EditorRect = new NowRect(20, 20, 400, 300);
 
@@ -56,6 +153,7 @@ public class NowCodeEditorTests
         NowLayout.Reset();
         NowOverlay.Reset();
         NowTextInput.Reset();
+        NowContextMenu.Reset();
         NowCodeEditor.ResetCaches();
 
         _pointer = new FakePointer();
@@ -69,6 +167,7 @@ public class NowCodeEditorTests
     {
         _drawList.Dispose();
         NowCodeEditor.ResetCaches();
+        NowContextMenu.Reset();
         NowTextInput.Reset();
         NowOverlay.Reset();
         NowInput.Reset();
@@ -200,6 +299,60 @@ public class NowCodeEditorTests
         object entry = entries[stateKey];
         object value = entry.GetType().GetField("value", BindingFlags.Instance | BindingFlags.Public).GetValue(entry);
         return (float)editorType.GetField("scrollY", BindingFlags.Instance | BindingFlags.Public).GetValue(value);
+    }
+
+    /// <summary>
+    /// Right-clicks the editor: the press claims, the release clicks, and the
+    /// menu opens and declares its rows inside that same draw.
+    /// </summary>
+    void RightClickFrame(ref string text, NowCodeLanguage language)
+    {
+        var point = new Vector2(EditorRect.x + 40f, EditorRect.y + 30f);
+
+        _pointer.snapshot = new NowInputSnapshot(
+            point, NowPointerButtons.Secondary, NowPointerButtons.Secondary, NowPointerButtons.None);
+        FrameLanguage(ref text, language);
+
+        _pointer.snapshot = new NowInputSnapshot(
+            point, NowPointerButtons.None, NowPointerButtons.None, NowPointerButtons.Secondary);
+        FrameLanguage(ref text, language);
+    }
+
+    /// <summary>The declared rows of the open root menu; NowContextMenu keeps no public reader for them.</summary>
+    static IList RootMenuEntries()
+    {
+        var menusField = typeof(NowContextMenu).GetField("_menus", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(menusField);
+
+        var menus = (IList)menusField.GetValue(null);
+        Assert.Greater(menus.Count, 0, "No context menu was declared.");
+
+        object root = menus[0];
+        var entriesField = root.GetType().GetField("entries", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(entriesField);
+        return (IList)entriesField.GetValue(root);
+    }
+
+    static object MenuEntryField(int index, string name)
+    {
+        var entries = RootMenuEntries();
+        Assert.Less(index, entries.Count, "The expected menu row was not declared.");
+
+        object entry = entries[index];
+        var field = entry.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(field);
+        return field.GetValue(entry);
+    }
+
+    static List<string> MenuLabels()
+    {
+        var entries = RootMenuEntries();
+        var labels = new List<string>(entries.Count);
+
+        for (int i = 0; i < entries.Count; ++i)
+            labels.Add((string)MenuEntryField(i, "label"));
+
+        return labels;
     }
 
     static int EditorCacheCount()
@@ -687,6 +840,109 @@ public class NowCodeEditorTests
         Frame(ref text);
         Frame(ref text, new NowTextInputFrame { enterHeld = true });
         Assert.AreEqual("\n\n", text, "Releasing and pressing again fires another newline.");
+    }
+
+    [Test]
+    public void ContextMenuListsEveryCodeActionTheLanguageOffers()
+    {
+        string text = "abc";
+        RightClickFrame(ref text, ActionLanguage.instance);
+
+        var labels = MenuLabels();
+        int rename = labels.IndexOf("Rename Symbol");
+
+        Assert.Greater(rename, -1, "The fixture must open the editor's own menu.");
+        Assert.AreEqual("First Action", labels[rename + 1], "Actions follow the rename row, in language order.");
+        Assert.AreEqual("Second Action", labels[rename + 2]);
+        StringAssert.Contains("Enter", (string)MenuEntryField(rename + 1, "shortcut"),
+            "The first action carries the quick-action chord.");
+        Assert.IsNull(MenuEntryField(rename + 2, "shortcut"), "Only the first row advertises the chord.");
+    }
+
+    [Test]
+    public void ContextMenuShowsADisabledRowWhenNoCodeActionsApply()
+    {
+        string text = "{}";
+        RightClickFrame(ref text, NowJsonLanguage.instance);
+
+        var labels = MenuLabels();
+        int row = labels.IndexOf("No Quick Actions");
+
+        Assert.Greater(row, -1, "The empty state is a row, not a hole in the menu.");
+        Assert.IsFalse((bool)MenuEntryField(row, "enabled"));
+        StringAssert.Contains("Enter", (string)MenuEntryField(row, "shortcut"),
+            "A disabled item still draws the shortcut column; a label would not.");
+    }
+
+    [Test]
+    public void ActionsSharingATitleStillGetDistinctMenuRows()
+    {
+        string text = "abc";
+        RightClickFrame(ref text, SameTitleActionLanguage.instance);
+
+        var labels = MenuLabels();
+        int first = labels.IndexOf("Rename Symbol") + 1;
+
+        Assert.AreEqual("Implement IBar", labels[first], "The fixture must offer two identically titled actions.");
+        Assert.AreEqual("Implement IBar", labels[first + 1]);
+        Assert.AreNotEqual(
+            MenuEntryField(first, "deliveryId"),
+            MenuEntryField(first + 1, "deliveryId"),
+            "Rows are identified by action id, so duplicate titles must not share one delivery.");
+    }
+
+    [Test]
+    public void AltEnterOpensQuickActionsAndDownThenEnterAppliesTheSecond()
+    {
+        string text = string.Empty;
+        Focus();
+        FrameLanguage(ref text, ActionLanguage.instance);
+
+        FrameLanguage(ref text, ActionLanguage.instance, new NowTextInputFrame { enterHeld = true, option = true });
+        Assert.AreEqual(string.Empty, text, "Alt+Enter opens the popup instead of breaking the line.");
+
+        FrameLanguage(ref text, ActionLanguage.instance, new NowTextInputFrame { downHeld = true });
+        FrameLanguage(ref text, ActionLanguage.instance, new NowTextInputFrame { enterHeld = true });
+        Assert.AreEqual("2", text, "Enter applies the highlighted action, not the first one.");
+
+        FrameLanguage(ref text, ActionLanguage.instance, new NowTextInputFrame { undoPressed = true, command = true });
+        Assert.AreEqual(string.Empty, text, "An applied action is a single undo step.");
+    }
+
+    [Test]
+    public void EnterStillInsertsANewlineWhileTheQuickActionPopupIsClosed()
+    {
+        string text = string.Empty;
+        Focus();
+        FrameLanguage(ref text, ActionLanguage.instance);
+
+        FrameLanguage(ref text, ActionLanguage.instance, new NowTextInputFrame { enterHeld = true });
+        Assert.AreEqual("\n", text, "A language with actions must not capture a plain Enter.");
+
+        FrameLanguage(ref text, ActionLanguage.instance);
+        FrameLanguage(ref text, ActionLanguage.instance, new NowTextInputFrame { enterHeld = true, option = true });
+        FrameLanguage(ref text, ActionLanguage.instance, new NowTextInputFrame { escapePressed = true });
+        FrameLanguage(ref text, ActionLanguage.instance, new NowTextInputFrame { enterHeld = true });
+
+        Assert.AreEqual("\n\n", text, "Escape closes the popup and hands Enter back to the document.");
+    }
+
+    [Test]
+    public void ACodeActionAppliesBothOfItsDisjointEdits()
+    {
+        string text = "struct Foo : IBar {}";
+        Focus();
+        FrameLanguage(ref text, TwoEditActionLanguage.instance);
+
+        FrameLanguage(ref text, TwoEditActionLanguage.instance, new NowTextInputFrame { enterHeld = true, option = true });
+        FrameLanguage(ref text, TwoEditActionLanguage.instance);
+        FrameLanguage(ref text, TwoEditActionLanguage.instance, new NowTextInputFrame { enterHeld = true });
+
+        Assert.AreEqual("class Foo : IBar {" + TwoEditActionLanguage.Body + "}", text,
+            "Applying from the highest offset down leaves the lower span where the language reported it.");
+        Assert.AreEqual("class Foo : IBar {".Length + TwoEditActionLanguage.Body.IndexOf("void", StringComparison.Ordinal),
+            State().caret,
+            "The caret lands inside the first listed edit's text, after the earlier edit shifted it.");
     }
 
     [Test]

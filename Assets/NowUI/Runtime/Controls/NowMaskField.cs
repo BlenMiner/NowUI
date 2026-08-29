@@ -312,7 +312,9 @@ namespace NowUI
                     itemRect,
                     label,
                     selected,
-                    itemInteraction));
+                    itemInteraction,
+                    false,
+                    selected));
 
                 if (itemInteraction.clicked)
                 {

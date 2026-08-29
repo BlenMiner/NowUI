@@ -2446,6 +2446,73 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void TextCoverageKeepsAnOpaqueTargetOpaque()
+    {
+        var font = ResolveDefaultNowFont();
+
+        using (_renderer.Begin(_target))
+        {
+            Now.Text(new NowRect(8f, 24f, Side - 16f, 80f), font)
+                .SetFontSize(56f)
+                .SetColor(Color.white)
+                .Draw("HM");
+        }
+
+        _renderer.Render(
+            _target,
+            clear: true,
+            clearColor: new Color(0.18f, 0.18f, 0.18f, 1f));
+        var pixels = ReadPixels(_target);
+
+        AssertTargetOpaque(
+            pixels,
+            "Text antialiasing reduced alpha on an opaque target");
+        Assert.Greater(
+            CountPixels(pixels, pixel => pixel.r > 180),
+            500,
+            "The opacity assertion did not exercise visible glyph coverage.");
+    }
+
+    [Test]
+    public void TransparentWhiteTextOutputIsPremultiplied()
+    {
+        var font = ResolveDefaultNowFont();
+
+        using (_renderer.Begin(_target))
+        {
+            Now.Text(new NowRect(8f, 24f, Side - 16f, 80f), font)
+                .SetFontSize(56f)
+                .SetColor(Color.white)
+                .Draw("HM");
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        var pixels = ReadPixels(_target);
+        int antialiasedPixels = 0;
+
+        for (int i = 0; i < pixels.Length; ++i)
+        {
+            Color32 pixel = pixels[i];
+
+            if (pixel.a <= 8 || pixel.a >= 247)
+                continue;
+
+            ++antialiasedPixels;
+            Assert.LessOrEqual(
+                pixel.r,
+                pixel.a + 4,
+                $"Text pixel {i} is not premultiplied ({pixel}).");
+            Assert.AreEqual(pixel.r, pixel.g, 2, $"Text pixel {i} changed white's RGB balance.");
+            Assert.AreEqual(pixel.r, pixel.b, 2, $"Text pixel {i} changed white's RGB balance.");
+        }
+
+        Assert.Greater(
+            antialiasedPixels,
+            80,
+            "The premultiplication assertion did not exercise antialiased glyph pixels.");
+    }
+
+    [Test]
     public void TextRendersInkWithManagedCompiler()
     {
         var source = ResolveDefaultNowFont();

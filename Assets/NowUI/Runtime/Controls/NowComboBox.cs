@@ -175,7 +175,11 @@ namespace NowUI
 
                 float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
                 string current = selected >= 0 && selected < optionCount ? _options[selected] : string.Empty;
-                renderer.DrawDropdownField(new NowDropdownFieldRenderContext(theme, rect, current, false, interaction, focused, hoverT));
+                // A combo box that holds no selection is common — an "add
+                // something" picker keeps none by design — and drew as an
+                // empty box with a chevron until the placeholder reached the
+                // closed field as well as the open one.
+                renderer.DrawDropdownField(new NowDropdownFieldRenderContext(theme, rect, current, false, interaction, focused, hoverT, _placeholder));
                 return changed;
             }
 
@@ -278,7 +282,7 @@ namespace NowUI
                 }
 
                 float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
-                renderer.DrawDropdownField(new NowDropdownFieldRenderContext(theme, rect, value, false, interaction, focused, hoverT));
+                renderer.DrawDropdownField(new NowDropdownFieldRenderContext(theme, rect, value, false, interaction, focused, hoverT, _placeholder));
                 return changed;
             }
 
@@ -601,14 +605,17 @@ namespace NowUI
                 int optionIndex = state.filteredIndices[row];
                 NowRect itemRect = ItemRect(state, row);
                 var itemInteraction = NowInput.Interact(state.itemSeed.Child(optionIndex + 1), itemRect);
-                bool highlighted = row == state.highlight || optionIndex == state.selected;
+                bool isCurrent = optionIndex == state.selected;
+                bool highlighted = row == state.highlight || isCurrent;
                 state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
                     state.themeAsset,
                     itemRect,
                     state.options[optionIndex],
                     DetailAt(state.optionDetails, optionIndex),
                     highlighted,
-                    itemInteraction));
+                    itemInteraction,
+                    false,
+                    isCurrent));
 
                 if (itemInteraction.clicked)
                 {
@@ -630,7 +637,9 @@ namespace NowUI
                     customRect,
                     "Use \"" + state.filter + "\"",
                     highlighted,
-                    customInteraction));
+                    customInteraction,
+                    false,
+                    false));
 
                 if (customInteraction.clicked)
                 {

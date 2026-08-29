@@ -32,7 +32,7 @@ Shader "NowUI/Text Renderer RGBA UGUI"
         Lighting Off
         ZWrite Off
         ZTest [unity_GUIZTestMode]
-        Blend SrcAlpha OneMinusSrcAlpha
+        Blend One OneMinusSrcAlpha
         ColorMask [_ColorMask]
 
         Stencil
@@ -144,6 +144,7 @@ Shader "NowUI/Text Renderer RGBA UGUI"
                 #endif
 
                 clip(col.a - 0.01);
+                col.rgb *= col.a;
                 return col;
             }
             ENDCG

@@ -85,6 +85,63 @@ namespace NowUI.CodeEditor
         public string detail;
     }
 
+    /// <summary>
+    /// One replacement inside a <see cref="NowCodeAction"/>: the range
+    /// [<see cref="start"/>, start + <see cref="length"/>) of the text the
+    /// action was produced from becomes <see cref="text"/>. Edits within one
+    /// action must not overlap; the editor applies them from the highest
+    /// offset down, so every range keeps the position the language reported.
+    /// </summary>
+    public struct NowCodeEdit
+    {
+        public int start;
+
+        public int length;
+
+        public string text;
+
+        public NowCodeEdit(int start, int length, string text)
+        {
+            this.start = start;
+            this.length = length;
+            this.text = text;
+        }
+    }
+
+    /// <summary>
+    /// One quick action offered for the caret position: the context menu lists
+    /// it under Rename Symbol, and Alt+Enter opens the same list in a popup at
+    /// the caret. An action carries a whole edit list because a real fix is
+    /// often two disjoint edits — change a declaration keyword and add the
+    /// members it now needs — and applying it is a single undo step.
+    /// </summary>
+    public struct NowCodeAction
+    {
+        /// <summary>
+        /// Stable row identity, distinct from every other action in the list.
+        /// Rows are delivered by id and never by title, so two actions may
+        /// share a title; an action without an id is dropped.
+        /// </summary>
+        public string id;
+
+        /// <summary>Row text, e.g. "Implement IShootModifier".</summary>
+        public string title;
+
+        /// <summary>Muted right-aligned hint in the popup, like a completion's detail.</summary>
+        public string detail;
+
+        /// <summary>The replacements this action performs, applied together.</summary>
+        public NowCodeEdit[] edits;
+
+        /// <summary>
+        /// Where the caret lands, measured from the start of the first edit's
+        /// replacement text and clamped inside it — the rule
+        /// <see cref="NowCodeCompletion.caretOffset"/> follows. Order the array
+        /// so the edit the author should land in comes first.
+        /// </summary>
+        public int caretOffset;
+    }
+
     /// <summary>A bracket/quote pair the editor auto-closes, skips over and wraps selections with.</summary>
     public struct NowCodeAutoPair
     {
@@ -193,6 +250,15 @@ namespace NowUI.CodeEditor
         {
             return false;
         }
+
+        /// <summary>
+        /// Fills the quick actions available at a caret position — the context
+        /// menu lists them under Rename Symbol, and Alt+Enter opens the same
+        /// list in a popup at the caret. Each action owns its edits, so one
+        /// action can rewrite a declaration and insert the members it needs in
+        /// a single undo step. Ids must be unique within the list. Default: none.
+        /// </summary>
+        public virtual bool TryGetCodeActions(string text, int caret, List<NowCodeAction> actions) => false;
 
         /// <summary>
         /// Monotonic version for validators that finish asynchronously: bump it
