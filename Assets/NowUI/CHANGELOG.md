@@ -1,3 +1,10 @@
+## [1.9.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.2...nowui-v1.9.3) (2026-08-29)
+
+
+### Bug Fixes
+
+* material theme improvements ([eaa26a1](https://github.com/BlenMiner/NowUI/commit/eaa26a150563abdc746c35b06451fec48b88dff5))
+
 ## [1.9.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.1...nowui-v1.9.2) (2026-08-29)
 
 
