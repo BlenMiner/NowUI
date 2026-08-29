@@ -1,3 +1,10 @@
+## [1.9.6](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.5...nowui-v1.9.6) (2026-08-29)
+
+
+### Bug Fixes
+
+* **editor-theme:** match Unity editor dark visuals ([41e1b4e](https://github.com/BlenMiner/NowUI/commit/41e1b4e6401615550ba9853fd5b4b85febecc96a))
+
 ## [1.9.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.4...nowui-v1.9.5) (2026-08-29)
 
 
