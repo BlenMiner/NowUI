@@ -1,3 +1,10 @@
+## [1.9.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.4...nowui-v1.9.5) (2026-08-29)
+
+
+### Bug Fixes
+
+* patch editor theme to match closer ([93bd711](https://github.com/BlenMiner/NowUI/commit/93bd7114c21abc8a2412be43a78a2378c1b83e6a))
+
 ## [1.9.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.3...nowui-v1.9.4) (2026-08-29)
 
 
