@@ -360,10 +360,18 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "logo", width = 960, height = 240, includeInGoldens = false, warmupFrames = 2, draw = DrawLogo },
                 new NowHarnessScenario { name = "model-preview-effects", width = 720, height = 420, includeInGoldens = false, warmupFrames = 2, capture = CaptureModelPreviewEffects },
                 new NowHarnessScenario { name = "file-picker-open-image-preview", width = 1024, height = 640, includeInGoldens = false, warmupFrames = 4, prepare = PrepareFilePickerFixture, createInputProvider = () => new ClickThenIdleInputProvider(new Vector2(208f, 33f)), afterWarmup = InjectFilePickerPreviewFixture, draw = DrawFilePickerOpenImagePreview },
+                new NowHarnessScenario { name = "file-picker-unity-editor-dark-open", width = 1024, height = 640, includeInGoldens = false, includeInPerf = false, warmupFrames = 4, suppressBadge = true, themePath = "Assets/NowUI/Assets/Themes/UnityEditorDark.asset", prepare = PrepareFilePickerFixture, createInputProvider = () => new ClickThenIdleInputProvider(new Vector2(208f, 33f)), afterWarmup = InjectFilePickerPreviewFixture, draw = DrawFilePickerUnityEditorDarkOpen },
                 new NowHarnessScenario { name = "file-picker-save-no-preview", width = 1024, height = 640, includeInGoldens = false, warmupFrames = 2, prepare = PrepareFilePickerFixture, createInputProvider = () => new ClickThenIdleInputProvider(new Vector2(208f, 33f)), draw = DrawFilePickerSaveNoPreview },
                 new NowHarnessScenario { name = "file-picker-directory-places", width = 1024, height = 640, includeInGoldens = false, warmupFrames = 3, prepare = PrepareFilePickerFixture, createInputProvider = () => new ClickThenIdleInputProvider(new Vector2(208f, 33f), new Vector2(160f, 260f), new Vector2(0f, 100f)), draw = DrawFilePickerDirectoryPlaces },
                 new NowHarnessScenario { name = "file-picker-place-navigation", width = 1024, height = 640, includeInGoldens = false, warmupFrames = 5, prepare = PrepareFilePickerFixture, createInputProvider = () => new ClickThenIdleInputProvider(new Vector2(208f, 33f), new Vector2(160f, 260f), new Vector2(0f, 100f), new Vector2(160f, 262f)), draw = DrawFilePickerPlaceNavigation },
 #if NOWUI_UGUI
+                new NowHarnessScenario { name = "docs-unity-editor-dark", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
+                new NowHarnessScenario { name = "docs-unity-editor-dark-markdown", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
+                new NowHarnessScenario { name = "docs-unity-editor-dark-controls", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
+                new NowHarnessScenario { name = "docs-unity-editor-dark-controls-gallery", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
+                new NowHarnessScenario { name = "docs-unity-editor-dark-rich-text", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
+                new NowHarnessScenario { name = "docs-unity-editor-dark-code-editor", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
+                new NowHarnessScenario { name = "docs-unity-editor-dark-file-picker", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
                 new NowHarnessScenario { name = "docs-model-preview-demo", width = 1280, height = 720, includeInGoldens = false, warmupFrames = 3, capture = CaptureDocsModelPreviewDemo },
                 new NowHarnessScenario { name = "landing-page-now", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, suppressBadge = true, capture = CaptureLandingPageNow },
                 new NowHarnessScenario { name = "landing-page-now-layout", width = 1280, height = 720, includeInGoldens = true, warmupFrames = 2, suppressBadge = true, capture = CaptureLandingPageNowLayout },
@@ -774,26 +782,101 @@ namespace NowUI.Editor
         }
 
 #if NOWUI_UGUI
+        static NowHarnessCapture CaptureDocsUnityEditorDark(
+            NowHarnessScenario scenario,
+            string outputPath)
+        {
+            const string ThemePath = "Assets/NowUI/Assets/Themes/UnityEditorDark.asset";
+            var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(ThemePath);
+            var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+
+            if (theme == null)
+                throw new InvalidOperationException($"The docs harness theme is missing at '{ThemePath}'.");
+            if (font == null)
+                throw new InvalidOperationException("The docs harness could not load the bundled NowUI/NotoSans font.");
+
+            string pageTitle;
+
+            switch (scenario.name)
+            {
+                case "docs-unity-editor-dark-markdown":
+                    pageTitle = "Markdown";
+                    break;
+                case "docs-unity-editor-dark-controls":
+                    pageTitle = "Controls";
+                    break;
+                case "docs-unity-editor-dark-controls-gallery":
+                    pageTitle = "Controls gallery";
+                    break;
+                case "docs-unity-editor-dark-rich-text":
+                    pageTitle = "Rich text demo";
+                    break;
+                case "docs-unity-editor-dark-code-editor":
+                    pageTitle = "Editor demo";
+                    break;
+                case "docs-unity-editor-dark-file-picker":
+                    pageTitle = "File picker demo";
+                    break;
+                default:
+                    pageTitle = "Overview";
+                    break;
+            }
+
+            return CaptureDocsExample(
+                scenario,
+                outputPath,
+                graphic => graphic.ConfigurePageHarness(theme, font, pageTitle));
+        }
+
         // Captures the actual in-app docs page, including its first deferred
         // model render and the retained texture-effect copy.
         static NowHarnessCapture CaptureDocsModelPreviewDemo(
             NowHarnessScenario scenario,
             string outputPath)
         {
+            const string ThemePath = "Assets/NowUI/Assets/Themes/DefaultDark.asset";
+            var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(ThemePath);
+            var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+
+            if (theme == null)
+                throw new InvalidOperationException($"The docs model-preview harness theme is missing at '{ThemePath}'.");
+            if (font == null)
+                throw new InvalidOperationException("The docs model-preview harness could not load the bundled NowUI/NotoSans font.");
+
+            return CaptureDocsExample(
+                scenario,
+                outputPath,
+                graphic => graphic.ConfigureModelPreviewsDemoHarness(theme, font),
+                graphic =>
+                {
+                    if (!graphic.RenderModelPreviewsDemoNowForHarness())
+                    {
+                        throw new InvalidOperationException(
+                            "The docs model-preview target was not prepared by its first UI rebuild.");
+                    }
+                });
+        }
+
+        static NowHarnessCapture CaptureDocsExample(
+            NowHarnessScenario scenario,
+            string outputPath,
+            Action<NowDocsExample> configure,
+            Action<NowDocsExample> afterFirstRebuild = null)
+        {
             var stopwatch = Stopwatch.StartNew();
             int scale = Mathf.Max(1, renderScale);
             var target = new RenderTexture(scenario.width * scale, scenario.height * scale, 24, RenderTextureFormat.ARGB32)
             {
-                name = "NowUI Docs Model Preview Target",
+                name = $"NowUI Docs Harness Target ({scenario.name})",
                 antiAliasing = 8,
                 hideFlags = HideFlags.HideAndDontSave
             };
-            var cameraObject = new GameObject("NowUI Docs Model Preview Camera")
+            var cameraObject = new GameObject($"NowUI Docs Harness Camera ({scenario.name})")
             {
                 hideFlags = HideFlags.HideAndDontSave
             };
             var canvasObject = new GameObject(
-                "NowUI Docs Model Preview Canvas",
+                $"NowUI Docs Harness Canvas ({scenario.name})",
                 typeof(RectTransform),
                 typeof(Canvas),
                 typeof(CanvasScaler))
@@ -828,7 +911,7 @@ namespace NowUI.Editor
                 scaler.scaleFactor = scale;
 
                 var panelObject = new GameObject(
-                    "NowUI Docs Model Preview Host",
+                    $"NowUI Docs Harness Host ({scenario.name})",
                     typeof(RectTransform),
                     typeof(CanvasRenderer))
                 {
@@ -844,9 +927,8 @@ namespace NowUI.Editor
 
                 var graphic = panelObject.AddComponent<NowDocsExample>();
                 graphic.raycastTarget = false;
-                graphic.ConfigureModelPreviewsDemoHarness(
-                    AssetDatabase.LoadAssetAtPath<NowThemeAsset>("Assets/NowUI/Assets/Themes/DefaultDark.asset"),
-                    Resources.Load<NowFontAsset>("NowUI/NotoSans"));
+                configure(graphic);
+                graphic.PinHarnessScrollTop();
                 AddCanvasBrandBadge(scenario, canvasObject);
 
                 int warmupFrames = Mathf.Max(2, scenario.warmupFrames);
@@ -856,11 +938,8 @@ namespace NowUI.Editor
                     graphic.SetVerticesDirty();
                     Canvas.ForceUpdateCanvases();
 
-                    if (i == 0 && !graphic.RenderModelPreviewsDemoNowForHarness())
-                    {
-                        throw new InvalidOperationException(
-                            "The docs model-preview target was not prepared by its first UI rebuild.");
-                    }
+                    if (i == 0)
+                        afterFirstRebuild?.Invoke(graphic);
                 }
 
                 graphic.SetVerticesDirty();
@@ -1643,13 +1722,23 @@ namespace NowUI.Editor
 
         static void DrawFilePickerOpenImagePreview(NowRect rect)
         {
+            DrawFilePickerOpenImage(rect, "Open Image — Preview Enabled");
+        }
+
+        static void DrawFilePickerUnityEditorDarkOpen(NowRect rect)
+        {
+            DrawFilePickerOpenImage(rect, "Open Image");
+        }
+
+        static void DrawFilePickerOpenImage(NowRect rect, string title)
+        {
             DrawSurface(rect);
 
             string path = _filePickerPreviewPath ?? string.Empty;
             Now.OpenFileField(
                     new NowRect(28f, 18f, 360f, 30f),
                     "harness-file-picker-open-image")
-                .SetTitle("Open Image — Preview Enabled")
+                .SetTitle(title)
                 .SetStartDirectory(_filePickerFixtureDirectory)
                 .SetInitialView(NowFilePickerView.Details)
                 .SetFilters(

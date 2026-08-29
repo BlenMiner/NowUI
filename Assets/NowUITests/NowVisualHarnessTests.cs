@@ -132,6 +132,37 @@ public class NowVisualHarnessTests
         Assert.AreEqual(660, comparison.height);
     }
 
+    [Test]
+    public void UnityEditorFilePickerScenarioOpensTheRealDeterministicDialog()
+    {
+        IReadOnlyList<NowHarnessScenario> scenarios =
+            NowHarnessScenarios.All(includeThemeReviews: false);
+        NowHarnessScenario picker = null;
+
+        for (int i = 0; i < scenarios.Count; ++i)
+        {
+            if (scenarios[i].name == "file-picker-unity-editor-dark-open")
+            {
+                picker = scenarios[i];
+                break;
+            }
+        }
+
+        Assert.IsNotNull(picker);
+        Assert.AreEqual("Assets/NowUI/Assets/Themes/UnityEditorDark.asset", picker.themePath);
+        Assert.AreEqual(1024, picker.width);
+        Assert.AreEqual(640, picker.height);
+        Assert.AreEqual(4, picker.warmupFrames);
+        Assert.IsNotNull(picker.prepare);
+        Assert.IsNotNull(picker.createInputProvider);
+        Assert.IsNotNull(picker.afterWarmup);
+        Assert.IsNotNull(picker.draw);
+        Assert.IsNull(picker.capture);
+        Assert.IsFalse(picker.includeInGoldens);
+        Assert.IsFalse(picker.includeInPerf);
+        Assert.IsTrue(picker.suppressBadge);
+    }
+
     static Color32[] SolidPixels(int count, Color32 color)
     {
         var pixels = new Color32[count];

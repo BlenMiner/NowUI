@@ -129,6 +129,16 @@ namespace NowUI
 
         static readonly Dictionary<string, string> EmptyAttributes = new Dictionary<string, string>(0);
 
+        internal static Color DefaultLinkColor(NowThemeAsset theme)
+        {
+            return theme.controlRenderer is NowUnityEditorControlRenderer
+                ? Color.Lerp(
+                    theme.GetColor(NowColorToken.AccentHover),
+                    theme.GetColor(NowColorToken.Text),
+                    0.5f)
+                : theme.GetColor(NowColorToken.Accent);
+        }
+
         public static NowRichTextParser Empty { get; } = new NowRichTextParser(false, null);
 
         public static NowRichTextParser Default { get; } = new NowRichTextParser(true, null);
@@ -340,12 +350,13 @@ namespace NowUI
                 {
                     string value = TagValue(tag);
                     int id = document.tags.Count + 1;
+                    NowThemeAsset theme = NowTheme.themeAsset;
                     document.tags.Add(new NowRichTextTagPayload { name = "link", value = value });
                     entry = current;
                     entry.name = tag.name;
                     entry.start = output.Length;
                     entry.style = current.style
-                        .SetColor(NowTheme.themeAsset.GetColor(NowColorToken.Accent))
+                        .SetColor(DefaultLinkColor(theme))
                         .SetUnderline();
                     entry.tag = id;
                     return true;

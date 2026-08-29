@@ -65,6 +65,49 @@ public class NowMarkdownTests
             : Mathf.Pow((value + 0.055f) / 1.055f, 2.4f);
     }
 
+    static bool BatchContainsColor(NowDrawList drawList, NowMeshKind kind, Color expected)
+    {
+        var colors = new List<Vector4>();
+        drawList.mesh.GetUVs(3, colors);
+
+        for (int i = 0; i < drawList.batches.Count; ++i)
+        {
+            if (drawList.batches[i].kind != kind)
+                continue;
+
+            foreach (int index in drawList.mesh.GetIndices(i))
+            {
+                if (index < colors.Count &&
+                    ((Vector4)expected - colors[index]).sqrMagnitude <= 0.00000001f)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    static Vector4 FirstBatchValue(NowDrawList drawList, NowMeshKind kind, int uvChannel)
+    {
+        var values = new List<Vector4>();
+        drawList.mesh.GetUVs(uvChannel, values);
+
+        for (int i = 0; i < drawList.batches.Count; ++i)
+        {
+            if (drawList.batches[i].kind != kind)
+                continue;
+
+            int[] indices = drawList.mesh.GetIndices(i);
+
+            if (indices.Length > 0)
+                return values[indices[0]];
+        }
+
+        Assert.Fail($"Draw list did not emit a {kind} batch.");
+        return default;
+    }
+
     [Test]
     public void AtxHeadingsParseLevels()
     {
@@ -1044,6 +1087,173 @@ public class NowMarkdownTests
                     $"Markdown code text color {color} is not readable over Material Dark code panel {panel}.");
             }
         }
+    }
+
+    [Test]
+    public void LinkColorsRemainReadableOnUnityEditorDarkBackground()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        Assert.NotNull(theme);
+
+        Color background = theme.GetColor(NowColorToken.Background, Color.black);
+        Assert.Less(ContrastRatio(theme.GetColor(NowColorToken.Accent, Color.blue), background), 4.5f,
+            "The regression palette must exercise the link contrast correction.");
+
+        var document = NowMarkdownDocument.Parse("[readable link](https://example.com)");
+
+        Color DrawLink(Vector2 pointer)
+        {
+            _provider.snapshot = new NowInputSnapshot(pointer, false, false, false);
+
+            using (NowTheme.Scope(theme))
+            using (NowInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+                document.Draw(new NowRect(0f, 0f, 300f, 60f));
+
+            var colors = new List<Vector4>();
+            _drawList.mesh.GetUVs(3, colors);
+
+            for (int i = 0; i < _drawList.batches.Count; ++i)
+            {
+                if (_drawList.batches[i].kind != NowMeshKind.Text)
+                    continue;
+
+                var indices = _drawList.mesh.GetIndices(i);
+
+                for (int j = 0; j < indices.Length; ++j)
+                {
+                    Color color = colors[indices[j]];
+
+                    if (color.a > 0f)
+                        return color;
+                }
+            }
+
+            Assert.Fail("Markdown link drew no text geometry.");
+            return default;
+        }
+
+        Color idle = DrawLink(new Vector2(500f, 500f));
+        Color hovered = DrawLink(new Vector2(4f, 8f));
+
+        Assert.GreaterOrEqual(ContrastRatio(idle, background), 4.5f,
+            $"Idle link color {idle} is not readable over {background}.");
+        Assert.GreaterOrEqual(ContrastRatio(hovered, background), 4.5f,
+            $"Hovered link color {hovered} is not readable over {background}.");
+        Assert.AreNotEqual(idle, hovered,
+            "Hover must resolve from AccentHover instead of reusing the idle Accent result.");
+    }
+
+    [TestCase("Assets/NowUI/Assets/Themes/UnityEditorDark.asset", true)]
+    [TestCase("Assets/NowUI/Assets/Themes/MaterialDark.asset", false)]
+    public void TableLinesUseEditorStrongBorderWithoutChangingOtherThemes(
+        string themePath,
+        bool expectStrongBorder)
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(themePath);
+        Assert.NotNull(theme);
+
+        Color border = theme.GetColor(NowColorToken.Border, Color.gray);
+        Color borderStrong = theme.GetColor(NowColorToken.BorderStrong, border);
+        Assert.AreNotEqual(border, borderStrong,
+            "The regression palette must distinguish Border from BorderStrong.");
+
+        var document = NowMarkdownDocument.Parse(
+            "| Name | Value |\n| --- | --- |\n| one | two |");
+
+        using (NowTheme.Scope(theme))
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            document.Draw(new NowRect(0f, 0f, 360f, 160f));
+
+        Color expected = expectStrongBorder ? borderStrong : border;
+        Color unexpected = expectStrongBorder ? border : borderStrong;
+        Assert.IsTrue(BatchContainsColor(_drawList, NowMeshKind.Rectangle, expected),
+            $"{theme.name} table rows did not use the expected separator color {expected}.");
+        Assert.IsFalse(BatchContainsColor(_drawList, NowMeshKind.Rectangle, unexpected),
+            $"{theme.name} table rows unexpectedly used {unexpected}.");
+    }
+
+    [Test]
+    public void UnityEditorDarkTasksUseCalibratedEditorCheckboxes()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        Assert.NotNull(theme);
+        Assert.IsInstanceOf<NowUnityEditorControlRenderer>(theme.controlRenderer);
+
+        var document = NowMarkdownDocument.Parse("- [ ] open\n- [x] complete");
+
+        using (NowTheme.Scope(theme))
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            document.Draw(new NowRect(0f, 0f, 300f, 100f));
+
+        Vector4 boxRect = FirstBatchValue(_drawList, NowMeshKind.Rectangle, 1);
+        Vector4 boxRadius = FirstBatchValue(_drawList, NowMeshKind.Rectangle, 2);
+        Color boxFill = FirstBatchValue(_drawList, NowMeshKind.Rectangle, 3);
+        Color boxOutline = FirstBatchValue(_drawList, NowMeshKind.Rectangle, 4);
+
+        Assert.AreEqual(14f, boxRect.z, 0.0001f, "Editor task boxes must be 14 px wide.");
+        Assert.AreEqual(14f, boxRect.w, 0.0001f, "Editor task boxes must be 14 px tall.");
+        Assert.AreEqual(theme.controlStyles.checkboxMarkRadius, boxRadius.x, 0.0001f);
+        Assert.AreEqual(theme.GetColor(NowColorToken.SurfaceMuted), boxFill);
+        Assert.AreEqual(theme.GetColor(NowColorToken.BorderStrong), boxOutline);
+
+        Color expectedTick = Color.LerpUnclamped(
+            theme.GetColor(NowColorToken.Text),
+            theme.GetColor(NowColorToken.AccentText),
+            4f / 9f);
+        Assert.IsTrue(BatchContainsColor(_drawList, NowMeshKind.TexturedRectangle, expectedTick),
+            "A checked Markdown task must use the calibrated editor checkbox tick.");
+
+        Texture2D tick = null;
+        for (int i = 0; i < _drawList.batches.Count; ++i)
+        {
+            if (_drawList.batches[i].kind == NowMeshKind.TexturedRectangle)
+            {
+                tick = _drawList.batches[i].material.mainTexture as Texture2D;
+                break;
+            }
+        }
+
+        Assert.NotNull(tick, "The checked task did not emit the editor tick texture.");
+        Assert.AreEqual(16, tick.width);
+        Assert.AreEqual(15, tick.height);
+        Assert.AreEqual(FilterMode.Point, tick.filterMode);
+    }
+
+    [Test]
+    public void NonEditorTasksKeepMarkdownCheckboxGeometry()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/MaterialDark.asset");
+        Assert.NotNull(theme);
+        Assert.IsNotInstanceOf<NowUnityEditorControlRenderer>(theme.controlRenderer);
+
+        var document = NowMarkdownDocument.Parse("- [x] complete");
+
+        using (NowTheme.Scope(theme))
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+            document.Draw(new NowRect(0f, 0f, 300f, 60f));
+
+        Vector4 boxRect = FirstBatchValue(_drawList, NowMeshKind.Rectangle, 1);
+        Vector4 boxRadius = FirstBatchValue(_drawList, NowMeshKind.Rectangle, 2);
+        // Rectangle submission snaps the fractional Markdown box to the
+        // enclosing pixel grid; preserve that rendered geometry here.
+        float expectedSize = Mathf.Ceil(NowMarkdownStyle.Default.fontSize * 0.85f);
+
+        Assert.AreEqual(expectedSize, boxRect.z, 0.0001f);
+        Assert.AreEqual(expectedSize, boxRect.w, 0.0001f);
+        Assert.AreEqual(4f, boxRadius.x, 0.0001f);
+        Assert.IsTrue(BatchContainsColor(
+            _drawList,
+            NowMeshKind.Rectangle,
+            theme.GetColor(NowColorToken.Border)));
+        Assert.IsFalse(_drawList.batches.Exists(batch => batch.kind == NowMeshKind.TexturedRectangle),
+            "Non-editor task boxes must not acquire the editor tick texture.");
     }
 
     [Test]

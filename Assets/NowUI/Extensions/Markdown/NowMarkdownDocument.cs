@@ -73,6 +73,7 @@ namespace NowUI.Markdown
             Rule,
             QuoteBar,
             CheckBox,
+            CheckBoxChecked,
             CheckFill,
             Bullet,
             TableLine,
@@ -114,10 +115,13 @@ namespace NowUI.Markdown
         readonly Vector4[] _roleColors = new Vector4[RoleCount];
         Vector4 _linkHoverColor;
         NowThemeAsset _colorThemeAsset;
+        NowControlRenderer _colorControlRenderer;
         Color _colorText;
         Color _colorTextMuted;
         Color _colorAccent;
+        Color _colorAccentHover;
         Color _colorBorder;
+        Color _colorBorderStrong;
         Color _colorSurfaceMuted;
         Color _colorSurface;
         Color _colorBackground;
@@ -304,9 +308,21 @@ namespace NowUI.Markdown
                     case OpKind.Fill:
                     case OpKind.Line:
                     {
+                        if (IsUnityEditorTheme(theme))
+                        {
+                            if (op.role == Role.CheckBox || op.role == Role.CheckBoxChecked)
+                            {
+                                DrawUnityEditorTaskBox(theme, target, op.role == Role.CheckBoxChecked);
+                                break;
+                            }
+
+                            if (op.role == Role.CheckFill)
+                                break;
+                        }
+
                         Now.Rectangle(target)
                             .SetColor(hovered && op.role == Role.Link ? _linkHoverColor : _roleColors[(int)op.role])
-                            .SetRadius(op.role == Role.CodePanel || op.role == Role.CheckBox ? 4f :
+                            .SetRadius(op.role == Role.CodePanel || op.role == Role.CheckBox || op.role == Role.CheckBoxChecked ? 4f :
                                 op.role == Role.Bullet ? op.rect.width * 0.5f : 0f)
                             .Draw();
                         break;
@@ -337,6 +353,23 @@ namespace NowUI.Markdown
             }
 
             return result;
+        }
+
+        static void DrawUnityEditorTaskBox(NowThemeAsset themeAsset, NowRect target, bool isChecked)
+        {
+            var glyphRect = new NowRect(
+                target.x - 1f,
+                target.center.y - 7.5f,
+                16f,
+                15f);
+            themeAsset.controlRenderer.DrawCheckbox(new NowToggleRenderContext(
+                themeAsset,
+                glyphRect,
+                glyphRect,
+                isChecked,
+                default,
+                false,
+                0f));
         }
 
         /// <summary>
@@ -578,24 +611,29 @@ namespace NowUI.Markdown
         /// <summary>
         /// Role colors run WCAG contrast searches (chains of pow calls), so they
         /// resolve once into a Role-indexed table. The cache keys on the theme
-        /// reference plus every palette color the contrast math reads, so it
-        /// stays correct when a theme asset's palette is edited in place.
+        /// reference, renderer, and every palette color the contrast math reads,
+        /// so it stays correct when a theme asset is edited in place.
         /// </summary>
         void EnsureRoleColors(NowThemeAsset themeAsset)
         {
             Color text = themeAsset.GetColor(NowColorToken.Text, Color.black);
             Color textMuted = themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
             Color accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+            Color accentHover = themeAsset.GetColor(NowColorToken.AccentHover, accent);
             Color border = themeAsset.GetColor(NowColorToken.Border, new Color(0.894f, 0.902f, 0.922f, 1f));
+            Color borderStrong = themeAsset.GetColor(NowColorToken.BorderStrong, border);
             Color surfaceMuted = themeAsset.GetColor(NowColorToken.SurfaceMuted, new Color(0.95f, 0.96f, 0.97f, 1f));
             Color surface = themeAsset.GetColor(NowColorToken.Surface, Color.white);
             Color background = themeAsset.GetColor(NowColorToken.Background, surface);
 
             if (ReferenceEquals(_colorThemeAsset, themeAsset) &&
+                ReferenceEquals(_colorControlRenderer, themeAsset.controlRenderer) &&
                 text.Equals(_colorText) &&
                 textMuted.Equals(_colorTextMuted) &&
                 accent.Equals(_colorAccent) &&
+                accentHover.Equals(_colorAccentHover) &&
                 border.Equals(_colorBorder) &&
+                borderStrong.Equals(_colorBorderStrong) &&
                 surfaceMuted.Equals(_colorSurfaceMuted) &&
                 surface.Equals(_colorSurface) &&
                 background.Equals(_colorBackground))
@@ -604,10 +642,13 @@ namespace NowUI.Markdown
             }
 
             _colorThemeAsset = themeAsset;
+            _colorControlRenderer = themeAsset.controlRenderer;
             _colorText = text;
             _colorTextMuted = textMuted;
             _colorAccent = accent;
+            _colorAccentHover = accentHover;
             _colorBorder = border;
+            _colorBorderStrong = borderStrong;
             _colorSurfaceMuted = surfaceMuted;
             _colorSurface = surface;
             _colorBackground = background;
@@ -632,16 +673,16 @@ namespace NowUI.Markdown
                     return CodePanelColor(themeAsset);
                 case Role.Link:
                 {
-                    Vector4 accent = themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+                    Color background = themeAsset.GetColor(
+                        NowColorToken.Background,
+                        themeAsset.GetColor(NowColorToken.Surface, Color.white));
+                    Color contrastPole = BestContrastColor(background);
+                    Color accent = themeAsset.GetColor(
+                        NowColorToken.AccentHover,
+                        themeAsset.GetColor(NowColorToken.Accent, Color.blue));
+                    Color link = EnsureContrast(accent, background, contrastPole, 4.5f);
 
-                    if (hovered)
-                    {
-                        accent.x *= 1.2f;
-                        accent.y *= 1.2f;
-                        accent.z *= 1.2f;
-                    }
-
-                    return accent;
+                    return hovered ? Color.Lerp(link, contrastPole, 0.18f) : link;
                 }
                 case Role.Muted:
                     return themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
@@ -654,16 +695,40 @@ namespace NowUI.Markdown
                 case Role.SyntaxComment:
                     return ReadableOnCodePanel(themeAsset, themeAsset.GetColor(NowColorToken.TextMuted, Color.gray));
                 case Role.Rule:
+                    return themeAsset.GetColor(
+                        NowColorToken.BorderStrong,
+                        themeAsset.GetColor(NowColorToken.Border, new Color(0.894f, 0.902f, 0.922f, 1f)));
                 case Role.TableLine:
+                    return themeAsset.GetColor(
+                        IsUnityEditorTheme(themeAsset) ? NowColorToken.BorderStrong : NowColorToken.Border,
+                        new Color(0.894f, 0.902f, 0.922f, 1f));
                 case Role.CheckBox:
+                case Role.CheckBoxChecked:
                     return themeAsset.GetColor(NowColorToken.Border, new Color(0.894f, 0.902f, 0.922f, 1f));
                 case Role.QuoteBar:
                 case Role.Bullet:
                 case Role.CheckFill:
-                    return themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+                {
+                    Color accent = themeAsset.GetColor(
+                        NowColorToken.AccentHover,
+                        themeAsset.GetColor(NowColorToken.Accent, Color.blue));
+                    Color background = themeAsset.GetColor(
+                        NowColorToken.Background,
+                        themeAsset.GetColor(NowColorToken.Surface, Color.white));
+                    return EnsureContrast(
+                        accent,
+                        background,
+                        themeAsset.GetColor(NowColorToken.Text, Color.black),
+                        3f);
+                }
                 default:
                     return themeAsset.GetColor(NowColorToken.Text, Color.black);
             }
+        }
+
+        static bool IsUnityEditorTheme(NowThemeAsset themeAsset)
+        {
+            return themeAsset.controlRenderer is NowUnityEditorControlRenderer;
         }
 
         static Color CodePanelColor(NowThemeAsset themeAsset)
@@ -1081,7 +1146,9 @@ namespace NowUI.Markdown
                 {
                     float box = _style.fontSize * 0.85f;
                     float boxY = y + (lineHeight - box) * 0.5f;
-                    AddFill(Role.CheckBox, new NowRect(x + 1f, boxY, box, box));
+                    AddFill(
+                        item.isChecked ? Role.CheckBoxChecked : Role.CheckBox,
+                        new NowRect(x + 1f, boxY, box, box));
 
                     if (item.isChecked)
                     {

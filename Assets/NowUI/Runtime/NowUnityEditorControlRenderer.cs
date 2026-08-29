@@ -41,6 +41,14 @@ namespace NowUI
         static Texture2D ToggleCheckTexture;
         static Texture2D MenuCheckTexture;
 
+        const float EditorBadgeMinHeight = 16f;
+        const float EditorBadgePaddingX = 5f;
+        const float EditorChipHeight = 18f;
+        const float EditorChipPaddingX = 6f;
+        const float EditorChipRemoveSize = 10f;
+        const float EditorChipRemoveInset = 4f;
+        static readonly Vector4 EditorTagRadius = new Vector4(2f, 2f, 2f, 2f);
+
         public override Vector2 MeasureButton(NowThemeAsset themeAsset, string label, NowTextStyle textStyle)
         {
             Vector2 labelSize = NowControls.Text(themeAsset, textStyle).Measure(label ?? string.Empty);
@@ -115,6 +123,113 @@ namespace NowUI
             return new Vector2(
                 200f,
                 Mathf.Max(themeAsset.controlStyles.dropdownFieldMinHeight, lineHeight));
+        }
+
+        public override Vector2 MeasureBadge(
+            NowThemeAsset themeAsset,
+            string label,
+            NowTextStyle textStyle)
+        {
+            Vector2 labelSize = NowControls.Text(themeAsset, textStyle).Measure(label ?? string.Empty);
+            float height = Mathf.Max(EditorBadgeMinHeight, Mathf.Ceil(labelSize.y + 2f));
+            float width = Mathf.Max(height, Mathf.Ceil(labelSize.x + EditorBadgePaddingX * 2f));
+            return new Vector2(width, height);
+        }
+
+        public override void DrawBadge(in NowBadgeRenderContext context)
+        {
+            var rectangle = context.themeAsset.Rectangle(context.rect, context.style);
+            rectangle.radius = EditorTagRadius;
+            rectangle.outline = 1f;
+            rectangle.outlineColor = context.themeAsset.GetColor(NowColorToken.BorderStrong);
+            rectangle.Draw();
+
+            if (string.IsNullOrEmpty(context.label))
+                return;
+
+            NowControls.DrawCenteredLabel(
+                context.themeAsset,
+                context.rect,
+                context.label,
+                context.textStyle,
+                context.rect,
+                EditorBadgeTextColor(context.themeAsset, context.style));
+        }
+
+        public override Vector2 MeasureChip(
+            NowThemeAsset themeAsset,
+            string label,
+            NowTextStyle textStyle,
+            bool removable)
+        {
+            Vector2 labelSize = NowControls.Text(themeAsset, textStyle).Measure(label ?? string.Empty);
+            float height = Mathf.Max(EditorChipHeight, Mathf.Ceil(labelSize.y + 1f));
+            float width = labelSize.x + EditorChipPaddingX * 2f;
+
+            if (removable)
+                width += EditorChipRemoveSize + EditorChipRemoveInset - 1f;
+
+            return new Vector2(Mathf.Max(height, Mathf.Ceil(width)), height);
+        }
+
+        public override NowRect ChipRemoveRect(NowThemeAsset themeAsset, NowRect rect)
+        {
+            float size = Mathf.Min(EditorChipRemoveSize, Mathf.Max(0f, rect.height - 4f));
+            return new NowRect(
+                rect.xMax - size - EditorChipRemoveInset,
+                rect.y + (rect.height - size) * 0.5f,
+                size,
+                size);
+        }
+
+        public override void DrawChip(in NowChipRenderContext context)
+        {
+            Color fill = context.selected
+                ? context.interaction.held
+                    ? context.themeAsset.GetColor(NowColorToken.AccentPressed)
+                    : context.themeAsset.GetColor(NowColorToken.Accent)
+                : StateToken(
+                    context.themeAsset,
+                    NowColorToken.Surface,
+                    NowColorToken.SurfaceHover,
+                    NowColorToken.SurfacePressed,
+                    context.hoverT,
+                    context.interaction.held);
+            Color outline = context.focused
+                ? context.themeAsset.GetColor(NowColorToken.FocusRing)
+                : context.themeAsset.GetColor(NowColorToken.BorderStrong);
+
+            Now.Rectangle(context.rect)
+                .SetRadius(EditorTagRadius)
+                .SetColor(fill)
+                .SetOutline(1f)
+                .SetOutlineColor(outline)
+                .Draw();
+
+            Color textColor = context.selected
+                ? context.themeAsset.GetColor(NowColorToken.AccentText)
+                : context.themeAsset.GetColor(NowColorToken.Text);
+            float right = context.removable
+                ? Mathf.Max(
+                    EditorChipPaddingX,
+                    context.rect.xMax - context.removeRect.x + 3f)
+                : EditorChipPaddingX;
+            NowControls.DrawLeftLabel(
+                context.themeAsset,
+                context.rect.Inset(EditorChipPaddingX, 0f, right, 0f),
+                context.label,
+                context.textStyle,
+                textColor);
+
+            if (!context.removable)
+                return;
+
+            Color crossColor = context.selected
+                ? context.themeAsset.GetColor(NowColorToken.AccentText)
+                : context.removeHovered
+                    ? context.themeAsset.GetColor(NowColorToken.Danger)
+                    : context.themeAsset.GetColor(NowColorToken.TextMuted);
+            DrawEditorCross(context.removeRect, crossColor);
         }
 
         public override void DrawButton(in NowButtonRenderContext context)
@@ -446,10 +561,14 @@ namespace NowUI
 
             NowRect track = InsetScrollbarCrossAxis(context.axis, context.metrics.track, 1f);
             NowRect thumbRect = InsetScrollbarCrossAxis(context.axis, context.metrics.thumb, 1f);
+            float trackRadius = Mathf.Min(track.width, track.height) * 0.5f;
 
             Now.Rectangle(track)
-                .SetRadius(1f)
-                .SetColor(context.themeAsset.GetColor(NowColorToken.Border))
+                .SetRadius(trackRadius)
+                // Unity's scrollbar trough is a translucent darkening of the
+                // pane below it, not an opaque editor-gray strip. Keeping this
+                // adaptive matters when a scroll view sits on a darker pane.
+                .SetColor(new Color(0f, 0f, 0f, 0.05f))
                 .Draw();
 
             Color thumb = Color.LerpUnclamped(
@@ -647,6 +766,38 @@ namespace NowUI
                 .Draw();
         }
 
+        static Color EditorBadgeTextColor(
+            NowThemeAsset themeAsset,
+            NowRectangleStyle style)
+        {
+            switch (style)
+            {
+                case NowRectangleStyle.Accent:
+                    return themeAsset.GetColor(NowColorToken.AccentText);
+                case NowRectangleStyle.Danger:
+                    return themeAsset.GetColor(NowColorToken.DangerText);
+                default:
+                    // AccentSoft and Outline use Unity's deliberately dark
+                    // selection blue. Text remains readable over those compact
+                    // editor tags instead of inheriting the generic blue
+                    // foreground intended for lighter design-system themes.
+                    return themeAsset.GetColor(NowColorToken.Text);
+            }
+        }
+
+        static void DrawEditorCross(NowRect rect, Color color)
+        {
+            const float Extent = 2.5f;
+            Vector2 center = SnapToScreenPixel(rect.center);
+            var a = SnapToScreenPixel(new Vector2(center.x - Extent, center.y - Extent));
+            var b = SnapToScreenPixel(new Vector2(center.x + Extent, center.y + Extent));
+            var c = SnapToScreenPixel(new Vector2(center.x - Extent, center.y + Extent));
+            var d = SnapToScreenPixel(new Vector2(center.x + Extent, center.y - Extent));
+
+            Now.Line(a, b).SetColor(color).SetWidth(1f).SetCap(NowLineCap.Butt).Draw();
+            Now.Line(c, d).SetColor(color).SetWidth(1f).SetCap(NowLineCap.Butt).Draw();
+        }
+
         static void DrawMenuItem(
             in NowPopupItemRenderContext context,
             float horizontalPadding,
@@ -702,7 +853,7 @@ namespace NowUI
             NowControls.DrawLeftLabel(context.themeAsset, detail, context.detail, NowTextStyle.Caption, detailColor);
         }
 
-        static void DrawDropdownTriangle(NowThemeAsset themeAsset, NowRect rect)
+        internal static void DrawDropdownTriangle(NowThemeAsset themeAsset, NowRect rect)
         {
             // EditorStyles.popup uses a fixed filled down-arrow, including
             // while its menu is open. Its calibrated dark-skin glyph is #C4.

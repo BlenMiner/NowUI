@@ -269,6 +269,197 @@ public class NowThemeAssetTests
     }
 
     [Test]
+    public void UnityEditorDarkBadgeUsesCompactSquaredEditorFrame()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        var previousFont = Now.defaultFont;
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+            Assert.IsNotNull(font, "Default font resource missing.");
+            Now.defaultFont = font;
+
+            Vector2 measured = theme.controlRenderer.MeasureBadge(
+                theme,
+                "9",
+                NowTextStyle.Caption);
+            Assert.AreEqual(16f, measured.y, 0.0001f, "Editor badges should stay on a compact 16 px row.");
+            Assert.GreaterOrEqual(measured.x, measured.y, "A one-character editor badge should not collapse below a square.");
+
+            var rect = new NowRect(8f, 8f, 48f, 16f);
+            using (drawList.Begin(new Vector2(80f, 40f)))
+            {
+                theme.controlRenderer.DrawBadge(new NowBadgeRenderContext(
+                    theme,
+                    rect,
+                    "9",
+                    NowRectangleStyle.Accent,
+                    NowTextStyle.Caption));
+            }
+
+            Vector4 radius = FirstBatchValue(drawList, NowMeshKind.Rectangle, 2);
+            Color fill = FirstBatchValue(drawList, NowMeshKind.Rectangle, 3);
+            Color outline = FirstBatchValue(drawList, NowMeshKind.Rectangle, 4);
+            float outlineWidth = FirstBatchValue(drawList, NowMeshKind.Rectangle, 5).y;
+            Color foreground = FirstBatchValue(drawList, NowMeshKind.Text, 3);
+
+            Assert.AreEqual(new Vector4(2f, 2f, 2f, 2f), radius);
+            Assert.AreEqual(1f, outlineWidth, 0.0001f, "Editor badges should use a crisp one-pixel frame.");
+            AssertColor(theme.GetColor(NowColorToken.Accent), fill, "editor badge fill");
+            AssertColor(theme.GetColor(NowColorToken.BorderStrong), outline, "editor badge outline");
+            AssertColor(theme.GetColor(NowColorToken.AccentText), foreground, "editor badge foreground");
+            Assert.GreaterOrEqual(ContrastRatio(foreground, fill), 4.5f, "Editor badge text must remain readable.");
+        }
+        finally
+        {
+            drawList.Dispose();
+            Now.defaultFont = previousFont;
+        }
+    }
+
+    [Test]
+    public void UnityEditorDarkChipsUseCompactFramesAndReadableSelection()
+    {
+        var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        var previousFont = Now.defaultFont;
+        var drawList = new NowDrawList();
+
+        try
+        {
+            Assert.IsNotNull(theme);
+            Assert.IsNotNull(font, "Default font resource missing.");
+            Now.defaultFont = font;
+
+            Vector2 measured = theme.controlRenderer.MeasureChip(
+                theme,
+                "Filter",
+                NowTextStyle.Label,
+                removable: false);
+            Assert.AreEqual(18f, measured.y, 0.0001f, "Editor chips should share the native 18 px control row.");
+
+            var rect = new NowRect(8f, 8f, 120f, 18f);
+            NowRect remove = theme.controlRenderer.ChipRemoveRect(theme, rect);
+            Assert.AreEqual(10f, remove.width, 0.0001f);
+            Assert.AreEqual(10f, remove.height, 0.0001f);
+
+            using (drawList.Begin(new Vector2(152f, 42f)))
+            {
+                theme.controlRenderer.DrawChip(new NowChipRenderContext(
+                    theme,
+                    rect,
+                    "Filter",
+                    false,
+                    false,
+                    default,
+                    false,
+                    NowTextStyle.Label,
+                    default,
+                    false,
+                    0f));
+            }
+
+            Assert.AreEqual(
+                new Vector4(2f, 2f, 2f, 2f),
+                FirstBatchValue(drawList, NowMeshKind.Rectangle, 2));
+            AssertColor(
+                theme.GetColor(NowColorToken.Surface),
+                FirstBatchValue(drawList, NowMeshKind.Rectangle, 3),
+                "idle editor chip fill");
+            AssertColor(
+                theme.GetColor(NowColorToken.BorderStrong),
+                FirstBatchValue(drawList, NowMeshKind.Rectangle, 4),
+                "idle editor chip outline");
+            Assert.AreEqual(
+                1f,
+                FirstBatchValue(drawList, NowMeshKind.Rectangle, 5).y,
+                0.0001f,
+                "Editor chips should use a crisp one-pixel frame.");
+            AssertColor(
+                theme.GetColor(NowColorToken.Text),
+                FirstBatchValue(drawList, NowMeshKind.Text, 3),
+                "idle editor chip foreground");
+
+            drawList.Clear();
+            using (drawList.Begin(new Vector2(152f, 42f)))
+            {
+                theme.controlRenderer.DrawChip(new NowChipRenderContext(
+                    theme,
+                    rect,
+                    "Selected",
+                    true,
+                    false,
+                    default,
+                    false,
+                    NowTextStyle.Label,
+                    default,
+                    false,
+                    0f));
+            }
+
+            Color selectedFill = FirstBatchValue(drawList, NowMeshKind.Rectangle, 3);
+            Color selectedText = FirstBatchValue(drawList, NowMeshKind.Text, 3);
+            AssertColor(theme.GetColor(NowColorToken.Accent), selectedFill, "selected editor chip fill");
+            AssertColor(theme.GetColor(NowColorToken.AccentText), selectedText, "selected editor chip foreground");
+            Assert.GreaterOrEqual(
+                ContrastRatio(selectedText, selectedFill),
+                4.5f,
+                "Selected editor chip text must remain readable.");
+        }
+        finally
+        {
+            drawList.Dispose();
+            Now.defaultFont = previousFont;
+        }
+    }
+
+    [Test]
+    public void UnityEditorDarkRichTextLinksUseReadableEditorLinkBlue()
+    {
+        var editorTheme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/UnityEditorDark.asset");
+        var materialTheme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
+            "Assets/NowUI/Assets/Themes/MaterialDark.asset");
+
+        Assert.IsNotNull(editorTheme);
+        Assert.IsNotNull(materialTheme);
+
+        Color ParseLinkColor(NowThemeAsset theme)
+        {
+            using (NowTheme.Scope(theme))
+            {
+                NowRichTextDocument document = NowRichTextParser.Default.Parse(
+                    "<link=docs>link</link>",
+                    new NowRichTextStyle(12f).SetColor(theme.GetColor(NowColorToken.Text)));
+
+                Assert.AreEqual(1, document.spans.Count);
+                return document.spans[0].style.color;
+            }
+        }
+
+        Color editorLink = ParseLinkColor(editorTheme);
+        Color expectedEditorLink = Color.Lerp(
+            editorTheme.GetColor(NowColorToken.AccentHover),
+            editorTheme.GetColor(NowColorToken.Text),
+            0.5f);
+        AssertColor(expectedEditorLink, editorLink, "editor rich-text link");
+        Assert.GreaterOrEqual(
+            ContrastRatio(editorLink, editorTheme.GetColor(NowColorToken.Background)),
+            4.5f,
+            "Editor rich-text links must remain readable over the docs background.");
+
+        AssertColor(
+            materialTheme.GetColor(NowColorToken.Accent),
+            ParseLinkColor(materialTheme),
+            "non-editor rich-text link");
+    }
+
+    [Test]
     public void UnityEditorDarkSelectedPopupUsesNativeBlueAndReadableText()
     {
         var theme = AssetDatabase.LoadAssetAtPath<NowThemeAsset>(
@@ -446,7 +637,9 @@ public class NowThemeAssetTests
             }
 
             Vector4 thumbRect = LastBatchValue(drawList, NowMeshKind.Rectangle, 1);
+            Vector4 trackRadius = FirstBatchValue(drawList, NowMeshKind.Rectangle, 2);
             Vector4 thumbRadius = LastBatchValue(drawList, NowMeshKind.Rectangle, 2);
+            Color track = FirstBatchValue(drawList, NowMeshKind.Rectangle, 3);
             Color thumb = LastBatchValue(drawList, NowMeshKind.Rectangle, 3);
             Color thumbOutline = LastBatchValue(drawList, NowMeshKind.Rectangle, 4);
             Color expectedThumb = Color.LerpUnclamped(
@@ -459,10 +652,15 @@ public class NowThemeAssetTests
                 0.82f);
 
             Assert.AreEqual(13f, thumbRect.w, 0.0001f, "The 15 px bar must draw a centered 13 px thumb.");
+            Assert.AreEqual(6.5f, trackRadius.x, 0.0001f, "The scrollbar trough must be rounded too.");
+            Assert.AreEqual(6.5f, trackRadius.y, 0.0001f);
+            Assert.AreEqual(6.5f, trackRadius.z, 0.0001f);
+            Assert.AreEqual(6.5f, trackRadius.w, 0.0001f);
             Assert.AreEqual(6.5f, thumbRadius.x, 0.0001f);
             Assert.AreEqual(6.5f, thumbRadius.y, 0.0001f);
             Assert.AreEqual(6.5f, thumbRadius.z, 0.0001f);
             Assert.AreEqual(6.5f, thumbRadius.w, 0.0001f);
+            AssertColor(new Color(0f, 0f, 0f, 0.05f), track, "Unity-style adaptive scrollbar trough");
             AssertColor(expectedThumb, thumb, "Unity-style scrollbar thumb");
             AssertColor(expectedOutline, thumbOutline, "Unity-style scrollbar outline");
         }

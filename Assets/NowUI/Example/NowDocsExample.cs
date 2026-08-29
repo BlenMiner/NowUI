@@ -228,6 +228,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     int _selected;
     string _docsSearch = "";
+    bool _forceHarnessScrollTop;
     int _rating = 3;
     int _builderRating = 2;
     int _clicks;
@@ -383,6 +384,34 @@ public class NowDocsExample : NowLayoutGraphic
         EnsureModelPreviewDemo();
     }
 
+    internal void ConfigureOverviewHarness(NowThemeAsset theme, NowFontAsset font)
+    {
+        ConfigurePageHarness(theme, font, "Overview");
+    }
+
+    internal void ConfigurePageHarness(NowThemeAsset theme, NowFontAsset font, string pageTitle)
+    {
+        _themeAsset = theme;
+        _font = font;
+        _docsSearch = "";
+
+        for (int i = 0; i < Pages.Length; ++i)
+        {
+            if (!string.Equals(Pages[i].title, pageTitle, System.StringComparison.Ordinal))
+                continue;
+
+            _selected = i;
+            return;
+        }
+
+        throw new System.ArgumentException($"Unknown docs page '{pageTitle}'.", nameof(pageTitle));
+    }
+
+    internal void PinHarnessScrollTop()
+    {
+        _forceHarnessScrollTop = true;
+    }
+
     internal bool RenderModelPreviewsDemoNowForHarness()
     {
         return _modelPreviewDemoRig?.preview.RenderNow() ?? false;
@@ -484,34 +513,36 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawDocsSidebarHeader(NowThemeAsset theme, NowRect rect)
     {
+        bool editorChrome = UsesUnityEditorChrome(theme);
         Color text = theme.GetColor(NowColorToken.Text, Color.white);
         Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
         Color accent = theme.GetColor(NowColorToken.Accent, new Color(0.10f, 0.45f, 0.95f, 1f));
         Color accentText = theme.GetColor(NowColorToken.AccentText, Color.white);
+        float badgeSize = editorChrome ? 24f : 30f;
 
-        using (NowLayout.Area(610001, rect, spacing: 9f, padding: 0f, alignItems: NowLayoutAlign.Start))
+        using (NowLayout.Area(610001, rect, spacing: editorChrome ? 5f : 9f, padding: 0f, alignItems: NowLayoutAlign.Start))
         {
-            using (NowLayout.HorizontalScope(height: 30f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 9f))
+            using (NowLayout.HorizontalScope(height: badgeSize, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: editorChrome ? 7f : 9f))
             {
-                NowRect badge = NowLayout.ReserveRect(30f, 30f);
+                NowRect badge = NowLayout.ReserveRect(badgeSize, badgeSize);
                 Now.Rectangle(badge)
                     .SetColor(accent)
-                    .SetRadius(9f)
+                    .SetRadius(editorChrome ? 2f : 9f)
                     .Draw();
-                DrawCenteredText(theme, badge, "N", 16f, accentText, bold: true);
+                DrawCenteredText(theme, badge, "N", editorChrome ? 12f : 16f, accentText, bold: true);
 
                 using (NowLayout.VerticalScope(spacing: 0f, stretchWidth: true))
                 {
                     NowLayout.Label("NowUI")
-                        .SetFontSize(15f)
-                        .SetHeight(17f)
+                        .SetFontSize(editorChrome ? 13f : 15f)
+                        .SetHeight(editorChrome ? 14f : 17f)
                         .SetBold()
                         .SetColor(text)
                         .Draw();
 
                     NowLayout.Label("Immediate-mode UI docs")
-                        .SetFontSize(10f)
-                        .SetHeight(13f)
+                        .SetFontSize(editorChrome ? 9f : 10f)
+                        .SetHeight(editorChrome ? 10f : 13f)
                         .SetColor(muted)
                         .Draw();
                 }
@@ -519,6 +550,7 @@ public class NowDocsExample : NowLayoutGraphic
 
             NowLayout.TextField("docs-search")
                 .SetPlaceholder("Search docs...")
+                .SetHeight(editorChrome ? 18f : 20f)
                 .SetStretchWidth()
                 .Draw(ref _docsSearch);
         }
@@ -545,9 +577,14 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawDocsNavigation(NowThemeAsset theme, NowRect rect)
     {
+        bool editorChrome = UsesUnityEditorChrome(theme);
+        Vector4 contentPadding = editorChrome
+            ? new Vector4(0f, 0f, 4f, 0f)
+            : new Vector4(2f, 2f, 2f, 2f);
+
         using (NowLayout.Area(rect))
-        using (NowLayout.ScrollView("docs-menu").Begin())
-        using (NowLayout.VerticalScope(spacing: 3f, padding: 2f))
+        using (BeginDocsScroll("docs-menu"))
+        using (NowLayout.VerticalScope(contentPadding, spacing: editorChrome ? 0f : 3f))
         {
             bool drewAny = false;
 
@@ -561,7 +598,7 @@ public class NowDocsExample : NowLayoutGraphic
                         continue;
 
                     if (drewAny)
-                        NowLayout.Space(8f);
+                        NowLayout.Space(editorChrome ? 5f : 8f);
 
                     DrawDocsNavSection(theme, entry);
                     drewAny = true;
@@ -596,17 +633,21 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawDocsNavSection(NowThemeAsset theme, NavEntry entry)
     {
+        bool editorChrome = UsesUnityEditorChrome(theme);
         Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
 
-        using (NowLayout.HorizontalScope(height: 20f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 7f))
+        using (NowLayout.HorizontalScope(height: editorChrome ? 18f : 20f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: editorChrome ? 5f : 7f))
         {
-            NowLayout.Label(entry.icon)
-                .SetFontSize(9f)
-                .SetColor(Color.white)
-                .Draw();
+            if (!editorChrome)
+            {
+                NowLayout.Label(entry.icon)
+                    .SetFontSize(9f)
+                    .SetColor(Color.white)
+                    .Draw();
+            }
 
             NowLayout.Label(entry.title.ToUpperInvariant())
-                .SetFontSize(10f)
+                .SetFontSize(editorChrome ? 9f : 10f)
                 .SetBold()
                 .SetColor(muted)
                 .Draw();
@@ -628,8 +669,10 @@ public class NowDocsExample : NowLayoutGraphic
         Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
         Color accent = theme.GetColor(NowColorToken.Accent, new Color(0.10f, 0.45f, 0.95f, 1f));
         Color accentText = theme.GetColor(NowColorToken.AccentText, Color.white);
-        NowRect rect = NowLayout.ReserveRect(height: 28f, stretchWidth: true);
-        NowRect row = rect.Inset(1f, 0f);
+        bool editorChrome = UsesUnityEditorChrome(theme);
+        float rowHeight = editorChrome ? Mathf.Max(18f, theme.controlStyles.treeRowHeight) : 28f;
+        NowRect rect = NowLayout.ReserveRect(height: rowHeight, stretchWidth: true);
+        NowRect row = editorChrome ? rect : rect.Inset(1f, 0f);
         NowResolvedId id = NowControls.GetControlId($"doc-{pageIndex}");
         var interaction = NowControls.Interact(id, row, out bool focused, out bool submitted);
 
@@ -637,32 +680,41 @@ public class NowDocsExample : NowLayoutGraphic
             _selected = pageIndex;
 
         float hoverT = NowControlState.Transition(interaction, "hover", interaction.hovered || focused, 14f);
+        Color editorHover = theme.GetColor(NowColorToken.SurfaceHover, new Color(0.32f, 0.32f, 0.32f, 1f));
+        editorHover.a *= hoverT;
 
         if (selected)
         {
             Now.Rectangle(row)
-                .SetColor(theme.GetColor(NowColorToken.AccentMuted, new Color(accent.r, accent.g, accent.b, 0.18f)))
-                .SetRadius(7f)
+                .SetColor(editorChrome
+                    ? accent
+                    : theme.GetColor(NowColorToken.AccentMuted, new Color(accent.r, accent.g, accent.b, 0.18f)))
+                .SetRadius(editorChrome ? 1f : 7f)
                 .Draw();
 
-            Now.Rectangle(new NowRect(row.x + 3f, row.y + 7f, 3f, row.height - 14f))
-                .SetColor(accent)
-                .SetRadius(1.5f)
-                .Draw();
+            if (!editorChrome)
+            {
+                Now.Rectangle(new NowRect(row.x + 3f, row.y + 7f, 3f, row.height - 14f))
+                    .SetColor(accent)
+                    .SetRadius(1.5f)
+                    .Draw();
+            }
         }
         else if (hoverT > 0.004f)
         {
             Now.Rectangle(row)
-                .SetColor(new Color(accent.r, accent.g, accent.b, 0.09f * hoverT))
-                .SetRadius(7f)
+                .SetColor(editorChrome
+                    ? editorHover
+                    : new Color(accent.r, accent.g, accent.b, 0.09f * hoverT))
+                .SetRadius(editorChrome ? 1f : 7f)
                 .Draw();
         }
 
-        float indent = 8f + entry.depth * 18f;
+        float indent = editorChrome ? 6f + entry.depth * 14f : 8f + entry.depth * 18f;
         float badgeX = row.x + indent;
         float centerY = row.y + row.height * 0.5f;
 
-        if (entry.depth > 0)
+        if (!editorChrome && entry.depth > 0)
         {
             Color branch = new Color(muted.r, muted.g, muted.b, selected ? 0.38f : 0.26f);
             float lineX = row.x + indent - 11f;
@@ -676,18 +728,29 @@ public class NowDocsExample : NowLayoutGraphic
                 .Draw();
         }
 
-        var badgeRect = new NowRect(badgeX, row.y + 3f, 24f, 22f);
+        NowRect titleRect;
 
-        Now.Text(badgeRect)
-            .SetFontSize(14f)
-            .SetColor(Color.white)
-            .Draw(page.icon);
+        if (editorChrome)
+        {
+            titleRect = new NowRect(badgeX, row.y + 2f, row.xMax - badgeX - 5f, row.height - 3f);
+        }
+        else
+        {
+            var badgeRect = new NowRect(badgeX, row.y + 3f, 24f, 22f);
 
-        var title = Now.Text(new NowRect(badgeRect.xMax + 8f, row.y + 5f, row.xMax - badgeRect.xMax - 14f, row.height - 8f))
-            .SetFontSize(12f)
-            .SetColor(selected ? text : Color.Lerp(text, accentText, hoverT * 0.2f));
+            Now.Text(badgeRect)
+                .SetFontSize(14f)
+                .SetColor(Color.white)
+                .Draw(page.icon);
 
-        if (selected)
+            titleRect = new NowRect(badgeRect.xMax + 8f, row.y + 5f, row.xMax - badgeRect.xMax - 14f, row.height - 8f);
+        }
+
+        var title = Now.Text(titleRect)
+            .SetFontSize(editorChrome ? 11f : 12f)
+            .SetColor(selected && editorChrome ? accentText : selected ? text : Color.Lerp(text, accentText, hoverT * 0.2f));
+
+        if (selected && !editorChrome)
             title = title.SetBold();
 
         title.Draw(page.title);
@@ -743,32 +806,74 @@ public class NowDocsExample : NowLayoutGraphic
         Now.defaultFont = _font;
         var theme = NowTheme.themeAsset;
         var bounds = new NowRect(0, 0, rect.width, rect.height);
+        bool editorChrome = UsesUnityEditorChrome(theme);
 
-        theme.Rectangle(bounds, NowRectangleStyle.Surface).Draw();
+        // Surface is the fill used by controls. A document canvas is a true
+        // background; using Surface here turns Unity's native control gray into
+        // a washed-out page-sized slab.
+        Now.Rectangle(bounds)
+            .SetColor(theme.GetColor(NowColorToken.Background, Color.black))
+            .Draw();
 
-        var menuRect = new NowRect(bounds.x + 12, bounds.y + 12, 292, bounds.height - 24);
-        theme.Rectangle(menuRect, NowRectangleStyle.Elevated).Draw();
+        NowRect menuRect;
+        NowRect menuInner;
+        NowRect menuTitleRect;
+        NowRect menuListRect;
 
-        var menuInner = menuRect.Inset(12f);
-        var menuTitleRect = new NowRect(menuInner.x, menuInner.y, menuInner.width, 76f);
-        var menuListRect = new NowRect(menuInner.x, menuTitleRect.yMax + 10f, menuInner.width, menuInner.yMax - menuTitleRect.yMax - 10f);
+        if (editorChrome)
+        {
+            float menuWidth = Mathf.Min(256f, Mathf.Max(196f, bounds.width * 0.34f));
+            menuRect = new NowRect(bounds.x, bounds.y, menuWidth, bounds.height);
+            Now.Rectangle(menuRect)
+                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.165f, 0.165f, 0.165f, 1f)))
+                .Draw();
+            Now.Rectangle(new NowRect(menuRect.xMax - 1f, menuRect.y, 1f, menuRect.height))
+                .SetColor(theme.GetColor(NowColorToken.BorderStrong, Color.black))
+                .Draw();
+
+            menuInner = menuRect.Inset(8f);
+            menuTitleRect = new NowRect(menuInner.x, menuInner.y, menuInner.width, 50f);
+            menuListRect = new NowRect(menuInner.x, menuTitleRect.yMax + 8f, menuInner.width, menuInner.yMax - menuTitleRect.yMax - 8f);
+        }
+        else
+        {
+            menuRect = new NowRect(bounds.x + 12, bounds.y + 12, 292, bounds.height - 24);
+            theme.Rectangle(menuRect, NowRectangleStyle.Elevated).Draw();
+
+            menuInner = menuRect.Inset(12f);
+            menuTitleRect = new NowRect(menuInner.x, menuInner.y, menuInner.width, 76f);
+            menuListRect = new NowRect(menuInner.x, menuTitleRect.yMax + 10f, menuInner.width, menuInner.yMax - menuTitleRect.yMax - 10f);
+        }
 
         Color separator = theme.GetColor(NowColorToken.Border, Color.gray);
-        Now.Rectangle(new NowRect(menuInner.x, menuTitleRect.yMax + 4f, menuInner.width, 1f))
-            .SetColor(new Color(separator.r, separator.g, separator.b, 0.45f))
+        Now.Rectangle(new NowRect(menuInner.x, menuTitleRect.yMax + (editorChrome ? 3f : 4f), menuInner.width, 1f))
+            .SetColor(editorChrome
+                ? theme.GetColor(NowColorToken.BorderStrong, separator)
+                : new Color(separator.r, separator.g, separator.b, 0.45f))
             .Draw();
 
         DrawDocsSidebarHeader(theme, menuTitleRect);
         DrawDocsNavigation(theme, menuListRect);
 
-        float contentAvailable = bounds.xMax - menuRect.xMax - 24f;
+        float contentLeft = menuRect.xMax + (editorChrome ? 20f : 12f);
+        float contentRight = 12f;
+        float contentAvailable = bounds.xMax - contentLeft - contentRight;
         float scrollGutter = theme.controlStyles.scrollbarWidth + theme.controlStyles.scrollbarPadding;
-        float contentWidth = Mathf.Max(1f, Mathf.Min(contentAvailable - scrollGutter, 940f));
-        var contentRect = new NowRect(menuRect.xMax + 12f, bounds.y + 12, contentAvailable, bounds.height - 24);
+        float scrollbarBreathing = editorChrome ? 4f : 0f;
+        float contentWidth = Mathf.Max(1f, Mathf.Min(
+            contentAvailable - scrollGutter - scrollbarBreathing,
+            editorChrome ? 800f : 940f));
+        var contentRect = new NowRect(
+            contentLeft,
+            bounds.y + (editorChrome ? 14f : 12f),
+            contentAvailable,
+            bounds.height - (editorChrome ? 26f : 24f));
 
         using (NowLayout.Area(contentRect))
-        using (NowLayout.ScrollView($"docs-scroll-{_selected}").Begin())
-        using (NowLayout.HorizontalScope(stretchWidth: true))
+        using (BeginDocsScroll($"docs-scroll-{_selected}"))
+        using (NowLayout.HorizontalScope(
+            new Vector4(0f, 0f, scrollbarBreathing, 0f),
+            stretchWidth: true))
         {
             NowLayout.FlexibleSpace();
 
@@ -781,6 +886,27 @@ public class NowDocsExample : NowLayoutGraphic
 
             NowLayout.FlexibleSpace();
         }
+    }
+
+    NowScrollScope BeginDocsScroll(string id)
+    {
+        NowResolvedId resolved = NowControls.GetControlId(id);
+
+        if (_forceHarnessScrollTop)
+        {
+            // Retained focus restoration can legitimately reveal a deep control
+            // while the harness warms up. Captures need an explicit idle/top
+            // invariant instead of inheriting that navigation behavior.
+            NowFocus.Clear();
+            NowControlState.Get<Vector2>(resolved) = Vector2.zero;
+        }
+
+        NowScrollScope scroll = NowLayout.ScrollView(resolved).Begin();
+
+        if (_forceHarnessScrollTop)
+            scroll.scrollOffset = Vector2.zero;
+
+        return scroll;
     }
 
     void DrawDocsPageContent(NowThemeAsset theme)
@@ -852,7 +978,7 @@ public class NowDocsExample : NowLayoutGraphic
                 break;
 
             default:
-                var result = NowMarkdown.Document(LoadDoc(Pages[_selected].file)).Draw();
+                var result = DocsMarkdown(LoadDoc(Pages[_selected].file)).Draw();
 
                 if (result.clickedLink != null)
                     NavigateLink(result.clickedLink);
@@ -864,7 +990,7 @@ public class NowDocsExample : NowLayoutGraphic
     void DrawDocsBreadcrumb(NowThemeAsset theme)
     {
         Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
-        Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+        Color accent = DocsAccent(theme);
 
         using (NowLayout.HorizontalScope(height: 16f, stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 6f))
         {
@@ -899,17 +1025,21 @@ public class NowDocsExample : NowLayoutGraphic
         if (previous < 0 && next < 0)
             return;
 
-        Color border = theme.GetColor(NowColorToken.Border, Color.gray);
+        bool editorChrome = UsesUnityEditorChrome(theme);
+        Color border = theme.GetColor(
+            editorChrome ? NowColorToken.BorderStrong : NowColorToken.Border,
+            Color.gray);
 
-        NowLayout.Space(28f);
+        NowLayout.Space(editorChrome ? 20f : 28f);
         NowRect rule = NowLayout.ReserveRect(height: 1f, stretchWidth: true);
         Now.Rectangle(rule)
-            .SetColor(new Color(border.r, border.g, border.b, 0.45f))
+            .SetColor(editorChrome ? border : new Color(border.r, border.g, border.b, 0.45f))
             .Draw();
-        NowLayout.Space(12f);
+        NowLayout.Space(editorChrome ? 8f : 12f);
 
-        var rect = NowLayout.ReserveRect(height: 58f, stretchWidth: true);
-        float half = (rect.width - 12f) * 0.5f;
+        float gap = editorChrome ? 8f : 12f;
+        var rect = NowLayout.ReserveRect(height: editorChrome ? 36f : 58f, stretchWidth: true);
+        float half = (rect.width - gap) * 0.5f;
 
         if (previous >= 0)
             DrawDocsPagerCard(theme, new NowRect(rect.x, rect.y, half, rect.height), previous, forward: false);
@@ -917,7 +1047,7 @@ public class NowDocsExample : NowLayoutGraphic
         if (next >= 0)
             DrawDocsPagerCard(theme, new NowRect(rect.xMax - half, rect.y, half, rect.height), next, forward: true);
 
-        NowLayout.Space(8f);
+        NowLayout.Space(editorChrome ? 4f : 8f);
     }
 
     void DrawDocsPagerCard(NowThemeAsset theme, NowRect rect, int pageIndex, bool forward)
@@ -929,22 +1059,53 @@ public class NowDocsExample : NowLayoutGraphic
             _selected = pageIndex;
 
         float hoverT = NowControlState.Transition(interaction, "hover", interaction.hovered || focused, 14f);
-        Color accent = theme.GetColor(NowColorToken.Accent, Color.blue);
+        Color accent = DocsAccent(theme);
         Color border = theme.GetColor(NowColorToken.Border, Color.gray);
         Color text = theme.GetColor(NowColorToken.Text, Color.white);
         Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+        bool editorChrome = UsesUnityEditorChrome(theme);
+        Color editorFill = Color.Lerp(
+            theme.GetColor(NowColorToken.SurfaceMuted, new Color(0.165f, 0.165f, 0.165f, 1f)),
+            theme.GetColor(NowColorToken.Surface, new Color(0.34f, 0.34f, 0.34f, 1f)),
+            hoverT);
 
         Now.Rectangle(rect)
-            .SetColor(new Color(accent.r, accent.g, accent.b, 0.04f + hoverT * 0.07f))
+            .SetColor(editorChrome
+                ? editorFill
+                : new Color(accent.r, accent.g, accent.b, 0.04f + hoverT * 0.07f))
             .SetOutline(1f)
-            .SetOutlineColor(Color.Lerp(new Color(border.r, border.g, border.b, 0.8f), accent, hoverT))
-            .SetRadius(9f)
+            .SetOutlineColor(Color.Lerp(
+                editorChrome
+                    ? theme.GetColor(NowColorToken.BorderStrong, border)
+                    : new Color(border.r, border.g, border.b, 0.8f),
+                accent,
+                hoverT))
+            .SetRadius(editorChrome ? 1f : 9f)
             .Draw();
 
-        var mask = rect.Inset(12f, 0f);
-        DrawPagerCardLine(theme, rect, mask, forward, forward ? "NEXT" : "PREVIOUS", 9f, muted, bold: true, y: rect.y + 11f);
-        DrawPagerCardLine(theme, rect, mask, forward, forward ? $"{page.icon} {page.title}  →" : $"←  {page.icon} {page.title}", 13f,
-            Color.Lerp(text, accent, hoverT * 0.6f), bold: false, y: rect.y + 28f);
+        var mask = rect.Inset(editorChrome ? 8f : 12f, 0f);
+        DrawPagerCardLine(
+            theme,
+            rect,
+            mask,
+            forward,
+            forward ? "NEXT" : "PREVIOUS",
+            9f,
+            muted,
+            bold: true,
+            y: rect.y + (editorChrome ? 3f : 11f));
+        DrawPagerCardLine(
+            theme,
+            rect,
+            mask,
+            forward,
+            editorChrome
+                ? forward ? $"{page.title}  >" : $"<  {page.title}"
+                : forward ? $"{page.icon} {page.title}  →" : $"←  {page.icon} {page.title}",
+            editorChrome ? 10f : 13f,
+            Color.Lerp(text, accent, hoverT * 0.6f),
+            bold: false,
+            y: rect.y + (editorChrome ? 15f : 28f));
     }
 
     static void DrawPagerCardLine(NowThemeAsset theme, NowRect rect, NowRect mask, bool alignRight, string value, float fontSize, Color color, bool bold, float y)
@@ -960,6 +1121,34 @@ public class NowDocsExample : NowLayoutGraphic
         float x = alignRight ? rect.xMax - 14f - size.x : rect.x + 14f;
         line.rect = new NowRect(x, y, size.x + 2f, size.y + 2f);
         line.SetMask(mask).Draw(value);
+    }
+
+    static bool UsesUnityEditorChrome(NowThemeAsset theme)
+    {
+        return theme != null && theme.controlRenderer is NowUnityEditorControlRenderer;
+    }
+
+    static Color DocsAccent(NowThemeAsset theme)
+    {
+        Color accent = theme.GetColor(NowColorToken.AccentHover, theme.GetColor(NowColorToken.Accent, Color.blue));
+
+        if (!UsesUnityEditorChrome(theme))
+            return accent;
+
+        // Unity's selection blue is intentionally dark. Links and navigation
+        // metadata need the brighter editor-blue variant on the #383838 canvas.
+        return Color.Lerp(accent, theme.GetColor(NowColorToken.Text, Color.white), 0.46f);
+    }
+
+    static NowMarkdownBuilder DocsMarkdown(
+        string markdown,
+        [CallerFilePath] string file = "",
+        [CallerLineNumber] int line = 0)
+    {
+        var document = NowMarkdown.Document(markdown, file, line);
+        return UsesUnityEditorChrome(NowTheme.themeAsset)
+            ? document.SetFontSize(13f)
+            : document;
     }
 
     /// <summary>Title of the navigation section that contains the given page.</summary>
@@ -1097,7 +1286,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawDockingDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# Docking demo\n\nDrag tabs onto a pane edge to split, across the tab bar to merge or reorder, or outside the dockspace to float. A drop guide shows where the tab will land, and the layout commits when you release. The layout below is a retained `NowDockSpace`, while each panel's content is still submitted every frame.").Draw();
+        DocsMarkdown("# Docking demo\n\nDrag tabs onto a pane edge to split, across the tab bar to merge or reorder, or outside the dockspace to float. A drop guide shows where the tab will land, and the layout commits when you release. The layout below is a retained `NowDockSpace`, while each panel's content is still submitted every frame.").Draw();
 
         using (NowLayout.HorizontalScope(spacing: 8f, alignItems: NowLayoutAlign.Center))
         {
@@ -1203,7 +1392,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawCodeEditorDemo()
     {
-        NowMarkdown.Document("# Code editor\n\n`NowUI.Extensions.CodeEditor` — syntax highlighting, validation" +
+        DocsMarkdown("# Code editor\n\n`NowUI.Extensions.CodeEditor` — syntax highlighting, validation" +
             " squiggles (hover them, click the status error to jump), bracket/quote auto-close, language" +
             " completions, Enter auto-indent, Tab indent/dedent, smart Home, undo/redo, line numbers." +
             " Break the JSON below and watch the squiggle and status bar.\n\n## JSON").Draw();
@@ -1214,17 +1403,17 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.Label("Invalid JSON — the status bar shows where.").SetFontSize(11)
                 .SetColor(new Color(0.86f, 0.24f, 0.24f)).Draw();
 
-        NowMarkdown.Document("## Markdown\n\nThe same editor, different language profile — markdown source" +
+        DocsMarkdown("## Markdown\n\nThe same editor, different language profile — markdown source" +
             " highlights inline and ```json fences highlight as JSON inside it.").Draw();
 
         NowLayout.Checkbox("Preview").Draw(ref _markdownPreview);
 
         if (_markdownPreview)
-            NowMarkdown.Document(_markdownText).Draw();
+            DocsMarkdown(_markdownText).Draw();
         else
             NowCode.Editor(NowMarkdownCodeLanguage.instance, "demo-md").SetHeight(260).Draw(ref _markdownText);
 
-        NowMarkdown.Document("## Markup\n\nThe markup profile highlights tags, attributes, comments, entities" +
+        DocsMarkdown("## Markup\n\nThe markup profile highlights tags, attributes, comments, entities" +
             " and style blocks. Type `<column>` or `<button>` and the editor completes the matching close tag;" +
             " type `/` before a generated `>` to make a self-closing tag. The preview below is rendered through" +
             " `NowMarkup` in the same NowUI docs scene.").Draw();
@@ -1237,7 +1426,7 @@ public class NowDocsExample : NowLayoutGraphic
                 .SetColor(new Color(0.86f, 0.24f, 0.24f))
                 .Draw();
 
-        NowMarkdown.Document("### Rendered preview").Draw();
+        DocsMarkdown("### Rendered preview").Draw();
         EnsureMarkupEditorState();
         NowMarkup.Document(_markupEditorText).Draw(_markupEditorState);
     }
@@ -1254,10 +1443,10 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawSdfDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# SDF demo\n\nHover the specimen to steer the light, warp, and contour field. Click it to switch into cutaway mode.").Draw();
+        DocsMarkdown("# SDF demo\n\nHover the specimen to steer the light, warp, and contour field. Click it to switch into cutaway mode.").Draw();
 
         DrawSdfPlaygroundPanel(themeAsset);
-        NowMarkdown.Document(
+        DocsMarkdown(
             "## Custom final-shade gallery\n\n" +
             "Each card below renders the same shared five-shape graph. Only the material changes: " +
             "animated emissive bands, a two-sided distance field, and a bevel shader that samples " +
@@ -1528,7 +1717,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawRichTextDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# Rich text demo\n\nRich text has two entry points: explicit spans for generated content, and tag parsing for small hand-authored UI strings.").Draw();
+        DocsMarkdown("# Rich text demo\n\nRich text has two entry points: explicit spans for generated content, and tag parsing for small hand-authored UI strings.").Draw();
 
         var result = NowLayout.RichText("This label has <b>bold</b>, <i>italic</i>, <u>underline</u>, <s>strike</s>, <color=#ffcc00>color</color>, and a <link=\"docs/rich-text\">clickable link</link>.")
             .ParseDefaultTags()
@@ -1546,9 +1735,9 @@ public class NowDocsExample : NowLayoutGraphic
             .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
             .Draw();
 
-        NowMarkdown.Document("## Explicit spans").Draw();
+        DocsMarkdown("## Explicit spans").Draw();
 
-        _richTextDemoSpans[0] = new NowRichTextSpan(0, 5, new NowRichTextStyle(15f, NowFontStyle.Bold).SetColor(themeAsset.GetColor(NowColorToken.Accent, Color.blue)));
+        _richTextDemoSpans[0] = new NowRichTextSpan(0, 5, new NowRichTextStyle(15f, NowFontStyle.Bold).SetColor(DocsAccent(themeAsset)));
         _richTextDemoSpans[1] = new NowRichTextSpan(6, 3, new NowRichTextStyle(15f).SetUnderline());
         _richTextDemoSpans[2] = new NowRichTextSpan(31, 6, new NowRichTextStyle(15f).SetStrikethrough());
 
@@ -1557,14 +1746,14 @@ public class NowDocsExample : NowLayoutGraphic
             .SetStretchWidth()
             .Draw();
 
-        NowMarkdown.Document("## Selectable text").Draw();
+        DocsMarkdown("## Selectable text").Draw();
 
         NowLayout.RichText("Drag across this sentence to select plain text. Ctrl/Cmd+C copies it, and right-click opens Copy / Select All.")
             .SetSelectable()
             .SetStretchWidth()
             .Draw();
 
-        NowMarkdown.Document("## Custom inline tags").Draw();
+        DocsMarkdown("## Custom inline tags").Draw();
 
         if (_lotties != null && _lotties.Length > 0 && _lotties[0] != null)
         {
@@ -1575,7 +1764,7 @@ public class NowDocsExample : NowLayoutGraphic
         }
         else
         {
-            NowMarkdown.Document("Assign a Lottie asset to the docs component to see the `<lottie />` rich-text tag render inline.").Draw();
+            DocsMarkdown("Assign a Lottie asset to the docs component to see the `<lottie />` rich-text tag render inline.").Draw();
         }
     }
 
@@ -1583,7 +1772,7 @@ public class NowDocsExample : NowLayoutGraphic
     {
         EnsureMarkupDemoState();
 
-        NowMarkdown.Document("# Markup demo\n\nThe panel below is rendered from a constrained XML-like markup string. Controls write to `NowMarkupState`, actions mutate state keys, and click/change/action events are returned to the host each frame.").Draw();
+        DocsMarkdown("# Markup demo\n\nThe panel below is rendered from a constrained XML-like markup string. Controls write to `NowMarkupState`, actions mutate state keys, and click/change/action events are returned to the host each frame.").Draw();
 
         using (NowLayout.HorizontalScope(spacing: 12f, stretchWidth: true))
         {
@@ -1595,7 +1784,7 @@ public class NowDocsExample : NowLayoutGraphic
 
             using (NowLayout.VerticalScope(spacing: 8f, stretchWidth: true))
             {
-                NowMarkdown.Document("## State").Draw();
+                DocsMarkdown("## State").Draw();
 
                 DrawMarkupDemoStateLine(themeAsset, "name", _markupDemoState.GetString("name", ""));
                 DrawMarkupDemoStateLine(themeAsset, "volume", $"{Mathf.RoundToInt(_markupDemoState.GetFloat("volume") * 100f)}%");
@@ -1605,9 +1794,9 @@ public class NowDocsExample : NowLayoutGraphic
                 DrawMarkupDemoStateLine(themeAsset, "save events", _markupDemoClicks.ToString());
                 DrawMarkupDemoStateLine(themeAsset, "last event", _markupDemoLastEvent);
 
-                NowMarkdown.Document("## Hot reload\n\nUse `NowMarkup.File(\"Assets/UI/main.nowui\")` to render a disk file. It uses `FileSystemWatcher` to mark the source dirty and reparses on the main thread during `Draw()`.").Draw();
+                DocsMarkdown("## Hot reload\n\nUse `NowMarkup.File(\"Assets/UI/main.nowui\")` to render a disk file. It uses `FileSystemWatcher` to mark the source dirty and reparses on the main thread during `Draw()`.").Draw();
 
-                NowMarkdown.Document("## Source\n\n```xml\n" + MarkupDemoSample + "\n```")
+                DocsMarkdown("## Source\n\n```xml\n" + MarkupDemoSample + "\n```")
                     .SetFontSize(13f)
                     .Draw();
             }
@@ -1716,7 +1905,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawLinesDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# Lines demo\n\nStraight strokes, cubic Beziers, dash patterns, masks, and arrow heads are all immediate-mode draw calls.").Draw();
+        DocsMarkdown("# Lines demo\n\nStraight strokes, cubic Beziers, dash patterns, masks, and arrow heads are all immediate-mode draw calls.").Draw();
 
         var panel = NowLayout.ReserveRect(height: 280f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
@@ -1774,7 +1963,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawShapesDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# Shapes demo\n\nCore shapes are filled or outlined geometry submitted through the same mesh batch as other NowUI draws.").Draw();
+        DocsMarkdown("# Shapes demo\n\nCore shapes are filled or outlined geometry submitted through the same mesh batch as other NowUI draws.").Draw();
 
         var panel = NowLayout.ReserveRect(height: 280f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
@@ -1843,7 +2032,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawCustomMaterialsDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# Custom material demo\n\nThis demo is rendered through the active NowUI host. The large panel below is an ordinary `Now.Rectangle` using a generated noise texture and a custom UGUI material via `SetCanvasMaterial(...)`.").Draw();
+        DocsMarkdown("# Custom material demo\n\nThis demo is rendered through the active NowUI host. The large panel below is an ordinary `Now.Rectangle` using a generated noise texture and a custom UGUI material via `SetCanvasMaterial(...)`.").Draw();
 
         using (NowLayout.HorizontalScope(spacing: 12f, alignItems: NowLayoutAlign.Center))
         {
@@ -2019,7 +2208,7 @@ public class NowDocsExample : NowLayoutGraphic
     void DrawGlassDemo(NowThemeAsset themeAsset)
     {
         NowGlassSettings.diagnosticsEnabled = _glassDemoDebug;
-        NowMarkdown.Document("# Glass demo\n\nThis page is rendered by the UGUI docs browser. UGUI glass automatically uses the expensive backdrop path when a `Now.Glass` batch is present: it replays the NowUI batches behind each glass pane into a texture, blurs that texture, then keeps the foreground labels as sharp UGUI geometry.").Draw();
+        DocsMarkdown("# Glass demo\n\nThis page is rendered by the UGUI docs browser. UGUI glass automatically uses the expensive backdrop path when a `Now.Glass` batch is present: it replays the NowUI batches behind each glass pane into a texture, blurs that texture, then keeps the foreground labels as sharp UGUI geometry.").Draw();
 
         using (NowLayout.HorizontalScope(spacing: 12f, alignItems: NowLayoutAlign.Center))
         {
@@ -2309,7 +2498,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawEffectsDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# Effects demo\n\n`NowEffects.Modifier(...)` captures ordinary draw commands inside a scope, then deforms the captured vertices. Mesh mode keeps text and geometry crisp; texture mode flattens the scope first and deforms one textured surface.").Draw();
+        DocsMarkdown("# Effects demo\n\n`NowEffects.Modifier(...)` captures ordinary draw commands inside a scope, then deforms the captured vertices. Mesh mode keeps text and geometry crisp; texture mode flattens the scope first and deforms one textured surface.").Draw();
 
         using (NowLayout.HorizontalScope(spacing: 12f, alignItems: NowLayoutAlign.Center))
         {
@@ -2479,7 +2668,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawModelPreviewsDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document(
+        DocsMarkdown(
             "# Model previews demo\n\n" +
             "One isolated raw-mesh preview is shared by three ordinary `Now.Model` draws. " +
             "Change its scheduling and resolution policy here, then compare a direct texture, " +
@@ -2643,7 +2832,7 @@ public class NowDocsExample : NowLayoutGraphic
             .SetStretchWidth()
             .Draw();
 
-        NowMarkdown.Document(
+        DocsMarkdown(
             "## Core pattern\n\n" +
             "```csharp\n" +
             "preview = new NowModelPreview(characterPrefab)\n" +
@@ -2751,7 +2940,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawFilePickerDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# File picker demo\n\nFile picker fields are modal overlay controls." +
+        DocsMarkdown("# File picker demo\n\nFile picker fields are modal overlay controls." +
             " Image files get real previews, and the view slider moves from details to thumbnail grids." +
             " The field returns the selected path; your code still owns the file operation.").Draw();
 
@@ -2879,20 +3068,34 @@ public class NowDocsExample : NowLayoutGraphic
         var theme = NowTheme.themeAsset;
         Color text = theme.GetColor(NowColorToken.Text, Color.white);
         Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
+        bool editorChrome = UsesUnityEditorChrome(theme);
 
         Now.Rectangle(rect)
-            .SetColor(new Color(accent.r, accent.g, accent.b, 0.10f))
+            .SetColor(editorChrome
+                ? theme.GetColor(NowColorToken.Background, new Color(0.22f, 0.22f, 0.22f, 1f))
+                : new Color(accent.r, accent.g, accent.b, 0.10f))
             .SetOutline(1f)
-            .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.36f))
-            .SetRadius(7f)
+            .SetOutlineColor(editorChrome
+                ? theme.GetColor(NowColorToken.BorderStrong, Color.black)
+                : new Color(accent.r, accent.g, accent.b, 0.36f))
+            .SetRadius(editorChrome ? 1f : 7f)
             .Draw();
 
-        Now.Text(new NowRect(rect.x + 12f, rect.y + 8f, 92f, rect.height - 16f))
+        if (editorChrome)
+        {
+            Now.Rectangle(new NowRect(rect.x + 1f, rect.y + 1f, 2f, Mathf.Max(0f, rect.height - 2f)))
+                .SetColor(accent)
+                .Draw();
+        }
+
+        float labelX = rect.x + (editorChrome ? 10f : 12f);
+        float valueX = rect.x + (editorChrome ? 102f : 108f);
+        Now.Text(new NowRect(labelX, rect.y + 8f, 86f, rect.height - 16f))
             .SetFontSize(11f)
             .SetColor(muted)
             .Draw(label);
 
-        Now.Text(new NowRect(rect.x + 108f, rect.y + 8f, rect.width - 120f, rect.height - 16f))
+        Now.Text(new NowRect(valueX, rect.y + 8f, rect.xMax - valueX - 12f, rect.height - 16f))
             .SetFontSize(12f)
             .SetColor(string.IsNullOrEmpty(path) ? muted : text)
             .Draw(string.IsNullOrEmpty(path) ? "No selection" : ShortPath(path, 76));
@@ -2936,7 +3139,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawViewStackDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# View stack demo\n\nA `NowViewStack` keeps larger navigation flows retained" +
+        DocsMarkdown("# View stack demo\n\nA `NowViewStack` keeps larger navigation flows retained" +
             " while each view still draws immediate-mode UI. The panel below owns one stack, pushes a" +
             " full-screen detail view, and opens a modal popup on top.").Draw();
 
@@ -3279,20 +3482,20 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawLottieDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# Lottie demo\n\nVector animations drawn through `NowLayout.Lottie` —" +
+        DocsMarkdown("# Lottie demo\n\nVector animations drawn through `NowLayout.Lottie` —" +
             " tessellated at runtime, no textures. Add assets to the **Lotties** array on the" +
             " `NowDocsExample` component and they show up here.").Draw();
 
         if (_lotties == null || _lotties.Length == 0)
         {
-            NowMarkdown.Document("*No Lottie assets assigned.*").Draw();
+            DocsMarkdown("*No Lottie assets assigned.*").Draw();
             return;
         }
 
         // Time-driven content: ask retained hosts for the next frame.
         NowControlState.RequestRepaint();
 
-        NowMarkdown.Document("## Gallery").Draw();
+        DocsMarkdown("## Gallery").Draw();
 
         using (NowLayout.HorizontalScope(spacing: 16, alignItems: NowLayoutAlign.Center))
         {
@@ -3303,7 +3506,7 @@ public class NowDocsExample : NowLayoutGraphic
             }
         }
 
-        NowMarkdown.Document("## Playback\n\n`SetTime(Time.time)` plays; `SetNormalizedTime` pins a frame for scrubbing.").Draw();
+        DocsMarkdown("## Playback\n\n`SetTime(Time.time)` plays; `SetNormalizedTime` pins a frame for scrubbing.").Draw();
 
         using (NowLayout.HorizontalScope(spacing: 12, alignItems: NowLayoutAlign.Center))
         {
@@ -3321,7 +3524,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         featured.Draw();
 
-        NowMarkdown.Document("## Sizes\n\nThe same asset scales with the layout box — geometry, not pixels.").Draw();
+        DocsMarkdown("## Sizes\n\nThe same asset scales with the layout box — geometry, not pixels.").Draw();
 
         using (NowLayout.HorizontalScope(spacing: 16, alignItems: NowLayoutAlign.End))
         {
@@ -3330,7 +3533,7 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.Lottie(_lotties[0]).SetTime(Time.time).SetHeight(96).Draw();
         }
 
-        NowMarkdown.Document("## Tinting\n\n`SetColor` multiplies the animation's own colors.").Draw();
+        DocsMarkdown("## Tinting\n\n`SetColor` multiplies the animation's own colors.").Draw();
 
         using (NowLayout.HorizontalScope(spacing: 16, alignItems: NowLayoutAlign.Center))
         {
@@ -3404,7 +3607,7 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawControlsGalleryContent(NowThemeAsset theme)
     {
-        var intro = NowMarkdown.Document("# Controls gallery\n\nEvery control below is a built-in from" +
+        var intro = DocsMarkdown("# Controls gallery\n\nEvery control below is a built-in from" +
             " [Controls](Controls.md), drawn with its themed default look. Values live on the docs" +
             " component and are passed by ref each frame — nothing here is retained.\n\n## Buttons & status").Draw();
 
@@ -3436,7 +3639,7 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.ProgressBar().SetIndeterminate().SetTime(Time.time).SetStretchWidth().Draw();
         }
 
-        NowMarkdown.Document("## Toggles").Draw();
+        DocsMarkdown("## Toggles").Draw();
 
         using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 16f))
         {
@@ -3453,7 +3656,7 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.FlexibleSpace();
         }
 
-        NowMarkdown.Document("## Sliders & numbers").Draw();
+        DocsMarkdown("## Sliders & numbers").Draw();
 
         using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
@@ -3476,7 +3679,7 @@ public class NowDocsExample : NowLayoutGraphic
             NowLayout.Vector3Field().SetStretchWidth().Draw(ref _gallerySpawn);
         }
 
-        NowMarkdown.Document("## Text").Draw();
+        DocsMarkdown("## Text").Draw();
 
         using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
@@ -3486,7 +3689,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         NowLayout.TextArea("gallery-notes").SetPlaceholder("Notes...").SetLines(3, 6).SetStretchWidth().Draw(ref _galleryNotes);
 
-        NowMarkdown.Document("## Selection").Draw();
+        DocsMarkdown("## Selection").Draw();
 
         using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
@@ -3515,7 +3718,7 @@ public class NowDocsExample : NowLayoutGraphic
             .SetColor(theme.GetColor(NowColorToken.TextMuted, Color.gray))
             .Draw();
 
-        NowMarkdown.Document("## Pickers").Draw();
+        DocsMarkdown("## Pickers").Draw();
 
         using (NowLayout.HorizontalScope(stretchWidth: true, alignItems: NowLayoutAlign.Center, spacing: 10f))
         {
@@ -3547,7 +3750,7 @@ public class NowDocsExample : NowLayoutGraphic
         }
 #endif
 
-        NowMarkdown.Document("## Disclosure").Draw();
+        DocsMarkdown("## Disclosure").Draw();
 
         NowLayout.Foldout("Advanced").Draw(ref _galleryAdvanced);
 
@@ -3584,23 +3787,23 @@ public class NowDocsExample : NowLayoutGraphic
 
     void DrawLiveDemo(NowThemeAsset themeAsset)
     {
-        NowMarkdown.Document("# Custom controls demo\n\nThe controls below run the code from" +
+        DocsMarkdown("# Custom controls demo\n\nThe controls below run the code from" +
             " [CustomControls.md](CustomControls.md) — a wrapped variant, a reshaped" +
             " round button, and a from-scratch rating control.\n\n## Wrap: `DangerButton`").Draw();
 
         if (GuideControls.DangerButton("Delete save").Draw())
             ++_clicks;
 
-        NowMarkdown.Document("## Reshape: `RoundButton`").Draw();
+        DocsMarkdown("## Reshape: `RoundButton`").Draw();
 
         if (GuideControls.RoundButton("+"))
             ++_clicks;
 
-        NowMarkdown.Document("## Build: `Rating`").Draw();
+        DocsMarkdown("## Build: `Rating`").Draw();
 
         GuideControls.Rating(ref _rating);
 
-        NowMarkdown.Document("## Builder form: `MyControls.Rating()`").Draw();
+        DocsMarkdown("## Builder form: `MyControls.Rating()`").Draw();
 
         GuideControls.Rating().SetMax(7).Draw(ref _builderRating);
 

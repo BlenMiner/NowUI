@@ -316,7 +316,10 @@ namespace NowUI
             float lineHeight = ResolveLineHeight(textStyle);
             Vector2 measured = renderer.MeasureTextField(theme, lineHeight);
             measured.x = Mathf.Max(measured.x, 260f);
-            measured.y = Mathf.Max(measured.y, _settings.fieldHeight);
+            float requestedFieldHeight = IsUnityEditorTheme(theme)
+                ? Mathf.Min(_settings.fieldHeight, theme.controlStyles.textFieldMinHeight)
+                : _settings.fieldHeight;
+            measured.y = Mathf.Max(measured.y, requestedFieldHeight);
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _settings.options, measured);
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
@@ -607,14 +610,29 @@ namespace NowUI
             {
                 Color overlay = theme.GetColor(NowColorToken.Accent);
                 overlay.a = Mathf.Lerp(0f, held ? 0.14f : 0.08f, hoverT);
-                Now.Rectangle(rect.Inset(1f)).SetRadius(4f).SetColor(overlay).Draw();
+                Now.Rectangle(rect.Inset(1f))
+                    .SetRadius(PickerRadius(theme, 4f))
+                    .SetColor(overlay)
+                    .Draw();
             }
 
             NowRect inner = theme.controlRenderer.TextFieldInnerRect(theme, rect, lineHeight);
             string icon = FieldIcon(mode);
             float iconWidth = Mathf.Min(24f, inner.width);
+            var iconRect = new NowRect(inner.x, rect.y, iconWidth, rect.height);
 
-            NowControls.DrawLeftLabel(theme, new NowRect(inner.x, rect.y, iconWidth, rect.height), icon, NowTextStyle.Body, Color.white);
+            if (IsUnityEditorTheme(theme))
+            {
+                Color iconColor = theme.GetColor(NowColorToken.TextMuted);
+                if (mode == NowFileDialogMode.SaveFile)
+                    DrawEditorFileIcon(theme, iconRect, iconColor);
+                else
+                    DrawEditorFolderIcon(theme, iconRect, iconColor);
+            }
+            else
+            {
+                NowControls.DrawLeftLabel(theme, iconRect, icon, NowTextStyle.Body, Color.white);
+            }
 
             string display = string.IsNullOrEmpty(path)
                 ? Placeholder(mode, settings)
@@ -628,7 +646,19 @@ namespace NowUI
                 rect.height);
             NowControls.DrawLeftLabel(theme, labelRect, display, textStyle);
 
-            DropdownArrowDraw.Draw(theme, new NowRect(rect.xMax - 20f, rect.y, 16f, rect.height), open);
+            if (IsUnityEditorTheme(theme))
+            {
+                NowUnityEditorControlRenderer.DrawDropdownTriangle(
+                    theme,
+                    new NowRect(rect.xMax - 16f, rect.y, 12f, rect.height));
+            }
+            else
+            {
+                DropdownArrowDraw.Draw(
+                    theme,
+                    new NowRect(rect.xMax - 20f, rect.y, 16f, rect.height),
+                    open);
+            }
         }
 
         static string FieldIcon(NowFileDialogMode mode)
@@ -729,15 +759,23 @@ namespace NowUI
             RefreshEntries(state);
 
             var theme = state.themeAsset;
+            bool editorChrome = IsUnityEditorTheme(theme);
+            float requestedPadding = editorChrome
+                ? Mathf.Min(state.settings.popupPadding, 8f)
+                : state.settings.popupPadding;
             float padding = Mathf.Min(
-                state.settings.popupPadding,
+                requestedPadding,
                 Mathf.Max(0f, (Mathf.Min(state.popupRect.width, state.popupRect.height) - 1f) * 0.5f));
-            float spacing = state.settings.popupSpacing;
+            float spacing = editorChrome
+                ? Mathf.Min(state.settings.popupSpacing, 4f)
+                : state.settings.popupSpacing;
             bool hasFilter = state.mode != NowFileDialogMode.Directory && state.filters.Length > 1;
             bool hasFileName = state.mode != NowFileDialogMode.Directory;
             var renderer = theme.controlRenderer;
             var bodyText = NowControls.Text(theme, NowTextStyle.Body);
-            var titleText = NowControls.Text(theme, NowTextStyle.Title);
+            var titleText = NowControls.Text(
+                theme,
+                editorChrome ? NowTextStyle.Subheading : NowTextStyle.Title);
             float bodyLabelHeight = bodyText.Measure("Ag").y;
             float titleLabelHeight = titleText.Measure(Title(state.mode, state.settings)).y;
             float textFieldHeight = renderer.MeasureTextField(theme, ResolveTextFieldLineHeight(bodyText)).y;
@@ -746,7 +784,7 @@ namespace NowUI
             float goButtonHeight = renderer.MeasureButton(theme, "Go", NowTextStyle.Button).y;
             float actionButtonHeight = renderer.MeasureButton(theme, ActionLabel(state.mode), NowTextStyle.Button).y;
             float cancelButtonHeight = renderer.MeasureButton(theme, "Cancel", NowTextStyle.Button).y;
-            float titleHeight = Mathf.Max(30f, titleLabelHeight);
+            float titleHeight = Mathf.Max(editorChrome ? 22f : 30f, titleLabelHeight);
             titleHeight = Mathf.Max(titleHeight, bodyLabelHeight);
             titleHeight = Mathf.Max(titleHeight, renderer.MeasureSlider(theme).y);
 
@@ -757,7 +795,7 @@ namespace NowUI
                 titleHeight = Mathf.Max(titleHeight, dropdownHeight);
 
             float addressHeight = Mathf.Max(textFieldHeight, Mathf.Max(upButtonHeight, goButtonHeight));
-            const float headerHeight = 24f;
+            float headerHeight = editorChrome ? 20f : 24f;
             float fileNameHeight = Mathf.Max(textFieldHeight, bodyLabelHeight);
             float filterHeight = Mathf.Max(dropdownHeight, bodyLabelHeight);
             float preferredFooterHeight = Mathf.Max(
@@ -876,7 +914,10 @@ namespace NowUI
                 }
 
                 string label = compactError ? state.errorLabel : Title(state.mode, state.settings);
-                var title = NowLayout.Label(NowControls.Text(state.themeAsset, NowTextStyle.Title), label)
+                NowTextStyle titleStyle = IsUnityEditorTheme(state.themeAsset)
+                    ? NowTextStyle.Subheading
+                    : NowTextStyle.Title;
+                var title = NowLayout.Label(NowControls.Text(state.themeAsset, titleStyle), label)
                     .SetStretchWidth();
 
                 if (compactError)
@@ -891,7 +932,20 @@ namespace NowUI
                 else if (availableWidth >= 340f)
                 {
                     NowLayout.Label("View").SetWidth(34f).Draw();
-                    NowLayout.Label("▤").SetWidth(16f).Draw();
+                    bool editorChrome = IsUnityEditorTheme(state.themeAsset);
+                    if (editorChrome)
+                    {
+                        var detailsIcon = NowLayout.Label("").SetWidth(16f).Reserve();
+                        detailsIcon.Draw();
+                        DrawEditorViewIcon(
+                            detailsIcon.rect,
+                            state.themeAsset.GetColor(NowColorToken.TextMuted),
+                            grid: false);
+                    }
+                    else
+                    {
+                        NowLayout.Label("▤").SetWidth(16f).Draw();
+                    }
                     int view = (int)state.view;
 
                     if (NowLayout.Slider(
@@ -907,7 +961,19 @@ namespace NowUI
                         NowControlState.RequestRepaint();
                     }
 
-                    NowLayout.Label("▦").SetWidth(16f).Draw();
+                    if (editorChrome)
+                    {
+                        var gridIcon = NowLayout.Label("").SetWidth(16f).Reserve();
+                        gridIcon.Draw();
+                        DrawEditorViewIcon(
+                            gridIcon.rect,
+                            state.themeAsset.GetColor(NowColorToken.TextMuted),
+                            grid: true);
+                    }
+                    else
+                    {
+                        NowLayout.Label("▦").SetWidth(16f).Draw();
+                    }
                 }
             }
         }
@@ -1072,6 +1138,144 @@ namespace NowUI
             }
         }
 
+        static bool IsUnityEditorTheme(NowThemeAsset theme)
+        {
+            return theme != null && theme.controlRenderer is NowUnityEditorControlRenderer;
+        }
+
+        static Color PickerPaneSurface(NowThemeAsset theme)
+        {
+            return IsUnityEditorTheme(theme)
+                ? theme.GetColor(NowColorToken.Background)
+                : theme.GetColor(NowColorToken.Surface);
+        }
+
+        static Color PickerHeaderSurface(NowThemeAsset theme)
+        {
+            if (!IsUnityEditorTheme(theme))
+                return theme.GetColor(NowColorToken.SurfaceMuted);
+
+            return Color.LerpUnclamped(
+                theme.GetColor(NowColorToken.Background),
+                theme.GetColor(NowColorToken.SurfaceMuted),
+                0.25f);
+        }
+
+        static Color PickerRowHover(NowThemeAsset theme, bool held)
+        {
+            if (!IsUnityEditorTheme(theme))
+            {
+                Color surface = theme.GetColor(NowColorToken.SurfaceMuted);
+                return NowControls.StateColor(theme, surface, 1f, held);
+            }
+
+            Color hover = Color.LerpUnclamped(
+                theme.GetColor(NowColorToken.Background),
+                theme.GetColor(NowColorToken.SurfaceHover),
+                held ? 0.72f : 0.42f);
+            return hover;
+        }
+
+        static float PickerRadius(NowThemeAsset theme, float fallback)
+        {
+            return IsUnityEditorTheme(theme) ? 1f : fallback;
+        }
+
+        static void DrawEditorFolderIcon(NowThemeAsset theme, NowRect rect, Color color)
+        {
+            float width = Mathf.Min(14f, Mathf.Max(0f, rect.width - 2f));
+            float height = Mathf.Min(11f, Mathf.Max(0f, rect.height - 2f));
+            float x = Mathf.Round(rect.x + (rect.width - width) * 0.5f);
+            float y = Mathf.Round(rect.y + (rect.height - height) * 0.5f);
+            float tabWidth = Mathf.Max(3f, Mathf.Round(width * 0.46f));
+
+            Now.Rectangle(new NowRect(x + 1f, y, tabWidth, 4f))
+                .SetRadius(1f, 1f, 0f, 0f)
+                .SetColor(color)
+                .Draw();
+            Now.Rectangle(new NowRect(x, y + 3f, width, Mathf.Max(1f, height - 3f)))
+                .SetRadius(1f)
+                .SetColor(color)
+                .SetOutline(1f)
+                .SetOutlineColor(theme.GetColor(NowColorToken.BorderStrong))
+                .Draw();
+        }
+
+        static void DrawEditorFileIcon(NowThemeAsset theme, NowRect rect, Color color)
+        {
+            float width = Mathf.Min(11f, Mathf.Max(0f, rect.width - 2f));
+            float height = Mathf.Min(14f, Mathf.Max(0f, rect.height - 2f));
+            float x = Mathf.Round(rect.x + (rect.width - width) * 0.5f);
+            float y = Mathf.Round(rect.y + (rect.height - height) * 0.5f);
+            var page = new NowRect(x, y, width, height);
+
+            Now.Rectangle(page)
+                .SetRadius(1f)
+                .SetColor(color)
+                .SetOutline(1f)
+                .SetOutlineColor(theme.GetColor(NowColorToken.BorderStrong))
+                .Draw();
+            Now.Triangle(
+                    new Vector2(page.xMax - 4f, page.y),
+                    new Vector2(page.xMax, page.y),
+                    new Vector2(page.xMax, page.y + 4f))
+                .SetColor(PickerPaneSurface(theme))
+                .Draw();
+        }
+
+        static void DrawEditorDisclosure(NowRect rect, bool expanded, Color color)
+        {
+            float centerX = Mathf.Round(rect.center.x);
+            float centerY = Mathf.Round(rect.center.y);
+
+            if (expanded)
+            {
+                Now.Triangle(
+                        new Vector2(centerX - 4f, centerY - 2.5f),
+                        new Vector2(centerX + 4f, centerY - 2.5f),
+                        new Vector2(centerX, centerY + 2.5f))
+                    .SetColor(color)
+                    .Draw();
+            }
+            else
+            {
+                Now.Triangle(
+                        new Vector2(centerX - 2.5f, centerY - 4f),
+                        new Vector2(centerX - 2.5f, centerY + 4f),
+                        new Vector2(centerX + 2.5f, centerY))
+                    .SetColor(color)
+                    .Draw();
+            }
+        }
+
+        static void DrawEditorViewIcon(NowRect rect, Color color, bool grid)
+        {
+            float x = Mathf.Round(rect.x + (rect.width - 14f) * 0.5f);
+            float y = Mathf.Round(rect.y + (rect.height - 12f) * 0.5f);
+
+            if (grid)
+            {
+                for (int row = 0; row < 3; ++row)
+                {
+                    for (int column = 0; column < 3; ++column)
+                    {
+                        Now.Rectangle(new NowRect(x + column * 5f, y + row * 5f, 3f, 3f))
+                            .SetColor(color)
+                            .Draw();
+                    }
+                }
+
+                return;
+            }
+
+            for (int row = 0; row < 3; ++row)
+            {
+                float rowY = y + row * 5f;
+                Now.Rectangle(new NowRect(x, rowY, 3f, 3f)).SetColor(color).Draw();
+                Now.Rectangle(new NowRect(x + 5f, rowY + 1f, 9f, 1f)).SetColor(color).Draw();
+            }
+        }
+
         static void DrawBrowser(PopupState state, NowRect rect, float headerHeight)
         {
             bool showTree = rect.width >= 560f;
@@ -1082,8 +1286,14 @@ namespace NowUI
                 state.pendingTreeFocusKey = null;
             }
 
-            float treeWidth = showTree ? Mathf.Clamp(rect.width * 0.30f, 168f, 220f) : 0f;
-            float gap = showTree ? 8f : 0f;
+            bool editorChrome = IsUnityEditorTheme(state.themeAsset);
+            float treeWidth = showTree
+                ? editorChrome
+                    ? Mathf.Clamp(rect.width * 0.25f, 160f, 196f)
+                    : Mathf.Clamp(rect.width * 0.30f, 168f, 220f)
+                : 0f;
+            float paneGap = editorChrome ? 4f : 8f;
+            float gap = showTree ? paneGap : 0f;
             float listX = rect.x;
             float listWidth = rect.width;
 
@@ -1103,11 +1313,13 @@ namespace NowUI
                 state.filterIndex);
             BrowserEntry previewEntry = showPreview ? SelectedInspectorEntry(state) : null;
             float previewWidth = showPreview
-                ? Mathf.Clamp(listWidth * 0.36f, 160f, 210f)
+                ? editorChrome
+                    ? Mathf.Clamp(listWidth * 0.33f, 160f, 196f)
+                    : Mathf.Clamp(listWidth * 0.36f, 160f, 210f)
                 : 0f;
 
             if (showPreview)
-                listWidth = Mathf.Max(0f, listWidth - previewWidth - 8f);
+                listWidth = Mathf.Max(0f, listWidth - previewWidth - paneGap);
 
             var headerRect = new NowRect(listX, rect.y, listWidth, headerHeight);
             var listRect = new NowRect(listX, rect.y + headerHeight, listWidth, Mathf.Max(0f, rect.height - headerHeight));
@@ -1146,7 +1358,7 @@ namespace NowUI
             if (showPreview)
             {
                 var previewRect = new NowRect(
-                    listRect.xMax + 8f,
+                    listRect.xMax + paneGap,
                     rect.y,
                     previewWidth,
                     rect.height);
@@ -1157,13 +1369,15 @@ namespace NowUI
         static void DrawFolderTree(PopupState state, NowRect rect, float headerHeight)
         {
             var theme = state.themeAsset;
-            Color surface = theme.GetColor(NowColorToken.Surface);
-            Color surfaceMuted = theme.GetColor(NowColorToken.SurfaceMuted);
-            Color border = theme.GetColor(NowColorToken.Border);
+            bool editorChrome = IsUnityEditorTheme(theme);
+            Color surface = PickerPaneSurface(theme);
+            Color surfaceMuted = PickerHeaderSurface(theme);
+            Color border = theme.GetColor(
+                editorChrome ? NowColorToken.BorderStrong : NowColorToken.Border);
             Color muted = theme.GetColor(NowColorToken.TextMuted);
 
             Now.Rectangle(rect)
-                .SetRadius(4f)
+                .SetRadius(PickerRadius(theme, 4f))
                 .SetColor(surface)
                 .SetOutline(1f)
                 .SetOutlineColor(border)
@@ -1176,7 +1390,7 @@ namespace NowUI
                 if (state.userFolders.Count > 0)
                 {
                     DrawFolderTreeSectionHeader(theme, surfaceMuted, muted, "Places", headerHeight, roundedTop: true);
-                    DrawUserFolderEntries(state, 27f);
+                    DrawUserFolderEntries(state, editorChrome ? 20f : 27f);
                     DrawFolderTreeSectionHeader(theme, surfaceMuted, muted, "Folders", headerHeight, roundedTop: false);
                 }
                 else
@@ -1201,7 +1415,10 @@ namespace NowUI
             var background = Now.Rectangle(headerRect).SetColor(surfaceMuted);
 
             if (roundedTop)
-                background = background.SetRadius(3f, 3f, 0f, 0f);
+            {
+                float radius = PickerRadius(theme, 3f);
+                background = background.SetRadius(radius, radius, 0f, 0f);
+            }
 
             background.Draw();
             NowControls.DrawLeftLabel(theme, headerRect.Inset(8f, 0f), label, NowTextStyle.Muted, muted);
@@ -1234,23 +1451,32 @@ namespace NowUI
                 .Equals(folder.path, state.currentDirectoryCanonical);
             bool current = currentPath && state.sidebarLocationSource == SidebarLocationSource.Places;
             bool selected = current;
-            NowRect visual = row.Inset(2f, 1f);
+            bool editorChrome = IsUnityEditorTheme(theme);
+            NowRect visual = editorChrome ? row.Inset(1f, 0f) : row.Inset(2f, 1f);
 
             if (selected)
             {
                 Color accent = theme.GetColor(NowColorToken.Accent);
-                Now.Rectangle(visual)
-                    .SetRadius(3f)
-                    .SetColor(new Color(accent.r, accent.g, accent.b, current ? 0.20f : 0.12f))
-                    .SetOutline(1f)
-                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, focused ? 0.70f : current ? 0.52f : 0.34f))
-                    .Draw();
+                var selection = Now.Rectangle(visual)
+                    .SetRadius(PickerRadius(theme, 3f))
+                    .SetColor(editorChrome
+                        ? accent
+                        : new Color(accent.r, accent.g, accent.b, current ? 0.20f : 0.12f));
+
+                if (!editorChrome)
+                {
+                    selection = selection
+                        .SetOutline(1f)
+                        .SetOutlineColor(new Color(accent.r, accent.g, accent.b, focused ? 0.70f : current ? 0.52f : 0.34f));
+                }
+
+                selection.Draw();
             }
             else if (focused)
             {
                 Color accent = theme.GetColor(NowColorToken.Accent);
                 Now.Rectangle(visual)
-                    .SetRadius(3f)
+                    .SetRadius(PickerRadius(theme, 3f))
                     .SetColor(new Color(accent.r, accent.g, accent.b, 0.07f))
                     .SetOutline(1f)
                     .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.42f))
@@ -1258,21 +1484,28 @@ namespace NowUI
             }
             else if (interaction.hovered || interaction.held)
             {
-                Color mutedSurface = theme.GetColor(NowColorToken.SurfaceMuted);
-                mutedSurface = NowControls.StateColor(theme, mutedSurface, 1f, interaction.held);
                 Now.Rectangle(visual)
-                    .SetRadius(3f)
-                    .SetColor(mutedSurface)
+                    .SetRadius(PickerRadius(theme, 3f))
+                    .SetColor(PickerRowHover(theme, interaction.held))
                     .Draw();
             }
 
             var iconRect = new NowRect(row.x + 9f, row.y, 20f, row.height);
             var nameRect = new NowRect(iconRect.xMax + 5f, row.y, Mathf.Max(0f, row.xMax - iconRect.xMax - 12f), row.height);
-            Color iconColor = current
+            Color iconColor = selected && editorChrome
+                ? theme.GetColor(NowColorToken.AccentText)
+                : current
                 ? theme.GetColor(NowColorToken.Accent)
                 : theme.GetColor(NowColorToken.TextMuted);
             NowControls.DrawLeftLabel(theme, iconRect, folder.icon, NowTextStyle.Body, iconColor);
-            NowControls.DrawLeftLabel(theme, nameRect, folder.label, NowTextStyle.Body, theme.GetColor(NowColorToken.Text));
+            NowControls.DrawLeftLabel(
+                theme,
+                nameRect,
+                folder.label,
+                NowTextStyle.Body,
+                selected && editorChrome
+                    ? theme.GetColor(NowColorToken.AccentText)
+                    : theme.GetColor(NowColorToken.Text));
 
             if (interaction.clicked || submitted)
             {
@@ -1303,7 +1536,8 @@ namespace NowUI
 
             for (int i = 0; i < state.treeEntries.Count; ++i)
             {
-                NowRect row = NowLayout.ReserveRect(height: 26f, stretchWidth: true);
+                float rowHeight = IsUnityEditorTheme(state.themeAsset) ? 20f : 26f;
+                NowRect row = NowLayout.ReserveRect(height: rowHeight, stretchWidth: true);
                 DrawFolderTreeRow(state, row, state.treeEntries[i], i);
             }
         }
@@ -1322,23 +1556,32 @@ namespace NowUI
 
             var interaction = NowControls.Interact(id, row, out bool focused, out bool submitted);
             bool selected = entry.current && state.sidebarLocationSource == SidebarLocationSource.Tree;
-            NowRect visual = row.Inset(2f, 1f);
+            bool editorChrome = IsUnityEditorTheme(theme);
+            NowRect visual = editorChrome ? row.Inset(1f, 0f) : row.Inset(2f, 1f);
 
             if (selected)
             {
                 Color accent = theme.GetColor(NowColorToken.Accent);
-                Now.Rectangle(visual)
-                    .SetRadius(3f)
-                    .SetColor(new Color(accent.r, accent.g, accent.b, entry.current ? 0.20f : 0.12f))
-                    .SetOutline(1f)
-                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, focused ? 0.70f : entry.current ? 0.52f : 0.34f))
-                    .Draw();
+                var selection = Now.Rectangle(visual)
+                    .SetRadius(PickerRadius(theme, 3f))
+                    .SetColor(editorChrome
+                        ? accent
+                        : new Color(accent.r, accent.g, accent.b, entry.current ? 0.20f : 0.12f));
+
+                if (!editorChrome)
+                {
+                    selection = selection
+                        .SetOutline(1f)
+                        .SetOutlineColor(new Color(accent.r, accent.g, accent.b, focused ? 0.70f : entry.current ? 0.52f : 0.34f));
+                }
+
+                selection.Draw();
             }
             else if (focused)
             {
                 Color accent = theme.GetColor(NowColorToken.Accent);
                 Now.Rectangle(visual)
-                    .SetRadius(3f)
+                    .SetRadius(PickerRadius(theme, 3f))
                     .SetColor(new Color(accent.r, accent.g, accent.b, 0.07f))
                     .SetOutline(1f)
                     .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.42f))
@@ -1346,11 +1589,9 @@ namespace NowUI
             }
             else if (interaction.hovered || interaction.held)
             {
-                Color mutedSurface = theme.GetColor(NowColorToken.SurfaceMuted);
-                mutedSurface = NowControls.StateColor(theme, mutedSurface, 1f, interaction.held);
                 Now.Rectangle(visual)
-                    .SetRadius(3f)
-                    .SetColor(mutedSurface)
+                    .SetRadius(PickerRadius(theme, 3f))
+                    .SetColor(PickerRowHover(theme, interaction.held))
                     .Draw();
             }
 
@@ -1359,14 +1600,36 @@ namespace NowUI
             var toggleRect = new NowRect(row.x + 5f + indent, row.y, 16f, row.height);
             var iconRect = new NowRect(toggleRect.xMax + 2f, row.y, 20f, row.height);
             var nameRect = new NowRect(iconRect.xMax + 4f, row.y, Mathf.Max(0f, row.xMax - iconRect.xMax - 10f), row.height);
-            Color text = entry.ancestor && !entry.current
+            Color text = selected && editorChrome
+                ? theme.GetColor(NowColorToken.AccentText)
+                : entry.ancestor && !entry.current
                 ? muted
                 : theme.GetColor(NowColorToken.Text);
 
             if (entry.hasChildren)
-                NowControls.DrawLeftLabel(theme, toggleRect, entry.expanded ? "▾" : "▸", NowTextStyle.Muted, muted);
+            {
+                if (editorChrome)
+                    DrawEditorDisclosure(toggleRect, entry.expanded, selected ? text : muted);
+                else
+                    NowControls.DrawLeftLabel(theme, toggleRect, entry.expanded ? "▾" : "▸", NowTextStyle.Muted, muted);
+            }
 
-            NowControls.DrawLeftLabel(theme, iconRect, entry.current ? "📂" : "📁", NowTextStyle.Body, Color.white);
+            if (editorChrome)
+            {
+                DrawEditorFolderIcon(
+                    theme,
+                    iconRect,
+                    selected ? theme.GetColor(NowColorToken.AccentText) : theme.GetColor(NowColorToken.TextMuted));
+            }
+            else
+            {
+                NowControls.DrawLeftLabel(
+                    theme,
+                    iconRect,
+                    entry.current ? "📂" : "📁",
+                    NowTextStyle.Body,
+                    Color.white);
+            }
             NowControls.DrawLeftLabel(theme, nameRect, entry.name, NowTextStyle.Body, text);
 
             if (interaction.clicked && entry.hasChildren && toggleRect.Contains(interaction.pointerPosition))
@@ -1391,13 +1654,16 @@ namespace NowUI
 
         static void DrawListHeader(NowThemeAsset theme, NowRect rect)
         {
-            Color surfaceMuted = theme.GetColor(NowColorToken.SurfaceMuted);
-            Color border = theme.GetColor(NowColorToken.Border);
+            bool editorChrome = IsUnityEditorTheme(theme);
+            Color surfaceMuted = PickerHeaderSurface(theme);
+            Color border = theme.GetColor(
+                editorChrome ? NowColorToken.BorderStrong : NowColorToken.Border);
             Color muted = theme.GetColor(NowColorToken.TextMuted);
             float typeWidth = TypeColumnWidth(rect);
+            float radius = PickerRadius(theme, 4f);
 
             Now.Rectangle(rect)
-                .SetRadius(4f, 4f, 0f, 0f)
+                .SetRadius(radius, radius, 0f, 0f)
                 .SetColor(surfaceMuted)
                 .SetOutline(1f)
                 .SetOutlineColor(border)
@@ -1412,12 +1678,15 @@ namespace NowUI
 
         static void DrawGridHeader(NowThemeAsset theme, NowRect rect, string label = "Thumbnails")
         {
-            Color surfaceMuted = theme.GetColor(NowColorToken.SurfaceMuted);
-            Color border = theme.GetColor(NowColorToken.Border);
+            bool editorChrome = IsUnityEditorTheme(theme);
+            Color surfaceMuted = PickerHeaderSurface(theme);
+            Color border = theme.GetColor(
+                editorChrome ? NowColorToken.BorderStrong : NowColorToken.Border);
             Color muted = theme.GetColor(NowColorToken.TextMuted);
+            float radius = PickerRadius(theme, 4f);
 
             Now.Rectangle(rect)
-                .SetRadius(4f, 4f, 0f, 0f)
+                .SetRadius(radius, radius, 0f, 0f)
                 .SetColor(surfaceMuted)
                 .SetOutline(1f)
                 .SetOutlineColor(border)
@@ -1428,11 +1697,14 @@ namespace NowUI
 
         static void DrawListFrame(NowThemeAsset theme, NowRect rect)
         {
-            Color surface = theme.GetColor(NowColorToken.Surface);
-            Color border = theme.GetColor(NowColorToken.Border);
+            bool editorChrome = IsUnityEditorTheme(theme);
+            Color surface = PickerPaneSurface(theme);
+            Color border = theme.GetColor(
+                editorChrome ? NowColorToken.BorderStrong : NowColorToken.Border);
+            float radius = PickerRadius(theme, 4f);
 
             Now.Rectangle(rect)
-                .SetRadius(0f, 0f, 4f, 4f)
+                .SetRadius(0f, 0f, radius, radius)
                 .SetColor(surface)
                 .SetOutline(1f)
                 .SetOutlineColor(border)
@@ -1455,7 +1727,7 @@ namespace NowUI
                 return;
             }
 
-            const float rowHeight = 28f;
+            float rowHeight = IsUnityEditorTheme(state.themeAsset) ? 20f : 28f;
             int count = state.entries.Count;
             int first = Mathf.Clamp(Mathf.FloorToInt(scrollY / rowHeight), 0, count);
             int end = Mathf.Clamp(
@@ -1483,25 +1755,32 @@ namespace NowUI
             NowResolvedId id = state.entrySeed.Child(index + 1);
             var interaction = NowInput.Interact(id, row);
             bool selected = IsSelectedEntry(state, entry);
-            NowRect visual = row.Inset(2f, 1f);
+            bool editorChrome = IsUnityEditorTheme(theme);
+            NowRect visual = editorChrome ? row.Inset(1f, 0f) : row.Inset(2f, 1f);
 
             if (selected)
             {
                 Color accent = theme.GetColor(NowColorToken.Accent);
-                Now.Rectangle(visual)
-                    .SetRadius(3f)
-                    .SetColor(new Color(accent.r, accent.g, accent.b, 0.18f))
-                    .SetOutline(1f)
-                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.48f))
-                    .Draw();
+                var selection = Now.Rectangle(visual)
+                    .SetRadius(PickerRadius(theme, 3f))
+                    .SetColor(editorChrome
+                        ? accent
+                        : new Color(accent.r, accent.g, accent.b, 0.18f));
+
+                if (!editorChrome)
+                {
+                    selection = selection
+                        .SetOutline(1f)
+                        .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.48f));
+                }
+
+                selection.Draw();
             }
             else if (interaction.hovered || interaction.held)
             {
-                Color mutedSurface = theme.GetColor(NowColorToken.SurfaceMuted);
-                mutedSurface = NowControls.StateColor(theme, mutedSurface, 1f, interaction.held);
                 Now.Rectangle(visual)
-                    .SetRadius(3f)
-                    .SetColor(mutedSurface)
+                    .SetRadius(PickerRadius(theme, 3f))
+                    .SetColor(PickerRowHover(theme, interaction.held))
                     .Draw();
             }
 
@@ -1509,7 +1788,9 @@ namespace NowUI
             var iconRect = new NowRect(row.x + 9f, row.y, 22f, row.height);
             var nameRect = new NowRect(iconRect.xMax + 6f, row.y, Mathf.Max(0f, row.width - typeWidth - 46f), row.height);
             var typeRect = new NowRect(row.xMax - typeWidth - 8f, row.y, typeWidth, row.height);
-            Color text = theme.GetColor(NowColorToken.Text);
+            Color text = selected && editorChrome
+                ? theme.GetColor(NowColorToken.AccentText)
+                : theme.GetColor(NowColorToken.Text);
             Color muted = selected
                 ? text
                 : theme.GetColor(NowColorToken.TextMuted);
@@ -1595,26 +1876,33 @@ namespace NowUI
             NowResolvedId id = state.entrySeed.Child(index + 1);
             var interaction = NowInput.Interact(id, cell);
             bool selected = IsSelectedEntry(state, entry);
-            Color border = theme.GetColor(NowColorToken.Border);
-            Color surface = theme.GetColor(NowColorToken.Surface);
+            bool editorChrome = IsUnityEditorTheme(theme);
+            Color border = theme.GetColor(
+                editorChrome ? NowColorToken.BorderStrong : NowColorToken.Border);
+            Color surface = PickerPaneSurface(theme);
+            float radius = PickerRadius(theme, 5f);
 
             if (selected)
             {
                 Color accent = theme.GetColor(NowColorToken.Accent);
                 Now.Rectangle(cell)
-                    .SetRadius(5f)
-                    .SetColor(new Color(accent.r, accent.g, accent.b, 0.18f))
+                    .SetRadius(radius)
+                    .SetColor(editorChrome
+                        ? accent
+                        : new Color(accent.r, accent.g, accent.b, 0.18f))
                     .SetOutline(1f)
-                    .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.58f))
+                    .SetOutlineColor(editorChrome
+                        ? theme.GetColor(NowColorToken.FocusRing)
+                        : new Color(accent.r, accent.g, accent.b, 0.58f))
                     .Draw();
             }
             else
             {
                 Color fill = interaction.hovered || interaction.held
-                    ? NowControls.StateColor(theme, theme.GetColor(NowColorToken.SurfaceMuted), 1f, interaction.held)
+                    ? PickerRowHover(theme, interaction.held)
                     : surface;
                 Now.Rectangle(cell)
-                    .SetRadius(5f)
+                    .SetRadius(radius)
                     .SetColor(fill)
                     .SetOutline(1f)
                     .SetOutlineColor(border)
@@ -1638,7 +1926,9 @@ namespace NowUI
                 nameRect,
                 entry.name,
                 NowTextStyle.Body,
-                theme.GetColor(NowColorToken.Text));
+                selected && editorChrome
+                    ? theme.GetColor(NowColorToken.AccentText)
+                    : theme.GetColor(NowColorToken.Text));
             HandleEntryClick(state, entry, id, interaction);
         }
 
@@ -1790,6 +2080,18 @@ namespace NowUI
                 return;
             }
 
+            if (IsUnityEditorTheme(state.themeAsset))
+            {
+                Color color = IsSelectedEntry(state, entry)
+                    ? state.themeAsset.GetColor(NowColorToken.AccentText)
+                    : state.themeAsset.GetColor(NowColorToken.TextMuted);
+                if (entry.directory)
+                    DrawEditorFolderIcon(state.themeAsset, rect, color);
+                else
+                    DrawEditorFileIcon(state.themeAsset, rect, color);
+                return;
+            }
+
             NowControls.DrawCenteredLabel(
                 state.themeAsset,
                 rect,
@@ -1802,10 +2104,14 @@ namespace NowUI
         static ThumbnailEntry DrawThumbnailFrame(PopupState state, NowRect rect, BrowserEntry entry)
         {
             var theme = state.themeAsset;
-            Color border = theme.GetColor(NowColorToken.Border);
+            bool editorChrome = IsUnityEditorTheme(theme);
+            Color border = theme.GetColor(
+                editorChrome ? NowColorToken.BorderStrong : NowColorToken.Border);
             Now.Rectangle(rect)
-                .SetRadius(4f)
-                .SetColor(theme.GetColor(NowColorToken.SurfaceMuted))
+                .SetRadius(PickerRadius(theme, 4f))
+                .SetColor(editorChrome
+                    ? PickerPaneSurface(theme)
+                    : theme.GetColor(NowColorToken.SurfaceMuted))
                 .SetOutline(1f)
                 .SetOutlineColor(border)
                 .Draw();
@@ -1823,13 +2129,23 @@ namespace NowUI
             }
             else
             {
-                NowControls.DrawCenteredLabel(
-                    theme,
-                    content,
-                    string.IsNullOrEmpty(entry.icon) ? "📄" : entry.icon,
-                    NowTextStyle.Title,
-                    content,
-                    Color.white);
+                if (editorChrome)
+                {
+                    if (entry.directory)
+                        DrawEditorFolderIcon(theme, content, theme.GetColor(NowColorToken.TextMuted));
+                    else
+                        DrawEditorFileIcon(theme, content, theme.GetColor(NowColorToken.TextMuted));
+                }
+                else
+                {
+                    NowControls.DrawCenteredLabel(
+                        theme,
+                        content,
+                        string.IsNullOrEmpty(entry.icon) ? "📄" : entry.icon,
+                        NowTextStyle.Title,
+                        content,
+                        Color.white);
+                }
             }
 
             return thumbnail;

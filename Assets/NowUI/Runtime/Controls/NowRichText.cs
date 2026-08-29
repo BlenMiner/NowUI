@@ -405,7 +405,7 @@ namespace NowUI
         NowRichTextDocument PrepareDocument(ref State state)
         {
             var baseStyle = new NowRichTextStyle(_style.fontSize, _style.fontStyle).SetColor(_style.color);
-            Vector4 accentColor = NowTheme.themeAsset.GetColor(NowColorToken.Accent);
+            Vector4 accentColor = NowRichTextParser.DefaultLinkColor(NowTheme.themeAsset);
 
             if (state.document == null)
                 state.document = new NowRichTextDocument();

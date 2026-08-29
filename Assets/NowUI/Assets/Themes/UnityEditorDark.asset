@@ -453,7 +453,7 @@ MonoBehaviour:
     _submenuIndicatorInset: 14
     _submenuIndicatorSize: 10
     _scrollbarWidth: 15
-    _scrollbarPadding: 1
+    _scrollbarPadding: 4
     _scrollbarMinThumbSize: 20
     _scrollWheelStep: 30
     _switchWidth: 30
