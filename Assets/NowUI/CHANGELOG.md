@@ -1,3 +1,10 @@
+## [1.9.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.1...nowui-v1.9.2) (2026-08-29)
+
+
+### Bug Fixes
+
+* more file dialog improvemenmts ([1b3553d](https://github.com/BlenMiner/NowUI/commit/1b3553d41cc5d1d2d08c7d5f0552980e62c77aaf))
+
 ## [1.9.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.0...nowui-v1.9.1) (2026-08-26)
 
 
