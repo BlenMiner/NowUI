@@ -1,3 +1,10 @@
+## [1.10.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.1...nowui-v1.10.2) (2026-08-30)
+
+
+### Bug Fixes
+
+* font outline + sdf padding improvements ([b5840e8](https://github.com/BlenMiner/NowUI/commit/b5840e8121cafdc45dd1c63745e69fdee4cbeeaa))
+
 ## [1.10.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.0...nowui-v1.10.1) (2026-08-30)
 
 
