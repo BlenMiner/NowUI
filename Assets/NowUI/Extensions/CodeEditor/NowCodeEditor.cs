@@ -1147,6 +1147,28 @@ namespace NowUI.CodeEditor
             editor.scrollY = Mathf.Clamp(editor.scrollY, 0f, maxScrollY);
             editor.scrollX = Mathf.Clamp(editor.scrollX, 0f, maxScrollX);
 
+            // The popups own the wheel while the pointer is over them — the
+            // consume below is first-wins, and without this the document
+            // scrolls underneath while the popup stays anchored to the caret.
+            // Moving the selection rather than the window lets the existing
+            // keep-selection-visible clamp do the scrolling.
+            if (CompletionsOpen(cache) &&
+                cache.completionPopupRect.Contains(NowInput.current.pointerPosition))
+            {
+                cache.completionSelected = WheelSelection(
+                    cache.completionPopupRect,
+                    cache.completionSelected,
+                    cache.completionVisible.Count);
+            }
+            else if (cache.quickActionsOpen &&
+                     cache.quickActionPopupRect.Contains(NowInput.current.pointerPosition))
+            {
+                cache.quickActionSelected = WheelSelection(
+                    cache.quickActionPopupRect,
+                    cache.quickActionSelected,
+                    cache.actions.Count);
+            }
+
             Vector2 pendingWheel = NowInput.current.scrollDelta;
             bool canWheelScroll = WouldWheelMove(editor.scrollX, editor.scrollY, maxScrollX, maxScrollY, pendingWheel, lineHeight);
 
@@ -2717,6 +2739,61 @@ namespace NowUI.CodeEditor
             CloseCompletions(cache);
         }
 
+        /// <summary>
+        /// Moves a popup's selection by the wheel over its rect, consuming the
+        /// scroll so it never reaches the document underneath. Selection, not
+        /// window: the keep-selection-visible clamp in the layout is what
+        /// scrolls, and it would snap a bare window move straight back.
+        /// </summary>
+        static int WheelSelection(NowRect popupRect, int selected, int count)
+        {
+            Vector2 wheel = NowInput.ConsumeScrollDelta(popupRect);
+
+            if (wheel.y == 0f || count <= 0)
+                return selected;
+
+            int step = -Mathf.RoundToInt(wheel.y);
+            if (step == 0)
+                step = wheel.y > 0f ? -1 : 1;
+
+            NowControlState.RequestRepaint();
+            return Mathf.Clamp(selected + step, 0, count - 1);
+        }
+
+        /// <summary>
+        /// The affordance a windowed popup owes its longer list: a thumb sized
+        /// to the visible share, in the editor scrollbar's own idiom. Without
+        /// one, eight rows read as the whole list and everything below them is
+        /// simply never found.
+        /// </summary>
+        static void DrawPopupScrollThumb(
+            NowThemeAsset theme,
+            NowRect rect,
+            int windowStart,
+            int rowsShown,
+            int count,
+            float rowHeight)
+        {
+            if (count <= rowsShown)
+                return;
+
+            var track = new NowRect(
+                rect.xMax - 8f,
+                rect.y + CompletionPadding,
+                4f,
+                rect.height - CompletionPadding * 2f);
+            var metrics = NowScrollbar.Calculate(
+                NowScrollbarAxis.Vertical,
+                track,
+                rowsShown * rowHeight,
+                count * rowHeight,
+                windowStart * rowHeight,
+                12f);
+            Color thumbColor = theme.GetColor(NowColorToken.Border, Color.gray);
+            thumbColor.a *= 0.8f;
+            Now.Rectangle(metrics.thumb).SetColor(thumbColor).SetRadius(2f).Draw();
+        }
+
         static void LayoutCompletionPopup(NowResolvedId id, EditorCache cache, string text, NowFontAsset font, float fontSize,
             NowFontStyle fontStyle, NowRect textRect, float lineHeight, in EditorState editor, int caretLine)
         {
@@ -2747,6 +2824,11 @@ namespace NowUI.CodeEditor
             }
 
             width = Mathf.Min(width, 440f);
+
+            // A list taller than its window gets a thumb; the rows step aside
+            // for it so the detail column never draws underneath.
+            if (count > rows)
+                width += 10f;
 
             var anchorLine = cache.lines[LineOf(cache, Mathf.Min(cache.completionReplaceStart, text.Length))];
             float anchorX = Advance(text, font, fontSize, fontStyle, anchorLine.start,
@@ -2786,12 +2868,17 @@ namespace NowUI.CodeEditor
             float fontSize = cache.measureFontSize;
             float rowHeight = cache.completionRowHeight;
             int rows = Mathf.Min(MaxVisibleCompletions, cache.completionVisible.Count - cache.completionWindow);
+            float rowInset = cache.completionVisible.Count > MaxVisibleCompletions ? 10f : 0f;
 
             for (int r = 0; r < rows; ++r)
             {
                 int index = cache.completionWindow + r;
                 var item = cache.completionItems[cache.completionVisible[index]];
-                var rowRect = new NowRect(rect.x + 2f, rect.y + CompletionPadding + r * rowHeight, rect.width - 4f, rowHeight);
+                var rowRect = new NowRect(
+                    rect.x + 2f,
+                    rect.y + CompletionPadding + r * rowHeight,
+                    rect.width - 4f - rowInset,
+                    rowHeight);
 
                 if (index == cache.completionSelected)
                 {
@@ -2813,6 +2900,14 @@ namespace NowUI.CodeEditor
                     detailStyle.SetFontSize(fontSize * 0.85f).Draw(item.detail);
                 }
             }
+
+            DrawPopupScrollThumb(
+                theme,
+                rect,
+                cache.completionWindow,
+                rows,
+                cache.completionVisible.Count,
+                rowHeight);
         }
 
         /// <summary>
@@ -2992,6 +3087,10 @@ namespace NowUI.CodeEditor
 
             width = Mathf.Min(width, 440f);
 
+            // Room for the thumb, as the completion popup reserves it.
+            if (cache.actions.Count > rows)
+                width += 10f;
+
             float height = rows * rowHeight + CompletionPadding * 2f;
             float x = Mathf.Clamp(textRect.x + caretX - editor.scrollX, textRect.x, Mathf.Max(textRect.x, textRect.xMax - width));
             float caretTop = textRect.y + caretLine * lineHeight - editor.scrollY;
@@ -3026,12 +3125,17 @@ namespace NowUI.CodeEditor
             float fontSize = cache.measureFontSize;
             float rowHeight = cache.quickActionRowHeight;
             int rows = Mathf.Min(MaxVisibleCodeActions, cache.actions.Count - cache.quickActionWindow);
+            float rowInset = cache.actions.Count > MaxVisibleCodeActions ? 10f : 0f;
 
             for (int r = 0; r < rows; ++r)
             {
                 int index = cache.quickActionWindow + r;
                 var action = cache.actions[index];
-                var rowRect = new NowRect(rect.x + 2f, rect.y + CompletionPadding + r * rowHeight, rect.width - 4f, rowHeight);
+                var rowRect = new NowRect(
+                    rect.x + 2f,
+                    rect.y + CompletionPadding + r * rowHeight,
+                    rect.width - 4f - rowInset,
+                    rowHeight);
 
                 if (index == cache.quickActionSelected)
                 {
@@ -3053,6 +3157,14 @@ namespace NowUI.CodeEditor
                     detailStyle.SetFontSize(fontSize * 0.85f).Draw(action.detail);
                 }
             }
+
+            DrawPopupScrollThumb(
+                theme,
+                rect,
+                cache.quickActionWindow,
+                rows,
+                cache.actions.Count,
+                rowHeight);
         }
 
         static string NumberString(int value)

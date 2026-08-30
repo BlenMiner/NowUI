@@ -4145,8 +4145,24 @@ namespace NowUI
             out NowFontAtlasInfo.Glyph glyph,
             out Material glyphMaterial)
         {
-            int atlasSize = GetDynamicGlyphSize(fontSize);
             int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            return GetGlyphForPixelRange(unicode, fontSize, pixelRange, out glyph, out glyphMaterial);
+        }
+
+        /// <summary>
+        /// Resolves one glyph against an already-selected hidden dynamic range
+        /// tier. Internal multi-glyph consumers use this to keep every glyph
+        /// sampling one atlas variant even when their displayed font sizes differ.
+        /// </summary>
+        internal bool GetGlyphForPixelRange(
+            int unicode,
+            float fontSize,
+            int pixelRange,
+            out NowFontAtlasInfo.Glyph glyph,
+            out Material glyphMaterial)
+        {
+            int atlasSize = GetDynamicGlyphSize(fontSize);
+            pixelRange = Mathf.Max(1, pixelRange);
             bool hasBaseGlyph = TryGetCachedGlyph(unicode, out glyph);
 
             if (hasBaseGlyph &&
@@ -5497,9 +5513,15 @@ namespace NowUI
 
         internal float GetScreenPixelRange(int unicode, float fontSize, float outline)
         {
+            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            return GetScreenPixelRangeForPixelRange(unicode, fontSize, pixelRange);
+        }
+
+        internal float GetScreenPixelRangeForPixelRange(int unicode, float fontSize, int pixelRange)
+        {
             var fontAtlas = atlasInfo.atlas;
             int atlasSize = GetDynamicGlyphSize(fontSize);
-            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            pixelRange = Mathf.Max(1, pixelRange);
 
             if (_dynamicGlyphPages != null &&
                 _dynamicGlyphPages.TryGetValue(

@@ -301,6 +301,9 @@ NowSdf.Scene(new NowRect(20f, 20f, 220f, 170f))
 
 Available scene effects:
 
+- `SetTextDistanceMargin(margin)` reserves extra signed-distance reach around
+  font glyphs without drawing an effect. It is useful when text participates in
+  smooth unions, subtraction, morphing, or custom field shading.
 - `SetOutline(width, color, softness = 0)` draws an outer stroke.
 - `SetShadow(offset, softness, color, spread = 0)` draws a soft drop shadow.
 - `SetInnerShadow(offset, softness, color, spread = 0)` darkens inside edges.
@@ -313,6 +316,47 @@ Available scene effects:
   scene-local point, which works well for pointer-focused field inspection.
 - `SetWarp(amplitude, scale, speed = 0, seed = 0)` bends the distance domain
   before the scene is evaluated.
+
+Source-backed dynamic fonts automatically reserve enough signed-distance reach
+for the scene's finite outline, glow, shadow, inner-shadow, emboss, and bounded
+contour effects. Widths remain ordinary scene-local pixels; there is no font
+range or atlas-tier API to configure:
+
+```csharp
+NowSdf.Scene(rect)
+    .SetColor(Color.white)
+    .SetOutline(100f, Color.black)
+    .Text(new Vector2(120f, 110f), "NowUI", font, 80f, NowFontStyle.Bold)
+    .Draw();
+```
+
+The font maps that reach onto the same hidden, capped doubling tiers used by
+ordinary text outlines, and managed pages retain their packed 16-bit distance
+precision in the SDF shader. Effect setters may appear before or after `Text`,
+`Graph`, or `Morph`; the final scene budget is applied before drawing. Each
+scene prepares local copies of reusable text graphs, so drawing one graph with
+a large effect does not mutate that graph or make another scene use the wrong
+atlas. Hidden doubling tiers are cached and reused, avoiding one allocation per
+animated or Inspector-driven value. A repeating contour field (`bandCount: 0`)
+has no finite atlas-independent reach, so it uses the best tier selected by the
+other finite effects. The per-font generated-resource cap and lower-tier
+fallback described in [Text Styling](TextStyling.md) still apply.
+
+When no visible effect expresses the required field reach, reserve it directly
+in scene-local pixels:
+
+```csharp
+NowSdf.Scene(rect)
+    .SetTextDistanceMargin(32f)
+    .Text(new Vector2(96f, 90f), "Cutout", font, 72f)
+    .SmoothUnion(24f)
+    .Circle(new Vector2(210f, 92f), 54f)
+    .Draw();
+```
+
+The margin is only a minimum distance budget; it does not draw a stroke or
+expose atlas tiers. Like effect reach, it is evaluated only at `Measure`, layout
+reservation, `Draw`, or `BeginMask`, rather than at each setter call.
 
 Outlines, shadows, and glows can only render inside the scene quad and mask. If
 an effect should extend beyond a shape, give the scene rect enough empty space

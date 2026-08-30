@@ -302,6 +302,7 @@ public class NowDocsExample : NowLayoutGraphic
     int _richTextLinkClicks;
     string _richTextLastLink = "none";
     float _textOutlineDemoPixels = 32f;
+    bool _textOutlineDemoUseSdf;
     NowRichTextParser _richTextDemoParser;
     readonly NowRichTextSpan[] _richTextDemoSpans = new NowRichTextSpan[3];
     readonly NowViewStack _viewStackDemo = new NowViewStack();
@@ -400,10 +401,12 @@ public class NowDocsExample : NowLayoutGraphic
     internal void ConfigureTextStylingDemoHarness(
         NowThemeAsset theme,
         NowFontAsset font,
-        float outlinePixels = 100f)
+        float outlinePixels = 100f,
+        bool useSdf = true)
     {
         ConfigurePageHarness(theme, font, "Text styling demo");
         _textOutlineDemoPixels = Mathf.Clamp(outlinePixels, 0f, 100f);
+        _textOutlineDemoUseSdf = useSdf;
     }
 
     internal void ConfigurePageHarness(NowThemeAsset theme, NowFontAsset font, string pageTitle)
@@ -1769,6 +1772,28 @@ public class NowDocsExample : NowLayoutGraphic
 
         _textOutlineDemoPixels = Mathf.Clamp(_textOutlineDemoPixels, 0f, 100f);
 
+        using (NowLayout.HorizontalScope(
+            stretchWidth: true,
+            alignItems: NowLayoutAlign.Center,
+            spacing: 8f))
+        {
+            NowLayout.Label("Renderer").SetWidth(58f).Draw();
+
+            if (NowLayout.Button("Now.Text").SetWidth(76f).Draw())
+                _textOutlineDemoUseSdf = false;
+
+            if (NowLayout.Button("SDF scene").SetWidth(82f).Draw())
+                _textOutlineDemoUseSdf = true;
+
+            NowLayout.Label(_textOutlineDemoUseSdf
+                    ? "Scene effects request the same hidden font tiers."
+                    : "Direct text outline rendering.")
+                .SetFontSize(12f)
+                .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+                .SetStretchWidth()
+                .Draw();
+        }
+
         var panel = NowLayout.ReserveRect(height: 390f, stretchWidth: true);
         themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
 
@@ -1787,19 +1812,39 @@ public class NowDocsExample : NowLayoutGraphic
             .SetOutlinePixels(_textOutlineDemoPixels)
             .SetOutlineColor(DocsAccent(themeAsset));
         Vector2 size = text.Measure(sample);
-        text.SetPosition(new NowRect(
-                preview.center.x - size.x * 0.5f,
-                preview.center.y - size.y * 0.5f,
-                size.x,
-                size.y))
-            .SetMask(preview)
-            .Draw(sample);
+        if (_textOutlineDemoUseSdf)
+        {
+            NowSdf.Scene(preview, "docs-text-outline-sdf-scene")
+                .SetColor(Color.white)
+                .SetOutline(_textOutlineDemoPixels, DocsAccent(themeAsset))
+                .Text(
+                    new Vector2(
+                        preview.width * 0.5f - size.x * 0.5f,
+                        preview.height * 0.5f - size.y * 0.5f),
+                    sample,
+                    _font,
+                    fontSize,
+                    NowFontStyle.Bold)
+                .Draw();
+        }
+        else
+        {
+            text.SetPosition(new NowRect(
+                    preview.center.x - size.x * 0.5f,
+                    preview.center.y - size.y * 0.5f,
+                    size.x,
+                    size.y))
+                .SetMask(preview)
+                .Draw(sample);
+        }
 
         var code = new NowRect(panel.x + 24f, panel.yMax - 36f, panel.width - 48f, 24f);
         Now.Text(code)
             .SetFontSize(12f)
             .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
-            .Draw("Now.Text(rect).SetFontSize(80).SetOutlinePixels(outlinePixels).Draw(\"NowUI\");");
+            .Draw(_textOutlineDemoUseSdf
+                ? "NowSdf.Scene(rect).SetOutline(outlinePixels, color).Text(...).Draw();"
+                : "Now.Text(rect).SetFontSize(80).SetOutlinePixels(outlinePixels).Draw(\"NowUI\");");
     }
 
     void DrawRichTextDemo(NowThemeAsset themeAsset)

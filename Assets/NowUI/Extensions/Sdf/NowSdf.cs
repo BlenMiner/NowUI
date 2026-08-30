@@ -49,6 +49,29 @@ namespace NowUI.Sdf
         public NowRect bounds;
     }
 
+    struct NowSdfGlyphSource
+    {
+        public int nodeIndex;
+        public int codepoint;
+        public NowFontAsset font;
+        public NowFont owner;
+        public int ownerVersion;
+        public float fontSize;
+        public NowFontStyle fontStyle;
+        public float x;
+        public float y;
+        public float baseline;
+        public Vector2 rotation;
+        public Vector2 pivot;
+    }
+
+    struct NowSdfResolvedGlyph
+    {
+        public NowFont font;
+        public NowFontAtlasInfo.Glyph glyph;
+        public Material material;
+    }
+
     struct NowSdfLayer
     {
         public NowSdfLayerKind kind;
@@ -74,15 +97,24 @@ namespace NowUI.Sdf
             (32d * FloatUnitRoundoff) / (1d - 32d * FloatUnitRoundoff);
 
         readonly List<NowSdfNode> _nodes = new List<NowSdfNode>(8);
+        readonly List<NowSdfGlyphSource> _glyphSources = new List<NowSdfGlyphSource>(8);
+        readonly List<NowSdfResolvedGlyph> _resolvedGlyphs = new List<NowSdfResolvedGlyph>(8);
         readonly List<float> _rotationStack = new List<float>(4);
+
+        static readonly int _textSdfEncodingProp = Shader.PropertyToID("_NowUITextSdfEncoding");
 
         Vector4 _color = Vector4.one;
         Vector4 _textureUv = new Vector4(0f, 0f, 1f, 1f);
         Texture _texture;
+        bool _textureFromGlyph;
         bool _useTexture;
         NowSdfOperation _operation = NowSdfOperation.Union;
         float _smoothing;
         float _nextRotationDegrees;
+        int _textPixelRange;
+        int _failedTextPixelRange;
+        int _failedTextFontVersion = -1;
+        int _contentRevision;
         int _requiredMaterialAbi = 1;
         NowRect _bounds;
         bool _hasBounds;
@@ -93,16 +125,33 @@ namespace NowUI.Sdf
 
         internal bool hasNodes => _nodes.Count > 0;
 
+        internal bool hasText => _glyphSources.Count > 0;
+
+        internal int contentRevision => _contentRevision;
+
         internal int requiredMaterialAbi => _requiredMaterialAbi;
 
         public Vector2 measureSize => _hasBounds ? new Vector2(_bounds.xMax, _bounds.yMax) : Vector2.zero;
 
         public NowSdfGraph Clear()
         {
+            AdvanceContentRevision();
             _nodes.Clear();
+            _glyphSources.Clear();
+            _resolvedGlyphs.Clear();
+
+            if (_textureFromGlyph)
+            {
+                _texture = null;
+                _textureFromGlyph = false;
+            }
+
             _operation = NowSdfOperation.Union;
             _smoothing = 0f;
             _nextRotationDegrees = 0f;
+            _textPixelRange = 0;
+            _failedTextPixelRange = 0;
+            _failedTextFontVersion = -1;
             _rotationStack.Clear();
             _requiredMaterialAbi = 1;
             _bounds = default;
@@ -116,6 +165,7 @@ namespace NowUI.Sdf
             _color = Vector4.one;
             _textureUv = new Vector4(0f, 0f, 1f, 1f);
             _texture = null;
+            _textureFromGlyph = false;
             _useTexture = false;
             return this;
         }
@@ -140,7 +190,9 @@ namespace NowUI.Sdf
 
         public NowSdfGraph SetTexture(Texture texture)
         {
+            AdvanceContentRevision();
             _texture = texture;
+            _textureFromGlyph = false;
             _useTexture = texture != null;
             return this;
         }
@@ -579,8 +631,35 @@ namespace NowUI.Sdf
         {
             _color = source._color;
             _textureUv = source._textureUv;
-            _texture = source._texture;
+            _texture = source._textureFromGlyph ? null : source._texture;
+            _textureFromGlyph = false;
             _useTexture = source._useTexture;
+        }
+
+        internal void CopyFrom(NowSdfGraph source)
+        {
+            _nodes.Clear();
+            _nodes.AddRange(source._nodes);
+            _glyphSources.Clear();
+            _glyphSources.AddRange(source._glyphSources);
+            _resolvedGlyphs.Clear();
+            _rotationStack.Clear();
+            _rotationStack.AddRange(source._rotationStack);
+            _color = source._color;
+            _textureUv = source._textureUv;
+            _texture = source._texture;
+            _textureFromGlyph = source._textureFromGlyph;
+            _useTexture = source._useTexture;
+            _operation = source._operation;
+            _smoothing = source._smoothing;
+            _nextRotationDegrees = source._nextRotationDegrees;
+            _textPixelRange = source._textPixelRange;
+            _failedTextPixelRange = source._failedTextPixelRange;
+            _failedTextFontVersion = source._failedTextFontVersion;
+            _contentRevision = source._contentRevision;
+            _requiredMaterialAbi = source._requiredMaterialAbi;
+            _bounds = source._bounds;
+            _hasBounds = source._hasBounds;
         }
 
         void Add(NowSdfShapeType type, Vector4 data1, Vector4 data2, NowRect bounds)
@@ -613,7 +692,13 @@ namespace NowUI.Sdf
             }
         }
 
-        void AddText(Vector2 position, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle, int tabSpaces)
+        void AddText(
+            Vector2 position,
+            string value,
+            NowFontAsset font,
+            float fontSize,
+            NowFontStyle fontStyle,
+            int tabSpaces)
         {
             if (font == null || string.IsNullOrEmpty(value) || fontSize <= 0f)
             {
@@ -622,15 +707,19 @@ namespace NowUI.Sdf
             }
 
             int firstGlyph = _nodes.Count;
+            int firstGlyphSource = _glyphSources.Count;
             int previousRequiredMaterialAbi = _requiredMaterialAbi;
             Texture previousTexture = _texture;
+            bool previousTextureFromGlyph = _textureFromGlyph;
+            int previousTextPixelRange = _textPixelRange;
+            int previousFailedTextPixelRange = _failedTextPixelRange;
+            int previousFailedTextFontVersion = _failedTextFontVersion;
+            int previousContentRevision = _contentRevision;
             NowRect previousBounds = _bounds;
             bool previouslyHadBounds = _hasBounds;
 
             try
             {
-                font.EnsureGlyphs(value, fontSize, fontStyle);
-
                 float lineHeight = font.GetLineHeight(fontStyle) * fontSize;
                 float baseline = font.GetAscender(fontStyle) * fontSize;
                 float left = position.x;
@@ -664,8 +753,16 @@ namespace NowUI.Sdf
                         continue;
                     }
 
-                    if (!font.TryResolveGlyph(codepoint, fontSize, fontStyle, out var resolvedFont, out var glyph, out var material))
+                    if (!font.TryResolveGlyph(
+                        codepoint,
+                        fontSize,
+                        fontStyle,
+                        out var resolvedFont,
+                        out var glyph,
+                        out var material))
+                    {
                         continue;
+                    }
 
                     if (resolvedFont != null &&
                         !resolvedFont.isColor &&
@@ -681,10 +778,16 @@ namespace NowUI.Sdf
                             glyph.atlasBounds.right - glyph.atlasBounds.left,
                             glyph.atlasBounds.top - glyph.atlasBounds.bottom);
                         float range = resolvedFont.GetScreenPixelRange(codepoint, fontSize);
+                        float encoding = GetSdfEncoding(material);
+                        int nodeIndex = _nodes.Count;
                         AppendNode(
                             NowSdfShapeType.Glyph,
                             RectData(rect),
-                            new Vector4(range, 0f, 0f, 0f),
+                            new Vector4(
+                                range,
+                                encoding,
+                                GetSdfDistanceCodeStep(range, encoding),
+                                0f),
                             rect,
                             uv,
                             false,
@@ -692,6 +795,23 @@ namespace NowUI.Sdf
                             glyphSmoothing,
                             textRotation,
                             textRotation == Vector2.zero);
+                        _glyphSources.Add(new NowSdfGlyphSource
+                        {
+                            nodeIndex = nodeIndex,
+                            codepoint = codepoint,
+                            font = font,
+                            owner = resolvedFont,
+                            ownerVersion = resolvedFont.layoutDataVersion,
+                            fontSize = fontSize,
+                            fontStyle = fontStyle,
+                            x = x,
+                            y = y,
+                            baseline = baseline,
+                            rotation = textRotation
+                        });
+                        _textPixelRange = Mathf.Max(
+                            _textPixelRange,
+                            resolvedFont.GetDynamicPixelRange(0f, fontSize));
 
                         var node = _nodes[_nodes.Count - 1];
                         double halfWidth = Math.Abs((double)node.data1.z) * 0.5d;
@@ -742,21 +862,299 @@ namespace NowUI.Sdf
                         _nodes[i] = node;
                         Encapsulate(node.bounds);
                     }
+
+                    for (int i = firstGlyphSource; i < _glyphSources.Count; ++i)
+                    {
+                        var source = _glyphSources[i];
+                        source.pivot = textPivot;
+                        _glyphSources[i] = source;
+                    }
                 }
+
             }
             catch
             {
                 if (_nodes.Count > firstGlyph)
                     _nodes.RemoveRange(firstGlyph, _nodes.Count - firstGlyph);
 
+                if (_glyphSources.Count > firstGlyphSource)
+                    _glyphSources.RemoveRange(firstGlyphSource, _glyphSources.Count - firstGlyphSource);
+
                 _requiredMaterialAbi = previousRequiredMaterialAbi;
                 _texture = previousTexture;
+                _textureFromGlyph = previousTextureFromGlyph;
+                _textPixelRange = previousTextPixelRange;
+                _failedTextPixelRange = previousFailedTextPixelRange;
+                _failedTextFontVersion = previousFailedTextFontVersion;
+                _contentRevision = previousContentRevision;
                 _bounds = previousBounds;
                 _hasBounds = previouslyHadBounds;
                 throw;
             }
 
             SkipPrimitive();
+        }
+
+        internal int RequiredTextPixelRange(float effectBudget)
+        {
+            effectBudget = SanitizeEffectBudget(effectBudget);
+            int pixelRange = _textPixelRange;
+
+            for (int i = 0; i < _glyphSources.Count; ++i)
+            {
+                NowSdfGlyphSource source = _glyphSources[i];
+
+                if (source.owner != null && source.fontSize > 0f)
+                {
+                    pixelRange = Mathf.Max(
+                        pixelRange,
+                        source.owner.GetDynamicPixelRange(
+                            effectBudget / source.fontSize,
+                            source.fontSize));
+                }
+            }
+
+            return pixelRange;
+        }
+
+        internal int BaseTextPixelRange()
+        {
+            int pixelRange = 0;
+
+            for (int i = 0; i < _glyphSources.Count; ++i)
+            {
+                NowSdfGlyphSource source = _glyphSources[i];
+
+                if (source.owner != null)
+                {
+                    pixelRange = Mathf.Max(
+                        pixelRange,
+                        source.owner.GetDynamicPixelRange(0f, source.fontSize));
+                }
+            }
+
+            return pixelRange;
+        }
+
+        internal bool TryEnsureTextPixelRange(
+            int pixelRange,
+            Texture requiredTexture,
+            out bool changed,
+            bool allowDowngrade = false)
+        {
+            changed = false;
+            pixelRange = allowDowngrade
+                ? Mathf.Max(1, pixelRange)
+                : Mathf.Max(pixelRange, _textPixelRange);
+
+            if (_glyphSources.Count == 0)
+                return true;
+
+            if (!_textureFromGlyph)
+                return false;
+
+            NowFont owner = _glyphSources[0].owner;
+            int fontVersion = owner != null ? owner.layoutDataVersion : -1;
+
+            // Published dynamic pages survive ordinary budget pressure, but an
+            // explicit font-cache clear destroys their Unity texture. Re-resolve
+            // in that exceptional case instead of retaining a stale graph atlas.
+            if (pixelRange == _textPixelRange && TextAtlasIsCurrent())
+            {
+                return requiredTexture == null || ReferenceEquals(requiredTexture, _texture);
+            }
+
+            if (_failedTextPixelRange == pixelRange && _failedTextFontVersion == fontVersion)
+                return false;
+
+            _resolvedGlyphs.Clear();
+            Texture resolvedTexture = null;
+
+            for (int i = 0; i < _glyphSources.Count; ++i)
+            {
+                var source = _glyphSources[i];
+
+                if (source.owner == null ||
+                    !source.owner.GetGlyphForPixelRange(
+                        source.codepoint,
+                        source.fontSize,
+                        pixelRange,
+                        out var glyph,
+                        out var material) ||
+                    source.owner.isColor ||
+                    material == null ||
+                    material.mainTexture == null)
+                {
+                    _resolvedGlyphs.Clear();
+                    RecordTextRangeFailure(pixelRange, fontVersion);
+                    return false;
+                }
+
+                if (resolvedTexture == null)
+                    resolvedTexture = material.mainTexture;
+                else if (!ReferenceEquals(resolvedTexture, material.mainTexture))
+                {
+                    // SDF scenes intentionally expose one source texture. Keep the
+                    // current, internally consistent glyph tier if a font fallback
+                    // or a full dynamic page would split this graph across atlases.
+                    _resolvedGlyphs.Clear();
+                    RecordTextRangeFailure(pixelRange, fontVersion);
+                    return false;
+                }
+
+                _resolvedGlyphs.Add(new NowSdfResolvedGlyph
+                {
+                    font = source.owner,
+                    glyph = glyph,
+                    material = material
+                });
+            }
+
+            if (requiredTexture != null && !ReferenceEquals(requiredTexture, resolvedTexture))
+            {
+                _resolvedGlyphs.Clear();
+                RecordTextRangeFailure(pixelRange, fontVersion);
+                return false;
+            }
+
+            _texture = resolvedTexture;
+
+            for (int i = 0; i < _glyphSources.Count; ++i)
+            {
+                NowSdfGlyphSource source = _glyphSources[i];
+                NowSdfResolvedGlyph resolved = _resolvedGlyphs[i];
+                NowSdfNode node = _nodes[source.nodeIndex];
+                NowRect rect = GlyphRect(
+                    source.x,
+                    source.y,
+                    source.baseline,
+                    source.fontSize,
+                    resolved.glyph);
+
+                if (source.rotation != Vector2.zero)
+                {
+                    Vector2 center = RotatePointAroundPivot(
+                        rect.center,
+                        source.pivot,
+                        source.rotation,
+                        nameof(pixelRange));
+                    rect = new NowRect(
+                        center.x - rect.width * 0.5f,
+                        center.y - rect.height * 0.5f,
+                        rect.width,
+                        rect.height);
+                }
+
+                node.data1 = RectData(rect);
+                node.data2.x = resolved.font.GetScreenPixelRangeForPixelRange(
+                    source.codepoint,
+                    source.fontSize,
+                    pixelRange);
+                node.data2.y = GetSdfEncoding(resolved.material);
+                node.data2.z = GetSdfDistanceCodeStep(node.data2.x, node.data2.y);
+                node.uv = new Vector4(
+                    resolved.glyph.atlasBounds.left,
+                    resolved.glyph.atlasBounds.bottom,
+                    resolved.glyph.atlasBounds.right - resolved.glyph.atlasBounds.left,
+                    resolved.glyph.atlasBounds.top - resolved.glyph.atlasBounds.bottom);
+                node.bounds = source.rotation == Vector2.zero
+                    ? rect
+                    : RotatedShapeBounds(
+                        node.type,
+                        node.data1,
+                        node.data2,
+                        rect,
+                        source.rotation,
+                        nameof(pixelRange));
+                _nodes[source.nodeIndex] = node;
+                source.owner = resolved.font;
+                source.ownerVersion = resolved.font.layoutDataVersion;
+                _glyphSources[i] = source;
+            }
+
+            _resolvedGlyphs.Clear();
+            _textPixelRange = pixelRange;
+            _failedTextPixelRange = 0;
+            _failedTextFontVersion = -1;
+            RebuildBounds();
+            changed = true;
+            return true;
+        }
+
+        void RecordTextRangeFailure(int pixelRange, int fontVersion)
+        {
+            _failedTextPixelRange = pixelRange;
+            _failedTextFontVersion = fontVersion;
+        }
+
+        internal bool UsesTextOwner(NowFont owner)
+        {
+            if (owner == null || _glyphSources.Count == 0)
+                return false;
+
+            for (int i = 0; i < _glyphSources.Count; ++i)
+            {
+                if (!ReferenceEquals(_glyphSources[i].owner, owner))
+                    return false;
+            }
+
+            return true;
+        }
+
+        internal bool TryGetTextOwner(out NowFont owner)
+        {
+            owner = _glyphSources.Count > 0 ? _glyphSources[0].owner : null;
+            return UsesTextOwner(owner);
+        }
+
+        internal bool TextAtlasIsCurrent()
+        {
+            if (_glyphSources.Count == 0)
+                return true;
+
+            if (!_textureFromGlyph || _texture == null)
+                return false;
+
+            for (int i = 0; i < _glyphSources.Count; ++i)
+            {
+                NowSdfGlyphSource source = _glyphSources[i];
+
+                if (source.owner == null || source.ownerVersion != source.owner.layoutDataVersion)
+                    return false;
+            }
+
+            return true;
+        }
+
+        static float SanitizeEffectBudget(float effectBudget)
+        {
+            return float.IsNaN(effectBudget) || float.IsInfinity(effectBudget)
+                ? 0f
+                : Mathf.Max(0f, effectBudget);
+        }
+
+        static float GetSdfEncoding(Material material)
+        {
+            return material != null &&
+                material.HasProperty(_textSdfEncodingProp) &&
+                material.GetFloat(_textSdfEncodingProp) > 0.5f
+                    ? 1f
+                    : 0f;
+        }
+
+        static float GetSdfDistanceCodeStep(float screenPixelRange, float encoding)
+        {
+            float codeCount = encoding > 0.5f ? 65535f : 255f;
+            return Mathf.Max(0f, screenPixelRange) / codeCount;
+        }
+
+        void RebuildBounds()
+        {
+            _bounds = default;
+            _hasBounds = false;
+
+            for (int i = 0; i < _nodes.Count; ++i)
+                Encapsulate(_nodes[i].bounds);
         }
 
         void AppendNode(
@@ -771,6 +1169,7 @@ namespace NowUI.Sdf
             Vector2 rotation,
             bool encapsulate)
         {
+            AdvanceContentRevision();
             operation = _nodes.Count == 0 ? NowSdfOperation.Union : operation;
             _nodes.Add(new NowSdfNode
             {
@@ -797,6 +1196,14 @@ namespace NowUI.Sdf
                 Encapsulate(bounds);
         }
 
+        void AdvanceContentRevision()
+        {
+            unchecked
+            {
+                ++_contentRevision;
+            }
+        }
+
         static Vector2 RotatePointAroundPivot(
             Vector2 point,
             Vector2 pivot,
@@ -820,6 +1227,7 @@ namespace NowUI.Sdf
             if (_texture == null)
             {
                 _texture = texture;
+                _textureFromGlyph = true;
                 return true;
             }
 
@@ -1749,6 +2157,20 @@ namespace NowUI.Sdf
             return this;
         }
 
+        /// <summary>
+        /// Reserves at least this much scene-local signed-distance reach around
+        /// font glyphs, without drawing an outline or other visible effect. Use
+        /// it when text participates in smooth SDF operations that need more
+        /// source field outside the glyph edge. The range is selected lazily
+        /// when the scene is measured or drawn and remains subject to the font's
+        /// generated-resource cap.
+        /// </summary>
+        public NowSdfBuilder SetTextDistanceMargin(float margin)
+        {
+            _cache.SetTextDistanceMargin(margin);
+            return this;
+        }
+
         public NowSdfBuilder SetOutline(float width, Color color, float softness = 0f)
         {
             _cache.SetOutline(width, color, softness);
@@ -2090,6 +2512,7 @@ namespace NowUI.Sdf
         public Vector2 Measure()
         {
             _cache.ThrowIfReleased();
+            _cache.PrepareForTerminal();
             return _cache.measureSize;
         }
 
@@ -2149,6 +2572,7 @@ namespace NowUI.Sdf
         NowRect ReserveLayoutRect()
         {
             var options = _options;
+            _cache.PrepareForTerminal();
             Vector2 size = _cache.measureSize;
 
             if (!options.Has(NowLayoutOptions.Field.Width) && size.x > 0f)
@@ -2308,6 +2732,8 @@ namespace NowUI.Sdf
         readonly List<float> _rotationStack = new List<float>(4);
         readonly Dictionary<NowSdfGraph, GraphUpload> _graphUploads =
             new Dictionary<NowSdfGraph, GraphUpload>(8);
+        readonly Dictionary<NowSdfGraph, NowSdfGraph> _preparedTextGraphs =
+            new Dictionary<NowSdfGraph, NowSdfGraph>(8);
         readonly List<OwnedMaterial> _ownedMaterials = new List<OwnedMaterial>(2);
         readonly List<OwnedMaterial> _ownedMaskMaterials = new List<OwnedMaterial>(2);
 
@@ -2334,6 +2760,7 @@ namespace NowUI.Sdf
         NowSdfOperation _activeLayerOperation;
         float _activeLayerSmoothing;
         float _feather;
+        float _textDistanceMargin;
         Vector4 _outline;
         Vector4 _outlineColor;
         Vector4 _glow;
@@ -2348,8 +2775,11 @@ namespace NowUI.Sdf
         Vector4 _contourMask;
         Vector4 _warp;
         Texture _texture;
+        NowSdfGraph _textureSourceGraph;
+        bool _texturePinned;
         NowRect _bounds;
         bool _hasBounds;
+        bool _terminalPrepared;
 
         bool _released;
 
@@ -2370,6 +2800,14 @@ namespace NowUI.Sdf
             ThrowIfReleased();
             _layers.Clear();
             _graphUploads.Clear();
+            _preparedTextGraphs.Clear();
+
+            // Stable scene caches may have needed more terminal clones in an
+            // earlier frame. Clear every retained slot so surplus graphs do not
+            // keep font assets, dynamic atlases, or glyph metadata alive.
+            for (int i = 0; i < _inlineGraphs.Count; ++i)
+                _inlineGraphs[i].ResetForReuse();
+
             _inlineGraphCursor = 0;
             _activeGraph = RentInlineGraph();
             _pendingOperation = NowSdfOperation.Union;
@@ -2379,6 +2817,7 @@ namespace NowUI.Sdf
             _activeLayerOperation = NowSdfOperation.Union;
             _activeLayerSmoothing = 0f;
             _feather = 0f;
+            _textDistanceMargin = 0f;
             _outline = default;
             _outlineColor = default;
             _glow = default;
@@ -2393,11 +2832,14 @@ namespace NowUI.Sdf
             _contourMask = default;
             _warp = default;
             _texture = null;
+            _textureSourceGraph = null;
+            _texturePinned = false;
             _materialTemplate = null;
             _materialTemplateAbi = NowSdf.MaterialAbiVersion;
             _syncMaterialTemplate = true;
             _bounds = default;
             _hasBounds = false;
+            _terminalPrepared = false;
         }
 
         NowSdfGraph RentInlineGraph()
@@ -2427,6 +2869,17 @@ namespace NowUI.Sdf
             _materialTemplate = null;
             _hasUploadedHash = false;
             _hasMaskUploadedHash = false;
+            _layers.Clear();
+            _graphUploads.Clear();
+            _preparedTextGraphs.Clear();
+
+            for (int i = 0; i < _inlineGraphs.Count; ++i)
+                _inlineGraphs[i].ResetForReuse();
+
+            _inlineGraphs.Clear();
+            _activeGraph = null;
+            _texture = null;
+            _textureSourceGraph = null;
         }
 
         internal void ThrowIfReleased()
@@ -2493,61 +2946,88 @@ namespace NowUI.Sdf
 
         public void SetColor(Vector4 color)
         {
+            InvalidateTerminalPreparation();
             _activeGraph.SetColor(color);
         }
 
         public void UseColor()
         {
+            InvalidateTerminalPreparation();
             _activeGraph.UseColor();
         }
 
         public void SetTexture(Texture texture)
         {
-            _texture = _texture != null ? _texture : texture;
+            InvalidateTerminalPreparation();
+
+            if (_texture == null && texture != null)
+            {
+                _texture = texture;
+                _textureSourceGraph = null;
+                _texturePinned = true;
+            }
+
             _activeGraph.SetTexture(texture);
         }
 
         public void UseTexture()
         {
+            InvalidateTerminalPreparation();
             _activeGraph.UseTexture();
         }
 
         public void SetTextureUV(Vector4 uvRect)
         {
+            InvalidateTerminalPreparation();
             _activeGraph.SetTextureUV(uvRect);
         }
 
         public void SetFeather(float feather)
         {
+            InvalidateTerminalPreparation();
             _feather = Mathf.Max(0f, feather);
+        }
+
+        public void SetTextDistanceMargin(float margin)
+        {
+            InvalidateTerminalPreparation();
+            _textDistanceMargin = float.IsNaN(margin) || float.IsInfinity(margin)
+                ? 0f
+                : Mathf.Max(0f, margin);
         }
 
         public void SetOutline(float width, Vector4 color, float softness)
         {
+            InvalidateTerminalPreparation();
             _outline = new Vector4(Mathf.Max(0f, width), Mathf.Max(0f, softness), 0f, 0f);
             _outlineColor = color;
         }
 
         public void SetGlow(float radius, Vector4 color, float power)
         {
+            InvalidateTerminalPreparation();
             _glow = new Vector4(Mathf.Max(0f, radius), Mathf.Max(0.0001f, power), 0f, 0f);
             _glowColor = color;
         }
 
         public void SetShadow(Vector2 offset, float softness, Vector4 color, float spread)
         {
+            InvalidateTerminalPreparation();
             _shadow = new Vector4(offset.x, offset.y, Mathf.Max(0f, softness), Mathf.Max(0f, spread));
             _shadowColor = color;
         }
 
         public void SetInnerShadow(Vector2 offset, float softness, Vector4 color, float spread)
         {
+            InvalidateTerminalPreparation();
             _innerShadow = new Vector4(offset.x, offset.y, Mathf.Max(0f, softness), Mathf.Max(0f, spread));
             _innerShadowColor = color;
         }
 
         public void SetEmboss(Vector2 lightDirection, float strength, float size)
         {
+            InvalidateTerminalPreparation();
+
             if (lightDirection.sqrMagnitude <= 0.0001f)
                 lightDirection = new Vector2(-0.55f, -0.8f);
 
@@ -2557,6 +3037,7 @@ namespace NowUI.Sdf
 
         public void SetContours(float spacing, float width, Vector4 color, float offset, int bandCount)
         {
+            InvalidateTerminalPreparation();
             _contour = new Vector4(
                 Mathf.Max(0.0001f, spacing),
                 Mathf.Max(0f, width),
@@ -2610,6 +3091,7 @@ namespace NowUI.Sdf
 
         public void Graph(NowSdfGraph graph)
         {
+            InvalidateTerminalPreparation();
             ThrowIfPendingRotationCannotApplyTo("Graph");
 
             if (graph == null || !graph.hasNodes)
@@ -2629,6 +3111,7 @@ namespace NowUI.Sdf
 
         public void Morph(NowSdfGraph from, NowSdfGraph to, float t)
         {
+            InvalidateTerminalPreparation();
             ThrowIfPendingRotationCannotApplyTo("Morph");
 
             if (from == null || to == null || !from.hasNodes || !to.hasNodes)
@@ -2760,6 +3243,7 @@ namespace NowUI.Sdf
         {
             ThrowIfReleased();
             ThrowIfRotationScopesOpen("Draw");
+            PrepareForTerminal();
             FlushActiveGraph();
 
             if (_layers.Count == 0)
@@ -2784,6 +3268,7 @@ namespace NowUI.Sdf
             // Fail before material creation or RT execution when the ambient
             // texture-mask stack is already full.
             Now.EnsureCanPushTextureMask();
+            PrepareForTerminal();
             FlushActiveGraph();
 
             if (_layers.Count == 0 || !IsFiniteRect(rect) || rect.isEmpty)
@@ -2867,6 +3352,8 @@ namespace NowUI.Sdf
 
         void PrepareActivePrimitive()
         {
+            InvalidateTerminalPreparation();
+
             if (_activeGraph.hasNodes || _layers.Count == 0)
                 return;
 
@@ -2905,12 +3392,435 @@ namespace NowUI.Sdf
             if (layer.targetGraph != null)
                 Encapsulate(layer.targetGraph.measureSize);
 
-            _texture ??= layer.graph.texture;
-
-            if (layer.targetGraph != null)
-                _texture ??= layer.targetGraph.texture;
+            ClaimTexture(layer.graph);
+            ClaimTexture(layer.targetGraph);
 
             ResetPendingPrimitiveModifiers();
+        }
+
+        void InvalidateTerminalPreparation()
+        {
+            if (_preparedTextGraphs.Count > 0)
+                RestoreOriginalTextGraphReferences();
+
+            _terminalPrepared = false;
+            _preparedTextGraphs.Clear();
+        }
+
+        void RestoreOriginalTextGraphReferences()
+        {
+            for (int i = 0; i < _layers.Count; ++i)
+            {
+                NowSdfLayer layer = _layers[i];
+                layer.graph = OriginalTextGraph(layer.graph);
+                layer.targetGraph = OriginalTextGraph(layer.targetGraph);
+                _layers[i] = layer;
+            }
+
+            _activeGraph = OriginalTextGraph(_activeGraph);
+            _textureSourceGraph = OriginalTextGraph(_textureSourceGraph);
+
+            if (!_texturePinned)
+                ReconcileTexture();
+        }
+
+        NowSdfGraph OriginalTextGraph(NowSdfGraph graph)
+        {
+            if (graph == null)
+                return null;
+
+            foreach (var pair in _preparedTextGraphs)
+            {
+                if (ReferenceEquals(pair.Value, graph))
+                    return pair.Key;
+            }
+
+            return graph;
+        }
+
+        float GetTextEffectBudget()
+        {
+            float budget = _textDistanceMargin;
+
+            if (_outlineColor.w > 0f && _outline.x > 0f)
+                budget = Mathf.Max(budget, _outline.x + _outline.y);
+
+            if (_glowColor.w > 0f && _glow.x > 0f)
+                budget = Mathf.Max(budget, _glow.x);
+
+            if (_shadowColor.w > 0f)
+                budget = Mathf.Max(budget, _shadow.z + _shadow.w);
+
+            if (_innerShadowColor.w > 0f)
+                budget = Mathf.Max(budget, _innerShadow.z + _innerShadow.w);
+
+            if (_emboss.w > 0f)
+                budget = Mathf.Max(budget, _emboss.z);
+
+            // A finite contour stack has finite outward reach. Repeating
+            // contours deliberately cover the complete scene and therefore have
+            // no atlas-independent bound; leave them on the best field selected
+            // by the other effects instead of forcing every text graph to its cap.
+            if (_contourColor.w > 0f && _contour.y > 0f && _contour.w > 0f)
+            {
+                // contourDistance = fieldDistance + offset and the finite band
+                // cutoff is symmetric about zero. Reserve both the deepest
+                // inside and farthest outside endpoint; a signed subtraction of
+                // offset would miss large positive offsets entirely.
+                float contourReach =
+                    Mathf.Abs(_contour.z) +
+                    (_contour.w - 0.5f) * _contour.x +
+                    _contour.y * 0.5f;
+                budget = Mathf.Max(budget, contourReach);
+            }
+
+            if (budget > 0f)
+            {
+                // GetDynamicPixelRange already reserves one local pixel around
+                // the requested reach. Feather values above one widen the shader
+                // edge beyond that built-in guard.
+                budget += Mathf.Max(0f, (_feather - 1f) * 0.5f);
+            }
+
+            return budget;
+        }
+
+        internal void PrepareForTerminal()
+        {
+            if (_terminalPrepared)
+            {
+                if (PreparedTextGraphsAreCurrent())
+                    return;
+
+                InvalidateTerminalPreparation();
+            }
+
+            PrepareTextGraphCopies();
+
+            float budget = GetTextEffectBudget();
+            NowFont textOwner = GetSceneTextOwner();
+            int pixelRange = RequiredTextPixelRange(_activeGraph, textOwner, budget);
+
+            for (int i = 0; i < _layers.Count; ++i)
+            {
+                NowSdfLayer layer = _layers[i];
+                pixelRange = Mathf.Max(
+                    pixelRange,
+                    RequiredTextPixelRange(layer.graph, textOwner, budget));
+                pixelRange = Mathf.Max(
+                    pixelRange,
+                    RequiredTextPixelRange(layer.targetGraph, textOwner, budget));
+            }
+
+            if (textOwner != null && pixelRange > 0)
+            {
+                int baseRange = BaseTextPixelRange(_activeGraph, textOwner);
+                for (int i = 0; i < _layers.Count; ++i)
+                {
+                    baseRange = Mathf.Max(
+                        baseRange,
+                        BaseTextPixelRange(_layers[i].graph, textOwner));
+                    baseRange = Mathf.Max(
+                        baseRange,
+                        BaseTextPixelRange(_layers[i].targetGraph, textOwner));
+                }
+
+                int attemptRange = pixelRange;
+                bool prepared = false;
+
+                while (attemptRange >= baseRange && attemptRange > 0)
+                {
+                    if (TryPrepareTextRange(
+                        textOwner,
+                        attemptRange,
+                        attemptRange < pixelRange))
+                    {
+                        prepared = true;
+                        break;
+                    }
+
+                    RestorePreparedTextGraphs();
+
+                    if (attemptRange <= baseRange)
+                        break;
+
+                    attemptRange = PreviousTextPixelRange(attemptRange, baseRange);
+                }
+
+                if (!prepared)
+                    RestorePreparedTextGraphs();
+            }
+
+            ReconcileTexture();
+            RebuildSceneBounds();
+            _terminalPrepared = true;
+        }
+
+        bool PreparedTextGraphsAreCurrent()
+        {
+            foreach (var pair in _preparedTextGraphs)
+            {
+                if (pair.Key.contentRevision != pair.Value.contentRevision ||
+                    !pair.Value.TextAtlasIsCurrent())
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        static int PreviousTextPixelRange(int current, int baseRange)
+        {
+            int previous = Mathf.Max(1, baseRange);
+            int tier = previous;
+
+            while (tier < current)
+            {
+                previous = tier;
+                long doubled = (long)tier * 2L;
+
+                if (doubled >= current)
+                    break;
+
+                tier = doubled > int.MaxValue ? int.MaxValue : (int)doubled;
+            }
+
+            return Mathf.Max(baseRange, previous);
+        }
+
+        void PrepareTextGraphCopies()
+        {
+            NowSdfGraph textureSource = _textureSourceGraph;
+
+            for (int i = 0; i < _layers.Count; ++i)
+            {
+                NowSdfLayer layer = _layers[i];
+                layer.graph = PrepareTextGraph(layer.graph);
+                layer.targetGraph = PrepareTextGraph(layer.targetGraph);
+                _layers[i] = layer;
+            }
+
+            _activeGraph = PrepareTextGraph(_activeGraph);
+
+            if (textureSource != null &&
+                _preparedTextGraphs.TryGetValue(textureSource, out var preparedSource))
+            {
+                _textureSourceGraph = preparedSource;
+            }
+        }
+
+        NowSdfGraph PrepareTextGraph(NowSdfGraph graph)
+        {
+            if (graph == null || !graph.hasText)
+                return graph;
+
+            if (_preparedTextGraphs.TryGetValue(graph, out var prepared))
+                return prepared;
+
+            prepared = RentInlineGraph();
+            prepared.CopyFrom(graph);
+            _preparedTextGraphs.Add(graph, prepared);
+            return prepared;
+        }
+
+        void RestorePreparedTextGraphs()
+        {
+            foreach (var pair in _preparedTextGraphs)
+                pair.Value.CopyFrom(pair.Key);
+        }
+
+        bool TryPrepareTextRange(NowFont owner, int pixelRange, bool allowDowngrade)
+        {
+            NowSdfGraph primary = GetPrimaryTextGraph(owner);
+
+            if (primary == null)
+                return true;
+
+            if (!primary.TryEnsureTextPixelRange(
+                pixelRange,
+                null,
+                out _,
+                allowDowngrade))
+            {
+                return false;
+            }
+
+            Texture candidate = primary.texture;
+            if (candidate == null)
+                return false;
+
+            if (!TryPrepareTextRange(
+                    _activeGraph,
+                    primary,
+                    owner,
+                    pixelRange,
+                    candidate,
+                    allowDowngrade))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _layers.Count; ++i)
+            {
+                if (!TryPrepareTextRange(
+                        _layers[i].graph,
+                        primary,
+                        owner,
+                        pixelRange,
+                        candidate,
+                        allowDowngrade) ||
+                    !TryPrepareTextRange(
+                        _layers[i].targetGraph,
+                        primary,
+                        owner,
+                        pixelRange,
+                        candidate,
+                        allowDowngrade))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        static bool TryPrepareTextRange(
+            NowSdfGraph graph,
+            NowSdfGraph primary,
+            NowFont owner,
+            int pixelRange,
+            Texture requiredTexture,
+            bool allowDowngrade)
+        {
+            if (graph == null ||
+                ReferenceEquals(graph, primary) ||
+                !graph.UsesTextOwner(owner))
+            {
+                return true;
+            }
+
+            return graph.TryEnsureTextPixelRange(
+                pixelRange,
+                requiredTexture,
+                out _,
+                allowDowngrade);
+        }
+
+        NowSdfGraph GetPrimaryTextGraph(NowFont owner)
+        {
+            if (_textureSourceGraph != null && _textureSourceGraph.UsesTextOwner(owner))
+                return _textureSourceGraph;
+
+            for (int i = 0; i < _layers.Count; ++i)
+            {
+                if (_layers[i].graph.UsesTextOwner(owner))
+                    return _layers[i].graph;
+
+                if (_layers[i].targetGraph != null &&
+                    _layers[i].targetGraph.UsesTextOwner(owner))
+                {
+                    return _layers[i].targetGraph;
+                }
+            }
+
+            return _activeGraph != null && _activeGraph.UsesTextOwner(owner)
+                ? _activeGraph
+                : null;
+        }
+
+        NowFont GetSceneTextOwner()
+        {
+            if (_texturePinned)
+                return null;
+
+            if (_textureSourceGraph != null)
+            {
+                return _textureSourceGraph.TryGetTextOwner(out var sourceOwner)
+                    ? sourceOwner
+                    : null;
+            }
+
+            for (int i = 0; i < _layers.Count; ++i)
+            {
+                if (_layers[i].graph.TryGetTextOwner(out var owner))
+                    return owner;
+
+                if (_layers[i].targetGraph != null &&
+                    _layers[i].targetGraph.TryGetTextOwner(out owner))
+                {
+                    return owner;
+                }
+            }
+
+            return _activeGraph != null && _activeGraph.TryGetTextOwner(out var activeOwner)
+                ? activeOwner
+                : null;
+        }
+
+        static int RequiredTextPixelRange(NowSdfGraph graph, NowFont owner, float budget)
+        {
+            return graph != null && graph.UsesTextOwner(owner)
+                ? graph.RequiredTextPixelRange(budget)
+                : 0;
+        }
+
+        static int BaseTextPixelRange(NowSdfGraph graph, NowFont owner)
+        {
+            return graph != null && graph.UsesTextOwner(owner)
+                ? graph.BaseTextPixelRange()
+                : 0;
+        }
+
+        void ClaimTexture(NowSdfGraph graph)
+        {
+            if (_texture != null || graph == null || graph.texture == null)
+                return;
+
+            _texture = graph.texture;
+            _textureSourceGraph = graph;
+            _texturePinned = false;
+        }
+
+        void ReconcileTexture()
+        {
+            if (_texturePinned && _texture != null)
+                return;
+
+            if (_textureSourceGraph != null && _textureSourceGraph.texture != null)
+            {
+                _texture = _textureSourceGraph.texture;
+                return;
+            }
+
+            _texture = null;
+            _textureSourceGraph = null;
+            _texturePinned = false;
+
+            for (int i = 0; i < _layers.Count && _texture == null; ++i)
+            {
+                ClaimTexture(_layers[i].graph);
+                ClaimTexture(_layers[i].targetGraph);
+            }
+
+            ClaimTexture(_activeGraph);
+        }
+
+        void RebuildSceneBounds()
+        {
+            _bounds = default;
+            _hasBounds = false;
+
+            for (int i = 0; i < _layers.Count; ++i)
+            {
+                Encapsulate(_layers[i].graph.measureSize);
+
+                if (_layers[i].targetGraph != null)
+                    Encapsulate(_layers[i].targetGraph.measureSize);
+            }
+
+            if (_activeGraph != null && _activeGraph.hasNodes)
+                Encapsulate(_activeGraph.measureSize);
         }
 
         void EnsureMaterialSupportsScene()
@@ -3387,10 +4297,25 @@ namespace NowUI.Sdf
         {
             var nodes = graph.nodes;
             _texture ??= graph.texture;
+            bool graphTextureCompatible =
+                graph.texture != null &&
+                _texture != null &&
+                ReferenceEquals(graph.texture, _texture);
 
             for (int i = 0; i < nodes.Count && shapeCount < NowSdf.MaxShapes; ++i)
             {
                 var node = nodes[i];
+
+                // A scene exposes one _MainTex. Text construction already omits
+                // incompatible fallback atlases within a graph; apply the same
+                // rule across reusable graph layers instead of sampling another
+                // graph's glyph UVs from the wrong page.
+                if ((node.type == NowSdfShapeType.Glyph || node.useTexture) &&
+                    !graphTextureCompatible)
+                {
+                    continue;
+                }
+
                 _data0[shapeCount] = new Vector4((float)node.type, (float)node.operation, node.smoothing, 0f);
                 _data1[shapeCount] = node.data1;
                 _data2[shapeCount] = node.data2;

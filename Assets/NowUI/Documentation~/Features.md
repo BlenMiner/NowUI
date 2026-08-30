@@ -679,10 +679,11 @@ plus a Burst-compiled SDF rasterizer — measured faster than the native
 plugin); the native `nowui-msdf` plugin handles what the managed parser
 declines: CFF-flavored OpenType and color emoji fonts.
 `NowFontCompiler.forceNativeCompiler` and `forceManagedCompiler` pin a
-backend for profiling. Managed output is a single-channel SDF, which renders
-through the same shader and materials (the shader's `median(r, g, b)`
-resolves it unchanged) at the cost of slightly rounded corners at extreme
-magnification.
+backend for profiling. Managed pages store their scalar SDF in two RGBA8 bytes,
+retaining 16-bit distance precision while keeping the high byte replicated in
+RGB for legacy-material compatibility. Bundled text and SDF-scene shaders
+decode both bytes; native CFF and color-font output continues through its
+ordinary MTSDF/RGBA path.
 
 Text is shaped through HarfBuzz when the native plugin is present
 (`Now.textShaping`, on by default): ligatures, kerning, and complex-script
