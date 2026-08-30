@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.6...nowui-v1.10.0) (2026-08-30)
+
+
+### Features
+
+* more languages out of the box (korean, simplified chinese, arabic) ([9c58111](https://github.com/BlenMiner/NowUI/commit/9c581119228493c31553d87f78ccdf56a7f93ec8))
+
 ## [1.9.6](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.5...nowui-v1.9.6) (2026-08-29)
 
 
