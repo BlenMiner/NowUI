@@ -70,6 +70,7 @@ namespace NowUI.Sdf
         public NowFont font;
         public NowFontAtlasInfo.Glyph glyph;
         public Material material;
+        public float screenPixelRange;
     }
 
     struct NowSdfLayer
@@ -720,6 +721,8 @@ namespace NowUI.Sdf
 
             try
             {
+                PrewarmTextGlyphs(font, value, fontSize, fontStyle);
+
                 float lineHeight = font.GetLineHeight(fontStyle) * fontSize;
                 float baseline = font.GetAscender(fontStyle) * fontSize;
                 float left = position.x;
@@ -895,6 +898,35 @@ namespace NowUI.Sdf
             SkipPrimitive();
         }
 
+        static void PrewarmTextGlyphs(
+            NowFontAsset font,
+            string value,
+            float fontSize,
+            NowFontStyle fontStyle)
+        {
+            // Settle each selected dynamic glyph page before recording geometry.
+            // Resolving through the family one codepoint at a time avoids baking
+            // the complete string into every fallback, unlike EnsureGlyphs.
+            for (int i = 0; i < value.Length; ++i)
+            {
+                int codepoint = NowFont.ReadCodepoint(value, ref i);
+
+                if (codepoint == '\n')
+                    continue;
+
+                if (codepoint == '\t')
+                    codepoint = ' ';
+
+                font.TryResolveGlyph(
+                    codepoint,
+                    fontSize,
+                    fontStyle,
+                    out _,
+                    out _,
+                    out _);
+            }
+        }
+
         internal int RequiredTextPixelRange(float effectBudget)
         {
             effectBudget = SanitizeEffectBudget(effectBudget);
@@ -964,8 +996,12 @@ namespace NowUI.Sdf
                 return requiredTexture == null || ReferenceEquals(requiredTexture, _texture);
             }
 
-            if (_failedTextPixelRange == pixelRange && _failedTextFontVersion == fontVersion)
+            if (_failedTextPixelRange == pixelRange &&
+                _failedTextFontVersion == fontVersion &&
+                !TextPixelRangeIsCached(pixelRange))
+            {
                 return false;
+            }
 
             _resolvedGlyphs.Clear();
             Texture resolvedTexture = null;
@@ -975,12 +1011,13 @@ namespace NowUI.Sdf
                 var source = _glyphSources[i];
 
                 if (source.owner == null ||
-                    !source.owner.GetGlyphForPixelRange(
+                    !source.owner.GetGlyphForExactPixelRange(
                         source.codepoint,
                         source.fontSize,
                         pixelRange,
                         out var glyph,
-                        out var material) ||
+                        out var material,
+                        out float screenPixelRange) ||
                     source.owner.isColor ||
                     material == null ||
                     material.mainTexture == null)
@@ -1006,7 +1043,8 @@ namespace NowUI.Sdf
                 {
                     font = source.owner,
                     glyph = glyph,
-                    material = material
+                    material = material,
+                    screenPixelRange = screenPixelRange
                 });
             }
 
@@ -1046,10 +1084,7 @@ namespace NowUI.Sdf
                 }
 
                 node.data1 = RectData(rect);
-                node.data2.x = resolved.font.GetScreenPixelRangeForPixelRange(
-                    source.codepoint,
-                    source.fontSize,
-                    pixelRange);
+                node.data2.x = resolved.screenPixelRange;
                 node.data2.y = GetSdfEncoding(resolved.material);
                 node.data2.z = GetSdfDistanceCodeStep(node.data2.x, node.data2.y);
                 node.uv = new Vector4(
@@ -1078,6 +1113,25 @@ namespace NowUI.Sdf
             _failedTextFontVersion = -1;
             RebuildBounds();
             changed = true;
+            return true;
+        }
+
+        bool TextPixelRangeIsCached(int pixelRange)
+        {
+            for (int i = 0; i < _glyphSources.Count; ++i)
+            {
+                NowSdfGlyphSource source = _glyphSources[i];
+
+                if (source.owner == null ||
+                    !source.owner.HasGlyphForExactPixelRange(
+                        source.codepoint,
+                        source.fontSize,
+                        pixelRange))
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -2692,6 +2746,7 @@ namespace NowUI.Sdf
         static readonly int _shapeCountProp = Shader.PropertyToID("_SdfShapeCount");
         static readonly int _layerCountProp = Shader.PropertyToID("_SdfLayerCount");
         static readonly int _featherProp = Shader.PropertyToID("_SdfFeather");
+        static readonly int _textEffectLimitProp = Shader.PropertyToID("_SdfTextEffectLimit");
         static readonly int _canvasLayoutProp = Shader.PropertyToID("_NowCanvasLayout");
         static readonly int _data0Prop = Shader.PropertyToID("_SdfData0");
         static readonly int _data1Prop = Shader.PropertyToID("_SdfData1");
@@ -4160,7 +4215,8 @@ namespace NowUI.Sdf
                     PackGraphRange(target));
             }
 
-            ulong contentHash = ComputeUploadHash(shapeCount, layerCount);
+            float textEffectLimit = GetUploadedTextEffectLimit(shapeCount);
+            ulong contentHash = ComputeUploadHash(shapeCount, layerCount, textEffectLimit);
 
             if (hasUploadedHash && contentHash == uploadedHash)
                 return contentHash;
@@ -4171,6 +4227,7 @@ namespace NowUI.Sdf
             material.SetFloat(_shapeCountProp, shapeCount);
             material.SetFloat(_layerCountProp, layerCount);
             material.SetFloat(_featherProp, _feather);
+            material.SetFloat(_textEffectLimitProp, textEffectLimit);
             material.SetFloat(_canvasLayoutProp, 0f);
             material.SetTexture(_mainTexProp, _texture != null ? _texture : Texture2D.whiteTexture);
             material.SetVectorArray(_data0Prop, _data0);
@@ -4197,6 +4254,28 @@ namespace NowUI.Sdf
             return contentHash;
         }
 
+        float GetUploadedTextEffectLimit(int shapeCount)
+        {
+            // Analytic shapes have an exact field at every distance. Glyphs only
+            // have an exact field inside their encoded atlas range, so exterior
+            // effects must fade before the continuous glyph-rectangle fallback
+            // becomes visible. Scan the final upload rather than the source
+            // graphs so skipped, texture-incompatible glyphs cannot reduce it.
+            float limit = 100000f;
+
+            for (int i = 0; i < shapeCount; ++i)
+            {
+                if (_data0[i].x == (float)NowSdfShapeType.Glyph)
+                {
+                    limit = Mathf.Min(
+                        limit,
+                        NowFont.GetSafeSdfEffectReach(_data2[i].x));
+                }
+            }
+
+            return limit;
+        }
+
         // Start and count are both in the inclusive 0..64 range. Packing them
         // into one small integer-valued float keeps the existing graph-id ABI and
         // uses the two previously-empty layer-vector components instead of adding
@@ -4215,12 +4294,13 @@ namespace NowUI.Sdf
         /// material instance and nothing else writes to it), so static scenes
         /// skip all SetVectorArray/SetVector traffic.
         /// </summary>
-        ulong ComputeUploadHash(int shapeCount, int layerCount)
+        ulong ComputeUploadHash(int shapeCount, int layerCount, float textEffectLimit)
         {
             ulong hash = 1469598103934665603UL;
             hash = HashValue(hash, shapeCount);
             hash = HashValue(hash, layerCount);
             hash = HashValue(hash, _feather);
+            hash = HashValue(hash, textEffectLimit);
             hash = HashValue(hash, _texture != null ? _texture.GetEntityId().GetHashCode() : 0);
 
             for (int i = 0; i < shapeCount; ++i)

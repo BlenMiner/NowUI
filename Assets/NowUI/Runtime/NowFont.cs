@@ -1133,6 +1133,33 @@ namespace NowUI
         public const int DEFAULT_DYNAMIC_MAX_ATLAS_BYTES = 16 * 1024 * 1024;
         internal const long DEFAULT_DYNAMIC_CACHE_BUDGET_BYTES = 64L * 1024 * 1024;
         internal const float MAX_OUTLINE_RANGE_FRACTION = 0.45f;
+
+        internal static float GetSafeSdfEffectReach(float screenPixelRange)
+        {
+            if (float.IsNaN(screenPixelRange) ||
+                float.IsInfinity(screenPixelRange) ||
+                screenPixelRange <= 0f)
+            {
+                return 0f;
+            }
+
+            // Half a coverage unit is the mathematical minimum at 1:1. Keep at
+            // least one full unit and 5% of the encoded field for filtering,
+            // antialiasing, and scaled draws.
+            float guard = Mathf.Max(
+                1f,
+                screenPixelRange * (0.5f - MAX_OUTLINE_RANGE_FRACTION));
+            return Mathf.Max(0f, screenPixelRange * 0.5f - guard);
+        }
+
+        float ScreenPixelRange(float fontSize, NowFontAtlasInfo.Atlas fontAtlas)
+        {
+            int atlasSize = fontAtlas.size > 0 ? fontAtlas.size : DEFAULT_DYNAMIC_ATLAS_SIZE;
+            int pixelRange = fontAtlas.distanceRange > 0
+                ? fontAtlas.distanceRange
+                : dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE;
+            return fontSize / atlasSize * pixelRange;
+        }
         static readonly int SDF_ENCODING_PROPERTY = Shader.PropertyToID("_NowUITextSdfEncoding");
         static readonly int OUTLINE_ONLY_PASS_PROPERTY = Shader.PropertyToID("_NowUITextOutlineOnlyPass");
         const uint OPENTYPE_TTC_TAG = 0x74746366;
@@ -4201,6 +4228,55 @@ namespace NowUI
             return false;
         }
 
+        /// <summary>
+        /// Resolves only the requested raw distance-range tier. Unlike the normal
+        /// glyph getter, this never substitutes a lower cached range: scene-level
+        /// consumers use failure to choose one coherent fallback tier themselves.
+        /// </summary>
+        internal bool GetGlyphForExactPixelRange(
+            int unicode,
+            float fontSize,
+            int pixelRange,
+            out NowFontAtlasInfo.Glyph glyph,
+            out Material glyphMaterial,
+            out float screenPixelRange)
+        {
+            int atlasSize = GetDynamicGlyphSize(fontSize);
+            pixelRange = Mathf.Max(1, pixelRange);
+
+            if (TryGetCachedGlyph(unicode, out glyph) &&
+                AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange))
+            {
+                glyphMaterial = material;
+                screenPixelRange = ScreenPixelRange(fontSize, atlasInfo.atlas);
+                return true;
+            }
+
+            if (TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out glyph, out var page) ||
+                (TryCompileMissingGlyph(unicode, atlasSize, pixelRange) &&
+                    TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out glyph, out page)))
+            {
+                glyphMaterial = page.font.material;
+                screenPixelRange = ScreenPixelRange(fontSize, page.font.atlasInfo.atlas);
+                return glyphMaterial != null;
+            }
+
+            glyph = default;
+            glyphMaterial = null;
+            screenPixelRange = 0f;
+            return false;
+        }
+
+        internal bool HasGlyphForExactPixelRange(int unicode, float fontSize, int pixelRange)
+        {
+            int atlasSize = GetDynamicGlyphSize(fontSize);
+            pixelRange = Mathf.Max(1, pixelRange);
+
+            return (TryGetCachedGlyph(unicode, out _) &&
+                    AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange)) ||
+                TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out _);
+        }
+
         [NonSerialized]
         NowTextShaper _textShaper;
 
@@ -5541,12 +5617,7 @@ namespace NowUI
                 fontAtlas = page.font.atlasInfo.atlas;
             }
 
-            atlasSize = fontAtlas.size > 0 ? fontAtlas.size : DEFAULT_DYNAMIC_ATLAS_SIZE;
-            pixelRange = fontAtlas.distanceRange > 0
-                ? fontAtlas.distanceRange
-                : dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE;
-
-            return fontSize / atlasSize * pixelRange;
+            return ScreenPixelRange(fontSize, fontAtlas);
         }
 
         public override Vector2 MeasureText(string value, float fontSize, int tabSpaces = 4)

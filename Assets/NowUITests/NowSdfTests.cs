@@ -64,6 +64,85 @@ public class NowSdfTests
     }
 
     [Test]
+    public void DirectSdfDrawTransformKeepsAuthoredDomainAndSignedAxes()
+    {
+        var surface = new NowRect(10f, 20f, 30f, 20f);
+        var scale = new Vector2(-2f, 3f);
+        var origin = new Vector2(100f, 7f);
+
+        using (_drawList.Begin(new Vector2(180f, 140f)))
+        using (Now.Transform(scale, origin))
+        {
+            NowSdf.Scene(surface, "sdf-direct-transform-streams")
+                .Circle(new Vector2(8f, 10f), 4f)
+                .Draw();
+        }
+
+        Assert.AreEqual(1, _drawList.batchCount);
+        Assert.AreEqual(NowMeshKind.Sdf, _drawList.batches[0].kind);
+
+        var rects = new System.Collections.Generic.List<Vector4>();
+        var extras = new System.Collections.Generic.List<Vector4>();
+        _drawList.mesh.GetUVs(1, rects);
+        _drawList.mesh.GetUVs(5, extras);
+
+        Assert.AreEqual(4, rects.Count);
+        Assert.AreEqual(4, extras.Count);
+
+        // The physical quad is the transformed screen AABB. Its shader domain
+        // remains the authored size and preserves the mirror signs separately.
+        var expectedRect = new Vector4(20f, -127f, 60f, 60f);
+        var expectedDomain = new Vector4(30f, 20f, -1f, 1f);
+
+        for (int i = 0; i < 4; ++i)
+        {
+            Assert.AreEqual(expectedRect, rects[i],
+                $"SDF vertex {i} did not carry the transformed screen quad.");
+            Assert.AreEqual(expectedDomain, extras[i],
+                $"SDF vertex {i} lost the authored domain or signed axis mapping.");
+        }
+
+        Vector4[] data1 = _drawList.batches[0].material.GetVectorArray("_SdfData1");
+        Assert.AreEqual(new Vector4(8f, 10f, 4f, 0f), data1[0],
+            "The ambient draw transform must not rewrite authored SDF node data.");
+    }
+
+    [Test]
+    public void DirectSdfDrawTransformPacksAuthoredDomainIntoCanvasUv3()
+    {
+        using var canvasList = new NowDrawList(NowMeshLayout.Canvas, "SDF transform Canvas streams");
+        var surface = new NowRect(10f, 20f, 30f, 20f);
+
+        using (canvasList.Begin(new Vector2(180f, 140f)))
+        using (Now.TransformAround(new Vector2(-2f, 3f), surface.center))
+        {
+            NowSdf.Scene(surface, "sdf-canvas-transform-streams")
+                .Circle(new Vector2(8f, 10f), 4f)
+                .Draw();
+        }
+
+        Assert.AreEqual(1, canvasList.batchCount);
+        Assert.AreEqual(NowMeshKind.Sdf, canvasList.batches[0].kind);
+
+        var rects = new System.Collections.Generic.List<Vector4>();
+        var uv3 = new System.Collections.Generic.List<Vector4>();
+        canvasList.mesh.GetUVs(1, rects);
+        canvasList.mesh.GetUVs(3, uv3);
+        Assert.AreEqual(4, rects.Count);
+        Assert.AreEqual(4, uv3.Count);
+
+        var expectedRect = new Vector4(-5f, -60f, 60f, 60f);
+        var expectedDomain = new Vector4(30f, 20f, -1f, 1f);
+        for (int i = 0; i < uv3.Count; ++i)
+        {
+            Assert.AreEqual(expectedRect, rects[i],
+                $"Canvas SDF vertex {i} did not scale around the requested fixed pivot.");
+            Assert.AreEqual(expectedDomain, uv3[i],
+                $"Canvas SDF vertex {i} lost the authored domain or signed axis mapping.");
+        }
+    }
+
+    [Test]
     public void SdfRadialPrimitivesPackAnglesAndConservativeBounds()
     {
         const float invSqrtTwo = 0.70710678f;
@@ -431,6 +510,8 @@ public class NowSdfTests
     {
         var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
         Assert.NotNull(font);
+        Assert.IsTrue(font.TryResolveFont(NowFontStyle.Bold, out NowFont resolvedFont));
+        resolvedFont.ClearDynamicCache();
 
         var position = new Vector2(18f, 20f);
         var followingRect = new NowRect(2f, 3f, 4f, 5f);
@@ -1219,6 +1300,61 @@ public class NowSdfTests
         finally
         {
             DestroyManagedDynamicFont(font);
+        }
+    }
+
+    [Test]
+    public void SdfLargeOutlinePreparesColdFontFamilyRangeAtTerminal()
+    {
+        const float fontSize = 80f;
+        const float outline = 100f;
+        const string value = "NowUI";
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        Assert.NotNull(font);
+        Assert.IsTrue(font.TryResolveFont(NowFontStyle.Bold, out NowFont owner));
+        owner.ClearDynamicCache();
+
+        try
+        {
+            int basePixelRange = owner.GetDynamicPixelRange(0f, fontSize);
+            int requestedPixelRange = owner.GetDynamicPixelRange(outline / fontSize, fontSize);
+            Assert.Greater(requestedPixelRange, basePixelRange);
+
+            var scene = NowSdf.Scene(
+                    new NowRect(0f, 0f, 768f, 310f),
+                    new NowId("sdf-cold-font-family-large-outline"))
+                .SetColor(Color.white)
+                .SetOutline(outline, Color.blue)
+                .Text(new Vector2(180f, 100f), value, font, fontSize, NowFontStyle.Bold);
+
+            using (_drawList.Begin(new Vector2(768f, 310f)))
+                scene.Draw();
+
+            Assert.AreEqual(1, _drawList.batchCount);
+            Material material = _drawList.batches[0].material;
+            Vector4[] textData = material.GetVectorArray("_SdfData2");
+            Assert.AreEqual(value.Length, material.GetFloat("_SdfShapeCount"), 0.0001f);
+            float expectedScreenPixelRange =
+                fontSize / owner.GetDynamicGlyphSize(fontSize) * requestedPixelRange;
+
+            for (int i = 0; i < value.Length; ++i)
+            {
+                Assert.AreEqual(
+                    expectedScreenPixelRange,
+                    textData[i].x,
+                    0.0001f,
+                    $"Glyph {i} did not bind the cold extended-range atlas.");
+            }
+
+            Assert.AreEqual(
+                NowFont.GetSafeSdfEffectReach(expectedScreenPixelRange),
+                material.GetFloat("_SdfTextEffectLimit"),
+                0.0001f);
+            Assert.Greater(material.GetFloat("_SdfTextEffectLimit"), outline);
+        }
+        finally
+        {
+            owner.ClearDynamicCache();
         }
     }
 

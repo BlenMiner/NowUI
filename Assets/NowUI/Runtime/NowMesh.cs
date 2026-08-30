@@ -711,18 +711,10 @@ namespace NowUI.Internal
             if (float.IsNaN(outline) || float.IsInfinity(outline))
                 return 0f;
 
-            if (float.IsNaN(pixelRange) || float.IsInfinity(pixelRange) || pixelRange <= 0f)
-                return 0f;
-
             // Keep the threshold just inside the encoded field so filtering and
             // antialiasing never expose the rectangular edge of a glyph cell when
             // a static atlas or configured atlas cap cannot satisfy the request.
-            // Half a coverage unit is the mathematical minimum at 1:1; retain at
-            // least one full unit and 5% of the field for bilinear/scale safety.
-            float guard = Mathf.Max(
-                1f,
-                pixelRange * (0.5f - NowFont.MAX_OUTLINE_RANGE_FRACTION));
-            float maxOutline = Mathf.Max(0f, pixelRange * 0.5f - guard);
+            float maxOutline = NowFont.GetSafeSdfEffectReach(pixelRange);
             return Mathf.Clamp(outline, -maxOutline, maxOutline);
         }
 

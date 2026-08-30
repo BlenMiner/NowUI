@@ -1805,15 +1805,13 @@ public class NowDocsExample : NowLayoutGraphic
 
         const string sample = "NowUI";
         const float fontSize = 80f;
-        var text = Now.Text(default, _font)
-            .SetFontSize(fontSize)
-            .SetBold()
-            .SetColor(Color.white)
-            .SetOutlinePixels(_textOutlineDemoPixels)
-            .SetOutlineColor(DocsAccent(themeAsset));
-        Vector2 size = text.Measure(sample);
         if (_textOutlineDemoUseSdf)
         {
+            var sdfFont = _font != null ? _font : Now.font;
+            Vector2 size = sdfFont != null
+                ? sdfFont.MeasureText(sample, fontSize, NowFontStyle.Bold)
+                : Vector2.zero;
+
             NowSdf.Scene(preview, "docs-text-outline-sdf-scene")
                 .SetColor(Color.white)
                 .SetOutline(_textOutlineDemoPixels, DocsAccent(themeAsset))
@@ -1822,13 +1820,21 @@ public class NowDocsExample : NowLayoutGraphic
                         preview.width * 0.5f - size.x * 0.5f,
                         preview.height * 0.5f - size.y * 0.5f),
                     sample,
-                    _font,
+                    sdfFont,
                     fontSize,
                     NowFontStyle.Bold)
                 .Draw();
         }
         else
         {
+            var text = Now.Text(default, _font)
+                .SetFontSize(fontSize)
+                .SetBold()
+                .SetColor(Color.white)
+                .SetOutlinePixels(_textOutlineDemoPixels)
+                .SetOutlineColor(DocsAccent(themeAsset));
+            Vector2 size = text.Measure(sample);
+
             text.SetPosition(new NowRect(
                     preview.center.x - size.x * 0.5f,
                     preview.center.y - size.y * 0.5f,
@@ -1845,6 +1851,67 @@ public class NowDocsExample : NowLayoutGraphic
             .Draw(_textOutlineDemoUseSdf
                 ? "NowSdf.Scene(rect).SetOutline(outlinePixels, color).Text(...).Draw();"
                 : "Now.Text(rect).SetFontSize(80).SetOutlinePixels(outlinePixels).Draw(\"NowUI\");");
+
+        DocsMarkdown(
+            "## Animated SDF text transforms\n\n" +
+            "`RotateNext` turns one complete run around its glyph bounds. The outer `Now.Transform` scope " +
+            "adds a uniform pulse and nonuniform squash/stretch while a compensated origin keeps the preview pivot fixed.").Draw();
+
+        var transformPanel = NowLayout.ReserveRect(height: 250f, stretchWidth: true);
+        themeAsset.Rectangle(transformPanel, NowRectangleStyle.Muted).Draw();
+
+        var transformPreview = transformPanel.Inset(10f, 10f, 10f, 46f);
+        Now.Rectangle(transformPreview)
+            .SetColor(new Color(0.025f, 0.035f, 0.055f, 1f))
+            .SetRadius(10f)
+            .Draw();
+
+        const string transformSample = "Motion";
+        const float transformFontSize = 64f;
+        var transformFont = _font != null ? _font : Now.font;
+        Vector2 transformTextSize = transformFont != null
+            ? transformFont.MeasureText(transformSample, transformFontSize, NowFontStyle.Bold)
+            : Vector2.zero;
+        var transformTextPosition = new Vector2(
+            transformPreview.width * 0.5f - transformTextSize.x * 0.5f,
+            transformPreview.height * 0.5f - transformTextSize.y * 0.5f);
+
+        float transformPhase = Time.time * 2f;
+        float squashWave = Mathf.Sin(transformPhase);
+        float uniformPulse = 1f + Mathf.Sin(transformPhase * 0.5f) * 0.035f;
+        Vector2 transformScale = new Vector2(
+            1f + squashWave * 0.12f,
+            1f - squashWave * 0.1f) * uniformPulse;
+        float transformAngle = Mathf.Sin(transformPhase * 0.65f) * 7f;
+        Vector2 transformPivot = transformPreview.center;
+        Color transformAccent = DocsAccent(themeAsset);
+
+        using (Now.Mask(transformPreview))
+        using (Now.TransformAround(transformScale, transformPivot))
+        {
+            NowSdf.Scene(transformPreview, "docs-animated-sdf-text")
+                .SetColor(Color.white)
+                .SetGlow(12f, new Color(transformAccent.r, transformAccent.g, transformAccent.b, 0.18f), 1.4f)
+                .SetOutline(3f, transformAccent, 0.75f)
+                .RotateNext(transformAngle)
+                .Text(
+                    transformTextPosition,
+                    transformSample,
+                    transformFont,
+                    transformFontSize,
+                    NowFontStyle.Bold)
+                .Draw();
+        }
+
+        var transformCode = new NowRect(
+            transformPanel.x + 24f,
+            transformPanel.yMax - 34f,
+            transformPanel.width - 48f,
+            22f);
+        Now.Text(transformCode)
+            .SetFontSize(12f)
+            .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+            .Draw("RotateNext(angle) + Now.TransformAround(scale, pivot)");
     }
 
     void DrawRichTextDemo(NowThemeAsset themeAsset)

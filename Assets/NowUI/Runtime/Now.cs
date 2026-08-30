@@ -467,6 +467,22 @@ namespace NowUI
             return Transform(new Vector2(scale, scale), origin);
         }
 
+        /// <summary>
+        /// Pushes a scale transform that keeps <paramref name="pivot"/> fixed in
+        /// the current coordinate space. Useful for pulse, squash, stretch, and
+        /// mirror animations without manually deriving the translation.
+        /// </summary>
+        public static NowTransformScope TransformAround(Vector2 scale, Vector2 pivot)
+        {
+            return Transform(scale, pivot - Vector2.Scale(pivot, scale));
+        }
+
+        /// <summary>Pushes a uniform scale transform around a fixed pivot.</summary>
+        public static NowTransformScope TransformAround(float scale, Vector2 pivot)
+        {
+            return TransformAround(new Vector2(scale, scale), pivot);
+        }
+
         internal static NowTransformSnapshot CaptureTransform()
         {
             return _transformStack.Count > 0
@@ -2494,14 +2510,28 @@ namespace NowUI
             _tmpVertex.outlineColor = default;
             _tmpVertex.uvwh = _defaultUV;
 
-            Vector2 size = new Vector2(rectWidth, rectHeight);
+            Vector2 authoredSize = new Vector2(rectWidth, rectHeight);
+            Vector2 size = authoredSize;
             Vector2 position;
+            Vector2 sourceDirection = Vector2.one;
 
             if (hasTransform)
             {
-                Vector2 top = ApplyTransform(new Vector2(x0, y0));
-                size = ApplyTransformSize(size);
-                position = new Vector2(top.x, -top.y - size.y);
+                NowRect transformedRect = ApplyTransformRect(
+                    new NowRect(x0, y0, rectWidth, rectHeight));
+
+                if (transformedRect.width <= 0f || transformedRect.height <= 0f)
+                    return;
+
+                size = transformedRect.size;
+                position = new Vector2(
+                    transformedRect.x,
+                    -transformedRect.y - transformedRect.height);
+
+                Vector2 signedScale = _transformStack[_transformStack.Count - 1].scale;
+                sourceDirection = new Vector2(
+                    signedScale.x < 0f ? -1f : 1f,
+                    signedScale.y < 0f ? -1f : 1f);
             }
             else
             {
@@ -2519,7 +2549,13 @@ namespace NowUI
                 return;
 
             mesh = EnsureMeshCapacity(mesh, material, NowMeshKind.Sdf, 4);
-            mesh.AddRect(_tmpVertex, 0f, 0f);
+            mesh.AddRect(
+                _tmpVertex,
+                new Vector4(
+                    authoredSize.x,
+                    authoredSize.y,
+                    sourceDirection.x,
+                    sourceDirection.y));
         }
 
         /// <summary>
