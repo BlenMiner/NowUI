@@ -13,6 +13,8 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 
 namespace NowUI
@@ -39,6 +41,7 @@ namespace NowUI
         const int NATIVE_OK = 0;
         const int NATIVE_BUFFER_TOO_SMALL = 2;
         const int NATIVE_ATLAS_FULL = 3;
+        static readonly int SDF_ENCODING_PROPERTY = Shader.PropertyToID("_NowUITextSdfEncoding");
 
         // WebGL and iOS link the plugin statically into the player, so the
         // binding resolves against the executable itself.
@@ -232,6 +235,17 @@ namespace NowUI
             [Out] byte[] errorBuffer,
             int errorBufferLength);
 
+        [DllImport(
+            LIBRARY_NAME,
+            EntryPoint = "nowui_msdf_session_copy_atlas",
+            CallingConvention = CallingConvention.Cdecl)]
+        static extern int nowui_msdf_session_copy_atlas_to_pointer(
+            IntPtr session,
+            IntPtr atlasRgba,
+            int atlasRgbaLength,
+            [Out] byte[] errorBuffer,
+            int errorBufferLength);
+
         [DllImport(LIBRARY_NAME, CallingConvention = CallingConvention.Cdecl)]
         static extern void nowui_msdf_session_destroy(IntPtr session);
 
@@ -289,6 +303,14 @@ namespace NowUI
         static int nowui_msdf_session_copy_atlas(
             IntPtr session,
             byte[] atlasRgba,
+            int atlasRgbaLength,
+            byte[] errorBuffer,
+            int errorBufferLength) =>
+            throw new DllNotFoundException(LIBRARY_NAME);
+
+        static int nowui_msdf_session_copy_atlas_to_pointer(
+            IntPtr session,
+            IntPtr atlasRgba,
             int atlasRgbaLength,
             byte[] errorBuffer,
             int errorBufferLength) =>
@@ -354,6 +376,9 @@ namespace NowUI
             /// <summary>True when this session bakes through the managed fallback compiler.</summary>
             public bool isManaged => _managed != null;
 
+            /// <summary>True when the managed atlas stores its scalar distance across two bytes.</summary>
+            public bool usesPackedSdf16 => _managed != null && _managed.usesPackedSdf16;
+
             DynamicSession(IntPtr handle, int atlasSide, in NativeSessionInfo info)
             {
                 _handle = handle;
@@ -382,6 +407,18 @@ namespace NowUI
             /// remains the fallback for fonts the managed parser declines (CFF outlines).</summary>
             public static bool TryCreate(byte[] fontData, int size, int pixelRange, int atlasSide, out DynamicSession session, out string error)
             {
+                return TryCreate(fontData, size, pixelRange, atlasSide, true, out session, out error);
+            }
+
+            internal static bool TryCreate(
+                byte[] fontData,
+                int size,
+                int pixelRange,
+                int atlasSide,
+                bool packedManagedSdf16,
+                out DynamicSession session,
+                out string error)
+            {
                 session = null;
 
                 if (fontData == null || fontData.Length == 0)
@@ -392,7 +429,14 @@ namespace NowUI
 
                 if (forceManagedCompiler || !forceNativeCompiler)
                 {
-                    if (NowManagedFontSession.TryCreate(fontData, size, pixelRange, atlasSide, out var managed, out string managedError))
+                    if (NowManagedFontSession.TryCreate(
+                        fontData,
+                        size,
+                        pixelRange,
+                        atlasSide,
+                        packedManagedSdf16,
+                        out var managed,
+                        out string managedError))
                     {
                         session = new DynamicSession(managed);
                         error = null;
@@ -549,6 +593,47 @@ namespace NowUI
                 Array.Clear(_errorBuffer, 0, _errorBuffer.Length);
 
                 int result = nowui_msdf_session_copy_atlas(_handle, buffer, buffer.Length, _errorBuffer, _errorBuffer.Length);
+
+                if (result != NATIVE_OK)
+                {
+                    error = NativeError(_errorBuffer, "The native font compiler failed to copy the session atlas.");
+                    return false;
+                }
+
+                error = null;
+                return true;
+            }
+
+            /// <summary>Copies directly into caller-owned native memory. Dynamic font pages
+            /// use their readable Texture2D storage here, avoiding a managed whole-atlas
+            /// staging allocation and an additional copy before the GPU upload.</summary>
+            public unsafe bool TryCopyAtlas(NativeArray<byte> destination, out string error)
+            {
+                if (_managed != null)
+                    return _managed.TryCopyAtlas(destination, out error);
+
+                if (_handle == IntPtr.Zero)
+                {
+                    error = "The baking session has been disposed.";
+                    return false;
+                }
+
+                int required = AtlasSide * AtlasSide * 4;
+
+                if (!destination.IsCreated || destination.Length != required)
+                {
+                    error = "The atlas destination does not match the session atlas size.";
+                    return false;
+                }
+
+                Array.Clear(_errorBuffer, 0, _errorBuffer.Length);
+                var destinationPointer = (IntPtr)NativeArrayUnsafeUtility.GetUnsafePtr(destination);
+                int result = nowui_msdf_session_copy_atlas_to_pointer(
+                    _handle,
+                    destinationPointer,
+                    destination.Length,
+                    _errorBuffer,
+                    _errorBuffer.Length);
 
                 if (result != NATIVE_OK)
                 {
@@ -963,6 +1048,12 @@ namespace NowUI
             var material = UnityEngine.Object.Instantiate(materialTemplate);
             material.name = "Now Dynamic Font Material";
             material.mainTexture = texture;
+
+            // This path always receives an ordinary native MTSDF atlas. A template
+            // may have previously been used by a packed managed page, so do not
+            // inherit its private decoding mode into native compiler output.
+            if (material.HasProperty(SDF_ENCODING_PROPERTY))
+                material.SetFloat(SDF_ENCODING_PROPERTY, 0f);
 
             var font = ScriptableObject.CreateInstance<NowFont>();
             font.name = "Now Runtime Font";

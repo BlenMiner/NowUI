@@ -136,17 +136,17 @@ public class ManagedFontCompare : MonoBehaviour
         Now.Text(new NowRect(x + 8, y, width, 70), font)
             .SetFontSize(48)
             .SetColor(Color.white)
-            .SetOutline(2)
+            .SetOutlinePixels(2)
             .SetOutlineColor(new Color(1f, 0.45f, 0.2f, 1f))
-            .Draw("Outline 48px");
+            .Draw("2px outline · 48px text");
 
         y += 80f;
 
         Now.Text(new NowRect(x + 8, y, width, 40), font)
             .SetFontSize(26)
             .SetColor(new Color(0.7f, 1f, 0.6f, 1f))
-            .SetOutline(-1.5f)
+            .SetOutlinePixels(-1.5f)
             .SetOutlineColor(Color.black)
-            .Draw("Negative outline 26px");
+            .Draw("-1.5px inset · 26px text");
     }
 }

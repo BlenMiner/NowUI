@@ -212,14 +212,6 @@ namespace NowUI
 
             float lineHeight = runStyle.font.GetLineHeight(runStyle.fontStyle) * runStyle.fontSize;
 
-            if (!runStyle.hasExplicitMask && !runStyle.mask.isEmpty)
-            {
-                float motionOutset = runStyle.animation.isAnimated
-                    ? runStyle.animation.boundedOutset
-                    : 0f;
-                runStyle.mask = runStyle.mask.Outset(4f + motionOutset);
-            }
-
             int totalAnimationUnits = 0;
 
             for (int i = 0; i < runs.Count; ++i)

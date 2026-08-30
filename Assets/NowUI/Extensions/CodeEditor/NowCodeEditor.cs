@@ -9,7 +9,11 @@ namespace NowUI.CodeEditor
     {
         public bool changed;
 
-        /// <summary>True when the language's validator reported no diagnostics.</summary>
+        /// <summary>
+        /// True when the language's validator reported no error diagnostics.
+        /// Warnings and infos leave it true — they advise, they do not block
+        /// a "save only when valid" gate.
+        /// </summary>
         public bool isValid;
 
         public int diagnosticCount;
@@ -133,6 +137,8 @@ namespace NowUI.CodeEditor
             public readonly List<int> lineTokenStarts = new List<int>(64);
             public readonly List<int> lineTokenCounts = new List<int>(64);
             public readonly List<NowCodeDiagnostic> diagnostics = new List<NowCodeDiagnostic>(4);
+            /// <summary>Index of the diagnostic the status bar shows and jumps to — the worst one; -1 when the list is empty.</summary>
+            public int statusDiagnostic = -1;
             public float contentWidth;
             public NowFontAsset measureFont;
             public float measureFontSize;
@@ -143,6 +149,8 @@ namespace NowUI.CodeEditor
             public int positionLine = -1;
             public int positionColumn = -1;
             public string tooltipMessage;
+            /// <summary>Severity of the diagnostic the tooltip shows, or -1 for symbol quick-info.</summary>
+            public int tooltipSeverity = -1;
             public NowRect tooltipRect;
             public int tooltipAnchorStart = -1;
             public int tooltipAnchorLength;
@@ -528,9 +536,12 @@ namespace NowUI.CodeEditor
 
                 if (onStatusBar)
                 {
-                    if (cache.diagnostics.Count > 0)
+                    // The status bar shows the worst diagnostic, so clicking
+                    // it jumps to that one — not whichever the validator
+                    // happened to report first.
+                    if (cache.statusDiagnostic >= 0 && cache.statusDiagnostic < cache.diagnostics.Count)
                     {
-                        state.caret = Mathf.Clamp(cache.diagnostics[0].start, 0, text.Length);
+                        state.caret = Mathf.Clamp(cache.diagnostics[cache.statusDiagnostic].start, 0, text.Length);
                         state.anchor = state.caret;
                         NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Character, in state);
                     }
@@ -1109,7 +1120,7 @@ namespace NowUI.CodeEditor
 
             result.changed = text != original;
             result.diagnosticCount = cache.diagnostics.Count;
-            result.isValid = cache.diagnostics.Count == 0;
+            result.isValid = !HasError(cache.diagnostics);
 
             int caretLine = LineOf(cache, state.caret);
             var caretSpan = cache.lines[caretLine];
@@ -1253,7 +1264,7 @@ namespace NowUI.CodeEditor
                     Rebuild(cache, text, font, _fontSize, textStyle.fontStyle);
                     result.changed = text != original;
                     result.diagnosticCount = cache.diagnostics.Count;
-                    result.isValid = cache.diagnostics.Count == 0;
+                    result.isValid = !HasError(cache.diagnostics);
                     cache.suppressCaretJump = true;
 
                     // The keystroke that committed the rename is spent: without
@@ -1486,7 +1497,7 @@ namespace NowUI.CodeEditor
                     }
                 }
 
-                DrawSquiggles(text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, firstVisible, lastVisible);
+                DrawSquiggles(themeAsset, text, cache, font, fontSize, fontStyle, textRect, lineHeight, ref editor, firstVisible, lastVisible);
 
                 // While the inline rename field is open it owns the caret;
                 // focus-within keeps the editor visuals alive, but two blinking
@@ -1970,14 +1981,43 @@ namespace NowUI.CodeEditor
             }
         }
 
-        void DrawSquiggles(string text, EditorCache cache, NowFontAsset font, float fontSize, NowFontStyle fontStyle,
-            NowRect textRect, float lineHeight, ref EditorState editor, int firstVisible, int lastVisible)
+        /// <summary>
+        /// The colour a diagnostic's marks draw in. The error red is the
+        /// literal every editor has always shown; warning and info resolve
+        /// through their theme tokens so a themed surface keeps its own
+        /// palette, with per-light-and-dark fallbacks the way the fixed
+        /// syntax literals in <see cref="KindColor"/> have them.
+        /// </summary>
+        static Vector4 SeverityColor(NowThemeAsset themeAsset, NowCodeDiagnosticSeverity severity)
         {
-            var color = new Vector4(0.86f, 0.24f, 0.24f, 1f);
+            switch (severity)
+            {
+                case NowCodeDiagnosticSeverity.Warning:
+                    return themeAsset.GetColor(NowColorToken.Warning, themeAsset.isDark
+                        ? new Color(0.91f, 0.72f, 0.36f, 1f)
+                        : new Color(0.72f, 0.51f, 0.09f, 1f));
+                case NowCodeDiagnosticSeverity.Info:
+                    return themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+                default:
+                    return new Vector4(0.86f, 0.24f, 0.24f, 1f);
+            }
+        }
 
+        void DrawSquiggles(NowThemeAsset themeAsset, string text, EditorCache cache, NowFontAsset font, float fontSize,
+            NowFontStyle fontStyle, NowRect textRect, float lineHeight, ref EditorState editor, int firstVisible,
+            int lastVisible)
+        {
+            // One pass per severity, worst last, so where spans overlap the
+            // error's chips land on top of a warning's rather than under them
+            // — list order is the validator's, not a z-order.
+            for (int pass = (int)NowCodeDiagnosticSeverity.Info; pass >= 0; --pass)
             for (int d = 0; d < cache.diagnostics.Count; ++d)
             {
                 var diagnostic = cache.diagnostics[d];
+                if ((int)diagnostic.severity != pass)
+                    continue;
+
+                var color = SeverityColor(themeAsset, diagnostic.severity);
                 int diagnosticEnd = diagnostic.start + diagnostic.length;
 
                 for (int i = firstVisible; i <= lastVisible; ++i)
@@ -2039,9 +2079,9 @@ namespace NowUI.CodeEditor
             positionStyle.SetFontSize(11f).Draw(cache.positionText);
 
             string message = cache.statusMessage ?? string.Empty;
-            Vector4 messageColor = cache.diagnostics.Count == 0
+            Vector4 messageColor = cache.statusDiagnostic < 0 || cache.statusDiagnostic >= cache.diagnostics.Count
                 ? themeAsset.GetColor(NowColorToken.TextMuted, Color.gray)
-                : new Vector4(0.86f, 0.24f, 0.24f, 1f);
+                : SeverityColor(themeAsset, cache.diagnostics[cache.statusDiagnostic].severity);
 
             float messageWidth = Advance(message, font, 11f, fontStyle);
             var messageRect = new NowRect(statusRect.xMax - messageWidth - 12f, statusRect.y, messageWidth + 8f, statusRect.height);
@@ -2068,6 +2108,7 @@ namespace NowUI.CodeEditor
             int hoverIndex = -1;
             int diagnosticStart = -1;
             int diagnosticLength = 0;
+            int diagnosticSeverity = -1;
             string diagnosticMessage = null;
 
             // A pointer captured by an overlay (an open context menu above the
@@ -2084,17 +2125,29 @@ namespace NowUI.CodeEditor
                     var line = cache.lines[hoverLine];
                     hoverIndex = HitIndex(text, line, font, fontSize, fontStyle, pointer.x - textRect.x + editor.scrollX);
 
+                    // Of overlapping diagnostics the worst wins the tooltip —
+                    // an info note must not sit on top of the error under it.
+                    // Ties keep the validator's own order.
+                    int match = -1;
+
                     for (int d = 0; d < cache.diagnostics.Count; ++d)
                     {
                         var diagnostic = cache.diagnostics[d];
 
-                        if (hoverIndex >= diagnostic.start && hoverIndex <= diagnostic.start + diagnostic.length)
+                        if (hoverIndex >= diagnostic.start && hoverIndex <= diagnostic.start + diagnostic.length &&
+                            (match < 0 || diagnostic.severity < cache.diagnostics[match].severity))
                         {
-                            diagnosticStart = diagnostic.start;
-                            diagnosticLength = diagnostic.length;
-                            diagnosticMessage = diagnostic.message ?? string.Empty;
-                            break;
+                            match = d;
                         }
+                    }
+
+                    if (match >= 0)
+                    {
+                        var diagnostic = cache.diagnostics[match];
+                        diagnosticStart = diagnostic.start;
+                        diagnosticLength = diagnostic.length;
+                        diagnosticSeverity = (int)diagnostic.severity;
+                        diagnosticMessage = diagnostic.message ?? string.Empty;
                     }
                 }
             }
@@ -2114,7 +2167,7 @@ namespace NowUI.CodeEditor
                 if (diagnosticStart >= 0)
                 {
                     OpenTooltip(cache, text, font, fontSize, fontStyle, textRect, lineHeight, ref editor,
-                        diagnosticStart, diagnosticLength, diagnosticMessage);
+                        diagnosticStart, diagnosticLength, diagnosticMessage, diagnosticSeverity);
                 }
                 else if (hoverIndex >= 0)
                 {
@@ -2173,7 +2226,8 @@ namespace NowUI.CodeEditor
         }
 
         void OpenTooltip(EditorCache cache, string text, NowFontAsset font, float fontSize, NowFontStyle fontStyle,
-            NowRect textRect, float lineHeight, ref EditorState editor, int anchorStart, int anchorLength, string message)
+            NowRect textRect, float lineHeight, ref EditorState editor, int anchorStart, int anchorLength, string message,
+            int severity = -1)
         {
             float width = Advance(message, font, TooltipFontSize, fontStyle) + 16f;
             const float Height = 24f;
@@ -2190,6 +2244,7 @@ namespace NowUI.CodeEditor
             cache.tooltipAnchorStart = anchorStart;
             cache.tooltipAnchorLength = anchorLength;
             cache.tooltipMessage = message;
+            cache.tooltipSeverity = severity;
             cache.tooltipRect = new NowRect(
                 Mathf.Clamp(x, textRect.x, Mathf.Max(textRect.x, textRect.xMax - width)), y, width, Height);
             cache.tooltipSelectionAnchor = 0;
@@ -2201,6 +2256,7 @@ namespace NowUI.CodeEditor
             cache.tooltipAnchorStart = -1;
             cache.tooltipAnchorLength = 0;
             cache.tooltipMessage = null;
+            cache.tooltipSeverity = -1;
             cache.tooltipSelectionAnchor = 0;
             cache.tooltipSelectionCaret = 0;
             cache.tooltipDragging = false;
@@ -2247,6 +2303,17 @@ namespace NowUI.CodeEditor
             background.outline = 1f;
             background.outlineColor = theme.GetColor(NowColorToken.Border, Color.gray);
             background.SetRadius(4f).Draw();
+
+            // A diagnostic tooltip carries its severity as a left accent, in
+            // the squiggle's own color — the message no longer says "Warning"
+            // in words, so the box has to. Quick-info gets no bar.
+            if (cache.tooltipSeverity >= 0)
+            {
+                Now.Rectangle(new NowRect(tooltipRect.x + 1f, tooltipRect.y + 1f, 3f, tooltipRect.height - 2f))
+                    .SetColor(SeverityColor(theme, (NowCodeDiagnosticSeverity)cache.tooltipSeverity))
+                    .SetRadius(3f, 0f, 0f, 3f)
+                    .Draw();
+            }
 
             var font = cache.measureFont;
             int selectionMin = Mathf.Min(cache.tooltipSelectionAnchor, cache.tooltipSelectionCaret);
@@ -3248,13 +3315,48 @@ namespace NowUI.CodeEditor
 
             if (cache.diagnostics.Count == 0)
             {
+                cache.statusDiagnostic = -1;
                 cache.statusMessage = $"{cache.language.name} — no problems";
             }
             else
             {
-                var diagnostic = cache.diagnostics[0];
+                // The worst problem, not the first: a warning higher up the
+                // file must not bury the error that actually blocks the
+                // author. Ties keep the validator's own order.
+                cache.statusDiagnostic = WorstDiagnostic(cache.diagnostics);
+                var diagnostic = cache.diagnostics[cache.statusDiagnostic];
                 cache.statusMessage = $"Line {LineOf(cache, diagnostic.start) + 1}: {diagnostic.message}";
             }
+        }
+
+        /// <summary>First diagnostic of the worst severity present.</summary>
+        static int WorstDiagnostic(List<NowCodeDiagnostic> diagnostics)
+        {
+            int worst = 0;
+
+            for (int i = 1; i < diagnostics.Count; ++i)
+            {
+                if (diagnostics[i].severity < diagnostics[worst].severity)
+                    worst = i;
+            }
+
+            return worst;
+        }
+
+        /// <summary>
+        /// Whether any diagnostic is an actual error — the question
+        /// <see cref="NowCodeEditorResult.isValid"/> answers, which warnings
+        /// and infos deliberately leave alone.
+        /// </summary>
+        static bool HasError(List<NowCodeDiagnostic> diagnostics)
+        {
+            for (int i = 0; i < diagnostics.Count; ++i)
+            {
+                if (diagnostics[i].severity == NowCodeDiagnosticSeverity.Error)
+                    return true;
+            }
+
+            return false;
         }
 
         static int LineOf(EditorCache cache, int index)

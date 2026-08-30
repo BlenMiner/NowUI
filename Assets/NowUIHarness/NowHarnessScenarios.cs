@@ -369,6 +369,7 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "docs-unity-editor-dark-markdown", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
                 new NowHarnessScenario { name = "docs-unity-editor-dark-controls", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
                 new NowHarnessScenario { name = "docs-unity-editor-dark-controls-gallery", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
+                new NowHarnessScenario { name = "docs-unity-editor-dark-text-styling", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
                 new NowHarnessScenario { name = "docs-unity-editor-dark-rich-text", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
                 new NowHarnessScenario { name = "docs-unity-editor-dark-code-editor", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
                 new NowHarnessScenario { name = "docs-unity-editor-dark-file-picker", width = 1100, height = 660, includeInGoldens = false, includeInPerf = false, warmupFrames = 2, suppressBadge = true, capture = CaptureDocsUnityEditorDark },
@@ -808,6 +809,9 @@ namespace NowUI.Editor
                 case "docs-unity-editor-dark-controls-gallery":
                     pageTitle = "Controls gallery";
                     break;
+                case "docs-unity-editor-dark-text-styling":
+                    pageTitle = "Text styling demo";
+                    break;
                 case "docs-unity-editor-dark-rich-text":
                     pageTitle = "Rich text demo";
                     break;
@@ -825,7 +829,13 @@ namespace NowUI.Editor
             return CaptureDocsExample(
                 scenario,
                 outputPath,
-                graphic => graphic.ConfigurePageHarness(theme, font, pageTitle));
+                graphic =>
+                {
+                    if (scenario.name == "docs-unity-editor-dark-text-styling")
+                        graphic.ConfigureTextStylingDemoHarness(theme, font);
+                    else
+                        graphic.ConfigurePageHarness(theme, font, pageTitle);
+                });
         }
 
         // Captures the actual in-app docs page, including its first deferred

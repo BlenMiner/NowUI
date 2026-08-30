@@ -10,9 +10,9 @@ installed NowUI revision. AI coding agents should begin with the
   correctness rules, ownership, performance, and verification.
 - [Feature Usage](Features.md): core drawing lifecycle, rectangles, text, UGUI,
   and font compilation examples.
-- [Text Gradients And Animation](TextStyling.md): first-class linear, radial,
-  and conic text fills plus caller-timed typewriter, fade, movement, scale, and
-  wave presets.
+- [Text Gradients And Animation](TextStyling.md): adaptive text outlines,
+  first-class linear, radial, and conic fills, plus caller-timed typewriter,
+  fade, movement, scale, and wave presets.
 - [Text Preprocessor](TextPreprocessor.md): one registered hook every UI
   string resolves through before measurement — localization and other string
   transforms with correct layout, memoized results, and raw opt-outs.

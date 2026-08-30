@@ -190,6 +190,12 @@ namespace NowUI
 
         public NowRichText SetColor(Vector4 color) { _style = _style.SetColor(color); return this; }
 
+        public NowRichText SetOutline(float outline) { _style = _style.SetOutline(outline); return this; }
+
+        public NowRichText SetOutlinePixels(float pixels) { _style = _style.SetOutlinePixels(pixels); return this; }
+
+        public NowRichText SetOutlineColor(Vector4 color) { _style = _style.SetOutlineColor(color); return this; }
+
         public NowRichText SetGradient(Color from, Color to) { _style = _style.SetGradient(from, to); return this; }
 
         public NowRichText SetGradient(Vector4 from, Vector4 to) { _style = _style.SetGradient(from, to); return this; }
@@ -856,7 +862,7 @@ namespace NowUI
 
                 var style = _style
                     .SetPosition(run.rect)
-                    .SetMask(RunMask(run.rect, mask, motionOutset))
+                    .SetAutomaticMask(mask.Union(run.rect))
                     .SetFontSize(run.fontSize)
                     .SetFontStyle(run.fontStyle)
                     .SetAnimationSequence(animationUnitOffset, totalAnimationUnits);

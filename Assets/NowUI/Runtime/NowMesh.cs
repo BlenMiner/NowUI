@@ -686,7 +686,8 @@ namespace NowUI.Internal
             float outline,
             float pixelRange,
             Vector4 gradient = default,
-            float encodedGradient = 0f)
+            float encodedGradient = 0f,
+            bool outlineOnly = false)
         {
             ReserveTextGlyphs(1);
             AddTextGlyphReserved(
@@ -701,7 +702,28 @@ namespace NowUI.Internal
                 outline,
                 pixelRange,
                 gradient,
-                encodedGradient);
+                encodedGradient,
+                outlineOnly);
+        }
+
+        static float ClampTextOutlineToRange(float outline, float pixelRange)
+        {
+            if (float.IsNaN(outline) || float.IsInfinity(outline))
+                return 0f;
+
+            if (float.IsNaN(pixelRange) || float.IsInfinity(pixelRange) || pixelRange <= 0f)
+                return 0f;
+
+            // Keep the threshold just inside the encoded field so filtering and
+            // antialiasing never expose the rectangular edge of a glyph cell when
+            // a static atlas or configured atlas cap cannot satisfy the request.
+            // Half a coverage unit is the mathematical minimum at 1:1; retain at
+            // least one full unit and 5% of the field for bilinear/scale safety.
+            float guard = Mathf.Max(
+                1f,
+                pixelRange * (0.5f - NowFont.MAX_OUTLINE_RANGE_FRACTION));
+            float maxOutline = Mathf.Max(0f, pixelRange * 0.5f - guard);
+            return Mathf.Clamp(outline, -maxOutline, maxOutline);
         }
 
         internal void ReserveTextGlyphs(int glyphCount)
@@ -748,7 +770,8 @@ namespace NowUI.Internal
             float outline,
             float pixelRange,
             Vector4 gradient = default,
-            float encodedGradient = 0f)
+            float encodedGradient = 0f,
+            bool outlineOnly = false)
         {
             var planeBounds = glyph.planeBounds;
             float left = planeBounds.left * fontSize;
@@ -782,8 +805,8 @@ namespace NowUI.Internal
             int indexOffset = _verts.count;
             var atlasBounds = glyph.atlasBounds;
             Vector4 extra = default;
-            extra.x = outline;
-            extra.y = pixelRange;
+            extra.x = ClampTextOutlineToRange(outline, pixelRange);
+            extra.y = outlineOnly ? -Mathf.Abs(pixelRange) : pixelRange;
             extra.z = gradient.w;
             extra.w = encodedGradient;
 
@@ -905,11 +928,14 @@ namespace NowUI.Internal
             Vector4 color,
             Vector4 outlineColor,
             float outline,
-            float pixelRange)
+            float pixelRange,
+            bool outlineOnly)
         {
             if (run == null || start >= end)
                 return x;
 
+            outline = ClampTextOutlineToRange(outline, pixelRange);
+            float encodedPixelRange = outlineOnly ? -Mathf.Abs(pixelRange) : pixelRange;
             ReserveTextGlyphs(end - start);
 
             if (NowLottieNative.textBlitAvailable)
@@ -929,7 +955,7 @@ namespace NowUI.Internal
                     color,
                     outlineColor,
                     outline,
-                    pixelRange,
+                    encodedPixelRange,
                     _verts.array,
                     _uvs.array,
                     _rawuv.array,
@@ -990,7 +1016,7 @@ namespace NowUI.Internal
 
             Vector4 extra = default;
             extra.x = outline;
-            extra.y = pixelRange;
+            extra.y = encodedPixelRange;
 
             bool hasBounds = false;
             float boundsMinX = 0f;
@@ -1156,11 +1182,14 @@ namespace NowUI.Internal
             Vector4 color,
             Vector4 outlineColor,
             float outline,
-            float pixelRange)
+            float pixelRange,
+            bool outlineOnly)
         {
             if (run == null || start >= end)
                 return x;
 
+            outline = ClampTextOutlineToRange(outline, pixelRange);
+            float encodedPixelRange = outlineOnly ? -Mathf.Abs(pixelRange) : pixelRange;
             ReserveTextGlyphs(end - start);
 
             if (NowLottieNative.textBlitAvailable)
@@ -1180,7 +1209,7 @@ namespace NowUI.Internal
                     color,
                     outlineColor,
                     outline,
-                    pixelRange,
+                    encodedPixelRange,
                     _verts.array,
                     _uvs.array,
                     _rawuv.array,
@@ -1241,7 +1270,7 @@ namespace NowUI.Internal
 
             Vector4 extra = default;
             extra.x = outline;
-            extra.y = pixelRange;
+            extra.y = encodedPixelRange;
 
             bool hasBounds = false;
             float boundsMinX = 0f;

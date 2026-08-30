@@ -106,6 +106,27 @@ public class NowTextWrapTests
     }
 
     [Test]
+    public void GeneratedWrapMaskIncludesLargeOutline()
+    {
+        const float FontSize = 80f;
+        var rect = new NowRect(120f, 120f, 100f, 50f);
+        var style = new NowText(rect, _font)
+            .SetFontSize(FontSize)
+            .SetOutlinePixels(100f);
+        var runs = new List<NowTextRun>();
+        NowTextWrap.Layout(style, "A", rect.width, runs);
+
+        using (_drawList.Begin(Surface))
+            NowTextWrap.Draw(style, "A", runs, rect.position);
+
+        var masks = new List<Vector4>();
+        _drawList.mesh.GetUVs(6, masks);
+
+        Assert.Greater(masks.Count, 0);
+        Assert.AreEqual((Vector4)rect.Outset(104f), masks[0]);
+    }
+
+    [Test]
     public void ResolveTextCarriesAmbientFontAndNoMask()
     {
         var resolved = NowTheme.themeAsset.ResolveText();

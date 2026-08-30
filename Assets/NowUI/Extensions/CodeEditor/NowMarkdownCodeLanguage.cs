@@ -251,6 +251,9 @@ namespace NowUI.CodeEditor
                     start = openFenceStart,
                     length = System.Math.Max(openFenceLength, 3),
                     message = "Unclosed code fence",
+                    // A warning, as the docs have always described it: the
+                    // document still renders, the fence just runs to the end.
+                    severity = NowCodeDiagnosticSeverity.Warning,
                 });
         }
     }

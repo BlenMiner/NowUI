@@ -183,6 +183,10 @@ namespace NowUI
 
         internal bool hasExplicitMask;
 
+        internal float rangeOutline;
+
+        internal bool outlineOnlyPass;
+
         internal Vector4 resolvedGradientPayload;
 
         internal float resolvedGradientRamp;
@@ -224,6 +228,8 @@ namespace NowUI
             gradientBounds = default;
             hasGradientBounds = false;
             hasExplicitMask = false;
+            rangeOutline = 0f;
+            outlineOnlyPass = false;
             resolvedGradientPayload = default;
             resolvedGradientRamp = 0f;
             animation = default;
@@ -268,12 +274,24 @@ namespace NowUI
         /// <summary>
         /// Outline thickness relative to the font size (em units), so the stroke
         /// keeps the same visual weight at any size: 0.05 ≈ a 5%-of-em outline.
-        /// Negative values inset the outline. For an absolute pixel width, pass
-        /// <c>pixels / fontSize</c>.
+        /// Negative values inset the outline. Use <see cref="SetOutlinePixels(float)"/>
+        /// when the width is authored in local UI pixels.
         /// </summary>
         public NowText SetOutline(float outline)
         {
             this.outline = outline;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the outline in local UI pixels using the current <see cref="fontSize"/>.
+        /// The conversion to em units happens immediately: call
+        /// <see cref="SetFontSize(float)"/> first, because changing the font size later
+        /// also changes the final pixel width. A non-positive font size clears the outline.
+        /// </summary>
+        public NowText SetOutlinePixels(float pixels)
+        {
+            outline = fontSize > 0f ? pixels / fontSize : 0f;
             return this;
         }
 
@@ -305,6 +323,18 @@ namespace NowUI
         {
             this.mask = mask;
             hasExplicitMask = true;
+            return this;
+        }
+
+        /// <summary>
+        /// Installs a framework-generated text mask. Unlike a caller-authored
+        /// <see cref="SetMask(NowRect)"/> mask, the renderer may add glyph,
+        /// outline, and animation padding after applying the active transform.
+        /// </summary>
+        internal NowText SetAutomaticMask(NowRect mask)
+        {
+            this.mask = mask;
+            hasExplicitMask = false;
             return this;
         }
 

@@ -640,6 +640,13 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>Sets the outline in local UI pixels using the current font size.</summary>
+        public NowLabel SetOutlinePixels(float pixels)
+        {
+            _style = _style.SetOutlinePixels(pixels);
+            return this;
+        }
+
         public NowLabel SetOutlineColor(Vector4 color)
         {
             _style = _style.SetOutlineColor(color);
@@ -2361,7 +2368,7 @@ namespace NowUI
         {
             style = style
                 .SetPosition(rect)
-                .SetMask(LabelMask(style, value, rect));
+                .SetAutomaticMask(LabelMask(style, value, rect));
 
             if (style.font != null && !string.IsNullOrEmpty(value))
                 style.Draw(value);
@@ -2922,8 +2929,7 @@ namespace NowUI
                     mask = mask.Union(new NowRect(rect.x + bounds.x, rect.y + bounds.y, bounds.z, bounds.w));
             }
 
-            float motionOutset = style.animation.isAnimated ? style.animation.boundedOutset : 0f;
-            return mask.Outset(4f + motionOutset);
+            return mask;
         }
 
         static float FlexShare(ref Group group, float weight, float min, float max)

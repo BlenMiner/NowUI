@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
@@ -45,6 +46,7 @@ namespace NowUI.Internal
         readonly NowTrueType _font;
         readonly byte[] _atlas;
         readonly float _scale;
+        readonly bool _packedSdf16;
         readonly Dictionary<int, NowFontAtlasInfo.Glyph> _baked = new Dictionary<int, NowFontAtlasInfo.Glyph>(64);
         readonly Dictionary<int, NowFontAtlasInfo.Glyph> _bakedByIndex = new Dictionary<int, NowFontAtlasInfo.Glyph>(64);
 
@@ -65,11 +67,14 @@ namespace NowUI.Internal
 
         public NowFontAtlasInfo.Metrics Metrics { get; }
 
-        NowManagedFontSession(NowTrueType font, int size, int pixelRange, int atlasSide)
+        public bool usesPackedSdf16 => _packedSdf16;
+
+        NowManagedFontSession(NowTrueType font, int size, int pixelRange, int atlasSide, bool packedSdf16)
         {
             _font = font;
             _atlas = new byte[atlasSide * atlasSide * 4];
             _scale = (float)size / font.unitsPerEm;
+            _packedSdf16 = packedSdf16;
             AtlasSide = atlasSide;
             Size = size;
             DistanceRange = pixelRange;
@@ -94,6 +99,18 @@ namespace NowUI.Internal
             out NowManagedFontSession session,
             out string error)
         {
+            return TryCreate(fontData, size, pixelRange, atlasSide, true, out session, out error);
+        }
+
+        public static bool TryCreate(
+            byte[] fontData,
+            int size,
+            int pixelRange,
+            int atlasSide,
+            bool packedSdf16,
+            out NowManagedFontSession session,
+            out string error)
+        {
             session = null;
 
             if (size <= 0 || pixelRange <= 0 || atlasSide <= 0)
@@ -105,7 +122,7 @@ namespace NowUI.Internal
             if (!NowTrueType.TryParse(fontData, out var font, out error))
                 return false;
 
-            session = new NowManagedFontSession(font, size, pixelRange, atlasSide);
+            session = new NowManagedFontSession(font, size, pixelRange, atlasSide, packedSdf16);
             return true;
         }
 
@@ -352,6 +369,7 @@ namespace NowUI.Internal
                     segments = nativeSegments,
                     cells = cells,
                     distanceRange = DistanceRange,
+                    packedSdf16 = _packedSdf16 ? 1 : 0,
                     output = output
                 }.Schedule(cellCount, 1).Complete();
 
@@ -396,6 +414,26 @@ namespace NowUI.Internal
                 buffer = new byte[_atlas.Length];
 
             Buffer.BlockCopy(_atlas, 0, buffer, 0, _atlas.Length);
+            error = null;
+            return true;
+        }
+
+        public unsafe bool TryCopyAtlas(NativeArray<byte> destination, out string error)
+        {
+            if (!destination.IsCreated || destination.Length != _atlas.Length)
+            {
+                error = "The atlas destination does not match the session atlas size.";
+                return false;
+            }
+
+            fixed (byte* source = _atlas)
+            {
+                UnsafeUtility.MemCpy(
+                    NativeArrayUnsafeUtility.GetUnsafePtr(destination),
+                    source,
+                    _atlas.Length);
+            }
+
             error = null;
             return true;
         }

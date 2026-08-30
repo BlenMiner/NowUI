@@ -99,6 +99,36 @@ public class NowRenderingPlayModeTests
             $"{message} {mismatches} alpha samples differed beyond {channelTolerance}; largest difference was {largestDifference}.");
     }
 
+    static void AssertColorArraysNear(
+        Color32[] expected,
+        Color32[] actual,
+        int channelTolerance,
+        int allowedMismatchCount,
+        string message)
+    {
+        Assert.AreEqual(expected.Length, actual.Length);
+        int mismatches = 0;
+        int largestDifference = 0;
+
+        for (int i = 0; i < expected.Length; ++i)
+        {
+            int difference = Mathf.Max(
+                Mathf.Abs(expected[i].r - actual[i].r),
+                Mathf.Abs(expected[i].g - actual[i].g),
+                Mathf.Abs(expected[i].b - actual[i].b),
+                Mathf.Abs(expected[i].a - actual[i].a));
+            largestDifference = Mathf.Max(largestDifference, difference);
+
+            if (difference > channelTolerance)
+                ++mismatches;
+        }
+
+        Assert.LessOrEqual(
+            mismatches,
+            allowedMismatchCount,
+            $"{message} {mismatches} pixels differed beyond {channelTolerance}; largest difference was {largestDifference}.");
+    }
+
     static RectInt FindAlphaBounds(Color32[] pixels, byte minimumAlpha = 12)
     {
         int xMin = Side;
@@ -111,6 +141,36 @@ public class NowRenderingPlayModeTests
             for (int x = 0; x < Side; ++x)
             {
                 if (PixelAtUi(pixels, x, y).a <= minimumAlpha)
+                    continue;
+
+                xMin = Mathf.Min(xMin, x);
+                yMin = Mathf.Min(yMin, y);
+                xMax = Mathf.Max(xMax, x);
+                yMax = Mathf.Max(yMax, y);
+            }
+        }
+
+        return xMax >= xMin && yMax >= yMin
+            ? new RectInt(xMin, yMin, xMax - xMin + 1, yMax - yMin + 1)
+            : default;
+    }
+
+    static RectInt FindRawAlphaBounds(
+        Color32[] pixels,
+        int width,
+        int height,
+        byte minimumAlpha = 12)
+    {
+        int xMin = width;
+        int yMin = height;
+        int xMax = -1;
+        int yMax = -1;
+
+        for (int y = 0; y < height; ++y)
+        {
+            for (int x = 0; x < width; ++x)
+            {
+                if (pixels[y * width + x].a <= minimumAlpha)
                     continue;
 
                 xMin = Mathf.Min(xMin, x);
@@ -195,6 +255,160 @@ public class NowRenderingPlayModeTests
             fallback.TryResolveGlyph('A', 32f, NowFontStyle.Regular, out NowFont resolved, out _, out _),
             "Default font could not resolve a glyph.");
         return resolved;
+    }
+
+    static NowFont CreateSolidColorFont(Color32 authoredColor)
+    {
+        var template = Resources.Load<Material>("NowUI/TxtMaterialRGBA");
+        Assert.NotNull(template, "RGBA text material resource is missing.");
+
+        var atlas = new Texture2D(2, 2, TextureFormat.RGBA32, false, false)
+        {
+            name = "Synthetic Color Font Atlas",
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        atlas.SetPixels32(new[] { authoredColor, authoredColor, authoredColor, authoredColor });
+        atlas.Apply(false, false);
+
+        var material = new Material(template)
+        {
+            name = "Synthetic Color Font Material",
+            mainTexture = atlas
+        };
+
+        var font = ScriptableObject.CreateInstance<NowFont>();
+        font.name = "Synthetic Color Font";
+        font.atlas = atlas;
+        font.material = material;
+        font.atlasInfo = new NowFontAtlasInfo
+        {
+            atlas = new NowFontAtlasInfo.Atlas
+            {
+                type = NowFont.ATLAS_TYPE_RGBA,
+                size = 2,
+                width = 2,
+                height = 2,
+                yOrigin = "bottom"
+            },
+            metrics = new NowFontAtlasInfo.Metrics
+            {
+                emSize = 1f,
+                lineHeight = 1f,
+                ascender = 1f
+            },
+            glyphs = new[]
+            {
+                new NowFontAtlasInfo.Glyph
+                {
+                    unicode = 'A',
+                    advance = 1f,
+                    planeBounds = new NowFontAtlasInfo.Bounds
+                    {
+                        right = 1f,
+                        top = 1f
+                    },
+                    atlasBounds = new NowFontAtlasInfo.Bounds
+                    {
+                        right = 2f,
+                        top = 2f
+                    }
+                }
+            }
+        };
+        return font;
+    }
+
+    static NowFont CreateSyntheticSdfFont()
+    {
+        const int AtlasSide = 16;
+        const int DistanceRange = 4;
+        var template = Resources.Load<Material>("NowUI/TxtMaterial");
+        Assert.NotNull(template, "MTSDF text material resource is missing.");
+
+        var atlas = new Texture2D(AtlasSide, AtlasSide, TextureFormat.RGBA32, false, true)
+        {
+            name = "Synthetic SDF Font Atlas",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        var pixels = new Color32[AtlasSide * AtlasSide];
+        Vector2 center = new Vector2(AtlasSide * 0.5f, AtlasSide * 0.5f);
+
+        for (int y = 0; y < AtlasSide; ++y)
+        {
+            for (int x = 0; x < AtlasSide; ++x)
+            {
+                float signedDistance = 4f - Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), center);
+                byte encoded = (byte)Mathf.RoundToInt(
+                    Mathf.Clamp01(0.5f + signedDistance / DistanceRange) * 255f);
+                pixels[y * AtlasSide + x] = new Color32(encoded, encoded, encoded, encoded);
+            }
+        }
+
+        atlas.SetPixels32(pixels);
+        atlas.Apply(false, false);
+
+        var material = new Material(template)
+        {
+            name = "Synthetic SDF Font Material",
+            mainTexture = atlas
+        };
+        var font = ScriptableObject.CreateInstance<NowFont>();
+        font.name = "Synthetic SDF Font";
+        font.atlas = atlas;
+        font.material = material;
+        font.atlasInfo = new NowFontAtlasInfo
+        {
+            atlas = new NowFontAtlasInfo.Atlas
+            {
+                type = NowFont.ATLAS_TYPE_MTSDF,
+                distanceRange = DistanceRange,
+                size = AtlasSide,
+                width = AtlasSide,
+                height = AtlasSide,
+                yOrigin = "bottom"
+            },
+            metrics = new NowFontAtlasInfo.Metrics
+            {
+                emSize = 1f,
+                lineHeight = 1f,
+                ascender = 1f
+            },
+            glyphs = new[]
+            {
+                new NowFontAtlasInfo.Glyph
+                {
+                    unicode = 'A',
+                    advance = 1f,
+                    planeBounds = new NowFontAtlasInfo.Bounds
+                    {
+                        right = 1f,
+                        top = 1f
+                    },
+                    atlasBounds = new NowFontAtlasInfo.Bounds
+                    {
+                        right = AtlasSide,
+                        top = AtlasSide
+                    }
+                }
+            }
+        };
+        return font;
+    }
+
+    static void DestroySyntheticFont(NowFont font)
+    {
+        if (font == null)
+            return;
+
+        if (font.material != null)
+            Object.DestroyImmediate(font.material);
+
+        if (font.atlas != null)
+            Object.DestroyImmediate(font.atlas);
+
+        Object.DestroyImmediate(font);
     }
 
     [Test]
@@ -2446,6 +2660,73 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void SolidTextColorDoesNotTintColorFontGlyphRgb()
+    {
+        var authored = new Color32(224, 112, 32, 255);
+        var font = CreateSolidColorFont(authored);
+
+        try
+        {
+            using (_renderer.Begin(_target))
+            {
+                Now.Text(new NowRect(24f, 24f, 80f, 80f), font)
+                    .SetFontSize(64f)
+                    .SetColor(Color.blue)
+                    .Draw("A");
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            var pixels = ReadPixels(_target);
+            var center = PixelAtUi(pixels, 56, 56);
+
+            Assert.That((int)center.r, Is.InRange(authored.r - 4, authored.r + 4));
+            Assert.That((int)center.g, Is.InRange(authored.g - 4, authored.g + 4));
+            Assert.That((int)center.b, Is.InRange(authored.b - 4, authored.b + 4));
+            Assert.GreaterOrEqual(center.a, 250);
+        }
+        finally
+        {
+            DestroySyntheticFont(font);
+        }
+    }
+
+    [Test]
+    public void SolidTextAlphaFadesColorFontGlyphWithoutChangingItsHue()
+    {
+        var authored = new Color32(224, 112, 32, 255);
+        var font = CreateSolidColorFont(authored);
+
+        try
+        {
+            using (_renderer.Begin(_target))
+            {
+                Now.Text(new NowRect(24f, 24f, 80f, 80f), font)
+                    .SetFontSize(64f)
+                    .SetColor(new Color(0f, 0f, 1f, 0.5f))
+                    .Draw("A");
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            var pixels = ReadPixels(_target);
+            var center = PixelAtUi(pixels, 56, 56);
+            Color authoredSrgb = authored;
+            Color expected = QualitySettings.activeColorSpace == ColorSpace.Linear
+                ? (authoredSrgb.linear * 0.5f).gamma
+                : authoredSrgb * 0.5f;
+            Color32 expectedBytes = expected;
+
+            Assert.That((int)center.r, Is.InRange(expectedBytes.r - 4, expectedBytes.r + 4));
+            Assert.That((int)center.g, Is.InRange(expectedBytes.g - 4, expectedBytes.g + 4));
+            Assert.That((int)center.b, Is.InRange(expectedBytes.b - 4, expectedBytes.b + 4));
+            Assert.That((int)center.a, Is.InRange(124, 132));
+        }
+        finally
+        {
+            DestroySyntheticFont(font);
+        }
+    }
+
+    [Test]
     public void TextCoverageKeepsAnOpaqueTargetOpaque()
     {
         var font = ResolveDefaultNowFont();
@@ -2513,6 +2794,147 @@ public class NowRenderingPlayModeTests
     }
 
     [Test]
+    public void PositiveOutlineLayersDoNotDoubleBlendTranslucentFill()
+    {
+        var font = ResolveDefaultNowFont();
+        var singlePass = RenderTranslucentText(font, outlined: false);
+        var layered = RenderTranslucentText(font, outlined: true);
+
+        Assert.Greater(
+            CountPixels(singlePass, pixel => pixel.a > 48 && pixel.a < 180),
+            100,
+            "The outline compositing fixture produced too little translucent fill.");
+        AssertAlphaArraysNear(
+            singlePass,
+            layered,
+            channelTolerance: 2,
+            allowedMismatchCount: 4,
+            "The outline-first path blended the translucent fill more than once.");
+    }
+
+    [Test]
+    public void PositiveOutlineRingDoesNotFillTranslucentGlyphInterior()
+    {
+        var font = CreateSyntheticSdfFont();
+
+        try
+        {
+            using (_renderer.Begin(_target))
+            {
+                Now.Text(new NowRect(32f, 32f, 64f, 64f), font)
+                    .SetFontSize(64f)
+                    .SetColor(new Color(0f, 0f, 1f, 0.5f))
+                    .SetOutlinePixels(6f)
+                    .SetOutlineColor(Color.red)
+                    .Draw("A ");
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            Color32 centre = PixelAtUi(ReadPixels(_target), 64, 64);
+
+            Assert.That((int)centre.a, Is.InRange(124, 132),
+                $"The outline ring changed the translucent fill alpha: {centre}.");
+            Assert.Less(centre.r, 8, $"Outline colour leaked across the glyph interior: {centre}.");
+            Assert.Greater(centre.b, 100, $"The translucent blue fill did not render: {centre}.");
+        }
+        finally
+        {
+            DestroySyntheticFont(font);
+        }
+    }
+
+    [Test]
+    public void LayeredPositiveOutlinePreservesFillAndVisibleRing()
+    {
+        var font = CreateSyntheticSdfFont();
+
+        try
+        {
+            var pixels = RenderOpaqueTextWithVisibleOutline(font, "A");
+            Color32 centre = PixelAtUi(pixels, 64, 64);
+            Color32 ring = PixelAtUi(pixels, 84, 64);
+            Color32 outside = PixelAtUi(pixels, 92, 64);
+
+            Assert.Greater(centre.b, 240, $"The face layer did not restore the blue glyph interior: {centre}.");
+            Assert.Less(centre.r, 12, $"The outline ring leaked into the glyph interior: {centre}.");
+            Assert.Greater(ring.r, 220, $"The outline-only layer did not preserve the visible red ring: {ring}.");
+            Assert.Less(ring.b, 24, $"The fill layer leaked beyond the glyph face: {ring}.");
+            Assert.Less(outside.a, 12, $"The outline extended beyond its expected ranged edge: {outside}.");
+            Assert.Greater(
+                CountPixels(pixels, pixel => pixel.r > 180 && pixel.b < 40 && pixel.a > 180),
+                300,
+                "The outline-ring fixture produced too little independent ring coverage.");
+        }
+        finally
+        {
+            DestroySyntheticFont(font);
+        }
+    }
+
+    [Test]
+    public void PositiveOutlineLayerPreservesColorGlyphOpacity()
+    {
+        var font = CreateSolidColorFont(new Color32(224, 112, 32, 255));
+
+        try
+        {
+            using (_renderer.Begin(_target))
+            {
+                Now.Text(new NowRect(0f, 24f, Side, 80f), font)
+                    .SetFontSize(64f)
+                    .SetColor(new Color(1f, 1f, 1f, 0.5f))
+                    .SetOutlinePixels(6f)
+                    .SetOutlineColor(Color.white)
+                    .Draw("AA");
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            Color32 centre = PixelAtUi(ReadPixels(_target), 32, 56);
+
+            Assert.That((int)centre.a, Is.InRange(124, 132),
+                $"The outline layer changed the RGBA glyph opacity: {centre}.");
+            Assert.Greater(centre.r, centre.g, $"The authored colour glyph hue was lost: {centre}.");
+            Assert.Greater(centre.g, centre.b, $"The authored colour glyph hue was lost: {centre}.");
+        }
+        finally
+        {
+            DestroySyntheticFont(font);
+        }
+    }
+
+    [Test]
+    public void OversizedStaticFontOutlineDoesNotExposeAtlasCellCorners()
+    {
+        var font = CreateSyntheticSdfFont();
+
+        try
+        {
+            using (_renderer.Begin(_target))
+            {
+                Now.Text(new NowRect(32f, 32f, 64f, 64f), font)
+                    .SetFontSize(64f)
+                    .SetColor(Color.white)
+                    .SetOutlinePixels(100f)
+                    .SetOutlineColor(Color.white)
+                    .Draw("A");
+            }
+
+            _renderer.Render(_target, clear: true, clearColor: Color.clear);
+            var pixels = ReadPixels(_target);
+
+            Assert.Greater(PixelAtUi(pixels, 64, 64).a, 240, "The synthetic glyph did not render its centre.");
+            Assert.Less(PixelAtUi(pixels, 33, 33).a, 8, "The outline exposed the glyph atlas cell's top-left corner.");
+            Assert.Less(PixelAtUi(pixels, 94, 33).a, 8, "The outline exposed the glyph atlas cell's top-right corner.");
+            Assert.Less(PixelAtUi(pixels, 33, 94).a, 8, "The outline exposed the glyph atlas cell's bottom-left corner.");
+            Assert.Less(PixelAtUi(pixels, 94, 94).a, 8, "The outline exposed the glyph atlas cell's bottom-right corner.");
+        }
+        finally
+        {
+            DestroySyntheticFont(font);
+        }
+    }
+
+    [Test]
     public void TextRendersInkWithManagedCompiler()
     {
         var source = ResolveDefaultNowFont();
@@ -2530,6 +2952,288 @@ public class NowRenderingPlayModeTests
             Object.DestroyImmediate(managedFont);
         }
     }
+
+    [Test]
+    public void ManagedDynamicFontRendersOneHundredPixelOutlineEndToEnd()
+    {
+        const int LargeSide = 512;
+        var source = ResolveDefaultNowFont();
+        Assert.IsTrue(source.TryGetSourceBytes(out byte[] bytes), "Default font has no embedded source.");
+
+        NowFontCompiler.forceManagedCompiler = true;
+        Assert.IsTrue(NowFontCompiler.TryCompile(bytes, out NowFont font, out string error), error);
+
+        var target = new RenderTexture(LargeSide, LargeSide, 0, RenderTextureFormat.ARGB32);
+        target.Create();
+        var renderer = new NowRenderer();
+
+        try
+        {
+            var fillOnly = RenderManagedLargeOutlineFixture(renderer, target, font, outlined: false);
+            var outlined = RenderManagedLargeOutlineFixture(renderer, target, font, outlined: true);
+            Assert.IsTrue(font.GetGlyph('A', 80f, 100f / 80f, out _, out var effectMaterial));
+            Assert.AreEqual(1f, effectMaterial.GetFloat("_NowUITextSdfEncoding"), 0.001f);
+
+            Color32[] quantizedControl;
+
+            try
+            {
+                // The packed page retains its legacy high byte in median RGB.
+                // Disabling the decoder therefore gives a deterministic 8-bit
+                // control without rebaking or changing any geometry.
+                effectMaterial.SetFloat("_NowUITextSdfEncoding", 0f);
+                quantizedControl = RenderManagedLargeOutlineFixture(renderer, target, font, outlined: true);
+            }
+            finally
+            {
+                effectMaterial.SetFloat("_NowUITextSdfEncoding", 1f);
+            }
+
+            RectInt fillBounds = FindRawAlphaBounds(fillOnly, LargeSide, LargeSide);
+            RectInt outlineBounds = FindRawAlphaBounds(outlined, LargeSide, LargeSide);
+
+            int packedTransitionBins = CountStablePartialAlphaBins(outlined);
+            int quantizedTransitionBins = CountStablePartialAlphaBins(quantizedControl);
+            Assert.GreaterOrEqual(packedTransitionBins, 96,
+                $"The 100-pixel edge collapsed to too few stable AA levels ({packedTransitionBins}).");
+            Assert.GreaterOrEqual(packedTransitionBins, quantizedTransitionBins * 2,
+                $"Packed distance decoding did not materially improve edge precision " +
+                $"({packedTransitionBins} levels versus {quantizedTransitionBins} for the 8-bit control).");
+
+            Assert.Greater(fillBounds.width, 40, "The dynamic fill fixture produced no useful glyph coverage.");
+            Assert.GreaterOrEqual(fillBounds.xMin - outlineBounds.xMin, 90,
+                "The rendered stroke did not expand close to 100 pixels on the left.");
+            Assert.GreaterOrEqual(outlineBounds.xMax - fillBounds.xMax, 90,
+                "The rendered stroke did not expand close to 100 pixels on the right.");
+            Assert.GreaterOrEqual(fillBounds.yMin - outlineBounds.yMin, 90,
+                "The rendered stroke did not expand close to 100 pixels below the glyphs.");
+            Assert.GreaterOrEqual(outlineBounds.yMax - fillBounds.yMax, 90,
+                "The rendered stroke did not expand close to 100 pixels above the glyphs.");
+
+            int fillInterior = 0;
+            int preservedLeftFace = 0;
+            int preservedRightFace = 0;
+            int redStroke = 0;
+            int fillMidpoint = fillBounds.xMin + fillBounds.width / 2;
+
+            for (int y = 0; y < LargeSide; ++y)
+            {
+                for (int x = 0; x < LargeSide; ++x)
+                {
+                    int index = y * LargeSide + x;
+                    Color32 fillPixel = fillOnly[index];
+                    Color32 outlinePixel = outlined[index];
+
+                    if (fillPixel.g > 220 && fillPixel.a > 240)
+                    {
+                        ++fillInterior;
+
+                        if (outlinePixel.g > 180 && outlinePixel.r < 80 && outlinePixel.a > 220)
+                        {
+                            if (x < fillMidpoint)
+                                ++preservedLeftFace;
+                            else
+                                ++preservedRightFace;
+                        }
+                    }
+
+                    if (fillPixel.a < 8 &&
+                        outlinePixel.r > 180 &&
+                        outlinePixel.g < 80 &&
+                        outlinePixel.a > 128)
+                    {
+                        ++redStroke;
+                    }
+                }
+            }
+
+            Assert.Greater(fillInterior, 500, "The fill comparison did not exercise both glyph faces.");
+            Assert.Greater(preservedLeftFace, 150, "The first glyph face was not restored above overlapping outlines.");
+            Assert.Greater(preservedRightFace, 150, "The second glyph face was not restored above overlapping outlines.");
+            Assert.Greater(redStroke, 3000, "The 100-pixel dynamic outline produced too little visible stroke.");
+
+            Assert.Less(outlined[(outlineBounds.yMin + 2) * LargeSide + outlineBounds.xMin + 2].a, 16,
+                "The ranged atlas exposed its bottom-left cell corner.");
+            Assert.Less(outlined[(outlineBounds.yMin + 2) * LargeSide + outlineBounds.xMax - 2].a, 16,
+                "The ranged atlas exposed its bottom-right cell corner.");
+            Assert.Less(outlined[(outlineBounds.yMax - 2) * LargeSide + outlineBounds.xMin + 2].a, 16,
+                "The ranged atlas exposed its top-left cell corner.");
+            Assert.Less(outlined[(outlineBounds.yMax - 2) * LargeSide + outlineBounds.xMax - 2].a, 16,
+                "The ranged atlas exposed its top-right cell corner.");
+        }
+        finally
+        {
+            renderer.Dispose();
+            target.Release();
+            Object.DestroyImmediate(target);
+            font.ClearDynamicCache();
+            Object.DestroyImmediate(font);
+        }
+    }
+
+#if NOWUI_UGUI
+    sealed class ManagedLargeOutlineGraphic : NowGraphic
+    {
+        public NowFont font;
+
+        public void RebuildForTest()
+        {
+            UpdateGeometry();
+        }
+
+        protected override void DrawNowUI(NowRect rect)
+        {
+            Now.Text(new NowRect(180f, 180f, 180f, 100f), font)
+                .SetFontSize(80f)
+                .SetColor(Color.green)
+                .SetOutlinePixels(100f)
+                .SetOutlineColor(Color.red)
+                .Draw("AA");
+        }
+    }
+
+    sealed class UGUIPageRenderDriver : MonoBehaviour
+    {
+        public CanvasRenderer sourceRenderer;
+        public Mesh mesh;
+        public float side;
+        public bool drew;
+
+        void OnPostRender()
+        {
+            if (sourceRenderer == null || mesh == null)
+                return;
+
+            GL.PushMatrix();
+
+            try
+            {
+                // Batch-mode Camera.Render does not reliably composite a CanvasRenderer.
+                // Replay its uploaded page with the exact materials it bound so this still
+                // exercises NowGraphic's UGUI clone and the real UGUI shader pass.
+                GL.LoadIdentity();
+                GL.LoadProjectionMatrix(Matrix4x4.Ortho(
+                    -side * 0.5f,
+                    side * 0.5f,
+                    -side * 0.5f,
+                    side * 0.5f,
+                    -1f,
+                    100f));
+
+                int subMeshCount = Mathf.Min(mesh.subMeshCount, sourceRenderer.materialCount);
+
+                for (int i = 0; i < subMeshCount; ++i)
+                {
+                    var material = sourceRenderer.GetMaterial(i);
+
+                    if (material == null || !material.SetPass(0))
+                        continue;
+
+                    Graphics.DrawMeshNow(mesh, Matrix4x4.identity, i);
+                    drew = true;
+                }
+            }
+            finally
+            {
+                GL.PopMatrix();
+            }
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator ManagedLargeOutlineKeepsPackedPrecisionThroughUGUIShader()
+    {
+        const int LargeSide = 512;
+        var source = ResolveDefaultNowFont();
+        Assert.IsTrue(source.TryGetSourceBytes(out byte[] bytes), "Default font has no embedded source.");
+
+        NowFontCompiler.forceManagedCompiler = true;
+        Assert.IsTrue(NowFontCompiler.TryCompile(bytes, out NowFont font, out string error), error);
+
+        var target = new RenderTexture(LargeSide, LargeSide, 24, RenderTextureFormat.ARGB32);
+        target.Create();
+        var cameraObject = new GameObject("Packed SDF UGUI Camera");
+        var canvasObject = new GameObject("Packed SDF UGUI Canvas", typeof(Canvas));
+        var graphicObject = new GameObject("Packed SDF UGUI Graphic", typeof(ManagedLargeOutlineGraphic));
+
+        try
+        {
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = Color.clear;
+            camera.orthographic = true;
+            camera.orthographicSize = LargeSide * 0.5f;
+            camera.targetTexture = target;
+            camera.cullingMask = 0;
+            cameraObject.transform.position = new Vector3(0f, 0f, -10f);
+
+            var canvas = canvasObject.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            canvas.worldCamera = camera;
+            var canvasRect = canvasObject.GetComponent<RectTransform>();
+            canvasRect.pivot = new Vector2(0.5f, 0.5f);
+            canvasRect.sizeDelta = new Vector2(LargeSide, LargeSide);
+            canvasRect.localScale = Vector3.one;
+
+            graphicObject.transform.SetParent(canvasObject.transform, false);
+            var graphicRect = graphicObject.GetComponent<RectTransform>();
+            graphicRect.anchorMin = Vector2.zero;
+            graphicRect.anchorMax = Vector2.one;
+            graphicRect.pivot = new Vector2(0.5f, 0.5f);
+            graphicRect.offsetMin = Vector2.zero;
+            graphicRect.offsetMax = Vector2.zero;
+            var graphic = graphicObject.GetComponent<ManagedLargeOutlineGraphic>();
+            graphic.font = font;
+            graphic.MarkDirty();
+
+            Canvas.ForceUpdateCanvases();
+            yield return null;
+            Canvas.ForceUpdateCanvases();
+            graphic.RebuildForTest();
+            Assert.Greater(graphic.canvasPageCount, 0, "The UGUI fixture did not build a canvas page.");
+            var mesh = graphic.GetCanvasPageMesh(0);
+            Assert.Greater(mesh.vertexCount, 0, "The UGUI fixture built an empty mesh.");
+            Assert.Greater(graphic.canvasRenderer.materialCount, 0, "The UGUI fixture did not bind a material.");
+
+            for (int i = 0; i < graphic.canvasRenderer.materialCount; ++i)
+            {
+                var material = graphic.canvasRenderer.GetMaterial(i);
+                Assert.NotNull(material, $"The UGUI fixture material {i} is missing.");
+                Assert.AreEqual("NowUI/Text Renderer UGUI", material.shader.name,
+                    $"Canvas material {i} did not use the UGUI text shader.");
+            }
+
+            var driver = cameraObject.AddComponent<UGUIPageRenderDriver>();
+            driver.sourceRenderer = graphic.canvasRenderer;
+            driver.mesh = mesh;
+            driver.side = LargeSide;
+            camera.Render();
+            Assert.IsTrue(driver.drew, "The UGUI fixture did not execute its render pass.");
+
+            var pixels = ReadPixels(target);
+            Assert.Greater(
+                CountPixels(pixels, pixel => pixel.r > 180 && pixel.g < 80 && pixel.a > 128),
+                3000,
+                "The UGUI text shader produced too little 100-pixel outline coverage.");
+            Assert.Greater(
+                CountPixels(pixels, pixel => pixel.g > 180 && pixel.r < 80 && pixel.a > 220),
+                500,
+                "The UGUI text shader did not preserve the managed glyph faces.");
+            Assert.GreaterOrEqual(CountStablePartialAlphaBins(pixels), 96,
+                "The UGUI packed decoder collapsed the large outline edge back to 8-bit precision.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(graphicObject);
+            Object.DestroyImmediate(canvasObject);
+            Object.DestroyImmediate(cameraObject);
+            target.Release();
+            Object.DestroyImmediate(target);
+            font.ClearDynamicCache();
+            Object.DestroyImmediate(font);
+        }
+    }
+#endif
 
     [Test]
     public void AnalyticMaskClipsTextMaterial()
@@ -2585,6 +3289,92 @@ public class NowRenderingPlayModeTests
 
         Assert.Greater(ink, 500, "Text produced almost no ink.");
         Assert.Less(ink, Side * Side / 2, "Text ink coverage is implausibly large.");
+    }
+
+    Color32[] RenderTranslucentText(NowFontAsset font, bool outlined)
+    {
+        _renderer.Clear();
+
+        using (_renderer.Begin(_target))
+        {
+            NowText text = Now.Text(new NowRect(24f, 24f, 80f, 80f), font)
+                .SetFontSize(64f)
+                .SetColor(new Color(1f, 1f, 1f, 0.5f));
+
+            if (outlined)
+                text = text.SetOutlinePixels(6f).SetOutlineColor(Color.clear);
+
+            text.Draw("M");
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    Color32[] RenderOpaqueTextWithVisibleOutline(NowFontAsset font, string value)
+    {
+        _renderer.Clear();
+
+        using (_renderer.Begin(_target))
+        {
+            Now.Text(new NowRect(32f, 32f, 64f, 64f), font)
+                .SetFontSize(64f)
+                .SetColor(Color.blue)
+                .SetOutlinePixels(6f)
+                .SetOutlineColor(Color.red)
+                .Draw(value);
+        }
+
+        _renderer.Render(_target, clear: true, clearColor: Color.clear);
+        return ReadPixels(_target);
+    }
+
+    static Color32[] RenderManagedLargeOutlineFixture(
+        NowRenderer renderer,
+        RenderTexture target,
+        NowFont font,
+        bool outlined)
+    {
+        renderer.Clear();
+
+        using (renderer.Begin(target))
+        {
+            NowText text = Now.Text(new NowRect(180f, 180f, 180f, 100f), font)
+                .SetFontSize(80f)
+                .SetColor(Color.green)
+                .SetOutlineColor(Color.red);
+
+            if (outlined)
+                text = text.SetOutlinePixels(100f);
+
+            text.Draw("AA");
+        }
+
+        renderer.Render(target, clear: true, clearColor: Color.clear);
+        return ReadPixels(target);
+    }
+
+    static int CountStablePartialAlphaBins(Color32[] pixels)
+    {
+        var counts = new int[256];
+
+        for (int i = 0; i < pixels.Length; ++i)
+        {
+            int alpha = pixels[i].a;
+
+            if (alpha >= 4 && alpha <= 251)
+                ++counts[alpha];
+        }
+
+        int occupied = 0;
+
+        for (int alpha = 4; alpha <= 251; ++alpha)
+        {
+            if (counts[alpha] >= 2)
+                ++occupied;
+        }
+
+        return occupied;
     }
 
     [Test]

@@ -36,6 +36,18 @@ namespace NowUI
         public NowTextTokenKind kind;
     }
 
+    /// <summary>
+    /// Mirror of the code editor's diagnostic severity, castable by value —
+    /// the same arrangement <see cref="NowTextTokenKind"/> has with the code
+    /// editor's token kinds. Error is zero so an unset severity reads as one.
+    /// </summary>
+    public enum NowTextDiagnosticSeverity : byte
+    {
+        Error,
+        Warning,
+        Info
+    }
+
     public struct NowTextDiagnostic
     {
         public int start;
@@ -43,6 +55,8 @@ namespace NowUI
         public int length;
 
         public string message;
+
+        public NowTextDiagnosticSeverity severity;
     }
 
     public interface INowTextSyntaxProfile

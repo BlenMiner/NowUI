@@ -108,7 +108,7 @@ Host lifecycle rules:
 | Need | Start with | Read |
 | --- | --- | --- |
 | Frame lifecycle, rectangles, input, text, fonts, renderer | `Now`, `NowInput`, `NowRenderer` | [Feature Usage](Features.md) |
-| Text gradients, reveals, and glyph animation | `Now.Text`, `NowTextAnimations` | [Text Gradients And Animation](TextStyling.md) |
+| Text outlines, gradients, reveals, and glyph animation | `Now.Text`, `NowTextAnimations` | [Text Gradients And Animation](TextStyling.md) |
 | Supported public assemblies and types | Runtime and extension namespaces | [Public API](API.md) |
 | Rows, columns, sizing, measurement | `NowLayout` and layout hosts | [Layout](Layout.md) |
 | Buttons, fields, pickers, lists, dialogs, inspection | `Now` / `NowLayout` controls | [Controls](Controls.md) |

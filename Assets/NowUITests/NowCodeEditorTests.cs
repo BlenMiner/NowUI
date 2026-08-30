@@ -132,6 +132,38 @@ public class NowCodeEditorTests
         }
     }
 
+    /// <summary>
+    /// A warning declared before an error, so severity-aware paths — the
+    /// status bar, the save gate — can be caught preferring list order.
+    /// </summary>
+    sealed class MixedSeverityLanguage : NowCodeLanguage
+    {
+        public static readonly MixedSeverityLanguage instance = new MixedSeverityLanguage();
+
+        public override string name => "mixed-severity-fixture";
+
+        public override int TokenizeLine(string text, int start, int length, int state, List<NowCodeToken> tokens)
+        {
+            return 0;
+        }
+
+        public override void Validate(string text, List<NowCodeDiagnostic> diagnostics)
+        {
+            diagnostics.Add(new NowCodeDiagnostic
+            {
+                start = 0,
+                length = 2,
+                message = "advice",
+                severity = NowCodeDiagnosticSeverity.Warning
+            });
+
+            int at = text.IndexOf("bad", StringComparison.Ordinal);
+
+            if (at >= 0)
+                diagnostics.Add(new NowCodeDiagnostic { start = at, length = 3, message = "broken" });
+        }
+    }
+
     static readonly Vector2 Surface = new Vector2(640, 480);
     static readonly NowRect EditorRect = new NowRect(20, 20, 400, 300);
 
@@ -544,10 +576,55 @@ public class NowCodeEditorTests
         Assert.AreEqual(1, diagnostics.Count);
         StringAssert.Contains("Unclosed", diagnostics[0].message);
         Assert.AreEqual(5, diagnostics[0].start, "The warning points at the opening fence line.");
+        Assert.AreEqual(NowCodeDiagnosticSeverity.Warning, diagnostics[0].severity,
+            "An unclosed fence advises; the document still renders.");
 
         diagnostics.Clear();
         NowMarkdownCodeLanguage.instance.Validate("```json\n{}\n```", diagnostics);
         Assert.IsEmpty(diagnostics);
+    }
+
+    [Test]
+    public void ValidatorErrorsDefaultToErrorSeverity()
+    {
+        var diagnostics = Validate("{ \"a\": 1 \"b\": 2 }");
+
+        Assert.AreEqual(1, diagnostics.Count);
+        Assert.AreEqual(NowCodeDiagnosticSeverity.Error, diagnostics[0].severity,
+            "A diagnostic built without a severity must read as an error, " +
+            "the way every validator written before the field did.");
+    }
+
+    [Test]
+    public void WarningsDoNotInvalidateTheResult()
+    {
+        string text = "text\n```json\n{}";
+        var result = FrameLanguage(ref text, NowMarkdownCodeLanguage.instance);
+
+        Assert.AreEqual(1, result.diagnosticCount, "The unclosed fence must still be reported.");
+        Assert.IsTrue(result.isValid, "A warning advises; it must not fail a 'save only when valid' gate.");
+
+        text = "ok bad";
+        result = FrameLanguage(ref text, MixedSeverityLanguage.instance);
+
+        Assert.AreEqual(2, result.diagnosticCount);
+        Assert.IsFalse(result.isValid, "The error in the mix is what invalidates.");
+    }
+
+    [Test]
+    public void StatusBarClickJumpsToTheWorstDiagnostic()
+    {
+        string text = "ok bad";
+        FrameLanguage(ref text, MixedSeverityLanguage.instance);
+
+        var point = new Vector2(EditorRect.x + 200f, EditorRect.yMax - 8f);
+        _pointer.snapshot = new NowInputSnapshot(point, true, true, false);
+        FrameLanguage(ref text, MixedSeverityLanguage.instance);
+        _pointer.snapshot = new NowInputSnapshot(point, false, false, true);
+        FrameLanguage(ref text, MixedSeverityLanguage.instance);
+
+        Assert.AreEqual(3, State().caret,
+            "The click must land on the error, not the warning the validator declared before it.");
     }
 
     [Test]

@@ -6,6 +6,8 @@ Shader "NowUI/Text Renderer UGUI"
         [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
         [HideInInspector] _NowUITextureMask0 ("Now UI Texture Mask 0", 2D) = "black" {}
         [HideInInspector] _NowUITextureMask1 ("Now UI Texture Mask 1", 2D) = "black" {}
+        [HideInInspector] _NowUITextSdfEncoding ("Now UI Text SDF Encoding", Float) = 0
+        [HideInInspector] _NowUITextOutlineOnlyPass ("Now UI Text Outline-Only Pass", Float) = 1
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
@@ -85,6 +87,7 @@ Shader "NowUI/Text Renderer UGUI"
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
+            float _NowUITextSdfEncoding;
             float4 _ClipRect;
             float _UIMaskSoftnessX;
             float _UIMaskSoftnessY;
@@ -134,13 +137,23 @@ Shader "NowUI/Text Renderer UGUI"
                 float2 gradX = float2(ddx(pos.x), ddy(pos.x));
                 float2 gradY = float2(ddx(pos.y), ddy(pos.y));
                 float unitsPerPixel = max(0.5 * (length(gradX) + length(gradY)), 1e-5);
-                float screenPxRange = max(i.extras.y / unitsPerPixel, 1.0);
-                float sd = median(msd.r, msd.g, msd.b);
+                bool outlineOnly = i.extras.y < 0.0;
+                float screenPxRange = max(abs(i.extras.y) / unitsPerPixel, 1.0);
+                bool packedSdf16 = _NowUITextSdfEncoding > 0.5;
+                float sd = packedSdf16
+                    ? (msd.r * 256.0 + msd.b) / 257.0
+                    : median(msd.r, msd.g, msd.b);
 
                 float screenPxDistance = screenPxRange * (sd - 0.5);
-                float screenPxDistanceOutline = screenPxDistance + outline / unitsPerPixel;
-                float opacity = clamp(screenPxDistance + 0.5, 0.0, 1.0);
-                float outlineOp = clamp(screenPxDistanceOutline + 0.5, 0.0, 1.0);
+                // MTSDF alpha is the true signed distance. It stays stable far
+                // from corners where median RGB is optimized for the fill edge.
+                float outlineSd = outline == 0 || packedSdf16 ? sd : msd.a;
+                float screenPxDistanceOutline =
+                    screenPxRange * (outlineSd - 0.5) + outline / unitsPerPixel;
+                float distanceCodeCount = packedSdf16 ? 65535.0 : 255.0;
+                float aaWidth = max(1.0, screenPxRange / distanceCodeCount);
+                float opacity = clamp(screenPxDistance / aaWidth + 0.5, 0.0, 1.0);
+                float outlineOp = clamp(screenPxDistanceOutline / aaWidth + 0.5, 0.0, 1.0);
                 float4 fillColor = i.color;
 
                 if (i.extras.w > 0.0)
@@ -149,9 +162,21 @@ Shader "NowUI/Text Renderer UGUI"
                     fillColor *= NowUITextGradientSample(uiPosition, gradientPayload, i.extras.w);
                 }
 
-                float4 color = outline == 0 ? fillColor : lerp(i.outlineColor, fillColor, outline < 0 ? outlineOp : opacity);
+                float4 color;
 
-                color.a *= max(opacity, outlineOp);
+                if (outlineOnly)
+                {
+                    float remainingFill = max(1.0 - opacity, 1e-5);
+                    float ringCoverage = saturate((outlineOp - opacity) / remainingFill);
+                    color = i.outlineColor;
+                    color.a *= ringCoverage;
+                }
+                else
+                {
+                    color = outline == 0 ? fillColor : lerp(i.outlineColor, fillColor, outline < 0 ? outlineOp : opacity);
+                    color.a *= max(opacity, outlineOp);
+                }
+
                 color.a *= NowUIMaskCoverage(uiPosition);
 
                 #ifdef UNITY_UI_CLIP_RECT

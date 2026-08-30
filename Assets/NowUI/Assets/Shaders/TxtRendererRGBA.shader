@@ -99,8 +99,12 @@ Shader "NowUI/Text Renderer RGBA"
                 }
                 else
                 {
-                    col = tex2D(_MainTex, i.uv) * i.color;
-                    col.rgb = col.a > 0 ? saturate(col.rgb / col.a) : col.rgb;
+                    // Intrinsically colored glyphs keep their RGB; solid text color supplies opacity.
+                    float4 glyph = tex2D(_MainTex, i.uv);
+                    float3 originalRgb = glyph.a > 0.0
+                        ? saturate(glyph.rgb / glyph.a)
+                        : float3(0.0, 0.0, 0.0);
+                    col = float4(originalRgb, glyph.a * i.color.a);
                 }
 
                 col.a *= NowUIMaskCoverage(uiPosition);

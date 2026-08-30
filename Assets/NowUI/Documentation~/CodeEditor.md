@@ -25,7 +25,9 @@ NowCode.Editor(rect, NowMarkupCodeLanguage.instance).Draw(ref markupText);
 ```
 
 `NowCodeEditorResult` reports `changed`, `isValid` and `diagnosticCount`, so
-"save only when valid" is one if.
+"save only when valid" is one if. `isValid` means *no errors*: diagnostics
+carry a `NowCodeDiagnosticSeverity` (`Error`, `Warning`, `Info`), and
+warnings or infos advise without failing the gate.
 
 Builder options: `SetHeight` / `SetWidth` (stretch width by default in
 layout flow), `SetFontSize` (default 14), `SetLineNumbers(false)`,
@@ -50,8 +52,11 @@ the resulting UI.
 
 - **Highlighting** through the language profile, with state carried across
   lines (multi-line constructs color correctly).
-- **Validation squiggles** under each diagnostic; hover one for the message,
-  or read the status bar — clicking the status error jumps the caret to it.
+- **Validation squiggles** under each diagnostic, colored by severity —
+  errors red, warnings amber through the theme's `Warning` token, infos
+  muted. Hover one for the message (the worst wins an overlap), or read the
+  status bar, which shows the worst problem in its severity's color —
+  clicking it jumps the caret there.
 - **Auto-close pairs**: typing `{`, `[`, `(` or `"` inserts the pair with
   the caret between; typing the closer over an auto-closed one skips it;
   Backspace inside an empty pair deletes both; typing an opener with a
@@ -122,7 +127,16 @@ public sealed class MyIniLanguage : NowCodeLanguage
         return 0;
     }
 
-    public override void Validate(string text, List<NowCodeDiagnostic> diagnostics) { /* optional */ }
+    public override void Validate(string text, List<NowCodeDiagnostic> diagnostics)
+    {
+        // Optional. Severity defaults to Error; a warning renders amber and
+        // leaves result.isValid true.
+        // diagnostics.Add(new NowCodeDiagnostic
+        // {
+        //     start = 0, length = 3, message = "Prefer lowercase keys",
+        //     severity = NowCodeDiagnosticSeverity.Warning
+        // });
+    }
 }
 
 NowCodeLanguage.Register(new MyIniLanguage());   // findable by markdown fences too

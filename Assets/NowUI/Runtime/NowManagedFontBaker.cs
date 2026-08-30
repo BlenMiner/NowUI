@@ -25,10 +25,13 @@ namespace NowUI.Internal
     /// Burst-compiled single-channel SDF rasterizer. Each job index bakes one glyph
     /// cell: per pixel, the unsigned distance to the nearest outline segment with the
     /// sign from the nonzero winding rule, encoded like msdfgen (0.5 at the edge,
-    /// <see cref="distanceRange"/> pixels across the 0..1 ramp) and replicated into
-    /// RGBA. The text shader resolves median(R, G, B), and median(s, s, s) = s, so the
-    /// output renders identically to native MTSDF atlases minus sharp-corner
-    /// preservation at extreme magnification.
+    /// <see cref="distanceRange"/> pixels across the 0..1 ramp). R, G, and alpha
+    /// carry the high byte of a 16-bit normalized distance; B carries the low byte.
+    /// Median RGB and the common R/G/alpha single-channel readers therefore remain a valid legacy 8-bit
+    /// SDF if a host cannot forward the packed-decoding flag, while NowUI's text
+    /// material reconstructs the full value from RB. The extra precision prevents
+    /// large adaptive ranges from turning one stored distance step into multiple
+    /// screen pixels.
     /// </summary>
     [BurstCompile]
     internal struct NowSdfBakeJob : IJobParallelFor
@@ -39,6 +42,9 @@ namespace NowUI.Internal
         [ReadOnly] public NativeArray<NowSdfGlyphCell> cells;
 
         public float distanceRange;
+
+        /// <summary>Nonzero packs a 16-bit scalar into RB; zero preserves replicated legacy RGBA8.</summary>
+        public int packedSdf16;
 
         /// <summary>Per-cell RGBA32 pixels, rows bottom-up, packed per <see cref="NowSdfGlyphCell.outputOffset"/>.</summary>
         [NativeDisableParallelForRestriction] public NativeArray<byte> output;
@@ -91,12 +97,27 @@ namespace NowUI.Internal
                     if (winding == 0)
                         sd = -sd;
 
-                    byte value = (byte)(math.saturate(sd * invRange + 0.5f) * 255f + 0.5f);
+                    float normalized = math.saturate(sd * invRange + 0.5f);
                     int offset = row + x * 4;
-                    output[offset] = value;
-                    output[offset + 1] = value;
-                    output[offset + 2] = value;
-                    output[offset + 3] = value;
+
+                    if (packedSdf16 != 0)
+                    {
+                        uint value = (uint)(normalized * 65535f + 0.5f);
+                        byte high = (byte)(value >> 8);
+                        byte low = (byte)value;
+                        output[offset] = high;
+                        output[offset + 1] = high;
+                        output[offset + 2] = low;
+                        output[offset + 3] = high;
+                    }
+                    else
+                    {
+                        byte value = (byte)(normalized * 255f + 0.5f);
+                        output[offset] = value;
+                        output[offset + 1] = value;
+                        output[offset + 2] = value;
+                        output[offset + 3] = value;
+                    }
                 }
             }
         }

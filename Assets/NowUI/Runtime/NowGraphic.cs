@@ -104,6 +104,8 @@ namespace NowUI
 
         static readonly int _premultipliedTextureProp = Shader.PropertyToID("_NowPremultipliedTexture");
 
+        static readonly int _textSdfEncodingProp = Shader.PropertyToID("_NowUITextSdfEncoding");
+
         [Header("NowUI")]
         [SerializeField] bool _rebuildEveryFrame;
 
@@ -1696,6 +1698,8 @@ namespace NowUI
                         textMaterial.mainTexture = sourceTexture;
                 }
 
+                CopyTextSdfEncoding(batch.material, textMaterial);
+
                 return textMaterial;
             }
 
@@ -1713,6 +1717,8 @@ namespace NowUI
             if (batch.material.HasProperty(_mainTexProp))
                 textMaterial.mainTexture = batch.material.mainTexture;
 
+            CopyTextSdfEncoding(batch.material, textMaterial);
+
             _textMaterials[batch.material] = textMaterial;
             return textMaterial;
         }
@@ -1727,6 +1733,20 @@ namespace NowUI
             destination.SetFloat(
                 _premultipliedTextureProp,
                 source.GetFloat(_premultipliedTextureProp));
+        }
+
+        static void CopyTextSdfEncoding(Material source, Material destination)
+        {
+            if (source == null || destination == null ||
+                !source.HasProperty(_textSdfEncodingProp) ||
+                !destination.HasProperty(_textSdfEncodingProp))
+            {
+                return;
+            }
+
+            destination.SetFloat(
+                _textSdfEncodingProp,
+                source.GetFloat(_textSdfEncodingProp));
         }
 
         internal int cachedCanvasMaterialCount => _textMaterials.Count;

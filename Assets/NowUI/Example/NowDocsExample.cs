@@ -64,6 +64,8 @@ public class NowDocsExample : NowLayoutGraphic
         NodeGraph,
         Sdf,
         SdfDemo,
+        TextStyling,
+        TextStylingDemo,
     }
 
     enum PageKind
@@ -86,6 +88,7 @@ public class NowDocsExample : NowLayoutGraphic
         ModelPreviewsDemo,
         ViewStackDemo,
         FilePickerDemo,
+        TextStylingDemo,
     }
 
     struct Page
@@ -149,6 +152,8 @@ public class NowDocsExample : NowLayoutGraphic
         new Page { title = "Node graph", file = "NodeGraph.md", icon = "🕸️" },
         new Page { title = "SDF shapes", file = "SDF.md", icon = "⚫" },
         new Page { title = "SDF demo", icon = "🧪", kind = PageKind.SdfDemo },
+        new Page { title = "Text styling", file = "TextStyling.md", icon = "🔠" },
+        new Page { title = "Text styling demo", icon = "🧪", kind = PageKind.TextStylingDemo },
     };
 
     static readonly NavEntry[] Navigation =
@@ -172,6 +177,8 @@ public class NowDocsExample : NowLayoutGraphic
         Link(PageId.EditorGui),
 
         Section("Text & Content", "✏️"),
+        Link(PageId.TextStyling),
+        Link(PageId.TextStylingDemo, 1),
         Link(PageId.RichText),
         Link(PageId.RichTextDemo, 1),
         Link(PageId.Markdown),
@@ -294,6 +301,7 @@ public class NowDocsExample : NowLayoutGraphic
     int _glassDemoQuality = 0;
     int _richTextLinkClicks;
     string _richTextLastLink = "none";
+    float _textOutlineDemoPixels = 32f;
     NowRichTextParser _richTextDemoParser;
     readonly NowRichTextSpan[] _richTextDemoSpans = new NowRichTextSpan[3];
     readonly NowViewStack _viewStackDemo = new NowViewStack();
@@ -387,6 +395,15 @@ public class NowDocsExample : NowLayoutGraphic
     internal void ConfigureOverviewHarness(NowThemeAsset theme, NowFontAsset font)
     {
         ConfigurePageHarness(theme, font, "Overview");
+    }
+
+    internal void ConfigureTextStylingDemoHarness(
+        NowThemeAsset theme,
+        NowFontAsset font,
+        float outlinePixels = 100f)
+    {
+        ConfigurePageHarness(theme, font, "Text styling demo");
+        _textOutlineDemoPixels = Mathf.Clamp(outlinePixels, 0f, 100f);
     }
 
     internal void ConfigurePageHarness(NowThemeAsset theme, NowFontAsset font, string pageTitle)
@@ -931,6 +948,10 @@ public class NowDocsExample : NowLayoutGraphic
 
             case PageKind.RichTextDemo:
                 DrawRichTextDemo(theme);
+                break;
+
+            case PageKind.TextStylingDemo:
+                DrawTextStylingDemo(theme);
                 break;
 
             case PageKind.MarkupDemo:
@@ -1713,6 +1734,72 @@ public class NowDocsExample : NowLayoutGraphic
         }
 
         base.OnDestroy();
+    }
+
+    void DrawTextStylingDemo(NowThemeAsset themeAsset)
+    {
+        DocsMarkdown(
+            "# Text styling demo\n\n" +
+            "Drag the authored width from a hairline stroke to an intentionally extreme 100 px outline. " +
+            "For this source-backed 0–100 demo, the font chooses and caches a hidden capped SDF tier automatically.").Draw();
+
+        using (NowLayout.HorizontalScope(
+            stretchWidth: true,
+            alignItems: NowLayoutAlign.Center,
+            spacing: 10f))
+        {
+            NowLayout.Label("Outline").SetWidth(58f).Draw();
+            NowLayout.Slider(0f, 100f)
+                .SetStep(1f)
+                .SetStretchWidth()
+                .Draw(ref _textOutlineDemoPixels);
+            NowLayout.FloatField("docs-text-outline-pixels")
+                .SetRange(0f, 100f)
+                .SetFormat("0.#")
+                .SetWidth(58f)
+                .Draw(ref _textOutlineDemoPixels);
+            NowLayout.Label("px").SetWidth(18f).SetFontSize(12f).Draw();
+
+            if (NowLayout.Button("2 px").SetWidth(54f).Draw())
+                _textOutlineDemoPixels = 2f;
+
+            if (NowLayout.Button("100 px").SetWidth(68f).Draw())
+                _textOutlineDemoPixels = 100f;
+        }
+
+        _textOutlineDemoPixels = Mathf.Clamp(_textOutlineDemoPixels, 0f, 100f);
+
+        var panel = NowLayout.ReserveRect(height: 390f, stretchWidth: true);
+        themeAsset.Rectangle(panel, NowRectangleStyle.Muted).Draw();
+
+        var preview = panel.Inset(10f, 10f, 10f, 48f);
+        Now.Rectangle(preview)
+            .SetColor(new Color(0.025f, 0.035f, 0.055f, 1f))
+            .SetRadius(10f)
+            .Draw();
+
+        const string sample = "NowUI";
+        const float fontSize = 80f;
+        var text = Now.Text(default, _font)
+            .SetFontSize(fontSize)
+            .SetBold()
+            .SetColor(Color.white)
+            .SetOutlinePixels(_textOutlineDemoPixels)
+            .SetOutlineColor(DocsAccent(themeAsset));
+        Vector2 size = text.Measure(sample);
+        text.SetPosition(new NowRect(
+                preview.center.x - size.x * 0.5f,
+                preview.center.y - size.y * 0.5f,
+                size.x,
+                size.y))
+            .SetMask(preview)
+            .Draw(sample);
+
+        var code = new NowRect(panel.x + 24f, panel.yMax - 36f, panel.width - 48f, 24f);
+        Now.Text(code)
+            .SetFontSize(12f)
+            .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+            .Draw("Now.Text(rect).SetFontSize(80).SetOutlinePixels(outlinePixels).Draw(\"NowUI\");");
     }
 
     void DrawRichTextDemo(NowThemeAsset themeAsset)

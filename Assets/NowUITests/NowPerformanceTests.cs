@@ -46,9 +46,9 @@ public class NowPerformanceTests
 
     const int DocsTextRows = 72;
 
-    const int DocsOverviewPage = 0;
+    const string DocsOverviewPage = "Overview";
 
-    const int DocsGlassDemoPage = 26;
+    const string DocsGlassDemoPage = "Glass demo";
 
     static readonly string[] DocsMenuItems =
     {
@@ -219,7 +219,7 @@ public class NowPerformanceTests
         Vector2 size,
         NowThemeAsset theme,
         NowFontAsset font,
-        int selectedPage,
+        string selectedPage,
         out Action rebuild)
     {
         var docsType = FindDocsExampleType();
@@ -235,9 +235,11 @@ public class NowPerformanceTests
 
         var docs = go.AddComponent(docsType);
         ((Graphic)docs).raycastTarget = false;
-        SetDocsField(docs, "_themeAsset", theme);
-        SetDocsField(docs, "_font", font);
-        SetDocsField(docs, "_selected", selectedPage);
+        var configurePage = docsType.GetMethod(
+            "ConfigurePageHarness",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(configurePage, "NowDocsExample.ConfigurePageHarness was not found.");
+        configurePage.Invoke(docs, new object[] { theme, font, selectedPage });
 
         var updateGeometry = docsType.GetMethod("UpdateGeometry", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(updateGeometry, "NowDocsExample.UpdateGeometry was not found.");
@@ -257,13 +259,6 @@ public class NowPerformanceTests
 
         Assert.Fail("NowDocsExample type was not found in loaded assemblies.");
         return null;
-    }
-
-    static void SetDocsField(Component docs, string fieldName, object value)
-    {
-        var field = docs.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field, $"NowDocsExample field '{fieldName}' was not found.");
-        field.SetValue(docs, value);
     }
 
     static void WithPerfTheme(NowThemeAsset theme, NowFontAsset font, Action draw)

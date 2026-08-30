@@ -37,6 +37,19 @@ namespace NowUI.CodeEditor
         public NowCodeTokenKind kind;
     }
 
+    /// <summary>
+    /// How bad a <see cref="NowCodeDiagnostic"/> is: an error blocks, a
+    /// warning advises, an info remarks. Error is zero so a diagnostic built
+    /// without setting one keeps reading as an error — every validator
+    /// predates the field.
+    /// </summary>
+    public enum NowCodeDiagnosticSeverity : byte
+    {
+        Error,
+        Warning,
+        Info
+    }
+
     /// <summary>A validation problem: a range into the text plus a human message.</summary>
     public struct NowCodeDiagnostic
     {
@@ -45,6 +58,8 @@ namespace NowUI.CodeEditor
         public int length;
 
         public string message;
+
+        public NowCodeDiagnosticSeverity severity;
     }
 
     /// <summary>
@@ -366,7 +381,8 @@ namespace NowUI.CodeEditor
                 {
                     start = diagnostic.start,
                     length = diagnostic.length,
-                    message = diagnostic.message
+                    message = diagnostic.message,
+                    severity = (NowTextDiagnosticSeverity)diagnostic.severity
                 });
             }
         }

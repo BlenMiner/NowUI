@@ -408,7 +408,7 @@ using (NowEffects.Modifier(NowDeformers.Wave(Time.time, 6f, 48f))
 Now.Text(new Vector4(24, 24, 360, 60), font)
     .SetFontSize(42)
     .SetColor(Color.white)
-    .SetOutline(1)
+    .SetOutlinePixels(1)
     .SetOutlineColor(Color.black)
     .Draw("Score: 1200");
 ```
@@ -446,9 +446,9 @@ Now.Text(new NowRect(24, 92, 360, 60), font)
 
 The text builder owns no hidden clock: pass elapsed seconds through `SetTime`
 to play, pause, restart, or test an animation deterministically. See
-[Text Gradients And Animation](TextStyling.md) for radial and conic fills,
-Unity ramps, typewriter/fade/scale/wave presets, retained-host rebuilding, and
-warmup guidance.
+[Text Gradients And Animation](TextStyling.md) for the Inspector-driven adaptive
+outline demo, radial and conic fills, Unity ramps, typewriter/fade/scale/wave
+presets, retained-host rebuilding, and warmup guidance.
 
 ## UGUI Rendering
 
@@ -665,6 +665,11 @@ Now.Text(new Vector4(20, 20, 320, 48), runtimeFont)
 
 Glyphs are compiled into dynamic atlas pages the first time text asks for them,
 including emoji and other non-ASCII codepoints.
+
+Solid text colors tint ordinary SDF glyphs. RGBA/color-font glyphs such as
+emoji keep their authored RGB by default and use the text color's alpha for
+fades. Apply a text gradient when the authored color glyph should be
+deliberately recolored.
 
 The generated `NowFont` stores the source font bytes directly and does not keep
 a reference to the original `.ttf` asset or create a baked atlas texture subasset.

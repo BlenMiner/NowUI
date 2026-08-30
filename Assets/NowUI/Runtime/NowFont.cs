@@ -2,6 +2,7 @@ using NowUI.Internal;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using Unity.Collections;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -114,6 +115,65 @@ namespace NowUI
             }
         }
 
+        internal bool SupportsOutlineOnlyPass(NowFontStyle style)
+        {
+            var visited = GetVisitCache();
+            bool foundFont = false;
+
+            try
+            {
+                if (!SupportsOutlineOnlyPass(style, visited, ref foundFont))
+                    return false;
+
+                if (style != NowFontStyle.Regular)
+                {
+                    visited.Clear();
+
+                    if (!SupportsOutlineOnlyPass(NowFontStyle.Regular, visited, ref foundFont))
+                        return false;
+                }
+
+                return foundFont;
+            }
+            finally
+            {
+                visited.Clear();
+            }
+        }
+
+        bool SupportsOutlineOnlyPass(
+            NowFontStyle style,
+            HashSet<NowFontAsset> visited,
+            ref bool foundFont)
+        {
+            if (this == null || !visited.Add(this))
+                return true;
+
+            if (TryGetOwnFont(style, out var ownFont) && ownFont != null)
+            {
+                foundFont = true;
+
+                if (!ownFont.supportsOutlineOnlyPass)
+                    return false;
+            }
+
+            if (_fallbacks == null)
+                return true;
+
+            for (int i = 0; i < _fallbacks.Length; ++i)
+            {
+                var fallback = _fallbacks[i];
+
+                if (fallback != null &&
+                    !fallback.SupportsOutlineOnlyPass(style, visited, ref foundFont))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         internal bool TryResolveFont(NowFontStyle style, HashSet<NowFontAsset> visited, out NowFont font)
         {
             font = null;
@@ -168,6 +228,55 @@ namespace NowUI
         internal bool TryResolveGlyph(
             int unicode,
             float fontSize,
+            float outline,
+            NowFontStyle style,
+            out NowFont font,
+            out NowFontAtlasInfo.Glyph glyph,
+            out Material material)
+        {
+            var visited = GetVisitCache();
+
+            try
+            {
+                if (TryResolveGlyph(unicode, fontSize, outline, style, visited, out font, out glyph, out material))
+                    return true;
+
+                if (style == NowFontStyle.Regular)
+                    return false;
+
+                visited.Clear();
+                return TryResolveGlyph(
+                    unicode,
+                    fontSize,
+                    outline,
+                    NowFontStyle.Regular,
+                    visited,
+                    out font,
+                    out glyph,
+                    out material);
+            }
+            finally
+            {
+                visited.Clear();
+            }
+        }
+
+        internal bool TryResolveGlyph(
+            int unicode,
+            float fontSize,
+            NowFontStyle style,
+            HashSet<NowFontAsset> visited,
+            out NowFont font,
+            out NowFontAtlasInfo.Glyph glyph,
+            out Material material)
+        {
+            return TryResolveGlyph(unicode, fontSize, 0f, style, visited, out font, out glyph, out material);
+        }
+
+        internal bool TryResolveGlyph(
+            int unicode,
+            float fontSize,
+            float outline,
             NowFontStyle style,
             HashSet<NowFontAsset> visited,
             out NowFont font,
@@ -183,7 +292,7 @@ namespace NowUI
 
             if (TryGetOwnFont(style, out var ownFont) &&
                 ownFont != null &&
-                ownFont.GetGlyph(unicode, fontSize, out glyph, out material))
+                ownFont.GetGlyph(unicode, fontSize, outline, out glyph, out material))
             {
                 font = ownFont;
                 return true;
@@ -197,7 +306,7 @@ namespace NowUI
                 var fallback = _fallbacks[i];
 
                 if (fallback != null &&
-                    fallback.TryResolveGlyph(unicode, fontSize, style, visited, out font, out glyph, out material))
+                    fallback.TryResolveGlyph(unicode, fontSize, outline, style, visited, out font, out glyph, out material))
                 {
                     return true;
                 }
@@ -208,11 +317,16 @@ namespace NowUI
 
         public virtual void EnsureGlyphs(string value, float fontSize, NowFontStyle style = NowFontStyle.Regular)
         {
+            EnsureGlyphs(value, fontSize, 0f, style);
+        }
+
+        internal void EnsureGlyphs(string value, float fontSize, float outline, NowFontStyle style)
+        {
             var visited = GetVisitCache();
 
             try
             {
-                EnsureGlyphs(value, fontSize, style, visited);
+                EnsureGlyphs(value, fontSize, outline, style, visited);
             }
             finally
             {
@@ -226,6 +340,16 @@ namespace NowUI
             NowFontStyle style,
             HashSet<NowFontAsset> visited)
         {
+            EnsureGlyphs(value, fontSize, 0f, style, visited);
+        }
+
+        internal void EnsureGlyphs(
+            string value,
+            float fontSize,
+            float outline,
+            NowFontStyle style,
+            HashSet<NowFontAsset> visited)
+        {
             if (string.IsNullOrEmpty(value) || fontSize <= 0)
                 return;
 
@@ -233,7 +357,7 @@ namespace NowUI
                 return;
 
             if (TryGetOwnFont(style, out var font) && font != null)
-                font.EnsureGlyphs(value, fontSize);
+                font.EnsureGlyphs(value, fontSize, outline);
 
             if (_fallbacks == null)
                 return;
@@ -243,7 +367,7 @@ namespace NowUI
                 var fallback = _fallbacks[i];
 
                 if (fallback != null)
-                    fallback.EnsureGlyphs(value, fontSize, style, visited);
+                    fallback.EnsureGlyphs(value, fontSize, outline, style, visited);
             }
         }
 
@@ -1007,6 +1131,10 @@ namespace NowUI
         public const int DEFAULT_DYNAMIC_PAGE_SIZE = 1024;
         public const int DEFAULT_DYNAMIC_MAX_ATLAS_SIZE = 2048;
         public const int DEFAULT_DYNAMIC_MAX_ATLAS_BYTES = 16 * 1024 * 1024;
+        internal const long DEFAULT_DYNAMIC_CACHE_BUDGET_BYTES = 64L * 1024 * 1024;
+        internal const float MAX_OUTLINE_RANGE_FRACTION = 0.45f;
+        static readonly int SDF_ENCODING_PROPERTY = Shader.PropertyToID("_NowUITextSdfEncoding");
+        static readonly int OUTLINE_ONLY_PASS_PROPERTY = Shader.PropertyToID("_NowUITextOutlineOnlyPass");
         const uint OPENTYPE_TTC_TAG = 0x74746366;
         const int DYNAMIC_GLYPH_PADDING = 1;
         const int MAX_CMAP_ENCODING_RECORDS = 1024;
@@ -1041,6 +1169,7 @@ namespace NowUI
             public NowFont font;
             public HashSet<int> codepoints;
             public int atlasSize;
+            public int pixelRange;
             public int cursorX;
             public int cursorY;
             public int rowHeight;
@@ -1098,16 +1227,20 @@ namespace NowUI
         {
             readonly int _unicode;
             readonly int _atlasSize;
+            readonly int _pixelRange;
 
-            public DynamicGlyphKey(int unicode, int atlasSize)
+            public DynamicGlyphKey(int unicode, int atlasSize, int pixelRange)
             {
                 _unicode = unicode;
                 _atlasSize = atlasSize;
+                _pixelRange = pixelRange;
             }
 
             public bool Equals(DynamicGlyphKey other)
             {
-                return _unicode == other._unicode && _atlasSize == other._atlasSize;
+                return _unicode == other._unicode &&
+                    _atlasSize == other._atlasSize &&
+                    _pixelRange == other._pixelRange;
             }
 
             public override bool Equals(object obj)
@@ -1119,9 +1252,47 @@ namespace NowUI
             {
                 unchecked
                 {
-                    return (_unicode * 397) ^ _atlasSize;
+                    int hash = (_unicode * 397) ^ _atlasSize;
+                    return (hash * 397) ^ _pixelRange;
                 }
             }
+        }
+
+        readonly struct DynamicAtlasVariant : IEquatable<DynamicAtlasVariant>
+        {
+            public readonly int atlasSize;
+            public readonly int pixelRange;
+
+            public DynamicAtlasVariant(int atlasSize, int pixelRange)
+            {
+                this.atlasSize = atlasSize;
+                this.pixelRange = pixelRange;
+            }
+
+            public bool Equals(DynamicAtlasVariant other)
+            {
+                return atlasSize == other.atlasSize && pixelRange == other.pixelRange;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is DynamicAtlasVariant other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                return (atlasSize * 397) ^ pixelRange;
+            }
+        }
+
+        sealed class DynamicSessionState
+        {
+            public NowFontCompiler.DynamicSession session;
+            public DynamicAtlasPage page;
+            public bool failed;
+            public int minimumPageSide;
+            public long reservedPageBytes;
+            public long lastUse;
         }
 
         [NonSerialized]
@@ -1137,10 +1308,16 @@ namespace NowUI
         HashSet<DynamicGlyphKey> _dynamicMisses;
 
         [NonSerialized]
+        HashSet<DynamicGlyphKey> _dynamicCapacityMisses;
+
+        [NonSerialized]
         List<DynamicAtlasPage> _dynamicPages;
 
         [NonSerialized]
         Dictionary<DynamicGlyphKey, DynamicAtlasPage> _dynamicGlyphPages;
+
+        [NonSerialized]
+        Dictionary<DynamicGlyphKey, DynamicAtlasPage> _dynamicFallbackGlyphPages;
 
         [NonSerialized]
         Dictionary<int, NowFontAtlasInfo.Glyph> _dynamicColorLayoutGlyphs;
@@ -1173,19 +1350,16 @@ namespace NowUI
         int[] _dynamicCompileCodepoints;
 
         [NonSerialized]
-        NowFontCompiler.DynamicSession _dynamicSession;
+        Dictionary<DynamicAtlasVariant, DynamicSessionState> _dynamicSessions;
 
         [NonSerialized]
-        DynamicAtlasPage _dynamicSessionPage;
+        long _dynamicSessionUseClock;
 
         [NonSerialized]
-        bool _dynamicSessionFailed;
+        internal long dynamicCacheBudgetBytesOverride;
 
         [NonSerialized]
         bool? _dynamicSourceIsColor;
-
-        [NonSerialized]
-        byte[] _dynamicSessionAtlasScratch;
 
         [NonSerialized]
         List<NowFontAtlasInfo.Glyph> _dynamicSessionGlyphScratch;
@@ -1209,6 +1383,21 @@ namespace NowUI
         byte[] DynamicFontBytes => _fontBytes != null && _fontBytes.Length > 0 ? _fontBytes : null;
 
         public bool HasEmbeddedSource => DynamicFontBytes != null;
+
+        internal bool supportsOutlineOnlyPass
+        {
+            get
+            {
+                var textMaterial = material != null ? material : _dynamicMaterialTemplate;
+
+                if (textMaterial == null && HasEmbeddedSource)
+                    textMaterial = Now.LoadRequiredResource<Material>("NowUI/TxtMaterial");
+
+                return textMaterial != null &&
+                    textMaterial.HasProperty(OUTLINE_ONLY_PASS_PROPERTY) &&
+                    textMaterial.GetFloat(OUTLINE_ONLY_PASS_PROPERTY) > 0.5f;
+            }
+        }
 
         public int GetSourceByteCount()
         {
@@ -1258,6 +1447,116 @@ namespace NowUI
             }
         }
 
+        internal long GetDynamicCacheBudgetBytes()
+        {
+            return dynamicCacheBudgetBytesOverride > 0
+                ? dynamicCacheBudgetBytesOverride
+                : DEFAULT_DYNAMIC_CACHE_BUDGET_BYTES;
+        }
+
+        static long GetRgbaTexturePayloadBytes(int width, int height, int mipCount)
+        {
+            long bytes = 0;
+            int mipWidth = Mathf.Max(1, width);
+            int mipHeight = Mathf.Max(1, height);
+            int levels = Mathf.Max(1, mipCount);
+
+            for (int mip = 0; mip < levels; ++mip)
+            {
+                bytes += (long)mipWidth * mipHeight * 4;
+
+                if (mipWidth == 1 && mipHeight == 1)
+                    break;
+
+                mipWidth = Mathf.Max(1, mipWidth >> 1);
+                mipHeight = Mathf.Max(1, mipHeight >> 1);
+            }
+
+            return bytes;
+        }
+
+        static int GetFullMipCount(int width, int height)
+        {
+            int levels = 1;
+            int mipWidth = Mathf.Max(1, width);
+            int mipHeight = Mathf.Max(1, height);
+
+            while (mipWidth > 1 || mipHeight > 1)
+            {
+                mipWidth = Mathf.Max(1, mipWidth >> 1);
+                mipHeight = Mathf.Max(1, mipHeight >> 1);
+                ++levels;
+            }
+
+            return levels;
+        }
+
+        static long GetRgbaTexturePayloadBytes(Texture2D texture)
+        {
+            return texture != null
+                ? GetRgbaTexturePayloadBytes(texture.width, texture.height, texture.mipmapCount)
+                : 0;
+        }
+
+        /// <summary>Conservative retained-memory accounting for the internal dynamic
+        /// font budget. Published GPU pages count once; readable texture storage adds
+        /// another copy; every live compiler session reserves both its atlas and one
+        /// atlas-sized working buffer.</summary>
+        internal long GetEstimatedDynamicCacheResidentBytes()
+        {
+            long bytes = 0;
+
+            if (_dynamicPages != null)
+            {
+                for (int i = 0; i < _dynamicPages.Count; ++i)
+                {
+                    var texture = _dynamicPages[i]?.font != null
+                        ? _dynamicPages[i].font.atlas
+                        : null;
+
+                    if (texture == null)
+                        continue;
+
+                    long payload = GetRgbaTexturePayloadBytes(texture);
+                    bytes += payload;
+
+                    if (texture.isReadable)
+                        bytes += payload;
+                }
+            }
+
+            if (_dynamicSessions != null)
+            {
+                foreach (var state in _dynamicSessions.Values)
+                {
+                    if (state?.session != null)
+                    {
+                        long payload = GetRgbaTexturePayloadBytes(
+                            state.session.AtlasSide,
+                            state.session.AtlasSide,
+                            1);
+                        bytes += payload * 2;
+                    }
+
+                    bytes += state?.reservedPageBytes ?? 0;
+                }
+            }
+
+            return bytes;
+        }
+
+        internal bool IsDynamicGlyphCapacityBlocked(int unicode, int atlasSize, int pixelRange)
+        {
+            return _dynamicCapacityMisses != null &&
+                _dynamicCapacityMisses.Contains(new DynamicGlyphKey(unicode, atlasSize, pixelRange));
+        }
+
+        internal bool IsDynamicGlyphMissing(int unicode, int atlasSize, int pixelRange)
+        {
+            return _dynamicMisses != null &&
+                _dynamicMisses.Contains(new DynamicGlyphKey(unicode, atlasSize, pixelRange));
+        }
+
         protected override bool TryGetOwnFont(NowFontStyle style, out NowFont font)
         {
             font = this;
@@ -1266,16 +1565,25 @@ namespace NowUI
 
         void OnDisable()
         {
-            ResetDynamicSession();
+            ResetDynamicSessions(true);
+        }
+
+        void OnDestroy()
+        {
+            // Runtime pages are owned Unity objects rather than serialized
+            // sub-assets. Destroying their parent font must release them even
+            // when the caller did not explicitly clear the cache first.
+            ClearDynamicCache();
+            _textShaper?.Dispose();
+            _textShaper = null;
         }
 
         public void ClearDynamicCache()
         {
             ++_shapedDataVersion;
-            ResetDynamicSession();
+            ResetDynamicSessions(false);
             ClearPreparedShapeCache();
             ClearPreparedCodepointCache();
-            _dynamicSessionFailed = false;
 
             if (_dynamicPages != null)
             {
@@ -1284,11 +1592,17 @@ namespace NowUI
             }
 
             _dynamicMisses = null;
+            _dynamicCapacityMisses = null;
             _dynamicPages = null;
             _dynamicGlyphPages = null;
+            _dynamicFallbackGlyphPages = null;
             _dynamicColorLayoutGlyphs = null;
             _dynamicColorLayoutMetrics = default;
             _hasDynamicColorLayoutMetrics = false;
+            _dynamicSessionGlyphScratch = null;
+            _dynamicSessionChunkScratch = null;
+            _dynamicSessionReturnedScratch = null;
+            _dynamicSessionUseClock = 0;
             materialId = -1;
         }
 
@@ -1842,14 +2156,22 @@ namespace NowUI
             if (page == null || page.font == null)
                 return;
 
-            DestroyDynamicFont(page.font);
+            DestroyDynamicFont(page.font, true);
             page.font = null;
         }
 
-        static void DestroyDynamicFont(NowFont font)
+        static void DestroyDynamicFont(NowFont font, bool releaseHostMaterials = false)
         {
             if (font == null)
                 return;
+
+            if (releaseHostMaterials)
+            {
+#if NOWUI_UGUI
+                NowGraphic.ReleaseCachedMaterial(font.material);
+#endif
+                NowWorldGraphic.ReleaseCachedMaterial(font.material);
+            }
 
             DestroyDynamicObject(font.material);
             DestroyDynamicObject(font.atlas);
@@ -1884,7 +2206,7 @@ namespace NowUI
             {
                 foreach (int unicode in page.codepoints)
                 {
-                    var key = new DynamicGlyphKey(unicode, page.atlasSize);
+                    var key = new DynamicGlyphKey(unicode, page.atlasSize, page.pixelRange);
 
                     if (_dynamicGlyphPages.TryGetValue(key, out var mappedPage) && ReferenceEquals(mappedPage, page))
                         _dynamicGlyphPages.Remove(key);
@@ -1903,6 +2225,8 @@ namespace NowUI
             RemoveDynamicGlyphMappings(page);
             _dynamicPages.RemoveAt(index);
             DestroyDynamicPage(page);
+            _dynamicCapacityMisses?.Clear();
+            _dynamicFallbackGlyphPages?.Clear();
         }
 
         public float GetLineHeight()
@@ -2025,9 +2349,83 @@ namespace NowUI
             return _sparseGlyphTable != null && _sparseGlyphTable.TryGetValue(unicode, out glyph);
         }
 
+        static bool AtlasSupportsPixelRange(
+            NowFontAtlasInfo.Atlas atlas,
+            int requestedAtlasSize,
+            int requestedPixelRange)
+        {
+            if (atlas.type == ATLAS_TYPE_RGBA)
+                return true;
+
+            if (atlas.type != ATLAS_TYPE_MTSDF || atlas.distanceRange <= 0)
+                return false;
+
+            int atlasSize = atlas.size > 0 ? atlas.size : requestedAtlasSize;
+
+            if (atlasSize <= 0 || requestedAtlasSize <= 0)
+                return atlas.distanceRange >= requestedPixelRange;
+
+            // Distance range is stored in atlas pixels. Compare its em-relative
+            // coverage so a base atlas baked at a different size is not mistaken
+            // for a range-compatible dynamic variant.
+            return (long)atlas.distanceRange * requestedAtlasSize >=
+                (long)requestedPixelRange * atlasSize;
+        }
+
         public int GetDynamicGlyphSize(float fontSize)
         {
             return GetBaseDynamicGlyphSize();
+        }
+
+        /// <summary>
+        /// Selects a distance-field range large enough to retain the requested
+        /// em-relative outline. The exact authored width remains draw data; only
+        /// backing field capacity rounds upward through hidden doubling tiers so
+        /// arbitrary, animated, and Inspector-driven values share a logarithmic
+        /// set of atlas variants.
+        /// </summary>
+        internal int GetDynamicPixelRange(float outline, float fontSize)
+        {
+            int baseRange = dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE;
+
+            if (!HasEmbeddedSource || float.IsNaN(outline) || float.IsInfinity(outline) || Mathf.Approximately(outline, 0f))
+                return baseRange;
+
+            _dynamicSourceIsColor ??= NowFontCompiler.IsColorFont(DynamicFontBytes);
+
+            // RGBA glyph shaders preserve authored color and do not implement
+            // distance-field outlines, so extra range tiers would only duplicate
+            // the same bitmap glyphs and atlas memory.
+            if (_dynamicSourceIsColor.Value)
+                return baseRange;
+
+            int atlasSize = GetBaseDynamicGlyphSize();
+            float outlineAtlasPixels = Mathf.Abs(outline) * atlasSize;
+            float uiPixelGuardInAtlas = fontSize > 0f && !float.IsNaN(fontSize) && !float.IsInfinity(fontSize)
+                ? atlasSize / fontSize
+                : 1f;
+            float absoluteGuardRange = 2f *
+                (outlineAtlasPixels + Mathf.Max(1f, uiPixelGuardInAtlas));
+            float proportionalGuardRange =
+                outlineAtlasPixels / MAX_OUTLINE_RANGE_FRACTION;
+            // Match NowMesh's runtime clamp: the chosen tier must leave both one
+            // UI/atlas pixel and 5% of the full field outside the threshold.
+            float requested = Mathf.Max(absoluteGuardRange, proportionalGuardRange);
+
+            if (requested <= baseRange)
+                return baseRange;
+
+            int maxRange = GetMaximumDynamicPixelRange(atlasSize, baseRange);
+            int requestedRange = Mathf.Clamp(Mathf.CeilToInt(Mathf.Min(requested, maxRange)), baseRange, maxRange);
+            int bucket = baseRange;
+
+            while (bucket < requestedRange && bucket < maxRange)
+            {
+                long doubled = (long)bucket * 2;
+                bucket = doubled >= maxRange ? maxRange : (int)doubled;
+            }
+
+            return bucket;
         }
 
         int GetBaseDynamicGlyphSize()
@@ -2119,18 +2517,23 @@ namespace NowUI
             return true;
         }
 
-        bool TryGetDynamicCachedGlyph(int unicode, int atlasSize, out NowFontAtlasInfo.Glyph glyph)
+        bool TryGetDynamicCachedGlyph(int unicode, int atlasSize, int pixelRange, out NowFontAtlasInfo.Glyph glyph)
         {
-            return TryGetDynamicCachedGlyph(unicode, atlasSize, out glyph, out _);
+            return TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out glyph, out _);
         }
 
         /// <summary>Single-probe variant that also returns the page owning the glyph, so
         /// per-character callers resolve the page material without a second dictionary lookup.</summary>
-        bool TryGetDynamicCachedGlyph(int unicode, int atlasSize, out NowFontAtlasInfo.Glyph glyph, out DynamicAtlasPage page)
+        bool TryGetDynamicCachedGlyph(
+            int unicode,
+            int atlasSize,
+            int pixelRange,
+            out NowFontAtlasInfo.Glyph glyph,
+            out DynamicAtlasPage page)
         {
             glyph = default;
             page = null;
-            var key = new DynamicGlyphKey(unicode, atlasSize);
+            var key = new DynamicGlyphKey(unicode, atlasSize, pixelRange);
 
             if (_dynamicGlyphPages == null || !_dynamicGlyphPages.TryGetValue(key, out var mappedPage))
                 return false;
@@ -2157,7 +2560,7 @@ namespace NowUI
             return false;
         }
 
-        bool TryCompileDynamicPage(string characters, int atlasSize, out NowFont font)
+        bool TryCompileDynamicPage(string characters, int atlasSize, int pixelRange, out NowFont font)
         {
             font = null;
             var fontData = DynamicFontBytes;
@@ -2173,7 +2576,7 @@ namespace NowUI
             if (!NowFontCompiler.TryCompilePage(
                 fontData,
                 atlasSize > 0 ? atlasSize : DEFAULT_DYNAMIC_ATLAS_SIZE,
-                dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE,
+                pixelRange > 0 ? pixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE,
                 codepoints,
                 codepointCount,
                 _dynamicMaterialTemplate,
@@ -2183,10 +2586,17 @@ namespace NowUI
                 return false;
             }
 
-            return IsAtlasWithinLimit(
+            if (IsAtlasWithinLimit(
                 font,
                 dynamicMaxAtlasSize > 0 ? dynamicMaxAtlasSize : DEFAULT_DYNAMIC_MAX_ATLAS_SIZE,
-                dynamicMaxAtlasBytes > 0 ? dynamicMaxAtlasBytes : DEFAULT_DYNAMIC_MAX_ATLAS_BYTES);
+                dynamicMaxAtlasBytes > 0 ? dynamicMaxAtlasBytes : DEFAULT_DYNAMIC_MAX_ATLAS_BYTES))
+            {
+                return true;
+            }
+
+            DestroyDynamicFont(font);
+            font = null;
+            return false;
         }
 
         int GetDynamicMaxAtlasSide()
@@ -2211,6 +2621,94 @@ namespace NowUI
             return Mathf.Min(pageSize, GetDynamicMaxAtlasSide());
         }
 
+        /// <summary>
+        /// Base text benefits from a large long-lived page because most interfaces use it.
+        /// Adaptive effect tiers are usually sparse, especially while an Inspector value is
+        /// being explored, so start them at enough room for roughly a small row/grid of their
+        /// padded glyphs instead of eagerly committing a full default page. A tier remains
+        /// writable and simply spills to another immutable page when its session fills. An
+        /// explicitly configured non-default page size remains authoritative.
+        /// </summary>
+        int GetDynamicRangePageSize(int requiredSize, int pixelRange)
+        {
+            int pageSize = GetDynamicPageSize(requiredSize);
+            int baseRange = dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE;
+            int configuredPageSize = dynamicPageSize > 0 ? dynamicPageSize : DEFAULT_DYNAMIC_PAGE_SIZE;
+
+            if (pixelRange <= baseRange ||
+                configuredPageSize != DEFAULT_DYNAMIC_PAGE_SIZE ||
+                pageSize <= 512)
+            {
+                return pageSize;
+            }
+
+            long desiredWorkingSide = (long)Mathf.Max(1, requiredSize) * 2;
+            int sparseSide = 512;
+
+            while (sparseSide < desiredWorkingSide && sparseSide < pageSize)
+                sparseSide = sparseSide > int.MaxValue / 2 ? pageSize : sparseSide * 2;
+
+            return Mathf.Min(pageSize, sparseSide);
+        }
+
+        int GetMaximumDynamicPixelRange(int atlasSize, int baseRange)
+        {
+            long geometricLimit = (long)GetDynamicMaxAtlasSide() -
+                (long)atlasSize * 2 -
+                DYNAMIC_GLYPH_PADDING * 2L;
+            int geometricMax = geometricLimit <= baseRange
+                ? baseRange
+                : geometricLimit >= int.MaxValue ? int.MaxValue : (int)geometricLimit;
+
+            if (geometricMax <= baseRange || baseRange == int.MaxValue)
+                return baseRange;
+
+            // A user-facing outlined draw prepares its face first. The effect
+            // session therefore has to fit beside one sealed base page, not only
+            // inside an otherwise empty 64 MiB cache. Session pages retain four
+            // atlas payloads while writable (GPU, readable texture, session atlas,
+            // and conservative compiler work storage).
+            int baseRequiredSide = (int)Math.Min(
+                int.MaxValue,
+                (long)atlasSize + baseRange + DYNAMIC_GLYPH_PADDING * 2L);
+            int basePageSide = GetDynamicRangePageSize(baseRequiredSide, baseRange);
+            long availableForEffect = DEFAULT_DYNAMIC_CACHE_BUDGET_BYTES -
+                GetRgbaTexturePayloadBytes(basePageSide, basePageSide, 1);
+
+            if (availableForEffect <= 0)
+                return baseRange;
+
+            bool FitsEffectWorkingSet(int range)
+            {
+                int requiredSide = (int)Math.Min(
+                    int.MaxValue,
+                    (long)atlasSize + range + DYNAMIC_GLYPH_PADDING * 2L);
+                int pageSide = GetDynamicRangePageSize(requiredSide, range);
+                long workingBytes = GetRgbaTexturePayloadBytes(pageSide, pageSide, 1) * 4;
+                return workingBytes <= availableForEffect;
+            }
+
+            int firstEffectRange = baseRange + 1;
+
+            if (!FitsEffectWorkingSet(firstEffectRange))
+                return baseRange;
+
+            int low = firstEffectRange;
+            int high = geometricMax;
+
+            while (low < high)
+            {
+                int middle = low + (int)(((long)high - low + 1) / 2);
+
+                if (FitsEffectWorkingSet(middle))
+                    low = middle;
+                else
+                    high = middle - 1;
+            }
+
+            return low;
+        }
+
         static bool TryGetGlyphSourceRect(NowFont font, NowFontAtlasInfo.Glyph glyph, out RectInt rect)
         {
             rect = default;
@@ -2232,16 +2730,35 @@ namespace NowUI
             return rect is { width: >= 0, height: >= 0 };
         }
 
-        DynamicAtlasPage CreateDynamicPage(NowFont glyphFont, int requiredSize, int pageIndex)
+        DynamicAtlasPage CreateDynamicPage(
+            NowFont glyphFont,
+            int requiredSize,
+            int pageIndex,
+            int pixelRange,
+            out bool budgetExceeded)
         {
+            budgetExceeded = false;
+
             if (!glyphFont || !glyphFont.atlas || !glyphFont.material)
                 return null;
 
-            int pageSize = GetDynamicPageSize(requiredSize);
+            bool isColorPage = glyphFont.isColor;
+            int pageSize = isColorPage
+                ? GetDynamicPageSize(requiredSize)
+                : GetDynamicRangePageSize(requiredSize, pixelRange);
+
             if (pageSize < requiredSize)
                 return null;
 
-            bool isColorPage = glyphFont.isColor;
+            int mipCount = isColorPage ? GetFullMipCount(pageSize, pageSize) : 1;
+            long pageResidentBytes = GetRgbaTexturePayloadBytes(pageSize, pageSize, mipCount) * 2;
+
+            if (!TryMakeDynamicCacheRoom(pageResidentBytes, null))
+            {
+                budgetExceeded = true;
+                return null;
+            }
+
             var pageTexture = new Texture2D(pageSize, pageSize, TextureFormat.RGBA32, isColorPage, !isColorPage)
             {
                 name = isColorPage ? $"Now Color Page {pageIndex}" : $"Now Font Page {pageIndex}",
@@ -2278,16 +2795,18 @@ namespace NowUI
             {
                 font = pageFont,
                 codepoints = new HashSet<int>(),
-                atlasSize = glyphFont.atlasInfo.atlas.size > 0 ? glyphFont.atlasInfo.atlas.size : requiredSize
+                atlasSize = glyphFont.atlasInfo.atlas.size > 0 ? glyphFont.atlasInfo.atlas.size : requiredSize,
+                pixelRange = pixelRange
             };
         }
 
-        static bool IsSameDynamicPageType(DynamicAtlasPage page, NowFont glyphFont, int atlasSize)
+        static bool IsSameDynamicPageType(DynamicAtlasPage page, NowFont glyphFont, int atlasSize, int pixelRange)
         {
             return page != null &&
                 page.font != null &&
                 glyphFont != null &&
                 page.atlasSize == atlasSize &&
+                page.pixelRange == pixelRange &&
                 page.font.atlasInfo.atlas.type == glyphFont.atlasInfo.atlas.type;
         }
 
@@ -2456,7 +2975,11 @@ namespace NowUI
             if (string.IsNullOrEmpty(missingCharacters))
                 return;
 
-            if (!TryCompileDynamicPage(missingCharacters, baseAtlasSize, out var layoutFont))
+            if (!TryCompileDynamicPage(
+                missingCharacters,
+                baseAtlasSize,
+                dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE,
+                out var layoutFont))
             {
                 StoreColorLayoutGlyphs(glyphFont, missingCharacters);
                 return;
@@ -2483,11 +3006,12 @@ namespace NowUI
             NowFont glyphFont,
             int unicode,
             int atlasSize,
+            int pixelRange,
             NowFontAtlasInfo.Glyph glyph,
             RectInt sourceRect,
             DynamicGlyphAppendBatch batch = null)
         {
-            if (!IsSameDynamicPageType(page, glyphFont, atlasSize))
+            if (!IsSameDynamicPageType(page, glyphFont, atlasSize, pixelRange))
                 return false;
 
             if (!TryAllocateGlyphRect(page, sourceRect, out var targetRect))
@@ -2544,7 +3068,8 @@ namespace NowUI
             page.codepoints ??= new HashSet<int>();
             page.codepoints.Add(unicode);
             _dynamicGlyphPages ??= new Dictionary<DynamicGlyphKey, DynamicAtlasPage>();
-            _dynamicGlyphPages[new DynamicGlyphKey(unicode, atlasSize)] = page;
+            _dynamicGlyphPages[new DynamicGlyphKey(unicode, atlasSize, pixelRange)] = page;
+            InvalidateDynamicFallbackSelections();
             return true;
         }
 
@@ -2554,18 +3079,106 @@ namespace NowUI
             _dynamicMisses.Add(key);
         }
 
-        bool ShouldCompileDynamicGlyph(int unicode, int atlasSize)
+        void AddDynamicCapacityMiss(DynamicGlyphKey key)
+        {
+            _dynamicCapacityMisses ??= new HashSet<DynamicGlyphKey>();
+            _dynamicCapacityMisses.Add(key);
+        }
+
+        void InvalidateDynamicFallbackSelections()
+        {
+            if (_dynamicFallbackGlyphPages == null || _dynamicFallbackGlyphPages.Count == 0)
+                return;
+
+            _dynamicFallbackGlyphPages.Clear();
+            ClearPreparedShapeCache();
+            ClearPreparedCodepointCache();
+        }
+
+        void MarkDynamicCapacityMisses(string characters, int atlasSize, int pixelRange)
+        {
+            if (string.IsNullOrEmpty(characters))
+                return;
+
+            for (int i = 0; i < characters.Length; ++i)
+            {
+                int unicode = ReadCodepoint(characters, ref i);
+                AddDynamicCapacityMiss(new DynamicGlyphKey(unicode, atlasSize, pixelRange));
+            }
+        }
+
+        bool TryGetDynamicCapacityFallbackGlyph(
+            int unicode,
+            int atlasSize,
+            int pixelRange,
+            out NowFontAtlasInfo.Glyph glyph,
+            out DynamicAtlasPage page)
+        {
+            glyph = default;
+            page = null;
+            var requestedKey = new DynamicGlyphKey(unicode, atlasSize, pixelRange);
+
+            if (_dynamicCapacityMisses == null || !_dynamicCapacityMisses.Contains(requestedKey))
+                return false;
+
+            if (_dynamicFallbackGlyphPages != null &&
+                _dynamicFallbackGlyphPages.TryGetValue(requestedKey, out var cachedPage))
+            {
+                if (IsDynamicPageValid(cachedPage) && cachedPage.font.GetGlyph(unicode, out glyph))
+                {
+                    page = cachedPage;
+                    return true;
+                }
+
+                _dynamicFallbackGlyphPages.Remove(requestedKey);
+            }
+
+            int bestRange = int.MinValue;
+
+            if (_dynamicPages != null)
+            {
+                for (int i = 0; i < _dynamicPages.Count; ++i)
+                {
+                    var candidate = _dynamicPages[i];
+
+                    if (!IsDynamicPageValid(candidate) ||
+                        candidate.atlasSize != atlasSize ||
+                        candidate.pixelRange >= pixelRange ||
+                        candidate.pixelRange <= bestRange ||
+                        !candidate.font.GetGlyph(unicode, out var candidateGlyph))
+                    {
+                        continue;
+                    }
+
+                    bestRange = candidate.pixelRange;
+                    glyph = candidateGlyph;
+                    page = candidate;
+                }
+            }
+
+            if (page == null)
+                return false;
+
+            _dynamicFallbackGlyphPages ??= new Dictionary<DynamicGlyphKey, DynamicAtlasPage>();
+            _dynamicFallbackGlyphPages[requestedKey] = page;
+            return true;
+        }
+
+        bool ShouldCompileDynamicGlyph(int unicode, int atlasSize, int pixelRange)
         {
             if (DynamicFontBytes == null || unicode <= 0)
                 return false;
 
-            var key = new DynamicGlyphKey(unicode, atlasSize);
+            var key = new DynamicGlyphKey(unicode, atlasSize, pixelRange);
+
+            if (_dynamicCapacityMisses != null && _dynamicCapacityMisses.Contains(key))
+                return false;
 
             if (_dynamicMisses != null && _dynamicMisses.Contains(key))
                 return false;
 
-            if (TryGetCachedGlyph(unicode, out _) ||
-                TryGetDynamicCachedGlyph(unicode, atlasSize, out _))
+            if ((TryGetCachedGlyph(unicode, out _) && AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange)) ||
+                TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out _))
             {
                 return false;
             }
@@ -2579,7 +3192,7 @@ namespace NowUI
             return true;
         }
 
-        string GetMissingDynamicCharacters(string value, int atlasSize)
+        string GetMissingDynamicCharacters(string value, int atlasSize, int pixelRange)
         {
             if (string.IsNullOrEmpty(value))
                 return null;
@@ -2597,7 +3210,7 @@ namespace NowUI
                 if (codepoint == '\t')
                     codepoint = ' ';
 
-                if (!ShouldCompileDynamicGlyph(codepoint, atlasSize))
+                if (!ShouldCompileDynamicGlyph(codepoint, atlasSize, pixelRange))
                     continue;
 
                 uniqueCodepoints ??= GetDynamicCodepointScratch();
@@ -2623,9 +3236,13 @@ namespace NowUI
             NowFont glyphFont,
             int unicode,
             int atlasSize,
+            int pixelRange,
+            out bool budgetExceeded,
             DynamicGlyphAppendBatch batch = null,
             Dictionary<int, NowFontAtlasInfo.Glyph> rawGlyphs = null)
         {
+            budgetExceeded = false;
+
             if (!glyphFont ||
                 glyphFont.atlasInfo.glyphs == null ||
                 glyphFont.atlasInfo.glyphs.Length == 0)
@@ -2649,7 +3266,7 @@ namespace NowUI
                 return false;
 
             int requiredPageSize = Mathf.Max(sourceRect.width, sourceRect.height);
-            var key = new DynamicGlyphKey(unicode, atlasSize);
+            var key = new DynamicGlyphKey(unicode, atlasSize, pixelRange);
             _dynamicPages ??= new List<DynamicAtlasPage>();
 
             for (int i = _dynamicPages.Count - 1; i >= 0; --i)
@@ -2662,7 +3279,7 @@ namespace NowUI
                     continue;
                 }
 
-                if (page.sessionOwned || !IsSameDynamicPageType(page, glyphFont, atlasSize))
+                if (page.sessionOwned || !IsSameDynamicPageType(page, glyphFont, atlasSize, pixelRange))
                     continue;
 
                 if (page.codepoints != null && page.codepoints.Contains(unicode))
@@ -2671,19 +3288,25 @@ namespace NowUI
                     {
                         _dynamicGlyphPages ??= new Dictionary<DynamicGlyphKey, DynamicAtlasPage>();
                         _dynamicGlyphPages[key] = page;
+                        InvalidateDynamicFallbackSelections();
                         return true;
                     }
 
                     continue;
                 }
 
-                if (TryAppendDynamicGlyph(page, glyphFont, unicode, atlasSize, compiledGlyph, sourceRect, batch))
+                if (TryAppendDynamicGlyph(page, glyphFont, unicode, atlasSize, pixelRange, compiledGlyph, sourceRect, batch))
                     return true;
             }
 
-            var newPage = CreateDynamicPage(glyphFont, requiredPageSize, _dynamicPages.Count);
+            var newPage = CreateDynamicPage(
+                glyphFont,
+                requiredPageSize,
+                _dynamicPages.Count,
+                pixelRange,
+                out budgetExceeded);
 
-            if (newPage != null && TryAppendDynamicGlyph(newPage, glyphFont, unicode, atlasSize, compiledGlyph, sourceRect, batch))
+            if (newPage != null && TryAppendDynamicGlyph(newPage, glyphFont, unicode, atlasSize, pixelRange, compiledGlyph, sourceRect, batch))
             {
                 _dynamicPages.Add(newPage);
                 return true;
@@ -2692,55 +3315,193 @@ namespace NowUI
             return false;
         }
 
-        void TryCompileMissingGlyphsIndividually(string characters, int atlasSize)
+        void TryCompileMissingGlyphsIndividually(string characters, int atlasSize, int pixelRange)
         {
             for (int i = 0; i < characters.Length; ++i)
             {
                 int unicode = ReadCodepoint(characters, ref i);
-                TryCompileMissingGlyph(unicode, atlasSize);
+                TryCompileMissingGlyph(unicode, atlasSize, pixelRange);
             }
         }
 
         /// <summary>Releases the native session (parsed font, atlas storage); already-baked
         /// pages keep working and the session is recreated lazily on the next missing glyph.</summary>
-        void ResetDynamicSession()
+        DynamicSessionState GetDynamicSessionState(int atlasSize, int pixelRange)
         {
-            _dynamicSession?.Dispose();
-            _dynamicSession = null;
-            _dynamicSessionPage = null;
+            _dynamicSessions ??= new Dictionary<DynamicAtlasVariant, DynamicSessionState>();
+            var variant = new DynamicAtlasVariant(atlasSize, pixelRange);
+
+            if (!_dynamicSessions.TryGetValue(variant, out var state))
+            {
+                state = new DynamicSessionState();
+                _dynamicSessions[variant] = state;
+            }
+
+            state.lastUse = ++_dynamicSessionUseClock;
+
+            return state;
         }
 
-        bool TryEnsureDynamicSession(byte[] fontData)
+        bool TryMakeDynamicCacheRoom(long additionalBytes, DynamicSessionState protectedState)
         {
-            if (_dynamicSession != null)
+            long budget = GetDynamicCacheBudgetBytes();
+
+            if (additionalBytes < 0 || additionalBytes > budget)
+                return false;
+
+            while (GetEstimatedDynamicCacheResidentBytes() + additionalBytes > budget)
+            {
+                DynamicSessionState oldest = null;
+
+                if (_dynamicSessions != null)
+                {
+                    foreach (var candidate in _dynamicSessions.Values)
+                    {
+                        if (candidate == null ||
+                            ReferenceEquals(candidate, protectedState) ||
+                            candidate.session == null)
+                        {
+                            continue;
+                        }
+
+                        if (oldest == null || candidate.lastUse < oldest.lastUse)
+                            oldest = candidate;
+                    }
+                }
+
+                if (oldest == null)
+                    return false;
+
+                ResetDynamicSession(oldest);
+            }
+
+            return true;
+        }
+
+        static void SealDynamicSessionPage(DynamicSessionState state)
+        {
+            var texture = state?.page?.font != null ? state.page.font.atlas : null;
+
+            if (texture != null && texture.isReadable)
+                texture.Apply(false, true);
+        }
+
+        static void ResetDynamicSession(DynamicSessionState state, bool sealPage = true)
+        {
+            if (state == null)
+                return;
+
+            if (sealPage)
+                SealDynamicSessionPage(state);
+
+            state.session?.Dispose();
+            state.session = null;
+            state.page = null;
+            state.reservedPageBytes = 0;
+        }
+
+        bool TryGrowEmptyDynamicSession(DynamicSessionState state)
+        {
+            if (state?.session == null || state.page != null)
+                return false;
+
+            int currentSide = state.session.AtlasSide;
+            int maxSide = GetDynamicMaxAtlasSide();
+
+            if (currentSide <= 0 || currentSide >= maxSide)
+                return false;
+
+            int nextSide = (int)Math.Min((long)maxSide, (long)currentSide * 2);
+            ResetDynamicSession(state);
+            state.minimumPageSide = Mathf.Max(state.minimumPageSide, nextSide);
+            return true;
+        }
+
+        void ResetDynamicSessions(bool sealPages)
+        {
+            if (_dynamicSessions == null)
+                return;
+
+            foreach (var state in _dynamicSessions.Values)
+                ResetDynamicSession(state, sealPages);
+
+            _dynamicSessions.Clear();
+        }
+
+        bool TryEnsureDynamicSession(
+            byte[] fontData,
+            int atlasSize,
+            int pixelRange,
+            DynamicSessionState state,
+            out bool budgetExceeded)
+        {
+            budgetExceeded = false;
+
+            if (state.session != null)
                 return true;
+
+            if (state.failed)
+                return false;
 
             try
             {
+                int requiredSide = atlasSize + pixelRange + DYNAMIC_GLYPH_PADDING * 2;
+                int pageSide = GetDynamicRangePageSize(requiredSide, pixelRange);
+
+                if (state.minimumPageSide > pageSide)
+                    pageSide = Mathf.Min(state.minimumPageSide, GetDynamicMaxAtlasSide());
+
+                long pagePayload = GetRgbaTexturePayloadBytes(pageSide, pageSide, 1);
+                long futureResidentBytes = pagePayload * 4;
+
+                if (!TryMakeDynamicCacheRoom(futureResidentBytes, state))
+                {
+                    budgetExceeded = true;
+                    return false;
+                }
+
+                // Reserve the future readable Texture2D plus GPU page while the
+                // session exists without a published page. The live session itself
+                // is counted separately as atlas storage plus opaque work space.
+                state.reservedPageBytes = pagePayload * 2;
+
+                var encodingMaterial = _dynamicMaterialTemplate;
+
+                if (encodingMaterial == null)
+                    encodingMaterial = Now.LoadRequiredResource<Material>("NowUI/TxtMaterial");
+
+                bool usePackedManagedSdf16 =
+                    encodingMaterial != null && encodingMaterial.HasProperty(SDF_ENCODING_PROPERTY);
+
                 if (!NowFontCompiler.DynamicSession.TryCreate(
                     fontData,
-                    dynamicAtlasSize > 0 ? dynamicAtlasSize : DEFAULT_DYNAMIC_ATLAS_SIZE,
-                    dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE,
-                    GetDynamicPageSize(0),
-                    out _dynamicSession,
+                    atlasSize,
+                    pixelRange,
+                    pageSide,
+                    usePackedManagedSdf16,
+                    out state.session,
                     out _))
                 {
-                    _dynamicSessionFailed = true;
+                    state.reservedPageBytes = 0;
+                    state.failed = true;
                     return false;
                 }
             }
             catch (DllNotFoundException)
             {
+                state.reservedPageBytes = 0;
                 s_dynamicSessionUnsupported = true;
                 return false;
             }
             catch (EntryPointNotFoundException)
             {
+                state.reservedPageBytes = 0;
                 s_dynamicSessionUnsupported = true;
                 return false;
             }
             catch (BadImageFormatException)
             {
+                state.reservedPageBytes = 0;
                 s_dynamicSessionUnsupported = true;
                 return false;
             }
@@ -2748,9 +3509,28 @@ namespace NowUI
             return true;
         }
 
-        DynamicAtlasPage CreateDynamicSessionPage(int side, int atlasSize)
+        DynamicAtlasPage CreateDynamicSessionPage(
+            DynamicSessionState state,
+            int side,
+            int atlasSize,
+            int pixelRange,
+            out bool budgetExceeded)
         {
-            var session = _dynamicSession;
+            budgetExceeded = false;
+            var session = state.session;
+
+            if (session == null)
+                return null;
+
+            long pageResidentBytes = GetRgbaTexturePayloadBytes(side, side, 1) * 2;
+
+            if (state.reservedPageBytes < pageResidentBytes &&
+                !TryMakeDynamicCacheRoom(pageResidentBytes - state.reservedPageBytes, state))
+            {
+                budgetExceeded = true;
+                return null;
+            }
+
             var materialTemplate = _dynamicMaterialTemplate;
 
             if (materialTemplate == null)
@@ -2773,6 +3553,15 @@ namespace NowUI
                 hideFlags = HideFlags.HideAndDontSave,
                 mainTexture = texture
             };
+
+            // Managed SDF pages preserve a 16-bit normalized distance in the
+            // existing RGBA32 payload (high byte in R/G/A, low byte in B).
+            // Red-, green-, alpha-, and median-based legacy readers therefore
+            // degrade to the old 8-bit field if the private flag is unavailable.
+            // Set both states explicitly because callers may reuse a template
+            // across managed and native sessions.
+            if (material.HasProperty(SDF_ENCODING_PROPERTY))
+                material.SetFloat(SDF_ENCODING_PROPERTY, session.usesPackedSdf16 ? 1f : 0f);
 
             var pageFont = CreateInstance<NowFont>();
             pageFont.name = "Now Runtime Font Page";
@@ -2799,30 +3588,43 @@ namespace NowUI
                 font = pageFont,
                 codepoints = new HashSet<int>(),
                 atlasSize = atlasSize,
+                pixelRange = pixelRange,
                 sessionOwned = true
             };
         }
 
-        bool TryCommitSessionGlyphs(List<NowFontAtlasInfo.Glyph> glyphs, int atlasSize)
+        bool TryCommitSessionGlyphs(
+            DynamicSessionState state,
+            List<NowFontAtlasInfo.Glyph> glyphs,
+            int atlasSize,
+            int pixelRange,
+            out bool budgetExceeded)
         {
-            var session = _dynamicSession;
+            budgetExceeded = false;
+            var session = state.session;
+
+            if (session == null)
+                return false;
+
             int side = session.AtlasSide;
 
             if (side <= 0)
                 return false;
 
-            var page = _dynamicSessionPage;
+            var page = state.page;
+            bool createdPage = page == null;
 
-            if (page == null)
+            if (createdPage)
             {
-                page = CreateDynamicSessionPage(side, atlasSize);
+                page = CreateDynamicSessionPage(
+                    state,
+                    side,
+                    atlasSize,
+                    pixelRange,
+                    out budgetExceeded);
 
                 if (page == null)
                     return false;
-
-                _dynamicSessionPage = page;
-                _dynamicPages ??= new List<DynamicAtlasPage>();
-                _dynamicPages.Add(page);
             }
 
             var texture = page.font.atlas;
@@ -2830,14 +3632,39 @@ namespace NowUI
             // Fixed-size sessions never resize their atlas — page textures and glyph UVs must
             // stay valid for meshes built in earlier frames. A mismatch means the session and
             // page are out of sync; refuse to touch the page rather than corrupt it.
-            if (texture.width != side)
-                return false;
+            if (texture.width != side || texture.height != side || !texture.isReadable)
+            {
+                if (createdPage)
+                {
+                    DestroyDynamicFont(page.font);
+                    page.font = null;
+                }
 
-            if (!session.TryCopyAtlas(ref _dynamicSessionAtlasScratch, out _))
                 return false;
+            }
 
-            texture.LoadRawTextureData(_dynamicSessionAtlasScratch);
+            NativeArray<byte> textureData = texture.GetRawTextureData<byte>();
+
+            if (!session.TryCopyAtlas(textureData, out _))
+            {
+                if (createdPage)
+                {
+                    DestroyDynamicFont(page.font);
+                    page.font = null;
+                }
+
+                return false;
+            }
+
             texture.Apply(false, false);
+
+            if (createdPage)
+            {
+                state.page = page;
+                _dynamicPages ??= new List<DynamicAtlasPage>();
+                _dynamicPages.Add(page);
+                state.reservedPageBytes = 0;
+            }
 
             var fontAtlasInfo = page.font.atlasInfo;
             AppendGlyphs(ref fontAtlasInfo.glyphs, glyphs);
@@ -2851,13 +3678,20 @@ namespace NowUI
             {
                 int unicode = glyphs[i].unicode;
                 page.codepoints.Add(unicode);
-                _dynamicGlyphPages[new DynamicGlyphKey(unicode, atlasSize)] = page;
+                _dynamicGlyphPages[new DynamicGlyphKey(unicode, atlasSize, pixelRange)] = page;
             }
+
+            InvalidateDynamicFallbackSelections();
 
             return true;
         }
 
-        void MarkSessionMisses(int[] codepoints, int codepointCount, HashSet<int> returned, int atlasSize)
+        void MarkSessionMisses(
+            int[] codepoints,
+            int codepointCount,
+            HashSet<int> returned,
+            int atlasSize,
+            int pixelRange)
         {
             if (returned.Count >= codepointCount)
                 return;
@@ -2865,17 +3699,37 @@ namespace NowUI
             for (int i = 0; i < codepointCount; ++i)
             {
                 if (!returned.Contains(codepoints[i]))
-                    AddDynamicMiss(new DynamicGlyphKey(codepoints[i], atlasSize));
+                    AddDynamicMiss(new DynamicGlyphKey(codepoints[i], atlasSize, pixelRange));
             }
         }
 
-        bool CommitAndFailDynamicSession(List<NowFontAtlasInfo.Glyph> results, int atlasSize)
+        bool CommitAndFailDynamicSession(
+            DynamicSessionState state,
+            List<NowFontAtlasInfo.Glyph> results,
+            int atlasSize,
+            int pixelRange,
+            out bool budgetExceeded)
         {
-            if (results.Count > 0)
-                TryCommitSessionGlyphs(results, atlasSize);
+            budgetExceeded = false;
 
-            ResetDynamicSession();
-            _dynamicSessionFailed = true;
+            if (results.Count > 0 &&
+                !TryCommitSessionGlyphs(
+                    state,
+                    results,
+                    atlasSize,
+                    pixelRange,
+                    out budgetExceeded))
+            {
+                ResetDynamicSession(state);
+
+                if (!budgetExceeded)
+                    state.failed = true;
+
+                return false;
+            }
+
+            ResetDynamicSession(state);
+            state.failed = true;
             return false;
         }
 
@@ -2887,11 +3741,16 @@ namespace NowUI
         /// misses recorded); false means the caller should use the legacy per-page compiler
         /// (color fonts, old native plugins, failures).
         /// </summary>
-        bool TryAddGlyphsToSession(string characters, int atlasSize)
+        bool TryAddGlyphsToSession(
+            string characters,
+            int atlasSize,
+            int pixelRange,
+            out bool budgetExceeded)
         {
+            budgetExceeded = false;
             const int SESSION_ADD_CHUNK = 64;
 
-            if (s_dynamicSessionUnsupported || _dynamicSessionFailed)
+            if (s_dynamicSessionUnsupported)
                 return false;
 
             var fontData = DynamicFontBytes;
@@ -2905,13 +3764,23 @@ namespace NowUI
             if (_dynamicSourceIsColor.Value)
                 return false;
 
-            if (_dynamicSessionPage != null && !IsDynamicPageValid(_dynamicSessionPage))
-                ResetDynamicSession();
+            var state = GetDynamicSessionState(atlasSize, pixelRange);
+
+            if (state.failed)
+                return false;
+
+            if (state.page != null && !IsDynamicPageValid(state.page))
+                ResetDynamicSession(state);
 
             var codepoints = GetDynamicCompileCodepoints(characters, out int codepointCount);
 
             if (codepointCount <= 0)
-                return TryEnsureDynamicSession(fontData);
+                return TryEnsureDynamicSession(
+                    fontData,
+                    atlasSize,
+                    pixelRange,
+                    state,
+                    out budgetExceeded);
 
             var results = _dynamicSessionGlyphScratch ??= new List<NowFontAtlasInfo.Glyph>();
             var returned = _dynamicSessionReturnedScratch ??= new HashSet<int>();
@@ -2924,11 +3793,25 @@ namespace NowUI
 
             while (offset < codepointCount)
             {
-                if (!TryEnsureDynamicSession(fontData))
+                if (!TryEnsureDynamicSession(
+                    fontData,
+                    atlasSize,
+                    pixelRange,
+                    state,
+                    out bool ensureBudgetExceeded))
                 {
                     if (results.Count > 0)
-                        TryCommitSessionGlyphs(results, atlasSize);
+                    {
+                        TryCommitSessionGlyphs(
+                            state,
+                            results,
+                            atlasSize,
+                            pixelRange,
+                            out bool commitBudgetExceeded);
+                        budgetExceeded |= commitBudgetExceeded;
+                    }
 
+                    budgetExceeded |= ensureBudgetExceeded;
                     return false;
                 }
 
@@ -2936,7 +3819,7 @@ namespace NowUI
                 Array.Copy(codepoints, offset, chunkCodepoints, 0, chunk);
 
                 int resultsBefore = results.Count;
-                var status = _dynamicSession.TryAddGlyphs(chunkCodepoints, chunk, results, out _);
+                var status = state.session.TryAddGlyphs(chunkCodepoints, chunk, results, out _);
 
                 if (status == NowFontCompiler.DynamicSession.AddResult.Ok)
                 {
@@ -2952,61 +3835,102 @@ namespace NowUI
                 {
                     if (results.Count > 0)
                     {
-                        bool committed = TryCommitSessionGlyphs(results, atlasSize);
+                        bool committed = TryCommitSessionGlyphs(
+                            state,
+                            results,
+                            atlasSize,
+                            pixelRange,
+                            out bool commitBudgetExceeded);
                         results.Clear();
 
                         if (!committed)
                         {
-                            ResetDynamicSession();
-                            _dynamicSessionFailed = true;
+                            ResetDynamicSession(state);
+
+                            if (commitBudgetExceeded)
+                                budgetExceeded = true;
+                            else
+                                state.failed = true;
+
                             return false;
                         }
                     }
 
-                    if (_dynamicSessionPage == null)
+                    if (state.page == null)
                     {
                         if (chunk <= 1)
                         {
-                            AddDynamicMiss(new DynamicGlyphKey(codepoints[offset], atlasSize));
-                            ++offset;
-                            chunkLimit = SESSION_ADD_CHUNK;
-                            continue;
+                            if (TryGrowEmptyDynamicSession(state))
+                                continue;
+
+                            // Let the tight legacy compiler try the actual glyph bounds
+                            // before treating a conservative fixed-session estimate as a miss.
+                            return false;
                         }
 
                         chunkLimit = Mathf.Max(1, chunk / 2);
                         continue;
                     }
 
-                    ResetDynamicSession();
+                    ResetDynamicSession(state);
                     continue;
                 }
 
-                return CommitAndFailDynamicSession(results, atlasSize);
+                return CommitAndFailDynamicSession(
+                    state,
+                    results,
+                    atlasSize,
+                    pixelRange,
+                    out budgetExceeded);
             }
 
-            if (results.Count > 0 && !TryCommitSessionGlyphs(results, atlasSize))
+            if (results.Count > 0 &&
+                !TryCommitSessionGlyphs(
+                    state,
+                    results,
+                    atlasSize,
+                    pixelRange,
+                    out bool finalCommitBudgetExceeded))
             {
-                ResetDynamicSession();
-                _dynamicSessionFailed = true;
+                ResetDynamicSession(state);
+                budgetExceeded = finalCommitBudgetExceeded;
+
+                if (!budgetExceeded)
+                    state.failed = true;
+
                 return false;
             }
 
-            MarkSessionMisses(codepoints, codepointCount, returned, atlasSize);
+            MarkSessionMisses(codepoints, codepointCount, returned, atlasSize, pixelRange);
             results.Clear();
             returned.Clear();
             return true;
         }
 
-        void TryCompileMissingGlyphs(string characters, int atlasSize)
+        void TryCompileMissingGlyphs(string characters, int atlasSize, int pixelRange)
         {
             if (DynamicFontBytes == null || string.IsNullOrEmpty(characters)) return;
 
-            if (TryAddGlyphsToSession(characters, atlasSize))
+            if (TryAddGlyphsToSession(characters, atlasSize, pixelRange, out bool budgetExceeded))
                 return;
 
-            if (!TryCompileDynamicPage(characters, atlasSize, out var glyphFont))
+            if (budgetExceeded)
             {
-                TryCompileMissingGlyphsIndividually(characters, atlasSize);
+                characters = GetMissingDynamicCharacters(characters, atlasSize, pixelRange);
+                MarkDynamicCapacityMisses(characters, atlasSize, pixelRange);
+                return;
+            }
+
+            // A session failure may occur after earlier chunks were committed. Compile
+            // only what remains so the fallback never duplicates published mappings.
+            characters = GetMissingDynamicCharacters(characters, atlasSize, pixelRange);
+
+            if (string.IsNullOrEmpty(characters))
+                return;
+
+            if (!TryCompileDynamicPage(characters, atlasSize, pixelRange, out var glyphFont))
+            {
+                TryCompileMissingGlyphsIndividually(characters, atlasSize, pixelRange);
                 return;
             }
 
@@ -3020,14 +3944,24 @@ namespace NowUI
                 for (int i = 0; i < characters.Length; ++i)
                 {
                     int unicode = ReadCodepoint(characters, ref i);
-                    var key = new DynamicGlyphKey(unicode, atlasSize);
+                    var key = new DynamicGlyphKey(unicode, atlasSize, pixelRange);
 
-                    if (TryCacheCompiledGlyph(glyphFont, unicode, atlasSize, batch, rawGlyphs))
+                    if (TryCacheCompiledGlyph(
+                        glyphFont,
+                        unicode,
+                        atlasSize,
+                        pixelRange,
+                        out bool glyphBudgetExceeded,
+                        batch,
+                        rawGlyphs))
                     {
                         continue;
                     }
 
-                    AddDynamicMiss(key);
+                    if (glyphBudgetExceeded)
+                        AddDynamicCapacityMiss(key);
+                    else
+                        AddDynamicMiss(key);
                 }
 
                 batch.Commit();
@@ -3038,18 +3972,24 @@ namespace NowUI
             }
         }
 
-        bool TryCompileMissingGlyph(int unicode, int atlasSize)
+        bool TryCompileMissingGlyph(int unicode, int atlasSize, int pixelRange)
         {
-            if (!ShouldCompileDynamicGlyph(unicode, atlasSize))
+            if (!ShouldCompileDynamicGlyph(unicode, atlasSize, pixelRange))
                 return false;
 
-            var key = new DynamicGlyphKey(unicode, atlasSize);
+            var key = new DynamicGlyphKey(unicode, atlasSize, pixelRange);
             string character = CodepointToString(unicode);
 
-            if (TryAddGlyphsToSession(character, atlasSize))
-                return TryGetDynamicCachedGlyph(unicode, atlasSize, out _);
+            if (TryAddGlyphsToSession(character, atlasSize, pixelRange, out bool budgetExceeded))
+                return TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out _);
 
-            if (!TryCompileDynamicPage(character, atlasSize, out var glyphFont))
+            if (budgetExceeded)
+            {
+                AddDynamicCapacityMiss(key);
+                return false;
+            }
+
+            if (!TryCompileDynamicPage(character, atlasSize, pixelRange, out var glyphFont))
             {
                 AddDynamicMiss(key);
                 return false;
@@ -3061,13 +4001,23 @@ namespace NowUI
 
                 var batch = new DynamicGlyphAppendBatch();
 
-                if (TryCacheCompiledGlyph(glyphFont, unicode, atlasSize, batch))
+                if (TryCacheCompiledGlyph(
+                    glyphFont,
+                    unicode,
+                    atlasSize,
+                    pixelRange,
+                    out bool glyphBudgetExceeded,
+                    batch))
                 {
                     batch.Commit();
                     return true;
                 }
 
-                AddDynamicMiss(key);
+                if (glyphBudgetExceeded)
+                    AddDynamicCapacityMiss(key);
+                else
+                    AddDynamicMiss(key);
+
                 return false;
             }
             finally
@@ -3110,14 +4060,20 @@ namespace NowUI
 
         public void EnsureGlyphs(string value, float fontSize)
         {
+            EnsureGlyphs(value, fontSize, 0f);
+        }
+
+        internal void EnsureGlyphs(string value, float fontSize, float outline)
+        {
             if (DynamicFontBytes == null || string.IsNullOrEmpty(value) || fontSize <= 0)
                 return;
 
             int atlasSize = GetDynamicGlyphSize(fontSize);
-            string missingCharacters = GetMissingDynamicCharacters(value, atlasSize);
+            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            string missingCharacters = GetMissingDynamicCharacters(value, atlasSize, pixelRange);
 
             if (!string.IsNullOrEmpty(missingCharacters))
-                TryCompileMissingGlyphs(missingCharacters, atlasSize);
+                TryCompileMissingGlyphs(missingCharacters, atlasSize, pixelRange);
         }
 
         public bool GetGlyph(char c, out NowFontAtlasInfo.Glyph glyph)
@@ -3137,16 +4093,39 @@ namespace NowUI
 
         public bool GetGlyph(int unicode, float fontSize, out NowFontAtlasInfo.Glyph glyph)
         {
-            if (TryGetCachedGlyph(unicode, out glyph))
-                return true;
+            return GetGlyph(unicode, fontSize, 0f, out glyph);
+        }
 
+        internal bool GetGlyph(int unicode, float fontSize, float outline, out NowFontAtlasInfo.Glyph glyph)
+        {
             int atlasSize = GetDynamicGlyphSize(fontSize);
+            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            bool hasBaseGlyph = TryGetCachedGlyph(unicode, out glyph);
 
-            if (TryGetDynamicCachedGlyph(unicode, atlasSize, out glyph))
+            if (hasBaseGlyph &&
+                (!HasEmbeddedSource || AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange)))
                 return true;
 
-            return TryCompileMissingGlyph(unicode, atlasSize) &&
-                TryGetDynamicCachedGlyph(unicode, atlasSize, out glyph);
+            if (TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out glyph))
+                return true;
+
+            if (TryCompileMissingGlyph(unicode, atlasSize, pixelRange) &&
+                TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out glyph))
+            {
+                return true;
+            }
+
+            if (TryGetDynamicCapacityFallbackGlyph(
+                unicode,
+                atlasSize,
+                pixelRange,
+                out glyph,
+                out _))
+            {
+                return true;
+            }
+
+            return hasBaseGlyph;
         }
 
         public bool GetGlyph(int unicode, out NowFontAtlasInfo.Glyph glyph, out Material glyphMaterial)
@@ -3156,18 +4135,49 @@ namespace NowUI
 
         public bool GetGlyph(int unicode, float fontSize, out NowFontAtlasInfo.Glyph glyph, out Material glyphMaterial)
         {
-            if (TryGetCachedGlyph(unicode, out glyph))
+            return GetGlyph(unicode, fontSize, 0f, out glyph, out glyphMaterial);
+        }
+
+        internal bool GetGlyph(
+            int unicode,
+            float fontSize,
+            float outline,
+            out NowFontAtlasInfo.Glyph glyph,
+            out Material glyphMaterial)
+        {
+            int atlasSize = GetDynamicGlyphSize(fontSize);
+            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            bool hasBaseGlyph = TryGetCachedGlyph(unicode, out glyph);
+
+            if (hasBaseGlyph &&
+                (!HasEmbeddedSource || AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange)))
             {
                 glyphMaterial = material;
                 return true;
             }
 
-            int atlasSize = GetDynamicGlyphSize(fontSize);
-
-            if (TryGetDynamicCachedGlyph(unicode, atlasSize, out glyph, out var page) ||
-                (TryCompileMissingGlyph(unicode, atlasSize) && TryGetDynamicCachedGlyph(unicode, atlasSize, out glyph, out page)))
+            if (TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out glyph, out var page) ||
+                (TryCompileMissingGlyph(unicode, atlasSize, pixelRange) &&
+                    TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out glyph, out page)))
             {
                 glyphMaterial = page.font.material;
+                return true;
+            }
+
+            if (TryGetDynamicCapacityFallbackGlyph(
+                unicode,
+                atlasSize,
+                pixelRange,
+                out glyph,
+                out page))
+            {
+                glyphMaterial = page.font.material;
+                return glyphMaterial != null;
+            }
+
+            if (hasBaseGlyph)
+            {
+                glyphMaterial = material;
                 return true;
             }
 
@@ -3481,15 +4491,20 @@ namespace NowUI
 
             readonly int _atlasSize;
 
-            public PreparedShapeKey(string segment, int atlasSize)
+            readonly int _pixelRange;
+
+            public PreparedShapeKey(string segment, int atlasSize, int pixelRange)
             {
                 _segment = segment;
                 _atlasSize = atlasSize;
+                _pixelRange = pixelRange;
             }
 
             public bool Equals(PreparedShapeKey other)
             {
-                return _atlasSize == other._atlasSize && string.Equals(_segment, other._segment, StringComparison.Ordinal);
+                return _atlasSize == other._atlasSize &&
+                    _pixelRange == other._pixelRange &&
+                    string.Equals(_segment, other._segment, StringComparison.Ordinal);
             }
 
             public override bool Equals(object obj)
@@ -3501,7 +4516,8 @@ namespace NowUI
             {
                 unchecked
                 {
-                    return ((_segment != null ? _segment.GetHashCode() : 0) * 397) ^ _atlasSize;
+                    int hash = ((_segment != null ? _segment.GetHashCode() : 0) * 397) ^ _atlasSize;
+                    return (hash * 397) ^ _pixelRange;
                 }
             }
         }
@@ -3512,14 +4528,22 @@ namespace NowUI
 
             readonly int _atlasSize;
 
+            readonly int _pixelRange;
+
             readonly NowFontStyle _style;
 
             readonly int _tabSpaces;
 
-            public PreparedCodepointRunKey(string value, int atlasSize, NowFontStyle style, int tabSpaces)
+            public PreparedCodepointRunKey(
+                string value,
+                int atlasSize,
+                int pixelRange,
+                NowFontStyle style,
+                int tabSpaces)
             {
                 _value = value;
                 _atlasSize = atlasSize;
+                _pixelRange = pixelRange;
                 _style = style;
                 _tabSpaces = tabSpaces;
             }
@@ -3527,6 +4551,7 @@ namespace NowUI
             public bool Equals(PreparedCodepointRunKey other)
             {
                 return _atlasSize == other._atlasSize &&
+                    _pixelRange == other._pixelRange &&
                     _style == other._style &&
                     _tabSpaces == other._tabSpaces &&
                     string.Equals(_value, other._value, StringComparison.Ordinal);
@@ -3543,6 +4568,7 @@ namespace NowUI
                 {
                     int hash = _value != null ? _value.GetHashCode() : 0;
                     hash = (hash * 397) ^ _atlasSize;
+                    hash = (hash * 397) ^ _pixelRange;
                     hash = (hash * 397) ^ (int)_style;
                     hash = (hash * 397) ^ _tabSpaces;
                     return hash;
@@ -3637,13 +4663,25 @@ namespace NowUI
             int tabSpaces,
             out PreparedCodepointRun run)
         {
+            return TryGetPreparedCodepointRun(value, fontSize, 0f, style, tabSpaces, out run);
+        }
+
+        internal bool TryGetPreparedCodepointRun(
+            string value,
+            float fontSize,
+            float outline,
+            NowFontStyle style,
+            int tabSpaces,
+            out PreparedCodepointRun run)
+        {
             run = null;
 
             if (string.IsNullOrEmpty(value) || fontSize <= 0)
                 return false;
 
             int atlasSize = GetDynamicGlyphSize(fontSize);
-            var key = new PreparedCodepointRunKey(value, atlasSize, style, tabSpaces);
+            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            var key = new PreparedCodepointRunKey(value, atlasSize, pixelRange, style, tabSpaces);
             _preparedCodepointCache ??= new Dictionary<PreparedCodepointRunKey, PreparedCodepointRun>(64);
 
             if (_preparedCodepointCache.TryGetValue(key, out run))
@@ -3655,7 +4693,7 @@ namespace NowUI
                 return true;
             }
 
-            EnsureGlyphs(value, fontSize);
+            EnsureGlyphs(value, fontSize, outline);
 
             float tabAdvance = 0f;
             bool hasTabAdvance = false;
@@ -3681,7 +4719,7 @@ namespace NowUI
                 {
                     if (!hasTabAdvance)
                     {
-                        tabAdvance = GetGlyph(' ', fontSize, out var space, out _)
+                        tabAdvance = GetGlyph(' ', fontSize, outline, out var space, out _)
                             ? space.advance * tabSpaces
                             : 0f;
                         hasTabAdvance = true;
@@ -3691,7 +4729,7 @@ namespace NowUI
                     continue;
                 }
 
-                if (!GetGlyph(codepoint, fontSize, out var glyph, out var glyphMaterial))
+                if (!GetGlyph(codepoint, fontSize, outline, out var glyph, out var glyphMaterial))
                 {
                     _preparedCodepointCache[key] = null;
                     prepared.Clear();
@@ -3893,34 +4931,116 @@ namespace NowUI
         /// </summary>
         internal bool EnsureShapedGlyphs(NowTextShaper.ShapedGlyph[] run, float fontSize)
         {
+            return EnsureShapedGlyphs(run, fontSize, 0f);
+        }
+
+        internal bool EnsureShapedGlyphs(NowTextShaper.ShapedGlyph[] run, float fontSize, float outline)
+        {
+            return EnsureShapedGlyphs(run, fontSize, outline, visibleOnly: false);
+        }
+
+        bool EnsureShapedGlyphs(
+            NowTextShaper.ShapedGlyph[] run,
+            float fontSize,
+            float outline,
+            bool visibleOnly)
+        {
             if (run == null || run.Length == 0)
                 return false;
 
             int atlasSize = GetDynamicGlyphSize(fontSize);
+            int pixelRange = GetDynamicPixelRange(outline, fontSize);
             var missing = _shapedMissingScratch ??= new List<int>(32);
             missing.Clear();
 
             for (int i = 0; i < run.Length; ++i)
             {
-                int encoded = EncodeGlyphIndexKey((int)run[i].glyphIndex);
+                int glyphIndex = (int)run[i].glyphIndex;
 
-                if (_dynamicMisses != null && _dynamicMisses.Contains(new DynamicGlyphKey(encoded, atlasSize)))
+                if (visibleOnly)
+                {
+                    if (!TryGetShapedGlyph(glyphIndex, fontSize, 0f, out var baseGlyph, out _))
+                        return false;
+
+                    if (Mathf.Approximately(baseGlyph.atlasBounds.left, baseGlyph.atlasBounds.right))
+                        continue;
+                }
+
+                int encoded = EncodeGlyphIndexKey(glyphIndex);
+                var key = new DynamicGlyphKey(encoded, atlasSize, pixelRange);
+
+                if (_dynamicMisses != null && _dynamicMisses.Contains(key))
                     return false;
 
-                if (!TryGetDynamicCachedGlyph(encoded, atlasSize, out _) && !missing.Contains((int)run[i].glyphIndex))
-                    missing.Add((int)run[i].glyphIndex);
+                if (TryGetDynamicCachedGlyph(encoded, atlasSize, pixelRange, out _))
+                    continue;
+
+                if (_dynamicCapacityMisses != null && _dynamicCapacityMisses.Contains(key))
+                {
+                    if (!TryGetDynamicCapacityFallbackGlyph(
+                        encoded,
+                        atlasSize,
+                        pixelRange,
+                        out _,
+                        out _))
+                    {
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if (!missing.Contains(glyphIndex))
+                    missing.Add(glyphIndex);
             }
 
             if (missing.Count == 0)
                 return true;
 
-            if (!TryBakeShapedGlyphs(missing, atlasSize))
-                return false;
+            if (!TryBakeShapedGlyphs(missing, atlasSize, pixelRange, out bool budgetExceeded))
+            {
+                if (!budgetExceeded)
+                    return false;
+
+                for (int i = 0; i < missing.Count; ++i)
+                {
+                    int encoded = EncodeGlyphIndexKey(missing[i]);
+
+                    if (!TryGetDynamicCachedGlyph(encoded, atlasSize, pixelRange, out _))
+                    {
+                        AddDynamicCapacityMiss(new DynamicGlyphKey(
+                            encoded,
+                            atlasSize,
+                            pixelRange));
+                    }
+                }
+            }
 
             for (int i = 0; i < run.Length; ++i)
             {
-                if (!TryGetDynamicCachedGlyph(EncodeGlyphIndexKey((int)run[i].glyphIndex), atlasSize, out _))
+                int glyphIndex = (int)run[i].glyphIndex;
+
+                if (visibleOnly)
+                {
+                    if (!TryGetShapedGlyph(glyphIndex, fontSize, 0f, out var baseGlyph, out _))
+                        return false;
+
+                    if (Mathf.Approximately(baseGlyph.atlasBounds.left, baseGlyph.atlasBounds.right))
+                        continue;
+                }
+
+                int encoded = EncodeGlyphIndexKey(glyphIndex);
+
+                if (!TryGetDynamicCachedGlyph(encoded, atlasSize, pixelRange, out _) &&
+                    !TryGetDynamicCapacityFallbackGlyph(
+                        encoded,
+                        atlasSize,
+                        pixelRange,
+                        out _,
+                        out _))
+                {
                     return false;
+                }
             }
 
             return true;
@@ -3928,13 +5048,19 @@ namespace NowUI
 
         internal bool TryGetPreparedShapedRun(string segment, float fontSize, out PreparedShapedRun run)
         {
+            return TryGetPreparedShapedRun(segment, fontSize, 0f, out run);
+        }
+
+        internal bool TryGetPreparedShapedRun(string segment, float fontSize, float outline, out PreparedShapedRun run)
+        {
             run = null;
 
             if (string.IsNullOrEmpty(segment))
                 return false;
 
             int atlasSize = GetDynamicGlyphSize(fontSize);
-            var key = new PreparedShapeKey(segment, atlasSize);
+            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            var key = new PreparedShapeKey(segment, atlasSize, pixelRange);
             _preparedShapeCache ??= new Dictionary<PreparedShapeKey, PreparedShapedRun>(64);
 
             if (_preparedShapeCache.TryGetValue(key, out run))
@@ -3949,8 +5075,21 @@ namespace NowUI
             if (!TryGetShapedRun(segment, out var shapedRun))
                 return false;
 
-            if (!EnsureShapedGlyphs(shapedRun, fontSize))
+            int basePixelRange = GetDynamicPixelRange(0f, fontSize);
+            bool useBaseForInvisibleGlyphs = pixelRange != basePixelRange;
+
+            if (useBaseForInvisibleGlyphs)
+            {
+                if (!EnsureShapedGlyphs(shapedRun, fontSize, 0f) ||
+                    !EnsureShapedGlyphs(shapedRun, fontSize, outline, visibleOnly: true))
+                {
+                    return false;
+                }
+            }
+            else if (!EnsureShapedGlyphs(shapedRun, fontSize, outline))
+            {
                 return false;
+            }
 
             var prepared = new PreparedShapedGlyph[shapedRun.Length];
             int animationUnitCount = CountShapedAnimationUnits(shapedRun);
@@ -3963,9 +5102,45 @@ namespace NowUI
             for (int i = 0; i < shapedRun.Length; ++i)
             {
                 var shaped = shapedRun[i];
+                NowFontAtlasInfo.Glyph glyph;
+                Material glyphMaterial;
 
-                if (!TryGetShapedGlyph((int)shaped.glyphIndex, fontSize, out var glyph, out var glyphMaterial))
+                if (useBaseForInvisibleGlyphs)
+                {
+                    if (!TryGetShapedGlyph(
+                            (int)shaped.glyphIndex,
+                            fontSize,
+                            0f,
+                            out var baseGlyph,
+                            out var baseMaterial))
+                    {
+                        return false;
+                    }
+
+                    if (Mathf.Approximately(baseGlyph.atlasBounds.left, baseGlyph.atlasBounds.right))
+                    {
+                        glyph = baseGlyph;
+                        glyphMaterial = baseMaterial;
+                    }
+                    else if (!TryGetShapedGlyph(
+                                 (int)shaped.glyphIndex,
+                                 fontSize,
+                                 outline,
+                                 out glyph,
+                                 out glyphMaterial))
+                    {
+                        return false;
+                    }
+                }
+                else if (!TryGetShapedGlyph(
+                             (int)shaped.glyphIndex,
+                             fontSize,
+                             outline,
+                             out glyph,
+                             out glyphMaterial))
+                {
                     return false;
+                }
 
                 if (i == 0 || shaped.cluster != previousCluster)
                     ++visualAnimationUnit;
@@ -4007,9 +5182,16 @@ namespace NowUI
             return count;
         }
 
-        bool TryBakeShapedGlyphs(List<int> glyphIndices, int atlasSize)
+        bool TryBakeShapedGlyphs(
+            List<int> glyphIndices,
+            int atlasSize,
+            int pixelRange,
+            out bool budgetExceeded)
         {
-            if (s_dynamicSessionUnsupported || _dynamicSessionFailed)
+            budgetExceeded = false;
+            const int SESSION_ADD_CHUNK = 64;
+
+            if (s_dynamicSessionUnsupported)
                 return false;
 
             var fontData = DynamicFontBytes;
@@ -4017,8 +5199,13 @@ namespace NowUI
             if (fontData == null)
                 return false;
 
-            if (_dynamicSessionPage != null && !IsDynamicPageValid(_dynamicSessionPage))
-                ResetDynamicSession();
+            var state = GetDynamicSessionState(atlasSize, pixelRange);
+
+            if (state.failed)
+                return false;
+
+            if (state.page != null && !IsDynamicPageValid(state.page))
+                ResetDynamicSession(state);
 
             using var profile = NowProfiler.FontBake.Auto();
             var results = _dynamicSessionGlyphScratch ??= new List<NowFontAtlasInfo.Glyph>();
@@ -4034,54 +5221,154 @@ namespace NowUI
             for (int i = 0; i < indexCount; ++i)
                 indices[i] = glyphIndices[i];
 
-            for (int attempt = 0; attempt < 2; ++attempt)
+            var chunkIndices = _dynamicSessionChunkScratch ??= new int[SESSION_ADD_CHUNK];
+            int offset = 0;
+            int chunkLimit = SESSION_ADD_CHUNK;
+            bool allBaked = true;
+
+            while (offset < indexCount)
             {
-                if (!TryEnsureDynamicSession(fontData))
+                if (!TryEnsureDynamicSession(
+                    fontData,
+                    atlasSize,
+                    pixelRange,
+                    state,
+                    out budgetExceeded))
+                {
+                    return false;
+                }
+
+                if (!state.session.supportsGlyphIndexBaking)
                     return false;
 
-                if (!_dynamicSession.supportsGlyphIndexBaking)
-                    return false;
-
-                var status = _dynamicSession.TryAddGlyphsByIndex(indices, indexCount, results, out _);
+                int chunk = Mathf.Min(chunkLimit, indexCount - offset);
+                Array.Copy(indices, offset, chunkIndices, 0, chunk);
+                int resultsBefore = results.Count;
+                var status = state.session.TryAddGlyphsByIndex(chunkIndices, chunk, results, out _);
 
                 if (status == NowFontCompiler.DynamicSession.AddResult.Ok)
                 {
-                    for (int i = 0; i < results.Count; ++i)
+                    for (int i = resultsBefore; i < results.Count; ++i)
                     {
                         var record = results[i];
                         record.unicode = EncodeGlyphIndexKey(record.unicode);
                         results[i] = record;
                     }
 
-                    bool committed = results.Count == 0 || TryCommitSessionGlyphs(results, atlasSize);
-                    results.Clear();
-                    return committed;
+                    offset += chunk;
+                    chunkLimit = SESSION_ADD_CHUNK;
+                    continue;
                 }
 
                 if (status == NowFontCompiler.DynamicSession.AddResult.AtlasFull)
                 {
-                    results.Clear();
-                    ResetDynamicSession();
+                    if (results.Count > 0)
+                    {
+                        bool committed = TryCommitSessionGlyphs(
+                            state,
+                            results,
+                            atlasSize,
+                            pixelRange,
+                            out bool commitBudgetExceeded);
+                        results.Clear();
+
+                        if (!committed)
+                        {
+                            ResetDynamicSession(state);
+
+                            if (commitBudgetExceeded)
+                                budgetExceeded = true;
+                            else
+                                state.failed = true;
+
+                            return false;
+                        }
+                    }
+
+                    if (state.page == null)
+                    {
+                        if (chunk <= 1)
+                        {
+                            if (TryGrowEmptyDynamicSession(state))
+                                continue;
+
+                            AddDynamicMiss(new DynamicGlyphKey(
+                                EncodeGlyphIndexKey(indices[offset]),
+                                atlasSize,
+                                pixelRange));
+                            ++offset;
+                            chunkLimit = SESSION_ADD_CHUNK;
+                            allBaked = false;
+                            continue;
+                        }
+
+                        chunkLimit = Mathf.Max(1, chunk / 2);
+                        continue;
+                    }
+
+                    ResetDynamicSession(state);
                     continue;
                 }
 
+                return CommitAndFailDynamicSession(
+                    state,
+                    results,
+                    atlasSize,
+                    pixelRange,
+                    out budgetExceeded);
+            }
+
+            if (results.Count > 0 &&
+                !TryCommitSessionGlyphs(
+                    state,
+                    results,
+                    atlasSize,
+                    pixelRange,
+                    out bool finalCommitBudgetExceeded))
+            {
                 results.Clear();
+                ResetDynamicSession(state);
+                budgetExceeded = finalCommitBudgetExceeded;
+
+                if (!budgetExceeded)
+                    state.failed = true;
+
                 return false;
             }
 
-            for (int i = 0; i < indexCount; ++i)
-                AddDynamicMiss(new DynamicGlyphKey(EncodeGlyphIndexKey(indices[i]), atlasSize));
-
-            return false;
+            results.Clear();
+            return allBaked;
         }
 
         /// <summary>Resolves a baked shaped glyph record and its page material.</summary>
         internal bool TryGetShapedGlyph(int glyphIndex, float fontSize, out NowFontAtlasInfo.Glyph glyph, out Material glyphMaterial)
         {
+            return TryGetShapedGlyph(glyphIndex, fontSize, 0f, out glyph, out glyphMaterial);
+        }
+
+        internal bool TryGetShapedGlyph(
+            int glyphIndex,
+            float fontSize,
+            float outline,
+            out NowFontAtlasInfo.Glyph glyph,
+            out Material glyphMaterial)
+        {
             int encoded = EncodeGlyphIndexKey(glyphIndex);
             int atlasSize = GetDynamicGlyphSize(fontSize);
+            int pixelRange = GetDynamicPixelRange(outline, fontSize);
 
-            if (TryGetDynamicCachedGlyph(encoded, atlasSize, out glyph, out var page))
+            if (TryGetDynamicCachedGlyph(encoded, atlasSize, pixelRange, out glyph, out var page))
+            {
+                glyphMaterial = page.font.material;
+                return glyphMaterial != null;
+            }
+
+            if (TryGetDynamicCapacityFallbackGlyph(
+                encoded,
+                atlasSize,
+                pixelRange,
+                out glyph,
+                out page))
             {
                 glyphMaterial = page.font.material;
                 return glyphMaterial != null;
@@ -4099,8 +5386,12 @@ namespace NowUI
 
         public int GetMaterialId(int unicode, float fontSize)
         {
+            int pixelRange = GetDynamicPixelRange(0f, fontSize);
+
             if (_dynamicGlyphPages != null &&
-                _dynamicGlyphPages.TryGetValue(new DynamicGlyphKey(unicode, GetDynamicGlyphSize(fontSize)), out var page) &&
+                _dynamicGlyphPages.TryGetValue(
+                    new DynamicGlyphKey(unicode, GetDynamicGlyphSize(fontSize), pixelRange),
+                    out var page) &&
                 page != null)
             {
                 return page.materialId;
@@ -4116,8 +5407,12 @@ namespace NowUI
 
         public void SetMaterialId(int unicode, float fontSize, int value)
         {
+            int pixelRange = GetDynamicPixelRange(0f, fontSize);
+
             if (_dynamicGlyphPages != null &&
-                _dynamicGlyphPages.TryGetValue(new DynamicGlyphKey(unicode, GetDynamicGlyphSize(fontSize)), out var page) &&
+                _dynamicGlyphPages.TryGetValue(
+                    new DynamicGlyphKey(unicode, GetDynamicGlyphSize(fontSize), pixelRange),
+                    out var page) &&
                 page != null)
             {
                 page.materialId = value;
@@ -4134,10 +5429,30 @@ namespace NowUI
 
         public Material GetMaterial(int unicode, float fontSize)
         {
+            return GetMaterial(unicode, fontSize, 0f);
+        }
+
+        internal Material GetMaterial(int unicode, float fontSize, float outline)
+        {
+            int atlasSize = GetDynamicGlyphSize(fontSize);
+            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+
             if (_dynamicGlyphPages != null &&
-                _dynamicGlyphPages.TryGetValue(new DynamicGlyphKey(unicode, GetDynamicGlyphSize(fontSize)), out var page) &&
+                _dynamicGlyphPages.TryGetValue(
+                    new DynamicGlyphKey(unicode, atlasSize, pixelRange),
+                    out var page) &&
                 page != null &&
                 page.font != null)
+            {
+                return page.font.material;
+            }
+
+            if (TryGetDynamicCapacityFallbackGlyph(
+                unicode,
+                atlasSize,
+                pixelRange,
+                out _,
+                out page))
             {
                 return page.font.material;
             }
@@ -4145,22 +5460,67 @@ namespace NowUI
             return material;
         }
 
+        internal bool IsColorGlyph(int unicode, float fontSize, float outline)
+        {
+            int atlasSize = GetDynamicGlyphSize(fontSize);
+            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+
+            if (_dynamicGlyphPages != null &&
+                _dynamicGlyphPages.TryGetValue(
+                    new DynamicGlyphKey(unicode, atlasSize, pixelRange),
+                    out var page) &&
+                IsDynamicPageValid(page))
+            {
+                return page.font.isColor;
+            }
+
+            if (TryGetDynamicCapacityFallbackGlyph(
+                unicode,
+                atlasSize,
+                pixelRange,
+                out _,
+                out page))
+            {
+                return page.font.isColor;
+            }
+
+            return isColor;
+        }
+
         /// <summary>Distance-field range in local units; the text shaders convert it to
         /// screen pixels per-fragment (and floor it there) so canvas/transform scale does
         /// not soften or alias the glyph edges.</summary>
         public float GetScreenPixelRange(int unicode, float fontSize)
         {
+            return GetScreenPixelRange(unicode, fontSize, 0f);
+        }
+
+        internal float GetScreenPixelRange(int unicode, float fontSize, float outline)
+        {
             var fontAtlas = atlasInfo.atlas;
+            int atlasSize = GetDynamicGlyphSize(fontSize);
+            int pixelRange = GetDynamicPixelRange(outline, fontSize);
 
             if (_dynamicGlyphPages != null &&
-                _dynamicGlyphPages.TryGetValue(new DynamicGlyphKey(unicode, GetDynamicGlyphSize(fontSize)), out var page) &&
+                _dynamicGlyphPages.TryGetValue(
+                    new DynamicGlyphKey(unicode, atlasSize, pixelRange),
+                    out var page) &&
                 IsDynamicPageValid(page))
             {
                 fontAtlas = page.font.atlasInfo.atlas;
             }
+            else if (TryGetDynamicCapacityFallbackGlyph(
+                unicode,
+                atlasSize,
+                pixelRange,
+                out _,
+                out page))
+            {
+                fontAtlas = page.font.atlasInfo.atlas;
+            }
 
-            int atlasSize = fontAtlas.size > 0 ? fontAtlas.size : DEFAULT_DYNAMIC_ATLAS_SIZE;
-            int pixelRange = fontAtlas.distanceRange > 0
+            atlasSize = fontAtlas.size > 0 ? fontAtlas.size : DEFAULT_DYNAMIC_ATLAS_SIZE;
+            pixelRange = fontAtlas.distanceRange > 0
                 ? fontAtlas.distanceRange
                 : dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE;
 

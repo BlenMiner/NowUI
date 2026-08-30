@@ -81,12 +81,83 @@ void ReplaceRampKeys(GradientColorKey[] colors, GradientAlphaKey[] alphas)
 }
 ```
 
-The text outline remains controlled by `SetOutline` and `SetOutlineColor`.
 Call `ClearGradient()` to return the builder to its solid fill, then use
-`SetColor` normally.
+`SetColor` normally. Solid text color leaves the authored RGB of RGBA/color-font
+glyphs intact and applies only its alpha, so emoji keep their original colors
+while still fading with the surrounding label. Enabling a text gradient
+intentionally replaces the glyph RGB with the sampled ramp while retaining the
+glyph's alpha coverage.
 
-For RGBA/color-font glyphs, enabling a text gradient intentionally replaces
-the glyph RGB with the sampled ramp while retaining the glyph's alpha coverage.
+## Text Outlines
+
+The text outline is controlled by `SetOutline` and `SetOutlineColor`.
+`SetOutline` uses em units; `SetOutlinePixels` converts pixels using the font
+size at the point it is called, so call `SetFontSize` first. This example keeps
+the exaggerated width serialized so it can be scrubbed directly in the
+Inspector:
+
+```csharp
+[SerializeField] NowFont font;
+[SerializeField, Range(0f, 100f)] float largeOutlinePixels = 32f;
+
+void DrawOutlineDemo(NowRect thinRect, NowRect largeRect)
+{
+    const float fontSize = 80f;
+
+    Now.Text(thinRect, font)
+        .SetFontSize(fontSize)
+        .SetColor(Color.white)
+        .SetOutlinePixels(2f)
+        .SetOutlineColor(Color.black)
+        .Draw("Thin outline");
+
+    Now.Text(largeRect, font)
+        .SetFontSize(fontSize)
+        .SetColor(Color.white)
+        .SetOutlinePixels(largeOutlinePixels)
+        .SetOutlineColor(Color.black)
+        .Draw("Inspector-driven outline");
+}
+```
+
+Scrub `largeOutlinePixels` up to 100 px. This source-backed 0–100 demo remains
+exact while the font reuses hidden backing tiers instead of creating an atlas
+variant for every slider value. Each previously unseen glyph at a tier may bake
+and upload once; warmed glyphs reuse it. The 100 px upper bound belongs to the
+demo control, not the runtime. Dynamic capacity still has a terminal tier set by
+atlas geometry and the private cache budget, so no range or cache setting is
+required from the caller.
+
+Dynamic SDF fonts with embedded source automatically choose distance-field
+capacity for the requested outline up to that terminal tier. Authored widths
+remain exact within the representable range while backing glyphs share hidden
+doubling tiers up to the cap. Effect tiers use fixed-size sparse pages: a live
+page is append-only, existing glyph UVs remain stable, and a full page seals and
+spills into another page rather than resizing. A private 64 MiB logical-payload
+budget bounds each font's generated dynamic resources. Its accounting includes
+GPU page payloads, readable CPU copies, live baking atlases, and a conservative
+working reserve; it is not a total process-memory ceiling and does not include
+serialized/base font assets or ordinary Unity object overhead. Under pressure
+NowUI seals old writable sessions without destroying published glyphs. If a new
+page still cannot fit, the glyph uses its best cached lower-range variant and
+clamps safely until the cache is cleared. Wider outlines still bake larger glyph
+cells and can allocate more atlas pages, increasing first-use bake time and
+texture memory.
+
+With NowUI's bundled, two-pass-capable SDF materials, positive outlined runs
+submit an outline layer followed by a fill layer so neighboring strokes do not
+paint over earlier glyph faces. This roughly doubles visible SDF glyph geometry,
+including single-character and span draws, and can add a material batch. Legacy
+custom materials without that capability keep their combined-pass behavior;
+RGBA/color glyphs do not receive an SDF outline layer. Managed effect pages
+retain 16-bit distance precision inside RGBA32, so the precision upgrade itself
+does not increase bytes per texel (larger cells and pages still increase total
+memory).
+A static-only SDF atlas cannot grow beyond its authored range, and RGBA/color-font
+glyphs do not support SDF outlines. Widths beyond the available/configured atlas
+range are clamped inside the field instead of exposing a rectangular cell edge.
+An explicit `SetMask` remains a hard clip; outset it when the stroke should
+extend past its bounds.
 
 ## Built-In Text Animations
 

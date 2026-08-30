@@ -62,6 +62,157 @@ public class NowTextStylingTests
     }
 
     [Test]
+    public void OutlinePixelsUsesTheCurrentFontSize()
+    {
+        NowText text = Now.Text(TextRect, _fontAsset)
+            .SetFontSize(80f)
+            .SetOutlinePixels(100f);
+
+        Assert.AreEqual(1.25f, text.outline, 0.0001f);
+    }
+
+    [Test]
+    public void PositiveOutlineRunRestoresFillsAfterAllOutlineGeometry()
+    {
+        using (_drawList.Begin(Surface))
+        {
+            Now.Text(TextRect, _fontAsset)
+                .SetFontSize(80f)
+                .SetOutlinePixels(20f)
+                .Draw("AB");
+        }
+
+        var extras = new List<Vector4>();
+        _drawList.mesh.GetUVs(5, extras);
+
+        Assert.AreEqual(16, extras.Count, "two glyphs should emit an outline layer and a fill layer");
+
+        for (int i = 0; i < 8; ++i)
+        {
+            Assert.AreEqual(20f, extras[i].x, 0.001f, "the first layer carries the outline");
+            Assert.Less(extras[i].y, 0f, "the first layer is marked as outline-only");
+        }
+
+        for (int i = 8; i < 16; ++i)
+        {
+            Assert.AreEqual(0f, extras[i].x, 0.001f, "the final layer restores every glyph fill");
+            Assert.AreEqual(20f, extras[i].y, 0.001f,
+                "the fill layer must return to the base range instead of sampling the coarse effect tier");
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void PositiveOutlineSingleGlyphRestoresFillFromBaseRange(bool characterOverload)
+    {
+        using (_drawList.Begin(Surface))
+        {
+            NowText text = Now.Text(TextRect, _fontAsset)
+                .SetFontSize(80f)
+                .SetOutlinePixels(100f);
+
+            if (characterOverload)
+                text.Draw('A');
+            else
+                text.Draw("A");
+        }
+
+        var extras = new List<Vector4>();
+        _drawList.mesh.GetUVs(5, extras);
+
+        Assert.AreEqual(8, extras.Count, "one outlined glyph should emit an outline layer and a fill layer");
+
+        for (int i = 0; i < 4; ++i)
+        {
+            Assert.AreEqual(100f, extras[i].x, 0.001f);
+            Assert.AreEqual(-320f, extras[i].y, 0.001f);
+        }
+
+        for (int i = 4; i < 8; ++i)
+        {
+            Assert.AreEqual(0f, extras[i].x, 0.001f);
+            Assert.AreEqual(20f, extras[i].y, 0.001f);
+        }
+    }
+
+    [Test]
+    public void AdaptiveRangeBucketDoesNotClampRequestedOutlineAtBoundary()
+    {
+        using (_drawList.Begin(Surface))
+        {
+            Now.Text(TextRect, _fontAsset)
+                .SetFontSize(80f)
+                .SetOutlinePixels(21f)
+                .Draw("A");
+        }
+
+        var extras = new List<Vector4>();
+        _drawList.mesh.GetUVs(5, extras);
+
+        Assert.Greater(extras.Count, 0);
+
+        Assert.AreEqual(8, extras.Count);
+
+        for (int i = 0; i < 4; ++i)
+            Assert.AreEqual(21f, extras[i].x, 0.001f,
+                "The adaptive tier must include the same guard used by the mesh safety clamp.");
+
+        for (int i = 4; i < 8; ++i)
+            Assert.AreEqual(0f, extras[i].x, 0.001f,
+                "The base-range fill pass must not carry the outline threshold.");
+    }
+
+    [Test]
+    public void DefaultTextMaskUsesUniformOutlineScaleUnderNonUniformTransform()
+    {
+        var rect = new NowRect(100f, 30f, 100f, 40f);
+        var scale = new Vector2(0.5f, 2f);
+
+        using (_drawList.Begin(Surface))
+        using (Now.Transform(scale))
+        {
+            Now.Text(rect, _fontAsset)
+                .SetFontSize(40f)
+                .SetOutlinePixels(10f)
+                .Draw("A");
+        }
+
+        var masks = new List<Vector4>();
+        _drawList.mesh.GetUVs(6, masks);
+
+        Assert.Greater(masks.Count, 0);
+        // The transformed text rect is (50, 60, 50, 80). Text uses the
+        // transform's maximum axis (2x), so its default 4px allowance plus the
+        // 10px outline need a uniform 28px screen-space outset.
+        Assert.AreEqual(new Vector4(22f, 32f, 106f, 136f), masks[0]);
+    }
+
+    [Test]
+    public void LayoutLabelGeneratedMaskIncludesLargeOutline()
+    {
+        NowText result;
+
+        using (_drawList.Begin(Surface))
+        using (NowLayout.Area(TextRect))
+        {
+            result = NowLayout.Label("A")
+                .SetFont(_fontAsset)
+                .SetFontSize(80f)
+                .SetOutlinePixels(100f)
+                .Draw();
+        }
+
+        var masks = new List<Vector4>();
+        _drawList.mesh.GetUVs(6, masks);
+
+        Assert.Greater(masks.Count, 0);
+        Assert.LessOrEqual(masks[0].x, result.rect.x - 104f + 0.001f);
+        Assert.LessOrEqual(masks[0].y, result.rect.y - 104f + 0.001f);
+        Assert.GreaterOrEqual(masks[0].x + masks[0].z, result.rect.xMax + 104f - 0.001f);
+        Assert.GreaterOrEqual(masks[0].y + masks[0].w, result.rect.yMax + 104f - 0.001f);
+    }
+
+    [Test]
     public void GradientTextDrawsRemainTextAndBatchTogether()
     {
         using (_drawList.Begin(Surface))
@@ -807,6 +958,24 @@ public class NowTextStylingTests
         Assert.LessOrEqual(masks[0].y, TextRect.y - 24f + 0.001f);
         Assert.GreaterOrEqual(masks[0].x + masks[0].z, TextRect.xMax + 24f - 0.001f);
         Assert.GreaterOrEqual(masks[0].y + masks[0].w, TextRect.yMax + 24f - 0.001f);
+    }
+
+    [Test]
+    public void RichTextGeneratedMaskIncludesLargeOutline()
+    {
+        using (_drawList.Begin(Surface))
+        {
+            Now.RichText(TextRect, "A")
+                .SetFont(_fontAsset)
+                .SetFontSize(80f)
+                .SetOutlinePixels(100f)
+                .Draw();
+        }
+
+        var masks = new List<Vector4>();
+        _drawList.mesh.GetUVs(6, masks);
+        Assert.Greater(masks.Count, 0);
+        Assert.AreEqual((Vector4)TextRect.Outset(104f), masks[0]);
     }
 
     void DrawRadialGradientText()
