@@ -1,3 +1,10 @@
+## [1.10.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.2...nowui-v1.10.3) (2026-08-30)
+
+
+### Bug Fixes
+
+* SDF and font margins ([a1abc43](https://github.com/BlenMiner/NowUI/commit/a1abc437b710a9e62655e89c0ae67e823e92226b))
+
 ## [1.10.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.1...nowui-v1.10.2) (2026-08-30)
 
 
