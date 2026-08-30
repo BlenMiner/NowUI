@@ -247,7 +247,7 @@ MonoBehaviour:
   _depthMode: 1
   _layoutAutoSizeAxes: 3
   _frustumCullRebuilds: 0
-  _size: {x: 210, y: 156.86}
+  _size: {x: 210, y: 166.222}
   _pivot: {x: 0.5, y: 0.5}
   _pixelsPerUnit: 159.4
   _antiAliasSmoothing: 1
@@ -581,7 +581,7 @@ MonoBehaviour:
   _depthMode: 1
   _layoutAutoSizeAxes: 3
   _frustumCullRebuilds: 0
-  _size: {x: 210, y: 156.86}
+  _size: {x: 210, y: 166.222}
   _pivot: {x: 0.5, y: 0.5}
   _pixelsPerUnit: 159.4
   _antiAliasSmoothing: 1
@@ -593,7 +593,7 @@ MonoBehaviour:
   _glassBlurQuality: 5
   _deformer: {fileID: 0}
   _title: "\u0773 \u0774 \u077C \u0685 \u068E \u077D \u069E \u0763 \u0778 \u0779
-    \u0776 \u0777 "
+    \u0776 \u0777"
   _detail: Hover for details
   _lottie: {fileID: 7868935432812623880, guid: 8e2cbe0cac8263b4c84c2ec9913a4da1, type: 3}
 --- !u!23 &653625562
@@ -855,6 +855,7 @@ MonoBehaviour:
   _autoRebuildOnInteraction: 1
   _respectUGUIRaycast: 1
   _driveLayoutSize: 1
+  _editModeInteraction: 0
   _uguiBackdropSourceTexture: {fileID: 0}
   _glassBlurQuality: 0
   _font: {fileID: 11400000, guid: d9b4fc19191445a4f851b19fd4cf730f, type: 2}

@@ -10,10 +10,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7fc6d0b96f8f49d4a8da53c8d2c48f91, type: 3}
-  m_Name: NotoSansJP
+  m_Name: NotoSansArabic
   m_EditorClassIdentifier: NowUI.Runtime::NowUI.NowFontFamily
   _fallbacks: []
-  _regular: {fileID: 11400000, guid: 72d7c36af5ba0654eb8dbdd0ca6c1ae7, type: 2}
-  _bold: {fileID: 11400000, guid: 831df791ab8146f41a7f5a5059061c85, type: 2}
-  _italic: {fileID: 11400000, guid: c0764560469aa2640b879a4659424607, type: 2}
-  _boldItalic: {fileID: 11400000, guid: 00fae646c1b599f48b5f59c720cefab2, type: 2}
+  _regular: {fileID: 11400000, guid: f0d31c6caa596d94f88a518b4bfe5a53, type: 2}
+  _bold: {fileID: 11400000, guid: 6f1bd5040e59deb4eaf1366ab5676a12, type: 2}
+  _italic: {fileID: 11400000, guid: f0d31c6caa596d94f88a518b4bfe5a53, type: 2}
+  _boldItalic: {fileID: 11400000, guid: 6f1bd5040e59deb4eaf1366ab5676a12, type: 2}

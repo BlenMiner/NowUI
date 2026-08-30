@@ -14,6 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: NowUI.Runtime::NowFontFamily
   _fallbacks:
   - {fileID: 11400000, guid: 952641324c85a8a4c88115a6d5078a09, type: 2}
+  - {fileID: 11400000, guid: 313089b81485e724290f867853a67414, type: 2}
+  - {fileID: 11400000, guid: f4c4aff04318bf941b40edfe485b5133, type: 2}
+  - {fileID: 11400000, guid: 90041903668e48c4ab81be4a740a26b8, type: 2}
   - {fileID: 11400000, guid: b08ecceb769b0cd42b7dd48a88b908fe, type: 2}
   - {fileID: 11400000, guid: 0d7342069edd6a741a5958becb000004, type: 2}
   _regular: {fileID: 11400000, guid: 59e3b303b4e945d499ef2415cde95a76, type: 2}
