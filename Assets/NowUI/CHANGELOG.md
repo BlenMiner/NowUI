@@ -1,3 +1,10 @@
+## [1.10.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.0...nowui-v1.10.1) (2026-08-30)
+
+
+### Bug Fixes
+
+* adaptable font margins ([3e73447](https://github.com/BlenMiner/NowUI/commit/3e734476ef8e16fa7b62b0e4fe4a55634e68b168))
+
 # [1.10.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.9.6...nowui-v1.10.0) (2026-08-30)
 
 
