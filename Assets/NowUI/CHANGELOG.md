@@ -1,3 +1,10 @@
+## [1.10.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.3...nowui-v1.10.4) (2026-08-30)
+
+
+### Bug Fixes
+
+* text layout when used in SDF scenes ([25e6338](https://github.com/BlenMiner/NowUI/commit/25e6338431c829f7f77cf7b0c85ca52121d040e1))
+
 ## [1.10.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.2...nowui-v1.10.3) (2026-08-30)
 
 
