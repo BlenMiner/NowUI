@@ -112,6 +112,14 @@ resolved advances still affect later glyph positions. `RotateNext` is consumed
 once for the complete call rather than once per glyph, and an active pushed
 rotation composes with it in the same way as for a primitive.
 
+SDF text follows the same shaped-first layout policy as `Now.Text`. With
+`Now.textShaping` enabled (the default), it uses the cached HarfBuzz glyph run,
+including kerning, ligatures, combining-mark offsets, and the default tab and
+line layout. If any segment cannot be shaped or baked, the complete call falls
+back to the family-aware codepoint path instead of mixing shaped and unshaped
+placement. Consequently, `MeasureText` can be used to center an SDF text run
+without its rendered spacing drifting from the measured width.
+
 `RotateNext` and pushed rotations cannot directly target `Graph` or `Morph`:
 an effective nonidentity rotation followed by either operand throws
 `InvalidOperationException`. To use rotated shapes or text in reusable graphs

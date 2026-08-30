@@ -3717,7 +3717,7 @@ namespace NowUI
         /// <see cref="controls"/> the control that follows each segment ('\0' at
         /// the end of the string).
         /// </summary>
-        sealed class ShapedSegmentation
+        internal sealed class ShapedSegmentation
         {
             public string[] segments;
             public char[] controls;
@@ -3736,7 +3736,7 @@ namespace NowUI
         /// draws of the same string never allocate per-segment substrings. The cache
         /// follows the prepared-run cache policy: cleared wholesale past a size limit.
         /// </summary>
-        static ShapedSegmentation GetShapedSegmentation(string value)
+        internal static ShapedSegmentation GetShapedSegmentation(string value)
         {
             if (_shapedSegmentCache.TryGetValue(value, out var segmentation))
                 return segmentation;
@@ -3783,7 +3783,7 @@ namespace NowUI
             return segmentation;
         }
 
-        static bool HasShapedControlCharacters(string value)
+        internal static bool HasShapedControlCharacters(string value)
         {
             for (int i = 0; i < value.Length; ++i)
             {

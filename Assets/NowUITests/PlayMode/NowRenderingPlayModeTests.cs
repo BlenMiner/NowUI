@@ -1226,6 +1226,222 @@ public class NowRenderingPlayModeTests
         }
     }
 
+    [TestCase(false, TestName = "SdfShapedSpacingMatchesOrdinaryText_Managed")]
+    [TestCase(true, TestName = "SdfShapedSpacingMatchesOrdinaryText_Native")]
+    public void SdfShapedSpacingMatchesOrdinaryText(bool nativeCompiler)
+    {
+        const int Width = 512;
+        const int Height = 192;
+        const float FontSize = 80f;
+        const string Value = "ToTo";
+        var position = new Vector2(40f, 48f);
+        bool previousTextShaping = Now.textShaping;
+        NowFont font = null;
+        NowFontCompiler.DynamicSession nativeProbe = null;
+        RenderTexture target = null;
+        CommandBuffer commandBuffer = null;
+
+        try
+        {
+            var source = ResolveDefaultNowFont();
+            Assert.IsTrue(
+                source.TryGetSourceBytes(out byte[] bytes),
+                "Default font has no embedded source.");
+
+            Now.textShaping = true;
+            NowFontCompiler.forceManagedCompiler = !nativeCompiler;
+            NowFontCompiler.forceNativeCompiler = nativeCompiler;
+
+            if (nativeCompiler)
+            {
+                bool nativeAvailable = NowFontCompiler.DynamicSession.TryCreate(
+                    bytes,
+                    64,
+                    16,
+                    512,
+                    out nativeProbe,
+                    out string nativeProbeError) &&
+                    !nativeProbe.isManaged;
+
+                if (!nativeAvailable)
+                {
+                    nativeProbe?.Dispose();
+                    nativeProbe = null;
+                    Assert.Ignore($"Native font compiler unavailable: {nativeProbeError}");
+                }
+
+                nativeProbe.Dispose();
+                nativeProbe = null;
+            }
+
+            Assert.IsTrue(
+                NowFontCompiler.TryCompile(bytes, out font, out string error),
+                error);
+
+            if (!font.TryGetShapedRun(Value, out var shapedRun))
+                Assert.Ignore("HarfBuzz text shaping is unavailable on this platform.");
+
+            float shapedAdvance = 0f;
+            for (int i = 0; i < shapedRun.Length; ++i)
+                shapedAdvance += shapedRun[i].xAdvance * FontSize;
+
+            float codepointAdvance = 0f;
+            for (int i = 0; i < Value.Length; ++i)
+            {
+                int codepoint = NowFont.ReadCodepoint(Value, ref i);
+                Assert.IsTrue(
+                    font.TryResolveGlyph(
+                        codepoint,
+                        FontSize,
+                        NowFontStyle.Regular,
+                        out _,
+                        out var glyph,
+                        out _),
+                    $"The shaping fixture could not resolve U+{codepoint:X}.");
+                codepointAdvance += glyph.advance * FontSize;
+            }
+
+            Assert.Greater(
+                Mathf.Abs(codepointAdvance - shapedAdvance),
+                2f,
+                "The shaping fixture must exercise visible kerning rather than an unchanged advance.");
+
+            target = new RenderTexture(Width, Height, 0, RenderTextureFormat.ARGB32);
+            target.Create();
+            commandBuffer = new CommandBuffer
+            {
+                name = "SDF shaped text spacing parity"
+            };
+
+            Color32[] Render(bool sdf)
+            {
+                NowSdf.Reset();
+                font.ClearDynamicCache();
+
+                using var drawList = new NowDrawList();
+                using (drawList.Begin(new Vector2(Width, Height)))
+                {
+                    if (sdf)
+                    {
+                        NowSdf.Scene(
+                                new NowRect(0f, 0f, Width, Height),
+                                $"playmode-sdf-shaped-spacing-parity-{nativeCompiler}")
+                            .SetColor(Color.white)
+                            .Text(position, Value, font, FontSize)
+                            .Draw();
+                    }
+                    else
+                    {
+                        Now.Text(
+                                new NowRect(
+                                    position.x,
+                                    position.y,
+                                    Width - position.x,
+                                    Height - position.y),
+                                font)
+                            .SetFontSize(FontSize)
+                            .SetColor(Color.white)
+                            .Draw(Value);
+                    }
+                }
+
+                commandBuffer.Clear();
+                NowRenderer.PopulateCommandBuffer(
+                    commandBuffer,
+                    drawList,
+                    target,
+                    true,
+                    Color.clear);
+                Graphics.ExecuteCommandBuffer(commandBuffer);
+                return ReadPixels(target);
+            }
+
+            Color32[] direct = Render(sdf: false);
+            Color32[] sdf = Render(sdf: true);
+            var sdfCoverage = new Color32[sdf.Length];
+            int directOpaqueCoverage = 0;
+            int sdfOpaqueCoverage = 0;
+            int intersection = 0;
+            int union = 0;
+
+            for (int i = 0; i < direct.Length; ++i)
+            {
+                // The SDF material uses straight-alpha blending, so target alpha
+                // is squared on a transparent RT. White RGB retains the source
+                // coverage needed to compare its shaped glyph positions.
+                sdfCoverage[i] = new Color32(255, 255, 255, sdf[i].r);
+                bool directOpaque = direct[i].a > 128;
+                bool sdfOpaque = sdf[i].r > 128;
+
+                if (directOpaque) ++directOpaqueCoverage;
+                if (sdfOpaque) ++sdfOpaqueCoverage;
+                if (directOpaque && sdfOpaque) ++intersection;
+                if (directOpaque || sdfOpaque) ++union;
+            }
+
+            RectInt directBounds = FindRawAlphaBounds(direct, Width, Height, 128);
+            RectInt sdfBounds = FindRawAlphaBounds(sdfCoverage, Width, Height, 128);
+            float intersectionOverUnion = union > 0 ? (float)intersection / union : 1f;
+            string boundsMessage =
+                $"Ordinary shaped bounds {directBounds}; SDF shaped bounds {sdfBounds}.";
+
+            Assert.Greater(
+                directOpaqueCoverage,
+                2000,
+                "The ordinary shaped-text fixture rendered too little ink.");
+            Assert.Greater(
+                sdfOpaqueCoverage,
+                2000,
+                "The SDF shaped-text fixture rendered too little ink.");
+            Assert.That(
+                Mathf.Abs(sdfBounds.xMin - directBounds.xMin),
+                Is.LessThanOrEqualTo(1),
+                boundsMessage);
+            Assert.That(
+                Mathf.Abs(sdfBounds.yMin - directBounds.yMin),
+                Is.LessThanOrEqualTo(1),
+                boundsMessage);
+            Assert.That(
+                Mathf.Abs(sdfBounds.width - directBounds.width),
+                Is.LessThanOrEqualTo(2),
+                boundsMessage);
+            Assert.That(
+                Mathf.Abs(sdfBounds.height - directBounds.height),
+                Is.LessThanOrEqualTo(2),
+                boundsMessage);
+            Assert.That(
+                Mathf.Abs(sdfOpaqueCoverage - directOpaqueCoverage),
+                Is.LessThanOrEqualTo(64),
+                "The SDF shaped run changed the opaque glyph coverage materially.");
+            Assert.GreaterOrEqual(
+                intersectionOverUnion,
+                0.99f,
+                $"The SDF glyph positions diverged from ordinary shaped text " +
+                $"(IoU {intersectionOverUnion:F6}; shaped advance {shapedAdvance:F3}px; " +
+                $"codepoint advance {codepointAdvance:F3}px).");
+        }
+        finally
+        {
+            nativeProbe?.Dispose();
+            Now.textShaping = previousTextShaping;
+            NowFontCompiler.forceManagedCompiler = false;
+            NowFontCompiler.forceNativeCompiler = false;
+            commandBuffer?.Release();
+
+            if (target != null)
+            {
+                target.Release();
+                Object.DestroyImmediate(target);
+            }
+
+            if (font != null)
+            {
+                font.ClearDynamicCache();
+                Object.DestroyImmediate(font);
+            }
+        }
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void SdfRotateNextKeepsTextureInPrimitiveLocalSpace(bool circle)
@@ -3740,6 +3956,7 @@ public class NowRenderingPlayModeTests
         const float Outline = 100f;
         const long SealedBasePageBudget = 4L * 1024L * 1024L;
         const string Value = "N";
+        bool previousTextShaping = Now.textShaping;
         var source = ResolveDefaultNowFont();
         Assert.IsTrue(source.TryGetSourceBytes(out byte[] bytes), "Default font has no embedded source.");
 
@@ -3752,9 +3969,13 @@ public class NowRenderingPlayModeTests
 
         try
         {
+            Now.textShaping = true;
+
             // Publish and seal one base page before requesting the large effect
             // tier. This reproduces a deterministic lower-range capacity fallback.
-            font.EnsureGlyphs(Value, FontSize);
+            Assert.IsTrue(font.TryGetPreparedShapedRun(Value, FontSize, out var shapedRun));
+            Assert.AreEqual(1, shapedRun.length);
+            int glyphKey = shapedRun.glyphs[0].encodedKey;
             font.dynamicCacheBudgetBytesOverride = SealedBasePageBudget;
 
             int basePixelRange = font.GetDynamicPixelRange(0f, FontSize);
@@ -3796,7 +4017,7 @@ public class NowRenderingPlayModeTests
                 "A 20-pixel fallback field must reserve one pixel and expose only nine safe effect pixels.");
             Assert.IsTrue(
                 font.IsDynamicGlyphCapacityBlocked(
-                    Value[0],
+                    glyphKey,
                     font.GetDynamicGlyphSize(FontSize),
                     requestedPixelRange),
                 "The fixture did not exercise the requested tier's capacity fallback.");
@@ -3867,6 +4088,7 @@ public class NowRenderingPlayModeTests
         }
         finally
         {
+            Now.textShaping = previousTextShaping;
             commandBuffer.Release();
             target.Release();
             Object.DestroyImmediate(target);

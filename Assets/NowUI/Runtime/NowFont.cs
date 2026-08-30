@@ -4053,6 +4053,54 @@ namespace NowUI
             }
         }
 
+        bool TryCompileMissingShapedGlyph(int encodedGlyphIndex, int atlasSize, int pixelRange)
+        {
+            int glyphIndex = -1 - encodedGlyphIndex;
+
+            if (DynamicFontBytes == null || glyphIndex <= 0)
+                return false;
+
+            var key = new DynamicGlyphKey(encodedGlyphIndex, atlasSize, pixelRange);
+
+            if ((_dynamicCapacityMisses != null && _dynamicCapacityMisses.Contains(key)) ||
+                (_dynamicMisses != null && _dynamicMisses.Contains(key)))
+            {
+                return false;
+            }
+
+            if (TryGetDynamicCachedGlyph(encodedGlyphIndex, atlasSize, pixelRange, out _))
+                return true;
+
+            var missing = _shapedMissingScratch ??= new List<int>(32);
+            missing.Clear();
+            missing.Add(glyphIndex);
+
+            bool baked;
+            bool budgetExceeded;
+
+            try
+            {
+                baked = TryBakeShapedGlyphs(missing, atlasSize, pixelRange, out budgetExceeded);
+            }
+            finally
+            {
+                missing.Clear();
+            }
+
+            if ((baked || budgetExceeded) &&
+                TryGetDynamicCachedGlyph(encodedGlyphIndex, atlasSize, pixelRange, out _))
+            {
+                return true;
+            }
+
+            if (budgetExceeded)
+                AddDynamicCapacityMiss(key);
+            else
+                AddDynamicMiss(key);
+
+            return false;
+        }
+
         internal void InitializeDynamicSource(
             byte[] fontData,
             int atlasSize = 64,
@@ -4253,7 +4301,9 @@ namespace NowUI
             }
 
             if (TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out glyph, out var page) ||
-                (TryCompileMissingGlyph(unicode, atlasSize, pixelRange) &&
+                ((unicode < 0
+                        ? TryCompileMissingShapedGlyph(unicode, atlasSize, pixelRange)
+                        : TryCompileMissingGlyph(unicode, atlasSize, pixelRange)) &&
                     TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out glyph, out page)))
             {
                 glyphMaterial = page.font.material;

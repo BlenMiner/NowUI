@@ -100,6 +100,7 @@ namespace NowUI.Sdf
         readonly List<NowSdfNode> _nodes = new List<NowSdfNode>(8);
         readonly List<NowSdfGlyphSource> _glyphSources = new List<NowSdfGlyphSource>(8);
         readonly List<NowSdfResolvedGlyph> _resolvedGlyphs = new List<NowSdfResolvedGlyph>(8);
+        readonly List<NowFont.PreparedShapedRun> _shapedRunScratch = new List<NowFont.PreparedShapedRun>(4);
         readonly List<float> _rotationStack = new List<float>(4);
 
         static readonly int _textSdfEncodingProp = Shader.PropertyToID("_NowUITextSdfEncoding");
@@ -140,6 +141,7 @@ namespace NowUI.Sdf
             _nodes.Clear();
             _glyphSources.Clear();
             _resolvedGlyphs.Clear();
+            _shapedRunScratch.Clear();
 
             if (_textureFromGlyph)
             {
@@ -721,6 +723,23 @@ namespace NowUI.Sdf
 
             try
             {
+                if (Now.textShaping &&
+                    TryAddShapedText(
+                        firstGlyph,
+                        firstGlyphSource,
+                        previousBounds,
+                        previouslyHadBounds,
+                        position,
+                        value,
+                        font,
+                        fontSize,
+                        fontStyle,
+                        tabSpaces))
+                {
+                    SkipPrimitive();
+                    return;
+                }
+
                 PrewarmTextGlyphs(font, value, fontSize, fontStyle);
 
                 float lineHeight = font.GetLineHeight(fontStyle) * fontSize;
@@ -896,6 +915,311 @@ namespace NowUI.Sdf
             }
 
             SkipPrimitive();
+        }
+
+        bool TryAddShapedText(
+            int firstGlyph,
+            int firstGlyphSource,
+            NowRect previousBounds,
+            bool previouslyHadBounds,
+            Vector2 position,
+            string value,
+            NowFontAsset fontAsset,
+            float fontSize,
+            NowFontStyle fontStyle,
+            int tabSpaces)
+        {
+            if (!fontAsset.TryResolveFont(fontStyle, out var owner) ||
+                owner == null ||
+                owner.isColor)
+            {
+                return false;
+            }
+
+            bool hasControls = Now.HasShapedControlCharacters(value);
+            Now.ShapedSegmentation segmentation = null;
+            NowFont.PreparedShapedRun tabRun = null;
+            _shapedRunScratch.Clear();
+
+            try
+            {
+                if (!hasControls)
+                {
+                    if (!owner.TryGetPreparedShapedRun(value, fontSize, out var run))
+                        return false;
+
+                    _shapedRunScratch.Add(run);
+                }
+                else
+                {
+                    segmentation = Now.GetShapedSegmentation(value);
+
+                    for (int i = 0; i < segmentation.segments.Length; ++i)
+                    {
+                        string segment = segmentation.segments[i];
+                        NowFont.PreparedShapedRun run = null;
+
+                        if (segment != null &&
+                            !owner.TryGetPreparedShapedRun(segment, fontSize, out run))
+                        {
+                            return false;
+                        }
+
+                        _shapedRunScratch.Add(run);
+                    }
+
+                    if (segmentation.hasTab &&
+                        !owner.TryGetPreparedShapedRun(" ", fontSize, out tabRun))
+                    {
+                        return false;
+                    }
+                }
+
+                Texture requiredTexture = null;
+
+                for (int r = 0; r < _shapedRunScratch.Count; ++r)
+                {
+                    NowFont.PreparedShapedRun run = _shapedRunScratch[r];
+
+                    if (run == null)
+                        continue;
+
+                    for (int g = 0; g < run.length; ++g)
+                    {
+                        NowFont.PreparedShapedGlyph shaped = run.glyphs[g];
+
+                        if (!shaped.visible)
+                            continue;
+
+                        Texture texture = shaped.material != null
+                            ? shaped.material.mainTexture
+                            : null;
+
+                        if (texture == null)
+                            return false;
+
+                        if (requiredTexture == null)
+                            requiredTexture = texture;
+                        else if (!ReferenceEquals(requiredTexture, texture))
+                            return false;
+                    }
+                }
+
+                if (requiredTexture != null && !TryBindTexture(requiredTexture))
+                    return false;
+
+                float lineHeight = fontAsset.GetLineHeight(fontStyle) * fontSize;
+                float baseline = fontAsset.GetAscender(fontStyle) * fontSize;
+                float left = position.x;
+                float x = position.x;
+                float y = position.y;
+                int spaces = Mathf.Max(1, tabSpaces);
+                var glyphOperation = _nodes.Count == 0 ? NowSdfOperation.Union : _operation;
+                float glyphSmoothing = _nodes.Count == 0 ? 0f : _smoothing;
+                Vector2 textRotation = EffectiveRotation();
+                double textMinX = double.PositiveInfinity;
+                double textMinY = double.PositiveInfinity;
+                double textMaxX = double.NegativeInfinity;
+                double textMaxY = double.NegativeInfinity;
+
+                if (!hasControls)
+                {
+                    AppendPreparedShapedRun(
+                        _shapedRunScratch[0],
+                        fontAsset,
+                        owner,
+                        fontSize,
+                        fontStyle,
+                        baseline,
+                        y,
+                        glyphOperation,
+                        glyphSmoothing,
+                        textRotation,
+                        ref x,
+                        ref textMinX,
+                        ref textMinY,
+                        ref textMaxX,
+                        ref textMaxY);
+                }
+                else
+                {
+                    for (int s = 0; s < segmentation.segments.Length; ++s)
+                    {
+                        NowFont.PreparedShapedRun run = _shapedRunScratch[s];
+
+                        if (run != null)
+                        {
+                            AppendPreparedShapedRun(
+                                run,
+                                fontAsset,
+                                owner,
+                                fontSize,
+                                fontStyle,
+                                baseline,
+                                y,
+                                glyphOperation,
+                                glyphSmoothing,
+                                textRotation,
+                                ref x,
+                                ref textMinX,
+                                ref textMinY,
+                                ref textMaxX,
+                                ref textMaxY);
+                        }
+
+                        char control = segmentation.controls[s];
+
+                        if (control == '\n')
+                        {
+                            x = left;
+                            y += lineHeight;
+                        }
+                        else if (control == '\t')
+                        {
+                            float tabAdvance = 0f;
+
+                            for (int g = 0; g < tabRun.length; ++g)
+                                tabAdvance += tabRun.glyphs[g].xAdvance;
+
+                            x += tabAdvance * fontSize * spaces;
+                        }
+                    }
+                }
+
+                if (textRotation != Vector2.zero && _nodes.Count > firstGlyph)
+                {
+                    var textPivot = new Vector2(
+                        (float)(textMinX * 0.5d + textMaxX * 0.5d),
+                        (float)(textMinY * 0.5d + textMaxY * 0.5d));
+                    ValidateFinite(textPivot, nameof(position));
+
+                    _bounds = previousBounds;
+                    _hasBounds = previouslyHadBounds;
+
+                    for (int i = firstGlyph; i < _nodes.Count; ++i)
+                    {
+                        var node = _nodes[i];
+                        var glyphCenter = new Vector2(node.data1.x, node.data1.y);
+                        Vector2 transformedCenter = RotatePointAroundPivot(
+                            glyphCenter,
+                            textPivot,
+                            textRotation,
+                            nameof(position));
+                        node.data1.x = transformedCenter.x;
+                        node.data1.y = transformedCenter.y;
+                        var transformedRect = new NowRect(
+                            (float)((double)transformedCenter.x - (double)node.data1.z * 0.5d),
+                            (float)((double)transformedCenter.y - (double)node.data1.w * 0.5d),
+                            node.data1.z,
+                            node.data1.w);
+                        ValidateFiniteRect(transformedRect, nameof(position));
+                        node.bounds = RotatedShapeBounds(
+                            node.type,
+                            node.data1,
+                            node.data2,
+                            transformedRect,
+                            node.rotation,
+                            nameof(position));
+                        _nodes[i] = node;
+                        Encapsulate(node.bounds);
+                    }
+
+                    for (int i = firstGlyphSource; i < _glyphSources.Count; ++i)
+                    {
+                        var source = _glyphSources[i];
+                        source.pivot = textPivot;
+                        _glyphSources[i] = source;
+                    }
+                }
+
+                return true;
+            }
+            finally
+            {
+                _shapedRunScratch.Clear();
+            }
+        }
+
+        void AppendPreparedShapedRun(
+            NowFont.PreparedShapedRun run,
+            NowFontAsset fontAsset,
+            NowFont owner,
+            float fontSize,
+            NowFontStyle fontStyle,
+            float baseline,
+            float y,
+            NowSdfOperation glyphOperation,
+            float glyphSmoothing,
+            Vector2 textRotation,
+            ref float x,
+            ref double textMinX,
+            ref double textMinY,
+            ref double textMaxX,
+            ref double textMaxY)
+        {
+            for (int g = 0; g < run.length; ++g)
+            {
+                NowFont.PreparedShapedGlyph shaped = run.glyphs[g];
+                float glyphX = x + shaped.xOffset * fontSize;
+                float glyphY = y - shaped.yOffset * fontSize;
+
+                if (shaped.visible)
+                {
+                    NowFontAtlasInfo.Glyph glyph = shaped.glyph;
+                    Material material = shaped.material;
+                    var rect = GlyphRect(glyphX, glyphY, baseline, fontSize, glyph);
+                    var uv = new Vector4(
+                        glyph.atlasBounds.left,
+                        glyph.atlasBounds.bottom,
+                        glyph.atlasBounds.right - glyph.atlasBounds.left,
+                        glyph.atlasBounds.top - glyph.atlasBounds.bottom);
+                    float range = owner.GetScreenPixelRange(shaped.encodedKey, fontSize);
+                    float encoding = GetSdfEncoding(material);
+                    int nodeIndex = _nodes.Count;
+                    AppendNode(
+                        NowSdfShapeType.Glyph,
+                        RectData(rect),
+                        new Vector4(
+                            range,
+                            encoding,
+                            GetSdfDistanceCodeStep(range, encoding),
+                            0f),
+                        rect,
+                        uv,
+                        false,
+                        glyphOperation,
+                        glyphSmoothing,
+                        textRotation,
+                        textRotation == Vector2.zero);
+                    _glyphSources.Add(new NowSdfGlyphSource
+                    {
+                        nodeIndex = nodeIndex,
+                        codepoint = shaped.encodedKey,
+                        font = fontAsset,
+                        owner = owner,
+                        ownerVersion = owner.layoutDataVersion,
+                        fontSize = fontSize,
+                        fontStyle = fontStyle,
+                        x = glyphX,
+                        y = glyphY,
+                        baseline = baseline,
+                        rotation = textRotation
+                    });
+                    _textPixelRange = Mathf.Max(
+                        _textPixelRange,
+                        owner.GetDynamicPixelRange(0f, fontSize));
+
+                    var node = _nodes[_nodes.Count - 1];
+                    double halfWidth = Math.Abs((double)node.data1.z) * 0.5d;
+                    double halfHeight = Math.Abs((double)node.data1.w) * 0.5d;
+                    textMinX = Math.Min(textMinX, (double)node.data1.x - halfWidth);
+                    textMinY = Math.Min(textMinY, (double)node.data1.y - halfHeight);
+                    textMaxX = Math.Max(textMaxX, (double)node.data1.x + halfWidth);
+                    textMaxY = Math.Max(textMaxY, (double)node.data1.y + halfHeight);
+                }
+
+                x += shaped.xAdvance * fontSize;
+            }
         }
 
         static void PrewarmTextGlyphs(

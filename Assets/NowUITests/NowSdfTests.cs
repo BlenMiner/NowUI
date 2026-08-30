@@ -17,6 +17,7 @@ public class NowSdfTests
     float _previousUiScale;
     bool _previousForceManagedCompiler;
     bool _previousForceNativeCompiler;
+    bool _previousTextShaping;
 
     [SetUp]
     public void SetUp()
@@ -24,6 +25,7 @@ public class NowSdfTests
         _previousUiScale = Now.uiScale;
         _previousForceManagedCompiler = NowFontCompiler.forceManagedCompiler;
         _previousForceNativeCompiler = NowFontCompiler.forceNativeCompiler;
+        _previousTextShaping = Now.textShaping;
         Now.SetUIScale(1f);
         NowSdf.Reset();
         _drawList = new NowDrawList();
@@ -37,6 +39,7 @@ public class NowSdfTests
         Now.SetUIScale(_previousUiScale);
         NowFontCompiler.forceManagedCompiler = _previousForceManagedCompiler;
         NowFontCompiler.forceNativeCompiler = _previousForceNativeCompiler;
+        Now.textShaping = _previousTextShaping;
     }
 
     [Test]
@@ -1171,6 +1174,162 @@ public class NowSdfTests
     }
 
     [Test]
+    public void SdfTextMatchesOrdinaryShapedGlyphGeometryAndHonorsShapingSwitch()
+    {
+        const string value = "x\u0301 office AV";
+        const float fontSize = 42f;
+        var position = new Vector2(24f, 36f);
+        var font = CreateManagedDynamicFont();
+
+        try
+        {
+            Now.textShaping = true;
+
+            if (!font.TryGetPreparedShapedRun(value, fontSize, out var run))
+                Assert.Ignore("Native text shaping is unavailable on this platform.");
+
+            bool hasPositionedGlyph = false;
+            int visibleShapedGlyphs = 0;
+
+            for (int i = 0; i < run.length; ++i)
+            {
+                var glyph = run.glyphs[i];
+                if (glyph.visible)
+                    ++visibleShapedGlyphs;
+
+                if (!Mathf.Approximately(glyph.xOffset, 0f) ||
+                    !Mathf.Approximately(glyph.yOffset, 0f))
+                {
+                    hasPositionedGlyph = true;
+                }
+            }
+
+            Assert.Less(run.length, value.Length,
+                "The fixture must contain a ligature so glyph-sequence parity is exercised.");
+            Assert.IsTrue(hasPositionedGlyph,
+                "The fixture must contain a positioned combining glyph so shaped offsets are exercised.");
+            Assert.Greater(visibleShapedGlyphs, 0);
+
+            NowSdfGraph shaped = AssertSdfTextMatchesOrdinaryGeometry(
+                position,
+                value,
+                font,
+                fontSize,
+                NowFontStyle.Regular,
+                4);
+            Assert.AreEqual(visibleShapedGlyphs, shaped.nodes.Count,
+                "SDF text must emit the shaped glyph sequence, not one node per source codepoint.");
+
+            Now.textShaping = false;
+            NowSdfGraph unshaped = NowSdf.Graph()
+                .Text(position, value, font, fontSize, NowFontStyle.Regular, 4);
+            Assert.Greater(unshaped.nodes.Count, shaped.nodes.Count,
+                "Disabling shaping must retain the explicit per-codepoint compatibility path.");
+        }
+        finally
+        {
+            DestroyManagedDynamicFont(font);
+        }
+    }
+
+    [Test]
+    public void SdfTextShapedNewlinesAndTabsMatchOrdinaryLayoutAndBounds()
+    {
+        const string value = "AV\tfi\nTo x\u0301";
+        const float fontSize = 36f;
+        const int tabSpaces = 4;
+        var position = new Vector2(28f, 32f);
+        var font = CreateManagedDynamicFont();
+
+        try
+        {
+            Now.textShaping = true;
+
+            if (!font.TryGetPreparedShapedRun("AV", fontSize, out _) ||
+                !font.TryGetPreparedShapedRun("fi", fontSize, out _) ||
+                !font.TryGetPreparedShapedRun("To x\u0301", fontSize, out _))
+            {
+                Assert.Ignore("Native text shaping is unavailable on this platform.");
+            }
+
+            NowSdfGraph graph = AssertSdfTextMatchesOrdinaryGeometry(
+                position,
+                value,
+                font,
+                fontSize,
+                NowFontStyle.Regular,
+                tabSpaces);
+
+            Vector4 localBounds = font.MeasureTextBounds(
+                value,
+                fontSize,
+                NowFontStyle.Regular,
+                tabSpaces);
+            NowRect graphBounds = GlyphNodeBounds(graph);
+            var expectedBounds = new NowRect(
+                position.x + localBounds.x,
+                position.y + localBounds.y,
+                localBounds.z,
+                localBounds.w);
+
+            AssertRectApproximately(expectedBounds, graphBounds, 0.002f,
+                "SDF text ink bounds must use the same shaped advances, offsets, tabs and line metrics as ordinary text.");
+            Assert.AreEqual(expectedBounds.xMax, graph.measureSize.x, 0.002f,
+                "SDF measurement must end at the shaped text's rightmost ink bound.");
+            Assert.AreEqual(expectedBounds.yMax, graph.measureSize.y, 0.002f,
+                "SDF measurement must end at the shaped text's bottommost ink bound.");
+
+            Vector2 measured = font.MeasureText(
+                value,
+                fontSize,
+                NowFontStyle.Regular,
+                tabSpaces);
+            Assert.Greater(measured.x, 0f);
+            Assert.AreEqual(font.GetLineHeight() * fontSize * 2f, measured.y, 0.002f,
+                "The shared shaped layout must account for both lines exactly once.");
+        }
+        finally
+        {
+            DestroyManagedDynamicFont(font);
+        }
+    }
+
+    [Test]
+    public void SdfTextFallsBackAtomicallyWhenAShapedSegmentIsUnavailable()
+    {
+        const string value = "A\uE321B";
+        const float fontSize = 34f;
+        var position = new Vector2(18f, 22f);
+        var font = CreateManagedDynamicFont();
+
+        try
+        {
+            if (!font.TryGetShapedRun("AB", out _))
+                Assert.Ignore("Native text shaping is unavailable on this platform.");
+
+            Assert.IsFalse(font.TryGetShapedRun(value, out _),
+                "The fallback fixture must be rejected by shaping because it contains a missing glyph.");
+
+            Now.textShaping = true;
+            NowSdfGraph shapedFirst = NowSdf.Graph()
+                .Text(position, value, font, fontSize, NowFontStyle.Regular, 4);
+
+            Now.textShaping = false;
+            NowSdfGraph explicitCodepoints = NowSdf.Graph()
+                .Text(position, value, font, fontSize, NowFontStyle.Regular, 4);
+
+            Assert.Greater(shapedFirst.nodes.Count, 0,
+                "Rejecting one shaped segment must not drop the resolvable text around it.");
+            AssertSdfGlyphGraphsEqual(explicitCodepoints, shapedFirst,
+                "A rejected shaped segment must fall back atomically to the established codepoint layout.");
+        }
+        finally
+        {
+            DestroyManagedDynamicFont(font);
+        }
+    }
+
+    [Test]
     public void SdfSceneCanUseTextAsOperationOperand()
     {
         var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
@@ -1493,6 +1652,10 @@ public class NowSdfTests
             var material = _drawList.batches[0].material;
             var shapeData = material.GetVectorArray("_SdfData0");
             var textData = material.GetVectorArray("_SdfData2");
+            float expectedSmallScreenRange =
+                smallSize / font.GetDynamicGlyphSize(smallSize) * sharedPixelRange;
+            float expectedLargeScreenRange =
+                largeSize / font.GetDynamicGlyphSize(largeSize) * sharedPixelRange;
 
             Assert.AreEqual(2f, material.GetFloat("_SdfShapeCount"), 0.0001f,
                 "Neither glyph may disappear while reconciling a shared atlas range.");
@@ -1500,12 +1663,12 @@ public class NowSdfTests
             Assert.AreEqual((float)NowSdfShapeType.Glyph, shapeData[1].x);
             Assert.NotNull(material.mainTexture);
             Assert.AreEqual(
-                font.GetScreenPixelRangeForPixelRange('A', smallSize, sharedPixelRange),
+                expectedSmallScreenRange,
                 textData[0].x,
                 0.0001f,
                 "The small glyph must be resolved against the scene's shared raw range.");
             Assert.AreEqual(
-                font.GetScreenPixelRangeForPixelRange('B', largeSize, sharedPixelRange),
+                expectedLargeScreenRange,
                 textData[1].x,
                 0.0001f,
                 "The large glyph must be resolved against the same shared raw range.");
@@ -1658,8 +1821,10 @@ public class NowSdfTests
             Assert.IsFalse(ReferenceEquals(measuredTexture, material.mainTexture),
                 "The destroyed atlas object must not be rebound after cache recreation.");
             Assert.Greater(font.GetCachedDynamicPageCount(), 0);
+            float expectedScreenRange =
+                fontSize / font.GetDynamicGlyphSize(fontSize) * requestedPixelRange;
             Assert.AreEqual(
-                font.GetScreenPixelRangeForPixelRange('A', fontSize, requestedPixelRange),
+                expectedScreenRange,
                 textData.x,
                 0.0001f);
             Assert.AreEqual(1f, textData.y, 0.0001f);
@@ -1770,8 +1935,10 @@ public class NowSdfTests
             Vector4 textData = material.GetVectorArray("_SdfData2")[0];
             Assert.Greater(textData.x, baseScreenRange,
                 "A large positive contour offset must not collapse to the base field range.");
+            float expectedScreenRange =
+                fontSize / font.GetDynamicGlyphSize(fontSize) * contourPixelRange;
             Assert.AreEqual(
-                font.GetScreenPixelRangeForPixelRange('A', fontSize, contourPixelRange),
+                expectedScreenRange,
                 textData.x,
                 0.0001f,
                 "Finite contour reach must include the absolute authored offset.");
@@ -2970,6 +3137,137 @@ public class NowSdfTests
         Assert.AreEqual(0, NowSdf.cacheCount);
         Assert.AreEqual(0, NowSdf.maskTextureCount);
         Assert.AreEqual(0, NowSdf.cachedMaskPixels);
+    }
+
+    static NowSdfGraph AssertSdfTextMatchesOrdinaryGeometry(
+        Vector2 position,
+        string value,
+        NowFontAsset font,
+        float fontSize,
+        NowFontStyle fontStyle,
+        int tabSpaces)
+    {
+        var graph = NowSdf.Graph()
+            .Text(position, value, font, fontSize, fontStyle, tabSpaces);
+        using var direct = new NowDrawList();
+
+        using (direct.Begin(new Vector2(1024f, 512f)))
+        {
+            Now.Text(new NowRect(position.x, position.y, 960f, 440f), font)
+                .SetFontSize(fontSize)
+                .SetFontStyle(fontStyle)
+                .SetColor(Color.white)
+                .Draw(value);
+        }
+
+        var vertices = new System.Collections.Generic.List<Vector3>();
+        var uvs = new System.Collections.Generic.List<Vector2>();
+        direct.mesh.GetVertices(vertices);
+        direct.mesh.GetUVs(0, uvs);
+
+        Assert.AreEqual(graph.nodes.Count * 4, vertices.Count,
+            "SDF text and ordinary text emitted different visible glyph counts.");
+        Assert.AreEqual(vertices.Count, uvs.Count);
+
+        for (int i = 0; i < graph.nodes.Count; ++i)
+        {
+            NowSdfNode node = graph.nodes[i];
+            int vertex = i * 4;
+            Assert.AreEqual(NowSdfShapeType.Glyph, node.type);
+
+            var ordinaryRect = new NowRect(
+                vertices[vertex].x,
+                -vertices[vertex + 1].y,
+                vertices[vertex + 2].x - vertices[vertex].x,
+                vertices[vertex + 1].y - vertices[vertex].y);
+            var sdfRect = new NowRect(
+                node.data1.x - node.data1.z * 0.5f,
+                node.data1.y - node.data1.w * 0.5f,
+                node.data1.z,
+                node.data1.w);
+            AssertRectApproximately(ordinaryRect, sdfRect, 0.002f,
+                $"SDF glyph {i} did not match the ordinary shaped glyph quad.");
+
+            var ordinaryUv = new Vector4(
+                uvs[vertex].x,
+                uvs[vertex].y,
+                uvs[vertex + 2].x - uvs[vertex].x,
+                uvs[vertex + 2].y - uvs[vertex].y);
+            Assert.AreEqual(ordinaryUv.x, node.uv.x, 0.000001f,
+                $"SDF glyph {i} used a different atlas left edge.");
+            Assert.AreEqual(ordinaryUv.y, node.uv.y, 0.000001f,
+                $"SDF glyph {i} used a different atlas bottom edge.");
+            Assert.AreEqual(ordinaryUv.z, node.uv.z, 0.000001f,
+                $"SDF glyph {i} used a different atlas width.");
+            Assert.AreEqual(ordinaryUv.w, node.uv.w, 0.000001f,
+                $"SDF glyph {i} used a different atlas height.");
+        }
+
+        return graph;
+    }
+
+    static NowRect GlyphNodeBounds(NowSdfGraph graph)
+    {
+        Assert.NotNull(graph);
+        bool hasBounds = false;
+        float minX = 0f;
+        float minY = 0f;
+        float maxX = 0f;
+        float maxY = 0f;
+
+        for (int i = 0; i < graph.nodes.Count; ++i)
+        {
+            NowSdfNode node = graph.nodes[i];
+            if (node.type != NowSdfShapeType.Glyph)
+                continue;
+
+            if (!hasBounds)
+            {
+                minX = node.bounds.x;
+                minY = node.bounds.y;
+                maxX = node.bounds.xMax;
+                maxY = node.bounds.yMax;
+                hasBounds = true;
+            }
+            else
+            {
+                minX = Mathf.Min(minX, node.bounds.x);
+                minY = Mathf.Min(minY, node.bounds.y);
+                maxX = Mathf.Max(maxX, node.bounds.xMax);
+                maxY = Mathf.Max(maxY, node.bounds.yMax);
+            }
+        }
+
+        Assert.IsTrue(hasBounds, "The text graph did not emit any glyph bounds.");
+        return new NowRect(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    static void AssertSdfGlyphGraphsEqual(
+        NowSdfGraph expected,
+        NowSdfGraph actual,
+        string message)
+    {
+        Assert.NotNull(expected);
+        Assert.NotNull(actual);
+        Assert.AreEqual(expected.nodes.Count, actual.nodes.Count, message);
+        Assert.AreSame(expected.texture, actual.texture, message);
+
+        for (int i = 0; i < expected.nodes.Count; ++i)
+        {
+            NowSdfNode expectedNode = expected.nodes[i];
+            NowSdfNode actualNode = actual.nodes[i];
+            Assert.AreEqual(expectedNode.type, actualNode.type, message);
+            Assert.AreEqual(expectedNode.operation, actualNode.operation, message);
+            Assert.AreEqual(expectedNode.smoothing, actualNode.smoothing, 0.000001f, message);
+            Assert.AreEqual(expectedNode.data1.x, actualNode.data1.x, 0.000001f, message);
+            Assert.AreEqual(expectedNode.data1.y, actualNode.data1.y, 0.000001f, message);
+            Assert.AreEqual(expectedNode.data1.z, actualNode.data1.z, 0.000001f, message);
+            Assert.AreEqual(expectedNode.data1.w, actualNode.data1.w, 0.000001f, message);
+            Assert.AreEqual(expectedNode.data2, actualNode.data2, message);
+            Assert.AreEqual(expectedNode.uv, actualNode.uv, message);
+            Assert.AreEqual(expectedNode.rotation, actualNode.rotation, message);
+            AssertRectApproximately(expectedNode.bounds, actualNode.bounds, 0.000001f, message);
+        }
     }
 
     static NowFont CreateManagedDynamicFont()
