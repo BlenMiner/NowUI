@@ -224,20 +224,82 @@ namespace NowUI.Editor
         static void DrawDesktopFidelity(NowRect rect, NowHarnessAnimationFrame frame)
         {
             float u = frame.normalizedTime;
-            float angle = u * FullTurn;
-            Vector2 cursor = DesktopCursorPath(u);
+            float frameIndex = frame.index;
+            Vector2 cursor = DesktopCursorPath(frameIndex);
+            float minimizePress = SmoothPulse(frameIndex, 38f, 40f, 41f, 43f);
+            float restorePress = SmoothPulse(frameIndex, 60f, 62f, 64f, 66f);
 
             DrawDesktopWallpaper(rect, u);
             DrawMenuBar(rect);
 
             var window = new NowRect(92f, 54f, 776f, 406f);
-            DrawDesktopWindow(window, u, cursor);
+            float windowMinimize = WindowMinimizeProgress(frameIndex);
+            var windowMinimizeTarget = new NowRect(464f, 494f, 36f, 18f);
+            var windowEffectBounds = new NowRect(48f, 36f, 864f, 486f);
+            using (NowEffects.Modifier(new ReadmeGenieDeformer(windowMinimizeTarget, windowMinimize))
+                .SetId("readme-desktop-window-minimize")
+                .SetRenderToTexture()
+                .SetSourceRect(windowEffectBounds)
+                .SetSubdivision(24)
+                .Begin())
+            {
+                DrawDesktopWindow(window, u, cursor, minimizePress);
+            }
 
-            float controlCenter = SmoothPulse(u, 0.19f, 0.29f, 0.53f, 0.64f);
+            float controlCenter = SmoothPulse(frameIndex, 8f, 12f, 24f, 29f);
             DrawControlCenter(new NowRect(710f, Mathf.Lerp(18f, 38f, controlCenter), 220f, 238f), controlCenter, u);
-            DrawDesktopDock(rect, cursor, u);
+            DrawDesktopDock(rect, cursor, u, restorePress);
             DrawCursor(cursor);
             DrawRenderedTag(new NowRect(770f, 504f, 160f, 24f));
+        }
+
+        static float WindowMinimizeProgress(float frame)
+        {
+            if (frame < 42f)
+                return 0f;
+            if (frame < 57f)
+                return Mathf.InverseLerp(42f, 57f, frame);
+            if (frame < 64f)
+                return 1f;
+            if (frame < 80f)
+                return 1f - Mathf.InverseLerp(64f, 80f, frame);
+            return 0f;
+        }
+
+        readonly struct ReadmeGenieDeformer : INowVertexDeformer
+        {
+            readonly NowRect _target;
+            readonly float _progress;
+
+            public ReadmeGenieDeformer(NowRect target, float progress)
+            {
+                _target = target;
+                _progress = Mathf.Clamp01(progress);
+            }
+
+            public Vector2 Deform(in NowEffectVertex vertex, in NowEffectContext context)
+            {
+                float eased = Smooth(_progress);
+                float along = vertex.normalized.y;
+                float delay = (1f - along) * 0.35f;
+                float local = Mathf.Clamp01((eased - delay) / (1f - delay));
+                float localPull = Smooth(local);
+                var target = new Vector2(
+                    Mathf.Lerp(_target.x, _target.xMax, vertex.normalized.x),
+                    Mathf.Lerp(_target.y, _target.yMax, vertex.normalized.y));
+                Vector2 result = Vector2.Lerp(vertex.position, target, localPull);
+
+                Vector2 pull = _target.center - context.sourceRect.center;
+                if (pull.sqrMagnitude > 0.001f)
+                {
+                    var perpendicular = new Vector2(-pull.y, pull.x).normalized;
+                    float side = vertex.normalized.x - 0.5f;
+                    float curve = Mathf.Sin(along * Mathf.PI) * Mathf.Sin(eased * Mathf.PI) * 0.15f;
+                    result += perpendicular * side * curve * Mathf.Max(context.sourceRect.width, context.sourceRect.height);
+                }
+
+                return result;
+            }
         }
 
         static void DrawDesktopWallpaper(NowRect rect, float u)
@@ -300,7 +362,7 @@ namespace NowUI.Editor
             DrawText(new NowRect(902f, 7f, 42f, 17f), "9:41", 12f, new Color(1f, 1f, 1f, 0.90f), true);
         }
 
-        static void DrawDesktopWindow(NowRect window, float u, Vector2 cursor)
+        static void DrawDesktopWindow(NowRect window, float u, Vector2 cursor, float minimizePress)
         {
             Now.Rectangle(new NowRect(window.x - 14f, window.y + 12f, window.width + 28f, window.height + 20f))
                 .SetColor(new Color(0f, 0f, 0f, 0.34f))
@@ -329,16 +391,25 @@ namespace NowUI.Editor
                 .SetColor(new Color(1f, 1f, 1f, 0.09f))
                 .Draw();
 
-            DrawTrafficLights(new Vector2(window.x + 20f, window.y + 19f));
+            DrawTrafficLights(new Vector2(window.x + 20f, window.y + 19f), minimizePress);
             DrawToolbar(window);
             DrawSidebar(sidebar, u);
             DrawGallery(new NowRect(window.x + sidebarWidth, window.y + titleHeight, window.width - sidebarWidth, window.height - titleHeight), u, cursor);
         }
 
-        static void DrawTrafficLights(Vector2 origin)
+        static void DrawTrafficLights(Vector2 origin, float minimizePress)
         {
             Now.Circle(origin, 6f).SetColor(new Color(1f, 0.36f, 0.34f, 1f)).Draw();
-            Now.Circle(origin + new Vector2(20f, 0f), 6f).SetColor(new Color(1f, 0.75f, 0.20f, 1f)).Draw();
+            Vector2 minimize = origin + new Vector2(20f, 0f);
+            Now.Circle(minimize, 9f + minimizePress * 2f)
+                .SetColor(Color.clear)
+                .SetOutline(1.5f, new Color(1f, 0.82f, 0.28f, 0.42f * minimizePress))
+                .Draw();
+            Now.Circle(minimize, 6f + minimizePress * 1.5f).SetColor(new Color(1f, 0.75f, 0.20f, 1f)).Draw();
+            Now.Line(minimize + new Vector2(-3f, 0f), minimize + new Vector2(3f, 0f))
+                .SetWidth(1.2f)
+                .SetColor(new Color(0.32f, 0.20f, 0.02f, minimizePress))
+                .Draw();
             Now.Circle(origin + new Vector2(40f, 0f), 6f).SetColor(new Color(0.20f, 0.82f, 0.34f, 1f)).Draw();
         }
 
@@ -569,7 +640,7 @@ namespace NowUI.Editor
             DrawText(new NowRect(rect.x + 42f, rect.y + 31f, rect.width - 48f, 14f), "On", 9f, WithAlpha(Color.white, alpha * 0.52f));
         }
 
-        static void DrawDesktopDock(NowRect rect, Vector2 cursor, float u)
+        static void DrawDesktopDock(NowRect rect, Vector2 cursor, float u, float restorePress)
         {
             var dock = new NowRect(rect.width * 0.5f - 190f, rect.height - 66f, 380f, 58f);
             Now.Glass(dock)
@@ -587,9 +658,16 @@ namespace NowUI.Editor
             {
                 float centerX = start + i * spacing + 20f;
                 float proximity = Mathf.Clamp01(1f - Mathf.Abs(cursor.x - centerX) / 82f) * dockAttention;
-                float bounce = i == 3 ? Mathf.Max(0f, Mathf.Sin(u * FullTurn * 2f)) * 2f : 0f;
+                float bounce = i == 3 ? Mathf.Max(0f, Mathf.Sin(u * FullTurn * 2f)) * 2f + restorePress * 3f : 0f;
                 float size = 38f + proximity * 14f;
                 var icon = new NowRect(centerX - size * 0.5f, dock.y + 10f - proximity * 10f - bounce, size, size);
+                if (i == 3 && restorePress > 0.001f)
+                {
+                    Now.Circle(icon.center, size * 0.62f + restorePress * 5f)
+                        .SetColor(Color.clear)
+                        .SetOutline(2f, new Color(0.52f, 1f, 0.88f, 0.52f * restorePress))
+                        .Draw();
+                }
                 DrawDockIcon(icon, DockColors[i], i);
             }
         }
@@ -637,20 +715,26 @@ namespace NowUI.Editor
             }
         }
 
-        static Vector2 DesktopCursorPath(float u)
+        static Vector2 DesktopCursorPath(float frame)
         {
-            Vector2 a = new Vector2(318f, 205f);
-            Vector2 b = new Vector2(820f, 18f);
-            Vector2 c = new Vector2(610f, 488f);
-            float cycle = u * 3f;
-            int segment = Mathf.Min(2, Mathf.FloorToInt(cycle));
-            float t = Smooth(cycle - segment);
+            var start = new Vector2(318f, 205f);
+            var controlCenter = new Vector2(842f, 15f);
+            var minimize = new Vector2(132f, 73f);
+            var dock = new Vector2(482f, 490f);
 
-            if (segment == 0)
-                return Vector2.Lerp(a, b, t);
-            if (segment == 1)
-                return Vector2.Lerp(b, c, t);
-            return Vector2.Lerp(c, a, t);
+            if (frame < 10f)
+                return Vector2.Lerp(start, controlCenter, Smooth(Mathf.InverseLerp(0f, 10f, frame)));
+            if (frame < 26f)
+                return controlCenter;
+            if (frame < 38f)
+                return Vector2.Lerp(controlCenter, minimize, Smooth(Mathf.InverseLerp(26f, 38f, frame)));
+            if (frame < 43f)
+                return minimize;
+            if (frame < 58f)
+                return Vector2.Lerp(minimize, dock, Smooth(Mathf.InverseLerp(43f, 58f, frame)));
+            if (frame < 66f)
+                return dock;
+            return Vector2.Lerp(dock, start, Smooth(Mathf.InverseLerp(66f, 96f, frame)));
         }
 
         static void DrawCursor(Vector2 position)

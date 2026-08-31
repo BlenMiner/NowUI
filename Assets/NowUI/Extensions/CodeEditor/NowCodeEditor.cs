@@ -1340,11 +1340,15 @@ namespace NowUI.CodeEditor
 
             Vector4 cornerRadius = themeAsset.Rectangle(rect, NowRectangleStyle.Outline).radius;
 
-            // The code canvas sits on the Background token — the darkest surface
-            // in IDE-style dark themes — while keeping the Surface preset's
-            // outline so the editor still reads as a bounded panel.
+            // The code canvas takes the plane with the most text contrast:
+            // the darkest surface on dark themes (the IDE-style inset), the
+            // lightest on light themes (the paper you type on). Either way it
+            // keeps the Surface preset's outline so the editor still reads as
+            // a bounded panel.
             themeAsset.Rectangle(rect, NowRectangleStyle.Surface)
-                .SetColor(themeAsset.GetColor(NowColorToken.Background, Color.white))
+                .SetColor(themeAsset.isDark
+                    ? themeAsset.GetColor(NowColorToken.Background, Color.black)
+                    : themeAsset.GetColor(NowColorToken.Surface, Color.white))
                 .SetRadius(cornerRadius)
                 .Draw();
 

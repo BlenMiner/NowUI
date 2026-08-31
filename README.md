@@ -27,8 +27,9 @@ hand-composited UI layers.
 
 *A native desktop-style application shell made from NowUI primitives: animated
 procedural wallpaper, frosted menu/window/dock surfaces, window chrome,
-cursor-responsive content, a live control panel, and dock magnification. No OS
-screenshots or platform artwork.*
+cursor-responsive content, a live control panel, dock magnification, and a
+texture-backed custom vertex modifier that bends the entire window into its
+Dock icon and restores it. No OS screenshots or platform artwork.*
 
 ![Animated SDF metamorphosis cycling between organic, ticket, and prism forms with contours and lighting](Docs/media/readme/sdf-metamorphosis.gif)
 
