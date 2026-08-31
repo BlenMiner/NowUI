@@ -2,7 +2,7 @@
 
 param(
     [Parameter(Mandatory = $false)]
-    [ValidateSet("EditMode", "PlayMode", "Visual", "Golden", "Perf", "All")]
+    [ValidateSet("EditMode", "PlayMode", "Visual", "Golden", "Perf", "Animation", "All")]
     [string] $Mode = "All",
 
     [Parameter(Mandatory = $false)]
@@ -22,6 +22,9 @@ param(
 
     [Parameter(Mandatory = $false)]
     [switch] $UpdateBaselines,
+
+    [Parameter(Mandatory = $false)]
+    [string] $Ffmpeg,
 
     [Parameter(Mandatory = $false)]
     [switch] $CleanScriptAssemblies
@@ -106,6 +109,48 @@ function Resolve-UnityEditor {
     throw "Unity $expectedVersion was not found. Checked '$searched'. Pass -UnityEditor or set UNITY_EDITOR."
 }
 
+function Resolve-Ffmpeg {
+    param([string] $RequestedPath)
+
+    $requested = $RequestedPath
+    if ([string]::IsNullOrWhiteSpace($requested)) {
+        if (![string]::IsNullOrWhiteSpace($env:FFMPEG)) {
+            $requested = $env:FFMPEG
+        } elseif (![string]::IsNullOrWhiteSpace($env:FFMPEG_PATH)) {
+            $requested = $env:FFMPEG_PATH
+        }
+    }
+
+    if (![string]::IsNullOrWhiteSpace($requested)) {
+        if (Test-Path -LiteralPath $requested -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $requested).Path
+        }
+
+        $looksLikePath = [System.IO.Path]::IsPathRooted($requested) -or
+            $requested.Contains([System.IO.Path]::DirectorySeparatorChar) -or
+            $requested.Contains([System.IO.Path]::AltDirectorySeparatorChar)
+        if ($looksLikePath) {
+            throw "The requested ffmpeg executable was not found at '$requested'."
+        }
+
+        $requestedCommand = Get-Command -Name $requested -CommandType Application -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($null -ne $requestedCommand) {
+            return $requestedCommand.Source
+        }
+
+        throw "The requested ffmpeg command '$requested' was not found on PATH."
+    }
+
+    $pathCommand = Get-Command -Name "ffmpeg" -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -ne $pathCommand) {
+        return $pathCommand.Source
+    }
+
+    throw "ffmpeg is required for Animation mode. Pass -Ffmpeg, set FFMPEG or FFMPEG_PATH, or add ffmpeg to PATH."
+}
+
 function Clear-ScriptAssemblies {
     $project = (Resolve-Path -LiteralPath $ProjectPath).Path
     $scriptAssembliesPath = Join-Path $project "Library/ScriptAssemblies"
@@ -162,6 +207,54 @@ function Invoke-Unity {
 
     if ($exitCode -ne 0) {
         throw "Unity exited with code $exitCode."
+    }
+}
+
+function Invoke-Ffmpeg {
+    param(
+        [string] $Executable,
+        [string[]] $Arguments,
+        [string] $Description
+    )
+
+    Write-Host "Running ffmpeg for $Description."
+    $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $processInfo.FileName = $Executable
+    $processInfo.UseShellExecute = $false
+    $processInfo.RedirectStandardOutput = $true
+    $processInfo.RedirectStandardError = $true
+
+    foreach ($arg in $Arguments) {
+        [void] $processInfo.ArgumentList.Add($arg)
+    }
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $processInfo
+
+    try {
+        if (!$process.Start()) {
+            throw "ffmpeg did not start."
+        }
+
+        $standardOutput = $process.StandardOutput.ReadToEndAsync()
+        $standardError = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $output = $standardOutput.GetAwaiter().GetResult()
+        $errorOutput = $standardError.GetAwaiter().GetResult()
+
+        if ($process.ExitCode -ne 0) {
+            if (![string]::IsNullOrWhiteSpace($output)) {
+                Write-Host $output.Trim()
+            }
+
+            if (![string]::IsNullOrWhiteSpace($errorOutput)) {
+                Write-Host $errorOutput.Trim()
+            }
+
+            throw "ffmpeg exited with code $($process.ExitCode) while encoding $Description."
+        }
+    } finally {
+        $process.Dispose()
     }
 }
 
@@ -304,11 +397,106 @@ function Invoke-ExecuteMethod {
         $args += "-nowuiUpdateBaselines"
     }
 
-    if ($Name -eq "visual" -and ![string]::IsNullOrWhiteSpace($ScenarioFilter)) {
+    if ($Name -in @("visual", "animation") -and ![string]::IsNullOrWhiteSpace($ScenarioFilter)) {
         $args += @("-nowuiScenarioFilter", $ScenarioFilter)
     }
 
     Invoke-Unity -UnityArgs $args -LogPath (Join-Path $methodArtifacts "NowUI-$Name.log")
+}
+
+function Invoke-AnimationCapture {
+    $animationArtifacts = Join-Path $ArtifactsPath "animation"
+    $manifestPath = Join-Path $animationArtifacts "manifest.json"
+    Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue
+
+    Invoke-ExecuteMethod "NowUI.Editor.NowVisualHarnessRunner.CaptureAnimations" "animation"
+
+    if (!(Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw "Unity did not write an animation manifest to '$manifestPath'."
+    }
+
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    } catch {
+        throw "Unity wrote an invalid animation manifest to '$manifestPath': $($_.Exception.Message)"
+    }
+
+    $captures = @($manifest.captures)
+    if ($captures.Count -eq 0) {
+        Write-Host "Unity animation harness has no registered scenarios. No GIFs were encoded."
+        return
+    }
+
+    $ffmpegPath = Resolve-Ffmpeg -RequestedPath $Ffmpeg
+    Write-Host "Using ffmpeg from '$ffmpegPath'."
+
+    $animationRoot = [System.IO.Path]::GetFullPath($animationArtifacts)
+    $rootPrefix = $animationRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $pathComparison = if ($IsWindows) {
+        [System.StringComparison]::OrdinalIgnoreCase
+    } else {
+        [System.StringComparison]::Ordinal
+    }
+
+    foreach ($capture in $captures) {
+        if ($null -eq $capture) {
+            throw "Animation manifest '$manifestPath' contains an empty capture."
+        }
+
+        $name = [string] $capture.name
+        [int] $frameCount = $capture.frameCount
+        [double] $frameRate = $capture.framesPerSecond
+        $frameDirectory = [System.IO.Path]::GetFullPath([string] $capture.frameDirectory)
+        $framePattern = [string] $capture.framePattern
+        $gifPath = [System.IO.Path]::GetFullPath([string] $capture.gifPath)
+
+        if ([string]::IsNullOrWhiteSpace($name) -or $frameCount -le 0 -or
+            $frameRate -le 0 -or [double]::IsNaN($frameRate) -or [double]::IsInfinity($frameRate)) {
+            throw "Animation manifest '$manifestPath' contains invalid timing metadata for '$name'."
+        }
+
+        if ($framePattern -ne "frame-%04d.png") {
+            throw "Animation '$name' uses unsupported frame pattern '$framePattern'."
+        }
+
+        if (!$frameDirectory.StartsWith($rootPrefix, $pathComparison) -or
+            !$gifPath.StartsWith($rootPrefix, $pathComparison)) {
+            throw "Animation '$name' resolves outside '$animationRoot'."
+        }
+
+        $firstFrame = Join-Path $frameDirectory "frame-0000.png"
+        $lastFrame = Join-Path $frameDirectory ("frame-{0:D4}.png" -f ($frameCount - 1))
+        if (!(Test-Path -LiteralPath $firstFrame -PathType Leaf) -or
+            !(Test-Path -LiteralPath $lastFrame -PathType Leaf)) {
+            throw "Animation '$name' did not produce its complete numbered PNG sequence in '$frameDirectory'."
+        }
+
+        $frameRateText = [string]::Format(
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            "{0:0.###}",
+            $frameRate)
+        $frameInput = Join-Path $frameDirectory $framePattern
+        # Ordered dithering stays stable between frames, preserving gradients
+        # without the large temporal-noise penalty of error diffusion in GIFs.
+        $filter = "[0:v]split[palette_source][frames];[palette_source]palettegen=max_colors=256:stats_mode=diff[palette];[frames][palette]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
+
+        Remove-Item -LiteralPath $gifPath -Force -ErrorAction SilentlyContinue
+        Invoke-Ffmpeg -Executable $ffmpegPath -Description "animation '$name'" -Arguments @(
+            "-hide_banner",
+            "-loglevel", "warning",
+            "-y",
+            "-framerate", $frameRateText,
+            "-start_number", "0",
+            "-i", $frameInput,
+            "-frames:v", [string] $frameCount,
+            "-filter_complex", $filter,
+            "-loop", "0",
+            "-gifflags", "+transdiff",
+            $gifPath
+        )
+
+        Write-Host "Encoded '$gifPath'."
+    }
 }
 
 New-Item -ItemType Directory -Force -Path $ArtifactsPath | Out-Null
@@ -323,6 +511,7 @@ switch ($Mode) {
     "Visual" { Invoke-ExecuteMethod "NowUI.Editor.NowVisualHarnessRunner.Capture" "visual" }
     "Golden" { Invoke-ExecuteMethod "NowUI.Editor.NowVisualHarnessRunner.CompareGoldens" "golden" }
     "Perf" { Invoke-ExecuteMethod "NowUI.Editor.NowPerfSmokeRunner.Run" "perf" }
+    "Animation" { Invoke-AnimationCapture }
     "All" {
         Invoke-TestRun "EditMode"
         Invoke-TestRun "PlayMode"

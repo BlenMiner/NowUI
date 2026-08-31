@@ -17,10 +17,24 @@ a `RenderTexture`, or IMGUI — same drawing code everywhere.
 ## Showcase
 
 Every image in this README — the logo above included — was drawn by NowUI
-itself: the repository's deterministic visual harness renders each scene into
-an offscreen `RenderTexture` and writes the PNG to disk
-(`Tools/NowUI-Harness.ps1 -Mode Visual`). No editor screenshots, no
-compositing.
+itself. The repository's deterministic visual harness renders still scenes
+into an offscreen `RenderTexture` (`Tools/NowUI-Harness.ps1 -Mode Visual`),
+while its animation mode steps an explicit caller-owned clock and encodes the
+resulting frame sequence (`-Mode Animation`). No editor screenshots or
+hand-composited UI layers.
+
+![macOS-inspired native desktop application shell rendered and animated entirely with NowUI](Docs/media/readme/desktop-fidelity.gif)
+
+*A native desktop-style application shell made from NowUI primitives: animated
+procedural wallpaper, frosted menu/window/dock surfaces, window chrome,
+cursor-responsive content, a live control panel, and dock magnification. No OS
+screenshots or platform artwork.*
+
+![Animated SDF metamorphosis cycling between organic, ticket, and prism forms with contours and lighting](Docs/media/readme/sdf-metamorphosis.gif)
+
+*Three unrelated SDF graphs transition through real distance-field morphs —
+not crossfades — with boolean cutouts, animated contour reveal, warp, emboss,
+shadow, outline, and glow. The animated field itself is one quad.*
 
 ![In-app documentation browser rendered with NowUI, including live 3D model previews and syntax-highlighted code](Docs/media/readme/docs-model-preview-demo.png)
 

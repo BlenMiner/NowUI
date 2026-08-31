@@ -1628,36 +1628,42 @@ namespace NowUI.CodeEditor
                 case NowCodeTokenKind.ListMarker:
                     return themeAsset.GetColor(NowColorToken.Accent, Color.blue);
                 case NowCodeTokenKind.Property:
+                    // Fixed on light mode too: a theme whose accent is a
+                    // bright hue (yellow, lime) has no contrast as text on a
+                    // light editor background, and identifiers are most of a
+                    // file.
                     return dark
                         ? new Vector4(0.757f, 0.569f, 1f, 1f)
-                        : themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+                        : new Vector4(0.478f, 0.18f, 0.62f, 1f);
                 case NowCodeTokenKind.Attribute:
                     return dark
                         ? new Vector4(0.224f, 0.80f, 0.56f, 1f)
-                        : themeAsset.GetColor(NowColorToken.Accent, Color.blue);
+                        : new Vector4(0.05f, 0.39f, 0.30f, 1f);
                 case NowCodeTokenKind.String:
                 case NowCodeTokenKind.CodeSpan:
                     return dark
                         ? new Vector4(0.79f, 0.64f, 0.43f, 1f)
-                        : new Vector4(0.16f, 0.52f, 0.26f, 1f);
+                        : new Vector4(0.11f, 0.42f, 0.19f, 1f);
                 case NowCodeTokenKind.Number:
                     return dark
                         ? new Vector4(0.93f, 0.58f, 0.75f, 1f)
-                        : new Vector4(0.55f, 0.27f, 0.68f, 1f);
+                        : new Vector4(0.48f, 0.23f, 0.60f, 1f);
                 case NowCodeTokenKind.Emphasis:
                     return dark
                         ? new Vector4(0.71f, 0.58f, 0.94f, 1f)
-                        : new Vector4(0.55f, 0.27f, 0.68f, 1f);
+                        : new Vector4(0.48f, 0.23f, 0.60f, 1f);
                 case NowCodeTokenKind.Constant:
                     return dark
                         ? new Vector4(0.40f, 0.76f, 0.80f, 1f)
-                        : new Vector4(0.05f, 0.45f, 0.50f, 1f);
+                        : new Vector4(0.03f, 0.40f, 0.45f, 1f);
                 case NowCodeTokenKind.Keyword:
                 case NowCodeTokenKind.Strong:
                 case NowCodeTokenKind.Tag:
+                    // The light orange sits deep enough to clear 4.5:1 on a
+                    // warm paper background, not only on pure white.
                     return dark
                         ? new Vector4(0.42f, 0.58f, 0.92f, 1f)
-                        : new Vector4(0.80f, 0.42f, 0.13f, 1f);
+                        : new Vector4(0.56f, 0.29f, 0.03f, 1f);
                 case NowCodeTokenKind.Comment:
                 case NowCodeTokenKind.Quote:
                 case NowCodeTokenKind.Fence:
@@ -1665,19 +1671,20 @@ namespace NowUI.CodeEditor
                 case NowCodeTokenKind.DocComment:
                     return dark
                         ? new Vector4(0.44f, 0.63f, 0.37f, 1f)
-                        : new Vector4(0.22f, 0.46f, 0.18f, 1f);
+                        : new Vector4(0.18f, 0.42f, 0.15f, 1f);
                 case NowCodeTokenKind.DocTag:
                     return dark
                         ? new Vector4(0.36f, 0.50f, 0.32f, 1f)
-                        : new Vector4(0.34f, 0.50f, 0.30f, 1f);
+                        : new Vector4(0.24f, 0.40f, 0.22f, 1f);
                 case NowCodeTokenKind.Punctuation:
-                    // Rider renders operators and delimiters in the plain text
-                    // color on dark schemes; light schemes keep them muted.
-                    return dark
-                        ? themeAsset.GetColor(NowColorToken.Text, Color.white)
-                        : themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
+                    // Plain text color on both schemes: operators and braces
+                    // carry structure, and a muted theme's TextMuted can drop
+                    // them below readable contrast on a light background.
+                    return themeAsset.GetColor(NowColorToken.Text, dark ? Color.white : Color.black);
                 case NowCodeTokenKind.Error:
-                    return new Vector4(0.86f, 0.24f, 0.24f, 1f);
+                    return dark
+                        ? new Vector4(0.86f, 0.24f, 0.24f, 1f)
+                        : new Vector4(0.698f, 0.176f, 0.231f, 1f);
                 default:
                     return themeAsset.GetColor(NowColorToken.Text, Color.black);
             }
@@ -2021,7 +2028,9 @@ namespace NowUI.CodeEditor
                 case NowCodeDiagnosticSeverity.Info:
                     return themeAsset.GetColor(NowColorToken.TextMuted, Color.gray);
                 default:
-                    return new Vector4(0.86f, 0.24f, 0.24f, 1f);
+                    return themeAsset.isDark
+                        ? new Vector4(0.86f, 0.24f, 0.24f, 1f)
+                        : new Vector4(0.698f, 0.176f, 0.231f, 1f);
             }
         }
 

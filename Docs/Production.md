@@ -34,6 +34,13 @@ Run the editor visual harness locally as a separate rendering gate:
 
 - `Tools/NowUI-Harness.ps1 -Mode Visual` produces PNG captures and a
   `manifest.json` under `artifacts/local/visual`.
+- `Tools/NowUI-Harness.ps1 -Mode Animation` advances an explicit deterministic
+  frame clock, writes numbered PNG sequences, and encodes looping GIFs under
+  `artifacts/local/animation`. Animation capture is intentionally separate
+  from `All` and golden comparison. It requires `ffmpeg` on `PATH`; pass
+  `-Ffmpeg`, or set `FFMPEG`/`FFMPEG_PATH`, for a nonstandard install.
+- `-ScenarioFilter` applies to both `Visual` and `Animation` modes, so a single
+  README scene can be iterated without recapturing the full catalogue.
 - `Tools/NowUI-Harness.ps1 -Mode Visual -ScenarioFilter theme-review-`
   auto-discovers every `NowThemeAsset` under `Assets/NowUI/Assets/Themes` and
   renders the same palette, preset, control, and popup review sheet for each.
