@@ -45,9 +45,10 @@ public class NowHarnessAnimationTests
     {
         var scenarios = NowHarnessAnimationScenarios.All();
 
-        Assert.AreEqual(2, scenarios.Count);
+        Assert.AreEqual(3, scenarios.Count);
         Assert.AreEqual("sdf-metamorphosis", scenarios[0].name);
         Assert.AreEqual("desktop-fidelity", scenarios[1].name);
+        Assert.AreEqual("sdf-shader-xray", scenarios[2].name);
 
         for (int i = 0; i < scenarios.Count; ++i)
         {

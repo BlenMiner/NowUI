@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using NowUI.Sdf;
 using UnityEngine;
@@ -16,6 +17,10 @@ namespace NowUI.Editor
         static readonly NowSdfGraph SdfBlob = NowSdf.Graph();
         static readonly NowSdfGraph SdfTicket = NowSdf.Graph();
         static readonly NowSdfGraph SdfPrism = NowSdf.Graph();
+        static readonly NowSdfGraph SdfXRayField = NowSdf.Graph();
+
+        static Material _xRayPaperCutoutMaterial;
+        static Material _xRayTopographicMaterial;
 
         static readonly Vector2[] CursorTriangle = new Vector2[3];
         static readonly Vector2[] CursorShadowTriangle = new Vector2[3];
@@ -67,6 +72,14 @@ namespace NowUI.Editor
                 96,
                 24,
                 DrawDesktopFidelity));
+
+            scenarios.Add(new NowHarnessAnimationScenario(
+                "sdf-shader-xray",
+                960,
+                540,
+                96,
+                24,
+                DrawSdfShaderXRay));
         }
 
         static void DrawSdfMetamorphosis(NowRect rect, NowHarnessAnimationFrame frame)
@@ -219,6 +232,197 @@ namespace NowUI.Editor
                 from = c;
                 to = a;
             }
+        }
+
+        static void DrawSdfShaderXRay(NowRect rect, NowHarnessAnimationFrame frame)
+        {
+            float u = frame.normalizedTime;
+            float angle = u * FullTurn;
+            var amber = new Color(1f, 0.68f, 0.24f, 1f);
+            var cyan = new Color(0.18f, 0.96f, 0.86f, 1f);
+            var violet = new Color(0.62f, 0.30f, 1f, 1f);
+            var background = new Color(0.010f, 0.018f, 0.040f, 1f);
+
+            Material paper = RequireReadmeSdfMaterial(
+                ref _xRayPaperCutoutMaterial,
+                "NowUI/SdfExamples/PaperCutout");
+            Material topographic = RequireReadmeSdfMaterial(
+                ref _xRayTopographicMaterial,
+                "NowUI/SdfExamples/Topographic");
+
+            Now.Rectangle(rect).SetColor(background).Draw();
+            DrawAnimatedBackdrop(rect, 0.15f, cyan, violet, amber);
+            DrawGrid(rect, 48f, new Color(0.34f, 0.64f, 0.82f, 0.040f));
+
+            Now.Text(new NowRect(40f, 26f, 610f, 52f))
+                .SetFontSize(38f)
+                .SetBold()
+                .SetGradient(amber, cyan)
+                .SetGradientLinear(90f)
+                .Draw("X-RAY THE FIELD");
+            DrawText(
+                new NowRect(43f, 78f, 620f, 24f),
+                "One SDF graph. Two custom shaders. One moving mask.",
+                15f,
+                new Color(0.70f, 0.80f, 0.94f, 1f));
+
+            DrawMetricChip(new NowRect(674f, 30f, 74f, 28f), "1 GRAPH", amber);
+            DrawMetricChip(new NowRect(756f, 30f, 94f, 28f), "2 SHADERS", violet);
+            DrawMetricChip(new NowRect(858f, 30f, 72f, 28f), "1 MASK", cyan);
+
+            var stage = new NowRect(68f, 116f, 824f, 342f);
+            Now.Rectangle(new NowRect(stage.x - 14f, stage.y + 14f, stage.width + 28f, stage.height + 18f))
+                .SetColor(new Color(0f, 0f, 0f, 0.38f))
+                .SetRadius(30f)
+                .SetBlur(24f)
+                .Draw();
+
+            var stageMask = NowMaskShape.RoundedRect(stage, 24f).SetFeather(0.5f);
+            var scene = new NowRect(stage.x + 24f, stage.y + 24f, stage.width - 48f, stage.height - 48f);
+            BuildXRayField(scene);
+
+            float scan = Mathf.Sin(Mathf.PI * u);
+            scan *= scan;
+            Vector2 lensCenter = new Vector2(
+                scene.center.x + 230f - 460f * scan,
+                scene.center.y + Mathf.Sin(angle) * scan * 62f);
+            float lensRadius = 101f + 14f * scan;
+            float lensFeather = 24f + 6f * scan;
+            float lensAlpha = SmoothPulse(u, 0.02f, 0.11f, 0.89f, 0.98f);
+            const float warpSeed = 0.22f;
+
+            using (Now.Mask(stageMask))
+            {
+                DrawXRayStageSurface(stage, 1f);
+
+                DrawXRayField(scene, "readme-xray-paper", paper, warpSeed, 1f);
+
+                if (lensAlpha > 0.001f)
+                {
+                    using (Now.Mask(NowMaskShape.Circle(lensCenter, lensRadius).SetFeather(lensFeather)))
+                    {
+                        DrawXRayStageSurface(stage, lensAlpha);
+                        DrawXRayField(scene, "readme-xray-topographic", topographic, warpSeed, lensAlpha);
+                    }
+                }
+            }
+
+            Now.Rectangle(stage)
+                .SetColor(Color.clear)
+                .SetRadius(24f)
+                .SetOutline(1f, new Color(0.52f, 0.82f, 1f, 0.24f))
+                .Draw();
+
+            if (lensAlpha > 0.001f)
+                DrawXRayLens(lensCenter, lensRadius, cyan, lensAlpha);
+            DrawMetricChip(new NowRect(stage.x + 18f, stage.y + 16f, 112f, 24f), "PAPER CUTOUT", amber);
+            DrawMetricChip(new NowRect(stage.xMax - 166f, stage.y + 16f, 148f, 24f), "TOPOGRAPHIC FIELD", cyan);
+
+            DrawText(
+                new NowRect(70f, 476f, 670f, 20f),
+                "SAME GRAPH  /  CUSTOM FINAL SHADING  /  FEATHERED ANALYTIC MASK",
+                12f,
+                new Color(0.62f, 0.76f, 0.92f, 1f),
+                true);
+            DrawRenderedTag(new NowRect(760f, 500f, 160f, 24f));
+        }
+
+        static void BuildXRayField(NowRect scene)
+        {
+            float w = scene.width;
+            float h = scene.height;
+            Vector2 center = new Vector2(w * 0.5f, h * 0.52f);
+            const float cutRotation = 38f;
+
+            SdfXRayField.Clear()
+                .SetColor(new Color(1f, 0.76f, 0.30f, 1f)).UseColor()
+                .RotateNext(3f)
+                .RoundedBox(new NowRect(center.x - 210f, center.y - 72f, 420f, 144f), 48f)
+                .SetColor(new Color(1f, 0.42f, 0.54f, 1f)).UseColor()
+                .SmoothUnion(28f)
+                .Circle(center + new Vector2(-210f, -4f), 82f)
+                .SetColor(new Color(0.24f, 0.94f, 0.84f, 1f)).UseColor()
+                .SmoothUnion(26f)
+                .Circle(center + new Vector2(210f, 2f), 78f)
+                .SetColor(new Color(0.62f, 0.34f, 1f, 1f)).UseColor()
+                .SmoothUnion(18f)
+                .Capsule(new NowRect(center.x - 158f, center.y + 48f, 316f, 54f))
+                .SmoothSubtract(12f)
+                .Circle(center, 46f)
+                .SmoothSubtract(9f)
+                .RotateNext(cutRotation)
+                .RoundedBox(new NowRect(center.x - 98f, center.y - 13f, 196f, 26f), 13f)
+                .SmoothSubtract(9f)
+                .RotateNext(-cutRotation)
+                .RoundedBox(new NowRect(center.x - 98f, center.y - 13f, 196f, 26f), 13f)
+                .SmoothSubtract(7f)
+                .Circle(center + new Vector2(-146f, 12f), 23f)
+                .SmoothSubtract(7f)
+                .Circle(center + new Vector2(148f, -10f), 23f);
+        }
+
+        static void DrawXRayField(NowRect scene, string id, Material material, float warpSeed, float alpha)
+        {
+            NowSdf.Scene(scene, id)
+                .SetMaterial(material)
+                .SetColor(new Color(1f, 1f, 1f, alpha))
+                .SetFeather(1f)
+                .SetWarp(3.4f, 54f, 0f, warpSeed)
+                .Graph(SdfXRayField)
+                .Draw();
+        }
+
+        static void DrawXRayStageSurface(NowRect stage, float alpha)
+        {
+            Now.Gradient(
+                    stage,
+                    new Color(0.055f, 0.035f, 0.072f, alpha),
+                    new Color(0.018f, 0.070f, 0.082f, alpha))
+                .SetLinear(118f)
+                .Draw();
+            DrawXRayStageGrid(stage, alpha);
+        }
+
+        static void DrawXRayStageGrid(NowRect stage, float alpha)
+        {
+            Color grid = new Color(0.38f, 0.78f, 0.92f, 0.055f * alpha);
+            for (float x = stage.x + 28f; x < stage.xMax; x += 44f)
+                Now.Rectangle(new NowRect(x, stage.y, 1f, stage.height)).SetColor(grid).Draw();
+            for (float y = stage.y + 28f; y < stage.yMax; y += 44f)
+                Now.Rectangle(new NowRect(stage.x, y, stage.width, 1f)).SetColor(grid).Draw();
+        }
+
+        static void DrawXRayLens(Vector2 center, float radius, Color accent, float alpha)
+        {
+            Now.Circle(center, radius + 5f)
+                .SetColor(Color.clear)
+                .SetOutline(1f, new Color(accent.r, accent.g, accent.b, 0.24f * alpha))
+                .Draw();
+            Now.Circle(center, radius)
+                .SetColor(Color.clear)
+                .SetOutline(2f, new Color(accent.r, accent.g, accent.b, 0.92f * alpha))
+                .Draw();
+
+            Vector2 handleDirection = new Vector2(0.72f, 0.69f).normalized;
+            Vector2 handleStart = center + handleDirection * (radius + 2f);
+            Vector2 handleEnd = center + handleDirection * (radius + 30f);
+            Now.Line(handleStart, handleEnd)
+                .SetWidth(6f)
+                .SetColor(new Color(0.01f, 0.04f, 0.07f, 0.72f * alpha))
+                .Draw();
+            Now.Line(handleStart, handleEnd)
+                .SetWidth(2.5f)
+                .SetColor(new Color(accent.r, accent.g, accent.b, 0.92f * alpha))
+                .Draw();
+            Now.Circle(center, 3f).SetColor(new Color(0.88f, 1f, 0.98f, 0.92f * alpha)).Draw();
+        }
+
+        static Material RequireReadmeSdfMaterial(ref Material material, string resourcePath)
+        {
+            material ??= Resources.Load<Material>(resourcePath);
+            if (material == null)
+                throw new InvalidOperationException($"README animation material '{resourcePath}' was not found.");
+            return material;
         }
 
         static void DrawDesktopFidelity(NowRect rect, NowHarnessAnimationFrame frame)

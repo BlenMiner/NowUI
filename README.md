@@ -37,6 +37,14 @@ Dock icon and restores it. No OS screenshots or platform artwork.*
 not crossfades — with boolean cutouts, animated contour reveal, warp, emboss,
 shadow, outline, and glow. The animated field itself is one quad.*
 
+![A feathered x-ray lens moving over one SDF graph, revealing topographic contours beneath paper-cutout shading](Docs/media/readme/sdf-shader-xray.gif)
+
+*One reusable SDF graph, two custom final-shading materials: a relit paper
+cutout on the surface and topographic contours beneath a moving feathered
+analytic mask. Both passes share the identical field; only the final shader
+and mask coverage differ. [SDF Shapes](Assets/NowUI/Documentation~/SDF.md),
+[Masks](Assets/NowUI/Documentation~/Masks.md).*
+
 ![In-app documentation browser rendered with NowUI, including live 3D model previews and syntax-highlighted code](Docs/media/readme/docs-model-preview-demo.png)
 
 *The in-app docs browser from [NowDocsExample](Assets/NowUI/Example/NowDocsExample.cs):

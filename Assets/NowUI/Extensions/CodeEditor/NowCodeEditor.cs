@@ -1642,7 +1642,7 @@ namespace NowUI.CodeEditor
                 case NowCodeTokenKind.Attribute:
                     return dark
                         ? new Vector4(0.224f, 0.80f, 0.56f, 1f)
-                        : new Vector4(0.05f, 0.39f, 0.30f, 1f);
+                        : new Vector4(0.153f, 0.475f, 0.294f, 1f);
                 case NowCodeTokenKind.String:
                 case NowCodeTokenKind.CodeSpan:
                     return dark
@@ -1651,23 +1651,23 @@ namespace NowUI.CodeEditor
                 case NowCodeTokenKind.Number:
                     return dark
                         ? new Vector4(0.93f, 0.58f, 0.75f, 1f)
-                        : new Vector4(0.48f, 0.23f, 0.60f, 1f);
+                        : new Vector4(0.55f, 0.27f, 0.68f, 1f);
                 case NowCodeTokenKind.Emphasis:
                     return dark
                         ? new Vector4(0.71f, 0.58f, 0.94f, 1f)
-                        : new Vector4(0.48f, 0.23f, 0.60f, 1f);
+                        : new Vector4(0.55f, 0.27f, 0.68f, 1f);
                 case NowCodeTokenKind.Constant:
                     return dark
                         ? new Vector4(0.40f, 0.76f, 0.80f, 1f)
-                        : new Vector4(0.03f, 0.40f, 0.45f, 1f);
+                        : new Vector4(0.05f, 0.45f, 0.50f, 1f);
                 case NowCodeTokenKind.Keyword:
                 case NowCodeTokenKind.Strong:
                 case NowCodeTokenKind.Tag:
-                    // The light orange sits deep enough to clear 4.5:1 on a
-                    // warm paper background, not only on pure white.
+                    // Light keywords are the classic IDE blue, deep enough
+                    // to clear 5:1 on white and warm paper alike.
                     return dark
                         ? new Vector4(0.42f, 0.58f, 0.92f, 1f)
-                        : new Vector4(0.56f, 0.29f, 0.03f, 1f);
+                        : new Vector4(0.106f, 0.416f, 0.788f, 1f);
                 case NowCodeTokenKind.Comment:
                 case NowCodeTokenKind.Quote:
                 case NowCodeTokenKind.Fence:
@@ -1675,11 +1675,11 @@ namespace NowUI.CodeEditor
                 case NowCodeTokenKind.DocComment:
                     return dark
                         ? new Vector4(0.44f, 0.63f, 0.37f, 1f)
-                        : new Vector4(0.18f, 0.42f, 0.15f, 1f);
+                        : new Vector4(0.22f, 0.46f, 0.18f, 1f);
                 case NowCodeTokenKind.DocTag:
                     return dark
                         ? new Vector4(0.36f, 0.50f, 0.32f, 1f)
-                        : new Vector4(0.24f, 0.40f, 0.22f, 1f);
+                        : new Vector4(0.34f, 0.50f, 0.30f, 1f);
                 case NowCodeTokenKind.Punctuation:
                     // Plain text color on both schemes: operators and braces
                     // carry structure, and a muted theme's TextMuted can drop
@@ -1688,7 +1688,7 @@ namespace NowUI.CodeEditor
                 case NowCodeTokenKind.Error:
                     return dark
                         ? new Vector4(0.86f, 0.24f, 0.24f, 1f)
-                        : new Vector4(0.698f, 0.176f, 0.231f, 1f);
+                        : new Vector4(0.757f, 0.2f, 0.251f, 1f);
                 default:
                     return themeAsset.GetColor(NowColorToken.Text, Color.black);
             }
@@ -2034,7 +2034,7 @@ namespace NowUI.CodeEditor
                 default:
                     return themeAsset.isDark
                         ? new Vector4(0.86f, 0.24f, 0.24f, 1f)
-                        : new Vector4(0.698f, 0.176f, 0.231f, 1f);
+                        : new Vector4(0.757f, 0.2f, 0.251f, 1f);
             }
         }
 
